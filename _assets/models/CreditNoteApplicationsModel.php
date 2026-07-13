@@ -123,6 +123,36 @@ class CreditNoteApplicationsModel extends Model
     }
 
     /**
+     * Aplicaciones activas de todas las notas activas (opcionalmente de un proveedor),
+     * con folio de factura y requisición. Para pintar "Asignado a" en el catálogo de notas.
+     */
+    public function getActiveApplicationsByProvider($providerId = null) : array|false {
+        if (!$providerId || $providerId == 1) {
+            $whereProvider = '';
+            $params = [];
+        } else {
+            $whereProvider = 'AND n.provider_id = ?';
+            $params = [$providerId];
+        }
+
+        $query = "
+            SELECT
+                a.credit_note_id,
+                a.payment_request_id,
+                a.invoice_id,
+                a.applied_amount,
+                pri.folio          as invoice_folio,
+                pri.invoice_number
+            FROM [tg].[dbo].credit_note_applications a
+            INNER JOIN [tg].[dbo].invoice_credit_debit_notes n ON a.credit_note_id = n.id AND n.status = 1
+            LEFT JOIN [tg].[dbo].payment_request_invoices pri ON a.invoice_id = pri.id
+            WHERE a.status = 1
+              $whereProvider
+            ORDER BY a.credit_note_id, a.created_at ASC";
+        return $this->sql->select($query, $params);
+    }
+
+    /**
      * Soft-delete de una aplicación (libera el saldo de la nota)
      */
     public function removeApplication($applicationId) : bool {

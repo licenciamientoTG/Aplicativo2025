@@ -5489,7 +5489,19 @@ class Payment
         header('Content-Type: application/json');
         try {
             $provider_id = $_POST['provider_id'] ?? null;
-            $notes = $this->InvoiceCreditDebitNotesModel->getNotesByProvider($provider_id);
+            $notes = $this->InvoiceCreditDebitNotesModel->getNotesByProvider($provider_id) ?: [];
+
+            // A qué requisición/factura está asignada cada nota (columna "Asignado a")
+            $applications = $this->CreditNoteApplicationsModel->getActiveApplicationsByProvider($provider_id) ?: [];
+            $appsByNote = [];
+            foreach ($applications as $app) {
+                $appsByNote[$app['credit_note_id']][] = $app;
+            }
+            foreach ($notes as &$note) {
+                $note['applications'] = $appsByNote[$note['id']] ?? [];
+            }
+            unset($note);
+
             echo json_encode([
                 'success'    => true,
                 'notes'      => $notes ?: [],
@@ -5541,9 +5553,18 @@ class Payment
                 }
             }
 
+            // La aplicación DEBE quedar ligada a una factura: las aplicaciones con
+            // invoice_id NULL son invisibles para toda la lógica por factura
+            // (get_notas_netas_for_invoice, get_all_pending_payment_invoices), lo
+            // que deja facturas en Parcial y requisiciones en Autorizado aunque la
+            // nota cubra el remanente.
+            if (empty($_POST['invoice_id'])) {
+                throw new Exception('Debe seleccionar la factura a la que se aplicará la nota');
+            }
+
             $creditNoteId     = (int)$_POST['credit_note_id'];
             $paymentRequestId = (int)$_POST['payment_request_id'];
-            $invoiceId        = !empty($_POST['invoice_id']) ? (int)$_POST['invoice_id'] : null;
+            $invoiceId        = (int)$_POST['invoice_id'];
             $appliedAmount    = (float)$_POST['applied_amount'];
 
             if ($appliedAmount <= 0) {
@@ -5562,17 +5583,20 @@ class Payment
                 throw new Exception("El monto a aplicar ($appliedAmount) supera el saldo disponible ($available)");
             }
 
-            // Verificar que no se exceda el saldo de la factura (si aplica a una factura)
-            if ($invoiceId) {
-                $invoiceDetail = $this->paymentRequestInvoicesModel->get_invoices_detail_by_ids((string)$invoiceId);
-                if ($invoiceDetail) {
-                    $inv = $invoiceDetail[0];
-                    $saldoFactura = (float)$inv['amount'] - (float)$inv['paid_amount']
-                        - (float)$inv['total_notas_credito'] + (float)$inv['total_notas_cargo'];
-                    if ($note['note_type'] === 'CREDIT' && $appliedAmount > $saldoFactura + 0.001) {
-                        throw new Exception("El monto a aplicar ($appliedAmount) supera el saldo pendiente de la factura ($saldoFactura)");
-                    }
-                }
+            // Verificar que la factura existe, pertenece a la requisición y que
+            // no se exceda su saldo pendiente
+            $invoiceDetail = $this->paymentRequestInvoicesModel->get_invoices_detail_by_ids((string)$invoiceId);
+            if (!$invoiceDetail) {
+                throw new Exception('Factura no encontrada');
+            }
+            $inv = $invoiceDetail[0];
+            if ((int)$inv['payment_request_id'] !== $paymentRequestId) {
+                throw new Exception('La factura no pertenece a esta requisición de pago');
+            }
+            $saldoFactura = (float)$inv['amount'] - (float)$inv['paid_amount']
+                - (float)$inv['total_notas_credito'] + (float)$inv['total_notas_cargo'];
+            if ($note['note_type'] === 'CREDIT' && $appliedAmount > $saldoFactura + 0.001) {
+                throw new Exception("El monto a aplicar ($appliedAmount) supera el saldo pendiente de la factura ($saldoFactura)");
             }
 
             $appId = $this->CreditNoteApplicationsModel->applyNote([
@@ -5589,6 +5613,20 @@ class Payment
 
             // Recalcular totales de notas en payment_requests
             $this->CreditNoteApplicationsModel->updatePaymentNoteTotals($paymentRequestId);
+
+            // Recalcular el status de la factura contra su saldo neto: si la nota
+            // cubre el remanente debe quedar Pagada, y si con ello ya no queda
+            // ninguna factura pendiente en una requisición Autorizada, cerrarla.
+            $this->paymentRequestInvoicesModel->recalculate_invoice_status($invoiceId);
+            $request = $this->PaymentRequestsModel->get_request_by_id($paymentRequestId);
+            if ($request && (int)$request['status'] === PaymentRequestsModel::STATUS_AUTHORIZED
+                && $this->paymentTransactionsModel->check_all_invoices_paid($paymentRequestId)) {
+                $this->PaymentRequestsModel->update_request_status(
+                    $paymentRequestId,
+                    PaymentRequestsModel::STATUS_PAID,
+                    'Requisición cerrada: saldo restante cubierto por notas de crédito'
+                );
+            }
 
             echo json_encode([
                 'success'    => true,
@@ -5619,13 +5657,26 @@ class Payment
                 throw new Exception('Aplicación no encontrada');
             }
 
+            // Una requisición Pagada pudo haberse cerrado contando esta nota
+            // como parte del saldo cubierto: quitarla dejaría el pago
+            // inconsistente (pagado < adeudado) sin nadie que lo detecte.
+            $paymentRequestId = $app['payment_request_id'];
+            $request = $this->PaymentRequestsModel->get_request_by_id($paymentRequestId);
+            if ($request && (int)$request['status'] === PaymentRequestsModel::STATUS_PAID) {
+                throw new Exception('No se puede quitar la nota: la requisición ya está pagada');
+            }
+
             if (!$this->CreditNoteApplicationsModel->removeApplication((int)$appId)) {
                 throw new Exception('Error al eliminar la aplicación');
             }
 
             // Recalcular totales de notas en payment_requests
-            $paymentRequestId = $app['payment_request_id'];
             $this->CreditNoteApplicationsModel->updatePaymentNoteTotals($paymentRequestId);
+
+            // Recalcular el status de la factura ahora que la nota ya no cuenta
+            if (!empty($app['invoice_id'])) {
+                $this->paymentRequestInvoicesModel->recalculate_invoice_status((int)$app['invoice_id']);
+            }
 
             echo json_encode(['success' => true, 'message' => 'Aplicación eliminada correctamente']);
         } catch (Exception $e) {

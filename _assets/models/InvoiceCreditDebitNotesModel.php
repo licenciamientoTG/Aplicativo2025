@@ -86,6 +86,19 @@ class InvoiceCreditDebitNotesModel extends Model
                     FROM [tg].[dbo].credit_note_applications a
                     WHERE a.credit_note_id = t1.id AND a.status = 1
                 ), 0)
+              -- Excluir notas de cargo ya cobradas como fila de pago
+              -- (is_debit_note=1, falsos fletes): esas no generan aplicación,
+              -- su consumo es la propia fila (folio = note_number, mismo proveedor)
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM [TG].[dbo].[payment_request_invoices] pri
+                    INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
+                    WHERE pri.is_debit_note = 1
+                      AND pri.is_deleted = 0
+                      AND pr.is_deleted = 0
+                      AND pri.folio = t1.note_number
+                      AND pr.provider_cod = t1.provider_id
+                )
             ORDER BY t1.note_date ASC";
         return $this->sql->select($query, $params);
     }
@@ -165,11 +178,24 @@ class InvoiceCreditDebitNotesModel extends Model
     public function getAvailableBalance($noteId) : float {
         $query = "
             SELECT
-                n.amount - ISNULL((
+                CASE WHEN EXISTS (
+                    -- Nota de cargo ya cobrada como fila de pago (is_debit_note=1):
+                    -- consumida por la propia fila, sin aplicación de por medio
+                    SELECT 1
+                    FROM [TG].[dbo].[payment_request_invoices] pri
+                    INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
+                    WHERE pri.is_debit_note = 1
+                      AND pri.is_deleted = 0
+                      AND pr.is_deleted = 0
+                      AND pri.folio = n.note_number
+                      AND pr.provider_cod = n.provider_id
+                ) THEN 0
+                ELSE n.amount - ISNULL((
                     SELECT SUM(a.applied_amount)
                     FROM [tg].[dbo].credit_note_applications a
                     WHERE a.credit_note_id = n.id AND a.status = 1
-                ), 0) as available_balance
+                ), 0)
+                END as available_balance
             FROM [tg].[dbo].invoice_credit_debit_notes n
             WHERE n.id = ? AND n.status = 1";
         $result = $this->sql->select($query, [$noteId]);

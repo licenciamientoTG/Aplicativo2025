@@ -5950,6 +5950,13 @@ async function applySelectedNotes() {
     document.querySelectorAll("#applyNoteCheckList .apply-note-row")
   ).filter((row) => row.querySelector(".apply-note-check").checked);
 
+  // La nota SIEMPRE debe quedar ligada a una factura: aplicaciones sin
+  // factura quedan invisibles para el cálculo de saldos por factura
+  if (!invoiceId) {
+    alertify.error("Seleccione la factura a la que se aplicará la nota");
+    return;
+  }
+
   if (rows.length === 0) {
     alertify.error("Seleccione al menos una nota");
     return;

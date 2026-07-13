@@ -1077,11 +1077,11 @@
 				<form id="applyNoteForm" onsubmit="return false;">
 					<div class="modal-body pt-0">
 						<input type="hidden" id="applyNotePaymentId" name="payment_request_id" value="{{ payment.id }}">
-						<!-- Selector de factura (opcional) -->
+						<!-- Selector de factura (obligatorio: la aplicación debe quedar ligada a una factura) -->
 						<div class="form-group">
-							<label>Factura <small class="text-muted">(opcional — dejar vacío para nota independiente)</small></label>
-							<select id="applyNoteInvoiceSelect" name="invoice_id" class="form-control">
-								<option value="">Sin factura asociada (nota independiente)</option>
+							<label>Factura <small class="text-danger">(obligatoria)</small></label>
+							<select id="applyNoteInvoiceSelect" name="invoice_id" class="form-control" required>
+								<option value="">Seleccione una factura...</option>
 								{% for inv in invoices %}
 									<option value="{{ inv.id }}">{{ inv.folio }} — {{ inv.invoice_number }}</option>
 								{% endfor %}

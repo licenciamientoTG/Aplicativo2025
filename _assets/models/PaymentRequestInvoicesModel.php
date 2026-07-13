@@ -252,6 +252,42 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     /**
+     * Recalcula el status de una factura comparando paid_amount contra su
+     * saldo NETO (amount - notas de crédito + notas de cargo aplicadas a la
+     * factura). Se llama al aplicar/quitar una nota, para que una factura
+     * cuyo remanente queda cubierto por NC pase a Pagada (y no se quede en
+     * Parcial bloqueando el cierre de la requisición, como pasó con la
+     * requisición 96).
+     *
+     * Pagado si el neto está cubierto, Parcial si hay pago parcial; sin pagos
+     * regresa a Autorizado o Pendiente según payment_authorized (así quitar
+     * una nota que cubría el 100% no deja la factura como Pagada). Nunca toca
+     * canceladas.
+     */
+    public function recalculate_invoice_status($invoice_id) : bool {
+        $query = "
+            UPDATE pri
+            SET pri.status = CASE
+                WHEN ISNULL(pri.paid_amount, 0) >= (pri.amount - ISNULL(n.notas_netas, 0)) - 0.01 THEN 2
+                WHEN ISNULL(pri.paid_amount, 0) > 0 THEN 3
+                WHEN pri.payment_authorized = 1 THEN 1
+                ELSE 0
+            END
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            OUTER APPLY (
+                SELECT SUM(CASE WHEN nt.note_type = 'CREDIT' THEN a.applied_amount
+                                WHEN nt.note_type = 'DEBIT'  THEN -a.applied_amount
+                                ELSE 0 END) as notas_netas
+                FROM [tg].[dbo].credit_note_applications a
+                INNER JOIN [tg].[dbo].invoice_credit_debit_notes nt ON a.credit_note_id = nt.id
+                WHERE a.invoice_id = pri.id AND a.status = 1
+            ) n
+            WHERE pri.id = ? AND pri.is_deleted = 0 AND pri.status <> 4
+        ";
+        return $this->sql->update($query, [$invoice_id]);
+    }
+
+    /**
      * Obtiene el total de facturas de una solicitud
      */
     public function get_payment_summary($payment_request_id) : array|false {
@@ -1576,9 +1612,13 @@ class PaymentRequestInvoicesModel extends Model
 
             WHERE pr.status IN (?, ?)
                 AND pr.accounting_group_id IS NOT NULL
-                -- Excluir lo ya cubierto por autorizaciones previas Y por anticipos:
-                -- una factura cubierta 100% por anticipo no tiene nada que autorizar.
-                AND pri.amount > ISNULL(pri.authorized_amount, 0) + ISNULL(ant.total_anticipo, 0) + 0.01
+                -- Excluir lo ya cubierto por autorizaciones previas, anticipos y
+                -- notas de crédito (netas de cargos): una factura cuyo remanente
+                -- está cubierto por anticipo o por NC no tiene nada que autorizar.
+                AND (pri.amount - ISNULL(pri.authorized_amount, 0)
+                     - ISNULL(notas.total_notas_credito, 0)
+                     + ISNULL(notas.total_notas_cargo, 0)
+                     - ISNULL(ant.total_anticipo, 0)) > 0.01
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pri.is_deleted = 0

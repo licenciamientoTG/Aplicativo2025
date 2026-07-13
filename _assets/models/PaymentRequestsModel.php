@@ -129,8 +129,27 @@ class PaymentRequestsModel extends Model
                     VALUES (?, ?, ?, ?, ?, 1)";
 
                 foreach ($pending_notes as $note) {
-                    $temp_key   = $note['invoice_temp_key'] ?? null;
+                    $temp_key = $note['invoice_temp_key'] ?? null;
+
+                    // Las notas de cargo independientes ya se insertaron como filas
+                    // de pago (is_debit_note=1) y su monto vive en monto_total:
+                    // registrar además una aplicación las contaría DOBLE en
+                    // total_notas_cargo/monto final y dejaría una aplicación sin
+                    // factura, invisible para la lógica por factura (caso req. 1153).
+                    // Su consumo se rastrea por la propia fila en
+                    // getAvailableNotesByProvider / getAvailableBalance.
+                    if ($temp_key === null && ($note['note_type'] ?? '') === 'DEBIT') {
+                        continue;
+                    }
+
                     $invoice_id = $temp_key ? ($invoice_map[$temp_key] ?? null) : null;
+
+                    // Toda aplicación debe quedar ligada a una factura: con
+                    // invoice_id NULL la nota no descuenta el saldo de ninguna
+                    // factura y la requisición nunca se cierra (caso req. 96).
+                    if (!$invoice_id) {
+                        throw new Exception('Cada nota debe quedar ligada a una factura del pago (nota ' . ($note['note_number'] ?? $note['credit_note_id']) . ')');
+                    }
 
                     $this->sql->insert($note_query, [
                         $note['credit_note_id'],

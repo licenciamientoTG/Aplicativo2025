@@ -116,6 +116,7 @@
                         <th>Fecha</th>
                         <th>Monto Total</th>
                         <th>Aplicado</th>
+                        <th>Asignado a</th>
                         <th>Saldo Disponible</th>
                         <th>Descripción</th>
                         <th>Acciones</th>
@@ -389,6 +390,12 @@
 var notesTableDT = null;
 var notesCan = { manage: false };
 
+function escNota(v) {
+    return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function initNotesTable() {
     if ($.fn.DataTable.isDataTable('#notesTable')) {
         $('#notesTable').DataTable().destroy();
@@ -444,8 +451,9 @@ function initNotesTable() {
         columnDefs: [
             { targets: [0], className: 'text-center text-muted small' },
             { targets: [1, 4], className: 'text-center' },
-            { targets: [5, 6, 7], className: 'text-end' },
-            { targets: [9], orderable: false, searchable: false }
+            { targets: [5, 6, 8], className: 'text-end' },
+            { targets: [7], orderable: false },
+            { targets: [10], orderable: false, searchable: false }
         ],
         ajax: {
             url: '/payment/getAllProviderNotes',
@@ -473,6 +481,28 @@ function initNotesTable() {
             }},
             { data: 'total_applied', render: function(d) {
                 return '<span class="text-muted">$' + parseFloat(d).toLocaleString('es-MX', {minimumFractionDigits:2}) + '</span>';
+            }},
+            { data: 'applications', render: function(d, type) {
+                if (!d || d.length === 0) {
+                    return type === 'display' ? '<span class="text-muted">—</span>' : '';
+                }
+                if (type !== 'display') {
+                    // texto plano para búsqueda/orden/export
+                    return d.map(function(a) {
+                        return 'Req #' + a.payment_request_id + (a.invoice_folio ? ' Fact ' + a.invoice_folio : '');
+                    }).join(' | ');
+                }
+                return d.map(function(a) {
+                    var fact = a.invoice_folio
+                        ? ' → Fact ' + escNota(a.invoice_folio)
+                        : (a.invoice_id ? ' → Línea #' + a.invoice_id : '');
+                    var monto = '$' + parseFloat(a.applied_amount).toLocaleString('es-MX', {minimumFractionDigits:2});
+                    return '<div style="white-space:nowrap;font-size:.76rem;line-height:1.5;">'
+                        + '<a href="/payment/payment_detail/' + a.payment_request_id + '" target="_blank" class="text-primary text-decoration-none fw-semibold" title="Ver requisición #' + a.payment_request_id + '">Req #' + a.payment_request_id + '</a>'
+                        + fact
+                        + ' <span class="text-muted">(' + monto + ')</span>'
+                        + '</div>';
+                }).join('');
             }},
             { data: 'available_balance', render: function(d) {
                 var b = parseFloat(d);
