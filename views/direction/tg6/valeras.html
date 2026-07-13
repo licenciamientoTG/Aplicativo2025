@@ -1,0 +1,302 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - Valeras{% endblock %}
+{% block mycss %}
+<style>
+    .table th, .table td {
+        white-space: nowrap;
+        padding: 0.25rem 0.5rem;
+    }
+    /* Altura mínima para que el overlay de carga sea visible con la tabla vacía */
+    #card_table.loading, #card_table_base.loading, #card_graph.loading, #card_table_conc.loading {
+        min-height: 300px;
+    }
+</style>
+{% endblock %}
+{% block menutitle %}Valeras{% endblock %}
+
+{% block content %}
+
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="Valeras-tab" data-bs-toggle="tab" data-bs-target="#Valeras" type="button" role="tab" aria-controls="Valeras" aria-selected="true">Valeras</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="Base-tab" data-bs-toggle="tab" data-bs-target="#Base" type="button" role="tab" aria-controls="Base" aria-selected="false">Base</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="Grafica-tab" data-bs-toggle="tab" data-bs-target="#Grafica" type="button" role="tab" aria-controls="Grafica" aria-selected="false">Gráfica</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="Concentrado-tab" data-bs-toggle="tab" data-bs-target="#Concentrado" type="button" role="tab" aria-controls="Concentrado" aria-selected="false">Concentrado Valeras</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane active" id="Valeras" role="tabpanel" aria-labelledby="Valeras-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date" class="form-control form-control-sm" name="from" id="from" value="{{ 'now'|date('Y-m-01') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until" id="until" value="{{ 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="codgas">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" required>
+                            <option value="0" selected>TODAS</option>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 ">
+                        <button id="search_valeras_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Valeras LTS por Estación / Denominación</h5>
+            </div>
+            <div class="card-body" id="card_table">
+                <div class="table-responsive d-none">
+                    <table class="table table-sm table-hover w-100" id="valeras_table">
+                        <thead class="table-info">
+                            <tr></tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr></tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div id="alert_valeras_table">
+                    <div class="alert alert-warning alert-dismissible mt-2" role="alert">
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <div class="alert-message">
+                            <strong>¡Atención!</strong> Seleccione un rango de fechas para generar el reporte de valeras
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane" id="Base" role="tabpanel" aria-labelledby="Base-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date" class="form-control form-control-sm" name="from_base" id="from_base" value="{{ 'now'|date('Y-m-01') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until_base" id="until_base" value="{{ 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="codgas_base">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas_base" id="codgas_base" required>
+                            <option value="0" selected>TODAS</option>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 ">
+                        <button id="search_valeras_base_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Valeras LTS Base (por mes)</h5>
+            </div>
+            <div class="card-body" id="card_table_base">
+                <div class="table-responsive d-none">
+                    <table class="table table-sm table-hover w-100" id="valeras_base_table">
+                        <thead class="table-info">
+                            <tr>
+                                <th>Estación</th>
+                                <th>Denominación</th>
+                                <th>Año</th>
+                                <th>Mes</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div id="alert_valeras_base_table">
+                    <div class="alert alert-warning alert-dismissible mt-2" role="alert">
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <div class="alert-message">
+                            <strong>¡Atención!</strong> Seleccione un rango de fechas para generar el reporte de valeras
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane" id="Concentrado" role="tabpanel" aria-labelledby="Concentrado-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date" class="form-control form-control-sm" name="from_conc" id="from_conc" value="{{ 'now'|date('Y-m-01') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until_conc" id="until_conc" value="{{ 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="codgas_conc">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas_conc" id="codgas_conc" required>
+                            <option value="0" selected>TODAS</option>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 ">
+                        <button id="search_valeras_conc_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Concentrado Valeras LTS por Denominación</h5>
+            </div>
+            <div class="card-body" id="card_table_conc">
+                <div class="table-responsive d-none">
+                    <table class="table table-sm table-hover w-100" id="valeras_conc_table">
+                        <thead class="table-info">
+                            <tr></tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr></tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div id="alert_valeras_conc_table">
+                    <div class="alert alert-warning alert-dismissible mt-2" role="alert">
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <div class="alert-message">
+                            <strong>¡Atención!</strong> Seleccione un rango de fechas para generar el concentrado de valeras
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane" id="Grafica" role="tabpanel" aria-labelledby="Grafica-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date" class="form-control form-control-sm" name="from_graph" id="from_graph" value="{{ 'now'|date('Y-m-01') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until_graph" id="until_graph" value="{{ 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="codgas_graph">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas_graph" id="codgas_graph" required>
+                            <option value="0" selected>TODAS</option>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 ">
+                        <button id="search_valeras_graph" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Gráfica</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Valeras LTS — Comparativo Gráfico</h5>
+            </div>
+            <div class="card-body" id="card_graph">
+                <div id="charts_valeras" class="d-none">
+                    <div class="row mb-3">
+                        <div class="col-4">
+                            <label class="col-form-label-sm" for="graph_filter_stations">Estaciones: </label>
+                            <select class="selectpicker form-control" multiple id="graph_filter_stations"
+                                data-live-search="true" data-actions-box="true"
+                                data-select-all-text="Todas" data-deselect-all-text="Ninguna"
+                                data-selected-text-format="count > 3" data-count-selected-text="{0} estaciones"
+                                title="Sin estaciones"></select>
+                        </div>
+                        <div class="col-4">
+                            <label class="col-form-label-sm" for="graph_filter_valeras">Valeras: </label>
+                            <select class="selectpicker form-control" multiple id="graph_filter_valeras"
+                                data-live-search="true" data-actions-box="true"
+                                data-select-all-text="Todas" data-deselect-all-text="Ninguna"
+                                data-selected-text-format="count > 3" data-count-selected-text="{0} valeras"
+                                title="Sin valeras"></select>
+                        </div>
+                    </div>
+                    <canvas id="valeras_stations_canvas" width="400" height="130"></canvas>
+                    <hr>
+                    <canvas id="valeras_totals_canvas" width="400" height="100"></canvas>
+                </div>
+                <div id="alert_valeras_graph">
+                    <div class="alert alert-warning alert-dismissible mt-2" role="alert">
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <div class="alert-message">
+                            <strong>¡Atención!</strong> Seleccione un rango de fechas para generar la gráfica de valeras
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}direction/tg6.js"></script>
+<script>
+$('#search_valeras_table').on('click', function() {
+    valeras_table();
+});
+$('#search_valeras_base_table').on('click', function() {
+    valeras_base_table();
+});
+$('#search_valeras_graph').on('click', function() {
+    valeras_graph();
+});
+$('#search_valeras_conc_table').on('click', function() {
+    valeras_conc_table();
+});
+// Quitar/agregar estaciones o valeras redibuja ambas gráficas con los datos ya consultados
+$('#graph_filter_stations, #graph_filter_valeras').on('changed.bs.select', function() {
+    render_valeras_charts();
+});
+// Reajustar columnas al cambiar de tab (DataTables no calcula anchos en tabs ocultos)
+$('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+});
+</script>
+{% endblock %}

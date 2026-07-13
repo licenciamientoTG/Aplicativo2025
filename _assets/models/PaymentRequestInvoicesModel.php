@@ -35,35 +35,6 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     /**
-     * Facturas con saldo pendiente de un proveedor (para ligar anticipos).
-     * @param string $provider_cod
-     * @return array|false
-     */
-    public function get_pending_by_provider($provider_cod) : array|false {
-        $query = "
-            SELECT
-                pri.id,
-                pri.payment_request_id,
-                pri.folio,
-                pri.invoice_number,
-                pri.amount,
-                ISNULL(pri.paid_amount, 0) AS paid_amount,
-                (pri.amount - ISNULL(pri.paid_amount, 0)) AS saldo,
-                pri.uuid,
-                g.abr AS estacion_nombre
-            FROM [TG].[dbo].[payment_request_invoices] pri
-            INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
-            LEFT JOIN [SG12].[dbo].Gasolineras g ON g.cod = pri.codgas
-            WHERE pr.provider_cod = ?
-              AND pri.is_deleted = 0
-              AND pri.status IN (0, 1, 3)
-              AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
-            ORDER BY pri.id DESC
-        ";
-        return ($this->sql->select($query, [$provider_cod])) ?: false;
-    }
-
-    /**
      * Inserta una factura para una solicitud de pago.
      * @param int $payment_request_id
      * @param string $folio
@@ -163,6 +134,84 @@ class PaymentRequestInvoicesModel extends Model
     /**
      * Verifica si una factura ya existe en alguna orden de pago (por UUID)
      */
+    /**
+     * Fila ACTIVA de un UUID con datos de su requisición dueña y lo aplicado
+     * de anticipos. Devuelve null si el UUID no está en ninguna orden activa.
+     */
+    public function get_active_invoice_by_uuid($uuid) : ?array {
+        $query = '
+            SELECT
+                pri.id,
+                pri.amount,
+                pri.payment_request_id AS owner_id,
+                ISNULL(pr.tipo, 0) AS owner_tipo,
+                ISNULL((
+                    SELECT SUM(a.monto_aplicado)
+                    FROM [TG].[dbo].[anticipo_invoice_applications] a
+                    WHERE a.invoice_id = pri.id
+                ), 0) AS aplicado
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
+            WHERE pri.uuid = ? AND pri.is_deleted = 0
+        ';
+        $rs = $this->sql->select($query, [$uuid]);
+        if (!$rs) return null;
+        $row = $rs[0];
+        $row['restante'] = floatval($row['amount']) - floatval($row['aplicado']);
+        return $row;
+    }
+
+    /**
+     * Info batch de facturas que viven bajo un ANTICIPO (tipo=1), para marcar
+     * en los listados las de aplicación parcial (con remanente por pagar).
+     * Devuelve mapa invoice_id => [anticipo_id, amount, aplicado, restante].
+     */
+    public function get_anticipo_parcial_info(array $invoice_ids) : array {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $invoice_ids))));
+        if (empty($ids)) return [];
+
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $query = "
+            SELECT
+                pri.id,
+                pri.amount,
+                pr.id AS anticipo_id,
+                ISNULL(SUM(a.monto_aplicado), 0) AS aplicado
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            INNER JOIN [TG].[dbo].[payment_requests] pr
+                ON pr.id = pri.payment_request_id AND pr.tipo = 1
+            LEFT JOIN [TG].[dbo].[anticipo_invoice_applications] a
+                ON a.invoice_id = pri.id
+            WHERE pri.id IN ($ph) AND pri.is_deleted = 0
+            GROUP BY pri.id, pri.amount, pr.id
+        ";
+        $rows = $this->sql->select($query, $ids) ?: [];
+
+        $mapa = [];
+        foreach ($rows as $r) {
+            $mapa[(int)$r['id']] = [
+                'anticipo_id' => (int)$r['anticipo_id'],
+                'amount'      => floatval($r['amount']),
+                'aplicado'    => floatval($r['aplicado']),
+                'restante'    => floatval($r['amount']) - floatval($r['aplicado']),
+            ];
+        }
+        return $mapa;
+    }
+
+    /**
+     * Mueve una factura de su requisición actual (típicamente un anticipo con
+     * aplicación parcial) a otra requisición. NUNCA duplicar filas por UUID:
+     * las aplicaciones de anticipo siguen a la factura (FK por invoice_id).
+     */
+    public function move_invoice_to_payment(int $invoice_id, int $payment_request_id) : bool {
+        return (bool)$this->sql->update('
+            UPDATE [TG].[dbo].[payment_request_invoices]
+            SET payment_request_id = ?, status = ?
+            WHERE id = ? AND is_deleted = 0
+        ', [$payment_request_id, self::STATUS_PENDING, $invoice_id]);
+    }
+
     public function invoice_exists_by_uuid($uuid) : bool {
         $query = 'SELECT id FROM [TG].[dbo].[payment_request_invoices] WHERE uuid = ? AND is_deleted = 0';
         $result = $this->sql->select($query, [$uuid]);
@@ -286,27 +335,55 @@ class PaymentRequestInvoicesModel extends Model
                 t2.abr as estacion_nombre,
                 -- Para filas is_debit_note=1: datos de la nota de cargo
                 nota_nd.id AS nota_id,
-                -- Calcular paid_amount desde payment_transactions
+                -- Calcular paid_amount desde payment_transactions (todas las
+                -- transacciones de la factura, sin filtrar por su status actual:
+                -- filtrar por t1.status aquí descartaba el pago ya registrado en
+                -- cuanto el status pasaba a Parcial/Pagado, dejando paid_amount en 0).
                  ISNULL((
                     SELECT SUM(payment_amount)
                     FROM [TG].[dbo].[payment_transactions] t5
                     WHERE t5.invoice_id = t1.id
-                    AND t1.status IN (1, 2)
                 ), 0) as paid_amount,
-                -- Calcular status dinámicamente
+                -- Calcular status dinámicamente, contra el saldo NETO (amount -
+                -- notas de crédito + notas de cargo): una factura saldada por
+                -- nota de crédito debe verse Pagada, no Parcial para siempre.
+                -- Los anticipos aplicados cuentan como cobertura: una factura
+                -- cubierta 100% por anticipo debe verse Pagada aunque no tenga
+                -- transacciones (nunca las tendrá).
                 CASE
                     WHEN ISNULL((
                         SELECT SUM(payment_amount)
                         FROM [TG].[dbo].[payment_transactions] t5
                         WHERE t5.invoice_id = t1.id
-                        AND t1.status IN (1, 2)
+                    ), 0) + ISNULL((
+                        SELECT SUM(a.monto_aplicado)
+                        FROM [TG].[dbo].[anticipo_invoice_applications] a
+                        WHERE a.invoice_id = t1.id
                     ), 0) = 0 THEN 0  -- Pendiente
                     WHEN ISNULL((
                         SELECT SUM(payment_amount)
                         FROM [TG].[dbo].[payment_transactions] t5
                         WHERE t5.invoice_id = t1.id
-                        AND t1.status IN (1, 2)
-                    ), 0) < t1.amount THEN 3  -- Parcial
+                    ), 0) + ISNULL((
+                        SELECT SUM(a.monto_aplicado)
+                        FROM [TG].[dbo].[anticipo_invoice_applications] a
+                        WHERE a.invoice_id = t1.id
+                    ), 0) < (
+                        t1.amount
+                        - ISNULL((
+                            SELECT SUM(CASE WHEN n.note_type = \'CREDIT\' THEN ca.applied_amount ELSE 0 END)
+                            FROM [TG].[dbo].[credit_note_applications] ca
+                            INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                            WHERE ca.invoice_id = t1.id AND ca.status = 1
+                        ), 0)
+                        + ISNULL((
+                            SELECT SUM(CASE WHEN n.note_type = \'DEBIT\' THEN ca.applied_amount ELSE 0 END)
+                            FROM [TG].[dbo].[credit_note_applications] ca
+                            INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                            WHERE ca.invoice_id = t1.id AND ca.status = 1
+                        ), 0)
+                        - 0.01
+                    ) THEN 3  -- Parcial
                     ELSE 2  -- Pagado
                 END as status,
                 -- Notas de crédito aplicadas a esta factura
@@ -328,7 +405,22 @@ class PaymentRequestInvoicesModel extends Model
                     SELECT COUNT(*)
                     FROM [TG].[dbo].[credit_note_applications] ca
                     WHERE ca.invoice_id = t1.id AND ca.status = 1
-                ), 0) as notas_count
+                ), 0) as notas_count,
+                -- Anticipos aplicados a esta factura
+                ISNULL((
+                    SELECT SUM(a.monto_aplicado)
+                    FROM [TG].[dbo].[anticipo_invoice_applications] a
+                    WHERE a.invoice_id = t1.id
+                ), 0) as anticipo_aplicado,
+                -- Comprobantes de pago (documentos) ligados por transacción o por lote
+                (
+                    SELECT STRING_AGG(CAST(d.id AS VARCHAR), \',\')
+                    FROM [TG].[dbo].[payment_transactions] t5b
+                    INNER JOIN [TG].[dbo].[payment_transaction_documents] d
+                        ON d.transaction_id = t5b.id
+                        OR (t5b.batch_id IS NOT NULL AND d.batch_id = t5b.batch_id)
+                    WHERE t5b.invoice_id = t1.id
+                ) as comprobante_doc_ids
                 FROM [TG].[dbo].[payment_request_invoices] t1
                 LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
                 LEFT JOIN sg12.[dbo].DocumentosC t3 ON t1.is_debit_note = 0 AND t1.codgas = t3.codgas AND TRY_CAST(t1.folio AS int) = t3.nro AND t3.tip = 1
@@ -361,14 +453,22 @@ class PaymentRequestInvoicesModel extends Model
             WHERE pri.payment_request_id = ? AND pri.is_deleted = 0
             GROUP BY pri.id, pri.amount
         )
-        SELECT 
+        SELECT
             COUNT(*) as total_invoices,
             SUM(amount) as total_amount,
             SUM(paid_amount) as total_paid,
-            SUM(amount - paid_amount) as total_pending
+            SUM(amount - paid_amount) as total_pending,
+            -- Anticipos aplicados a las facturas activas de esta requisición
+            ISNULL((
+                SELECT SUM(a.monto_aplicado)
+                FROM [TG].[dbo].[anticipo_invoice_applications] a
+                INNER JOIN [TG].[dbo].[payment_request_invoices] pri2
+                    ON pri2.id = a.invoice_id
+                WHERE pri2.payment_request_id = ? AND pri2.is_deleted = 0
+            ), 0) as total_advances
         FROM InvoicePayments
         ';
-        $result = $this->sql->select($query, [$payment_request_id]);
+        $result = $this->sql->select($query, [$payment_request_id, $payment_request_id]);
         return $result ? $result[0] : false;
     }
     public function get_by_ids($ids) {
@@ -470,40 +570,53 @@ class PaymentRequestInvoicesModel extends Model
                 
                 // Verificar que la factura pertenece a este payment_request y obtener su estado actual
                 $query_check = "
-                    SELECT id, amount, paid_amount, payment_authorized
+                    SELECT id, amount, paid_amount, authorized_amount, payment_authorized
                     FROM [TG].[dbo].[payment_request_invoices]
                     WHERE id = ? AND payment_request_id = ? AND is_deleted = 0
                 ";
-                
+
                 $invoice_data = $this->sql->select($query_check, [$invoice_id, $payment_id]);
-                
+
                 if (!$invoice_data || empty($invoice_data)) {
                     $errores[] = "Factura {$folio}: no pertenece a esta solicitud";
                     continue;
                 }
-                
+
                 $invoice = $invoice_data[0];
-                
-                // Verificar que no esté ya autorizada
-                if ($invoice['payment_authorized'] == 1) {
-                    $errores[] = "Factura {$folio}: ya está autorizada para pago";
+
+                // Autorizaciones acumulables: cada ronda suma al monto ya autorizado
+                // (que puede tener saldo pendiente de una ronda anterior si aún no se
+                // pagó, o si ya se pagó una parte y se autoriza el resto). Se bloquea
+                // solo si ya no queda nada por autorizar.
+                $authorized_amount_actual = floatval($invoice['authorized_amount'] ?? 0);
+                $pendiente_por_autorizar = floatval($invoice['amount']) - $authorized_amount_actual;
+
+                if ($pendiente_por_autorizar <= 0.01) {
+                    $errores[] = "Factura {$folio}: ya está autorizada en su totalidad";
                     continue;
                 }
-                
-                // Actualizar factura con autorización
+
+                if ($monto_autorizado > $pendiente_por_autorizar + 0.01) {
+                    $errores[] = "Factura {$folio}: el monto excede lo pendiente por autorizar (\${$pendiente_por_autorizar})";
+                    continue;
+                }
+
+                $nuevo_authorized_amount = $authorized_amount_actual + $monto_autorizado;
+
+                // Actualizar factura con autorización (acumulada)
                 $query_update = "
                     UPDATE [TG].[dbo].[payment_request_invoices]
-                    SET 
+                    SET
                         authorized_amount = ?,
                         payment_authorized = 1,
                         authorized_by = ?,
                         authorized_at = GETDATE()
                     WHERE id = ?
                 ";
-                
+
                 $update_result = $this->sql->update(
                     $query_update,
-                    [$monto_autorizado, $user_id, $invoice_id]
+                    [$nuevo_authorized_amount, $user_id, $invoice_id]
                 );
                 
                 if ($update_result) {
@@ -960,8 +1073,11 @@ class PaymentRequestInvoicesModel extends Model
                 SUM(pri.authorized_amount) as total_autorizado,
                 SUM(ISNULL(notas.total_credito, 0)) as total_notas_credito,
                 SUM(ISNULL(notas.total_cargo, 0))   as total_notas_cargo,
+                -- total_saldo = lo que este comprobante debe cubrir: el monto
+                -- AUTORIZADO pendiente de pago (no el monto total de la factura,
+                -- que puede exceder lo autorizado si la autorización fue parcial).
                 SUM(
-                    (pri.amount - ISNULL(pri.paid_amount, 0))
+                    (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
                     - ISNULL(notas.total_credito, 0)
                     + ISNULL(notas.total_cargo, 0)
                 ) as total_saldo,
@@ -995,6 +1111,7 @@ class PaymentRequestInvoicesModel extends Model
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pr.status = ?
+                AND pr.is_deleted = 0
                 AND pri.is_deleted = 0
             GROUP BY
                 pr.id,
@@ -1051,8 +1168,9 @@ class PaymentRequestInvoicesModel extends Model
                 ON pr.emp_cod = emp.cod
             WHERE pr.tipo = 1
                 AND pr.status = ?  -- Autorizados
-            
-            ORDER BY 
+                AND pr.is_deleted = 0
+
+            ORDER BY
                 banco_asignado,
                 empresa_nombre,
                 proveedor_nombre,
@@ -1071,8 +1189,9 @@ class PaymentRequestInvoicesModel extends Model
      * contra los grupos de facturas autorizadas pendientes (empresa+proveedor).
      *
      * Criterio: RFC empresa (ordenante) + RFC proveedor (beneficiario) + monto
-     * con tolerancia. Para comprobantes Santander, donde el RFC beneficiario
-     * suele venir vacío, se cae a un fallback por RFC empresa + monto.
+     * (contra el saldo pendiente, no el autorizado, para soportar pagos
+     * parciales) con tolerancia. Para comprobantes Santander, donde el RFC
+     * beneficiario suele venir vacío, se cae a un fallback por RFC empresa + monto.
      *
      * NO persiste nada: solo construye la relación para mostrarla en pantalla.
      *
@@ -1130,6 +1249,27 @@ class PaymentRequestInvoicesModel extends Model
         $cuentas_abono = array_map(fn($c) => $c['cuenta_abono'] ?? '', $comprobantes);
         $cuenta_a_proveedor = $this->resolver_provedores_por_cuenta($cuentas_abono);
 
+        // Resolver el nombre REAL de la empresa por el RFC ordenante del
+        // comprobante: el campo "Contrato"/nombre que trae el PDF (sobre todo
+        // en Santander) puede no coincidir con el RFC real de la transferencia
+        // (ej. una cuenta consolidada de grupo). El match usa el RFC, así que
+        // mostrar el nombre resuelto por RFC evita que el nombre del PDF
+        // confunda sobre a qué empresa se le está aplicando el pago.
+        $rfcs_ordenante = array_values(array_unique(array_filter(array_map(
+            fn($c) => strtoupper(trim($c['rfc_ordenante'] ?? '')), $comprobantes
+        ))));
+        $rfc_a_empresa_nombre = [];
+        if (!empty($rfcs_ordenante)) {
+            $placeholders = implode(',', array_fill(0, count($rfcs_ordenante), '?'));
+            $empresas = $this->sql->select(
+                "SELECT rfc, den FROM [SG12].[dbo].[Empresas] WHERE rfc IN ($placeholders)",
+                $rfcs_ordenante
+            ) ?: [];
+            foreach ($empresas as $e) {
+                $rfc_a_empresa_nombre[strtoupper(trim($e['rfc']))] = $e['den'];
+            }
+        }
+
         // Normalizar grupos a una forma ligera para el front + indexar.
         $grupos_norm = [];
         foreach ($grupos as $i => $g) {
@@ -1145,6 +1285,7 @@ class PaymentRequestInvoicesModel extends Model
                 'proveedor_rfc'   => strtoupper(trim($g['proveedor_rfc'] ?? '')),
                 'banco_asignado'  => $g['banco_asignado'] ?? '',
                 'total_autorizado'=> (float)($g['total_autorizado'] ?? 0),
+                'total_saldo'     => (float)($g['total_saldo'] ?? ($g['total_autorizado'] ?? 0)),
                 'total_facturas'  => (int)($g['total_facturas'] ?? 0),
                 'invoice_ids'     => $g['invoice_ids'] ?? '',
                 'tipo_registro'   => $g['tipo_registro'] ?? 'FACTURAS',
@@ -1167,7 +1308,7 @@ class PaymentRequestInvoicesModel extends Model
             foreach ($grupos_norm as $g) {
                 if (isset($usados[$g['idx']])) continue;
                 if ($g['empresa_rfc'] === '' || $g['empresa_rfc'] !== $rfc_emp) continue;
-                if (abs($g['total_autorizado'] - $importe) > $tolerancia) continue;
+                if (abs($g['total_saldo'] - $importe) > $tolerancia) continue;
 
                 // Calcular fuerza del match
                 if ($rfc_prov !== '' && $g['proveedor_rfc'] === $rfc_prov) {
@@ -1203,6 +1344,10 @@ class PaymentRequestInvoicesModel extends Model
                 }
                 $usados[$mejor['g']['idx']] = true;
             }
+
+            // Nombre real de la empresa dueña del RFC ordenante (puede diferir
+            // del nombre que trae el PDF, ej. contrato consolidado de grupo).
+            $c['empresa_ordenante_real'] = $rfc_a_empresa_nombre[$rfc_emp] ?? null;
 
             $resultado[] = [
                 'comprobante'    => $c,
@@ -1349,24 +1494,35 @@ class PaymentRequestInvoicesModel extends Model
                 pri.expiration_date,
                 pri.uuid,
 
-                -- Saldo calculado
-                (pri.amount - ISNULL(pri.paid_amount, 0)) as saldo,
+                -- Saldo pendiente POR AUTORIZAR (no por pagar): resta lo ya
+                -- autorizado en rondas anteriores, para que el modal de
+                -- autorización muestre y limite solo el monto que aún falta.
+                (pri.amount - ISNULL(pri.authorized_amount, 0)) as saldo,
 
                 -- Notas de crédito y cargo por factura
                 ISNULL(notas.total_notas_credito, 0) as total_notas_credito,
                 ISNULL(notas.total_notas_cargo, 0)   as total_notas_cargo,
                 ISNULL(notas.notas_count, 0)          as notas_count,
 
-                -- Saldo neto (saldo - NC + ND)
-                (pri.amount - ISNULL(pri.paid_amount, 0))
+                -- Anticipos aplicados a esta factura
+                ISNULL(ant.total_anticipo, 0) as anticipo_aplicado,
+
+                -- Saldo neto pendiente por autorizar (saldo - NC + ND - anticipos).
+                -- Los anticipos aplicados ya están pagados al proveedor: Tesorería
+                -- solo debe autorizar (y el banco pagar) la diferencia. La ejecución
+                -- paga authorized_amount - paid_amount, así que autorizar el neto
+                -- hace que el layout/transferencia salga por el neto.
+                (pri.amount - ISNULL(pri.authorized_amount, 0))
                     - ISNULL(notas.total_notas_credito, 0)
-                    + ISNULL(notas.total_notas_cargo, 0) as saldo_neto,
+                    + ISNULL(notas.total_notas_cargo, 0)
+                    - ISNULL(ant.total_anticipo, 0) as saldo_neto,
 
                 -- Información de payment_request
                 pr.id as pago_id,
                 pr.emp_cod,
                 pr.provider_cod,
                 pr.request_date as pago_fecha,
+                CASE WHEN pr.tipo = 1 THEN 1 ELSE 0 END as es_anticipo,
 
                 -- Información de la estación
                 g.abr as estacion_nombre,
@@ -1412,9 +1568,17 @@ class PaymentRequestInvoicesModel extends Model
                 GROUP BY a.invoice_id
             ) notas ON pri.id = notas.invoice_id
 
+            LEFT JOIN (
+                SELECT invoice_id, SUM(monto_aplicado) as total_anticipo
+                FROM [TG].[dbo].[anticipo_invoice_applications]
+                GROUP BY invoice_id
+            ) ant ON pri.id = ant.invoice_id
+
             WHERE pr.status IN (?, ?)
                 AND pr.accounting_group_id IS NOT NULL
-                AND pri.payment_authorized = 0
+                -- Excluir lo ya cubierto por autorizaciones previas Y por anticipos:
+                -- una factura cubierta 100% por anticipo no tiene nada que autorizar.
+                AND pri.amount > ISNULL(pri.authorized_amount, 0) + ISNULL(ant.total_anticipo, 0) + 0.01
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pri.is_deleted = 0
@@ -1766,8 +1930,24 @@ class PaymentRequestInvoicesModel extends Model
                 ];
             }
 
-            // Verificar si ya existe en algún pago
-            if ($this->invoice_exists_by_uuid($uuid)) {
+            // Verificar si ya existe en algún pago o anticipo
+            $activa = $this->get_active_invoice_by_uuid($uuid);
+            if ($activa) {
+                // Vive bajo un anticipo con aplicación PARCIAL: se MUEVE a esta
+                // requisición (conserva su aplicación) para pagar el remanente.
+                if ((int)$activa['owner_tipo'] === 1 && $activa['restante'] > 0.01) {
+                    if (!$this->move_invoice_to_payment((int)$activa['id'], (int)$payment_request_id)) {
+                        return ['success' => false, 'message' => 'Error al mover la factura desde el anticipo'];
+                    }
+                    return [
+                        'success'    => true,
+                        'message'    => 'Factura movida desde el anticipo #' . $activa['owner_id'] . ' (anticipo aplicado: $' . number_format($activa['aplicado'], 2) . ')',
+                        'invoice_id' => (int)$activa['id']
+                    ];
+                }
+                if ((int)$activa['owner_tipo'] === 1) {
+                    return ['success' => false, 'message' => 'Esta factura está cubierta completamente por el anticipo #' . $activa['owner_id']];
+                }
                 return [
                     'success' => false,
                     'message' => 'Esta factura ya está incluida en otro pago'
@@ -1858,6 +2038,13 @@ class PaymentRequestInvoicesModel extends Model
                     'message' => 'No se puede quitar una factura que ya tiene pagos aplicados'
                 ];
             }
+
+            // Liberar aplicaciones de anticipo ligadas a esta factura: la aplicación
+            // es un apartado del saldo, no un consumo; al quitar la factura el saldo
+            // debe regresar al anticipo (si no hay aplicaciones, borra 0 filas).
+            $this->sql->delete("
+                DELETE FROM [TG].[dbo].[anticipo_invoice_applications]
+                WHERE invoice_id = ?", [$invoice_id]);
 
             // Soft-delete: se conserva la fila para auditoría/restauración en vez de borrarla físicamente.
             $query_delete = "

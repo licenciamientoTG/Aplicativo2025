@@ -50,8 +50,7 @@ BEGIN
         /* Sección GO EXCHANGE (captura manual) */
         [go_exchange_dolares]   DECIMAL(14,2)     NULL,
         [go_exchange_mxn]       DECIMAL(14,2)     NULL,
-        [tipo_cambio_venta]     DECIMAL(10,4)     NULL,
-        [tipo_cambio_compra]    DECIMAL(10,4)     NULL,
+        [costo_promedio]        DECIMAL(10,4)     NULL,
 
         /* Totales calculados (persistidos para historial) */
         [total_fisico_dolares]  DECIMAL(14,2)     NULL,
@@ -141,7 +140,40 @@ END
 GO
 
 /* ---------------------------------------------------------------------------
-   5) Permisos nuevos en el catálogo existente.
+   5) Captura manual por sucursal+sesión para el Concentrado
+   (Capital de Trabajo, Gastos en trámite, Adeudo, Reinversión, Utilidad).
+   Ver hoja "Concentrado" de los Excel de referencia, columnas C, I, J, K, M.
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('[TG].[dbo].[arqueo_concentrado_extras]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [TG].[dbo].[arqueo_concentrado_extras] (
+        [id]              INT IDENTITY(1,1) NOT NULL,
+        [sesion_id]       INT               NOT NULL,
+        [sucursal_id]     INT               NOT NULL,
+        [capital_trabajo] DECIMAL(14,2)     NOT NULL
+                          CONSTRAINT [DF_ace_capital] DEFAULT (0),
+        [gastos_tramite]  DECIMAL(14,2)     NOT NULL
+                          CONSTRAINT [DF_ace_gastos]  DEFAULT (0),
+        [adeudo]          DECIMAL(14,2)     NOT NULL
+                          CONSTRAINT [DF_ace_adeudo]  DEFAULT (0),
+        [reinversion]     DECIMAL(14,2)     NOT NULL
+                          CONSTRAINT [DF_ace_reinv]   DEFAULT (0),
+        [utilidad]        DECIMAL(14,2)     NOT NULL
+                          CONSTRAINT [DF_ace_util]    DEFAULT (0),
+        [updated_by]      INT               NULL,
+        [updated_at]      DATETIME          NOT NULL
+                          CONSTRAINT [DF_ace_updated] DEFAULT (GETDATE()),
+        CONSTRAINT [PK_arqueo_concentrado_extras] PRIMARY KEY CLUSTERED ([id]),
+        CONSTRAINT [FK_ace_sesion] FOREIGN KEY ([sesion_id])
+            REFERENCES [TG].[dbo].[arqueo_sesiones] ([id]) ON DELETE CASCADE,
+        CONSTRAINT [UQ_arqueo_concentrado_extras] UNIQUE ([sesion_id], [sucursal_id])
+    );
+    CREATE INDEX [IX_ace_sesion] ON [TG].[dbo].[arqueo_concentrado_extras] ([sesion_id]);
+END
+GO
+
+/* ---------------------------------------------------------------------------
+   6) Permisos nuevos en el catálogo existente.
    El id lo asigna IDENTITY: tras correr esto, consulta los ids y ajústalos en
    las constantes PERM_ADMIN / PERM_AUDITOR de _assets/controllers/arqueo.php.
    --------------------------------------------------------------------------- */
@@ -156,4 +188,58 @@ GO
 
 SELECT [id],[action],[description] FROM [TG].[dbo].[tg_permissions]
 WHERE [action] IN ('arqueo_admin','arqueo_capturar');
+GO
+
+/* ---------------------------------------------------------------------------
+   7) Capital de Trabajo BASE por sucursal.
+   Catálogo que se copia a arqueo_concentrado_extras al crear cada sesión.
+   Editable desde el modal del Concentrado (checkbox "actualizar base").
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('[TG].[dbo].[arqueo_capital_base]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [TG].[dbo].[arqueo_capital_base] (
+        [id]              INT IDENTITY(1,1) NOT NULL,
+        [sucursal_id]     INT               NOT NULL,
+        [capital_trabajo] DECIMAL(14,2)     NOT NULL
+                          CONSTRAINT [DF_acb_capital] DEFAULT (0),
+        [updated_by]      INT               NULL,
+        [updated_at]      DATETIME          NOT NULL
+                          CONSTRAINT [DF_acb_updated] DEFAULT (GETDATE()),
+        CONSTRAINT [PK_arqueo_capital_base] PRIMARY KEY CLUSTERED ([id]),
+        CONSTRAINT [UQ_arqueo_capital_base] UNIQUE ([sucursal_id])
+    );
+END
+GO
+
+/* ---------------------------------------------------------------------------
+   8) Log de auditoría del módulo arqueo.
+   Quién, cuándo, qué acción y qué cambió (JSON antes/después).
+   Sin FK a propósito: la auditoría sobrevive a cualquier borrado.
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('[TG].[dbo].[arqueo_audit_log]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [TG].[dbo].[arqueo_audit_log] (
+        [id]               INT IDENTITY(1,1) NOT NULL,
+        [sesion_id]        INT               NOT NULL,
+        [caja_id]          INT               NULL,
+        [sucursal_id]      INT               NULL,
+        [accion]           VARCHAR(30)       NOT NULL,
+        [usuario_id]       INT               NULL,
+        [usuario_nombre]   NVARCHAR(120)     NULL,
+        [datos_anteriores] NVARCHAR(MAX)     NULL,
+        [datos_nuevos]     NVARCHAR(MAX)     NULL,
+        [fecha]            DATETIME          NOT NULL
+                           CONSTRAINT [DF_aal_fecha] DEFAULT (GETDATE()),
+        CONSTRAINT [PK_arqueo_audit_log] PRIMARY KEY CLUSTERED ([id])
+    );
+    CREATE INDEX [IX_aal_sesion] ON [TG].[dbo].[arqueo_audit_log] ([sesion_id]);
+END
+GO
+
+/* ---------------------------------------------------------------------------
+   9) Asignación de usuario capturista por caja.
+   NULL = sin asignar (solo administradores pueden capturar esa caja).
+   --------------------------------------------------------------------------- */
+IF COL_LENGTH('[TG].[dbo].[arqueo_cajas]', 'asignado_user_id') IS NULL
+    ALTER TABLE [TG].[dbo].[arqueo_cajas] ADD [asignado_user_id] INT NULL;
 GO

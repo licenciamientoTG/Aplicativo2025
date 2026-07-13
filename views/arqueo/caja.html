@@ -3,31 +3,79 @@
 {% block title %}Arqueo — {{ caja.sucursal_nombre }} (Caja {{ caja.caja_numero }}){% endblock %}
 {% block mycss %}
 <style>
-    .seccion-titulo { background:#212529; color:#fff; padding:.5rem .75rem; font-weight:600; border-radius:6px 6px 0 0; }
-    .moneda-usd { border-top:3px solid #198754; }
-    .moneda-mxn { border-top:3px solid #0d6efd; }
-    .denom-tabla input.cantidad { width:90px; text-align:right; }
-    /* Campos de captura manual (amarillos, como el Excel) */
-    .campo-amarillo { background:#fff8c4 !important; }
-    .denom-tabla td.total { text-align:right; font-variant-numeric:tabular-nums; }
-    .gran-total { font-weight:700; text-align:right; font-variant-numeric:tabular-nums; }
+    .arqueo-wrap { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; color:#1e293b; }
+
+    .arqueo-card { background:#fff; border:1px solid #e2e8f0; border-radius:.75rem; box-shadow:0 1px 2px 0 rgba(0,0,0,.05); overflow:hidden; margin-bottom:1.5rem; }
+    .arqueo-card .card-body-pad { padding:1.25rem; }
+    .arqueo-card-header { background:#1e293b; padding:.65rem 1.25rem; border-bottom:1px solid #e2e8f0; }
+    .arqueo-card-header h2 { color:#fff; font-size:.8rem; font-weight:600; letter-spacing:.02em; margin:0; text-transform:none; }
+
+    .arqueo-label { display:block; font-size:.68rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.06em; margin-bottom:.35rem; }
+    .arqueo-input, .arqueo-wrap select.arqueo-input { display:block; width:100%; border-radius:.4rem; border:1px solid #cbd5e1; padding:.45rem .65rem; font-size:.875rem; color:#1e293b; background:#fff; transition:border-color .15s, box-shadow .15s; }
+    .arqueo-input:disabled { background:#f8fafc; color:#475569; }
+    .arqueo-input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+    .arqueo-input.campo-amarillo { background:#fffef0; }
+    .arqueo-input.campo-amarillo:focus { background:#fff; }
+
+    .denom-box { border:1px solid #e2e8f0; border-radius:.5rem; overflow:hidden; background:#fff; flex:1; min-width:0; }
+    .denom-box .denom-box-head { background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:.5rem 1rem; }
+    .denom-box .denom-box-head h3 { font-size:.85rem; font-weight:600; color:#1e293b; margin:0; }
+    .denom-tabla { width:100%; font-size:.875rem; border-collapse:collapse; }
+    .denom-tabla thead th { background:#f8fafc; text-align:left; font-size:.68rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.04em; padding:.55rem 1rem; border-bottom:1px solid #e2e8f0; }
+    .denom-tabla thead th.text-center { text-align:center; }
+    .denom-tabla thead th.text-end { text-align:right; }
+    .denom-tabla tbody td { padding:.4rem 1rem; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+    .denom-tabla tbody tr:hover { background:#f8fafc; }
+    .denom-tabla input.cantidad { width:100%; max-width:110px; text-align:center; padding:.35rem .5rem; }
+    .denom-tabla td.total { text-align:right; font-variant-numeric:tabular-nums; font-weight:500; color:#475569; white-space:nowrap; }
+    .denom-tabla tfoot td, .denom-tabla tfoot th { background:#f8fafc; border-top:1px solid #e2e8f0; padding:.6rem 1rem; }
+    .gran-total { font-weight:700; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; }
+
+    .denom-img { height:26px; width:auto; margin-right:8px; vertical-align:middle; border:1px solid #e2e8f0; border-radius:3px; }
+    .bolsa-valor { font-size:.7rem; color:#94a3b8; margin-bottom:.25rem; }
+
     .panel-totales { position:sticky; top:1rem; }
-    .panel-totales .row > div { padding:.25rem .5rem; }
-    .resultado-positivo { color:#198754; font-weight:700; }
-    .resultado-negativo { color:#dc3545; font-weight:700; }
-    .num { font-variant-numeric:tabular-nums; text-align:right; }
-    .denom-img { height:26px; width:auto; margin-right:6px; vertical-align:middle; border:1px solid #dee2e6; border-radius:3px; }
+    .panel-totales .arqueo-card-header { border-radius:.75rem .75rem 0 0; }
+    .panel-totales .panel-row { display:flex; justify-content:space-between; align-items:center; font-size:.875rem; padding:.3rem 0; }
+    .panel-totales .panel-row .lbl { color:#64748b; }
+    .panel-totales .panel-row .val { font-weight:500; color:#1e293b; font-variant-numeric:tabular-nums; }
+    .panel-divider { height:1px; background:#f1f5f9; margin:.75rem 0; }
+    .panel-resultado { padding-top:.5rem; border-top:1px solid #f1f5f9; margin-top:.5rem; }
+    .panel-resultado .panel-row .lbl { font-weight:600; color:#334155; }
+    .resultado-positivo { color:#059669 !important; font-weight:700 !important; font-size:1.05rem; }
+    .resultado-negativo { color:#dc2626 !important; font-weight:700 !important; font-size:1.05rem; }
+    .panel-hint { font-size:.68rem; color:#94a3b8; margin-top:.15rem; }
+
+    .vales-head { background:#1e293b; padding:.7rem 1rem; display:flex; justify-content:space-between; align-items:center; }
+    .vales-head h2 { color:#fff; font-size:.85rem; font-weight:600; margin:0; }
+
+    .btn-guardar-flotante { position:fixed; bottom:1.5rem; right:1.5rem; z-index:1030; background:#2563eb; border:none; color:#fff; padding:.8rem 1.5rem; border-radius:2rem; font-weight:600; font-size:.9rem; display:flex; align-items:center; gap:.55rem; box-shadow:0 4px 14px rgba(37,99,235,.4); transition:background-color .15s, box-shadow .15s; }
+    .btn-guardar-flotante:hover { background:#1d4ed8; color:#fff; box-shadow:0 6px 18px rgba(37,99,235,.5); }
 </style>
 {% endblock %}
 {% block menutitle %}
 <div style="display:flex; justify-content:space-between; align-items:center;">
     <span>Arqueo — {{ caja.sucursal_nombre }} (Caja {{ caja.caja_numero }})</span>
-    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
-        <i class="fas fa-backward"></i> Regresar
-    </a>
+    <span>
+        {% if caja.estado == 'pendiente' %}
+        <button type="button" class="btn btn-outline-secondary small" style="border-radius:15px;"
+                onclick="alertify.error('Guarda el arqueo antes de imprimir.')" title="Imprime lo último guardado">
+            <i class="fas fa-print"></i> Imprimir
+        </button>
+        {% else %}
+        <a href="/arqueo/imprimir_caja/{{ caja.id }}" target="_blank" class="btn btn-outline-secondary small"
+           style="border-radius:15px;" title="Imprime lo último guardado">
+            <i class="fas fa-print"></i> Imprimir
+        </a>
+        {% endif %}
+        <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+            <i class="fas fa-backward"></i> Regresar
+        </a>
+    </span>
 </div>
 {% endblock %}
 {% block content %}
+<div class="arqueo-wrap">
 
 {% if solo_lectura %}
 <div class="alert alert-info">
@@ -41,23 +89,23 @@
 <form id="form_arqueo">
 
 {# ---------------- Encabezado ---------------- #}
-<div class="card mb-3">
-  <div class="card-body row g-3">
+<div class="arqueo-card">
+  <div class="card-body-pad row g-3">
     <div class="col-md-3">
-      <label class="form-label">Sucursal</label>
-      <input type="text" class="form-control" value="{{ caja.sucursal_nombre }}" disabled>
+      <label class="arqueo-label">Sucursal</label>
+      <input type="text" class="arqueo-input" value="{{ caja.sucursal_nombre }}" disabled>
     </div>
     <div class="col-md-3">
-      <label class="form-label">Cajero (nombre y firma)</label>
-      <input type="text" id="cajero_nombre" class="form-control campo-amarillo" value="{{ caja.cajero_nombre }}">
+      <label class="arqueo-label">Cajero (nombre y firma)</label>
+      <input type="text" id="cajero_nombre" class="arqueo-input campo-amarillo" value="{{ caja.cajero_nombre }}">
     </div>
     <div class="col-md-3">
-      <label class="form-label">Encargado de revisión</label>
-      <input type="text" id="encargado_revision" class="form-control campo-amarillo" value="{{ caja.encargado_revision }}">
+      <label class="arqueo-label">Encargado de revisión</label>
+      <input type="text" id="encargado_revision" class="arqueo-input campo-amarillo" value="{{ caja.encargado_revision }}">
     </div>
     <div class="col-md-3">
-      <label class="form-label">Fecha del arqueo</label>
-      <input type="text" class="form-control" value="{{ sesion.fecha|date('d/m/Y') }}" disabled>
+      <label class="arqueo-label">Fecha del arqueo</label>
+      <input type="text" class="arqueo-input" value="{{ sesion.fecha|date('d/m/Y') }}" disabled>
     </div>
   </div>
 </div>
@@ -66,64 +114,78 @@
   <div class="col-lg-9">
 
     {# ---------------- Go Exchange ---------------- #}
-    <div class="card mb-3">
-      <div class="seccion-titulo">Sistema — Go Exchange</div>
-      <div class="card-body row g-3">
-        <div class="col-md-3">
-          <label class="form-label">Dólares (USD)</label>
-          <input type="number" step="0.01" min="0" id="go_exchange_dolares" class="form-control campo-amarillo" value="{{ caja.go_exchange_dolares }}">
+    <div class="arqueo-card">
+      <div class="arqueo-card-header"><h2>Sistema — Go Exchange</h2></div>
+      <div class="card-body-pad row g-3">
+        <div class="col-md-4">
+          <label class="arqueo-label">Dólares (USD)</label>
+          <input type="number" step="0.01" min="0" id="go_exchange_dolares" class="arqueo-input campo-amarillo" value="{{ caja.go_exchange_dolares }}">
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Moneda Nacional (MXN)</label>
-          <input type="number" step="0.01" min="0" id="go_exchange_mxn" class="form-control campo-amarillo" value="{{ caja.go_exchange_mxn }}">
+        <div class="col-md-4">
+          <label class="arqueo-label">Moneda Nacional (MXN)</label>
+          <input type="number" step="0.01" min="0" id="go_exchange_mxn" class="arqueo-input campo-amarillo" value="{{ caja.go_exchange_mxn }}">
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Tipo de cambio Venta</label>
-          <input type="number" step="0.0001" min="1" id="tipo_cambio_venta" class="form-control campo-amarillo" value="{{ caja.tipo_cambio_venta }}">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Tipo de cambio Compra</label>
-          <input type="number" step="0.0001" min="1" id="tipo_cambio_compra" class="form-control campo-amarillo" value="{{ caja.tipo_cambio_compra }}">
+        <div class="col-md-4">
+          <label class="arqueo-label">Costo promedio</label>
+          <input type="number" step="0.0001" min="1" id="costo_promedio" class="arqueo-input campo-amarillo" value="{{ caja.costo_promedio }}">
         </div>
       </div>
     </div>
 
     {# ---------------- Grids de denominaciones ----------------
-       Recorremos la estructura por sección y moneda. El macro de abajo
-       renderiza una tabla de captura. tipo y etiqueta dependen de la sección. #}
+       Dos secciones visuales (Billetes, Monedas), cada una con una tabla
+       por moneda que combina Cajón y Caja Fuerte en la misma fila por
+       denominación. Las listas de Cajón y Caja Fuerte están alineadas
+       posicionalmente (misma cantidad de denominaciones, mismo orden). #}
 
-    {% set secciones = {
-        'cajon':         {'titulo':'Cajón del Cajero',          'tipo_usd':'billete', 'tipo_mxn':'billete', 'label':'Cantidad (Billetes)'},
-        'morrallero':    {'titulo':'Morrallero del Cajero',     'tipo_usd':'moneda',  'tipo_mxn':'moneda',  'label':'Cantidad (Monedas)'},
-        'caja_fuerte':   {'titulo':'Billetes de Caja Fuerte',   'tipo_usd':'fajilla', 'tipo_mxn':'fajilla', 'label':'Cantidad (Fajillas)'},
-        'morrallero_cf': {'titulo':'Morrallero de Caja Fuerte', 'tipo_usd':'bolsa',   'tipo_mxn':'bolsa',   'label':'Cantidad (Bolsas)'}
+    {% set grupos = {
+        'billetes': {
+            'titulo':        'Billetes',
+            'tipo_cajon':     'billete',
+            'tipo_cf':        'fajilla',
+            'label_cajon':    'Cajón',
+            'label_cf':       'Caja Fuerte',
+            'denoms_cajon':   {'USD': estructura.cajon.USD, 'MXN': estructura.cajon.MXN},
+            'denoms_cf':      {'USD': estructura.caja_fuerte.USD, 'MXN': estructura.caja_fuerte.MXN},
+            'valor_bolsa_cf': null
+        },
+        'monedas': {
+            'titulo':        'Monedas',
+            'tipo_cajon':     'moneda',
+            'tipo_cf':        'bolsa',
+            'label_cajon':    'Cajón',
+            'label_cf':       'Caja Fuerte',
+            'denoms_cajon':   {'USD': estructura.morrallero.USD, 'MXN': estructura.morrallero.MXN},
+            'denoms_cf':      {'USD': estructura.morrallero_cf.USD.denominacion, 'MXN': estructura.morrallero_cf.MXN.denominacion},
+            'valor_bolsa_cf': {'USD': estructura.morrallero_cf.USD.valor_bolsa, 'MXN': estructura.morrallero_cf.MXN.valor_bolsa}
+        }
     } %}
 
-    {% for seccion, meta in secciones %}
-    <div class="card mb-3">
-      <div class="seccion-titulo">{{ meta.titulo }}</div>
-      <div class="card-body">
-        <div class="row">
-          {% for moneda in ['USD','MXN'] %}
-          {% set tipo = (moneda == 'USD') ? meta.tipo_usd : meta.tipo_mxn %}
-          {% set es_cf_morr = (seccion == 'morrallero_cf') %}
-          {% set denoms = es_cf_morr ? estructura[seccion][moneda]['denominacion'] : estructura[seccion][moneda] %}
-          {% set bolsas = es_cf_morr ? estructura[seccion][moneda]['valor_bolsa'] : [] %}
-          <div class="col-md-6">
-            <table class="table table-sm table-bordered denom-tabla {{ moneda == 'USD' ? 'moneda-usd' : 'moneda-mxn' }}">
+    {% set seccion_cajon = {'billetes': 'cajon', 'monedas': 'morrallero'} %}
+    {% set seccion_cf    = {'billetes': 'caja_fuerte', 'monedas': 'morrallero_cf'} %}
+
+    {% for grupo_id, g in grupos %}
+    <div class="arqueo-card">
+      <div class="arqueo-card-header"><h2>{{ g.titulo }}</h2></div>
+      <div class="card-body-pad d-flex flex-column flex-md-row gap-3">
+        {% for moneda in ['USD','MXN'] %}
+        {% set denoms = g.denoms_cajon[moneda] %}
+        {% set denoms_cf = g.denoms_cf[moneda] %}
+        {% set bolsas = g.valor_bolsa_cf ? g.valor_bolsa_cf[moneda] : [] %}
+        <div class="denom-box">
+          <div class="denom-box-head"><h3>{{ moneda }}</h3></div>
+          <div class="table-responsive">
+            <table class="denom-tabla">
               <thead>
                 <tr>
-                  <th colspan="{{ es_cf_morr ? 4 : 3 }}" class="text-center">{{ moneda }}</th>
-                </tr>
-                <tr>
                   <th>Denominación</th>
-                  {% if es_cf_morr %}<th>Valor/Bolsa</th>{% endif %}
-                  <th>{{ meta.label }}</th>
+                  <th class="text-center">{{ g.label_cajon }}</th>
+                  <th class="text-center">{{ g.label_cf }}{% if g.valor_bolsa_cf %} <span class="text-muted" style="font-weight:400;text-transform:none;">($/bolsa)</span>{% endif %}</th>
                   <th class="text-end">Total</th>
                 </tr>
               </thead>
               <tbody>
-                {% set es_moneda = (seccion == 'morrallero' or seccion == 'morrallero_cf') %}
+                {% set es_moneda = (grupo_id == 'monedas') %}
                 {% for i, denom in denoms %}
                 {# Nombre del archivo de imagen de apoyo: moneda_denominacion(.png).
                    Para monedas, $1 USD y $20 MXN llevan sufijo _coin (no chocar con el billete). #}
@@ -138,15 +200,26 @@
                          onerror="this.style.display='none'">
                     ${{ denom }}
                   </td>
-                  {% if es_cf_morr %}<td>${{ bolsas[i] }}</td>{% endif %}
                   <td>
                     <input type="number" min="0" step="1"
-                           class="form-control form-control-sm cantidad campo-amarillo denom-input"
-                           data-seccion="{{ seccion }}"
+                           class="arqueo-input cantidad campo-amarillo denom-input"
+                           data-seccion="{{ seccion_cajon[grupo_id] }}"
                            data-moneda="{{ moneda }}"
-                           data-tipo="{{ tipo }}"
+                           data-tipo="{{ g.tipo_cajon }}"
                            data-denominacion="{{ denom }}"
-                           {% if es_cf_morr %}data-valor-bolsa="{{ bolsas[i] }}"{% endif %}
+                           value="0">
+                  </td>
+                  <td>
+                    {% if g.valor_bolsa_cf %}
+                    <div class="bolsa-valor">${{ bolsas[i] }}/bolsa</div>
+                    {% endif %}
+                    <input type="number" min="0" step="1"
+                           class="arqueo-input cantidad campo-amarillo denom-input"
+                           data-seccion="{{ seccion_cf[grupo_id] }}"
+                           data-moneda="{{ moneda }}"
+                           data-tipo="{{ g.tipo_cf }}"
+                           data-denominacion="{{ denoms_cf[i] }}"
+                           {% if g.valor_bolsa_cf %}data-valor-bolsa="{{ bolsas[i] }}"{% endif %}
                            value="0">
                   </td>
                   <td class="total" data-total="0">$0.00</td>
@@ -155,52 +228,54 @@
               </tbody>
               <tfoot>
                 <tr>
-                  <th colspan="{{ es_cf_morr ? 3 : 2 }}" class="text-end">Gran Total</th>
-                  <td class="gran-total" data-gran-total="{{ seccion }}-{{ moneda }}">$0.00</td>
+                  <th colspan="3" class="text-end">Gran Total {{ g.titulo }}</th>
+                  <td class="gran-total"
+                      data-gran-total-cajon="{{ seccion_cajon[grupo_id] }}-{{ moneda }}"
+                      data-gran-total-cf="{{ seccion_cf[grupo_id] }}-{{ moneda }}">$0.00</td>
                 </tr>
               </tfoot>
             </table>
           </div>
-          {% endfor %}
         </div>
+        {% endfor %}
       </div>
     </div>
     {% endfor %}
 
     {# ---------------- Vales ---------------- #}
-    <div class="card mb-3">
-      <div class="seccion-titulo">Vales (hasta 15)</div>
-      <div class="card-body">
-        <table class="table table-sm table-bordered" id="tabla_vales">
+    <div class="arqueo-card">
+      <div class="vales-head"><h2>Vales (hasta 3)</h2></div>
+      <div class="card-body-pad">
+        <table class="denom-tabla" id="tabla_vales">
           <thead>
             <tr>
               <th style="width:50px;">#</th>
               <th style="width:150px;">Fecha</th>
               <th>Concepto</th>
-              <th style="width:140px;">Dólares</th>
-              <th style="width:140px;">MXN</th>
+              <th style="width:140px;" class="text-end">Dólares</th>
+              <th style="width:140px;" class="text-end">MXN</th>
             </tr>
           </thead>
           <tbody>
-            {% for n in 1..15 %}
+            {% for n in 1..3 %}
             <tr>
               <td>{{ n }}</td>
-              <td><input type="date" class="form-control form-control-sm vale-fecha" data-num="{{ n }}"></td>
-              <td><input type="text" maxlength="200" class="form-control form-control-sm vale-concepto campo-amarillo" data-num="{{ n }}"></td>
-              <td><input type="number" min="0" step="0.01" class="form-control form-control-sm vale-dolares campo-amarillo num" data-num="{{ n }}" value="0"></td>
-              <td><input type="number" min="0" step="0.01" class="form-control form-control-sm vale-mxn campo-amarillo num" data-num="{{ n }}" value="0"></td>
+              <td><input type="date" class="arqueo-input vale-fecha" data-num="{{ n }}"></td>
+              <td><input type="text" maxlength="200" class="arqueo-input vale-concepto campo-amarillo" data-num="{{ n }}"></td>
+              <td><input type="number" min="0" step="0.01" class="arqueo-input vale-dolares campo-amarillo text-end" data-num="{{ n }}" value="0"></td>
+              <td><input type="number" min="0" step="0.01" class="arqueo-input vale-mxn campo-amarillo text-end" data-num="{{ n }}" value="0"></td>
             </tr>
             {% endfor %}
           </tbody>
           <tfoot>
             <tr>
               <th colspan="3" class="text-end">Totales</th>
-              <td class="num" id="total_vales_dolares">$0.00</td>
-              <td class="num" id="total_vales_mxn">$0.00</td>
+              <td class="text-end" id="total_vales_dolares">$0.00</td>
+              <td class="text-end" id="total_vales_mxn">$0.00</td>
             </tr>
             <tr>
               <th colspan="3" class="text-end">Gran Total Vales (MXN)</th>
-              <td colspan="2" class="num" id="gran_total_vales_mxn">$0.00</td>
+              <td colspan="2" class="text-end" id="gran_total_vales_mxn">$0.00</td>
             </tr>
           </tfoot>
         </table>
@@ -211,32 +286,35 @@
 
   {# ---------------- Panel de totales (sticky) ---------------- #}
   <div class="col-lg-3">
-    <div class="card panel-totales">
-      <div class="seccion-titulo">Resumen del arqueo</div>
-      <div class="card-body">
-        <div class="row"><div class="col-7">Físico USD</div><div class="col-5 num" id="r_fisico_usd">$0.00</div></div>
-        <div class="row"><div class="col-7">Físico MXN</div><div class="col-5 num" id="r_fisico_mxn">$0.00</div></div>
-        <div class="row"><div class="col-7">Arqueo MXN (+vales)</div><div class="col-5 num" id="r_arqueo_mxn">$0.00</div></div>
-        <hr>
-        <div class="row"><div class="col-7">Total en Sistema</div><div class="col-5 num" id="r_sistema">$0.00</div></div>
-        <hr>
-        <div class="row"><div class="col-7">Diferencia USD</div><div class="col-5 num" id="r_dif_usd">$0.00</div></div>
-        <div class="row"><div class="col-7">Diferencia MXN</div><div class="col-5 num" id="r_dif_mxn">$0.00</div></div>
-        <hr>
-        <div class="row"><div class="col-7"><strong>Resultado Final</strong></div><div class="col-5 num" id="r_resultado">$0.00</div></div>
-        <small class="text-muted">Positivo = sobrante · Negativo = faltante</small>
-
-        {% if not solo_lectura %}
-        <button type="button" class="btn btn-primary w-100 mt-3" onclick="guardarCaja()">
-          <i class="fas fa-save"></i> Guardar arqueo
-        </button>
-        {% endif %}
+    <div class="arqueo-card panel-totales">
+      <div class="arqueo-card-header"><h2>Resumen del arqueo</h2></div>
+      <div class="card-body-pad">
+        <div class="panel-row"><span class="lbl">Físico USD</span><span class="val" id="r_fisico_usd">$0.00</span></div>
+        <div class="panel-row"><span class="lbl">Físico MXN</span><span class="val" id="r_fisico_mxn">$0.00</span></div>
+        <div class="panel-row"><span class="lbl">Arqueo MXN (+vales)</span><span class="val" id="r_arqueo_mxn">$0.00</span></div>
+        <div class="panel-divider"></div>
+        <div class="panel-row"><span class="lbl">Total en Sistema</span><span class="val" id="r_sistema">$0.00</span></div>
+        <div class="panel-divider"></div>
+        <div class="panel-row"><span class="lbl">Diferencia USD</span><span class="val" id="r_dif_usd">$0.00</span></div>
+        <div class="panel-row"><span class="lbl">Diferencia MXN</span><span class="val" id="r_dif_mxn">$0.00</span></div>
+        <div class="panel-resultado">
+          <div class="panel-row"><span class="lbl">Resultado Final</span><span class="val" id="r_resultado">$0.00</span></div>
+          <div class="panel-hint">Positivo = sobrante · Negativo = faltante</div>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
 </form>
+
+{% if not solo_lectura %}
+<button type="button" class="btn-guardar-flotante" onclick="guardarCaja()">
+  <i class="fas fa-save"></i> Guardar arqueo
+</button>
+{% endif %}
+
+</div>
 
 {# Datos ya capturados (para precargar inputs desde JS) #}
 <script>

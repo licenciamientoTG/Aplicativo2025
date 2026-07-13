@@ -55,12 +55,15 @@ class PaymentTransactionsModel extends Model
                     $errores[] = "Factura ID $invoice_id no encontrada";
                     throw new Exception("Factura ID $invoice_id no encontrada");
                 }
-                // 2. Calcular saldo disponible
+                // 2. Calcular saldo disponible (neto de notas de crédito/cargo:
+                // una nota de crédito ya aplicada reduce lo que realmente se
+                // puede pagar de esta factura)
                 $ya_pagado = $this->get_total_paid_for_invoice($invoice_id);
-                $saldo = $invoice_data['amount'] - $ya_pagado;
+                $notas_netas = $this->get_notas_netas_for_invoice($invoice_id);
+                $saldo = $invoice_data['amount'] - $notas_netas - $ya_pagado;
 
                 // 3. Validar que no se exceda el saldo
-                if ($monto_pagar > $saldo) {
+                if ($monto_pagar > $saldo + 0.01) {
                     $errores[] = "Factura $folio: monto excede saldo disponible";
                     throw new Exception("El monto de la factura $folio excede el saldo disponible");
                 }
@@ -144,25 +147,64 @@ class PaymentTransactionsModel extends Model
     }
 
     /**
-     * Actualiza el paid_amount y status de una factura
+     * Suma neta de notas de crédito/cargo activas (status=1) aplicadas a una
+     * factura: las de crédito reducen lo adeudado, las de cargo lo aumentan.
+     * Se usa para que el status (Pendiente/Parcial/Pagado) compare paid_amount
+     * contra el saldo NETO, no contra el monto bruto de la factura — una
+     * factura saldada por nota de crédito no debe quedar mostrada como
+     * "Parcial" para siempre.
+     */
+    private function get_notas_netas_for_invoice($invoice_id) : float {
+        $query = "
+            SELECT ISNULL(SUM(
+                CASE WHEN n.note_type = 'CREDIT' THEN ca.applied_amount
+                     WHEN n.note_type = 'DEBIT' THEN -ca.applied_amount
+                     ELSE 0 END
+            ), 0) as notas_netas
+            FROM [TG].[dbo].[credit_note_applications] ca
+            INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+            WHERE ca.invoice_id = ? AND ca.status = 1
+        ";
+        $result = $this->sql->select($query, [$invoice_id]);
+        return $result ? floatval($result[0]['notas_netas']) : 0.0;
+    }
+
+    /**
+     * Actualiza el paid_amount y status de una factura.
+     *
+     * Autorizar y pagar son pasos independientes: authorized_amount es el
+     * acumulado histórico de todo lo que Tesorería ha autorizado (se haya
+     * pagado ya o no) y NO se modifica aquí — pagar no "deshace" una
+     * autorización ya otorgada. El pendiente por autorizar (amount -
+     * authorized_amount) sigue el flujo normal de get_all_pending_payment_invoices
+     * sin verse afectado por este pago.
+     *
+     * El status SÍ se compara contra el saldo neto (amount - NC + ND): una
+     * factura con nota de crédito aplicada que cubre el remanente debe quedar
+     * como Pagada, no Parcial. paid_amount en cambio sigue siendo solo dinero
+     * real transferido (no se mezcla con notas de crédito), para no romper la
+     * conciliación bancaria ni el cálculo de Faltante/Saldo contra authorized_amount.
      */
     private function update_invoice_paid_amount($invoice_id, $nuevo_paid_amount, $total_amount) : bool {
-        // Determinar nuevo estado
-        if ($nuevo_paid_amount >= $total_amount) {
-            $nuevo_status = 2; // Pagado
+        $notas_netas = $this->get_notas_netas_for_invoice($invoice_id);
+        $saldo_neto = $total_amount - $notas_netas;
+
+        // Determinar nuevo estado contra el saldo neto
+        if ($nuevo_paid_amount >= $saldo_neto - 0.01) {
+            $nuevo_status = 2; // Pagado (incluye cubierto por nota de crédito)
         } elseif ($nuevo_paid_amount > 0) {
             $nuevo_status = 3; // Parcial
         } else {
             $nuevo_status = 0; // Pendiente
         }
-        
+
         $query = "
             UPDATE [TG].[dbo].[payment_request_invoices]
             SET paid_amount = ?,
                 status = ?
             WHERE id = ?
         ";
-        
+
         return $this->sql->update($query, [$nuevo_paid_amount, $nuevo_status, $invoice_id]);
     }
 

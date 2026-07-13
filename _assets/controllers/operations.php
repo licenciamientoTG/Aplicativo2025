@@ -145,6 +145,10 @@ class Operations{
      * @throws Exception
      */
     function createTabulatorForm() : void {
+        if (empty($_POST['Estacion']) || empty($_POST['FechaTabular']) || empty($_POST['Turno'])) {
+            setFlashMessage('error', 'Faltan datos para crear el tabulador. Por favor, complete el formulario.');
+            redirect();
+        }
         // Obtenemos los datos de la estación
         $station = $this->estacionesModel->get_station($_POST['Estacion']);
         // Obtenemos el tipo de cambio más reciente
@@ -1146,10 +1150,13 @@ class Operations{
         $this->despachosModel->dismark_dispatch_central($codest, $nrotrn);
 
         // Luego vamos a eliminar los registros de la tabla Anticipos de la estacion y de la base de datos central
-         $this->anticiposModel->dismark_dispatch_station($codest,
-             $wad['secuencialAnticipo']);
-         $this->anticiposModel->dismark_dispatch_central($codest,
-             $wad['secuencialAnticipo']);
+        // (si no se encontró la fajilla, no hay Anticipo asociado que eliminar)
+        if ($wad !== false) {
+            $this->anticiposModel->dismark_dispatch_station($codest,
+                $wad['secuencialAnticipo']);
+            $this->anticiposModel->dismark_dispatch_central($codest,
+                $wad['secuencialAnticipo']);
+        }
 
         // Luego vamos a eliminar los registros de la tabla de movimientos de tarjetas de la estacion y de la base de datos central
         $this->movimientosTarModel->dismark_dispatch_station($codest, $nrotrn);
@@ -1277,17 +1284,35 @@ class Operations{
     }
 
     /**
+     * Un corte es válido para marcar despachos si su fecha es la fecha actual,
+     * o si se trata del turno 4 (41) del día anterior, ya que ese turno cruza
+     * la medianoche y sigue operando dentro del día en curso.
+     * @param string $fechaTabular
+     * @param $turno
+     * @return bool
+     */
+    private function is_valid_dispatch_date(string $fechaTabular, $turno) : bool {
+        $fechaTabularInt = dateToInt($fechaTabular);
+        if ($fechaTabularInt === dateToInt(date('Y-m-d'))) {
+            return true;
+        }
+        $ayerInt = dateToInt(date('Y-m-d', strtotime('-1 day')));
+        return $fechaTabularInt === $ayerInt && intval($turno) === 41;
+    }
+
+    /**
      * @param $tabId
      * @return void
      * @throws Exception
      */
     function markDispatchesModal($tabId) : void {
         $tabular = $this->tabulatorModel->get_tabulator($tabId);
+        $can_mark_dispatches = $this->is_valid_dispatch_date($tabular['FechaTabular'], $tabular['Turno']);
         $modal = [
             "title"    => "Marcación de despachos",
             "size"     => "modal-sm",
             "position" => "modal-dialog-centered",
-            "content"  => $this->twig->render($this->route . 'modals/markDispatchesModal.html', compact('tabular'))
+            "content"  => $this->twig->render($this->route . 'modals/markDispatchesModal.html', compact('tabular', 'can_mark_dispatches'))
         ];
         json_output($modal);
     }
@@ -1369,6 +1394,13 @@ class Operations{
 
         // Obtenemos la informacion del tabular
         $tabular = $this->tabulatorModel->get_tabulator($_POST['tabularId']);
+
+        // No se permite marcar despachos si la fecha del corte no es la fecha actual,
+        // salvo que sea el turno 4 (41) del día anterior (turno nocturno).
+        if (!$this->is_valid_dispatch_date($tabular['FechaTabular'], $tabular['Turno'])) {
+            setFlashMessage('error', 'No es posible marcar despachos de un corte con fecha distinta a la actual.');
+            redirect("/operations/tab_process/{$_POST['tabularId']}");
+        }
 
         // Obtenemos la información del valor butt
         $CodigoValor = $this->valorButtModel->getRow($_POST['CodigoValor']);

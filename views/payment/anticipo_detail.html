@@ -150,9 +150,9 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Aplicaciones a Facturas</h6>
                 {% if anticipo.status == 2 and summary.saldo_disponible > 0 %}
-                <button class="btn btn-sm btn-success" onclick="abrirModalAplicarAFacturas()">
+                <a class="btn btn-sm btn-success" href="/payment/aplicar_anticipo/{{ anticipo.id }}">
                     <i class="fas fa-link"></i> Aplicar a Facturas
-                </button>
+                </a>
                 {% endif %}
             </div>
             <div class="card-body table-responsive">
@@ -281,11 +281,7 @@
     </div>
 </div>
 
-{% include 'views/payment/modals/aplicar_anticipo.html' %}
-
 <input type="hidden" id="anticipoId" value="{{ anticipo.id }}">
-<input type="hidden" id="anticipoProviderCod" value="{{ anticipo.provider_cod }}">
-<input type="hidden" id="anticipoSaldoDisponible" value="{{ summary.saldo_disponible }}">
 {% endblock %}
 
 {% block myjs %}

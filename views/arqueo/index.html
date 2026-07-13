@@ -3,11 +3,48 @@
 {% block title %}Arqueos Dollar2Go{% endblock %}
 {% block mycss %}
 <style>
-    .badge-estado { font-size: .8rem; padding: .35em .7em; border-radius: 12px; }
-    .badge-programado { background:#6c757d; color:#fff; }
-    .badge-abierto    { background:#198754; color:#fff; }
-    .badge-cerrado    { background:#0d6efd; color:#fff; }
-    .progreso-cajas   { font-variant-numeric: tabular-nums; }
+    /* ---- Tarjetas KPI ---- */
+    .kpi-card { background:#fff; border:1px solid #e9ecef; border-radius:.6rem;
+                padding:.9rem 1rem; display:flex; align-items:center; gap:.8rem;
+                box-shadow:0 1px 2px rgb(16 24 40 / 5%); height:100%; }
+    .kpi-icon { width:42px; height:42px; min-width:42px; border-radius:.5rem;
+                display:flex; align-items:center; justify-content:center; font-size:1.05rem; }
+    .kpi-rojo  { background:rgb(131 22 14 / 10%);  color:#83160E; }
+    .kpi-verde { background:rgb(25 135 84 / 12%);  color:#198754; }
+    .kpi-ambar { background:rgb(180 83 9 / 12%);   color:#B45309; }
+    .kpi-azul  { background:rgb(28 69 135 / 10%);  color:#1C4587; }
+    .kpi-num   { font-size:1.35rem; font-weight:700; line-height:1.1; }
+    .kpi-label { font-size:.78rem; color:#6c757d; }
+
+    /* ---- Tabla de sesiones ---- */
+    #tabla_sesiones thead th { text-transform:uppercase; font-size:.72rem;
+                letter-spacing:.04em; color:#6c757d; }
+    #tabla_sesiones tbody td { vertical-align:middle; padding:.6rem .75rem; }
+    #tabla_sesiones tbody tr:hover { background:rgb(28 69 135 / 4%); }
+    .sesion-id     { color:#adb5bd; font-variant-numeric:tabular-nums; }
+    .sesion-nombre { font-weight:600; }
+
+    /* Badges de estado con punto */
+    .badge-estado { display:inline-flex; align-items:center; gap:.45em;
+                font-size:.78rem; font-weight:600; padding:.3em .8em; border-radius:999px; }
+    .badge-estado::before { content:''; width:.5em; height:.5em; border-radius:50%;
+                background:currentColor; }
+    .badge-programado { background:rgb(108 117 125 / 12%); color:#5c636a; }
+    .badge-abierto    { background:rgb(25 135 84 / 12%);   color:#198754; }
+    .badge-cerrado    { background:rgb(28 69 135 / 10%);   color:#1C4587; }
+
+    /* Progreso de cajas */
+    .progreso-wrap  { min-width:120px; }
+    .progreso-bar   { height:6px; border-radius:3px; background:#e9ecef; overflow:hidden; }
+    .progreso-fill  { height:100%; border-radius:3px; background:#1C4587;
+                transition:width .3s ease; }
+    .progreso-fill.completo { background:#198754; }
+    .progreso-texto { font-size:.75rem; color:#6c757d; margin-top:.25rem;
+                font-variant-numeric:tabular-nums; }
+
+    /* Acciones */
+    .acciones-sesion { display:inline-flex; gap:.35rem; flex-wrap:wrap; justify-content:flex-end; }
+    .acciones-sesion .btn { display:inline-flex; align-items:center; gap:.35em; }
 </style>
 {% endblock %}
 {% block menutitle %}
@@ -22,9 +59,58 @@
 {% endblock %}
 {% block content %}
 
+{% set n_abiertos = 0 %}
+{% set n_programados = 0 %}
+{% set n_cerrados = 0 %}
+{% for s in sesiones %}
+    {% if s.estado == 'abierto' %}{% set n_abiertos = n_abiertos + 1 %}
+    {% elseif s.estado == 'programado' %}{% set n_programados = n_programados + 1 %}
+    {% elseif s.estado == 'cerrado' %}{% set n_cerrados = n_cerrados + 1 %}
+    {% endif %}
+{% endfor %}
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3">
+        <div class="kpi-card">
+            <div class="kpi-icon kpi-rojo"><i class="fas fa-clipboard-list"></i></div>
+            <div>
+                <div class="kpi-num">{{ sesiones|length }}</div>
+                <div class="kpi-label">Arqueos totales</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi-card">
+            <div class="kpi-icon kpi-verde"><i class="fas fa-lock-open"></i></div>
+            <div>
+                <div class="kpi-num">{{ n_abiertos }}</div>
+                <div class="kpi-label">Abiertos</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi-card">
+            <div class="kpi-icon kpi-ambar"><i class="fas fa-calendar-alt"></i></div>
+            <div>
+                <div class="kpi-num">{{ n_programados }}</div>
+                <div class="kpi-label">Programados</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi-card">
+            <div class="kpi-icon kpi-azul"><i class="fas fa-lock"></i></div>
+            <div>
+                <div class="kpi-num">{{ n_cerrados }}</div>
+                <div class="kpi-label">Cerrados</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-body">
-        <table id="tabla_sesiones" class="table table-hover table-striped" style="width:100%;">
+        <table id="tabla_sesiones" class="table table-hover" style="width:100%;">
             <thead>
                 <tr>
                     <th>#</th>
@@ -38,36 +124,51 @@
             <tbody>
                 {% for s in sesiones %}
                 <tr>
-                    <td>{{ s.id }}</td>
-                    <td>{{ s.nombre }}</td>
+                    <td class="sesion-id">{{ s.id }}</td>
+                    <td class="sesion-nombre">{{ s.nombre }}</td>
                     <td>{{ s.fecha|date('d/m/Y') }}</td>
                     <td><span class="badge-estado badge-{{ s.estado }}">{{ s.estado|capitalize }}</span></td>
-                    <td class="text-center progreso-cajas">
-                        {{ s.cajas_completadas }} / {{ s.total_cajas }}
+                    <td class="text-center">
+                        {% set pct = s.total_cajas > 0 ? (s.cajas_completadas / s.total_cajas * 100)|round : 0 %}
+                        <div class="progreso-wrap mx-auto">
+                            <div class="progreso-bar">
+                                <div class="progreso-fill {{ pct >= 100 ? 'completo' : '' }}" style="width:{{ pct }}%;"></div>
+                            </div>
+                            <div class="progreso-texto">{{ s.cajas_completadas }} / {{ s.total_cajas }} capturadas</div>
+                        </div>
                     </td>
                     <td class="text-end">
-                        {% if s.estado != 'programado' %}
-                        <a href="/arqueo/cajas/{{ s.id }}" class="btn btn-sm btn-outline-primary" title="Cajas">
-                            <i class="fas fa-cash-register"></i> Cajas
-                        </a>
-                        {% endif %}
-                        <a href="/arqueo/concentrado/{{ s.id }}" class="btn btn-sm btn-outline-secondary" title="Concentrado">
-                            <i class="fas fa-table"></i>
-                        </a>
-                        {% if es_admin %}
-                            {% if s.estado == 'programado' %}
-                            <button class="btn btn-sm btn-success" onclick="abrirSesion({{ s.id }})" title="Abrir arqueo">
-                                <i class="fas fa-lock-open"></i> Abrir
-                            </button>
-                            {% elseif s.estado == 'abierto' %}
-                            <button class="btn btn-sm btn-primary" onclick="cerrarSesion({{ s.id }})" title="Cerrar arqueo">
-                                <i class="fas fa-lock"></i> Cerrar
+                        <div class="acciones-sesion">
+                            {% if s.estado != 'programado' %}
+                            <a href="/arqueo/cajas/{{ s.id }}" class="btn btn-sm btn-outline-primary" title="Captura por caja">
+                                <i class="fas fa-cash-register"></i> Cajas
+                            </a>
+                            {% endif %}
+                            {% if es_admin %}
+                            <a href="/arqueo/concentrado/{{ s.id }}" class="btn btn-sm btn-outline-secondary" title="Concentrado de la sesión">
+                                <i class="fas fa-table"></i> Concentrado
+                            </a>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="Concentrado de la sesión"
+                                    onclick="alertify.error('Solo los administradores pueden ver el concentrado.')">
+                                <i class="fas fa-table"></i> Concentrado
                             </button>
                             {% endif %}
-                            <a href="/arqueo/exportar/{{ s.id }}" class="btn btn-sm btn-outline-success" title="Exportar Excel">
-                                <i class="fas fa-file-excel"></i>
-                            </a>
-                        {% endif %}
+                            {% if es_admin %}
+                                {% if s.estado == 'programado' %}
+                                <button class="btn btn-sm btn-success" onclick="abrirSesion({{ s.id }})" title="Abrir arqueo">
+                                    <i class="fas fa-lock-open"></i> Abrir
+                                </button>
+                                {% elseif s.estado == 'abierto' %}
+                                <button class="btn btn-sm btn-primary" onclick="cerrarSesion({{ s.id }})" title="Cerrar arqueo">
+                                    <i class="fas fa-lock"></i> Cerrar
+                                </button>
+                                {% endif %}
+                                <a href="/arqueo/auditoria/{{ s.id }}" class="btn btn-sm btn-outline-secondary" title="Auditoría de la sesión">
+                                    <i class="fas fa-history"></i>
+                                </a>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

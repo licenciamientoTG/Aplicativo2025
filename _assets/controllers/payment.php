@@ -459,13 +459,118 @@ class Payment
                     'gasolinera'       => $row['gasolinera'],
                     'codgas'           => $row['codgas'],
                     'en_orden_pago'    => $row['en_orden_pago'],
+                    'payment_invoice_id' => $row['payment_invoice_id'] ?? null,
                     'payment_status'   => $row['payment_status'],
                     'codigo_empresa'   => $row['codigo_empresa'],
-                    'statusLabel'      => $statusLabel
+                    'statusLabel'      => $statusLabel,
+                    'anticipo_parcial' => 0,
+                    'anticipo_aplicado' => 0,
+                    'monto_restante'   => null,
                 );
             }
         }
+
+        // Post-proceso: facturas que viven bajo un ANTICIPO. Con aplicación
+        // parcial quedan seleccionables (se pagará el remanente moviéndolas a
+        // la requisición); cubiertas al 100% se etiquetan como pagadas con anticipo.
+        $ids_en_orden = array_values(array_filter(array_map(
+            fn($d) => !empty($d['en_orden_pago']) ? (int)($d['payment_invoice_id'] ?? 0) : 0,
+            $data
+        )));
+        if (!empty($ids_en_orden)) {
+            $info_anticipos = $this->paymentRequestInvoicesModel->get_anticipo_parcial_info($ids_en_orden);
+            foreach ($data as &$d) {
+                $inv_id = (int)($d['payment_invoice_id'] ?? 0);
+                if (!$inv_id || empty($info_anticipos[$inv_id])) continue;
+                $info = $info_anticipos[$inv_id];
+
+                if ($info['restante'] > 0.01) {
+                    $d['anticipo_parcial']  = 1;
+                    $d['anticipo_aplicado'] = $info['aplicado'];
+                    $d['monto_restante']    = $info['restante'];
+                    $d['statusLabel'] = '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;" '
+                        . 'title="Anticipo #' . $info['anticipo_id'] . ' aplicado: $' . number_format($info['aplicado'], 2) . '">'
+                        . 'Anticipo −$' . number_format($info['aplicado'], 2) . '<br>resta $' . number_format($info['restante'], 2) . '</span>';
+                } else {
+                    $d['statusLabel'] = '<span class="badge bg-success" title="Cubierta completamente por el anticipo #' . $info['anticipo_id'] . '">Pagada con anticipo</span>';
+                }
+            }
+            unset($d);
+        }
+
         json_output(array("data" => $data));
+    }
+
+
+    /**
+     * Documentos de compra DISPONIBLES (sin orden de pago) del proveedor de un
+     * anticipo, para la página de aplicar anticipo. Misma fuente que
+     * payment_control_table (API estacion_documentos_compra) pero filtrada:
+     * solo documentos con CFDI (satuid) y en_orden_pago = 0.
+     */
+    public function anticipo_documentos_table()
+    {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+
+        $anticipo_id = intval($_POST['anticipo_id'] ?? 0);
+        $anticipo = $anticipo_id ? $this->PaymentRequestsModel->get_request_by_id($anticipo_id) : false;
+        if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+            json_output(['data' => [], 'error' => 'Anticipo no encontrado']);
+            return;
+        }
+
+        $postData = [
+            'from'      => dateToInt($_POST['fromDate']),
+            'until'     => dateToInt($_POST['untilDate']),
+            'codgas'    => !empty($_POST['codgas']) ? $_POST['codgas'] : '0',
+            'proveedor' => $anticipo['provider_cod'],
+            'company'   => '0'
+        ];
+
+        $ch = curl_init('http://192.168.0.109:82/api/estacion_documentos_compra/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $apiData = json_decode($response, true);
+        $data = [];
+        if (is_array($apiData)) {
+            foreach ($apiData as $row) {
+                // Solo documentos con CFDI y que NO estén ya en una orden de pago
+                if (empty($row['satuid']) || !empty($row['en_orden_pago'])) {
+                    continue;
+                }
+
+                $tieneFacturaRecibida = !empty($row['tiene_factura_recibida']) ? 1 : 0;
+                $totalMostrar = $tieneFacturaRecibida
+                    ? ($row['total_factura_recibida'] ?? $row['total_fac'])
+                    : $row['total_fac'];
+
+                $data[] = [
+                    'nro'                    => $row['nro'],
+                    'Factura'                => $row['Factura'],
+                    'fecha'                  => $row['fecha_emision_efectiva'] ?? ($row['fecha'] ?? null),
+                    'fechaVto'               => !empty($row['fecha_vencimiento_credito']) ? $row['fecha_vencimiento_credito'] : ($row['fechaVto'] ?? null),
+                    'gasolinera'             => $row['gasolinera'],
+                    'codgas'                 => $row['codgas'],
+                    'total_fac'              => $row['total_fac'],
+                    'total_mostrar'          => $totalMostrar,
+                    'tiene_factura_recibida' => $tieneFacturaRecibida,
+                    'satuid'                 => $row['satuid'],
+                ];
+            }
+        }
+
+        // Facturas del proveedor con remanente de anticipo (viven bajo otro
+        // anticipo con aplicación parcial): se pueden cubrir desde este anticipo.
+        $remanentes = $this->PaymentRequestsModel->get_facturas_con_remanente_anticipo($anticipo['provider_cod']);
+
+        json_output(['data' => $data, 'remanentes' => $remanentes]);
     }
 
 
@@ -1080,6 +1185,14 @@ class Payment
         // opcional: si la DB almacena con barras invertidas dobles, limpiarlas:
         $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
 
+        // El importador guardaba rutas absolutas (C:\...), pero desde el cambio de
+        // importador algunas facturas llegan con ruta relativa (attachments\...\...).
+        // Si no es absoluta (no empieza con letra de unidad tipo "C:\"), se antepone
+        // la carpeta base donde el importador escribe los adjuntos.
+        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
+            $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
+        }
+
         // Seguridad: restringir a un directorio base permitido
         $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores'); // ajusta si hace falta
         $real = realpath($ruta);
@@ -1113,6 +1226,20 @@ class Payment
         $proveedores = $this->proveedores->get_actives();
 
         echo $this->twig->render($this->route . 'payment_list.html', compact('stations', 'companys', 'proveedores'));
+    }
+
+
+    /**
+     * Vista completa de autorización de pago de facturas (Tesorería).
+     * Reemplaza al modal #modalAutorizarPagoMasivo que vivía en payment_list.html.
+     */
+    function authorize_payments()
+    {
+        if (!authorized(68)) {
+            redirect('/payment/payment_list');
+            return;
+        }
+        echo $this->twig->render($this->route . 'authorize_payments.html');
     }
 
 
@@ -1154,14 +1281,17 @@ class Payment
                     $row['auth_tesoreria_date']
                 );
 
+                $esAnticipo = intval($row['tipo'] ?? 0) === 1;
+
                 $canDelete = in_array(69, explode(',', $_SESSION['tg_user']['permissions']));
                 $deleteBtn = $canDelete
                     ? '<button class="btn btn-sm" style="color:#dc2626;background:#fef2f2;border:none;border-radius:5px;padding:.3rem .5rem;" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar"><i class="fas fa-trash" style="font-size:.8rem;"></i></button>'
                     : '';
+                $detailUrl = ($esAnticipo ? '/payment/anticipo_detail/' : '/payment/payment_detail/') . $row['id'];
                 $actions = '
                     <div class="d-flex align-items-center justify-content-center gap-1">
                         <button class="btn btn-sm btn-toggle-invoices" data-payment-id="' . $row['id'] . '" style="color:#0891b2;background:#ecfeff;border:none;border-radius:5px;padding:.3rem .5rem;" title="Ver facturas"><i class="fas fa-info-circle" style="font-size:.8rem;"></i></button>
-                        <a href="/payment/payment_detail/' . $row['id'] . '" class="btn btn-sm" style="color:#2563eb;background:#eff6ff;border:none;border-radius:5px;padding:.3rem .5rem;" title="Ver detalle"><i class="fas fa-eye" style="font-size:.8rem;"></i></a>
+                        <a href="' . $detailUrl . '" class="btn btn-sm" style="color:#2563eb;background:#eff6ff;border:none;border-radius:5px;padding:.3rem .5rem;" title="Ver detalle"><i class="fas fa-eye" style="font-size:.8rem;"></i></a>
                         ' . $deleteBtn . '
                     </div>
                 ';
@@ -1169,9 +1299,9 @@ class Payment
                 $totalFacturas = floatval($row['total_amount']);
                 $totalNC = floatval($row['total_notas_credito']);
                 $totalND = floatval($row['total_notas_cargo']);
-                $montoNeto = max(0, $totalFacturas - $totalNC + $totalND);
-
-                $esAnticipo = intval($row['tipo'] ?? 0) === 1;
+                // Los anticipos aplicados a las facturas reducen lo que queda por pagar
+                $totalAnticipos = $esAnticipo ? 0 : floatval($row['total_anticipos_aplicados'] ?? 0);
+                $montoNeto = max(0, $totalFacturas - $totalNC + $totalND - $totalAnticipos);
 
                 $pdfStatus = $row['pdf_status'] ?? 'no_invoices';
                 $pdfDot = match($pdfStatus) {
@@ -1184,9 +1314,11 @@ class Payment
                     ? '<span style="display:inline-block;font-size:.6rem;font-weight:700;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:middle;letter-spacing:.03em;">ANT</span>'
                     : '';
 
-                // Para anticipos: monto_total es el monto del anticipo, no suma de facturas
+                // Para anticipos: monto_total es el monto del anticipo, no suma de facturas,
+                // y lo pagado viene de transacciones sin factura (anticipo_paid)
                 $montoAnticipo = $esAnticipo ? floatval($row['monto_total'] ?? 0) : $totalFacturas;
                 $montoNetoFinal = $esAnticipo ? $montoAnticipo : $montoNeto;
+                $totalPagado = $esAnticipo ? floatval($row['anticipo_paid'] ?? 0) : floatval($row['total_paid']);
 
                 $data[] = [
                     'id'             => $row['id'] . $pdfDot . $anticipoBadge,
@@ -1201,8 +1333,9 @@ class Payment
                     'total_amount'   => '$' . number_format($montoAnticipo, 2),
                     'total_notas_credito' => $esAnticipo ? 0 : $totalNC,
                     'total_notas_cargo'   => $esAnticipo ? 0 : $totalND,
+                    'total_anticipos' => $totalAnticipos,
                     'monto_neto'     => '$' . number_format($montoNetoFinal, 2),
-                    'total_paid'     => '$' . number_format($row['total_paid'], 2),
+                    'total_paid'     => '$' . number_format($totalPagado, 2),
                     'authorized_invoices_count' => $esAnticipo ? '—' : $row['authorized_invoices_count'],
                     'authorized_amount_total' => $esAnticipo ? '—' : '$' . number_format($row['authorized_amount_total'], 2),
                     'status'         => $statusBadge,
@@ -1405,6 +1538,15 @@ class Payment
                 }
             }
 
+            // Nombres de los comprobantes de pago ligados a cada factura
+            $todos_doc_ids = [];
+            foreach ($invoices as $inv) {
+                if (!empty($inv['comprobante_doc_ids'])) {
+                    $todos_doc_ids = array_merge($todos_doc_ids, explode(',', $inv['comprobante_doc_ids']));
+                }
+            }
+            $nombres_comprobantes = $this->PaymentTransactionDocumentsModel->get_names_by_ids($todos_doc_ids);
+
             $data = [];
             foreach ($invoices as $inv) {
                 $uuidKey       = strtoupper(trim($inv['uuid'] ?? ''));
@@ -1414,6 +1556,18 @@ class Payment
                 $paid_amount   = (float)($inv['paid_amount'] ?? 0);
                 $saldo         = (float)$inv['amount'] - $paid_amount;
                 $neto_notas    = (float)$inv['total_notas_cargo'] - (float)$inv['total_notas_credito'];
+                $anticipo      = (float)($inv['anticipo_aplicado'] ?? 0);
+
+                $comprobantes = [];
+                if (!empty($inv['comprobante_doc_ids'])) {
+                    foreach (explode(',', $inv['comprobante_doc_ids']) as $docId) {
+                        $docId = (int)$docId;
+                        $comprobantes[] = [
+                            'doc_id' => $docId,
+                            'nombre' => $nombres_comprobantes[$docId] ?? 'Comprobante',
+                        ];
+                    }
+                }
 
                 $esNotaCargo = (int)($inv['is_debit_note'] ?? 0) === 1;
                 $data[] = [
@@ -1426,7 +1580,8 @@ class Payment
                     'saldo'                 => $esNotaCargo ? 0 : $saldo,
                     'total_notas_credito'   => $esNotaCargo ? 0 : (float)($inv['total_notas_credito'] ?? 0),
                     'total_notas_cargo'     => $esNotaCargo ? 0 : (float)($inv['total_notas_cargo'] ?? 0),
-                    'saldo_neto'            => $esNotaCargo ? (float)$inv['amount'] : ($saldo + $neto_notas),
+                    'anticipo_aplicado'     => $esNotaCargo ? 0 : $anticipo,
+                    'saldo_neto'            => $esNotaCargo ? (float)$inv['amount'] : ($saldo + $neto_notas - $anticipo),
                     'status'                => (int)$inv['status'],
                     'payment_authorized'    => (int)($inv['payment_authorized'] ?? 0),
                     'authorized_amount'     => (float)($inv['authorized_amount'] ?? 0),
@@ -1438,6 +1593,7 @@ class Payment
                     'is_debit_note'         => (int)($inv['is_debit_note'] ?? 0),
                     'nota_id'               => $inv['nota_id'] ?? null,
                     'nota_doc_path'         => !empty($inv['nota_id']) ? true : null,
+                    'comprobantes'          => $comprobantes,
                 ];
             }
 
@@ -1491,6 +1647,12 @@ class Payment
         if (!$payment) {
             setFlashMessage('error', 'Pago no encontrado');
             redirect('/payment/payment_list');
+            return;
+        }
+
+        // Los anticipos (tipo=1) no tienen facturas; su detalle vive en anticipo_detail
+        if (intval($payment['tipo'] ?? 0) === 1) {
+            redirect('/payment/anticipo_detail/' . intval($payment_id));
             return;
         }
 
@@ -1977,13 +2139,15 @@ class Payment
                     'total_notas_credito' => floatval($invoice['total_notas_credito'] ?? 0),
                     'total_notas_cargo' => floatval($invoice['total_notas_cargo'] ?? 0),
                     'notas_count' => intval($invoice['notas_count'] ?? 0),
+                    'anticipo_aplicado' => floatval($invoice['anticipo_aplicado'] ?? 0),
                     'saldo_neto' => floatval($invoice['saldo_neto']),
                     'expiration_date' => $invoice['expiration_date'],
                     'empresa_nombre' => $invoice['empresa_nombre'] ?? 'N/A',
                     'proveedor_nombre' => $invoice['proveedor_nombre'] ?? 'N/A',
                     'uuid' => $invoice['uuid'],
                     'pago_id' => $invoice['pago_id'],
-                    'pago_fecha' => $invoice['pago_fecha']
+                    'pago_fecha' => $invoice['pago_fecha'],
+                    'es_anticipo' => (bool) ($invoice['es_anticipo'] ?? false)
                 ];
             }
 
@@ -2155,17 +2319,24 @@ class Payment
                 if ($factura['payment_authorized'] != 1) {
                     json_output(['success' => false, 'message' => "La factura {$factura['folio']} no está autorizada"]); return;
                 }
+                // authorized_amount es el acumulado histórico autorizado (puede incluir
+                // rondas ya pagadas): lo que falta pagar de esta ronda es la diferencia
+                // contra lo que ya se pagó.
+                $monto_pagar = (float)$factura['authorized_amount'] - (float)($factura['paid_amount'] ?? 0);
+                if ($monto_pagar <= 0.01) {
+                    continue;
+                }
                 $facturas_procesar[] = [
                     'invoice_id' => $factura['id'],
                     'folio' => $factura['folio'],
-                    'monto_pagar' => $factura['authorized_amount'], // ✅ Usar monto autorizado
+                    'monto_pagar' => $monto_pagar,
                     'saldo_anterior' => $factura['saldo'],
                     'payment_request_id' => $factura['payment_request_id'] // ✅ Incluir para el proceso
 
                 ];
 
                 $payment_request_ids_unicos[$factura['payment_request_id']] = true;
-                $monto_total += (float)$factura['authorized_amount'];
+                $monto_total += $monto_pagar;
             }
 
             // Derivar empresa/proveedor para la cabecera del lote
@@ -5033,17 +5204,47 @@ class Payment
             foreach ($asignaciones as $a) {
                 $archivo_idx = isset($a['archivo_idx']) ? (int)$a['archivo_idx'] : -1;
                 $invoice_ids = array_values(array_filter(array_map('intval', $a['invoice_ids'] ?? [])));
+                $anticipo_id = isset($a['anticipo_id']) ? (int)$a['anticipo_id'] : 0;
                 $fecha_pago  = $a['fecha_pago'] ?? null;
                 $referencia  = trim($a['referencia'] ?? '');
                 $observaciones = trim($a['observaciones'] ?? '');
                 $nombre_archivo = $a['archivo'] ?? "comprobante #{$archivo_idx}";
 
-                if (empty($invoice_ids)) {
-                    $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Sin facturas asignadas'];
-                    continue;
-                }
                 if (!$fecha_pago || $referencia === '') {
                     $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Falta fecha o referencia bancaria'];
+                    continue;
+                }
+
+                // Grupos tipo ANTICIPO: no tienen facturas, se pagan con el flujo
+                // dedicado de anticipos (lote + transacción sin factura + comprobante)
+                if ($anticipo_id > 0) {
+                    $fileItem = null;
+                    if ($archivo_idx >= 0 && isset($_FILES['comprobantes']['name'][$archivo_idx])) {
+                        $fileItem = [
+                            'name'     => $_FILES['comprobantes']['name'][$archivo_idx],
+                            'type'     => $_FILES['comprobantes']['type'][$archivo_idx],
+                            'tmp_name' => $_FILES['comprobantes']['tmp_name'][$archivo_idx],
+                            'error'    => $_FILES['comprobantes']['error'][$archivo_idx],
+                            'size'     => $_FILES['comprobantes']['size'][$archivo_idx],
+                        ];
+                    }
+
+                    $res = $this->registrar_pago_anticipo($anticipo_id, $fecha_pago, $referencia, $observaciones, $fileItem, $user_id);
+                    if ($res['success']) {
+                        $aplicados++;
+                        $total_aplicado += (float)($res['monto'] ?? 0);
+                    }
+                    $resultados[] = [
+                        'archivo' => $nombre_archivo,
+                        'success' => $res['success'],
+                        'message' => $res['message'],
+                        'total'   => $res['monto'] ?? null,
+                    ];
+                    continue;
+                }
+
+                if (empty($invoice_ids)) {
+                    $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Sin facturas asignadas'];
                     continue;
                 }
 
@@ -5061,14 +5262,22 @@ class Payment
                         if ($f['payment_authorized'] != 1) {
                             throw new Exception("La factura {$f['folio']} no está autorizada");
                         }
+                        // Pagar solo lo AUTORIZADO pendiente de pago (authorized_amount -
+                        // paid_amount), no f['saldo'] (amount - paid_amount): si la
+                        // autorización fue parcial, el saldo total de la factura puede
+                        // exceder lo que Tesorería realmente autorizó a pagar.
+                        $monto_pagar = (float)$f['authorized_amount'] - (float)($f['paid_amount'] ?? 0);
+                        if ($monto_pagar <= 0.01) {
+                            continue;
+                        }
                         $facturas_procesar[] = [
                             'invoice_id'         => $f['id'],
                             'folio'              => $f['folio'],
-                            'monto_pagar'        => $f['authorized_amount'],
+                            'monto_pagar'        => $monto_pagar,
                             'saldo_anterior'     => $f['saldo'],
                             'payment_request_id' => $f['payment_request_id'],
                         ];
-                        $monto_total += (float)$f['authorized_amount'];
+                        $monto_total += $monto_pagar;
                     }
 
                     // Derivar empresa/proveedor/banco de la requisición para la cabecera del lote
@@ -5242,7 +5451,8 @@ class Payment
             echo json_encode(['success' => false, 'message' => 'ID de pago inválido.']);
             return;
         }
-        echo json_encode($this->PaymentRequestsModel->delete_payment_by_id($payment_id));
+        $user_id = isset($_SESSION['tg_user']['Id']) ? intval($_SESSION['tg_user']['Id']) : null;
+        echo json_encode($this->PaymentRequestsModel->delete_payment_by_id($payment_id, $user_id));
     }
 
 
@@ -5671,6 +5881,127 @@ class Payment
     }
 
 
+    /**
+     * Página para ligar facturas disponibles a un anticipo (reemplaza el modal
+     * de aplicar anticipo). Copia adaptada del patrón de add_payment.
+     */
+    public function aplicar_anticipo($anticipo_id)
+    {
+        $anticipo = $this->PaymentRequestsModel->get_request_by_id((int)$anticipo_id);
+        if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+            setFlashMessage('error', 'Anticipo no encontrado');
+            redirect('/payment/payment_list');
+            return;
+        }
+
+        $summary = $this->PaymentRequestsModel->get_anticipo_summary((int)$anticipo_id) ?: [
+            'monto_original'   => $anticipo['monto_total'],
+            'total_aplicado'   => 0,
+            'saldo_disponible' => $anticipo['monto_total'],
+        ];
+
+        $proveedor = $this->proveedores->get_by_id($anticipo['provider_cod']);
+        $empresa_nombre = '';
+        foreach ($this->gasolinerasModel->get_company() ?: [] as $c) {
+            if ($c['codemp'] == $anticipo['emp_cod']) {
+                $empresa_nombre = $c['den'];
+                break;
+            }
+        }
+
+        $all_stations = $this->gasolinerasModel->get_stations();
+        $stations = array_filter($all_stations, fn($s) => $s['cod'] != 0);
+
+        echo $this->twig->render($this->route . 'aplicar_anticipo.html', [
+            'anticipo'         => $anticipo,
+            'summary'          => $summary,
+            'proveedor_nombre' => $proveedor['den'] ?? ('Proveedor ' . $anticipo['provider_cod']),
+            'empresa_nombre'   => $empresa_nombre,
+            'stations'         => $stations,
+        ]);
+    }
+
+
+    /**
+     * Liga documentos disponibles a un anticipo (confirmación de la página
+     * aplicar_anticipo). Inserta las facturas bajo el anticipo + aplicaciones.
+     */
+    public function apply_anticipo_documentos()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede aplicar anticipos']);
+                return;
+            }
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+            if (!$user_id) {
+                json_output(['success' => false, 'message' => 'Usuario no identificado']);
+                return;
+            }
+
+            $data = json_decode(file_get_contents('php://input'), true);
+            $anticipo_id = intval($data['anticipo_id'] ?? 0);
+            $documentos  = is_array($data['documentos'] ?? null) ? $data['documentos'] : [];
+            $remanentes  = is_array($data['remanentes'] ?? null) ? $data['remanentes'] : [];
+
+            if (!$anticipo_id || (empty($documentos) && empty($remanentes))) {
+                json_output(['success' => false, 'message' => 'Faltan datos: anticipo y documentos']);
+                return;
+            }
+
+            // Validar el saldo contra el TOTAL combinado antes de ejecutar,
+            // para no aplicar los documentos y luego fallar en los remanentes.
+            $total_combinado = 0.0;
+            foreach ($documentos as $d) $total_combinado += floatval($d['monto_aplicar'] ?? 0);
+            foreach ($remanentes as $r) $total_combinado += floatval($r['monto_aplicar'] ?? 0);
+            $saldo = floatval($this->PaymentRequestsModel->get_saldo_disponible($anticipo_id));
+            if ($total_combinado > $saldo + 0.01) {
+                json_output(['success' => false, 'message' => 'El total a aplicar ($' . number_format($total_combinado, 2) . ') excede el saldo disponible ($' . number_format($saldo, 2) . ')']);
+                return;
+            }
+
+            $mensajes = [];
+            $total_aplicado = 0.0;
+            $facturas = 0;
+
+            if (!empty($documentos)) {
+                $res = $this->PaymentRequestsModel->attach_invoices_to_anticipo($anticipo_id, $documentos, (int)$user_id);
+                if (!$res['success']) {
+                    json_output($res);
+                    return;
+                }
+                $mensajes[] = $res['message'];
+                $total_aplicado += floatval($res['total_aplicado'] ?? 0);
+                $facturas += intval($res['facturas_ligadas'] ?? 0);
+            }
+
+            if (!empty($remanentes)) {
+                $res = $this->PaymentRequestsModel->apply_anticipo_to_existing_invoices($anticipo_id, $remanentes, (int)$user_id);
+                if (!$res['success']) {
+                    // Los documentos nuevos (si hubo) ya quedaron aplicados
+                    $res['message'] = (empty($mensajes) ? '' : implode('. ', $mensajes) . '. PERO: ') . $res['message'];
+                    json_output($res);
+                    return;
+                }
+                $mensajes[] = $res['message'];
+                $total_aplicado += floatval($res['total_aplicado'] ?? 0);
+                $facturas += intval($res['facturas_ligadas'] ?? 0);
+            }
+
+            json_output([
+                'success'          => true,
+                'message'          => implode('. ', $mensajes),
+                'facturas_ligadas' => $facturas,
+                'total_aplicado'   => $total_aplicado,
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en apply_anticipo_documentos: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor']);
+        }
+    }
+
+
     public function anticipo_summary_json($anticipo_id)
     {
         header('Content-Type: application/json');
@@ -5679,6 +6010,10 @@ class Payment
             json_output(['success' => false, 'message' => 'Anticipo no encontrado']);
             return;
         }
+        // Comprobantes del pago del anticipo (para mostrarlos en el panel expandible)
+        $summary['comprobantes'] = $this->PaymentTransactionDocumentsModel->get_by_anticipo((int)$anticipo_id);
+        // Facturas ligadas al anticipo, con su archivo CFDI si existe
+        $summary['aplicaciones'] = $this->PaymentRequestsModel->get_anticipo_applications((int)$anticipo_id);
         json_output(['success' => true, 'data' => $summary]);
     }
 
@@ -5737,82 +6072,6 @@ class Payment
     }
 
 
-    public function apply_anticipo_to_invoices()
-    {
-        header('Content-Type: application/json');
-
-        try {
-            if (!authorized(68)) {
-                json_output(['success' => false, 'message' => 'No tiene permisos para esta acción']);
-                return;
-            }
-
-            $anticipo_id = $_POST['anticipo_id'] ?? null;
-            $aplicaciones = json_decode($_POST['aplicaciones'] ?? '[]', true);
-
-            if (!$anticipo_id || empty($aplicaciones)) {
-                json_output(['success' => false, 'message' => 'Datos incompletos']);
-                return;
-            }
-
-            // Validar saldo disponible
-            $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
-
-            if (!$anticipo || $anticipo['tipo'] != 1) {
-                json_output(['success' => false, 'message' => 'Anticipo no válido']);
-                return;
-            }
-
-            $saldo = $this->PaymentRequestsModel->get_saldo_disponible($anticipo_id);
-            $total_aplicar = array_sum(array_column($aplicaciones, 'monto'));
-
-            if ($total_aplicar > $saldo) {
-                json_output(['success' => false, 'message' => 'Excede saldo disponible']);
-                return;
-            }
-
-            // Registrar aplicaciones
-            $result = $this->PaymentRequestsModel->register_anticipo_applications(
-                $anticipo_id,
-                $aplicaciones,
-                $_SESSION['tg_user']['Id']
-            );
-
-            json_output($result);
-        } catch (Exception $e) {
-            error_log("Error en apply_anticipo_to_invoices: " . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error del servidor']);
-        }
-    }
-
-    /**
-     * Facturas pendientes de un proveedor, para el modal de ligar anticipo.
-     */
-    public function get_invoices_pendientes_by_provider()
-    {
-        header('Content-Type: application/json');
-        try {
-            $json = file_get_contents('php://input');
-            $data = json_decode($json, true);
-            $provider_cod = $data['provider_cod'] ?? null;
-
-            if (!$provider_cod) {
-                json_output(['success' => false, 'message' => 'Proveedor requerido']);
-                return;
-            }
-
-            $facturas = $this->paymentRequestInvoicesModel->get_pending_by_provider($provider_cod);
-
-            json_output([
-                'success' => true,
-                'data' => $facturas ?: []
-            ]);
-        } catch (Exception $e) {
-            error_log('Error en get_invoices_pendientes_by_provider: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error del servidor']);
-        }
-    }
-
     /**
      * Registra el pago de un anticipo ya autorizado: crea el lote, la
      * transacción (sin factura) y sube el comprobante. Marca el anticipo
@@ -5841,25 +6100,44 @@ class Payment
                 return;
             }
 
-            $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
-            if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
-                json_output(['success' => false, 'message' => 'Anticipo no encontrado']);
-                return;
-            }
-            if (intval($anticipo['status']) !== PaymentRequestsModel::STATUS_AUTHORIZED) {
-                json_output(['success' => false, 'message' => 'El anticipo debe estar autorizado por Tesorería antes de pagarse']);
-                return;
-            }
-
             $comprobante = (!empty($_FILES['comprobante']['name']) && $_FILES['comprobante']['error'] === UPLOAD_ERR_OK)
                 ? $_FILES['comprobante'] : null;
-            if (!$comprobante) {
-                json_output(['success' => false, 'message' => 'El comprobante de pago es obligatorio']);
-                return;
-            }
 
-            $this->PaymentRequestsModel->sql->beginTransaction();
+            json_output($this->registrar_pago_anticipo(
+                $anticipo_id,
+                $fecha_pago,
+                $referencia,
+                $observaciones,
+                $comprobante,
+                $user_id
+            ));
+        } catch (Exception $e) {
+            error_log('Error en pay_anticipo: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
+        }
+    }
 
+    /**
+     * Núcleo del pago de un anticipo autorizado, compartido por pay_anticipo()
+     * y por la conciliación masiva de comprobantes: valida el anticipo, crea
+     * el lote, la transacción (sin factura), guarda el comprobante y marca el
+     * anticipo como PAGADO. No emite salida; devuelve el resultado.
+     */
+    private function registrar_pago_anticipo($anticipo_id, $fecha_pago, $referencia, $observaciones, $comprobante, $user_id): array
+    {
+        $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
+        if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+            return ['success' => false, 'message' => 'Anticipo no encontrado'];
+        }
+        if (intval($anticipo['status']) !== PaymentRequestsModel::STATUS_AUTHORIZED) {
+            return ['success' => false, 'message' => 'El anticipo debe estar autorizado por Tesorería antes de pagarse'];
+        }
+        if (!$comprobante) {
+            return ['success' => false, 'message' => 'El comprobante de pago es obligatorio'];
+        }
+
+        $this->PaymentRequestsModel->sql->beginTransaction();
+        try {
             $batch_id = $this->PaymentBatchesModel->create([
                 'fecha_pago'    => $fecha_pago,
                 'referencia'    => $referencia,
@@ -5873,8 +6151,7 @@ class Payment
 
             if (!$batch_id) {
                 $this->PaymentRequestsModel->sql->rollback();
-                json_output(['success' => false, 'message' => 'No se pudo crear el lote de pago']);
-                return;
+                return ['success' => false, 'message' => 'No se pudo crear el lote de pago'];
             }
 
             $transaction_id = $this->paymentTransactionsModel->insert_transaction(
@@ -5894,15 +6171,13 @@ class Payment
 
             if (!$transaction_id) {
                 $this->PaymentRequestsModel->sql->rollback();
-                json_output(['success' => false, 'message' => 'Error al registrar la transacción del anticipo']);
-                return;
+                return ['success' => false, 'message' => 'Error al registrar la transacción del anticipo'];
             }
 
             $upload = $this->PaymentTransactionDocumentsModel->upload($transaction_id, $comprobante, $user_id, $batch_id);
             if (!$upload['success']) {
                 $this->PaymentRequestsModel->sql->rollback();
-                json_output(['success' => false, 'message' => 'Error al guardar el comprobante: ' . $upload['message']]);
-                return;
+                return ['success' => false, 'message' => 'Error al guardar el comprobante: ' . $upload['message']];
             }
 
             $this->PaymentRequestsModel->update_request_status(
@@ -5913,15 +6188,16 @@ class Payment
 
             $this->PaymentRequestsModel->sql->commit();
 
-            json_output([
-                'success' => true,
-                'message' => 'Anticipo pagado y comprobante guardado correctamente',
-                'batch_id' => $batch_id
-            ]);
+            return [
+                'success'  => true,
+                'message'  => 'Anticipo pagado y comprobante guardado correctamente',
+                'batch_id' => $batch_id,
+                'monto'    => (float)$anticipo['monto_total'],
+            ];
         } catch (Exception $e) {
             $this->PaymentRequestsModel->sql->rollback();
-            error_log('Error en pay_anticipo: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
+            error_log('Error en registrar_pago_anticipo: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()];
         }
     }
 
@@ -6137,7 +6413,7 @@ class Payment
     {
         $fecha = date('d/m/Y H:i:s');
         $monto_formatted = number_format($monto, 2, '.', ',');
-        $url_detalle = "http://totalgasonline.net:400/payment/payment_detail/{$anticipo_id}";
+        $url_detalle = "http://totalgasonline.net:400/payment/anticipo_detail/{$anticipo_id}";
 
         return "
         <!DOCTYPE html>
@@ -6844,50 +7120,5 @@ class Payment
         json_output(['data' => $data]);
     }
 
-
-    // DEV-ONLY: eliminar antes de producción ↓
-    public function dev_reset_piloto()
-    {
-        header('Content-Type: application/json');
-        $db = $this->PaymentRequestsModel->sql;
-        $db->beginTransaction();
-        try {
-            $db->query("DELETE FROM [TG].[dbo].[payment_transaction_documents]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_transactions]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_request_authorizations]");
-            $db->query("DELETE FROM [TG].[dbo].[credit_note_applications]");
-            $db->query("DELETE FROM [TG].[dbo].[invoice_credit_debit_notes_doc]");
-            $db->query("DELETE FROM [TG].[dbo].[invoice_credit_debit_notes]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_request_invoices]");
-            $db->query("UPDATE [TG].[dbo].[payment_requests] SET accounting_group_id = NULL");
-            $db->query("DELETE FROM [TG].[dbo].[payment_accounting_groups]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_request_bulk_authorizations]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_requests]");
-            $db->commit();
-
-            // Limpiar archivos físicos
-            $dirs = [
-                __DIR__ . '/../../_assets/uploads/payment_documents/',
-                __DIR__ . '/../../_assets/uploads/credit_debit_notes/',
-            ];
-            foreach ($dirs as $dir) {
-                if (is_dir($dir)) {
-                    $it = new RecursiveIteratorIterator(
-                        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-                        RecursiveIteratorIterator::CHILD_FIRST
-                    );
-                    foreach ($it as $file) {
-                        $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-                    }
-                }
-            }
-
-            json_output(['success' => true, 'message' => 'Datos de prueba eliminados correctamente']);
-        } catch (Exception $e) {
-            $db->rollBack();
-            json_output(['success' => false, 'message' => $e->getMessage()]);
-        }
-    }
-    // /DEV-ONLY ↑
 
 }

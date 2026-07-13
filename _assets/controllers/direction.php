@@ -32,6 +32,7 @@ class Direction{
     public MetaVentaModel $MetaVentaModel;
     public VentasModel $VentasModel;
     public ValesRModel $valesr;
+    public GasolinerasModel $GasolinerasModel;
 
 
     /**
@@ -51,6 +52,7 @@ class Direction{
         $this->MetaVentaModel        = new MetaVentaModel();
         $this->VentasModel        = new VentasModel();
         $this->valesr        = new ValesRModel();
+        $this->GasolinerasModel   = new GasolinerasModel();
 
     }
 
@@ -128,6 +130,80 @@ class Direction{
     }
     function tg6_product() {
         echo $this->twig->render($this->route . 'tg6/tg6_product.html');
+    }
+
+    function valeras() {
+        $stations = $this->GasolinerasModel->get_active_stations();
+        echo $this->twig->render($this->route . 'tg6/valeras.html', compact('stations'));
+    }
+
+    function valeras_table() {
+        $from  = DateTime::createFromFormat('!Y-m-d', $_POST['fromDate'] ?? '');
+        $until = DateTime::createFromFormat('!Y-m-d', $_POST['untilDate'] ?? '');
+        $codgas = (int)($_POST['codgas'] ?? 0); // 0 = todas las estaciones
+        if (!$from || !$until || $from > $until) {
+            echo json_encode(['columns' => [], 'data' => [], 'base' => []]);
+            return;
+        }
+
+        $months_in_spanish = [
+            1 => 'Ene', 2 => 'Feb', 3 => 'Mar', 4 => 'Abr', 5 => 'May', 6 => 'Jun',
+            7 => 'Jul', 8 => 'Ago', 9 => 'Sep', 10 => 'Oct', 11 => 'Nov', 12 => 'Dic'
+        ];
+
+        // Columnas dinámicas: un mes por cada mes del rango seleccionado
+        $columns = [];
+        $cursor = new DateTime($from->format('Y-m-01'));
+        $end    = new DateTime($until->format('Y-m-01'));
+        while ($cursor <= $end) {
+            $year  = (int)$cursor->format('Y');
+            $month = (int)$cursor->format('n');
+            $columns[] = [
+                'key'   => $year . '_' . $month,
+                'label' => $months_in_spanish[$month] . ' ' . $year
+            ];
+            $cursor->modify('first day of next month');
+        }
+
+        $rows = $this->movimientosTarModel->get_valeras_report(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $codgas
+        );
+
+        // Pivote: una fila por estación + denominación, respetando el orden del query
+        // Base: las mismas filas sin pivotear (una por estación + denominación + año + mes)
+        $data = [];
+        $base = [];
+        if ($rows) {
+            foreach ($rows as $row) {
+                $key = $row['abr'] . '|' . $row['denominacion'];
+                if (!isset($data[$key])) {
+                    $data[$key] = [
+                        'estacion'     => trim($row['abr']),
+                        'denominacion' => trim($row['denominacion']),
+                        'total'        => 0
+                    ];
+                    foreach ($columns as $col) {
+                        $data[$key][$col['key']] = 0;
+                    }
+                }
+                $colKey = $row['anio'] . '_' . $row['mes'];
+                if (array_key_exists($colKey, $data[$key])) {
+                    $data[$key][$colKey] = (float)$row['total'];
+                }
+                $data[$key]['total'] = round($data[$key]['total'] + (float)$row['total'], 2);
+
+                $base[] = [
+                    'estacion'     => trim($row['abr']),
+                    'denominacion' => trim($row['denominacion']),
+                    'anio'         => (int)$row['anio'],
+                    'mes'          => (int)$row['mes'],
+                    'total'        => (float)$row['total']
+                ];
+            }
+        }
+        echo json_encode(['columns' => $columns, 'data' => array_values($data), 'base' => $base]);
     }
 
     public function credit_debit_product_table() {

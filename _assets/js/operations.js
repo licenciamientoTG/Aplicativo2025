@@ -1288,10 +1288,18 @@ function details_deposit(IdTabulador, IdRecolecta) {
     });
 }
 
+let dismarkDispatchInFlight = false;
+
 function dismark_dispatch(codest, nrotrn) {
+    // Evita que un doble clic dispare dos confirmaciones/solicitudes para el mismo despacho
+    if (dismarkDispatchInFlight) {
+        return;
+    }
+    dismarkDispatchInFlight = true;
+    $('.table-responsive').addClass('loading');
+
     alertify.confirm('Desmarcar despacho', '¿Está segur@ de desmarcar este despacho?',
         function(){
-            $('.table-responsive').addClass('loading');
             // Vamos a apuntar a la ruta /operations/dismark_dispatch
             $.ajax({
                 url: '/operations/dismark_dispatch/' + codest + '/' + nrotrn,
@@ -1301,18 +1309,23 @@ function dismark_dispatch(codest, nrotrn) {
                         toastr.success('El despacho fue desmarcado correctamente', '¡Éxito!', { timeOut: 1000 });
                         // Ahora recargamos la tabla readings_table
                         dispatches_table.ajax.reload();
-                        $('.table-responsive').removeClass('loading');
                     } else {
                         toastr.error('No fue posible desmarcar el despacho', '¡Error!', { timeOut: 1000 });
                     }
+                    dismarkDispatchInFlight = false;
+                    $('.table-responsive').removeClass('loading');
                 },
                 error: function(xhr, textStatus, errorThrown) {
                     console.error('AJAX error:', errorThrown);
+                    dismarkDispatchInFlight = false;
+                    $('.table-responsive').removeClass('loading');
                 }
             });
         },
         function(){
             toastr.warning('Tabla de lecturas no actualizada', '¡Atención!', { timeOut: 1000 });
+            dismarkDispatchInFlight = false;
+            $('.table-responsive').removeClass('loading');
         }
     );
 }

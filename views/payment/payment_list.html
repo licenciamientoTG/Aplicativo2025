@@ -84,10 +84,22 @@
     .table tbody tr:hover { background-color: #f8fafc; }
     .table tbody tr td { font-size: .82rem; vertical-align: middle; color: #334155; border-color: #f1f5f9; }
     .table tbody tr td, .table thead th { padding: .55rem .75rem; }
-    .badge.status-pending { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
-    .badge.status-authorized { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
-    .badge.status-paid { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
-    .badge.status-cancelled { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .badge.status-pending { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .badge.status-authorized { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .badge.status-paid { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .badge.status-cancelled { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+
+    /* Botones de acciones del toolbar: outline con color propio via --action-color */
+    .btn-outline-action { background:#fff; color:var(--action-color); border:1px solid color-mix(in srgb, var(--action-color) 35%, white); border-radius:.5rem; font-size:.82rem; padding:.4rem .9rem; transition:background-color .15s, color .15s; }
+    .btn-outline-action:hover { background: color-mix(in srgb, var(--action-color) 10%, white); color: var(--action-color); }
+    .btn-outline-action:focus { color: var(--action-color); }
+
+    /* Fila expandida (child row de DataTables) de detalle de factura: remarcar que es contenido hijo */
+    #payment_list_table tr.child > td { border-left: 4px solid #3b82f6; background:#f8fafc; }
+
+    /* Botón "Comprobante" (outline azul) en el panel de facturas de un pago */
+    .btn-comprobante-outline { background:#fff; color:#2563eb; border:1px solid #bfdbfe; }
+    .btn-comprobante-outline:hover { background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; }
 
     #tabla_facturas_autorizadas thead th,
     #tabla_archivos_contabilidad thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
@@ -130,51 +142,28 @@
     <div id="pl-tab-pagos" class="pl-tab-content active">
 
         <!-- Toolbar -->
-        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 px-3 py-3 border-bottom" style="background:#f8fafc;">
-            <div class="d-flex align-items-center gap-2 w-100" style="max-width:480px;">
-                <div class="position-relative flex-grow-1">
-                    <i class="fas fa-search position-absolute" style="left:.7rem;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.8rem;"></i>
-                    <input type="text" id="search_pagos" placeholder="Buscar pago, proveedor..." class="form-control form-control-sm" style="padding-left:2.1rem;border-radius:.5rem;border-color:#cbd5e1;" oninput="loadPaymentListDebounced()">
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <select class="form-select form-select-sm" id="status_filter" style="border-radius:.5rem;border-color:#cbd5e1;font-size:.8rem;min-width:130px;">
-                        <option value="all">Todos los estados</option>
-                        <option value="pending">Pendiente</option>
-                        <option value="authorized">Autorizado</option>
-                        <option value="paid">Pagado</option>
-                        <option value="cancelled">Cancelado</option>
-                    </select>
-                    <button onclick="loadPaymentList()" class="btn btn-sm border" style="border-color:#cbd5e1;color:#64748b;border-radius:.5rem;">
-                        <i class="fas fa-filter" style="font-size:.8rem;"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="d-flex align-items-center gap-2">
+        <div class="d-flex flex-column flex-sm-row justify-content-end align-items-start align-items-sm-center gap-3 px-3 py-3 border-bottom" style="background:#f8fafc;">
+            <div class="d-flex align-items-center gap-2 ms-sm-auto">
                 {% if authorized(66) %}
-                <button type="button" onclick="sendToPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Agrupar requisiciones del día y notificar a Tesorería">
+                <button type="button" onclick="sendToPayments(this)" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#7c3aed;" title="Agrupar requisiciones del día y notificar a Tesorería">
                     <i class="fas fa-share" style="font-size:.75rem;"></i> Mandar a pagos
                 </button>
                 {% if tg_user['Id'] == 6296 %}
-                <button type="button" onclick="resendTodayPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0d9488;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Reenviar el correo de los pagos cerrados hoy (sin volver a agrupar)">
+                <button type="button" onclick="resendTodayPayments(this)" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#0d9488;" title="Reenviar el correo de los pagos cerrados hoy (sin volver a agrupar)">
                     <i class="fas fa-paper-plane" style="font-size:.75rem;"></i> Reenviar correo
                 </button>
                 {% endif %}
-                {# DEV-ONLY (comentado — descomentar si se necesita)
-                <button type="button" onclick="devResetPiloto(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#b91c1c;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="[DEV] Limpiar todos los datos de prueba">
-                    <i class="fas fa-bomb" style="font-size:.75rem;"></i> Reset Piloto
-                </button>
-                /DEV-ONLY #}
                 {% endif %}
                 {% if authorized(68) %}
-                <button type="button" onclick="abrirModalAutorizarPagoMasivo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0891b2;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Autorizar facturas para ejecución de pago">
+                <a href="/payment/authorize_payments" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#0891b2;" title="Autorizar facturas para ejecución de pago">
                     <i class="fas fa-file-invoice-dollar" style="font-size:.75rem;"></i> Autorizar Pago
-                </button>
+                </a>
                 {% endif %}
                 {% if authorized(66) %}
-                <a href="/payment/add_payment" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                <a href="/payment/add_payment" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#16a34a;">
                     <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Pago
                 </a>
-                <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#d97706;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#d97706;">
                     <i class="fas fa-hand-holding-usd" style="font-size:.75rem;"></i> Nuevo Anticipo
                 </button>
                 {% endif %}
@@ -199,6 +188,7 @@
                         <th class="text-end">Monto Total</th>
                         <th class="text-end">Pagado</th>
                         <th class="text-center">Autorizadas</th>
+                        <th class="text-center">Faltante</th>
                         <th class="text-center">Estado</th>
                         <th class="text-center">Autorizaciones</th>
                         <th>Comentario</th>
@@ -649,180 +639,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
 
-    <!-- Modal Autorizar Pago Masivo -->
-    <div class="modal fade" id="modalAutorizarPagoMasivo" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title">
-                        <i class="fas fa-check-circle"></i>
-                        Autorizar Pago de Facturas
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-info" style="width: 60%">
-                        <i class="fas fa-info-circle" style="margin: 5px"></i>
-                        Seleccione las facturas que autoriza para ejecución de pago. Se muestran las facturas pendientes de pagos agrupados en contabilidad; al autorizarlas queda registrada la aprobación de Tesorería.
-                    </div>
-
-                    <!-- Resumen -->
-                    <div class="row mb-3">
-                        <div class="col-md-2">
-                            <div class="card bg-light">
-                                <div class="card-body text-center p-2">
-                                    <small class="text-muted">Monto Facturas</small>
-                                    <h5 class="mb-0 text-primary" id="masivoPagoMontoFacturas">$0.00</h5>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card bg-light">
-                                <div class="card-body text-center p-2">
-                                    <small class="text-muted">Notas Crédito</small>
-                                    <h5 class="mb-0 text-success" id="masivoPagoNC">-$0.00</h5>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card bg-light">
-                                <div class="card-body text-center p-2">
-                                    <small class="text-muted">Notas Cargo</small>
-                                    <h5 class="mb-0 text-warning" id="masivoPagoND">+$0.00</h5>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card bg-light border-primary">
-                                <div class="card-body text-center p-2">
-                                    <small class="text-muted">Saldo Neto Total</small>
-                                    <h5 class="mb-0 text-primary" id="masivoPagoSaldoNeto">$0.00</h5>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card bg-light">
-                                <div class="card-body text-center p-2">
-                                    <small class="text-muted">Monto a Autorizar</small>
-                                    <h5 class="mb-0 text-success" id="masivoPagoTotalAutorizar">$0.00</h5>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card bg-light">
-                                <div class="card-body text-center p-2">
-                                    <small class="text-muted">Seleccionadas</small>
-                                    <h5 class="mb-0 text-info" id="masivoPagoSeleccionadas">0</h5>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px; flex-wrap: wrap;">
-                        <div class="d-flex align-items-center gap-2">
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnToggleAllGroups" onclick="toggleAllGroupsMasivo()">
-                                <i class="fas fa-expand-alt"></i> Expandir Todos
-                            </button>
-                            <div class="position-relative" style="min-width:240px;">
-                                <i class="fas fa-search position-absolute" style="left:.65rem;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.75rem;pointer-events:none;"></i>
-                                <input type="text" id="buscadorPagoMasivo" class="form-control form-control-sm"
-                                    placeholder="Buscar proveedor, empresa, folio..."
-                                    style="padding-left:2rem;border-radius:.4rem;"
-                                    oninput="filtrarTablaPagoMasivo(this.value)">
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                <i class="fas fa-times"></i> Cancelar
-                            </button>
-                            <button type="button" class="btn btn-info" id="btnConfirmarAutorizacionMasiva" onclick="confirmarAutorizarPagoMasivo()" disabled>
-                                <i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Loading -->
-                    <div id="loadingPagoMasivo" class="text-center py-4" style="display: none;">
-                        <i class="fas fa-spinner fa-spin fa-2x text-info"></i>
-                        <p class="mt-2 text-muted">Cargando facturas pendientes...</p>
-                    </div>
-
-                    <!-- Tabla de Facturas -->
-                    <div class="table-responsive" id="tablaPagoMasivoContainer" style="display: none;">
-                        <table class="table table-sm table-hover table-bordered" id="tablaAutorizarPagoMasivo">
-                            <thead class="table-light">
-                                <tr>
-                                    <th width="40">
-                                        <input type="checkbox" id="selectAllFacturasMasivo" onchange="toggleSelectAllFacturasMasivo()"/>
-                                    </th>
-                                    <th>Folio</th>
-                                    <th>Factura</th>
-                                    <th>Estación</th>
-                                    <th class="text-end">Monto</th>
-                                    <th class="text-end">Pagado</th>
-                                    <th class="text-end">Saldo</th>
-                                    <th class="text-end">NC / ND</th>
-                                    <th class="text-end">Saldo Neto</th>
-                                    <th class="text-end">Vencimiento</th>
-                                    <th width="140">Monto a Autorizar</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Dinámico vía JS -->
-                            </tbody>
-                            <tfoot class="table-light">
-                                <tr>
-                                    <th colspan="4" class="text-end">TOTALES:</th>
-                                    <th class="text-end" id="footerMasivoPagoMonto">$0.00</th>
-                                    <th class="text-end" id="footerMasivoPagoPagado">$0.00</th>
-                                    <th class="text-end" id="footerMasivoPagoSaldo">$0.00</th>
-                                    <th class="text-end" id="footerMasivoPagoNotas"></th>
-                                    <th class="text-end" id="footerMasivoPagoSaldoNeto">$0.00</th>
-                                    <th colspan="2"></th>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-
-                    <!-- Sin datos -->
-                    <div id="sinFacturasPagoMasivo" class="text-center py-4" style="display: none;">
-                        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
-                        <p class="text-muted">No hay facturas pendientes de autorización de pago.</p>
-                    </div>
-
-                    <!-- Anticipos pendientes de autorización -->
-                    <div id="anticiposPagoMasivoContainer" style="display: none;">
-                        <hr>
-                        <h6 class="mb-3"><i class="fas fa-hand-holding-usd text-warning"></i> Anticipos pendientes de autorización</h6>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover table-bordered" id="tablaAnticiposPagoMasivo">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th width="40">
-                                            <input type="checkbox" id="selectAllAnticiposMasivo" onchange="toggleSelectAllAnticiposMasivo()"/>
-                                        </th>
-                                        <th>Anticipo</th>
-                                        <th>Empresa</th>
-                                        <th>Proveedor</th>
-                                        <th>Comentario</th>
-                                        <th class="text-end">Monto</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Dinámico vía JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="text-end mb-2">
-                            <button type="button" class="btn btn-warning btn-sm" id="btnConfirmarAutorizacionAnticiposMasiva" onclick="confirmarAutorizarAnticiposMasivo()" disabled>
-                                <i class="fas fa-check-circle"></i> Autorizar Anticipos Seleccionados
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    {# El modal de Autorizar Pago Masivo se reemplazó por la vista completa /payment/authorize_payments #}
 
     <!-- Modal Aprobación Masiva -->
     <div class="modal fade" id="modalAprobacionMasiva" tabindex="-1" aria-hidden="true">

@@ -3,51 +3,155 @@
 {% block title %}Concentrado — {{ sesion.nombre }}{% endblock %}
 {% block mycss %}
 <style>
-    .num { font-variant-numeric:tabular-nums; text-align:right; }
-    .falt-negativo { color:#dc3545; font-weight:600; }
-    .falt-positivo { color:#198754; font-weight:600; }
+    .num { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+    /* Tabla compacta: que quepa completa en pantalla cuando sea posible */
+    #tabla_concentrado { font-size:.8rem; width:100% !important; }
+    #tabla_concentrado thead th {
+        white-space:normal; word-break:normal; vertical-align:middle;
+        text-align:center; font-size:.72rem; line-height:1.15;
+        padding:.35rem .25rem;
+    }
+    #tabla_concentrado tbody td, #tabla_concentrado tfoot th { padding:.25rem .35rem; }
+    #tabla_concentrado td:first-child { white-space:nowrap; }
+    /* Tinte suave por columna según el color de su cabecera */
+    #tabla_concentrado tbody td:nth-child(2),
+    #tabla_concentrado tbody td:nth-child(3),
+    #tabla_concentrado tbody td:nth-child(8),
+    #tabla_concentrado tbody td:nth-child(9),
+    #tabla_concentrado tbody td:nth-child(10),
+    #tabla_concentrado tbody td:nth-child(11),
+    #tabla_concentrado tbody td:nth-child(12),
+    #tabla_concentrado tbody td:nth-child(13) { background-color:rgb(131 22 14 / 13%); }
+    #tabla_concentrado tbody td:nth-child(4),
+    #tabla_concentrado tbody td:nth-child(5),
+    #tabla_concentrado tbody td:nth-child(6),
+    #tabla_concentrado tbody td:nth-child(7),
+    #tabla_concentrado tbody td:nth-child(14) { background-color:rgb(28 69 135 / 9%); }
+    .falt-negativo, td.falt-negativo, th.falt-negativo { color:#dc3545 !important; font-weight:600; }
+    .falt-positivo, td.falt-positivo, th.falt-positivo { font-weight:600; }
     #tabla_concentrado tfoot th { background:#f1f3f5; }
+    .th-rojo { background:#83160E !important; color:#fff !important; }
+    .th-azul { background:#1C4587 !important; color:#fff !important; }
+    .resumen-card { max-width:520px; }
+    .resumen-titulo { background:#B0F5F5; font-weight:600; padding:.4rem .75rem; }
+    .resumen-total { background:#FFFF00; font-weight:700; }
+    .resumen-row td { padding:.3rem .75rem; }
+    .dt-buttons { gap:.5rem; }
+    .dt-buttons .btn { border-radius:.25rem !important; }
+    .celda-editable { white-space:nowrap; }
+    .icono-editar { color:#adb5bd; cursor:pointer; margin-left:.35rem; font-size:.85em; }
+    .icono-editar:hover { color:#1C4587; }
+    .icono-guardar { color:#198754; cursor:pointer; margin-left:.35rem; }
+    .icono-cancelar { color:#dc3545; cursor:pointer; margin-left:.25rem; }
+    .input-inline { width:110px; display:inline-block; text-align:right;
+                    padding:.15rem .35rem; font-size:.85rem; height:auto; }
 </style>
 {% endblock %}
 {% block menutitle %}
 <div style="display:flex; justify-content:space-between; align-items:center;">
     <span>Concentrado — {{ sesion.nombre }} ({{ sesion.fecha|date('d/m/Y') }})</span>
-    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
-        <i class="fas fa-backward"></i> Regresar
-    </a>
+    <span>
+        <a href="/arqueo/auditoria/{{ sesion.id }}" class="btn btn-outline-light small" style="border-radius:15px; border-color:#fff;">
+            <i class="fas fa-history"></i> Auditoría
+        </a>
+        <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+            <i class="fas fa-backward"></i> Regresar
+        </a>
+    </span>
 </div>
 {% endblock %}
 {% block content %}
 
-<div class="card">
+<div class="card mb-3">
   <div class="card-body table-responsive">
-    <table id="tabla_concentrado" class="table table-bordered table-hover" style="width:100%;">
+    <table id="tabla_concentrado" class="table table-bordered table-hover table-sm" style="width:100%;">
       <thead>
         <tr>
-          <th>Sucursal</th>
-          <th class="text-end">Total en Sistema M.N.</th>
-          <th class="text-end">Conteo Físico (sin vales)</th>
-          <th class="text-end">Vales Autorizados</th>
-          <th class="text-end">Faltantes (-) / Sobrantes (+)</th>
+          <th class="th-rojo">Sucursal</th>
+          <th class="text-end th-rojo">Capital de Trabajo</th>
+          <th class="text-end th-rojo">Total en Sistema M.N.</th>
+          <th class="text-end th-azul">Conteo Físico sin Vales</th>
+          <th class="text-end th-azul">Faltantes (-) / Sobrantes (+) sin Vales</th>
+          <th class="text-end th-azul">Vales Autorizados</th>
+          <th class="text-end th-azul">Faltante Real de Arqueo</th>
+          <th class="text-end th-rojo">Gastos en Trámite</th>
+          <th class="text-end th-rojo">Adeudo</th>
+          <th class="text-end th-rojo">Reinversión</th>
+          <th class="text-end th-rojo">Conteo Físico, Vales y Gastos</th>
+          <th class="text-end th-rojo">Utilidad</th>
+          <th class="text-end th-rojo">Capital, Utilidad y Reinversión</th>
+          <th class="text-end th-azul">Variación vs Indicadores D2GO</th>
+          <th>Editar</th>
         </tr>
       </thead>
       <tbody>
-        {% set t_sistema = 0 %}
-        {% set t_fisico = 0 %}
-        {% set t_vales = 0 %}
-        {% set t_falt = 0 %}
+        {% set t_capital = 0 %}
+        {% set t_D = 0 %}
+        {% set t_E = 0 %}
+        {% set t_F = 0 %}
+        {% set t_G = 0 %}
+        {% set t_H = 0 %}
+        {% set t_gastos = 0 %}
+        {% set t_adeudo = 0 %}
+        {% set t_L = 0 %}
+        {% set t_reinv = 0 %}
+        {% set t_util = 0 %}
+        {% set t_N = 0 %}
+        {% set t_O = 0 %}
         {% for g in concentrado %}
-        {% set t_sistema = t_sistema + g.total_en_sistema_mn %}
-        {% set t_fisico  = t_fisico + g.total_conteo_fisico_sin_vales %}
-        {% set t_vales   = t_vales + g.vales_autorizados %}
-        {% set t_falt    = t_falt + g.faltantes_sobrantes %}
-        <tr>
+        {% set t_capital = t_capital + g.capital_trabajo %}
+        {% set t_D = t_D + g.D %}
+        {% set t_E = t_E + g.E %}
+        {% set t_F = t_F + g.F %}
+        {% set t_G = t_G + g.G %}
+        {% set t_H = t_H + g.H %}
+        {% set t_gastos = t_gastos + g.gastos_tramite %}
+        {% set t_adeudo = t_adeudo + g.adeudo %}
+        {% set t_L = t_L + g.L %}
+        {% set t_reinv = t_reinv + g.reinversion %}
+        {% set t_util = t_util + g.utilidad %}
+        {% set t_N = t_N + g.N %}
+        {% set t_O = t_O + g.O %}
+        <tr data-sucursal-id="{{ g.sucursal_id }}"
+            data-capital_trabajo="{{ g.capital_trabajo }}"
+            data-gastos_tramite="{{ g.gastos_tramite }}"
+            data-adeudo="{{ g.adeudo }}"
+            data-reinversion="{{ g.reinversion }}"
+            data-utilidad="{{ g.utilidad }}">
           <td>{{ g.sucursal }}</td>
-          <td class="num">{{ g.total_en_sistema_mn|number_format(2,'.',',') }}</td>
-          <td class="num">{{ g.total_conteo_fisico_sin_vales|number_format(2,'.',',') }}</td>
-          <td class="num">{{ g.vales_autorizados|number_format(2,'.',',') }}</td>
-          <td class="num {{ g.faltantes_sobrantes < 0 ? 'falt-negativo' : 'falt-positivo' }}">
-            {{ g.faltantes_sobrantes|number_format(2,'.',',') }}
+          <td class="num celda-editable" data-field="capital_trabajo">
+            <span class="celda-valor">{{ g.capital_trabajo|number_format(2,'.',',') }}</span>
+            <i class="fas fa-pencil-alt icono-editar" title="Editar"></i>
+          </td>
+          <td class="num">{{ g.D|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.E|number_format(2,'.',',') }}</td>
+          <td class="num {{ g.F < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ g.F|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.G|number_format(2,'.',',') }}</td>
+          <td class="num {{ g.H < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ g.H|number_format(2,'.',',') }}</td>
+          <td class="num celda-editable" data-field="gastos_tramite">
+            <span class="celda-valor">{{ g.gastos_tramite|number_format(2,'.',',') }}</span>
+            <i class="fas fa-pencil-alt icono-editar" title="Editar"></i>
+          </td>
+          <td class="num celda-editable" data-field="adeudo">
+            <span class="celda-valor">{{ g.adeudo|number_format(2,'.',',') }}</span>
+            <i class="fas fa-pencil-alt icono-editar" title="Editar"></i>
+          </td>
+          <td class="num celda-editable" data-field="reinversion">
+            <span class="celda-valor">{{ g.reinversion|number_format(2,'.',',') }}</span>
+            <i class="fas fa-pencil-alt icono-editar" title="Editar"></i>
+          </td>
+          <td class="num">{{ g.L|number_format(2,'.',',') }}</td>
+          <td class="num celda-editable" data-field="utilidad">
+            <span class="celda-valor">{{ g.utilidad|number_format(2,'.',',') }}</span>
+            <i class="fas fa-pencil-alt icono-editar" title="Editar"></i>
+          </td>
+          <td class="num">{{ g.N|number_format(2,'.',',') }}</td>
+          <td class="num {{ g.O < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ g.O|number_format(2,'.',',') }}</td>
+          <td class="text-center">
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    onclick="abrirModalExtra({{ g.sucursal_id }}, '{{ g.sucursal|e('js') }}', {{ g.capital_trabajo }}, {{ g.gastos_tramite }}, {{ g.adeudo }}, {{ g.reinversion }}, {{ g.utilidad }})">
+              <i class="fas fa-edit"></i>
+            </button>
           </td>
         </tr>
         {% endfor %}
@@ -55,15 +159,93 @@
       <tfoot>
         <tr>
           <th>Totales</th>
-          <th class="num">{{ t_sistema|number_format(2,'.',',') }}</th>
-          <th class="num">{{ t_fisico|number_format(2,'.',',') }}</th>
-          <th class="num">{{ t_vales|number_format(2,'.',',') }}</th>
-          <th class="num {{ t_falt < 0 ? 'falt-negativo' : 'falt-positivo' }}">
-            {{ t_falt|number_format(2,'.',',') }}
-          </th>
+          <th class="num">{{ t_capital|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_D|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_E|number_format(2,'.',',') }}</th>
+          <th class="num {{ t_F < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ t_F|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_G|number_format(2,'.',',') }}</th>
+          <th class="num {{ t_H < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ t_H|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_gastos|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_adeudo|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_reinv|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_L|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_util|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_N|number_format(2,'.',',') }}</th>
+          <th class="num {{ t_O < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ t_O|number_format(2,'.',',') }}</th>
+          <th></th>
         </tr>
       </tfoot>
     </table>
+  </div>
+</div>
+
+<div class="card resumen-card">
+  <div class="card-body p-0">
+    <table class="table table-borderless table-sm mb-0">
+      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Resumen del arqueo vs Indicadores D2GO — {{ sesion.fecha|date('d/m/Y') }}</td></tr>
+      <tr class="resumen-row"><td>Capital de Trabajo</td><td class="num">{{ t_capital|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Utilidad</td><td class="num">{{ t_util|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Reinversión</td><td class="num">{{ t_reinv|number_format(2,'.',',') }}</td></tr>
+      {% set total1 = t_capital + t_reinv + t_util %}
+      <tr class="resumen-row resumen-total"><td>Total</td><td class="num">{{ total1|number_format(2,'.',',') }}</td></tr>
+
+      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Resultado de Arqueo</td></tr>
+      <tr class="resumen-row"><td>Conteo Físico</td><td class="num">{{ t_E|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Vales</td><td class="num">{{ t_G|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Gastos</td><td class="num">{{ t_gastos|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Adeudo</td><td class="num">{{ t_adeudo|number_format(2,'.',',') }}</td></tr>
+      {% set total2 = t_E + t_G + t_gastos + t_adeudo %}
+      <tr class="resumen-row resumen-total"><td>Total</td><td class="num">{{ total2|number_format(2,'.',',') }}</td></tr>
+
+      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Diferencia</td></tr>
+      {% set faltante = total2 - total1 %}
+      <tr class="resumen-row resumen-total"><td>Faltante</td><td class="num {{ faltante < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ faltante|number_format(2,'.',',') }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- Modal de captura manual -->
+<div class="modal fade" id="modal_concentrado_extra" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Editar valores — <span id="mx_sucursal_nombre"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="mx_sucursal_id">
+        <div class="mb-3">
+          <label class="form-label">Capital de Trabajo</label>
+          <input type="number" step="0.01" class="form-control" id="mx_capital_trabajo">
+          <div class="form-check mt-1">
+            <input class="form-check-input" type="checkbox" id="mx_actualizar_base">
+            <label class="form-check-label" for="mx_actualizar_base">
+              Actualizar también la base para arqueos futuros
+            </label>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Gastos en trámite o por cancelar</label>
+          <input type="number" step="0.01" class="form-control" id="mx_gastos_tramite">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Adeudo</label>
+          <input type="number" step="0.01" class="form-control" id="mx_adeudo">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Reinversión</label>
+          <input type="number" step="0.01" class="form-control" id="mx_reinversion">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Utilidad</label>
+          <input type="number" step="0.01" class="form-control" id="mx_utilidad">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="guardarModalExtra()">Guardar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -76,9 +258,213 @@
       searching: false,
       info: false,
       ordering: true,
-      dom: 'Bfrtip',
-      buttons: ['excel', 'print']
+      order: [],
+      dom: '<"d-flex justify-content-end mb-2"B>frtip',
+      buttons: [
+        {
+          extend: 'excel',
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          className: 'btn btn-sm btn-success',
+          title: 'Concentrado — {{ sesion.nombre|e('js') }} ({{ sesion.fecha|date('d-m-Y') }})',
+          footer: true,
+          exportOptions: { columns: ':not(:last-child)' },
+          customize: function (xlsx) {
+            // Pinta las cabeceras con los colores de la vista (rojo/azul, texto blanco)
+            var styles = xlsx.xl['styles.xml'];
+            var NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+
+            function agregar(tag, xmlStr) {
+              var parent = styles.getElementsByTagName(tag)[0];
+              var tmp = $.parseXML('<x xmlns="' + NS + '">' + xmlStr + '</x>');
+              parent.appendChild(styles.importNode(tmp.documentElement.firstChild, true));
+              parent.setAttribute('count', parent.children.length);
+              return parent.children.length - 1;
+            }
+
+            function estiloCabecera(argb) {
+              var fontId = agregar('fonts', '<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>');
+              var fillId = agregar('fills', '<fill><patternFill patternType="solid"><fgColor rgb="' + argb + '"/><bgColor indexed="64"/></patternFill></fill>');
+              return agregar('cellXfs', '<xf numFmtId="0" fontId="' + fontId + '" fillId="' + fillId + '" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>');
+            }
+
+            var sRojo = estiloCabecera('FF83160E');
+            var sAzul = estiloCabecera('FF1C4587');
+
+            // Columnas exportadas (sin Editar): A=Sucursal, B..N como en la vista
+            var ROJAS  = ['A', 'B', 'C', 'H', 'I', 'J', 'K', 'L', 'M'];
+            var AZULES = ['D', 'E', 'F', 'G', 'N'];
+
+            // Fila 1 = título, fila 2 = cabeceras
+            var sheet = xlsx.xl.worksheets['sheet1.xml'];
+            $('row', sheet).eq(1).find('c').each(function () {
+              var col = this.getAttribute('r').replace(/\d+/g, '');
+              if (ROJAS.indexOf(col)  !== -1) this.setAttribute('s', sRojo);
+              if (AZULES.indexOf(col) !== -1) this.setAttribute('s', sAzul);
+            });
+
+            // Formato numérico con negativos en rojo (para E, G y N)
+            var NUMFMT_ID = 200;
+            var FMT_MILES = 4; // formato integrado de Excel: #,##0.00
+            var hoja = styles.documentElement;
+            var numFmts = styles.getElementsByTagName('numFmts')[0];
+            if (!numFmts) {
+              var tmpN = $.parseXML('<x xmlns="' + NS + '"><numFmts count="0"/></x>');
+              numFmts = hoja.insertBefore(
+                styles.importNode(tmpN.documentElement.firstChild, true), hoja.firstChild);
+            }
+            var tmpF = $.parseXML('<x xmlns="' + NS + '"><numFmt numFmtId="' + NUMFMT_ID +
+                                  '" formatCode="#,##0.00;[Red]-#,##0.00"/></x>');
+            numFmts.appendChild(styles.importNode(tmpF.documentElement.firstChild, true));
+            numFmts.setAttribute('count', numFmts.children.length);
+
+            // Tintes de columna (mismos de la vista: rojo 13% y azul 9% sobre blanco)
+            function estiloCuerpo(argbFill, numFmt) {
+              var fillId = agregar('fills',
+                '<fill><patternFill patternType="solid"><fgColor rgb="' + argbFill + '"/><bgColor indexed="64"/></patternFill></fill>');
+              return agregar('cellXfs',
+                '<xf numFmtId="' + numFmt + '" fontId="0" fillId="' + fillId + '" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1"/>');
+            }
+            var sBodyRojo    = estiloCuerpo('FFEFE1E0', FMT_MILES);
+            var sBodyAzul    = estiloCuerpo('FFEBEEF4', FMT_MILES);
+            var sBodyAzulNeg = estiloCuerpo('FFEBEEF4', NUMFMT_ID);
+
+            var fontNegrita = agregar('fonts', '<font><b/><sz val="11"/><name val="Calibri"/></font>');
+            var sNegTotal = agregar('cellXfs',
+              '<xf numFmtId="' + NUMFMT_ID + '" fontId="' + fontNegrita + '" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>');
+
+            var CUERPO_ROJAS = ['B', 'C', 'H', 'I', 'J', 'K', 'L', 'M'];
+            var CUERPO_NEG   = ['E', 'G', 'N']; // azules con negativos en rojo
+
+            var $filas = $('row', sheet);
+            var ultima = $filas.length - 1; // fila de Totales
+            $filas.each(function (i) {
+              if (i < 2) return; // título y cabeceras
+              var esTotal = (i === ultima);
+              $(this).find('c').each(function () {
+                var col = this.getAttribute('r').replace(/\d+/g, '');
+                if (esTotal) {
+                  if (CUERPO_NEG.indexOf(col) !== -1) this.setAttribute('s', sNegTotal);
+                  return;
+                }
+                if (CUERPO_ROJAS.indexOf(col) !== -1)   this.setAttribute('s', sBodyRojo);
+                else if (CUERPO_NEG.indexOf(col) !== -1) this.setAttribute('s', sBodyAzulNeg);
+                else if (col === 'D' || col === 'F')     this.setAttribute('s', sBodyAzul);
+              });
+            });
+          }
+        },
+        {
+          extend: 'print',
+          text: '<i class="fas fa-print"></i> Imprimir',
+          className: 'btn btn-sm btn-outline-secondary',
+          title: 'Concentrado — {{ sesion.nombre|e('js') }} ({{ sesion.fecha|date('d-m-Y') }})',
+          footer: true,
+          exportOptions: { columns: ':not(:last-child)' },
+          customize: function (win) {
+            // Negativos en rojo en Faltantes/Sobrantes (col 5) y Faltante Real (col 7)
+            $(win.document.body).find('table tbody tr, table tfoot tr').each(function () {
+              $(this).children('td, th').each(function (i) {
+                if ((i === 4 || i === 6) && $(this).text().trim().charAt(0) === '-') {
+                  $(this).css({ 'color': '#dc3545', 'font-weight': '600' });
+                }
+              });
+            });
+          }
+        }
+      ]
     });
   });
+
+  // ---- Edición inline de los campos manuales ----
+  const CAMPOS_EXTRA = ['capital_trabajo', 'gastos_tramite', 'adeudo', 'reinversion', 'utilidad'];
+
+  function cancelarInline($td) {
+    $td.html($td.data('html-original'));
+    $td.removeClass('editando');
+  }
+
+  function guardarInline($td) {
+    const $tr    = $td.closest('tr');
+    const campo  = $td.attr('data-field');
+    const nuevo  = parseFloat($td.find('.input-inline').val()) || 0;
+
+    const payload = {
+      sesion_id: {{ sesion.id }},
+      sucursal_id: parseInt($tr.attr('data-sucursal-id'), 10),
+      actualizar_base: false
+    };
+    CAMPOS_EXTRA.forEach(function (c) {
+      payload[c] = parseFloat($tr.attr('data-' + c)) || 0;
+    });
+    payload[campo] = nuevo;
+
+    $td.find('.icono-guardar').removeClass('fa-check').addClass('fa-spinner fa-spin');
+    fetch('/arqueo/guardar_concentrado_extra', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+      body: JSON.stringify(payload)
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) { location.reload(); }
+        else { alert(d.message || 'No se pudo guardar.'); cancelarInline($td); }
+      })
+      .catch(() => { alert('Error de red al guardar.'); cancelarInline($td); });
+  }
+
+  $('#tabla_concentrado tbody')
+    .on('click', '.icono-editar', function () {
+      const $td = $(this).closest('td');
+      if ($td.hasClass('editando')) return;
+      const $tr   = $td.closest('tr');
+      const valor = parseFloat($tr.attr('data-' + $td.attr('data-field'))) || 0;
+      $td.data('html-original', $td.html());
+      $td.addClass('editando');
+      $td.html(
+        '<input type="number" step="0.01" class="form-control input-inline" value="' + valor + '">' +
+        '<i class="fas fa-check icono-guardar" title="Guardar"></i>' +
+        '<i class="fas fa-times icono-cancelar" title="Cancelar"></i>'
+      );
+      $td.find('.input-inline').trigger('focus').trigger('select');
+    })
+    .on('click', '.icono-guardar', function () { guardarInline($(this).closest('td')); })
+    .on('click', '.icono-cancelar', function () { cancelarInline($(this).closest('td')); })
+    .on('keydown', '.input-inline', function (e) {
+      if (e.key === 'Enter')  { e.preventDefault(); guardarInline($(this).closest('td')); }
+      if (e.key === 'Escape') { cancelarInline($(this).closest('td')); }
+    });
+
+  function abrirModalExtra(sucursalId, sucursalNombre, capital, gastos, adeudo, reinversion, utilidad) {
+    document.getElementById('mx_sucursal_id').value = sucursalId;
+    document.getElementById('mx_sucursal_nombre').textContent = sucursalNombre;
+    document.getElementById('mx_capital_trabajo').value = capital;
+    document.getElementById('mx_gastos_tramite').value = gastos;
+    document.getElementById('mx_adeudo').value = adeudo;
+    document.getElementById('mx_reinversion').value = reinversion;
+    document.getElementById('mx_utilidad').value = utilidad;
+    document.getElementById('mx_actualizar_base').checked = false;
+    $('#modal_concentrado_extra').modal('show');
+  }
+
+  function guardarModalExtra() {
+    const payload = {
+      sesion_id: {{ sesion.id }},
+      sucursal_id: parseInt(document.getElementById('mx_sucursal_id').value, 10),
+      capital_trabajo: parseFloat(document.getElementById('mx_capital_trabajo').value) || 0,
+      gastos_tramite: parseFloat(document.getElementById('mx_gastos_tramite').value) || 0,
+      adeudo: parseFloat(document.getElementById('mx_adeudo').value) || 0,
+      reinversion: parseFloat(document.getElementById('mx_reinversion').value) || 0,
+      utilidad: parseFloat(document.getElementById('mx_utilidad').value) || 0,
+      actualizar_base: document.getElementById('mx_actualizar_base').checked,
+    };
+    fetch('/arqueo/guardar_concentrado_extra', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+      body: JSON.stringify(payload)
+    })
+      .then(r => r.json())
+      .then(d => { if (d.success) location.reload(); else alert(d.message || 'No se pudo guardar.'); })
+      .catch(() => alert('Error de red al guardar.'));
+  }
 </script>
 {% endblock %}

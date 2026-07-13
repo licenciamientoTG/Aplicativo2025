@@ -17,6 +17,24 @@ class PaymentTransactionDocumentsModel extends Model
         return $this->sql->select($query, [$transaction_id]) ?: [];
     }
 
+    /**
+     * Comprobantes de pago de un anticipo: documentos ligados a sus
+     * transacciones directas (payment_request_id sin factura).
+     */
+    public function get_by_anticipo(int $anticipo_id): array
+    {
+        $query = "
+            SELECT d.id AS doc_id, d.original_filename, pt.payment_date, pt.payment_reference
+            FROM [TG].[dbo].[payment_transactions] pt
+            INNER JOIN [TG].[dbo].[payment_transaction_documents] d ON d.transaction_id = pt.id
+            WHERE pt.payment_request_id = ?
+              AND pt.invoice_id IS NULL
+              AND pt.status IN (1, 2)
+            ORDER BY d.created_at ASC
+        ";
+        return $this->sql->select($query, [$anticipo_id]) ?: [];
+    }
+
     public function get_by_id(int $id): ?array
     {
         $result = $this->sql->select(
@@ -24,6 +42,27 @@ class PaymentTransactionDocumentsModel extends Model
             [$id]
         );
         return $result ? $result[0] : null;
+    }
+
+    /**
+     * Trae id + nombre original para un conjunto de documentos, indexado por id.
+     */
+    public function get_names_by_ids(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (empty($ids)) return [];
+
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $rows = $this->sql->select(
+            "SELECT id, original_filename FROM [TG].[dbo].[payment_transaction_documents] WHERE id IN ($ph)",
+            $ids
+        ) ?: [];
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int)$r['id']] = $r['original_filename'];
+        }
+        return $out;
     }
 
     /**

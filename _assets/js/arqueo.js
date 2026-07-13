@@ -94,26 +94,37 @@ function totalDenominacion(tipo, denom, cantidad, valorBolsa) {
 function recalcular() {
   const seccionMoneda = {}; // "seccion-MONEDA" -> suma
 
-  document.querySelectorAll(".denom-input").forEach((inp) => {
-    const tipo = inp.dataset.tipo;
-    const denom = parseFloat(inp.dataset.denominacion) || 0;
-    const cantidad = parseInt(inp.value, 10) || 0;
-    const valorBolsa = inp.dataset.valorBolsa ? parseFloat(inp.dataset.valorBolsa) : null;
-    const total = totalDenominacion(tipo, denom, cantidad, valorBolsa);
+  // Acumular por fila: cada <tr> puede tener 1 o 2 .denom-input (Vales no
+  // usa esta clase). Se suma el total de todos los inputs de la fila y se
+  // pinta una sola vez en la celda td.total de esa fila.
+  document.querySelectorAll(".denom-tabla tbody tr").forEach((tr) => {
+    let totalFila = 0;
+    tr.querySelectorAll(".denom-input").forEach((inp) => {
+      const tipo = inp.dataset.tipo;
+      const denom = parseFloat(inp.dataset.denominacion) || 0;
+      const cantidad = parseInt(inp.value, 10) || 0;
+      const valorBolsa = inp.dataset.valorBolsa ? parseFloat(inp.dataset.valorBolsa) : null;
+      const total = totalDenominacion(tipo, denom, cantidad, valorBolsa);
 
-    const celda = inp.closest("tr").querySelector("td.total");
+      totalFila += total;
+      const key = inp.dataset.seccion + "-" + inp.dataset.moneda;
+      seccionMoneda[key] = (seccionMoneda[key] || 0) + total;
+    });
+
+    const celda = tr.querySelector("td.total");
     if (celda) {
-      celda.dataset.total = total;
-      celda.textContent = fmtMoney(total);
+      celda.dataset.total = totalFila;
+      celda.textContent = fmtMoney(totalFila);
     }
-    const key = inp.dataset.seccion + "-" + inp.dataset.moneda;
-    seccionMoneda[key] = (seccionMoneda[key] || 0) + total;
   });
 
-  // Gran totales por sección/moneda.
-  document.querySelectorAll("[data-gran-total]").forEach((td) => {
-    const key = td.dataset.granTotal;
-    td.textContent = fmtMoney(seccionMoneda[key] || 0);
+  // Gran totales por tabla: suman las dos secciones BD de esa tabla
+  // (ej. cajon + caja_fuerte para Billetes; morrallero + morrallero_cf para Monedas).
+  document.querySelectorAll("[data-gran-total-cajon]").forEach((td) => {
+    const keyCajon = td.dataset.granTotalCajon;
+    const keyCf = td.dataset.granTotalCf;
+    const total = (seccionMoneda[keyCajon] || 0) + (seccionMoneda[keyCf] || 0);
+    td.textContent = fmtMoney(total);
   });
 
   const sum = (k) => seccionMoneda[k] || 0;
@@ -131,13 +142,13 @@ function recalcular() {
 
   const goUsd = parseFloat(document.getElementById("go_exchange_dolares").value) || 0;
   const goMxn = parseFloat(document.getElementById("go_exchange_mxn").value) || 0;
-  const tcVenta = parseFloat(document.getElementById("tipo_cambio_venta").value) || 0;
+  const costoPromedio = parseFloat(document.getElementById("costo_promedio").value) || 0;
 
   const arqueoMxn = fisicoMxn + valesMxn;
-  const totalSistema = goUsd * tcVenta + goMxn;
+  const totalSistema = goUsd * costoPromedio + goMxn;
   const difUsd = fisicoUsd - goUsd;
   const difMxn = arqueoMxn - goMxn;
-  const resultado = difMxn + difUsd * tcVenta;
+  const resultado = difMxn + difUsd * costoPromedio;
 
   // Pintar vales.
   document.getElementById("total_vales_dolares").textContent = fmtMoney(valesUsd);
@@ -154,7 +165,7 @@ function recalcular() {
 
   const elRes = document.getElementById("r_resultado");
   elRes.textContent = fmtMoney(resultado);
-  elRes.className = "col-5 num " + (resultado < 0 ? "resultado-negativo" : "resultado-positivo");
+  elRes.className = "val " + (resultado < 0 ? "resultado-negativo" : "resultado-positivo");
 }
 
 /* Precarga inputs con lo ya capturado (window.ARQUEO_DENOMS / ARQUEO_VALES). */
@@ -199,7 +210,7 @@ function guardarCaja() {
   });
 
   const vales = [];
-  for (let n = 1; n <= 15; n++) {
+  for (let n = 1; n <= 3; n++) {
     const fecha = (document.querySelector(`.vale-fecha[data-num="${n}"]`) || {}).value || "";
     const concepto = (document.querySelector(`.vale-concepto[data-num="${n}"]`) || {}).value || "";
     const dolares = parseFloat((document.querySelector(`.vale-dolares[data-num="${n}"]`) || {}).value) || 0;
@@ -212,8 +223,7 @@ function guardarCaja() {
     encargado_revision: document.getElementById("encargado_revision").value,
     go_exchange_dolares: parseFloat(document.getElementById("go_exchange_dolares").value) || 0,
     go_exchange_mxn: parseFloat(document.getElementById("go_exchange_mxn").value) || 0,
-    tipo_cambio_venta: parseFloat(document.getElementById("tipo_cambio_venta").value) || 0,
-    tipo_cambio_compra: parseFloat(document.getElementById("tipo_cambio_compra").value) || 0,
+    costo_promedio: parseFloat(document.getElementById("costo_promedio").value) || 0,
     denominaciones: denominaciones,
     vales: vales,
   };
@@ -239,8 +249,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Recalcular en cada cambio.
     document
-      .querySelectorAll(".denom-input, .vale-dolares, .vale-mxn, #go_exchange_dolares, #go_exchange_mxn, #tipo_cambio_venta")
+      .querySelectorAll(".denom-input, .vale-dolares, .vale-mxn, #go_exchange_dolares, #go_exchange_mxn, #costo_promedio")
       .forEach((el) => el.addEventListener("input", recalcular));
+
+    // Al enfocar un input, seleccionar todo su contenido (escribir reemplaza en vez de insertar).
+    enCaja.querySelectorAll("input").forEach((el) => el.addEventListener("focus", () => el.select()));
 
     // Solo lectura: deshabilita toda la captura.
     if (document.getElementById("solo_lectura").value === "1") {

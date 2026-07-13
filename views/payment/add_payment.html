@@ -1649,7 +1649,8 @@
     });
 
     function parseFolioFilter(raw) {
-        const lines = raw.split(/[\n\r]+/)
+        // Acepta folios separados por salto de línea, coma o tab (pegado de Excel)
+        const lines = raw.split(/[\n\r,\t]+/)
             .map(l => l.trim())
             .filter(l => l.length > 0);
 
