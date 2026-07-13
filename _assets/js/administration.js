@@ -882,8 +882,8 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
             className: 'd-none',
             title: 'Tabuladores',
             exportOptions: {
-                // Ajusta si quieres exportar más columnas
-                columns: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+                // Todas las columnas excepto ACCIONES
+                columns: ':not(:last-child)'
             }
         },
         {

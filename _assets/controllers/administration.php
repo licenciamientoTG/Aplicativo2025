@@ -737,9 +737,6 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
     }
 
     function datatables_tickets() {
-        echo '<pre>';
-        var_dump("Aqui estoy");
-        die();
         $from = $_POST['from'] ?? date('Y-m-d', strtotime('-1 day'));
         $until = $_POST['until'] ?? date('Y-m-d', strtotime('-1 day'));
 
