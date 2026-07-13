@@ -1033,7 +1033,10 @@
         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DEPARTAMENTO" placeholder="DEPARTAMENTO"></div>
         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SOLICITANTE"  placeholder="SOLICITANTE"></div>
         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PROBLEMA"     placeholder="PROBLEMA"></div>
-        <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+        <div class="col p-1 text-center">
+            <button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button>
+            <button type="button" class="btn btn-sm btn-primary" id="export_datatables_tickets_2" title="Exportar a Excel"><i data-feather="download"></i></button>
+        </div>
     </div>
 </div>
 
@@ -1155,6 +1158,10 @@
 <script>
     $(document).ready(function() {
         $('[data-toggle="tooltip"]').tooltip();
+
+        $('#export_datatables_tickets_2').on('click', function () {
+            datatables_tickets_2.button(0).trigger();
+        });
 
         $('#date_range').change(function() {
             var date_range = $(this).val();
