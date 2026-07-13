@@ -37,6 +37,12 @@ class Xml
         $estacionesServicioVolumen = $xml->addChild('EstacionesServicioVolumen');
 
         foreach ($stations as $key => $codgas) {
+            // TEMPORAL (2026-07-13): la estación 18 está fuera de servicio y sus datos esenciales
+            // (permiso CRE, RFC, imagen comercial, estatus) están vacíos, lo que detenía el export.
+            // Se excluye del XML mientras tanto — quitar esta línea cuando vuelva a operar.
+            if (trim($codgas) == 18) {
+                continue;
+            }
             if ($station = $this->xsdEstacionServicioVolumenModel->get_station($cabecera['id'], $codgas)) {
                 // VALIDACIÓN: Si alguno de los datos esenciales está vacío, alerta y detén la ejecución
                 // 1. Definimos un arreglo para capturar los nombres de los campos vacíos
