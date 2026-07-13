@@ -78,7 +78,8 @@ $(document).ready(function () {
         const desde = anio + '-' + String(mes).padStart(2, '0') + '-01';
         const fin = new Date(anio, mes, 0);
         const hoy = new Date();
-        const hasta = (fin < hoy ? fin : hoy).toISOString().slice(0, 10);
+        const fechaLimitante = (fin < hoy ? fin : hoy);
+        const hasta = fechaLimitante.getFullYear() + '-' + String(fechaLimitante.getMonth() + 1).padStart(2, '0') + '-' + String(fechaLimitante.getDate()).padStart(2, '0');
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Consultando...');
         $.post('/merma/sync', { from: desde, to: hasta, codgas: $btn.data('codgas') }, function (res) {
             if (res.success) { location.reload(); }
