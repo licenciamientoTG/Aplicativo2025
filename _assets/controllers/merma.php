@@ -256,4 +256,54 @@ class Merma
         $hasta = date('Y-m-d', strtotime('-1 day'));
         json_output($this->runSync($desde, $hasta, 0, 'cron', null));
     }
+
+    /* ===================================================================== */
+    /* Captura manual                                                        */
+    /* ===================================================================== */
+
+    /** Guarda merma s/d o comentario de una estación/mes (permiso 33). */
+    public function guardar_manual(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $anio   = (int)($_POST['anio'] ?? 0);
+        $mes    = (int)($_POST['mes'] ?? 0);
+        $campo  = $_POST['campo'] ?? '';
+        $valor  = $_POST['valor'] ?? '';
+        if (!$codgas || $anio < 2020 || $mes < 1 || $mes > 12) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        if ($campo !== 'comentarios' && $valor !== '' && !is_numeric($valor)) {
+            json_output(['success' => false, 'message' => 'El valor debe ser numérico']);
+            return;
+        }
+        $ok = $this->mermaModel->save_manual(
+            $codgas, $anio, $mes, $campo, $valor, (int)($_SESSION['tg_user']['Id'] ?? 0)
+        );
+        json_output(['success' => $ok, 'message' => $ok ? 'Guardado' : 'Campo inválido']);
+    }
+
+    /** Guarda el precio por litro del mes para la valorización (permiso 33). */
+    public function guardar_precio(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $anio   = (int)($_POST['anio'] ?? 0);
+        $mes    = (int)($_POST['mes'] ?? 0);
+        $precio = $_POST['precio'] ?? '';
+        if ($anio < 2020 || $mes < 1 || $mes > 12 || !is_numeric($precio) || (float)$precio <= 0) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        $ok = $this->mermaModel->save_precio(
+            $anio, $mes, (float)$precio, (int)($_SESSION['tg_user']['Id'] ?? 0)
+        );
+        json_output(['success' => $ok]);
+    }
 }
