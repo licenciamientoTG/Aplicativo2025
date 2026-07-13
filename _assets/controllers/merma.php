@@ -28,6 +28,85 @@ class Merma
     }
 
     /* ===================================================================== */
+    /* Vistas                                                                */
+    /* ===================================================================== */
+
+    /** Resumen mensual (equivalente a la hoja MERMA MENSUAL del Excel). */
+    public function analisis(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            (new Errors())->get404();
+            return;
+        }
+        $anio = (int)($_GET['anio'] ?? date('Y'));
+        $mes  = (int)($_GET['mes'] ?? date('n'));
+        if ($mes < 1 || $mes > 12) $mes = (int)date('n');
+
+        $estaciones = $this->mermaModel->get_estaciones();
+        $resumen    = $this->mermaModel->get_resumen_mensual($anio, $mes);
+        $manual     = $this->mermaModel->get_manual($anio, $mes);
+        $fechas     = $this->mermaModel->get_fechas_por_estacion($anio, $mes);
+        $precio     = $this->mermaModel->get_precio($anio, $mes);
+
+        // Días esperados del mes: hasta ayer si es el mes en curso, o el mes completo
+        $ultimoDia = ($anio == date('Y') && $mes == date('n'))
+            ? max(1, (int)date('j') - 1)
+            : (int)date('t', mktime(0, 0, 0, $mes, 1, $anio));
+        $diasEsperados = [];
+        for ($d = 1; $d <= $ultimoDia; $d++) {
+            $diasEsperados[] = sprintf('%04d-%02d-%02d', $anio, $mes, $d);
+        }
+
+        $filas   = [];
+        $totales = ['maxima' => 0, 'super' => 0, 'diesel' => 0, 'total' => 0, 'venta' => 0,
+                    'sd_maxima' => 0, 'sd_super' => 0, 'sd_diesel' => 0];
+        foreach ($estaciones as $est) {
+            $cod = (int)$est['Codigo'];
+            $r   = $resumen[$cod] ?? null;
+            $m   = $manual[$cod] ?? null;
+            $faltantes = array_values(array_diff($diasEsperados, $fechas[$cod] ?? []));
+            $fila = [
+                'codgas'      => $cod,
+                'nombre'      => $est['Nombre'],
+                'maxima'      => $r['merma_maxima'] ?? null,
+                'super'       => $r['merma_super'] ?? null,
+                'diesel'      => $r['merma_diesel'] ?? null,
+                'total'       => $r['merma_total'] ?? null,
+                'venta'       => $r['venta_total'] ?? null,
+                'pct'         => ($r && (float)$r['venta_total'] != 0)
+                                 ? (float)$r['merma_total'] / (float)$r['venta_total'] * 100 : null,
+                'sd_maxima'   => $m['merma_sd_maxima'] ?? null,
+                'sd_super'    => $m['merma_sd_super'] ?? null,
+                'sd_diesel'   => $m['merma_sd_diesel'] ?? null,
+                'comentarios' => $m['comentarios'] ?? '',
+                'faltantes'   => $faltantes,
+            ];
+            $filas[] = $fila;
+            foreach (['maxima', 'super', 'diesel', 'total', 'venta'] as $k) {
+                $key = $k === 'venta' ? 'venta' : $k;
+                $totales[$key] += (float)($fila[$k === 'venta' ? 'venta' : $k] ?? 0);
+            }
+            $totales['sd_maxima'] += (float)($fila['sd_maxima'] ?? 0);
+            $totales['sd_super']  += (float)($fila['sd_super'] ?? 0);
+            $totales['sd_diesel'] += (float)($fila['sd_diesel'] ?? 0);
+        }
+
+        // KPIs: promedio diario sobre días con datos, proyección y valorización
+        $diasConDatos = count(array_unique(array_merge(...array_values($fechas ?: [[]]))));
+        $diasDelMes   = (int)date('t', mktime(0, 0, 0, $mes, 1, $anio));
+        $promedio     = $diasConDatos > 0 ? $totales['total'] / $diasConDatos : 0;
+        $kpis = [
+            'dias_con_datos' => $diasConDatos,
+            'promedio'       => $promedio,
+            'proyeccion'     => $promedio * $diasDelMes,
+            'valorizacion'   => $promedio * $diasDelMes * $precio,
+        ];
+
+        echo $this->twig->render($this->route . 'analisis.html',
+            compact('anio', 'mes', 'filas', 'totales', 'kpis', 'precio'));
+    }
+
+    /* ===================================================================== */
     /* Sincronización                                                        */
     /* ===================================================================== */
 
