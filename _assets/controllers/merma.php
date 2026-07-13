@@ -106,6 +106,55 @@ class Merma
             compact('anio', 'mes', 'filas', 'totales', 'kpis', 'precio'));
     }
 
+    /** Detalle día × turno de una estación (equivalente a la hoja del Excel). */
+    public function detalle($codgas = 0): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            (new Errors())->get404();
+            return;
+        }
+        $codgas = (int)$codgas;
+        $anio   = (int)($_GET['anio'] ?? date('Y'));
+        $mes    = (int)($_GET['mes'] ?? date('n'));
+
+        $estacion = null;
+        foreach ($this->mermaModel->get_estaciones() as $e) {
+            if ((int)$e['Codigo'] === $codgas) { $estacion = $e; break; }
+        }
+        if (!$estacion) {
+            (new Errors())->get404();
+            return;
+        }
+
+        $rows = $this->mermaModel->get_detalle_mensual($codgas, $anio, $mes);
+
+        // Acumulado de diferencia por familia (como las columnas I/P del Excel)
+        $acum  = ['maxima' => 0.0, 'super' => 0.0, 'diesel' => 0.0];
+        $filas = [];
+        foreach ($rows as $r) {
+            $fila = ['fecha' => substr($r['fecha'], 0, 10), 'turno' => (int)$r['turno']];
+            foreach (array_keys(MermaDiariaModel::FAMILIAS) as $fam) {
+                $dif = $r["dif_$fam"];
+                if ($dif !== null) $acum[$fam] += (float)$dif;
+                $fila[$fam] = [
+                    'vr'      => $r["vr_$fam"],
+                    'compras' => $r["compras_$fam"],
+                    'cont'    => $r["cont_$fam"],
+                    'fis'     => $r["fis_$fam"],
+                    'dif'     => $dif,
+                    'acum'    => $dif !== null ? $acum[$fam] : null,
+                ];
+            }
+            $filas[] = $fila;
+        }
+
+        $resumenMes = $this->mermaModel->get_resumen_mensual($anio, $mes);
+        $resumen    = $resumenMes[$codgas] ?? null;
+
+        echo $this->twig->render($this->route . 'detalle.html',
+            compact('estacion', 'anio', 'mes', 'filas', 'resumen'));
+    }
+
     /* ===================================================================== */
     /* Sincronización                                                        */
     /* ===================================================================== */
