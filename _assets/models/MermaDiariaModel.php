@@ -1,0 +1,193 @@
+<?php
+
+/**
+ * Snapshot y captura del módulo Análisis de Merma Diaria (/merma/...).
+ * Tablas: TG.dbo.merma_diaria | merma_manual | merma_mes_config | merma_sync_log
+ * Schema: docs/sql/merma_schema.sql
+ */
+class MermaDiariaModel extends Model
+{
+    /** Familias de producto para presentación (codprd reales en el snapshot). */
+    public const FAMILIAS = [
+        'maxima' => [1, 179, 192],
+        'super'  => [2, 180, 193],
+        'diesel' => [3, 181],
+    ];
+
+    private function familiaCase(string $familia, string $columna): string
+    {
+        $codes = implode(',', self::FAMILIAS[$familia]);
+        return "SUM(CASE WHEN codprd IN ($codes) THEN $columna END)";
+    }
+
+    public function get_estaciones(): array
+    {
+        $query = 'SELECT Codigo, Nombre FROM [TG].[dbo].[Estaciones]
+                  WHERE Codigo NOT IN (0, 4, 20) ORDER BY Nombre;';
+        return $this->sql->select($query) ?: [];
+    }
+
+    /**
+     * Reemplaza el snapshot de UNA estación en un rango de fechas (delete +
+     * insert dentro de transacción). Solo se llama con estaciones que SÍ
+     * respondieron, para no borrar datos de estaciones caídas.
+     */
+    public function replace_station_range(int $codgas, string $estacion, string $desde, string $hasta, array $filas): int
+    {
+        $this->sql->beginTransaction();
+        try {
+            $this->sql->delete(
+                'DELETE FROM [TG].[dbo].[merma_diaria] WHERE codgas = ? AND fecha BETWEEN ? AND ?;',
+                [$codgas, $desde, $hasta]
+            );
+            $insertadas = 0;
+            foreach ($filas as $f) {
+                // Turnos fuera de 11/21/41 no deben existir (el SP normaliza), se ignoran por seguridad
+                if (!in_array((int)$f['Turno'], [11, 21, 41])) continue;
+                $this->sql->insert(
+                    'INSERT INTO [TG].[dbo].[merma_diaria]
+                     (fecha, codgas, estacion, codprd, producto, turno, ventas_reales,
+                      inv_fisico, compras, inv_inicial, inv_contable, diferencia, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE());',
+                    [
+                        $f['Fecha'], $codgas, $estacion, (int)$f['CodProducto'], $f['Producto'],
+                        (int)$f['Turno'], $f['VentasReales'], $f['Inventario'], $f['CantidadCompra'],
+                        $f['InventarioInicial'], $f['InventarioContable'], $f['Diferencia'],
+                    ]
+                );
+                $insertadas++;
+            }
+            $this->sql->commit();
+            return $insertadas;
+        } catch (Exception $e) {
+            $this->sql->rollBack();
+            throw $e;
+        }
+    }
+
+    public function get_resumen_mensual(int $anio, int $mes): array
+    {
+        $query = 'SELECT codgas, MAX(estacion) AS estacion,
+                    ' . $this->familiaCase('maxima', 'diferencia') . ' AS merma_maxima,
+                    ' . $this->familiaCase('super', 'diferencia') . '  AS merma_super,
+                    ' . $this->familiaCase('diesel', 'diferencia') . ' AS merma_diesel,
+                    SUM(diferencia)          AS merma_total,
+                    SUM(ventas_reales)       AS venta_total,
+                    COUNT(DISTINCT fecha)    AS dias_con_datos,
+                    MAX(updated_at)          AS last_update
+                  FROM [TG].[dbo].[merma_diaria]
+                  WHERE YEAR(fecha) = ? AND MONTH(fecha) = ?
+                  GROUP BY codgas;';
+        $rows = $this->sql->select($query, [$anio, $mes]) ?: [];
+        $out = [];
+        foreach ($rows as $r) $out[(int)$r['codgas']] = $r;
+        return $out;
+    }
+
+    public function get_fechas_por_estacion(int $anio, int $mes): array
+    {
+        $query = 'SELECT DISTINCT codgas, fecha FROM [TG].[dbo].[merma_diaria]
+                  WHERE YEAR(fecha) = ? AND MONTH(fecha) = ? ORDER BY codgas, fecha;';
+        $rows = $this->sql->select($query, [$anio, $mes]) ?: [];
+        $out = [];
+        foreach ($rows as $r) $out[(int)$r['codgas']][] = substr($r['fecha'], 0, 10);
+        return $out;
+    }
+
+    public function get_detalle_mensual(int $codgas, int $anio, int $mes): array
+    {
+        $cols = [];
+        foreach (self::FAMILIAS as $fam => $codes) {
+            $cols[] = $this->familiaCase($fam, 'ventas_reales') . " AS vr_$fam";
+            $cols[] = $this->familiaCase($fam, 'compras') . " AS compras_$fam";
+            $cols[] = $this->familiaCase($fam, 'inv_contable') . " AS cont_$fam";
+            $cols[] = $this->familiaCase($fam, 'inv_fisico') . " AS fis_$fam";
+            $cols[] = $this->familiaCase($fam, 'diferencia') . " AS dif_$fam";
+        }
+        $query = 'SELECT fecha, turno, ' . implode(', ', $cols) . '
+                  FROM [TG].[dbo].[merma_diaria]
+                  WHERE codgas = ? AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                  GROUP BY fecha, turno
+                  ORDER BY fecha, turno;';
+        return $this->sql->select($query, [$codgas, $anio, $mes]) ?: [];
+    }
+
+    public function get_manual(int $anio, int $mes): array
+    {
+        $rows = $this->sql->select(
+            'SELECT * FROM [TG].[dbo].[merma_manual] WHERE anio = ? AND mes = ?;',
+            [$anio, $mes]
+        ) ?: [];
+        $out = [];
+        foreach ($rows as $r) $out[(int)$r['codgas']] = $r;
+        return $out;
+    }
+
+    public function save_manual(int $codgas, int $anio, int $mes, string $campo, $valor, int $usuario): bool
+    {
+        // Whitelist de columnas: el nombre viene del cliente
+        if (!in_array($campo, ['merma_sd_maxima', 'merma_sd_super', 'merma_sd_diesel', 'comentarios'])) {
+            return false;
+        }
+        if ($valor === '') $valor = null;
+        $exists = $this->sql->select(
+            'SELECT id FROM [TG].[dbo].[merma_manual] WHERE codgas = ? AND anio = ? AND mes = ?;',
+            [$codgas, $anio, $mes]
+        );
+        if ($exists) {
+            $this->sql->update(
+                "UPDATE [TG].[dbo].[merma_manual]
+                 SET $campo = ?, updated_by = ?, updated_at = GETDATE() WHERE id = ?;",
+                [$valor, $usuario, $exists[0]['id']]
+            );
+        } else {
+            $this->sql->insert(
+                "INSERT INTO [TG].[dbo].[merma_manual] (codgas, anio, mes, $campo, updated_by)
+                 VALUES (?, ?, ?, ?, ?);",
+                [$codgas, $anio, $mes, $valor, $usuario]
+            );
+        }
+        return true;
+    }
+
+    public function get_precio(int $anio, int $mes): float
+    {
+        $rows = $this->sql->select(
+            'SELECT precio_litro FROM [TG].[dbo].[merma_mes_config] WHERE anio = ? AND mes = ?;',
+            [$anio, $mes]
+        );
+        return $rows ? (float)$rows[0]['precio_litro'] : 18.99;
+    }
+
+    public function save_precio(int $anio, int $mes, float $precio, int $usuario): bool
+    {
+        $exists = $this->sql->select(
+            'SELECT id FROM [TG].[dbo].[merma_mes_config] WHERE anio = ? AND mes = ?;',
+            [$anio, $mes]
+        );
+        if ($exists) {
+            $this->sql->update(
+                'UPDATE [TG].[dbo].[merma_mes_config]
+                 SET precio_litro = ?, updated_by = ?, updated_at = GETDATE() WHERE id = ?;',
+                [$precio, $usuario, $exists[0]['id']]
+            );
+        } else {
+            $this->sql->insert(
+                'INSERT INTO [TG].[dbo].[merma_mes_config] (anio, mes, precio_litro, updated_by)
+                 VALUES (?, ?, ?, ?);',
+                [$anio, $mes, $precio, $usuario]
+            );
+        }
+        return true;
+    }
+
+    public function add_sync_log(string $origen, ?int $usuario, string $desde, string $hasta, int $codgas, int $ok, int $err, string $detalle, float $duracion): void
+    {
+        $this->sql->insert(
+            'INSERT INTO [TG].[dbo].[merma_sync_log]
+             (origen, usuario, desde, hasta, codgas, estaciones_ok, estaciones_error, detalle_errores, duracion_seg)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
+            [$origen, $usuario, $desde, $hasta, $codgas, $ok, $err, $detalle, $duracion]
+        );
+    }
+}
