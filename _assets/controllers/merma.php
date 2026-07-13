@@ -50,7 +50,7 @@ class Merma
 
         // Días esperados del mes: hasta ayer si es el mes en curso, o el mes completo
         $ultimoDia = ($anio == date('Y') && $mes == date('n'))
-            ? max(1, (int)date('j') - 1)
+            ? (int)date('j') - 1
             : (int)date('t', mktime(0, 0, 0, $mes, 1, $anio));
         $diasEsperados = [];
         for ($d = 1; $d <= $ultimoDia; $d++) {
@@ -232,7 +232,7 @@ class Merma
                     $codigo, $nombre, $desde, $hasta, $filas
                 );
                 $estacionesOk++;
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 $fallosLocales[] = ['Nombre' => $nombre, 'error' => $e->getMessage()];
             }
         }
@@ -303,7 +303,13 @@ class Merma
         }
         $desde = date('Y-m-d', strtotime('-2 days'));
         $hasta = date('Y-m-d', strtotime('-1 day'));
-        json_output($this->runSync($desde, $hasta, 0, 'cron', null));
+        $res = $this->runSync($desde, $hasta, 0, 'cron', null);
+        if (PHP_SAPI === 'cli') {
+            // Corrida por Task Scheduler: el exit code es la única señal externa
+            echo json_encode($res) . PHP_EOL;
+            exit(($res['success'] && ($res['estaciones_error'] ?? 0) == 0) ? 0 : 1);
+        }
+        json_output($res);
     }
 
     /* ===================================================================== */

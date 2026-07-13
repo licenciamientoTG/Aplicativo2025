@@ -10,7 +10,19 @@ $(document).ready(function () {
             ordering: false,
             info: false,
             dom: '<"top"Bf>rt',
-            buttons: [{ extend: 'excel', title: 'Análisis de merma diaria', className: 'btn btn-sm btn-outline-secondary' }],
+            buttons: [{
+                extend: 'excel',
+                title: 'Análisis de merma diaria',
+                className: 'btn btn-sm btn-outline-secondary',
+                exportOptions: {
+                    format: {
+                        body: function (data, row, column, node) {
+                            var input = $(node).find('input');
+                            return input.length ? input.val() : data;
+                        }
+                    }
+                }
+            }],
         });
     }
 
