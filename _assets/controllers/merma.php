@@ -58,39 +58,76 @@ class Merma
         curl_close($ch);
 
         if ($response === false) {
-            return ['success' => false, 'message' => "No se pudo contactar ApiER: $curlErr"];
+            $duracion = round(microtime(true) - $inicio, 1);
+            $mensaje  = "No se pudo contactar ApiER: $curlErr";
+            $this->mermaModel->add_sync_log(
+                $origen, $usuario, $desde, $hasta, $codgas, 0, 0, $mensaje, $duracion
+            );
+            return [
+                'success'          => false,
+                'message'          => $mensaje,
+                'estaciones_ok'    => 0,
+                'estaciones_error' => 0,
+                'errores'          => [],
+                'filas'            => 0,
+                'duracion_seg'     => $duracion,
+            ];
         }
         $api = json_decode($response, true);
-        if (!isset($api['resultados'])) {
-            $detail = $api['detail'] ?? substr((string)$response, 0, 200);
-            return ['success' => false, 'message' => "Respuesta inesperada de ApiER: $detail"];
-        }
-
-        $filasTotal = 0;
-        foreach ($api['resultados'] as $est) {
-            $filasTotal += $this->mermaModel->replace_station_range(
-                (int)$est['Codigo'], $est['Nombre'], $desde, $hasta, $est['filas']
+        if (!isset($api['resultados']) || !is_array($api['resultados'])) {
+            $detail   = $api['detail'] ?? substr((string)$response, 0, 200);
+            $duracion = round(microtime(true) - $inicio, 1);
+            $mensaje  = "Respuesta inesperada de ApiER: $detail";
+            $this->mermaModel->add_sync_log(
+                $origen, $usuario, $desde, $hasta, $codgas, 0, 0, $mensaje, $duracion
             );
+            return [
+                'success'          => false,
+                'message'          => $mensaje,
+                'estaciones_ok'    => 0,
+                'estaciones_error' => 0,
+                'errores'          => [],
+                'filas'            => 0,
+                'duracion_seg'     => $duracion,
+            ];
         }
 
-        $errores  = $api['errores'] ?? [];
-        $duracion = round(microtime(true) - $inicio, 1);
-        $detalle  = $errores
-            ? implode('; ', array_map(fn($e) => $e['Nombre'] . ': ' . substr($e['error'], 0, 150), $errores))
+        $filasTotal    = 0;
+        $estacionesOk  = 0;
+        $fallosLocales = [];
+        foreach ($api['resultados'] as $est) {
+            $codigo  = (int)($est['Codigo'] ?? 0);
+            $nombre  = $est['Nombre'] ?? '';
+            $filas   = $est['filas'] ?? [];
+            try {
+                $filasTotal += $this->mermaModel->replace_station_range(
+                    $codigo, $nombre, $desde, $hasta, $filas
+                );
+                $estacionesOk++;
+            } catch (Exception $e) {
+                $fallosLocales[] = ['Nombre' => $nombre, 'error' => $e->getMessage()];
+            }
+        }
+
+        $errores      = $api['errores'] ?? [];
+        $todosErrores = array_merge($errores, $fallosLocales);
+        $duracion     = round(microtime(true) - $inicio, 1);
+        $detalle      = $todosErrores
+            ? implode('; ', array_map(fn($e) => $e['Nombre'] . ': ' . substr($e['error'], 0, 150), $todosErrores))
             : '';
 
         $this->mermaModel->add_sync_log(
             $origen, $usuario, $desde, $hasta, $codgas,
-            count($api['resultados']), count($errores), $detalle, $duracion
+            $estacionesOk, count($todosErrores), $detalle, $duracion
         );
 
         return [
             'success'          => true,
-            'message'          => count($api['resultados']) . ' estaciones sincronizadas'
-                                  . ($errores ? ', ' . count($errores) . ' sin conexión' : ''),
-            'estaciones_ok'    => count($api['resultados']),
-            'estaciones_error' => count($errores),
-            'errores'          => array_map(fn($e) => $e['Nombre'], $errores),
+            'message'          => $estacionesOk . ' estaciones sincronizadas'
+                                  . ($todosErrores ? ', ' . count($todosErrores) . ' con error' : ''),
+            'estaciones_ok'    => $estacionesOk,
+            'estaciones_error' => count($todosErrores),
+            'errores'          => array_map(fn($e) => $e['Nombre'], $todosErrores),
             'filas'            => $filasTotal,
             'duracion_seg'     => $duracion,
         ];
