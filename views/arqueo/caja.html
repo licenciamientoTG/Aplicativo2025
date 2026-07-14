@@ -198,7 +198,7 @@
                     <img src="{{ IMAGES }}arqueo/{{ img }}.png" alt="${{ denom }}"
                          class="denom-img" loading="lazy"
                          onerror="this.style.display='none'">
-                    ${{ denom }}
+                    ${{ denom < 1 ? denom|number_format(2) : denom }}
                   </td>
                   <td>
                     <input type="number" min="0" step="1"

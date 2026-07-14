@@ -1873,13 +1873,23 @@ class DespachosModel extends Model{
     }
 
     function get_sales_stations($from, $until, $codgas, $codprd) : array | false {
+        if ($codprd == 0) {
+            $whereProducto = "AND t1.codprd IN (179,180,181,192,193)";
+        } else {
+            $whereProducto = "AND t1.codprd = {$codprd}";
+        }
+        if ($codgas == 0) {
+            $codgas = " "; // Lista de gasolineras si codgas es 0
+        } else {
+            $codgas = "and t1.codgas = {$codgas}"; // Solo la gasolinera específica
+        }
+
+    
 
 
         $query = "
         DECLARE @from INT = {$from};
         DECLARE @until INT = {$until};
-        DECLARE @codgas INT = {$codgas};
-        DECLARE @codprd INT = {$codprd}; -- Aquí defines la variable @codprd
                 
         WITH Datos AS (
             SELECT
@@ -1903,12 +1913,8 @@ class DespachosModel extends Model{
                 LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
             WHERE
                 t1.fchcor BETWEEN @from AND @until
-                AND (@codgas = 0 OR t1.codgas = @codgas) -- Aquí se agrega la condición para @codgas
-                AND (
-                    (@codprd = 0 AND t1.codprd IN (179, 180, 181, 192, 193)) 
-                    OR 
-                    (@codprd != 0 AND t1.codprd = @codprd)
-                )
+                {$whereProducto}
+                {$codgas}
             GROUP BY
                 t1.fchcor, t1.codgas, t4.abr, t4.cod, t2.cod, t2.den
         )
@@ -1931,7 +1937,9 @@ class DespachosModel extends Model{
             Debito
         FROM
             Datos
-        ORDER BY Fecha ASC, Gasolinera DESC;";
+        ORDER BY Fecha ASC, Gasolinera DESC OPTION (RECOMPILE);;";
+
+    
         
 
         return ($this->sql->select($query, [])) ?: false ;
