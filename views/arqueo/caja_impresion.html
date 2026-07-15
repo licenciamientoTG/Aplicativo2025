@@ -12,7 +12,16 @@
     h1 { font-size: 15px; margin: 0; color: #83160E; text-transform: uppercase; letter-spacing: .04em; }
     .encabezado { display: flex; justify-content: space-between; align-items: flex-start;
                   border-bottom: 3px solid #83160E; padding-bottom: 6px; margin-bottom: 10px; }
+    .encabezado .izq { display: flex; align-items: center; gap: 12px; }
+    .encabezado .logo { height: 44px; width: auto; }
     .encabezado .der { text-align: right; font-size: 10px; color: #555; }
+    .costo-promedio { border: 2px solid #83160E; border-radius: 4px; padding: 4px 12px;
+                      margin-top: 5px; display: inline-block; text-align: center;
+                      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .costo-promedio .cp-etiqueta { font-size: 9px; font-weight: 700; color: #83160E;
+                                   text-transform: uppercase; letter-spacing: .05em; }
+    .costo-promedio .cp-valor { font-size: 17px; font-weight: 700; color: #212529;
+                                font-variant-numeric: tabular-nums; line-height: 1.15; }
     .datos { display: flex; flex-wrap: wrap; gap: 4px 24px; margin-bottom: 10px; }
     .datos div { min-width: 200px; }
     .datos b { color: #1C4587; }
@@ -42,13 +51,20 @@
 <body>
 
 <div class="encabezado">
-    <div>
-        <h1>Arqueo de Caja — Dollar2Go</h1>
-        <div>{{ sesion.nombre }} &middot; {{ sesion.fecha|date('d/m/Y') }}</div>
+    <div class="izq">
+        <img src="{{ IMAGES }}arqueo/logo_dollar2go.png" alt="Dollar2Go" class="logo">
+        <div>
+            <h1>Arqueo de Caja — Dollar2Go</h1>
+            <div>{{ sesion.nombre }} &middot; {{ sesion.fecha|date('d/m/Y') }}</div>
+        </div>
     </div>
     <div class="der">
         Impreso: {{ "now"|date('d/m/Y H:i') }}<br>
-        Folio caja: {{ caja.id }}
+        Folio caja: {{ caja.id }}<br>
+        <div class="costo-promedio">
+            <div class="cp-etiqueta">Costo promedio</div>
+            <div class="cp-valor">{{ caja.costo_promedio|number_format(4,'.',',') }}</div>
+        </div>
     </div>
 </div>
 
@@ -62,15 +78,14 @@
 <div class="seccion-titulo">Resumen del arqueo</div>
 <table>
     <tr><th style="width:60%;">Concepto</th><th class="num">Importe</th></tr>
+    <tr><td>Go Exchange USD</td><td class="num">{{ caja.go_exchange_dolares|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Go Exchange M.N.</td><td class="num">{{ caja.go_exchange_mxn|number_format(2,'.',',') }}</td></tr>
     <tr><td>Total físico USD</td><td class="num">{{ caja.total_fisico_dolares|number_format(2,'.',',') }}</td></tr>
     <tr><td>Total físico M.N.</td><td class="num">{{ caja.total_fisico_mxn|number_format(2,'.',',') }}</td></tr>
     <tr><td>Vales USD</td><td class="num">{{ caja.total_vales_dolares|number_format(2,'.',',') }}</td></tr>
     <tr><td>Vales M.N.</td><td class="num">{{ caja.total_vales_mxn|number_format(2,'.',',') }}</td></tr>
     <tr><td>Gran total vales M.N.</td><td class="num">{{ caja.gran_total_vales_mxn|number_format(2,'.',',') }}</td></tr>
     <tr><td>Total arqueo M.N. (físico + vales M.N.)</td><td class="num">{{ caja.total_arqueo_mxn|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Go Exchange USD</td><td class="num">{{ caja.go_exchange_dolares|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Go Exchange M.N.</td><td class="num">{{ caja.go_exchange_mxn|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Costo promedio</td><td class="num">{{ caja.costo_promedio|number_format(4,'.',',') }}</td></tr>
     <tr><td>Total en sistema M.N.</td><td class="num">{{ caja.total_en_sistema|number_format(2,'.',',') }}</td></tr>
     <tr><td>Diferencia USD (físico − sistema)</td>
         <td class="num {{ caja.diferencia_dolares < 0 ? 'negativo' : '' }}">{{ caja.diferencia_dolares|number_format(2,'.',',') }}</td></tr>

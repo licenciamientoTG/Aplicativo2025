@@ -1012,6 +1012,7 @@ class PaymentRequestsModel extends Model
 
         $this->sql->beginTransaction();
         try {
+            $invoicesModel = new PaymentRequestInvoicesModel();
             foreach ($validadas as $v) {
                 if (!$this->sql->insert('
                     INSERT INTO [TG].[dbo].[anticipo_invoice_applications]
@@ -1019,11 +1020,10 @@ class PaymentRequestsModel extends Model
                     VALUES (?, ?, ?, GETDATE(), ?)', [$anticipo_id, $v['invoice_id'], $v['monto'], $user_id])) {
                     throw new Exception('Error al registrar la aplicación');
                 }
-                // 2 = cubierta completa, 3 = sigue parcial
-                $nuevo_restante = $v['amount'] - $v['aplicado'] - $v['monto'];
-                $this->sql->update('
-                    UPDATE [TG].[dbo].[payment_request_invoices] SET status = ? WHERE id = ?',
-                    [$nuevo_restante <= 0.01 ? 2 : 3, $v['invoice_id']]);
+                // Recalcular status con el criterio central (pagos + anticipos
+                // contra el neto de notas): así una factura con pago previo o
+                // NC no se queda en Parcial cuando el anticipo cubre el resto.
+                $invoicesModel->recalculate_invoice_status($v['invoice_id']);
             }
 
             $this->sql->commit();

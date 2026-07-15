@@ -55,12 +55,13 @@ class PaymentTransactionsModel extends Model
                     $errores[] = "Factura ID $invoice_id no encontrada";
                     throw new Exception("Factura ID $invoice_id no encontrada");
                 }
-                // 2. Calcular saldo disponible (neto de notas de crédito/cargo:
-                // una nota de crédito ya aplicada reduce lo que realmente se
-                // puede pagar de esta factura)
+                // 2. Calcular saldo disponible (neto de notas de crédito/cargo
+                // y de anticipos aplicados: una nota o anticipo ya aplicado
+                // reduce lo que realmente se puede pagar de esta factura)
                 $ya_pagado = $this->get_total_paid_for_invoice($invoice_id);
                 $notas_netas = $this->get_notas_netas_for_invoice($invoice_id);
-                $saldo = $invoice_data['amount'] - $notas_netas - $ya_pagado;
+                $anticipos = $this->get_anticipos_for_invoice($invoice_id);
+                $saldo = $invoice_data['amount'] - $notas_netas - $anticipos - $ya_pagado;
 
                 // 3. Validar que no se exceda el saldo
                 if ($monto_pagar > $saldo + 0.01) {
@@ -170,6 +171,20 @@ class PaymentTransactionsModel extends Model
     }
 
     /**
+     * Total de anticipos aplicados a una factura: cuentan como cobertura al
+     * decidir el status (Pagada/Parcial), igual que en recalculate_invoice_status.
+     */
+    private function get_anticipos_for_invoice($invoice_id) : float {
+        $query = '
+            SELECT ISNULL(SUM(monto_aplicado), 0) as anticipos
+            FROM [TG].[dbo].[anticipo_invoice_applications]
+            WHERE invoice_id = ?
+        ';
+        $result = $this->sql->select($query, [$invoice_id]);
+        return $result ? floatval($result[0]['anticipos']) : 0.0;
+    }
+
+    /**
      * Actualiza el paid_amount y status de una factura.
      *
      * Autorizar y pagar son pasos independientes: authorized_amount es el
@@ -179,20 +194,24 @@ class PaymentTransactionsModel extends Model
      * authorized_amount) sigue el flujo normal de get_all_pending_payment_invoices
      * sin verse afectado por este pago.
      *
-     * El status SÍ se compara contra el saldo neto (amount - NC + ND): una
-     * factura con nota de crédito aplicada que cubre el remanente debe quedar
-     * como Pagada, no Parcial. paid_amount en cambio sigue siendo solo dinero
-     * real transferido (no se mezcla con notas de crédito), para no romper la
-     * conciliación bancaria ni el cálculo de Faltante/Saldo contra authorized_amount.
+     * El status SÍ se compara contra el saldo neto (amount - NC + ND) y
+     * cuenta también los anticipos aplicados como cobertura: una factura cuyo
+     * remanente queda cubierto por nota de crédito o por anticipo debe quedar
+     * como Pagada, no Parcial (la requisición 1241 quedó pegada en la lista
+     * de autorizadas porque el pago ignoraba el anticipo). paid_amount en
+     * cambio sigue siendo solo dinero real transferido (no se mezcla con
+     * notas ni anticipos), para no romper la conciliación bancaria ni el
+     * cálculo de Faltante/Saldo contra authorized_amount.
      */
     private function update_invoice_paid_amount($invoice_id, $nuevo_paid_amount, $total_amount) : bool {
         $notas_netas = $this->get_notas_netas_for_invoice($invoice_id);
+        $anticipos = $this->get_anticipos_for_invoice($invoice_id);
         $saldo_neto = $total_amount - $notas_netas;
 
-        // Determinar nuevo estado contra el saldo neto
-        if ($nuevo_paid_amount >= $saldo_neto - 0.01) {
-            $nuevo_status = 2; // Pagado (incluye cubierto por nota de crédito)
-        } elseif ($nuevo_paid_amount > 0) {
+        // Determinar nuevo estado contra el saldo neto (cobertura = pagos + anticipos)
+        if ($nuevo_paid_amount + $anticipos >= $saldo_neto - 0.01) {
+            $nuevo_status = 2; // Pagado (incluye cubierto por nota de crédito/anticipo)
+        } elseif ($nuevo_paid_amount + $anticipos > 0) {
             $nuevo_status = 3; // Parcial
         } else {
             $nuevo_status = 0; // Pendiente

@@ -115,7 +115,7 @@ class IngresosModel extends Model{
             ORDER BY b.CodigoGasolinera, b.Fecha, b.Turno
             OPTION (MAXRECURSION 0);
         ";
-
+        
         $params = [$from, $until, $from, $until];
 
         return $this->sql->select($query, $params) ?: false;

@@ -250,7 +250,8 @@
       "PowerShell(sqlcmd *)",
       "PowerShell(php -l _assets/models/PaymentRequestsModel.php; php -l _assets/models/PaymentRequestInvoicesModel.php; php -l _assets/controllers/payment.php; node --check _assets/js/payment.js)",
       "PowerShell(php -l \"_assets\\\\controllers\\\\xml.php\")",
-      "PowerShell(php -l \"_assets\\\\models\\\\CreditNoteApplicationsModel.php\"; php -l \"_assets\\\\controllers\\\\payment.php\")"
+      "PowerShell(php -l \"_assets\\\\models\\\\CreditNoteApplicationsModel.php\"; php -l \"_assets\\\\controllers\\\\payment.php\")",
+      "PowerShell($s = Get-Command sqlcmd -ErrorAction SilentlyContinue; if \\($s\\) { $s.Source } else { \"no sqlcmd\" }; $p = Get-Command php -ErrorAction SilentlyContinue; if \\($p\\) { $p.Source } else { \"no php\" })"
     ],
     "deny": [],
     "ask": []

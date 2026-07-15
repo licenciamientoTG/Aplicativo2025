@@ -210,13 +210,15 @@ function guardarCaja() {
   });
 
   const vales = [];
-  for (let n = 1; n <= 3; n++) {
+  // Los renglones disponibles los define la vista (Waterfill tiene más).
+  document.querySelectorAll("#tabla_vales .vale-fecha").forEach((inp) => {
+    const n = parseInt(inp.dataset.num, 10);
     const fecha = (document.querySelector(`.vale-fecha[data-num="${n}"]`) || {}).value || "";
     const concepto = (document.querySelector(`.vale-concepto[data-num="${n}"]`) || {}).value || "";
     const dolares = parseFloat((document.querySelector(`.vale-dolares[data-num="${n}"]`) || {}).value) || 0;
     const mxn = parseFloat((document.querySelector(`.vale-mxn[data-num="${n}"]`) || {}).value) || 0;
     vales.push({ numero_vale: n, fecha: fecha, concepto: concepto, dolares: dolares, mxn: mxn });
-  }
+  });
 
   const payload = {
     cajero_nombre: document.getElementById("cajero_nombre").value,

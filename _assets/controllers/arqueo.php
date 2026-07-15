@@ -433,11 +433,15 @@ class Arqueo
         $sesion         = $this->sesionesModel->find((int) $caja['sesion_id']);
         $denominaciones = $this->denominacionesModel->by_caja((int) $caja_id);
         $vales          = $this->valesModel->by_caja((int) $caja_id);
-        $solo_lectura   = ($sesion['estado'] === 'cerrado');
+        // El administrador puede seguir modificando una sesión cerrada
+        // (los cambios quedan en la bitácora de auditoría).
+        $solo_lectura   = ($sesion['estado'] === 'cerrado') && !authorized(self::PERM_ADMIN);
         $estructura     = self::DENOMINACIONES;
+        // Waterfill (sucursal_id 1) maneja más vales que el resto.
+        $max_vales      = ((int) $caja['sucursal_id'] === 1) ? 5 : 3;
 
         echo $this->twig->render($this->route . 'caja.html', compact(
-            'caja', 'sesion', 'denominaciones', 'vales', 'solo_lectura', 'estructura'
+            'caja', 'sesion', 'denominaciones', 'vales', 'solo_lectura', 'estructura', 'max_vales'
         ));
     }
 
@@ -493,10 +497,10 @@ class Arqueo
         if (!$sesion) {
             $this->json(['success' => false, 'message' => 'Sesión no encontrada.']);
         }
-        if ($sesion['estado'] === 'cerrado') {
+        if ($sesion['estado'] === 'cerrado' && !authorized(self::PERM_ADMIN)) {
             $this->json(['success' => false, 'message' => 'La sesión está cerrada; la caja no se puede modificar.']);
         }
-        if ($sesion['estado'] !== 'abierto') {
+        if (!in_array($sesion['estado'], ['abierto', 'cerrado'], true)) {
             $this->json(['success' => false, 'message' => 'La sesión debe estar abierta para capturar.']);
         }
 

@@ -81,6 +81,10 @@
 <div class="alert alert-info">
     <i class="fas fa-lock"></i> La sesión está <strong>cerrada</strong>. Este arqueo es de solo lectura.
 </div>
+{% elseif sesion.estado == 'cerrado' %}
+<div class="alert alert-warning">
+    <i class="fas fa-unlock-alt"></i> La sesión está <strong>cerrada</strong>, pero como administrador puedes seguir modificando el arqueo. Todo cambio queda registrado en la auditoría.
+</div>
 {% endif %}
 
 <input type="hidden" id="caja_id" value="{{ caja.id }}">
@@ -244,7 +248,7 @@
 
     {# ---------------- Vales ---------------- #}
     <div class="arqueo-card">
-      <div class="vales-head"><h2>Vales (hasta 3)</h2></div>
+      <div class="vales-head"><h2>Vales (hasta {{ max_vales }})</h2></div>
       <div class="card-body-pad">
         <table class="denom-tabla" id="tabla_vales">
           <thead>
@@ -257,7 +261,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for n in 1..3 %}
+            {% for n in 1..max_vales %}
             <tr>
               <td>{{ n }}</td>
               <td><input type="date" class="arqueo-input vale-fecha" data-num="{{ n }}"></td>

@@ -252,24 +252,28 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     /**
-     * Recalcula el status de una factura comparando paid_amount contra su
-     * saldo NETO (amount - notas de crédito + notas de cargo aplicadas a la
-     * factura). Se llama al aplicar/quitar una nota, para que una factura
-     * cuyo remanente queda cubierto por NC pase a Pagada (y no se quede en
-     * Parcial bloqueando el cierre de la requisición, como pasó con la
-     * requisición 96).
+     * Recalcula el status de una factura comparando su cobertura total
+     * (paid_amount + anticipos aplicados) contra su saldo NETO (amount -
+     * notas de crédito + notas de cargo aplicadas a la factura). Se llama al
+     * aplicar/quitar una nota, al aplicar anticipos y al registrar pagos,
+     * para que una factura cuyo remanente queda cubierto por NC o por
+     * anticipo pase a Pagada (y no se quede en Parcial bloqueando el cierre
+     * de la requisición, como pasó con las requisiciones 96 y 1241 —
+     * la 1241 quedó pegada porque el pago no contaba el anticipo y el
+     * anticipo no contaba el pago).
      *
-     * Pagado si el neto está cubierto, Parcial si hay pago parcial; sin pagos
-     * regresa a Autorizado o Pendiente según payment_authorized (así quitar
-     * una nota que cubría el 100% no deja la factura como Pagada). Nunca toca
-     * canceladas.
+     * Pagado si el neto está cubierto, Parcial si hay cobertura parcial; sin
+     * cobertura regresa a Autorizado o Pendiente según payment_authorized
+     * (así quitar una nota que cubría el 100% no deja la factura como
+     * Pagada). Nunca toca canceladas.
      */
     public function recalculate_invoice_status($invoice_id) : bool {
         $query = "
             UPDATE pri
             SET pri.status = CASE
-                WHEN ISNULL(pri.paid_amount, 0) >= (pri.amount - ISNULL(n.notas_netas, 0)) - 0.01 THEN 2
-                WHEN ISNULL(pri.paid_amount, 0) > 0 THEN 3
+                WHEN ISNULL(pri.paid_amount, 0) + ISNULL(ant.anticipos, 0)
+                     >= (pri.amount - ISNULL(n.notas_netas, 0)) - 0.01 THEN 2
+                WHEN ISNULL(pri.paid_amount, 0) + ISNULL(ant.anticipos, 0) > 0 THEN 3
                 WHEN pri.payment_authorized = 1 THEN 1
                 ELSE 0
             END
@@ -282,6 +286,11 @@ class PaymentRequestInvoicesModel extends Model
                 INNER JOIN [tg].[dbo].invoice_credit_debit_notes nt ON a.credit_note_id = nt.id
                 WHERE a.invoice_id = pri.id AND a.status = 1
             ) n
+            OUTER APPLY (
+                SELECT SUM(aa.monto_aplicado) as anticipos
+                FROM [TG].[dbo].[anticipo_invoice_applications] aa
+                WHERE aa.invoice_id = pri.id
+            ) ant
             WHERE pri.id = ? AND pri.is_deleted = 0 AND pri.status <> 4
         ";
         return $this->sql->update($query, [$invoice_id]);
@@ -1018,11 +1027,25 @@ class PaymentRequestInvoicesModel extends Model
             
             WHERE pri.payment_authorized = 1  -- Solo autorizadas
             AND pri.status != ?              -- No pagadas completamente
-            AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0  -- Con saldo pendiente
+            -- Con saldo AUTORIZADO pendiente (neto de notas): el mismo saldo
+            -- que se muestra. Filtrar por amount - paid_amount dejaba pegadas
+            -- líneas en $0 cuando la autorización fue parcial (reqs 1197/1227)
+            -- o el resto lo cubrió un anticipo (req 1241).
+            AND (
+                (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
+                - ISNULL((
+                    SELECT SUM(CASE WHEN n.note_type = 'CREDIT' THEN a.applied_amount
+                                    WHEN n.note_type = 'DEBIT'  THEN -a.applied_amount
+                                    ELSE 0 END)
+                    FROM [TG].[dbo].[credit_note_applications] a
+                    INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON a.credit_note_id = n.id
+                    WHERE a.invoice_id = pri.id AND a.status = 1
+                ), 0)
+            ) > 0.01
             AND pr.status = ?                -- Pago autorizado
             AND pri.is_deleted = 0
-            
-            ORDER BY 
+
+            ORDER BY
                 banco_asignado,
                 emp.den,
                 prov.den,
@@ -1058,7 +1081,19 @@ class PaymentRequestInvoicesModel extends Model
             
             WHERE pri.payment_authorized = 1
             AND pri.status != ?
-            AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
+            -- Mismo criterio que get_authorized_pending_invoices: saldo
+            -- AUTORIZADO pendiente neto de notas, no amount - paid_amount.
+            AND (
+                (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
+                - ISNULL((
+                    SELECT SUM(CASE WHEN n.note_type = 'CREDIT' THEN a.applied_amount
+                                    WHEN n.note_type = 'DEBIT'  THEN -a.applied_amount
+                                    ELSE 0 END)
+                    FROM [TG].[dbo].[credit_note_applications] a
+                    INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON a.credit_note_id = n.id
+                    WHERE a.invoice_id = pri.id AND a.status = 1
+                ), 0)
+            ) > 0.01
             AND pr.status = ?
             AND pri.is_deleted = 0
 
@@ -1145,7 +1180,16 @@ class PaymentRequestInvoicesModel extends Model
             ) notas ON pri.id = notas.invoice_id
             WHERE pri.payment_authorized = 1
                 AND pri.status != ?
-                AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
+                -- Con saldo AUTORIZADO pendiente (neto de notas): el mismo
+                -- saldo que se muestra en la columna total_saldo. Filtrar por
+                -- amount - paid_amount dejaba pegadas líneas en $0 cuando la
+                -- autorización fue parcial (reqs 1197/1227) o el resto lo
+                -- cubrió un anticipo (req 1241).
+                AND (
+                    (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
+                    - ISNULL(notas.total_credito, 0)
+                    + ISNULL(notas.total_cargo, 0)
+                ) > 0.01
                 AND pr.status = ?
                 AND pr.is_deleted = 0
                 AND pri.is_deleted = 0
