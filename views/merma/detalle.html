@@ -1,16 +1,11 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Merma {{ estacion.Nombre }}{% endblock %}
-{% block menutitle %}Merma diaria — {{ estacion.Nombre }}{% endblock %}
-{% block content %}
-
 {% set meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
+{% block title %}Merma {{ estacion.Nombre }} {{ meses[mes-1] }} {{ anio }}{% endblock %}
+{% block menutitle %}Merma diaria — {{ estacion.Nombre }} — {{ meses[mes-1] }} {{ anio }}{% endblock %}
+{% block content %}
 
 <div class="card">
     <div class="card-body d-flex flex-wrap gap-4 align-items-center">
-        <a href="/merma/analisis?anio={{ anio }}&mes={{ mes }}" class="btn btn-sm btn-outline-secondary">
-            <i class="fas fa-arrow-left"></i> Resumen
-        </a>
-        <h4 class="mb-0">{{ estacion.Nombre }} — {{ meses[mes-1] }} {{ anio }}</h4>
         {% if invInicial %}
         {% for fam in ['maxima', 'super', 'diesel'] %}
         {% set ini = attribute(invInicial, 'ini_' ~ fam) %}
@@ -29,10 +24,15 @@
         <div><small>Venta total</small><h5>{{ resumen.venta_total|number_format(0, '.', ',') }}</h5></div>
         <div><small>% merma</small><h5>{{ resumen.venta_total != 0 ? (resumen.merma_total / resumen.venta_total * 100)|number_format(2) ~ '%' : '-' }}</h5></div>
         {% endif %}
-        <button type="button" class="btn btn-success ms-auto" id="sync_estacion"
-                data-codgas="{{ estacion.Codigo }}" data-anio="{{ anio }}" data-mes="{{ mes }}">
-            <i class="fas fa-sync"></i> Re-sincronizar estación
-        </button>
+        <div class="ms-auto d-flex gap-2">
+            <a href="/merma/analisis?anio={{ anio }}&mes={{ mes }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Resumen
+            </a>
+            <button type="button" class="btn btn-outline-success" id="sync_estacion"
+                    data-codgas="{{ estacion.Codigo }}" data-anio="{{ anio }}" data-mes="{{ mes }}">
+                <i class="fas fa-sync"></i> Re-sincronizar estación
+            </button>
+        </div>
     </div>
 </div>
 
