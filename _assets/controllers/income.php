@@ -3877,7 +3877,7 @@ public function anomalies_client_tickets()
 
             $tablas = ['Tesoreria_5117', 'Tesoreria_8973', 'Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4547',
                        'Tesoreria_A6115', 'Tesoreria_5791', 'Tesoreria_2951', 'Tesoreria_5247',
-                       'Tesoreria_4098', 'Tesoreria_7291', 'Tesoreria_7533'];
+                       'Tesoreria_4098', 'Tesoreria_8876', 'Tesoreria_7291', 'Tesoreria_7533'];
             $movimientosRaw = [];
 
             foreach ($tablas as $tabla) {
