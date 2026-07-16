@@ -3,11 +3,7 @@
 {% block menutitle %}Análisis de merma diaria{% endblock %}
 
 {% block mycss %}
-<style>
-/* La tabla necesita todo el ancho: sidebar siempre oculto en este módulo
-   (también se oculta el hamburger, que sin sidebar no hace nada) */
-#sidebar, .sidebar-toggle { display: none !important; }
-</style>
+<link href="/_assets/css/merma.css" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -33,10 +29,10 @@
                 </select>
             </div>
             <div class="col-auto">
-                <button type="submit" class="btn btn-primary">Buscar</button>
+                <button type="submit" class="btn btn-merma-neutro">Buscar</button>
             </div>
             <div class="col-auto ms-auto">
-                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#syncModal">
+                <button type="button" class="btn btn-merma-sync" data-bs-toggle="modal" data-bs-target="#syncModal">
                     <i class="fas fa-sync"></i> Actualizar datos
                 </button>
             </div>
@@ -44,101 +40,74 @@
     </div>
 </div>
 
-<div class="card table-responsive">
-    <table class="table table-sm" id="merma_table" style="font-size: small">
-        <thead>
-            <tr>
-                <th></th>
-                <th colspan="5" class="text-center border-start">MERMA DEL MES (LTS)</th>
-                <th></th>
-                <th colspan="3" class="text-center border-start">MERMA S/D (LTS)</th>
-                <th></th>
-            </tr>
-            <tr>
-                <th>ESTACIÓN</th>
-                <th class="border-start">MAXIMA</th>
-                <th>SUPER</th>
-                <th>DIESEL</th>
-                <th>TOTAL</th>
-                <th>VTA TOTAL</th>
-                <th>% MERMA</th>
-                <th class="border-start">MAXIMA</th>
-                <th>SUPER</th>
-                <th>DIESEL</th>
-                <th style="min-width: 220px;">COMENTARIOS</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for f in filas %}
-            <tr>
-                <td>
-                    <a href="/merma/detalle/{{ f.codgas }}?anio={{ anio }}&mes={{ mes }}">{{ f.nombre }}</a>
-                    {% if f.faltantes|length > 0 %}
-                    <i class="fas fa-exclamation-triangle text-warning"
-                       title="Sin datos: {{ f.faltantes|join(', ') }}"></i>
-                    {% endif %}
-                </td>
-                <td class="border-start text-end">{{ f.maxima is null ? '-' : f.maxima|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ f.super is null ? '-' : f.super|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ f.diesel is null ? '-' : f.diesel|number_format(0, '.', ',') }}</td>
-                <td class="text-end fw-bold">{{ f.total is null ? '-' : f.total|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ f.venta is null ? '-' : f.venta|number_format(0, '.', ',') }}</td>
-                {% set pctabs = f.pct is null ? 0 : (f.pct < 0 ? -f.pct : f.pct) %}
-                <td class="text-end {{ f.pct is null ? '' : (pctabs > 1 ? 'text-danger fw-bold' : (pctabs > 0.5 ? 'text-warning fw-bold' : 'text-success')) }}">
-                    {{ f.pct is null ? '-' : f.pct|number_format(2) ~ '%' }}
-                </td>
-                <td class="border-start p-1" style="max-width: 80px;">
-                    <input type="number" step="any" class="form-control form-control-sm merma-sd"
-                           data-codgas="{{ f.codgas }}" data-campo="merma_sd_maxima" value="{{ f.sd_maxima }}">
-                </td>
-                <td class="p-1" style="max-width: 80px;">
-                    <input type="number" step="any" class="form-control form-control-sm merma-sd"
-                           data-codgas="{{ f.codgas }}" data-campo="merma_sd_super" value="{{ f.sd_super }}">
-                </td>
-                <td class="p-1" style="max-width: 80px;">
-                    <input type="number" step="any" class="form-control form-control-sm merma-sd"
-                           data-codgas="{{ f.codgas }}" data-campo="merma_sd_diesel" value="{{ f.sd_diesel }}">
-                </td>
-                <td class="p-1">
-                    <input type="text" class="form-control form-control-sm merma-comentario"
-                           data-codgas="{{ f.codgas }}" value="{{ f.comentarios }}">
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr class="fw-bold table-secondary">
-                <td>TOTALES</td>
-                <td class="text-end border-start">{{ totales.maxima|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ totales.super|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ totales.diesel|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ totales.total|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ totales.venta|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ totales.venta != 0 ? (totales.total / totales.venta * 100)|number_format(2) ~ '%' : '-' }}</td>
-                <td class="text-end border-start">{{ totales.sd_maxima|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ totales.sd_super|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ totales.sd_diesel|number_format(0, '.', ',') }}</td>
-                <td></td>
-            </tr>
-        </tfoot>
-    </table>
+<div class="merma-tabla-wrap mb-3">
+    <div class="merma-scroll">
+        <table class="merma-tabla" id="merma_table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th colspan="4" class="th-grupo sep-r">MERMA DEL MES (LTS)</th>
+                    <th></th>
+                    <th></th>
+                </tr>
+                <tr>
+                    <th class="col-est">ESTACIÓN</th>
+                    <th>MAXIMA</th>
+                    <th>SUPER</th>
+                    <th>DIESEL</th>
+                    <th class="sep-r">TOTAL</th>
+                    <th>VTA TOTAL</th>
+                    <th>% MERMA</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in filas %}
+                <tr>
+                    <td class="col-est">
+                        <a href="/merma/detalle/{{ f.codgas }}?anio={{ anio }}&mes={{ mes }}">{{ f.nombre }}</a>
+                        {% if f.faltantes|length > 0 %}
+                        <i class="fas fa-exclamation-triangle text-warning"
+                           title="Sin datos: {{ f.faltantes|join(', ') }}"></i>
+                        {% endif %}
+                    </td>
+                    <td>{{ f.maxima is null ? '-' : f.maxima|number_format(0, '.', ',') }}</td>
+                    <td>{{ f.super is null ? '-' : f.super|number_format(0, '.', ',') }}</td>
+                    <td>{{ f.diesel is null ? '-' : f.diesel|number_format(0, '.', ',') }}</td>
+                    <td class="col-total sep-r">{{ f.total is null ? '-' : f.total|number_format(0, '.', ',') }}</td>
+                    <td>{{ f.venta is null ? '-' : f.venta|number_format(0, '.', ',') }}</td>
+                    {% set pctabs = f.pct is null ? 0 : (f.pct < 0 ? -f.pct : f.pct) %}
+                    <td class="{{ f.pct is null ? '' : (pctabs > 1 ? 'pct-alto' : (pctabs > 0.5 ? 'pct-medio' : 'pct-ok')) }}">
+                        {{ f.pct is null ? '-' : f.pct|number_format(2) ~ '%' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td class="col-est">TOTALES</td>
+                    <td class="text-end">{{ totales.maxima|number_format(0, '.', ',') }}</td>
+                    <td class="text-end">{{ totales.super|number_format(0, '.', ',') }}</td>
+                    <td class="text-end">{{ totales.diesel|number_format(0, '.', ',') }}</td>
+                    <td class="text-end sep-r">{{ totales.total|number_format(0, '.', ',') }}</td>
+                    <td class="text-end">{{ totales.venta|number_format(0, '.', ',') }}</td>
+                    <td class="text-end">{{ totales.venta != 0 ? (totales.total / totales.venta * 100)|number_format(2) ~ '%' : '-' }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
 </div>
 
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body d-flex flex-wrap gap-4 align-items-center">
-                <div><small>Días con datos</small><h4>{{ kpis.dias_con_datos }}</h4></div>
-                <div><small>Merma promedio diaria (lts)</small><h4>{{ kpis.promedio|number_format(0, '.', ',') }}</h4></div>
-                <div><small>Proyección al cierre (lts)</small><h4>{{ kpis.proyeccion|number_format(0, '.', ',') }}</h4></div>
-                <div>
-                    <small>Precio por litro ($)</small>
-                    <input type="number" step="0.01" id="precio_litro" class="form-control form-control-sm"
-                           style="width: 90px;" value="{{ precio }}">
-                </div>
-                <div><small>Valorización proyectada</small><h4 id="valorizacion">$ {{ kpis.valorizacion|number_format(0, '.', ',') }}</h4></div>
-            </div>
+<div class="card">
+    <div class="card-body d-flex flex-wrap gap-4 align-items-center">
+        <div class="merma-kpi"><small>Días con datos</small><h4>{{ kpis.dias_con_datos }}</h4></div>
+        <div class="merma-kpi"><small>Merma promedio diaria (lts)</small><h4>{{ kpis.promedio|number_format(0, '.', ',') }}</h4></div>
+        <div class="merma-kpi"><small>Proyección al cierre (lts)</small><h4>{{ kpis.proyeccion|number_format(0, '.', ',') }}</h4></div>
+        <div class="merma-kpi">
+            <small>Precio por litro ($)</small>
+            <input type="number" step="0.01" id="precio_litro" class="form-control form-control-sm"
+                   style="width: 90px;" value="{{ precio }}">
         </div>
+        <div class="merma-kpi"><small>Valorización proyectada</small><h4 id="valorizacion">$ {{ kpis.valorizacion|number_format(0, '.', ',') }}</h4></div>
     </div>
 </div>
 
@@ -174,7 +143,7 @@
                 <div id="sync_result" class="mt-3"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-primary" id="sync_btn">
+                <button type="button" class="btn btn-merma-sync" id="sync_btn">
                     <i class="fas fa-sync"></i> Sincronizar
                 </button>
             </div>

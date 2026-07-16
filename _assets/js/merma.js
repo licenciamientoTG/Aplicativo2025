@@ -13,7 +13,7 @@ $(document).ready(function () {
             buttons: [{
                 extend: 'excel',
                 title: 'Análisis de merma diaria',
-                className: 'btn btn-sm btn-outline-secondary',
+                className: 'btn btn-sm btn-merma-neutro',
                 exportOptions: {
                     format: {
                         body: function (data, row, column, node) {
@@ -24,6 +24,12 @@ $(document).ready(function () {
                 }
             }],
         });
+        // La toolbar (Excel + buscador) sube fuera del área con scroll para
+        // que no desaparezca al desplazar la tabla
+        var $wrap = $('#merma_table').closest('.merma-tabla-wrap');
+        if ($wrap.length) {
+            $wrap.prepend($wrap.find('.top'));
+        }
     }
 
     // ---- Captura inline: merma s/d y comentarios --------------------------
