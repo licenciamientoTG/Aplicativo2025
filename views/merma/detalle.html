@@ -2,6 +2,96 @@
 {% set meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
 {% block title %}Merma {{ estacion.Nombre }} {{ meses[mes-1] }} {{ anio }}{% endblock %}
 {% block menutitle %}Merma diaria — {{ estacion.Nombre }} — {{ meses[mes-1] }} {{ anio }}{% endblock %}
+
+{% block mycss %}
+<style>
+/* Detalle de merma — estilos portados del mockup (paleta slate/emerald) */
+.merma-kpi small {
+    display: block;
+    font-size: .72rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #64748b;
+    margin-bottom: .15rem;
+}
+.merma-kpi span { font-size: 1.125rem; font-weight: 600; color: #0f172a; }
+
+.btn-merma-neutro {
+    background: #fff; border: 1px solid #cbd5e1; color: #334155;
+    box-shadow: 0 1px 2px rgba(0,0,0,.05); transition: background-color .2s;
+}
+.btn-merma-neutro:hover { background: #f8fafc; color: #334155; }
+.btn-merma-sync {
+    background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857;
+    box-shadow: 0 1px 2px rgba(0,0,0,.05); transition: background-color .2s;
+}
+.btn-merma-sync:hover, .btn-merma-sync:disabled { background: #d1fae5; color: #047857; }
+
+.merma-tabla-wrap {
+    border: 2px solid #cbd5e1; border-radius: .5rem;
+    background: #fff; overflow: hidden;
+}
+.merma-scroll { overflow: auto; max-height: 72vh; }
+/* Scrollbar siempre visible para la tabla ancha */
+.merma-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
+.merma-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
+.merma-scroll::-webkit-scrollbar-thumb {
+    background: #cbd5e1; border-radius: 6px; border: 2px solid #f1f5f9;
+}
+.merma-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+.merma-tabla {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    font-size: .8rem; text-align: right; margin-bottom: 0;
+}
+.merma-tabla th, .merma-tabla td {
+    padding: .45rem .6rem; white-space: nowrap;
+    border-bottom: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1;
+}
+.merma-tabla .sep-r { border-right-width: 2px; }
+.merma-tabla tr > :last-child { border-right: none; }
+
+/* Encabezados sticky (dos niveles) */
+.merma-tabla thead th { position: sticky; z-index: 30; }
+.merma-tabla thead tr:first-child th {
+    top: 0; height: 32px; border-bottom-width: 2px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase; text-align: center; background: #fff;
+}
+.merma-tabla thead tr:last-child th {
+    top: 32px; background: #f8fafc; border-bottom-width: 2px;
+    font-size: .72rem; font-weight: 600; letter-spacing: .05em;
+    text-transform: uppercase; color: #475569;
+}
+.merma-tabla .th-maxima { background: #eff6ff !important; color: #1e3a8a; }
+.merma-tabla .th-super  { background: #f0fdf4 !important; color: #14532d; }
+.merma-tabla .th-diesel { background: #fff7ed !important; color: #7c2d12; }
+
+/* Columnas FECHA y TURNO congeladas */
+.merma-tabla .col-fecha, .merma-tabla .col-turno { position: sticky; z-index: 10; background: #fff; }
+.merma-tabla .col-fecha { left: 0; width: 96px; min-width: 96px; max-width: 96px; text-align: left; color: #475569; }
+.merma-tabla .col-turno { left: 96px; text-align: center; color: #475569; box-shadow: 2px 0 0 0 #cbd5e1; }
+.merma-tabla thead .col-fecha, .merma-tabla thead .col-turno { z-index: 40; background: #f8fafc; }
+.merma-tabla thead tr:first-child .col-fecha { background: #fff; }
+
+/* Hover de fila (incluye celdas congeladas) y corte visual por día */
+.merma-tabla tbody tr:hover td { background: #f8fafc; }
+.merma-tabla tbody tr.fin-dia td { border-bottom: 3px solid #94a3b8; }
+
+.merma-tabla td { color: #334155; }
+.merma-tabla .col-fis { font-weight: 500; }
+.merma-tabla .col-acum { font-weight: 700; color: #0f172a; }
+.merma-tabla .dif-pos { color: #059669; font-weight: 500; }
+.merma-tabla .dif-neg { color: #dc2626; font-weight: 500; }
+.badge-dif {
+    display: inline-block; margin-left: .35rem; padding: .1rem .35rem;
+    border-radius: .25rem; font-size: 10px; font-weight: 700;
+    line-height: 1; background: #fee2e2; color: #b91c1c;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="card">
@@ -10,25 +100,25 @@
         {% for fam in ['maxima', 'super', 'diesel'] %}
         {% set ini = attribute(invInicial, 'ini_' ~ fam) %}
         {% if ini is not null %}
-        <div>
+        <div class="merma-kpi">
             <small>Inv. inic. {{ fam|upper }} ({{ invInicial.fecha|date('d-m') }})</small>
-            <h5>{{ ini|number_format(2, '.', ',') }}</h5>
+            <span>{{ ini|number_format(2, '.', ',') }}</span>
         </div>
         {% endif %}
         {% endfor %}
         {% endif %}
         {% if resumen %}
-        <div><small>Merma MAXIMA</small><h5>{{ resumen.merma_maxima is null ? '-' : resumen.merma_maxima|number_format(0, '.', ',') }}</h5></div>
-        <div><small>Merma SUPER</small><h5>{{ resumen.merma_super is null ? '-' : resumen.merma_super|number_format(0, '.', ',') }}</h5></div>
-        <div><small>Merma DIESEL</small><h5>{{ resumen.merma_diesel is null ? '-' : resumen.merma_diesel|number_format(0, '.', ',') }}</h5></div>
-        <div><small>Venta total</small><h5>{{ resumen.venta_total|number_format(0, '.', ',') }}</h5></div>
-        <div><small>% merma</small><h5>{{ resumen.venta_total != 0 ? (resumen.merma_total / resumen.venta_total * 100)|number_format(2) ~ '%' : '-' }}</h5></div>
+        <div class="merma-kpi"><small>Merma MAXIMA</small><span>{{ resumen.merma_maxima is null ? '-' : resumen.merma_maxima|number_format(0, '.', ',') }}</span></div>
+        <div class="merma-kpi"><small>Merma SUPER</small><span>{{ resumen.merma_super is null ? '-' : resumen.merma_super|number_format(0, '.', ',') }}</span></div>
+        <div class="merma-kpi"><small>Merma DIESEL</small><span>{{ resumen.merma_diesel is null ? '-' : resumen.merma_diesel|number_format(0, '.', ',') }}</span></div>
+        <div class="merma-kpi"><small>Venta total</small><span>{{ resumen.venta_total|number_format(0, '.', ',') }}</span></div>
+        <div class="merma-kpi"><small>% merma</small><span>{{ resumen.venta_total != 0 ? (resumen.merma_total / resumen.venta_total * 100)|number_format(2) ~ '%' : '-' }}</span></div>
         {% endif %}
         <div class="ms-auto d-flex gap-2">
-            <a href="/merma/analisis?anio={{ anio }}&mes={{ mes }}" class="btn btn-outline-secondary">
+            <a href="/merma/analisis?anio={{ anio }}&mes={{ mes }}" class="btn btn-merma-neutro">
                 <i class="fas fa-arrow-left"></i> Resumen
             </a>
-            <button type="button" class="btn btn-outline-success" id="sync_estacion"
+            <button type="button" class="btn btn-merma-sync" id="sync_estacion"
                     data-codgas="{{ estacion.Codigo }}" data-anio="{{ anio }}" data-mes="{{ mes }}">
                 <i class="fas fa-sync"></i> Re-sincronizar estación
             </button>
@@ -36,46 +126,50 @@
     </div>
 </div>
 
-<div class="card table-responsive">
-    <table class="table table-sm table-bordered" style="font-size: x-small">
-        <thead>
-            <tr class="text-center">
-                <th colspan="2"></th>
-                <th colspan="6" class="table-primary">MAXIMA</th>
-                <th colspan="6" class="table-success">SUPER</th>
-                <th colspan="6" class="table-warning">DIESEL</th>
-            </tr>
-            <tr class="text-center">
-                <th>FECHA</th><th>TURNO</th>
-                {% for i in 1..3 %}
-                <th>VR</th><th>COMPRAS</th><th>INV. CONT.</th><th>INV. FÍSICO</th><th>DIF.</th><th>ACUM.</th>
+<div class="merma-tabla-wrap">
+    <div class="merma-scroll">
+        <table class="merma-tabla">
+            <thead>
+                <tr>
+                    <th colspan="2" class="col-fecha sep-r" style="left: 0;"></th>
+                    <th colspan="6" class="th-maxima sep-r">MAXIMA</th>
+                    <th colspan="6" class="th-super sep-r">SUPER</th>
+                    <th colspan="6" class="th-diesel">DIESEL</th>
+                </tr>
+                <tr>
+                    <th class="col-fecha">FECHA</th>
+                    <th class="col-turno sep-r">TURNO</th>
+                    {% for i in 1..3 %}
+                    <th>VR</th><th>COMPRAS</th><th>INV. CONT.</th><th>INV. FÍSICO</th><th>DIF.</th><th class="sep-r">ACUM.</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in filas %}
+                {% set finDia = loop.last or filas[loop.index].fecha != f.fecha %}
+                <tr{% if finDia %} class="fin-dia"{% endif %}>
+                    <td class="col-fecha">{{ f.fecha|date('d-m-Y') }}</td>
+                    <td class="col-turno sep-r">{{ f.turno }}</td>
+                    {% for fam in ['maxima', 'super', 'diesel'] %}
+                    {% set b = attribute(f, fam) %}
+                    <td>{{ b.vr is null ? '-' : b.vr|number_format(0, '.', ',') }}</td>
+                    <td>{{ b.compras is null or b.compras == 0 ? '-' : b.compras|number_format(0, '.', ',') }}</td>
+                    <td>{{ b.cont is null ? '-' : b.cont|number_format(0, '.', ',') }}</td>
+                    <td class="col-fis">{{ b.fis is null ? '-' : b.fis|number_format(0, '.', ',') }}</td>
+                    {% set difabs = b.dif is null ? 0 : (b.dif < 0 ? -b.dif : b.dif) %}
+                    <td class="{{ b.dif is null ? '' : (b.dif < 0 ? 'dif-neg' : 'dif-pos') }}">
+                        {{ b.dif is null ? '-' : b.dif|number_format(0, '.', ',') }}
+                        {% if difabs >= 9000 %}<span class="badge-dif">DIFERENCIA</span>{% endif %}
+                    </td>
+                    <td class="col-acum sep-r">{{ b.acum is null ? '-' : b.acum|number_format(0, '.', ',') }}</td>
+                    {% endfor %}
+                </tr>
+                {% else %}
+                <tr><td colspan="20" class="text-center">Sin datos para este mes. Usa "Re-sincronizar estación".</td></tr>
                 {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for f in filas %}
-            <tr>
-                <td>{{ f.fecha|date('d-m-Y') }}</td>
-                <td class="text-center">{{ f.turno }}</td>
-                {% for fam in ['maxima', 'super', 'diesel'] %}
-                {% set b = attribute(f, fam) %}
-                <td class="text-end">{{ b.vr is null ? '-' : b.vr|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ b.compras is null or b.compras == 0 ? '-' : b.compras|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ b.cont is null ? '-' : b.cont|number_format(0, '.', ',') }}</td>
-                <td class="text-end">{{ b.fis is null ? '-' : b.fis|number_format(0, '.', ',') }}</td>
-                {% set difabs = b.dif is null ? 0 : (b.dif < 0 ? -b.dif : b.dif) %}
-                <td class="text-end {{ b.dif is null ? '' : (b.dif < 0 ? 'text-danger' : 'text-success') }}">
-                    {{ b.dif is null ? '-' : b.dif|number_format(0, '.', ',') }}
-                    {% if difabs >= 9000 %}<span class="badge bg-danger">DIFERENCIA</span>{% endif %}
-                </td>
-                <td class="text-end fw-bold">{{ b.acum is null ? '-' : b.acum|number_format(0, '.', ',') }}</td>
-                {% endfor %}
-            </tr>
-            {% else %}
-            <tr><td colspan="20" class="text-center">Sin datos para este mes. Usa "Re-sincronizar estación".</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 {% endblock %}
