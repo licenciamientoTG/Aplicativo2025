@@ -1,6 +1,15 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Análisis de merma diaria{% endblock %}
 {% block menutitle %}Análisis de merma diaria{% endblock %}
+
+{% block mycss %}
+<style>
+/* La tabla necesita todo el ancho: sidebar siempre oculto en este módulo
+   (también se oculta el hamburger, que sin sidebar no hace nada) */
+#sidebar, .sidebar-toggle { display: none !important; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="card">
