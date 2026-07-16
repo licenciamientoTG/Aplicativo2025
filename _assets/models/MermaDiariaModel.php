@@ -4,6 +4,12 @@
  * Snapshot y captura del módulo Análisis de Merma Diaria (/merma/...).
  * Tablas: TG.dbo.merma_diaria | merma_manual | merma_mes_config | merma_sync_log
  * Schema: docs/sql/merma_schema.sql
+ *
+ * inv_inicial/inv_contable/diferencia usan la regla del libro amarillo (Excel):
+ * el inicial de cada turno es el físico del turno inmediato anterior, encadenado
+ * entre días y meses (recalc_contable). Por eso NO cuadran por turno con
+ * /supply/tgr01, que conserva la regla del SP (mismo turno del día anterior).
+ * Spec: docs/superpowers/specs/2026-07-16-merma-libro-amarillo-encadenado-design.md
  */
 class MermaDiariaModel extends Model
 {
@@ -58,11 +64,43 @@ class MermaDiariaModel extends Model
                 $insertadas++;
             }
             $this->sql->commit();
-            return $insertadas;
         } catch (Exception $e) {
             $this->sql->rollBack();
             throw $e;
         }
+        // Fuera de la transacción: recalcula toda la partición de la estación,
+        // incluidas las filas posteriores al rango cuyo baseline cambió.
+        $this->recalc_contable($codgas);
+        return $insertadas;
+    }
+
+    /**
+     * Sobreescribe inv_inicial/inv_contable/diferencia con la regla encadenada
+     * del libro amarillo: inicial = físico del turno inmediato anterior
+     * (LAG por estación/producto). Si el turno anterior no tuvo corte físico,
+     * las tres columnas quedan NULL (la vista muestra s/d, no se arrastra un 0).
+     * Con codgas = 0 recalcula todas las estaciones (backfill).
+     */
+    public function recalc_contable(int $codgas = 0): void
+    {
+        $where  = $codgas > 0 ? 'WHERE codgas = ?' : '';
+        $params = $codgas > 0 ? [$codgas] : [];
+        $query = "WITH b AS (
+                      SELECT id, LAG(inv_fisico) OVER (
+                                 PARTITION BY codgas, codprd
+                                 ORDER BY fecha, turno) AS fis_prev
+                      FROM [TG].[dbo].[merma_diaria] $where
+                  )
+                  UPDATE m SET
+                      inv_inicial  = b.fis_prev,
+                      inv_contable = ROUND(b.fis_prev - ISNULL(m.ventas_reales, 0)
+                                           + ISNULL(m.compras, 0), 2),
+                      diferencia   = ROUND(m.inv_fisico - (b.fis_prev
+                                           - ISNULL(m.ventas_reales, 0)
+                                           + ISNULL(m.compras, 0)), 2)
+                  FROM [TG].[dbo].[merma_diaria] m
+                  JOIN b ON b.id = m.id;";
+        $this->sql->update($query, $params);
     }
 
     public function get_resumen_mensual(int $anio, int $mes): array

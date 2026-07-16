@@ -6,6 +6,8 @@
  * Snapshot diario de inventarios por turno de todas las estaciones
  * (TG.dbo.merma_diaria) llenado vía ApiER en paralelo; vistas de resumen
  * mensual y detalle por estación; captura manual de merma s/d y comentarios.
+ * El contable/diferencia del snapshot se recalcula tras cada sync con la
+ * regla del libro amarillo (ver MermaDiariaModel::recalc_contable).
  *
  * Rutas: /merma/[metodo]  (autocargado por index.php)
  * Spec:  docs/superpowers/specs/2026-07-13-analisis-merma-diaria-design.md
