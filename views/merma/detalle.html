@@ -11,6 +11,17 @@
             <i class="fas fa-arrow-left"></i> Resumen
         </a>
         <h4 class="mb-0">{{ estacion.Nombre }} — {{ meses[mes-1] }} {{ anio }}</h4>
+        {% if invInicial %}
+        {% for fam in ['maxima', 'super', 'diesel'] %}
+        {% set ini = attribute(invInicial, 'ini_' ~ fam) %}
+        {% if ini is not null %}
+        <div>
+            <small>Inv. inic. {{ fam|upper }} ({{ invInicial.fecha|date('d-m') }})</small>
+            <h5>{{ ini|number_format(2, '.', ',') }}</h5>
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
         {% if resumen %}
         <div><small>Merma MAXIMA</small><h5>{{ resumen.merma_maxima is null ? '-' : resumen.merma_maxima|number_format(0, '.', ',') }}</h5></div>
         <div><small>Merma SUPER</small><h5>{{ resumen.merma_super is null ? '-' : resumen.merma_super|number_format(0, '.', ',') }}</h5></div>

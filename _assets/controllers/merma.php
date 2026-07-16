@@ -152,9 +152,10 @@ class Merma
 
         $resumenMes = $this->mermaModel->get_resumen_mensual($anio, $mes);
         $resumen    = $resumenMes[$codgas] ?? null;
+        $invInicial = $this->mermaModel->get_inv_inicial_mes($codgas, $anio, $mes);
 
         echo $this->twig->render($this->route . 'detalle.html',
-            compact('estacion', 'anio', 'mes', 'filas', 'resumen'));
+            compact('estacion', 'anio', 'mes', 'filas', 'resumen', 'invInicial'));
     }
 
     /* ===================================================================== */

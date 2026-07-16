@@ -150,6 +150,33 @@ class MermaDiariaModel extends Model
         return $this->sql->select($query, [$codgas, $anio, $mes]) ?: [];
     }
 
+    /**
+     * Inventario físico con el que arranca el mes (INV. INIC. del libro
+     * amarillo): última fila anterior al día 1 por producto, sumada por
+     * familia. Es el mismo baseline que encadena recalc_contable para la
+     * primera fila del mes. NULL si no hay snapshot del mes anterior.
+     */
+    public function get_inv_inicial_mes(int $codgas, int $anio, int $mes): ?array
+    {
+        $primerDia = sprintf('%04d-%02d-01', $anio, $mes);
+        $cols = [];
+        foreach (self::FAMILIAS as $fam => $codes) {
+            $c = implode(',', $codes);
+            $cols[] = "SUM(CASE WHEN codprd IN ($c) THEN inv_fisico END) AS ini_$fam";
+        }
+        $query = 'WITH u AS (
+                      SELECT codprd, inv_fisico, fecha,
+                             ROW_NUMBER() OVER (PARTITION BY codprd
+                                                ORDER BY fecha DESC, turno DESC) AS rn
+                      FROM [TG].[dbo].[merma_diaria]
+                      WHERE codgas = ? AND fecha < ?
+                  )
+                  SELECT MAX(fecha) AS fecha, ' . implode(', ', $cols) . '
+                  FROM u WHERE rn = 1;';
+        $rows = $this->sql->select($query, [$codgas, $primerDia]);
+        return ($rows && $rows[0]['fecha'] !== null) ? $rows[0] : null;
+    }
+
     public function get_manual(int $anio, int $mes): array
     {
         $rows = $this->sql->select(
