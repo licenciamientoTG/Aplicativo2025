@@ -2748,8 +2748,18 @@ class DespachosModel extends Model{
         // con fecha distinta a la del despacho (cortes de turno alrededor de medianoche).
         $mov_from  = $from - 1;
         $mov_until = $until + 1;
+        // Tolerar que llegue una sola fila de estación (assoc) en lugar de una lista.
+        if (isset($estations['servidor'])) {
+            $estations = [$estations];
+        }
+        if (empty($estations)) {
+            return false;
+        }
         $union_queries = [];
         foreach ($estations as $station) {
+            if (empty($station['servidor']) || empty($station['base_datos'])) {
+                continue;
+            }
             $server_ip = $station['servidor'];
             $database = $station['base_datos'];
             $station_name = str_replace(' ', '_', $station['estacion_nombre']);
@@ -2900,8 +2910,11 @@ class DespachosModel extends Model{
                 SELECT * FROM OPENQUERY([$server_ip], 'SELECT * FROM ($query) AS q WHERE q.rn = 1')
             ";
         }
+        if (empty($union_queries)) {
+            return false;
+        }
         $final_query = implode(" UNION ALL ", $union_queries);
-    
+
 
         return ($this->sql->select($final_query)) ?: false ;
     }

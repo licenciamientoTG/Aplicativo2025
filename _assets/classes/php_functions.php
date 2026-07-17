@@ -20,12 +20,34 @@ function connect_bd() {
 }
 
 function json_output($json) {
-    ini_set('memory_limit', '256M');
+    // Subir el límite de memoria a 256M solo si el actual es menor: los endpoints
+    // de datasets grandes ya lo elevaron (p. ej. a 1024M) y bajárselo aquí
+    // provocaba fatales de memoria justo en el json_encode final.
+    $limit = ini_get('memory_limit');
+    if ($limit != '-1') {
+        $bytes = (int) $limit;
+        switch (strtoupper(substr(trim($limit), -1))) {
+            case 'G': $bytes *= 1024;
+            case 'M': $bytes *= 1024;
+            case 'K': $bytes *= 1024;
+        }
+        if ($bytes < 256 * 1024 * 1024) {
+            ini_set('memory_limit', '256M');
+        }
+    }
     header('Access-Control-Allow-Origin: *');
     header('Content-Type: application/json;charset=utf-8');
 
     if (is_array($json)) {
-        $json = json_encode($json);
+        // JSON_INVALID_UTF8_SUBSTITUTE: un byte mal codificado desde sqlsrv ya no
+        // aborta el encode completo (antes devolvía false => respuesta vacía).
+        $json = json_encode($json, JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($json === false) {
+            if (!headers_sent()) {
+                http_response_code(500);
+            }
+            $json = json_encode(['error' => 'Error al generar la respuesta JSON: ' . json_last_error_msg()]);
+        }
     }
 
     // Se muestra en pantalla la información del JSON ya formateada como UTF-8

@@ -329,19 +329,34 @@ function actualizarDataTableEst() {
                 'uuid': uuid,
                 'billed': billed
             },
+            dataSrc: function (json) {
+                // El backend responde {data: [], error: "..."} cuando el API y la
+                // consulta directa fallan; sin esto el usuario solo veía tabla vacía.
+                if (json.error) {
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">${json.error}</p>
+                        </div>`
+                    );
+                }
+                return json.data || [];
+            },
             error: function() {
                 $('#historic_shortage_table').waitMe('hide');
                 $('.datatables_dispatches_est').removeClass('loading');
-    
+
                 alertify.myAlert(
                     `<div class="container text-center text-danger">
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        <p class="text-center">La consulta de despachos falló (tiempo de espera o error del servidor). Intente con un rango de fechas menor o vuelva a intentarlo.</p>
                     </div>`
                 );
-    
+
             },
             beforeSend: function() {
                 $('.datatables_dispatches_est').addClass('loading');

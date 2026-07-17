@@ -1725,7 +1725,9 @@ public function anomalies_client_tickets()
             'estation' => $estation,
         ];
         $ch = curl_init('http://192.168.0.3:388/api/control_despachos/getDispatches');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // Espera máxima de 5 minutos
+        // 120s cubre de sobra un trimestre (30 días medidos ≈ 23s); si el API se
+        // cuelga, el respaldo directo (más rápido) atiende en lugar de esperar 5 min.
+        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Espera para establecer conexión
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_ENCODING, ''); // Aceptar gzip/deflate si el API lo soporta
@@ -1750,8 +1752,13 @@ public function anomalies_client_tickets()
         // estación directamente con el query local (misma estructura de columnas).
         if ($rows === null) {
             error_log("datatables_dispatches_est: API despachos falló (HTTP $http_code) $curl_error — usando consulta directa");
+            if (empty($estation)) {
+                json_output(array("data" => [], "error" => "No se encontró la estación seleccionada (codgas $codgas)."));
+                return;
+            }
             try {
-                $rows = $this->despachosModel->control_dispatches_est($from, $until, $codgas, $_POST['uuid'], $tipo_cliente, $billed, $estation ?: []) ?: [];
+                // El modelo espera una LISTA de estaciones; aquí solo se consulta una.
+                $rows = $this->despachosModel->control_dispatches_est($from, $until, $codgas, $_POST['uuid'], $tipo_cliente, $billed, [$estation]) ?: [];
             } catch (\Throwable $e) {
                 error_log("datatables_dispatches_est: consulta directa falló: " . $e->getMessage());
                 json_output(array("data" => [], "error" => "No se pudo obtener la información de despachos. Intente de nuevo."));
