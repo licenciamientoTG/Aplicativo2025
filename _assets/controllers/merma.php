@@ -70,6 +70,7 @@ class Merma
             $fila = [
                 'codgas'      => $cod,
                 'nombre'      => $est['Nombre'],
+                'cveest'      => $est['cveest'] ?? null,
                 'maxima'      => $r['merma_maxima'] ?? null,
                 'super'       => $r['merma_super'] ?? null,
                 'diesel'      => $r['merma_diesel'] ?? null,

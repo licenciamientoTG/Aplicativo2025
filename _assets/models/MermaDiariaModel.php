@@ -28,8 +28,10 @@ class MermaDiariaModel extends Model
 
     public function get_estaciones(): array
     {
-        $query = 'SELECT Codigo, Nombre FROM [TG].[dbo].[Estaciones]
-                  WHERE Codigo NOT IN (0, 4, 20) ORDER BY Nombre;';
+        $query = 'SELECT e.Codigo, e.Nombre, g.cveest
+                  FROM [TG].[dbo].[Estaciones] e
+                  LEFT JOIN [SG12].[dbo].[Gasolineras] g ON g.cod = e.Codigo
+                  WHERE e.Codigo NOT IN (0, 4, 20) ORDER BY e.Nombre;';
         return $this->sql->select($query) ?: [];
     }
 

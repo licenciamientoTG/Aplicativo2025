@@ -64,7 +64,7 @@
                 {% for f in filas %}
                 <tr>
                     <td class="col-est">
-                        <a href="/merma/detalle/{{ f.codgas }}?anio={{ anio }}&mes={{ mes }}">{{ f.nombre }}</a>
+                        <a href="/merma/detalle/{{ f.codgas }}?anio={{ anio }}&mes={{ mes }}">{{ f.nombre }}{{ f.cveest ? ' — ' ~ f.cveest : '' }}</a>
                         {% if f.faltantes|length > 0 %}
                         <i class="fas fa-exclamation-triangle text-warning"
                            title="Sin datos: {{ f.faltantes|join(', ') }}"></i>
