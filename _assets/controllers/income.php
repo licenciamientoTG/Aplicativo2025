@@ -3771,8 +3771,8 @@ public function anomalies_client_tickets()
                 }
             }
 
-            // Tablas Banorte con afiliación embebida en Referencia/Concepto
-            foreach (['Tesoreria_A9475'] as $tablaRef) {
+            // Tablas Banorte con afiliación embebida en Referencia/Concepto/Descripcion
+            foreach (['Tesoreria_A9475', 'Tesoreria_8876'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
@@ -3877,7 +3877,7 @@ public function anomalies_client_tickets()
 
             $tablas = ['Tesoreria_5117', 'Tesoreria_8973', 'Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4547',
                        'Tesoreria_A6115', 'Tesoreria_5791', 'Tesoreria_2951', 'Tesoreria_5247',
-                       'Tesoreria_4098', 'Tesoreria_7291', 'Tesoreria_7533'];
+                       'Tesoreria_4098', 'Tesoreria_8876', 'Tesoreria_7291', 'Tesoreria_7533'];
             $movimientosRaw = [];
 
             foreach ($tablas as $tabla) {
@@ -3885,8 +3885,8 @@ public function anomalies_client_tickets()
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
                     if ($check->fetchColumn() == 0) continue;
                     $hasConcepto = $conn->query("SELECT count(*) FROM information_schema.columns WHERE table_name='$tabla' AND column_name='Concepto'")->fetchColumn() > 0;
-                    $cols = $hasConcepto ? 'Fecha, Referencia, Concepto, Depositos' : 'Fecha, Referencia, NULL as Concepto, Depositos';
-                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0 AND Descripcion LIKE 'DEPOSITO VENTAS%' AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    $cols = $hasConcepto ? 'Fecha, Referencia, Descripcion, Concepto, Depositos' : 'Fecha, Referencia, Descripcion, NULL as Concepto, Depositos';
+                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sql);
                     $stmt->execute([$year, $month]);
                     while($r = $stmt->fetch(PDO::FETCH_ASSOC)) $movimientosRaw[] = $r;
@@ -3898,13 +3898,14 @@ public function anomalies_client_tickets()
                 // Normalizar Referencia: quitar formato moneda ($8,828,251.00 → 8828251)
                 $ref      = preg_replace('/[^0-9A-Za-z]/', '', trim($row['Referencia'] ?? ''));
                 $concepto = trim($row['Concepto'] ?? '');
+                $desc     = trim($row['Descripcion'] ?? '');
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
 
                 foreach ($catalogo as $afilItem) {
                     $afiliacionStr = $afilItem['afiliacion'];
-                    if (stripos($ref, $afiliacionStr) !== false || stripos($concepto, $afiliacionStr) !== false) {
+                    if (stripos($ref, $afiliacionStr) !== false || stripos($concepto, $afiliacionStr) !== false || stripos($desc, $afiliacionStr) !== false) {
                         $key = $fecha . '_' . $afiliacionStr;
                         if (!isset($agrupado[$key])) {
                             $agrupado[$key] = [

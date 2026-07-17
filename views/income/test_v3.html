@@ -1091,8 +1091,30 @@ function getCGRef(item) {
     return item && item.ID_Unico ? String(item.ID_Unico) : '';
 }
 
+function normalizarRef(ref) {
+    return String(ref ?? '').trim();
+}
+
+function hasConciliada(origen, ref) {
+    const refNorm = normalizarRef(ref);
+    return !!(refNorm && conciliadasSet[origen] && conciliadasSet[origen].has(refNorm));
+}
+
+function getHistorialDetalle(origen, ref) {
+    const refNorm = normalizarRef(ref);
+    if (!refNorm) return null;
+    return historial.find(h => h.origen === origen && normalizarRef(h.ref) === refNorm) || null;
+}
+
+function getHistorialDetalles(origen, refs) {
+    const refsNorm = [...new Set((refs || []).map(normalizarRef).filter(Boolean))];
+    if (!refsNorm.length) return [];
+    const refsSet = new Set(refsNorm);
+    return historial.filter(h => h.origen === origen && refsSet.has(normalizarRef(h.ref)));
+}
+
 function isConciliatedCGRef(ref) {
-    return !!(ref && conciliadasSet.CG && conciliadasSet.CG.has(String(ref)));
+    return hasConciliada('CG', ref);
 }
 
 function shouldKeepCGItemVisible(item) {
@@ -1329,10 +1351,22 @@ async function fetchTesoreria(eid, year, month) {
         }).forEach(m => {
             const fecha = m.Fecha || '';
             const afil  = String(m.Afiliacion || '').trim();
-            if (!byFecha[fecha]) byFecha[fecha] = { monto: 0, afils: [], desc: m.Estacion || '' };
-            byFecha[fecha].monto += parseFloat(m.Total || m.Depositos || 0);
+            const monto = parseFloat(m.Total || m.Depositos || 0);
+            const ref   = `${fecha}_${afil}`;
+            if (!byFecha[fecha]) {
+                byFecha[fecha] = { monto: 0, afils: [], desc: m.Estacion || '', componentes: {} };
+            }
+            byFecha[fecha].monto += monto;
             byFecha[fecha].afils.push(afil);
             if (!byFecha[fecha].desc) byFecha[fecha].desc = m.Estacion || afil || '';
+            if (!byFecha[fecha].componentes[ref]) {
+                byFecha[fecha].componentes[ref] = {
+                    ref,
+                    monto: 0,
+                    descripcion: m.Estacion || afil || ''
+                };
+            }
+            byFecha[fecha].componentes[ref].monto += monto;
         });
 
         tesData = Object.entries(byFecha).map(([fecha, g]) => ({
@@ -1344,6 +1378,7 @@ async function fetchTesoreria(eid, year, month) {
             id_origen:   g.afils.length === 1 ? `${fecha}_${g.afils[0]}` : fecha,
             // all_refs incluye los refs individuales para detectar conciliaciones antiguas
             all_refs:    g.afils.map(a => `${fecha}_${a}`),
+            components:  Object.values(g.componentes || {}),
             sucursal:    ''
         }));
     } catch(e) { tesData = []; }
@@ -1386,17 +1421,19 @@ async function fetchConciliadas(estid, eid, afil, year, month) {
     try {
         const r    = await fetch(`${URLS_V3.conciliadas}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&year=${year}&month=${month}`);
         const json = await r.json();
-        historial = (json.status === 'success') ? (json.data || []) : [];
+        historial = (json.status === 'success')
+            ? (json.data || []).map(item => ({ ...item, ref: normalizarRef(item.ref) }))
+            : [];
     } catch(e) { historial = []; }
 
     // Construir set de refs conciliadas por origen
     conciliadasSet = { CG: new Set(), TES: new Set(), TRANSITO: new Set(), DIFERIDO: new Set() };
     const gruposConDiff = {};
     historial.forEach(d => {
-        if (d.origen === 'CG')       conciliadasSet.CG.add(d.ref);
-        if (d.origen === 'TES')      conciliadasSet.TES.add(d.ref);
-        if (d.origen === 'TRANSITO') conciliadasSet.TRANSITO.add(d.ref);
-        if (d.origen === 'DIFERIDO') conciliadasSet.DIFERIDO.add(d.ref);
+        if (d.origen === 'CG')       conciliadasSet.CG.add(normalizarRef(d.ref));
+        if (d.origen === 'TES')      conciliadasSet.TES.add(normalizarRef(d.ref));
+        if (d.origen === 'TRANSITO') conciliadasSet.TRANSITO.add(normalizarRef(d.ref));
+        if (d.origen === 'DIFERIDO') conciliadasSet.DIFERIDO.add(normalizarRef(d.ref));
         gruposConDiff[d.grupo_id] = d.diferencia;
     });
 }
@@ -1639,9 +1676,9 @@ function renderCG() {
             const difs   = diferidosCG.enDiferido[ref] || [];
             const sumDif = difs.reduce((s, d) => s + d.monto_diferido, 0);
             const montoEfec = Math.max(0, montoOrig - sumDif);
-            if (conciliadasSet.CG && conciliadasSet.CG.has(ref)) {
+            if (hasConciliada('CG', ref)) {
                 nConcil++;
-                const h = historial.find(x => x.origen === 'CG' && String(x.ref) === String(ref));
+                const h = getHistorialDetalle('CG', ref);
                 if (h && !gruposVistosDay.has(h.grupo_id)) {
                     diffDia += parseFloat(h.diferencia) || 0;
                     gruposVistosDay.add(h.grupo_id);
@@ -1701,7 +1738,7 @@ function renderCG() {
             const ref       = item.ID_Unico || '';
             const montoOrig = parseFloat(item.Total || 0);
             const concepto  = item.Concepto || item.concepto || '';
-            const esConcil  = conciliadasSet.CG && conciliadasSet.CG.has(ref);
+            const esConcil  = hasConciliada('CG', ref);
             const transitoInfo  = transitosCG.enTransito[ref] || null;
             const difsDelCorte  = diferidosCG.enDiferido[ref] || [];
             const sumaDiferida  = difsDelCorte.reduce((s, d) => s + d.monto_diferido, 0);
@@ -1713,7 +1750,7 @@ function renderCG() {
                 : Math.max(0, montoOrig - sumaDiferida);
 
             const esSel     = sel.left.some(s => s.ref === ref);
-            const hRec      = historial.find(h => h.ref === String(ref) && h.origen === 'CG');
+            const hRec      = getHistorialDetalle('CG', ref);
             let difTag = '', unlinkBtn = '', statusClass = 'row-pendiente';
 
             if (esConcil) {
@@ -1948,6 +1985,19 @@ function getAmexComision(item) {
     return { comision: totalCom, iva: totalIva, bruto: totalBruto };
 }
 
+function getAmexComisionByRef(ref, fechaFallback = '') {
+    if (!isAmex) return null;
+    const refNorm = normalizarRef(ref);
+    if (!refNorm) return null;
+    const parts = refNorm.split('_');
+    if (parts.length < 2) return null;
+    const fecha = fechaFallback || parts[0];
+    const afil  = parts.slice(1).join('_');
+    const normalAfil = afil.replace(/^0+/, '') || afil;
+    const key = `${fecha}_${normalAfil}`;
+    return amexComisiones[key] || null;
+}
+
 // ── RENDER TESORERÍA (flat — un total por día, sin desplegable) ──
 function renderTes() {
     const $c = $('#tes-content').empty();
@@ -1975,11 +2025,12 @@ function renderTes() {
         grandTotal += montoConc;
 
         const dateFmt  = fecha.split('-').reverse().join('/');
-        const allRefs  = [ref, ...(item.all_refs || [])];
-        const esConcil = conciliadasSet.TES && allRefs.some(r => conciliadasSet.TES.has(r));
+        const allRefs  = [...new Set([ref, ...(item.all_refs || [])].map(normalizarRef).filter(Boolean))];
+        const esConcil = allRefs.some(r => hasConciliada('TES', r));
         const esSel    = sel.tes.some(s => s.ref === ref);
 
-        const hRec = historial.find(h => allRefs.includes(String(h.ref)) && h.origen === 'TES');
+        const hRecs = getHistorialDetalles('TES', allRefs);
+        const hRec = hRecs[0] || null;
         let difTag = '', unlinkBtn = '', staleBtn = '', statusClass = 'row-pendiente';
         if (esConcil) {
             if (hRec) {
@@ -1988,7 +2039,34 @@ function renderTes() {
                 statusClass = ok ? 'row-concil-ok' : 'row-concil-diff';
                 difTag    = `<span class="diff-tag ${ok?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span>`;
                 unlinkBtn = !mesCerrado ? `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>` : '';
-                if (!mesCerrado && Math.abs(hRec.monto - montoConc) > 0.01) {
+                const syncItemsTes = [];
+                const componentesTes = Array.isArray(item.components) && item.components.length
+                    ? item.components
+                    : [{ ref, monto, descripcion: desc }];
+                componentesTes.forEach(comp => {
+                    const hComp = getHistorialDetalle('TES', comp.ref);
+                    if (!hComp) return;
+                    const amexComp = getAmexComisionByRef(comp.ref, fecha);
+                    const montoActualComp = parseFloat(comp.monto || 0)
+                        + ((isAmex && amexComp) ? (parseFloat(amexComp.comision || 0) + parseFloat(amexComp.iva || 0)) : 0);
+                    if (Math.abs((parseFloat(hComp.monto) || 0) - montoActualComp) > 0.01) {
+                        syncItemsTes.push({
+                            id_detalle: hComp.id,
+                            nuevo_monto: montoActualComp,
+                            monto_anterior: parseFloat(hComp.monto) || 0
+                        });
+                    }
+                });
+                if (!mesCerrado && syncItemsTes.length) {
+                    statusClass = 'row-concil-diff';
+                    if (syncItemsTes.length === 1) {
+                        const itemSync = syncItemsTes[0];
+                        staleBtn = `<button class="btn-action-mini" style="background:#f39c12;color:#fff;" onclick="event.stopPropagation();recalcularDetalleTes(${itemSync.id_detalle},${itemSync.nuevo_monto})" title="Monto cambiÃ³: guardado ${fmt.format(itemSync.monto_anterior)} â†’ actual ${fmt.format(itemSync.nuevo_monto)}. Clic para actualizar."><i class="fas fa-exclamation-triangle"></i></button>`;
+                    } else {
+                        staleBtn = `<button class="btn-action-mini" style="background:#f39c12;color:#fff;" onclick="event.stopPropagation();recalcularDetallesTes(${JSON.stringify(syncItemsTes).replace(/"/g,'&quot;')})" title="Hay ${syncItemsTes.length} detalles de TesorerÃ­a con monto actualizado. Clic para sincronizarlos."><i class="fas fa-exclamation-triangle"></i></button>`;
+                    }
+                }
+                if (false && !mesCerrado && Math.abs(hRec.monto - montoConc) > 0.01) {
                     statusClass = 'row-concil-diff';
                     staleBtn = `<button class="btn-action-mini" style="background:#f39c12;color:#fff;" onclick="event.stopPropagation();recalcularDetalleTes(${hRec.id},${montoConc})" title="Monto cambió: guardado ${fmt.format(hRec.monto)} → actual ${fmt.format(montoConc)}. Clic para actualizar."><i class="fas fa-exclamation-triangle"></i></button>`;
                 }
@@ -3821,6 +3899,33 @@ async function recalcularDetalleTes(idDetalle, nuevoMonto) {
 }
 
 // ── CAMBIOS TESORERÍA ─────────────────────────────────────────
+async function recalcularDetallesTes(items) {
+    if (!Array.isArray(items) || !items.length) return;
+    const etiqueta = items.length === 1 ? '1 detalle' : `${items.length} detalles`;
+    if (!confirm(`Se sincronizarÃ¡n ${etiqueta} de TesorerÃ­a con monto actualizado.\n\nÂ¿Continuar?`)) return;
+    body_loading(true);
+    try {
+        const results = await Promise.all(items.map(item =>
+            fetch(URLS_V3.actualizar_det, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id_detalle: parseInt(item.id_detalle),
+                    nuevo_monto: parseFloat(item.nuevo_monto)
+                })
+            }).then(r => r.json()).catch(() => ({ status: 'error', message: 'Error de conexiÃ³n' }))
+        ));
+        const failed = results.filter(r => r.status !== 'success');
+        if (failed.length) {
+            alert('No se pudieron sincronizar todos los montos de TesorerÃ­a.\n' + failed.map(f => f.message || 'Error desconocido').join('\n'));
+            return;
+        }
+        actualizarTodo();
+    } finally {
+        body_loading(false);
+    }
+}
+
 let _cambiosTes = [];
 
 </script>
