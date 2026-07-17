@@ -1707,11 +1707,6 @@ public function anomalies_client_tickets()
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
         set_time_limit(0); // sin lÃ­mite
-        // El JSON de un mes ronda los 24MB; comprimido baja a ~2MB. PHP solo
-        // comprime si el navegador manda Accept-Encoding: gzip.
-        if (!headers_sent() && extension_loaded('zlib')) {
-            ini_set('zlib.output_compression', '1');
-        }
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];
         $tipo_cliente=0;
@@ -1751,7 +1746,7 @@ public function anomalies_client_tickets()
 
         // Sin recorridos en PHP: el SQL ya entrega las 24 columnas finales con
         // hora HH:mm, coalesce de cliente/factura/UUID/pago y código de cliente.
-        json_output(array("data" => $rows));
+        json_output_gzip(array("data" => $rows));
     }
 
    
