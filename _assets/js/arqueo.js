@@ -144,7 +144,9 @@ function recalcular() {
   const goMxn = parseFloat(document.getElementById("go_exchange_mxn").value) || 0;
   const costoPromedio = parseFloat(document.getElementById("costo_promedio").value) || 0;
 
+  const usdCostoPromedio = fisicoUsd * costoPromedio;
   const arqueoMxn = fisicoMxn + valesMxn;
+  const totalArqueo = usdCostoPromedio + arqueoMxn;
   const totalSistema = goUsd * costoPromedio + goMxn;
   const difUsd = fisicoUsd - goUsd;
   const difMxn = arqueoMxn - goMxn;
@@ -156,16 +158,31 @@ function recalcular() {
   document.getElementById("gran_total_vales_mxn").textContent = fmtMoney(granTotalValesMxn);
 
   // Pintar panel.
+  document.getElementById("r_go_usd").textContent = fmtMoney(goUsd);
+  document.getElementById("r_go_mxn").textContent = fmtMoney(goMxn);
+  document.getElementById("r_sistema").textContent = fmtMoney(totalSistema);
   document.getElementById("r_fisico_usd").textContent = fmtMoney(fisicoUsd);
   document.getElementById("r_fisico_mxn").textContent = fmtMoney(fisicoMxn);
+  document.getElementById("r_usd_costo_promedio").textContent = fmtMoney(usdCostoPromedio);
   document.getElementById("r_arqueo_mxn").textContent = fmtMoney(arqueoMxn);
-  document.getElementById("r_sistema").textContent = fmtMoney(totalSistema);
+  document.getElementById("r_total_arqueo").textContent = fmtMoney(totalArqueo);
   document.getElementById("r_dif_usd").textContent = fmtMoney(difUsd);
   document.getElementById("r_dif_mxn").textContent = fmtMoney(difMxn);
 
   const elRes = document.getElementById("r_resultado");
   elRes.textContent = fmtMoney(resultado);
   elRes.className = "val " + (resultado < 0 ? "resultado-negativo" : "resultado-positivo");
+}
+
+/* Coloca el resumen según el ancho: sidebar en ≥1200px, debajo de
+   "Sistema — Go Exchange" en pantallas menores. */
+const mqResumen = window.matchMedia("(min-width: 1200px)");
+function ubicarResumen() {
+  const panel = document.getElementById("panel_resumen");
+  const destino = mqResumen.matches
+    ? document.getElementById("resumen_slot_sidebar")
+    : document.getElementById("resumen_slot_top");
+  if (panel && destino && panel.parentElement !== destino) destino.appendChild(panel);
 }
 
 /* Precarga inputs con lo ya capturado (window.ARQUEO_DENOMS / ARQUEO_VALES). */
@@ -246,6 +263,9 @@ function guardarCaja() {
 document.addEventListener("DOMContentLoaded", function () {
   const enCaja = document.getElementById("form_arqueo");
   if (enCaja) {
+    ubicarResumen();
+    mqResumen.addEventListener("change", ubicarResumen);
+
     precargarCaja();
     recalcular();
 

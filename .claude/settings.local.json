@@ -251,7 +251,12 @@
       "PowerShell(php -l _assets/models/PaymentRequestsModel.php; php -l _assets/models/PaymentRequestInvoicesModel.php; php -l _assets/controllers/payment.php; node --check _assets/js/payment.js)",
       "PowerShell(php -l \"_assets\\\\controllers\\\\xml.php\")",
       "PowerShell(php -l \"_assets\\\\models\\\\CreditNoteApplicationsModel.php\"; php -l \"_assets\\\\controllers\\\\payment.php\")",
-      "PowerShell($s = Get-Command sqlcmd -ErrorAction SilentlyContinue; if \\($s\\) { $s.Source } else { \"no sqlcmd\" }; $p = Get-Command php -ErrorAction SilentlyContinue; if \\($p\\) { $p.Source } else { \"no php\" })"
+      "PowerShell($s = Get-Command sqlcmd -ErrorAction SilentlyContinue; if \\($s\\) { $s.Source } else { \"no sqlcmd\" }; $p = Get-Command php -ErrorAction SilentlyContinue; if \\($p\\) { $p.Source } else { \"no php\" })",
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\a9d91242-746c-4bf8-8c70-0b0f84cd907b\\\\scratchpad\\\\leer_excel.php\")",
+      "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\analisis_notas_vs_facturas_recibidas.php\")",
+      "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\analisis_notas_vs_fr_2.php\")",
+      "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\analisis_notas_vs_fr_3.php\")",
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\703ee21e-104e-4285-a4ee-d4a37137b8d3\\\\scratchpad\\\\check1271.php\")"
     ],
     "deny": [],
     "ask": []

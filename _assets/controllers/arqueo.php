@@ -71,6 +71,7 @@ class Arqueo
     public ArqueoDenominacionesModel $denominacionesModel;
     public ArqueoValesModel $valesModel;
     public ArqueoConcentradoExtrasModel $concentradoExtrasModel;
+    public ArqueoConcentradoImagenesModel $concentradoImagenesModel;
     public ArqueoCapitalBaseModel $capitalBaseModel;
     public ArqueoAuditLogModel $auditLogModel;
     public UsuariosModel $usuariosModel;
@@ -84,6 +85,7 @@ class Arqueo
         $this->denominacionesModel    = new ArqueoDenominacionesModel();
         $this->valesModel             = new ArqueoValesModel();
         $this->concentradoExtrasModel = new ArqueoConcentradoExtrasModel();
+        $this->concentradoImagenesModel = new ArqueoConcentradoImagenesModel();
         $this->capitalBaseModel       = new ArqueoCapitalBaseModel();
         $this->auditLogModel          = new ArqueoAuditLogModel();
         $this->usuariosModel          = new UsuariosModel();
@@ -583,13 +585,25 @@ class Arqueo
                     'D'           => 0, // Total en Sistemas M.N.
                     'E'           => 0, // Total Conteo Físico sin Vales
                     'G'           => 0, // Vales Autorizados
+                    'cajas'       => [],
                 ];
             }
-            $grupos[$sid]['D'] += (float) $c['total_en_sistema'];
+            $cD = (float) $c['total_en_sistema'];
             // E: físico MXN + (físico USD valuado al costo promedio de la caja)
-            $grupos[$sid]['E'] += (float) $c['total_fisico_mxn']
+            $cE = (float) $c['total_fisico_mxn']
                 + ((float) $c['total_fisico_dolares'] * (float) $c['costo_promedio']);
-            $grupos[$sid]['G'] += (float) $c['gran_total_vales_mxn'];
+            $cG = (float) $c['gran_total_vales_mxn'];
+            $grupos[$sid]['D'] += $cD;
+            $grupos[$sid]['E'] += $cE;
+            $grupos[$sid]['G'] += $cG;
+            $grupos[$sid]['cajas'][] = [
+                'caja_numero' => (int) $c['caja_numero'],
+                'D'           => $cD,
+                'E'           => $cE,
+                'F'           => $cE - $cD,
+                'G'           => $cG,
+                'H'           => $cE - $cD + $cG,
+            ];
         }
 
         foreach ($grupos as $sid => &$g) {
@@ -610,6 +624,12 @@ class Arqueo
             $g['N'] = $g['capital_trabajo'] + $g['reinversion'] + $g['utilidad'];
             // O: Variación del Arqueo vs Indicadores D2GO = L - N
             $g['O'] = $g['L'] - $g['N'];
+        }
+        unset($g);
+
+        $imagenes_count = $this->concentradoImagenesModel->count_by_sesion((int) $sesion_id);
+        foreach ($grupos as $sid => &$g) {
+            $g['imagenes'] = $imagenes_count[$sid] ?? 0;
         }
         unset($g);
 
@@ -701,6 +721,144 @@ class Arqueo
                     $this->user_id(), $this->user_name()
                 );
             }
+        }
+
+        $this->json(['success' => $ok]);
+    }
+
+    /* ===================================================================== */
+    /* Imágenes del concentrado (admin)                                      */
+    /* ===================================================================== */
+
+    /**
+     * Sube una o varias imágenes de una sucursal en una sesión.
+     * POST multipart: sesion_id, sucursal_id, imagenes[] (jpg/png, máx 10 MB).
+     */
+    public function subir_imagen_concentrado(): void
+    {
+        $this->guard([self::PERM_ADMIN]);
+
+        $sesion_id   = (int) ($_POST['sesion_id']   ?? 0);
+        $sucursal_id = (int) ($_POST['sucursal_id'] ?? 0);
+        if ($sesion_id <= 0 || $sucursal_id <= 0 || empty($_FILES['imagenes'])) {
+            $this->json(['success' => false, 'message' => 'Faltan datos o archivos.']);
+        }
+
+        $subidas = 0;
+        $errores = [];
+        foreach ($_FILES['imagenes']['name'] as $i => $nombre) {
+            $file = [
+                'name'     => $nombre,
+                'type'     => $_FILES['imagenes']['type'][$i],
+                'tmp_name' => $_FILES['imagenes']['tmp_name'][$i],
+                'error'    => $_FILES['imagenes']['error'][$i],
+                'size'     => $_FILES['imagenes']['size'][$i],
+            ];
+            $res = $this->concentradoImagenesModel->upload(
+                $sesion_id, $sucursal_id, $file, $this->user_id()
+            );
+            if ($res['success']) {
+                $subidas++;
+                $this->auditLogModel->log(
+                    ArqueoAuditLogModel::ACC_SUBIR_IMAGEN,
+                    $sesion_id, null, $sucursal_id,
+                    null,
+                    ['imagen_id' => $res['imagen_id'], 'archivo' => $nombre],
+                    $this->user_id(), $this->user_name()
+                );
+            } else {
+                $errores[] = $nombre . ': ' . $res['message'];
+            }
+        }
+
+        $this->json([
+            'success' => $subidas > 0,
+            'subidas' => $subidas,
+            'message' => $errores ? implode(' | ', $errores) : null,
+        ]);
+    }
+
+    /** JSON: imágenes de una sucursal en una sesión. */
+    public function imagenes_concentrado(): void
+    {
+        $this->guard([self::PERM_ADMIN]);
+
+        $sesion_id   = (int) ($_GET['sesion_id']   ?? 0);
+        $sucursal_id = (int) ($_GET['sucursal_id'] ?? 0);
+        if ($sesion_id <= 0 || $sucursal_id <= 0) {
+            $this->json(['success' => false, 'message' => 'Sesión y sucursal son obligatorias.']);
+        }
+
+        $imagenes = array_map(function ($i) {
+            return [
+                'id'                => (int) $i['id'],
+                'original_filename' => $i['original_filename'],
+                'created_by_name'   => $i['created_by_name'],
+                'created_at'        => $i['created_at'],
+            ];
+        }, $this->concentradoImagenesModel->by_sesion_sucursal($sesion_id, $sucursal_id));
+
+        $this->json(['success' => true, 'imagenes' => $imagenes]);
+    }
+
+    /** Sirve la imagen inline. GET /arqueo/ver_imagen_concentrado/{id} */
+    public function ver_imagen_concentrado($imagen_id): void
+    {
+        $this->guard([self::PERM_ADMIN]);
+
+        $img = $this->concentradoImagenesModel->get_by_id((int) $imagen_id);
+        if (!$img || empty($img['file_path'])) {
+            http_response_code(404);
+            echo 'Imagen no encontrada';
+            return;
+        }
+
+        $fullPath = realpath(__DIR__ . '/../../' . $img['file_path']);
+        $base     = realpath(__DIR__ . '/../../' . ArqueoConcentradoImagenesModel::UPLOAD_BASE);
+
+        if (!$fullPath || !$base || !str_starts_with($fullPath, $base) || !file_exists($fullPath)) {
+            http_response_code(404);
+            echo 'Archivo no encontrado';
+            return;
+        }
+
+        $mime = match ($img['file_extension']) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png'         => 'image/png',
+            default       => 'application/octet-stream',
+        };
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
+    }
+
+    /**
+     * Elimina una imagen (archivo + registro) dejando rastro en auditoría.
+     * POST JSON: imagen_id.
+     */
+    public function eliminar_imagen_concentrado(): void
+    {
+        $this->guard([self::PERM_ADMIN]);
+
+        $in        = $this->input();
+        $imagen_id = (int) ($in['imagen_id'] ?? 0);
+        $img = $imagen_id > 0 ? $this->concentradoImagenesModel->get_by_id($imagen_id) : null;
+        if (!$img) {
+            $this->json(['success' => false, 'message' => 'Imagen no encontrada.']);
+        }
+
+        $ok = $this->concentradoImagenesModel->delete($imagen_id);
+
+        if ($ok) {
+            $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_ELIMINAR_IMAGEN,
+                (int) $img['sesion_id'], null, (int) $img['sucursal_id'],
+                ['imagen_id' => $imagen_id, 'archivo' => $img['original_filename']],
+                null,
+                $this->user_id(), $this->user_name()
+            );
         }
 
         $this->json(['success' => $ok]);

@@ -77,19 +77,38 @@
 
 <div class="seccion-titulo">Resumen del arqueo</div>
 <table>
-    <tr><th style="width:60%;">Concepto</th><th class="num">Importe</th></tr>
-    <tr><td>Go Exchange USD</td><td class="num">{{ caja.go_exchange_dolares|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Go Exchange M.N.</td><td class="num">{{ caja.go_exchange_mxn|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Total físico USD</td><td class="num">{{ caja.total_fisico_dolares|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Total físico M.N.</td><td class="num">{{ caja.total_fisico_mxn|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Vales USD</td><td class="num">{{ caja.total_vales_dolares|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Vales M.N.</td><td class="num">{{ caja.total_vales_mxn|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Gran total vales M.N.</td><td class="num">{{ caja.gran_total_vales_mxn|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Total arqueo M.N. (físico + vales M.N.)</td><td class="num">{{ caja.total_arqueo_mxn|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Total en sistema M.N.</td><td class="num">{{ caja.total_en_sistema|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Diferencia USD (físico − sistema)</td>
-        <td class="num {{ caja.diferencia_dolares < 0 ? 'negativo' : '' }}">{{ caja.diferencia_dolares|number_format(2,'.',',') }}</td></tr>
-    <tr><td>Diferencia M.N. (arqueo − sistema)</td>
+    <tr><th style="width:56%;">Concepto</th><th class="num" style="width:22%;">Dólares</th><th class="num" style="width:22%;">Moneda Nacional</th></tr>
+    <tr><td>Sistema — Go Exchange</td>
+        <td class="num">{{ caja.go_exchange_dolares|number_format(2,'.',',') }}</td>
+        <td class="num">{{ caja.go_exchange_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Arqueo físico</td>
+        <td class="num">{{ caja.total_fisico_dolares|number_format(2,'.',',') }}</td>
+        <td class="num">{{ caja.total_fisico_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Vales</td>
+        <td class="num">{{ caja.total_vales_dolares|number_format(2,'.',',') }}</td>
+        <td class="num">{{ caja.total_vales_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Gran total vales M.N.</td>
+        <td class="num"></td>
+        <td class="num">{{ caja.gran_total_vales_mxn|number_format(2,'.',',') }}</td></tr>
+</table>
+
+<div class="seccion-titulo">Total de arqueo físico (considerando vales)</div>
+<table>
+    <tr><th style="width:56%;">Concepto</th><th class="num" style="width:22%;">Total Dólares</th><th class="num" style="width:22%;">Total Moneda Nacional</th></tr>
+    <tr><td>Dólares × costo promedio · M.N. físico + vales</td>
+        <td class="num">{{ (caja.total_fisico_dolares * caja.costo_promedio)|number_format(2,'.',',') }}</td>
+        <td class="num">{{ caja.total_arqueo_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td><b>Total</b></td>
+        <td class="num" colspan="2"><b>{{ (caja.total_fisico_dolares * caja.costo_promedio + caja.total_arqueo_mxn)|number_format(2,'.',',') }}</b></td></tr>
+    <tr><td>Total en sistema M.N.</td>
+        <td class="num" colspan="2">{{ caja.total_en_sistema|number_format(2,'.',',') }}</td></tr>
+</table>
+
+<div class="seccion-titulo">Diferencias</div>
+<table>
+    <tr><th style="width:56%;">Concepto</th><th class="num" style="width:22%;">Dólares</th><th class="num" style="width:22%;">Moneda Nacional</th></tr>
+    <tr><td>Diferencia (USD: físico − sistema · M.N.: arqueo − sistema)</td>
+        <td class="num {{ caja.diferencia_dolares < 0 ? 'negativo' : '' }}">{{ caja.diferencia_dolares|number_format(2,'.',',') }}</td>
         <td class="num {{ caja.diferencia_mxn < 0 ? 'negativo' : '' }}">{{ caja.diferencia_mxn|number_format(2,'.',',') }}</td></tr>
 </table>
 

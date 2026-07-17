@@ -297,6 +297,41 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     /**
+     * Igual que recalculate_invoice_status pero para TODAS las facturas de una
+     * requisición. Lo usa PaymentRequestsModel::recalculate_payment_chain para
+     * verificar la línea completa tras cualquier mutación (nota, pago,
+     * anticipo, alta/baja de facturas).
+     */
+    public function recalculate_invoice_status_by_request($payment_request_id) : bool {
+        $query = "
+            UPDATE pri
+            SET pri.status = CASE
+                WHEN ISNULL(pri.paid_amount, 0) + ISNULL(ant.anticipos, 0)
+                     >= (pri.amount - ISNULL(n.notas_netas, 0)) - 0.01 THEN 2
+                WHEN ISNULL(pri.paid_amount, 0) + ISNULL(ant.anticipos, 0) > 0 THEN 3
+                WHEN pri.payment_authorized = 1 THEN 1
+                ELSE 0
+            END
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            OUTER APPLY (
+                SELECT SUM(CASE WHEN nt.note_type = 'CREDIT' THEN a.applied_amount
+                                WHEN nt.note_type = 'DEBIT'  THEN -a.applied_amount
+                                ELSE 0 END) as notas_netas
+                FROM [tg].[dbo].credit_note_applications a
+                INNER JOIN [tg].[dbo].invoice_credit_debit_notes nt ON a.credit_note_id = nt.id
+                WHERE a.invoice_id = pri.id AND a.status = 1
+            ) n
+            OUTER APPLY (
+                SELECT SUM(aa.monto_aplicado) as anticipos
+                FROM [TG].[dbo].[anticipo_invoice_applications] aa
+                WHERE aa.invoice_id = pri.id
+            ) ant
+            WHERE pri.payment_request_id = ? AND pri.is_deleted = 0 AND pri.status <> 4
+        ";
+        return $this->sql->update($query, [$payment_request_id]);
+    }
+
+    /**
      * Obtiene el total de facturas de una solicitud
      */
     public function get_payment_summary($payment_request_id) : array|false {
@@ -1027,21 +1062,14 @@ class PaymentRequestInvoicesModel extends Model
             
             WHERE pri.payment_authorized = 1  -- Solo autorizadas
             AND pri.status != ?              -- No pagadas completamente
-            -- Con saldo AUTORIZADO pendiente (neto de notas): el mismo saldo
-            -- que se muestra. Filtrar por amount - paid_amount dejaba pegadas
-            -- líneas en $0 cuando la autorización fue parcial (reqs 1197/1227)
-            -- o el resto lo cubrió un anticipo (req 1241).
-            AND (
-                (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
-                - ISNULL((
-                    SELECT SUM(CASE WHEN n.note_type = 'CREDIT' THEN a.applied_amount
-                                    WHEN n.note_type = 'DEBIT'  THEN -a.applied_amount
-                                    ELSE 0 END)
-                    FROM [TG].[dbo].[credit_note_applications] a
-                    INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON a.credit_note_id = n.id
-                    WHERE a.invoice_id = pri.id AND a.status = 1
-                ), 0)
-            ) > 0.01
+            -- Con saldo AUTORIZADO pendiente. authorized_amount ya es el NETO:
+            -- Tesorería autoriza el saldo neto de notas/anticipos y applyNote
+            -- baja lo autorizado si una NC llega después. Volver a restar las
+            -- notas aquí las descontaba DOBLE (req. 1271). Filtrar por
+            -- amount - paid_amount dejaba pegadas líneas en $0 cuando la
+            -- autorización fue parcial (reqs 1197/1227) o el resto lo cubrió
+            -- un anticipo (req 1241).
+            AND (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0)) > 0.01
             AND pr.status = ?                -- Pago autorizado
             AND pri.is_deleted = 0
 
@@ -1082,18 +1110,9 @@ class PaymentRequestInvoicesModel extends Model
             WHERE pri.payment_authorized = 1
             AND pri.status != ?
             -- Mismo criterio que get_authorized_pending_invoices: saldo
-            -- AUTORIZADO pendiente neto de notas, no amount - paid_amount.
-            AND (
-                (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
-                - ISNULL((
-                    SELECT SUM(CASE WHEN n.note_type = 'CREDIT' THEN a.applied_amount
-                                    WHEN n.note_type = 'DEBIT'  THEN -a.applied_amount
-                                    ELSE 0 END)
-                    FROM [TG].[dbo].[credit_note_applications] a
-                    INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON a.credit_note_id = n.id
-                    WHERE a.invoice_id = pri.id AND a.status = 1
-                ), 0)
-            ) > 0.01
+            -- AUTORIZADO pendiente (authorized_amount ya es neto de notas,
+            -- restarlas aquí las descontaba doble - req. 1271).
+            AND (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0)) > 0.01
             AND pr.status = ?
             AND pri.is_deleted = 0
 
@@ -1147,10 +1166,12 @@ class PaymentRequestInvoicesModel extends Model
                 -- total_saldo = lo que este comprobante debe cubrir: el monto
                 -- AUTORIZADO pendiente de pago (no el monto total de la factura,
                 -- que puede exceder lo autorizado si la autorización fue parcial).
+                -- authorized_amount ya es NETO de notas (se autoriza el saldo
+                -- neto y applyNote lo baja si una NC llega después): restar
+                -- aquí las notas otra vez las descontaba DOBLE (req. 1271).
+                -- Las columnas NC/ND quedan solo como informativas.
                 SUM(
-                    (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
-                    - ISNULL(notas.total_credito, 0)
-                    + ISNULL(notas.total_cargo, 0)
+                    ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0)
                 ) as total_saldo,
                 MIN(pri.expiration_date) as vencimiento_mas_proximo,
                 MAX(pri.expiration_date) as vencimiento_mas_lejano,
@@ -1180,16 +1201,12 @@ class PaymentRequestInvoicesModel extends Model
             ) notas ON pri.id = notas.invoice_id
             WHERE pri.payment_authorized = 1
                 AND pri.status != ?
-                -- Con saldo AUTORIZADO pendiente (neto de notas): el mismo
-                -- saldo que se muestra en la columna total_saldo. Filtrar por
-                -- amount - paid_amount dejaba pegadas líneas en $0 cuando la
-                -- autorización fue parcial (reqs 1197/1227) o el resto lo
-                -- cubrió un anticipo (req 1241).
-                AND (
-                    (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
-                    - ISNULL(notas.total_credito, 0)
-                    + ISNULL(notas.total_cargo, 0)
-                ) > 0.01
+                -- Con saldo AUTORIZADO pendiente: el mismo saldo que se
+                -- muestra en la columna total_saldo (ya neto de notas, ver
+                -- comentario arriba). Filtrar por amount - paid_amount dejaba
+                -- pegadas líneas en $0 cuando la autorización fue parcial
+                -- (reqs 1197/1227) o el resto lo cubrió un anticipo (req 1241).
+                AND (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0)) > 0.01
                 AND pr.status = ?
                 AND pr.is_deleted = 0
                 AND pri.is_deleted = 0

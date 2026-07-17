@@ -243,3 +243,28 @@ GO
 IF COL_LENGTH('[TG].[dbo].[arqueo_cajas]', 'asignado_user_id') IS NULL
     ALTER TABLE [TG].[dbo].[arqueo_cajas] ADD [asignado_user_id] INT NULL;
 GO
+
+/* ---------------------------------------------------------------------------
+   10) Imágenes adjuntas por sucursal en el concentrado (sesión + sucursal).
+   El archivo vive en _assets/uploads/arqueo_imagenes/YYYY/MM/{id}.{ext};
+   aquí solo se guarda la metadata. Patrón de payment_transaction_documents.
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('[TG].[dbo].[arqueo_concentrado_imagenes]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [TG].[dbo].[arqueo_concentrado_imagenes] (
+        [id]                INT IDENTITY(1,1) NOT NULL,
+        [sesion_id]         INT               NOT NULL,
+        [sucursal_id]       INT               NOT NULL,
+        [file_path]         NVARCHAR(300)     NOT NULL,
+        [file_extension]    VARCHAR(10)       NOT NULL,
+        [original_filename] NVARCHAR(255)     NULL,
+        [file_size]         INT               NULL,
+        [created_by]        INT               NULL,
+        [created_at]        DATETIME          NOT NULL
+                            CONSTRAINT [DF_aci_created] DEFAULT (GETDATE()),
+        CONSTRAINT [PK_arqueo_concentrado_imagenes] PRIMARY KEY CLUSTERED ([id])
+    );
+    CREATE INDEX [IX_aci_sesion_sucursal]
+        ON [TG].[dbo].[arqueo_concentrado_imagenes] ([sesion_id], [sucursal_id]);
+END
+GO

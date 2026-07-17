@@ -27,7 +27,40 @@ class CreditNoteApplicationsModel extends Model
             $data['created_by']
         ];
 
-        return $this->sql->insert($query, $params);
+        $app_id = $this->sql->insert($query, $params);
+
+        // Invariante: authorized_amount es el NETO a pagar. Tesorería autoriza
+        // el saldo neto (ya descontadas las NC existentes), y la ejecución paga
+        // authorized_amount - paid_amount sin volver a restar notas. Si la NC
+        // llega DESPUÉS de autorizar, hay que bajar aquí lo autorizado o el
+        // banco pagaría de más (caso req. 1271: restarla aparte en las vistas
+        // la descontaba doble cuando ya venía dentro de lo autorizado).
+        // Piso en paid_amount: dinero ya transferido no se des-autoriza.
+        // Las notas de CARGO no suben authorized_amount: la diferencia
+        // reaparece como saldo por autorizar y la aprueba Tesorería.
+        if ($app_id) {
+            $this->sql->update("
+                UPDATE pri
+                SET pri.authorized_amount = CASE
+                    WHEN ISNULL(pri.authorized_amount, 0) - ? < ISNULL(pri.paid_amount, 0)
+                        THEN ISNULL(pri.paid_amount, 0)
+                    ELSE ISNULL(pri.authorized_amount, 0) - ?
+                END
+                FROM [TG].[dbo].[payment_request_invoices] pri
+                INNER JOIN [tg].[dbo].invoice_credit_debit_notes n ON n.id = ?
+                WHERE pri.id = ?
+                  AND pri.payment_authorized = 1
+                  AND n.note_type = 'CREDIT'",
+                [
+                    $data['applied_amount'],
+                    $data['applied_amount'],
+                    $data['credit_note_id'],
+                    $data['invoice_id']
+                ]
+            );
+        }
+
+        return $app_id;
     }
 
     /**

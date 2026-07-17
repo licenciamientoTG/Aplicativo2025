@@ -155,16 +155,14 @@ class Payment
             return ['success' => false, 'message' => $result['message'], 'batch_id' => $batch_id];
         }
 
-        // Marcar requisiciones completamente pagadas
+        // Verificar toda la línea de cada requisición tocada: totales, status
+        // de facturas y cierre como Pagada si ya no queda nada pendiente
         $prids = array_unique(array_column($facturas_procesar, 'payment_request_id'));
         foreach ($prids as $prid) {
-            if ($this->paymentTransactionsModel->check_all_invoices_paid($prid)) {
-                $this->PaymentRequestsModel->update_request_status(
-                    $prid,
-                    PaymentRequestsModel::STATUS_PAID,
-                    "Pago registrado el " . date('d/m/Y', strtotime($datos['fecha_pago'])) . " - Ref: " . ($datos['referencia'] ?? '')
-                );
-            }
+            $this->PaymentRequestsModel->recalculate_payment_chain(
+                $prid,
+                "Pago registrado el " . date('d/m/Y', strtotime($datos['fecha_pago'])) . " - Ref: " . ($datos['referencia'] ?? '')
+            );
         }
 
         // Adjuntar el comprobante al lote (un PDF por lote, visible para todas sus
@@ -339,7 +337,7 @@ class Payment
             }
 
             if ($added > 0) {
-                $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
+                $this->PaymentRequestsModel->recalculate_payment_chain($payment_id);
                 $this->PaymentRequestsModel->reset_authorizations($payment_id);
                 // $this->PaymentRequestsModel->sql->commit();
                 echo json_encode([
@@ -4041,8 +4039,8 @@ class Payment
                 $payment['accounting_group_id'] ?? null
             );
 
-            // Recalcular total
-            $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
+            // Recalcular toda la línea (totales, notas, status de facturas)
+            $this->PaymentRequestsModel->recalculate_payment_chain($payment_id);
 
             // Reiniciar autorizaciones
             $this->PaymentRequestsModel->reset_authorizations($payment_id);
@@ -4139,8 +4137,8 @@ class Payment
                 $payment['accounting_group_id'] ?? null
             );
 
-            // Recalcular total
-            $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
+            // Recalcular toda la línea (totales, notas, status de facturas)
+            $this->PaymentRequestsModel->recalculate_payment_chain($payment_id);
 
             // Reiniciar autorizaciones
             $this->PaymentRequestsModel->reset_authorizations($payment_id);
@@ -5611,22 +5609,14 @@ class Payment
                 throw new Exception('Error al registrar la aplicación');
             }
 
-            // Recalcular totales de notas en payment_requests
-            $this->CreditNoteApplicationsModel->updatePaymentNoteTotals($paymentRequestId);
-
-            // Recalcular el status de la factura contra su saldo neto: si la nota
-            // cubre el remanente debe quedar Pagada, y si con ello ya no queda
-            // ninguna factura pendiente en una requisición Autorizada, cerrarla.
-            $this->paymentRequestInvoicesModel->recalculate_invoice_status($invoiceId);
-            $request = $this->PaymentRequestsModel->get_request_by_id($paymentRequestId);
-            if ($request && (int)$request['status'] === PaymentRequestsModel::STATUS_AUTHORIZED
-                && $this->paymentTransactionsModel->check_all_invoices_paid($paymentRequestId)) {
-                $this->PaymentRequestsModel->update_request_status(
-                    $paymentRequestId,
-                    PaymentRequestsModel::STATUS_PAID,
-                    'Requisición cerrada: saldo restante cubierto por notas de crédito'
-                );
-            }
+            // Verificar toda la línea: totales de notas, status de facturas
+            // (si la nota cubre el remanente la factura queda Pagada) y cierre
+            // de la requisición si ya no queda nada pendiente. applyNote ya
+            // bajó authorized_amount si la factura estaba autorizada.
+            $this->PaymentRequestsModel->recalculate_payment_chain(
+                $paymentRequestId,
+                'Requisición cerrada: saldo restante cubierto por notas de crédito'
+            );
 
             echo json_encode([
                 'success'    => true,
@@ -5670,13 +5660,11 @@ class Payment
                 throw new Exception('Error al eliminar la aplicación');
             }
 
-            // Recalcular totales de notas en payment_requests
-            $this->CreditNoteApplicationsModel->updatePaymentNoteTotals($paymentRequestId);
-
-            // Recalcular el status de la factura ahora que la nota ya no cuenta
-            if (!empty($app['invoice_id'])) {
-                $this->paymentRequestInvoicesModel->recalculate_invoice_status((int)$app['invoice_id']);
-            }
+            // Verificar toda la línea ahora que la nota ya no cuenta.
+            // Nota: authorized_amount NO se restaura automáticamente — si la
+            // factura estaba autorizada en neto, la diferencia reaparece como
+            // saldo por autorizar y la vuelve a aprobar Tesorería.
+            $this->PaymentRequestsModel->recalculate_payment_chain($paymentRequestId);
 
             echo json_encode(['success' => true, 'message' => 'Aplicación eliminada correctamente']);
         } catch (Exception $e) {

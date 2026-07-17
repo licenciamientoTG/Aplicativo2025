@@ -26,7 +26,13 @@
     .denom-tabla thead th.text-end { text-align:right; }
     .denom-tabla tbody td { padding:.4rem 1rem; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
     .denom-tabla tbody tr:hover { background:#f8fafc; }
-    .denom-tabla input.cantidad { width:100%; max-width:110px; text-align:center; padding:.35rem .5rem; }
+    .denom-tabla input.cantidad { width:100%; min-width:3rem; max-width:110px; text-align:center; padding:.35rem .5rem; }
+    @media (max-width: 991.98px) {
+      /* Sin flechitas del number en pantallas chicas: que el ancho sea solo para los dígitos. */
+      .denom-tabla input.cantidad::-webkit-outer-spin-button,
+      .denom-tabla input.cantidad::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+      .denom-tabla input.cantidad { -moz-appearance:textfield; appearance:textfield; }
+    }
     .denom-tabla td.total { text-align:right; font-variant-numeric:tabular-nums; font-weight:500; color:#475569; white-space:nowrap; }
     .denom-tabla tfoot td, .denom-tabla tfoot th { background:#f8fafc; border-top:1px solid #e2e8f0; padding:.6rem 1rem; }
     .gran-total { font-weight:700; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; }
@@ -39,7 +45,13 @@
     .panel-totales .panel-row { display:flex; justify-content:space-between; align-items:center; font-size:.875rem; padding:.3rem 0; }
     .panel-totales .panel-row .lbl { color:#64748b; }
     .panel-totales .panel-row .val { font-weight:500; color:#1e293b; font-variant-numeric:tabular-nums; }
-    .panel-divider { height:1px; background:#f1f5f9; margin:.75rem 0; }
+    .panel-totales .panel-seccion { font-size:.66rem; font-weight:700; color:#334155; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.4rem; }
+    .panel-totales .panel-cols { display:flex; gap:.6rem; margin-bottom:.4rem; }
+    .panel-totales .panel-col { flex:1; min-width:0; background:#f8fafc; border:1px solid #e2e8f0; border-radius:.4rem; padding:.4rem .55rem; }
+    .panel-totales .panel-col .clbl { display:block; font-size:.6rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:.15rem; white-space:nowrap; }
+    .panel-totales .panel-col .cval { display:block; font-weight:600; color:#1e293b; font-variant-numeric:tabular-nums; font-size:.85rem; white-space:nowrap; }
+    .panel-totales .panel-row-total .lbl { font-weight:600; color:#334155; }
+    .panel-totales .panel-row-total .val { font-weight:700; }
     .panel-resultado { padding-top:.5rem; border-top:1px solid #f1f5f9; margin-top:.5rem; }
     .panel-resultado .panel-row .lbl { font-weight:600; color:#334155; }
     .resultado-positivo { color:#059669 !important; font-weight:700 !important; font-size:1.05rem; }
@@ -51,6 +63,23 @@
 
     .btn-guardar-flotante { position:fixed; bottom:1.5rem; right:1.5rem; z-index:1030; background:#2563eb; border:none; color:#fff; padding:.8rem 1.5rem; border-radius:2rem; font-weight:600; font-size:.9rem; display:flex; align-items:center; gap:.55rem; box-shadow:0 4px 14px rgba(37,99,235,.4); transition:background-color .15s, box-shadow .15s; }
     .btn-guardar-flotante:hover { background:#1d4ed8; color:#fff; box-shadow:0 6px 18px rgba(37,99,235,.5); }
+
+    /* Separación entre grupos del resumen cuando es sidebar (≥ 1200px). */
+    .panel-totales .panel-grupo + .panel-grupo { border-top:1px solid #f1f5f9; margin-top:.75rem; padding-top:.75rem; }
+
+    /* ---- En pantallas < 1200px el resumen se coloca debajo de
+       "Sistema — Go Exchange" a lo ancho (el JS lo mueve a #resumen_slot_top)
+       y sus grupos se acomodan en cuadrícula. ---- */
+    @media (max-width: 1199.98px) {
+      #resumen_slot_top .panel-totales { position:static; }
+      #resumen_slot_top .card-body-pad { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:.75rem 1.75rem; }
+      #resumen_slot_top .panel-grupo + .panel-grupo { border-top:none; margin-top:0; padding-top:0; }
+      #resumen_slot_top .panel-resultado { margin-top:.35rem; }
+    }
+    @media (max-width: 575.98px) {
+      #resumen_slot_top .card-body-pad { grid-template-columns:1fr; }
+      #resumen_slot_top .panel-grupo + .panel-grupo { border-top:1px solid #f1f5f9; margin-top:.6rem; padding-top:.6rem; }
+    }
 </style>
 {% endblock %}
 {% block menutitle %}
@@ -115,7 +144,7 @@
 </div>
 
 <div class="row">
-  <div class="col-lg-9">
+  <div class="col-xl-9">
 
     {# ---------------- Go Exchange ---------------- #}
     <div class="arqueo-card">
@@ -135,6 +164,9 @@
         </div>
       </div>
     </div>
+
+    {# En pantallas < 1200px el JS mueve aquí el panel de resumen (a lo ancho). #}
+    <div id="resumen_slot_top"></div>
 
     {# ---------------- Grids de denominaciones ----------------
        Dos secciones visuales (Billetes, Monedas), cada una con una tabla
@@ -171,7 +203,7 @@
     {% for grupo_id, g in grupos %}
     <div class="arqueo-card">
       <div class="arqueo-card-header"><h2>{{ g.titulo }}</h2></div>
-      <div class="card-body-pad d-flex flex-column flex-md-row gap-3">
+      <div class="card-body-pad d-flex flex-column flex-lg-row gap-3">
         {% for moneda in ['USD','MXN'] %}
         {% set denoms = g.denoms_cajon[moneda] %}
         {% set denoms_cf = g.denoms_cf[moneda] %}
@@ -288,23 +320,50 @@
 
   </div>
 
-  {# ---------------- Panel de totales (sticky) ---------------- #}
-  <div class="col-lg-3">
-    <div class="arqueo-card panel-totales">
+  {# ---------------- Panel de totales (sidebar sticky en ≥ 1200px) ---------------- #}
+  <div class="col-xl-3" id="resumen_slot_sidebar">
+    <div class="arqueo-card panel-totales" id="panel_resumen">
       <div class="arqueo-card-header"><h2>Resumen del arqueo</h2></div>
       <div class="card-body-pad">
-        <div class="panel-row"><span class="lbl">Físico USD</span><span class="val" id="r_fisico_usd">$0.00</span></div>
-        <div class="panel-row"><span class="lbl">Físico MXN</span><span class="val" id="r_fisico_mxn">$0.00</span></div>
-        <div class="panel-row"><span class="lbl">Arqueo MXN (+vales)</span><span class="val" id="r_arqueo_mxn">$0.00</span></div>
-        <div class="panel-divider"></div>
-        <div class="panel-row"><span class="lbl">Total en Sistema</span><span class="val" id="r_sistema">$0.00</span></div>
-        <div class="panel-divider"></div>
-        <div class="panel-row"><span class="lbl">Diferencia USD</span><span class="val" id="r_dif_usd">$0.00</span></div>
-        <div class="panel-row"><span class="lbl">Diferencia MXN</span><span class="val" id="r_dif_mxn">$0.00</span></div>
-        <div class="panel-resultado">
-          <div class="panel-row"><span class="lbl">Resultado Final</span><span class="val" id="r_resultado">$0.00</span></div>
-          <div class="panel-hint">Positivo = sobrante · Negativo = faltante</div>
+
+        <div class="panel-grupo">
+          <div class="panel-seccion">Sistema — Go Exchange</div>
+          <div class="panel-cols">
+            <div class="panel-col"><span class="clbl">Dólares</span><span class="cval" id="r_go_usd">$0.00</span></div>
+            <div class="panel-col"><span class="clbl">Moneda Nacional</span><span class="cval" id="r_go_mxn">$0.00</span></div>
+          </div>
+          <div class="panel-row"><span class="lbl">Total en Sistema (MXN)</span><span class="val" id="r_sistema">$0.00</span></div>
         </div>
+
+        <div class="panel-grupo">
+          <div class="panel-seccion">Arqueo físico</div>
+          <div class="panel-cols">
+            <div class="panel-col"><span class="clbl">Dólares</span><span class="cval" id="r_fisico_usd">$0.00</span></div>
+            <div class="panel-col"><span class="clbl">Moneda Nacional</span><span class="cval" id="r_fisico_mxn">$0.00</span></div>
+          </div>
+        </div>
+
+        <div class="panel-grupo">
+          <div class="panel-seccion">Total arqueo físico (con vales)</div>
+          <div class="panel-cols">
+            <div class="panel-col"><span class="clbl">Total Dólares</span><span class="cval" id="r_usd_costo_promedio">$0.00</span></div>
+            <div class="panel-col"><span class="clbl">Total Moneda Nacional</span><span class="cval" id="r_arqueo_mxn">$0.00</span></div>
+          </div>
+          <div class="panel-row panel-row-total"><span class="lbl">Total</span><span class="val" id="r_total_arqueo">$0.00</span></div>
+        </div>
+
+        <div class="panel-grupo">
+          <div class="panel-seccion">Diferencias</div>
+          <div class="panel-cols">
+            <div class="panel-col"><span class="clbl">Dólares</span><span class="cval" id="r_dif_usd">$0.00</span></div>
+            <div class="panel-col"><span class="clbl">Moneda Nacional</span><span class="cval" id="r_dif_mxn">$0.00</span></div>
+          </div>
+          <div class="panel-resultado">
+            <div class="panel-row"><span class="lbl">Resultado Final</span><span class="val" id="r_resultado">$0.00</span></div>
+            <div class="panel-hint">Positivo = sobrante · Negativo = faltante</div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

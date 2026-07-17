@@ -1846,6 +1846,82 @@ class PaymentRequestsModel extends Model
     }
 
     /**
+     * Verifica y recalcula la LÍNEA COMPLETA de una requisición tras cualquier
+     * mutación (aplicar/quitar nota, registrar pago, aplicar anticipo,
+     * alta/baja de facturas):
+     *
+     *   1. Totales de notas (total_notas_credito / total_notas_cargo)
+     *   2. monto_total desde las facturas activas (solo tipo pago, no anticipos:
+     *      en un anticipo monto_total es el monto del anticipo mismo)
+     *   3. Status de TODAS sus facturas contra su cobertura real
+     *      (pagos + anticipos vs neto de notas)
+     *   4. Status de la requisición (solo tipo pago):
+     *      - Enviado/Autorizado -> Pagado si ya no queda ninguna factura
+     *        pendiente (todas Pagadas/Canceladas)
+     *      - Pagado -> Autorizado si volvió a haber facturas pendientes
+     *        (p. ej. se canceló un pago o se quitó cobertura)
+     *
+     * Un solo punto de entrada evita que cada endpoint tenga que acordarse de
+     * la combinación correcta de recálculos (casos 96, 1241, 1271).
+     *
+     * @param int $payment_request_id
+     * @param string|null $close_comment Comentario a guardar si la requisición se cierra
+     */
+    public function recalculate_payment_chain($payment_request_id, $close_comment = null) : bool {
+        $request = $this->get_request_by_id($payment_request_id);
+        if (!$request || intval($request['is_deleted'] ?? 0) === 1) {
+            return false;
+        }
+        $es_anticipo = intval($request['tipo'] ?? 0) === 1;
+
+        // 1. Totales de notas aplicadas (solo aplicaciones activas)
+        $notesModel = new CreditNoteApplicationsModel();
+        $notesModel->updatePaymentNoteTotals($payment_request_id);
+
+        // 2. monto_total = suma de facturas activas (no aplica a anticipos)
+        if (!$es_anticipo) {
+            $this->recalculate_payment_total($payment_request_id);
+        }
+
+        // 3. Status de todas las facturas contra su cobertura real
+        $invoicesModel = new PaymentRequestInvoicesModel();
+        $invoicesModel->recalculate_invoice_status_by_request($payment_request_id);
+
+        // 4. Status de la requisición (el status de un anticipo refleja el pago
+        //    del anticipo mismo, no la cobertura de sus facturas: no se toca)
+        if (!$es_anticipo) {
+            $rs = $this->sql->select("
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status IN (0, 1, 3) THEN 1 ELSE 0 END) as pendientes
+                FROM [TG].[dbo].[payment_request_invoices]
+                WHERE payment_request_id = ? AND is_deleted = 0",
+                [$payment_request_id]
+            );
+            $total      = $rs ? intval($rs[0]['total']) : 0;
+            $pendientes = $rs ? intval($rs[0]['pendientes']) : 0;
+            $status     = intval($request['status']);
+
+            if ($total > 0 && $pendientes === 0
+                && in_array($status, [self::STATUS_PENDING, self::STATUS_AUTHORIZED])) {
+                $this->update_request_status(
+                    $payment_request_id,
+                    self::STATUS_PAID,
+                    $close_comment ?? 'Requisición cerrada: todas las facturas quedaron cubiertas'
+                );
+            } elseif ($pendientes > 0 && $status === self::STATUS_PAID) {
+                $this->update_request_status(
+                    $payment_request_id,
+                    self::STATUS_AUTHORIZED,
+                    'Requisición reabierta: volvió a haber facturas pendientes'
+                );
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Reinicia las autorizaciones de un pago y lo vuelve a estado PENDING
      * @param int $payment_request_id
      * @return array

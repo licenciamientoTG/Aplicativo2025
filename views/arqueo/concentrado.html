@@ -45,6 +45,26 @@
     .icono-cancelar { color:#dc3545; cursor:pointer; margin-left:.25rem; }
     .input-inline { width:110px; display:inline-block; text-align:right;
                     padding:.15rem .35rem; font-size:.85rem; height:auto; }
+    /* Desglose por caja (sucursales con más de una caja) */
+    .btn-toggle-cajas { border:1px solid #dee2e6; background:#fff; border-radius:4px;
+                        width:20px; height:20px; padding:0; margin-right:.4rem;
+                        font-size:.6rem; color:#1C4587; cursor:pointer; vertical-align:middle; }
+    .btn-toggle-cajas:hover { background:#e9ecef; }
+    #tabla_concentrado tbody tr.fila-caja td { background-color:#f1f3f5 !important; font-style:italic; }
+    #tabla_concentrado tbody tr.fila-caja td:first-child { padding-left:2rem; }
+    /* Imágenes por sucursal */
+    .btn-imagenes { position:relative; }
+    .badge-imagenes { position:absolute; top:-7px; right:-7px; background:#83160E; color:#fff;
+                      border-radius:999px; font-size:.6rem; font-weight:700; line-height:1;
+                      min-width:16px; padding:3px 4px; text-align:center; }
+    .galeria-imagenes { display:flex; flex-wrap:wrap; gap:.75rem; }
+    .galeria-item { width:150px; }
+    .galeria-item img { width:150px; height:110px; object-fit:cover;
+                        border:1px solid #dee2e6; border-radius:4px; cursor:pointer; }
+    .galeria-item .pie { font-size:.68rem; color:#6c757d; display:flex;
+                         justify-content:space-between; align-items:center; gap:.25rem; }
+    .galeria-item .pie .nombre-pie { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .btn-borrar-img { border:none; background:none; color:#dc3545; cursor:pointer; padding:0 .15rem; }
 </style>
 {% endblock %}
 {% block menutitle %}
@@ -81,7 +101,7 @@
           <th class="text-end th-rojo">Utilidad</th>
           <th class="text-end th-rojo">Capital, Utilidad y Reinversión</th>
           <th class="text-end th-azul">Variación vs Indicadores D2GO</th>
-          <th>Editar</th>
+          <th>Acciones</th>
         </tr>
       </thead>
       <tbody>
@@ -117,8 +137,14 @@
             data-gastos_tramite="{{ g.gastos_tramite }}"
             data-adeudo="{{ g.adeudo }}"
             data-reinversion="{{ g.reinversion }}"
-            data-utilidad="{{ g.utilidad }}">
-          <td>{{ g.sucursal }}</td>
+            data-utilidad="{{ g.utilidad }}"
+            {% if g.cajas|length > 1 %}data-cajas="{{ g.cajas|json_encode|e('html_attr') }}"{% endif %}>
+          <td>
+            {% if g.cajas|length > 1 %}
+            <button type="button" class="btn-toggle-cajas" title="Ver detalle por caja"><i class="fas fa-chevron-right"></i></button>
+            {% endif %}
+            {{- g.sucursal -}}
+          </td>
           <td class="num celda-editable" data-field="capital_trabajo">
             <span class="celda-valor">{{ g.capital_trabajo|number_format(2,'.',',') }}</span>
             <i class="fas fa-pencil-alt icono-editar" title="Editar"></i>
@@ -147,10 +173,16 @@
           </td>
           <td class="num">{{ g.N|number_format(2,'.',',') }}</td>
           <td class="num {{ g.O < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ g.O|number_format(2,'.',',') }}</td>
-          <td class="text-center">
+          <td class="text-center" style="white-space:nowrap;">
             <button type="button" class="btn btn-sm btn-outline-primary"
                     onclick="abrirModalExtra({{ g.sucursal_id }}, '{{ g.sucursal|e('js') }}', {{ g.capital_trabajo }}, {{ g.gastos_tramite }}, {{ g.adeudo }}, {{ g.reinversion }}, {{ g.utilidad }})">
               <i class="fas fa-edit"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary btn-imagenes" title="Imágenes"
+                    onclick="abrirModalImagenes({{ g.sucursal_id }}, '{{ g.sucursal|e('js') }}')">
+              <i class="fas fa-camera"></i>
+              <span class="badge-imagenes" id="badge_img_{{ g.sucursal_id }}"
+                    {% if g.imagenes == 0 %}style="display:none;"{% endif %}>{{ g.imagenes }}</span>
             </button>
           </td>
         </tr>
@@ -197,7 +229,7 @@
       {% set total2 = t_E + t_G + t_gastos + t_adeudo %}
       <tr class="resumen-row resumen-total"><td>Total</td><td class="num">{{ total2|number_format(2,'.',',') }}</td></tr>
 
-      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Diferencia</td></tr>
+      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Resultado</td></tr>
       {% set faltante = total2 - total1 %}
       <tr class="resumen-row resumen-total"><td>Faltante</td><td class="num {{ faltante < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ faltante|number_format(2,'.',',') }}</td></tr>
     </table>
@@ -244,6 +276,31 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
         <button type="button" class="btn btn-primary" onclick="guardarModalExtra()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de imágenes por sucursal -->
+<div class="modal fade" id="modal_imagenes" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Imágenes — <span id="img_sucursal_nombre"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="galeria_imagenes" class="galeria-imagenes mb-1"></div>
+        <div id="galeria_vacia" class="text-muted small" style="display:none;">Sin imágenes para esta sucursal.</div>
+        <hr>
+        <div class="d-flex align-items-center" style="gap:.5rem;">
+          <input type="file" id="img_files" class="form-control form-control-sm"
+                 accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple>
+          <button type="button" class="btn btn-sm btn-primary" id="btn_subir_imagenes" onclick="subirImagenes()">
+            <i class="fas fa-upload"></i> Subir
+          </button>
+        </div>
+        <div class="text-muted mt-1" style="font-size:.7rem;">JPG o PNG, máximo 10 MB por imagen.</div>
       </div>
     </div>
   </div>
@@ -434,6 +491,40 @@
       if (e.key === 'Escape') { cancelarInline($(this).closest('td')); }
     });
 
+  // ---- Desglose por caja (child rows de DataTables) ----
+  function filasDetalleCajas(cajas) {
+    const fmt = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const html = cajas.map(function (c) {
+      const clsF = c.F < 0 ? 'falt-negativo' : 'falt-positivo';
+      const clsH = c.H < 0 ? 'falt-negativo' : 'falt-positivo';
+      return '<tr class="fila-caja">' +
+        '<td>Caja ' + c.caja_numero + '</td>' +
+        '<td></td>' +
+        '<td class="num">' + fmt(c.D) + '</td>' +
+        '<td class="num">' + fmt(c.E) + '</td>' +
+        '<td class="num ' + clsF + '">' + fmt(c.F) + '</td>' +
+        '<td class="num">' + fmt(c.G) + '</td>' +
+        '<td class="num ' + clsH + '">' + fmt(c.H) + '</td>' +
+        '<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>' +
+        '</tr>';
+    }).join('');
+    return $(html);
+  }
+
+  $('#tabla_concentrado tbody').on('click', '.btn-toggle-cajas', function () {
+    const $btn  = $(this);
+    const $tr   = $btn.closest('tr');
+    const row   = $('#tabla_concentrado').DataTable().row($tr);
+    const $icon = $btn.find('i');
+    if (row.child.isShown()) {
+      row.child.hide();
+      $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+    } else {
+      row.child(filasDetalleCajas(JSON.parse($tr.attr('data-cajas')))).show();
+      $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+    }
+  });
+
   function abrirModalExtra(sucursalId, sucursalNombre, capital, gastos, adeudo, reinversion, utilidad) {
     document.getElementById('mx_sucursal_id').value = sucursalId;
     document.getElementById('mx_sucursal_nombre').textContent = sucursalNombre;
@@ -465,6 +556,107 @@
       .then(r => r.json())
       .then(d => { if (d.success) location.reload(); else alert(d.message || 'No se pudo guardar.'); })
       .catch(() => alert('Error de red al guardar.'));
+  }
+
+  // ---- Imágenes por sucursal ----
+  let imgSucursalId = null;
+
+  function escHtml(s) {
+    return $('<div>').text(s == null ? '' : s).html();
+  }
+
+  function abrirModalImagenes(sucursalId, sucursalNombre) {
+    imgSucursalId = sucursalId;
+    document.getElementById('img_sucursal_nombre').textContent = sucursalNombre;
+    document.getElementById('img_files').value = '';
+    cargarImagenes();
+    $('#modal_imagenes').modal('show');
+  }
+
+  function cargarImagenes() {
+    fetch('/arqueo/imagenes_concentrado?sesion_id={{ sesion.id }}&sucursal_id=' + imgSucursalId, {
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) { alert(d.message || 'No se pudieron cargar las imágenes.'); return; }
+        renderGaleria(d.imagenes);
+        actualizarBadge(imgSucursalId, d.imagenes.length);
+      })
+      .catch(() => alert('Error de red al cargar las imágenes.'));
+  }
+
+  function renderGaleria(imagenes) {
+    const $galeria = $('#galeria_imagenes').empty();
+    $('#galeria_vacia').toggle(imagenes.length === 0);
+    imagenes.forEach(function (img) {
+      const url = '/arqueo/ver_imagen_concentrado/' + img.id;
+      $galeria.append(
+        '<div class="galeria-item">' +
+          '<a href="' + url + '" target="_blank" title="' + escHtml(img.original_filename) + '">' +
+            '<img src="' + url + '" alt="' + escHtml(img.original_filename) + '">' +
+          '</a>' +
+          '<div class="pie">' +
+            '<span class="nombre-pie" title="' + escHtml(img.created_by_name) + '">' + escHtml(img.created_by_name || '—') + '</span>' +
+            '<button type="button" class="btn-borrar-img" title="Eliminar" onclick="eliminarImagen(' + img.id + ')">' +
+              '<i class="fas fa-trash-alt"></i>' +
+            '</button>' +
+          '</div>' +
+        '</div>'
+      );
+    });
+  }
+
+  function actualizarBadge(sucursalId, n) {
+    const badge = document.getElementById('badge_img_' + sucursalId);
+    if (!badge) return;
+    badge.textContent = n;
+    badge.style.display = n > 0 ? '' : 'none';
+  }
+
+  function subirImagenes() {
+    const files = document.getElementById('img_files').files;
+    if (!files.length) { alert('Selecciona al menos una imagen.'); return; }
+
+    const fd = new FormData();
+    fd.append('sesion_id', {{ sesion.id }});
+    fd.append('sucursal_id', imgSucursalId);
+    for (const f of files) fd.append('imagenes[]', f);
+
+    const $btn = $('#btn_subir_imagenes').prop('disabled', true);
+    $btn.find('i').removeClass('fa-upload').addClass('fa-spinner fa-spin');
+
+    fetch('/arqueo/subir_imagen_concentrado', {
+      method: 'POST',
+      headers: {'X-Requested-With': 'XMLHttpRequest'},
+      body: fd
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.message) alert(d.message);
+        document.getElementById('img_files').value = '';
+        cargarImagenes();
+      })
+      .catch(() => alert('Error de red al subir las imágenes.'))
+      .finally(() => {
+        $btn.prop('disabled', false);
+        $btn.find('i').removeClass('fa-spinner fa-spin').addClass('fa-upload');
+      });
+  }
+
+  function eliminarImagen(imagenId) {
+    if (!confirm('¿Eliminar esta imagen?')) return;
+    fetch('/arqueo/eliminar_imagen_concentrado', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+      body: JSON.stringify({ imagen_id: imagenId })
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) { alert(d.message || 'No se pudo eliminar.'); return; }
+        cargarImagenes();
+      })
+      .catch(() => alert('Error de red al eliminar.'));
   }
 </script>
 {% endblock %}
