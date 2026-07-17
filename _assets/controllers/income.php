@@ -3886,7 +3886,12 @@ public function anomalies_client_tickets()
                     if ($check->fetchColumn() == 0) continue;
                     $hasConcepto = $conn->query("SELECT count(*) FROM information_schema.columns WHERE table_name='$tabla' AND column_name='Concepto'")->fetchColumn() > 0;
                     $cols = $hasConcepto ? 'Fecha, Referencia, Descripcion, Concepto, Depositos' : 'Fecha, Referencia, Descripcion, NULL as Concepto, Depositos';
-                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    // En 5117 también llegan abonos ajenos a ventas (DCC, bonificaciones, etc.).
+                    // Para conciliación sólo deben considerarse los depósitos de ventas.
+                    $filtroDepositoVentas = ($tabla === 'Tesoreria_5117')
+                        ? " AND Descripcion LIKE '%DEPOSITO VENTAS DEL DIA%'"
+                        : '';
+                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0$filtroDepositoVentas AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sql);
                     $stmt->execute([$year, $month]);
                     while($r = $stmt->fetch(PDO::FETCH_ASSOC)) $movimientosRaw[] = $r;
