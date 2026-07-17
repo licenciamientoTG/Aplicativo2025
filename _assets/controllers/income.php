@@ -1749,28 +1749,8 @@ public function anomalies_client_tickets()
             return;
         }
 
-        // Transformar cada fila EN SITIO (por referencia) para no mantener
-        // una segunda copia completa del dataset en memoria.
-        foreach ($rows as &$dispatch) {
-            $dispatch['hora_formateada'] = date("H:i", strtotime($dispatch['hora_formateada']));
-            $dispatch['cliente_fac']     = $dispatch['cliente_fac']   ?? $dispatch['cliente_des'];
-            $dispatch['factura']         = $dispatch['factura']       ?? $dispatch['factura_desp'];
-            $dispatch['UUID']            = $dispatch['UUID']          ?? ".";
-            $dispatch['codigo_cliente']  = ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']);
-            $dispatch['tipo_pago']       = $dispatch['tipo_pago']     ?? $dispatch['tipo_pago_despacho'];
-
-            // Liberar columnas auxiliares que el frontend no utiliza.
-            unset(
-                $dispatch['gasfac'],
-                $dispatch['nrofac'],
-                $dispatch['factura_desp'],
-                $dispatch['UUID_fac'],
-                $dispatch['UUID_dep'],
-                $dispatch['tipval']
-            );
-        }
-        unset($dispatch); // romper la referencia del último elemento
-
+        // Sin recorridos en PHP: el SQL ya entrega las 24 columnas finales con
+        // hora HH:mm, coalesce de cliente/factura/UUID/pago y código de cliente.
         json_output(array("data" => $rows));
     }
 
