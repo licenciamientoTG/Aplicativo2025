@@ -2741,6 +2741,161 @@ class DespachosModel extends Model{
     }
 
 
+    /**
+     * Consulta despachos conectándose DIRECTAMENTE al SQL Server de la estación
+     * (sin API intermedio y sin linked server/OPENQUERY). Es el mismo query que
+     * ejecutaba el API Laravel getDispatches. Lanza excepción si la estación no
+     * responde; el llamador decide el respaldo.
+     */
+    function control_dispatches_est_direct($from, $until, $uuid, $billed, $station) : array {
+        $from  = (int) $from;
+        $until = (int) $until;
+        // Margen de ±1 día para movimientos de tarjeta registrados con fecha
+        // distinta a la del despacho (cortes de turno alrededor de medianoche).
+        $mov_from  = $from - 1;
+        $mov_until = $until + 1;
+
+        $dsn = "sqlsrv:Server={$station['servidor']};Database={$station['base_datos']};TrustServerCertificate=yes;LoginTimeout=10";
+        $pdo = new PDO($dsn, $station['usuario'], $station['contra']);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo->exec("SET NOCOUNT ON");
+
+        $uuid_condition = ($uuid != 0)
+            ? ($uuid == 1
+                ? "AND t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53"
+                : "AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)"
+              )
+            : "";
+
+        $billed_condition = ($billed != 0)
+            ? ($billed == 1
+                ? "AND t3.nro IS NULL AND t1.nrofac = 0"
+                : "AND (t3.nro IS NOT NULL OR t1.nrofac != 0)"
+              )
+            : "";
+
+        $query = "
+            SELECT * FROM (
+            SELECT
+                CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
+                CAST(CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS TIME(0)) AS hora_formateada,
+                SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1)  as 'turno',
+                t1.nrotrn as \"despacho\",
+                t8.den as \"producto\",
+                t6.abr as \"estacion\",
+                t7.den as \"empresa\",
+                t2.den as \"cliente_des\",
+                t5.den as \"cliente_fac\",
+                t1.can as \"cantidad\",
+                t1.mto as \"importe\",
+                t1.pre as \"precio\",
+                t1.gasfac,
+                t1.nrofac,
+                CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS \"despachador\",
+                CASE
+                    WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t3.nro BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t3.nro BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                    ELSE CAST(t3.nro AS VARCHAR(10))
+                END AS \"factura\",
+                CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS [FechaFactura],
+                CASE
+                    WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    ELSE CAST(t1.nrofac AS VARCHAR(10))
+                END AS \"factura_desp\",
+                case
+                when t1.satuid is not null Then t1.satuid
+                else t3.satuid
+                end as \"UUID\",
+                t3.satuid as \"UUID_fac\",
+                t1.satuid as \"UUID_dep\",
+                t1.rut,
+                t13.den as \"denominacion\",
+                t1.codcli as \"codigo_cliente\",
+                t10.codval,
+                t2.tipval,
+                CASE
+                    WHEN t13.den in (' Tarjeta EfectiCard',
+                                    ' SMARTBT - EFECTIVALE',
+                                    ' Tarjeta TicketCar',
+                                    ' Vale Efectivale',
+                                    'Ultra Gas',
+                                    ' Tarjeta Inburgas',
+                                    ' Vale Edenred',
+                                    ' Tarjetas Sodexo (Pluxee)',
+                                    'Mobil FleetPro',
+                                    ' SMARTBT - SODEXO WIZEO',
+                                    ' Vale Sodexo') THEN 'Monedero'
+                    WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
+                    WHEN t10.codval = 28 THEN 'Cliente Crédito'
+                    WHEN t10.codval = 127 THEN 'Cliente Débito'
+                    WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
+                    WHEN t3.codopr = 21701354 THEN 'Factura Global'
+                    else 'N/A'
+                END as 'tipo_cliente_aplicativo',
+                CASE
+                    WHEN t10.codval = 28 THEN 'Cliente Crédito'
+                    WHEN t10.codval = 127 THEN 'Cliente Débito'
+                    WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
+                    WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
+                    WHEN t3.codopr = 21701354 THEN 'Factura Global'
+                    else 'N/A'
+                END as 'tipo_cliente',
+                t14.den as 'efectos_c',
+                t11.nroveh as 'vehiculo',
+                t11.plc as 'placas',
+                t3.txtref,
+                t3.tipref,
+                CASE
+                    WHEN t3.tipref = 4 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Credito'
+                    WHEN t3.tipref = 28 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Debito'
+                    WHEN t3.tipref = 1 AND t1.logmsk IN (2, 3) THEN 'Efectivo'
+                END AS 'tipo_pago',
+                CASE
+                    WHEN t1.tiptrn = 51 AND t1.gasfac != 2 THEN 'Tarjeta Credito'
+                    WHEN t1.tiptrn = 52 AND t1.gasfac != 2 THEN 'Tarjeta Debito'
+                    WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Efectivale'
+                    WHEN t1.tiptrn = 0 THEN 'Efectivo'
+                END AS 'tipo_pago_despacho',
+                t1.tiptrn,
+                t6.cvecli,
+                ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
+                  FROM [Despachos] t1 WITH (NOLOCK)
+                LEFT JOIN Clientes t2 WITH (NOLOCK) on t1.codcli = t2.cod
+                LEFT JOIN DocumentosC t3 WITH (NOLOCK) on t1.nrofac = t3.nro and t1.codgas = t3.codgas
+                LEFT JOIN Clientes t5 WITH (NOLOCK) on t3.codopr = t5.cod
+                LEFT JOIN Gasolineras t6 WITH (NOLOCK) ON t1.codgas = t6.cod
+                LEFT JOIN [Empresas] t7 WITH (NOLOCK) ON t6.codemp = t7.cod
+                LEFT JOIN [Productos] t8 WITH (NOLOCK) on t1.codprd = t8.cod
+                LEFT JOIN [Responsables] t9 WITH (NOLOCK) on t1.codres = t9.cod
+                LEFT JOIN [ClientesValores] t10 WITH (NOLOCK) ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
+                LEFT JOIN [ClientesVehiculos] t11 WITH (NOLOCK) on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
+                LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov !=97  and mto != 0 and fchmov BETWEEN ? AND ?  group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
+                LEFT JOIN Valores t13 WITH (NOLOCK) on t12.codbco = t13.cod
+                LEFT JOIN [EfectosC] t14 WITH (NOLOCK) on t3.tip = t14.tipope and t3.subope =t14.subope
+                WHERE t1.fchtrn BETWEEN ? AND ?
+                  AND t1.mto != 0
+                  AND t1.tiptrn NOT IN (65, 74)
+                  $uuid_condition
+                  $billed_condition
+            ) AS q WHERE q.rn = 1
+        ";
+
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$mov_from, $mov_until, $from, $until]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->closeCursor();
+        return $rows;
+    }
+
     function control_dispatches_est($from, $until, $codgas,$uuid,$tipo_cliente,$billed,$estations) :array|false {
         $from  = (int) $from;
         $until = (int) $until;

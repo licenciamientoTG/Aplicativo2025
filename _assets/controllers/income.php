@@ -1707,60 +1707,38 @@ public function anomalies_client_tickets()
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
         set_time_limit(0); // sin lÃ­mite
+        // El JSON de un mes ronda los 24MB; comprimido baja a ~2MB. PHP solo
+        // comprime si el navegador manda Accept-Encoding: gzip.
+        if (!headers_sent() && extension_loaded('zlib')) {
+            ini_set('zlib.output_compression', '1');
+        }
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];
         $tipo_cliente=0;
         $from  = dateToInt($_POST['from']);
         $until = dateToInt($_POST['until']);
         $estation= $this->gasolinerasModel->get_estations_servidor_cod_gas($codgas);
-
-
-        $postData = [
-            'from' => $from,
-            'until' => $until,
-            'codgas' => $codgas,
-            'uuid' => $_POST['uuid'],
-            'tipo_cliente' => $tipo_cliente,
-            'billed' => $billed,
-            'estation' => $estation,
-        ];
-        $ch = curl_init('http://192.168.0.3:388/api/control_despachos/getDispatches');
-        // 120s cubre de sobra un trimestre (30 días medidos ≈ 23s); si el API se
-        // cuelga, el respaldo directo (más rápido) atiende en lugar de esperar 5 min.
-        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Espera para establecer conexión
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_ENCODING, ''); // Aceptar gzip/deflate si el API lo soporta
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response   = curl_exec($ch);
-        $curl_error = curl_error($ch);
-        $http_code  = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
-
-        $rows = null;
-        if ($response !== false && $http_code < 400) {
-            $apiData = json_decode($response, true);
-            if (isset($apiData['data']) && is_array($apiData['data'])) {
-                $rows = $apiData['data'];
-            }
+        if (empty($estation)) {
+            json_output(array("data" => [], "error" => "No se encontró la estación seleccionada (codgas $codgas)."));
+            return;
         }
 
-        // Respaldo: si el API no respondió o devolvió basura, consultar la
-        // estación directamente con el query local (misma estructura de columnas).
+        // Camino principal: conexión directa al SQL Server de la estación
+        // (sin API intermedio: evita el doble viaje decode/encode de ~20MB de JSON).
+        $rows = null;
+        try {
+            $rows = $this->despachosModel->control_dispatches_est_direct($from, $until, $_POST['uuid'], $billed, $estation);
+        } catch (\Throwable $e) {
+            error_log("datatables_dispatches_est: conexión directa a {$estation['servidor']} falló: " . $e->getMessage());
+        }
+
+        // Respaldo: OPENQUERY a través del servidor central (linked server).
         if ($rows === null) {
-            error_log("datatables_dispatches_est: API despachos falló (HTTP $http_code) $curl_error — usando consulta directa");
-            if (empty($estation)) {
-                json_output(array("data" => [], "error" => "No se encontró la estación seleccionada (codgas $codgas)."));
-                return;
-            }
             try {
                 // El modelo espera una LISTA de estaciones; aquí solo se consulta una.
                 $rows = $this->despachosModel->control_dispatches_est($from, $until, $codgas, $_POST['uuid'], $tipo_cliente, $billed, [$estation]) ?: [];
             } catch (\Throwable $e) {
-                error_log("datatables_dispatches_est: consulta directa falló: " . $e->getMessage());
+                error_log("datatables_dispatches_est: consulta por linked server falló: " . $e->getMessage());
                 json_output(array("data" => [], "error" => "No se pudo obtener la información de despachos. Intente de nuevo."));
                 return;
             }
