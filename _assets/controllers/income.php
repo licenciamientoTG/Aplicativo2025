@@ -1710,12 +1710,14 @@ public function anomalies_client_tickets()
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];
         $tipo_cliente=0;
+        $from  = dateToInt($_POST['from']);
+        $until = dateToInt($_POST['until']);
         $estation= $this->gasolinerasModel->get_estations_servidor_cod_gas($codgas);
-       
+
 
         $postData = [
-            'from' => dateToInt($_POST['from']),
-            'until' => dateToInt($_POST['until']),
+            'from' => $from,
+            'until' => $until,
             'codgas' => $codgas,
             'uuid' => $_POST['uuid'],
             'tipo_cliente' => $tipo_cliente,
@@ -1723,26 +1725,48 @@ public function anomalies_client_tickets()
             'estation' => $estation,
         ];
         $ch = curl_init('http://192.168.0.3:388/api/control_despachos/getDispatches');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // Espera mÃ¡xima de 5 minutos
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Espera para establecer conexiÃ³n
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // Espera máxima de 5 minutos
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Espera para establecer conexión
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_ENCODING, ''); // Aceptar gzip/deflate si el API lo soporta
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);   
+        curl_setopt($ch, CURLOPT_POST, true);
 
         // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
+        $response   = curl_exec($ch);
+        $curl_error = curl_error($ch);
+        $http_code  = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         curl_close($ch);
 
-        // $apiData = json_decode($response, true);
-        $apiData = json_decode($response, true);
-        if (empty($apiData['data'])) {
+        $rows = null;
+        if ($response !== false && $http_code < 400) {
+            $apiData = json_decode($response, true);
+            if (isset($apiData['data']) && is_array($apiData['data'])) {
+                $rows = $apiData['data'];
+            }
+        }
+
+        // Respaldo: si el API no respondió o devolvió basura, consultar la
+        // estación directamente con el query local (misma estructura de columnas).
+        if ($rows === null) {
+            error_log("datatables_dispatches_est: API despachos falló (HTTP $http_code) $curl_error — usando consulta directa");
+            try {
+                $rows = $this->despachosModel->control_dispatches_est($from, $until, $codgas, $_POST['uuid'], $tipo_cliente, $billed, $estation ?: []) ?: [];
+            } catch (\Throwable $e) {
+                error_log("datatables_dispatches_est: consulta directa falló: " . $e->getMessage());
+                json_output(array("data" => [], "error" => "No se pudo obtener la información de despachos. Intente de nuevo."));
+                return;
+            }
+        }
+
+        if (empty($rows)) {
             json_output(array("data" => []));
             return;
         }
 
         // Transformar cada fila EN SITIO (por referencia) para no mantener
         // una segunda copia completa del dataset en memoria.
-        foreach ($apiData['data'] as &$dispatch) {
+        foreach ($rows as &$dispatch) {
             $dispatch['hora_formateada'] = date("H:i", strtotime($dispatch['hora_formateada']));
             $dispatch['cliente_fac']     = $dispatch['cliente_fac']   ?? $dispatch['cliente_des'];
             $dispatch['factura']         = $dispatch['factura']       ?? $dispatch['factura_desp'];
@@ -1762,7 +1786,7 @@ public function anomalies_client_tickets()
         }
         unset($dispatch); // romper la referencia del último elemento
 
-        json_output(array("data" => $apiData['data']));
+        json_output(array("data" => $rows));
     }
 
    

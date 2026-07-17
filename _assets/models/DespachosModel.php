@@ -814,6 +814,11 @@ class DespachosModel extends Model{
     }
 
     function control_dispatches2($from, $until, $codgas,$uuid,$tipo_cliente,$billed) :array|false {
+        $from  = (int) $from;
+        $until = (int) $until;
+        // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
+        $mov_from  = $from - 1;
+        $mov_until = $until + 1;
         $uuid_true = " AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)";
         $uuid_false = " AND  t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53";
 
@@ -942,7 +947,7 @@ class DespachosModel extends Model{
                     LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
                     LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
                     /* LEFT JOIN [SG12].[dbo].MovimientosTar t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas and t12.mto != 0 and t12.tipmov != 97 and t12.tipmov != 86 */
-                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar Where tipmov != 86 and tipmov !=97  and mto != 0   group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
+                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov !=97  and mto != 0 and fchmov BETWEEN $mov_from AND $mov_until group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
                     LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod
                     LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
                         Where
@@ -1001,6 +1006,9 @@ class DespachosModel extends Model{
     private function dispatchesCTE($from, $until, $where) : string {
         $from  = (int) $from;
         $until = (int) $until;
+        // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
+        $mov_from  = $from - 1;
+        $mov_until = $until + 1;
         return "WITH CTE AS (
                     SELECT
                     CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
@@ -1104,7 +1112,7 @@ class DespachosModel extends Model{
                     LEFT JOIN [SG12].[dbo].[Responsables] t9 on t1.codres = t9.cod
                     LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
                     LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
-                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar Where tipmov != 86 and tipmov !=97  and mto != 0   group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
+                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov !=97  and mto != 0 and fchmov BETWEEN $mov_from AND $mov_until group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
                     LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod
                     LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
                         Where
@@ -2585,6 +2593,11 @@ class DespachosModel extends Model{
 
 
     function control_dispatches_invoiced($from, $until, $codgas,$uuid,$tipo_cliente,$billed) :array|false {
+        $from  = (int) $from;
+        $until = (int) $until;
+        // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
+        $mov_from  = $from - 1;
+        $mov_until = $until + 1;
         $uuid_true = " AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)";
         $uuid_false = " AND  t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53";
 
@@ -2710,7 +2723,7 @@ class DespachosModel extends Model{
                         LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
                         LEFT JOIN [SG12].[dbo].[Productos] t8 on t1.codprd = t8.cod
                         LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
-                        LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar Where tipmov != 86 and tipmov !=97  and mto != 0   group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
+                        LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov !=97  and mto != 0 and fchmov BETWEEN $mov_from AND $mov_until group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
                         LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod 
                         LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
 					    LEFT JOIN TGV2.dbo.Facturas t15 on t1.satuid = t15.UUID
@@ -2729,6 +2742,13 @@ class DespachosModel extends Model{
 
 
     function control_dispatches_est($from, $until, $codgas,$uuid,$tipo_cliente,$billed,$estations) :array|false {
+        $from  = (int) $from;
+        $until = (int) $until;
+        // Rango con ±1 día de margen para movimientos de tarjeta registrados
+        // con fecha distinta a la del despacho (cortes de turno alrededor de medianoche).
+        $mov_from  = $from - 1;
+        $mov_until = $until + 1;
+        $union_queries = [];
         foreach ($estations as $station) {
             $server_ip = $station['servidor'];
             $database = $station['base_datos'];
@@ -2860,21 +2880,24 @@ class DespachosModel extends Model{
                     t6.cvecli,
                     ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
                       FROM [$database].[dbo].[Despachos] t1 WITH (NOLOCK)
-                    LEFT JOIN [$database].[dbo].Clientes t2 on t1.codcli = t2.cod
-                    LEFT JOIN [$database].[dbo].DocumentosC t3 on t1.nrofac = t3.nro and t1.codgas = t3.codgas
-                    LEFT JOIN [$database].[dbo].Clientes t5 on t3.codopr = t5.cod
-                    LEFT JOIN [$database].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
-                    LEFT JOIN [$database].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
-                    LEFT JOIN [$database].[dbo].[Productos] t8 on t1.codprd = t8.cod
-                    LEFT JOIN [$database].[dbo].[Responsables] t9 on t1.codres = t9.cod
-                    LEFT JOIN [$database].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
-                    LEFT JOIN [$database].[dbo].[ClientesVehiculos] t11 on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
-                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [$database].[dbo].MovimientosTar Where tipmov != 86 and tipmov !=97  and mto != 0   group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
-                    LEFT JOIN [$database].[dbo].Valores t13 on t12.codbco = t13.cod 
-                    LEFT JOIN [$database].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
+                    LEFT JOIN [$database].[dbo].Clientes t2 WITH (NOLOCK) on t1.codcli = t2.cod
+                    LEFT JOIN [$database].[dbo].DocumentosC t3 WITH (NOLOCK) on t1.nrofac = t3.nro and t1.codgas = t3.codgas
+                    LEFT JOIN [$database].[dbo].Clientes t5 WITH (NOLOCK) on t3.codopr = t5.cod
+                    LEFT JOIN [$database].[dbo].Gasolineras t6 WITH (NOLOCK) ON t1.codgas = t6.cod
+                    LEFT JOIN [$database].[dbo].[Empresas] t7 WITH (NOLOCK) ON t6.codemp = t7.cod
+                    LEFT JOIN [$database].[dbo].[Productos] t8 WITH (NOLOCK) on t1.codprd = t8.cod
+                    LEFT JOIN [$database].[dbo].[Responsables] t9 WITH (NOLOCK) on t1.codres = t9.cod
+                    LEFT JOIN [$database].[dbo].[ClientesValores] t10 WITH (NOLOCK) ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
+                    LEFT JOIN [$database].[dbo].[ClientesVehiculos] t11 WITH (NOLOCK) on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
+                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [$database].[dbo].MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov !=97  and mto != 0 and fchmov BETWEEN ''$mov_from'' AND ''$mov_until'' group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
+                    LEFT JOIN [$database].[dbo].Valores t13 WITH (NOLOCK) on t12.codbco = t13.cod
+                    LEFT JOIN [$database].[dbo].[EfectosC] t14 WITH (NOLOCK) on t3.tip = t14.tipope and t3.subope =t14.subope
                     WHERE $where";
+            // rn = 1 se filtra dentro del OPENQUERY: la deduplicación ocurre en la
+            // estación y los renglones repetidos por los joins no viajan por la red
+            // (mismo comportamiento que control_dispatches2 / control_dispatches_invoiced).
             $union_queries[] = "
-                SELECT * FROM OPENQUERY([$server_ip], '$query')
+                SELECT * FROM OPENQUERY([$server_ip], 'SELECT * FROM ($query) AS q WHERE q.rn = 1')
             ";
         }
         $final_query = implode(" UNION ALL ", $union_queries);
