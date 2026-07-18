@@ -256,7 +256,12 @@
       "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\analisis_notas_vs_facturas_recibidas.php\")",
       "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\analisis_notas_vs_fr_2.php\")",
       "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\analisis_notas_vs_fr_3.php\")",
-      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\703ee21e-104e-4285-a4ee-d4a37137b8d3\\\\scratchpad\\\\check1271.php\")"
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\703ee21e-104e-4285-a4ee-d4a37137b8d3\\\\scratchpad\\\\check1271.php\")",
+      "Bash(echo \"--- marcadores: $?\")",
+      "Bash(timeout 4 bash -c 'echo > /dev/tcp/192.168.0.3/388')",
+      "Bash(timeout 4 bash -c 'echo > /dev/tcp/192.168.0.6/1433')",
+      "Bash(ini_set= php -d memory_limit=1024M /tmp/claude-1000/-home-a8a-Documentos-Desarrollo-Aplicativo2025/666dfba8-dfce-4d95-bb86-ba13e1c9120c/scratchpad/verify_fallback.php 5)",
+      "Bash(awk 'NR==2744{while\\(\\(getline line < \"/tmp/claude-1000/-home-a8a-Documentos-Desarrollo-Aplicativo2025/666dfba8-dfce-4d95-bb86-ba13e1c9120c/scratchpad/new_methods.txt\"\\) > 0\\) print line; skip=1} NR>=2744 && NR<=3075 {next} {print}' _assets/models/DespachosModel.php)"
     ],
     "deny": [],
     "ask": []

@@ -329,19 +329,34 @@ function actualizarDataTableEst() {
                 'uuid': uuid,
                 'billed': billed
             },
+            dataSrc: function (json) {
+                // El backend responde {data: [], error: "..."} cuando el API y la
+                // consulta directa fallan; sin esto el usuario solo veía tabla vacía.
+                if (json.error) {
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">${json.error}</p>
+                        </div>`
+                    );
+                }
+                return json.data || [];
+            },
             error: function() {
                 $('#historic_shortage_table').waitMe('hide');
                 $('.datatables_dispatches_est').removeClass('loading');
-    
+
                 alertify.myAlert(
                     `<div class="container text-center text-danger">
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        <p class="text-center">La consulta de despachos falló (tiempo de espera o error del servidor). Intente con un rango de fechas menor o vuelva a intentarlo.</p>
                     </div>`
                 );
-    
+
             },
             beforeSend: function() {
                 $('.datatables_dispatches_est').addClass('loading');
@@ -386,7 +401,13 @@ function actualizarDataTableEst() {
     
     // Actualizar los datos del DataTable
     
+    // Debounce: con 26k+ filas, re-filtrar 24 columnas en cada tecla congela la UI.
+    let filtroEstTimer = null;
     $('#filtro-datatables_dispatches_est input').on('keyup  change clear', function () {
+        clearTimeout(filtroEstTimer);
+        filtroEstTimer = setTimeout(aplicarFiltrosEst, 300);
+    });
+    function aplicarFiltrosEst() {
         datatables_dispatches_est
         .column(0).search($('#1fecha').val().trim())                // Fecha
         .column(1).search($('#1hora_formateada').val().trim())      // Hora formateada
@@ -400,19 +421,20 @@ function actualizarDataTableEst() {
         .column(9).search($('#1importe').val().trim())             // Importe
         .column(10).search($('#1precio').val().trim())              // Precio
         .column(11).search($('#1despachador').val().trim())         // Despachador
-        .column(12).search($('#1tipo_pago').val().trim())             // Factura
+        .column(12).search($('#1tipo_pago').val().trim())           // Tipo pago
         .column(13).search($('#1factura').val().trim())             // Factura
-        .column(14).search($('#1UUID').val().trim())                // UUID
-        .column(15).search($('#1txtref').val().trim())                // UUID
-        .column(16).search($('#1rut').val().trim())                 // RUT
-        .column(17).search($('#1denominacion').val().trim())                 // RUT
-        .column(18).search($('#1codigo_cliente').val().trim())      // Código cliente
-        .column(19).search($('#1tipo_cliente').val().trim())        // Tipo cliente
-        .column(19).search($('#1tipo_cliente_aplicativo').val().trim())        // Tipo cliente
-        .column(20).search($('#1vehiculo').val().trim())            // Vehículo
-        .column(21).search($('#1placas').val().trim())  
+        // La columna 14 es FechaFactura y no tiene input de filtro.
+        .column(15).search($('#1UUID').val().trim())                // UUID
+        .column(16).search($('#1txtref').val().trim())              // Notas
+        .column(17).search($('#1rut').val().trim())                 // RUT
+        .column(18).search($('#1denominacion').val().trim())        // Denominación
+        .column(19).search($('#1codigo_cliente').val().trim())      // Código cliente
+        .column(20).search($('#1tipo_cliente').val().trim())        // Tipo cliente
+        .column(21).search($('#1tipo_cliente_aplicativo').val().trim()) // Tipo cliente aplicativo
+        .column(22).search($('#1vehiculo').val().trim())            // Vehículo
+        .column(23).search($('#1placas').val().trim())
             .draw();
-    });
+    }
 
     
     // Agregar un evento clic de refresh

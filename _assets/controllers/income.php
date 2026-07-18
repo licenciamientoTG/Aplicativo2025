@@ -1710,59 +1710,43 @@ public function anomalies_client_tickets()
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];
         $tipo_cliente=0;
+        $from  = dateToInt($_POST['from']);
+        $until = dateToInt($_POST['until']);
         $estation= $this->gasolinerasModel->get_estations_servidor_cod_gas($codgas);
-       
+        if (empty($estation)) {
+            json_output(array("data" => [], "error" => "No se encontró la estación seleccionada (codgas $codgas)."));
+            return;
+        }
 
-        $postData = [
-            'from' => dateToInt($_POST['from']),
-            'until' => dateToInt($_POST['until']),
-            'codgas' => $codgas,
-            'uuid' => $_POST['uuid'],
-            'tipo_cliente' => $tipo_cliente,
-            'billed' => $billed,
-            'estation' => $estation,
-        ];
-        $ch = curl_init('http://192.168.0.3:388/api/control_despachos/getDispatches');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // Espera mÃ¡xima de 5 minutos
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Espera para establecer conexiÃ³n
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);   
+        // Camino principal: conexión directa al SQL Server de la estación
+        // (sin API intermedio: evita el doble viaje decode/encode de ~20MB de JSON).
+        $rows = null;
+        try {
+            $rows = $this->despachosModel->control_dispatches_est_direct($from, $until, $_POST['uuid'], $billed, $estation);
+        } catch (\Throwable $e) {
+            error_log("datatables_dispatches_est: conexión directa a {$estation['servidor']} falló: " . $e->getMessage());
+        }
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
+        // Respaldo: OPENQUERY a través del servidor central (linked server).
+        if ($rows === null) {
+            try {
+                // El modelo espera una LISTA de estaciones; aquí solo se consulta una.
+                $rows = $this->despachosModel->control_dispatches_est($from, $until, $codgas, $_POST['uuid'], $tipo_cliente, $billed, [$estation]) ?: [];
+            } catch (\Throwable $e) {
+                error_log("datatables_dispatches_est: consulta por linked server falló: " . $e->getMessage());
+                json_output(array("data" => [], "error" => "No se pudo obtener la información de despachos. Intente de nuevo."));
+                return;
+            }
+        }
 
-        // $apiData = json_decode($response, true);
-        $apiData = json_decode($response, true);
-        if (empty($apiData['data'])) {
+        if (empty($rows)) {
             json_output(array("data" => []));
             return;
         }
 
-        // Transformar cada fila EN SITIO (por referencia) para no mantener
-        // una segunda copia completa del dataset en memoria.
-        foreach ($apiData['data'] as &$dispatch) {
-            $dispatch['hora_formateada'] = date("H:i", strtotime($dispatch['hora_formateada']));
-            $dispatch['cliente_fac']     = $dispatch['cliente_fac']   ?? $dispatch['cliente_des'];
-            $dispatch['factura']         = $dispatch['factura']       ?? $dispatch['factura_desp'];
-            $dispatch['UUID']            = $dispatch['UUID']          ?? ".";
-            $dispatch['codigo_cliente']  = ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']);
-            $dispatch['tipo_pago']       = $dispatch['tipo_pago']     ?? $dispatch['tipo_pago_despacho'];
-
-            // Liberar columnas auxiliares que el frontend no utiliza.
-            unset(
-                $dispatch['gasfac'],
-                $dispatch['nrofac'],
-                $dispatch['factura_desp'],
-                $dispatch['UUID_fac'],
-                $dispatch['UUID_dep'],
-                $dispatch['tipval']
-            );
-        }
-        unset($dispatch); // romper la referencia del último elemento
-
-        json_output(array("data" => $apiData['data']));
+        // Sin recorridos en PHP: el SQL ya entrega las 24 columnas finales con
+        // hora HH:mm, coalesce de cliente/factura/UUID/pago y código de cliente.
+        json_output_gzip(array("data" => $rows));
     }
 
    
@@ -3886,7 +3870,12 @@ public function anomalies_client_tickets()
                     if ($check->fetchColumn() == 0) continue;
                     $hasConcepto = $conn->query("SELECT count(*) FROM information_schema.columns WHERE table_name='$tabla' AND column_name='Concepto'")->fetchColumn() > 0;
                     $cols = $hasConcepto ? 'Fecha, Referencia, Descripcion, Concepto, Depositos' : 'Fecha, Referencia, Descripcion, NULL as Concepto, Depositos';
-                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    // En 5117 también llegan abonos ajenos a ventas (DCC, bonificaciones, etc.).
+                    // Para conciliación sólo deben considerarse los depósitos de ventas.
+                    $filtroDepositoVentas = ($tabla === 'Tesoreria_5117')
+                        ? " AND Descripcion LIKE '%DEPOSITO VENTAS DEL DIA%'"
+                        : '';
+                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0$filtroDepositoVentas AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sql);
                     $stmt->execute([$year, $month]);
                     while($r = $stmt->fetch(PDO::FETCH_ASSOC)) $movimientosRaw[] = $r;

@@ -20,18 +20,83 @@ function connect_bd() {
 }
 
 function json_output($json) {
-    ini_set('memory_limit', '256M');
+    // Subir el límite de memoria a 256M solo si el actual es menor: los endpoints
+    // de datasets grandes ya lo elevaron (p. ej. a 1024M) y bajárselo aquí
+    // provocaba fatales de memoria justo en el json_encode final.
+    $limit = ini_get('memory_limit');
+    if ($limit != '-1') {
+        $bytes = (int) $limit;
+        switch (strtoupper(substr(trim($limit), -1))) {
+            case 'G': $bytes *= 1024;
+            case 'M': $bytes *= 1024;
+            case 'K': $bytes *= 1024;
+        }
+        if ($bytes < 256 * 1024 * 1024) {
+            ini_set('memory_limit', '256M');
+        }
+    }
     header('Access-Control-Allow-Origin: *');
     header('Content-Type: application/json;charset=utf-8');
 
     if (is_array($json)) {
-        $json = json_encode($json);
+        // JSON_INVALID_UTF8_SUBSTITUTE: un byte mal codificado desde sqlsrv ya no
+        // aborta el encode completo (antes devolvía false => respuesta vacía).
+        $json = json_encode($json, JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($json === false) {
+            if (!headers_sent()) {
+                http_response_code(500);
+            }
+            $json = json_encode(['error' => 'Error al generar la respuesta JSON: ' . json_last_error_msg()]);
+        }
     }
 
     // Se muestra en pantalla la información del JSON ya formateada como UTF-8
     echo $json;
 
     // Terminamos la función
+    exit();
+}
+
+/**
+ * Igual que json_output() pero comprime la respuesta con gzip explícito
+ * (gzencode + Content-Length exacto). Pensado para endpoints que devuelven
+ * datasets grandes (varios MB). No usa zlib.output_compression porque ese
+ * mecanismo corrompe la respuesta bajo IIS/FastCGI (ERR_CONTENT_DECODING_FAILED).
+ */
+function json_output_gzip($json) {
+    if (is_array($json)) {
+        $json = json_encode($json, JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($json === false) {
+            if (!headers_sent()) {
+                http_response_code(500);
+            }
+            $json = json_encode(['error' => 'Error al generar la respuesta JSON: ' . json_last_error_msg()]);
+        }
+    }
+
+    // Descartar cualquier salida previa accidental (warnings, BOM): un solo byte
+    // extraño delante del cuerpo comprimido invalida el gzip completo.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Access-Control-Allow-Origin: *');
+    header('Content-Type: application/json;charset=utf-8');
+
+    $client_accepts_gzip = strpos($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '', 'gzip') !== false;
+    if ($client_accepts_gzip && function_exists('gzencode')) {
+        $gz = gzencode($json, 6);
+        if ($gz !== false) {
+            header('Content-Encoding: gzip');
+            header('Vary: Accept-Encoding');
+            header('Content-Length: ' . strlen($gz));
+            echo $gz;
+            exit();
+        }
+    }
+
+    header('Content-Length: ' . strlen($json));
+    echo $json;
     exit();
 }
 
