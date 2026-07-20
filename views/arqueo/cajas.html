@@ -14,9 +14,16 @@
 {% block menutitle %}
 <div style="display:flex; justify-content:space-between; align-items:center;">
     <span>Cajas — {{ sesion.nombre }} ({{ sesion.fecha|date('d/m/Y') }})</span>
-    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
-        <i class="fas fa-backward"></i> Regresar
-    </a>
+    <span>
+        {% if es_admin %}
+        <a href="/arqueo/exportar_cajas/{{ sesion.id }}" class="btn btn-success text-light small" style="border-radius:15px;">
+            <i class="fas fa-file-excel"></i> Descargar Excel
+        </a>
+        {% endif %}
+        <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+            <i class="fas fa-backward"></i> Regresar
+        </a>
+    </span>
 </div>
 {% endblock %}
 {% block content %}

@@ -1,5 +1,8 @@
 <?php
 
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
 /**
  * Arqueos simultáneos Dollar2Go.
  *
@@ -881,6 +884,55 @@ class Arqueo
         // by_sesion()/by_caja() y el concentrado calculado en concentrado().
         http_response_code(501);
         echo 'Exportación pendiente de implementar.';
+    }
+
+    /**
+     * Descarga en Excel la relación Sucursal / Caja / Cajero / Asignado
+     * de las cajas de una sesión. Solo admin.
+     */
+    public function exportar_cajas($sesion_id): void
+    {
+        $this->guard([self::PERM_ADMIN]);
+
+        $sesion = $this->sesionesModel->find((int) $sesion_id);
+        if (!$sesion) {
+            (new Errors())->get404();
+            return;
+        }
+        $cajas = $this->cajasModel->by_sesion((int) $sesion_id);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet       = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Cajas');
+
+        $sheet->fromArray(['Sucursal', 'Caja', 'Cajero', 'Asignado'], null, 'A1');
+        $sheet->getStyle('A1:D1')->getFont()->setBold(true);
+
+        $row = 2;
+        foreach ($cajas as $c) {
+            $sheet->fromArray([
+                $c['sucursal_nombre'],
+                (int) $c['caja_numero'],
+                $c['cajero_nombre'] ?: '—',
+                $c['asignado_nombre'] ?: 'Sin asignar',
+            ], null, "A{$row}");
+            $row++;
+        }
+        foreach (['A', 'B', 'C', 'D'] as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $slug    = strtolower(trim(preg_replace('/[^A-Za-z0-9]+/', '-', $sesion['nombre']), '-')) ?: 'sesion';
+        $fecha   = substr((string) $sesion['fecha'], 0, 10);
+        $archivo = "arqueo_cajas_{$slug}_{$fecha}.xlsx";
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment;filename=\"{$archivo}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
     }
 
     /* ===================================================================== */

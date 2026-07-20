@@ -3,9 +3,11 @@
  * analisis.html y detalle.html. Paleta slate/emerald portada del mockup.
  */
 
-/* Las tablas necesitan todo el ancho: sidebar siempre oculto en este módulo
-   (también se oculta el hamburger, que sin sidebar no hace nada) */
-#sidebar, .sidebar-toggle { display: none !important; }
+/* Las tablas necesitan todo el ancho: el sidebar inicia colapsado en este
+   módulo y el hamburger lo abre/cierra. Se invierte la semántica de
+   .collapsed (misma técnica que app.css usa en pantallas <992px). */
+#sidebar:not(.collapsed) { margin-left: -260px; }
+#sidebar.collapsed { margin-left: 0; }
 
 /* ---- KPIs del header -------------------------------------------------- */
 .merma-kpi small {
@@ -96,6 +98,7 @@
 .merma-tabla .col-fecha { left: 0; width: 96px; min-width: 96px; max-width: 96px; text-align: left; color: #475569; }
 .merma-tabla .col-turno { left: 96px; text-align: center; color: #475569; box-shadow: 2px 0 0 0 #cbd5e1; }
 .merma-tabla thead .col-fecha, .merma-tabla thead .col-turno { z-index: 40; background: #f8fafc; }
+.merma-tabla tfoot .col-fecha { z-index: 30; background: #f1f5f9; }
 .merma-tabla thead tr:first-child .col-fecha { background: #fff; }
 
 /* Hover de fila (incluye celdas congeladas) y corte visual por día */

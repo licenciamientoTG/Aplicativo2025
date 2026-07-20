@@ -132,13 +132,15 @@ class Merma
         $rows = $this->mermaModel->get_detalle_mensual($codgas, $anio, $mes);
 
         // Acumulado de diferencia por familia (como las columnas I/P del Excel)
-        $acum  = ['maxima' => 0.0, 'super' => 0.0, 'diesel' => 0.0];
-        $filas = [];
+        $acum    = ['maxima' => 0.0, 'super' => 0.0, 'diesel' => 0.0];
+        $compras = ['maxima' => 0.0, 'super' => 0.0, 'diesel' => 0.0];
+        $filas   = [];
         foreach ($rows as $r) {
             $fila = ['fecha' => substr($r['fecha'], 0, 10), 'turno' => (int)$r['turno']];
             foreach (array_keys(MermaDiariaModel::FAMILIAS) as $fam) {
                 $dif = $r["dif_$fam"];
                 if ($dif !== null) $acum[$fam] += (float)$dif;
+                $compras[$fam] += (float)($r["compras_$fam"] ?? 0);
                 $fila[$fam] = [
                     'vr'      => $r["vr_$fam"],
                     'compras' => $r["compras_$fam"],
@@ -156,7 +158,7 @@ class Merma
         $invInicial = $this->mermaModel->get_inv_inicial_mes($codgas, $anio, $mes);
 
         echo $this->twig->render($this->route . 'detalle.html',
-            compact('estacion', 'anio', 'mes', 'filas', 'resumen', 'invInicial'));
+            compact('estacion', 'anio', 'mes', 'filas', 'resumen', 'invInicial', 'compras'));
     }
 
     /* ===================================================================== */

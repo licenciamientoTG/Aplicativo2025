@@ -83,6 +83,18 @@
                 <tr><td colspan="20" class="text-center">Sin datos para este mes. Usa "Re-sincronizar estación".</td></tr>
                 {% endfor %}
             </tbody>
+            {% if filas|length > 0 %}
+            <tfoot>
+                <tr>
+                    <td colspan="2" class="col-fecha sep-r" style="left: 0;">TOTAL COMPRAS</td>
+                    {% for fam in ['maxima', 'super', 'diesel'] %}
+                    <td></td>
+                    <td>{{ attribute(compras, fam)|number_format(0, '.', ',') }}</td>
+                    <td></td><td></td><td></td><td class="sep-r"></td>
+                    {% endfor %}
+                </tr>
+            </tfoot>
+            {% endif %}
         </table>
     </div>
 </div>
