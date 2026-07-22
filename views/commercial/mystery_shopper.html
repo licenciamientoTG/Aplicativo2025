@@ -81,7 +81,7 @@
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}commercial.js"></script>
+<script src="{{ js_v('commercial.js') }}"></script>
 <script>
 $('#seach_mistery_shopper').on('click',async function() {
      await mistery_shopper_table();

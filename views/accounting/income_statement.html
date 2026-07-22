@@ -565,7 +565,7 @@ table {
 </div>
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}accounting.js"></script>
+<script src="{{ js_v('accounting.js') }}"></script>
 <script>
     var date_spent = document.getElementById('date_spent')
     date_spent.addEventListener('change', function() {

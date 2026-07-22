@@ -81,7 +81,7 @@
 <input type="hidden" id="margen_superior" value="{{ margen_superior }}">
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}administration.js"></script>
+<script src="{{ js_v('administration.js') }}"></script>
 <script>
     $(document).ready(function() {
         function isValidDate(dateString) {

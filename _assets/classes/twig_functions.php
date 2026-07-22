@@ -151,6 +151,16 @@ $text_to_int = new \Twig\TwigFunction('text_to_int', function ($hora) use ($twig
     return substr($hora, 0, 2) . ":" . substr($hora, 2);
 });
 
+// Función global para incluir archivos JS con cache-busting: agrega ?v=<fecha
+// de modificación del archivo> para que el navegador descargue la versión nueva
+// automáticamente cuando el archivo cambia, sin necesidad de forzar recarga.
+$js_v = new \Twig\TwigFunction('js_v', function ($file) {
+    $relative = ltrim($file, '/\\');
+    $path = ASSETS . 'js' . DS . str_replace('/', DS, $relative);
+    $version = @filemtime($path);
+    return JS . $relative . ($version ? '?v=' . $version : '');
+});
+
 $twig->addFunction($datetimeDiffDays);
 $twig->addFunction($datetimeDiffHours);
 $twig->addFunction($strpad);
@@ -160,4 +170,5 @@ $twig->addFunction($for_sistemas);
 $twig->addFunction($getFlashMessage);
 $twig->addFunction($get_week_days);
 $twig->addFunction($text_to_int);
+$twig->addFunction($js_v);
 

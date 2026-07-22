@@ -81,7 +81,7 @@ table.dataTable thead th, table.dataTable thead td {
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}commercial.js"></script>
+<script src="{{ js_v('commercial.js') }}"></script>
 <script>
 $('#seach_sale_week_zone_table').on('click', function() {
     sale_week_zone_table();

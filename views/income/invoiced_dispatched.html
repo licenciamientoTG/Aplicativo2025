@@ -149,8 +149,8 @@
 {% endblock %}
 {% block myjs %}
 
-<!-- <script src="{{ JS }}income.js"></script> -->
-<script src="{{ JS }}income/ControlDispaches.js"></script>
+<!-- <script src="{{ js_v('income.js') }}"></script> -->
+<script src="{{ js_v('income/ControlDispaches.js') }}"></script>
 <script>
 $('#search_invoice_dispatched').on('click', function() {
     actualizarDataTableInvoceDispatched();

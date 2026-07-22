@@ -136,7 +136,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}income.js"></script>
+<script src="{{ js_v('income.js') }}"></script>
 <script>
 $('#seach_cash_sales_table').on('click', function() {
     cash_sales_table();

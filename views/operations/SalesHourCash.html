@@ -77,7 +77,7 @@
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}operations.js"></script>
+<script src="{{ js_v('operations.js') }}"></script>
 <script>
 $('#seach_sales_cash_hour').on('click',async function() {
     await sales_cash_hour_table();
