@@ -81,10 +81,15 @@
     font-size: .72rem; font-weight: 600; letter-spacing: .05em;
     text-transform: uppercase; color: #475569;
 }
-.merma-tabla .th-maxima { background: #eff6ff !important; color: #1e3a8a; }
-.merma-tabla .th-super  { background: #f0fdf4 !important; color: #14532d; }
+/* Colores de marca del logo TotalGas: verde #009559 (MAXIMA) y
+   azul #0095DA (SUPER), en tono pastel para fondo + texto oscurecido */
+.merma-tabla .th-maxima { background: #e9f7f0 !important; color: #00713f; }
+.merma-tabla .th-super  { background: #e6f4fb !important; color: #006ba1; }
 .merma-tabla .th-diesel { background: #fff7ed !important; color: #7c2d12; }
 .merma-tabla .th-grupo  { background: #f1f5f9 !important; color: #334155; }
+
+/* Lectura física corrupta (fuera de rango plausible): visible pero excluida del cálculo */
+.fis-corrupta { color: #b91c1c; font-weight: 600; white-space: nowrap; }
 
 /* Pie de totales fijo al fondo del contenedor */
 .merma-tabla tfoot td {

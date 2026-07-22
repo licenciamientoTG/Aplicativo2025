@@ -20,6 +20,17 @@ class MermaDiariaModel extends Model
         'diesel' => [3, 181],
     ];
 
+    /**
+     * Rango plausible de un corte físico en litros. StockReal de las
+     * estaciones trae lecturas corruptas (se han visto 2.5e+32, 1.7e+12,
+     * 1.5e-12 y 3.1 en la 18). El valor crudo SÍ se guarda en inv_fisico
+     * (para verlo y eventualmente corregirlo), pero recalc_contable lo trata
+     * como "sin corte" (contable/diferencia NULL, no encadena basura).
+     * Techo con precedente en get_consolidado_tanques de ApiER (vol < 1e6).
+     */
+    public const INV_FISICO_MIN = 100;
+    public const INV_FISICO_MAX = 1000000;
+
     private function familiaCase(string $familia, string $columna): string
     {
         $codes = implode(',', self::FAMILIAS[$familia]);
@@ -81,14 +92,23 @@ class MermaDiariaModel extends Model
      * del libro amarillo: inicial = físico del turno inmediato anterior
      * (LAG por estación/producto). Si el turno anterior no tuvo corte físico,
      * las tres columnas quedan NULL (la vista muestra s/d, no se arrastra un 0).
+     * Las lecturas físicas fuera del rango plausible (INV_FISICO_MIN/MAX)
+     * se tratan como "sin corte": el valor crudo queda en inv_fisico para
+     * poder verlo/corregirlo, pero no entra al cálculo ni se encadena.
      * Con codgas = 0 recalcula todas las estaciones (backfill).
      */
     public function recalc_contable(int $codgas = 0): void
     {
         $where  = $codgas > 0 ? 'WHERE codgas = ?' : '';
         $params = $codgas > 0 ? [$codgas] : [];
+        $min    = self::INV_FISICO_MIN;
+        $max    = self::INV_FISICO_MAX;
         $query = "WITH b AS (
-                      SELECT id, LAG(inv_fisico) OVER (
+                      SELECT id,
+                             CASE WHEN inv_fisico BETWEEN $min AND $max
+                                  THEN inv_fisico END AS fis_ok,
+                             LAG(CASE WHEN inv_fisico BETWEEN $min AND $max
+                                      THEN inv_fisico END) OVER (
                                  PARTITION BY codgas, codprd
                                  ORDER BY fecha, turno) AS fis_prev
                       FROM [TG].[dbo].[merma_diaria] $where
@@ -97,7 +117,7 @@ class MermaDiariaModel extends Model
                       inv_inicial  = b.fis_prev,
                       inv_contable = ROUND(b.fis_prev - ISNULL(m.ventas_reales, 0)
                                            + ISNULL(m.compras, 0), 2),
-                      diferencia   = ROUND(m.inv_fisico - (b.fis_prev
+                      diferencia   = ROUND(b.fis_ok - (b.fis_prev
                                            - ISNULL(m.ventas_reales, 0)
                                            + ISNULL(m.compras, 0)), 2)
                   FROM [TG].[dbo].[merma_diaria] m
@@ -105,7 +125,7 @@ class MermaDiariaModel extends Model
         $this->sql->update($query, $params);
     }
 
-    public function get_resumen_mensual(int $anio, int $mes): array
+    public function get_resumen_rango(string $desde, string $hasta): array
     {
         $query = 'SELECT codgas, MAX(estacion) AS estacion,
                     ' . $this->familiaCase('maxima', 'diferencia') . ' AS merma_maxima,
@@ -116,19 +136,20 @@ class MermaDiariaModel extends Model
                     COUNT(DISTINCT fecha)    AS dias_con_datos,
                     MAX(updated_at)          AS last_update
                   FROM [TG].[dbo].[merma_diaria]
-                  WHERE YEAR(fecha) = ? AND MONTH(fecha) = ?
+                  WHERE fecha >= ? AND fecha < DATEADD(DAY, 1, CAST(? AS DATE))
                   GROUP BY codgas;';
-        $rows = $this->sql->select($query, [$anio, $mes]) ?: [];
+        $rows = $this->sql->select($query, [$desde, $hasta]) ?: [];
         $out = [];
         foreach ($rows as $r) $out[(int)$r['codgas']] = $r;
         return $out;
     }
 
-    public function get_fechas_por_estacion(int $anio, int $mes): array
+    public function get_fechas_por_estacion(string $desde, string $hasta): array
     {
         $query = 'SELECT DISTINCT codgas, fecha FROM [TG].[dbo].[merma_diaria]
-                  WHERE YEAR(fecha) = ? AND MONTH(fecha) = ? ORDER BY codgas, fecha;';
-        $rows = $this->sql->select($query, [$anio, $mes]) ?: [];
+                  WHERE fecha >= ? AND fecha < DATEADD(DAY, 1, CAST(? AS DATE))
+                  ORDER BY codgas, fecha;';
+        $rows = $this->sql->select($query, [$desde, $hasta]) ?: [];
         $out = [];
         foreach ($rows as $r) $out[(int)$r['codgas']][] = substr($r['fecha'], 0, 10);
         return $out;
@@ -166,15 +187,18 @@ class MermaDiariaModel extends Model
             $c = implode(',', $codes);
             $cols[] = "SUM(CASE WHEN codprd IN ($c) THEN inv_fisico END) AS ini_$fam";
         }
-        $query = 'WITH u AS (
+        $min = self::INV_FISICO_MIN;
+        $max = self::INV_FISICO_MAX;
+        $query = "WITH u AS (
                       SELECT codprd, inv_fisico, fecha,
                              ROW_NUMBER() OVER (PARTITION BY codprd
                                                 ORDER BY fecha DESC, turno DESC) AS rn
                       FROM [TG].[dbo].[merma_diaria]
                       WHERE codgas = ? AND fecha < ?
+                        AND inv_fisico BETWEEN $min AND $max
                   )
-                  SELECT MAX(fecha) AS fecha, ' . implode(', ', $cols) . '
-                  FROM u WHERE rn = 1;';
+                  SELECT MAX(fecha) AS fecha, " . implode(', ', $cols) . "
+                  FROM u WHERE rn = 1;";
         $rows = $this->sql->select($query, [$codgas, $primerDia]);
         return ($rows && $rows[0]['fecha'] !== null) ? $rows[0] : null;
     }

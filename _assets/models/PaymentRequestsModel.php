@@ -595,6 +595,84 @@ class PaymentRequestsModel extends Model
         }
     }
 
+    /**
+     * Tab "Estado por Proveedor": remanente de anticipos por proveedor
+     * (lo realmente pagado en anticipos menos lo ya aplicado a facturas).
+     */
+    public function get_anticipo_remanente_by_provider() : array|false {
+        $query = "
+            SELECT
+                pr.provider_cod,
+                SUM(ISNULL((
+                    SELECT SUM(pt.payment_amount)
+                    FROM [TG].[dbo].[payment_transactions] pt
+                    WHERE pt.payment_request_id = pr.id
+                ), 0)) AS pagado,
+                SUM(ISNULL((
+                    SELECT SUM(aa.monto_aplicado)
+                    FROM [TG].[dbo].[anticipo_invoice_applications] aa
+                    WHERE aa.anticipo_id = pr.id
+                ), 0)) AS aplicado
+            FROM [TG].[dbo].[payment_requests] pr
+            WHERE pr.tipo = 1 AND pr.is_deleted = 0
+            GROUP BY pr.provider_cod";
+        return $this->sql->select($query) ?: false;
+    }
+
+    /**
+     * Reporte "Estado Facturas": anticipos (tipo=1) creados en el rango, con lo
+     * pagado (transacciones), lo aplicado a facturas y sus comprobantes ligados.
+     */
+    public function get_anticipos_status_report($from, $until, $provider_cod = 0) : array|false
+    {
+        $params = [$from, $until];
+        $provider_filter = '';
+        if (intval($provider_cod) > 0) {
+            $provider_filter = ' AND pr.provider_cod = ? ';
+            $params[] = intval($provider_cod);
+        }
+        $query = "
+            SELECT
+                pr.id,
+                pr.request_date,
+                pr.status,
+                pr.comment,
+                ISNULL(pr.monto_total, 0) AS monto_total,
+                prov.den AS proveedor_nombre,
+                ISNULL((
+                    SELECT SUM(pt.payment_amount)
+                    FROM [TG].[dbo].[payment_transactions] pt
+                    WHERE pt.payment_request_id = pr.id
+                ), 0) AS paid_amount,
+                (
+                    SELECT MAX(pt.payment_date)
+                    FROM [TG].[dbo].[payment_transactions] pt
+                    WHERE pt.payment_request_id = pr.id
+                ) AS fecha_pago,
+                ISNULL((
+                    SELECT SUM(aa.monto_aplicado)
+                    FROM [TG].[dbo].[anticipo_invoice_applications] aa
+                    WHERE aa.anticipo_id = pr.id
+                ), 0) AS aplicado_facturas,
+                (
+                    SELECT STRING_AGG(CAST(d.id AS VARCHAR), ',')
+                    FROM [TG].[dbo].[payment_transactions] t5b
+                    INNER JOIN [TG].[dbo].[payment_transaction_documents] d
+                        ON d.transaction_id = t5b.id
+                        OR (t5b.batch_id IS NOT NULL AND d.batch_id = t5b.batch_id)
+                    WHERE t5b.payment_request_id = pr.id
+                ) AS comprobante_doc_ids
+            FROM [TG].[dbo].[payment_requests] pr
+            LEFT JOIN SG12.dbo.Proveedores prov ON prov.cod = pr.provider_cod
+            WHERE pr.tipo = 1
+              AND pr.is_deleted = 0
+              AND pr.request_date >= ?
+              AND pr.request_date < DATEADD(day, 1, ?)
+              $provider_filter
+            ORDER BY pr.request_date DESC";
+        return $this->sql->select($query, $params) ?: false;
+    }
+
     public function get_anticipos_with_summary($type  = 'payment', $status = 'all'): array|false
     {
         $whereClauses = ["t1.tipo = 1", "t1.is_deleted = 0"]; // Solo anticipos activos

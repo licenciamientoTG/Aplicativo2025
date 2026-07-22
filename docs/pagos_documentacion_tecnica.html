@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pago a Proveedores — Documentación técnica</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --lima: #A6CE39;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta);
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55;
+    font-size: 13px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--verde); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; font-size: 13px; }
+  h2 {
+    font-size: 17px; color: #fff; background: var(--verde);
+    padding: 6px 12px; border-radius: 4px; margin-top: 32px;
+    page-break-after: avoid;
+  }
+  h2.azul { background: var(--azul); }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--verde); page-break-after: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; page-break-inside: avoid; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  code, pre {
+    font-family: Consolas, "Courier New", monospace; font-size: 11.5px;
+    background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px;
+  }
+  code { padding: 1px 4px; }
+  pre { padding: 10px 12px; overflow-x: auto; line-height: 1.4; page-break-inside: avoid; }
+  .nota {
+    background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px;
+    margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid;
+  }
+  .ok { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .riesgo { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; }
+  li { margin-bottom: 3px; }
+  .chip { display: inline-block; background: var(--fondo); border: 1px solid var(--borde); border-radius: 10px; padding: 0 8px; font-size: 11px; color: var(--gris); }
+  @media print {
+    body { padding: 0; font-size: 11.5px; }
+    @page { size: A4; margin: 18mm 15mm; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Pago a Proveedores — Documentación técnica</h1>
+<p class="subtitulo">Módulo <code>/payment/</code> del aplicativo TotalGas · Abastos / Tesorería / Contabilidad · Última actualización: 22 de julio de 2026</p>
+
+<div class="nota">
+Este documento <b>sustituye</b> al <code>docs/manual_tecnico_pagos_proveedores.md</code>
+(febrero 2026), que describe el flujo cuando aún vivía en <code>supply.php</code> con
+autorización multinivel. Ese manual quedó obsoleto tras la migración al controlador dedicado
+<code>payment.php</code>. Para los diagramas de proceso ver
+<code>docs/pagos_flujo_procesos.html</code>.
+</div>
+
+<h2>1. Propósito</h2>
+<p>
+El módulo administra el ciclo completo de cuentas por pagar a proveedores de combustible y
+servicios: importación de documentos de compra desde las 40+ estaciones (ControlGas), creación
+de requisiciones de pago, autorización de Tesorería, generación de layouts bancarios
+(Santander / Banorte), registro y conciliación de pagos con comprobantes, anticipos con saldo,
+notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
+</p>
+
+<h2>2. Componentes</h2>
+<table>
+  <tr><th>Componente</th><th>Tecnología</th><th>Responsabilidad</th></tr>
+  <tr>
+    <td><b>Estaciones</b> (ControlGas)</td>
+    <td>SQL Server local por estación (192.168.2.101 – 192.168.40.101)</td>
+    <td>Origen de los documentos de compra (<code>DocumentosC</code>). Fechas en serial
+    ControlGas (días desde 1899-12-31).</td>
+  </tr>
+  <tr>
+    <td><b>ApiER</b></td>
+    <td>Django REST (Python), <code>http://192.168.0.109:82</code></td>
+    <td>Endpoints de consulta paralela vía OPENQUERY: documentos de compra por estación,
+    facturas base, estadísticas. Es la fuente de las tablas de "documentos disponibles".</td>
+  </tr>
+  <tr>
+    <td><b>AplicativoPhp</b></td>
+    <td>PHP MVC + Twig, IIS</td>
+    <td>Controlador <code>Payment</code> (<code>_assets/controllers/payment.php</code>,
+    ~7,300 líneas), 14 modelos, vistas <code>views/payment/*.html</code>,
+    JS <code>_assets/js/payment.js</code> y <code>authorize_payments.js</code>.</td>
+  </tr>
+  <tr>
+    <td><b>Base central TG</b></td>
+    <td>SQL Server 192.168.0.6</td>
+    <td>Todas las tablas del circuito de pago (ver §5) + <code>FacturasRecibidas</code>
+    (CFDI descargados de correo) + <code>Proveedores</code>.</td>
+  </tr>
+  <tr>
+    <td><b>SG12</b></td>
+    <td>SQL Server 192.168.0.6</td>
+    <td>Catálogos regionales: <code>Empresas</code>, <code>Gasolineras</code>.</td>
+  </tr>
+  <tr>
+    <td><b>Bancos</b></td>
+    <td>Portales Santander / Banorte</td>
+    <td>Reciben los layouts de dispersión generados por el módulo; emiten los comprobantes
+    PDF que después se concilian.</td>
+  </tr>
+</table>
+
+<h2>3. Páginas del módulo (vistas)</h2>
+<table>
+  <tr><th>Ruta</th><th>Vista</th><th>Descripción</th></tr>
+  <tr><td><code>/payment/payment_list</code></td><td><code>payment_list.html</code></td>
+    <td>Pantalla principal. 4 pestañas: <b>Pagos</b> (requisiciones), <b>Anticipos</b>,
+    <b>Facturas autorizadas</b> (agrupadas por banco, con generación de layouts) y
+    <b>Archivos Contabilidad</b> (grupos contables).</td></tr>
+  <tr><td><code>/payment/add_payment</code></td><td><code>add_payment.html</code></td>
+    <td>Alta de requisición: documentos disponibles por estación/proveedor (vía ApiER),
+    selección múltiple, notas pendientes y fecha programada de pago.</td></tr>
+  <tr><td><code>/payment/payment_detail/{id}</code></td><td><code>payment_detail.html</code></td>
+    <td>Detalle de la requisición: facturas, autorizaciones, notas aplicadas, anticipos,
+    historial de pagos y pestaña de auditoría (altas/bajas de facturas). 2 pasos:
+    Autorizar facturas → Ejecutar pago.</td></tr>
+  <tr><td><code>/payment/authorize_payments</code></td><td><code>authorize_payments.html</code></td>
+    <td>Vista de autorización masiva de Tesorería (permiso 68). Sustituyó al modal de
+    payment_list en 2026-07-10. Incluye anticipos.</td></tr>
+  <tr><td><code>/payment/all_payments</code></td><td><code>all_payments.html</code></td>
+    <td>Histórico de transacciones y lotes de pago con filtros; detalle de lote.</td></tr>
+  <tr><td><code>/payment/anticipo_detail/{id}</code></td><td><code>anticipo_detail.html</code></td>
+    <td>Detalle del anticipo: autorización 68, pago con comprobante, resumen de aplicaciones y saldo.</td></tr>
+  <tr><td><code>/payment/aplicar_anticipo/{id}</code></td><td><code>aplicar_anticipo.html</code></td>
+    <td>Liga facturas disponibles del proveedor al anticipo (permiso 68); maneja remanentes.</td></tr>
+  <tr><td><code>/payment/credit_notes</code></td><td><code>credit_notes.html</code></td>
+    <td>Catálogo de notas de crédito/cargo: alta manual, carga masiva de CFDI PDF con preview,
+    aplicación a facturas (permiso 66).</td></tr>
+  <tr><td><code>/payment/invoices_due</code></td><td><code>invoices_due.html</code></td>
+    <td><b>Estado Facturas</b> (en desarrollo): pestañas Vencidas (documentos aún no
+    requisitados, incluye remisiones sin CFDI), Facturas en Pagos (estado unificado de
+    facturas, notas y anticipos ya dentro del circuito) y Estado por Proveedor (resumen de
+    deuda con/sin requisición, sin CFDI y saldo a favor).</td></tr>
+  <tr><td><code>/payment/import_invoices</code></td><td><code>import_invoices.html</code></td>
+    <td>Importación de facturas PDF (parseo vía API) para proveedores cuyo CFDI no llega solo.</td></tr>
+  <tr><td><code>/payment/bank_accounts</code></td><td><code>bank_accounts.html</code></td>
+    <td>Catálogo de cuentas bancarias de proveedores (<code>CatalogosCuentasBancarias</code>):
+    alta/edición/activación (permiso 66).</td></tr>
+  <tr><td><code>/payment/descargar_facturas</code></td><td><code>descargar_facturas.html</code></td>
+    <td>Descarga masiva de PDFs de facturas por UUID (ZIP con limpieza de temporales).</td></tr>
+  <tr><td><code>/payment/fuel_payments</code></td><td><code>fuel_payments.html</code></td>
+    <td>Visor de facturas de combustible (oculto del sidebar en los cambios actuales).</td></tr>
+</table>
+
+<h2>4. Endpoints AJAX principales</h2>
+<table>
+  <tr><th>Área</th><th>Endpoints (métodos de <code>Payment</code>)</th></tr>
+  <tr><td>Documentos disponibles</td>
+    <td><code>payment_control_table</code>, <code>anticipo_documentos_table</code>,
+    <code>resumen_payment_table</code>, <code>invoices_due_table</code>,
+    <code>invoices_status_table</code> (nuevo), <code>provider_status_table</code> (nuevo),
+    <code>search_available_invoices</code></td></tr>
+  <tr><td>Requisiciones</td>
+    <td><code>generate_payment</code>, <code>add_invoices_bulk_to_payment</code>,
+    <code>add_invoice_to_payment</code>, <code>remove_invoice_from_payment</code>,
+    <code>update_payment_fields</code>, <code>delete_payment</code>,
+    <code>payment_list_table</code>, <code>payment_invoices_json</code>,
+    <code>get_payment_history</code></td></tr>
+  <tr><td>Autorización / ejecución</td>
+    <td><code>authorize_payment</code>, <code>authorize_payment_execution</code>,
+    <code>bulk_authorize_payment_execution</code>, <code>get_pending_payment_invoices</code>,
+    <code>execute_authorized_payments</code>, <code>unauthorize_invoices</code>,
+    <code>authorized_pending_invoices_grouped_table</code>, <code>get_invoices_detail</code>,
+    <code>getBulkAuthorizationHistory</code>, <code>undoBulkAuthorization</code></td></tr>
+  <tr><td>Layouts / dispersión</td>
+    <td><code>generate_santander_layout</code>, <code>generate_banorte_layout</code>,
+    <code>download_layout</code>, <code>delete_layout</code>, <code>configLayoutModal</code></td></tr>
+  <tr><td>Comprobantes</td>
+    <td><code>preview_comprobantes_match</code>, <code>conciliar_comprobantes</code>,
+    <code>get_transaction_documents</code>, <code>view_payment_document</code>,
+    <code>uploadPdf</code></td></tr>
+  <tr><td>Anticipos</td>
+    <td><code>create_anticipo</code>, <code>pay_anticipo</code>,
+    <code>apply_anticipo_documentos</code>, <code>anticipo_summary_json</code>,
+    <code>loadAnticiposList</code></td></tr>
+  <tr><td>Notas crédito/cargo</td>
+    <td><code>addCreditDebitNote</code>, <code>preview_notas_credito</code>,
+    <code>guardar_notas_credito</code>, <code>applyCreditNote</code>,
+    <code>removeCreditNoteApplication</code>, <code>deleteCreditDebitNote</code>,
+    <code>getProviderNotes</code>, <code>getInvoiceNoteApplications</code>,
+    <code>uploadNoteFile</code>, <code>viewNoteDocument</code></td></tr>
+  <tr><td>Contabilidad</td>
+    <td><code>create_accounting_group</code>, <code>get_accounting_groups_table</code>,
+    <code>get_accounting_group_invoices</code>, <code>print_accounting_group_receipts</code>,
+    <code>auto_group_accounting</code> (inactivo)</td></tr>
+  <tr><td>Notificaciones</td>
+    <td><code>send_to_payments</code>, <code>resend_today_payments</code></td></tr>
+  <tr><td>Descargas</td>
+    <td><code>descargar_factura</code>, <code>descargar_facturas_zip</code>,
+    <code>download_zip</code>, <code>procesar_uuids_facturas</code>, <code>invoiceFile</code>,
+    <code>ModalinvoicePdf</code></td></tr>
+</table>
+
+<h2>5. Base de datos (TG, salvo indicado)</h2>
+<table>
+  <tr><th>Tabla</th><th>Rol</th></tr>
+  <tr><td><code>payment_requests</code></td>
+    <td>Requisición / orden de pago (y anticipos). Status 0=Pendiente, 1=Autorizado, 2=Pagado,
+    3=Cancelado. Campos: proveedor, empresa, total, <code>scheduled_payment_date</code>,
+    <code>accounting_group_id</code>, soft-delete.</td></tr>
+  <tr><td><code>payment_request_invoices</code></td>
+    <td>Factura / nota de cargo dentro de una requisición: folio, UUID, estación, monto,
+    <code>paid_amount</code>, <code>payment_authorized</code>, <code>authorized_amount</code>
+    (= neto al autorizar), status (2=Pagada, 3=Parcial), soft-delete
+    (<code>is_deleted / deleted_at / deleted_by</code>).</td></tr>
+  <tr><td><code>payment_request_authorizations</code></td>
+    <td>Registro de autorizaciones por permiso (hoy solo se inserta el nivel 68; el esquema
+    conserva el multinivel histórico 66/70/67/68).</td></tr>
+  <tr><td><code>payment_transactions</code></td>
+    <td>Pago ejecutado por factura: fecha, referencia, método, monto, lote.</td></tr>
+  <tr><td><code>payment_batches</code></td>
+    <td>Lote de ejecución (agrupa las transacciones de una corrida de pago).</td></tr>
+  <tr><td><code>payment_transaction_documents</code></td>
+    <td>Comprobantes PDF ligados a transacciones (subidos a mano o por conciliación masiva).</td></tr>
+  <tr><td><code>credit_note_applications</code></td>
+    <td>Aplicación de una nota (crédito o cargo) a una factura de una requisición.
+    <code>invoice_id</code> es obligatorio para que el recalculo de status funcione.</td></tr>
+  <tr><td><code>invoice_credit_debit_notes</code> / <code>_doc</code></td>
+    <td>Catálogo de notas de crédito/cargo del proveedor + sus PDFs (CFDI).</td></tr>
+  <tr><td><code>payment_accounting_groups</code></td>
+    <td>Grupos contables con ID consecutivo único; congela las requisiciones agrupadas.</td></tr>
+  <tr><td><code>PaymentRequestAuditLog</code></td>
+    <td>Bitácora de alta/baja/desautorización de facturas en requisiciones (snapshot JSON
+    de datos anteriores/nuevos, usuario y grupo contable).</td></tr>
+  <tr><td><code>payment_notification_recipients</code></td>
+    <td>Destinatarios del correo "pagos listos" (<code>send_to_payments</code>).</td></tr>
+  <tr><td><code>CatalogosCuentasBancarias</code></td>
+    <td>Cuentas CLABE por proveedor para los layouts (incluye <code>IdBeneficiario</code>
+    Banorte).</td></tr>
+  <tr><td><code>FacturasRecibidas</code></td>
+    <td>CFDI descargados por correo (proyecto CorreoFacturas): UUID (<code>satuid</code>),
+    folios, montos, RutaArchivo del PDF. Es la fuente del <b>total real</b> de una factura.</td></tr>
+  <tr><td><code>Proveedores</code></td>
+    <td>Catálogo central: <code>id_control_gas</code> (código ControlGas), días de crédito,
+    RFC, correo.</td></tr>
+  <tr><td><code>SG12.dbo.Empresas</code>, <code>SG12.dbo.Gasolineras</code></td>
+    <td>Catálogos de empresas pagadoras y estaciones.</td></tr>
+</table>
+
+<h2>6. Modelos</h2>
+<table>
+  <tr><th>Modelo</th><th>Responsabilidad y métodos clave</th></tr>
+  <tr><td><code>PaymentRequestsModel</code></td>
+    <td>Ciclo de requisiciones y anticipos: <code>create_payment_with_invoices</code>,
+    <code>get_requests_with_summary</code>, <code>delete_payment_complete</code>,
+    <code>create_anticipo</code>, <code>apply_anticipo_to_existing_invoices</code>,
+    <code>attach_invoices_to_anticipo</code>, <code>get_facturas_con_remanente_anticipo</code>,
+    <code>get_anticipos_para_layout</code>, <code>processBulkAuthorization</code>,
+    <code>get_anticipos_status_report</code> (nuevo).</td></tr>
+  <tr><td><code>PaymentRequestInvoicesModel</code></td>
+    <td>Facturas de requisición: <code>insertInvoicesBulk</code>,
+    <code>authorize_invoices_for_payment</code>, <code>unauthorize_invoices</code>,
+    <code>recalculate_invoice_status(_by_request)</code>, <code>move_invoice_to_payment</code>,
+    <code>get_authorized_pending_*</code> (agrupados / por banco),
+    <code>get_invoices_status_report</code> (nuevo).</td></tr>
+  <tr><td><code>PaymentRequestAuthorizationsModel</code></td>
+    <td>Registro de autorizaciones. <code>AUTHORIZATION_SEQUENCE</code> hoy solo contiene
+    <code>1 =&gt; PERM_TESORERIA (68)</code>.</td></tr>
+  <tr><td><code>PaymentTransactionsModel</code></td>
+    <td>Ejecución de pagos: <code>process_bulk_payment</code> (calcula neto con notas y
+    anticipos), <code>get_lotes_with_filters</code>, <code>get_lote_detail</code>,
+    historial por factura.</td></tr>
+  <tr><td><code>PaymentTransactionDocumentsModel</code></td>
+    <td>Comprobantes de pago (PDF) por transacción.</td></tr>
+  <tr><td><code>PaymentBatchesModel</code></td>
+    <td>Lotes de ejecución.</td></tr>
+  <tr><td><code>CreditNoteApplicationsModel</code></td>
+    <td>Aplicaciones de notas: <code>applyNote</code> (mantiene el invariante
+    <code>authorized_amount</code> = neto), <code>updatePaymentNoteTotals</code>,
+    <code>get_applications_report</code> (nuevo).</td></tr>
+  <tr><td><code>InvoiceCreditDebitNotesModel</code> / <code>...DocModel</code></td>
+    <td>Catálogo de notas y sus documentos.</td></tr>
+  <tr><td><code>PaymentAccountingGroupsModel</code></td>
+    <td>Grupos contables: consecutivo, agrupación (manual y <code>auto_group_by_date</code>,
+    inactiva), consultas para impresión de recibos.</td></tr>
+  <tr><td><code>PaymentRequestAuditLogModel</code></td>
+    <td>Bitácora de movimientos de facturas en requisiciones.</td></tr>
+  <tr><td><code>PaymentNotificationRecipientsModel</code></td>
+    <td>Destinatarios del correo de pagos.</td></tr>
+  <tr><td><code>CuentasBancariasModel</code></td>
+    <td>Cuentas CLABE de proveedores para layouts.</td></tr>
+  <tr><td><code>FacturasRecibidasModel</code></td>
+    <td>CFDI de correo: totales reales, PDFs, match por UUID.</td></tr>
+  <tr><td><code>ProveedoresModel</code></td>
+    <td>Catálogo de proveedores (días de crédito, RFC).</td></tr>
+</table>
+<div class="nota"><code>AnticiposModel</code> NO es de este módulo: maneja anticipos de
+despacho en estaciones (islas/turnos). Los anticipos a proveedores viven en
+<code>PaymentRequestsModel</code>.</div>
+
+<h2>7. Permisos y seguridad</h2>
+<p>
+Mecanismo: <code>authorized($permission_id)</code>
+(<code>_assets/classes/php_functions.php</code>) revisa los permisos de la sesión.
+<code>index.php</code> solo valida sesión activa — <b>toda la autorización granular vive en cada
+método del controlador</b>. Los checks Twig en las vistas solo ocultan botones (cosméticos).
+</p>
+<table>
+  <tr><th>Permiso</th><th>Rol</th><th>Acciones con check activo en backend</th></tr>
+  <tr><td><b>66</b></td><td>Abastos</td>
+    <td><code>update_payment_fields</code>, <code>send_to_payments</code> (o token CRON),
+    notas de crédito (preview / guardar / aplicar), catálogo de cuentas bancarias.</td></tr>
+  <tr><td><b>68</b></td><td>Tesorería</td>
+    <td>Autorización y ejecución de pagos, desautorizar, aplicar/pagar anticipos,
+    conciliación de comprobantes.</td></tr>
+  <tr><td><b>69</b></td><td>Eliminar pagos</td><td><code>delete_payment</code>.</td></tr>
+  <tr><td><b>70</b></td><td>Contabilidad</td><td><code>auto_group_accounting</code> (o token CRON).</td></tr>
+</table>
+<div class="riesgo">
+<b>Brechas conocidas (auditoría 2026-07-03):</b>
+<ul>
+  <li>Sin check de permiso en backend (solo sesión): <code>generate_payment</code>,
+  <code>add_invoice_to_payment</code>, <code>remove_invoice_from_payment</code>,
+  <code>add_invoices_bulk_to_payment</code>, <code>create_anticipo</code>,
+  <code>payment_detail</code>, <code>undoBulkAuthorization</code>,
+  <code>create_accounting_group</code>, <code>removeCreditNoteApplication</code>,
+  <code>deleteCreditDebitNote</code>, <code>reset_test_data</code>.</li>
+  <li><code>generate_santander_layout</code> / <code>generate_banorte_layout</code>: el 68 solo
+  se valida en la vista, no en el controlador.</li>
+  <li><code>resend_today_payments</code> exige <code>user_id === 6296</code> hardcodeado
+  (frágil).</li>
+  <li><code>can_user_authorize()</code> del modelo tiene comentado el check de nivel; la única
+  defensa real es el <code>authorized()</code> del controlador.</li>
+</ul>
+</div>
+
+<h2>8. Reglas de negocio clave</h2>
+<table>
+  <tr><th>Regla</th><th>Detalle</th></tr>
+  <tr><td>Fechas ControlGas</td>
+    <td><code>fch</code> es serial de Excel (días desde 1899-12-31); <code>dateToInt()</code>
+    en PHP produce el mismo valor. Nunca usar formato YYYYMMDD.</td></tr>
+  <tr><td>Fecha de vencimiento</td>
+    <td>SIEMPRE = fecha de emisión + días de crédito (<code>TG.dbo.Proveedores</code>) ajustada
+    a día hábil según reglas por proveedor (Lobo/Altos: sáb→vie, dom→lun; Tesoro/Premiergas/
+    MGC/Enerey: sáb→lun, dom→lun). Nunca usar <code>fechaVto</code> del documento.</td></tr>
+  <tr><td>Total de la factura</td>
+    <td>El total mostrado y pagado sale de <code>FacturasRecibidas</code> (UUID = satuid);
+    el total ControlGas es fallback y se marca en rojo.</td></tr>
+  <tr><td>Remisiones sin satuid</td>
+    <td>Documentos sin CFDI: no se agregan a pagos y siempre aparecen en Facturas Vencidas
+    (no filtrar por satuid en <code>invoices_due_table</code>).</td></tr>
+  <tr><td>Neto autorizado</td>
+    <td><code>authorized_amount</code> = total − anticipos − NC + notas de cargo, calculado al
+    autorizar y ajustado si se aplica una nota después. Las consultas de pago NO vuelven a
+    restar NC (evita doble descuento, caso req. 1271).</td></tr>
+  <tr><td>NC requiere factura</td>
+    <td>Aplicaciones de nota con <code>invoice_id</code> NULL dejan facturas en Parcial y
+    requisiciones abiertas (caso req. 96) — el flujo actual lo exige.</td></tr>
+  <tr><td>Soft-delete</td>
+    <td>Facturas de requisición nunca se borran físicamente (FK de anticipos); todos los joins
+    — incluidos los de ApiER — filtran <code>is_deleted = 0</code>.</td></tr>
+  <tr><td>Candado contable</td>
+    <td>Requisición con <code>accounting_group_id</code> no admite modificar facturas
+    (<code>assert_payment_not_grouped()</code>).</td></tr>
+  <tr><td>Bancos por empresa</td>
+    <td>Banorte: emp_cod 1, 10, 17, 18, 21, 23 · Santander: 16, 19, 20 (hardcode en
+    <code>PaymentRequestInvoicesModel</code> / <code>banco_por_emp_cod()</code>).</td></tr>
+</table>
+
+<h2>9. Integraciones externas</h2>
+<table>
+  <tr><th>Integración</th><th>Uso</th></tr>
+  <tr><td>ApiER <code>POST /api/estacion_documentos_compra/</code></td>
+    <td>Documentos de compra por estación (alta de pagos, anticipos, facturas vencidas).</td></tr>
+  <tr><td>ApiER <code>POST /api/compras_facturas_base/</code> y otros</td>
+    <td>Facturas base, estadísticas, detalle de factura.</td></tr>
+  <tr><td>API de importación de PDF</td>
+    <td><code>call_pdf_import_api()</code>: parsea facturas PDF de proveedores sin CFDI
+    automático (import_invoices).</td></tr>
+  <tr><td>Layout Santander</td>
+    <td>Archivo multi-empresa de nómina de transferencias; código de banco derivado de la
+    CLABE (<code>obtener_codigo_banco_desde_clabe</code>).</td></tr>
+  <tr><td>Layout Banorte</td>
+    <td>Multi-empresa; operación 04/02 según banco destino, importe ×100, cuenta normalizada,
+    <code>IdBeneficiario</code> del catálogo. (Detalles: memoria "layouts-bancarios-hallazgos").</td></tr>
+  <tr><td>Correo (PHPMailer / Gmail SMTP)</td>
+    <td><code>send_to_payments</code> (relación diaria de pagos listos, con MODO PRUEBAS)
+    y notificaciones de autorización — la mayoría de las notificaciones por evento están
+    comentadas en espera del resumen diario.</td></tr>
+</table>
+
+<h2>10. Trabajo en curso (cambios sin commitear al 2026-07-22)</h2>
+<table>
+  <tr><th>Archivo</th><th>Cambio</th></tr>
+  <tr><td><code>views/payment/invoices_due.html</code></td>
+    <td>Nueva estructura de 3 pestañas: "Vencidas" + "Facturas en Pagos" + "Estado por
+    Proveedor" (Estado Facturas).</td></tr>
+  <tr><td><code>payment.php</code></td>
+    <td>Nuevos endpoints <code>invoices_status_table()</code> (unifica facturas/notas de cargo
+    en requisiciones, NC aplicadas y anticipos con estado, PDF y comprobantes ligados) y
+    <code>provider_status_table()</code> (resumen de deuda por proveedor cruzando documentos
+    de ApiER contra requisiciones; pendiente probar contra BD).</td></tr>
+  <tr><td><code>PaymentRequestInvoicesModel</code> (+134)</td>
+    <td><code>get_invoices_status_report()</code>.</td></tr>
+  <tr><td><code>PaymentRequestsModel</code> (+54)</td>
+    <td><code>get_anticipos_status_report()</code>.</td></tr>
+  <tr><td><code>CreditNoteApplicationsModel</code> (+46)</td>
+    <td><code>get_applications_report()</code>.</td></tr>
+  <tr><td><code>views/layouts/sidebar.html</code></td>
+    <td>"Facturas Vencidas" → "Estado Facturas"; "Facturas de Combustible" oculto.</td></tr>
+</table>
+
+<h2>11. Pendientes conocidos</h2>
+<ul>
+  <li><b>Notificaciones por evento</b> comentadas (nuevo pago, nuevo anticipo, autorización
+  pendiente) con nota "se mandará una diaria" — el resumen diario nunca se implementó.</li>
+  <li><b><code>auto_group_accounting()</code></b> (agrupación contable automática por fecha +
+  cron) completamente comentada.</li>
+  <li><b>JS muerto</b> del modal de aprobación masiva de Tesorería en payment_list (el flujo
+  se movió a aprobación implícita); endpoints <code>authorize_payment</code>,
+  <code>process_bulk_authorization</code>, <code>get_pending_bulk_authorization</code>,
+  <code>get_pending_counts_all</code> siguen vivos.</li>
+  <li><b>Brechas de permisos</b> del §7 (endpoints sensibles sin check de backend).</li>
+  <li><b>Deploy pendiente en ApiER</b>: filtro <code>is_deleted = 0</code> en joins (verificar
+  que ya se subió por SFTP).</li>
+  <li><b>PDP Etapa 1</b>: issues PDP-37 a PDP-43 (importar facturas, ID contable único,
+  agrupación de requisiciones, impresión de facturas y comprobantes, cierre y pruebas).</li>
+  <li>Scripts SQL de apoyo del módulo:
+  <code>C:\Users\alejandro.martinez\Desktop\pago a proveedores</code>.</li>
+</ul>
+
+<h2>12. Historial de documentación</h2>
+<table>
+  <tr><th>Documento</th><th>Fecha</th><th>Estado</th></tr>
+  <tr><td><code>docs/manual_tecnico_pagos_proveedores.md</code></td><td>2026-02-20</td>
+    <td><b>Obsoleto</b> — describe el flujo en <code>supply.php</code> con autorización
+    multinivel 66→70→67→68 y vistas <code>views/supply/*</code>. Útil solo como referencia
+    histórica del esquema original.</td></tr>
+  <tr><td><code>docs/presentacion-pagos-proveedores.html</code></td><td>2026-02</td>
+    <td>Presentación ejecutiva de la primera versión; desactualizada.</td></tr>
+  <tr><td><code>docs/SISTEMA_CONCILIACION_ESPECIFICACION_FUNCIONAL.md</code></td><td>2026</td>
+    <td>Especificación funcional de la conciliación de comprobantes (vigente como spec).</td></tr>
+  <tr><td><code>docs/pagos_documentacion_tecnica.html</code> (este documento)</td><td>2026-07-22</td>
+    <td>Vigente — refleja el controlador <code>payment.php</code> actual.</td></tr>
+  <tr><td><code>docs/pagos_flujo_procesos.html</code></td><td>2026-07-22</td>
+    <td>Vigente — diagramas de flujo de los 7 procesos del módulo.</td></tr>
+</table>
+
+</body>
+</html>

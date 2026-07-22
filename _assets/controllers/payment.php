@@ -7160,4 +7160,321 @@ class Payment
     }
 
 
+    /**
+     * JSON: tab "Facturas en Pagos" de la vista Estado Facturas.
+     * Unifica en un solo listado: facturas y notas de cargo agregadas a
+     * requisiciones, notas de crédito aplicadas y anticipos, con estado de
+     * pago, PDF del documento y comprobantes de pago ligados.
+     */
+    public function invoices_status_table()
+    {
+        header('Content-Type: application/json');
+        try {
+            $from      = $_POST['from']  ?? date('Y-m-01');
+            $until     = $_POST['until'] ?? date('Y-m-d');
+            $proveedor = intval($_POST['proveedor'] ?? 0);
+
+            $facturas  = $this->paymentRequestInvoicesModel->get_invoices_status_report($from, $until, $proveedor) ?: [];
+            $notas_cr  = $this->CreditNoteApplicationsModel->get_applications_report($from, $until, $proveedor) ?: [];
+            $anticipos = $this->PaymentRequestsModel->get_anticipos_status_report($from, $until, $proveedor) ?: [];
+
+            // Nombres de todos los comprobantes ligados (facturas + anticipos)
+            $todos_doc_ids = [];
+            foreach (array_merge($facturas, $anticipos) as $r) {
+                if (!empty($r['comprobante_doc_ids'])) {
+                    $todos_doc_ids = array_merge($todos_doc_ids, explode(',', $r['comprobante_doc_ids']));
+                }
+            }
+            $nombres_comprobantes = $this->PaymentTransactionDocumentsModel->get_names_by_ids($todos_doc_ids);
+
+            $buildComprobantes = function ($ids_csv) use ($nombres_comprobantes) {
+                if (empty($ids_csv)) return [];
+                $out = [];
+                foreach (array_unique(explode(',', $ids_csv)) as $docId) {
+                    $docId  = (int)$docId;
+                    $nombre = $nombres_comprobantes[$docId] ?? 'Comprobante';
+                    $ext    = strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) ?: 'pdf';
+                    $out[]  = ['doc_id' => $docId, 'nombre' => $nombre, 'ext' => $ext];
+                }
+                return $out;
+            };
+
+            $data = [];
+
+            // ── Facturas y notas de cargo en requisiciones ──
+            foreach ($facturas as $r) {
+                $esCargo = (int)($r['is_debit_note'] ?? 0) === 1;
+                if ((int)$r['status'] === 2)      $estado = 'Pagada';
+                elseif ((int)$r['status'] === 3)  $estado = 'Parcial';
+                elseif ((int)($r['payment_authorized'] ?? 0) === 1) $estado = 'Autorizada';
+                else                              $estado = 'Pendiente';
+
+                $data[] = [
+                    'id'                  => (int)$r['id'],
+                    'tipo'                => $esCargo ? 'Nota cargo' : 'Factura',
+                    'estado'              => $estado,
+                    'payment_request_id'  => (int)$r['payment_request_id'],
+                    'folio'               => $r['folio'],
+                    'invoice_number'      => $r['invoice_number'],
+                    'proveedor_nombre'    => $r['proveedor_nombre'] ?? '-',
+                    'estacion_nombre'     => $r['estacion_nombre'] ?? '-',
+                    'amount'              => (float)$r['amount'],
+                    'paid_amount'         => (float)($r['paid_amount'] ?? 0),
+                    'anticipo_aplicado'   => (float)($r['anticipo_aplicado'] ?? 0),
+                    'total_notas_credito' => (float)($r['total_notas_credito'] ?? 0),
+                    'total_notas_cargo'   => (float)($r['total_notas_cargo'] ?? 0),
+                    'aplicado_facturas'   => 0,
+                    'date_added'          => $r['date_added'] ? date('d/m/Y', strtotime($r['date_added'])) : '-',
+                    'date_added_sort'     => $r['date_added'] ? date('Y-m-d H:i', strtotime($r['date_added'])) : '',
+                    'expiration_date'     => $r['expiration_date'] ? date('d/m/Y', strtotime($r['expiration_date'])) : '-',
+                    'fecha_pago'          => $r['fecha_pago'] ? date('d/m/Y', strtotime($r['fecha_pago'])) : null,
+                    'uuid'                => $r['uuid'],
+                    'fr_id'               => $r['fr_id'] ?? null,
+                    'nota_id'             => (!empty($r['nota_id']) && (int)($r['nota_docs'] ?? 0) > 0) ? (int)$r['nota_id'] : null,
+                    'comprobantes'        => $buildComprobantes($r['comprobante_doc_ids'] ?? null),
+                ];
+            }
+
+            // ── Notas de crédito aplicadas ──
+            foreach ($notas_cr as $r) {
+                $data[] = [
+                    'id'                  => (int)$r['id'],
+                    'tipo'                => 'Nota crédito',
+                    'estado'              => 'Aplicada',
+                    'payment_request_id'  => !empty($r['payment_request_id']) ? (int)$r['payment_request_id'] : null,
+                    'folio'               => $r['note_number'] ?? '-',
+                    'invoice_number'      => $r['invoice_number'] ?? ($r['invoice_folio'] ?? '-'),
+                    'proveedor_nombre'    => $r['proveedor_nombre'] ?? '-',
+                    'estacion_nombre'     => $r['estacion_nombre'] ?? '-',
+                    'amount'              => (float)$r['applied_amount'],
+                    'paid_amount'         => 0,
+                    'anticipo_aplicado'   => 0,
+                    'total_notas_credito' => 0,
+                    'total_notas_cargo'   => 0,
+                    'aplicado_facturas'   => 0,
+                    'date_added'          => $r['created_at'] ? date('d/m/Y', strtotime($r['created_at'])) : '-',
+                    'date_added_sort'     => $r['created_at'] ? date('Y-m-d H:i', strtotime($r['created_at'])) : '',
+                    'expiration_date'     => '-',
+                    'fecha_pago'          => null,
+                    'uuid'                => null,
+                    'fr_id'               => null,
+                    'nota_id'             => ((int)($r['nota_docs'] ?? 0) > 0) ? (int)$r['nota_id'] : null,
+                    'comprobantes'        => [],
+                ];
+            }
+
+            // ── Anticipos ──
+            $estadoAnticipo = [0 => 'Pendiente', 1 => 'Autorizada', 2 => 'Pagada', 3 => 'Cancelada'];
+            foreach ($anticipos as $r) {
+                $data[] = [
+                    'id'                  => (int)$r['id'],
+                    'tipo'                => 'Anticipo',
+                    'estado'              => $estadoAnticipo[(int)$r['status']] ?? 'Pendiente',
+                    'payment_request_id'  => (int)$r['id'],
+                    'folio'               => 'ANT-' . (int)$r['id'],
+                    'invoice_number'      => $r['comment'] ?? '-',
+                    'proveedor_nombre'    => $r['proveedor_nombre'] ?? '-',
+                    'estacion_nombre'     => '-',
+                    'amount'              => (float)$r['monto_total'],
+                    'paid_amount'         => (float)($r['paid_amount'] ?? 0),
+                    'anticipo_aplicado'   => 0,
+                    'total_notas_credito' => 0,
+                    'total_notas_cargo'   => 0,
+                    'aplicado_facturas'   => (float)($r['aplicado_facturas'] ?? 0),
+                    'date_added'          => $r['request_date'] ? date('d/m/Y', strtotime($r['request_date'])) : '-',
+                    'date_added_sort'     => $r['request_date'] ? date('Y-m-d H:i', strtotime($r['request_date'])) : '',
+                    'expiration_date'     => '-',
+                    'fecha_pago'          => $r['fecha_pago'] ? date('d/m/Y', strtotime($r['fecha_pago'])) : null,
+                    'uuid'                => null,
+                    'fr_id'               => null,
+                    'nota_id'             => null,
+                    'comprobantes'        => $buildComprobantes($r['comprobante_doc_ids'] ?? null),
+                ];
+            }
+
+            json_output(['data' => $data]);
+        } catch (Exception $e) {
+            error_log('Error en invoices_status_table: ' . $e->getMessage());
+            json_output(['data' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
+
+    /**
+     * JSON: tab "Estado por Proveedor" de la vista Estado Facturas.
+     * Deuda por proveedor en dos mitades sin traslape (partición por en_orden_pago):
+     *  - sin_req: documentos subidos a estaciones (API estacion_documentos_compra,
+     *    barre las 40 estaciones) que aún no están en ninguna requisición.
+     *  - en_req: líneas de requisición con saldo neto pendiente (TG local).
+     * Aparte: remisiones sin CFDI (no pueden ir a requisición, no suman a la
+     * deuda) y saldo a favor (remanente de anticipos + NC disponibles).
+     */
+    public function provider_status_table()
+    {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        try {
+            $from      = $_POST['from']  ?? '2026-05-01';
+            $until     = $_POST['until'] ?? date('Y-m-d');
+            $proveedor = intval($_POST['proveedor'] ?? 0);
+            $hoy       = date('Y-m-d');
+
+            // 1) Documentos de compra de las estaciones (fecha de emisión)
+            $postData = [
+                'from'      => dateToInt($from),
+                'until'     => dateToInt($until),
+                'codgas'    => '0',
+                'proveedor' => (string)$proveedor,
+                'company'   => '0',
+            ];
+            $ch = curl_init('http://192.168.0.109:82/api/estacion_documentos_compra/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+            $response = curl_exec($ch);
+            curl_close($ch);
+            $apiData = json_decode($response, true);
+            if (!is_array($apiData) || isset($apiData['detail'])) {
+                $apiData = [];
+            }
+
+            // 2) Consultas locales (TG). Si hay proveedor seleccionado se filtra
+            // aquí (las consultas son baratas; el filtro fuerte va en el API).
+            $soloProv = function ($rows) use ($proveedor) {
+                if ($proveedor <= 0) return $rows;
+                return array_values(array_filter($rows, fn($r) => (int)($r['provider_cod'] ?? 0) === $proveedor));
+            };
+            $pendientes = $soloProv($this->paymentRequestInvoicesModel->get_pending_saldo_by_provider() ?: []);
+            $anticipos  = $soloProv($this->PaymentRequestsModel->get_anticipo_remanente_by_provider() ?: []);
+            $ncs        = $soloProv($this->InvoiceCreditDebitNotesModel->getAvailableCreditByProvider() ?: []);
+
+            // Nombres de proveedor de respaldo (para filas que solo traen código)
+            $nombres_prov = [];
+            foreach (($this->proveedores->get_actives() ?: []) as $p) {
+                if (!empty($p['id_control_gas'])) {
+                    $nombres_prov[(int)$p['id_control_gas']] = $p['den'];
+                }
+            }
+
+            $prov = [];
+            $mk = function ($cod, $nombre) use (&$prov, $nombres_prov) {
+                $cod = (int)$cod;
+                if (!isset($prov[$cod])) {
+                    $prov[$cod] = [
+                        'proveedor_codigo' => $cod,
+                        'proveedor'        => $nombre ?: ($nombres_prov[$cod] ?? ('Proveedor ' . $cod)),
+                        'sin_req_count'    => 0, 'sin_req_monto'  => 0.0,
+                        'en_req_count'     => 0, 'en_req_monto'   => 0.0,
+                        'sin_cfdi_count'   => 0, 'sin_cfdi_monto' => 0.0,
+                        'vencido_monto'    => 0.0,
+                        'a_favor'          => 0.0,
+                        'detalle'          => ['sin_req' => [], 'en_req' => [], 'sin_cfdi' => []],
+                    ];
+                } elseif ($nombre && strpos($prov[$cod]['proveedor'], 'Proveedor ') === 0) {
+                    $prov[$cod]['proveedor'] = $nombre;
+                }
+                return $cod;
+            };
+
+            // ── Documentos de estación aún sin requisición ──
+            $vistos = [];
+            foreach ($apiData as $r) {
+                $key = ($r['codgas'] ?? '') . '-' . ($r['nro'] ?? '');
+                if (isset($vistos[$key])) continue;
+                $vistos[$key] = true;
+
+                // en_orden_pago=1: su deuda (si queda saldo) vive en la parte local
+                if (!empty($r['en_orden_pago'])) continue;
+
+                $cod   = $mk($r['proveedor_codigo'] ?? 0, $r['proveedor'] ?? null);
+                $monto = (!empty($r['tiene_factura_recibida']) && isset($r['total_factura_recibida']))
+                    ? (float)$r['total_factura_recibida']
+                    : (float)($r['total_fac'] ?? 0);
+                $vto = $r['fecha_vencimiento_credito'] ?? ($r['fechaVto'] ?? null);
+                $det = [
+                    'estacion'    => $r['gasolinera'] ?? '-',
+                    'nro'         => $r['nro'] ?? '-',
+                    'factura'     => $r['Factura'] ?? '-',
+                    'remision'    => isset($r['Remision']) ? substr((string)$r['Remision'], 0, 15) : '',
+                    'fecha'       => $r['fecha_emision_efectiva'] ?? ($r['fecha'] ?? '-'),
+                    'vencimiento' => $vto ?: '-',
+                    'vencida'     => (!empty($vto) && $vto < $hoy),
+                    'monto'       => $monto,
+                ];
+                if (empty($r['satuid'])) {
+                    // Remisión sin CFDI: nunca puede ir a requisición — se reporta aparte
+                    $prov[$cod]['sin_cfdi_count']++;
+                    $prov[$cod]['sin_cfdi_monto'] += $monto;
+                    $prov[$cod]['detalle']['sin_cfdi'][] = $det;
+                } else {
+                    $prov[$cod]['sin_req_count']++;
+                    $prov[$cod]['sin_req_monto'] += $monto;
+                    if ($det['vencida']) $prov[$cod]['vencido_monto'] += $monto;
+                    $prov[$cod]['detalle']['sin_req'][] = $det;
+                }
+            }
+
+            // ── Saldos pendientes en requisiciones ──
+            foreach ($pendientes as $r) {
+                $cod     = $mk($r['provider_cod'] ?? 0, $r['proveedor_nombre'] ?? null);
+                $saldo   = (float)$r['saldo_neto'];
+                $venc    = $r['expiration_date'] ? date('Y-m-d', strtotime($r['expiration_date'])) : null;
+                $vencida = $venc && $venc < $hoy;
+                if ((float)$r['paid_amount'] + (float)$r['anticipo_aplicado'] > 0.01) $estado = 'Parcial';
+                elseif ((int)($r['payment_authorized'] ?? 0) === 1)                   $estado = 'Autorizada';
+                else                                                                  $estado = 'Pendiente';
+
+                $prov[$cod]['en_req_count']++;
+                $prov[$cod]['en_req_monto'] += $saldo;
+                if ($vencida) $prov[$cod]['vencido_monto'] += $saldo;
+                $prov[$cod]['detalle']['en_req'][] = [
+                    'payment_request_id' => (int)$r['payment_request_id'],
+                    'folio'              => $r['folio'],
+                    'factura'            => $r['invoice_number'],
+                    'estacion'           => $r['estacion_nombre'] ?? '-',
+                    'es_cargo'           => (int)($r['is_debit_note'] ?? 0) === 1,
+                    'vencimiento'        => $venc ?: '-',
+                    'vencida'            => (bool)$vencida,
+                    'saldo'              => $saldo,
+                    'estado'             => $estado,
+                ];
+            }
+
+            // ── Saldo a favor: remanente de anticipos + NC disponibles ──
+            foreach ($anticipos as $r) {
+                $rem = max(0, (float)$r['pagado'] - (float)$r['aplicado']);
+                if ($rem < 0.01) continue;
+                $cod = $mk($r['provider_cod'] ?? 0, null);
+                $prov[$cod]['a_favor'] += $rem;
+            }
+            foreach ($ncs as $r) {
+                $disp = (float)$r['disponible'];
+                if ($disp < 0.01) continue;
+                $cod = $mk($r['provider_cod'] ?? 0, null);
+                $prov[$cod]['a_favor'] += $disp;
+            }
+
+            // ── Totalizar y filtrar filas vacías ──
+            $data = [];
+            foreach ($prov as $p) {
+                $p['deuda_total'] = $p['sin_req_monto'] + $p['en_req_monto'];
+                $p['deuda_neta']  = $p['deuda_total'] - $p['a_favor'];
+                if ($p['deuda_total'] < 0.01 && $p['a_favor'] < 0.01 && $p['sin_cfdi_monto'] < 0.01) {
+                    continue;
+                }
+                $data[] = $p;
+            }
+            usort($data, fn($a, $b) => $b['deuda_total'] <=> $a['deuda_total']);
+
+            json_output(['data' => $data]);
+        } catch (Exception $e) {
+            error_log('Error en provider_status_table: ' . $e->getMessage());
+            json_output(['data' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
+
 }

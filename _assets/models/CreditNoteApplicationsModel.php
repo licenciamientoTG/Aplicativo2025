@@ -64,6 +64,52 @@ class CreditNoteApplicationsModel extends Model
     }
 
     /**
+     * Reporte "Estado Facturas": aplicaciones activas de notas de crédito en un
+     * rango de fechas, con la requisición/factura destino y si la nota tiene
+     * documento (PDF) cargado.
+     */
+    public function get_applications_report($from, $until, $provider_cod = 0) : array|false {
+        $params = [$from, $until];
+        $provider_filter = '';
+        if (intval($provider_cod) > 0) {
+            $provider_filter = ' AND n.provider_id = ? ';
+            $params[] = intval($provider_cod);
+        }
+        $query = "
+            SELECT
+                a.id,
+                a.credit_note_id   AS nota_id,
+                a.payment_request_id,
+                a.invoice_id,
+                a.applied_amount,
+                a.created_at,
+                n.note_number,
+                n.note_date,
+                n.amount           AS note_total,
+                prov.den           AS proveedor_nombre,
+                pri.folio          AS invoice_folio,
+                pri.invoice_number AS invoice_number,
+                g.abr              AS estacion_nombre,
+                ISNULL((
+                    SELECT COUNT(*)
+                    FROM [tg].[dbo].invoice_credit_debit_notes_doc dd
+                    WHERE dd.credit_note_id = n.id
+                ), 0) AS nota_docs
+            FROM [tg].[dbo].credit_note_applications a
+            INNER JOIN [tg].[dbo].invoice_credit_debit_notes n
+                ON n.id = a.credit_note_id AND n.note_type = 'CREDIT'
+            LEFT JOIN SG12.dbo.Proveedores prov ON prov.cod = n.provider_id
+            LEFT JOIN [TG].[dbo].[payment_request_invoices] pri ON pri.id = a.invoice_id
+            LEFT JOIN sg12.[dbo].[Gasolineras] g ON g.cod = pri.codgas
+            WHERE a.status = 1
+              AND a.created_at >= ?
+              AND a.created_at < DATEADD(day, 1, ?)
+              $provider_filter
+            ORDER BY a.created_at DESC";
+        return $this->sql->select($query, $params) ?: false;
+    }
+
+    /**
      * Obtener todas las aplicaciones activas de un pago con detalle de nota y factura
      */
     public function getByPayment($paymentRequestId) : array|false {

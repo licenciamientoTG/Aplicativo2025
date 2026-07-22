@@ -1,6 +1,6 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Facturas Vencidas{% endblock %}
-{% block menutitle %}Facturas Vencidas{% endblock %}
+{% block title %}Estado Facturas{% endblock %}
+{% block menutitle %}Estado Facturas{% endblock %}
 {% block mycss %}
 <style>
     .inv-due-thead th {
@@ -37,9 +37,35 @@
     .kpi-card .kc-label { font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
     .kpi-card .kc-value { font-size: 1.2rem; font-weight: 700; line-height: 1.2; }
     .kpi-card .kc-sub   { font-size: .72rem; }
+    .nav-tabs .nav-link { font-size: .85rem; font-weight: 600; color: #64748b; }
+    .nav-tabs .nav-link.active { color: #1e293b; }
+    .badge-estado { font-size: .7rem; padding: .3em .6em; border-radius: 4px; }
 </style>
 {% endblock %}
 {% block content %}
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab_vencidas" type="button" role="tab">
+            <i class="fas fa-exclamation-triangle me-1"></i>Facturas Vencidas
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab_estado" type="button" role="tab" id="tab_estado_btn">
+            <i class="fas fa-tasks me-1"></i>Facturas en Pagos
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab_provstat" type="button" role="tab" id="tab_provstat_btn">
+            <i class="fas fa-truck me-1"></i>Estado por Proveedor
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+
+<!-- ══════════════════ TAB 1: FACTURAS VENCIDAS ══════════════════ -->
+<div class="tab-pane fade show active" id="tab_vencidas" role="tabpanel">
 
 <!-- Filtros -->
 <div class="card border-0 shadow-sm mb-3">
@@ -141,6 +167,228 @@
     </div>
 </div>
 
+</div>
+
+<!-- ══════════════════ TAB 2: FACTURAS EN PAGOS ══════════════════ -->
+<div class="tab-pane fade" id="tab_estado" role="tabpanel">
+
+<!-- Filtros -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2 px-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Agregada desde</label>
+                <input type="date" class="form-control form-control-sm" id="est_from"
+                    value="{{ 'first day of this month'|date('Y-m-d') }}">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Hasta</label>
+                <input type="date" class="form-control form-control-sm" id="est_until"
+                    value="{{ 'now'|date('Y-m-d') }}">
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Proveedor</label>
+                <select class="selectpicker w-100" data-live-search="true" id="est_proveedor">
+                    <option value="0">Todos</option>
+                    {% for proveedor in proveedores %}
+                    <option value="{{ proveedor.id_control_gas }}">{{ proveedor.den }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Tipo</label>
+                <select class="form-select form-select-sm" id="est_tipo">
+                    <option value="">Todos</option>
+                    <option value="Factura">Factura</option>
+                    <option value="Nota crédito">Nota crédito</option>
+                    <option value="Nota cargo">Nota cargo</option>
+                    <option value="Anticipo">Anticipo</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Estado</label>
+                <select class="form-select form-select-sm" id="est_status">
+                    <option value="">Todos</option>
+                    <option value="Pagada">Pagada</option>
+                    <option value="Parcial">Parcial</option>
+                    <option value="Autorizada">Autorizada</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="Aplicada">Aplicada</option>
+                    <option value="Cancelada">Cancelada</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-1">
+                <button onclick="loadInvoicesStatus()" class="btn btn-sm btn-primary w-100 d-flex align-items-center justify-content-center gap-1">
+                    <i class="fas fa-search" style="font-size:.75rem;"></i> Buscar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- KPIs -->
+<div class="row g-3 mb-3" id="est_kpi_strip" style="display:none;">
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#eff6ff;border-color:#93c5fd;">
+            <div class="kc-label" style="color:#1e40af;"><i class="fas fa-file-invoice me-1"></i>Facturas</div>
+            <div class="kc-value" style="color:#1e3a8a;" id="est_kpi_total">0</div>
+            <div class="kc-sub" style="color:#2563eb;" id="est_fecha_consulta"></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#f0fdf4;border-color:#86efac;">
+            <div class="kc-label" style="color:#166534;"><i class="fas fa-check-circle me-1"></i>Pagadas</div>
+            <div class="kc-value" style="color:#14532d;" id="est_kpi_pagadas">0</div>
+            <div class="kc-sub" style="color:#166534;" id="est_kpi_monto_pagado">$0</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#fffbeb;border-color:#fcd34d;">
+            <div class="kc-label" style="color:#92400e;"><i class="fas fa-hourglass-half me-1"></i>Por pagar</div>
+            <div class="kc-value" style="color:#78350f;" id="est_kpi_pendientes">0</div>
+            <div class="kc-sub" style="color:#b45309;">pendientes / parciales / autorizadas</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#f8fafc;border-color:#cbd5e1;">
+            <div class="kc-label" style="color:#475569;"><i class="fas fa-dollar-sign me-1"></i>Monto Total</div>
+            <div class="kc-value" style="color:#1e293b;font-size:1rem;" id="est_kpi_monto">$0</div>
+            <div class="kc-sub" style="color:#64748b;">del rango consultado</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive" style="padding:.75rem;">
+            <table id="invoices_status_table" class="table table-hover table-sm w-100 mb-0">
+                <thead class="inv-due-thead">
+                    <tr>
+                        <th>Req.</th>
+                        <th>Tipo</th>
+                        <th>Folio</th>
+                        <th>Factura</th>
+                        <th>Proveedor</th>
+                        <th>Estación</th>
+                        <th class="text-end">Monto</th>
+                        <th class="text-end">Cubierto</th>
+                        <th class="text-center">Estado</th>
+                        <th>Agregada</th>
+                        <th>Vencimiento</th>
+                        <th>F. Pago</th>
+                        <th class="text-center">PDF</th>
+                        <th class="text-center">Comprobante</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- ══════════════════ TAB 3: ESTADO POR PROVEEDOR ══════════════════ -->
+<div class="tab-pane fade" id="tab_provstat" role="tabpanel">
+
+<!-- Filtros -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2 px-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Emisión desde</label>
+                <input type="date" class="form-control form-control-sm" id="pv_from" value="2026-05-01">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Hasta</label>
+                <input type="date" class="form-control form-control-sm" id="pv_until"
+                    value="{{ 'now'|date('Y-m-d') }}">
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Proveedor</label>
+                <select class="selectpicker w-100" data-live-search="true" id="pv_proveedor">
+                    <option value="0">Todos</option>
+                    {% for proveedor in proveedores %}
+                    <option value="{{ proveedor.id_control_gas }}">{{ proveedor.den }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-1">
+                <button onclick="loadProviderStatus()" class="btn btn-sm btn-primary w-100 d-flex align-items-center justify-content-center gap-1" id="pv_buscar_btn">
+                    <i class="fas fa-search" style="font-size:.75rem;"></i> Buscar
+                </button>
+            </div>
+            <div class="col-12 col-md-4">
+                <span class="text-muted" style="font-size:.72rem;">
+                    <i class="fas fa-info-circle me-1"></i>Consulta las 40 estaciones en paralelo; puede tardar un poco.
+                    Deuda = sin requisición + saldo en requisiciones.
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- KPIs -->
+<div class="row g-3 mb-3" id="pv_kpi_strip" style="display:none;">
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#fef2f2;border-color:#fecaca;">
+            <div class="kc-label" style="color:#b91c1c;"><i class="fas fa-file-invoice-dollar me-1"></i>Deuda Total</div>
+            <div class="kc-value" style="color:#991b1b;font-size:1rem;" id="pv_kpi_deuda">$0</div>
+            <div class="kc-sub" style="color:#dc2626;" id="pv_kpi_proveedores">0 proveedores</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#fffbeb;border-color:#fcd34d;">
+            <div class="kc-label" style="color:#92400e;"><i class="fas fa-inbox me-1"></i>Sin Requisición</div>
+            <div class="kc-value" style="color:#78350f;font-size:1rem;" id="pv_kpi_sinreq">$0</div>
+            <div class="kc-sub" style="color:#b45309;" id="pv_kpi_sinreq_n">0 facturas</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#eff6ff;border-color:#93c5fd;">
+            <div class="kc-label" style="color:#1e40af;"><i class="fas fa-clipboard-list me-1"></i>En Requisición</div>
+            <div class="kc-value" style="color:#1e3a8a;font-size:1rem;" id="pv_kpi_enreq">$0</div>
+            <div class="kc-sub" style="color:#2563eb;" id="pv_kpi_enreq_n">0 facturas</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#fdf2f8;border-color:#fbcfe8;">
+            <div class="kc-label" style="color:#9d174d;"><i class="fas fa-exclamation-circle me-1"></i>Vencido</div>
+            <div class="kc-value" style="color:#831843;font-size:1rem;" id="pv_kpi_vencido">$0</div>
+            <div class="kc-sub" style="color:#be185d;">ya pasó su fecha de pago</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive" style="padding:.75rem;">
+            <table id="provider_status_table" class="table table-hover table-sm w-100 mb-0">
+                <thead class="inv-due-thead">
+                    <tr>
+                        <th style="width:24px;"></th>
+                        <th>Proveedor</th>
+                        <th class="text-end">Sin Requisición</th>
+                        <th class="text-end">En Requisición</th>
+                        <th class="text-end">Deuda Total</th>
+                        <th class="text-end">Vencido</th>
+                        <th class="text-end">Sin CFDI</th>
+                        <th class="text-end">A Favor</th>
+                        <th class="text-end">Deuda Neta</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+</div>
+
+</div><!-- /tab-content -->
+
 <!-- Modal PDF Factura -->
 <div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl">
@@ -154,10 +402,26 @@
     </div>
 </div>
 
+<!-- Modal Comprobante de pago -->
+<div class="modal fade" id="modalComprobante" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header py-2" style="background:#1e293b;">
+                <h6 class="modal-title text-white mb-0">
+                    <i class="fas fa-file-alt me-2"></i>Comprobante de pago
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="modalComprobanteBody"></div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 {% block myjs %}
 <script>
 let invoicesDueTable = null;
+let invoicesStatusTable = null;
 
 async function ModalinvoicePdf(id, data) {
     try {
@@ -175,6 +439,41 @@ async function ModalinvoicePdf(id, data) {
         $('#ModalinvoicePdfContent').html('<div class="modal-body text-danger">Error al cargar la factura.</div>');
     }
 }
+
+function abrirComprobanteModal(docId, ext) {
+    var url = '/payment/view_payment_document/' + docId;
+    var $body = $('#modalComprobanteBody');
+    $('#modalComprobante .modal-title').html('<i class="fas fa-file-alt me-2"></i>Comprobante de pago');
+    $body.html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-secondary"></i></div>');
+    $('#modalComprobante').modal('show');
+
+    if (ext === 'pdf') {
+        $body.html('<iframe src="' + url + '" style="width:100%;height:75vh;border:none;"></iframe>');
+    } else {
+        $body.html('<div class="text-center p-3"><img src="' + url + '" style="max-width:100%;max-height:75vh;border-radius:4px;" onerror="this.replaceWith(\'<p class=text-danger>No se pudo cargar la imagen.</p>\')"></div>');
+    }
+}
+
+// Fila de filtros por columna (compartida por ambas tablas)
+function attachColumnFilters(tableSelector, api) {
+    function rebuildFilterRow() {
+        $(tableSelector + ' thead tr.filter').remove();
+        var $fr = $('<tr class="filter"></tr>');
+        api.columns(':visible').every(function() {
+            var idx   = this.index();
+            var title = $(this.header()).text().trim();
+            $fr.append('<th data-col-idx="' + idx + '"><input type="text" placeholder="' + title + '" /></th>');
+        });
+        $(tableSelector + ' thead').append($fr);
+        $(tableSelector + ' thead tr.filter th input').on('keyup change', function() {
+            api.column($(this).closest('th').data('col-idx')).search(this.value).draw();
+        });
+    }
+    rebuildFilterRow();
+    api.on('column-visibility.dt', function() { rebuildFilterRow(); });
+}
+
+/* ══════════════ TAB 1: Facturas Vencidas ══════════════ */
 
 function loadInvoicesDue() {
     const from_due  = $('#vhoy_from').val();
@@ -258,24 +557,435 @@ function loadInvoicesDue() {
         order: [[5, 'asc'], [0, 'asc']],
         pageLength: 100,
         initComplete: function() {
-            var api = this.api();
-            function rebuildFilterRow() {
-                $('#invoices_due_table thead tr.filter').remove();
-                var $fr = $('<tr class="filter"></tr>');
-                api.columns(':visible').every(function() {
-                    var idx   = this.index();
-                    var title = $(this.header()).text().trim();
-                    $fr.append('<th data-col-idx="' + idx + '"><input type="text" placeholder="' + title + '" /></th>');
-                });
-                $('#invoices_due_table thead').append($fr);
-                $('#invoices_due_table thead tr.filter th input').on('keyup change', function() {
-                    api.column($(this).closest('th').data('col-idx')).search(this.value).draw();
-                });
-            }
-            rebuildFilterRow();
-            api.on('column-visibility.dt', function() { rebuildFilterRow(); });
+            attachColumnFilters('#invoices_due_table', this.api());
         }
     });
 }
+
+/* ══════════════ TAB 2: Facturas en Pagos ══════════════ */
+
+// El estado viene calculado del servidor (row.estado)
+const ESTADO_BADGES = {
+    'Pagada':     'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;',
+    'Parcial':    'background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;',
+    'Autorizada': 'background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;',
+    'Pendiente':  'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;',
+    'Aplicada':   'background:#ccfbf1;color:#0f766e;border:1px solid #5eead4;',
+    'Cancelada':  'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;'
+};
+
+const TIPO_BADGES = {
+    'Factura':      'background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;',
+    'Nota crédito': 'background:#fefce8;color:#854d0e;border:1px solid #fde047;',
+    'Nota cargo':   'background:#fff7ed;color:#9a3412;border:1px solid #fdba74;',
+    'Anticipo':     'background:#eef2ff;color:#3730a3;border:1px solid #a5b4fc;'
+};
+
+const TIPO_COL_IDX   = 1; // índice de la columna Tipo
+const ESTADO_COL_IDX = 8; // índice de la columna Estado
+// PDF de la nota de crédito/cargo (documento cargado en el módulo de notas)
+function verNotaDoc(notaId) {
+    var $body = $('#modalComprobanteBody');
+    $('#modalComprobante .modal-title').html('<i class="fas fa-receipt me-2"></i>Nota de crédito / cargo');
+    $body.html('<iframe src="/payment/view_note_doc/' + notaId + '" style="width:100%;height:75vh;border:none;"></iframe>');
+    $('#modalComprobante').modal('show');
+}
+
+function loadInvoicesStatus() {
+    const from  = $('#est_from').val();
+    const until = $('#est_until').val();
+
+    if (!from || !until) {
+        alertify.error('Selecciona el rango de fechas');
+        return;
+    }
+
+    if ($.fn.DataTable.isDataTable('#invoices_status_table')) {
+        $('#invoices_status_table').DataTable().destroy();
+        $('#invoices_status_table thead tr.filter').remove();
+    }
+
+    const proveedor = $('#est_proveedor').val() || '0';
+
+    invoicesStatusTable = $('#invoices_status_table').DataTable({
+        dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
+        buttons: [
+            {
+                extend: 'excel',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                className: 'btn btn-sm btn-success',
+                title: 'Estado Facturas ' + from + ' al ' + until,
+                exportOptions: { columns: ':visible' }
+            },
+            {
+                extend: 'colvis',
+                text: '<i class="fas fa-columns"></i> Columnas',
+                className: 'btn btn-sm btn-outline-secondary'
+            }
+        ],
+        processing: true,
+        ajax: {
+            url: '/payment/invoices_status_table',
+            type: 'POST',
+            data: { from: from, until: until, proveedor: proveedor },
+            timeout: 300000,
+            dataSrc: function(json) {
+                const rows = json.data || [];
+                // Las notas de crédito no se pagan: se excluyen de los KPIs de montos
+                const pagables = rows.filter(r => r.tipo !== 'Nota crédito');
+                const pagadas  = pagables.filter(r => r.estado === 'Pagada').length;
+                const porPagar = pagables.filter(r => ['Pendiente', 'Parcial', 'Autorizada'].includes(r.estado)).length;
+                const montoPagado = pagables.reduce((s, r) => s + (r.paid_amount || 0) + (r.anticipo_aplicado || 0), 0);
+                const monto = pagables.reduce((s, r) => s + (r.amount || 0), 0);
+
+                $('#est_kpi_total').text(rows.length);
+                $('#est_kpi_pagadas').text(pagadas);
+                $('#est_kpi_monto_pagado').text('$' + montoPagado.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+                $('#est_kpi_pendientes').text(porPagar);
+                $('#est_kpi_monto').text('$' + monto.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+                $('#est_fecha_consulta').text(from + ' al ' + until);
+                $('#est_kpi_strip').show();
+                return rows;
+            },
+            error: function() { alertify.error('Error al consultar las facturas'); }
+        },
+        columns: [
+            {
+                data: 'payment_request_id', className: 'text-nowrap',
+                render: function(data) {
+                    if (!data) return '<span class="text-muted">—</span>';
+                    return '<a href="/payment/payment_detail/' + data + '" class="text-primary text-decoration-none fw-semibold" title="Ver requisición">#' + data + '</a>';
+                }
+            },
+            {
+                data: 'tipo', className: 'text-nowrap',
+                render: function(data, type) {
+                    if (type !== 'display') return data;
+                    return '<span class="badge badge-estado" style="' + (TIPO_BADGES[data] || '') + '">' + data + '</span>';
+                }
+            },
+            { data: 'folio', defaultContent: '-' },
+            { data: 'invoice_number', defaultContent: '-' },
+            { data: 'proveedor_nombre', defaultContent: '-' },
+            { data: 'estacion_nombre', defaultContent: '-' },
+            { data: 'amount', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-end text-nowrap' },
+            {
+                data: null, className: 'text-end text-nowrap',
+                render: function(data, type, row) {
+                    if (row.tipo === 'Nota crédito') {
+                        return type !== 'display' ? 0 : '<span class="text-muted">—</span>';
+                    }
+                    const cubierto = (row.paid_amount || 0) + (row.anticipo_aplicado || 0);
+                    if (type !== 'display') return cubierto;
+                    let html = cubierto.toLocaleString('es-MX', { minimumFractionDigits: 2 });
+                    if (row.anticipo_aplicado > 0) {
+                        html += ' <i class="fas fa-hand-holding-usd text-info" title="Incluye anticipo: $'
+                             + row.anticipo_aplicado.toLocaleString('es-MX', { minimumFractionDigits: 2 }) + '"></i>';
+                    }
+                    if (row.total_notas_credito > 0) {
+                        html += ' <i class="fas fa-receipt text-warning" title="Nota de crédito aplicada: $'
+                             + row.total_notas_credito.toLocaleString('es-MX', { minimumFractionDigits: 2 }) + '"></i>';
+                    }
+                    if (row.aplicado_facturas > 0) {
+                        html += ' <i class="fas fa-link text-secondary" title="Aplicado a facturas: $'
+                             + row.aplicado_facturas.toLocaleString('es-MX', { minimumFractionDigits: 2 }) + '"></i>';
+                    }
+                    return html;
+                }
+            },
+            {
+                data: 'estado', className: 'text-center',
+                render: function(data, type) {
+                    if (type !== 'display') return data;
+                    return '<span class="badge badge-estado" style="' + (ESTADO_BADGES[data] || '') + '">' + data + '</span>';
+                }
+            },
+            {
+                data: 'date_added', className: 'text-nowrap',
+                render: function(data, type, row) {
+                    return type === 'display' || type === 'filter' ? data : (row.date_added_sort || '');
+                }
+            },
+            { data: 'expiration_date', defaultContent: '-', className: 'text-nowrap' },
+            {
+                data: 'fecha_pago', className: 'text-nowrap',
+                render: function(data) {
+                    return data ? data : '<span class="text-muted">—</span>';
+                }
+            },
+            {
+                data: 'fr_id', className: 'text-center', orderable: false,
+                render: function(data, type, row) {
+                    if (data) {
+                        return '<button class="btn btn-sm btn-success" onclick="ModalinvoicePdf(' + data + ', {})" title="Ver factura PDF">'
+                             + '<i class="fas fa-file-pdf"></i></button>';
+                    }
+                    if (row.nota_id) {
+                        return '<button class="btn btn-sm" style="background:#fefce8;color:#854d0e;border:1px solid #fde047;" '
+                             + 'onclick="verNotaDoc(' + row.nota_id + ')" title="Ver PDF de la nota">'
+                             + '<i class="fas fa-file-pdf"></i></button>';
+                    }
+                    return '<span class="text-muted" style="font-size:.75rem;">Sin PDF</span>';
+                }
+            },
+            {
+                data: 'comprobantes', className: 'text-center', orderable: false,
+                render: function(data, type) {
+                    if (type !== 'display') return (data || []).length;
+                    if (!data || !data.length) return '<span style="color:#cbd5e1;font-size:.75rem;">—</span>';
+                    return data.map(function(c) {
+                        return '<button class="btn btn-sm" style="background:#eff6ff;color:#2563eb;border:none;border-radius:4px;padding:2px 7px;margin:1px;" '
+                             + 'onclick="abrirComprobanteModal(' + c.doc_id + ',\'' + c.ext + '\')" title="' + (c.nombre || 'Comprobante') + '">'
+                             + '<i class="fas fa-' + (c.ext === 'pdf' ? 'file-pdf' : 'file-image') + '" style="font-size:.8rem;"></i></button>';
+                    }).join('');
+                }
+            }
+        ],
+        order: [[9, 'desc']],
+        pageLength: 100,
+        initComplete: function() {
+            attachColumnFilters('#invoices_status_table', this.api());
+        }
+    });
+}
+
+// Filtros rápidos de tipo y estado (match exacto por columna)
+$('#est_status').on('change', function() {
+    if (!invoicesStatusTable) return;
+    const val = this.value;
+    invoicesStatusTable.column(ESTADO_COL_IDX).search(val ? '^' + val + '$' : '', true, false).draw();
+});
+$('#est_tipo').on('change', function() {
+    if (!invoicesStatusTable) return;
+    const val = this.value;
+    invoicesStatusTable.column(TIPO_COL_IDX).search(val ? '^' + val + '$' : '', true, false).draw();
+});
+
+// El tab 2 no consulta solo: se ejecuta hasta que el usuario da Buscar
+$('#tab_estado_btn').on('shown.bs.tab', function() {
+    if (invoicesStatusTable) invoicesStatusTable.columns.adjust();
+});
+
+/* ══════════════ TAB 3: Estado por Proveedor ══════════════ */
+
+let providerStatusTable = null;
+
+function fmtMoney(n) {
+    return '$' + (n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 });
+}
+
+function esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Celda "$monto (n)" con el conteo en gris
+function moneyCount(monto, count, colorCero) {
+    if (!count) return '<span style="color:' + (colorCero || '#cbd5e1') + ';font-size:.75rem;">—</span>';
+    return fmtMoney(monto) + ' <span class="text-muted" style="font-size:.72rem;">(' + count + ')</span>';
+}
+
+function loadProviderStatus() {
+    const from  = $('#pv_from').val();
+    const until = $('#pv_until').val();
+    if (!from || !until) {
+        alertify.error('Selecciona el rango de fechas');
+        return;
+    }
+
+    $('#pv_buscar_btn').prop('disabled', true);
+
+    if ($.fn.DataTable.isDataTable('#provider_status_table')) {
+        $('#provider_status_table').DataTable().destroy();
+    }
+
+    providerStatusTable = $('#provider_status_table').DataTable({
+        dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
+        buttons: [
+            {
+                extend: 'excel',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                className: 'btn btn-sm btn-success',
+                title: 'Estado por Proveedor ' + from + ' al ' + until,
+                exportOptions: { columns: ':visible:not(:first-child)' }
+            }
+        ],
+        processing: true,
+        ajax: {
+            url: '/payment/provider_status_table',
+            type: 'POST',
+            data: { from: from, until: until, proveedor: $('#pv_proveedor').val() || '0' },
+            timeout: 300000,
+            dataSrc: function(json) {
+                const rows = json.data || [];
+                const deuda   = rows.reduce((s, r) => s + (r.deuda_total || 0), 0);
+                const sinReq  = rows.reduce((s, r) => s + (r.sin_req_monto || 0), 0);
+                const sinReqN = rows.reduce((s, r) => s + (r.sin_req_count || 0), 0);
+                const enReq   = rows.reduce((s, r) => s + (r.en_req_monto || 0), 0);
+                const enReqN  = rows.reduce((s, r) => s + (r.en_req_count || 0), 0);
+                const vencido = rows.reduce((s, r) => s + (r.vencido_monto || 0), 0);
+                const conDeuda = rows.filter(r => (r.deuda_total || 0) > 0.01).length;
+
+                $('#pv_kpi_deuda').text(fmtMoney(deuda));
+                $('#pv_kpi_proveedores').text(conDeuda + ' proveedores con deuda');
+                $('#pv_kpi_sinreq').text(fmtMoney(sinReq));
+                $('#pv_kpi_sinreq_n').text(sinReqN + ' facturas');
+                $('#pv_kpi_enreq').text(fmtMoney(enReq));
+                $('#pv_kpi_enreq_n').text(enReqN + ' facturas');
+                $('#pv_kpi_vencido').text(fmtMoney(vencido));
+                $('#pv_kpi_strip').show();
+                $('#pv_buscar_btn').prop('disabled', false);
+                return rows;
+            },
+            error: function() {
+                $('#pv_buscar_btn').prop('disabled', false);
+                alertify.error('Error al consultar el estado por proveedor');
+            }
+        },
+        columns: [
+            {
+                data: null, className: 'text-center dt-control-prov', orderable: false, defaultContent: '',
+                render: function() {
+                    return '<i class="fas fa-chevron-right text-muted" style="font-size:.7rem;cursor:pointer;"></i>';
+                }
+            },
+            { data: 'proveedor', render: function(d) { return '<span class="fw-semibold">' + esc(d) + '</span>'; } },
+            {
+                data: 'sin_req_monto', className: 'text-end text-nowrap',
+                render: function(d, type, row) {
+                    if (type !== 'display') return d || 0;
+                    return moneyCount(d, row.sin_req_count);
+                }
+            },
+            {
+                data: 'en_req_monto', className: 'text-end text-nowrap',
+                render: function(d, type, row) {
+                    if (type !== 'display') return d || 0;
+                    return moneyCount(d, row.en_req_count);
+                }
+            },
+            {
+                data: 'deuda_total', className: 'text-end text-nowrap fw-bold',
+                render: function(d, type) { return type !== 'display' ? (d || 0) : fmtMoney(d); }
+            },
+            {
+                data: 'vencido_monto', className: 'text-end text-nowrap',
+                render: function(d, type) {
+                    if (type !== 'display') return d || 0;
+                    if (!d || d < 0.01) return '<span style="color:#cbd5e1;font-size:.75rem;">—</span>';
+                    return '<span class="text-danger fw-semibold">' + fmtMoney(d) + '</span>';
+                }
+            },
+            {
+                data: 'sin_cfdi_monto', className: 'text-end text-nowrap',
+                render: function(d, type, row) {
+                    if (type !== 'display') return d || 0;
+                    return moneyCount(d, row.sin_cfdi_count);
+                }
+            },
+            {
+                data: 'a_favor', className: 'text-end text-nowrap',
+                render: function(d, type) {
+                    if (type !== 'display') return d || 0;
+                    if (!d || d < 0.01) return '<span style="color:#cbd5e1;font-size:.75rem;">—</span>';
+                    return '<span style="color:#0f766e;">' + fmtMoney(d) + '</span>';
+                }
+            },
+            {
+                data: 'deuda_neta', className: 'text-end text-nowrap fw-semibold',
+                render: function(d, type) {
+                    if (type !== 'display') return d || 0;
+                    const color = d < -0.01 ? '#0f766e' : '#1e293b';
+                    return '<span style="color:' + color + ';">' + fmtMoney(d) + '</span>';
+                }
+            }
+        ],
+        order: [[4, 'desc']],
+        pageLength: 50
+    });
+}
+
+// Mini-tabla de detalle dentro de la fila expandida
+function provDetTable(titulo, colorTitulo, headers, rowsHtml) {
+    if (!rowsHtml) return '';
+    return '<div class="mb-2">'
+        + '<div class="fw-bold mb-1" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:' + colorTitulo + ';">' + titulo + '</div>'
+        + '<table class="table table-sm mb-0" style="font-size:.78rem;background:#fff;">'
+        + '<thead><tr>' + headers.map(h => '<th style="font-size:.68rem;color:#64748b;white-space:nowrap;">' + h + '</th>').join('') + '</tr></thead>'
+        + '<tbody>' + rowsHtml + '</tbody></table></div>';
+}
+
+function provChildHtml(d) {
+    const det = d.detalle || {};
+    let html = '<div class="p-3" style="background:#f8fafc;border-radius:6px;">';
+
+    html += provDetTable(
+        'Sin requisición (' + (det.sin_req || []).length + ')', '#92400e',
+        ['Estación', 'Doc', 'Factura', 'Emisión', 'Vencimiento', 'Monto'],
+        (det.sin_req || []).map(f =>
+            '<tr>'
+            + '<td>' + esc(f.estacion) + '</td>'
+            + '<td>' + esc(f.nro) + '</td>'
+            + '<td>' + esc(f.factura) + '</td>'
+            + '<td class="text-nowrap">' + esc(f.fecha) + '</td>'
+            + '<td class="text-nowrap' + (f.vencida ? ' text-danger fw-semibold' : '') + '">' + esc(f.vencimiento) + '</td>'
+            + '<td class="text-end text-nowrap">' + fmtMoney(f.monto) + '</td>'
+            + '</tr>').join('')
+    );
+
+    html += provDetTable(
+        'En requisición, saldo pendiente (' + (det.en_req || []).length + ')', '#1e40af',
+        ['Req.', 'Folio', 'Factura', 'Estación', 'Vencimiento', 'Saldo', 'Estado'],
+        (det.en_req || []).map(f =>
+            '<tr>'
+            + '<td><a href="/payment/payment_detail/' + f.payment_request_id + '" class="text-primary text-decoration-none fw-semibold">#' + f.payment_request_id + '</a></td>'
+            + '<td>' + esc(f.folio) + (f.es_cargo ? ' <span class="badge badge-estado" style="' + TIPO_BADGES['Nota cargo'] + '">cargo</span>' : '') + '</td>'
+            + '<td>' + esc(f.factura) + '</td>'
+            + '<td>' + esc(f.estacion) + '</td>'
+            + '<td class="text-nowrap' + (f.vencida ? ' text-danger fw-semibold' : '') + '">' + esc(f.vencimiento) + '</td>'
+            + '<td class="text-end text-nowrap">' + fmtMoney(f.saldo) + '</td>'
+            + '<td><span class="badge badge-estado" style="' + (ESTADO_BADGES[f.estado] || '') + '">' + f.estado + '</span></td>'
+            + '</tr>').join('')
+    );
+
+    html += provDetTable(
+        'Sin CFDI — remisiones, no suman a la deuda (' + (det.sin_cfdi || []).length + ')', '#64748b',
+        ['Estación', 'Doc', 'Remisión', 'Emisión', 'Monto'],
+        (det.sin_cfdi || []).map(f =>
+            '<tr>'
+            + '<td>' + esc(f.estacion) + '</td>'
+            + '<td>' + esc(f.nro) + '</td>'
+            + '<td>' + esc(f.remision || '-') + '</td>'
+            + '<td class="text-nowrap">' + esc(f.fecha) + '</td>'
+            + '<td class="text-end text-nowrap">' + fmtMoney(f.monto) + '</td>'
+            + '</tr>').join('')
+    );
+
+    if (d.a_favor > 0.01) {
+        html += '<div style="font-size:.75rem;color:#0f766e;"><i class="fas fa-hand-holding-usd me-1"></i>'
+             + 'Saldo a favor (anticipos con remanente + notas de crédito disponibles): <strong>' + fmtMoney(d.a_favor) + '</strong></div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+$('#provider_status_table tbody').on('click', 'td.dt-control-prov', function() {
+    const tr  = $(this).closest('tr');
+    const row = providerStatusTable.row(tr);
+    const icon = $(this).find('i');
+    if (row.child.isShown()) {
+        row.child.hide();
+        icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+    } else {
+        row.child(provChildHtml(row.data())).show();
+        icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+    }
+});
+
+// El tab 3 no consulta solo (barre las 40 estaciones): solo con Buscar
+$('#tab_provstat_btn').on('shown.bs.tab', function() {
+    if (providerStatusTable) providerStatusTable.columns.adjust();
+});
 </script>
 {% endblock %}

@@ -70,7 +70,15 @@
                     <td>{{ b.vr is null ? '-' : b.vr|number_format(0, '.', ',') }}</td>
                     <td>{{ b.compras is null or b.compras == 0 ? '-' : b.compras|number_format(0, '.', ',') }}</td>
                     <td>{{ b.cont is null ? '-' : b.cont|number_format(0, '.', ',') }}</td>
-                    <td class="col-fis">{{ b.fis is null ? '-' : b.fis|number_format(0, '.', ',') }}</td>
+                    <td class="col-fis">
+                        {%- if b.fis_corrupta -%}
+                        <span class="fis-corrupta" title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo; corrígela en ControlGas y resincroniza.">
+                            {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                        {%- else -%}
+                        {{ b.fis is null ? '-' : b.fis|number_format(0, '.', ',') }}
+                        {%- endif -%}
+                    </td>
                     {% set difabs = b.dif is null ? 0 : (b.dif < 0 ? -b.dif : b.dif) %}
                     <td class="{{ b.dif is null ? '' : (b.dif < 0 ? 'dif-neg' : 'dif-pos') }}">
                         {{ b.dif is null ? '-' : b.dif|number_format(0, '.', ',') }}
@@ -109,8 +117,10 @@ $(document).ready(function () {
         const anio = $btn.data('anio'), mes = $btn.data('mes');
         const desde = anio + '-' + String(mes).padStart(2, '0') + '-01';
         const fin = new Date(anio, mes, 0);
-        const hoy = new Date();
-        const fechaLimitante = (fin < hoy ? fin : hoy);
+        // El día en curso nunca se sincroniza (turnos incompletos): tope en ayer
+        const ayer = new Date();
+        ayer.setDate(ayer.getDate() - 1);
+        const fechaLimitante = (fin < ayer ? fin : ayer);
         const hasta = fechaLimitante.getFullYear() + '-' + String(fechaLimitante.getMonth() + 1).padStart(2, '0') + '-' + String(fechaLimitante.getDate()).padStart(2, '0');
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Consultando...');
         $.post('/merma/sync', { from: desde, to: hasta, codgas: $btn.data('codgas') }, function (res) {

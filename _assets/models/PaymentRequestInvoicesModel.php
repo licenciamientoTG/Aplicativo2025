@@ -517,6 +517,208 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     /**
+     * Reporte "Estado Facturas" (tab Facturas en Pagos): facturas y notas de
+     * cargo (is_debit_note=1) agregadas a requisiciones en un rango de fecha de
+     * alta, con su estado de pago calculado con el mismo criterio que
+     * get_by_payment_request_with_transactions (transacciones + anticipos vs
+     * saldo neto de notas). Excluye filas eliminadas.
+     */
+    public function get_invoices_status_report($from, $until, $provider_cod = 0) : array|false {
+        $params = [$from, $until];
+        $provider_filter = '';
+        if (intval($provider_cod) > 0) {
+            $provider_filter = ' AND pr.provider_cod = ? ';
+            $params[] = intval($provider_cod);
+        }
+        $query = '
+           SELECT
+                t1.id,
+                t1.payment_request_id,
+                t1.folio,
+                t1.invoice_number,
+                t1.codgas,
+                t1.amount,
+                t1.expiration_date,
+                t1.date_added,
+                t1.uuid,
+                t1.authorized_amount,
+                t1.payment_authorized,
+                t1.is_debit_note,
+                pr.status AS request_status,
+                COALESCE(t4.den, prov_pr.den) AS proveedor_nombre,
+                t2.abr AS estacion_nombre,
+                fr.fr_id,
+                nota_nd.id AS nota_id,
+                ISNULL((
+                    SELECT COUNT(*)
+                    FROM [tg].[dbo].invoice_credit_debit_notes_doc dd
+                    WHERE dd.credit_note_id = nota_nd.id
+                ), 0) AS nota_docs,
+                (
+                    SELECT MAX(t5.payment_date)
+                    FROM [TG].[dbo].[payment_transactions] t5
+                    WHERE t5.invoice_id = t1.id
+                ) AS fecha_pago,
+                ISNULL((
+                    SELECT SUM(payment_amount)
+                    FROM [TG].[dbo].[payment_transactions] t5
+                    WHERE t5.invoice_id = t1.id
+                ), 0) as paid_amount,
+                ISNULL((
+                    SELECT SUM(a.monto_aplicado)
+                    FROM [TG].[dbo].[anticipo_invoice_applications] a
+                    WHERE a.invoice_id = t1.id
+                ), 0) as anticipo_aplicado,
+                ISNULL((
+                    SELECT SUM(CASE WHEN n.note_type = \'CREDIT\' THEN ca.applied_amount ELSE 0 END)
+                    FROM [TG].[dbo].[credit_note_applications] ca
+                    INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                    WHERE ca.invoice_id = t1.id AND ca.status = 1
+                ), 0) as total_notas_credito,
+                ISNULL((
+                    SELECT SUM(CASE WHEN n.note_type = \'DEBIT\' THEN ca.applied_amount ELSE 0 END)
+                    FROM [TG].[dbo].[credit_note_applications] ca
+                    INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                    WHERE ca.invoice_id = t1.id AND ca.status = 1
+                ), 0) as total_notas_cargo,
+                CASE
+                    WHEN ISNULL((
+                        SELECT SUM(payment_amount)
+                        FROM [TG].[dbo].[payment_transactions] t5
+                        WHERE t5.invoice_id = t1.id
+                    ), 0) + ISNULL((
+                        SELECT SUM(a.monto_aplicado)
+                        FROM [TG].[dbo].[anticipo_invoice_applications] a
+                        WHERE a.invoice_id = t1.id
+                    ), 0) = 0 THEN 0  -- Pendiente
+                    WHEN ISNULL((
+                        SELECT SUM(payment_amount)
+                        FROM [TG].[dbo].[payment_transactions] t5
+                        WHERE t5.invoice_id = t1.id
+                    ), 0) + ISNULL((
+                        SELECT SUM(a.monto_aplicado)
+                        FROM [TG].[dbo].[anticipo_invoice_applications] a
+                        WHERE a.invoice_id = t1.id
+                    ), 0) < (
+                        t1.amount
+                        - ISNULL((
+                            SELECT SUM(CASE WHEN n.note_type = \'CREDIT\' THEN ca.applied_amount ELSE 0 END)
+                            FROM [TG].[dbo].[credit_note_applications] ca
+                            INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                            WHERE ca.invoice_id = t1.id AND ca.status = 1
+                        ), 0)
+                        + ISNULL((
+                            SELECT SUM(CASE WHEN n.note_type = \'DEBIT\' THEN ca.applied_amount ELSE 0 END)
+                            FROM [TG].[dbo].[credit_note_applications] ca
+                            INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                            WHERE ca.invoice_id = t1.id AND ca.status = 1
+                        ), 0)
+                        - 0.01
+                    ) THEN 3  -- Parcial
+                    ELSE 2  -- Pagado
+                END as status,
+                (
+                    SELECT STRING_AGG(CAST(d.id AS VARCHAR), \',\')
+                    FROM [TG].[dbo].[payment_transactions] t5b
+                    INNER JOIN [TG].[dbo].[payment_transaction_documents] d
+                        ON d.transaction_id = t5b.id
+                        OR (t5b.batch_id IS NOT NULL AND d.batch_id = t5b.batch_id)
+                    WHERE t5b.invoice_id = t1.id
+                ) as comprobante_doc_ids
+                FROM [TG].[dbo].[payment_request_invoices] t1
+                INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = t1.payment_request_id
+                LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
+                LEFT JOIN sg12.[dbo].DocumentosC t3 ON t1.is_debit_note = 0 AND t1.codgas = t3.codgas AND TRY_CAST(t1.folio AS int) = t3.nro AND t3.tip = 1
+                LEFT JOIN SG12.dbo.Proveedores t4 ON t1.is_debit_note = 0 AND t3.codopr = t4.cod
+                -- Fallback de proveedor (facturas importadas sin DocumentosC y notas de cargo)
+                LEFT JOIN SG12.dbo.Proveedores prov_pr ON prov_pr.cod = pr.provider_cod
+                -- Para notas de cargo: la nota origen (por note_number = folio)
+                LEFT JOIN [TG].[dbo].[invoice_credit_debit_notes] nota_nd
+                    ON t1.is_debit_note = 1 AND nota_nd.note_number = t1.folio AND nota_nd.note_type = \'DEBIT\'
+                -- PDF de la factura recibida (por UUID del CFDI). COLLATE obligado:
+                -- FacturasRecibidas.UUID tiene otra collation que payment_request_invoices.uuid
+                OUTER APPLY (
+                    SELECT TOP 1 f.Id AS fr_id
+                    FROM [TG].[dbo].[FacturasRecibidas] f
+                    WHERE t1.uuid IS NOT NULL AND t1.uuid <> \'\'
+                      AND f.UUID COLLATE DATABASE_DEFAULT = t1.uuid COLLATE DATABASE_DEFAULT
+                ) fr
+                WHERE t1.is_deleted = 0
+                  AND t1.date_added >= ?
+                  AND t1.date_added < DATEADD(day, 1, ?)
+                  ' . $provider_filter . '
+                ORDER BY t1.date_added DESC
+        ';
+        return ($this->sql->select($query, $params)) ?: false;
+    }
+
+    /**
+     * Tab "Estado por Proveedor": líneas de requisición (facturas y notas de
+     * cargo) con saldo neto pendiente > 0, sin filtro de fecha. El saldo neto
+     * usa el mismo criterio del detalle de pago:
+     * amount - pagado - anticipos - NC + cargos.
+     * Incluye requisiciones tipo anticipo (facturas jaladas con remanente).
+     */
+    public function get_pending_saldo_by_provider() : array|false {
+        $query = '
+            SELECT
+                t1.id,
+                t1.payment_request_id,
+                t1.folio,
+                t1.invoice_number,
+                t1.codgas,
+                t1.amount,
+                t1.expiration_date,
+                t1.payment_authorized,
+                t1.is_debit_note,
+                pr.provider_cod,
+                prov.den AS proveedor_nombre,
+                g.abr AS estacion_nombre,
+                calc.paid_amount,
+                calc.anticipo_aplicado,
+                calc.total_notas_credito,
+                calc.total_notas_cargo,
+                (t1.amount - calc.paid_amount - calc.anticipo_aplicado
+                    - calc.total_notas_credito + calc.total_notas_cargo) AS saldo_neto
+            FROM [TG].[dbo].[payment_request_invoices] t1
+            INNER JOIN [TG].[dbo].[payment_requests] pr
+                ON pr.id = t1.payment_request_id AND pr.is_deleted = 0
+            LEFT JOIN SG12.dbo.Proveedores prov ON prov.cod = pr.provider_cod
+            LEFT JOIN sg12.[dbo].[Gasolineras] g ON g.cod = t1.codgas
+            CROSS APPLY (
+                SELECT
+                    ISNULL((
+                        SELECT SUM(t5.payment_amount)
+                        FROM [TG].[dbo].[payment_transactions] t5
+                        WHERE t5.invoice_id = t1.id
+                    ), 0) AS paid_amount,
+                    ISNULL((
+                        SELECT SUM(a.monto_aplicado)
+                        FROM [TG].[dbo].[anticipo_invoice_applications] a
+                        WHERE a.invoice_id = t1.id
+                    ), 0) AS anticipo_aplicado,
+                    ISNULL((
+                        SELECT SUM(CASE WHEN n.note_type = \'CREDIT\' THEN ca.applied_amount ELSE 0 END)
+                        FROM [TG].[dbo].[credit_note_applications] ca
+                        INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                        WHERE ca.invoice_id = t1.id AND ca.status = 1
+                    ), 0) AS total_notas_credito,
+                    ISNULL((
+                        SELECT SUM(CASE WHEN n.note_type = \'DEBIT\' THEN ca.applied_amount ELSE 0 END)
+                        FROM [TG].[dbo].[credit_note_applications] ca
+                        INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                        WHERE ca.invoice_id = t1.id AND ca.status = 1
+                    ), 0) AS total_notas_cargo
+            ) calc
+            WHERE t1.is_deleted = 0
+              AND (t1.amount - calc.paid_amount - calc.anticipo_aplicado
+                    - calc.total_notas_credito + calc.total_notas_cargo) > 0.01
+            ORDER BY pr.provider_cod, t1.expiration_date
+        ';
+        return $this->sql->select($query) ?: false;
+    }
+
+    /**
      * Obtiene resumen de facturas con cálculos desde payment_transactions
      */
     public function get_payment_summary_from_transactions($payment_request_id) : array|false {

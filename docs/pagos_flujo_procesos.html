@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pago a Proveedores — Diagramas de flujo de procesos</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --lima: #A6CE39; --ambar: #b45309;
+    --rojo: #b91c1c; --morado: #7c3aed;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta);
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55; font-size: 13px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--azul); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; }
+  h2 { font-size: 17px; color: #fff; background: var(--azul); padding: 6px 12px; border-radius: 4px; margin-top: 32px; page-break-after: avoid; }
+  h2.verde { background: var(--verde); }
+  h2.ambar { background: var(--ambar); }
+  h2.rojo  { background: var(--rojo); }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; page-break-inside: avoid; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  code { font-family: Consolas, monospace; font-size: 11.5px; background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 4px; }
+
+  /* ---- Diagrama de flujo (cajas verticales) ---- */
+  .flujo { margin: 18px auto; max-width: 680px; }
+  .caja {
+    border: 2px solid var(--borde); border-radius: 8px; padding: 10px 14px 10px 52px;
+    position: relative; background: #fff; page-break-inside: avoid;
+  }
+  .caja .num {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .caja b { display: block; font-size: 13.5px; }
+  .caja small { color: var(--gris); display: block; line-height: 1.45; }
+  .caja.usuario  { border-color: var(--ambar); }  .caja.usuario .num  { background: var(--ambar); }
+  .caja.php      { border-color: var(--verde); }  .caja.php .num      { background: var(--verde); }
+  .caja.bd       { border-color: var(--morado); } .caja.bd .num       { background: var(--morado); }
+  .caja.api      { border-color: var(--azul); }   .caja.api .num      { background: var(--azul); }
+  .caja.teso     { border-color: var(--rojo); }   .caja.teso .num     { background: var(--rojo); }
+  .flecha { text-align: center; color: var(--gris); font-size: 18px; line-height: 1.1; padding: 2px 0; }
+  .flecha small { font-size: 10.5px; display: block; }
+  .leyenda { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin: 8px 0 4px; font-size: 11px; color: var(--gris); }
+  .leyenda span::before { content: "■ "; }
+  .l-usr::before  { color: var(--ambar); } .l-api::before { color: var(--azul); }
+  .l-php::before  { color: var(--verde); } .l-bd::before  { color: var(--morado); }
+  .l-teso::before { color: var(--rojo); }
+
+  .dos-col { display: flex; gap: 16px; align-items: flex-start; }
+  .dos-col > div { flex: 1; }
+  .malo  { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .bueno { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .nota  { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  ul { margin: 6px 0 12px; padding-left: 20px; } li { margin-bottom: 3px; }
+  @media print {
+    body { padding: 0; font-size: 11.5px; }
+    @page { size: A4; margin: 18mm 15mm; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Pago a Proveedores — Diagramas de flujo</h1>
+<p class="subtitulo">Módulo <code>/payment/</code> del aplicativo TotalGas · Abastos / Tesorería · Última actualización: 22 de julio de 2026</p>
+
+<div class="leyenda">
+  <span class="l-usr">Abastos (permiso 66)</span>
+  <span class="l-teso">Tesorería (permiso 68)</span>
+  <span class="l-php">AplicativoPhp</span>
+  <span class="l-api">ApiER / externo</span>
+  <span class="l-bd">Base central TG</span>
+</div>
+
+<h2>1. Flujo principal: alta de una requisición de pago</h2>
+<div class="flujo">
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Abastos abre <code>/payment/add_payment</code></b>
+    <small>Selecciona estación(es), empresa y proveedor. La tabla de documentos disponibles
+    se llena por AJAX (<code>payment_control_table</code>).</small>
+  </div>
+  <div class="flecha">↓ <small>POST a ApiER</small></div>
+  <div class="caja api"><span class="num">2</span>
+    <b>ApiER — <code>POST /api/estacion_documentos_compra/</code></b>
+    <small>Consulta con OPENQUERY el SQL Server local de cada estación (DocumentosC de ControlGas),
+    cruza con <code>TG.dbo.payment_request_invoices</code> (excluye lo ya requisitado, con
+    <code>is_deleted = 0</code>) y con <code>TG.dbo.Proveedores</code> para días de crédito.
+    El total mostrado sale de <code>FacturasRecibidas</code> (match por UUID = satuid); si no hay
+    CFDI se usa el total ControlGas y se marca en rojo. Documentos sin satuid = remisiones
+    sin factura: no se pueden agregar a pagos.</small>
+  </div>
+  <div class="flecha">↓ <small>selección de facturas + posibles notas pendientes</small></div>
+  <div class="caja php"><span class="num">3</span>
+    <b><code>Payment::generate_payment()</code></b>
+    <small>Llama a <code>PaymentRequestsModel::create_payment_with_invoices()</code> con las
+    facturas, comentario, fecha programada de pago (<code>scheduled_payment_date</code>) y
+    notas de crédito pendientes (<code>pending_notes</code> → se insertan como
+    <code>credit_note_applications</code>).</small>
+  </div>
+  <div class="flecha">↓ <small>transacción SQL</small></div>
+  <div class="caja bd"><span class="num">4</span>
+    <b>TG: <code>payment_requests</code> + <code>payment_request_invoices</code></b>
+    <small>Se crea la requisición con status 0 (Pendiente) y una fila por factura
+    (folio, UUID, estación, monto). La fecha de vencimiento se calcula como
+    emisión + días de crédito del proveedor, ajustada a día hábil según reglas por proveedor.</small>
+  </div>
+  <div class="flecha">↓ <small>(notificación por correo actualmente desactivada)</small></div>
+  <div class="caja php"><span class="num">5</span>
+    <b>La requisición aparece en <code>/payment/payment_list</code></b>
+    <small>Pestañas: Pagos · Anticipos · Facturas autorizadas · Archivos Contabilidad.
+    Desde el detalle se pueden agregar/quitar facturas (queda bitácora en
+    <code>PaymentRequestAuditLog</code>) mientras la requisición no esté en un grupo contable.</small>
+  </div>
+</div>
+
+<h2 class="rojo">2. Autorización y ejecución del pago (Tesorería)</h2>
+<p>Desde 2026-06 la aprobación de Tesorería es <b>implícita</b>: ya no existe el paso manual
+"Aprobar"; el primer nivel activo y único es el permiso 68.</p>
+<div class="flujo">
+  <div class="caja teso"><span class="num">1</span>
+    <b>Tesorería abre <code>/payment/authorize_payments</code></b>
+    <small>Vista completa (sustituyó al modal masivo en 2026-07-10). Muestra las facturas
+    pendientes agrupadas por requisición/proveedor, incluye anticipos (badge + link a su detalle),
+    KPIs y selección por fila. JS: <code>_assets/js/authorize_payments.js</code>.</small>
+  </div>
+  <div class="flecha">↓ <small><code>bulk_authorize_payment_execution</code> (permiso 68)</small></div>
+  <div class="caja php"><span class="num">2</span>
+    <b>Autorización de facturas — <code>authorize_invoices_for_payment()</code></b>
+    <small>El helper <code>ensure_tesoreria_approval()</code> registra la aprobación 68 en
+    <code>payment_request_authorizations</code> y sube el status 0→1 en el mismo paso.
+    Cada factura queda con <code>payment_authorized = 1</code> y
+    <code>authorized_amount</code> = <b>neto</b> (total − anticipos − notas de crédito
+    + notas de cargo). Invariante: las consultas posteriores ya NO vuelven a restar NC.</small>
+  </div>
+  <div class="flecha">↓ <small>facturas autorizadas visibles por banco</small></div>
+  <div class="caja teso"><span class="num">3</span>
+    <b>Generación de layouts bancarios</b>
+    <small><code>generate_santander_layout()</code> / <code>generate_banorte_layout()</code>:
+    agrupan lo autorizado por empresa pagadora (Banorte: emp_cod 1, 10, 17, 18, 21, 23 ·
+    Santander: 16, 19, 20) y arman el archivo multi-empresa con las cuentas CLABE del
+    catálogo <code>CatalogosCuentasBancarias</code>. El layout se sube al portal del banco.</small>
+  </div>
+  <div class="flecha">↓ <small>banco dispersa; Tesorería regresa al aplicativo</small></div>
+  <div class="caja teso"><span class="num">4</span>
+    <b>Registro del pago — <code>execute_authorized_payments()</code></b>
+    <small>Tesorería captura fecha de pago, referencia y comprobante (PDF).
+    <code>PaymentTransactionsModel::process_bulk_payment()</code> crea las transacciones,
+    el lote (<code>payment_batches</code>) y liga el comprobante en
+    <code>payment_transaction_documents</code>. Se paga el <code>authorized_amount</code>.</small>
+  </div>
+  <div class="flecha">↓ <small>recalculo de estados</small></div>
+  <div class="caja bd"><span class="num">5</span>
+    <b>Recalculo en cadena — <code>recalculate_invoice_status()</code></b>
+    <small>Factura: Pagada si (pagado + anticipos + NC netas) cubre el total; Parcial si hay
+    abono incompleto. Cuando todas las facturas de la requisición quedan cubiertas, el
+    <code>payment_request</code> pasa a status 2 (Pagado).</small>
+  </div>
+  <div class="flecha">↓ <small>correo "pagos listos"</small></div>
+  <div class="caja php"><span class="num">6</span>
+    <b>Mandar pagos — <code>send_to_payments()</code></b>
+    <small>Botón (dot verde) que envía por correo la relación de pagos listos del día a los
+    destinatarios de <code>payment_notification_recipients</code>.
+    <code>resend_today_payments()</code> permite reenviar (restringido a un usuario hardcodeado).</small>
+  </div>
+</div>
+
+<h2 class="verde">3. Flujo de anticipos a proveedores</h2>
+<div class="flujo">
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Crear anticipo — <code>create_anticipo()</code></b>
+    <small>Modal en payment_list (pestaña Anticipos): proveedor, empresa, monto y comentario.
+    Se guarda como <code>payment_request</code> tipo anticipo, status 0.</small>
+  </div>
+  <div class="flecha">↓ <small>autorización (permiso 68, en anticipo_detail o authorize_payments)</small></div>
+  <div class="caja teso"><span class="num">2</span>
+    <b>Autorizar y pagar — <code>pay_anticipo()</code></b>
+    <small>Tesorería autoriza como 68 y registra el pago con fecha, referencia y comprobante
+    (<code>registrar_pago_anticipo()</code>). El anticipo puede incluirse en el layout bancario
+    (<code>get_anticipos_para_layout()</code>).</small>
+  </div>
+  <div class="flecha">↓ <small>cuando llegan facturas del proveedor</small></div>
+  <div class="caja teso"><span class="num">3</span>
+    <b>Aplicar a facturas — <code>/payment/aplicar_anticipo/{id}</code></b>
+    <small>Página que lista documentos disponibles del proveedor
+    (<code>anticipo_documentos_table</code>, misma fuente ApiER que el alta de pagos).
+    <code>apply_anticipo_documentos()</code> liga las facturas al anticipo y descuenta su saldo
+    (<code>get_saldo_disponible</code>).</small>
+  </div>
+  <div class="flecha">↓ <small>remanentes</small></div>
+  <div class="caja bd"><span class="num">4</span>
+    <b>Remanentes — facturas parciales</b>
+    <small>Si el anticipo no cubre una factura completa, la factura queda Parcial y su
+    remanente se puede cubrir desde otra requisición: <code>get_facturas_con_remanente_anticipo()</code>
+    + <code>move_invoice_to_payment()</code>. En pagos posteriores el anticipo aplicado se
+    descuenta del monto a autorizar/pagar.</small>
+  </div>
+</div>
+
+<h2 class="verde">4. Notas de crédito y de cargo</h2>
+<div class="flujo">
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Carga — manual o masiva (<code>/payment/credit_notes</code>)</b>
+    <small>Manual: <code>addCreditDebitNote()</code> con documento adjunto.
+    Masiva: se suben PDFs de CFDI, <code>preview_notas_credito()</code> lee la cadena SAT
+    (pdftotext empaquetado) y <code>guardar_notas_credito()</code> persiste nota + PDF en
+    <code>invoice_credit_debit_notes</code> / <code>_doc</code>. Las notas de cargo de algunos
+    proveedores (p.ej. falsos fletes SE) llegan solas como CFDI tipo I vía descarga de correo.</small>
+  </div>
+  <div class="flecha">↓ <small>permiso 66</small></div>
+  <div class="caja php"><span class="num">2</span>
+    <b>Aplicación — <code>applyCreditNote()</code></b>
+    <small>Liga la nota a una factura específica (<code>invoice_id</code> obligatorio: sin él la
+    factura queda Parcial y la requisición nunca cierra). Inserta en
+    <code>credit_note_applications</code> y recalcula: si la factura ya estaba autorizada,
+    ajusta <code>authorized_amount</code> al nuevo neto (evita el doble descuento).</small>
+  </div>
+  <div class="flecha">↓ <small>recalculo en cadena</small></div>
+  <div class="caja bd"><span class="num">3</span>
+    <b><code>recalculate_payment_chain</code> → status factura y requisición</b>
+    <small>NC resta / nota de cargo suma al neto. Los totales de la requisición se
+    actualizan con <code>updatePaymentNoteTotals()</code>.</small>
+  </div>
+</div>
+
+<h2 class="rojo">5. Conciliación de comprobantes de pago</h2>
+<div class="flujo">
+  <div class="caja teso"><span class="num">1</span>
+    <b>Subir PDFs de comprobantes (Banorte / Santander)</b>
+    <small>Tesorería sube en lote los comprobantes de transferencia emitidos por el banco.</small>
+  </div>
+  <div class="flecha">↓ <small><code>preview_comprobantes_match</code> (permiso 68)</small></div>
+  <div class="caja php"><span class="num">2</span>
+    <b>Match automático RFC + monto</b>
+    <small>Cada PDF se parsea y se empareja contra los grupos de facturas autorizadas
+    pendientes de comprobante. La vista previa muestra coincidencias y huérfanos antes de
+    confirmar.</small>
+  </div>
+  <div class="flecha">↓ <small><code>conciliar_comprobantes</code></small></div>
+  <div class="caja bd"><span class="num">3</span>
+    <b>Registro como pago con documento</b>
+    <small>Confirma la conciliación: registra las transacciones de pago y liga cada comprobante
+    en <code>payment_transaction_documents</code>.</small>
+  </div>
+</div>
+
+<h2>6. Archivos de contabilidad</h2>
+<div class="flujo">
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Agrupar requisiciones — <code>create_accounting_group()</code></b>
+    <small>Pestaña "Archivos Contabilidad" de payment_list. Asigna un ID contable único
+    consecutivo (<code>get_next_accounting_id()</code>) a un grupo de requisiciones de la
+    misma empresa/proveedor.</small>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja bd"><span class="num">2</span>
+    <b><code>payment_accounting_groups</code> — candado de edición</b>
+    <small>Una requisición con <code>accounting_group_id</code> ya no admite agregar / quitar
+    facturas (validado en backend por <code>assert_payment_not_grouped()</code>).</small>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja php"><span class="num">3</span>
+    <b>Impresión — <code>print_accounting_group_receipts()</code></b>
+    <small>Genera el paquete imprimible del grupo: facturas (PDF desde FacturasRecibidas),
+    notas y comprobantes. <code>auto_group_accounting()</code> (agrupación automática por fecha
+    vía cron) existe pero está comentada / sin operar.</small>
+  </div>
+</div>
+
+<h2>7. Estado Facturas (en desarrollo — cambios sin commitear)</h2>
+<p>La vista <code>/payment/invoices_due</code> ("Facturas Vencidas") se está convirtiendo en
+<b>"Estado Facturas"</b> con tres pestañas:</p>
+<table>
+  <tr><th>Pestaña</th><th>Fuente</th><th>Contenido</th></tr>
+  <tr>
+    <td><b>Vencidas</b> (<code>invoices_due_table</code>)</td>
+    <td>ApiER (documentos por estación)</td>
+    <td>Documentos vencidos o por vencer que aún no están en ninguna requisición. Incluye
+    remisiones sin CFDI (sin satuid), que por regla siempre aparecen aquí.</td>
+  </tr>
+  <tr>
+    <td><b>Facturas en Pagos</b> (<code>invoices_status_table</code>, nuevo)</td>
+    <td>TG (3 reportes unificados)</td>
+    <td>Todo lo que ya entró al circuito de pago: facturas y notas de cargo en requisiciones
+    (<code>get_invoices_status_report</code>), notas de crédito aplicadas
+    (<code>get_applications_report</code>) y anticipos (<code>get_anticipos_status_report</code>),
+    con estado (Pendiente / Autorizada / Parcial / Pagada), PDF del documento y comprobantes
+    de pago ligados.</td>
+  </tr>
+  <tr>
+    <td><b>Estado por Proveedor</b> (<code>provider_status_table</code>, nuevo)</td>
+    <td>ApiER + TG (cruce)</td>
+    <td>Resumen de deuda por proveedor en el rango: documentos sin requisición vs. en
+    requisición, documentos sin CFDI aparte y saldo a favor. Pendiente de probar contra BD.</td>
+  </tr>
+</table>
+<div class="nota">En el sidebar el menú "Facturas Vencidas" se renombró a <b>"Estado Facturas"</b>
+y se ocultó "Facturas de Combustible" (<code>fuel_payments</code>).</div>
+
+<h2 class="ambar">8. Antes vs. ahora</h2>
+<div class="dos-col">
+  <div class="malo">
+    <b>Antes (hasta feb 2026, en <code>supply.php</code>)</b>
+    <ul>
+      <li>Flujo mezclado dentro del controlador de Abastos (<code>/supply/...</code>).</li>
+      <li>Autorización multinivel: 66 Abastos → 70 Contabilidad → 67 Admin Finanzas → 68 Tesorería, con paso manual "Aprobar".</li>
+      <li>Sin layouts bancarios: las transferencias se capturaban a mano en el portal del banco.</li>
+      <li>Sin anticipos integrados, sin notas de crédito con CFDI, sin comprobantes ligados.</li>
+      <li>Sin bitácora de cambios en requisiciones; borrado físico de facturas.</li>
+    </ul>
+  </div>
+  <div class="bueno">
+    <b>Ahora (controlador <code>payment.php</code>, ~7,300 líneas)</b>
+    <ul>
+      <li>Módulo dedicado <code>/payment/...</code> con 13 vistas propias.</li>
+      <li>Un solo nivel de autorización real (Tesorería 68), aprobación implícita en la misma acción.</li>
+      <li>Layouts Santander y Banorte multi-empresa generados desde el sistema.</li>
+      <li>Anticipos con saldo, aplicación a facturas y remanentes; NC/cargos con CFDI y PDF.</li>
+      <li>Conciliación masiva de comprobantes, grupos contables con candado, auditoría (<code>PaymentRequestAuditLog</code>) y soft-delete.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>9. Estados y montos de referencia</h2>
+<table>
+  <tr><th>Entidad</th><th>Estados</th><th>Regla de monto</th></tr>
+  <tr>
+    <td><code>payment_requests.status</code></td>
+    <td>0 = Pendiente/Enviado · 1 = Autorizado · 2 = Pagado · 3 = Cancelado</td>
+    <td>Total = suma de facturas; el neto a pagar descuenta anticipos y NC y suma notas de cargo.</td>
+  </tr>
+  <tr>
+    <td><code>payment_request_invoices.status</code></td>
+    <td>Pendiente · Autorizada (<code>payment_authorized=1</code>) · 3 = Parcial · 2 = Pagada</td>
+    <td><code>authorized_amount</code> = neto al momento de autorizar; es lo que se paga y lo que
+    aparece en el layout. Pagada cuando pagado + anticipo + NC netas ≥ total.</td>
+  </tr>
+  <tr>
+    <td>Baja de facturas</td>
+    <td>Soft-delete: <code>is_deleted / deleted_at / deleted_by</code></td>
+    <td>Nunca DELETE físico (FK de aplicaciones de anticipo); todos los joins filtran
+    <code>is_deleted = 0</code>, incluidos los de ApiER.</td>
+  </tr>
+</table>
+
+</body>
+</html>

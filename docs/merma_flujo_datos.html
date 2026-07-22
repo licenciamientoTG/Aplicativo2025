@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Análisis de Merma Diaria — Flujo de datos y comparativa con el proceso anterior</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --lima: #A6CE39; --ambar: #b45309;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta);
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55; font-size: 13px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--azul); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; }
+  h2 { font-size: 17px; color: #fff; background: var(--azul); padding: 6px 12px; border-radius: 4px; margin-top: 32px; page-break-after: avoid; }
+  h2.verde { background: var(--verde); }
+  h2.ambar { background: var(--ambar); }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; page-break-inside: avoid; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  code { font-family: Consolas, monospace; font-size: 11.5px; background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 4px; }
+
+  /* ---- Diagrama de flujo (cajas verticales) ---- */
+  .flujo { margin: 18px auto; max-width: 640px; }
+  .caja {
+    border: 2px solid var(--borde); border-radius: 8px; padding: 10px 14px 10px 52px;
+    position: relative; background: #fff; page-break-inside: avoid;
+  }
+  .caja .num {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .caja b { display: block; font-size: 13.5px; }
+  .caja small { color: var(--gris); display: block; line-height: 1.45; }
+  .caja.estacion { border-color: var(--ambar); }  .caja.estacion .num { background: var(--ambar); }
+  .caja.api      { border-color: var(--azul); }   .caja.api .num      { background: var(--azul); }
+  .caja.php      { border-color: var(--verde); }  .caja.php .num      { background: var(--verde); }
+  .caja.bd       { border-color: #7c3aed; }       .caja.bd .num       { background: #7c3aed; }
+  .flecha {
+    text-align: center; color: var(--gris); font-size: 18px; line-height: 1.1;
+    padding: 2px 0;
+  }
+  .flecha small { font-size: 10.5px; display: block; }
+  .leyenda { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin: 8px 0 4px; font-size: 11px; color: var(--gris); }
+  .leyenda span::before { content: "■ "; }
+  .l-est::before  { color: var(--ambar); } .l-api::before { color: var(--azul); }
+  .l-php::before  { color: var(--verde); } .l-bd::before  { color: #7c3aed; }
+
+  .dos-col { display: flex; gap: 16px; align-items: flex-start; }
+  .dos-col > div { flex: 1; }
+  .malo  { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .bueno { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  ul { margin: 6px 0 12px; padding-left: 20px; } li { margin-bottom: 3px; }
+  @media print {
+    body { padding: 0; font-size: 11.5px; }
+    @page { size: A4; margin: 18mm 15mm; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Análisis de Merma Diaria — Flujo de datos</h1>
+<p class="subtitulo">¿De dónde sale la información y cómo llega a la pantalla? · Incluye comparativa con el proceso anterior en Excel · 21 de julio de 2026</p>
+
+<h2>1. Diagrama: recorrido de la información</h2>
+<div class="leyenda">
+  <span class="l-est">Estación (ControlGas)</span>
+  <span class="l-api">ApiER (Python)</span>
+  <span class="l-php">AplicativoPhp</span>
+  <span class="l-bd">Base central TG</span>
+</div>
+
+<div class="flujo">
+  <div class="caja estacion"><span class="num">1</span>
+    <b>Estación — SQL Server local de ControlGas</b>
+    <small>Cada estación (192.168.X.101) registra su operación en tres tablas:
+    <code>Ventas</code> (litros vendidos por isla/turno), <code>StockReal</code>
+    (cortes físicos de tanque por turno) y <code>Movimientos</code> (compras/recepciones de pipas).
+    Fechas en serial ControlGas (días desde 1899-12-31).</small>
+  </div>
+  <div class="flecha">↓ <small>OPENQUERY vía linked server (una consulta por estación, en paralelo)</small></div>
+
+  <div class="caja api"><span class="num">2</span>
+    <b>ApiER — <code>POST /api/inventarios_turnos/</code></b>
+    <small>Recibe <code>{from, to, codgas}</code>. Con un pool de 40 hilos consulta cada estación:
+    une Ventas + StockReal + Movimientos por fecha/producto/turno, normaliza turnos (10→11, 20→21, 30/31/40→41)
+    y convierte la fecha serial a fecha operativa (<code>fch − 1</code>). Regresa filas por estación
+    y la lista de estaciones que no respondieron. ~37 estaciones en ~40 s.</small>
+  </div>
+  <div class="flecha">↓ <small>JSON por HTTP (cURL, timeout 300 s)</small></div>
+
+  <div class="caja php"><span class="num">3</span>
+    <b>AplicativoPhp — <code>Merma::sync()</code></b>
+    <small>Se dispara desde el botón "Actualizar datos" (analisis), "Re-sincronizar estación" (detalle)
+    o el cron de las 5:00 AM (D-2 a D-1). Valida el rango (máx. 40 días, nunca el día en curso) y
+    reparte las filas recibidas al modelo.</small>
+  </div>
+  <div class="flecha">↓ <small>DELETE del rango + INSERT (transacción por estación)</small></div>
+
+  <div class="caja bd"><span class="num">4</span>
+    <b>TG.dbo.merma_diaria — snapshot</b>
+    <small>Una fila por fecha/estación/producto/turno. Solo se reemplazan las estaciones que
+    respondieron: las caídas conservan su información anterior. El inventario físico se guarda
+    <b>tal cual</b> lo mandó la estación, aunque sea una lectura corrupta.</small>
+  </div>
+  <div class="flecha">↓ <small>UPDATE masivo con función ventana (LAG)</small></div>
+
+  <div class="caja bd"><span class="num">5</span>
+    <b>Recalculo — <code>recalc_contable()</code> (regla del libro amarillo)</b>
+    <small>Sobreescribe inicial/contable/diferencia de <b>toda la historia</b> de la estación:
+    el inicial de cada turno es el físico del turno inmediato anterior, encadenado entre días y meses.
+    Lecturas físicas fuera del rango plausible (100 – 1,000,000 lts) no se encadenan: su turno queda
+    "s/d" y el valor corrupto solo se exhibe.</small>
+  </div>
+  <div class="flecha">↓ <small>SELECT agregados por familia (MAXIMA / SUPER / DIESEL)</small></div>
+
+  <div class="caja php"><span class="num">6</span>
+    <b>Vistas — <code>/merma/analisis</code> y <code>/merma/detalle/{estación}</code></b>
+    <small>Analisis: resumen por estación en el rango desde/hasta (topado en ayer), totales y % de merma,
+    export a Excel. Detalle: día × turno con VR, compras, contable, físico, diferencia y acumulado;
+    lecturas corruptas marcadas en rojo ⚠; total de compras del mes al pie.</small>
+  </div>
+</div>
+
+<h2>2. Reglas clave del recorrido</h2>
+<table>
+  <tr><th>Regla</th><th>Detalle</th></tr>
+  <tr><td>El día actual no existe</td><td>Todo se topa en <b>ayer</b>: filtros, defaults, re-sync y cron. Los turnos del día en curso están incompletos y generarían diferencias falsas.</td></tr>
+  <tr><td>Reemplazo total del rango</td><td>Cada sync borra e inserta. Correcciones hechas en la estación fluyen solas al resincronizar. No hay acumulación ni merge.</td></tr>
+  <tr><td>Sólo estaciones vivas</td><td>Una estación sin conexión no borra su snapshot; aparece en la lista de errores del resultado.</td></tr>
+  <tr><td>Basura visible, no contaminante</td><td>Lecturas físicas imposibles (ej. 2.5×10³² lts) se ven en rojo en el detalle pero no entran al cálculo ni a los totales.</td></tr>
+  <tr><td>Bitácora</td><td>Cada corrida queda en <code>merma_sync_log</code>: quién, cuándo, qué rango, cuántas estaciones OK/error y duración.</td></tr>
+</table>
+
+<h2 class="ambar">3. Cómo funcionaba antes (proceso Excel)</h2>
+<p>
+El control se llevaba en un libro <code>FormatoJul2026.xlsm</code> ("libro amarillo"),
+un archivo por mes:
+</p>
+<div class="flujo">
+  <div class="caja estacion"><span class="num">1</span>
+    <b>Reporte /supply/tgr01</b>
+    <small>El analista abría tgr01 en el aplicativo (SP <code>sp_obtener_inventarios_por_turno</code>,
+    misma fuente de estaciones) y exportaba el resultado del rango a Excel.</small>
+  </div>
+  <div class="flecha">↓ <small>export manual</small></div>
+  <div class="caja ambar" style="border-color:#b45309;"><span class="num" style="background:#b45309;">2</span>
+    <b>Macro <code>ImportarDesdeMerma</code></b>
+    <small>Una macro VBA del libro repartía las filas del export a una hoja por estación,
+    donde las fórmulas encadenaban el inicial de cada turno con el físico del anterior
+    (la "regla del libro amarillo" que hoy implementa <code>recalc_contable</code>).</small>
+  </div>
+  <div class="flecha">↓ <small>fórmulas + captura manual</small></div>
+  <div class="caja ambar" style="border-color:#b45309;"><span class="num" style="background:#b45309;">3</span>
+    <b>Hoja MERMA MENSUAL</b>
+    <small>Concentrado por estación con mermas por producto, venta total, % de merma,
+    merma s/d y comentarios capturados a mano. Era el entregable del área.</small>
+  </div>
+</div>
+
+<h3>Problemas del proceso anterior</h3>
+<div class="dos-col">
+  <div class="malo">
+    <b>Antes (Excel)</b>
+    <ul>
+      <li>Export + importación manual diaria: minutos de trabajo repetitivo y riesgo de olvidos.</li>
+      <li>Un archivo por mes: sin histórico consultable ni bitácora de cuándo/quién actualizó.</li>
+      <li>Fórmulas frágiles: una fila desalineada rompía el encadenado del mes.</li>
+      <li>Lecturas corruptas de StockReal aparecían como diferencias de billones sin explicación.</li>
+      <li>Sin control de acceso: el archivo circulaba por correo/carpetas.</li>
+      <li>El día en curso podía colarse al export y ensuciar el corte.</li>
+    </ul>
+  </div>
+  <div class="bueno">
+    <b>Ahora (módulo /merma/)</b>
+    <ul>
+      <li>Sincronización con un clic o automática (cron 5:00 AM), 37+ estaciones en paralelo en ~40 s.</li>
+      <li>Snapshot histórico en SQL con bitácora de cada corrida (<code>merma_sync_log</code>).</li>
+      <li>Encadenamiento calculado en SQL (LAG): consistente, recalculable, cruza meses solo.</li>
+      <li>Lecturas corruptas detectadas: visibles en rojo pero excluidas de los cálculos.</li>
+      <li>Permiso 33 del aplicativo; captura de merma s/d y comentarios en el propio sistema.</li>
+      <li>El día en curso queda excluido por diseño en filtros, sync y cron.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 class="verde">4. Equivalencias Excel → Sistema</h2>
+<table>
+  <tr><th>En el Excel</th><th>En el sistema</th></tr>
+  <tr><td>Hoja por estación (día × turno)</td><td><code>/merma/detalle/{estación}</code></td></tr>
+  <tr><td>Hoja MERMA MENSUAL</td><td><code>/merma/analisis</code> (+ export a Excel desde la tabla)</td></tr>
+  <tr><td>Macro <code>ImportarDesdeMerma</code></td><td>Botón "Actualizar datos" / cron <code>merma_sync_diario</code></td></tr>
+  <tr><td>Fórmulas encadenadas (F = G<sub>ant</sub> − VR + Compras)</td><td><code>MermaDiariaModel::recalc_contable()</code></td></tr>
+  <tr><td>Celdas de merma s/d y comentarios</td><td><code>merma_manual</code> (captura inline)</td></tr>
+  <tr><td>Precio para valorizar</td><td><code>merma_mes_config</code></td></tr>
+</table>
+
+<p style="color:var(--gris); font-size:11.5px; margin-top:28px;">
+Documento generado para la documentación interna de TotalGas · Complemento del documento
+"Análisis de Merma Diaria — Documentación técnica".
+</p>
+
+</body>
+</html>

@@ -1,5 +1,15 @@
 # Manual Técnico: Sistema de Pago a Proveedores
 
+> ⚠️ **OBSOLETO (2026-07-22):** este manual describe la versión original del flujo en
+> `supply.php` con autorización multinivel (66→70→67→68). El módulo se migró al controlador
+> dedicado `_assets/controllers/payment.php` (rutas `/payment/...`) con un solo nivel de
+> autorización (Tesorería 68), layouts bancarios, anticipos, notas de crédito con CFDI,
+> conciliación de comprobantes y grupos contables. La documentación vigente es:
+> - `docs/pagos_documentacion_tecnica.html` — reporte técnico
+> - `docs/pagos_flujo_procesos.html` — diagramas de flujo
+>
+> Conservar solo como referencia histórica.
+
 **Aplicativo:** TotalGas
 **Módulo:** Supply / Abastecimiento — Pago a Proveedores
 **Fecha:** 2026-02-20

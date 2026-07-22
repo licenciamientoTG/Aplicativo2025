@@ -40,23 +40,44 @@ class Merma
             (new Errors())->get404();
             return;
         }
-        $anio = (int)($_GET['anio'] ?? date('Y'));
-        $mes  = (int)($_GET['mes'] ?? date('n'));
-        if ($mes < 1 || $mes > 12) $mes = (int)date('n');
+        // Rango desde/hasta. El día en curso nunca se considera (turnos
+        // incompletos): "hasta" se topa en ayer, y el default es del 1° del
+        // mes de ayer a ayer — el 1° del mes eso significa el mes anterior
+        // completo. Compat: ?anio/?mes viejos derivan el mes completo.
+        $ayer    = strtotime('yesterday');
+        $ayerStr = date('Y-m-d', $ayer);
+        $desde   = $_GET['desde'] ?? null;
+        $hasta   = $_GET['hasta'] ?? null;
+        $fmt     = '/^\d{4}-\d{2}-\d{2}$/';
+        if (!$desde || !$hasta || !preg_match($fmt, $desde) || !preg_match($fmt, $hasta)) {
+            if (isset($_GET['anio']) || isset($_GET['mes'])) {
+                $a = (int)($_GET['anio'] ?? date('Y', $ayer));
+                $m = (int)($_GET['mes'] ?? date('n', $ayer));
+                if ($m < 1 || $m > 12) $m = (int)date('n', $ayer);
+                $desde = sprintf('%04d-%02d-01', $a, $m);
+                $hasta = date('Y-m-t', mktime(0, 0, 0, $m, 1, $a));
+            } else {
+                $desde = date('Y-m-01', $ayer);
+                $hasta = $ayerStr;
+            }
+        }
+        if ($hasta > $ayerStr) $hasta = $ayerStr;
+        if ($desde > $hasta)   $desde = date('Y-m-01', strtotime($hasta));
+
+        // La captura manual, el precio y los links a detalle siguen siendo
+        // mensuales: se anclan al mes de "hasta"
+        $anio = (int)substr($hasta, 0, 4);
+        $mes  = (int)substr($hasta, 5, 2);
 
         $estaciones = $this->mermaModel->get_estaciones();
-        $resumen    = $this->mermaModel->get_resumen_mensual($anio, $mes);
+        $resumen    = $this->mermaModel->get_resumen_rango($desde, $hasta);
         $manual     = $this->mermaModel->get_manual($anio, $mes);
-        $fechas     = $this->mermaModel->get_fechas_por_estacion($anio, $mes);
-        $precio     = $this->mermaModel->get_precio($anio, $mes);
+        $fechas     = $this->mermaModel->get_fechas_por_estacion($desde, $hasta);
 
-        // Días esperados del mes: hasta ayer si es el mes en curso, o el mes completo
-        $ultimoDia = ($anio == date('Y') && $mes == date('n'))
-            ? (int)date('j') - 1
-            : (int)date('t', mktime(0, 0, 0, $mes, 1, $anio));
+        // Días esperados: todos los del rango (hasta ya viene topado en ayer)
         $diasEsperados = [];
-        for ($d = 1; $d <= $ultimoDia; $d++) {
-            $diasEsperados[] = sprintf('%04d-%02d-%02d', $anio, $mes, $d);
+        for ($t = strtotime($desde); $t <= strtotime($hasta); $t = strtotime('+1 day', $t)) {
+            $diasEsperados[] = date('Y-m-d', $t);
         }
 
         $filas   = [];
@@ -94,19 +115,14 @@ class Merma
             $totales['sd_diesel'] += (float)($fila['sd_diesel'] ?? 0);
         }
 
-        // KPIs: promedio diario sobre días con datos, proyección y valorización
-        $diasConDatos = count(array_unique(array_merge(...array_values($fechas ?: [[]]))));
-        $diasDelMes   = (int)date('t', mktime(0, 0, 0, $mes, 1, $anio));
-        $promedio     = $diasConDatos > 0 ? $totales['total'] / $diasConDatos : 0;
-        $kpis = [
-            'dias_con_datos' => $diasConDatos,
-            'promedio'       => $promedio,
-            'proyeccion'     => $promedio * $diasDelMes,
-            'valorizacion'   => $promedio * $diasDelMes * $precio,
-        ];
+        // El modal de sync propone el mismo rango que se está viendo
+        $syncDesde = $desde;
+        $syncHasta = $hasta;
+        $maxHasta  = $ayerStr;
 
         echo $this->twig->render($this->route . 'analisis.html',
-            compact('anio', 'mes', 'filas', 'totales', 'kpis', 'precio'));
+            compact('anio', 'mes', 'desde', 'hasta', 'maxHasta', 'filas', 'totales',
+                    'syncDesde', 'syncHasta'));
     }
 
     /** Detalle día × turno de una estación (equivalente a la hoja del Excel). */
@@ -117,8 +133,10 @@ class Merma
             return;
         }
         $codgas = (int)$codgas;
-        $anio   = (int)($_GET['anio'] ?? date('Y'));
-        $mes    = (int)($_GET['mes'] ?? date('n'));
+        // Misma regla que analisis(): el default se ancla a ayer, nunca a hoy
+        $ayer   = strtotime('yesterday');
+        $anio   = (int)($_GET['anio'] ?? date('Y', $ayer));
+        $mes    = (int)($_GET['mes'] ?? date('n', $ayer));
 
         $estacion = null;
         foreach ($this->mermaModel->get_estaciones() as $e) {
@@ -141,11 +159,17 @@ class Merma
                 $dif = $r["dif_$fam"];
                 if ($dif !== null) $acum[$fam] += (float)$dif;
                 $compras[$fam] += (float)($r["compras_$fam"] ?? 0);
+                $fis = $r["fis_$fam"];
                 $fila[$fam] = [
                     'vr'      => $r["vr_$fam"],
                     'compras' => $r["compras_$fam"],
                     'cont'    => $r["cont_$fam"],
-                    'fis'     => $r["fis_$fam"],
+                    'fis'     => $fis,
+                    // Lectura fuera de rango plausible: se muestra marcada en
+                    // rojo pero no participa en contable/diferencia
+                    'fis_corrupta' => $fis !== null
+                        && ($fis < MermaDiariaModel::INV_FISICO_MIN
+                            || $fis > MermaDiariaModel::INV_FISICO_MAX),
                     'dif'     => $dif,
                     'acum'    => $dif !== null ? $acum[$fam] : null,
                 ];
@@ -153,7 +177,11 @@ class Merma
             $filas[] = $fila;
         }
 
-        $resumenMes = $this->mermaModel->get_resumen_mensual($anio, $mes);
+        // Resumen del mes (KPIs) topado en ayer: el día en curso no cuenta
+        $desdeMes = sprintf('%04d-%02d-01', $anio, $mes);
+        $hastaMes = min(date('Y-m-t', mktime(0, 0, 0, $mes, 1, $anio)), date('Y-m-d', $ayer));
+        if ($hastaMes < $desdeMes) $hastaMes = $desdeMes;
+        $resumenMes = $this->mermaModel->get_resumen_rango($desdeMes, $hastaMes);
         $resumen    = $resumenMes[$codgas] ?? null;
         $invInicial = $this->mermaModel->get_inv_inicial_mes($codgas, $anio, $mes);
 

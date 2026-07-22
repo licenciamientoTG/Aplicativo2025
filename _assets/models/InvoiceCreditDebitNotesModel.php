@@ -104,6 +104,31 @@ class InvoiceCreditDebitNotesModel extends Model
     }
 
     /**
+     * Tab "Estado por Proveedor": saldo disponible de notas de crédito activas
+     * por proveedor (monto de la nota menos lo ya aplicado).
+     */
+    public function getAvailableCreditByProvider() : array|false {
+        $query = "
+            SELECT
+                n.provider_id AS provider_cod,
+                SUM(n.amount - ISNULL((
+                    SELECT SUM(a.applied_amount)
+                    FROM [tg].[dbo].credit_note_applications a
+                    WHERE a.credit_note_id = n.id AND a.status = 1
+                ), 0)) AS disponible
+            FROM [tg].[dbo].invoice_credit_debit_notes n
+            WHERE n.status = 1
+              AND n.note_type = 'CREDIT'
+              AND n.amount - ISNULL((
+                    SELECT SUM(a.applied_amount)
+                    FROM [tg].[dbo].credit_note_applications a
+                    WHERE a.credit_note_id = n.id AND a.status = 1
+                ), 0) > 0.01
+            GROUP BY n.provider_id";
+        return $this->sql->select($query) ?: false;
+    }
+
+    /**
      * Agregar nota de crédito o cargo (sin ligar a pago ni factura)
      */
     public function addCreditDebitNote($data) : int|false {

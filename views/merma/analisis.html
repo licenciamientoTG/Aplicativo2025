@@ -12,21 +12,14 @@
     <div class="card-body">
         <form action="#" method="get" class="row align-items-end g-2">
             <div class="col-auto">
-                <label for="mes">Mes:</label>
-                <select class="form-control" name="mes" id="mes">
-                    {% set meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
-                    {% for m in 1..12 %}
-                    <option value="{{ m }}" {{ m == mes ? 'selected' : '' }}>{{ meses[m-1] }}</option>
-                    {% endfor %}
-                </select>
+                <label for="desde">Desde:</label>
+                <input type="date" class="form-control" name="desde" id="desde"
+                       value="{{ desde }}" max="{{ maxHasta }}" required>
             </div>
             <div class="col-auto">
-                <label for="anio">Año:</label>
-                <select class="form-control" name="anio" id="anio">
-                    {% for a in ('now'|date('Y')) .. 2025 %}
-                    <option value="{{ a }}" {{ a == anio ? 'selected' : '' }}>{{ a }}</option>
-                    {% endfor %}
-                </select>
+                <label for="hasta">Hasta:</label>
+                <input type="date" class="form-control" name="hasta" id="hasta"
+                       value="{{ hasta }}" max="{{ maxHasta }}" required>
             </div>
             <div class="col-auto">
                 <button type="submit" class="btn btn-merma-neutro">Buscar</button>
@@ -52,9 +45,9 @@
                 </tr>
                 <tr>
                     <th class="col-est">ESTACIÓN</th>
-                    <th>MAXIMA</th>
-                    <th>SUPER</th>
-                    <th>DIESEL</th>
+                    <th class="th-maxima">MAXIMA</th>
+                    <th class="th-super">SUPER</th>
+                    <th class="th-diesel">DIESEL</th>
                     <th class="sep-r">TOTAL</th>
                     <th>VTA TOTAL</th>
                     <th>% MERMA</th>
@@ -64,7 +57,7 @@
                 {% for f in filas %}
                 <tr>
                     <td class="col-est">
-                        <a href="/merma/detalle/{{ f.codgas }}?anio={{ anio }}&mes={{ mes }}">{{ f.nombre }}{{ f.cveest ? ' — ' ~ f.cveest : '' }}</a>
+                        <a href="/merma/detalle/{{ f.codgas }}?anio={{ anio }}&mes={{ mes }}">{{ f.nombre }}</a>
                         {% if f.faltantes|length > 0 %}
                         <i class="fas fa-exclamation-triangle text-warning"
                            title="Sin datos: {{ f.faltantes|join(', ') }}"></i>
@@ -97,20 +90,6 @@
     </div>
 </div>
 
-<div class="card">
-    <div class="card-body d-flex flex-wrap gap-4 align-items-center">
-        <div class="merma-kpi"><small>Días con datos</small><h4>{{ kpis.dias_con_datos }}</h4></div>
-        <div class="merma-kpi"><small>Merma promedio diaria (lts)</small><h4>{{ kpis.promedio|number_format(0, '.', ',') }}</h4></div>
-        <div class="merma-kpi"><small>Proyección al cierre (lts)</small><h4>{{ kpis.proyeccion|number_format(0, '.', ',') }}</h4></div>
-        <div class="merma-kpi">
-            <small>Precio por litro ($)</small>
-            <input type="number" step="0.01" id="precio_litro" class="form-control form-control-sm"
-                   style="width: 90px;" value="{{ precio }}">
-        </div>
-        <div class="merma-kpi"><small>Valorización proyectada</small><h4 id="valorizacion">$ {{ kpis.valorizacion|number_format(0, '.', ',') }}</h4></div>
-    </div>
-</div>
-
 <!-- Modal de sincronización -->
 <div class="modal fade" id="syncModal" tabindex="-1">
     <div class="modal-dialog">
@@ -123,12 +102,11 @@
                 <div class="row g-2">
                     <div class="col-6">
                         <label>Desde:</label>
-                        <input type="date" id="sync_from" class="form-control"
-                               value="{{ 'now'|date_modify('-1 day')|date('Y-m-d') }}">
+                        <input type="date" id="sync_from" class="form-control" value="{{ syncDesde }}">
                     </div>
                     <div class="col-6">
                         <label>Hasta:</label>
-                        <input type="date" id="sync_to" class="form-control" value="{{ 'now'|date('Y-m-d') }}">
+                        <input type="date" id="sync_to" class="form-control" value="{{ syncHasta }}">
                     </div>
                     <div class="col-12">
                         <label>Estación (opcional):</label>

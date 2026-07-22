@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Análisis de Merma Diaria — Documentación técnica</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --lima: #A6CE39;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta);
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55;
+    font-size: 13px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--verde); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; font-size: 13px; }
+  h2 {
+    font-size: 17px; color: #fff; background: var(--verde);
+    padding: 6px 12px; border-radius: 4px; margin-top: 32px;
+    page-break-after: avoid;
+  }
+  h2.azul { background: var(--azul); }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--verde); page-break-after: avoid; }
+  h2.azul + * h3, .azul-h3 h3 { color: var(--azul); }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; page-break-inside: avoid; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  code, pre {
+    font-family: Consolas, "Courier New", monospace; font-size: 11.5px;
+    background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px;
+  }
+  code { padding: 1px 4px; }
+  pre { padding: 10px 12px; overflow-x: auto; line-height: 1.4; page-break-inside: avoid; }
+  .nota {
+    background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px;
+    margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid;
+  }
+  .ok { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; }
+  li { margin-bottom: 3px; }
+  .chip { display: inline-block; background: var(--fondo); border: 1px solid var(--borde); border-radius: 10px; padding: 0 8px; font-size: 11px; color: var(--gris); }
+  @media print {
+    body { padding: 0; font-size: 11.5px; }
+    @page { size: A4; margin: 18mm 15mm; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Análisis de Merma Diaria — Documentación técnica</h1>
+<p class="subtitulo">Módulo <code>/merma/</code> del aplicativo TotalGas · Abastos · Última actualización: 21 de julio de 2026</p>
+
+<h2>1. Propósito</h2>
+<p>
+El módulo digitaliza el control diario de merma de combustible de las 37+ estaciones,
+que antes se llevaba en un libro de Excel (<code>FormatoJul2026.xlsm</code>, el
+"libro amarillo"). Compara, por estación / producto / turno, el <b>inventario físico</b>
+medido en tanques contra el <b>inventario contable</b> esperado
+(inicial − ventas + compras), y consolida la diferencia (merma) por mes.
+</p>
+
+<h2>2. Componentes</h2>
+<table>
+  <tr><th>Componente</th><th>Tecnología</th><th>Responsabilidad</th></tr>
+  <tr>
+    <td><b>Estaciones</b> (ControlGas)</td>
+    <td>SQL Server local en cada estación<br>(IP 192.168.2.101 – 192.168.40.101)</td>
+    <td>Origen de la verdad: tablas <code>Ventas</code>, <code>StockReal</code> (cortes físicos por turno), <code>Movimientos</code> (compras/recepciones).</td>
+  </tr>
+  <tr>
+    <td><b>ApiER</b></td>
+    <td>Django REST (Python), <code>http://192.168.0.109:82</code></td>
+    <td>Endpoint <code>POST /api/inventarios_turnos/</code>: consulta las estaciones en paralelo vía OPENQUERY y regresa las filas normalizadas.</td>
+  </tr>
+  <tr>
+    <td><b>AplicativoPhp</b></td>
+    <td>PHP MVC + Twig, IIS</td>
+    <td>Controlador <code>Merma</code> (<code>_assets/controllers/merma.php</code>), modelo <code>MermaDiariaModel</code>, vistas <code>views/merma/*.html</code>. Orquesta el sync, guarda el snapshot y lo presenta.</td>
+  </tr>
+  <tr>
+    <td><b>Base central TG</b></td>
+    <td>SQL Server 192.168.0.6</td>
+    <td>Snapshot en <code>TG.dbo.merma_diaria</code> + tablas de apoyo (ver §4).</td>
+  </tr>
+</table>
+
+<h2>3. Rutas y permisos</h2>
+<table>
+  <tr><th>Ruta</th><th>Método</th><th>Descripción</th></tr>
+  <tr><td><code>/merma/analisis</code></td><td>GET</td><td>Resumen por estación en un rango <code>desde</code>/<code>hasta</code>. Requiere permiso 33 (Reportes de Abastos).</td></tr>
+  <tr><td><code>/merma/detalle/{codgas}</code></td><td>GET</td><td>Detalle día × turno de una estación (equivalente a la hoja del Excel), con parámetros <code>anio</code>/<code>mes</code>.</td></tr>
+  <tr><td><code>/merma/sync</code></td><td>POST</td><td>Sincroniza un rango (<code>from</code>, <code>to</code>, <code>codgas</code>; 0 = todas). Permiso 33 o <code>cron_token</code>. Tope de 40 días por corrida.</td></tr>
+  <tr><td><code>/merma/sync_diario</code></td><td>CLI</td><td>Cron de madrugada (D-2 a D-1). Se ejecuta con <code>cron/merma_sync_diario.php</code> vía Programador de Tareas — la ruta HTTP no sirve porque <code>index.php</code> exige sesión.</td></tr>
+  <tr><td><code>/merma/guardar_manual</code></td><td>POST</td><td>Captura de merma s/d y comentarios por estación/mes (tabla <code>merma_manual</code>).</td></tr>
+  <tr><td><code>/merma/guardar_precio</code></td><td>POST</td><td>Precio por litro del mes (tabla <code>merma_mes_config</code>) para valorizaciones.</td></tr>
+</table>
+
+<h2>4. Modelo de datos (TG)</h2>
+<h3>4.1 <code>merma_diaria</code> — snapshot</h3>
+<table>
+  <tr><th>Columna</th><th>Descripción</th></tr>
+  <tr><td><code>fecha</code>, <code>codgas</code>, <code>codprd</code>, <code>turno</code></td><td>Llave lógica (UNIQUE). Fecha <b>operativa</b> (ver §6.2). Turnos normalizados: 11, 21, 41.</td></tr>
+  <tr><td><code>ventas_reales</code></td><td>Litros vendidos en el turno (suma de <code>Ventas.canven</code>).</td></tr>
+  <tr><td><code>inv_fisico</code></td><td>Corte físico del turno (suma de <code>StockReal.can</code>). <b>Se guarda crudo</b>, aunque venga corrupto (ver §7).</td></tr>
+  <tr><td><code>compras</code></td><td>Recepciones del turno (suma de <code>Movimientos.can</code> con <code>can &gt; 0</code>).</td></tr>
+  <tr><td><code>inv_inicial</code>, <code>inv_contable</code>, <code>diferencia</code></td><td><b>Calculadas localmente</b> por <code>recalc_contable()</code> tras cada sync — lo que mande la API en estas columnas se sobreescribe (regla del libro amarillo, §6.3).</td></tr>
+  <tr><td><code>updated_at</code></td><td>Timestamp del último sync que escribió la fila.</td></tr>
+</table>
+
+<h3>4.2 Tablas de apoyo</h3>
+<ul>
+  <li><code>merma_manual</code> — merma sin documentar y comentarios, por estación/año/mes.</li>
+  <li><code>merma_mes_config</code> — precio por litro del mes (default 18.99).</li>
+  <li><code>merma_sync_log</code> — bitácora de cada sincronización: origen (manual/cron), usuario, rango, estaciones OK/error, detalle de errores y duración.</li>
+</ul>
+
+<h3>4.3 Familias de presentación</h3>
+<table>
+  <tr><th>Familia</th><th>Códigos de producto (codprd)</th></tr>
+  <tr><td>MAXIMA (Regular)</td><td>1, 179, 192</td></tr>
+  <tr><td>SUPER (Premium)</td><td>2, 180, 193</td></tr>
+  <tr><td>DIESEL</td><td>3, 181</td></tr>
+</table>
+
+<h2 class="azul">5. Sincronización</h2>
+<h3>5.1 Flujo</h3>
+<ol>
+  <li>El usuario presiona <b>Actualizar datos</b> (analisis) o <b>Re-sincronizar estación</b> (detalle), o corre el cron.</li>
+  <li><code>Merma::sync()</code> valida rango (formato, <code>desde ≤ hasta</code>, máx. 40 días) y llama a <code>runSync()</code>.</li>
+  <li><code>runSync()</code> hace un POST con cURL a ApiER <code>/api/inventarios_turnos/</code> (<code>from</code>, <code>to</code>, <code>codgas</code>; timeout 300 s).</li>
+  <li>ApiER lanza un ThreadPool (40 hilos): una consulta OPENQUERY por estación contra su linked server. Regresa <code>{resultados: [{Codigo, Nombre, filas}], errores: [...], duracion_seg}</code>.</li>
+  <li>Por cada estación <b>que sí respondió</b>, <code>MermaDiariaModel::replace_station_range()</code> ejecuta DELETE del rango + INSERT de las filas nuevas, dentro de una transacción. Las estaciones caídas conservan su snapshot anterior.</li>
+  <li>Tras cada reemplazo se ejecuta <code>recalc_contable(codgas)</code> sobre <b>toda la partición de la estación</b> (todas sus fechas), porque el baseline encadenado pudo cambiar.</li>
+  <li>Se registra el resultado en <code>merma_sync_log</code> y se responde al navegador.</li>
+</ol>
+
+<div class="ok">
+<b>Propiedad clave:</b> el sync es un reemplazo total del rango. Si una lectura se corrige
+en la estación (ControlGas), la corrección fluye automáticamente al snapshot en la
+siguiente sincronización. No hay merge ni acumulación.
+</div>
+
+<h3>5.2 La consulta en la estación</h3>
+<p>
+El endpoint de ApiER es un port fiel de la consulta interna del SP
+<code>TG.dbo.sp_obtener_inventarios_por_turno</code> (el mismo que alimenta
+<code>/supply/tgr01</code>). Une tres fuentes por fecha/producto/turno:
+</p>
+<ul>
+  <li><b>V</b> — <code>Ventas</code> JOIN <code>Islas</code>: suma de <code>canven</code> por turno.</li>
+  <li><b>I</b> — <code>StockReal</code>: corte físico del turno (excluye <code>nrotur</code> 30/31; mapea 10→11, 20→21, 40→41).</li>
+  <li><b>C</b> — <code>Movimientos</code> con <code>can &gt; 0</code>: compras del turno (mapea 10/11→11, 20/21→21, 30/31/40/41→41).</li>
+</ul>
+
+<h2 class="azul">6. Reglas de negocio</h2>
+<div class="azul-h3">
+<h3>6.1 El día en curso nunca se considera</h3>
+<p>
+Los turnos del día actual están incompletos y generan falsas diferencias enormes.
+Por eso <b>toda fecha se topa en "ayer"</b>:
+</p>
+<ul>
+  <li><code>/merma/analisis</code> filtra por rango <code>desde</code>/<code>hasta</code>; ambos inputs tienen <code>max = ayer</code> y el servidor recorta <code>hasta &gt; ayer</code> aunque venga por URL.</li>
+  <li>Default sin parámetros: del 1° del mes de ayer hasta ayer. El día 1 del mes, eso significa <b>el mes anterior completo</b>.</li>
+  <li>El re-sync de detalle topa su rango en <code>min(fin de mes, ayer)</code>; el cron sincroniza D-2 a D-1.</li>
+  <li>Compatibilidad: los links viejos <code>?anio=YYYY&amp;mes=M</code> se convierten al rango del mes completo (topado en ayer).</li>
+</ul>
+
+<h3>6.2 Fechas seriales de ControlGas</h3>
+<p>
+ControlGas guarda fechas como serial tipo Excel (días desde 1899-12-31; ej. 2026-06-03 = 46175).
+La fecha <b>operativa</b> mostrada es <code>fch − 1</code>: el corte del turno nocturno se
+registra el día siguiente pero pertenece al día operativo anterior. La conversión se hace con
+<code>dateToInt()</code> en PHP y <code>CAST(fch AS DATETIME) − 1</code> en SQL.
+</p>
+
+<h3>6.3 Regla del libro amarillo (encadenamiento)</h3>
+<p>
+Tras cada sync, <code>recalc_contable()</code> sobreescribe las tres columnas calculadas con
+la regla del Excel original:
+</p>
+<pre>inv_inicial(turno n)  = inv_fisico(turno n−1)          -- LAG por codgas+codprd, orden fecha,turno
+inv_contable(turno n) = inicial − ventas + compras
+diferencia(turno n)   = inv_fisico(turno n) − inv_contable(turno n)</pre>
+<ul>
+  <li>El encadenamiento cruza días y <b>meses</b> (la primera fila del mes toma el último físico del mes anterior).</li>
+  <li>Si el turno anterior no tuvo corte físico, las tres columnas quedan <code>NULL</code> y la vista muestra <b>s/d</b> — no se arrastra un 0.</li>
+  <li>Por esta regla el detalle <b>ya no cuadra turno por turno</b> con <code>/supply/tgr01</code>, que usa la regla del SP (mismo turno del día anterior). El total del mes converge, la distribución por turno difiere.</li>
+</ul>
+
+<h3>6.4 Lecturas físicas corruptas (§7)</h3>
+</div>
+
+<h2>7. Manejo de lecturas físicas corruptas</h2>
+<p>
+<code>StockReal</code> puede traer basura de telemedición: se han observado valores como
+<code>2.5&nbsp;×&nbsp;10³²</code>, <code>1.7&nbsp;×&nbsp;10¹²</code>, <code>1.5&nbsp;×&nbsp;10⁻¹²</code> y <code>3.1</code> litros
+(estación 18, julio 2026). El SP de tgr01 devuelve la misma basura — el problema es de origen, no del sync.
+</p>
+<p><b>Política (definida 2026-07-21):</b></p>
+<table>
+  <tr><th>Aspecto</th><th>Comportamiento</th></tr>
+  <tr><td>Almacenamiento</td><td>El valor crudo <b>sí se guarda</b> en <code>inv_fisico</code> — para poder verlo y, en el futuro, corregirlo.</td></tr>
+  <tr><td>Rango plausible</td><td><code>INV_FISICO_MIN = 100</code> a <code>INV_FISICO_MAX = 1,000,000</code> litros (constantes de <code>MermaDiariaModel</code>).</td></tr>
+  <tr><td>Cálculo</td><td><code>recalc_contable()</code> trata la lectura fuera de rango como "sin corte": la diferencia de ese turno y el inicial del siguiente quedan <code>NULL</code> (s/d). El resumen mensual no se contamina.</td></tr>
+  <tr><td>Presentación</td><td>En el detalle, la celda INV. FÍSICO del turno corrupto se muestra <b>en rojo, en notación científica, con ícono ⚠</b> y tooltip con el valor exacto.</td></tr>
+  <tr><td>Corrección</td><td>Si se corrige en ControlGas, el siguiente resync la trae. Está pendiente definir una función de corrección desde el aplicativo (una corrección local se perdería en el siguiente resync, por el reemplazo total del rango).</td></tr>
+  <tr><td>Inv. inicial del mes</td><td><code>get_inv_inicial_mes()</code> ignora lecturas corruptas y toma la última <b>válida</b> anterior al día 1.</td></tr>
+</table>
+
+<h2>8. Vistas</h2>
+<h3>8.1 <code>/merma/analisis</code></h3>
+<ul>
+  <li>Filtros: <b>Desde</b> / <b>Hasta</b> (inputs date, máx. ayer).</li>
+  <li>Tabla por estación: merma MAXIMA / SUPER / DIESEL / TOTAL (suma de <code>diferencia</code>), venta total y % de merma; fila de TOTALES sticky al fondo; export a Excel (DataTables).</li>
+  <li>Triángulo de advertencia por estación cuando faltan días con datos dentro del rango.</li>
+  <li>Encabezados con colores de marca: MAXIMA verde (<code>#009559</code>), SUPER azul (<code>#0095DA</code>), DIESEL ámbar.</li>
+  <li>La captura manual (merma s/d, comentarios) y el precio se guardan por mes, anclados al mes de "hasta".</li>
+</ul>
+<h3>8.2 <code>/merma/detalle/{codgas}</code></h3>
+<ul>
+  <li>Una fila por fecha+turno; por familia: VR, COMPRAS, INV. CONT., INV. FÍSICO, DIF. y ACUM. (diferencia acumulada del mes).</li>
+  <li>Badge "DIFERENCIA" cuando |dif| ≥ 9,000 lts (umbral heredado del SP).</li>
+  <li>Fila <b>TOTAL COMPRAS</b> sticky al fondo con la suma mensual por familia.</li>
+  <li>KPIs de cabecera: inventario inicial del mes por familia, mermas del mes, venta total y % merma.</li>
+  <li>Columnas FECHA/TURNO congeladas; corte visual al cambiar de día.</li>
+</ul>
+
+<h2>9. Operación y solución de problemas</h2>
+<table>
+  <tr><th>Síntoma</th><th>Causa probable / acción</th></tr>
+  <tr><td>"No se pudo contactar ApiER"</td><td>Servicio Django caído o red. Ver <code>merma_sync_log</code>.</td></tr>
+  <tr><td>Estación en la lista de "Sin conexión"</td><td>Linked server caído; su snapshot anterior se conserva. Reintentar después.</td></tr>
+  <tr><td>Diferencias gigantes (millones+)</td><td>Lectura física corrupta en StockReal. Con la política §7 ya no deben aparecer en totales; si aparecen, resincronizar el rango (el recálculo procesa toda la historia de la estación).</td></tr>
+  <tr><td>Días marcados como faltantes</td><td>La estación no tiene filas para esas fechas: sincronizar el rango, o la estación no operó.</td></tr>
+  <tr><td>Detalle no cuadra con tgr01 turno a turno</td><td>Esperado — reglas de inicial distintas (§6.3). El acumulado mensual sí converge.</td></tr>
+  <tr><td>El cron sale con exit 1</td><td>Al menos una estación falló (degradación, no falla total). Ver log.</td></tr>
+</table>
+
+<div class="nota">
+<b>Nota de mantenimiento:</b> cualquier cron nuevo debe ser un script CLI
+(patrón <code>cron/merma_sync_diario.php</code>): las rutas HTTP no funcionan
+para tareas programadas porque <code>index.php</code> exige sesión.
+</div>
+
+</body>
+</html>
