@@ -131,7 +131,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}accounting.js"></script>
+<script src="{{ js_v('accounting.js') }}"></script>
 <script>
 $('#search_analysis_movement').on('click', function() {
     analysis_movement_table();

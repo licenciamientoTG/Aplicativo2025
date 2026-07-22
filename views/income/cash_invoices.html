@@ -539,7 +539,7 @@ $('#top-monto-table tbody').html(topMontoHTML);
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}income.js"></script>
+<script src="{{ js_v('income.js') }}"></script>
 <script>
 $('#search_cash_invoices_table').on('click', async function() {
      cash_invoices_table();

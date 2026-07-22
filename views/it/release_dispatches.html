@@ -69,6 +69,7 @@
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FACTURA" placeholder="Factura"></div>
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FACTEST" placeholder="Fact. Est."></div>
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="UUID" placeholder="UUID"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE" placeholder="Cliente"></div>
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="RFC" placeholder="RFC"></div>
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="LOGFECHA" placeholder="Fecha Log"></div>
                 <div class="col p-1 text-center">
@@ -81,7 +82,7 @@
         <table id="datatables_release_dispatches" class="table table-sm w-100 text-nowrap" style="font-size:x-small;" data-from="{{ from }}" data-until="{{ until }}" data-codgas="{{ codgas }}">
             <thead>
                 <tr>
-                    {# nrotrn, fchtrn, can, mto, nrofac, gasfac, satuid, satrfc, logfch #}
+                    {# nrotrn, fchtrn, can, mto, nrofac, gasfac, satuid, codcli/cliente, satrfc, logfch #}
                     <th>DESPACHO</th>
                     <th>F. DESPACHO</th>
                     <th>LITROS</th>
@@ -89,6 +90,7 @@
                     <th>FACTURA</th>
                     <th>FACT. EST.</th>
                     <th>UUID</th>
+                    <th>CLIENTE</th>
                     <th>RFC</th>
                     <th>LOGFECHA</th>
                     <th>ACCIONES</th>
@@ -105,6 +107,7 @@
                     <th>FACTURA</th>
                     <th>FACT. EST.</th>
                     <th>UUID</th>
+                    <th>CLIENTE</th>
                     <th>RFC</th>
                     <th>LOGFECHA</th>
                     <th>ACCIONES</th>
@@ -117,5 +120,5 @@
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}it.js"></script>
+<script src="{{ js_v('it.js') }}"></script>
 {% endblock %}

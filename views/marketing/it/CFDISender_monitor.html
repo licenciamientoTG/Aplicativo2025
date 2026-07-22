@@ -199,7 +199,7 @@
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}it.js"></script>
+<script src="{{ js_v('it.js') }}"></script>
 <script>
 $('#search_cfdi_comparison').on('click', async function() {
     cfdi_comparison_table();
