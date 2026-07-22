@@ -565,6 +565,7 @@ let datatables_release_dispatches = $('#datatables_release_dispatches').DataTabl
         {'data': 'FACTURA'},
         {'data': 'FACTEST'},
         {'data': 'UUID'},
+        {'data': 'CLIENTE'},
         {'data': 'RFC'},
         {'data': 'LOGFECHA'},
         {'data': 'ACCIONES'},
@@ -589,8 +590,9 @@ $('#filtro-datatables_release_dispatches input').on('keyup change clear', functi
         .column(4).search($('#FACTURA').val().trim())
         .column(5).search($('#FACTEST').val().trim())
         .column(6).search($('#UUID').val().trim())
-        .column(7).search($('#RFC').val().trim())
-        .column(8).search($('#LOGFECHA').val().trim())
+        .column(7).search($('#CLIENTE').val().trim())
+        .column(8).search($('#RFC').val().trim())
+        .column(9).search($('#LOGFECHA').val().trim())
         .draw();
   });
 

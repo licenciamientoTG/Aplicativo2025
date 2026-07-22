@@ -177,9 +177,10 @@ class DespachosModel extends Model{
     function get_to_release($nrotrn, $codgas) : array|false {
         // Definir los datos
         $query = "SELECT
-                    t1.nrotrn, t1.fchtrn, t1.can, t1.mto, t1.nrofac, t1.gasfac, t1.satuid, t1.satrfc, t1.logfch, t2.abr AS station
+                    t1.nrotrn, t1.fchtrn, t1.can, t1.mto, t1.nrofac, t1.gasfac, t1.satuid, t1.satrfc, t1.logfch, t2.abr AS station, t1.codcli, t3.den AS cliente
                 FROM {$this->databases[$codgas]}.[Despachos] t1
                     LEFT JOIN {$this->databases[$codgas]}.[Gasolineras] t2 ON t1.codgas = t2.cod
+                    LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
                 WHERE t1.nrotrn = ?;";
         $params = [$nrotrn];
         return $this->sql->select($query, $params) ?: false;
