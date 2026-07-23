@@ -9,17 +9,38 @@
 #sidebar:not(.collapsed) { margin-left: -260px; }
 #sidebar.collapsed { margin-left: 0; }
 
-/* ---- KPIs del header -------------------------------------------------- */
-.merma-kpi small {
-    display: block;
-    font-size: .72rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    color: #64748b;
-    margin-bottom: .15rem;
+/* ---- KPIs del header (detalle) ----------------------------------------
+   Un tile por familia con franja de color de marca (mismos tonos que los
+   encabezados de la tabla) + tile de totales del mes. */
+.merma-kpi-bar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: stretch; }
+.kpi-fam {
+    border: 1px solid #e2e8f0; border-radius: .5rem; background: #fff;
+    overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.05);
 }
-.merma-kpi span, .merma-kpi h4 { font-size: 1.125rem; font-weight: 600; color: #0f172a; margin-bottom: 0; }
+.kpi-fam-head {
+    padding: .28rem .75rem; font-size: .68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em;
+}
+.kpi-maxima .kpi-fam-head { background: #e9f7f0; color: #00713f; }
+.kpi-super  .kpi-fam-head { background: #e6f4fb; color: #006ba1; }
+.kpi-diesel .kpi-fam-head { background: #fff7ed; color: #7c2d12; }
+.kpi-total  .kpi-fam-head { background: #f1f5f9; color: #334155; }
+.kpi-total { border-color: #cbd5e1; }
+.kpi-fam-body { display: flex; gap: 1.25rem; padding: .45rem .75rem .55rem; }
+.kpi-item small {
+    display: block; font-size: .66rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: .05em;
+    color: #64748b; margin-bottom: .1rem; white-space: nowrap;
+}
+.kpi-item span {
+    font-size: 1.05rem; font-weight: 600; color: #0f172a;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.kpi-item .kpi-neg { color: #dc2626; }
+.kpi-item .kpi-pos { color: #059669; }
+.kpi-item .pct-alto  { color: #dc2626; }
+.kpi-item .pct-medio { color: #d97706; }
+.kpi-item .pct-ok    { color: #059669; }
 
 /* ---- Botones ----------------------------------------------------------- */
 .btn-merma-neutro {

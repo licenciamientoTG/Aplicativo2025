@@ -106,7 +106,7 @@ class CreditNoteApplicationsModel extends Model
               AND a.created_at < DATEADD(day, 1, ?)
               $provider_filter
             ORDER BY a.created_at DESC";
-        return $this->sql->select($query, $params) ?: false;
+        return $this->sql->selectSafe($query, $params);
     }
 
     /**

@@ -108,24 +108,25 @@ class InvoiceCreditDebitNotesModel extends Model
      * por proveedor (monto de la nota menos lo ya aplicado).
      */
     public function getAvailableCreditByProvider() : array|false {
+        // La subconsulta va en CROSS APPLY: SUM() directo sobre una
+        // subconsulta no es válido en SQL Server.
         $query = "
             SELECT
                 n.provider_id AS provider_cod,
-                SUM(n.amount - ISNULL((
+                SUM(n.amount - calc.aplicado) AS disponible
+            FROM [tg].[dbo].invoice_credit_debit_notes n
+            CROSS APPLY (
+                SELECT ISNULL((
                     SELECT SUM(a.applied_amount)
                     FROM [tg].[dbo].credit_note_applications a
                     WHERE a.credit_note_id = n.id AND a.status = 1
-                ), 0)) AS disponible
-            FROM [tg].[dbo].invoice_credit_debit_notes n
+                ), 0) AS aplicado
+            ) calc
             WHERE n.status = 1
               AND n.note_type = 'CREDIT'
-              AND n.amount - ISNULL((
-                    SELECT SUM(a.applied_amount)
-                    FROM [tg].[dbo].credit_note_applications a
-                    WHERE a.credit_note_id = n.id AND a.status = 1
-                ), 0) > 0.01
+              AND n.amount - calc.aplicado > 0.01
             GROUP BY n.provider_id";
-        return $this->sql->select($query) ?: false;
+        return $this->sql->selectSafe($query);
     }
 
     /**

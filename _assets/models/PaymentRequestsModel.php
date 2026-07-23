@@ -600,23 +600,30 @@ class PaymentRequestsModel extends Model
      * (lo realmente pagado en anticipos menos lo ya aplicado a facturas).
      */
     public function get_anticipo_remanente_by_provider() : array|false {
+        // Las subconsultas van en CROSS APPLY: SUM() directo sobre una
+        // subconsulta no es válido en SQL Server.
         $query = "
             SELECT
                 pr.provider_cod,
-                SUM(ISNULL((
-                    SELECT SUM(pt.payment_amount)
-                    FROM [TG].[dbo].[payment_transactions] pt
-                    WHERE pt.payment_request_id = pr.id
-                ), 0)) AS pagado,
-                SUM(ISNULL((
-                    SELECT SUM(aa.monto_aplicado)
-                    FROM [TG].[dbo].[anticipo_invoice_applications] aa
-                    WHERE aa.anticipo_id = pr.id
-                ), 0)) AS aplicado
+                SUM(calc.pagado)   AS pagado,
+                SUM(calc.aplicado) AS aplicado
             FROM [TG].[dbo].[payment_requests] pr
+            CROSS APPLY (
+                SELECT
+                    ISNULL((
+                        SELECT SUM(pt.payment_amount)
+                        FROM [TG].[dbo].[payment_transactions] pt
+                        WHERE pt.payment_request_id = pr.id
+                    ), 0) AS pagado,
+                    ISNULL((
+                        SELECT SUM(aa.monto_aplicado)
+                        FROM [TG].[dbo].[anticipo_invoice_applications] aa
+                        WHERE aa.anticipo_id = pr.id
+                    ), 0) AS aplicado
+            ) calc
             WHERE pr.tipo = 1 AND pr.is_deleted = 0
             GROUP BY pr.provider_cod";
-        return $this->sql->select($query) ?: false;
+        return $this->sql->selectSafe($query);
     }
 
     /**
@@ -670,7 +677,7 @@ class PaymentRequestsModel extends Model
               AND pr.request_date < DATEADD(day, 1, ?)
               $provider_filter
             ORDER BY pr.request_date DESC";
-        return $this->sql->select($query, $params) ?: false;
+        return $this->sql->selectSafe($query, $params);
     }
 
     public function get_anticipos_with_summary($type  = 'payment', $status = 'all'): array|false

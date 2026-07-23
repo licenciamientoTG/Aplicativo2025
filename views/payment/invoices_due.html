@@ -630,6 +630,7 @@ function loadInvoicesStatus() {
             data: { from: from, until: until, proveedor: proveedor },
             timeout: 300000,
             dataSrc: function(json) {
+                if (json.error) alertify.error(json.error);
                 const rows = json.data || [];
                 // Las notas de crédito no se pagan: se excluyen de los KPIs de montos
                 const pagables = rows.filter(r => r.tipo !== 'Nota crédito');
@@ -817,6 +818,7 @@ function loadProviderStatus() {
             data: { from: from, until: until, proveedor: $('#pv_proveedor').val() || '0' },
             timeout: 300000,
             dataSrc: function(json) {
+                if (json.error) alertify.error(json.error);
                 const rows = json.data || [];
                 const deuda   = rows.reduce((s, r) => s + (r.deuda_total || 0), 0);
                 const sinReq  = rows.reduce((s, r) => s + (r.sin_req_monto || 0), 0);

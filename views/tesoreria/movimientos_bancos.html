@@ -1,0 +1,243 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Movimientos bancos{% endblock %}
+{% block menutitle %}Tesorería — Movimientos bancos{% endblock %}
+
+{% block mycss %}
+<style>
+  .mb-tabla { font-size: 0.82rem; }
+  .mb-tabla th { white-space: nowrap; background: #f8f9fa; position: sticky; top: 0; }
+  .mb-tabla td { vertical-align: middle; }
+  .mb-monto { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mb-abono { color: #009559; font-weight: 600; }
+  .mb-cargo { color: #dc3545; font-weight: 600; }
+  .mb-cuenta { font-family: monospace; white-space: nowrap; }
+  .mb-scroll { max-height: 70vh; overflow: auto; }
+  .mb-card-total .card-body { padding: .75rem 1rem; }
+  .mb-card-total h4 { margin-bottom: 0; font-variant-numeric: tabular-nums; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form action="/tesoreria/movimientos_bancos" method="get" class="row align-items-end g-2">
+      <div class="col-auto">
+        <label for="desde">Desde:</label>
+        <input type="date" class="form-control" name="desde" id="desde" value="{{ filtros.desde }}" required>
+      </div>
+      <div class="col-auto">
+        <label for="hasta">Hasta:</label>
+        <input type="date" class="form-control" name="hasta" id="hasta" value="{{ filtros.hasta }}" required>
+      </div>
+      <div class="col-auto">
+        <label for="cuenta">Cuenta:</label>
+        <select class="form-select" name="cuenta" id="cuenta">
+          <option value="">Todas</option>
+          {% for c in cuentas %}
+          <option value="{{ c.cuenta }}" {{ filtros.cuenta == c.cuenta ? 'selected' : '' }}>
+            {{ c.cuenta }} ({{ c.banco|lower|capitalize }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label for="tipo">Tipo:</label>
+        <select class="form-select" name="tipo" id="tipo">
+          <option value="">Todos</option>
+          <option value="abono" {{ filtros.tipo == 'abono' ? 'selected' : '' }}>Abonos</option>
+          <option value="cargo" {{ filtros.tipo == 'cargo' ? 'selected' : '' }}>Cargos</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label for="q">Buscar:</label>
+        <input type="text" class="form-control" name="q" id="q" value="{{ filtros.q }}"
+               placeholder="Concepto, contraparte, referencia...">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+      </div>
+      <div class="col-auto ms-auto">
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#uploadSantanderModal">
+          <i class="fas fa-file-upload"></i> Subir TXT Santander
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row mb-3">
+  <div class="col-md-3">
+    <div class="card mb-card-total">
+      <div class="card-body">
+        <span class="text-muted">Abonos</span>
+        <h4 class="mb-abono">${{ totales.abonos|number_format(2, '.', ',') }}</h4>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card mb-card-total">
+      <div class="card-body">
+        <span class="text-muted">Cargos</span>
+        <h4 class="mb-cargo">${{ totales.cargos|number_format(2, '.', ',') }}</h4>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card mb-card-total">
+      <div class="card-body">
+        <span class="text-muted">Neto</span>
+        <h4 class="{{ totales.neto < 0 ? 'mb-cargo' : 'mb-abono' }}">${{ totales.neto|number_format(2, '.', ',') }}</h4>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card mb-card-total">
+      <div class="card-body">
+        <span class="text-muted">Movimientos</span>
+        <h4>{{ totales.movs|number_format(0, '.', ',') }}</h4>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="mb-scroll">
+      <table class="table table-hover mb-0 mb-tabla">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Cuenta</th>
+            <th>Descripción</th>
+            <th>Concepto</th>
+            <th>Contraparte</th>
+            <th class="mb-monto">Cargo</th>
+            <th class="mb-monto">Abono</th>
+            <th class="mb-monto">Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in movimientos %}
+          <tr>
+            <td>{{ m.fecha|date('d/m/Y') }}</td>
+            <td>{{ m.hora }}</td>
+            <td class="mb-cuenta">{{ m.cuenta }}</td>
+            <td title="{{ m.descripcion_larga }}">{{ m.descripcion }}</td>
+            <td title="Ref: {{ m.referencia }}{{ m.clave_rastreo ? ' · Rastreo: ' ~ m.clave_rastreo : '' }}">{{ m.concepto }}</td>
+            <td>
+              {{ m.nombre_contraparte }}
+              {% if m.banco_contraparte %}
+              <small class="text-muted d-block">{{ m.banco_contraparte }} {{ m.cuenta_contraparte }}</small>
+              {% endif %}
+            </td>
+            <td class="mb-monto mb-cargo">{{ m.cargo is null ? '' : m.cargo|number_format(2, '.', ',') }}</td>
+            <td class="mb-monto mb-abono">{{ m.abono is null ? '' : m.abono|number_format(2, '.', ',') }}</td>
+            <td class="mb-monto">{{ m.saldo is null ? '' : m.saldo|number_format(2, '.', ',') }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="9" class="text-center text-muted py-4">
+              Sin movimientos en el rango seleccionado. Sube un TXT de Santander para importarlos.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal subir TXT Santander -->
+<div class="modal fade" id="uploadSantanderModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="formUploadSantander">
+        <div class="modal-header">
+          <h5 class="modal-title">Subir TXT de movimientos Santander</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted mb-2">
+            Archivo de movimientos de Enlace Santander (.TXT de ancho fijo).
+            Los movimientos ya importados se detectan y se saltan automáticamente.
+          </p>
+          <input type="file" class="form-control" name="txt_santander" id="txt_santander" accept=".txt,.TXT" required>
+          <div id="uploadResultado" class="mt-3" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-danger" id="btnUploadSantander">
+            <i class="fas fa-file-upload"></i> Importar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+(function () {
+  var form = document.getElementById('formUploadSantander');
+  var btn = document.getElementById('btnUploadSantander');
+  var resultado = document.getElementById('uploadResultado');
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var input = document.getElementById('txt_santander');
+    if (!input.files.length) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
+    resultado.style.display = 'none';
+
+    var fd = new FormData();
+    fd.append('txt_santander', input.files[0]);
+
+    fetch('/tesoreria/upload_santander', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var html;
+        if (data.success) {
+          html = '<div class="alert alert-success mb-0">' +
+                 '<strong>' + data.insertados + '</strong> movimientos importados, ' +
+                 '<strong>' + data.duplicados + '</strong> ya existían.';
+          if (data.errores && data.errores.length) {
+            html += '<hr class="my-2"><small>Líneas con problema:<br>' +
+                    data.errores.map(esc).join('<br>') + '</small>';
+          }
+          html += '<hr class="my-2"><a class="btn btn-sm btn-success" href="/tesoreria/movimientos_bancos?desde=' +
+                  encodeURIComponent(data.fecha_min) + '&hasta=' + encodeURIComponent(data.fecha_max) +
+                  '">Ver movimientos importados</a></div>';
+        } else {
+          html = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al importar');
+          if (data.errores && data.errores.length) {
+            html += '<hr class="my-2"><small>' + data.errores.map(esc).join('<br>') + '</small>';
+          }
+          html += '</div>';
+        }
+        resultado.innerHTML = html;
+        resultado.style.display = 'block';
+      })
+      .catch(function () {
+        resultado.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al importar</div>';
+        resultado.style.display = 'block';
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-file-upload"></i> Importar';
+      });
+  });
+})();
+</script>
+{% endblock %}

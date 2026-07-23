@@ -7174,9 +7174,15 @@ class Payment
             $until     = $_POST['until'] ?? date('Y-m-d');
             $proveedor = intval($_POST['proveedor'] ?? 0);
 
-            $facturas  = $this->paymentRequestInvoicesModel->get_invoices_status_report($from, $until, $proveedor) ?: [];
-            $notas_cr  = $this->CreditNoteApplicationsModel->get_applications_report($from, $until, $proveedor) ?: [];
-            $anticipos = $this->PaymentRequestsModel->get_anticipos_status_report($from, $until, $proveedor) ?: [];
+            $facturas  = $this->paymentRequestInvoicesModel->get_invoices_status_report($from, $until, $proveedor);
+            $notas_cr  = $this->CreditNoteApplicationsModel->get_applications_report($from, $until, $proveedor);
+            $anticipos = $this->PaymentRequestsModel->get_anticipos_status_report($from, $until, $proveedor);
+
+            // false = la consulta falló (el detalle SQL queda en el error_log de PHP)
+            $fallas = [];
+            if ($facturas === false)  { $fallas[] = 'facturas/notas de cargo'; $facturas = []; }
+            if ($notas_cr === false)  { $fallas[] = 'notas de crédito';        $notas_cr = []; }
+            if ($anticipos === false) { $fallas[] = 'anticipos';               $anticipos = []; }
 
             // Nombres de todos los comprobantes ligados (facturas + anticipos)
             $todos_doc_ids = [];
@@ -7292,7 +7298,12 @@ class Payment
                 ];
             }
 
-            json_output(['data' => $data]);
+            json_output([
+                'data'  => $data,
+                'error' => $fallas
+                    ? 'Error de BD al consultar: ' . implode(', ', $fallas) . '. El detalle SQL está en el error_log de PHP.'
+                    : null,
+            ]);
         } catch (Exception $e) {
             error_log('Error en invoices_status_table: ' . $e->getMessage());
             json_output(['data' => [], 'error' => $e->getMessage()]);
@@ -7334,22 +7345,36 @@ class Payment
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
             curl_setopt($ch, CURLOPT_TIMEOUT, 300);
-            $response = curl_exec($ch);
+            $response  = curl_exec($ch);
+            $curl_err  = $response === false ? curl_error($ch) : null;
             curl_close($ch);
             $apiData = json_decode($response, true);
+
+            $fallas = [];
+            if ($curl_err) {
+                $fallas[] = 'API de estaciones (' . $curl_err . ')';
+            }
             if (!is_array($apiData) || isset($apiData['detail'])) {
+                // 404 "No se encontraron resultados" del API no es error: rango sin documentos
                 $apiData = [];
             }
 
             // 2) Consultas locales (TG). Si hay proveedor seleccionado se filtra
             // aquí (las consultas son baratas; el filtro fuerte va en el API).
+            // false = la consulta falló (el detalle SQL queda en el error_log de PHP).
             $soloProv = function ($rows) use ($proveedor) {
                 if ($proveedor <= 0) return $rows;
                 return array_values(array_filter($rows, fn($r) => (int)($r['provider_cod'] ?? 0) === $proveedor));
             };
-            $pendientes = $soloProv($this->paymentRequestInvoicesModel->get_pending_saldo_by_provider() ?: []);
-            $anticipos  = $soloProv($this->PaymentRequestsModel->get_anticipo_remanente_by_provider() ?: []);
-            $ncs        = $soloProv($this->InvoiceCreditDebitNotesModel->getAvailableCreditByProvider() ?: []);
+            $pendientes = $this->paymentRequestInvoicesModel->get_pending_saldo_by_provider();
+            $anticipos  = $this->PaymentRequestsModel->get_anticipo_remanente_by_provider();
+            $ncs        = $this->InvoiceCreditDebitNotesModel->getAvailableCreditByProvider();
+            if ($pendientes === false) { $fallas[] = 'saldos en requisiciones'; $pendientes = []; }
+            if ($anticipos === false)  { $fallas[] = 'remanentes de anticipos'; $anticipos = []; }
+            if ($ncs === false)        { $fallas[] = 'NC disponibles';          $ncs = []; }
+            $pendientes = $soloProv($pendientes);
+            $anticipos  = $soloProv($anticipos);
+            $ncs        = $soloProv($ncs);
 
             // Nombres de proveedor de respaldo (para filas que solo traen código)
             $nombres_prov = [];
@@ -7469,7 +7494,12 @@ class Payment
             }
             usort($data, fn($a, $b) => $b['deuda_total'] <=> $a['deuda_total']);
 
-            json_output(['data' => $data]);
+            json_output([
+                'data'  => $data,
+                'error' => $fallas
+                    ? 'Fallaron: ' . implode(', ', $fallas) . '. El detalle está en el error_log de PHP.'
+                    : null,
+            ]);
         } catch (Exception $e) {
             error_log('Error en provider_status_table: ' . $e->getMessage());
             json_output(['data' => [], 'error' => $e->getMessage()]);

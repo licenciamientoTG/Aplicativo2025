@@ -10,26 +10,51 @@
 {% block content %}
 
 <div class="card">
-    <div class="card-body d-flex flex-wrap gap-4 align-items-center">
-        {% if invInicial %}
+    <div class="card-body merma-kpi-bar">
         {% for fam in ['maxima', 'super', 'diesel'] %}
-        {% set ini = attribute(invInicial, 'ini_' ~ fam) %}
-        {% if ini is not null %}
-        <div class="merma-kpi">
-            <small>Inv. inic. {{ fam|upper }} ({{ invInicial.fecha|date('d-m') }})</small>
-            <span>{{ ini|number_format(2, '.', ',') }}</span>
+        {% set ini = invInicial ? attribute(invInicial, 'ini_' ~ fam) : null %}
+        {% set comp = attribute(compras, fam) %}
+        {% set mer = resumen ? attribute(resumen, 'merma_' ~ fam) : null %}
+        <div class="kpi-fam kpi-{{ fam }}">
+            <div class="kpi-fam-head">{{ fam|upper }}</div>
+            <div class="kpi-fam-body">
+                <div class="kpi-item">
+                    <small>Inv. inicial{% if invInicial %} {{ invInicial.fecha|date('d-m') }}{% endif %}</small>
+                    <span>{{ ini is null ? '-' : ini|number_format(2, '.', ',') }}</span>
+                </div>
+                <div class="kpi-item">
+                    <small>Compras</small>
+                    <span>{{ comp == 0 ? '-' : comp|number_format(0, '.', ',') }}</span>
+                </div>
+                <div class="kpi-item">
+                    <small>Merma</small>
+                    <span class="{{ mer is null ? '' : (mer < 0 ? 'kpi-neg' : 'kpi-pos') }}">{{ mer is null ? '-' : mer|number_format(0, '.', ',') }}</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% if resumen %}
+        {% set pct = resumen.venta_total != 0 ? resumen.merma_total / resumen.venta_total * 100 : null %}
+        {% set pctabs = pct is null ? 0 : (pct < 0 ? -pct : pct) %}
+        <div class="kpi-fam kpi-total">
+            <div class="kpi-fam-head">Total del mes</div>
+            <div class="kpi-fam-body">
+                <div class="kpi-item">
+                    <small>Venta</small>
+                    <span>{{ resumen.venta_total|number_format(0, '.', ',') }}</span>
+                </div>
+                <div class="kpi-item">
+                    <small>Merma</small>
+                    <span>{{ resumen.merma_total is null ? '-' : resumen.merma_total|number_format(0, '.', ',') }}</span>
+                </div>
+                <div class="kpi-item">
+                    <small>% merma</small>
+                    <span class="{{ pct is null ? '' : (pctabs > 1 ? 'pct-alto' : (pctabs > 0.5 ? 'pct-medio' : 'pct-ok')) }}">{{ pct is null ? '-' : pct|number_format(2) ~ '%' }}</span>
+                </div>
+            </div>
         </div>
         {% endif %}
-        {% endfor %}
-        {% endif %}
-        {% if resumen %}
-        <div class="merma-kpi"><small>Merma MAXIMA</small><span>{{ resumen.merma_maxima is null ? '-' : resumen.merma_maxima|number_format(0, '.', ',') }}</span></div>
-        <div class="merma-kpi"><small>Merma SUPER</small><span>{{ resumen.merma_super is null ? '-' : resumen.merma_super|number_format(0, '.', ',') }}</span></div>
-        <div class="merma-kpi"><small>Merma DIESEL</small><span>{{ resumen.merma_diesel is null ? '-' : resumen.merma_diesel|number_format(0, '.', ',') }}</span></div>
-        <div class="merma-kpi"><small>Venta total</small><span>{{ resumen.venta_total|number_format(0, '.', ',') }}</span></div>
-        <div class="merma-kpi"><small>% merma</small><span>{{ resumen.venta_total != 0 ? (resumen.merma_total / resumen.venta_total * 100)|number_format(2) ~ '%' : '-' }}</span></div>
-        {% endif %}
-        <div class="ms-auto d-flex gap-2">
+        <div class="ms-auto d-flex flex-column gap-2 justify-content-center">
             <a href="/merma/analisis?anio={{ anio }}&mes={{ mes }}" class="btn btn-merma-neutro">
                 <i class="fas fa-arrow-left"></i> Resumen
             </a>

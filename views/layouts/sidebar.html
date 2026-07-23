@@ -296,7 +296,16 @@
         </a>
       </li>
 
-      {% endif %} {% if authorized(62) %}
+      {% endif %}
+      {# TODO: proteger con permiso de tesorería cuando se defina #}
+      <li class="sidebar-header">TESORERÍA</li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/tesoreria/movimientos_bancos">
+          <i data-feather="credit-card"></i>
+          <span class="align-middle">Movimientos bancos</span>
+        </a>
+      </li>
+      {% if authorized(62) %}
       <li class="sidebar-header">COMERCIAL</li>
       <li class="sidebar-item">
         <a data-bs-target="#commercial_reports" data-bs-toggle="collapse" class="sidebar-link collapsed"

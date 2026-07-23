@@ -649,7 +649,7 @@ class PaymentRequestInvoicesModel extends Model
                   ' . $provider_filter . '
                 ORDER BY t1.date_added DESC
         ';
-        return ($this->sql->select($query, $params)) ?: false;
+        return $this->sql->selectSafe($query, $params);
     }
 
     /**
@@ -715,7 +715,7 @@ class PaymentRequestInvoicesModel extends Model
                     - calc.total_notas_credito + calc.total_notas_cargo) > 0.01
             ORDER BY pr.provider_cod, t1.expiration_date
         ';
-        return $this->sql->select($query) ?: false;
+        return $this->sql->selectSafe($query);
     }
 
     /**
