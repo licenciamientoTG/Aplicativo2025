@@ -118,34 +118,40 @@
     <table id="mb_table" class="table table-hover table-sm w-100 dataTable mb-0">
       <thead>
         <tr>
+          <th>Cuenta</th>
           <th>Fecha</th>
           <th>Hora</th>
-          <th>Cuenta</th>
+          <th>Sucursal</th>
           <th>Descripción</th>
+          <th class="mb-monto">Importe Cargo</th>
+          <th class="mb-monto">Importe Abono</th>
+          <th class="mb-monto">Saldo</th>
+          <th>Referencia</th>
+          <th>Concepto</th>
           <th>Concepto</th>
           <th>Contraparte</th>
-          <th class="mb-monto">Cargo</th>
-          <th class="mb-monto">Abono</th>
-          <th class="mb-monto">Saldo</th>
         </tr>
       </thead>
       <tbody>
         {% for m in movimientos %}
         <tr>
+          <td class="mb-cuenta">{{ m.cuenta }}</td>
           <td data-order="{{ m.fecha }}">{{ m.fecha|date('d/m/Y') }}</td>
           <td>{{ m.hora }}</td>
-          <td class="mb-cuenta">{{ m.cuenta }}</td>
-          <td title="{{ m.descripcion_larga }}">{{ m.descripcion }}</td>
-          <td title="Ref: {{ m.referencia }}{{ m.clave_rastreo ? ' · Rastreo: ' ~ m.clave_rastreo : '' }}">{{ m.concepto }}</td>
+          <td>{{ m.sucursal }}</td>
+          <td>{{ m.descripcion }}</td>
+          <td class="mb-monto {{ m.cargo is null ? '' : 'mb-cargo' }}" data-order="{{ m.cargo ?? 0 }}">{{ (m.cargo ?? 0)|number_format(2, '.', ',') }}</td>
+          <td class="mb-monto {{ m.abono is null ? '' : 'mb-abono' }}" data-order="{{ m.abono ?? 0 }}">{{ (m.abono ?? 0)|number_format(2, '.', ',') }}</td>
+          <td class="mb-monto" data-order="{{ m.saldo ?? 0 }}">{{ m.saldo is null ? '' : m.saldo|number_format(2, '.', ',') }}</td>
+          <td>{{ m.referencia }}</td>
+          <td title="{{ m.clave_rastreo ? 'Rastreo: ' ~ m.clave_rastreo : '' }}">{{ m.concepto }}</td>
+          <td>{{ m.descripcion_larga }}</td>
           <td>
             {{ m.nombre_contraparte }}
             {% if m.banco_contraparte %}
             <small class="text-muted d-block">{{ m.banco_contraparte }} {{ m.cuenta_contraparte }}</small>
             {% endif %}
           </td>
-          <td class="mb-monto mb-cargo" data-order="{{ m.cargo ?? 0 }}">{{ m.cargo is null ? '' : m.cargo|number_format(2, '.', ',') }}</td>
-          <td class="mb-monto mb-abono" data-order="{{ m.abono ?? 0 }}">{{ m.abono is null ? '' : m.abono|number_format(2, '.', ',') }}</td>
-          <td class="mb-monto" data-order="{{ m.saldo ?? 0 }}">{{ m.saldo is null ? '' : m.saldo|number_format(2, '.', ',') }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -196,7 +202,10 @@ $(function () {
       [25, 50, 100, 200, -1],
       [25, 50, 100, 200, 'Todos'],
     ],
-    order: [[2, 'asc'], [0, 'asc']],
+    order: [[1, 'asc'], [2, 'asc']],
+    // Cuenta y Contraparte ocultas por default (formato de tesorería);
+    // se pueden activar con el botón Columnas
+    columnDefs: [{ targets: [0, 11], visible: false }],
     language: {
       lengthMenu: 'Mostrar _MENU_ registros',
       emptyTable: 'Sin movimientos en el rango seleccionado. Sube un TXT de Santander para importarlos.',
@@ -216,24 +225,38 @@ $(function () {
     ],
     initComplete: function () {
       var api = this.api();
-      if ($('#mb_table thead tr.filter').length) return;
 
-      var filterRow = $('<tr class="filter"></tr>');
-      $('#mb_table thead tr:first th').each(function () {
-        var title = $(this).text().trim();
-        filterRow.append(
-          '<th><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>'
-        );
-      });
-      $('#mb_table thead').append(filterRow);
+      // Con columnas ocultas, el thead solo tiene los th visibles: el índice
+      // del input es índice visible y se mapea con el selector ':visible'.
+      function buildFilterRow() {
+        $('#mb_table thead tr.filter').remove();
+        var filterRow = $('<tr class="filter"></tr>');
+        $('#mb_table thead tr:first th').each(function () {
+          var title = $(this).text().trim();
+          filterRow.append(
+            '<th><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>'
+          );
+        });
+        $('#mb_table thead').append(filterRow);
 
-      $('#mb_table thead tr.filter th input').on('keyup change', function () {
-        var colIndex = $(this).parent().index();
-        api.column(colIndex).search(this.value).draw();
-      });
-      // No ordenar al hacer click sobre la fila de filtros
-      $('#mb_table thead tr.filter th input').on('click', function (e) {
-        e.stopPropagation();
+        $('#mb_table thead tr.filter th input').on('keyup change', function () {
+          var visIdx = $(this).parent().index();
+          api.column(visIdx + ':visible').search(this.value).draw();
+        });
+        // No ordenar al hacer click sobre la fila de filtros
+        $('#mb_table thead tr.filter th input').on('click', function (e) {
+          e.stopPropagation();
+        });
+      }
+
+      buildFilterRow();
+
+      // Al mostrar/ocultar columnas se reconstruye la fila de filtros y se
+      // limpian las búsquedas por columna (evita filtros invisibles activos)
+      api.on('column-visibility.dt', function () {
+        api.columns().search('');
+        buildFilterRow();
+        api.draw();
       });
     },
   });

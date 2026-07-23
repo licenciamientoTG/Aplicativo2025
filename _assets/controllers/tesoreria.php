@@ -10,12 +10,10 @@
  * Rutas: /tesoreria/[metodo]  (autocargado por index.php)
  * Spec:  docs/superpowers/specs/2026-07-22-tesoreria-movimientos-bancos-design.md
  * Schema: docs/sql/tesoreria_schema.sql
- *
- * TODO: definir permiso de tesorería y proteger vistas + sidebar
- * (por ahora visible a cualquier usuario logueado).
  */
 class Tesoreria
 {
+    private const PERM_VER      = 79;   // Ver módulo de Tesorería
     private const MAX_TXT_BYTES = 10 * 1024 * 1024;
 
     private $twig;
@@ -32,6 +30,10 @@ class Tesoreria
     /** Vista principal: filtros + tabla de movimientos + botón de upload. */
     public function movimientos_bancos(): void
     {
+        if (!authorized(self::PERM_VER)) {
+            (new Errors())->get404();
+            return;
+        }
         $hoy   = date('Y-m-d');
         $fmt   = '/^\d{4}-\d{2}-\d{2}$/';
         $desde = $_GET['desde'] ?? '';
@@ -70,6 +72,10 @@ class Tesoreria
      */
     public function upload_santander(): void
     {
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No tienes permiso para importar movimientos']);
+            return;
+        }
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['txt_santander']['tmp_name'])) {
             json_output(['success' => false, 'message' => 'No se recibió ningún archivo']);
             return;
