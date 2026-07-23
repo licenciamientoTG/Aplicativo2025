@@ -14,6 +14,7 @@
         {% for fam in ['maxima', 'super', 'diesel'] %}
         {% set ini = invInicial ? attribute(invInicial, 'ini_' ~ fam) : null %}
         {% set comp = attribute(compras, fam) %}
+        {% set vta = attribute(ventas, fam) %}
         {% set mer = resumen ? attribute(resumen, 'merma_' ~ fam) : null %}
         <div class="kpi-fam kpi-{{ fam }}">
             <div class="kpi-fam-head">{{ fam|upper }}</div>
@@ -25,6 +26,10 @@
                 <div class="kpi-item">
                     <small>Compras</small>
                     <span>{{ comp == 0 ? '-' : comp|number_format(0, '.', ',') }}</span>
+                </div>
+                <div class="kpi-item">
+                    <small>Venta</small>
+                    <span>{{ vta == 0 ? '-' : vta|number_format(0, '.', ',') }}</span>
                 </div>
                 <div class="kpi-item">
                     <small>Merma</small>
@@ -40,7 +45,7 @@
             <div class="kpi-fam-head">Total del mes</div>
             <div class="kpi-fam-body">
                 <div class="kpi-item">
-                    <small>Venta</small>
+                    <small>Venta total</small>
                     <span>{{ resumen.venta_total|number_format(0, '.', ',') }}</span>
                 </div>
                 <div class="kpi-item">
