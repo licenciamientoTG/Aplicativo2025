@@ -289,16 +289,27 @@ $(function () {
       .then(function (data) {
         var html;
         if (data.success) {
+          // Recarga con el rango del archivo (conservando cuenta/tipo) para
+          // que la tabla y los totales muestren lo recién importado
+          var params = new URLSearchParams(window.location.search);
+          params.set('desde', data.fecha_min);
+          params.set('hasta', data.fecha_max);
+          var url = '/tesoreria/movimientos_bancos?' + params.toString();
+
           html = '<div class="alert alert-success mb-0">' +
                  '<strong>' + data.insertados + '</strong> movimientos importados, ' +
                  '<strong>' + data.duplicados + '</strong> ya existían.';
           if (data.errores && data.errores.length) {
+            // Con líneas con problema no se recarga en automático, para poder leerlas
             html += '<hr class="my-2"><small>Líneas con problema:<br>' +
-                    data.errores.map(esc).join('<br>') + '</small>';
+                    data.errores.map(esc).join('<br>') + '</small>' +
+                    '<hr class="my-2"><a class="btn btn-sm btn-success" href="' + url +
+                    '">Ver movimientos importados</a>';
+          } else {
+            html += ' Actualizando tabla...';
+            setTimeout(function () { window.location.href = url; }, 1200);
           }
-          html += '<hr class="my-2"><a class="btn btn-sm btn-success" href="/tesoreria/movimientos_bancos?desde=' +
-                  encodeURIComponent(data.fecha_min) + '&hasta=' + encodeURIComponent(data.fecha_max) +
-                  '">Ver movimientos importados</a></div>';
+          html += '</div>';
         } else {
           html = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al importar');
           if (data.errores && data.errores.length) {
