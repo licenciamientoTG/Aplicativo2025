@@ -86,17 +86,13 @@
 <div style="display:flex; justify-content:space-between; align-items:center;">
     <span>Arqueo — {{ caja.sucursal_nombre }} (Caja {{ caja.caja_numero }})</span>
     <span>
-        {% if caja.estado == 'pendiente' %}
-        <button type="button" class="btn btn-outline-secondary small" style="border-radius:15px;"
-                onclick="alertify.error('Guarda el arqueo antes de imprimir.')" title="Imprime lo último guardado">
-            <i class="fas fa-print"></i> Imprimir
-        </button>
-        {% else %}
-        <a href="/arqueo/imprimir_caja/{{ caja.id }}" target="_blank" class="btn btn-outline-secondary small"
-           style="border-radius:15px;" title="Imprime lo último guardado">
+        {# Se bloquea solo mientras la caja no tenga captura guardada; al guardar
+           por AJAX el JS quita data-bloqueado sin necesidad de recargar. #}
+        <a href="/arqueo/imprimir_caja/{{ caja.id }}" target="_blank" id="btn_imprimir"
+           class="btn btn-outline-secondary small" style="border-radius:15px;" title="Imprime lo último guardado"
+           {% if caja.estado == 'pendiente' %}data-bloqueado="1"{% endif %}>
             <i class="fas fa-print"></i> Imprimir
         </a>
-        {% endif %}
         <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
             <i class="fas fa-backward"></i> Regresar
         </a>
@@ -104,6 +100,18 @@
 </div>
 {% endblock %}
 {% block content %}
+<script>
+  // Entrar a la captura con el sidebar colapsado (el botón hamburguesa lo reabre).
+  // Se ejecuta aquí, antes del primer render, para que no se vea la animación.
+  (function () {
+    var sb = document.getElementById('sidebar');
+    if (sb && !sb.classList.contains('collapsed')) {
+      sb.style.transition = 'none';
+      sb.classList.add('collapsed');
+      setTimeout(function () { sb.style.transition = ''; }, 300);
+    }
+  })();
+</script>
 <div class="arqueo-wrap">
 
 {% if solo_lectura %}
@@ -134,7 +142,7 @@
     </div>
     <div class="col-md-3">
       <label class="arqueo-label">Encargado de revisión</label>
-      <input type="text" id="encargado_revision" class="arqueo-input campo-amarillo" value="{{ caja.encargado_revision }}">
+      <input type="text" id="encargado_revision" class="arqueo-input campo-amarillo" value="{{ caja.encargado_revision ?: caja.asignado_nombre }}">
     </div>
     <div class="col-md-3">
       <label class="arqueo-label">Fecha del arqueo</label>
@@ -150,17 +158,25 @@
     <div class="arqueo-card">
       <div class="arqueo-card-header"><h2>Sistema — Go Exchange</h2></div>
       <div class="card-body-pad row g-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="arqueo-label">Dólares (USD)</label>
           <input type="number" step="0.01" min="0" id="go_exchange_dolares" class="arqueo-input campo-amarillo" value="{{ caja.go_exchange_dolares }}">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="arqueo-label">Moneda Nacional (MXN)</label>
           <input type="number" step="0.01" min="0" id="go_exchange_mxn" class="arqueo-input campo-amarillo" value="{{ caja.go_exchange_mxn }}">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-2">
           <label class="arqueo-label">Costo promedio</label>
           <input type="number" step="0.0001" min="1" id="costo_promedio" class="arqueo-input campo-amarillo" value="{{ caja.costo_promedio }}">
+        </div>
+        <div class="col-md-2">
+          <label class="arqueo-label">Compra</label>
+          <input type="number" step="0.0001" min="0" id="tipo_cambio_compra" class="arqueo-input campo-amarillo" value="{{ caja.tipo_cambio_compra }}">
+        </div>
+        <div class="col-md-2">
+          <label class="arqueo-label">Venta</label>
+          <input type="number" step="0.0001" min="0" id="tipo_cambio_venta" class="arqueo-input campo-amarillo" value="{{ caja.tipo_cambio_venta }}">
         </div>
       </div>
     </div>
@@ -215,8 +231,8 @@
               <thead>
                 <tr>
                   <th>Denominación</th>
-                  <th class="text-center">{{ g.label_cajon }}</th>
-                  <th class="text-center">{{ g.label_cf }}{% if g.valor_bolsa_cf %} <span class="text-muted" style="font-weight:400;text-transform:none;">($/bolsa)</span>{% endif %}</th>
+                  <th class="text-center">{{ g.label_cajon }} <span class="text-muted" style="font-weight:400;text-transform:none;">(pieza)</span></th>
+                  <th class="text-center">{{ g.label_cf }} <span class="text-muted" style="font-weight:400;text-transform:none;">{{ g.tipo_cf == 'bolsa' ? '($/bolsa)' : '(fajillas)' }}</span></th>
                   <th class="text-end">Total</th>
                 </tr>
               </thead>

@@ -144,9 +144,10 @@ notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
     deuda con/sin requisición, sin CFDI y saldo a favor).</td></tr>
   <tr><td><code>/payment/import_invoices</code></td><td><code>import_invoices.html</code></td>
     <td>Importación de facturas PDF (parseo vía API) para proveedores cuyo CFDI no llega solo.</td></tr>
-  <tr><td><code>/payment/bank_accounts</code></td><td><code>bank_accounts.html</code></td>
+  <tr><td><code>/tesoreria/bank_accounts</code></td><td><code>tesoreria/bank_accounts.html</code></td>
     <td>Catálogo de cuentas bancarias de proveedores (<code>CatalogosCuentasBancarias</code>):
-    alta/edición/activación (permiso 66).</td></tr>
+    alta/edición/activación. Migrado al módulo Tesorería con permiso 79 (2026-07-23);
+    <code>/payment/bank_accounts</code> quedó como redirect.</td></tr>
   <tr><td><code>/payment/descargar_facturas</code></td><td><code>descargar_facturas.html</code></td>
     <td>Descarga masiva de PDFs de facturas por UUID (ZIP con limpieza de temporales).</td></tr>
   <tr><td><code>/payment/fuel_payments</code></td><td><code>fuel_payments.html</code></td>

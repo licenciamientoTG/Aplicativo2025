@@ -274,11 +274,6 @@
           <li class="sidebar-item">
             <a class="sidebar-link" href="/payment/invoices_due">Estado Facturas</a>
           </li>
-          {% if authorized(66) %}
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/payment/bank_accounts">Cuentas Bancarias</a>
-          </li>
-          {% endif %}
         </ul>
       </li>
 
@@ -303,6 +298,12 @@
         <a class="sidebar-link" href="/tesoreria/movimientos_bancos">
           <i data-feather="credit-card"></i>
           <span class="align-middle">Movimientos bancos</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/tesoreria/bank_accounts">
+          <i data-feather="briefcase"></i>
+          <span class="align-middle">Cuentas Bancarias</span>
         </a>
       </li>
       {% endif %} {% if authorized(62) %}

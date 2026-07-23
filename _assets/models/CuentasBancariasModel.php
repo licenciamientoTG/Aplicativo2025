@@ -292,6 +292,36 @@ class CuentasBancariasModel extends Model {
     }
 
     /**
+     * ✅ ADMIN: alta de cuenta desde la vista de administración, con los
+     * mismos campos que update_admin. Devuelve 1 = creada, 2 = CuentaLocal
+     * duplicada, 0 = error.
+     */
+    public function create_admin(array $data, $usuario_id) : int {
+        if ($this->sql->select('SELECT TOP (1) Id FROM [TG].[dbo].[CatalogosCuentasBancarias] WHERE CuentaLocal = ?;', [$data['CuentaLocal']])) {
+            return 2;
+        }
+        $query = "
+            INSERT INTO [TG].[dbo].[CatalogosCuentasBancarias]
+                (FechaAlta, CuentaLocal, Descripcion, Banco, TitularCuenta, Tipo,
+                 Divisa, emp_cod, proveedor_cod, Activo, FechaRegistro, UsuarioRegistro)
+            VALUES (GETDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), ?)
+        ";
+        $params = [
+            $data['CuentaLocal'],
+            $data['Descripcion'],
+            $data['Banco'],
+            $data['TitularCuenta'],
+            $data['Tipo']          !== '' ? $data['Tipo']          : null,
+            $data['Divisa']        !== '' ? $data['Divisa']        : null,
+            $data['emp_cod']       !== '' ? $data['emp_cod']       : null,
+            $data['proveedor_cod'] !== '' ? $data['proveedor_cod'] : null,
+            (int)$data['Activo'],
+            $usuario_id,
+        ];
+        return $this->sql->insert($query, $params) ? 1 : 0;
+    }
+
+    /**
      * ✅ ADMIN: actualiza los campos editables desde la vista de administración.
      * A diferencia de edit(), incluye Tipo, emp_cod y proveedor_cod (claves para
      * que el layout seleccione la cuenta correcta) y registra usuario/fecha.

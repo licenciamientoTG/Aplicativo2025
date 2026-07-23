@@ -14,6 +14,21 @@
         white-space: nowrap;
     }
     .badge-tipo { font-size: .68rem; }
+
+    /* Fila de filtros de cabecera (mismo patrón que payment_list_table) */
+    #bank_accounts_table thead tr.filter th {
+        background-color: #e2e8f0 !important;
+        padding: 3px 6px !important;
+    }
+    #bank_accounts_table thead tr.filter th input {
+        font-size: 0.7rem;
+        padding: 2px 5px;
+        height: 22px;
+        border-radius: 3px;
+        border: 1px solid #cbd5e1;
+        width: 100%;
+        box-sizing: border-box;
+    }
 </style>
 {% endblock %}
 {% block content %}
@@ -24,9 +39,14 @@
             <h6 class="mb-0" style="color:#334155;"><i class="fas fa-university me-2 text-primary"></i>Catálogo de Cuentas Bancarias</h6>
             <small class="text-muted">Administra cuentas propias y de terceros usadas en los layouts de pago.</small>
         </div>
-        <button onclick="reloadBankAccounts()" class="btn btn-sm btn-outline-secondary">
-            <i class="fas fa-sync-alt"></i> Recargar
-        </button>
+        <div class="d-flex gap-2">
+            <button onclick="openNew()" class="btn btn-sm btn-primary">
+                <i class="fas fa-plus"></i> Nueva cuenta
+            </button>
+            <button onclick="reloadBankAccounts()" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-sync-alt"></i> Recargar
+            </button>
+        </div>
     </div>
 </div>
 
@@ -41,6 +61,7 @@
                         <th>Banco</th>
                         <th>Titular</th>
                         <th>Tipo</th>
+                        <th>Divisa</th>
                         <th class="text-center">Emp.</th>
                         <th class="text-center">Prov.</th>
                         <th class="text-center">Activo</th>
@@ -53,13 +74,13 @@
     </div>
 </div>
 
-<!-- Modal Editar -->
+<!-- Modal Alta / Edición -->
 <div class="modal fade" id="editAccountModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <form id="editAccountForm">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Editar Cuenta Bancaria</h5>
+                    <h5 class="modal-title" id="editAccountTitle"><i class="fas fa-edit me-2"></i>Editar Cuenta Bancaria</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -152,7 +173,7 @@ function initBankAccountsTable() {
                 text: '<i class="fas fa-file-excel"></i> Excel',
                 className: 'btn btn-sm btn-success',
                 title: 'Cuentas Bancarias',
-                exportOptions: { columns: [0,1,2,3,4,5,6,7] }
+                exportOptions: { columns: [0,1,2,3,4,5,6,7,8] }
             },
             {
                 extend: 'colvis',
@@ -162,7 +183,7 @@ function initBankAccountsTable() {
         ],
         processing: true,
         ajax: {
-            url: '/payment/bank_accounts_table',
+            url: '/tesoreria/bank_accounts_table',
             type: 'POST',
             dataSrc: function(json) {
                 if (json.error) { alertify.error(json.error); return []; }
@@ -176,6 +197,7 @@ function initBankAccountsTable() {
             { data: 'Banco', defaultContent: '—' },
             { data: 'TitularCuenta', defaultContent: '—' },
             { data: 'Tipo', className: 'text-center', render: function(d){ return badgeTipo(d); } },
+            { data: 'Divisa', defaultContent: '—', render: function(d){ return d || '—'; } },
             { data: 'emp_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
             { data: 'proveedor_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
             {
@@ -196,8 +218,60 @@ function initBankAccountsTable() {
             }
         ],
         order: [[0, 'asc']],
-        pageLength: 50
+        pageLength: 50,
+        initComplete: function () {
+            var api = this.api();
+
+            // Fila de filtros por columna (patrón de payment_list_table).
+            // Activo y Acciones no llevan input; el índice del input es
+            // visible y se mapea con ':visible' por el botón Columnas.
+            function buildFilterRow() {
+                $('#bank_accounts_table thead tr.filter').remove();
+                var filterRow = $('<tr class="filter"></tr>');
+                $('#bank_accounts_table thead tr:first th').each(function () {
+                    var title = $(this).text().trim();
+                    if (title === 'Activo' || title === 'Acciones' || title === '') {
+                        filterRow.append('<th></th>');
+                    } else {
+                        filterRow.append(
+                            '<th><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>'
+                        );
+                    }
+                });
+                $('#bank_accounts_table thead').append(filterRow);
+
+                $('#bank_accounts_table thead tr.filter th input').on('keyup change', function () {
+                    var visIdx = $(this).parent().index();
+                    api.column(visIdx + ':visible').search(this.value).draw();
+                });
+                $('#bank_accounts_table thead tr.filter th input').on('click', function (e) {
+                    e.stopPropagation();
+                });
+            }
+
+            buildFilterRow();
+
+            api.on('column-visibility.dt', function () {
+                api.columns().search('');
+                buildFilterRow();
+                api.draw();
+            });
+        }
     });
+}
+
+function setCuentaHint() {
+    const len = ($('#ed_cuentalocal').val() || '').length;
+    $('#ed_cuentalocal_hint').text(len ? (len + ' dígitos') : '');
+}
+
+function openNew() {
+    $('#editAccountForm')[0].reset();
+    $('#ed_id').val('');
+    $('#ed_activo').val('1');
+    setCuentaHint();
+    $('#editAccountTitle').html('<i class="fas fa-plus me-2"></i>Nueva Cuenta Bancaria');
+    $('#editAccountModal').modal('show');
 }
 
 function openEdit(id) {
@@ -215,24 +289,21 @@ function openEdit(id) {
     $('#ed_emp_cod').val(row.emp_cod ?? '');
     $('#ed_proveedor_cod').val(row.proveedor_cod ?? '');
 
-    const len = (row.CuentaLocal || '').length;
-    $('#ed_cuentalocal_hint').text(len ? (len + ' dígitos') : '');
-
+    setCuentaHint();
+    $('#editAccountTitle').html('<i class="fas fa-edit me-2"></i>Editar Cuenta Bancaria');
     $('#editAccountModal').modal('show');
 }
 
-$('#ed_cuentalocal').on('keyup', function(){
-    const len = (this.value || '').length;
-    $('#ed_cuentalocal_hint').text(len ? (len + ' dígitos') : '');
-});
+$('#ed_cuentalocal').on('keyup', setCuentaHint);
 
 $('#editAccountForm').on('submit', function(e) {
     e.preventDefault();
+    const isNew = !$('#ed_id').val();
     const $btn = $(this).find('button[type="submit"]');
     $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
 
     $.ajax({
-        url: '/payment/update_bank_account',
+        url: isNew ? '/tesoreria/create_bank_account' : '/tesoreria/update_bank_account',
         type: 'POST',
         dataType: 'json',
         data: $(this).serialize()
@@ -253,7 +324,7 @@ $('#editAccountForm').on('submit', function(e) {
 
 function toggleAccount(id, activo, el) {
     $.ajax({
-        url: '/payment/toggle_bank_account',
+        url: '/tesoreria/toggle_bank_account',
         type: 'POST',
         dataType: 'json',
         data: { id: id, activo: activo }

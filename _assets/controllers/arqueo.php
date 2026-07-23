@@ -482,6 +482,7 @@ class Arqueo
      * Guarda la captura de una caja. POST (JSON o form):
      *   cajero_nombre, encargado_revision,
      *   go_exchange_dolares, go_exchange_mxn, costo_promedio,
+     *   tipo_cambio_compra, tipo_cambio_venta (informativos, no entran en cálculos),
      *   denominaciones[] => {seccion,moneda,tipo,denominacion,valor_bolsa,cantidad},
      *   vales[]          => {numero_vale,fecha,concepto,dolares,mxn}
      * Recalcula todos los totales y marca la caja como completada.
@@ -526,6 +527,9 @@ class Arqueo
         $totales = $this->calcular_totales_caja($denom_rows, $vales_in, $go);
         $totales['cajero_nombre']      = trim($in['cajero_nombre'] ?? '') ?: $caja['cajero_nombre'];
         $totales['encargado_revision'] = trim($in['encargado_revision'] ?? '');
+        // Tipos de cambio informativos: se guardan tal cual, no entran en cálculos.
+        $totales['tipo_cambio_compra'] = (float) ($in['tipo_cambio_compra'] ?? 0);
+        $totales['tipo_cambio_venta']  = (float) ($in['tipo_cambio_venta'] ?? 0);
 
         $snap_antes = $this->snapshot_caja(
             $caja,
@@ -1010,6 +1014,8 @@ class Arqueo
             'go_exchange_dolares' => round((float) ($enc['go_exchange_dolares'] ?? 0), 2),
             'go_exchange_mxn'     => round((float) ($enc['go_exchange_mxn'] ?? 0), 2),
             'costo_promedio'      => round((float) ($enc['costo_promedio'] ?? 0), 4),
+            'tipo_cambio_compra'  => round((float) ($enc['tipo_cambio_compra'] ?? 0), 4),
+            'tipo_cambio_venta'   => round((float) ($enc['tipo_cambio_venta'] ?? 0), 4),
             'totales' => [
                 'total_fisico_dolares' => round((float) ($enc['total_fisico_dolares'] ?? 0), 2),
                 'total_fisico_mxn'     => round((float) ($enc['total_fisico_mxn'] ?? 0), 2),

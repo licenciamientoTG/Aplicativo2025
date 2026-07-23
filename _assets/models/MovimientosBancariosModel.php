@@ -182,9 +182,32 @@ class MovimientosBancariosModel extends Model
             array_push($params, $like, $like, $like, $like, $like);
         }
 
+        // fecha DESC + id DESC: el id conserva el orden de línea del archivo,
+        // que es el orden real de aplicación al saldo (la hora NO lo es: el
+        // banco registra movimientos con hora de operación pero los aplica
+        // después; verificado 2026-07-23 contra el TXT del 20/07 — 0 roturas
+        // de cadena de saldo en orden de archivo vs 11 ordenando por hora).
         $query = "SELECT * FROM [TG].[dbo].[movimientos_bancarios]
-                  $where ORDER BY cuenta, fecha, id;";
+                  $where ORDER BY fecha DESC, id DESC;";
         return $this->sql->select($query, $params) ?: [];
+    }
+
+    /**
+     * Último saldo conocido de cada cuenta al corte de una fecha (el último
+     * movimiento aplicado = fecha DESC, id DESC dentro de cada cuenta).
+     * Incluye la fecha de ese movimiento: si es anterior al corte, la cuenta
+     * no tuvo movimientos ese día y el saldo viene de un día previo.
+     */
+    public function get_saldos_finales(string $hasta): array
+    {
+        $query = "SELECT banco, cuenta, fecha, saldo FROM (
+                      SELECT banco, cuenta, fecha, saldo,
+                             ROW_NUMBER() OVER (PARTITION BY banco, cuenta
+                                                ORDER BY fecha DESC, id DESC) AS rn
+                      FROM [TG].[dbo].[movimientos_bancarios]
+                      WHERE fecha <= ?
+                  ) t WHERE rn = 1 ORDER BY cuenta;";
+        return $this->sql->select($query, [$hasta]) ?: [];
     }
 
     /** Cuentas distintas presentes en la tabla (para el filtro). */

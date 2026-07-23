@@ -9,6 +9,7 @@
     .num { font-variant-numeric:tabular-nums; text-align:right; }
     .res-negativo { color:#dc3545; font-weight:600; }
     .res-positivo { color:#198754; font-weight:600; }
+    .dot-asignado { display:inline-block; width:8px; height:8px; border-radius:50%; background:#198754; margin-right:6px; vertical-align:middle; }
 </style>
 {% endblock %}
 {% block menutitle %}
@@ -67,7 +68,7 @@
           <td>{{ c.cajero_nombre }}</td>
           <td>
             {% if es_admin and sesion.estado != 'cerrado' %}
-            <select class="form-select form-select-sm select-asignar" data-caja-id="{{ c.id }}" style="min-width:170px;">
+            <select class="selectpicker select-asignar" data-live-search="true" data-size="8" data-width="190px" data-container="body" data-caja-id="{{ c.id }}">
               <option value="0">— Sin asignar —</option>
               {% for u in usuarios %}
               <option value="{{ u.Id }}" {{ c.asignado_user_id == u.Id ? 'selected' : '' }}>{{ u.Nombre }}</option>
@@ -109,9 +110,10 @@
 <script>
   $(document).on('change', '.select-asignar', function () {
     var sel = this;
+    var $sel = $(sel);
     var anterior = sel.getAttribute('data-anterior') ?? String(sel.value);
     var userId = parseInt(sel.value, 10) || 0;
-    sel.disabled = true;
+    $sel.closest('.bootstrap-select').find('.dropdown-toggle').prop('disabled', true);
     fetch('/arqueo/asignar_caja', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
@@ -119,22 +121,74 @@
     })
       .then(r => r.json())
       .then(d => {
-        sel.disabled = false;
+        $sel.closest('.bootstrap-select').find('.dropdown-toggle').prop('disabled', false);
         if (d.success) {
           sel.setAttribute('data-anterior', String(sel.value));
-          sel.classList.add('is-valid');
-          setTimeout(() => sel.classList.remove('is-valid'), 1200);
+          reinicializarPickers(actualizarPuntosAsignados());
+          var $btn = $sel.closest('.bootstrap-select').find('.dropdown-toggle');
+          $btn.addClass('border-success');
+          setTimeout(function () { $btn.removeClass('border-success'); }, 1200);
         } else {
           alert(d.message || 'No se pudo asignar.');
-          sel.value = anterior;
+          $sel.selectpicker('val', anterior);
         }
       })
-      .catch(() => { sel.disabled = false; alert('Error de red al asignar.'); sel.value = anterior; });
+      .catch(function () {
+        $sel.closest('.bootstrap-select').find('.dropdown-toggle').prop('disabled', false);
+        alert('Error de red al asignar.');
+        $sel.selectpicker('val', anterior);
+      });
   });
 
   // Guardar el valor inicial para poder revertir en caso de error
   document.querySelectorAll('.select-asignar').forEach(function (s) {
     s.setAttribute('data-anterior', String(s.value));
   });
+
+  function escapeHtml(t) {
+    return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // Pone punto verde a los usuarios que ya tienen caja asignada en este arqueo.
+  // Devuelve los selects cuyas opciones cambiaron (para re-renderizar solo esos).
+  function actualizarPuntosAsignados() {
+    var asignados = new Set();
+    document.querySelectorAll('.select-asignar').forEach(function (s) {
+      var v = parseInt(s.value, 10);
+      if (v > 0) asignados.add(v);
+    });
+    var cambiados = [];
+    document.querySelectorAll('.select-asignar').forEach(function (s) {
+      var cambio = false;
+      Array.prototype.forEach.call(s.options, function (o) {
+        var v = parseInt(o.value, 10);
+        if (!(v > 0)) return;
+        var nuevo = asignados.has(v)
+          ? "<span class='dot-asignado'></span>" + escapeHtml(o.textContent.trim())
+          : null;
+        if (nuevo !== o.getAttribute('data-content')) {
+          if (nuevo === null) o.removeAttribute('data-content');
+          else o.setAttribute('data-content', nuevo);
+          cambio = true;
+        }
+      });
+      if (cambio) cambiados.push(s);
+    });
+    return cambiados;
+  }
+
+  // El 'refresh' de bootstrap-select 1.14.0-beta3 duplica las opciones del menú,
+  // así que para re-renderizar hay que destruir y volver a crear el picker.
+  function reinicializarPickers(selects) {
+    selects.forEach(function (s) {
+      var $s = $(s);
+      if ($s.data('selectpicker')) $s.selectpicker('destroy');
+      $s.selectpicker();
+    });
+  }
+
+  // Los puntos iniciales se ponen ANTES de que bootstrap-select se auto-inicialice
+  // (eso pasa en window.load), así el primer render ya los incluye sin refresh.
+  actualizarPuntosAsignados();
 </script>
 {% endblock %}

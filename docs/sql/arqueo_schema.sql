@@ -51,6 +51,9 @@ BEGIN
         [go_exchange_dolares]   DECIMAL(14,2)     NULL,
         [go_exchange_mxn]       DECIMAL(14,2)     NULL,
         [costo_promedio]        DECIMAL(10,4)     NULL,
+        /* Tipos de cambio informativos (no intervienen en cálculos) */
+        [tipo_cambio_compra]    DECIMAL(10,4)     NULL,
+        [tipo_cambio_venta]     DECIMAL(10,4)     NULL,
 
         /* Totales calculados (persistidos para historial) */
         [total_fisico_dolares]  DECIMAL(14,2)     NULL,
@@ -78,6 +81,14 @@ BEGIN
     );
     CREATE INDEX [IX_arqueo_cajas_sesion] ON [TG].[dbo].[arqueo_cajas] ([sesion_id]);
 END
+GO
+
+/* Migración 2026-07-23: tipos de cambio informativos en instalaciones existentes */
+IF COL_LENGTH('[TG].[dbo].[arqueo_cajas]', 'tipo_cambio_compra') IS NULL
+    ALTER TABLE [TG].[dbo].[arqueo_cajas] ADD [tipo_cambio_compra] DECIMAL(10,4) NULL;
+GO
+IF COL_LENGTH('[TG].[dbo].[arqueo_cajas]', 'tipo_cambio_venta') IS NULL
+    ALTER TABLE [TG].[dbo].[arqueo_cajas] ADD [tipo_cambio_venta] DECIMAL(10,4) NULL;
 GO
 
 /* ---------------------------------------------------------------------------

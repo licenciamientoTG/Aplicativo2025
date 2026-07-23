@@ -24,7 +24,10 @@ class ArqueoCajasModel extends Model
     public function find($id)
     {
         $rows = $this->sql->select(
-            "SELECT * FROM [TG].[dbo].[arqueo_cajas] WHERE id = ?;",
+            "SELECT c.*, u.Nombre AS asignado_nombre
+             FROM [TG].[dbo].[arqueo_cajas] c
+             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = c.asignado_user_id
+             WHERE c.id = ?;",
             [$id]
         );
         return $rows ? $rows[0] : false;
@@ -64,6 +67,8 @@ class ArqueoCajasModel extends Model
                 go_exchange_dolares  = ?,
                 go_exchange_mxn      = ?,
                 costo_promedio       = ?,
+                tipo_cambio_compra   = ?,
+                tipo_cambio_venta    = ?,
                 total_fisico_dolares = ?,
                 total_fisico_mxn     = ?,
                 total_arqueo_mxn     = ?,
@@ -84,6 +89,8 @@ class ArqueoCajasModel extends Model
             $t['go_exchange_dolares']  ?? 0,
             $t['go_exchange_mxn']      ?? 0,
             $t['costo_promedio']       ?? 0,
+            $t['tipo_cambio_compra']   ?? 0,
+            $t['tipo_cambio_venta']    ?? 0,
             $t['total_fisico_dolares'] ?? 0,
             $t['total_fisico_mxn']     ?? 0,
             $t['total_arqueo_mxn']     ?? 0,

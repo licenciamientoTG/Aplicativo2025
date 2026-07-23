@@ -30,6 +30,16 @@
   .mb-cuenta { font-family: monospace; white-space: nowrap; }
   .mb-card-total .card-body { padding: .75rem 1rem; }
   .mb-card-total h4 { margin-bottom: 0; font-variant-numeric: tabular-nums; }
+
+  /* Panel colapsable de saldos finales */
+  .mb-chevron { transition: transform .2s; color: #94a3b8; }
+  #btnSaldosCollapse:not(.collapsed) .mb-chevron { transform: rotate(180deg); }
+  #btnSaldosCollapse:focus { box-shadow: none; }
+  .mb-saldos-tabla { font-size: .8rem; margin-bottom: 0; }
+  .mb-saldos-tabla th { background: #f8fafc; color: #475569; font-size: .68rem;
+                        text-transform: uppercase; letter-spacing: .05em; }
+  .mb-saldos-tabla tfoot td { font-weight: 700; border-top: 2px solid #e2e8f0; }
+  .mb-saldos-scroll { max-height: 45vh; overflow: auto; }
   .table-responsive { padding: 1rem .75rem .75rem; }
 </style>
 {% endblock %}
@@ -78,8 +88,30 @@
   </div>
 </div>
 
+<!-- Panel colapsable: saldo final de todas las cuentas (carga asíncrona) -->
+<div class="card mb-3">
+  <div class="card-header p-0 bg-white">
+    <button class="btn w-100 d-flex justify-content-between align-items-center collapsed" type="button"
+            id="btnSaldosCollapse" data-bs-toggle="collapse" data-bs-target="#saldosCollapse">
+      <span style="color:#334155;">
+        <i class="fas fa-wallet me-2 text-primary"></i>
+        <strong>Saldo final por cuenta</strong>
+        <small class="text-muted">al {{ filtros.hasta|date('d/m/Y') }}</small>
+      </span>
+      <i class="fas fa-chevron-down mb-chevron"></i>
+    </button>
+  </div>
+  <div class="collapse" id="saldosCollapse">
+    <div class="card-body p-2" id="saldosCollapseBody">
+      <div class="text-center text-muted py-3">
+        <span class="spinner-border spinner-border-sm"></span> Cargando saldos...
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="row mb-3">
-  <div class="col-md-3">
+  <div class="col-md">
     <div class="card mb-card-total">
       <div class="card-body">
         <span class="text-muted">Abonos</span>
@@ -87,7 +119,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md">
     <div class="card mb-card-total">
       <div class="card-body">
         <span class="text-muted">Cargos</span>
@@ -95,7 +127,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md">
     <div class="card mb-card-total">
       <div class="card-body">
         <span class="text-muted">Neto</span>
@@ -103,7 +135,18 @@
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md">
+    <div class="card mb-card-total">
+      <div class="card-body">
+        <span class="text-muted">Saldo final <small>({{ filtros.cuenta ?: 'todas' }})</small></span>
+        <h4>{{ saldoFinal is null ? '—' : '$' ~ saldoFinal|number_format(2, '.', ',') }}</h4>
+        {% if saldoFinalFecha and saldoFinalFecha != filtros.hasta %}
+        <small class="text-muted">último mov: {{ saldoFinalFecha|date('d/m/Y') }}</small>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md">
     <div class="card mb-card-total">
       <div class="card-body">
         <span class="text-muted">Movimientos</span>
@@ -118,6 +161,7 @@
     <table id="mb_table" class="table table-hover table-sm w-100 dataTable mb-0">
       <thead>
         <tr>
+          <th>Id</th>
           <th>Cuenta</th>
           <th>Fecha</th>
           <th>Hora</th>
@@ -135,6 +179,7 @@
       <tbody>
         {% for m in movimientos %}
         <tr>
+          <td>{{ m.id }}</td>
           <td class="mb-cuenta">{{ m.cuenta }}</td>
           <td data-order="{{ m.fecha }}">{{ m.fecha|date('d/m/Y') }}</td>
           <td>{{ m.hora }}</td>
@@ -202,10 +247,12 @@ $(function () {
       [25, 50, 100, 200, -1],
       [25, 50, 100, 200, 'Todos'],
     ],
-    order: [[1, 'asc'], [2, 'asc']],
-    // Cuenta y Contraparte ocultas por default (formato de tesorería);
+    // fecha DESC, id DESC: el id (orden de línea del archivo) es el orden
+    // real de aplicación al saldo; ordenar por hora rompe la cadena
+    order: [[2, 'desc'], [0, 'desc']],
+    // Id, Cuenta y Contraparte ocultas por default (formato de tesorería);
     // se pueden activar con el botón Columnas
-    columnDefs: [{ targets: [0, 11], visible: false }],
+    columnDefs: [{ targets: [0, 1, 12], visible: false }],
     language: {
       lengthMenu: 'Mostrar _MENU_ registros',
       emptyTable: 'Sin movimientos en el rango seleccionado. Sube un TXT de Santander para importarlos.',
@@ -259,6 +306,56 @@ $(function () {
         api.draw();
       });
     },
+  });
+
+  // ===== Panel colapsable: saldos finales por cuenta (carga asíncrona) =====
+  var saldosCargados = false;
+
+  function fmtMonto(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtFecha(iso) {
+    var p = String(iso).substring(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+
+  document.getElementById('saldosCollapse').addEventListener('show.bs.collapse', function () {
+    if (saldosCargados) return;
+    saldosCargados = true;
+
+    var body = document.getElementById('saldosCollapseBody');
+    fetch('/tesoreria/saldos_finales?hasta=' + encodeURIComponent('{{ filtros.hasta }}'))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.success) {
+          body.innerHTML = '<div class="alert alert-danger mb-0">' + (data.message || 'Error al cargar saldos') + '</div>';
+          return;
+        }
+        if (!data.saldos.length) {
+          body.innerHTML = '<div class="text-center text-muted py-3">Sin saldos registrados al ' + fmtFecha(data.hasta) + '</div>';
+          return;
+        }
+        var html = '<div class="mb-saldos-scroll"><table class="table table-sm table-hover mb-saldos-tabla">' +
+                   '<thead><tr><th>Cuenta</th><th>Banco</th><th>Último movimiento</th>' +
+                   '<th class="text-end">Saldo final</th></tr></thead><tbody>';
+        data.saldos.forEach(function (s) {
+          var viejo = String(s.fecha).substring(0, 10) !== data.hasta;
+          html += '<tr>' +
+                  '<td class="mb-cuenta">' + s.cuenta + '</td>' +
+                  '<td>' + (s.banco || '') + '</td>' +
+                  '<td class="' + (viejo ? 'text-warning' : 'text-muted') + '">' + fmtFecha(s.fecha) +
+                  (viejo ? ' <i class="fas fa-exclamation-triangle" title="Sin movimientos al corte: saldo de un día anterior"></i>' : '') +
+                  '</td>' +
+                  '<td class="mb-monto">' + fmtMonto(s.saldo) + '</td></tr>';
+        });
+        html += '</tbody><tfoot><tr><td colspan="3">TOTAL (' + data.saldos.length + ' cuentas)</td>' +
+                '<td class="mb-monto">' + fmtMonto(data.total) + '</td></tr></tfoot></table></div>';
+        body.innerHTML = html;
+      })
+      .catch(function () {
+        saldosCargados = false;   // permitir reintentar al volver a abrir
+        body.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al cargar los saldos</div>';
+      });
   });
 
   // ===== Upload TXT Santander =====

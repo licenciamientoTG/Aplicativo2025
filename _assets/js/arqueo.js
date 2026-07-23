@@ -243,6 +243,8 @@ function guardarCaja() {
     go_exchange_dolares: parseFloat(document.getElementById("go_exchange_dolares").value) || 0,
     go_exchange_mxn: parseFloat(document.getElementById("go_exchange_mxn").value) || 0,
     costo_promedio: parseFloat(document.getElementById("costo_promedio").value) || 0,
+    tipo_cambio_compra: parseFloat(document.getElementById("tipo_cambio_compra").value) || 0,
+    tipo_cambio_venta: parseFloat(document.getElementById("tipo_cambio_venta").value) || 0,
     denominaciones: denominaciones,
     vales: vales,
   };
@@ -250,6 +252,9 @@ function guardarCaja() {
   ajaxJson("/arqueo/guardar_caja/" + cajaId, payload).then((res) => {
     if (res.success) {
       toastr.success("Arqueo guardado.");
+      // La caja ya tiene captura guardada: desbloquear el botón Imprimir.
+      const btnImp = document.getElementById("btn_imprimir");
+      if (btnImp) btnImp.removeAttribute("data-bloqueado");
     } else {
       let msg = res.message || "No se pudo guardar.";
       if (res.errores) msg += " (" + Object.values(res.errores).join(" ") + ")";
@@ -263,6 +268,17 @@ function guardarCaja() {
 document.addEventListener("DOMContentLoaded", function () {
   const enCaja = document.getElementById("form_arqueo");
   if (enCaja) {
+    // Imprimir bloqueado hasta que la caja tenga captura guardada.
+    const btnImp = document.getElementById("btn_imprimir");
+    if (btnImp) {
+      btnImp.addEventListener("click", function (e) {
+        if (this.hasAttribute("data-bloqueado")) {
+          e.preventDefault();
+          alertify.error("Guarda el arqueo antes de imprimir.");
+        }
+      });
+    }
+
     ubicarResumen();
     mqResumen.addEventListener("change", ubicarResumen);
 

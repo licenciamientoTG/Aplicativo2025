@@ -50,6 +50,8 @@
 </head>
 <body>
 
+<div id="formato">
+
 <div class="encabezado">
     <div class="izq">
         <img src="{{ IMAGES }}arqueo/logo_dollar2go.png" alt="Dollar2Go" class="logo">
@@ -156,11 +158,34 @@
     </div>
 </div>
 
+</div>{# /formato #}
+
 <div class="no-print">
+    <button type="button" id="btn-descargar">Descargar PDF</button>
     <button type="button" onclick="window.print()">Imprimir</button>
     <button type="button" onclick="window.close()">Cerrar</button>
 </div>
 
-<script>window.addEventListener('load', function () { window.print(); });</script>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<script>
+function descargarPDF() {
+    var btn = document.getElementById('btn-descargar');
+    btn.disabled = true;
+    btn.textContent = 'Generando PDF…';
+    html2pdf().set({
+        margin: [10, 12],
+        filename: 'Arqueo_{{ caja.sucursal_nombre|replace({" ": "_"}) }}_Caja{{ caja.caja_numero }}_{{ sesion.fecha|date("Y-m-d") }}.pdf',
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] }
+    }).from(document.getElementById('formato')).save()
+      .then(function () { btn.disabled = false; btn.textContent = 'Descargar PDF'; })
+      .catch(function () { btn.disabled = false; btn.textContent = 'Descargar PDF'; alert('No se pudo generar el PDF.'); });
+}
+document.getElementById('btn-descargar').addEventListener('click', descargarPDF);
+// Al abrir la página se descarga el PDF automáticamente (antes se abría el diálogo de impresión)
+window.addEventListener('load', descargarPDF);
+</script>
 </body>
 </html>
