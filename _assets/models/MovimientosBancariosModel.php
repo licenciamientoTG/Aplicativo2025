@@ -182,13 +182,14 @@ class MovimientosBancariosModel extends Model
             array_push($params, $like, $like, $like, $like, $like);
         }
 
-        // fecha DESC + id DESC: el id conserva el orden de línea del archivo,
-        // que es el orden real de aplicación al saldo (la hora NO lo es: el
-        // banco registra movimientos con hora de operación pero los aplica
-        // después; verificado 2026-07-23 contra el TXT del 20/07 — 0 roturas
-        // de cadena de saldo en orden de archivo vs 11 ordenando por hora).
+        // fecha ASC + id ASC (formato estado de cuenta): días viejos arriba y
+        // el saldo final como última fila. El id conserva el orden de línea
+        // del archivo, que es el orden real de aplicación al saldo (la hora
+        // NO lo es: el banco registra movimientos con hora de operación pero
+        // los aplica después; verificado 2026-07-23 contra el TXT del 20/07 —
+        // 0 roturas de cadena de saldo en orden de archivo vs 11 por hora).
         $query = "SELECT * FROM [TG].[dbo].[movimientos_bancarios]
-                  $where ORDER BY fecha DESC, id DESC;";
+                  $where ORDER BY fecha, id;";
         return $this->sql->select($query, $params) ?: [];
     }
 

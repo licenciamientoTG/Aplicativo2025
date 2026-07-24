@@ -247,12 +247,13 @@ $(function () {
       [25, 50, 100, 200, -1],
       [25, 50, 100, 200, 'Todos'],
     ],
-    // fecha DESC, id DESC: el id (orden de línea del archivo) es el orden
-    // real de aplicación al saldo; ordenar por hora rompe la cadena
-    order: [[2, 'desc'], [0, 'desc']],
-    // Id, Cuenta y Contraparte ocultas por default (formato de tesorería);
+    // fecha ASC, id ASC (estado de cuenta): el saldo final queda como última
+    // fila; el id (orden de línea del archivo) es el orden real de aplicación
+    // al saldo — ordenar por hora rompe la cadena
+    order: [[2, 'asc'], [0, 'asc']],
+    // Cuenta y Contraparte ocultas por default (formato de tesorería);
     // se pueden activar con el botón Columnas
-    columnDefs: [{ targets: [0, 1, 12], visible: false }],
+    columnDefs: [{ targets: [1, 12], visible: false }],
     language: {
       lengthMenu: 'Mostrar _MENU_ registros',
       emptyTable: 'Sin movimientos en el rango seleccionado. Sube un TXT de Santander para importarlos.',
