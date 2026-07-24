@@ -28,6 +28,34 @@
   .mb-abono { color: #009559; font-weight: 600; }
   .mb-cargo { color: #dc3545; font-weight: 600; }
   .mb-cuenta { font-family: monospace; white-space: nowrap; }
+
+  /* Contenedor de tabla estilo merma: borde, toolbar fija arriba, scroll
+     propio con scrollbar siempre visible y cabeceras sticky */
+  .mb-tabla-wrap { border: 2px solid #cbd5e1; border-radius: .5rem; background: #fff; overflow: hidden; }
+  .mb-tabla-wrap .mb-top {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .5rem .75rem; background: #fff; border-bottom: 2px solid #cbd5e1;
+  }
+  .mb-tabla-wrap .dataTables_filter input {
+    border: 1px solid #cbd5e1; border-radius: .375rem;
+    padding: .25rem .5rem; margin-left: .5rem;
+  }
+  .mb-tabla-wrap .mb-bottom {
+    display: flex; justify-content: flex-end; padding: .4rem .75rem;
+    background: #f8fafc; border-top: 2px solid #cbd5e1;
+    color: #475569; font-size: .75rem;
+  }
+  .mb-scroll { overflow: auto; max-height: 65vh; }
+  .mb-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
+  .mb-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
+  .mb-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 2px solid #f1f5f9; }
+  .mb-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  #mb_table { border-collapse: separate; border-spacing: 0; }
+  #mb_table thead th { position: sticky; top: 0; z-index: 30; }
+  #mb_table thead tr.filter th { z-index: 30; /* top se fija por JS */ }
+  #mb_table th, #mb_table td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
+  #mb_table tr > :last-child { border-right: none; }
   .mb-card-total .card-body { padding: .75rem 1rem; }
   .mb-card-total h4 { margin-bottom: 0; font-variant-numeric: tabular-nums; }
 
@@ -40,7 +68,6 @@
                         text-transform: uppercase; letter-spacing: .05em; }
   .mb-saldos-tabla tfoot td { font-weight: 700; border-top: 2px solid #e2e8f0; }
   .mb-saldos-scroll { max-height: 45vh; overflow: auto; }
-  .table-responsive { padding: 1rem .75rem .75rem; }
 </style>
 {% endblock %}
 
@@ -156,8 +183,7 @@
   </div>
 </div>
 
-<div class="card">
-  <div class="table-responsive">
+<div class="mb-tabla-wrap">
     <table id="mb_table" class="table table-hover table-sm w-100 dataTable mb-0">
       <thead>
         <tr>
@@ -201,7 +227,6 @@
         {% endfor %}
       </tbody>
     </table>
-  </div>
 </div>
 
 <!-- Modal subir TXT Santander -->
@@ -241,12 +266,12 @@ $(function () {
   // paginación y fila de filtros por columna en la cabecera.
   var api = $('#mb_table').DataTable({
     responsive: true,
-    dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rt<"d-flex justify-content-between align-items-center"<"d-flex align-items-center gap-3"li>p>',
-    pageLength: 50,
-    lengthMenu: [
-      [25, 50, 100, 200, -1],
-      [25, 50, 100, 200, 'Todos'],
-    ],
+    // Sin paginación: la tabla vive en un contenedor .mb-scroll con
+    // cabeceras sticky; solo toolbar arriba y contador de registros abajo
+    paging: false,
+    // mb-top (botones + buscador) y mb-bottom (contador) quedan fijos dentro
+    // del marco; solo la tabla scrollea (se envuelve en .mb-scroll al iniciar)
+    dom: '<"mb-top"Bf>rt<"mb-bottom"i>',
     // fecha ASC, id ASC (estado de cuenta): el saldo final queda como última
     // fila; el id (orden de línea del archivo) es el orden real de aplicación
     // al saldo — ordenar por hora rompe la cadena
@@ -255,7 +280,9 @@ $(function () {
     // se pueden activar con el botón Columnas
     columnDefs: [{ targets: [1, 12], visible: false }],
     language: {
-      lengthMenu: 'Mostrar _MENU_ registros',
+      info: 'Mostrando _TOTAL_ movimientos',
+      infoFiltered: '(filtrados de _MAX_)',
+      infoEmpty: 'Sin movimientos',
       emptyTable: 'Sin movimientos en el rango seleccionado. Sube un TXT de Santander para importarlos.',
     },
     buttons: [
@@ -295,7 +322,16 @@ $(function () {
         $('#mb_table thead tr.filter th input').on('click', function (e) {
           e.stopPropagation();
         });
+
+        // Anclar la fila de filtros justo debajo de la fila de títulos
+        // (ambas sticky dentro del contenedor con scroll)
+        var altura = $('#mb_table thead tr:first th:visible').first().outerHeight() || 33;
+        $('#mb_table thead tr.filter th').css('top', altura + 'px');
       }
+
+      // Solo la tabla scrollea: la toolbar (mb-top) y el contador (mb-bottom)
+      // quedan fijos dentro del marco del contenedor
+      $('#mb_table').wrap('<div class="mb-scroll"></div>');
 
       buildFilterRow();
 
@@ -306,6 +342,10 @@ $(function () {
         buildFilterRow();
         api.draw();
       });
+
+      // Arrancar con el scroll al fondo: la última fila es el saldo final
+      var scroller = document.querySelector('.mb-scroll');
+      if (scroller) scroller.scrollTop = scroller.scrollHeight;
     },
   });
 
