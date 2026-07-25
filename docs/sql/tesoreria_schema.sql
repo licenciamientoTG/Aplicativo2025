@@ -29,6 +29,7 @@ CREATE TABLE dbo.movimientos_bancarios (
     clave_rastreo      NVARCHAR(40)  NULL,
     descripcion_larga  NVARCHAR(150) NULL,
     huella             CHAR(40)      NOT NULL,           -- SHA1 de campos crudos (dedup)
+    secuencia          INT           NULL,               -- No. Secuencia de Afirme (orden de aplicación); NULL en Santander
     archivo_origen     NVARCHAR(120) NULL,
     created_by         INT           NULL,               -- Id de usuario TG
     created_at         DATETIME      NOT NULL DEFAULT GETDATE(),

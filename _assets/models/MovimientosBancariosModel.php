@@ -98,6 +98,109 @@ class MovimientosBancariosModel extends Model
         return ['movimientos' => $movimientos, 'errores' => $errores];
     }
 
+    /**
+     * Parsea el export de movimientos de Afirme: un ".xls" que en realidad es
+     * texto separado por tabs (Windows-1252) con cabecera. Columnas:
+     * Concepto | Fecha (DD/MM/AA) | Referencia | Cargo | Abono | Saldo |
+     * Cuenta | Código | No. Secuencia.
+     *
+     * La secuencia es un consecutivo global del export (cruza días) y es el
+     * orden real de aplicación al saldo; los movimientos se devuelven
+     * ordenados por cuenta+secuencia para que el id de BD conserve ese orden.
+     * La huella NO incluye la secuencia: se renumera desde 1 en cada export,
+     * y con ella dos exports traslapados duplicarían movimientos.
+     *
+     * @return array ['movimientos' => array[], 'errores' => string[]]
+     */
+    public static function parse_afirme_tsv(string $contenido): array
+    {
+        if (!mb_check_encoding($contenido, 'UTF-8')) {
+            $contenido = mb_convert_encoding($contenido, 'UTF-8', 'Windows-1252');
+        }
+
+        $movimientos = [];
+        $errores     = [];
+        $headerVisto = false;
+
+        foreach (preg_split('/\r\n|\r|\n/', $contenido) as $i => $linea) {
+            $num = $i + 1;
+            if (trim($linea) === '') continue;
+
+            if (!$headerVisto) {
+                if (stripos($linea, "Concepto\tFecha") === 0) {
+                    $headerVisto = true;
+                    continue;
+                }
+                return ['movimientos' => [], 'errores' =>
+                    ['El archivo no tiene la cabecera esperada de Afirme (Concepto, Fecha, Referencia...)']];
+            }
+
+            $c = array_map('trim', explode("\t", $linea));
+            if (count($c) < 9) {
+                $errores[] = "Línea $num: columnas insuficientes (" . count($c) . ' de 9)';
+                continue;
+            }
+            [$concepto, $fechaRaw, $referencia, $cargoRaw, $abonoRaw, $saldoRaw, $cuenta, $codigo, $secuencia] = $c;
+
+            if (!preg_match('#^(\d{2})/(\d{2})/(\d{2,4})$#', $fechaRaw, $f)) {
+                $errores[] = "Línea $num: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $anio = strlen($f[3]) === 2 ? 2000 + (int)$f[3] : (int)$f[3];
+            if (!checkdate((int)$f[2], (int)$f[1], $anio)) {
+                $errores[] = "Línea $num: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $fecha = sprintf('%04d-%s-%s', $anio, $f[2], $f[1]);
+
+            $cargo = (float)str_replace(',', '', $cargoRaw);
+            $abono = (float)str_replace(',', '', $abonoRaw);
+            $saldo = (float)str_replace(',', '', $saldoRaw);
+            if (!is_numeric(str_replace(',', '', $cargoRaw)) || !is_numeric(str_replace(',', '', $abonoRaw))
+                || !is_numeric(str_replace(',', '', $saldoRaw))) {
+                $errores[] = "Línea $num: importe/saldo inválido";
+                continue;
+            }
+
+            $huella = sha1('AFIRME|' . implode('|', [
+                $cuenta, $fecha, $concepto, $referencia, $codigo,
+                sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
+            ]));
+
+            $movimientos[] = [
+                'banco'              => 'AFIRME',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => null,
+                'sucursal'           => null,
+                'clave_trans'        => $codigo,
+                'descripcion'        => $concepto,
+                'cargo'              => $cargo > 0 ? $cargo : null,
+                'abono'              => $abono > 0 ? $abono : null,
+                'saldo'              => $saldo,
+                'referencia'         => $referencia,
+                'concepto'           => null,
+                'banco_contraparte'  => '',
+                'cuenta_contraparte' => '',
+                'nombre_contraparte' => '',
+                'rfc_contraparte'    => null,
+                'clave_rastreo'      => null,
+                'descripcion_larga'  => null,
+                'secuencia'          => (int)$secuencia,
+                'huella'             => $huella,
+            ];
+        }
+
+        if (!$headerVisto) {
+            $errores[] = 'Archivo vacío o sin cabecera de Afirme';
+        }
+
+        // El id de BD debe conservar el orden de aplicación al saldo
+        usort($movimientos, fn($a, $b) => [$a['cuenta'], $a['secuencia']] <=> [$b['cuenta'], $b['secuencia']]);
+
+        return ['movimientos' => $movimientos, 'errores' => $errores];
+    }
+
     /** Extrae un campo de ancho fijo, recortado y normalizado a UTF-8. */
     private static function campo(string $linea, int $ini, int $len): string
     {
@@ -139,15 +242,16 @@ class MovimientosBancariosModel extends Model
                      (banco, cuenta, fecha, hora, sucursal, clave_trans, descripcion,
                       cargo, abono, saldo, referencia, concepto, banco_contraparte,
                       cuenta_contraparte, nombre_contraparte, rfc_contraparte,
-                      clave_rastreo, descripcion_larga, huella, archivo_origen, created_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
+                      clave_rastreo, descripcion_larga, huella, secuencia,
+                      archivo_origen, created_by)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
                     [
                         $m['banco'], $m['cuenta'], $m['fecha'], $m['hora'], $m['sucursal'],
                         $m['clave_trans'], $m['descripcion'], $m['cargo'], $m['abono'],
                         $m['saldo'], $m['referencia'], $m['concepto'], $m['banco_contraparte'],
                         $m['cuenta_contraparte'], $m['nombre_contraparte'], $m['rfc_contraparte'],
                         $m['clave_rastreo'], $m['descripcion_larga'], $m['huella'],
-                        $archivo, $usuario,
+                        $m['secuencia'] ?? null, $archivo, $usuario,
                     ]
                 );
                 $insertados++;

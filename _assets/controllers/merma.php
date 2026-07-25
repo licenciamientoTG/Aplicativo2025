@@ -73,6 +73,7 @@ class Merma
         $resumen    = $this->mermaModel->get_resumen_rango($desde, $hasta);
         $manual     = $this->mermaModel->get_manual($anio, $mes);
         $fechas     = $this->mermaModel->get_fechas_por_estacion($desde, $hasta);
+        $corruptas  = $this->mermaModel->get_corruptas_por_estacion($desde, $hasta);
 
         // Días esperados: todos los del rango (hasta ya viene topado en ayer)
         $diasEsperados = [];
@@ -104,6 +105,7 @@ class Merma
                 'sd_diesel'   => $m['merma_sd_diesel'] ?? null,
                 'comentarios' => $m['comentarios'] ?? '',
                 'faltantes'   => $faltantes,
+                'corruptas'   => $corruptas[$cod] ?? [],
             ];
             $filas[] = $fila;
             foreach (['maxima', 'super', 'diesel', 'total', 'venta'] as $k) {
@@ -134,9 +136,28 @@ class Merma
         }
         $codgas = (int)$codgas;
         // Misma regla que analisis(): el default se ancla a ayer, nunca a hoy
-        $ayer   = strtotime('yesterday');
-        $anio   = (int)($_GET['anio'] ?? date('Y', $ayer));
-        $mes    = (int)($_GET['mes'] ?? date('n', $ayer));
+        $ayer    = strtotime('yesterday');
+        $ayerStr = date('Y-m-d', $ayer);
+
+        // Rango de días opcional (llega del buscador de analisis o del propio
+        // detalle); sin rango válido se cae al mes completo de anio/mes
+        $desde   = $_GET['desde'] ?? '';
+        $hasta   = $_GET['hasta'] ?? '';
+        $esFecha = fn($f) => is_string($f) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $f) && strtotime($f) !== false;
+        if (!$esFecha($desde) || !$esFecha($hasta)) {
+            $anio  = (int)($_GET['anio'] ?? date('Y', $ayer));
+            $mes   = (int)($_GET['mes'] ?? date('n', $ayer));
+            if ($mes < 1 || $mes > 12) $mes = (int)date('n', $ayer);
+            $desde = sprintf('%04d-%02d-01', $anio, $mes);
+            $hasta = date('Y-m-t', mktime(0, 0, 0, $mes, 1, $anio));
+        }
+        if ($desde > $hasta) [$desde, $hasta] = [$hasta, $desde];
+        if ($hasta > $ayerStr) $hasta = $ayerStr;
+        if ($desde > $hasta)   $desde = date('Y-m-01', strtotime($hasta));
+        // Título, botón de sync e inv. inicial se anclan al mes de "hasta"
+        // (misma convención que analisis)
+        $anio = (int)substr($hasta, 0, 4);
+        $mes  = (int)substr($hasta, 5, 2);
 
         $estacion = null;
         foreach ($this->mermaModel->get_estaciones() as $e) {
@@ -147,7 +168,7 @@ class Merma
             return;
         }
 
-        $rows = $this->mermaModel->get_detalle_mensual($codgas, $anio, $mes);
+        $rows = $this->mermaModel->get_detalle_rango($codgas, $desde, $hasta);
 
         // Acumulado de diferencia por familia (como las columnas I/P del Excel)
         $acum    = ['maxima' => 0.0, 'super' => 0.0, 'diesel' => 0.0];
@@ -179,16 +200,127 @@ class Merma
             $filas[] = $fila;
         }
 
-        // Resumen del mes (KPIs) topado en ayer: el día en curso no cuenta
-        $desdeMes = sprintf('%04d-%02d-01', $anio, $mes);
-        $hastaMes = min(date('Y-m-t', mktime(0, 0, 0, $mes, 1, $anio)), date('Y-m-d', $ayer));
-        if ($hastaMes < $desdeMes) $hastaMes = $desdeMes;
-        $resumenMes = $this->mermaModel->get_resumen_rango($desdeMes, $hastaMes);
-        $resumen    = $resumenMes[$codgas] ?? null;
-        $invInicial = $this->mermaModel->get_inv_inicial_mes($codgas, $anio, $mes);
+        // Agregado por día (tab "Diario", como el Análisis de Mermas de
+        // ControlGas): merma del día = suma de diferencias de sus turnos
+        // (la cadena del libro amarillo telescopia), saldo real = último
+        // corte físico válido del día, contable = real - merma, e
+        // inicial = contable + ventas - compras (= real del día anterior)
+        $diasMap = [];
+        foreach ($filas as $f) {
+            $fecha = $f['fecha'];
+            if (!isset($diasMap[$fecha])) {
+                $diasMap[$fecha] = ['fecha' => $fecha, 'turnos' => []];
+            }
+            $diasMap[$fecha]['turnos'][] = $f;
+            foreach (array_keys(MermaDiariaModel::FAMILIAS) as $fam) {
+                $b = $f[$fam];
+                $d = $diasMap[$fecha][$fam] ?? ['vr' => null, 'compras' => null, 'dif' => null, 'fis' => null, 'corrupta' => false];
+                if ($b['vr'] !== null)      $d['vr']      = ($d['vr'] ?? 0) + (float)$b['vr'];
+                if ($b['compras'] !== null) $d['compras'] = ($d['compras'] ?? 0) + (float)$b['compras'];
+                if ($b['dif'] !== null)     $d['dif']     = ($d['dif'] ?? 0) + (float)$b['dif'];
+                if ($b['fis'] !== null && !$b['fis_corrupta']) $d['fis'] = (float)$b['fis'];
+                if ($b['fis_corrupta']) $d['corrupta'] = true;
+                $diasMap[$fecha][$fam] = $d;
+            }
+        }
+        $dias = [];
+        foreach ($diasMap as $dia) {
+            foreach (array_keys(MermaDiariaModel::FAMILIAS) as $fam) {
+                $d = $dia[$fam] ?? ['vr' => null, 'compras' => null, 'dif' => null, 'fis' => null, 'corrupta' => false];
+                $d['cont'] = ($d['fis'] !== null && $d['dif'] !== null) ? $d['fis'] - $d['dif'] : null;
+                $d['ini']  = $d['cont'] !== null ? $d['cont'] + ($d['vr'] ?? 0) - ($d['compras'] ?? 0) : null;
+                $d['pct']  = ($d['dif'] !== null && ($d['vr'] ?? 0) != 0) ? $d['dif'] / $d['vr'] * 100 : null;
+                $dia[$fam] = $d;
+            }
+            $dias[] = $dia;
+        }
 
+        // KPIs sobre el mismo rango filtrado (el snapshot nunca trae el día en
+        // curso, así que no hace falta topar en ayer)
+        $resumenRango = $this->mermaModel->get_resumen_rango($desde, $hasta);
+        $resumen      = $resumenRango[$codgas] ?? null;
+        // El inv. inicial sigue siendo el del arranque del mes de "desde"
+        $invInicial = $this->mermaModel->get_inv_inicial_mes(
+            $codgas, (int)substr($desde, 0, 4), (int)substr($desde, 5, 2));
+
+        $maxHasta = $ayerStr;
         echo $this->twig->render($this->route . 'detalle.html',
-            compact('estacion', 'anio', 'mes', 'filas', 'resumen', 'invInicial', 'compras', 'ventas'));
+            compact('estacion', 'anio', 'mes', 'desde', 'hasta', 'maxHasta',
+                    'filas', 'dias', 'resumen', 'invInicial', 'compras', 'ventas'));
+    }
+
+    /* ===================================================================== */
+    /* Corrección de cortes físicos (StockReal en la estación)               */
+    /* ===================================================================== */
+
+    /** Filas crudas de StockReal de un día, para el modal de corrección. */
+    public function cortes_fisicos(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $fecha  = $_POST['fecha'] ?? '';
+        if (!$codgas || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        try {
+            $cortes = $this->mermaModel->get_cortes_fisicos($codgas, $fecha);
+        } catch (Throwable $e) {
+            json_output(['success' => false, 'message' => 'Error consultando la estación: ' . $e->getMessage()]);
+            return;
+        }
+        json_output(['success' => true, 'cortes' => $cortes,
+                     'min' => MermaDiariaModel::INV_FISICO_MIN,
+                     'max' => MermaDiariaModel::INV_FISICO_MAX]);
+    }
+
+    /** Corrige un corte físico en la estación y re-sincroniza ese día. */
+    public function corregir_fisico(): void
+    {
+        set_time_limit(0);
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $fecha  = $_POST['fecha'] ?? '';
+        $codprd = (int)($_POST['codprd'] ?? 0);
+        $nrotur = (int)($_POST['nrotur'] ?? 0);
+        $codtan = (int)($_POST['codtan'] ?? 0);
+        $valor  = $_POST['valor'] ?? '';
+        if (!$codgas || !$codprd || !$nrotur || !$codtan
+            || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)
+            || !is_numeric($valor) || (float)$valor < 0) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0);
+
+        try {
+            $res = $this->mermaModel->update_corte_fisico(
+                $codgas, $fecha, $codprd, $nrotur, $codtan, (float)$valor, $usuario);
+        } catch (Throwable $e) {
+            json_output(['success' => false, 'message' => 'Error actualizando en la estación: ' . $e->getMessage()]);
+            return;
+        }
+        if (!$res['success']) {
+            json_output($res);
+            return;
+        }
+
+        // Reflejar la corrección en el snapshot de inmediato
+        $sync = $this->runSync($fecha, $fecha, $codgas, 'correccion', $usuario);
+        json_output([
+            'success'  => true,
+            'anterior' => $res['anterior'],
+            'message'  => 'Corte corregido en la estación'
+                          . (($res['sg12'] ?? false) ? ' y en SG12' : ' (la réplica SG12 no tenía la fila)')
+                          . ($sync['success'] ? '; día resincronizado.'
+                                              : '; pero la resincronización falló: ' . $sync['message']),
+        ]);
     }
 
     /* ===================================================================== */

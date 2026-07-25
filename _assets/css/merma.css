@@ -36,6 +36,11 @@
     font-size: 1.05rem; font-weight: 600; color: #0f172a;
     font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+.kpi-filtro-label {
+    display: block; font-size: .66rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: .05em;
+    color: #64748b; margin-bottom: .1rem;
+}
 .kpi-item .kpi-neg { color: #dc2626; }
 .kpi-item .kpi-pos { color: #059669; }
 .kpi-item .pct-alto  { color: #dc2626; }
@@ -53,6 +58,32 @@
     box-shadow: 0 1px 2px rgba(0,0,0,.05); transition: background-color .2s;
 }
 .btn-merma-sync:hover, .btn-merma-sync:disabled { background: #d1fae5; color: #047857; }
+
+/* ---- Tabs Diario / Desglosado (detalle) -------------------------------- */
+.merma-tabs { border-bottom: none; margin-bottom: .5rem; }
+.merma-tabs .nav-link {
+    color: #64748b; font-size: .74rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em;
+    border: 1px solid transparent; border-radius: .375rem .375rem 0 0;
+}
+.merma-tabs .nav-link:hover { color: #334155; border-color: #e2e8f0; }
+.merma-tabs .nav-link.active {
+    color: #047857; background: #fff; border-color: #cbd5e1;
+}
+
+/* Tab Diario: fila de día clickeable + subfilas de turno.
+   td./th. para ganarle en especificidad al ancho de 96px de .col-fecha */
+.merma-tabla td.col-dia, .merma-tabla th.col-dia {
+    width: 175px; min-width: 175px; max-width: 175px;
+    white-space: nowrap; box-shadow: 2px 0 0 0 #cbd5e1;
+}
+.merma-tabla thead th.col-dia, .merma-tabla tfoot td.col-dia { z-index: 40; }
+.dia-row { cursor: pointer; }
+.dia-row td, .dia-row td.col-dia { background: #f8fafc; font-weight: 600; }
+.dia-row:hover td, .dia-row:hover td.col-dia { background: #f1f5f9; }
+.dia-chevron { font-size: .65rem; color: #64748b; margin-right: .3rem; width: .7rem; }
+.turno-row td { color: #64748b; background: #fff; }
+.turno-row td.col-dia { padding-left: 1.6rem; font-size: .72rem; }
 
 /* ---- Contenedor de tabla ----------------------------------------------- */
 .merma-tabla-wrap {
@@ -111,6 +142,8 @@
 
 /* Lectura física corrupta (fuera de rango plausible): visible pero excluida del cálculo */
 .fis-corrupta { color: #b91c1c; font-weight: 600; white-space: nowrap; }
+/* Clic abre el modal de corrección de StockReal en la estación */
+.fis-editable { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 
 /* Pie de totales fijo al fondo del contenedor */
 .merma-tabla tfoot td {

@@ -155,7 +155,139 @@ class MermaDiariaModel extends Model
         return $out;
     }
 
-    public function get_detalle_mensual(int $codgas, int $anio, int $mes): array
+    /* ===================================================================== */
+    /* Corrección de cortes físicos en la estación (StockReal vía OPENQUERY)  */
+    /* ===================================================================== */
+
+    /** Servidor (linked server) y base de datos de una estación. */
+    public function get_estacion_conexion(int $codgas): ?array
+    {
+        $rs = $this->sql->select(
+            'SELECT Servidor, BaseDatos, Nombre FROM [TG].[dbo].[Estaciones] WHERE Codigo = ?;',
+            [$codgas]);
+        return ($rs && !empty($rs[0]['Servidor']) && !empty($rs[0]['BaseDatos'])) ? $rs[0] : null;
+    }
+
+    /**
+     * Filas crudas de StockReal de la estación para un día del snapshot
+     * (una por producto/turno/tanque). La fecha mostrada en el reporte es
+     * fch - 1, por eso fch = serial de la fecha (dateToInt).
+     */
+    public function get_cortes_fisicos(int $codgas, string $fecha): array
+    {
+        $est = $this->get_estacion_conexion($codgas);
+        if (!$est) return [];
+        $fch  = dateToInt($fecha);
+        $prds = implode(',', array_merge(...array_values(self::FAMILIAS)));
+        $inner = sprintf(
+            'SELECT fch, codgas, codprd, nrotur, codtan, can, logfch, lognew
+             FROM [%s].dbo.StockReal
+             WHERE fch = %d AND codgas = %d AND codprd IN (%s) AND nrotur NOT IN (30, 31)',
+            $est['BaseDatos'], $fch, $codgas, $prds);
+        $query = sprintf("SELECT * FROM OPENQUERY([%s], '%s') ORDER BY codprd, nrotur, codtan;",
+            $est['Servidor'], str_replace("'", "''", $inner));
+        $cortes = $this->sql->select($query) ?: [];
+
+        // Valor sugerido por corte = contable del libro amarillo: último
+        // físico válido anterior (encadena días previos) − ventas + compras
+        // del turno, calculado desde el snapshot local
+        $snap = $this->sql->select(
+            'SELECT fecha, codprd, turno, ventas_reales, compras, inv_fisico
+             FROM [TG].[dbo].[merma_diaria]
+             WHERE codgas = ? AND fecha BETWEEN DATEADD(DAY, -7, CAST(? AS DATE)) AND CAST(? AS DATE)
+             ORDER BY codprd, fecha, turno;',
+            [$codgas, $fecha, $fecha]);
+        $rec  = [];  // "codprd-turno" => sugerido (solo turnos del día pedido)
+        $last = [];  // codprd => último físico válido de la cadena
+        foreach ($snap ?: [] as $s) {
+            $prd = (int)$s['codprd'];
+            if (substr($s['fecha'], 0, 10) === $fecha && isset($last[$prd])) {
+                $rec[$prd . '-' . (int)$s['turno']] = round(
+                    $last[$prd] - (float)$s['ventas_reales'] + (float)($s['compras'] ?? 0), 2);
+            }
+            $fis = $s['inv_fisico'];
+            if ($fis !== null && $fis >= self::INV_FISICO_MIN && $fis <= self::INV_FISICO_MAX) {
+                $last[$prd] = (float)$fis;
+            }
+        }
+        $turnoMap = [10 => 11, 20 => 21, 30 => 41, 40 => 41];
+        foreach ($cortes as &$c) {
+            $turno = $turnoMap[(int)$c['nrotur']] ?? (int)$c['nrotur'];
+            $c['recomendado'] = $rec[(int)$c['codprd'] . '-' . $turno] ?? null;
+        }
+        unset($c);
+        return $cortes;
+    }
+
+    /**
+     * Corrige el corte físico de UNA fila exacta de StockReal en la estación
+     * y deja bitácora en TG.dbo.merma_fisico_log. Sin transacción distribuida:
+     * primero el UPDATE remoto y, solo si afectó la fila, la bitácora local.
+     */
+    public function update_corte_fisico(int $codgas, string $fecha, int $codprd, int $nrotur,
+                                        int $codtan, float $valor, int $usuario): array
+    {
+        $est = $this->get_estacion_conexion($codgas);
+        if (!$est) return ['success' => false, 'message' => 'Estación sin servidor/BD configurados'];
+        $fch = dateToInt($fecha);
+
+        $inner = sprintf(
+            'SELECT can, logfch FROM [%s].dbo.StockReal
+             WHERE fch = %d AND codgas = %d AND codprd = %d AND nrotur = %d AND codtan = %d',
+            $est['BaseDatos'], $fch, $codgas, $codprd, $nrotur, $codtan);
+        $innerEsc = str_replace("'", "''", $inner);
+
+        $actual = $this->sql->select(sprintf("SELECT * FROM OPENQUERY([%s], '%s');", $est['Servidor'], $innerEsc));
+        if (!$actual || count($actual) !== 1) {
+            return ['success' => false,
+                    'message' => 'El corte no identifica exactamente una fila en la estación (' . count($actual ?: []) . ')'];
+        }
+        $anterior = (float)$actual[0]['can'];
+
+        $ok = $this->sql->update(
+            sprintf("UPDATE OPENQUERY([%s], '%s') SET can = ?, logfch = GETDATE();", $est['Servidor'], $innerEsc),
+            [$valor]);
+        if ($ok === false) {
+            return ['success' => false, 'message' => 'El UPDATE en la estación falló (¿permisos del linked server?)'];
+        }
+
+        // Réplica corporativa: SG12.dbo.StockReal concentra todas las
+        // estaciones (misma llave + codgas). Se actualiza después de la
+        // estación para que otros reportes del central no queden desfasados;
+        // si la fila aún no existe en la réplica no es error fatal.
+        $sg12 = $this->sql->update(
+            'UPDATE [SG12].[dbo].[StockReal] SET can = ?, logfch = GETDATE()
+             WHERE fch = ? AND codgas = ? AND codprd = ? AND nrotur = ? AND codtan = ?;',
+            [$valor, $fch, $codgas, $codprd, $nrotur, $codtan]);
+
+        $log = $this->sql->insert(
+            'INSERT INTO [TG].[dbo].[merma_fisico_log]
+                (usuario, codgas, fecha, fch, codprd, nrotur, codtan, valor_anterior, valor_nuevo)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
+            [$usuario, $codgas, $fecha, $fch, $codprd, $nrotur, $codtan, $anterior, $valor]);
+
+        return ['success' => true, 'anterior' => $anterior, 'sg12' => (bool)$sg12, 'log' => (bool)$log];
+    }
+
+    /**
+     * Días con lecturas físicas corruptas (fuera del rango plausible) por
+     * estación, para marcarlos en el resumen. [codgas => ['YYYY-MM-DD', ...]]
+     */
+    public function get_corruptas_por_estacion(string $desde, string $hasta): array
+    {
+        $query = 'SELECT DISTINCT codgas, fecha FROM [TG].[dbo].[merma_diaria]
+                  WHERE fecha >= ? AND fecha < DATEADD(DAY, 1, CAST(? AS DATE))
+                    AND inv_fisico IS NOT NULL
+                    AND (inv_fisico < ' . self::INV_FISICO_MIN . '
+                         OR inv_fisico > ' . self::INV_FISICO_MAX . ')
+                  ORDER BY codgas, fecha;';
+        $rows = $this->sql->select($query, [$desde, $hasta]) ?: [];
+        $out = [];
+        foreach ($rows as $r) $out[(int)$r['codgas']][] = substr($r['fecha'], 0, 10);
+        return $out;
+    }
+
+    public function get_detalle_rango(int $codgas, string $desde, string $hasta): array
     {
         $cols = [];
         foreach (self::FAMILIAS as $fam => $codes) {
@@ -167,10 +299,10 @@ class MermaDiariaModel extends Model
         }
         $query = 'SELECT fecha, turno, ' . implode(', ', $cols) . '
                   FROM [TG].[dbo].[merma_diaria]
-                  WHERE codgas = ? AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                  WHERE codgas = ? AND fecha >= ? AND fecha < DATEADD(DAY, 1, CAST(? AS DATE))
                   GROUP BY fecha, turno
                   ORDER BY fecha, turno;';
-        return $this->sql->select($query, [$codgas, $anio, $mes]) ?: [];
+        return $this->sql->select($query, [$codgas, $desde, $hasta]) ?: [];
     }
 
     /**

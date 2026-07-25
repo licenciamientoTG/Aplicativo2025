@@ -4,15 +4,14 @@
 
 {% block mycss %}
 <style>
-  #mb_table thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
-  #mb_table tbody tr td { font-size: .8rem; vertical-align: middle; color: #334155; }
-
   /* Fila de filtros de cabecera (mismo patrón que payment_list_table) */
-  #mb_table thead tr.filter th {
+  .mb-movs thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
+  .mb-movs tbody tr td { font-size: .8rem; vertical-align: middle; color: #334155; }
+  .mb-movs thead tr.filter th {
     background-color: #e2e8f0 !important;
     padding: 3px 6px !important;
   }
-  #mb_table thead tr.filter th input {
+  .mb-movs thead tr.filter th input {
     font-size: 0.7rem;
     padding: 2px 5px;
     height: 22px;
@@ -45,19 +44,55 @@
     background: #f8fafc; border-top: 2px solid #cbd5e1;
     color: #475569; font-size: .75rem;
   }
-  .mb-scroll { overflow: auto; max-height: 65vh; }
+  .mb-scroll { overflow: auto; max-height: 62vh; }
   .mb-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
   .mb-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
   .mb-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 2px solid #f1f5f9; }
   .mb-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-  #mb_table { border-collapse: separate; border-spacing: 0; }
-  #mb_table thead th { position: sticky; top: 0; z-index: 30; }
-  #mb_table thead tr.filter th { z-index: 30; /* top se fija por JS */ }
-  #mb_table th, #mb_table td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
-  #mb_table tr > :last-child { border-right: none; }
-  .mb-card-total .card-body { padding: .75rem 1rem; }
-  .mb-card-total h4 { margin-bottom: 0; font-variant-numeric: tabular-nums; }
+  .mb-movs { border-collapse: separate; border-spacing: 0; }
+  .mb-movs thead th { position: sticky; top: 0; z-index: 30; }
+  .mb-movs thead tr.filter th { z-index: 30; /* top se fija por JS */ }
+  .mb-movs th, .mb-movs td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
+  .mb-movs tr > :last-child { border-right: none; }
+
+  /* Tabs por banco (una tabla independiente por banco: su export a Excel
+     alimenta el Drive de tesorería, no se mezclan) */
+  .mb-tabs .nav-link { color: #64748b; font-weight: 600; font-size: .85rem; }
+  .mb-tabs .nav-link.active { color: #dc3545; }
+  .mb-tabs .nav-link#tab-afirme-btn.active { color: #009559; }
+
+  /* KPI cards: valor global grande + desglose por banco */
+  .mb-kpi {
+    border: 1px solid #e2e8f0; border-radius: .6rem; background: #fff;
+    padding: .7rem .9rem; height: 100%;
+    display: flex; flex-direction: column; gap: .2rem;
+  }
+  .mb-kpi .k-label {
+    font-size: .62rem; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: #64748b;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  .mb-kpi .k-value {
+    font-size: 1.2rem; font-weight: 700; line-height: 1.15;
+    font-variant-numeric: tabular-nums; color: #0f172a;
+  }
+  .mb-kpi .k-sub { font-size: .68rem; color: #94a3b8; }
+  .mb-kpi .k-bancos {
+    margin-top: .25rem; padding-top: .35rem; border-top: 1px dashed #e2e8f0;
+    display: flex; flex-direction: column; gap: .12rem;
+  }
+  .mb-kpi .k-banco {
+    display: flex; justify-content: space-between; gap: .5rem;
+    font-size: .7rem; color: #64748b; font-variant-numeric: tabular-nums;
+  }
+  .mb-kpi .k-banco b { font-weight: 600; color: #334155; }
+  .mb-kpi-abonos { border-color: #a7f3d0; background: #f6fefb; }
+  .mb-kpi-abonos .k-label, .mb-kpi-abonos .k-value { color: #009559; }
+  .mb-kpi-cargos { border-color: #fecdd3; background: #fffafb; }
+  .mb-kpi-cargos .k-label, .mb-kpi-cargos .k-value { color: #dc3545; }
+  .mb-kpi-saldo { border-color: #bfdbfe; background: #f8fbff; }
+  .mb-kpi-saldo .k-label, .mb-kpi-saldo .k-value { color: #1d4ed8; }
 
   /* Panel colapsable de saldos finales */
   .mb-chevron { transition: transform .2s; color: #94a3b8; }
@@ -68,14 +103,28 @@
                         text-transform: uppercase; letter-spacing: .05em; }
   .mb-saldos-tabla tfoot td { font-weight: 700; border-top: 2px solid #e2e8f0; }
   .mb-saldos-scroll { max-height: 45vh; overflow: auto; }
+
+  /* Loader de página al buscar (la vista recarga con los filtros en la URL) */
+  #mbLoader {
+    display: none; position: fixed; inset: 0; z-index: 10500;
+    background: rgba(248, 250, 252, .75); backdrop-filter: blur(1px);
+    align-items: center; justify-content: center; flex-direction: column; gap: .75rem;
+  }
+  #mbLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
+  #mbLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
 </style>
 {% endblock %}
 
 {% block content %}
 
+<div id="mbLoader">
+  <div class="spinner-border"></div>
+  <span>Cargando movimientos...</span>
+</div>
+
 <div class="card mb-3">
   <div class="card-body">
-    <form action="/tesoreria/movimientos_bancos" method="get" class="row align-items-end g-2">
+    <form action="/tesoreria/movimientos_bancos" method="get" class="row align-items-end g-2" id="filtrosForm">
       <div class="col-auto">
         <label for="desde">Desde:</label>
         <input type="date" class="form-control" name="desde" id="desde" value="{{ filtros.desde }}" required>
@@ -106,9 +155,14 @@
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
-      <div class="col-auto ms-auto">
-        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#uploadSantanderModal">
+      <div class="col-auto ms-auto d-flex gap-2">
+        <button type="button" class="btn btn-danger btn-upload-banco" data-banco="SANTANDER"
+                data-bs-toggle="modal" data-bs-target="#uploadModal">
           <i class="fas fa-file-upload"></i> Subir TXT Santander
+        </button>
+        <button type="button" class="btn btn-success btn-upload-banco" data-banco="AFIRME"
+                data-bs-toggle="modal" data-bs-target="#uploadModal">
+          <i class="fas fa-file-upload"></i> Subir Afirme
         </button>
       </div>
     </form>
@@ -137,118 +191,186 @@
   </div>
 </div>
 
-<div class="row mb-3">
+<div class="row g-2 mb-3">
   <div class="col-md">
-    <div class="card mb-card-total">
-      <div class="card-body">
-        <span class="text-muted">Abonos</span>
-        <h4 class="mb-abono">${{ totales.abonos|number_format(2, '.', ',') }}</h4>
+    <div class="mb-kpi mb-kpi-abonos">
+      <span class="k-label"><i class="fas fa-arrow-down"></i> Abonos</span>
+      <span class="k-value">${{ totales.abonos|number_format(2, '.', ',') }}</span>
+      <div class="k-bancos">
+        <span class="k-banco"><span>Santander</span><b>${{ porBanco.SANTANDER.abonos|number_format(2, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Afirme</span><b>${{ porBanco.AFIRME.abonos|number_format(2, '.', ',') }}</b></span>
       </div>
     </div>
   </div>
   <div class="col-md">
-    <div class="card mb-card-total">
-      <div class="card-body">
-        <span class="text-muted">Cargos</span>
-        <h4 class="mb-cargo">${{ totales.cargos|number_format(2, '.', ',') }}</h4>
+    <div class="mb-kpi mb-kpi-cargos">
+      <span class="k-label"><i class="fas fa-arrow-up"></i> Cargos</span>
+      <span class="k-value">${{ totales.cargos|number_format(2, '.', ',') }}</span>
+      <div class="k-bancos">
+        <span class="k-banco"><span>Santander</span><b>${{ porBanco.SANTANDER.cargos|number_format(2, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Afirme</span><b>${{ porBanco.AFIRME.cargos|number_format(2, '.', ',') }}</b></span>
       </div>
     </div>
   </div>
   <div class="col-md">
-    <div class="card mb-card-total">
-      <div class="card-body">
-        <span class="text-muted">Neto</span>
-        <h4 class="{{ totales.neto < 0 ? 'mb-cargo' : 'mb-abono' }}">${{ totales.neto|number_format(2, '.', ',') }}</h4>
+    <div class="mb-kpi">
+      <span class="k-label"><i class="fas fa-balance-scale"></i> Neto</span>
+      <span class="k-value {{ totales.neto < 0 ? 'mb-cargo' : 'mb-abono' }}">${{ totales.neto|number_format(2, '.', ',') }}</span>
+      <div class="k-bancos">
+        <span class="k-banco"><span>Santander</span><b class="{{ porBanco.SANTANDER.neto < 0 ? 'mb-cargo' : '' }}">${{ porBanco.SANTANDER.neto|number_format(2, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Afirme</span><b class="{{ porBanco.AFIRME.neto < 0 ? 'mb-cargo' : '' }}">${{ porBanco.AFIRME.neto|number_format(2, '.', ',') }}</b></span>
       </div>
     </div>
   </div>
   <div class="col-md">
-    <div class="card mb-card-total">
-      <div class="card-body">
-        <span class="text-muted">Saldo final <small>({{ filtros.cuenta ?: 'todas' }})</small></span>
-        <h4>{{ saldoFinal is null ? '—' : '$' ~ saldoFinal|number_format(2, '.', ',') }}</h4>
-        {% if saldoFinalFecha and saldoFinalFecha != filtros.hasta %}
-        <small class="text-muted">último mov: {{ saldoFinalFecha|date('d/m/Y') }}</small>
-        {% endif %}
+    <div class="mb-kpi mb-kpi-saldo">
+      <span class="k-label"><i class="fas fa-wallet"></i> Saldo final ({{ filtros.cuenta ?: 'todas' }})</span>
+      <span class="k-value">{{ saldoFinal is null ? '—' : '$' ~ saldoFinal|number_format(2, '.', ',') }}</span>
+      {% if saldoFinalFecha and saldoFinalFecha != filtros.hasta %}
+      <span class="k-sub">último mov: {{ saldoFinalFecha|date('d/m/Y') }}</span>
+      {% endif %}
+      <div class="k-bancos">
+        <span class="k-banco"><span>Santander</span><b>${{ saldoBanco.SANTANDER|number_format(2, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Afirme</span><b>${{ saldoBanco.AFIRME|number_format(2, '.', ',') }}</b></span>
       </div>
     </div>
   </div>
   <div class="col-md">
-    <div class="card mb-card-total">
-      <div class="card-body">
-        <span class="text-muted">Movimientos</span>
-        <h4>{{ totales.movs|number_format(0, '.', ',') }}</h4>
+    <div class="mb-kpi">
+      <span class="k-label"><i class="fas fa-list"></i> Movimientos</span>
+      <span class="k-value">{{ totales.movs|number_format(0, '.', ',') }}</span>
+      <div class="k-bancos">
+        <span class="k-banco"><span>Santander</span><b>{{ porBanco.SANTANDER.movs|number_format(0, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Afirme</span><b>{{ porBanco.AFIRME.movs|number_format(0, '.', ',') }}</b></span>
       </div>
     </div>
   </div>
 </div>
 
-<div class="mb-tabla-wrap">
-    <table id="mb_table" class="table table-hover table-sm w-100 dataTable mb-0">
-      <thead>
-        <tr>
-          <th>Id</th>
-          <th>Cuenta</th>
-          <th>Fecha</th>
-          <th>Hora</th>
-          <th>Sucursal</th>
-          <th>Descripción</th>
-          <th class="mb-monto">Importe Cargo</th>
-          <th class="mb-monto">Importe Abono</th>
-          <th class="mb-monto">Saldo</th>
-          <th>Referencia</th>
-          <th>Concepto</th>
-          <th>Concepto</th>
-          <th>Contraparte</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for m in movimientos %}
-        <tr>
-          <td>{{ m.id }}</td>
-          <td class="mb-cuenta">{{ m.cuenta }}</td>
-          <td data-order="{{ m.fecha }}">{{ m.fecha|date('d/m/Y') }}</td>
-          <td>{{ m.hora }}</td>
-          <td>{{ m.sucursal }}</td>
-          <td>{{ m.descripcion }}</td>
-          <td class="mb-monto {{ m.cargo is null ? '' : 'mb-cargo' }}" data-order="{{ m.cargo ?? 0 }}">{{ (m.cargo ?? 0)|number_format(2, '.', ',') }}</td>
-          <td class="mb-monto {{ m.abono is null ? '' : 'mb-abono' }}" data-order="{{ m.abono ?? 0 }}">{{ (m.abono ?? 0)|number_format(2, '.', ',') }}</td>
-          <td class="mb-monto" data-order="{{ m.saldo ?? 0 }}">{{ m.saldo is null ? '' : m.saldo|number_format(2, '.', ',') }}</td>
-          <td>{{ m.referencia }}</td>
-          <td title="{{ m.clave_rastreo ? 'Rastreo: ' ~ m.clave_rastreo : '' }}">{{ m.concepto }}</td>
-          <td>{{ m.descripcion_larga }}</td>
-          <td>
-            {{ m.nombre_contraparte }}
-            {% if m.banco_contraparte %}
-            <small class="text-muted d-block">{{ m.banco_contraparte }} {{ m.cuenta_contraparte }}</small>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<!-- Tabs por banco: tablas independientes -->
+<ul class="nav nav-tabs mb-tabs mb-2">
+  <li class="nav-item">
+    <button class="nav-link active" id="tab-santander-btn" data-bs-toggle="tab" data-bs-target="#tabSantander" type="button">
+      <i class="fas fa-university me-1"></i> Santander ({{ movsSantander|length }})
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" id="tab-afirme-btn" data-bs-toggle="tab" data-bs-target="#tabAfirme" type="button">
+      <i class="fas fa-university me-1"></i> Afirme ({{ movsAfirme|length }})
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tabSantander">
+    <div class="mb-tabla-wrap">
+      <table id="mb_table" class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
+        <thead>
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Cuenta</th>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Sucursal</th>
+            <th>Descripción</th>
+            <th class="mb-monto">Importe Cargo</th>
+            <th class="mb-monto">Importe Abono</th>
+            <th class="mb-monto">Saldo</th>
+            <th>Referencia</th>
+            <th>Concepto</th>
+            <th>Concepto</th>
+            <th>Contraparte</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in movsSantander %}
+          <tr>
+            <td>{{ m.id }}</td>
+            <td class="mb-cuenta">{{ m.cuenta }}</td>
+            <td>{{ m.fecha|date('d/m/Y') }}</td>
+            <td>{{ m.hora }}</td>
+            <td>{{ m.sucursal }}</td>
+            <td>{{ m.descripcion }}</td>
+            <td class="mb-monto {{ m.cargo is null ? '' : 'mb-cargo' }}">{{ (m.cargo ?? 0)|number_format(2, '.', ',') }}</td>
+            <td class="mb-monto {{ m.abono is null ? '' : 'mb-abono' }}">{{ (m.abono ?? 0)|number_format(2, '.', ',') }}</td>
+            <td class="mb-monto">{{ m.saldo is null ? '' : m.saldo|number_format(2, '.', ',') }}</td>
+            <td>{{ m.referencia }}</td>
+            <td title="{{ m.clave_rastreo ? 'Rastreo: ' ~ m.clave_rastreo : '' }}">{{ m.concepto }}</td>
+            <td>{{ m.descripcion_larga }}</td>
+            <td>
+              {{ m.nombre_contraparte }}
+              {% if m.banco_contraparte %}
+              <small class="text-muted d-block">{{ m.banco_contraparte }} {{ m.cuenta_contraparte }}</small>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tabAfirme">
+    <div class="mb-tabla-wrap">
+      <table id="af_table" class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
+        <thead>
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Cuenta</th>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Sucursal</th>
+            <th>Descripción</th>
+            <th class="mb-monto">Importe Cargo</th>
+            <th class="mb-monto">Importe Abono</th>
+            <th class="mb-monto">Saldo</th>
+            <th>Referencia</th>
+            <th>Concepto</th>
+            <th>Concepto</th>
+            <th>Contraparte</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in movsAfirme %}
+          <tr>
+            <td>{{ m.id }}</td>
+            <td class="mb-cuenta">{{ m.cuenta }}</td>
+            <td>{{ m.fecha|date('d/m/Y') }}</td>
+            <td>{{ m.hora }}</td>
+            <td>{{ m.sucursal }}</td>
+            <td>{{ m.descripcion }}</td>
+            <td class="mb-monto {{ m.cargo is null ? '' : 'mb-cargo' }}">{{ (m.cargo ?? 0)|number_format(2, '.', ',') }}</td>
+            <td class="mb-monto {{ m.abono is null ? '' : 'mb-abono' }}">{{ (m.abono ?? 0)|number_format(2, '.', ',') }}</td>
+            <td class="mb-monto">{{ m.saldo is null ? '' : m.saldo|number_format(2, '.', ',') }}</td>
+            <td>{{ m.referencia }}</td>
+            <td>{{ m.concepto }}</td>
+            <td>{{ m.descripcion_larga }}</td>
+            <td></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-<!-- Modal subir TXT Santander -->
-<div class="modal fade" id="uploadSantanderModal" tabindex="-1" aria-hidden="true">
+<!-- Modal subir archivo de banco (Santander / Afirme) -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form id="formUploadSantander">
+      <form id="formUpload">
         <div class="modal-header">
-          <h5 class="modal-title">Subir TXT de movimientos Santander</h5>
+          <h5 class="modal-title" id="uploadTitle">Subir movimientos</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
-          <p class="text-muted mb-2">
-            Archivo de movimientos de Enlace Santander (.TXT de ancho fijo).
-            Los movimientos ya importados se detectan y se saltan automáticamente.
-          </p>
-          <input type="file" class="form-control" name="txt_santander" id="txt_santander" accept=".txt,.TXT" required>
+          <p class="text-muted mb-2" id="uploadHint"></p>
+          <input type="file" class="form-control" id="archivo_banco" required>
           <div id="uploadResultado" class="mt-3" style="display:none"></div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          <button type="submit" class="btn btn-danger" id="btnUploadSantander">
+          <button type="submit" class="btn btn-primary" id="btnUpload">
             <i class="fas fa-file-upload"></i> Importar
           </button>
         </div>
@@ -262,91 +384,105 @@
 {% block myjs %}
 <script>
 $(function () {
-  // Tabla con el mismo patrón que payment_list_table: toolbar con botones,
-  // paginación y fila de filtros por columna en la cabecera.
-  var api = $('#mb_table').DataTable({
-    responsive: true,
-    // Sin paginación: la tabla vive en un contenedor .mb-scroll con
-    // cabeceras sticky; solo toolbar arriba y contador de registros abajo
-    paging: false,
-    // mb-top (botones + buscador) y mb-bottom (contador) quedan fijos dentro
-    // del marco; solo la tabla scrollea (se envuelve en .mb-scroll al iniciar)
-    dom: '<"mb-top"Bf>rt<"mb-bottom"i>',
-    // fecha ASC, id ASC (estado de cuenta): el saldo final queda como última
-    // fila; el id (orden de línea del archivo) es el orden real de aplicación
-    // al saldo — ordenar por hora rompe la cadena
-    order: [[2, 'asc'], [0, 'asc']],
-    // Cuenta y Contraparte ocultas por default (formato de tesorería);
-    // se pueden activar con el botón Columnas
-    columnDefs: [{ targets: [1, 12], visible: false }],
-    language: {
-      info: 'Mostrando _TOTAL_ movimientos',
-      infoFiltered: '(filtrados de _MAX_)',
-      infoEmpty: 'Sin movimientos',
-      emptyTable: 'Sin movimientos en el rango seleccionado. Sube un TXT de Santander para importarlos.',
-    },
-    buttons: [
-      {
-        extend: 'excel',
-        text: '<i class="fas fa-file-excel"></i> Excel',
-        className: 'btn btn-sm btn-success',
-        exportOptions: { columns: ':visible' },
+  // ===== Tablas por banco: mismo patrón que payment_list_table =====
+  function initMovsTable(sel, excelTitle, emptyMsg) {
+    var api = $(sel).DataTable({
+      responsive: true,
+      // Sin paginación (contenedor .mb-scroll con cabeceras sticky) y sin
+      // reordenamiento: el orden lo fija el SQL (fecha ASC, id ASC, estado
+      // de cuenta) y reordenar rompería la cadena de saldos
+      paging: false,
+      ordering: false,
+      dom: '<"mb-top"Bf>rt<"mb-bottom"i>',
+      language: {
+        info: 'Mostrando _TOTAL_ movimientos',
+        infoFiltered: '(filtrados de _MAX_)',
+        infoEmpty: 'Sin movimientos',
+        emptyTable: emptyMsg,
       },
-      {
-        extend: 'colvis',
-        text: '<i class="fas fa-columns"></i> Columnas',
-        className: 'btn btn-sm btn-outline-secondary',
-      },
-    ],
-    initComplete: function () {
-      var api = this.api();
+      buttons: [
+        {
+          extend: 'excel',
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          className: 'btn btn-sm btn-success',
+          title: excelTitle,
+          // El Id es interno: no va al Excel que se pega en el Drive
+          exportOptions: { columns: ':visible:not(.no-export)' },
+        },
+        {
+          extend: 'colvis',
+          text: '<i class="fas fa-columns"></i> Columnas',
+          className: 'btn btn-sm btn-outline-secondary',
+        },
+      ],
+      // Cuenta y Contraparte ocultas por default; activables con Columnas
+      columnDefs: [{ targets: [1, 12], visible: false }],
+      initComplete: function () {
+        var api = this.api();
 
-      // Con columnas ocultas, el thead solo tiene los th visibles: el índice
-      // del input es índice visible y se mapea con el selector ':visible'.
-      function buildFilterRow() {
-        $('#mb_table thead tr.filter').remove();
-        var filterRow = $('<tr class="filter"></tr>');
-        $('#mb_table thead tr:first th').each(function () {
-          var title = $(this).text().trim();
-          filterRow.append(
-            '<th><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>'
-          );
-        });
-        $('#mb_table thead').append(filterRow);
+        // Solo la tabla scrollea: toolbar (mb-top) y contador (mb-bottom)
+        // quedan fijos dentro del marco del contenedor
+        $(sel).wrap('<div class="mb-scroll"></div>');
 
-        $('#mb_table thead tr.filter th input').on('keyup change', function () {
-          var visIdx = $(this).parent().index();
-          api.column(visIdx + ':visible').search(this.value).draw();
-        });
-        // No ordenar al hacer click sobre la fila de filtros
-        $('#mb_table thead tr.filter th input').on('click', function (e) {
-          e.stopPropagation();
-        });
+        function buildFilterRow() {
+          $(sel + ' thead tr.filter').remove();
+          var filterRow = $('<tr class="filter"></tr>');
+          $(sel + ' thead tr:first th').each(function () {
+            var title = $(this).text().trim();
+            filterRow.append(
+              '<th><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>'
+            );
+          });
+          $(sel + ' thead').append(filterRow);
 
-        // Anclar la fila de filtros justo debajo de la fila de títulos
-        // (ambas sticky dentro del contenedor con scroll)
-        var altura = $('#mb_table thead tr:first th:visible').first().outerHeight() || 33;
-        $('#mb_table thead tr.filter th').css('top', altura + 'px');
-      }
+          $(sel + ' thead tr.filter th input').on('keyup change', function () {
+            var visIdx = $(this).parent().index();
+            api.column(visIdx + ':visible').search(this.value).draw();
+          });
 
-      // Solo la tabla scrollea: la toolbar (mb-top) y el contador (mb-bottom)
-      // quedan fijos dentro del marco del contenedor
-      $('#mb_table').wrap('<div class="mb-scroll"></div>');
+          // Anclar la fila de filtros justo debajo de la de títulos (sticky)
+          var altura = $(sel + ' thead tr:first th:visible').first().outerHeight() || 33;
+          $(sel + ' thead tr.filter th').css('top', altura + 'px');
+        }
 
-      buildFilterRow();
-
-      // Al mostrar/ocultar columnas se reconstruye la fila de filtros y se
-      // limpian las búsquedas por columna (evita filtros invisibles activos)
-      api.on('column-visibility.dt', function () {
-        api.columns().search('');
         buildFilterRow();
-        api.draw();
-      });
 
-      // Arrancar con el scroll al fondo: la última fila es el saldo final
-      var scroller = document.querySelector('.mb-scroll');
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    },
+        api.on('column-visibility.dt', function () {
+          api.columns().search('');
+          buildFilterRow();
+          api.draw();
+        });
+
+        // Arrancar con el scroll al fondo: la última fila es el saldo final
+        var scroller = $(sel).closest('.mb-scroll')[0];
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      },
+    });
+    return api;
+  }
+
+  // Loader al buscar: feedback inmediato mientras la página recarga con los
+  // filtros nuevos (también al recargar tras un import exitoso)
+  function mostrarLoader() {
+    document.getElementById('mbLoader').style.display = 'flex';
+  }
+  document.getElementById('filtrosForm').addEventListener('submit', mostrarLoader);
+  window.addEventListener('pageshow', function (e) {
+    // al volver con el botón "atrás" el navegador restaura la página con el
+    // loader visible: ocultarlo
+    if (e.persisted) document.getElementById('mbLoader').style.display = 'none';
+  });
+
+  initMovsTable('#mb_table', 'Movimientos Santander', 'Sin movimientos de Santander en el rango. Sube el TXT para importarlos.');
+  initMovsTable('#af_table', 'Movimientos Afirme', 'Sin movimientos de Afirme en el rango. Sube el export (.xls) para importarlos.');
+
+  // Al cambiar de tab: reajustar anchos (la tabla oculta se inicializa sin
+  // medidas) y posicionar el scroll al fondo (saldo final visible)
+  $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    var pane = document.querySelector($(e.target).data('bs-target'));
+    var scroller = pane ? pane.querySelector('.mb-scroll') : null;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
   });
 
   // ===== Panel colapsable: saldos finales por cuenta (carga asíncrona) =====
@@ -399,10 +535,39 @@ $(function () {
       });
   });
 
-  // ===== Upload TXT Santander =====
-  var form = document.getElementById('formUploadSantander');
-  var btn = document.getElementById('btnUploadSantander');
+  // ===== Upload de archivos de banco (modal compartido) =====
+  var BANCOS = {
+    SANTANDER: {
+      titulo: 'Subir TXT de movimientos Santander',
+      hint: 'Archivo de movimientos de Enlace Santander (.TXT de ancho fijo). Los movimientos ya importados se detectan y se saltan automáticamente.',
+      accept: '.txt,.TXT',
+      url: '/tesoreria/upload_santander',
+      campo: 'txt_santander',
+    },
+    AFIRME: {
+      titulo: 'Subir movimientos de Afirme',
+      hint: 'Export de movimientos de Afirme (el .xls que descarga banca en línea). Los movimientos ya importados se detectan y se saltan automáticamente.',
+      accept: '.xls,.txt,.tsv,.csv',
+      url: '/tesoreria/upload_afirme',
+      campo: 'archivo_afirme',
+    },
+  };
+  var bancoActual = 'SANTANDER';
+
+  var form = document.getElementById('formUpload');
+  var btn = document.getElementById('btnUpload');
   var resultado = document.getElementById('uploadResultado');
+  var inputArchivo = document.getElementById('archivo_banco');
+
+  $('.btn-upload-banco').on('click', function () {
+    bancoActual = $(this).data('banco');
+    var cfg = BANCOS[bancoActual];
+    document.getElementById('uploadTitle').textContent = cfg.titulo;
+    document.getElementById('uploadHint').textContent = cfg.hint;
+    inputArchivo.setAttribute('accept', cfg.accept);
+    inputArchivo.value = '';
+    resultado.style.display = 'none';
+  });
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -412,17 +577,17 @@ $(function () {
 
   form.addEventListener('submit', function (e) {
     e.preventDefault();
-    var input = document.getElementById('txt_santander');
-    if (!input.files.length) return;
+    if (!inputArchivo.files.length) return;
+    var cfg = BANCOS[bancoActual];
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
     resultado.style.display = 'none';
 
     var fd = new FormData();
-    fd.append('txt_santander', input.files[0]);
+    fd.append(cfg.campo, inputArchivo.files[0]);
 
-    fetch('/tesoreria/upload_santander', { method: 'POST', body: fd })
+    fetch(cfg.url, { method: 'POST', body: fd })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var html;
@@ -437,6 +602,10 @@ $(function () {
           html = '<div class="alert alert-success mb-0">' +
                  '<strong>' + data.insertados + '</strong> movimientos importados, ' +
                  '<strong>' + data.duplicados + '</strong> ya existían.';
+          if (data.avisos && data.avisos.length) {
+            html += '<hr class="my-2"><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ' +
+                    data.avisos.map(esc).join('<br>') + '</small>';
+          }
           if (data.errores && data.errores.length) {
             // Con líneas con problema no se recarga en automático, para poder leerlas
             html += '<hr class="my-2"><small>Líneas con problema:<br>' +
@@ -445,7 +614,7 @@ $(function () {
                     '">Ver movimientos importados</a>';
           } else {
             html += ' Actualizando tabla...';
-            setTimeout(function () { window.location.href = url; }, 1200);
+            setTimeout(function () { mostrarLoader(); window.location.href = url; }, 1500);
           }
           html += '</div>';
         } else {

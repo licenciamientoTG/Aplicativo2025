@@ -60,17 +60,144 @@
         </div>
         {% endif %}
         <div class="ms-auto d-flex flex-column gap-2 justify-content-center">
-            <a href="/merma/analisis?anio={{ anio }}&mes={{ mes }}" class="btn btn-merma-neutro">
-                <i class="fas fa-arrow-left"></i> Resumen
-            </a>
-            <button type="button" class="btn btn-merma-sync" id="sync_estacion"
-                    data-codgas="{{ estacion.Codigo }}" data-anio="{{ anio }}" data-mes="{{ mes }}">
-                <i class="fas fa-sync"></i> Re-sincronizar estación
-            </button>
+            <form action="/merma/detalle/{{ estacion.Codigo }}" method="get" class="d-flex gap-2 align-items-end">
+                <div>
+                    <label for="desde" class="kpi-filtro-label">Desde:</label>
+                    <input type="date" class="form-control form-control-sm" name="desde" id="desde"
+                           value="{{ desde }}" max="{{ maxHasta }}" required>
+                </div>
+                <div>
+                    <label for="hasta" class="kpi-filtro-label">Hasta:</label>
+                    <input type="date" class="form-control form-control-sm" name="hasta" id="hasta"
+                           value="{{ hasta }}" max="{{ maxHasta }}" required>
+                </div>
+                <button type="submit" class="btn btn-sm btn-merma-neutro">Buscar</button>
+            </form>
+            <div class="d-flex gap-2 justify-content-end">
+                <a href="/merma/analisis?desde={{ desde }}&hasta={{ hasta }}" class="btn btn-sm btn-merma-neutro">
+                    <i class="fas fa-arrow-left"></i> Resumen
+                </a>
+                <button type="button" class="btn btn-sm btn-merma-sync" id="sync_estacion"
+                        data-codgas="{{ estacion.Codigo }}" data-anio="{{ anio }}" data-mes="{{ mes }}">
+                    <i class="fas fa-sync"></i> Re-sincronizar estación
+                </button>
+            </div>
         </div>
     </div>
 </div>
 
+<ul class="nav nav-tabs merma-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab_diario" type="button" role="tab">Diario</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab_desglosado" type="button" role="tab">Desglosado</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+
+<div class="tab-pane fade show active" id="tab_diario" role="tabpanel">
+<div class="merma-tabla-wrap">
+    <div class="merma-scroll">
+        <table class="merma-tabla">
+            <thead>
+                <tr>
+                    <th class="col-fecha col-dia sep-r" style="left: 0;"></th>
+                    <th colspan="7" class="th-maxima sep-r">MAXIMA</th>
+                    <th colspan="7" class="th-super sep-r">SUPER</th>
+                    <th colspan="7" class="th-diesel">DIESEL</th>
+                </tr>
+                <tr>
+                    <th class="col-fecha col-dia sep-r">FECHA</th>
+                    {% for i in 1..3 %}
+                    <th>INICIAL</th><th>COMPRAS</th><th>VENTAS</th><th>CONTABLE</th><th>FÍSICO</th><th>MERMA</th><th class="sep-r">%</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in dias %}
+                {% set idx = loop.index %}
+                <tr class="dia-row fin-dia" data-dia="{{ idx }}" title="Clic para ver el desglose por turno">
+                    <td class="col-fecha col-dia sep-r">
+                        <i class="fas fa-chevron-right dia-chevron"></i> {{ d.fecha|date('d-m-Y') }}
+                        {% if d.maxima.corrupta or d.super.corrupta or d.diesel.corrupta %}
+                        <i class="fas fa-exclamation-triangle fis-corrupta" title="Este día tiene lecturas físicas corruptas"></i>
+                        {% endif %}
+                    </td>
+                    {% for fam in ['maxima', 'super', 'diesel'] %}
+                    {% set b = attribute(d, fam) %}
+                    <td>{{ b.ini is null ? '-' : b.ini|number_format(2, '.', ',') }}</td>
+                    <td>{{ b.compras is null or b.compras == 0 ? '-' : b.compras|number_format(2, '.', ',') }}</td>
+                    <td>{{ b.vr is null ? '-' : b.vr|number_format(2, '.', ',') }}</td>
+                    <td>{{ b.cont is null ? '-' : b.cont|number_format(2, '.', ',') }}</td>
+                    <td class="col-fis">{{ b.fis is null ? '-' : b.fis|number_format(2, '.', ',') }}</td>
+                    {% set difabs = b.dif is null ? 0 : (b.dif < 0 ? -b.dif : b.dif) %}
+                    <td class="{{ b.dif is null ? '' : (b.dif < 0 ? 'dif-neg' : 'dif-pos') }}">
+                        {{ b.dif is null ? '-' : b.dif|number_format(2, '.', ',') }}
+                        {% if difabs >= 9000 %}<span class="badge-dif">DIFERENCIA</span>{% endif %}
+                    </td>
+                    {% set pctabs = b.pct is null ? 0 : (b.pct < 0 ? -b.pct : b.pct) %}
+                    <td class="sep-r {{ b.pct is null ? '' : (pctabs > 1 ? 'pct-alto' : (pctabs > 0.5 ? 'pct-medio' : 'pct-ok')) }}">
+                        {{ b.pct is null ? '-' : b.pct|number_format(2) ~ '%' }}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% for t in d.turnos %}
+                <tr class="turno-row turnos-{{ idx }} d-none">
+                    <td class="col-fecha col-dia sep-r">Turno {{ t.turno }}</td>
+                    {% for fam in ['maxima', 'super', 'diesel'] %}
+                    {% set b = attribute(t, fam) %}
+                    <td>{{ b.cont is null or b.vr is null ? '-' : (b.cont + b.vr - (b.compras ?? 0))|number_format(2, '.', ',') }}</td>
+                    <td>{{ b.compras is null or b.compras == 0 ? '-' : b.compras|number_format(2, '.', ',') }}</td>
+                    <td>{{ b.vr is null ? '-' : b.vr|number_format(2, '.', ',') }}</td>
+                    <td>{{ b.cont is null ? '-' : b.cont|number_format(2, '.', ',') }}</td>
+                    <td class="col-fis">
+                        {%- if b.fis_corrupta -%}
+                        <span class="fis-corrupta fis-editable" data-fecha="{{ t.fecha }}"
+                              title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo. Clic para corregirla en la estación.">
+                            {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                        {%- else -%}
+                        {{ b.fis is null ? '-' : b.fis|number_format(2, '.', ',') }}
+                        {%- endif -%}
+                    </td>
+                    <td class="{{ b.dif is null ? '' : (b.dif < 0 ? 'dif-neg' : 'dif-pos') }}">
+                        {{ b.dif is null ? '-' : b.dif|number_format(2, '.', ',') }}
+                    </td>
+                    <td class="sep-r">
+                        {{ b.dif is null or b.vr is null or b.vr == 0 ? '-' : (b.dif / b.vr * 100)|number_format(2) ~ '%' }}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr><td colspan="22" class="text-center">Sin datos para este rango. Usa "Re-sincronizar estación".</td></tr>
+                {% endfor %}
+            </tbody>
+            {% if dias|length > 0 %}
+            <tfoot>
+                <tr>
+                    <td class="col-fecha col-dia sep-r" style="left: 0;">TOTALES</td>
+                    {% for fam in ['maxima', 'super', 'diesel'] %}
+                    {% set vta = attribute(ventas, fam) %}
+                    {% set mer = resumen ? attribute(resumen, 'merma_' ~ fam) : null %}
+                    <td></td>
+                    <td>{{ attribute(compras, fam)|number_format(2, '.', ',') }}</td>
+                    <td>{{ vta|number_format(2, '.', ',') }}</td>
+                    <td></td><td></td>
+                    <td class="{{ mer is null ? '' : (mer < 0 ? 'dif-neg' : 'dif-pos') }}">{{ mer is null ? '-' : mer|number_format(2, '.', ',') }}</td>
+                    <td class="sep-r">{{ mer is null or vta == 0 ? '-' : (mer / vta * 100)|number_format(2) ~ '%' }}</td>
+                    {% endfor %}
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
+</div>
+</div>
+
+<div class="tab-pane fade" id="tab_desglosado" role="tabpanel">
 <div class="merma-tabla-wrap">
     <div class="merma-scroll">
         <table class="merma-tabla">
@@ -102,7 +229,8 @@
                     <td>{{ b.cont is null ? '-' : b.cont|number_format(0, '.', ',') }}</td>
                     <td class="col-fis">
                         {%- if b.fis_corrupta -%}
-                        <span class="fis-corrupta" title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo; corrígela en ControlGas y resincroniza.">
+                        <span class="fis-corrupta fis-editable" data-fecha="{{ f.fecha }}"
+                              title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo. Clic para corregirla en la estación.">
                             {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
                         </span>
                         {%- else -%}
@@ -118,7 +246,7 @@
                     {% endfor %}
                 </tr>
                 {% else %}
-                <tr><td colspan="20" class="text-center">Sin datos para este mes. Usa "Re-sincronizar estación".</td></tr>
+                <tr><td colspan="20" class="text-center">Sin datos para este rango. Usa "Re-sincronizar estación".</td></tr>
                 {% endfor %}
             </tbody>
             {% if filas|length > 0 %}
@@ -136,12 +264,101 @@
         </table>
     </div>
 </div>
+</div>
+
+</div>
+
+<!-- Modal de corrección de cortes físicos (StockReal en la estación) -->
+<div class="modal fade" id="fisicoModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Corregir corte físico — <span id="fisico_fecha_lbl"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">
+                    Cortes crudos de <code>StockReal</code> leídos directo de la estación (una fila por
+                    producto/turno/tanque). Corrige la fila dañada y guarda: el cambio se escribe en la
+                    estación, queda en bitácora y el día se resincroniza automáticamente.
+                </p>
+                <div id="fisico_rows"></div>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
 
 {% block myjs %}
 <script>
 $(document).ready(function () {
+    // Tab Diario: clic en la fila del día despliega/oculta sus turnos
+    $(document).on('click', '.dia-row', function () {
+        $('.turnos-' + $(this).data('dia')).toggleClass('d-none');
+        $(this).find('.dia-chevron').toggleClass('fa-chevron-right fa-chevron-down');
+    });
+
+    // ---- Corrección de cortes físicos --------------------------------------
+    const CODGAS   = {{ estacion.Codigo }};
+    const PRD_LBL  = {1:'MAXIMA', 179:'MAXIMA', 192:'MAXIMA', 2:'SUPER', 180:'SUPER', 193:'SUPER', 3:'DIESEL', 181:'DIESEL'};
+    const TURNO_LBL = {10:11, 20:21, 40:41};
+
+    $(document).on('click', '.fis-editable', function (e) {
+        e.stopPropagation();
+        const fecha = $(this).data('fecha');
+        if (!fecha) return;
+        $('#fisico_fecha_lbl').text(fecha);
+        $('#fisico_rows').html('<div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span> Consultando estación...</div>');
+        new bootstrap.Modal(document.getElementById('fisicoModal')).show();
+        $.post('/merma/cortes_fisicos', { codgas: CODGAS, fecha: fecha }, function (res) {
+            if (!res.success) { $('#fisico_rows').html('<div class="alert alert-danger">' + res.message + '</div>'); return; }
+            if (!res.cortes.length) { $('#fisico_rows').html('<div class="alert alert-warning">La estación no tiene cortes para este día.</div>'); return; }
+            let html = '<table class="table table-sm align-middle mb-0"><thead><tr>'
+                + '<th>Producto</th><th>Turno</th><th>Tanque</th><th>Valor actual (lts)</th>'
+                + '<th>Sugerido</th><th style="width:170px">Nuevo valor</th><th></th></tr></thead><tbody>';
+            res.cortes.forEach(function (c) {
+                const corrupto = c.can !== null && (Number(c.can) < res.min || Number(c.can) > res.max);
+                const sugerido = (c.recomendado !== null && c.recomendado !== undefined) ? Number(c.recomendado) : null;
+                html += '<tr' + (corrupto ? ' class="table-danger"' : '') + '>'
+                    + '<td>' + (PRD_LBL[c.codprd] || '') + ' (' + c.codprd + ')</td>'
+                    + '<td>' + (TURNO_LBL[c.nrotur] || c.nrotur) + '</td>'
+                    + '<td>' + c.codtan + '</td>'
+                    + '<td>' + Number(c.can).toLocaleString('en-US', { maximumFractionDigits: 4 })
+                    + (corrupto ? ' <i class="fas fa-exclamation-triangle text-danger"></i>' : '') + '</td>'
+                    + '<td class="text-muted" title="Contable del turno: último físico válido anterior − ventas + compras">'
+                    + (sugerido !== null ? sugerido.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-') + '</td>'
+                    // Solo la fila corrupta se precarga con el sugerido: en las
+                    // sanas el default debe ser el valor real, no el contable
+                    + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm fisico-nuevo"'
+                    + (corrupto && sugerido !== null ? ' value="' + sugerido + '"' : '') + '></td>'
+                    + '<td><button type="button" class="btn btn-sm btn-merma-sync fisico-guardar" data-fecha="' + fecha
+                    + '" data-codprd="' + c.codprd + '" data-nrotur="' + c.nrotur + '" data-codtan="' + c.codtan + '">Guardar</button></td>'
+                    + '</tr>';
+            });
+            $('#fisico_rows').html(html + '</tbody></table>');
+        }, 'json').fail(() => $('#fisico_rows').html('<div class="alert alert-danger">Error de servidor</div>'));
+    });
+
+    $(document).on('click', '.fisico-guardar', function () {
+        const $btn  = $(this);
+        const valor = $btn.closest('tr').find('.fisico-nuevo').val();
+        if (valor === '' || isNaN(valor)) { alert('Captura el nuevo valor en litros.'); return; }
+        if (!confirm('¿Corregir este corte en la estación a ' + valor + ' lts?\nSe escribirá en StockReal y se resincronizará el día.')) return;
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+        $.post('/merma/corregir_fisico', {
+            codgas: CODGAS, fecha: $btn.data('fecha'),
+            codprd: $btn.data('codprd'), nrotur: $btn.data('nrotur'),
+            codtan: $btn.data('codtan'), valor: valor,
+        }, function (res) {
+            if (res.success) { alert(res.message); location.reload(); }
+            else { alert(res.message); $btn.prop('disabled', false).text('Guardar'); }
+        }, 'json').fail(function () {
+            alert('Error de servidor');
+            $btn.prop('disabled', false).text('Guardar');
+        });
+    });
+
     $('#sync_estacion').click(function () {
         const $btn = $(this);
         const anio = $btn.data('anio'), mes = $btn.data('mes');

@@ -57,10 +57,14 @@
                 {% for f in filas %}
                 <tr>
                     <td class="col-est">
-                        <a href="/merma/detalle/{{ f.codgas }}?anio={{ anio }}&mes={{ mes }}">{{ f.nombre }}</a>
+                        <a href="/merma/detalle/{{ f.codgas }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
                         {% if f.faltantes|length > 0 %}
                         <i class="fas fa-exclamation-triangle text-warning"
                            title="Sin datos: {{ f.faltantes|join(', ') }}"></i>
+                        {% endif %}
+                        {% if f.corruptas|length > 0 %}
+                        <i class="fas fa-exclamation-triangle fis-corrupta"
+                           title="Lecturas corruptas ({{ f.corruptas|length }} día{{ f.corruptas|length > 1 ? 's' : '' }}): {{ f.corruptas|join(', ') }}. No entran al cálculo; corrígelas en ControlGas y resincroniza."></i>
                         {% endif %}
                     </td>
                     <td>{{ f.maxima is null ? '-' : f.maxima|number_format(0, '.', ',') }}</td>
