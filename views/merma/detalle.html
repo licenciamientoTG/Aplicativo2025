@@ -110,7 +110,7 @@
 <div class="tab-content">
 
 <div class="tab-pane fade show active" id="tab_diario" role="tabpanel">
-<div class="merma-tabla-wrap">
+<div class="merma-tabla-wrap wrap-fit">
     <div class="merma-scroll">
         <table class="merma-tabla">
             <thead>
@@ -147,7 +147,7 @@
                     {% set difabs = b.dif is null ? 0 : (b.dif < 0 ? -b.dif : b.dif) %}
                     <td class="{{ b.dif is null ? '' : (b.dif < 0 ? 'dif-neg' : 'dif-pos') }}">
                         {{ b.dif is null ? '-' : b.dif|number_format(2, '.', ',') }}
-                        {% if difabs >= 9000 %}<span class="badge-dif">DIFERENCIA</span>{% endif %}
+                        {% if difabs >= 9000 %}<i class="fas fa-exclamation-triangle dif-alerta" title="Diferencia mayor a 9,000 lts en el día — revisar compras/cortes"></i>{% endif %}
                     </td>
                     <td class="sep-r {{ b.pct is null ? '' : (b.pct < 0 ? 'pct-neg' : 'pct-pos') }}">
                         {{ b.pct is null ? '-' : b.pct|number_format(2) ~ '%' }}
@@ -165,7 +165,7 @@
                     <td>{{ b.cont is null ? '-' : b.cont|number_format(2, '.', ',') }}</td>
                     <td class="col-fis">
                         {%- if b.fis_corrupta -%}
-                        <span class="fis-corrupta fis-editable" data-fecha="{{ t.fecha }}"
+                        <span class="fis-corrupta fis-editable" data-fecha="{{ t.fecha }}" data-fam="{{ fam }}" data-turno="{{ t.turno }}"
                               title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo. Clic para corregirla en la estación.">
                             {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
                         </span>
@@ -210,7 +210,7 @@
 </div>
 
 <div class="tab-pane fade" id="tab_desglosado" role="tabpanel">
-<div class="merma-tabla-wrap">
+<div class="merma-tabla-wrap wrap-fit">
     <div class="merma-scroll">
         <table class="merma-tabla">
             <thead>
@@ -241,7 +241,7 @@
                     <td>{{ b.cont is null ? '-' : b.cont|number_format(0, '.', ',') }}</td>
                     <td class="col-fis">
                         {%- if b.fis_corrupta -%}
-                        <span class="fis-corrupta fis-editable" data-fecha="{{ f.fecha }}"
+                        <span class="fis-corrupta fis-editable" data-fecha="{{ f.fecha }}" data-fam="{{ fam }}" data-turno="{{ f.turno }}"
                               title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo. Clic para corregirla en la estación.">
                             {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
                         </span>
@@ -252,7 +252,7 @@
                     {% set difabs = b.dif is null ? 0 : (b.dif < 0 ? -b.dif : b.dif) %}
                     <td class="{{ b.dif is null ? '' : (b.dif < 0 ? 'dif-neg' : 'dif-pos') }}">
                         {{ b.dif is null ? '-' : b.dif|number_format(0, '.', ',') }}
-                        {% if difabs >= 9000 %}<span class="badge-dif">DIFERENCIA</span>{% endif %}
+                        {% if difabs >= 9000 %}<i class="fas fa-exclamation-triangle dif-alerta" title="Diferencia mayor a 9,000 lts en el turno — revisar compras/cortes"></i>{% endif %}
                     </td>
                     <td class="col-acum sep-r">{{ b.acum is null ? '-' : b.acum|number_format(0, '.', ',') }}</td>
                     {% endfor %}
@@ -301,6 +301,9 @@
     </div>
 </div>
 
+<!-- Notificaciones flotantes del módulo -->
+<div id="merma_toasts" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 3000;"></div>
+
 <!-- Modal de corrección de cortes físicos (StockReal en la estación) -->
 <div class="modal fade" id="fisicoModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -326,6 +329,26 @@
 {% block myjs %}
 <script>
 $(document).ready(function () {
+    // ---- Toasts (en lugar de alert): tipo 'success' | 'danger' | 'warning' ----
+    function mermaToast(msg, tipo) {
+        const $t = $('<div class="toast align-items-center text-bg-' + (tipo || 'success') + ' border-0" role="alert">'
+            + '<div class="d-flex"><div class="toast-body">' + msg + '</div>'
+            + '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>')
+            .appendTo('#merma_toasts');
+        new bootstrap.Toast($t[0], { delay: 7000 }).show();
+        $t.on('hidden.bs.toast', () => $t.remove());
+    }
+    // Muestra el mensaje DESPUÉS de recargar (para acciones que refrescan la vista)
+    function mermaToastReload(msg, tipo) {
+        sessionStorage.setItem('merma_toast', JSON.stringify({ msg: msg, tipo: tipo || 'success' }));
+        location.reload();
+    }
+    const pendiente = sessionStorage.getItem('merma_toast');
+    if (pendiente) {
+        sessionStorage.removeItem('merma_toast');
+        try { const p = JSON.parse(pendiente); mermaToast(p.msg, p.tipo); } catch (e) {}
+    }
+
     // Tab Diario: clic en la fila del día despliega/oculta sus turnos
     $(document).on('click', '.dia-row', function () {
         $('.turnos-' + $(this).data('dia')).toggleClass('d-none');
@@ -340,11 +363,13 @@ $(document).ready(function () {
     $(document).on('click', '.fis-editable', function (e) {
         e.stopPropagation();
         const fecha = $(this).data('fecha');
+        const fam   = $(this).data('fam') || '';
+        const turno = $(this).data('turno') || '';
         if (!fecha) return;
-        $('#fisico_fecha_lbl').text(fecha);
+        $('#fisico_fecha_lbl').text(fecha + (fam ? ' — ' + fam.toUpperCase() : '') + (turno ? ' — Turno ' + turno : ''));
         $('#fisico_rows').html('<div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span> Consultando estación...</div>');
         new bootstrap.Modal(document.getElementById('fisicoModal')).show();
-        $.post('/merma/cortes_fisicos', { codgas: CODGAS, fecha: fecha }, function (res) {
+        $.post('/merma/cortes_fisicos', { codgas: CODGAS, fecha: fecha, familia: fam, turno: turno }, function (res) {
             if (!res.success) { $('#fisico_rows').html('<div class="alert alert-danger">' + res.message + '</div>'); return; }
             if (!res.cortes.length) { $('#fisico_rows').html('<div class="alert alert-warning">La estación no tiene cortes para este día.</div>'); return; }
             let html = '<table class="table table-sm align-middle mb-0"><thead><tr>'
@@ -461,7 +486,7 @@ $(document).ready(function () {
             codgas: CODGAS, fecha: $btn.data('fecha'), codprd: $btn.data('codprd'),
             turno: $btn.data('turno'), nro: $btn.data('nro'), litros: $btn.data('litros'), motivo: motivo,
         }, function (res) {
-            if (res.success) { location.reload(); }
+            if (res.success) { mermaToastReload(res.message, 'success'); }
             else {
                 $fila.find('td').prepend('<div class="alert alert-danger py-1 mb-1">' + res.message + '</div>');
                 $btn.prop('disabled', false).text('Confirmar exclusión');
@@ -479,15 +504,21 @@ $(document).ready(function () {
         $.post('/merma/incluir_compra', {
             codgas: CODGAS, fecha: $btn.data('fecha'), codprd: $btn.data('codprd'), nro: $btn.data('nro'),
         }, function (res) {
-            if (res.success) { location.reload(); }
-            else { alert(res.message); $btn.prop('disabled', false).text('Incluir'); }
-        }, 'json').fail(function () { alert('Error de servidor'); $btn.prop('disabled', false).text('Incluir'); });
+            if (res.success) { mermaToastReload(res.message, 'success'); }
+            else { mermaToast(res.message, 'danger'); $btn.prop('disabled', false).text('Incluir'); }
+        }, 'json').fail(function () { mermaToast('Error de servidor', 'danger'); $btn.prop('disabled', false).text('Incluir'); });
     });
 
     $(document).on('click', '.fisico-guardar', function () {
-        const $btn  = $(this);
-        const valor = $btn.closest('tr').find('.fisico-nuevo').val();
-        if (valor === '' || isNaN(valor)) { alert('Captura el nuevo valor en litros.'); return; }
+        const $btn   = $(this);
+        const $input = $btn.closest('tr').find('.fisico-nuevo');
+        const valor  = $input.val();
+        if (valor === '' || isNaN(valor)) {
+            $input.addClass('is-invalid').focus();
+            mermaToast('Captura el nuevo valor en litros.', 'warning');
+            return;
+        }
+        $input.removeClass('is-invalid');
         if (!confirm('¿Corregir este corte en la estación a ' + valor + ' lts?\nSe escribirá en StockReal y se resincronizará el día.')) return;
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
         $.post('/merma/corregir_fisico', {
@@ -495,10 +526,10 @@ $(document).ready(function () {
             codprd: $btn.data('codprd'), nrotur: $btn.data('nrotur'),
             codtan: $btn.data('codtan'), valor: valor,
         }, function (res) {
-            if (res.success) { alert(res.message); location.reload(); }
-            else { alert(res.message); $btn.prop('disabled', false).text('Guardar'); }
+            if (res.success) { mermaToastReload(res.message, 'success'); }
+            else { mermaToast(res.message, 'danger'); $btn.prop('disabled', false).text('Guardar'); }
         }, 'json').fail(function () {
-            alert('Error de servidor');
+            mermaToast('Error de servidor', 'danger');
             $btn.prop('disabled', false).text('Guardar');
         });
     });
@@ -515,9 +546,9 @@ $(document).ready(function () {
         const hasta = fechaLimitante.getFullYear() + '-' + String(fechaLimitante.getMonth() + 1).padStart(2, '0') + '-' + String(fechaLimitante.getDate()).padStart(2, '0');
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Consultando...');
         $.post('/merma/sync', { from: desde, to: hasta, codgas: $btn.data('codgas') }, function (res) {
-            if (res.success) { location.reload(); }
-            else { alert(res.message); }
-        }, 'json').fail(() => alert('Error de servidor'))
+            if (res.success) { mermaToastReload(res.message, 'success'); }
+            else { mermaToast(res.message, 'danger'); }
+        }, 'json').fail(() => mermaToast('Error de servidor', 'danger'))
           .always(() => $btn.prop('disabled', false).html('<i class="fas fa-sync"></i> Re-sincronizar estación'));
     });
 });

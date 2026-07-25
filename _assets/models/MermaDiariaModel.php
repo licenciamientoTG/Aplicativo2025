@@ -220,17 +220,22 @@ class MermaDiariaModel extends Model
      * (una por producto/turno/tanque). La fecha mostrada en el reporte es
      * fch - 1, por eso fch = serial de la fecha (dateToInt).
      */
-    public function get_cortes_fisicos(int $codgas, string $fecha): array
+    public function get_cortes_fisicos(int $codgas, string $fecha, ?string $familia = null, ?int $turno = null): array
     {
         $est = $this->get_estacion_conexion($codgas);
         if (!$est) return [];
         $fch  = dateToInt($fecha);
-        $prds = implode(',', array_merge(...array_values(self::FAMILIAS)));
+        $prds = isset(self::FAMILIAS[$familia])
+            ? implode(',', self::FAMILIAS[$familia])
+            : implode(',', array_merge(...array_values(self::FAMILIAS)));
+        // Turno mostrado (11/21/41) → nrotur crudos de StockReal
+        $turnoNrotur = [11 => '10, 11', 21 => '20, 21', 41 => '40, 41'];
+        $filtroTurno = isset($turnoNrotur[$turno]) ? " AND nrotur IN ({$turnoNrotur[$turno]})" : '';
         $inner = sprintf(
             'SELECT fch, codgas, codprd, nrotur, codtan, can, logfch, lognew
              FROM [%s].dbo.StockReal
-             WHERE fch = %d AND codgas = %d AND codprd IN (%s) AND nrotur NOT IN (30, 31)',
-            $est['BaseDatos'], $fch, $codgas, $prds);
+             WHERE fch = %d AND codgas = %d AND codprd IN (%s) AND nrotur NOT IN (30, 31)%s',
+            $est['BaseDatos'], $fch, $codgas, $prds, $filtroTurno);
         $query = sprintf("SELECT * FROM OPENQUERY([%s], '%s') ORDER BY codprd, nrotur, codtan;",
             $est['Servidor'], str_replace("'", "''", $inner));
         $cortes = $this->sql->select($query) ?: [];
@@ -257,10 +262,28 @@ class MermaDiariaModel extends Model
                 $last[$prd] = (float)$fis;
             }
         }
+        // El contable es del TURNO completo (suma de tanques): a cada fila se
+        // le sugiere contable - los demás tanques válidos de su mismo corte,
+        // para no duplicar el turno en estaciones con varios tanques por
+        // producto (caso Gemela Grande: tanque 7 real + tanque 78 en 0)
         $turnoMap = [10 => 11, 20 => 21, 30 => 41, 40 => 41];
+        $validosPorCorte = [];
+        foreach ($cortes as $c) {
+            $key = $c['codprd'] . '-' . $c['nrotur'];
+            $can = (float)$c['can'];
+            if ($can >= self::INV_FISICO_MIN && $can <= self::INV_FISICO_MAX) {
+                $validosPorCorte[$key][(int)$c['codtan']] = $can;
+            }
+        }
         foreach ($cortes as &$c) {
             $turno = $turnoMap[(int)$c['nrotur']] ?? (int)$c['nrotur'];
-            $c['recomendado'] = $rec[(int)$c['codprd'] . '-' . $turno] ?? null;
+            $recTurno = $rec[(int)$c['codprd'] . '-' . $turno] ?? null;
+            if ($recTurno === null) { $c['recomendado'] = null; continue; }
+            $otros = 0.0;
+            foreach ($validosPorCorte[$c['codprd'] . '-' . $c['nrotur']] ?? [] as $tan => $can) {
+                if ($tan !== (int)$c['codtan']) $otros += $can;
+            }
+            $c['recomendado'] = max(0, round($recTurno - $otros, 2));
         }
         unset($c);
         return $cortes;

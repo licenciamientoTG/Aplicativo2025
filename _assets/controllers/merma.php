@@ -260,14 +260,18 @@ class Merma
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $codgas = (int)($_POST['codgas'] ?? 0);
-        $fecha  = $_POST['fecha'] ?? '';
+        $codgas  = (int)($_POST['codgas'] ?? 0);
+        $fecha   = $_POST['fecha'] ?? '';
+        $familia = $_POST['familia'] ?? '';
+        $turno   = (int)($_POST['turno'] ?? 0);
+        if (!in_array($familia, ['maxima', 'super', 'diesel'], true)) $familia = null;
+        if (!in_array($turno, [11, 21, 41], true)) $turno = null;
         if (!$codgas || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
             json_output(['success' => false, 'message' => 'Parámetros inválidos']);
             return;
         }
         try {
-            $cortes = $this->mermaModel->get_cortes_fisicos($codgas, $fecha);
+            $cortes = $this->mermaModel->get_cortes_fisicos($codgas, $fecha, $familia, $turno);
         } catch (Throwable $e) {
             json_output(['success' => false, 'message' => 'Error consultando la estación: ' . $e->getMessage()]);
             return;

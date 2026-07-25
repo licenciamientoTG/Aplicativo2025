@@ -67,7 +67,7 @@
 /* Tab Diario: fila de día clickeable + subfilas de turno.
    td./th. para ganarle en especificidad al ancho de 96px de .col-fecha */
 .merma-tabla td.col-dia, .merma-tabla th.col-dia {
-    width: 175px; min-width: 175px; max-width: 175px;
+    width: 125px; min-width: 125px; max-width: 125px;
     white-space: nowrap; box-shadow: 2px 0 0 0 #cbd5e1;
 }
 .merma-tabla thead th.col-dia, .merma-tabla tfoot td.col-dia { z-index: 40; }
@@ -82,6 +82,20 @@
 .merma-tabla-wrap {
     border: 2px solid #cbd5e1; border-radius: .5rem;
     background: #fff; overflow: hidden;
+}
+/* Variante del detalle: el contenedor abraza el ancho real de la tabla en
+   lugar de estirarse a toda la pantalla; si la tabla es más ancha que la
+   ventana, conserva su scroll horizontal interno */
+.merma-tabla-wrap.wrap-fit { width: fit-content; max-width: 100%; }
+
+/* Tab Desglosado: densidad compacta para caber a lo ancho SIN deformar la
+   tabla — cada columna conserva su ancho natural (nada de table-layout fixed:
+   parte números y encabezados), tipografía y padding menores. Si aun así no
+   cabe (pantallas chicas), el scroll horizontal del contenedor es el respaldo. */
+#tab_desglosado .merma-tabla-wrap { width: 100%; }
+#tab_desglosado .merma-tabla { width: 100%; font-size: .72rem; }
+#tab_desglosado .merma-tabla th, #tab_desglosado .merma-tabla td {
+    padding: .3rem .4rem; white-space: nowrap;
 }
 .merma-scroll { overflow: auto; max-height: 72vh; }
 /* Scrollbar siempre visible */
@@ -170,8 +184,5 @@
    td./scope para ganarle a ".merma-tabla td { color: ... }" */
 .pct-pos, .merma-tabla td.pct-pos { color: #006ba1; font-weight: 600; }
 .pct-neg, .merma-tabla td.pct-neg { color: #dc2626; font-weight: 600; }
-.badge-dif {
-    display: inline-block; margin-left: .35rem; padding: .1rem .35rem;
-    border-radius: .25rem; font-size: 10px; font-weight: 700;
-    line-height: 1; background: #fee2e2; color: #b91c1c;
-}
+/* Diferencia >= 9,000 lts: icono de alerta con tooltip (antes badge "DIFERENCIA") */
+.dif-alerta { margin-left: .3rem; color: #b91c1c; font-size: .7rem; }
