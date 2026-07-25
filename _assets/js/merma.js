@@ -9,6 +9,9 @@ $(document).ready(function () {
             paging: false,
             ordering: false,
             info: false,
+            // Sin anchos fijos: DataTables clava px calculados al iniciar y la
+            // tabla deja de ajustarse al redimensionar la ventana
+            autoWidth: false,
             dom: '<"top"Bf>rt',
             buttons: [{
                 extend: 'excel',

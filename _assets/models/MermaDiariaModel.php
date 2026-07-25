@@ -81,10 +81,57 @@ class MermaDiariaModel extends Model
             $this->sql->rollBack();
             throw $e;
         }
-        // Fuera de la transacción: recalcula toda la partición de la estación,
-        // incluidas las filas posteriores al rango cuyo baseline cambió.
+        // Fuera de la transacción: descuenta compras excluidas y recalcula toda
+        // la partición de la estación, incluidas las filas posteriores al rango
+        // cuyo baseline cambió.
+        $this->aplicar_exclusiones($codgas, $desde, $hasta);
         $this->recalc_contable($codgas);
         return $insertadas;
+    }
+
+    /**
+     * Descuenta del snapshot las compras marcadas como excluidas (duplicadas/
+     * fantasma) SOLO en este sistema — ControlGas no se toca. Se corre tras
+     * cada replace del rango, antes del recalc. Si la tabla aún no existe no
+     * debe tumbar el sync.
+     */
+    public function aplicar_exclusiones(int $codgas, string $desde, string $hasta): void
+    {
+        try {
+            $this->sql->update(
+                'UPDATE m SET compras = CASE WHEN ROUND(m.compras - e.litros, 2) < 0
+                                             THEN 0 ELSE ROUND(m.compras - e.litros, 2) END
+                 FROM [TG].[dbo].[merma_diaria] m
+                 JOIN (SELECT codgas, fecha, codprd, turno, SUM(litros) AS litros
+                       FROM [TG].[dbo].[merma_compras_excluidas]
+                       GROUP BY codgas, fecha, codprd, turno) e
+                   ON e.codgas = m.codgas AND e.fecha = m.fecha
+                  AND e.codprd = m.codprd AND e.turno = m.turno
+                 WHERE m.codgas = ? AND m.fecha BETWEEN ? AND ?;',
+                [$codgas, $desde, $hasta]);
+        } catch (Throwable $e) {
+            // Tabla inexistente u otro fallo: el sync sigue, sin exclusiones
+        }
+    }
+
+    /** Marca un doc de compra como excluido del reporte. */
+    public function excluir_compra(int $codgas, string $fecha, int $codprd, int $turno,
+                                   int $nro, float $litros, string $motivo, int $usuario): bool
+    {
+        return (bool)$this->sql->insert(
+            'INSERT INTO [TG].[dbo].[merma_compras_excluidas]
+                (codgas, fecha, fch, codprd, turno, nro_doc, litros, motivo, usuario)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
+            [$codgas, $fecha, dateToInt($fecha), $codprd, $turno, $nro, round($litros), $motivo, $usuario]);
+    }
+
+    /** Quita la exclusión de un doc (vuelve a contar en el reporte). */
+    public function incluir_compra(int $codgas, string $fecha, int $codprd, int $nro): bool
+    {
+        return (bool)$this->sql->delete(
+            'DELETE FROM [TG].[dbo].[merma_compras_excluidas]
+             WHERE codgas = ? AND fch = ? AND codprd = ? AND nro_doc = ?;',
+            [$codgas, dateToInt($fecha), $codprd, $nro]);
     }
 
     /**
@@ -267,6 +314,63 @@ class MermaDiariaModel extends Model
             [$usuario, $codgas, $fecha, $fch, $codprd, $nrotur, $codtan, $anterior, $valor]);
 
         return ['success' => true, 'anterior' => $anterior, 'sg12' => (bool)$sg12, 'log' => (bool)$log];
+    }
+
+    /**
+     * Compras de combustible del rango cruzadas contra su recepción física en
+     * telemetría: MovimientosTan tiptrn=4 liga nrodoc → folio del documento
+     * (tiptrn=3 es la descarga medida). Un doc sin aplicación o con desviación
+     * fuerte vs lo medido es compra fantasma/duplicada o telemetría caída.
+     * Detectado en el caso López Mateos 04-jul-2026 (docs 5431/5432).
+     */
+    public function get_compras_vs_recepcion(int $codgas, string $desde, string $hasta): array
+    {
+        $est = $this->get_estacion_conexion($codgas);
+        if (!$est) return [];
+        $fchIni = dateToInt($desde);
+        $fchFin = dateToInt($hasta);
+        $prds   = implode(',', array_merge(...array_values(self::FAMILIAS)));
+        $db     = $est['BaseDatos'];
+        // Las aplicaciones pueden capturarse días después del doc, nunca antes
+        // de la descarga: se acota fchtrn solo por abajo (con colchón)
+        $inner = "SELECT m.fch, m.codprd, m.nrotur, m.nro, m.can, m.logfch,
+                         t.volrec, ISNULL(t.aplicaciones, 0) AS aplicaciones
+                  FROM [$db].dbo.Movimientos m
+                  LEFT JOIN (
+                      SELECT nrodoc, SUM(volrec) AS volrec, COUNT(*) AS aplicaciones
+                      FROM [$db].dbo.MovimientosTan
+                      WHERE tiptrn = 4 AND nrodoc <> 0 AND fchtrn >= " . ($fchIni - 10) . "
+                      GROUP BY nrodoc
+                  ) t ON t.nrodoc = m.nro
+                  WHERE m.fch BETWEEN $fchIni AND $fchFin AND m.tip = 11 AND m.can > 0
+                    AND m.codprd IN ($prds)";
+        $query = sprintf("SELECT * FROM OPENQUERY([%s], '%s') ORDER BY fch, codprd, nro;",
+            $est['Servidor'], str_replace("'", "''", $inner));
+        $rows = $this->sql->select($query) ?: [];
+
+        // Docs ya excluidos del reporte (la tabla puede no existir todavía)
+        $excluidas = [];
+        try {
+            $ex = $this->sql->select(
+                'SELECT fch, codprd, nro_doc FROM [TG].[dbo].[merma_compras_excluidas]
+                 WHERE codgas = ? AND fch BETWEEN ? AND ?;', [$codgas, $fchIni, $fchFin]);
+            foreach ($ex ?: [] as $e) $excluidas[$e['fch'] . '-' . $e['codprd'] . '-' . $e['nro_doc']] = true;
+        } catch (Throwable $e) { /* sin tabla, nada excluido */ }
+
+        $turnoMap = [10 => 11, 11 => 11, 20 => 21, 21 => 21, 30 => 41, 31 => 41, 40 => 41, 41 => 41];
+        foreach ($rows as &$r) {
+            // fch es serial ControlGas (días desde 1899-12-31)
+            $r['fecha'] = date('Y-m-d', strtotime('1899-12-31 +' . (int)$r['fch'] . ' days'));
+            $r['turno'] = $turnoMap[(int)$r['nrotur']] ?? 41;
+            $r['excluida'] = isset($excluidas[$r['fch'] . '-' . $r['codprd'] . '-' . $r['nro']]);
+            $doc = (float)$r['can'];
+            $rec = $r['volrec'] !== null ? (float)$r['volrec'] : null;
+            if ($rec === null)                                   $r['estado'] = 'sin_recepcion';
+            elseif ($doc > 0 && abs($rec - $doc) / $doc > 0.10)  $r['estado'] = 'desviacion';
+            else                                                 $r['estado'] = 'ok';
+        }
+        unset($r);
+        return $rows;
     }
 
     /**

@@ -72,8 +72,7 @@
                     <td>{{ f.diesel is null ? '-' : f.diesel|number_format(0, '.', ',') }}</td>
                     <td class="col-total sep-r">{{ f.total is null ? '-' : f.total|number_format(0, '.', ',') }}</td>
                     <td>{{ f.venta is null ? '-' : f.venta|number_format(0, '.', ',') }}</td>
-                    {% set pctabs = f.pct is null ? 0 : (f.pct < 0 ? -f.pct : f.pct) %}
-                    <td class="{{ f.pct is null ? '' : (pctabs > 1 ? 'pct-alto' : (pctabs > 0.5 ? 'pct-medio' : 'pct-ok')) }}">
+                    <td class="{{ f.pct is null ? '' : (f.pct < 0 ? 'pct-neg' : 'pct-pos') }}">
                         {{ f.pct is null ? '-' : f.pct|number_format(2) ~ '%' }}
                     </td>
                 </tr>
@@ -87,7 +86,10 @@
                     <td class="text-end">{{ totales.diesel|number_format(0, '.', ',') }}</td>
                     <td class="text-end sep-r">{{ totales.total|number_format(0, '.', ',') }}</td>
                     <td class="text-end">{{ totales.venta|number_format(0, '.', ',') }}</td>
-                    <td class="text-end">{{ totales.venta != 0 ? (totales.total / totales.venta * 100)|number_format(2) ~ '%' : '-' }}</td>
+                    {% set pctTotal = totales.venta != 0 ? totales.total / totales.venta * 100 : null %}
+                    <td class="text-end {{ pctTotal is null ? '' : (pctTotal < 0 ? 'pct-neg' : 'pct-pos') }}">
+                        {{ pctTotal is null ? '-' : pctTotal|number_format(2) ~ '%' }}
+                    </td>
                 </tr>
             </tfoot>
         </table>

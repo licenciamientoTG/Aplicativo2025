@@ -36,16 +36,9 @@
     font-size: 1.05rem; font-weight: 600; color: #0f172a;
     font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.kpi-filtro-label {
-    display: block; font-size: .66rem; font-weight: 500;
-    text-transform: uppercase; letter-spacing: .05em;
-    color: #64748b; margin-bottom: .1rem;
-}
+/* Merma/% por signo en KPIs: positiva azul (sobrante), negativa roja */
 .kpi-item .kpi-neg { color: #dc2626; }
-.kpi-item .kpi-pos { color: #059669; }
-.kpi-item .pct-alto  { color: #dc2626; }
-.kpi-item .pct-medio { color: #d97706; }
-.kpi-item .pct-ok    { color: #059669; }
+.kpi-item .kpi-pos { color: #006ba1; }
 
 /* ---- Botones ----------------------------------------------------------- */
 .btn-merma-neutro {
@@ -173,9 +166,10 @@
 .merma-tabla .col-acum, .merma-tabla .col-total { font-weight: 700; color: #0f172a; }
 .merma-tabla .dif-pos { color: #059669; font-weight: 500; }
 .merma-tabla .dif-neg { color: #dc2626; font-weight: 500; }
-.merma-tabla .pct-alto  { color: #dc2626; font-weight: 700; }
-.merma-tabla .pct-medio { color: #d97706; font-weight: 700; }
-.merma-tabla .pct-ok    { color: #059669; }
+/* % merma por signo: positiva azul (sobrante), negativa roja (faltante).
+   td./scope para ganarle a ".merma-tabla td { color: ... }" */
+.pct-pos, .merma-tabla td.pct-pos { color: #006ba1; font-weight: 600; }
+.pct-neg, .merma-tabla td.pct-neg { color: #dc2626; font-weight: 600; }
 .badge-dif {
     display: inline-block; margin-left: .35rem; padding: .1rem .35rem;
     border-radius: .25rem; font-size: 10px; font-weight: 700;

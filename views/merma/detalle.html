@@ -10,6 +10,38 @@
 {% block content %}
 
 <div class="card">
+    <div class="card-body py-2">
+        <form action="/merma/detalle/{{ estacion.Codigo }}" method="get" class="row align-items-end g-2">
+            <div class="col-auto">
+                <label for="desde">Desde:</label>
+                <input type="date" class="form-control form-control-sm" name="desde" id="desde"
+                       value="{{ desde }}" max="{{ maxHasta }}" required>
+            </div>
+            <div class="col-auto">
+                <label for="hasta">Hasta:</label>
+                <input type="date" class="form-control form-control-sm" name="hasta" id="hasta"
+                       value="{{ hasta }}" max="{{ maxHasta }}" required>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-merma-neutro">Buscar</button>
+            </div>
+            <div class="col-auto ms-auto d-flex gap-2">
+                <a href="/merma/analisis?desde={{ desde }}&hasta={{ hasta }}" class="btn btn-sm btn-merma-neutro">
+                    <i class="fas fa-arrow-left"></i> Resumen
+                </a>
+                <button type="button" class="btn btn-sm btn-merma-neutro" id="validar_compras">
+                    <i class="fas fa-truck"></i> Validar compras
+                </button>
+                <button type="button" class="btn btn-sm btn-merma-sync" id="sync_estacion"
+                        data-codgas="{{ estacion.Codigo }}" data-anio="{{ anio }}" data-mes="{{ mes }}">
+                    <i class="fas fa-sync"></i> Re-sincronizar estación
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
     <div class="card-body merma-kpi-bar">
         {% for fam in ['maxima', 'super', 'diesel'] %}
         {% set ini = invInicial ? attribute(invInicial, 'ini_' ~ fam) : null %}
@@ -21,7 +53,7 @@
             <div class="kpi-fam-body">
                 <div class="kpi-item">
                     <small>Inv. inicial{% if invInicial %} {{ invInicial.fecha|date('d-m') }}{% endif %}</small>
-                    <span>{{ ini is null ? '-' : ini|number_format(2, '.', ',') }}</span>
+                    <span>{{ ini is null ? '-' : ini|number_format(0, '.', ',') }}</span>
                 </div>
                 <div class="kpi-item">
                     <small>Compras</small>
@@ -35,14 +67,18 @@
                     <small>Merma</small>
                     <span class="{{ mer is null ? '' : (mer < 0 ? 'kpi-neg' : 'kpi-pos') }}">{{ mer is null ? '-' : mer|number_format(0, '.', ',') }}</span>
                 </div>
+                {% set pctFam = mer is null or vta == 0 ? null : mer / vta * 100 %}
+                <div class="kpi-item">
+                    <small>% merma</small>
+                    <span class="{{ pctFam is null ? '' : (pctFam < 0 ? 'kpi-neg' : 'kpi-pos') }}">{{ pctFam is null ? '-' : pctFam|number_format(2) ~ '%' }}</span>
+                </div>
             </div>
         </div>
         {% endfor %}
         {% if resumen %}
         {% set pct = resumen.venta_total != 0 ? resumen.merma_total / resumen.venta_total * 100 : null %}
-        {% set pctabs = pct is null ? 0 : (pct < 0 ? -pct : pct) %}
         <div class="kpi-fam kpi-total">
-            <div class="kpi-fam-head">Total del mes</div>
+            <div class="kpi-fam-head">Total del periodo</div>
             <div class="kpi-fam-body">
                 <div class="kpi-item">
                     <small>Venta total</small>
@@ -50,39 +86,15 @@
                 </div>
                 <div class="kpi-item">
                     <small>Merma</small>
-                    <span>{{ resumen.merma_total is null ? '-' : resumen.merma_total|number_format(0, '.', ',') }}</span>
+                    <span class="{{ resumen.merma_total is null ? '' : (resumen.merma_total < 0 ? 'kpi-neg' : 'kpi-pos') }}">{{ resumen.merma_total is null ? '-' : resumen.merma_total|number_format(0, '.', ',') }}</span>
                 </div>
                 <div class="kpi-item">
                     <small>% merma</small>
-                    <span class="{{ pct is null ? '' : (pctabs > 1 ? 'pct-alto' : (pctabs > 0.5 ? 'pct-medio' : 'pct-ok')) }}">{{ pct is null ? '-' : pct|number_format(2) ~ '%' }}</span>
+                    <span class="{{ pct is null ? '' : (pct < 0 ? 'pct-neg' : 'pct-pos') }}">{{ pct is null ? '-' : pct|number_format(2) ~ '%' }}</span>
                 </div>
             </div>
         </div>
         {% endif %}
-        <div class="ms-auto d-flex flex-column gap-2 justify-content-center">
-            <form action="/merma/detalle/{{ estacion.Codigo }}" method="get" class="d-flex gap-2 align-items-end">
-                <div>
-                    <label for="desde" class="kpi-filtro-label">Desde:</label>
-                    <input type="date" class="form-control form-control-sm" name="desde" id="desde"
-                           value="{{ desde }}" max="{{ maxHasta }}" required>
-                </div>
-                <div>
-                    <label for="hasta" class="kpi-filtro-label">Hasta:</label>
-                    <input type="date" class="form-control form-control-sm" name="hasta" id="hasta"
-                           value="{{ hasta }}" max="{{ maxHasta }}" required>
-                </div>
-                <button type="submit" class="btn btn-sm btn-merma-neutro">Buscar</button>
-            </form>
-            <div class="d-flex gap-2 justify-content-end">
-                <a href="/merma/analisis?desde={{ desde }}&hasta={{ hasta }}" class="btn btn-sm btn-merma-neutro">
-                    <i class="fas fa-arrow-left"></i> Resumen
-                </a>
-                <button type="button" class="btn btn-sm btn-merma-sync" id="sync_estacion"
-                        data-codgas="{{ estacion.Codigo }}" data-anio="{{ anio }}" data-mes="{{ mes }}">
-                    <i class="fas fa-sync"></i> Re-sincronizar estación
-                </button>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -137,8 +149,7 @@
                         {{ b.dif is null ? '-' : b.dif|number_format(2, '.', ',') }}
                         {% if difabs >= 9000 %}<span class="badge-dif">DIFERENCIA</span>{% endif %}
                     </td>
-                    {% set pctabs = b.pct is null ? 0 : (b.pct < 0 ? -b.pct : b.pct) %}
-                    <td class="sep-r {{ b.pct is null ? '' : (pctabs > 1 ? 'pct-alto' : (pctabs > 0.5 ? 'pct-medio' : 'pct-ok')) }}">
+                    <td class="sep-r {{ b.pct is null ? '' : (b.pct < 0 ? 'pct-neg' : 'pct-pos') }}">
                         {{ b.pct is null ? '-' : b.pct|number_format(2) ~ '%' }}
                     </td>
                     {% endfor %}
@@ -187,7 +198,8 @@
                     <td>{{ vta|number_format(2, '.', ',') }}</td>
                     <td></td><td></td>
                     <td class="{{ mer is null ? '' : (mer < 0 ? 'dif-neg' : 'dif-pos') }}">{{ mer is null ? '-' : mer|number_format(2, '.', ',') }}</td>
-                    <td class="sep-r">{{ mer is null or vta == 0 ? '-' : (mer / vta * 100)|number_format(2) ~ '%' }}</td>
+                    {% set pctFam = mer is null or vta == 0 ? null : mer / vta * 100 %}
+                    <td class="sep-r {{ pctFam is null ? '' : (pctFam < 0 ? 'pct-neg' : 'pct-pos') }}">{{ pctFam is null ? '-' : pctFam|number_format(2) ~ '%' }}</td>
                     {% endfor %}
                 </tr>
             </tfoot>
@@ -268,6 +280,27 @@
 
 </div>
 
+<!-- Modal de validación de compras vs recepción física (telemetría) -->
+<div class="modal fade" id="comprasModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Compras vs recepción física — {{ estacion.Nombre }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">
+                    Cada documento de compra (<code>Movimientos</code>) contra los litros que la telemetría
+                    del tanque midió al descargar (<code>MovimientosTan</code>). <strong>Sin recepción</strong> =
+                    posible compra duplicada/fantasma (o telemetría caída ese día);
+                    <strong>desviación</strong> = más de ±10% entre documento y volumen medido.
+                </p>
+                <div id="compras_rows"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal de corrección de cortes físicos (StockReal en la estación) -->
 <div class="modal fade" id="fisicoModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -338,6 +371,117 @@ $(document).ready(function () {
             });
             $('#fisico_rows').html(html + '</tbody></table>');
         }, 'json').fail(() => $('#fisico_rows').html('<div class="alert alert-danger">Error de servidor</div>'));
+    });
+
+    // ---- Validación de compras vs recepción física --------------------------
+    $('#validar_compras').click(function () {
+        $('#compras_rows').html('<div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span> Consultando estación...</div>');
+        new bootstrap.Modal(document.getElementById('comprasModal')).show();
+        $.post('/merma/compras_recepcion', {
+            codgas: CODGAS, desde: $('#desde').val(), hasta: $('#hasta').val(),
+        }, function (res) {
+            if (!res.success) { $('#compras_rows').html('<div class="alert alert-danger">' + res.message + '</div>'); return; }
+            if (!res.compras.length) { $('#compras_rows').html('<div class="alert alert-warning">Sin documentos de compra en el rango.</div>'); return; }
+            const flagged = res.compras.filter(c => c.estado !== 'ok').length;
+            let html = flagged
+                ? '<div class="alert alert-danger py-2">' + flagged + ' documento(s) con problema — revisa contra la remisión/factura y cancela en ControlGas los duplicados.</div>'
+                : '<div class="alert alert-success py-2">Todas las compras del rango tienen recepción física coherente.</div>';
+            html += '<table class="table table-sm align-middle mb-0"><thead><tr>'
+                + '<th>Fecha</th><th>Producto</th><th>Doc</th><th class="text-end">Litros doc</th>'
+                + '<th class="text-end">Recibido físico</th><th class="text-end">Desv.</th><th>Capturado</th><th>Estado</th><th></th></tr></thead><tbody>';
+            res.compras.forEach(function (c) {
+                const doc = Number(c.can), rec = c.volrec !== null ? Number(c.volrec) : null;
+                const desv = (rec !== null && doc > 0) ? ((rec - doc) / doc * 100) : null;
+                const cls = c.excluida ? 'table-secondary' : (c.estado === 'sin_recepcion' ? 'table-danger' : (c.estado === 'desviacion' ? 'table-warning' : ''));
+                let badge = c.estado === 'sin_recepcion'
+                    ? '<span class="badge bg-danger">SIN RECEPCIÓN</span>'
+                    : (c.estado === 'desviacion' ? '<span class="badge bg-warning text-dark">DESVIACIÓN</span>'
+                                                 : '<span class="badge bg-success">OK</span>');
+                if (c.excluida) badge += ' <span class="badge bg-secondary">EXCLUIDA</span>';
+                const accion = c.excluida
+                    ? '<button type="button" class="btn btn-sm btn-merma-neutro compra-incluir" data-fecha="' + c.fecha
+                      + '" data-codprd="' + c.codprd + '" data-nro="' + c.nro + '">Incluir</button>'
+                    : '<button type="button" class="btn btn-sm btn-merma-neutro compra-excluir" data-fecha="' + c.fecha
+                      + '" data-codprd="' + c.codprd + '" data-turno="' + c.turno + '" data-nro="' + c.nro
+                      + '" data-litros="' + doc + '">Excluir</button>';
+                html += '<tr class="' + cls + '">'
+                    + '<td>' + c.fecha + '</td>'
+                    + '<td>' + (PRD_LBL[c.codprd] || '') + ' (' + c.codprd + ')</td>'
+                    + '<td>' + c.nro + '</td>'
+                    + '<td class="text-end">' + doc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td>'
+                    + '<td class="text-end">' + (rec !== null ? rec.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-') + '</td>'
+                    + '<td class="text-end">' + (desv !== null ? desv.toFixed(1) + '%' : '-') + '</td>'
+                    + '<td>' + (c.logfch ? String(c.logfch).substring(0, 16) : '-') + '</td>'
+                    + '<td>' + badge + '</td>'
+                    + '<td>' + accion + '</td>'
+                    + '</tr>';
+            });
+            $('#compras_rows').html(html + '</tbody></table>');
+        }, 'json').fail(() => $('#compras_rows').html('<div class="alert alert-danger">Error de servidor</div>'));
+    });
+
+    // Excluir: despliega una fila inline con el motivo, en lugar de prompt()
+    $(document).on('click', '.compra-excluir', function () {
+        const $btn = $(this);
+        $('#compras_rows .fila-motivo').remove();
+        const d = $btn.data();
+        const fila = '<tr class="fila-motivo"><td colspan="9">'
+            + '<div class="d-flex flex-wrap gap-2 align-items-center py-1">'
+            + '<span class="small text-muted">Excluir doc <strong>' + d.nro + '</strong> ('
+            + Number(d.litros).toLocaleString('en-US') + ' lts): dejará de contar solo en este reporte '
+            + '(ControlGas no se toca) y el día se resincroniza.</span>'
+            + '<input type="text" class="form-control form-control-sm motivo-input" maxlength="300" '
+            + 'placeholder="Motivo — ej. duplicado de docs 5426/5427, sin recepción física" style="max-width: 420px; flex: 1 1 260px;">'
+            + '<button type="button" class="btn btn-sm btn-merma-sync compra-excluir-ok" data-fecha="' + d.fecha
+            + '" data-codprd="' + d.codprd + '" data-turno="' + d.turno + '" data-nro="' + d.nro
+            + '" data-litros="' + d.litros + '">Confirmar exclusión</button>'
+            + '<button type="button" class="btn btn-sm btn-merma-neutro compra-excluir-cancelar">Cancelar</button>'
+            + '</div></td></tr>';
+        $btn.closest('tr').after(fila);
+        $('#compras_rows .motivo-input').focus();
+    });
+
+    $(document).on('click', '.compra-excluir-cancelar', function () {
+        $(this).closest('.fila-motivo').remove();
+    });
+
+    $(document).on('keydown', '#compras_rows .motivo-input', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); $(this).closest('.fila-motivo').find('.compra-excluir-ok').click(); }
+        if (e.key === 'Escape') { $(this).closest('.fila-motivo').remove(); }
+    });
+
+    $(document).on('click', '.compra-excluir-ok', function () {
+        const $btn   = $(this);
+        const $fila  = $btn.closest('.fila-motivo');
+        const $input = $fila.find('.motivo-input');
+        const motivo = ($input.val() || '').trim();
+        if (!motivo) { $input.addClass('is-invalid').focus(); return; }
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Aplicando...');
+        $.post('/merma/excluir_compra', {
+            codgas: CODGAS, fecha: $btn.data('fecha'), codprd: $btn.data('codprd'),
+            turno: $btn.data('turno'), nro: $btn.data('nro'), litros: $btn.data('litros'), motivo: motivo,
+        }, function (res) {
+            if (res.success) { location.reload(); }
+            else {
+                $fila.find('td').prepend('<div class="alert alert-danger py-1 mb-1">' + res.message + '</div>');
+                $btn.prop('disabled', false).text('Confirmar exclusión');
+            }
+        }, 'json').fail(function () {
+            $fila.find('td').prepend('<div class="alert alert-danger py-1 mb-1">Error de servidor</div>');
+            $btn.prop('disabled', false).text('Confirmar exclusión');
+        });
+    });
+
+    $(document).on('click', '.compra-incluir', function () {
+        const $btn = $(this);
+        if (!confirm('El doc ' + $btn.data('nro') + ' volverá a contar como compra en el reporte y se resincronizará el día. ¿Continuar?')) return;
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+        $.post('/merma/incluir_compra', {
+            codgas: CODGAS, fecha: $btn.data('fecha'), codprd: $btn.data('codprd'), nro: $btn.data('nro'),
+        }, function (res) {
+            if (res.success) { location.reload(); }
+            else { alert(res.message); $btn.prop('disabled', false).text('Incluir'); }
+        }, 'json').fail(function () { alert('Error de servidor'); $btn.prop('disabled', false).text('Incluir'); });
     });
 
     $(document).on('click', '.fisico-guardar', function () {

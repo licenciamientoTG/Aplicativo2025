@@ -277,6 +277,95 @@ class Merma
                      'max' => MermaDiariaModel::INV_FISICO_MAX]);
     }
 
+    /** Cruce compras vs recepción física de la estación (modal Validar compras). */
+    public function compras_recepcion(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $desde  = $_POST['desde'] ?? '';
+        $hasta  = $_POST['hasta'] ?? '';
+        if (!$codgas || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        try {
+            $compras = $this->mermaModel->get_compras_vs_recepcion($codgas, $desde, $hasta);
+        } catch (Throwable $e) {
+            json_output(['success' => false, 'message' => 'Error consultando la estación: ' . $e->getMessage()]);
+            return;
+        }
+        json_output(['success' => true, 'compras' => $compras]);
+    }
+
+    /** Excluye un doc de compra del reporte (solo en TG) y re-sincroniza el día. */
+    public function excluir_compra(): void
+    {
+        set_time_limit(0);
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $fecha  = $_POST['fecha'] ?? '';
+        $codprd = (int)($_POST['codprd'] ?? 0);
+        $turno  = (int)($_POST['turno'] ?? 0);
+        $nro    = (int)($_POST['nro'] ?? 0);
+        $litros = $_POST['litros'] ?? '';
+        $motivo = trim((string)($_POST['motivo'] ?? ''));
+        if (!$codgas || !$codprd || !$nro || !in_array($turno, [11, 21, 41])
+            || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha) || !is_numeric($litros) || (float)$litros <= 0) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        try {
+            $ok = $this->mermaModel->excluir_compra($codgas, $fecha, $codprd, $turno, $nro, (float)$litros, $motivo, $usuario);
+        } catch (Throwable $e) {
+            json_output(['success' => false, 'message' => 'No se pudo excluir (¿tabla merma_compras_excluidas creada? ¿ya estaba excluido?): ' . $e->getMessage()]);
+            return;
+        }
+        if (!$ok) {
+            json_output(['success' => false, 'message' => 'No se pudo registrar la exclusión']);
+            return;
+        }
+        $sync = $this->runSync($fecha, $fecha, $codgas, 'exclusion', $usuario);
+        json_output(['success' => true,
+                     'message' => 'Doc ' . $nro . ' excluido del reporte'
+                                  . ($sync['success'] ? ' y día resincronizado.' : '; resincroniza manualmente: ' . $sync['message'])]);
+    }
+
+    /** Quita la exclusión de un doc y re-sincroniza el día. */
+    public function incluir_compra(): void
+    {
+        set_time_limit(0);
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $fecha  = $_POST['fecha'] ?? '';
+        $codprd = (int)($_POST['codprd'] ?? 0);
+        $nro    = (int)($_POST['nro'] ?? 0);
+        if (!$codgas || !$codprd || !$nro || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        try {
+            $this->mermaModel->incluir_compra($codgas, $fecha, $codprd, $nro);
+        } catch (Throwable $e) {
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+            return;
+        }
+        $sync = $this->runSync($fecha, $fecha, $codgas, 'exclusion', $usuario);
+        json_output(['success' => true,
+                     'message' => 'Doc ' . $nro . ' vuelve a contar en el reporte'
+                                  . ($sync['success'] ? '; día resincronizado.' : '; resincroniza manualmente: ' . $sync['message'])]);
+    }
+
     /** Corrige un corte físico en la estación y re-sincroniza ese día. */
     public function corregir_fisico(): void
     {
