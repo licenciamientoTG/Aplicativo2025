@@ -79,16 +79,16 @@ class Income{
 
 // === Dentro de class Income ===
 
-// Reemplaza/Agrega este método
-// Reemplaza este método dentro de class Income
+// Reemplaza/Agrega este mÃ©todo
+// Reemplaza este mÃ©todo dentro de class Income
 public function balance_age_send_mail(){
     if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
-        return json_output(['status'=>'error','message'=>'Método no permitido']);
+        return json_output(['status'=>'error','message'=>'MÃ©todo no permitido']);
     }
 
     // POST
     $sentTo   = $_POST['sentTo']   ?? '';
-    $subject  = $_POST['subject']  ?? 'Balance por Cliente/Estación';
+    $subject  = $_POST['subject']  ?? 'Balance por Cliente/EstaciÃ³n';
     $filename = $_POST['filename'] ?? '';
     $file_b64 = $_POST['file_b64'] ?? '';  // Excel en base64 (opcional)
     $cta      = (int)($_POST['cta'] ?? 0);
@@ -103,19 +103,19 @@ public function balance_age_send_mail(){
         array_map('trim', explode(';', $rawList)),
         function($e){ return $e && filter_var($e, FILTER_VALIDATE_EMAIL) && preg_match('/@totalgas\.com$/i', $e); }
     )));
-    if (!$to) return json_output(['status'=>'error','message'=>'Ingrese al menos un correo @totalgas.com válido.']);
+    if (!$to) return json_output(['status'=>'error','message'=>'Ingrese al menos un correo @totalgas.com vÃ¡lido.']);
 
-    // Mensaje dinámico fin de mes (sin cambios)
+    // Mensaje dinÃ¡mico fin de mes (sin cambios)
     $fechaActual   = new DateTime();
     $diaActual     = (int)$fechaActual->format('d');
     $ultimoDiaMes  = (int)$fechaActual->format('t');
 
-    // Envío (con o sin adjunto)
+    // EnvÃ­o (con o sin adjunto)
     $from = 'totalgasdesarrollo@gmail.com';
     $ok   = false;
     $tmp  = null;
 
-    // Si viene un dataURL, quítale el prefijo
+    // Si viene un dataURL, quÃ­tale el prefijo
     if (!empty($file_b64) && strpos($file_b64, 'base64,') !== false) {
         $file_b64 = explode('base64,', $file_b64, 2)[1] ?? $file_b64;
     }
@@ -164,7 +164,7 @@ public function balance_age_send_mail(){
 
 public function balance_age()
 {
-    // Catálogo de cuentas
+    // CatÃ¡logo de cuentas
     $cuentas = [
         101032000 => '101032000 - Facturas x cobrar',
         101032001 => '101032001 - Facturas X Cobrar Administrativas',
@@ -174,7 +174,7 @@ public function balance_age()
     // === Filtrar gasolineras permitidas ===
     $permitidas = [2, 24, 26, 29, 31];
 
-    // Lee todas y filtra por los códigos permitidos
+    // Lee todas y filtra por los cÃ³digos permitidos
     $gas_all = $this->clientesModel->get_gasolineras(); // [['cod'=>..,'den'=>..],...]
     $gasolineras = array_values(array_filter($gas_all, function ($g) use ($permitidas) {
         return in_array((int)$g['cod'], $permitidas, true);
@@ -184,14 +184,14 @@ public function balance_age()
     $cta_sel = isset($_REQUEST['cta']) ? (int)$_REQUEST['cta'] : null;
     $gas_sel = isset($_REQUEST['gas']) ? (int)$_REQUEST['gas'] : null;
 
-    // ¿El usuario ya dio "Consultar"?
+    // Â¿El usuario ya dio "Consultar"?
     $submitted = ($cta_sel !== null && $gas_sel !== null);
 
     $rows     = [];
-    $rows_det = [];   // <<-- NUEVO (para la pestaña Facturas)
+    $rows_det = [];   // <<-- NUEVO (para la pestaÃ±a Facturas)
 
     if ($submitted) {
-        // Valida selección contra catálogos ya filtrados
+        // Valida selecciÃ³n contra catÃ¡logos ya filtrados
         $validCta = array_key_exists($cta_sel, $cuentas);
         $validGas = in_array(
             $gas_sel,
@@ -340,7 +340,7 @@ public function balance_age()
         $dispatches[] = $this->despachosModel->sp_obtener_despachos_duplicados(dateToInt($from->format('Y-m-d')), dateToInt($until->format('Y-m-d')), $interval, $_GET['codgas'], $client);
 
         foreach ($dispatches as $despachos) {
-            // Variable para almacenar el índice de la fila anterior que necesita ser actualizada
+            // Variable para almacenar el Ã­ndice de la fila anterior que necesita ser actualizada
             $indiceFilaAnterior = null;
             foreach ($despachos as $indice => $despacho) {
                 $data[] = array(
@@ -363,7 +363,7 @@ public function balance_age()
                     'Check'          => $despacho['check'],
                 );
 
-                // Comprobar si el valor del campo "Check" en esta iteración es 1
+                // Comprobar si el valor del campo "Check" en esta iteraciÃ³n es 1
                 if ($despacho['check'] == 1) {
                     // Actualizar el valor del campo "Check" en la fila anterior si existe
                     if ($indiceFilaAnterior !== null) {
@@ -371,7 +371,7 @@ public function balance_age()
                     }
                 }
 
-                // Actualizar el índice de la fila anterior con el índice actual para la siguiente iteración
+                // Actualizar el Ã­ndice de la fila anterior con el Ã­ndice actual para la siguiente iteraciÃ³n
                 $indiceFilaAnterior = $indice;
             }
         }
@@ -388,7 +388,7 @@ public function balance_age()
             return new DateTime($dateString);
         } catch (Exception $e) {
             echo 'Se produjo un error al crear el objeto DateTime: ' . $e->getMessage();
-            return null; // Otra opción es lanzar una nueva excepción aquí en lugar de devolver null.
+            return null; // Otra opciÃ³n es lanzar una nueva excepciÃ³n aquÃ­ en lugar de devolver null.
         }
     }
 
@@ -668,7 +668,7 @@ function invoice_client_desp(){
         json_output(array("voucher" => $voucher['voucher_tarjeta'], "despacho" => $voucher['numDespacho']));
     }
 
-//    Desarrollo del día 2024-03-06
+//    Desarrollo del dÃ­a 2024-03-06
     function diffs() : void {
         $from = $_GET['from'] ?? false;
         $until = $_GET['until'] ?? false;
@@ -830,7 +830,7 @@ public function anomalies_clients_visual()
     $fechaTargetInicio = '';
     $fechaTargetFin    = '';
 
-    // LÓGICA DE FECHAS
+    // LÃ“GICA DE FECHAS
     if ($mode === 'week') {
         // Formato esperado: "2025-W35"
         // Usamos DateTime para obtener el Lunes y Domingo de esa semana ISO
@@ -853,16 +853,16 @@ public function anomalies_clients_visual()
         }
 
     } else {
-        // MODO MENSUAL (Lógica original)
+        // MODO MENSUAL (LÃ³gica original)
         $fechaTargetInicio = $value . '-01';
         $fechaTargetFin    = date("Y-m-t", strtotime($fechaTargetInicio));
     }
 
-    // CALCULAR HISTÓRICO (Siempre 6 meses atrás desde el inicio del periodo evaluado)
+    // CALCULAR HISTÃ“RICO (Siempre 6 meses atrÃ¡s desde el inicio del periodo evaluado)
     $fechaHistInicio = date("Y-m-01", strtotime("-6 months", strtotime($fechaTargetInicio)));
     $fechaHistFin    = date("Y-m-t", strtotime("-1 month", strtotime($fechaTargetInicio)));
     
-    // Visualización fin de año
+    // VisualizaciÃ³n fin de aÃ±o
     $yearStr = date("Y", strtotime($fechaTargetInicio));
     $fechaVisualFin = $yearStr . '-12-31';
 
@@ -883,27 +883,27 @@ public function anomalies_clients_visual()
 
 
 /**
-     * Endpoint NUEVO para los modales de detalle (Pico, Días Críticos, Exceso).
-     * Recibe el rango seleccionado y calcula automáticamente el rango histórico (6 meses atrás)
-     * para enviárselo al modelo y que este pueda comparar (Media vs Real).
+     * Endpoint NUEVO para los modales de detalle (Pico, DÃ­as CrÃ­ticos, Exceso).
+     * Recibe el rango seleccionado y calcula automÃ¡ticamente el rango histÃ³rico (6 meses atrÃ¡s)
+     * para enviÃ¡rselo al modelo y que este pueda comparar (Media vs Real).
      */
     public function get_breakdown_ajax()
     {
-        // 1. Validar sesión (opcional según tu framework)
+        // 1. Validar sesiÃ³n (opcional segÃºn tu framework)
         // if (!Auth::validate()) { header('Content-Type: application/json'); echo json_encode(['error' => 'Auth']); return; }
 
-        // 2. Recibir parámetros del Frontend
+        // 2. Recibir parÃ¡metros del Frontend
         $codopr = $_POST['codopr'] ?? 0;
         $fini   = $_POST['fini'] ?? date('Y-m-01'); // Fecha inicio del periodo analizado
         $ffin   = $_POST['ffin'] ?? date('Y-m-t');  // Fecha fin del periodo analizado
 
-        // 3. CALCULAR CONTEXTO HISTÓRICO (La clave de la detección)
-        // Para saber si un día es crítico, necesitamos compararlo contra la media de los 6 meses previos.
+        // 3. CALCULAR CONTEXTO HISTÃ“RICO (La clave de la detecciÃ³n)
+        // Para saber si un dÃ­a es crÃ­tico, necesitamos compararlo contra la media de los 6 meses previos.
         
-        // Fecha Inicio Histórico = Fecha Inicio Análisis - 6 Meses
+        // Fecha Inicio HistÃ³rico = Fecha Inicio AnÃ¡lisis - 6 Meses
         $hist_ini = date("Y-m-01", strtotime("-6 months", strtotime($fini)));
         
-        // Fecha Fin Histórico = El día anterior al inicio del análisis
+        // Fecha Fin HistÃ³rico = El dÃ­a anterior al inicio del anÃ¡lisis
         $hist_fin = date("Y-m-d", strtotime("-1 day", strtotime($fini)));
 
         // 4. Llamar al Modelo
@@ -923,8 +923,8 @@ public function anomalies_clients_visual()
 
     /**
      * Endpoint ACTUALIZADO para obtener tickets.
-     * Ahora calcula también el histórico para que el modelo pueda filtrar 
-     * únicamente los tickets de los días que superaron 4 sigmas.
+     * Ahora calcula tambiÃ©n el histÃ³rico para que el modelo pueda filtrar 
+     * Ãºnicamente los tickets de los dÃ­as que superaron 4 sigmas.
      */
     public function get_suspicious_details_ajax()
     {
@@ -935,12 +935,12 @@ public function anomalies_clients_visual()
         $t_ini = date("Y-m-01", strtotime($month_date));
         $t_fin = date("Y-m-t", strtotime($month_date));
 
-        // 2. Definir rango histórico (6 meses atrás) para el cálculo de Sigma
+        // 2. Definir rango histÃ³rico (6 meses atrÃ¡s) para el cÃ¡lculo de Sigma
         $h_ini = date("Y-m-01", strtotime("-6 months", strtotime($t_ini)));
         $h_fin = date("Y-m-t", strtotime("-1 month", strtotime($t_ini)));
 
         // 3. Llamar al modelo
-        // Nota: Esta función del modelo ahora espera 5 parámetros para hacer el filtrado inteligente
+        // Nota: Esta funciÃ³n del modelo ahora espera 5 parÃ¡metros para hacer el filtrado inteligente
         $data = $this->despachosModel->get_suspicious_tickets_details(
             $t_ini, 
             $t_fin, 
@@ -978,7 +978,7 @@ public function anomalies_clients_visual()
             echo json_encode([
                 'data'    => [],
                 'error'   => true,
-                'message' => 'Parámetros inválidos'
+                'message' => 'ParÃ¡metros invÃ¡lidos'
             ]);
             return;
         }
@@ -991,7 +991,7 @@ public function anomalies_clients_visual()
             echo json_encode([
                 'data'    => [],
                 'error'   => true,
-                'message' => 'Fechas inválidas'
+                'message' => 'Fechas invÃ¡lidas'
             ]);
             return;
         }
@@ -1005,7 +1005,7 @@ public function anomalies_clients_visual()
         foreach ($rows as $r) {
             $data[] = [
                 'codgas'           => (int)($r['codgas'] ?? 0),
-                // en la vista el alias es Estacion con mayúscula
+                // en la vista el alias es Estacion con mayÃºscula
                 'estacion'         => $r['Estacion'] ?? ($r['estacion'] ?? ''),
                 'tickets_anomalos' => (int)($r['tickets_anomalos'] ?? 0),
             ];
@@ -1020,7 +1020,7 @@ public function anomalies_clients_visual()
         echo json_encode([
             'data'    => [],
             'error'   => true,
-            'message' => 'Error interno al calcular la estación con más tickets en días anómalos'
+            'message' => 'Error interno al calcular la estaciÃ³n con mÃ¡s tickets en dÃ­as anÃ³malos'
         ]);
     } finally {
         ob_end_flush();
@@ -1043,7 +1043,7 @@ public function anomalies_client_summary()
 
         if (!$from || !$until || !$codopr) {
             http_response_code(400);
-            echo json_encode(['data_eval' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            echo json_encode(['data_eval' => [], 'error' => true, 'message' => 'ParÃ¡metros invÃ¡lidos']);
             return;
         }
 
@@ -1052,7 +1052,7 @@ public function anomalies_client_summary()
 
         if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
             http_response_code(400);
-            echo json_encode(['data_eval' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            echo json_encode(['data_eval' => [], 'error' => true, 'message' => 'ParÃ¡metros invÃ¡lidos']);
             return;
         }
 
@@ -1065,11 +1065,11 @@ public function anomalies_client_summary()
             $codoprInt
         );
 
-        // 2) Cálculo de los 3 meses históricos previos,
+        // 2) CÃ¡lculo de los 3 meses histÃ³ricos previos,
         // igual que en anomalies_by_client (3 meses completos anteriores)
         $desdeEvalDate = new \DateTime($from);
 
-        // mes -3: primer día 3 meses antes
+        // mes -3: primer dÃ­a 3 meses antes
         $m1Start = (clone $desdeEvalDate)->modify('first day of -3 month');
         $m1End   = (clone $m1Start)->modify('last day of this month');
 
@@ -1114,7 +1114,7 @@ public function anomalies_client_summary()
         $m2Label = $m2Start->format('Y-m');
         $m3Label = $m3Start->format('Y-m');
 
-        // Formatear salida (si no hay filas, devolvemos arreglo vacío)
+        // Formatear salida (si no hay filas, devolvemos arreglo vacÃ­o)
         $fmt = function(array $rows): array {
             if (empty($rows)) return [];
             $out = [];
@@ -1178,7 +1178,7 @@ public function anomalies_clients_table()
 
         if (!$from || !$until) {
             http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'ParÃ¡metros invÃ¡lidos']);
             return;
         }
 
@@ -1187,11 +1187,11 @@ public function anomalies_clients_table()
 
         if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i)) {
             http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Fechas inválidas']);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Fechas invÃ¡lidas']);
             return;
         }
 
-        // 1) Consulta de anomalías (ya existente)
+        // 1) Consulta de anomalÃ­as (ya existente)
         $rowsAnom = $this->despachosModel->anomalies_by_client(
             (int)$desde_eval_i,
             (int)$hasta_eval_i
@@ -1203,7 +1203,7 @@ public function anomalies_clients_table()
             (int)$hasta_eval_i
         );
 
-        // Indexar totales por codopr para merge rápido
+        // Indexar totales por codopr para merge rÃ¡pido
         $totalesPorCodopr = [];
         foreach ($rowsTot as $t) {
             $cod = $t['codopr'] ?? null;
@@ -1276,7 +1276,7 @@ public function anomalies_client_days()
 
         if (!$from || !$until || !$codopr) {
             http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'ParÃ¡metros invÃ¡lidos']);
             return;
         }
 
@@ -1285,7 +1285,7 @@ public function anomalies_client_days()
 
         if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
             http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'ParÃ¡metros invÃ¡lidos']);
             return;
         }
 
@@ -1320,7 +1320,7 @@ public function anomalies_client_days()
         echo json_encode([
             'data'    => [],
             'error'   => true,
-            'message' => 'Error interno al generar el detalle de días'
+            'message' => 'Error interno al generar el detalle de dÃ­as'
         ]);
     } finally {
         ob_end_flush();
@@ -1344,7 +1344,7 @@ public function anomalies_client_tickets()
 
         if (!$from || !$until || !$codopr) {
             http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'ParÃ¡metros invÃ¡lidos']);
             return;
         }
 
@@ -1353,7 +1353,7 @@ public function anomalies_client_tickets()
 
         if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
             http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'ParÃ¡metros invÃ¡lidos']);
             return;
         }
 
@@ -1430,8 +1430,8 @@ public function anomalies_client_tickets()
     }
 
     function overal_invoice_out_table(){
-        ini_set('memory_limit', '512M'); // o más si lo necesitas, como '1024M'
-        set_time_limit(300); // 300 segundos = 5 minutos. Puedes subirlo más si hace falta.
+        ini_set('memory_limit', '512M'); // o mÃ¡s si lo necesitas, como '1024M'
+        set_time_limit(300); // 300 segundos = 5 minutos. Puedes subirlo mÃ¡s si hace falta.
         $data = [];
         $codgas = $_POST['codgas'];
         $status = $_POST['status'];
@@ -1462,8 +1462,8 @@ public function anomalies_client_tickets()
                     'tip'                => $invoice['tip'],
                     'fecha'              => $invoice['fecha'],
                     'vigencia'           => $invoice['vigencia'],
-                    'FechasConcatenadas' => $fechasConColor,  // Cadena HTML con fechas únicas
-                    // 'FechasConcatenadas' => $invoice['FechasConcatenadas'],  // Cadena HTML con fechas únicas
+                    'FechasConcatenadas' => $fechasConColor,  // Cadena HTML con fechas Ãºnicas
+                    // 'FechasConcatenadas' => $invoice['FechasConcatenadas'],  // Cadena HTML con fechas Ãºnicas
                     'txtref'             => $invoice['txtref'],
                     'TipoPago'           => $invoice['TipoPago'],
                     'NrotrnConcatenados' => $invoice['NrotrnConcatenados'] ,
@@ -1706,7 +1706,7 @@ public function anomalies_client_tickets()
     function datatables_dispatches_est() : void {
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
-        set_time_limit(0); // sin límite
+        set_time_limit(0); // sin lÃ­mite
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];
         $tipo_cliente=0;
@@ -1760,8 +1760,8 @@ public function anomalies_client_tickets()
                 $estacion = $dispatch['estacion'];
                 $codgas = $dispatch['codgas'];
                 $fecha = $dispatch['fecha'];
-                if (!isset($data[$estacion])) { $data[$estacion] = ['estacion' => $estacion]; } // Si la estación no existe en el array, inicialízala
-                if (!in_array($fecha, $dates)) { $dates[] = $fecha; } // Guardar las fechas para crear dinámicamente las columnas
+                if (!isset($data[$estacion])) { $data[$estacion] = ['estacion' => $estacion]; } // Si la estaciÃ³n no existe en el array, inicialÃ­zala
+                if (!in_array($fecha, $dates)) { $dates[] = $fecha; } // Guardar las fechas para crear dinÃ¡micamente las columnas
                 $factura_global_value = number_format($dispatch['factura_global'], 2, '.', ',');
                 $factura_global_class = ($dispatch['factura_global'] == null || $dispatch['factura_global'] == 0) ? 'bg-danger text-white' : '';
                 $data[$estacion][$fecha . '_cliente_credito'] = '<a href="javascript:void(0);" onClick="DispachesTypeModal(\''. $dispatch['fecha'] .'\',\''.$dispatch['codgas'].'\',\'cliente_credito\' )">'. number_format($dispatch['cliente_credito'], 2, '.', ','). '<a>';
@@ -1775,7 +1775,7 @@ public function anomalies_client_tickets()
         // Enviar la respuesta en formato JSON
         json_output([
             "data" => array_values($data),  // Convierte los datos en un array de valores
-            "dates" => $dates  // Devuelve el array de fechas para las columnas dinámicas
+            "dates" => $dates  // Devuelve el array de fechas para las columnas dinÃ¡micas
         ]);
     }
 
@@ -1828,7 +1828,7 @@ public function anomalies_client_tickets()
                     'jarudo'        => self::format_value(isset($dispatch['27_JARUDO']) ? $dispatch['27_JARUDO'] : 0),
                     'hermanos_esc'  => self::format_value(isset($dispatch['28_HERMANOS_ESC']) ? $dispatch['28_HERMANOS_ESC'] : 0),
                     'villa_ahumad'  => self::format_value(isset($dispatch['29_VILLA_AHUMAD']) ? $dispatch['29_VILLA_AHUMAD'] : 0),
-                    'el_castano'    => self::format_value(isset($dispatch['30_EL_CASTAÑO']) ? $dispatch['30_EL_CASTAÑO'] : 0),
+                    'el_castano'    => self::format_value(isset($dispatch['30_EL_CASTAÃ‘O']) ? $dispatch['30_EL_CASTAÃ‘O'] : 0),
                     'travel_cente'  => self::format_value(isset($dispatch['31_TRAVEL_CENTE']) ? $dispatch['31_TRAVEL_CENTE'] : 0),
                     'picachos'      => self::format_value(isset($dispatch['32_PICACHOS']) ? $dispatch['32_PICACHOS'] : 0),
                     'ventanas'      => self::format_value(isset($dispatch['33_VENTANAS']) ? $dispatch['33_VENTANAS'] : 0),
@@ -1924,7 +1924,7 @@ public function anomalies_client_tickets()
     }
 
     function checking_tickets() :void {
-        // Vamos a comprobar si $_GET['from'] y $_GET['codgas'] están definidos
+        // Vamos a comprobar si $_GET['from'] y $_GET['codgas'] estÃ¡n definidos
         if (isset($_GET['from'])) {
             $from = $_GET['from'];
         } else {
@@ -1933,7 +1933,7 @@ public function anomalies_client_tickets()
         }
         $codgas = $_GET['codgas'] ?? 0;
         $shift = $_GET['shift'] ?? 0;
-        $dispatch_type = $_GET['dispatch_type'] ?? 'Crédito';
+        $dispatch_type = $_GET['dispatch_type'] ?? 'CrÃ©dito';
 
         $stations = $this->gasolinerasModel->get_active_station_TG();
 
@@ -1952,19 +1952,19 @@ public function anomalies_client_tickets()
             // Crear una instancia de FPDF
             $pdf = new PDF_Code128();
 
-            // Establecer los márgenes
+            // Establecer los mÃ¡rgenes
             $pdf->SetMargins(3, 3, 3);  // Margen izquierdo, margen superior, margen derecho
 
             // Establecer el margen inferior
-            $pdf->SetAutoPageBreak(true, 5);  // Activar los saltos automáticos de página y establecer el margen inferior a 5 mm
+            $pdf->SetAutoPageBreak(true, 5);  // Activar los saltos automÃ¡ticos de pÃ¡gina y establecer el margen inferior a 5 mm
 
             // Creamos un ciclo for
             for ($i = $from; $i <= $until; $i++) {
                 $barcode = $station . '-' . $i + 10000;
-                // Establecer el tamaño de la página en milimetros (Ancho x Alto)
+                // Establecer el tamaÃ±o de la pÃ¡gina en milimetros (Ancho x Alto)
                 $pdf->AddPage('L', array(51, 36));
 
-                // Establecer el tamaño de la letra y el tipo de letra
+                // Establecer el tamaÃ±o de la letra y el tipo de letra
                 $pdf->SetFont('Arial', 'B', 7);
 
                 // Logo
@@ -1973,7 +1973,7 @@ public function anomalies_client_tickets()
                 $pdf->Image($_SERVER['DOCUMENT_ROOT'] . '/_assets/images/logo BN.jpg', 3.5, 3.5, 20, 6);
 
                 $pdf->Code128(3, 13, $barcode, 45, 12);
-                // Vamos a agregar el folio del ticket en la parte de abajo del código de barras
+                // Vamos a agregar el folio del ticket en la parte de abajo del cÃ³digo de barras
                 $pdf->SetXY(3, 25);
                 $pdf->Cell(45, 5, $barcode, 0, 0, 'C');
             }
@@ -2105,7 +2105,7 @@ public function anomalies_client_tickets()
             $normalized_type = urldecode($normalized_type);
             $normalized_type = strtolower($normalized_type);
             $normalized_type = str_replace(
-                array('á', 'é', 'í', 'ó', 'ú', 'á', 'é', 'í', 'ó', 'ú'),
+                array('á', 'é', 'í', 'ó', 'ú', 'Ã¡', 'Ã©', 'Ã­', 'Ã³', 'Ãº'),
                 array('a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'u'),
                 $normalized_type
             );
@@ -2139,22 +2139,22 @@ public function anomalies_client_tickets()
                 }
             }
         } else {
-            // Vamos a verificar si el despacho existe en el día dado pero en otra estación o turno
+            // Vamos a verificar si el despacho existe en el dÃ­a dado pero en otra estaciÃ³n o turno
             if ($row = $this->despachosModel->get_dispatch_by_nrotrn_and_date(intval($nrotrn), $fch)) {
-                json_output(array("status" => "warning", "message" => "Despacho encontrado en otra estación o turno.", "station" => $row['Estacion'], "shift" => $row['nrotur'], "codgas" => $row['codgas']));
+                json_output(array("status" => "warning", "message" => "Despacho encontrado en otra estaciÃ³n o turno.", "station" => $row['Estacion'], "shift" => $row['nrotur'], "codgas" => $row['codgas']));
             } else {
-                // Sí el despacho no existe, vamos a lanzar un mensaje de error
-                json_output(array("status" => "error", "message" => "Despacho no encontrado en la estación especificada."));
+                // SÃ­ el despacho no existe, vamos a lanzar un mensaje de error
+                json_output(array("status" => "error", "message" => "Despacho no encontrado en la estaciÃ³n especificada."));
             }
         }
     }
 
     function register_dispatch($nrotrn, $codgas, $fch) {
         $fch = dateToInt($fch);
-        if ($dispatch = $this->despachosModel->check_dispatch($nrotrn, $codgas, $fch)) { // Si existe un despacho con el número de transacción
+        if ($dispatch = $this->despachosModel->check_dispatch($nrotrn, $codgas, $fch)) { // Si existe un despacho con el nÃºmero de transacciÃ³n
             // Ahora vamos a verificar si este despacho puede tratarse de un error de venta
             if ((($dispatch[0]['rut'] != '' && $dispatch[0]['rut'] != null) AND $dispatch[0]['nroveh'] < 1 )) {
-                json_output(array("status" => "warning", "message" => "Este despacho puede tratarse de un error de clasificación. Favor de verificar."));
+                json_output(array("status" => "warning", "message" => "Este despacho puede tratarse de un error de clasificaciÃ³n. Favor de verificar."));
             } else {
                 // Ahora vamos a verificar que el registro no exista en la tabla de [TG].[dbo].[despachos_liberados]
                 if ($this->despachosModel->check_dispatch_released(intval($nrotrn), $codgas)) {
@@ -2170,12 +2170,12 @@ public function anomalies_client_tickets()
                 }
             }
         } else {
-            // Vamos a verificar si el despacho existe en el día dado pero en otra estación o turno
+            // Vamos a verificar si el despacho existe en el dÃ­a dado pero en otra estaciÃ³n o turno
             if ($row = $this->despachosModel->get_dispatch_by_nrotrn_and_date(intval($nrotrn), $fch)) {
-                json_output(array("status" => "warning", "message" => "Despacho encontrado en otra estación o turno.", "station" => $row['Estacion'], "shift" => $row['nrotur'], "codgas" => $row['codgas']));
+                json_output(array("status" => "warning", "message" => "Despacho encontrado en otra estaciÃ³n o turno.", "station" => $row['Estacion'], "shift" => $row['nrotur'], "codgas" => $row['codgas']));
             } else {
-                // Sí el despacho no existe, vamos a lanzar un mensaje de error
-                json_output(array("status" => "error", "message" => "Despacho no encontrado en la estación especificada."));
+                // SÃ­ el despacho no existe, vamos a lanzar un mensaje de error
+                json_output(array("status" => "error", "message" => "Despacho no encontrado en la estaciÃ³n especificada."));
             }
         }
     }
@@ -2208,22 +2208,22 @@ public function anomalies_client_tickets()
         $fechaActual = new DateTime();
         $diaActual = $fechaActual->format('d');
 
-        // Último día del mes
+        // Ãšltimo dÃ­a del mes
         $ultimoDiaMes = $fechaActual->format('t');
 
-        // Días restantes para el fin de mes
+        // DÃ­as restantes para el fin de mes
         $diasRestantes = $ultimoDiaMes - $diaActual;
 
-        // Contenido dinámico
+        // Contenido dinÃ¡mico
         if ($diasRestantes >= 3) {
             $mensajeDinamico = "<p>Agradecemos que puedan enviarnos los tickets pendientes en un plazo no mayor a 72 horas.</p>";
         } else {
-            $mensajeDinamico = "<p>Es imprescindible que envíen los tickets de manera inmediata, ya que faltan menos de 3 días para el cierre de mes.</p>";
+            $mensajeDinamico = "<p>Es imprescindible que envÃ­en los tickets de manera inmediata, ya que faltan menos de 3 dÃ­as para el cierre de mes.</p>";
         }
 
         $body = '
-        <p>Estimados compañeros,</p>
-        <p>Se les solicita amablemente que envíen los tickets de venta faltantes o aquellos que no cuenten con la firma correspondiente de los clientes.</p>';
+        <p>Estimados compaÃ±eros,</p>
+        <p>Se les solicita amablemente que envÃ­en los tickets de venta faltantes o aquellos que no cuenten con la firma correspondiente de los clientes.</p>';
         $body .= $mensajeDinamico;
         $body .= '
         <table border="1" cellpadding="5" cellspacing="0">
@@ -2258,8 +2258,8 @@ public function anomalies_client_tickets()
         }
         $body .= '
         </table>
-        <p>Es importante cumplir con esta solicitud, ya que, de lo contrario, los tickets faltantes o sin firma serán enviados a egresos como faltantes. Si tienen dudas o necesitan apoyo, favor de dirigirse a la jefatura de ingresos.</p>
-        <p>Agradecemos su atención y colaboración. Quedamos pendientes de sus comentarios.</p>
+        <p>Es importante cumplir con esta solicitud, ya que, de lo contrario, los tickets faltantes o sin firma serÃ¡n enviados a egresos como faltantes. Si tienen dudas o necesitan apoyo, favor de dirigirse a la jefatura de ingresos.</p>
+        <p>Agradecemos su atenciÃ³n y colaboraciÃ³n. Quedamos pendientes de sus comentarios.</p>
         ';
 
         if (send_mail_with_fallback('Solicitud de tickets faltantes ' . $fch,$body,explode(';', $sentTo),'totalgasdesarrollo@gmail.com')) {
@@ -2278,7 +2278,7 @@ public function anomalies_client_tickets()
 
     public function balance_age_get_user_email(): void
     {
-        // Toma el correo del usuario autenticado desde la sesión
+        // Toma el correo del usuario autenticado desde la sesiÃ³n
         $user_mail = $_SESSION['tg_user']['Correo'] ?? '';
 
         // Devuelve JSON (usa tu helper global)
@@ -2479,11 +2479,11 @@ public function anomalies_client_tickets()
   private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
         if (!$nombre) return "SinNombre";
 
-        // 1. Limpieza inicial y normalización de espacios y BOM
+        // 1. Limpieza inicial y normalizaciÃ³n de espacios y BOM
         $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE", "\xC2\xA0"], ' ', (string)$nombre);
         $orig = trim(preg_replace('/\s+/', ' ', $orig));
 
-        // 2. Intento de reparación de codificación (Caracteres dobles)
+        // 2. Intento de reparaciÃ³n de codificaciÃ³n (Caracteres dobles)
         if (preg_match('/[\xC2\xC3][\x80-\xBF]/', $orig)) {
             $repaired = @utf8_decode($orig);
             if ($repaired && mb_check_encoding($repaired, 'UTF-8')) {
@@ -2491,23 +2491,23 @@ public function anomalies_client_tickets()
             }
         }
 
-        // 3. Búsqueda en el mapa de columnas estándar (la vía más rápida)
+        // 3. BÃºsqueda en el mapa de columnas estÃ¡ndar (la vÃ­a mÃ¡s rÃ¡pida)
         if (isset($coreMap[$bankType][$orig])) {
             return $coreMap[$bankType][$orig];
         }
 
-        // 4. FUZZY MATCH: Normalizar a ASCII mayúsculas para comparaciones flexibles
+        // 4. FUZZY MATCH: Normalizar a ASCII mayÃºsculas para comparaciones flexibles
         $norm = mb_strtoupper($orig, 'UTF-8');
         // Reemplazo de vocales con acentos y caracteres especiales
         $norm = str_replace(
-            ['À','Á','Â','Ã','Ä','È','É','Ê','Ë','Ì','Í','Î','Ï','Ò','Ó','Ô','Õ','Ö','Ù','Ú','Û','Ü','Ó','É','Ó'],
+            ['À','Á','Â','Ã','Ä','È','É','Ê','Ë','Ì','Í','Î','Ï','Ò','Ó','Ô','Õ','Ö','Ù','Ú','Û','Ü','Ã“','Ã‰','Ã“'],
             ['A','A','A','A','A','E','E','E','E','I','I','I','I','O','O','O','O','O','U','U','U','U','O','E','O'],
             $norm
         );
-        // Quitar caracteres no alfanuméricos para simplificar la comparación
+        // Quitar caracteres no alfanumÃ©ricos para simplificar la comparaciÃ³n
         $norm = preg_replace('/[^A-Z0-9\s]/', '', $norm);
 
-        // Reglas de Fuzzy Matching específicas
+        // Reglas de Fuzzy Matching especÃ­ficas
         // HORA debe evaluarse ANTES que TRANSACCION para que "Hora Transaccion" no se mapee a ID_Externo
         if (strpos($norm, 'HORA') !== false) return 'Hora';
         if (strpos($norm, 'TRANSACCION') !== false || (strpos($norm, 'TRANS') !== false && $bankType === 'AFIRME')) {
@@ -2527,12 +2527,12 @@ public function anomalies_client_tickets()
         if (strpos($norm, 'COD') !== false && strpos($norm, 'TERMINAL') !== false) return 'Terminal';
         if (strpos($norm, 'REFERENCIA') !== false) return 'Referencia';
 
-        // 5. Fallback: si todo falla, limpiar el nombre original para usarlo como último recurso
+        // 5. Fallback: si todo falla, limpiar el nombre original para usarlo como Ãºltimo recurso
         $fallback = preg_replace('/[^a-zA-Z0-9_]/', '_', $orig);
         return trim(preg_replace('/_+/', '_', $fallback), '_');
     }
     private function asegurar_columnas_php($conn, $tabla, $cleanCols) {
-        // FUNCIÓN DESACTIVADA PARA MANTENER ESTÁNDAR DE TABLAS
+        // FUNCIÃ“N DESACTIVADA PARA MANTENER ESTÃNDAR DE TABLAS
         return;
     }
 
@@ -2564,22 +2564,22 @@ public function anomalies_client_tickets()
     }
 
     /**
-     * Determina, según la afiliación bancaria, si se debe aplicar el ajuste
-     * de horario Juárez (CDMX -> Juárez) o si se debe conservar la hora tal
+     * Determina, segÃºn la afiliaciÃ³n bancaria, si se debe aplicar el ajuste
+     * de horario JuÃ¡rez (CDMX -> JuÃ¡rez) o si se debe conservar la hora tal
      * como viene del banco (CDMX).
      *
      * Regla solicitada por negocio:
-     *  - Foráneas y Parral: conservar hora original del banco (CDMX).
-     *  - Demás estaciones: aplicar ajuste Juárez (invierno -1 hora).
+     *  - ForÃ¡neas y Parral: conservar hora original del banco (CDMX).
+     *  - DemÃ¡s estaciones: aplicar ajuste JuÃ¡rez (invierno -1 hora).
      *
-     * La detección se hace a partir de Tesoreria_afil + Estaciones /
-     * Tesoreria_Estaciones_Virtuales, y se cachea por petición.
+     * La detecciÃ³n se hace a partir de Tesoreria_afil + Estaciones /
+     * Tesoreria_Estaciones_Virtuales, y se cachea por peticiÃ³n.
      */
     private function debe_ajustar_juarez_por_afiliacion(?string $afiliacion, string $bankType): bool {
         static $cachePoliticas = [];
 
         if (!$afiliacion) {
-            // Sin afiliación clara, se mantiene el comportamiento anterior
+            // Sin afiliaciÃ³n clara, se mantiene el comportamiento anterior
             return true;
         }
 
@@ -2639,7 +2639,7 @@ public function anomalies_client_tickets()
 
                     $cachePoliticas[$bankKey] = $map;
                 } catch (\Throwable $e) {
-                    // En caso de error de conexión/consulta, se deja vacío para no romper la carga
+                    // En caso de error de conexiÃ³n/consulta, se deja vacÃ­o para no romper la carga
                     $cachePoliticas[$bankKey] = [];
                 }
             }
@@ -2647,7 +2647,7 @@ public function anomalies_client_tickets()
 
         $map = $cachePoliticas[$bankKey] ?? [];
         if (empty($map)) {
-            // Sin configuración específica, mantener comportamiento actual
+            // Sin configuraciÃ³n especÃ­fica, mantener comportamiento actual
             return true;
         }
 
@@ -2663,11 +2663,11 @@ public function anomalies_client_tickets()
         }
 
         if ($zona === null) {
-            // Afiliación no mapeada explícitamente => ajustar (comportamiento anterior)
+            // AfiliaciÃ³n no mapeada explÃ­citamente => ajustar (comportamiento anterior)
             return true;
         }
 
-        // Sólo ajustamos para estaciones clasificadas como "JUAREZ"
+        // SÃ³lo ajustamos para estaciones clasificadas como "JUAREZ"
         return ($zona === 'JUAREZ');
     }
 
@@ -2678,7 +2678,7 @@ public function anomalies_client_tickets()
         header('Content-Type: application/json');
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            echo json_encode(['status' => 'error', 'message' => 'Método no permitido']);
+            echo json_encode(['status' => 'error', 'message' => 'MÃ©todo no permitido']);
             exit;
         }
 
@@ -2686,7 +2686,7 @@ public function anomalies_client_tickets()
         $filePath = '';
         $isTempFile = false;
         
-        // Estructura de carpetas: _assets/uploads/BANCO/AÑO/MES/
+        // Estructura de carpetas: _assets/uploads/BANCO/AÃ‘O/MES/
         $baseUploadsDir = __DIR__ . '/../uploads/';
         $subPath = $bankType . '/' . date('Y') . '/' . date('m') . '/';
         $targetDir = $baseUploadsDir . $subPath;
@@ -2736,34 +2736,34 @@ public function anomalies_client_tickets()
 
         $coreMap = [
             'BANORTE' => [
-                'Afiliación' => 'Afiliacion',
+                'AfiliaciÃ³n' => 'Afiliacion',
                 'Afiliacion' => 'Afiliacion',
-                'Nombre de Afiliación' => 'Nombre_Afiliacion',
+                'Nombre de AfiliaciÃ³n' => 'Nombre_Afiliacion',
                 'Nombre de Afiliacion' => 'Nombre_Afiliacion',
                 'Moneda' => 'Moneda',
-                'Estatus de Transacción' => 'Estatus',
+                'Estatus de TransacciÃ³n' => 'Estatus',
                 'Estatus de Transaccion' => 'Estatus',
                 'Tipo transaccion' => 'Tipo_Transaccion',
-                'Tipo de Transacción' => 'Tipo_Transaccion',
+                'Tipo de TransacciÃ³n' => 'Tipo_Transaccion',
                 'Tipo de Transaccion' => 'Tipo_Transaccion',
-                'Número de Control' => 'ID_Externo',          
+                'NÃºmero de Control' => 'ID_Externo',          
                 'Numero de Control' => 'ID_Externo',
-                'Número de Tarjeta' => 'Tarjeta',
+                'NÃºmero de Tarjeta' => 'Tarjeta',
                 'Numero de Tarjeta' => 'Tarjeta',
                 'Tipo de Tarjeta' => 'Tipo_Tarjeta',
-                'Monto de Transacción Signo' => 'Monto',
+                'Monto de TransacciÃ³n Signo' => 'Monto',
                 'Monto de Transaccion Signo' => 'Monto',
-                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
                 'Fecha Transaccion' => 'Fecha_Transaccion',
-                'Código Autorización' => 'Codigo_Autorizacion',
+                'CÃ³digo AutorizaciÃ³n' => 'Codigo_Autorizacion',
                 'Codigo Autorizacion' => 'Codigo_Autorizacion',
                 'Referencia' => 'Referencia_Pago',
                 'Terminal ID' => 'Terminal',                  
                 'Terminal' => 'Terminal',
-                'Lote de Transacción' => 'Lote',
+                'Lote de TransacciÃ³n' => 'Lote',
                 'Lote' => 'Lote',
-                'Hora de Transacción' => 'Hora',
-                'Hora Transacción' => 'Hora',
+                'Hora de TransacciÃ³n' => 'Hora',
+                'Hora TransacciÃ³n' => 'Hora',
                 'Hora' => 'Hora',
                 'Referencia Interbancaria' => 'Referencia',
                 // Versiones UTF-8 correctas (PhpSpreadsheet retorna UTF-8 real, no mojibake)
@@ -2785,92 +2785,92 @@ public function anomalies_client_tickets()
                 'Referencia Cliente 3'             => 'Referencia_Cliente_3',
                 "Fecha Aplicaci\xC3\xB3n"          => 'Fecha_Deposito',
                 "Fecha de Aplicaci\xC3\xB3n"       => 'Fecha_Deposito',
-                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha de DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha de Deposito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha Aplicacion' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha de Aplicacion' => 'Fecha_Deposito',
-                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
                 'Fecha Transaccion' => 'Fecha_Transaccion',
-                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
-                'Fecha Depósito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
+                'Fecha de DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha de Deposito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha Aplicacion' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha AplicaciÃƒÂ³n' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha de Aplicacion' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃƒÂ³n' => 'Fecha_Deposito',
             ],
             'SANTANDER' => [
                 'ID movimiento' => 'ID_Externo',
                 'ID Movimiento' => 'ID_Externo',
-                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
                 'Fecha Transaccion' => 'Fecha_Transaccion',
-                'Hora de Transacción' => 'Hora',
+                'Hora de TransacciÃ³n' => 'Hora',
                 'Hora de Transaccion' => 'Hora',
-                'Hora Transacción' => 'Hora',
+                'Hora TransacciÃ³n' => 'Hora',
                 'Hora Transaccion' => 'Hora',
-                'Afiliación' => 'Afiliacion',
+                'AfiliaciÃ³n' => 'Afiliacion',
                 'Afiliacion' => 'Afiliacion',
                 'Cod. Terminal' => 'Terminal',
                 'Terminal ID' => 'Terminal',
-                'Código Autorización' => 'Codigo_Autorizacion',
+                'CÃ³digo AutorizaciÃ³n' => 'Codigo_Autorizacion',
                 'Codigo Autorizacion' => 'Codigo_Autorizacion',
                 'Cod. Aut' => 'Codigo_Autorizacion',
                 'Total' => 'Monto',
-                'Monto de Transacción Signo' => 'Monto',
+                'Monto de TransacciÃ³n Signo' => 'Monto',
                 'Monto de Transaccion Signo' => 'Monto',
                 'Referencia' => 'Referencia',
-                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha de DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha de Deposito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha Aplicacion' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha de Aplicacion' => 'Fecha_Deposito'
             ],
             'AMEX' => [
-                'Fecha de la transacción' => 'Fecha_Transaccion',
+                'Fecha de la transacciÃ³n' => 'Fecha_Transaccion',
                 'Fecha de la transaccion' => 'Fecha_Transaccion',
                 'Fecha de pago' => 'Fecha_Deposito',
                 'Monto del cargo' => 'Monto',
                 'Monto del pago' => 'Monto_Pago',
-                'Número de establecimiento que envía' => 'Afiliacion',
+                'NÃºmero de establecimiento que envÃ­a' => 'Afiliacion',
                 'Numero de establecimiento que envia' => 'Afiliacion',
-                'Número de tarjeta' => 'Tarjeta',
+                'NÃºmero de tarjeta' => 'Tarjeta',
                 'Numero de tarjeta' => 'Tarjeta',
-                'Número de referencia del cargo' => 'ID_Externo',
+                'NÃºmero de referencia del cargo' => 'ID_Externo',
                 'Numero de referencia del cargo' => 'ID_Externo',
-                'Número de terminal' => 'Terminal',
+                'NÃºmero de terminal' => 'Terminal',
                 'Numero de terminal' => 'Terminal',
-                'Tipo de autorización' => 'Codigo_Autorizacion',
+                'Tipo de autorizaciÃ³n' => 'Codigo_Autorizacion',
                 'Tipo de autorizacion' => 'Codigo_Autorizacion'
             ],
             'AFIRME' => [
                 'Comercio' => 'Afiliacion',
-                'Número de Tarjeta' => 'Tarjeta',
+                'NÃºmero de Tarjeta' => 'Tarjeta',
                 'Numero de Tarjeta' => 'Tarjeta',
                 'Fecha Venta' => 'Fecha_Transaccion',
                 'Hora' => 'Hora',
                 'Terminal' => 'Terminal',
-                'Transacción' => 'Referencia',
+                'TransacciÃ³n' => 'Referencia',
                 'Transaccion' => 'Referencia',
-                'Autorización' => 'Codigo_Autorizacion',
+                'AutorizaciÃ³n' => 'Codigo_Autorizacion',
                 'Autorizacion' => 'Codigo_Autorizacion',
                 'Importe' => 'Monto',
-                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito'
             ]
         ];
 
-        // COLUMNAS OFICIALES PERMITIDAS (Definición Global)
+        // COLUMNAS OFICIALES PERMITIDAS (DefiniciÃ³n Global)
         $columnas_oficiales = [
             'ID_Externo', 'Afiliacion', 'Fecha_Transaccion', 'Hora', 
             'Monto', 'Codigo_Autorizacion', 'Terminal', 'Referencia', 'Fecha_Deposito', 'Nombre_Archivo'
@@ -2987,7 +2987,7 @@ public function anomalies_client_tickets()
                         }
                         if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
                         if ($col === 'Hora' && $val && trim((string)$val) !== '-' && isset($dataRow['Fecha_Transaccion'])) {
-                            // Sólo aplicar ajuste horario para estaciones configuradas como "JUAREZ"
+                            // SÃ³lo aplicar ajuste horario para estaciones configuradas como "JUAREZ"
                             $debeAjustar = $this->debe_ajustar_juarez_por_afiliacion($dataRow['Afiliacion'] ?? null, $bankType);
                             if ($debeAjustar) {
                                 $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
@@ -3054,7 +3054,7 @@ public function anomalies_client_tickets()
                                     fclose($handle);
                                 }
                                 
-                                // 1. Mapear Índices
+                                // 1. Mapear Ãndices
                                 $mappedIndices = [];
                                 foreach ($rawHeader as $i => $h) {
                                     $stdName = $this->sanitizar_nombre_columna_php($h, 'SANTANDER', $coreMap);
@@ -3106,7 +3106,7 @@ public function anomalies_client_tickets()
                                     $huellas[$key] = true;
                                 }
                 
-                                // 3. Preparar SQL Estándar
+                                // 3. Preparar SQL EstÃ¡ndar
                                 $sqlIns = "INSERT INTO banco_getnet (".implode(",", $columnas_oficiales).") VALUES (".implode(",", array_fill(0, count($columnas_oficiales), "?")).")";
                                 $ins = $conn->prepare($sqlIns);
                 
@@ -3137,7 +3137,7 @@ public function anomalies_client_tickets()
                                         if ($col === 'Hora' && $val && trim((string)$val) !== '-') {
                                             $h_clean = strtolower(trim($val));
                                             
-                                            // Normalización robusta: quitar puntos, asegurar un solo espacio antes de am/pm
+                                            // NormalizaciÃ³n robusta: quitar puntos, asegurar un solo espacio antes de am/pm
                                             $h_clean = str_replace('.', '', $h_clean);
                                             $h_clean = preg_replace('/([ap])\s*m/', '$1m', $h_clean); // unir a m -> am
                                             $h_clean = str_replace(['am', 'pm'], [' am', ' pm'], $h_clean);
@@ -3214,7 +3214,7 @@ public function anomalies_client_tickets()
                                                                                                   // AMEX CSV usually has 9 lines of header before the actual "Transactions" header
                                                                                                   for($i=0; $i<9; $i++) fgets($handle); 
                                                                                                   
-                                                                                                  // Buscamos la primera línea que no esté vacía para el header
+                                                                                                  // Buscamos la primera lÃ­nea que no estÃ© vacÃ­a para el header
                                                                                                   while (($headerLine = fgetcsv($handle, 0, ",")) !== FALSE) {
                                                                                                       if (empty(array_filter($headerLine))) continue;
                                                                                                       $rawHeader = $headerLine;
@@ -3226,7 +3226,7 @@ public function anomalies_client_tickets()
                                 }
                                 fclose($handle);
 
-                                // 1. Mapear Índices
+                                // 1. Mapear Ãndices
                                 $mappedIndices = [];
                                 foreach ($rawHeader as $i => $h) {
                                     $stdName = $this->sanitizar_nombre_columna_php($h, 'AMEX', $coreMap);
@@ -3288,7 +3288,7 @@ public function anomalies_client_tickets()
                                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                                     }
 
-                                    // Para AMEX, si no tenemos Referencia pero sí ID_Externo, lo usamos como Referencia
+                                    // Para AMEX, si no tenemos Referencia pero sÃ­ ID_Externo, lo usamos como Referencia
                                     if (empty($dataRow['Referencia']) && !empty($dataRow['ID_Externo'])) {
                                         $dataRow['Referencia'] = $dataRow['ID_Externo'];
                                     }
@@ -3331,7 +3331,7 @@ public function anomalies_client_tickets()
                                 }
                                 fclose($handle);
 
-                                // 1. Mapear Índices
+                                // 1. Mapear Ãndices
                                 $mappedIndices = [];
                                 foreach ($rawHeader as $i => $h) {
                                     $stdName = $this->sanitizar_nombre_columna_php($h, 'AFIRME', $coreMap);
@@ -3408,7 +3408,7 @@ public function anomalies_client_tickets()
 
                                     $rawTarjeta = isset($mappedIndices['Tarjeta']) ? trim($row[$mappedIndices['Tarjeta']] ?? '') : '';
                                     
-                                    // Asegurar Referencia (Transaccion) explícitamente para Afirme
+                                    // Asegurar Referencia (Transaccion) explÃ­citamente para Afirme
                                     if (empty($dataRow['Referencia']) && isset($mappedIndices['Referencia'])) {
                                         $dataRow['Referencia'] = trim($row[$mappedIndices['Referencia']] ?? '');
                                     }
@@ -3428,7 +3428,7 @@ public function anomalies_client_tickets()
                                                     trim($dataRow['Terminal'] ?? '') . '|' . 
                                                     trim($dataRow['Referencia'] ?? ''); 
 
-                                    // Asignamos la llave compuesta al ID_Externo como se solicitó
+                                    // Asignamos la llave compuesta al ID_Externo como se solicitÃ³
                                     $dataRow['ID_Externo'] = $huellaAFIRME;
 
                                     if (isset($huellas[$huellaAFIRME])) {
@@ -3450,7 +3450,7 @@ public function anomalies_client_tickets()
             if (file_exists('debug_santander_upload.log')) @unlink('debug_santander_upload.log');
             if (file_exists('conciliacion_debug.log')) @unlink('conciliacion_debug.log');
 
-            // Limpiar archivo temporal si se creó desde Base64
+            // Limpiar archivo temporal si se creÃ³ desde Base64
             if ($isTempFile && file_exists($filePath)) {
                 @unlink($filePath);
             }
@@ -3476,7 +3476,7 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // 1. OBTENER CATÁLOGO DE ESTACIONES (Para ControlGas) - UNIFICADO CON AFIL
+    // 1. OBTENER CATÃLOGO DE ESTACIONES (Para ControlGas) - UNIFICADO CON AFIL
     // =========================================================================
     public function get_estaciones_catalogo() {
         ob_clean();
@@ -3505,7 +3505,7 @@ public function anomalies_client_tickets()
             $result = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                 $rfc = trim($row['RFC']);
-                // Normalizar valores vacíos
+                // Normalizar valores vacÃ­os
                 if($rfc === '' || $rfc === 'NULL') {
                     $rfc = 'FORANEAS';
                 }
@@ -3513,7 +3513,7 @@ public function anomalies_client_tickets()
                 $result[] = $row;
             }
 
-            // INYECCIÓN MANUAL COLOSIO (Si no viene de BD)
+            // INYECCIÃ“N MANUAL COLOSIO (Si no viene de BD)
             $foundColosio = false;
             foreach($result as $r) { if($r['Codigo'] == 333) $foundColosio = true; }
 
@@ -3523,7 +3523,7 @@ public function anomalies_client_tickets()
                     'Nombre' => 'COLOSIO',
                     'RFC'    => 'FORANEAS'
                 ];
-                // Reordenar alfabéticamente
+                // Reordenar alfabÃ©ticamente
                 usort($result, function($a, $b) { return strcmp($a['Nombre'], $b['Nombre']); });
             }
             
@@ -3545,9 +3545,9 @@ public function anomalies_client_tickets()
         // 1. Leer el JSON entrante (Misma estructura que enviaba el JS a la API vieja)
         $input = json_decode(file_get_contents('php://input'), true);
         
-        // Validar datos básicos
+        // Validar datos bÃ¡sicos
         if (!isset($input['Datos']['FechaInicial']) || !isset($input['Datos']['Gasolinera'])) {
-            echo json_encode(["status" => "error", "message" => "Faltan parámetros"]);
+            echo json_encode(["status" => "error", "message" => "Faltan parÃ¡metros"]);
             exit;
         }
 
@@ -3555,7 +3555,7 @@ public function anomalies_client_tickets()
         $fFinStr = $input['Datos']['FechaFinal'];   // YYYYMMDD
         $codGas  = intval($input['Datos']['Gasolinera']);
 
-        // Configuración BD (Usar tus credenciales)
+        // ConfiguraciÃ³n BD (Usar tus credenciales)
         $server = "192.168.0.6"; 
         $db = "TG"; 
         $user = "cguser"; 
@@ -3571,7 +3571,7 @@ public function anomalies_client_tickets()
                 DECLARE @fFin INT    = DATEDIFF(dd, 0, :fFin) + 1;
 
                 SELECT 
-                    -- ID ÚNICO
+                    -- ID ÃšNICO
                     CAST(i.fch AS VARCHAR) + '-' + 
                     CAST(i.codisl AS VARCHAR) + '-' + 
                     CAST(i.nrotur AS VARCHAR) + '-' + 
@@ -3588,7 +3588,7 @@ public function anomalies_client_tickets()
                     i.codgas AS CodEstacion,  -- <--- FALTABA ESTO
                     g.abr AS Estacion,
 
-                    -- LÓGICA DE TIPO (RESTAURADA)
+                    -- LÃ“GICA DE TIPO (RESTAURADA)
                     CASE
                         WHEN i.codval = 6 THEN 'EFECTIVO'
                         WHEN i.codval = 192 THEN 'MORALLA'
@@ -3621,7 +3621,7 @@ public function anomalies_client_tickets()
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // 3. Estructura de respuesta compatible con tu JS actual
-            // El JS espera: { respuesta: [ ...array... ] } (Basado en tu código anterior)
+            // El JS espera: { respuesta: [ ...array... ] } (Basado en tu cÃ³digo anterior)
             echo json_encode([
                 "status" => "success", 
                 "respuesta" => $data 
@@ -4115,7 +4115,7 @@ public function anomalies_client_tickets()
         $month = $_GET['month'] ?? date('m');
 
         if (!$eid || !$afiliacion) {
-            echo json_encode(["status" => "error", "message" => "Faltan parámetros"]);
+            echo json_encode(["status" => "error", "message" => "Faltan parÃ¡metros"]);
             exit;
         }
 
@@ -4164,7 +4164,7 @@ public function anomalies_client_tickets()
             
             $result = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                // GENERACIÓN DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
+                // GENERACIÃ“N DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
                 // Usamos hash siempre, ya que ID_Externo en Santander puede venir duplicado.
                 $hashData = 
                     (string)($row['Afiliacion'] ?? '') . 
@@ -4220,7 +4220,7 @@ public function anomalies_client_tickets()
         $month = $_GET['month'] ?? date('m');
 
         if (!$eid || !$afiliacion) {
-            echo json_encode(["status" => "error", "message" => "Faltan parámetros"]);
+            echo json_encode(["status" => "error", "message" => "Faltan parÃ¡metros"]);
             exit;
         }
 
@@ -4303,7 +4303,7 @@ public function anomalies_client_tickets()
         exit;
     }
 
-    // FUNCIÓN PARA SERVIR ARCHIVOS DEL BANCO
+    // FUNCIÃ“N PARA SERVIR ARCHIVOS DEL BANCO
     public function view_bank_file() {
         while (ob_get_level()) ob_end_clean();
 
@@ -4346,13 +4346,13 @@ public function anomalies_client_tickets()
         header('Pragma: public');
         header('Content-Length: ' . filesize($fullPath));
         
-        // Leer archivo y terminar ejecución
+        // Leer archivo y terminar ejecuciÃ³n
         readfile($fullPath);
         exit;
     }
 
     // =========================================================================
-    // ACTUALIZAR FECHA DE TRANSACCIÓN (MOVER A OTRO DÍA)
+    // ACTUALIZAR FECHA DE TRANSACCIÃ“N (MOVER A OTRO DÃA)
     // =========================================================================
     public function update_transaction_date() {
         ob_clean();
@@ -4396,7 +4396,7 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // CONFIGURACIÓN INICIAL V2 (TABLAS)
+    // CONFIGURACIÃ“N INICIAL V2 (TABLAS)
     // =========================================================================
     public function setup_conciliacion_v2($silent = false) {
         if (!$silent) {
@@ -4413,7 +4413,7 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // Tabla de Grupos (Headers de conciliación)
+            // Tabla de Grupos (Headers de conciliaciÃ³n)
             $sqlGrupos = "
                 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Conciliacion_V2_Grupos' AND xtype='U')
                 CREATE TABLE Conciliacion_V2_Grupos (
@@ -4431,11 +4431,11 @@ public function anomalies_client_tickets()
             ";
             $conn->exec($sqlGrupos);
 
-            // Asegurar columna fecha_operativa si la tabla ya existía
+            // Asegurar columna fecha_operativa si la tabla ya existÃ­a
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'fecha_operativa') 
                 ALTER TABLE Conciliacion_V2_Grupos ADD fecha_operativa DATE");
 
-            // NUEVO: Asegurar columnas de banco y afiliación en el Grupo
+            // NUEVO: Asegurar columnas de banco y afiliaciÃ³n en el Grupo
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'entidad_id') 
                 ALTER TABLE Conciliacion_V2_Grupos ADD entidad_id INT");
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'afiliacion') 
@@ -4447,8 +4447,8 @@ public function anomalies_client_tickets()
                 CREATE TABLE Conciliacion_V2_Detalles (
                     id INT IDENTITY(1,1) PRIMARY KEY,
                     grupo_id INT NOT NULL,
-                    origen VARCHAR(10) NOT NULL, -- 'CG' (ControlGas) o 'TX' (Transacción Banco)
-                    referencia_externa VARCHAR(255) NOT NULL, -- ID único del sistema origen
+                    origen VARCHAR(10) NOT NULL, -- 'CG' (ControlGas) o 'TX' (TransacciÃ³n Banco)
+                    referencia_externa VARCHAR(255) NOT NULL, -- ID Ãºnico del sistema origen
                     fecha_operacion DATE,
                     monto DECIMAL(18,2),
                     concepto VARCHAR(255),
@@ -4457,11 +4457,11 @@ public function anomalies_client_tickets()
             ";
             $conn->exec($sqlDetalles);
 
-            // Índices para velocidad
+            // Ãndices para velocidad
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IDX_V2_REF') CREATE INDEX IDX_V2_REF ON Conciliacion_V2_Detalles(referencia_externa)");
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IDX_V2_GRP') CREATE INDEX IDX_V2_GRP ON Conciliacion_V2_Detalles(grupo_id)");
 
-            // Asegurar columna en tabla de tránsito (Migración sutil)
+            // Asegurar columna en tabla de trÃ¡nsito (MigraciÃ³n sutil)
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_Transito') AND name = 'referencia_externa') ALTER TABLE Conciliacion_Transito ADD referencia_externa VARCHAR(255)");
 
             if (!$silent) {
@@ -4478,7 +4478,7 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // GUARDAR CONCILIACIÓN V2 (Estricto CG vs TX con IDs Reales)
+    // GUARDAR CONCILIACIÃ“N V2 (Estricto CG vs TX con IDs Reales)
     // =========================================================================
     public function guardar_conciliacion() {
         ob_clean();
@@ -4529,7 +4529,7 @@ public function anomalies_client_tickets()
                 $stmtDet->execute([$groupId, 'TX', $row['ref'], $row['fecha'], $row['monto'], $row['concepto']]);
             }
 
-            // 3. Cerrar Tránsitos si aplica
+            // 3. Cerrar TrÃ¡nsitos si aplica
             if (isset($data['transit_ids_to_close']) && is_array($data['transit_ids_to_close']) && !empty($data['transit_ids_to_close'])) {
                 $ids = array_map('intval', $data['transit_ids_to_close']);
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
@@ -4555,7 +4555,7 @@ public function anomalies_client_tickets()
         $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
         $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
         $estacion_id   = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
-        $entidad_id    = filter_input(INPUT_GET, 'entidad_id', FILTER_VALIDATE_INT); // Nuevo parámetro
+        $entidad_id    = filter_input(INPUT_GET, 'entidad_id', FILTER_VALIDATE_INT); // Nuevo parÃ¡metro
         $afiliacion    = trim(filter_input(INPUT_GET, 'afiliacion'));
 
         if (!$fecha_ini_raw || !$fecha_fin_raw) {
@@ -4713,9 +4713,9 @@ public function get_resumen_transito() {
             $fecha_vista_fin
         ];
 
-        // --- CORRECCIÓN AQUÍ: USAMOS LIKE EN LUGAR DE IGUAL ---
+        // --- CORRECCIÃ“N AQUÃ: USAMOS LIKE EN LUGAR DE IGUAL ---
         if ($afiliacion) {
-            // Buscamos que el texto '7374424' esté CONTENIDO en 'Principal (7374424)'
+            // Buscamos que el texto '7374424' estÃ© CONTENIDO en 'Principal (7374424)'
             $sql .= " AND CT.afiliacion_asociada LIKE ?";
             $params[] = "%" . $afiliacion . "%";
         }
@@ -4741,7 +4741,7 @@ public function get_resumen_transito() {
     exit;
 }
 
-// 1. Guardar lo que marcas como "En Tránsito"
+// 1. Guardar lo que marcas como "En TrÃ¡nsito"
 public function guardar_transito() {
     ob_clean();
     header('Content-Type: application/json');
@@ -4763,7 +4763,7 @@ public function guardar_transito() {
     $conn = null;
 
     try {
-        // --- CONEXIÓN ---
+        // --- CONEXIÃ“N ---
         $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
@@ -4818,7 +4818,7 @@ public function guardar_transito() {
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
             // TRAEMOS TODO LO PENDIENTE (POOL ABIERTO)
-            // Calculamos dias_antiguedad para el semáforo visual
+            // Calculamos dias_antiguedad para el semÃ¡foro visual
             $sql = "SELECT id, 
                            fecha_original as fecha, 
                            monto, 
@@ -4834,7 +4834,7 @@ public function guardar_transito() {
             $params = [$estacion_id];
 
             if ($afiliacion) {
-                // SOPORTE MULTI-AFILIACIÓN
+                // SOPORTE MULTI-AFILIACIÃ“N
                 $afil_parts = array_map('trim', explode('/', $afiliacion));
                 $likeConditions = [];
                 $likeParams = [];
@@ -4858,7 +4858,7 @@ public function guardar_transito() {
         exit;
     }
 
-// 3. Borrar registros de tránsito (Deshacer)
+// 3. Borrar registros de trÃ¡nsito (Deshacer)
 public function borrar_transito() {
     // Limpiar cualquier salida previa (errores, espacios, etc)
     while (ob_get_level()) { ob_end_clean(); }
@@ -4869,7 +4869,7 @@ public function borrar_transito() {
         $data = json_decode($input, true);
 
         if (!$data || !isset($data['ids']) || !is_array($data['ids']) || empty($data['ids'])) {
-            throw new Exception("Datos inválidos o lista de IDs vacía.");
+            throw new Exception("Datos invÃ¡lidos o lista de IDs vacÃ­a.");
         }
 
         $server = "192.168.0.6"; 
@@ -4885,7 +4885,7 @@ public function borrar_transito() {
         $ids = array_filter($ids, function($id) { return $id > 0; });
 
         if (empty($ids)) {
-            throw new Exception("No se proporcionaron IDs válidos para eliminar.");
+            throw new Exception("No se proporcionaron IDs vÃ¡lidos para eliminar.");
         }
 
         // Construir query segura
@@ -4910,7 +4910,7 @@ public function get_conciliacion_config() {
         
         $estacion_id = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
         if (!$estacion_id) {
-            echo json_encode(['status' => 'error', 'message' => 'ID de estación inválido']);
+            echo json_encode(['status' => 'error', 'message' => 'ID de estaciÃ³n invÃ¡lido']);
             exit;
         }
 
@@ -4938,9 +4938,9 @@ public function get_conciliacion_config() {
             $stmt->execute([$estacion_id]);
             $reglas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // INYECCIÓN MANUAL COLOSIO (ID 333)
+            // INYECCIÃ“N MANUAL COLOSIO (ID 333)
             if ($estacion_id == 333) {
-                // Verificar si ya existe para no duplicar (aunque es improbable si no está en BD)
+                // Verificar si ya existe para no duplicar (aunque es improbable si no estÃ¡ en BD)
                 $existe = false;
                 foreach($reglas as $r) { if($r['afiliacion'] == '9274246') $existe = true; }
                 
@@ -4964,7 +4964,7 @@ public function get_conciliacion_config() {
     }
 
     // =========================================================================
-// FUNCIÓN PRIVADA: RECALCULAR TOTALES DE UN GRUPO (2 VÍAS: CG vs TX) V2
+// FUNCIÃ“N PRIVADA: RECALCULAR TOTALES DE UN GRUPO (2 VÃAS: CG vs TX) V2
 // =========================================================================
 private function recalcular_grupo_interno($conn, $grupo_id) {
     
@@ -4998,7 +4998,7 @@ private function recalcular_grupo_interno($conn, $grupo_id) {
 }
 
 // =========================================================================
-// RECALCULAR MANUALMENTE UN GRUPO (BOTÓN DE PÁNICO)
+// RECALCULAR MANUALMENTE UN GRUPO (BOTÃ“N DE PÃNICO)
 // =========================================================================
 public function forzar_recalculo() {
     ob_clean();
@@ -5018,7 +5018,7 @@ public function forzar_recalculo() {
         $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
-        // Simplemente llamamos a la lógica de suma
+        // Simplemente llamamos a la lÃ³gica de suma
         $nuevos_totales = $this->recalcular_grupo_interno($conn, $data['grupo_id']);
 
         echo json_encode([
@@ -5132,7 +5132,7 @@ public function forzar_recalculo() {
         exit;
     }
     // =========================================================================
-// DESLIGAR MOVIMIENTO (Y BORRAR GRUPO SI QUEDA VACÍO) V2
+// DESLIGAR MOVIMIENTO (Y BORRAR GRUPO SI QUEDA VACÃO) V2
 // =========================================================================
     public function eliminar_grupo_conciliacion() {
         ob_clean();
@@ -5154,7 +5154,7 @@ public function forzar_recalculo() {
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $conn->beginTransaction();
 
-            // 1. Revertir Tránsitos asociados a los detalles de este grupo
+            // 1. Revertir TrÃ¡nsitos asociados a los detalles de este grupo
             $stmtRefs = $conn->prepare("SELECT referencia_externa FROM Conciliacion_V2_Detalles WHERE grupo_id = ?");
             $stmtRefs->execute([$grupo_id]);
             $refs = $stmtRefs->fetchAll(PDO::FETCH_COLUMN);
@@ -5303,32 +5303,32 @@ public function forzar_recalculo() {
         $ref      = $rowDet['referencia_externa'];
         $origen   = $rowDet['origen'];
 
-        // 2. Eliminar el detalle específico V2
+        // 2. Eliminar el detalle especÃ­fico V2
         $stmtDel = $conn->prepare("DELETE FROM Conciliacion_V2_Detalles WHERE id = ?");
         $stmtDel->execute([$id_detalle]);
 
-        // REVERSIÓN DE TRÁNSITO: Si era una referencia de tránsito, volver a PENDIENTE
-        // (Aunque ahora guardamos el ID real, la lógica de tránsito sigue siendo útil)
-        // Nota: Si el usuario movió a tránsito algo, su ID estará en Conciliacion_Transito.
-        // Si al conciliar marcamos ese ID como CONCILIADO, aquí deberíamos revertirlo.
+        // REVERSIÃ“N DE TRÃNSITO: Si era una referencia de trÃ¡nsito, volver a PENDIENTE
+        // (Aunque ahora guardamos el ID real, la lÃ³gica de trÃ¡nsito sigue siendo Ãºtil)
+        // Nota: Si el usuario moviÃ³ a trÃ¡nsito algo, su ID estarÃ¡ en Conciliacion_Transito.
+        // Si al conciliar marcamos ese ID como CONCILIADO, aquÃ­ deberÃ­amos revertirlo.
         // Pero espera, 'referencia_externa' en V2 guarda el ID de ControlGas o Banco.
         // La tabla Conciliacion_Transito usa sus propios IDs incrementales.
         
-        // Buscamos si este item que estamos desligando tiene un registro en tránsitos
+        // Buscamos si este item que estamos desligando tiene un registro en trÃ¡nsitos
         $sqlRevert = "UPDATE Conciliacion_Transito SET estado = 'PENDIENTE', fecha_marcado = NULL 
                       WHERE (fecha_original = ? OR 1=1) AND monto = ? AND estado = 'CONCILIADO'";
-        // TODO: Hacer la reversión de tránsito más precisa si es necesario.
+        // TODO: Hacer la reversiÃ³n de trÃ¡nsito mÃ¡s precisa si es necesario.
 
-        // 3. Verificar si queda vacío el grupo V2
+        // 3. Verificar si queda vacÃ­o el grupo V2
         $stmtCount = $conn->prepare("SELECT COUNT(*) FROM Conciliacion_V2_Detalles WHERE grupo_id = ?");
         $stmtCount->execute([$grupo_id]);
         $remaining = (int)$stmtCount->fetchColumn();
 
         if ($remaining === 0) {
-            // Grupo vacío -> Eliminar V2
+            // Grupo vacÃ­o -> Eliminar V2
             $stmtDelGroup = $conn->prepare("DELETE FROM Conciliacion_V2_Grupos WHERE id = ?");
             $stmtDelGroup->execute([$grupo_id]);
-            $mensaje = "Grupo eliminado por quedar vacío.";
+            $mensaje = "Grupo eliminado por quedar vacÃ­o.";
         } else {
             // Grupo con datos -> Recalcular V2
             $this->recalcular_grupo_interno($conn, $grupo_id);
@@ -5375,7 +5375,7 @@ public function stamped_invoices(): void
 {
 
     set_time_limit(300); 
-    ini_set('memory_limit', '512M'); // También aumentamos memoria por si son muchos datos
+    ini_set('memory_limit', '512M'); // TambiÃ©n aumentamos memoria por si son muchos datos
 
     if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) { return; }
 
@@ -5389,7 +5389,7 @@ public function stamped_invoices(): void
         $untilMonth = $_GET['until']  ?? null;
         $codEmp     = $_GET['codemp'] ?? null; // Recibimos ID de empresa
 
-        // Conversión a entero o null
+        // ConversiÃ³n a entero o null
         $codEmp = ($codEmp !== null && $codEmp !== '') ? (int)$codEmp : null;
 
         if (!$fromMonth || !$untilMonth) { echo json_encode(['error' => 'Faltan fechas.']); return; }
@@ -5397,7 +5397,7 @@ public function stamped_invoices(): void
         $fromDateObj  = \DateTime::createFromFormat('Y-m', $fromMonth);
         $untilDateObj = \DateTime::createFromFormat('Y-m', $untilMonth);
 
-        if (!$fromDateObj || !$untilDateObj) { echo json_encode(['error' => 'Fecha inválida.']); return; }
+        if (!$fromDateObj || !$untilDateObj) { echo json_encode(['error' => 'Fecha invÃ¡lida.']); return; }
         if ($fromDateObj > $untilDateObj) { [$fromDateObj, $untilDateObj] = [$untilDateObj, $fromDateObj]; }
 
         $fromDateObj->modify('first day of this month');
@@ -5464,7 +5464,7 @@ public function stamped_invoices_detail(): void
 {
 
     set_time_limit(300); 
-    ini_set('memory_limit', '512M'); // También aumentamos memoria por si son muchos datos
+    ini_set('memory_limit', '512M'); // TambiÃ©n aumentamos memoria por si son muchos datos
 
     if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) return;
     header('Content-Type: application/json; charset=utf-8');
@@ -5536,7 +5536,7 @@ public function stamped_invoices_detail(): void
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. FILTRO DE GRUPOS (Lógica Híbrida similar a get_conciliaciones_hechas)
+            // 1. FILTRO DE GRUPOS (LÃ³gica HÃ­brida similar a get_conciliaciones_hechas)
             $filterSql = " WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ? ";
             $params = [$year, $month];
 
@@ -5592,7 +5592,7 @@ public function stamped_invoices_detail(): void
             $stmtTotales->execute($params);
             $totales = $stmtTotales->fetch(PDO::FETCH_ASSOC);
 
-            // DESGLOSE POR DÍA OPERATIVO (SOLO DIFERENCIAS != 0)
+            // DESGLOSE POR DÃA OPERATIVO (SOLO DIFERENCIAS != 0)
             $sqlDias = "SELECT 
                             FORMAT(G.fecha_operativa, 'yyyy-MM-dd') as fecha,
                             COUNT(G.id) as count,
@@ -5608,7 +5608,7 @@ public function stamped_invoices_detail(): void
             $stmtDias->execute($params);
             $dias = $stmtDias->fetchAll(PDO::FETCH_ASSOC);
 
-            // 3. DESGLOSE POR ESTACIÓN (SOLO DIFERENCIAS != 0)
+            // 3. DESGLOSE POR ESTACIÃ“N (SOLO DIFERENCIAS != 0)
             $sqlEstacion = "SELECT 
                                 E.Nombre as estacion,
                                 SUM(G.total_sistema) as sistema,
@@ -5625,11 +5625,11 @@ public function stamped_invoices_detail(): void
             $porEstacion = $stmtEstacion->fetchAll(PDO::FETCH_ASSOC);
 
             // ==========================================================
-            // AGRUPAMIENTOS ADICIONALES PARA PESTAÑAS (AUDITORÍA)
+            // AGRUPAMIENTOS ADICIONALES PARA PESTAÃ‘AS (AUDITORÃA)
             // ==========================================================
             $agrupados = [];
             
-            // A. Por Banco / Afiliación (Simplificado con nuevas columnas)
+            // A. Por Banco / AfiliaciÃ³n (Simplificado con nuevas columnas)
             $sqlBank = "SELECT TE.Nombre as Banco, ISNULL(G.afiliacion, 'Sin Afil.') as Afiliacion, 
                                SUM(G.total_sistema) as Sistema, SUM(G.total_banco) as BancoTotal, SUM(G.diferencia) as Diferencia
                         FROM Conciliacion_V2_Grupos G
@@ -5642,7 +5642,7 @@ public function stamped_invoices_detail(): void
             $stmtBank->execute($params);
             $agrupados['bancos'] = $stmtBank->fetchAll(PDO::FETCH_ASSOC);
 
-            // B. Por Estación / Banco
+            // B. Por EstaciÃ³n / Banco
             $sqlEstBank = "SELECT E.Nombre as Estacion, TE.Nombre as Banco, 
                                   SUM(G.total_sistema) as Sistema, SUM(G.total_banco) as BancoTotal, SUM(G.diferencia) as Diferencia
                            FROM Conciliacion_V2_Grupos G
@@ -5656,7 +5656,7 @@ public function stamped_invoices_detail(): void
             $stmtEstBank->execute($params);
             $agrupados['estacion_banco'] = $stmtEstBank->fetchAll(PDO::FETCH_ASSOC);
 
-            // C. Por Razón Social / Estación
+            // C. Por RazÃ³n Social / EstaciÃ³n
             $sqlRS = "SELECT CASE 
                                 WHEN E.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
                                 WHEN E.RFC = 'DGM880621FU5' THEN 'GASOMEX'
@@ -5706,7 +5706,7 @@ public function stamped_invoices_detail(): void
 
             switch ($mode) {
                 case 'rs':
-                    // MODO RAZÓN SOCIAL: Comparativa global entre empresas
+                    // MODO RAZÃ“N SOCIAL: Comparativa global entre empresas
                     $sql = "SELECT 
                                 CASE
                                     WHEN E.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
@@ -5730,7 +5730,7 @@ public function stamped_invoices_detail(): void
                     break;
 
                 case 'station':
-                    // MODO ESTACIÓN: Agrupado por el banco/afil predominante de cada grupo (Ahora directo en G)
+                    // MODO ESTACIÃ“N: Agrupado por el banco/afil predominante de cada grupo (Ahora directo en G)
                     $sql = "SELECT 
                                 TE.Nombre + ' (' + ISNULL(G.afiliacion, 'Sin Afil.') + ')' as label,
                                 SUM(G.total_sistema) as sistema,
@@ -5762,7 +5762,7 @@ public function stamped_invoices_detail(): void
                     break;
             }
 
-            if (!$sql) throw new Exception("Modo de auditoría no válido");
+            if (!$sql) throw new Exception("Modo de auditorÃ­a no vÃ¡lido");
 
             $stmt = $conn->prepare($sql);
             $stmt->execute($params);
@@ -5999,7 +5999,7 @@ public function stamped_invoices_detail(): void
 
             // Query Completa: Grupos Reconciliados + Afiliaciones Pendientes (Pool Maestro)
             $sql = "
-                -- Parte 1: Grupos ya conciliados (incluye multi-afiliación como una sola fila)
+                -- Parte 1: Grupos ya conciliados (incluye multi-afiliaciÃ³n como una sola fila)
                 SELECT 
                     TE.Nombre as Banco,
                     G.afiliacion as Afiliacion,
@@ -6017,7 +6017,7 @@ public function stamped_invoices_detail(): void
 
                 UNION ALL
 
-                -- Parte 2: Afiliaciones existentes en el catálogo que NO tienen conciliaciones este mes
+                -- Parte 2: Afiliaciones existentes en el catÃ¡logo que NO tienen conciliaciones este mes
                 SELECT 
                     TE.Nombre as Banco,
                     A.afiliacion as Afiliacion,
@@ -6040,7 +6040,7 @@ public function stamped_invoices_detail(): void
                 ORDER BY Banco, Estacion";
 
             $stmt = $conn->prepare($sql);
-            // Parámetros: Parte 1 (Year, Month), Parte 2 (Year, Month)
+            // ParÃ¡metros: Parte 1 (Year, Month), Parte 2 (Year, Month)
             $stmt->execute([$year, $month, $year, $month]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -6054,7 +6054,7 @@ public function stamped_invoices_detail(): void
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->setTitle("Resumen General $rs_label");
 
-            // Título superior
+            // TÃ­tulo superior
             $sheet->setCellValue('A1', "RESUMEN GENERAL DE CONCILIACIÓN - $rs_label");
             $sheet->mergeCells('A1:E1');
             $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
