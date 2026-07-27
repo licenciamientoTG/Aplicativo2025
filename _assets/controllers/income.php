@@ -1875,7 +1875,7 @@ public function anomalies_client_tickets()
         $tipo_cliente=0;
 
 
-        if ($dispatches = $this->despachosModel->invoiced_dispatches_data(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
+        if ($dispatches = $this->despachosModel->control_dispatches_invoiced(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
 
             foreach ($dispatches as $dispatch) {
                 $data[] = array(
