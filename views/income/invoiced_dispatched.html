@@ -20,6 +20,7 @@
                         <div class="col-2">
                             <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
                             <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" placeholder="Estación" required>
+                                <option value="0" {{ codgas == false or codgas == 0 ? 'selected' : '' }}>TODAS LAS ESTACIONES</option>
                                 {% for station in stations %}
                                 <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
                                 {% endfor %}
