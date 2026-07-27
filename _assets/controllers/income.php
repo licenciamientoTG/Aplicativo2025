@@ -94,7 +94,7 @@ public function balance_age_send_mail(){
     $cta      = (int)($_POST['cta'] ?? 0);
     $gas      = (int)($_POST['gas'] ?? 0);
 
-    // ðŸ”¹ NUEVO: mensaje opcional del formulario
+    // NUEVO: mensaje opcional del formulario
     $body     = (string)($_POST['body'] ?? ' ');
 
     // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
@@ -923,7 +923,7 @@ public function anomalies_clients_visual()
 
     /**
      * Endpoint ACTUALIZADO para obtener tickets.
-     * Ahora calcula también el histórico para que el modelo pueda filtrar 
+     * Ahora calcula también el histórico para que el modelo pueda filtrar
      * únicamente los tickets de los días que superaron 4 sigmas.
      */
     public function get_suspicious_details_ajax()
@@ -2746,7 +2746,7 @@ public function anomalies_client_tickets()
                 'Tipo transaccion' => 'Tipo_Transaccion',
                 'Tipo de Transacción' => 'Tipo_Transaccion',
                 'Tipo de Transaccion' => 'Tipo_Transaccion',
-                'Número de Control' => 'ID_Externo',          
+                'Número de Control' => 'ID_Externo',
                 'Numero de Control' => 'ID_Externo',
                 'Número de Tarjeta' => 'Tarjeta',
                 'Numero de Tarjeta' => 'Tarjeta',
