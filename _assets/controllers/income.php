@@ -358,7 +358,7 @@ public function balance_age()
                     'Monto despacho' => $despacho['mto'],
                     'Forma pago'     => $despacho['Tipo'],
                     'Producto'       => $despacho['Producto'],
-                    'EstaciÃ³n'       => $despacho['Estacion'],
+                    'Estación'       => $despacho['Estacion'],
                     'Bomba'          => $despacho['Bomba'],
                     'Check'          => $despacho['check'],
                 );
@@ -617,8 +617,8 @@ function invoice_client_desp(){
                     'Cliente'     => ((is_null($vehicle['Cliente']) or empty(trim($vehicle['Cliente']))) ? '<b class="text-danger">Sin Nombre</b>' : trim($vehicle['Cliente']) ),
                     'Tarjeta'     => ((is_null($vehicle['tar']) or empty(trim($vehicle['tar']))) ? '<b class="text-danger">Sin Tarjeta</b>' : trim($vehicle['tar']) ),
                     'Placas'      => ((is_null($vehicle['plc']) or empty(trim($vehicle['plc']))) ? '<b class="text-danger">Sin Placas</b>' : trim($vehicle['plc']) ),
-                    'EconÃ³mico'   => ((is_null($vehicle['nroeco']) or empty($vehicle['nroeco'])) ? '<b class="text-danger">Sin # EconÃ³mico</b>' : trim($vehicle['nroeco']) ),
-                    'VehÃ­culo'    => $vehicle['nroveh'],
+                    'Económico'   => ((is_null($vehicle['nroeco']) or empty($vehicle['nroeco'])) ? '<b class="text-danger">Sin # Económico</b>' : trim($vehicle['nroeco']) ),
+                    'Vehículo'    => $vehicle['nroveh'],
                     'Grupo'       => $vehicle['grp'],
                     'Descripcion' => $vehicle['den'],
                     'Status'      => $vehicle['est'],
@@ -725,7 +725,7 @@ function invoice_client_desp(){
                     'TURNO'        => $dispatch['turno'],
                     'ISLA'        => $dispatch['Isla'],
                     'FECHA'        => $dispatch['Fecha'],
-                    'ESTACIÃ“N'        => $dispatch['Estacion'],
+                    'ESTACIÓN'        => $dispatch['Estacion'],
                     'COINCIDENCIA' => ($dispatch['CoincidenciaEncontrada'] == 1 ? '-SI-' : '-NO-')
                 );
             }
@@ -772,7 +772,7 @@ function invoice_client_desp(){
                 $data[] = array(
                     'FECHA'     => $dispatch['Fecha'],
                     'DESPACHO'  => $dispatch['nrotrn'],
-                    'ESTACIÃ“N'  => $dispatch['Estacion'],
+                    'ESTACIÓN'  => $dispatch['Estacion'],
                     'PRODUCTO'  => $dispatch['Producto'],
                     'CANTIDAD'  => $dispatch['Volumen'],
                     'MONTO'     => $dispatch['Monto'],
@@ -2303,7 +2303,7 @@ public function anomalies_client_tickets()
         $dispatches = $this->despachosModel->get_all_dispatches_just_to_release($fch);
         $columnIndex = 'A';
         $sheet->setCellValue('A1', 'DESPACHO');
-        $sheet->setCellValue('B1', 'ESTACIÃ“N');
+        $sheet->setCellValue('B1', 'ESTACIÓN');
         $sheet->setCellValue('C1', 'ISLA');
         $sheet->setCellValue('D1', 'CODCLIENTE');
         $sheet->setCellValue('E1', 'CLIENTE');
