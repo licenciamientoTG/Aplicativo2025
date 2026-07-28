@@ -1,5 +1,9 @@
 <?php
 
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+
 /**
  * Análisis de Merma Diaria (Abastos).
  *
@@ -283,6 +287,109 @@ class Merma
             'meses'  => ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
                          'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'],
         ]);
+    }
+
+    /**
+     * Descarga el reporte en .xlsx con las cinco hojas del libro original,
+     * pero con valores en vez de fórmulas y referencias externas.
+     */
+    public function ventas_excel(): void
+    {
+        set_time_limit(0);
+        if (!authorized(self::PERM_VER)) {
+            (new Errors())->get404();
+            return;
+        }
+        $ayer = strtotime('yesterday');
+        $anio = (int) ($_GET['anio'] ?? date('Y', $ayer));
+        $mes  = (int) ($_GET['mes']  ?? date('n', $ayer));
+        if ($mes < 1 || $mes > 12)        $mes  = (int) date('n', $ayer);
+        if ($anio < 2020 || $anio > 2100) $anio = (int) date('Y', $ayer);
+
+        $reporte    = $this->armarReporte($anio, $mes);
+        $estaciones = $reporte['estaciones'];
+
+        $filasResumen = [
+            'total'     => 'TOTAL',
+            'mix'       => '% MIX',
+            'proy'      => 'PROY. MENSUAL',
+            'ppto'      => 'PRESUPUESTO',
+            'dif'       => 'DIFERENCIA',
+            'pct_ppto'  => '% PRESUPUESTO',
+            'vs_semana' => 'VS SEMANA PREVIA',
+            'ma'        => '% M.A.',
+            'aa'        => '% A.A.',
+        ];
+        $spreadsheet = new Spreadsheet();
+        $spreadsheet->removeSheetByIndex(0);
+
+        foreach ($reporte['pestanas'] as $clave => $p) {
+            $sheet = $spreadsheet->createSheet();
+            // El título de hoja de Excel tolera 31 caracteres; los labels caben.
+            $sheet->setTitle($p['label']);
+
+            $sheet->setCellValue('A1', 'DÍA');
+            $sheet->setCellValue('B1', '');
+            $col = 3;
+            foreach ($estaciones as $e) {
+                $sheet->setCellValue(Coordinate::stringFromColumnIndex($col) . '1', $e['Nombre']);
+                $col++;
+            }
+            $colTotal = Coordinate::stringFromColumnIndex($col);
+            $sheet->setCellValue($colTotal . '1', 'TOTAL');
+            $sheet->getStyle('A1:' . $colTotal . '1')->getFont()->setBold(true);
+
+            $fila = 2;
+            foreach ($p['dias'] as $d) {
+                $sheet->setCellValue('A' . $fila, $d['dia']);
+                $sheet->setCellValue('B' . $fila, $d['nombre']);
+                $col = 3;
+                foreach ($estaciones as $e) {
+                    $v = $d['celdas'][(int) $e['Codigo']];
+                    if ($v !== null) {
+                        $sheet->setCellValue(Coordinate::stringFromColumnIndex($col) . $fila, round($v, 2));
+                    }
+                    $col++;
+                }
+                if ($d['total'] !== null) {
+                    $sheet->setCellValue($colTotal . $fila, round($d['total'], 2));
+                }
+                $fila++;
+            }
+
+            $fila++; // renglón en blanco entre días y resumen
+            $inicioResumen = $fila;
+            foreach ($filasResumen as $k => $etiqueta) {
+                $r = $p['resumen'][$k];
+                $sheet->setCellValue('A' . $fila, $etiqueta);
+                $col = 3;
+                foreach ($estaciones as $e) {
+                    $v = $r['celdas'][(int) $e['Codigo']];
+                    if ($v !== null) {
+                        $sheet->setCellValue(Coordinate::stringFromColumnIndex($col) . $fila, round($v, 2));
+                    }
+                    $col++;
+                }
+                if ($r['total'] !== null) {
+                    $sheet->setCellValue($colTotal . $fila, round($r['total'], 2));
+                }
+                $fila++;
+            }
+            $sheet->getStyle('A' . $inicioResumen . ':' . $colTotal . ($fila - 1))
+                  ->getFont()->setBold(true);
+
+            $sheet->getColumnDimension('A')->setWidth(20);
+            $sheet->getColumnDimension('B')->setWidth(12);
+            $sheet->freezePane('C2');
+        }
+        $spreadsheet->setActiveSheetIndex(0);
+
+        $archivo = sprintf('ventas_consolidado_%04d_%02d.xlsx', $anio, $mes);
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment;filename=\"{$archivo}\"");
+        header('Cache-Control: max-age=0');
+        (new Xlsx($spreadsheet))->save('php://output');
+        exit;
     }
 
     /**
