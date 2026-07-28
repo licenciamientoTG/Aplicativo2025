@@ -140,8 +140,25 @@ class VentasConsolidado
             $dif['celdas'][$cod]     = ($p !== null && $b !== null) ? $p - $b : null;
             $pctPpto['celdas'][$cod] = self::pctCambio($p, $b);
         }
-        $dif['total']     = ($proy['total'] !== null && $ppto['total'] !== null) ? $proy['total'] - $ppto['total'] : null;
-        $pctPpto['total'] = self::pctCambio($proy['total'], $ppto['total']);
+        // El TOTAL de DIFERENCIA debe ser la suma de las celdas visibles de
+        // su propia fila, no proy['total'] - ppto['total']: proy suma TODAS
+        // las estaciones y ppto solo las que tienen presupuesto cargado, así
+        // que restarlos directamente descuadra el total contra sus celdas
+        // cuando la cobertura de presupuesto es parcial.
+        $dif['total'] = self::sumarCeldas($dif['celdas']);
+
+        // % PRESUPUESTO total: comparar manzanas con manzanas. El numerador
+        // es la proyección SOLO de las estaciones que sí tienen presupuesto
+        // (no la de todas), para que el porcentaje sea consistente con las
+        // celdas por estación de esta misma fila.
+        $proyConPpto = null;
+        foreach ($codgases as $cod) {
+            if ($ppto['celdas'][$cod] === null) continue;
+            if ($proy['celdas'][$cod] !== null) {
+                $proyConPpto = ($proyConPpto ?? 0.0) + $proy['celdas'][$cod];
+            }
+        }
+        $pctPpto['total'] = self::pctCambio($proyConPpto, $ppto['total']);
 
         // --- VS SEMANA PREVIA: últimos 7 días con dato contra los 7 anteriores.
         // El Excel usa filas fijas (33 vs 26); anclarlo al último día con dato

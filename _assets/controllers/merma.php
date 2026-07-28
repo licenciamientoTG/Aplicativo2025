@@ -323,7 +323,7 @@ class Merma
         $spreadsheet = new Spreadsheet();
         $spreadsheet->removeSheetByIndex(0);
 
-        foreach ($reporte['pestanas'] as $clave => $p) {
+        foreach ($reporte['pestanas'] as $p) {
             $sheet = $spreadsheet->createSheet();
             // El título de hoja de Excel tolera 31 caracteres; los labels caben.
             $sheet->setTitle($p['label']);

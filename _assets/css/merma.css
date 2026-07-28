@@ -207,3 +207,26 @@
     position: sticky; z-index: 20; background: #f1f5f9;
     font-size: .72rem; letter-spacing: .03em; text-transform: none;
 }
+
+/* thead de una sola fila: analisis.html y detalle.html tienen DOS <tr> en
+   el thead (familia + columna), y las reglas de arriba (líneas ~133-141,
+   ~168) fueron escritas para eso: tr:first-child es la fila de familia
+   (top:0, fondo blanco) y tr:last-child es la de columna (top:32px, fondo
+   gris). ventas.html tiene un solo <tr>, que es :first-child y :last-child
+   a la vez con la MISMA especificidad en ambos selectores — gana el que
+   aparece después en el archivo (tr:last-child), así que el encabezado
+   flota a top:32px en vez de pegarse al borde, y la celda DÍA queda blanca
+   (por tr:first-child .col-fecha, más específica) mientras el resto queda
+   gris: tres fondos en una sola fila.
+   Se sube la especificidad con el selector compuesto .merma-tabla.vc-tabla
+   (dos clases en el mismo elemento — la tabla ya lleva ambas clases) más
+   ".. thead tr .col-fecha/.col-turno" para IGUALAR la especificidad de las
+   reglas que hay que vencer; al estar más abajo en el archivo, el empate
+   lo gana esta regla. TOTAL (.th-grupo) se deja con su fondo distinto a
+   propósito: usa !important como marca visual de columna de cierre, igual
+   que en analisis/detalle, y unificarlo aquí perdería esa señal — pero sí
+   se pega a top:0 como el resto, porque el problema de posición es de toda
+   la fila, no solo del fondo. */
+.merma-tabla.vc-tabla thead tr th,
+.merma-tabla.vc-tabla thead tr .col-fecha,
+.merma-tabla.vc-tabla thead tr .col-turno { top: 0; background: #f8fafc; }
