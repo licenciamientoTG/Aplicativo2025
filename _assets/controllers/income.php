@@ -3873,7 +3873,7 @@ public function anomalies_client_tickets()
                     // En 5117 también llegan abonos ajenos a ventas (DCC, bonificaciones, etc.).
                     // Para conciliación sólo deben considerarse los depósitos de ventas.
                     $filtroDepositoVentas = ($tabla === 'Tesoreria_5117')
-                        ? " AND Descripcion LIKE '%DEPOSITO VENTAS DEL DIA%'"
+                        ? " AND (Descripcion LIKE '%DEPOSITO VENTAS DEL DIA%' OR Descripcion LIKE '%DEPOSITO VTAS%')"
                         : '';
                     $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0$filtroDepositoVentas AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sql);
