@@ -186,3 +186,24 @@
 .pct-neg, .merma-tabla td.pct-neg { color: #dc2626; font-weight: 600; }
 /* Diferencia >= 9,000 lts: icono de alerta con tooltip (antes badge "DIFERENCIA") */
 .dif-alerta { margin-left: .3rem; color: #b91c1c; font-size: .7rem; }
+
+/* ---- Reporte de ventas consolidado (/merma/ventas) --------------------- */
+/* Reusa .merma-tabla; solo redefine el ancho de las dos columnas fijas:
+   la primera es el número de día y la segunda el día de la semana. */
+.vc-tabla .col-fecha { width: 130px; min-width: 130px; max-width: 130px; font-weight: 600; }
+.vc-tabla .col-turno { left: 130px; width: 90px; min-width: 90px; max-width: 90px;
+                       text-align: left; text-transform: capitalize; }
+
+/* Las 9 filas de resumen van en tfoot; a diferencia del detalle, aquí NO se
+   pegan al fondo (son nueve, taparían media tabla). */
+.vc-tabla tfoot td { position: static; }
+.vc-tabla tfoot tr.vc-resumen td {
+    background: #f8fafc; font-weight: 600; color: #0f172a;
+    border-top: 1px solid #cbd5e1;
+}
+.vc-tabla tfoot tr.vc-resumen:first-child td { border-top: 2px solid #94a3b8; }
+.vc-tabla tfoot tr.vc-resumen td.col-fecha,
+.vc-tabla tfoot tr.vc-resumen td.col-turno {
+    position: sticky; z-index: 20; background: #f1f5f9;
+    font-size: .72rem; letter-spacing: .03em; text-transform: none;
+}

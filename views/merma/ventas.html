@@ -1,0 +1,132 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Reporte de ventas consolidado{% endblock %}
+{% block menutitle %}Reporte de ventas consolidado{% endblock %}
+
+{% block mycss %}
+<link href="/_assets/css/merma.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        <form action="#" method="get" class="row align-items-end g-2">
+            <div class="col-auto">
+                <label for="mes">Mes:</label>
+                <select class="form-control" name="mes" id="mes">
+                    {% for i in 1..12 %}
+                    <option value="{{ i }}" {{ i == mes ? 'selected' : '' }}>{{ meses[i - 1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label for="anio">Año:</label>
+                <select class="form-control" name="anio" id="anio">
+                    {% for a in anios %}
+                    <option value="{{ a }}" {{ a == anio ? 'selected' : '' }}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-merma-neutro">Buscar</button>
+            </div>
+            <div class="col-auto ms-auto">
+                <a href="/merma/ventas_excel?anio={{ anio }}&mes={{ mes }}" class="btn btn-merma-sync">
+                    <i class="fas fa-file-excel"></i> Exportar a Excel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if sin_presupuesto %}
+<div class="alert alert-warning py-2">
+    Sin presupuesto cargado para {{ meses[mes - 1]|lower }} {{ anio }}.
+    Cárgalo en Comercial &rarr; Importar presupuesto. Mientras tanto, las filas
+    PRESUPUESTO, DIFERENCIA y % PRESUPUESTO salen vacías.
+</div>
+{% endif %}
+
+<ul class="nav nav-tabs merma-tabs" role="tablist">
+    {% for clave, p in pestanas %}
+    <li class="nav-item">
+        <a class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
+           href="#tab-{{ clave }}" role="tab">{{ p.label }}</a>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content">
+    {% for clave, p in pestanas %}
+    <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab-{{ clave }}" role="tabpanel">
+        <div class="merma-tabla-wrap mb-3">
+            <div class="merma-scroll">
+                <table class="merma-tabla vc-tabla">
+                    <thead>
+                        <tr>
+                            <th class="col-fecha">DÍA</th>
+                            <th class="col-turno">&nbsp;</th>
+                            {% for e in estaciones %}
+                            <th>{{ e.Nombre }}</th>
+                            {% endfor %}
+                            <th class="th-grupo">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in p.dias %}
+                        <tr>
+                            <td class="col-fecha">{{ d.dia }}</td>
+                            <td class="col-turno">{{ d.nombre }}</td>
+                            {% for e in estaciones %}
+                            {% set v = d.celdas[e.Codigo] %}
+                            <td>{{ v is null ? '—' : v|number_format(0, '.', ',') }}</td>
+                            {% endfor %}
+                            <td class="col-total">{{ d.total is null ? '—' : d.total|number_format(0, '.', ',') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        {% for r in [
+                            {'k': 'total',     'l': 'TOTAL',            't': 'lts'},
+                            {'k': 'mix',       'l': '% MIX',            't': 'pct_plano'},
+                            {'k': 'proy',      'l': 'PROY. MENSUAL',    't': 'lts'},
+                            {'k': 'ppto',      'l': 'PRESUPUESTO',      't': 'lts'},
+                            {'k': 'dif',       'l': 'DIFERENCIA',       't': 'lts_signo'},
+                            {'k': 'pct_ppto',  'l': '% PRESUPUESTO',    't': 'pct'},
+                            {'k': 'vs_semana', 'l': 'VS SEMANA PREVIA', 't': 'pct'},
+                            {'k': 'ma',        'l': '% M.A.',           't': 'pct'},
+                            {'k': 'aa',        'l': '% A.A.',           't': 'pct'}
+                        ] %}
+                        {% set fila = p.resumen[r.k] %}
+                        <tr class="vc-resumen">
+                            <td class="col-fecha">{{ r.l }}</td>
+                            <td class="col-turno">&nbsp;</td>
+                            {% for e in estaciones %}
+                            {% set v = fila.celdas[e.Codigo] %}
+                            <td class="{{ v is null or r.t == 'lts' or r.t == 'pct_plano' ? '' : (v < 0 ? 'pct-neg' : 'pct-pos') }}">
+                                {% if v is null %}—
+                                {% elseif r.t starts with 'pct' %}{{ v|number_format(2) }}%
+                                {% else %}{{ v|number_format(0, '.', ',') }}{% endif %}
+                            </td>
+                            {% endfor %}
+                            {% set vt = fila.total %}
+                            <td class="col-total {{ vt is null or r.t == 'lts' or r.t == 'pct_plano' ? '' : (vt < 0 ? 'pct-neg' : 'pct-pos') }}">
+                                {% if vt is null %}—
+                                {% elseif r.t starts with 'pct' %}{{ vt|number_format(2) }}%
+                                {% else %}{{ vt|number_format(0, '.', ',') }}{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        <p class="text-muted small">
+            {{ p.dias_con_datos }} de {{ p.dias_del_mes }} días con datos.
+            La proyección mensual extrapola el total a los {{ p.dias_del_mes }} días del mes.
+        </p>
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}

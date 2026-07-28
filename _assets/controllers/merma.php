@@ -249,6 +249,87 @@ class Merma
                     'filas', 'dias', 'resumen', 'invInicial', 'compras', 'ventas'));
     }
 
+    /**
+     * Reporte de Ventas Consolidado — reemplaza el libro
+     * "VETS X EST X MARCA Y PROTS <Mes><Año>.xlsm".
+     *
+     * Cinco pestañas de producto sobre la misma matriz día × estación de
+     * merma_diaria.ventas_reales (el "VR" del Excel), más el presupuesto de
+     * TGV2.dbo.Budget.
+     */
+    public function ventas(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            (new Errors())->get404();
+            return;
+        }
+        // Igual que analisis(): el día en curso nunca tiene turnos completos,
+        // así que el mes por defecto es el de ayer.
+        $ayer = strtotime('yesterday');
+        $anio = (int) ($_GET['anio'] ?? date('Y', $ayer));
+        $mes  = (int) ($_GET['mes']  ?? date('n', $ayer));
+        if ($mes < 1 || $mes > 12)         $mes  = (int) date('n', $ayer);
+        if ($anio < 2020 || $anio > 2100)  $anio = (int) date('Y', $ayer);
+
+        $reporte = $this->armarReporte($anio, $mes);
+
+        echo $this->twig->render($this->route . 'ventas.html', $reporte + [
+            'anios'  => range((int) date('Y', $ayer), 2026),
+            'meses'  => ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+                         'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'],
+        ]);
+    }
+
+    /**
+     * Junta modelo + presupuesto + calculadora. Lo comparten la vista y la
+     * exportación a Excel para que no se puedan desincronizar.
+     */
+    private function armarReporte(int $anio, int $mes): array
+    {
+        // Codigo llega como string desde PDO; las llaves de las celdas que
+        // arma VentasConsolidado son enteros. Se castea una sola vez aquí para
+        // que la vista y el exportador indexen sin sorpresas.
+        $estaciones = array_map(
+            fn($e) => ['Codigo' => (int) $e['Codigo'], 'Nombre' => $e['Nombre'], 'cveest' => $e['cveest'] ?? null],
+            $this->mermaModel->get_estaciones_ordenadas()
+        );
+        $ventas = $this->mermaModel->get_ventas_mes($anio, $mes);
+
+        // Mes anterior y mismo mes del año pasado, para % M.A. y % A.A.
+        $mesAnt  = $mes === 1 ? 12 : $mes - 1;
+        $anioAnt = $mes === 1 ? $anio - 1 : $anio;
+
+        // Presupuesto: BudgetModel devuelve filas planas; se indexa por estación y producto.
+        $budget      = (new BudgetModel())->getBudget($mes, $anio) ?: [];
+        $presupuesto = [];
+        foreach ($budget as $b) {
+            $presupuesto[(int) $b['codgas']][(int) $b['codprd']] = (float) $b['budget_monthy'];
+        }
+
+        $ctx = [
+            'estaciones'    => $estaciones,
+            'ventas'        => $ventas,
+            'presupuesto'   => $presupuesto,
+            'mes_anterior'  => $this->mermaModel->get_ventas_totales_mes($anioAnt, $mesAnt),
+            'anio_anterior' => $this->mermaModel->get_ventas_totales_mes($anio - 1, $mes),
+            'anio'          => $anio,
+            'mes'           => $mes,
+        ];
+
+        $pestanas = [];
+        foreach (array_keys(VentasConsolidado::PESTANAS) as $clave) {
+            $pestanas[$clave] = VentasConsolidado::construir($clave, $ctx);
+        }
+
+        return [
+            'anio'            => $anio,
+            'mes'             => $mes,
+            'estaciones'      => $estaciones,
+            'pestanas'        => $pestanas,
+            'sin_presupuesto' => $presupuesto === [],
+        ];
+    }
+
     /* ===================================================================== */
     /* Corrección de cortes físicos (StockReal en la estación)               */
     /* ===================================================================== */
