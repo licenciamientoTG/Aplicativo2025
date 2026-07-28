@@ -540,4 +540,82 @@ class MermaDiariaModel extends Model
             [$origen, $usuario, $desde, $hasta, $codgas, $ok, $err, $detalle, $duracion]
         );
     }
+
+    /* ===================================================================== */
+    /* Reporte de ventas consolidado (/merma/ventas)                         */
+    /* ===================================================================== */
+
+    /**
+     * Estaciones en orden de columna del reporte: por el número corporativo
+     * que Nombre ya trae como prefijo ("02 Lerdo", "38 PRAXEDIS"). TRY_CAST
+     * para que ordene como número y no como texto ("10" antes que "2").
+     * Difiere de get_estaciones(), que ordena alfabéticamente.
+     */
+    public function get_estaciones_ordenadas(): array
+    {
+        $query = 'SELECT e.Codigo, e.Nombre, g.cveest
+                  FROM [TG].[dbo].[Estaciones] e
+                  LEFT JOIN [SG12].[dbo].[Gasolineras] g ON g.cod = e.Codigo
+                  WHERE e.Codigo NOT IN (0, 4, 20)
+                  ORDER BY TRY_CAST(LEFT(e.Nombre, 2) AS INT), e.Nombre;';
+        return $this->sql->select($query) ?: [];
+    }
+
+    /**
+     * Matriz día × estación del mes, con las tres familias en columnas.
+     * ventas_reales es el mismo "VR" que el Excel jala de Formato<Mes><Año>.xlsm.
+     *
+     * @return array ['YYYY-MM-DD' => [codgas => ['maxima'=>?float,'super'=>?float,'diesel'=>?float]]]
+     */
+    public function get_ventas_mes(int $anio, int $mes): array
+    {
+        $primero = sprintf('%04d-%02d-01', $anio, $mes);
+        $query = 'SELECT fecha, codgas,
+                    ' . $this->familiaCase('maxima', 'ventas_reales') . ' AS maxima,
+                    ' . $this->familiaCase('super', 'ventas_reales') . '  AS [super],
+                    ' . $this->familiaCase('diesel', 'ventas_reales') . ' AS diesel
+                  FROM [TG].[dbo].[merma_diaria]
+                  WHERE fecha >= ? AND fecha < DATEADD(MONTH, 1, CAST(? AS DATE))
+                  GROUP BY fecha, codgas
+                  ORDER BY fecha, codgas;';
+        $rows = $this->sql->select($query, [$primero, $primero]) ?: [];
+        $out  = [];
+        foreach ($rows as $r) {
+            $fecha = substr((string) $r['fecha'], 0, 10);
+            $out[$fecha][(int) $r['codgas']] = [
+                'maxima' => $r['maxima'] === null ? null : (float) $r['maxima'],
+                'super'  => $r['super']  === null ? null : (float) $r['super'],
+                'diesel' => $r['diesel'] === null ? null : (float) $r['diesel'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Totales del mes por estación y familia (sin desglose por día). Se usa
+     * para los comparativos % M.A. y % A.A. del reporte de ventas.
+     *
+     * @return array [codgas => ['maxima'=>?float,'super'=>?float,'diesel'=>?float]]
+     */
+    public function get_ventas_totales_mes(int $anio, int $mes): array
+    {
+        $primero = sprintf('%04d-%02d-01', $anio, $mes);
+        $query = 'SELECT codgas,
+                    ' . $this->familiaCase('maxima', 'ventas_reales') . ' AS maxima,
+                    ' . $this->familiaCase('super', 'ventas_reales') . '  AS [super],
+                    ' . $this->familiaCase('diesel', 'ventas_reales') . ' AS diesel
+                  FROM [TG].[dbo].[merma_diaria]
+                  WHERE fecha >= ? AND fecha < DATEADD(MONTH, 1, CAST(? AS DATE))
+                  GROUP BY codgas;';
+        $rows = $this->sql->select($query, [$primero, $primero]) ?: [];
+        $out  = [];
+        foreach ($rows as $r) {
+            $out[(int) $r['codgas']] = [
+                'maxima' => $r['maxima'] === null ? null : (float) $r['maxima'],
+                'super'  => $r['super']  === null ? null : (float) $r['super'],
+                'diesel' => $r['diesel'] === null ? null : (float) $r['diesel'],
+            ];
+        }
+        return $out;
+    }
 }
