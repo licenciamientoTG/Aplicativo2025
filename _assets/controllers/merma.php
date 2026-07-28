@@ -273,8 +273,13 @@ class Merma
 
         $reporte = $this->armarReporte($anio, $mes);
 
+        // Selector de año: los últimos 3 años (el actual y los dos previos),
+        // más reciente primero. Los años sin datos en merma_diaria salen en
+        // "—" (la vista ya lo maneja), así que no hace falta filtrarlos aquí.
+        $anioAyer = (int) date('Y', $ayer);
+
         echo $this->twig->render($this->route . 'ventas.html', $reporte + [
-            'anios'  => range((int) date('Y', $ayer), 2026),
+            'anios'  => range($anioAyer, $anioAyer - 2),
             'meses'  => ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
                          'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'],
         ]);
