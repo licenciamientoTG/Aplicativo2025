@@ -16,6 +16,9 @@ class Tesoreria
     private const PERM_VER      = 79;   // Ver módulo de Tesorería
     private const MAX_TXT_BYTES = 10 * 1024 * 1024;
 
+    /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
+    private const GRUPO_SIN_CATALOGO = 'SIN CATÁLOGO';
+
     private $twig;
     private $route;
     private $movsModel;
@@ -31,37 +34,61 @@ class Tesoreria
         $this->proveedores  = new ProveedoresModel();
     }
 
-    /** Vista principal: filtros + tabla de movimientos + botón de upload. */
+    /**
+     * Vista principal: filtros + tablas vacías + botón de upload.
+     *
+     * NO consulta movimientos. Los datos los pide el JS a movimientos_table()
+     * cuando el usuario presiona "Buscar", mismo patrón que /income/clients:
+     * entrar al módulo no debe disparar una consulta de miles de filas que
+     * nadie pidió, y buscar de nuevo no debe recargar la página (se perdían el
+     * panel de saldos abierto, el tab activo y el scroll).
+     */
     public function movimientos_bancos(): void
     {
         if (!authorized(self::PERM_VER)) {
             (new Errors())->get404();
             return;
         }
-        $hoy   = date('Y-m-d');
-        $fmt   = '/^\d{4}-\d{2}-\d{2}$/';
-        $desde = $_GET['desde'] ?? '';
-        $hasta = $_GET['hasta'] ?? '';
-        if (!preg_match($fmt, $desde)) $desde = date('Y-m-d', strtotime('-7 days'));
-        if (!preg_match($fmt, $hasta)) $hasta = $hoy;
-        if ($desde > $hasta) $desde = $hasta;
 
-        $filtros = [
-            'desde'  => $desde,
-            'hasta'  => $hasta,
-            'cuenta' => trim($_GET['cuenta'] ?? ''),
-            'tipo'   => in_array($_GET['tipo'] ?? '', ['cargo', 'abono']) ? $_GET['tipo'] : '',
-            'q'      => trim($_GET['q'] ?? ''),
-        ];
+        echo $this->twig->render($this->route . 'movimientos_bancos.html', [
+            'filtros' => $this->filtros_movimientos($_GET),
+            'cuentas' => $this->movsModel->get_cuentas(),
+        ]);
+    }
 
-        $movimientos = $this->movsModel->get_movimientos($filtros);
-        $totales = ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => count($movimientos)];
+    /**
+     * POST AJAX: movimientos del rango, ya partidos por banco, más los KPIs
+     * de la cabecera. Una sola consulta alimenta las dos tablas y las tarjetas.
+     */
+    public function movimientos_table(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+
+        $filtros = $this->filtros_movimientos($_POST);
+
+        try {
+            $movimientos = $this->movsModel->get_movimientos($filtros);
+        } catch (Exception $e) {
+            error_log('movimientos_table: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al consultar los movimientos']);
+            return;
+        }
+
         // Un tab (tabla independiente) por banco: el export a Excel de cada
         // uno alimenta el Drive de tesorería, por eso no se mezclan.
         // porBanco alimenta el desglose de los KPI cards.
-        $movsSantander = [];
-        $movsAfirme    = [];
-        $porBanco = [
+        $santander = [];
+        $afirme    = [];
+        $totales   = ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => count($movimientos)];
+        $porBanco  = [
             'SANTANDER' => ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => 0],
             'AFIRME'    => ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => 0],
         ];
@@ -72,55 +99,94 @@ class Tesoreria
             $porBanco[$b]['abonos'] += (float)($m['abono'] ?? 0);
             $porBanco[$b]['cargos'] += (float)($m['cargo'] ?? 0);
             $porBanco[$b]['movs']++;
-            if ($b === 'AFIRME') $movsAfirme[] = $m;
-            else                 $movsSantander[] = $m;
+            if ($b === 'AFIRME') $afirme[]    = $m;
+            else                 $santander[] = $m;
         }
         $totales['neto'] = $totales['abonos'] - $totales['cargos'];
         foreach ($porBanco as $b => $t) {
             $porBanco[$b]['neto'] = $t['abonos'] - $t['cargos'];
         }
 
-        // Saldo final al corte de "hasta": el de la cuenta filtrada, o la
-        // suma del último saldo de cada cuenta si se ven todas
-        $saldoFinal      = null;
-        $saldoFinalFecha = null;
-        $saldosFinales   = $this->movsModel->get_saldos_finales($hasta);
-        if ($filtros['cuenta'] !== '') {
-            foreach ($saldosFinales as $s) {
-                if ($s['cuenta'] === $filtros['cuenta']) {
-                    $saldoFinal      = (float)$s['saldo'];
-                    $saldoFinalFecha = $s['fecha'];
-                    break;
-                }
-            }
-        } elseif (!empty($saldosFinales)) {
-            $saldoFinal = 0.0;
-            foreach ($saldosFinales as $s) $saldoFinal += (float)$s['saldo'];
-        }
-        // Posición global por banco al corte (suma del último saldo de cada
-        // cuenta del banco), independiente del filtro de cuenta
-        $saldoBanco = ['SANTANDER' => 0.0, 'AFIRME' => 0.0];
-        foreach ($saldosFinales as $s) {
-            $b = $s['banco'] === 'AFIRME' ? 'AFIRME' : 'SANTANDER';
-            $saldoBanco[$b] += (float)$s['saldo'];
-        }
-
-        echo $this->twig->render($this->route . 'movimientos_bancos.html', [
-            'filtros'         => $filtros,
-            'cuentas'         => $this->movsModel->get_cuentas(),
-            'movsSantander'   => $movsSantander,
-            'movsAfirme'      => $movsAfirme,
-            'totales'         => $totales,
-            'porBanco'        => $porBanco,
-            'saldoBanco'      => $saldoBanco,
-            'saldoFinal'      => $saldoFinal,
-            'saldoFinalFecha' => $saldoFinalFecha,
+        json_output([
+            'success'   => true,
+            'filtros'   => $filtros,
+            'santander' => $santander,
+            'afirme'    => $afirme,
+            'kpis'      => [
+                'totales'  => $totales,
+                'porBanco' => $porBanco,
+                'saldo'    => $this->kpi_saldo($filtros),
+            ],
         ]);
     }
 
     /**
-     * GET AJAX: último saldo de cada cuenta al corte de ?hasta
-     * (para el panel colapsable de saldos finales).
+     * Normaliza y valida los filtros de movimientos, vengan de $_GET (la vista)
+     * o de $_POST (el ajax de la tabla), para que ambos apliquen las mismas
+     * reglas: fechas con formato válido, rango por defecto de 7 días y tipo
+     * restringido a cargo/abono.
+     */
+    private function filtros_movimientos(array $src): array
+    {
+        $fmt   = '/^\d{4}-\d{2}-\d{2}$/';
+        $desde = $src['desde'] ?? '';
+        $hasta = $src['hasta'] ?? '';
+        if (!preg_match($fmt, $desde)) $desde = date('Y-m-d', strtotime('-7 days'));
+        if (!preg_match($fmt, $hasta)) $hasta = date('Y-m-d');
+        if ($desde > $hasta) $desde = $hasta;
+
+        return [
+            'desde'  => $desde,
+            'hasta'  => $hasta,
+            'cuenta' => trim($src['cuenta'] ?? ''),
+            'tipo'   => in_array($src['tipo'] ?? '', ['cargo', 'abono']) ? $src['tipo'] : '',
+            'q'      => trim($src['q'] ?? ''),
+        ];
+    }
+
+    /**
+     * KPI de saldo al corte de "hasta": el de la cuenta filtrada, o la suma
+     * del último saldo de cada cuenta si se ven todas. saldoBanco es la
+     * posición global por banco, independiente del filtro de cuenta.
+     */
+    private function kpi_saldo(array $filtros): array
+    {
+        $final      = null;
+        $finalFecha = null;
+        $porBanco   = ['SANTANDER' => 0.0, 'AFIRME' => 0.0];
+        $saldos     = $this->movsModel->get_saldos_finales($filtros['hasta']);
+
+        if ($filtros['cuenta'] !== '') {
+            foreach ($saldos as $s) {
+                if ($s['cuenta'] === $filtros['cuenta']) {
+                    $final      = (float)$s['saldo'];
+                    $finalFecha = substr((string)$s['fecha'], 0, 10);
+                    break;
+                }
+            }
+        } elseif (!empty($saldos)) {
+            $final = 0.0;
+            foreach ($saldos as $s) $final += (float)$s['saldo'];
+        }
+
+        foreach ($saldos as $s) {
+            $b = $s['banco'] === 'AFIRME' ? 'AFIRME' : 'SANTANDER';
+            $porBanco[$b] += (float)$s['saldo'];
+        }
+
+        return ['final' => $final, 'fecha' => $finalFecha, 'porBanco' => $porBanco];
+    }
+
+    /**
+     * GET AJAX: último saldo de cada cuenta al corte de ?hasta, agrupado por
+     * empresa (Descripcion del catálogo de cuentas), para el panel colapsable
+     * de saldos finales. Tesorería razona por empresa, no por cuenta suelta.
+     *
+     * Los subtotales se separan por moneda: 5 de las cuentas son en dólares y
+     * sumarlas con las de pesos da un número que no existe. Se agrupa aquí y
+     * no en la vista para que el JS solo pinte.
+     *
+     * Spec: docs/superpowers/specs/2026-07-28-tesoreria-saldos-por-empresa-design.md
      */
     public function saldos_finales()
     {
@@ -135,7 +201,88 @@ class Tesoreria
         $total  = 0.0;
         foreach ($saldos as $s) $total += (float)$s['saldo'];
 
-        json_output(['success' => true, 'hasta' => $hasta, 'saldos' => $saldos, 'total' => $total]);
+        json_output([
+            'success' => true,
+            'hasta'   => $hasta,
+            'grupos'  => $this->agrupar_saldos_por_empresa($saldos),
+            'totales' => $this->totalizar_por_moneda($saldos),
+            // contrato plano anterior, por si otro consumidor lo usa
+            'saldos'  => $saldos,
+            'total'   => $total,
+        ]);
+    }
+
+    /**
+     * Agrupa los saldos finales por empresa (Descripcion del catálogo).
+     * Las cuentas sin match caen en SIN CATÁLOGO, que siempre va al final:
+     * son cuentas por dar de alta y conviene que se vean.
+     * Los grupos se ordenan por subtotal en pesos descendente.
+     */
+    private function agrupar_saldos_por_empresa(array $saldos): array
+    {
+        $grupos = [];
+        foreach ($saldos as $s) {
+            $desc = trim((string)($s['descripcion'] ?? ''));
+            $key  = $desc !== '' ? $desc : self::GRUPO_SIN_CATALOGO;
+
+            if (!isset($grupos[$key])) {
+                $grupos[$key] = [
+                    'descripcion'  => $key,
+                    'sin_catalogo' => $desc === '',
+                    'totales'      => [],
+                    'cuentas'      => [],
+                ];
+            }
+
+            $moneda = self::moneda($s['divisa'] ?? null);
+            $saldo  = (float)$s['saldo'];
+
+            $grupos[$key]['cuentas'][] = [
+                'cuenta' => trim((string)$s['cuenta']),
+                'banco'  => $s['banco'],
+                'fecha'  => substr((string)$s['fecha'], 0, 10),
+                'saldo'  => $saldo,
+                'moneda' => $moneda,
+                'tipo'   => $s['tipo'] ?? null,
+            ];
+            $grupos[$key]['totales'][$moneda]['n']     = ($grupos[$key]['totales'][$moneda]['n'] ?? 0) + 1;
+            $grupos[$key]['totales'][$moneda]['saldo'] = ($grupos[$key]['totales'][$moneda]['saldo'] ?? 0.0) + $saldo;
+        }
+
+        foreach ($grupos as &$g) {
+            usort($g['cuentas'], fn($a, $b) => $b['saldo'] <=> $a['saldo']);
+        }
+        unset($g);
+
+        // SIN CATÁLOGO al final sin importar su saldo; el resto por MXN desc
+        uasort($grupos, function ($a, $b) {
+            if ($a['sin_catalogo'] !== $b['sin_catalogo']) return $a['sin_catalogo'] ? 1 : -1;
+            return ($b['totales']['MXN']['saldo'] ?? 0) <=> ($a['totales']['MXN']['saldo'] ?? 0);
+        });
+
+        return array_values($grupos);
+    }
+
+    /** Totales generales separados por moneda (no se suman divisas distintas). */
+    private function totalizar_por_moneda(array $saldos): array
+    {
+        $totales = [];
+        foreach ($saldos as $s) {
+            $m = self::moneda($s['divisa'] ?? null);
+            $totales[$m]['n']     = ($totales[$m]['n'] ?? 0) + 1;
+            $totales[$m]['saldo'] = ($totales[$m]['saldo'] ?? 0.0) + (float)$s['saldo'];
+        }
+        return $totales;
+    }
+
+    /**
+     * Moneda de una cuenta a partir de la Divisa del catálogo. Solo
+     * "DOLAR AMERICANO" es USD; el resto (incluidos NULL y el 'peso' suelto
+     * que hay en un registro del catálogo) se trata como MXN.
+     */
+    private static function moneda($divisa): string
+    {
+        return stripos((string)$divisa, 'DOLAR') !== false ? 'USD' : 'MXN';
     }
 
     /**

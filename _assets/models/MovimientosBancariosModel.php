@@ -292,7 +292,15 @@ class MovimientosBancariosModel extends Model
         // NO lo es: el banco registra movimientos con hora de operación pero
         // los aplica después; verificado 2026-07-23 contra el TXT del 20/07 —
         // 0 roturas de cadena de saldo en orden de archivo vs 11 por hora).
-        $query = "SELECT * FROM [TG].[dbo].[movimientos_bancarios]
+        //
+        // Se proyectan solo las columnas que la tabla muestra: el resultado
+        // viaja como JSON al DataTable y un SELECT * arrastraba huella,
+        // archivo_origen y created_* sin que nadie los use.
+        $query = "SELECT id, banco, cuenta, fecha, hora, sucursal, descripcion,
+                         cargo, abono, saldo, referencia, concepto, clave_rastreo,
+                         descripcion_larga, nombre_contraparte, banco_contraparte,
+                         cuenta_contraparte
+                  FROM [TG].[dbo].[movimientos_bancarios]
                   $where ORDER BY fecha, id;";
         return $this->sql->select($query, $params) ?: [];
     }
@@ -302,16 +310,30 @@ class MovimientosBancariosModel extends Model
      * movimiento aplicado = fecha DESC, id DESC dentro de cada cuenta).
      * Incluye la fecha de ese movimiento: si es anterior al corte, la cuenta
      * no tuvo movimientos ese día y el saldo viene de un día previo.
+     *
+     * El LEFT JOIN al catálogo trae la empresa (Descripcion) y la divisa para
+     * agrupar los saldos por empresa. Es match exacto de CuentaLocal a
+     * propósito: no hay CuentaLocal duplicada en el catálogo, así que el join
+     * no puede duplicar filas de saldo ni inflar los totales. Las cuentas sin
+     * match salen con descripcion NULL y la vista las manda al grupo
+     * "SIN CATÁLOGO" en vez de esconderlas tras un match difuso.
      */
     public function get_saldos_finales(string $hasta): array
     {
-        $query = "SELECT banco, cuenta, fecha, saldo FROM (
+        $query = "SELECT t.banco, t.cuenta, t.fecha, t.saldo,
+                         c.Descripcion AS descripcion,
+                         c.Divisa      AS divisa,
+                         c.Tipo        AS tipo
+                  FROM (
                       SELECT banco, cuenta, fecha, saldo,
                              ROW_NUMBER() OVER (PARTITION BY banco, cuenta
                                                 ORDER BY fecha DESC, id DESC) AS rn
                       FROM [TG].[dbo].[movimientos_bancarios]
                       WHERE fecha <= ?
-                  ) t WHERE rn = 1 ORDER BY cuenta;";
+                  ) t
+                  LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c
+                         ON c.CuentaLocal = t.cuenta
+                  WHERE t.rn = 1 ORDER BY t.cuenta;";
         return $this->sql->select($query, [$hasta]) ?: [];
     }
 

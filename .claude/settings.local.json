@@ -263,7 +263,9 @@
       "Bash(ini_set= php -d memory_limit=1024M /tmp/claude-1000/-home-a8a-Documentos-Desarrollo-Aplicativo2025/666dfba8-dfce-4d95-bb86-ba13e1c9120c/scratchpad/verify_fallback.php 5)",
       "Bash(awk 'NR==2744{while\\(\\(getline line < \"/tmp/claude-1000/-home-a8a-Documentos-Desarrollo-Aplicativo2025/666dfba8-dfce-4d95-bb86-ba13e1c9120c/scratchpad/new_methods.txt\"\\) > 0\\) print line; skip=1} NR>=2744 && NR<=3075 {next} {print}' _assets/models/DespachosModel.php)",
       "Bash(awk 'NR>=2550 && NR<=2680 && /function /' /home/a8a/Documentos/Desarrollo/Aplicativo2025/_assets/models/DespachosModel.php)",
-      "Bash(awk *)"
+      "Bash(awk *)",
+      "Bash(claude plugin *)",
+      "PowerShell(php \"C:\\\\Users\\\\manue\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-manue-OneDrive-Desktop-proyectos-aplicativoTG-Aplicativo2025\\\\d71de4b7-b859-4d03-87cc-a5b0021a0b25\\\\scratchpad\\\\q.php\")"
     ],
     "deny": [],
     "ask": []

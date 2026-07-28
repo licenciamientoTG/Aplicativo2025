@@ -104,6 +104,18 @@
   .mb-saldos-tabla tfoot td { font-weight: 700; border-top: 2px solid #e2e8f0; }
   .mb-saldos-scroll { max-height: 45vh; overflow: auto; }
 
+  /* Agrupación por empresa dentro del panel de saldos */
+  .mb-grupo { cursor: pointer; background: #f1f5f9; }
+  .mb-grupo:hover { background: #e2e8f0; }
+  .mb-grupo td { font-weight: 600; color: #334155; border-top: 1px solid #e2e8f0; }
+  .mb-grupo .g-chevron { transition: transform .2s; color: #94a3b8; margin-right: .4rem; }
+  .mb-grupo.abierto .g-chevron { transform: rotate(90deg); }
+  .mb-grupo .g-ctas { font-weight: 400; color: #64748b; font-size: .72rem; }
+  .mb-grupo-sc td { color: #b45309; }
+  .mb-moneda { font-size: .68rem; color: #94a3b8; font-weight: 600; margin-right: .25rem; }
+  .mb-linea-usd td { font-weight: 600; }
+  .mb-saldos-tabla tr.mb-cuenta-fila td:first-child { padding-left: 1.75rem; }
+
   /* Loader de página al buscar (la vista recarga con los filtros en la URL) */
   #mbLoader {
     display: none; position: fixed; inset: 0; z-index: 10500;
@@ -124,7 +136,9 @@
 
 <div class="card mb-3">
   <div class="card-body">
-    <form action="/tesoreria/movimientos_bancos" method="get" class="row align-items-end g-2" id="filtrosForm">
+    {# Los filtros no recargan la página: el submit lo intercepta el JS y pide
+       los movimientos por POST a /tesoreria/movimientos_table. #}
+    <form class="row align-items-end g-2" id="filtrosForm">
       <div class="col-auto">
         <label for="desde">Desde:</label>
         <input type="date" class="form-control" name="desde" id="desde" value="{{ filtros.desde }}" required>
@@ -177,7 +191,7 @@
       <span style="color:#334155;">
         <i class="fas fa-wallet me-2 text-primary"></i>
         <strong>Saldo final por cuenta</strong>
-        <small class="text-muted">al {{ filtros.hasta|date('d/m/Y') }}</small>
+        <small class="text-muted">al <span id="saldosCorte">{{ filtros.hasta|date('d/m/Y') }}</span></small>
       </span>
       <i class="fas fa-chevron-down mb-chevron"></i>
     </button>
@@ -191,57 +205,69 @@
   </div>
 </div>
 
+{# Estado vacío: se muestra hasta que el usuario presiona Buscar. A partir de
+   ahí lo reemplazan los KPIs y las tablas, que llena pintarResultado(). #}
+<div class="card border-0 shadow-sm" id="mbVacio">
+  <div class="card-body text-center py-5">
+    <i class="fas fa-search fa-2x mb-3" style="color:#cbd5e1;"></i>
+    <h6 style="color:#334155;">Elige el rango de fechas y presiona <strong>Buscar</strong></h6>
+    <small class="text-muted">
+      Los movimientos no se cargan al entrar para no consultar rangos que no pediste.
+      El saldo final por cuenta ya está disponible en el panel de arriba.
+    </small>
+  </div>
+</div>
+
+<div id="mbResultado" style="display:none;">
 <div class="row g-2 mb-3">
   <div class="col-md">
     <div class="mb-kpi mb-kpi-abonos">
       <span class="k-label"><i class="fas fa-arrow-down"></i> Abonos</span>
-      <span class="k-value">${{ totales.abonos|number_format(2, '.', ',') }}</span>
+      <span class="k-value" id="kpiAbonos">—</span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b>${{ porBanco.SANTANDER.abonos|number_format(2, '.', ',') }}</b></span>
-        <span class="k-banco"><span>Afirme</span><b>${{ porBanco.AFIRME.abonos|number_format(2, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Santander</span><b id="kpiAbonosSan">—</b></span>
+        <span class="k-banco"><span>Afirme</span><b id="kpiAbonosAfi">—</b></span>
       </div>
     </div>
   </div>
   <div class="col-md">
     <div class="mb-kpi mb-kpi-cargos">
       <span class="k-label"><i class="fas fa-arrow-up"></i> Cargos</span>
-      <span class="k-value">${{ totales.cargos|number_format(2, '.', ',') }}</span>
+      <span class="k-value" id="kpiCargos">—</span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b>${{ porBanco.SANTANDER.cargos|number_format(2, '.', ',') }}</b></span>
-        <span class="k-banco"><span>Afirme</span><b>${{ porBanco.AFIRME.cargos|number_format(2, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Santander</span><b id="kpiCargosSan">—</b></span>
+        <span class="k-banco"><span>Afirme</span><b id="kpiCargosAfi">—</b></span>
       </div>
     </div>
   </div>
   <div class="col-md">
     <div class="mb-kpi">
       <span class="k-label"><i class="fas fa-balance-scale"></i> Neto</span>
-      <span class="k-value {{ totales.neto < 0 ? 'mb-cargo' : 'mb-abono' }}">${{ totales.neto|number_format(2, '.', ',') }}</span>
+      <span class="k-value" id="kpiNeto">—</span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b class="{{ porBanco.SANTANDER.neto < 0 ? 'mb-cargo' : '' }}">${{ porBanco.SANTANDER.neto|number_format(2, '.', ',') }}</b></span>
-        <span class="k-banco"><span>Afirme</span><b class="{{ porBanco.AFIRME.neto < 0 ? 'mb-cargo' : '' }}">${{ porBanco.AFIRME.neto|number_format(2, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Santander</span><b id="kpiNetoSan">—</b></span>
+        <span class="k-banco"><span>Afirme</span><b id="kpiNetoAfi">—</b></span>
       </div>
     </div>
   </div>
   <div class="col-md">
     <div class="mb-kpi mb-kpi-saldo">
-      <span class="k-label"><i class="fas fa-wallet"></i> Saldo final ({{ filtros.cuenta ?: 'todas' }})</span>
-      <span class="k-value">{{ saldoFinal is null ? '—' : '$' ~ saldoFinal|number_format(2, '.', ',') }}</span>
-      {% if saldoFinalFecha and saldoFinalFecha != filtros.hasta %}
-      <span class="k-sub">último mov: {{ saldoFinalFecha|date('d/m/Y') }}</span>
-      {% endif %}
+      <span class="k-label"><i class="fas fa-wallet"></i> Saldo final (<span id="kpiSaldoCuenta">todas</span>)</span>
+      <span class="k-value" id="kpiSaldo">—</span>
+      <span class="k-sub" id="kpiSaldoFecha" style="display:none;"></span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b>${{ saldoBanco.SANTANDER|number_format(2, '.', ',') }}</b></span>
-        <span class="k-banco"><span>Afirme</span><b>${{ saldoBanco.AFIRME|number_format(2, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Santander</span><b id="kpiSaldoSan">—</b></span>
+        <span class="k-banco"><span>Afirme</span><b id="kpiSaldoAfi">—</b></span>
       </div>
     </div>
   </div>
   <div class="col-md">
     <div class="mb-kpi">
       <span class="k-label"><i class="fas fa-list"></i> Movimientos</span>
-      <span class="k-value">{{ totales.movs|number_format(0, '.', ',') }}</span>
+      <span class="k-value" id="kpiMovs">—</span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b>{{ porBanco.SANTANDER.movs|number_format(0, '.', ',') }}</b></span>
-        <span class="k-banco"><span>Afirme</span><b>{{ porBanco.AFIRME.movs|number_format(0, '.', ',') }}</b></span>
+        <span class="k-banco"><span>Santander</span><b id="kpiMovsSan">—</b></span>
+        <span class="k-banco"><span>Afirme</span><b id="kpiMovsAfi">—</b></span>
       </div>
     </div>
   </div>
@@ -251,12 +277,12 @@
 <ul class="nav nav-tabs mb-tabs mb-2">
   <li class="nav-item">
     <button class="nav-link active" id="tab-santander-btn" data-bs-toggle="tab" data-bs-target="#tabSantander" type="button">
-      <i class="fas fa-university me-1"></i> Santander ({{ movsSantander|length }})
+      <i class="fas fa-university me-1"></i> Santander (<span id="tabCountSan">0</span>)
     </button>
   </li>
   <li class="nav-item">
     <button class="nav-link" id="tab-afirme-btn" data-bs-toggle="tab" data-bs-target="#tabAfirme" type="button">
-      <i class="fas fa-university me-1"></i> Afirme ({{ movsAfirme|length }})
+      <i class="fas fa-university me-1"></i> Afirme (<span id="tabCountAfi">0</span>)
     </button>
   </li>
 </ul>
@@ -282,30 +308,7 @@
             <th>Contraparte</th>
           </tr>
         </thead>
-        <tbody>
-          {% for m in movsSantander %}
-          <tr>
-            <td>{{ m.id }}</td>
-            <td class="mb-cuenta">{{ m.cuenta }}</td>
-            <td>{{ m.fecha|date('d/m/Y') }}</td>
-            <td>{{ m.hora }}</td>
-            <td>{{ m.sucursal }}</td>
-            <td>{{ m.descripcion }}</td>
-            <td class="mb-monto {{ m.cargo is null ? '' : 'mb-cargo' }}">{{ (m.cargo ?? 0)|number_format(2, '.', ',') }}</td>
-            <td class="mb-monto {{ m.abono is null ? '' : 'mb-abono' }}">{{ (m.abono ?? 0)|number_format(2, '.', ',') }}</td>
-            <td class="mb-monto">{{ m.saldo is null ? '' : m.saldo|number_format(2, '.', ',') }}</td>
-            <td>{{ m.referencia }}</td>
-            <td title="{{ m.clave_rastreo ? 'Rastreo: ' ~ m.clave_rastreo : '' }}">{{ m.concepto }}</td>
-            <td>{{ m.descripcion_larga }}</td>
-            <td>
-              {{ m.nombre_contraparte }}
-              {% if m.banco_contraparte %}
-              <small class="text-muted d-block">{{ m.banco_contraparte }} {{ m.cuenta_contraparte }}</small>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
+        <tbody></tbody>
       </table>
     </div>
   </div>
@@ -330,28 +333,11 @@
             <th>Contraparte</th>
           </tr>
         </thead>
-        <tbody>
-          {% for m in movsAfirme %}
-          <tr>
-            <td>{{ m.id }}</td>
-            <td class="mb-cuenta">{{ m.cuenta }}</td>
-            <td>{{ m.fecha|date('d/m/Y') }}</td>
-            <td>{{ m.hora }}</td>
-            <td>{{ m.sucursal }}</td>
-            <td>{{ m.descripcion }}</td>
-            <td class="mb-monto {{ m.cargo is null ? '' : 'mb-cargo' }}">{{ (m.cargo ?? 0)|number_format(2, '.', ',') }}</td>
-            <td class="mb-monto {{ m.abono is null ? '' : 'mb-abono' }}">{{ (m.abono ?? 0)|number_format(2, '.', ',') }}</td>
-            <td class="mb-monto">{{ m.saldo is null ? '' : m.saldo|number_format(2, '.', ',') }}</td>
-            <td>{{ m.referencia }}</td>
-            <td>{{ m.concepto }}</td>
-            <td>{{ m.descripcion_larga }}</td>
-            <td></td>
-          </tr>
-          {% endfor %}
-        </tbody>
+        <tbody></tbody>
       </table>
     </div>
   </div>
+</div>
 </div>
 
 <!-- Modal subir archivo de banco (Santander / Afirme) -->
@@ -417,6 +403,52 @@ $(function () {
       ],
       // Cuenta y Contraparte ocultas por default; activables con Columnas
       columnDefs: [{ targets: [1, 12], visible: false }],
+      // Las filas llegan por POST desde buscarMovimientos(); la tabla arranca
+      // vacía para no consultar nada al entrar al módulo.
+      data: [],
+      deferRender: true,
+      columns: [
+        { data: 'id' },
+        { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+        { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+        { data: 'hora', defaultContent: '' },
+        { data: 'sucursal', defaultContent: '' },
+        { data: 'descripcion', defaultContent: '' },
+        {
+          data: 'cargo', className: 'mb-monto', defaultContent: '',
+          render: function (d) { return fmtMonto(d || 0); },
+          createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+        },
+        {
+          data: 'abono', className: 'mb-monto', defaultContent: '',
+          render: function (d) { return fmtMonto(d || 0); },
+          createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+        },
+        {
+          data: 'saldo', className: 'mb-monto', defaultContent: '',
+          render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+        },
+        { data: 'referencia', defaultContent: '' },
+        {
+          data: 'concepto', defaultContent: '',
+          createdCell: function (td, d, row) {
+            if (row.clave_rastreo) $(td).attr('title', 'Rastreo: ' + row.clave_rastreo);
+          },
+        },
+        { data: 'descripcion_larga', defaultContent: '' },
+        {
+          data: 'nombre_contraparte', defaultContent: '',
+          render: function (d, type, row) {
+            if (type !== 'display') return d || '';
+            var html = esc(d || '');
+            if (row.banco_contraparte) {
+              html += '<small class="text-muted d-block">' +
+                      esc(row.banco_contraparte) + ' ' + esc(row.cuenta_contraparte || '') + '</small>';
+            }
+            return html;
+          },
+        },
+      ],
       initComplete: function () {
         var api = this.api();
 
@@ -461,20 +493,21 @@ $(function () {
     return api;
   }
 
-  // Loader al buscar: feedback inmediato mientras la página recarga con los
-  // filtros nuevos (también al recargar tras un import exitoso)
-  function mostrarLoader() {
-    document.getElementById('mbLoader').style.display = 'flex';
+  function fmtMonto(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  document.getElementById('filtrosForm').addEventListener('submit', mostrarLoader);
-  window.addEventListener('pageshow', function (e) {
-    // al volver con el botón "atrás" el navegador restaura la página con el
-    // loader visible: ocultarlo
-    if (e.persisted) document.getElementById('mbLoader').style.display = 'none';
-  });
+  function fmtFecha(iso) {
+    var p = String(iso).substring(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
 
-  initMovsTable('#mb_table', 'Movimientos Santander', 'Sin movimientos de Santander en el rango. Sube el TXT para importarlos.');
-  initMovsTable('#af_table', 'Movimientos Afirme', 'Sin movimientos de Afirme en el rango. Sube el export (.xls) para importarlos.');
+  // Las tablas se crean una sola vez, vacías. Cada búsqueda solo reemplaza
+  // sus filas: no se destruye ni se recarga la página, así que el panel de
+  // saldos abierto, el tab activo y el ancho de columnas se conservan.
+  var mbTable = initMovsTable('#mb_table', 'Movimientos Santander',
+    'Sin movimientos de Santander en el rango. Sube el TXT para importarlos.');
+  var afTable = initMovsTable('#af_table', 'Movimientos Afirme',
+    'Sin movimientos de Afirme en el rango. Sube el export (.xls) para importarlos.');
 
   // Al cambiar de tab: reajustar anchos (la tabla oculta se inicializa sin
   // medidas) y posicionar el scroll al fondo (saldo final visible)
@@ -485,49 +518,218 @@ $(function () {
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   });
 
-  // ===== Panel colapsable: saldos finales por cuenta (carga asíncrona) =====
-  var saldosCargados = false;
+  // ===== Búsqueda de movimientos (POST, sin recargar la página) =====
+  function mostrarLoader() { document.getElementById('mbLoader').style.display = 'flex'; }
+  function ocultarLoader() { document.getElementById('mbLoader').style.display = 'none'; }
 
-  function fmtMonto(n) {
-    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function signo(v) { return Number(v) < 0 ? 'mb-cargo' : 'mb-abono'; }
+
+  function pintarKpis(k, filtros) {
+    var t = k.totales, pb = k.porBanco, s = k.saldo;
+
+    $('#kpiAbonos').text('$' + fmtMonto(t.abonos));
+    $('#kpiAbonosSan').text('$' + fmtMonto(pb.SANTANDER.abonos));
+    $('#kpiAbonosAfi').text('$' + fmtMonto(pb.AFIRME.abonos));
+
+    $('#kpiCargos').text('$' + fmtMonto(t.cargos));
+    $('#kpiCargosSan').text('$' + fmtMonto(pb.SANTANDER.cargos));
+    $('#kpiCargosAfi').text('$' + fmtMonto(pb.AFIRME.cargos));
+
+    $('#kpiNeto').text('$' + fmtMonto(t.neto)).removeClass('mb-cargo mb-abono').addClass(signo(t.neto));
+    $('#kpiNetoSan').text('$' + fmtMonto(pb.SANTANDER.neto))
+      .removeClass('mb-cargo').toggleClass('mb-cargo', Number(pb.SANTANDER.neto) < 0);
+    $('#kpiNetoAfi').text('$' + fmtMonto(pb.AFIRME.neto))
+      .removeClass('mb-cargo').toggleClass('mb-cargo', Number(pb.AFIRME.neto) < 0);
+
+    $('#kpiSaldoCuenta').text(filtros.cuenta || 'todas');
+    $('#kpiSaldo').text(s.final === null ? '—' : '$' + fmtMonto(s.final));
+    // La fecha solo importa si el último movimiento es anterior al corte
+    if (s.fecha && s.fecha !== filtros.hasta) {
+      $('#kpiSaldoFecha').text('último mov: ' + fmtFecha(s.fecha)).show();
+    } else {
+      $('#kpiSaldoFecha').hide();
+    }
+    $('#kpiSaldoSan').text('$' + fmtMonto(s.porBanco.SANTANDER));
+    $('#kpiSaldoAfi').text('$' + fmtMonto(s.porBanco.AFIRME));
+
+    $('#kpiMovs').text(Number(t.movs).toLocaleString('en-US'));
+    $('#kpiMovsSan').text(Number(pb.SANTANDER.movs).toLocaleString('en-US'));
+    $('#kpiMovsAfi').text(Number(pb.AFIRME.movs).toLocaleString('en-US'));
   }
-  function fmtFecha(iso) {
-    var p = String(iso).substring(0, 10).split('-');
-    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+
+  // Deja el scroll al fondo: la última fila es el saldo más reciente
+  function scrollAlFondo(sel) {
+    var sc = $(sel).closest('.mb-scroll')[0];
+    if (sc) sc.scrollTop = sc.scrollHeight;
   }
+
+  var buscando = false;
+  function buscarMovimientos() {
+    if (buscando) return;
+    buscando = true;
+    mostrarLoader();
+
+    $.ajax({
+      url: '/tesoreria/movimientos_table',
+      method: 'POST',
+      dataType: 'json',
+      timeout: 600000,
+      data: {
+        desde:  $('#desde').val(),
+        hasta:  $('#hasta').val(),
+        cuenta: $('#cuenta').val(),
+        tipo:   $('#tipo').val(),
+      },
+    }).done(function (r) {
+      if (!r || !r.success) {
+        alertify.error((r && r.message) || 'Error al consultar los movimientos');
+        return;
+      }
+      $('#mbVacio').hide();
+      $('#mbResultado').show();
+
+      mbTable.clear().rows.add(r.santander).draw();
+      afTable.clear().rows.add(r.afirme).draw();
+      $('#tabCountSan').text(r.santander.length);
+      $('#tabCountAfi').text(r.afirme.length);
+      pintarKpis(r.kpis, r.filtros);
+
+      // La tabla del tab oculto se dibuja sin medidas: recalcular al mostrarse
+      $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+      scrollAlFondo('#mb_table');
+      scrollAlFondo('#af_table');
+    }).fail(function (xhr, estado) {
+      alertify.error(estado === 'timeout'
+        ? 'La consulta tardó demasiado. Reduce el rango de fechas.'
+        : 'Error de comunicación al consultar los movimientos');
+    }).always(function () {
+      buscando = false;
+      ocultarLoader();
+    });
+  }
+
+  // Tras un import: mover los filtros al rango del archivo (conservando
+  // cuenta/tipo) y volver a buscar, para ver lo recién importado sin recargar
+  function verImportados(fechaMin, fechaMax) {
+    document.getElementById('desde').value = fechaMin;
+    document.getElementById('hasta').value = fechaMax;
+    buscarMovimientos();
+    // El import cambió los saldos finales: forzar que el panel los reconsulte
+    saldosCargados = false;
+    $('#saldosCollapse').collapse('hide');
+  }
+
+  document.getElementById('filtrosForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    buscarMovimientos();
+  });
+
+  // El encabezado del panel de saldos anuncia el corte: seguir a "Hasta"
+  $('#hasta').on('change', function () {
+    $('#saldosCorte').text(fmtFecha(this.value));
+  });
+  window.addEventListener('pageshow', function (e) {
+    // al volver con el botón "atrás" el navegador puede restaurar la página
+    // con el loader visible: ocultarlo
+    if (e.persisted) ocultarLoader();
+  });
+
+  // ===== Panel colapsable: saldos finales por cuenta (carga asíncrona) =====
+  // El corte lo fija el campo "Hasta". Como los filtros ya no recargan la
+  // página, se recuerda con qué fecha se cargó: si cambió, se vuelve a pedir.
+  var saldosCargados = false;
+  var saldosHasta    = null;
 
   document.getElementById('saldosCollapse').addEventListener('show.bs.collapse', function () {
-    if (saldosCargados) return;
+    var hasta = $('#hasta').val();
+    if (saldosCargados && saldosHasta === hasta) return;
     saldosCargados = true;
+    saldosHasta    = hasta;
 
     var body = document.getElementById('saldosCollapseBody');
-    fetch('/tesoreria/saldos_finales?hasta=' + encodeURIComponent('{{ filtros.hasta }}'))
+    body.innerHTML = '<div class="text-center text-muted py-3">' +
+                     '<span class="spinner-border spinner-border-sm"></span> Cargando saldos...</div>';
+    fetch('/tesoreria/saldos_finales?hasta=' + encodeURIComponent(hasta))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data.success) {
           body.innerHTML = '<div class="alert alert-danger mb-0">' + (data.message || 'Error al cargar saldos') + '</div>';
           return;
         }
-        if (!data.saldos.length) {
+        var grupos = data.grupos || [];
+        if (!grupos.length) {
           body.innerHTML = '<div class="text-center text-muted py-3">Sin saldos registrados al ' + fmtFecha(data.hasta) + '</div>';
           return;
         }
+
+        // Línea de subtotal/total por moneda. MXN siempre; USD solo si el
+        // grupo tiene cuentas en dólares (nunca se suman divisas distintas).
+        function lineaMoneda(totales, moneda) {
+          var t = totales && totales[moneda];
+          if (!t) return null;
+          return { n: t.n, saldo: t.saldo };
+        }
+
         var html = '<div class="mb-saldos-scroll"><table class="table table-sm table-hover mb-saldos-tabla">' +
-                   '<thead><tr><th>Cuenta</th><th>Banco</th><th>Último movimiento</th>' +
+                   '<thead><tr><th>Empresa / Cuenta</th><th>Banco</th><th>Último movimiento</th>' +
                    '<th class="text-end">Saldo final</th></tr></thead><tbody>';
-        data.saldos.forEach(function (s) {
-          var viejo = String(s.fecha).substring(0, 10) !== data.hasta;
-          html += '<tr>' +
-                  '<td class="mb-cuenta">' + s.cuenta + '</td>' +
-                  '<td>' + (s.banco || '') + '</td>' +
-                  '<td class="' + (viejo ? 'text-warning' : 'text-muted') + '">' + fmtFecha(s.fecha) +
-                  (viejo ? ' <i class="fas fa-exclamation-triangle" title="Sin movimientos al corte: saldo de un día anterior"></i>' : '') +
+
+        grupos.forEach(function (g, gi) {
+          var mxn = lineaMoneda(g.totales, 'MXN');
+          var usd = lineaMoneda(g.totales, 'USD');
+          var principal = mxn || usd;   // un grupo solo en dólares no tiene MXN
+
+          html += '<tr class="mb-grupo' + (g.sin_catalogo ? ' mb-grupo-sc' : '') + '" data-grupo="' + gi + '">' +
+                  '<td colspan="2"><i class="fas fa-chevron-right g-chevron"></i>' +
+                  esc(g.descripcion) +
+                  (g.sin_catalogo ? ' <i class="fas fa-exclamation-triangle" title="Cuentas que no están dadas de alta en el catálogo de cuentas bancarias"></i>' : '') +
                   '</td>' +
-                  '<td class="mb-monto">' + fmtMonto(s.saldo) + '</td></tr>';
+                  '<td class="g-ctas">' + principal.n + (principal.n === 1 ? ' cuenta' : ' cuentas') + '</td>' +
+                  '<td class="mb-monto"><span class="mb-moneda">' + (mxn ? 'MXN' : 'USD') + '</span>' +
+                  fmtMonto(principal.saldo) + '</td></tr>';
+
+          if (mxn && usd) {
+            html += '<tr class="mb-grupo mb-linea-usd' + (g.sin_catalogo ? ' mb-grupo-sc' : '') + '" data-grupo="' + gi + '">' +
+                    '<td colspan="2"></td>' +
+                    '<td class="g-ctas">' + usd.n + (usd.n === 1 ? ' cuenta' : ' cuentas') + '</td>' +
+                    '<td class="mb-monto"><span class="mb-moneda">USD</span>' + fmtMonto(usd.saldo) + '</td></tr>';
+          }
+
+          g.cuentas.forEach(function (s) {
+            var viejo = s.fecha !== data.hasta;
+            html += '<tr class="mb-cuenta-fila mb-cuentas-' + gi + '" style="display:none;">' +
+                    '<td class="mb-cuenta">' + s.cuenta + '</td>' +
+                    '<td>' + (s.banco || '') + '</td>' +
+                    '<td class="' + (viejo ? 'text-warning' : 'text-muted') + '">' + fmtFecha(s.fecha) +
+                    (viejo ? ' <i class="fas fa-exclamation-triangle" title="Sin movimientos al corte: saldo de un día anterior"></i>' : '') +
+                    '</td>' +
+                    '<td class="mb-monto">' +
+                    (s.moneda === 'USD' ? '<span class="mb-moneda">USD</span>' : '') +
+                    fmtMonto(s.saldo) + '</td></tr>';
+          });
         });
-        html += '</tbody><tfoot><tr><td colspan="3">TOTAL (' + data.saldos.length + ' cuentas)</td>' +
-                '<td class="mb-monto">' + fmtMonto(data.total) + '</td></tr></tfoot></table></div>';
+
+        var tm = lineaMoneda(data.totales, 'MXN');
+        var tu = lineaMoneda(data.totales, 'USD');
+        html += '</tbody><tfoot>';
+        if (tm) {
+          html += '<tr><td colspan="3">TOTAL (' + tm.n + ' cuentas)</td>' +
+                  '<td class="mb-monto"><span class="mb-moneda">MXN</span>' + fmtMonto(tm.saldo) + '</td></tr>';
+        }
+        if (tu) {
+          html += '<tr><td colspan="3">TOTAL (' + tu.n + ' cuentas)</td>' +
+                  '<td class="mb-monto"><span class="mb-moneda">USD</span>' + fmtMonto(tu.saldo) + '</td></tr>';
+        }
+        html += '</tfoot></table></div>';
         body.innerHTML = html;
+
+        // Los grupos arrancan colapsados: al abrir el card se ve la posición
+        // por empresa completa en una pantalla.
+        $(body).on('click', '.mb-grupo', function () {
+          var gi = $(this).data('grupo');
+          var abierto = $(body).find('.mb-grupo[data-grupo="' + gi + '"]').toggleClass('abierto').hasClass('abierto');
+          $(body).find('.mb-cuentas-' + gi).toggle(abierto);
+        });
       })
       .catch(function () {
         saldosCargados = false;   // permitir reintentar al volver a abrir
@@ -592,13 +794,6 @@ $(function () {
       .then(function (data) {
         var html;
         if (data.success) {
-          // Recarga con el rango del archivo (conservando cuenta/tipo) para
-          // que la tabla y los totales muestren lo recién importado
-          var params = new URLSearchParams(window.location.search);
-          params.set('desde', data.fecha_min);
-          params.set('hasta', data.fecha_max);
-          var url = '/tesoreria/movimientos_bancos?' + params.toString();
-
           html = '<div class="alert alert-success mb-0">' +
                  '<strong>' + data.insertados + '</strong> movimientos importados, ' +
                  '<strong>' + data.duplicados + '</strong> ya existían.';
@@ -607,14 +802,14 @@ $(function () {
                     data.avisos.map(esc).join('<br>') + '</small>';
           }
           if (data.errores && data.errores.length) {
-            // Con líneas con problema no se recarga en automático, para poder leerlas
+            // Con líneas con problema no se busca en automático, para poder leerlas
             html += '<hr class="my-2"><small>Líneas con problema:<br>' +
                     data.errores.map(esc).join('<br>') + '</small>' +
-                    '<hr class="my-2"><a class="btn btn-sm btn-success" href="' + url +
-                    '">Ver movimientos importados</a>';
+                    '<hr class="my-2"><button type="button" class="btn btn-sm btn-success" ' +
+                    'id="btnVerImportados">Ver movimientos importados</button>';
           } else {
             html += ' Actualizando tabla...';
-            setTimeout(function () { mostrarLoader(); window.location.href = url; }, 1500);
+            setTimeout(function () { verImportados(data.fecha_min, data.fecha_max); }, 1500);
           }
           html += '</div>';
         } else {
@@ -626,6 +821,10 @@ $(function () {
         }
         resultado.innerHTML = html;
         resultado.style.display = 'block';
+        $('#btnVerImportados').on('click', function () {
+          $('#uploadModal').modal('hide');
+          verImportados(data.fecha_min, data.fecha_max);
+        });
       })
       .catch(function () {
         resultado.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al importar</div>';
