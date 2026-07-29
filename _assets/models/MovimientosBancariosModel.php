@@ -7,8 +7,10 @@
  * Schema: docs/sql/tesoreria_schema.sql
  * Spec:   docs/superpowers/specs/2026-07-22-tesoreria-movimientos-bancos-design.md
  *
- * Por ahora solo se importa el TXT diario de Enlace Santander (ancho fijo,
- * 630 chars/línea). La columna banco deja listo el parser de Banorte.
+ * Un parser por banco, todos estáticos para poder probarlos por CLI:
+ *   SANTANDER  TXT de ancho fijo (630 chars/línea) de Enlace Santander
+ *   AFIRME     ".xls" que en realidad es texto separado por tabs
+ *   INBURSA    .xlsx real (Estado de Cuenta Individual), un archivo por cuenta
  */
 class MovimientosBancariosModel extends Model
 {
@@ -199,6 +201,195 @@ class MovimientosBancariosModel extends Model
         usort($movimientos, fn($a, $b) => [$a['cuenta'], $a['secuencia']] <=> [$b['cuenta'], $b['secuencia']]);
 
         return ['movimientos' => $movimientos, 'errores' => $errores];
+    }
+
+    /**
+     * Parsea el "Estado de Cuenta Individual" de Inbursa: un .xlsx real, una
+     * hoja, un archivo POR CUENTA (a diferencia de Santander y Afirme, que
+     * traen la cuenta en cada renglón, aquí viene en la cabecera).
+     *
+     *   A3  Razón social: ...            A4  Cuenta: <CLABE 18 dígitos>
+     *   A6  Moneda: NACIONAL             A7  Fecha Inicial dd/mm/aaaa  Fecha Fin dd/mm/aaaa
+     *   A9  encabezados                  A10..N  movimientos
+     *   Columnas: A Fecha · B Referencia · C Ref. Externa · D Referencia Leyenda
+     *   E Ref. Numérica · F Movimiento · G Cargo · H Abono · I Saldo
+     *   J Ordenante · K Clave de Rastreo
+     *
+     * Se saltan dos filas que no son movimientos:
+     *  - "Totales": son fórmulas (=sum(...)), no valores.
+     *  - "SALDO INICIAL": no tiene cargo ni abono, y con archivos de rangos
+     *    traslapados entraría con id mayor que los movimientos reales de ese
+     *    día, rompiendo el orden (fecha, id) del que depende la cadena de
+     *    saldos y, con ella, el saldo final del panel de cuentas. Su valor se
+     *    devuelve en 'info' para poder cuadrar contra el archivo.
+     *
+     * @param string $ruta Ruta al .xlsx (PhpSpreadsheet necesita un archivo)
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_inbursa_xlsx(string $ruta): array
+    {
+        try {
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
+            $reader->setReadDataOnly(true);   // sin estilos y sin calcular fórmulas
+            $hoja = $reader->load($ruta)->getActiveSheet();
+        } catch (Exception $e) {
+            return ['movimientos' => [], 'errores' => ['No se pudo leer el archivo como .xlsx: ' . $e->getMessage()], 'info' => []];
+        }
+
+        // La cabecera identifica el layout: sin ella no es un estado de cuenta
+        // de Inbursa y se aborta antes de interpretar nada.
+        if (stripos(self::celda($hoja, 'B1'), 'Estado de Cuenta') === false
+            || strcasecmp(self::celda($hoja, 'A9'), 'Fecha') !== 0
+            || stripos(self::celda($hoja, 'F9'), 'Movimiento') === false) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout del Estado de Cuenta Individual de Inbursa'], 'info' => []];
+        }
+
+        if (!preg_match('/Cuenta:\s*(\d+)/', self::celda($hoja, 'A4'), $mc)) {
+            return ['movimientos' => [], 'errores' =>
+                ['No se encontró el número de cuenta en la cabecera (celda A4)'], 'info' => []];
+        }
+        $cuenta = $mc[1];
+
+        preg_match('/Razón social:\s*(.+)$/u', self::celda($hoja, 'A3'), $mr);
+        preg_match('/Moneda:\s*(.+)$/u',       self::celda($hoja, 'A6'), $mm);
+
+        $movimientos  = [];
+        $errores      = [];
+        $saldoInicial = null;
+        $ultimoSaldo  = null;
+        $sumCargos    = 0.0;
+        $sumAbonos    = 0.0;
+
+        for ($f = 10; $f <= $hoja->getHighestRow(); $f++) {
+            $movimiento = self::celda($hoja, "F$f");
+            if ($movimiento === '') continue;
+            if (strcasecmp($movimiento, 'Totales') === 0) continue;
+            if (strcasecmp($movimiento, 'SALDO INICIAL') === 0) {
+                $saldoInicial = self::monto($hoja, "I$f");
+                continue;
+            }
+
+            $fechaRaw = self::celda($hoja, "A$f");
+            if (!preg_match('#^(\d{2})/(\d{2})/(\d{4})$#', $fechaRaw, $mf)
+                || !checkdate((int)$mf[2], (int)$mf[1], (int)$mf[3])) {
+                $errores[] = "Fila $f: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $fecha = "$mf[3]-$mf[2]-$mf[1]";
+
+            $cargo = self::monto($hoja, "G$f");
+            $abono = self::monto($hoja, "H$f");
+            $saldo = self::monto($hoja, "I$f");
+            if ($cargo == 0.0 && $abono == 0.0) {
+                $errores[] = "Fila $f: movimiento sin cargo ni abono ($movimiento)";
+                continue;
+            }
+
+            $referencia = self::limpia(self::celda($hoja, "B$f"));   // polimórfica: rastreo, RFC+nombre, No. de cheque o folio
+            $ordenante  = self::limpia(self::celda($hoja, "J$f"));
+
+            // En las domiciliaciones el Ordenante viene vacío y la referencia
+            // trae "RFC   NOMBRE": de ahí sale la contraparte.
+            $rfc = null;
+            if ($ordenante === '' && $referencia !== '') {
+                $tokens = preg_split('/\s+/', $referencia) ?: [];
+                if (preg_match('/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{0,3}$/u', $tokens[0] ?? '')) {
+                    $rfc       = array_shift($tokens);
+                    $ordenante = implode(' ', $tokens);
+                }
+            }
+
+            $sumCargos += $cargo;
+            $sumAbonos += $abono;
+            $ultimoSaldo = $saldo;
+
+            $movimientos[] = [
+                'banco'              => 'INBURSA',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => null,
+                'sucursal'           => null,
+                'clave_trans'        => mb_substr(self::celda($hoja, "C$f"), 0, 10) ?: null,
+                'descripcion'        => mb_substr($movimiento, 0, 60),
+                'cargo'              => $cargo > 0 ? $cargo : null,
+                'abono'              => $abono > 0 ? $abono : null,
+                'saldo'              => $saldo,
+                'referencia'         => mb_substr(self::celda($hoja, "E$f"), 0, 20),
+                'concepto'           => mb_substr(self::celda($hoja, "D$f"), 0, 120),
+                'banco_contraparte'  => '',
+                'cuenta_contraparte' => '',
+                'nombre_contraparte' => mb_substr($ordenante, 0, 60),
+                'rfc_contraparte'    => $rfc,
+                'clave_rastreo'      => mb_substr(self::celda($hoja, "K$f"), 0, 40) ?: null,
+                'descripcion_larga'  => mb_substr($referencia, 0, 150),
+                // El saldo entra a la huella: cambia tras cada movimiento, así
+                // que dos filas del mismo día por el mismo importe no colisionan.
+                'huella'             => sha1('INBURSA|' . implode('|', [
+                    $cuenta, $fecha, $referencia, self::celda($hoja, "D$f"),
+                    self::celda($hoja, "E$f"), $movimiento,
+                    sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
+                ])),
+            ];
+        }
+
+        // El archivo trae saldo inicial y saldos corridos: si la cadena no
+        // cierra, se leyó mal o el archivo viene incompleto. Es un aviso, no
+        // un bloqueo: los movimientos igual se importan.
+        $cuadra = null;
+        if ($saldoInicial !== null && $ultimoSaldo !== null) {
+            $cuadra = abs(($saldoInicial + $sumAbonos - $sumCargos) - $ultimoSaldo) < 0.01;
+            if (!$cuadra) {
+                $errores[] = sprintf(
+                    'La cadena de saldos no cuadra: %s + %s - %s = %s, pero el último saldo es %s',
+                    number_format($saldoInicial, 2), number_format($sumAbonos, 2),
+                    number_format($sumCargos, 2),
+                    number_format($saldoInicial + $sumAbonos - $sumCargos, 2),
+                    number_format($ultimoSaldo, 2)
+                );
+            }
+        }
+
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => $cuenta,
+                'razon_social'  => trim($mr[1] ?? ''),
+                'moneda'        => trim($mm[1] ?? ''),
+                'saldo_inicial' => $saldoInicial,
+                'saldo_final'   => $ultimoSaldo,
+                'cargos'        => $sumCargos,
+                'abonos'        => $sumAbonos,
+                'cuadra'        => $cuadra,
+            ],
+        ];
+    }
+
+    /**
+     * Texto de una celda. Las celdas de texto de Inbursa son inlineStr y
+     * PhpSpreadsheet puede devolverlas como RichText en vez de string.
+     */
+    private static function celda($hoja, string $ref): string
+    {
+        $v = $hoja->getCell($ref)->getValue();
+        if ($v instanceof \PhpOffice\PhpSpreadsheet\RichText\RichText) {
+            $v = $v->getPlainText();
+        }
+        return trim((string)$v);
+    }
+
+    /** Importe de una celda; vacío o no numérico cuenta como 0. */
+    private static function monto($hoja, string $ref): float
+    {
+        $v = str_replace([',', '$', ' '], '', self::celda($hoja, $ref));
+        return is_numeric($v) ? (float)$v : 0.0;
+    }
+
+    /** Colapsa las corridas de espacios con las que Inbursa rellena las celdas. */
+    private static function limpia(string $v): string
+    {
+        return trim(preg_replace('/\s+/', ' ', $v));
     }
 
     /** Extrae un campo de ancho fijo, recortado y normalizado a UTF-8. */

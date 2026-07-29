@@ -19,6 +19,57 @@ class Tesoreria
     /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
     private const GRUPO_SIN_CATALOGO = 'SIN CATÁLOGO';
 
+    /**
+     * Bancos soportados. Agregar uno nuevo es una entrada aquí más su parser
+     * en MovimientosBancariosModel; el endpoint de importación, los KPI por
+     * banco y los tabs de la vista salen de este registro.
+     *
+     * entrada: 'contenido' pasa el archivo leído al parser, 'ruta' pasa el
+     * path (PhpSpreadsheet necesita abrir el .xlsx desde disco).
+     */
+    private const BANCOS = [
+        'SANTANDER' => [
+            'etiqueta' => 'Santander',
+            'ext'      => ['txt'],
+            'espera'   => 'el TXT de Enlace Santander',
+            'parser'   => 'parse_santander_txt',
+            'entrada'  => 'contenido',
+        ],
+        'AFIRME' => [
+            'etiqueta' => 'Afirme',
+            'ext'      => ['xls', 'txt', 'tsv', 'csv'],
+            'espera'   => 'el export de movimientos de Afirme',
+            'parser'   => 'parse_afirme_tsv',
+            'entrada'  => 'contenido',
+        ],
+        'INBURSA' => [
+            'etiqueta' => 'Inbursa',
+            'ext'      => ['xlsx'],
+            'espera'   => 'el Estado de Cuenta Individual de Inbursa',
+            'parser'   => 'parse_inbursa_xlsx',
+            'entrada'  => 'ruta',
+        ],
+    ];
+
+    /**
+     * Normaliza el banco de un movimiento a una de las llaves de BANCOS.
+     * Lo que no reconozca cae en SANTANDER, que es el banco histórico y el
+     * único que existía cuando se creó la tabla.
+     */
+    private static function banco_de($valor): string
+    {
+        $b = strtoupper(trim((string)$valor));
+        return isset(self::BANCOS[$b]) ? $b : 'SANTANDER';
+    }
+
+    /** Acumuladores en cero para cada banco soportado. */
+    private static function por_banco_vacio(array $campos): array
+    {
+        $out = [];
+        foreach (array_keys(self::BANCOS) as $b) $out[$b] = $campos;
+        return $out;
+    }
+
     private $twig;
     private $route;
     private $movsModel;
@@ -53,6 +104,7 @@ class Tesoreria
         echo $this->twig->render($this->route . 'movimientos_bancos.html', [
             'filtros' => $this->filtros_movimientos($_GET),
             'cuentas' => $this->movsModel->get_cuentas(),
+            'bancos'  => self::BANCOS,
         ]);
     }
 
@@ -82,25 +134,21 @@ class Tesoreria
             return;
         }
 
-        // Un tab (tabla independiente) por banco: el export a Excel de cada
-        // uno alimenta el Drive de tesorería, por eso no se mezclan.
+        // Una tabla independiente por banco: el export a Excel de cada una
+        // alimenta el Drive de tesorería, por eso no se mezclan.
         // porBanco alimenta el desglose de los KPI cards.
-        $santander = [];
-        $afirme    = [];
-        $totales   = ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => count($movimientos)];
-        $porBanco  = [
-            'SANTANDER' => ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => 0],
-            'AFIRME'    => ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => 0],
-        ];
+        $porTabla = self::por_banco_vacio([]);
+        $totales  = ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => count($movimientos)];
+        $porBanco = self::por_banco_vacio(['abonos' => 0.0, 'cargos' => 0.0, 'movs' => 0]);
+
         foreach ($movimientos as $m) {
             $totales['abonos'] += (float)($m['abono'] ?? 0);
             $totales['cargos'] += (float)($m['cargo'] ?? 0);
-            $b = $m['banco'] === 'AFIRME' ? 'AFIRME' : 'SANTANDER';
+            $b = self::banco_de($m['banco']);
             $porBanco[$b]['abonos'] += (float)($m['abono'] ?? 0);
             $porBanco[$b]['cargos'] += (float)($m['cargo'] ?? 0);
             $porBanco[$b]['movs']++;
-            if ($b === 'AFIRME') $afirme[]    = $m;
-            else                 $santander[] = $m;
+            $porTabla[$b][] = $m;
         }
         $totales['neto'] = $totales['abonos'] - $totales['cargos'];
         foreach ($porBanco as $b => $t) {
@@ -108,11 +156,10 @@ class Tesoreria
         }
 
         json_output([
-            'success'   => true,
-            'filtros'   => $filtros,
-            'santander' => $santander,
-            'afirme'    => $afirme,
-            'kpis'      => [
+            'success'     => true,
+            'filtros'     => $filtros,
+            'movimientos' => $porTabla,
+            'kpis'        => [
                 'totales'  => $totales,
                 'porBanco' => $porBanco,
                 'saldo'    => $this->kpi_saldo($filtros),
@@ -153,7 +200,7 @@ class Tesoreria
     {
         $final      = null;
         $finalFecha = null;
-        $porBanco   = ['SANTANDER' => 0.0, 'AFIRME' => 0.0];
+        $porBanco   = array_map(fn() => 0.0, self::BANCOS);
         $saldos     = $this->movsModel->get_saldos_finales($filtros['hasta']);
 
         if ($filtros['cuenta'] !== '') {
@@ -170,8 +217,7 @@ class Tesoreria
         }
 
         foreach ($saldos as $s) {
-            $b = $s['banco'] === 'AFIRME' ? 'AFIRME' : 'SANTANDER';
-            $porBanco[$b] += (float)$s['saldo'];
+            $porBanco[self::banco_de($s['banco'])] += (float)$s['saldo'];
         }
 
         return ['final' => $final, 'fecha' => $finalFecha, 'porBanco' => $porBanco];
@@ -286,21 +332,33 @@ class Tesoreria
     }
 
     /**
-     * POST AJAX: recibe el TXT de Santander ($_FILES['txt_santander']),
-     * lo parsea e inserta saltando duplicados. Responde JSON.
+     * POST AJAX: importa el archivo de movimientos de cualquier banco.
+     * Recibe $_POST['banco'] y $_FILES['archivo']; la validación es común y
+     * lo único específico del banco sale del registro self::BANCOS.
+     *
+     * Antes había un método por banco con la misma validación copiada; agregar
+     * Inbursa habría sido la tercera copia.
      */
-    public function upload_santander(): void
+    public function upload_movimientos(): void
     {
+        header('Content-Type: application/json');
         if (!authorized(self::PERM_VER)) {
             json_output(['success' => false, 'message' => 'No tienes permiso para importar movimientos']);
             return;
         }
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['txt_santander']['tmp_name'])) {
+
+        $banco = strtoupper(trim($_POST['banco'] ?? ''));
+        $cfg   = self::BANCOS[$banco] ?? null;
+        if ($cfg === null) {
+            json_output(['success' => false, 'message' => 'Banco no reconocido']);
+            return;
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['archivo']['tmp_name'])) {
             json_output(['success' => false, 'message' => 'No se recibió ningún archivo']);
             return;
         }
 
-        $file = $_FILES['txt_santander'];
+        $file = $_FILES['archivo'];
         if ($file['error'] !== UPLOAD_ERR_OK) {
             json_output(['success' => false, 'message' => 'Error al subir el archivo (código ' . $file['error'] . ')']);
             return;
@@ -309,22 +367,34 @@ class Tesoreria
             json_output(['success' => false, 'message' => 'El archivo excede el tamaño máximo (10 MB)']);
             return;
         }
-        if (strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) !== 'txt') {
-            json_output(['success' => false, 'message' => 'El archivo debe ser un .TXT de Santander']);
+        if ($file['size'] === 0) {
+            json_output(['success' => false, 'message' => 'El archivo está vacío']);
+            return;
+        }
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, $cfg['ext'])) {
+            json_output(['success' => false, 'message' =>
+                'El archivo debe ser ' . $cfg['espera'] . ' (.' . implode('/.', $cfg['ext']) . ')']);
             return;
         }
 
-        $contenido = file_get_contents($file['tmp_name']);
-        if ($contenido === false || trim($contenido) === '') {
-            json_output(['success' => false, 'message' => 'El archivo está vacío o no se pudo leer']);
-            return;
+        // Los parsers de texto reciben el contenido; el de Inbursa necesita la
+        // ruta porque PhpSpreadsheet abre el .xlsx desde disco.
+        if ($cfg['entrada'] === 'ruta') {
+            $entrada = $file['tmp_name'];
+        } else {
+            $entrada = file_get_contents($file['tmp_name']);
+            if ($entrada === false || trim($entrada) === '') {
+                json_output(['success' => false, 'message' => 'El archivo está vacío o no se pudo leer']);
+                return;
+            }
         }
 
-        $parseo = MovimientosBancariosModel::parse_santander_txt($contenido);
+        $parseo = MovimientosBancariosModel::{$cfg['parser']}($entrada);
         if (empty($parseo['movimientos'])) {
             json_output([
                 'success' => false,
-                'message' => 'El archivo no contiene movimientos con el layout de Santander',
+                'message' => 'El archivo no contiene movimientos con el formato de ' . $banco,
                 'errores' => array_slice($parseo['errores'], 0, 20),
             ]);
             return;
@@ -337,7 +407,7 @@ class Tesoreria
                 (int)($_SESSION['tg_user']['Id'] ?? 0) ?: null
             );
         } catch (Exception $e) {
-            error_log('upload_santander: ' . $e->getMessage());
+            error_log("upload_movimientos($banco): " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error al guardar en base de datos, no se importó nada']);
             return;
         }
@@ -345,94 +415,31 @@ class Tesoreria
         $fechas = array_column($parseo['movimientos'], 'fecha');
         json_output([
             'success'    => true,
+            'banco'      => $banco,
             'insertados' => $res['insertados'],
             'duplicados' => $res['duplicados'],
             'errores'    => array_slice($parseo['errores'], 0, 20),
+            'avisos'     => $this->avisos_catalogo($parseo['movimientos']),
+            'info'       => $parseo['info'] ?? null,
             'fecha_min'  => min($fechas),
             'fecha_max'  => max($fechas),
         ]);
     }
 
     /**
-     * POST AJAX: recibe el export de movimientos de Afirme (un ".xls" que en
-     * realidad es texto separado por tabs) y lo importa saltando duplicados.
-     * Responde JSON con el mismo contrato que upload_santander, más "avisos"
-     * si alguna cuenta del archivo no está en el catálogo de cuentas.
+     * Aviso (no bloqueante) por cada cuenta del archivo que no esté dada de
+     * alta en el catálogo: sin ella el saldo cae en el grupo "SIN CATÁLOGO".
      */
-    public function upload_afirme(): void
+    private function avisos_catalogo(array $movimientos): array
     {
-        if (!authorized(self::PERM_VER)) {
-            json_output(['success' => false, 'message' => 'No tienes permiso para importar movimientos']);
-            return;
-        }
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['archivo_afirme']['tmp_name'])) {
-            json_output(['success' => false, 'message' => 'No se recibió ningún archivo']);
-            return;
-        }
-
-        $file = $_FILES['archivo_afirme'];
-        if ($file['error'] !== UPLOAD_ERR_OK) {
-            json_output(['success' => false, 'message' => 'Error al subir el archivo (código ' . $file['error'] . ')']);
-            return;
-        }
-        if ($file['size'] > self::MAX_TXT_BYTES) {
-            json_output(['success' => false, 'message' => 'El archivo excede el tamaño máximo (10 MB)']);
-            return;
-        }
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if (!in_array($ext, ['xls', 'txt', 'tsv', 'csv'])) {
-            json_output(['success' => false, 'message' => 'El archivo debe ser el export de Afirme (.xls/.txt/.tsv)']);
-            return;
-        }
-
-        $contenido = file_get_contents($file['tmp_name']);
-        if ($contenido === false || trim($contenido) === '') {
-            json_output(['success' => false, 'message' => 'El archivo está vacío o no se pudo leer']);
-            return;
-        }
-
-        $parseo = MovimientosBancariosModel::parse_afirme_tsv($contenido);
-        if (empty($parseo['movimientos'])) {
-            json_output([
-                'success' => false,
-                'message' => 'El archivo no contiene movimientos con el formato de Afirme',
-                'errores' => array_slice($parseo['errores'], 0, 20),
-            ]);
-            return;
-        }
-
-        try {
-            $res = $this->movsModel->insert_bulk(
-                $parseo['movimientos'],
-                mb_substr($file['name'], 0, 120),
-                (int)($_SESSION['tg_user']['Id'] ?? 0) ?: null
-            );
-        } catch (Exception $e) {
-            error_log('upload_afirme: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error al guardar en base de datos, no se importó nada']);
-            return;
-        }
-
-        // Aviso (no bloqueante) si alguna cuenta del archivo no está dada de
-        // alta en el catálogo de cuentas bancarias
-        $avisos    = [];
-        $catalogo  = array_column($this->cuentasModel->get_cuentas_admin(), 'CuentaLocal');
-        foreach (array_unique(array_column($parseo['movimientos'], 'cuenta')) as $cta) {
+        $avisos   = [];
+        $catalogo = array_column($this->cuentasModel->get_cuentas_admin(), 'CuentaLocal');
+        foreach (array_unique(array_column($movimientos, 'cuenta')) as $cta) {
             if (!in_array($cta, $catalogo)) {
                 $avisos[] = "La cuenta $cta no está registrada en el catálogo de cuentas bancarias";
             }
         }
-
-        $fechas = array_column($parseo['movimientos'], 'fecha');
-        json_output([
-            'success'    => true,
-            'insertados' => $res['insertados'],
-            'duplicados' => $res['duplicados'],
-            'errores'    => array_slice($parseo['errores'], 0, 20),
-            'avisos'     => $avisos,
-            'fecha_min'  => min($fechas),
-            'fecha_max'  => max($fechas),
-        ]);
+        return $avisos;
     }
 
     /* ===================================================================== */

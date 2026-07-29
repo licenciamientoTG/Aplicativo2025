@@ -170,14 +170,12 @@
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
       <div class="col-auto ms-auto d-flex gap-2">
-        <button type="button" class="btn btn-danger btn-upload-banco" data-banco="SANTANDER"
+        {% for cod, b in bancos %}
+        <button type="button" class="btn btn-sm btn-outline-primary btn-upload-banco" data-banco="{{ cod }}"
                 data-bs-toggle="modal" data-bs-target="#uploadModal">
-          <i class="fas fa-file-upload"></i> Subir TXT Santander
+          <i class="fas fa-file-upload"></i> Subir {{ b.etiqueta }}
         </button>
-        <button type="button" class="btn btn-success btn-upload-banco" data-banco="AFIRME"
-                data-bs-toggle="modal" data-bs-target="#uploadModal">
-          <i class="fas fa-file-upload"></i> Subir Afirme
-        </button>
+        {% endfor %}
       </div>
     </form>
   </div>
@@ -218,6 +216,8 @@
   </div>
 </div>
 
+{# El desglose por banco de cada KPI sale del registro BANCOS del controlador:
+   agregar un banco no obliga a tocar esta plantilla. #}
 <div id="mbResultado" style="display:none;">
 <div class="row g-2 mb-3">
   <div class="col-md">
@@ -225,8 +225,9 @@
       <span class="k-label"><i class="fas fa-arrow-down"></i> Abonos</span>
       <span class="k-value" id="kpiAbonos">—</span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b id="kpiAbonosSan">—</b></span>
-        <span class="k-banco"><span>Afirme</span><b id="kpiAbonosAfi">—</b></span>
+        {% for cod, b in bancos %}
+        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="abonos" data-banco="{{ cod }}">—</b></span>
+        {% endfor %}
       </div>
     </div>
   </div>
@@ -235,8 +236,9 @@
       <span class="k-label"><i class="fas fa-arrow-up"></i> Cargos</span>
       <span class="k-value" id="kpiCargos">—</span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b id="kpiCargosSan">—</b></span>
-        <span class="k-banco"><span>Afirme</span><b id="kpiCargosAfi">—</b></span>
+        {% for cod, b in bancos %}
+        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="cargos" data-banco="{{ cod }}">—</b></span>
+        {% endfor %}
       </div>
     </div>
   </div>
@@ -245,8 +247,9 @@
       <span class="k-label"><i class="fas fa-balance-scale"></i> Neto</span>
       <span class="k-value" id="kpiNeto">—</span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b id="kpiNetoSan">—</b></span>
-        <span class="k-banco"><span>Afirme</span><b id="kpiNetoAfi">—</b></span>
+        {% for cod, b in bancos %}
+        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="neto" data-banco="{{ cod }}">—</b></span>
+        {% endfor %}
       </div>
     </div>
   </div>
@@ -256,8 +259,9 @@
       <span class="k-value" id="kpiSaldo">—</span>
       <span class="k-sub" id="kpiSaldoFecha" style="display:none;"></span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b id="kpiSaldoSan">—</b></span>
-        <span class="k-banco"><span>Afirme</span><b id="kpiSaldoAfi">—</b></span>
+        {% for cod, b in bancos %}
+        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="saldo" data-banco="{{ cod }}">—</b></span>
+        {% endfor %}
       </div>
     </div>
   </div>
@@ -266,8 +270,9 @@
       <span class="k-label"><i class="fas fa-list"></i> Movimientos</span>
       <span class="k-value" id="kpiMovs">—</span>
       <div class="k-bancos">
-        <span class="k-banco"><span>Santander</span><b id="kpiMovsSan">—</b></span>
-        <span class="k-banco"><span>Afirme</span><b id="kpiMovsAfi">—</b></span>
+        {% for cod, b in bancos %}
+        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="movs" data-banco="{{ cod }}">—</b></span>
+        {% endfor %}
       </div>
     </div>
   </div>
@@ -275,22 +280,22 @@
 
 <!-- Tabs por banco: tablas independientes -->
 <ul class="nav nav-tabs mb-tabs mb-2">
+  {% for cod, b in bancos %}
   <li class="nav-item">
-    <button class="nav-link active" id="tab-santander-btn" data-bs-toggle="tab" data-bs-target="#tabSantander" type="button">
-      <i class="fas fa-university me-1"></i> Santander (<span id="tabCountSan">0</span>)
+    <button class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
+            data-bs-target="#tab{{ cod }}" type="button">
+      <i class="fas fa-university me-1"></i> {{ b.etiqueta }} (<span data-tabcount="{{ cod }}">0</span>)
     </button>
   </li>
-  <li class="nav-item">
-    <button class="nav-link" id="tab-afirme-btn" data-bs-toggle="tab" data-bs-target="#tabAfirme" type="button">
-      <i class="fas fa-university me-1"></i> Afirme (<span id="tabCountAfi">0</span>)
-    </button>
-  </li>
+  {% endfor %}
 </ul>
 
 <div class="tab-content">
-  <div class="tab-pane fade show active" id="tabSantander">
+  {% for cod, b in bancos %}
+  <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab{{ cod }}">
     <div class="mb-tabla-wrap">
-      <table id="mb_table" class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
+      <table id="tabla{{ cod }}" data-banco="{{ cod }}" data-etiqueta="{{ b.etiqueta }}"
+             class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
         <thead>
           <tr>
             <th class="no-export">Id</th>
@@ -312,31 +317,7 @@
       </table>
     </div>
   </div>
-
-  <div class="tab-pane fade" id="tabAfirme">
-    <div class="mb-tabla-wrap">
-      <table id="af_table" class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
-        <thead>
-          <tr>
-            <th class="no-export">Id</th>
-            <th>Cuenta</th>
-            <th>Fecha</th>
-            <th>Hora</th>
-            <th>Sucursal</th>
-            <th>Descripción</th>
-            <th class="mb-monto">Importe Cargo</th>
-            <th class="mb-monto">Importe Abono</th>
-            <th class="mb-monto">Saldo</th>
-            <th>Referencia</th>
-            <th>Concepto</th>
-            <th>Concepto</th>
-            <th>Contraparte</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
+  {% endfor %}
 </div>
 </div>
 
@@ -501,13 +482,18 @@ $(function () {
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
   }
 
+  // Registro de bancos: lo genera el controlador desde su constante BANCOS,
+  // así el PHP y el JS no pueden quedar desalineados.
+  var BANCOS = {{ bancos|json_encode|raw }};
+
   // Las tablas se crean una sola vez, vacías. Cada búsqueda solo reemplaza
   // sus filas: no se destruye ni se recarga la página, así que el panel de
   // saldos abierto, el tab activo y el ancho de columnas se conservan.
-  var mbTable = initMovsTable('#mb_table', 'Movimientos Santander',
-    'Sin movimientos de Santander en el rango. Sube el TXT para importarlos.');
-  var afTable = initMovsTable('#af_table', 'Movimientos Afirme',
-    'Sin movimientos de Afirme en el rango. Sube el export (.xls) para importarlos.');
+  var tablas = {};
+  Object.keys(BANCOS).forEach(function (cod) {
+    tablas[cod] = initMovsTable('#tabla' + cod, 'Movimientos ' + BANCOS[cod].etiqueta,
+      'Sin movimientos de ' + BANCOS[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.');
+  });
 
   // Al cambiar de tab: reajustar anchos (la tabla oculta se inicializa sin
   // medidas) y posicionar el scroll al fondo (saldo final visible)
@@ -524,37 +510,39 @@ $(function () {
 
   function signo(v) { return Number(v) < 0 ? 'mb-cargo' : 'mb-abono'; }
 
+  // Pinta el desglose de un KPI en el <b data-kpi=... data-banco=...> de cada
+  // banco. El HTML lo generó Twig desde el mismo registro BANCOS.
+  function pintarDesglose(kpi, valorDe, formato) {
+    $('[data-kpi="' + kpi + '"]').each(function () {
+      var v = valorDe($(this).data('banco'));
+      $(this).text(formato(v)).toggleClass('mb-cargo', kpi === 'neto' && Number(v) < 0);
+    });
+  }
+
   function pintarKpis(k, filtros) {
     var t = k.totales, pb = k.porBanco, s = k.saldo;
+    var pesos = function (v) { return '$' + fmtMonto(v || 0); };
+    var enteros = function (v) { return Number(v || 0).toLocaleString('en-US'); };
 
-    $('#kpiAbonos').text('$' + fmtMonto(t.abonos));
-    $('#kpiAbonosSan').text('$' + fmtMonto(pb.SANTANDER.abonos));
-    $('#kpiAbonosAfi').text('$' + fmtMonto(pb.AFIRME.abonos));
+    $('#kpiAbonos').text(pesos(t.abonos));
+    $('#kpiCargos').text(pesos(t.cargos));
+    $('#kpiNeto').text(pesos(t.neto)).removeClass('mb-cargo mb-abono').addClass(signo(t.neto));
+    $('#kpiMovs').text(enteros(t.movs));
 
-    $('#kpiCargos').text('$' + fmtMonto(t.cargos));
-    $('#kpiCargosSan').text('$' + fmtMonto(pb.SANTANDER.cargos));
-    $('#kpiCargosAfi').text('$' + fmtMonto(pb.AFIRME.cargos));
-
-    $('#kpiNeto').text('$' + fmtMonto(t.neto)).removeClass('mb-cargo mb-abono').addClass(signo(t.neto));
-    $('#kpiNetoSan').text('$' + fmtMonto(pb.SANTANDER.neto))
-      .removeClass('mb-cargo').toggleClass('mb-cargo', Number(pb.SANTANDER.neto) < 0);
-    $('#kpiNetoAfi').text('$' + fmtMonto(pb.AFIRME.neto))
-      .removeClass('mb-cargo').toggleClass('mb-cargo', Number(pb.AFIRME.neto) < 0);
+    pintarDesglose('abonos', function (b) { return pb[b] && pb[b].abonos; }, pesos);
+    pintarDesglose('cargos', function (b) { return pb[b] && pb[b].cargos; }, pesos);
+    pintarDesglose('neto',   function (b) { return pb[b] && pb[b].neto;   }, pesos);
+    pintarDesglose('movs',   function (b) { return pb[b] && pb[b].movs;   }, enteros);
+    pintarDesglose('saldo',  function (b) { return s.porBanco[b];         }, pesos);
 
     $('#kpiSaldoCuenta').text(filtros.cuenta || 'todas');
-    $('#kpiSaldo').text(s.final === null ? '—' : '$' + fmtMonto(s.final));
+    $('#kpiSaldo').text(s.final === null ? '—' : pesos(s.final));
     // La fecha solo importa si el último movimiento es anterior al corte
     if (s.fecha && s.fecha !== filtros.hasta) {
       $('#kpiSaldoFecha').text('último mov: ' + fmtFecha(s.fecha)).show();
     } else {
       $('#kpiSaldoFecha').hide();
     }
-    $('#kpiSaldoSan').text('$' + fmtMonto(s.porBanco.SANTANDER));
-    $('#kpiSaldoAfi').text('$' + fmtMonto(s.porBanco.AFIRME));
-
-    $('#kpiMovs').text(Number(t.movs).toLocaleString('en-US'));
-    $('#kpiMovsSan').text(Number(pb.SANTANDER.movs).toLocaleString('en-US'));
-    $('#kpiMovsAfi').text(Number(pb.AFIRME.movs).toLocaleString('en-US'));
   }
 
   // Deja el scroll al fondo: la última fila es el saldo más reciente
@@ -588,16 +576,16 @@ $(function () {
       $('#mbVacio').hide();
       $('#mbResultado').show();
 
-      mbTable.clear().rows.add(r.santander).draw();
-      afTable.clear().rows.add(r.afirme).draw();
-      $('#tabCountSan').text(r.santander.length);
-      $('#tabCountAfi').text(r.afirme.length);
+      Object.keys(BANCOS).forEach(function (cod) {
+        var filas = r.movimientos[cod] || [];
+        tablas[cod].clear().rows.add(filas).draw();
+        $('[data-tabcount="' + cod + '"]').text(filas.length);
+        scrollAlFondo('#tabla' + cod);
+      });
       pintarKpis(r.kpis, r.filtros);
 
       // La tabla del tab oculto se dibuja sin medidas: recalcular al mostrarse
       $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
-      scrollAlFondo('#mb_table');
-      scrollAlFondo('#af_table');
     }).fail(function (xhr, estado) {
       alertify.error(estado === 'timeout'
         ? 'La consulta tardó demasiado. Reduce el rango de fechas.'
@@ -737,24 +725,8 @@ $(function () {
       });
   });
 
-  // ===== Upload de archivos de banco (modal compartido) =====
-  var BANCOS = {
-    SANTANDER: {
-      titulo: 'Subir TXT de movimientos Santander',
-      hint: 'Archivo de movimientos de Enlace Santander (.TXT de ancho fijo). Los movimientos ya importados se detectan y se saltan automáticamente.',
-      accept: '.txt,.TXT',
-      url: '/tesoreria/upload_santander',
-      campo: 'txt_santander',
-    },
-    AFIRME: {
-      titulo: 'Subir movimientos de Afirme',
-      hint: 'Export de movimientos de Afirme (el .xls que descarga banca en línea). Los movimientos ya importados se detectan y se saltan automáticamente.',
-      accept: '.xls,.txt,.tsv,.csv',
-      url: '/tesoreria/upload_afirme',
-      campo: 'archivo_afirme',
-    },
-  };
-  var bancoActual = 'SANTANDER';
+  // ===== Upload de archivos de banco (modal y endpoint compartidos) =====
+  var bancoActual = Object.keys(BANCOS)[0];
 
   var form = document.getElementById('formUpload');
   var btn = document.getElementById('btnUpload');
@@ -764,9 +736,10 @@ $(function () {
   $('.btn-upload-banco').on('click', function () {
     bancoActual = $(this).data('banco');
     var cfg = BANCOS[bancoActual];
-    document.getElementById('uploadTitle').textContent = cfg.titulo;
-    document.getElementById('uploadHint').textContent = cfg.hint;
-    inputArchivo.setAttribute('accept', cfg.accept);
+    document.getElementById('uploadTitle').textContent = 'Subir movimientos de ' + cfg.etiqueta;
+    document.getElementById('uploadHint').textContent =
+      'Sube ' + cfg.espera + '. Los movimientos ya importados se detectan y se saltan automáticamente.';
+    inputArchivo.setAttribute('accept', '.' + cfg.ext.join(',.'));
     inputArchivo.value = '';
     resultado.style.display = 'none';
   });
@@ -780,16 +753,16 @@ $(function () {
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     if (!inputArchivo.files.length) return;
-    var cfg = BANCOS[bancoActual];
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
     resultado.style.display = 'none';
 
     var fd = new FormData();
-    fd.append(cfg.campo, inputArchivo.files[0]);
+    fd.append('banco', bancoActual);
+    fd.append('archivo', inputArchivo.files[0]);
 
-    fetch(cfg.url, { method: 'POST', body: fd })
+    fetch('/tesoreria/upload_movimientos', { method: 'POST', body: fd })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var html;
@@ -797,6 +770,20 @@ $(function () {
           html = '<div class="alert alert-success mb-0">' +
                  '<strong>' + data.insertados + '</strong> movimientos importados, ' +
                  '<strong>' + data.duplicados + '</strong> ya existían.';
+          // Inbursa declara saldo inicial y totales: se muestra el cuadre para
+          // poder verificar la importación contra el archivo del banco.
+          if (data.info && data.info.saldo_inicial !== null && data.info.saldo_inicial !== undefined) {
+            html += '<hr class="my-2"><small>' +
+                    'Cuenta <span class="mb-cuenta">' + esc(data.info.cuenta) + '</span>' +
+                    (data.info.razon_social ? ' — ' + esc(data.info.razon_social) : '') + '<br>' +
+                    'Saldo inicial: <b>$' + fmtMonto(data.info.saldo_inicial) + '</b> · ' +
+                    'Saldo final: <b>$' + fmtMonto(data.info.saldo_final) + '</b><br>' +
+                    'Cargos: $' + fmtMonto(data.info.cargos) + ' · Abonos: $' + fmtMonto(data.info.abonos) +
+                    (data.info.cuadra
+                      ? ' <span class="mb-abono">· cadena de saldos verificada</span>'
+                      : ' <span class="mb-cargo">· la cadena de saldos NO cuadra</span>') +
+                    '</small>';
+          }
           if (data.avisos && data.avisos.length) {
             html += '<hr class="my-2"><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ' +
                     data.avisos.map(esc).join('<br>') + '</small>';

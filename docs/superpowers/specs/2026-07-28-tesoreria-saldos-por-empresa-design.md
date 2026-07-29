@@ -164,6 +164,72 @@ siguen al campo "Hasta" en vez del valor horneado en el render, y el flujo
 post-importación mueve los filtros al rango del archivo y vuelve a buscar en
 lugar de redirigir.
 
+## Inbursa y la unificación de la importación
+
+Tercer banco, agregado el mismo día.
+
+### Formato
+
+`.xlsx` real, una hoja `Estado_de_Cuenta_Individual`, **un archivo por cuenta**:
+a diferencia de Santander y Afirme, la cuenta viene en la cabecera (`A4`,
+CLABE de 18 dígitos) y no en cada renglón. Encabezados en la fila 9, datos
+desde la 10, columnas `A Fecha · B Referencia · C Ref. Externa ·
+D Referencia Leyenda · E Ref. Numérica · F Movimiento · G Cargo · H Abono ·
+I Saldo · J Ordenante · K Clave de Rastreo`.
+
+`movimientos_bancarios` lo absorbe **sin cambios de schema**; los largos
+máximos reales del archivo caben con holgura en cada columna.
+
+Dos filas del archivo no son movimientos y se saltan:
+
+- **`Totales`**: son fórmulas (`=sum(...)`), no valores. Con
+  `setReadDataOnly(true)` se leerían como el texto de la fórmula.
+- **`SALDO INICIAL`**: no tiene cargo ni abono, y con archivos de rangos
+  traslapados entraría con `id` mayor que los movimientos reales de ese día,
+  rompiendo el orden `(fecha, id)` del que depende la cadena de saldos y, con
+  ella, el saldo final del panel. Su valor se devuelve en `info` para poder
+  cuadrar contra el archivo.
+
+Detalles del formato que obligan a tratarlo distinto de los otros dos: las
+celdas de texto son `inlineStr` y PhpSpreadsheet puede devolverlas como
+`RichText`; `Cargo` vacío llega como `null`; la fecha es `DD/MM/YYYY` (Afirme
+usa `DD/MM/AA`). En las domiciliaciones el Ordenante viene vacío y la columna B
+trae `RFC   NOMBRE`, de donde se extrae `rfc_contraparte`.
+
+El parser devuelve además `info` con cuenta, razón social, moneda, saldo
+inicial y final, y `cuadra`: verifica que
+`saldo inicial + abonos − cargos = saldo final`. Si no cierra, se avisa sin
+bloquear la importación.
+
+### Registro de bancos
+
+Antes había un método de subida por banco con la misma validación copiada
+(~40 líneas cada uno). Inbursa habría sido la tercera copia. Ahora hay un solo
+`POST /tesoreria/upload_movimientos` que recibe `banco` y `archivo`, y un
+registro `Tesoreria::BANCOS`:
+
+```php
+'INBURSA' => ['etiqueta' => 'Inbursa', 'ext' => ['xlsx'],
+              'espera' => '...', 'parser' => 'parse_inbursa_xlsx',
+              'entrada' => 'ruta'],
+```
+
+`entrada` distingue los parsers de texto (reciben el contenido) del de Inbursa
+(recibe la ruta, porque PhpSpreadsheet abre el `.xlsx` desde disco).
+
+Ese mismo registro alimenta los tabs, las tablas, los botones de subida y el
+desglose por banco de cada KPI: la vista los genera en un bucle y el JS recibe
+el registro serializado, así que PHP y JS no pueden desalinearse. Agregar un
+cuarto banco es una entrada en `BANCOS` más su parser.
+
+**Bug corregido de paso:** el reparto por banco era binario
+(`$m['banco'] === 'AFIRME' ? 'AFIRME' : 'SANTANDER'`), así que un movimiento
+de Inbursa se habría contado como Santander y pintado en su tabla. Ahora sale
+del registro vía `banco_de()`.
+
+`get_movimientos()` devuelve `movimientos` como mapa `{BANCO: [...]}` en vez de
+las llaves fijas `santander`/`afirme`.
+
 ## Fuera de alcance
 
 El KPI "Saldo final (todas)" de la fila de tarjetas sigue sumando MXN y USD en
