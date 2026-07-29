@@ -14,6 +14,8 @@
  *   BBVA       ".xls" que en realidad es SpreadsheetML 2003, un archivo por
  *              cuenta y en orden inverso (del más reciente al más viejo)
  *   BANKAOOL   .xlsx real que NO trae la cuenta: se captura al subir
+ *   VANTAGE    .xls binario (OLE2/BIFF) de verdad, en dólares, en orden
+ *              inverso y con la cuenta enmascarada a 4 dígitos
  */
 class MovimientosBancariosModel extends Model
 {
@@ -631,6 +633,141 @@ class MovimientosBancariosModel extends Model
                 'cuadra'        => $movimientos ? ($rotas === 0) : null,
                 'desde'         => $fechas ? min($fechas) : null,
                 'hasta'         => $fechas ? max($fechas) : null,
+            ],
+        ];
+    }
+
+    /**
+     * Parsea el AccountHistory de Vantage Bank: un .xls binario de verdad
+     * (OLE2/BIFF), a diferencia de Afirme y BBVA que solo usan esa extensión.
+     * Hoja Sheet1, encabezados en la fila 1 y datos desde la 2:
+     *
+     *   Account Number · Post Date · Check · Description · Debit · Credit ·
+     *   Status · Balance
+     *
+     * Particularidades:
+     *
+     *  - La cuenta viene ENMASCARADA a 4 dígitos (5577) y se guarda así: el
+     *    archivo no da el número completo. El catálogo debe darse de alta con
+     *    ese mismo valor para que el saldo agrupe por empresa.
+     *  - Viene del movimiento MÁS RECIENTE al más viejo, como BBVA: las filas
+     *    se invierten para que el id de BD quede en el orden real de
+     *    aplicación al saldo.
+     *  - Es un banco de EEUU: los importes son dólares. La moneda no se
+     *    guarda aquí, la toma el panel de saldos de la Divisa del catálogo.
+     *  - El saldo puede ser negativo (sobregiro).
+     *
+     * @param string $ruta Ruta al .xls
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_vantage_xls(string $ruta): array
+    {
+        try {
+            $libro = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls')->load($ruta);
+            $hoja  = $libro->getSheetByName('Sheet1') ?: $libro->getSheet(0);
+        } catch (Exception $e) {
+            return ['movimientos' => [], 'errores' =>
+                ['No se pudo leer el archivo como .xls de Vantage: ' . $e->getMessage()], 'info' => []];
+        }
+
+        if (stripos(self::celda($hoja, 'A1'), 'Account') !== 0
+            || stripos(self::celda($hoja, 'B1'), 'Post Date') !== 0
+            || strcasecmp(self::celda($hoja, 'E1'), 'Debit')   !== 0
+            || strcasecmp(self::celda($hoja, 'F1'), 'Credit')  !== 0
+            || strcasecmp(self::celda($hoja, 'H1'), 'Balance') !== 0) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout del AccountHistory de Vantage Bank'], 'info' => []];
+        }
+
+        $movimientos = [];
+        $errores     = [];
+        $pendientes  = 0;
+
+        for ($f = 2; $f <= $hoja->getHighestRow(); $f++) {
+            $cuenta      = self::celda($hoja, "A$f");
+            $descripcion = self::limpia(self::celda($hoja, "D$f"));
+            if ($cuenta === '' && $descripcion === '') continue;
+
+            $fechaRaw = self::celda($hoja, "B$f");
+            if (!is_numeric($fechaRaw) || (float)$fechaRaw <= 0) {
+                $errores[] = "Fila $f: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $fecha = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$fechaRaw)->format('Y-m-d');
+
+            $cargo = self::monto($hoja, "E$f");
+            $abono = self::monto($hoja, "F$f");
+            if ($cargo == 0.0 && $abono == 0.0) {
+                $errores[] = "Fila $f: movimiento sin cargo ni abono ($descripcion)";
+                continue;
+            }
+
+            $estatus = self::celda($hoja, "G$f");
+            if ($estatus !== '' && strcasecmp($estatus, 'Posted') !== 0) $pendientes++;
+
+            // La contraparte solo existe dentro de la descripción de los giros
+            $contraparte = preg_match('/^WIRE (?:TRANSFER|FEE)\s+(?:FROM\s+|TO\s+)?(.+?)(?:\s*MENOMXMT|\s+\d)/u',
+                                      $descripcion, $mc) ? trim($mc[1]) : '';
+
+            $saldo = self::monto($hoja, "H$f");
+
+            $movimientos[] = [
+                'banco'              => 'VANTAGE',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => null,
+                'sucursal'           => null,
+                'clave_trans'        => null,
+                'descripcion'        => mb_substr($descripcion, 0, 150),
+                'cargo'              => $cargo > 0 ? $cargo : null,
+                'abono'              => $abono > 0 ? $abono : null,
+                'saldo'              => $saldo,
+                'referencia'         => mb_substr(self::celda($hoja, "C$f"), 0, 20),   // No. de cheque
+                // El estatus se conserva para poder identificar después los
+                // movimientos que se importaron sin confirmar por el banco.
+                'concepto'           => mb_substr($estatus, 0, 120),
+                'banco_contraparte'  => '',
+                'cuenta_contraparte' => '',
+                'nombre_contraparte' => mb_substr($contraparte, 0, 60),
+                'rfc_contraparte'    => null,
+                'clave_rastreo'      => null,
+                'descripcion_larga'  => null,
+                'huella'             => sha1('VANTAGE|' . implode('|', [
+                    $cuenta, $fecha, self::celda($hoja, "C$f"), $descripcion,
+                    sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
+                ])),
+            ];
+        }
+
+        // Del más reciente al más viejo -> orden cronológico
+        $movimientos = array_reverse($movimientos);
+
+        $rotas = 0;
+        for ($i = 1; $i < count($movimientos); $i++) {
+            $delta = ($movimientos[$i]['abono'] ?? 0) - ($movimientos[$i]['cargo'] ?? 0);
+            if (abs(($movimientos[$i - 1]['saldo'] + $delta) - $movimientos[$i]['saldo']) > 0.011) $rotas++;
+        }
+        if ($rotas > 0) {
+            $errores[] = "La cadena de saldos no cierra en $rotas de "
+                       . (count($movimientos) - 1) . ' movimientos';
+        }
+
+        $fechas = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => implode(', ', array_unique(array_column($movimientos, 'cuenta'))),
+                'razon_social'  => '',
+                'moneda'        => 'DOLAR AMERICANO',
+                'saldo_inicial' => null,
+                'saldo_final'   => $movimientos ? end($movimientos)['saldo'] : null,
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => $movimientos ? ($rotas === 0) : null,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+                'pendientes'    => $pendientes,
             ],
         ];
     }

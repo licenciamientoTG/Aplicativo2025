@@ -699,15 +699,13 @@ $(function () {
     });
   }
 
-  // Tras un import: mover los filtros al rango del archivo (conservando
-  // cuenta/tipo) y volver a buscar, para ver lo recién importado sin recargar
-  function verImportados(fechaMin, fechaMax) {
-    document.getElementById('desde').value = fechaMin;
-    document.getElementById('hasta').value = fechaMax;
-    buscarMovimientos();
-    // El import cambió los saldos finales: forzar que el panel los reconsulte
-    saldosCargados = false;
-    $('#saldosCollapse').collapse('hide');
+  // Tras un import se recarga la página limpia, sin filtros en la URL y por
+  // tanto sin consulta. Un import puede traer cuentas nuevas, y el catálogo
+  // del filtro se arma en el servidor: refrescar solo la tabla lo dejaría
+  // desactualizado, igual que los saldos y los KPIs.
+  function recargarLimpio() {
+    mostrarLoader();
+    window.location.href = '/tesoreria/movimientos_bancos';
   }
 
   document.getElementById('filtrosForm').addEventListener('submit', function (e) {
@@ -932,10 +930,12 @@ $(function () {
                                                       : 'Cuentas sin registrar en el catálogo', data.avisos);
     html += bloqueNota('error', 'circle-xmark', 'Líneas con problema', data.errores);
 
+    // Al cerrar se recarga la página, así que el estado lo anuncia en vez de
+    // prometer que va a mostrar los movimientos.
     html += '<div class="mb-res-estado">' + (hayQueLeer(data)
               ? '<button type="button" class="btn btn-sm btn-success" id="btnVerImportados">' +
-                '<i class="fas fa-table"></i> Ver movimientos importados</button>'
-              : '<span class="spinner-border spinner-border-sm"></span> Actualizando la tabla…') +
+                '<i class="fas fa-rotate-right"></i> Entendido, recargar</button>'
+              : '<span class="spinner-border spinner-border-sm"></span> Recargando la página…') +
             '</div>';
 
     return html + '</div>';
@@ -983,20 +983,16 @@ $(function () {
 
         if (!data.success) return;
 
-        // El loader de página (#mbLoader, z-index 10500) tapa el modal, así
-        // que primero se cierra y después se refresca la tabla. El panel
-        // nunca se queda con un spinner colgado: o desaparece con el modal,
-        // o termina en un botón que el usuario acciona.
-        var cerrarYRefrescar = function () {
-          $('#uploadModal')
-            .one('hidden.bs.modal', function () { verImportados(data.fecha_min, data.fecha_max); })
-            .modal('hide');
-        };
+        // Se importó algo: la página queda obsoleta, así que se recarga al
+        // cerrar el modal. Va enganchado a hidden.bs.modal y no al botón para
+        // que cualquier forma de cerrar (botón, la X, Esc, clic fuera)
+        // termine igual y no queden datos viejos en pantalla.
+        $('#uploadModal').one('hidden.bs.modal', recargarLimpio);
 
         if (hayQueLeer(data)) {
-          $('#btnVerImportados').on('click', cerrarYRefrescar);
+          $('#btnVerImportados').on('click', function () { $('#uploadModal').modal('hide'); });
         } else {
-          setTimeout(cerrarYRefrescar, 1400);
+          setTimeout(function () { $('#uploadModal').modal('hide'); }, 1400);
         }
       })
       .catch(function () {

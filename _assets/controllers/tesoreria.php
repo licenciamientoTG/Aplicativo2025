@@ -65,6 +65,13 @@ class Tesoreria
             // Su archivo no trae la cuenta: el modal la pide y se pasa al parser
             'pide_cuenta' => true,
         ],
+        'VANTAGE' => [
+            'etiqueta' => 'Vantage',
+            'ext'      => ['xls'],
+            'espera'   => 'el AccountHistory de Vantage Bank',
+            'parser'   => 'parse_vantage_xls',
+            'entrada'  => 'ruta',
+        ],
     ];
 
     /**
@@ -471,6 +478,17 @@ class Tesoreria
             return;
         }
 
+        $avisos = $this->avisos_catalogo($parseo['movimientos']);
+
+        // Vantage marca los movimientos aún no confirmados por el banco. Se
+        // importan igual, pero se avisa: si el banco los confirma con otro
+        // importe, entran de nuevo como un movimiento distinto.
+        $pendientes = (int)($parseo['info']['pendientes'] ?? 0);
+        if ($pendientes > 0) {
+            $avisos[] = "$pendientes movimiento" . ($pendientes === 1 ? '' : 's')
+                      . ' sin confirmar por el banco: si cambia su importe al confirmarse, se importará de nuevo';
+        }
+
         $fechas = array_column($parseo['movimientos'], 'fecha');
         json_output([
             'success'    => true,
@@ -478,7 +496,7 @@ class Tesoreria
             'insertados' => $res['insertados'],
             'duplicados' => $res['duplicados'],
             'errores'    => array_slice($parseo['errores'], 0, 20),
-            'avisos'     => $this->avisos_catalogo($parseo['movimientos']),
+            'avisos'     => $avisos,
             'info'       => $parseo['info'] ?? null,
             'fecha_min'  => min($fechas),
             'fecha_max'  => max($fechas),
