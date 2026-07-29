@@ -29,6 +29,10 @@ class VentasConsolidado
     /** Días de la semana en español, indexados por date('w'). */
     private const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
+    /** Meses en español, índice 0 = enero. */
+    public const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+                          'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+
     /**
      * @param string $clave  llave de self::PESTANAS
      * @param array  $ctx    [
@@ -267,5 +271,93 @@ class VentasConsolidado
     {
         if ($a === null || $b === null || $b == 0.0) return null;
         return ($a / $b - 1) * 100;
+    }
+
+    /**
+     * Histórico mensual: una fila por mes del rango de años, más una fila de
+     * subtotal después de diciembre de cada año.
+     *
+     * A diferencia de construir(), aquí las celdas son float y nunca null: un
+     * mes sin sincronizar vale 0.0. Es una decisión explícita del usuario, y
+     * la razón de que exista 'meses_con_datos' — sin esa lista, los ceros de
+     * un mes no sincronizado son indistinguibles de un mes sin ventas.
+     *
+     * @param string $clave  llave de self::PESTANAS
+     * @param array  $ctx    [
+     *   'estaciones' => [['Codigo'=>int,'Nombre'=>string], ...] en orden de columna
+     *   'historico'  => [anio => [mes => [codgas => ['maxima'=>?float,'super'=>?float,'diesel'=>?float]]]]
+     *   'desde'      => int  (año)
+     *   'hasta'      => int  (año)
+     * ]
+     * @return array [
+     *   'label' => string,
+     *   'filas' => [
+     *     ['tipo'=>'mes',   'anio'=>int, 'mes'=>int, 'etiqueta'=>string,
+     *      'celdas'=>[codgas=>float], 'total'=>float],
+     *     ['tipo'=>'anual', 'anio'=>int, 'etiqueta'=>string,
+     *      'celdas'=>[codgas=>float], 'total'=>float],
+     *   ],
+     *   'meses_con_datos' => string[],  // etiquetas de los meses sincronizados
+     *   'meses_del_rango' => int,
+     * ]
+     * @throws InvalidArgumentException si $clave no es una pestaña conocida
+     */
+    public static function construirHistorico(string $clave, array $ctx): array
+    {
+        if (!isset(self::PESTANAS[$clave])) {
+            throw new InvalidArgumentException("Pestaña desconocida: $clave");
+        }
+        $pestana  = self::PESTANAS[$clave];
+        $familias = $pestana['familias'];
+        $desde    = (int) $ctx['desde'];
+        $hasta    = (int) $ctx['hasta'];
+        $codgases = array_map(fn($e) => (int) $e['Codigo'], $ctx['estaciones']);
+
+        $filas         = [];
+        $mesesConDatos = [];
+        $mesesDelRango = 0;
+
+        for ($anio = $desde; $anio <= $hasta; $anio++) {
+            $anual      = array_fill_keys($codgases, 0.0);
+            $anualTotal = 0.0;
+
+            for ($mes = 1; $mes <= 12; $mes++) {
+                $mesesDelRango++;
+                $etiqueta = self::MESES[$mes - 1] . ' ' . $anio;
+
+                // "Con datos" = el mes fue sincronizado. Se mide por la
+                // presencia del mes en el snapshot, no por el valor: en la
+                // pestaña DIESEL un mes real puede sumar 0 y aun así estar
+                // sincronizado.
+                $sincronizado = isset($ctx['historico'][$anio][$mes]);
+                if ($sincronizado) $mesesConDatos[] = $etiqueta;
+
+                $delMes = $ctx['historico'][$anio][$mes] ?? [];
+                $celdas = [];
+                $total  = 0.0;
+                foreach ($codgases as $cod) {
+                    $v = isset($delMes[$cod])
+                        ? (self::sumarFamilias($delMes[$cod], $familias) ?? 0.0)
+                        : 0.0;
+                    $celdas[$cod] = $v;
+                    $total       += $v;
+                    $anual[$cod] += $v;
+                }
+                $anualTotal += $total;
+
+                $filas[] = ['tipo' => 'mes', 'anio' => $anio, 'mes' => $mes,
+                            'etiqueta' => $etiqueta, 'celdas' => $celdas, 'total' => $total];
+            }
+
+            $filas[] = ['tipo' => 'anual', 'anio' => $anio, 'etiqueta' => 'TOTAL ' . $anio,
+                        'celdas' => $anual, 'total' => $anualTotal];
+        }
+
+        return [
+            'label'           => $pestana['label'],
+            'filas'           => $filas,
+            'meses_con_datos' => $mesesConDatos,
+            'meses_del_rango' => $mesesDelRango,
+        ];
     }
 }
