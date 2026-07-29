@@ -82,7 +82,7 @@ $this->db->beginTransaction() / commit() / rollBack()
 ### Authentication & Authorization
 
 - Session-based: login calls stored procedure `sp_usuario_login`
-- User permissions stored in `$_SESSION['permisos']` as an array of permission IDs
+- User permissions stored in `$_SESSION['tg_user']['permissions']` as a comma-separated string of permission IDs (checked via `authorized($id)`, which does `in_array($id, explode(",", ...))` — see `_assets/classes/php_functions.php:359-361`)
 - `index.php` checks session before dispatching to controllers
 - Logout handled by `_assets/includes/logout.inc.php`
 
