@@ -618,4 +618,58 @@ class MermaDiariaModel extends Model
         }
         return $out;
     }
+
+    /* ===================================================================== */
+    /* Histórico mensual del reporte de ventas (/merma/ventas, pestaña       */
+    /* HISTÓRICO). Misma tabla que el reporte diario: el usuario pidió       */
+    /* explícitamente que todo salga de merma_diaria y no de SG12.Ventas,    */
+    /* para que ninguna pestaña pueda contradecir a otra.                    */
+    /* ===================================================================== */
+
+    /**
+     * Acumulado mensual por estación y familia, de enero del año $desde a
+     * diciembre del año $hasta.
+     *
+     * @return array [anio => [mes => [codgas => ['maxima'=>?float,'super'=>?float,'diesel'=>?float]]]]
+     */
+    public function get_historico_mensual(int $desde, int $hasta): array
+    {
+        $ini = sprintf('%04d-01-01', $desde);
+        $fin = sprintf('%04d-01-01', $hasta);
+        // El filtro va contra "fecha" sin envolverla en una función, para no
+        // anular IX_merma_diaria_estacion. DATEADD sobre el parámetro cierra
+        // el rango en el 31 de diciembre del año $hasta.
+        $query = 'SELECT YEAR(fecha) AS anio, MONTH(fecha) AS mes, codgas,
+                    ' . $this->familiaCase('maxima', 'ventas_reales') . ' AS maxima,
+                    ' . $this->familiaCase('super', 'ventas_reales') . '  AS [super],
+                    ' . $this->familiaCase('diesel', 'ventas_reales') . ' AS diesel
+                  FROM [TG].[dbo].[merma_diaria]
+                  WHERE fecha >= ? AND fecha < DATEADD(YEAR, 1, CAST(? AS DATE))
+                  GROUP BY YEAR(fecha), MONTH(fecha), codgas
+                  ORDER BY anio, mes, codgas;';
+        $rows = $this->sql->select($query, [$ini, $fin]) ?: [];
+        $out  = [];
+        foreach ($rows as $r) {
+            $out[(int) $r['anio']][(int) $r['mes']][(int) $r['codgas']] = [
+                'maxima' => $r['maxima'] === null ? null : (float) $r['maxima'],
+                'super'  => $r['super']  === null ? null : (float) $r['super'],
+                'diesel' => $r['diesel'] === null ? null : (float) $r['diesel'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Primer año con datos en el snapshot. Alimenta el piso de los selectores
+     * de año de la pestaña histórica, de modo que el rango disponible crezca
+     * solo conforme se sincronice más historia hacia atrás.
+     */
+    public function get_anio_min_historico(): ?int
+    {
+        $rows = $this->sql->select(
+            'SELECT MIN(YEAR(fecha)) AS anio FROM [TG].[dbo].[merma_diaria];'
+        ) ?: [];
+        $v = $rows[0]['anio'] ?? null;
+        return $v === null ? null : (int) $v;
+    }
 }
