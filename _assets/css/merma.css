@@ -230,3 +230,16 @@
 .merma-tabla.vc-tabla thead tr th,
 .merma-tabla.vc-tabla thead tr .col-fecha,
 .merma-tabla.vc-tabla thead tr .col-turno { top: 0; background: #f8fafc; }
+
+/* ---- Pestaña HISTÓRICO (/merma/ventas) -------------------------------- */
+/* Una sola columna fija (la etiqueta del mes), a diferencia de las pestañas
+   diarias que congelan día + día de la semana. */
+.vch-tabla .col-fecha { width: 165px; min-width: 165px; max-width: 165px; }
+
+/* Filas de subtotal anual: negritas y separadas del bloque de meses. */
+.vch-tabla tbody tr.vch-anual td,
+.vch-tabla tbody tr.vch-anual td.col-fecha {
+    background: #f1f5f9; font-weight: 700; color: #0f172a;
+    border-top: 2px solid #94a3b8; border-bottom: 2px solid #94a3b8;
+}
+.vch-tabla tbody tr.vch-anual:hover td { background: #e2e8f0; }

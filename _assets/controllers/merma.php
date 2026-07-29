@@ -282,11 +282,74 @@ class Merma
         // "—" (la vista ya lo maneja), así que no hace falta filtrarlos aquí.
         $anioAyer = (int) date('Y', $ayer);
 
+        // Piso de los selectores de la pestaña histórica: el primer año que
+        // exista en merma_diaria, de modo que el rango disponible crezca solo
+        // conforme se sincronice más historia hacia atrás.
+        $anioMinHist = $this->mermaModel->get_anio_min_historico() ?? $anioAyer;
+        if ($anioMinHist > $anioAyer) $anioMinHist = $anioAyer;
+
         echo $this->twig->render($this->route . 'ventas.html', $reporte + [
             'anios'  => range($anioAyer, $anioAyer - 2),
             'meses'  => ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
                          'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'],
+            // Controles de la pestaña histórica
+            'histAnios' => range($anioAyer, $anioMinHist),
+            'histDesde' => max($anioMinHist, $anioAyer - 2),
+            'histHasta' => $anioAyer,
+            'histProds' => VentasConsolidado::PESTANAS,
         ]);
+    }
+
+    /**
+     * Pestaña HISTÓRICO de /merma/ventas: acumulado mensual por estación
+     * sobre un rango de años. Devuelve SOLO el HTML de la tabla — la pestaña
+     * lo pide por AJAX para que sus controles no colisionen con el selector
+     * de mes que gobierna las cinco pestañas diarias.
+     */
+    public function ventas_historico(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            (new Errors())->get404();
+            return;
+        }
+        [$desde, $hasta, $prod] = $this->periodoHistorico();
+
+        $estaciones = array_map(
+            fn($e) => ['Codigo' => (int) $e['Codigo'], 'Nombre' => $e['Nombre']],
+            $this->mermaModel->get_estaciones_ordenadas()
+        );
+        $hist = VentasConsolidado::construirHistorico($prod, [
+            'estaciones' => $estaciones,
+            'historico'  => $this->mermaModel->get_historico_mensual($desde, $hasta),
+            'desde'      => $desde,
+            'hasta'      => $hasta,
+        ]);
+
+        echo $this->twig->render($this->route . 'ventas_historico.html',
+            compact('estaciones', 'hist', 'desde', 'hasta', 'prod'));
+    }
+
+    /**
+     * Valida desde/hasta/prod de la pestaña histórica. Mismo criterio que
+     * ventas(): piso duro en 2020 para que un parámetro manipulado no pida un
+     * rango absurdo, aunque el piso del SELECTOR sea el primer año que exista
+     * en la tabla (get_anio_min_historico), que es más alto.
+     *
+     * @return array{0:int,1:int,2:string}
+     */
+    private function periodoHistorico(): array
+    {
+        $anioActual = (int) date('Y');
+        $desde = (int) ($_GET['desde'] ?? $anioActual - 2);
+        $hasta = (int) ($_GET['hasta'] ?? $anioActual);
+        if ($desde < 2020 || $desde > $anioActual) $desde = $anioActual - 2;
+        if ($hasta < 2020 || $hasta > $anioActual) $hasta = $anioActual;
+        if ($desde > $hasta) [$desde, $hasta] = [$hasta, $desde];
+
+        $prod = (string) ($_GET['prod'] ?? 'total');
+        if (!isset(VentasConsolidado::PESTANAS[$prod])) $prod = 'total';
+
+        return [$desde, $hasta, $prod];
     }
 
     /**

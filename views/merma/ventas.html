@@ -54,6 +54,10 @@
            href="#tab-{{ clave }}" role="tab">{{ p.label }}</a>
     </li>
     {% endfor %}
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-historico" role="tab"
+           id="tab-historico-link">HISTÓRICO</a>
+    </li>
 </ul>
 
 <div class="tab-content">
@@ -127,6 +131,44 @@
         </p>
     </div>
     {% endfor %}
+    <div class="tab-pane fade" id="tab-historico" role="tabpanel">
+        <div class="card mb-2">
+            <div class="card-body py-2">
+                <div class="row align-items-end g-2">
+                    <div class="col-auto">
+                        <label for="hist_desde">Año desde:</label>
+                        <select class="form-control" id="hist_desde">
+                            {% for a in histAnios %}
+                            <option value="{{ a }}" {{ a == histDesde ? 'selected' : '' }}>{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label for="hist_hasta">Año hasta:</label>
+                        <select class="form-control" id="hist_hasta">
+                            {% for a in histAnios %}
+                            <option value="{{ a }}" {{ a == histHasta ? 'selected' : '' }}>{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label for="hist_prod">Producto:</label>
+                        <select class="form-control" id="hist_prod">
+                            {% for clave, p in histProds %}
+                            <option value="{{ clave }}">{{ p.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="hist_contenido">
+            <p class="text-muted small">Cargando histórico…</p>
+        </div>
+    </div>
 </div>
 
+{% endblock %}
+{% block myjs %}
+<script src="/_assets/js/merma_ventas.js"></script>
 {% endblock %}

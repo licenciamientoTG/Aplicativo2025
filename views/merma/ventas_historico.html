@@ -1,0 +1,38 @@
+<div class="merma-tabla-wrap mb-2">
+    <div class="merma-scroll">
+        <table class="merma-tabla vc-tabla vch-tabla">
+            <thead>
+                <tr>
+                    <th class="col-fecha">MES</th>
+                    {% for e in estaciones %}
+                    <th>{{ e.Nombre }}</th>
+                    {% endfor %}
+                    <th class="th-grupo">TOTAL</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in hist.filas %}
+                <tr class="{{ f.tipo == 'anual' ? 'vch-anual' : '' }}">
+                    <td class="col-fecha">{{ f.etiqueta }}</td>
+                    {% for e in estaciones %}
+                    <td>{{ f.celdas[e.Codigo]|number_format(0, '.', ',') }}</td>
+                    {% endfor %}
+                    <td class="col-total">{{ f.total|number_format(0, '.', ',') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p class="text-muted small">
+    {% if hist.meses_con_datos|length > 0 %}
+    Con datos: <strong>{{ hist.meses_con_datos|join(', ')|lower }}</strong>
+    ({{ hist.meses_con_datos|length }} de {{ hist.meses_del_rango }} meses del rango).
+    Los meses sin sincronizar aparecen en cero.
+    {% else %}
+    <strong>Ningún mes del rango está sincronizado</strong>
+    ({{ hist.meses_del_rango }} meses, todos en cero).
+    {% endif %}
+    <a href="/merma/analisis">Sincronizar los faltantes</a>
+</p>
