@@ -602,12 +602,21 @@ class It{
      */
     public function datatables_mark_jarreo() : void {
         $data = [];
-        if ($despachos = $this->despachosModel->get_dispatches_to_mark_jarreo($_GET['codgas'], $_GET['fecha'])) {
+        if ($despachos = $this->despachosModel->get_dispatches_to_mark_jarreo($_GET['codgas'], dateToInt($_GET['fecha']))) {
             foreach ($despachos as $despacho) {
                 $data[] = array(
                     'SELECT'    => '<input type="checkbox" class="jarreo-checkbox" value="' . (int)$despacho['nrotrn'] . '">',
                     'DESPACHO'  => $despacho['nrotrn'],
-                    'JARREO'    => in_array((int)$despacho['tiptrn'], [65, 74], true) ? '<span class="badge bg-success">Marcado</span>' : '<span class="badge bg-danger">No marcado</span>',
+                    'TIPO'      => match(true) {
+                        in_array((int)$despacho['tiptrn'], [65, 74], true) => 'Jarreo',
+                        (int)$despacho['tiptrn'] === 0  => 'Efectivo',
+                        (int)$despacho['tiptrn'] === 49 => 'Efectivo',
+                        (int)$despacho['tiptrn'] === 50 => 'Cheque',
+                        (int)$despacho['tiptrn'] === 51 => 'Tarjeta de Crédito',
+                        (int)$despacho['tiptrn'] === 52 => 'Tarjeta de Débito',
+                        (int)$despacho['tiptrn'] === 53 => 'Efectivale / Monedero',
+                        default => 'Otro (' . $despacho['tiptrn'] . ')',
+                    },
                     'FDESPACHO' => intToDate($despacho['fchtrn']),
                     'POSICION'  => $despacho['nrobom'],
                     'LITROS'    => $despacho['can'],

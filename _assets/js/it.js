@@ -635,7 +635,7 @@ let datatables_mark_jarreo = $('#datatables_mark_jarreo').DataTable({
     columns: [
         {'data': 'SELECT', 'orderable': false},
         {'data': 'DESPACHO'},
-        {'data': 'JARREO'},
+        {'data': 'TIPO'},
         {'data': 'FDESPACHO'},
         {'data': 'POSICION'},
         {'data': 'LITROS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
@@ -646,6 +646,9 @@ let datatables_mark_jarreo = $('#datatables_mark_jarreo').DataTable({
     rowId: 'DESPACHO',
     initComplete: function () {
         $('.dt-buttons').addClass('d-none');
+        $('.table-responsive').removeClass('loading');
+    },
+    drawCallback: function () {
         $('.table-responsive').removeClass('loading');
     }
 });

@@ -246,12 +246,13 @@ class DespachosModel extends Model{
      * @throws Exception
      */
     function get_dispatches_to_mark_jarreo($codgas, $fecha) : array|false {
+        
         $query = "SELECT
                     t1.nrotrn, t1.fchtrn, t1.nrobom, t1.can, t1.mto, t1.nrofac, t1.tiptrn, t2.abr AS station
                 FROM {$this->databases[$codgas]}.[Despachos] t1
                     LEFT JOIN {$this->databases[$codgas]}.[Gasolineras] t2 ON t1.codgas = t2.cod
                 WHERE
-                    CAST(CONVERT(VARCHAR(10), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) = ?
+                    t1.fchcor = ?
                     AND (t1.nrofac IS NULL OR t1.nrofac = 0);";
         $params = [$fecha];
         return $this->sql->select($query, $params) ?: false;
