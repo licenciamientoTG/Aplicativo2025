@@ -589,6 +589,64 @@ class It{
      * @return void
      * @throws Exception
      */
+    public function mark_jarreo() : void {
+        $fecha = $_GET['fecha'] ?? false;
+        $codgas = $_GET['codgas'] ?? false;
+        $stations = $this->gasolinerasModel->get_stations();
+        echo $this->twig->render($this->route . 'mark_jarreo.html', compact('stations', 'fecha', 'codgas'));
+    }
+
+    /**
+     * @return void
+     * @throws Exception
+     */
+    public function datatables_mark_jarreo() : void {
+        $data = [];
+        if ($despachos = $this->despachosModel->get_dispatches_to_mark_jarreo($_GET['codgas'], $_GET['fecha'])) {
+            foreach ($despachos as $despacho) {
+                $data[] = array(
+                    'SELECT'    => '<input type="checkbox" class="jarreo-checkbox" value="' . (int)$despacho['nrotrn'] . '">',
+                    'DESPACHO'  => $despacho['nrotrn'],
+                    'FDESPACHO' => intToDate($despacho['fchtrn']),
+                    'POSICION'  => $despacho['nrobom'],
+                    'LITROS'    => $despacho['can'],
+                    'MONTO'     => $despacho['mto'],
+                    'FACTURA'   => $despacho['nrofac'],
+                    'FACTEST'   => $despacho['station'],
+                );
+            }
+        }
+        json_output(array("data" => $data));
+    }
+
+    /**
+     * @return void
+     * @throws Exception
+     */
+    public function mark_jarreo_dispatches() : void {
+        if (!isset($_POST['codgas'], $_POST['nrotrn']) || !is_array($_POST['nrotrn']) || empty($_POST['nrotrn'])) {
+            json_output(["status" => "ERROR", "message" => "¡No se recibieron los datos necesarios!"]);
+            return;
+        }
+
+        $marcados = 0;
+        foreach ($_POST['nrotrn'] as $nrotrn) {
+            if ($this->despachosModel->mark_dispatch_as_jarreo($nrotrn, $_POST['codgas'])) {
+                $marcados++;
+            }
+        }
+
+        if ($marcados > 0) {
+            json_output(["status" => "OK", "message" => "¡Se marcaron {$marcados} despacho(s) como jarreo correctamente!"]);
+        } else {
+            json_output(["status" => "ERROR", "message" => "¡Los despachos no pudieron ser marcados como jarreo!"]);
+        }
+    }
+
+    /**
+     * @return void
+     * @throws Exception
+     */
     public function userModal() : void {
         $profiles = $this->profileModel->all();
         $modal = [

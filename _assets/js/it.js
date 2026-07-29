@@ -603,6 +603,141 @@ $('.refresh_datatables_release_dispatches').on('click', function () {
     $('#datatables_release_dispatches').waitMe('hide');
 });
 
+// Tabla de despachos a marcar como jarreo
+let datatables_mark_jarreo = $('#datatables_mark_jarreo').DataTable({
+    colReorder: true,
+    dom: '<"top"Bf>rt<"bottom"lip>',
+    pageLength: 100,
+    buttons: [
+        { extend: 'excel', className: 'd-none' },
+        { extend: 'pdf', className: 'd-none' },
+        { extend: 'print', className: 'd-none' }
+    ],
+    ajax: {
+        data: {'fecha': $('#fecha').val(), 'codgas': $('#codgas').val()},
+        url: '/it/datatables_mark_jarreo',
+        error: function() {
+            $('#datatables_mark_jarreo').waitMe('hide');
+            alertify.myAlert(
+                `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Error!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+            );
+        },
+        beforeSend: function() {
+            $('.table-responsive').addClass('loading');
+        }
+    },
+    deferRender: true,
+    columns: [
+        {'data': 'SELECT', 'orderable': false},
+        {'data': 'DESPACHO'},
+        {'data': 'FDESPACHO'},
+        {'data': 'POSICION'},
+        {'data': 'LITROS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+        {'data': 'MONTO', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
+        {'data': 'FACTURA'},
+        {'data': 'FACTEST'},
+    ],
+    rowId: 'DESPACHO',
+    initComplete: function () {
+        $('.dt-buttons').addClass('d-none');
+        $('.table-responsive').removeClass('loading');
+    }
+});
+
+$('.refresh_datatables_mark_jarreo').on('click', function () {
+    datatables_mark_jarreo.clear().draw();
+    datatables_mark_jarreo.ajax.reload();
+    $('#datatables_mark_jarreo').waitMe('hide');
+});
+
+$(document).on('change', '.jarreo-checkbox', function () {
+    updateBtnMarcarJarreo();
+});
+
+$(document).on('change', '#selectAllJarreo', function () {
+    toggleSelectAllJarreo();
+});
+
+function toggleSelectAllJarreo() {
+    const checked = $('#selectAllJarreo').is(':checked');
+    $('.jarreo-checkbox').prop('checked', checked);
+    updateBtnMarcarJarreo();
+}
+
+function updateBtnMarcarJarreo() {
+    const totalChecked = $('.jarreo-checkbox:checked').length;
+    $('#btnMarcarJarreo').prop('disabled', totalChecked === 0);
+
+    const totalCheckboxes = $('.jarreo-checkbox').length;
+    $('#selectAllJarreo').prop('checked', totalCheckboxes > 0 && totalCheckboxes === totalChecked);
+}
+
+function marcar_jarreo_seleccionados() {
+    const codgas = $('#datatables_mark_jarreo').data('codgas');
+    const nrotrn = $('.jarreo-checkbox:checked').map(function () {
+        return $(this).val();
+    }).get();
+
+    if (nrotrn.length === 0) {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Favor de seleccionar al menos un despacho.</p>
+            </div>`
+        );
+        return;
+    }
+
+    $('.table-responsive').addClass('loading');
+    $.ajax({
+        url: '/it/mark_jarreo_dispatches',
+        method: 'POST',
+        data: {
+            'codgas': codgas,
+            'nrotrn': nrotrn
+        },
+        dataType: 'json',
+        success: function(data) {
+            $('.table-responsive').removeClass('loading');
+            if (data.status === 'OK') {
+                datatables_mark_jarreo.clear().draw();
+                datatables_mark_jarreo.ajax.reload();
+                $('#datatables_mark_jarreo').waitMe('hide');
+                $('#btnMarcarJarreo').prop('disabled', true);
+                $('#selectAllJarreo').prop('checked', false);
+                alertify.myAlert(
+                    `<div class="container text-center text-success">
+                        <h4 class="mt-2 text-success">¡Éxito!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">${data.message}</p>
+                    </div>`
+                );
+            } else {
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">${data.message}</p>
+                    </div>`
+                );
+            }
+        },
+        error: function(xhr, textStatus, errorThrown) {
+            $('.table-responsive').removeClass('loading');
+            console.error('AJAX error:', errorThrown);
+        }
+    });
+}
+
 
 
 // Asignar o remover permiso a un usuario
