@@ -635,6 +635,7 @@ let datatables_mark_jarreo = $('#datatables_mark_jarreo').DataTable({
     columns: [
         {'data': 'SELECT', 'orderable': false},
         {'data': 'DESPACHO'},
+        {'data': 'JARREO'},
         {'data': 'FDESPACHO'},
         {'data': 'POSICION'},
         {'data': 'LITROS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},

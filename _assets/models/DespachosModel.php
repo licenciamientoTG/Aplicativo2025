@@ -247,7 +247,7 @@ class DespachosModel extends Model{
      */
     function get_dispatches_to_mark_jarreo($codgas, $fecha) : array|false {
         $query = "SELECT
-                    t1.nrotrn, t1.fchtrn, t1.nrobom, t1.can, t1.mto, t1.nrofac, t2.abr AS station
+                    t1.nrotrn, t1.fchtrn, t1.nrobom, t1.can, t1.mto, t1.nrofac, t1.tiptrn, t2.abr AS station
                 FROM {$this->databases[$codgas]}.[Despachos] t1
                     LEFT JOIN {$this->databases[$codgas]}.[Gasolineras] t2 ON t1.codgas = t2.cod
                 WHERE

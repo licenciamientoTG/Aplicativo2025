@@ -607,6 +607,7 @@ class It{
                 $data[] = array(
                     'SELECT'    => '<input type="checkbox" class="jarreo-checkbox" value="' . (int)$despacho['nrotrn'] . '">',
                     'DESPACHO'  => $despacho['nrotrn'],
+                    'JARREO'    => in_array((int)$despacho['tiptrn'], [65, 74], true) ? '<span class="badge bg-success">Marcado</span>' : '<span class="badge bg-danger">No marcado</span>',
                     'FDESPACHO' => intToDate($despacho['fchtrn']),
                     'POSICION'  => $despacho['nrobom'],
                     'LITROS'    => $despacho['can'],
