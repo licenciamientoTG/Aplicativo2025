@@ -24,7 +24,7 @@ La pestaña lee **`TG.dbo.merma_diaria.ventas_reales`**, el mismo snapshot que l
 | 2026 | junio | 30 | 36 | 25.80 |
 | 2026 | julio | 26 | 36 | 21.48 |
 
-Con el rango por defecto de 3 años (36 filas de mes), **32 filas saldrán en cero**. Febrero, marzo y abril de 2026 también, porque nunca se sincronizaron.
+El rango por defecto son los últimos 3 años, pero **recortado al primer año que exista en la tabla**: hoy eso son solo 12 filas (2026), no 36, porque no hay nada antes. De esas 12, **8 saldrán en cero** — febrero, marzo, abril y los meses que aún no ocurren. Conforme se sincronice hacia atrás, el recorte cede solo y el rango se abre a 2 y luego a 3 años.
 
 Esto no es un defecto de la vista: es el estado de la tabla. La pestaña se llena sola conforme se sincronicen más meses con el botón *Actualizar datos* de `/merma/analisis`, que topa en 40 días por corrida.
 
@@ -199,5 +199,5 @@ Si el usuario nunca abrió la pestaña, el enlace lleva los valores por defecto 
 |---|---|
 | **Los ceros de meses futuros se leen como "no vendimos".** Diciembre 2026 mostrará `0` igual que un mes real sin ventas. | Decisión explícita del usuario, tomada con la alternativa a la vista (cortar las filas en el último mes con datos). Queda documentada aquí para poder revertirla en una línea: es el único punto donde `construirHistorico()` decide `0.0` en vez de `null`. |
 | Inconsistencia visual con el resto de la vista, que usa `—` para "sin dato". | Misma decisión. La pestaña histórica es la única con esta convención. |
-| **La tabla nace casi vacía.** Con el default de 3 años, hoy 32 de 36 filas salen en cero, y no hay nada en la pantalla que distinga "no se ha sincronizado" de "no se vendió". Un lector desprevenido puede concluir que las ventas se desplomaron. | Debajo de la tabla va una leyenda con los meses que sí tienen datos en el rango consultado y un enlace a `/merma/analisis` para sincronizar los faltantes. Es la única señal que impide leer los ceros como una caída real. |
+| **La tabla nace casi vacía.** Con el default recortado, hoy 8 de 12 filas salen en cero, y no hay nada en la pantalla que distinga "no se ha sincronizado" de "no se vendió". Un lector desprevenido puede concluir que las ventas se desplomaron. | Debajo de la tabla va una leyenda con los meses que sí tienen datos en el rango consultado y un enlace a `/merma/analisis` para sincronizar los faltantes. Es la única señal que impide leer los ceros como una caída real. |
 | Sincronizar hacia atrás cuesta una corrida por cada 40 días. | Fuera del alcance de esta vista, pero anotado en el spec para que la expectativa sea correcta: llenar 2025 completo son ~9 corridas. |
