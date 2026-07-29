@@ -116,6 +116,69 @@
   .mb-linea-usd td { font-weight: 600; }
   .mb-saldos-tabla tr.mb-cuenta-fila td:first-child { padding-left: 1.75rem; }
 
+  /* ===== Resultado de la importación (modal de subida) =====
+     Este panel es el momento en que tesorería verifica el archivo contra el
+     banco, así que manda la legibilidad de las cifras: números tabulares,
+     jerarquía clara y un estado final inequívoco (nunca un spinner colgado). */
+  .mb-res { border: 1px solid #e2e8f0; border-radius: .5rem; overflow: hidden; background: #fff; }
+  .mb-res-head {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .6rem .75rem; border-bottom: 1px solid #e2e8f0;
+  }
+  .mb-res-head i { font-size: 1.1rem; }
+  .mb-res-head b { display: block; font-size: .9rem; color: #334155; line-height: 1.2; }
+  .mb-res-head span { font-size: .72rem; color: #64748b; }
+  .mb-res--ok    .mb-res-head { background: #f6fefb; } .mb-res--ok    .mb-res-head i { color: #009559; }
+  .mb-res--warn  .mb-res-head { background: #fffbeb; } .mb-res--warn  .mb-res-head i { color: #b45309; }
+  .mb-res--error .mb-res-head { background: #fffafb; } .mb-res--error .mb-res-head i { color: #dc3545; }
+
+  /* Las dos cifras que se leen primero */
+  .mb-res-nums { display: flex; border-bottom: 1px solid #e2e8f0; }
+  .mb-res-nums > div { flex: 1; padding: .55rem .75rem; }
+  .mb-res-nums > div + div { border-left: 1px solid #e2e8f0; }
+  .mb-res-nums b {
+    display: block; font-size: 1.45rem; line-height: 1.1; color: #334155;
+    font-variant-numeric: tabular-nums; font-weight: 700;
+  }
+  .mb-res-nums .n-0 { color: #94a3b8; }        /* un cero no debe competir */
+  .mb-res-nums .n-ok { color: #009559; }
+  .mb-res-nums span {
+    font-size: .62rem; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; font-weight: 600;
+  }
+
+  /* Detalle del archivo: etiqueta a la izquierda, valor alineado a la derecha */
+  .mb-res-detalle { margin: 0; padding: .4rem .75rem; font-size: .76rem; }
+  .mb-res-detalle > div {
+    display: flex; justify-content: space-between; gap: 1rem; padding: .12rem 0;
+  }
+  .mb-res-detalle dt { color: #64748b; font-weight: 500; }
+  .mb-res-detalle dd {
+    margin: 0; color: #334155; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+  }
+  .mb-res-cadena {
+    margin: 0; padding: .35rem .75rem .5rem; font-size: .72rem; font-weight: 600;
+    display: flex; align-items: center; gap: .35rem;
+  }
+  .mb-res-cadena--ok { color: #009559; }
+  .mb-res-cadena--no { color: #dc3545; }
+
+  /* Avisos y errores: bloque propio, no una línea perdida */
+  .mb-res-nota { display: flex; gap: .5rem; padding: .55rem .75rem; font-size: .74rem; border-top: 1px solid #e2e8f0; }
+  .mb-res-nota i { margin-top: .1rem; }
+  .mb-res-nota b { display: block; font-size: .76rem; margin-bottom: .1rem; }
+  .mb-res-nota ul { margin: .15rem 0 0; padding-left: 1rem; }
+  .mb-res-nota li { margin-bottom: .1rem; }
+  .mb-res-nota--warn  { background: #fffbeb; color: #92400e; } .mb-res-nota--warn i  { color: #b45309; }
+  .mb-res-nota--error { background: #fffafb; color: #991b1b; } .mb-res-nota--error i { color: #dc3545; }
+  .mb-res-lista { max-height: 8.5rem; overflow: auto; }
+
+  /* Estado final: o desaparece con el modal, o es un botón. Nunca un spinner fijo. */
+  .mb-res-estado {
+    display: flex; align-items: center; gap: .4rem; justify-content: center;
+    padding: .5rem .75rem; border-top: 1px solid #e2e8f0; background: #f8fafc;
+    font-size: .74rem; color: #64748b;
+  }
+
   /* Loader de página al buscar (la vista recarga con los filtros en la URL) */
   #mbLoader {
     display: none; position: fixed; inset: 0; z-index: 10500;
@@ -151,8 +214,10 @@
         <label for="cuenta">Cuenta:</label>
         <select class="selectpicker" data-live-search="true" data-width="240px" name="cuenta" id="cuenta">
           <option value="">Todas</option>
+          {# data-banco lo usa buscarMovimientos() para abrir el tab del banco
+             de la cuenta filtrada en vez de dejarte en el que estabas. #}
           {% for c in cuentas %}
-          <option value="{{ c.cuenta }}" {{ filtros.cuenta == c.cuenta ? 'selected' : '' }}>
+          <option value="{{ c.cuenta }}" data-banco="{{ c.banco }}" {{ filtros.cuenta == c.cuenta ? 'selected' : '' }}>
             {{ c.cuenta }} ({{ c.banco|lower|capitalize }})
           </option>
           {% endfor %}
@@ -332,6 +397,19 @@
         </div>
         <div class="modal-body">
           <p class="text-muted mb-2" id="uploadHint"></p>
+
+          {# Solo para los bancos cuyo archivo no trae la cuenta (Bankaool).
+             El JS muestra este bloque según el registro BANCOS. #}
+          <div id="uploadCuentaWrap" class="mb-2" style="display:none;">
+            <label class="form-label form-label-sm mb-1" for="upload_cuenta">
+              Cuenta <span class="text-danger">*</span>
+              <small class="text-muted">— el archivo de este banco no la incluye</small>
+            </label>
+            <input type="text" class="form-control" id="upload_cuenta" list="uploadCuentaLista"
+                   placeholder="Número de cuenta o CLABE" autocomplete="off">
+            <datalist id="uploadCuentaLista"></datalist>
+          </div>
+
           <input type="file" class="form-control" id="archivo_banco" required>
           <div id="uploadResultado" class="mt-3" style="display:none"></div>
         </div>
@@ -551,6 +629,27 @@ $(function () {
     if (sc) sc.scrollTop = sc.scrollHeight;
   }
 
+  /**
+   * Banco cuyo tab debe quedar al frente tras buscar: el de la cuenta
+   * filtrada, o el primero del registro cuando se ven todas.
+   */
+  function bancoDelTab() {
+    // attr y no data(): selectpicker re-renderiza y jQuery cachea data()
+    var banco = ($('#cuenta option:selected').attr('data-banco') || '').toUpperCase();
+    return BANCOS[banco] ? banco : Object.keys(BANCOS)[0];
+  }
+
+  function abrirTab(cod) {
+    var btn = document.querySelector('button[data-bs-target="#tab' + cod + '"]');
+    if (!btn || btn.classList.contains('active')) return;
+    // Bootstrap 5 expone la clase; el puente de jQuery queda de respaldo
+    if (window.bootstrap && window.bootstrap.Tab) {
+      window.bootstrap.Tab.getOrCreateInstance(btn).show();
+    } else {
+      $(btn).tab('show');
+    }
+  }
+
   var buscando = false;
   function buscarMovimientos() {
     if (buscando) return;
@@ -583,6 +682,10 @@ $(function () {
         scrollAlFondo('#tabla' + cod);
       });
       pintarKpis(r.kpis, r.filtros);
+
+      // Al frente el banco de la cuenta filtrada: si buscas una cuenta de
+      // Afirme no tiene caso quedarte viendo la tabla de Santander vacía.
+      abrirTab(bancoDelTab());
 
       // La tabla del tab oculto se dibuja sin medidas: recalcular al mostrarse
       $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
@@ -733,6 +836,9 @@ $(function () {
   var resultado = document.getElementById('uploadResultado');
   var inputArchivo = document.getElementById('archivo_banco');
 
+  // Cuentas del catálogo que se sugieren cuando el archivo no trae la suya
+  var CUENTAS_SUGERIDAS = {{ cuentasSugeridas|json_encode|raw }};
+
   $('.btn-upload-banco').on('click', function () {
     bancoActual = $(this).data('banco');
     var cfg = BANCOS[bancoActual];
@@ -742,6 +848,16 @@ $(function () {
     inputArchivo.setAttribute('accept', '.' + cfg.ext.join(',.'));
     inputArchivo.value = '';
     resultado.style.display = 'none';
+
+    // El campo de cuenta solo existe para los bancos que no la mandan
+    var pide = !!cfg.pide_cuenta;
+    $('#uploadCuentaWrap').toggle(pide);
+    $('#upload_cuenta').val('').prop('required', pide);
+    if (pide) {
+      $('#uploadCuentaLista').html((CUENTAS_SUGERIDAS[bancoActual] || []).map(function (c) {
+        return '<option value="' + esc(c.cuenta) + '">' + esc(c.descripcion) + '</option>';
+      }).join(''));
+    }
   });
 
   function esc(s) {
@@ -750,9 +866,105 @@ $(function () {
     });
   }
 
+  // ¿La importación dejó algo que el usuario deba leer? Si sí, el modal se
+  // queda abierto con un botón; si no, se cierra solo.
+  function hayQueLeer(data) {
+    return !!((data.avisos && data.avisos.length) || (data.errores && data.errores.length));
+  }
+
+  function filaDetalle(etiqueta, valor, clase) {
+    if (valor === null || valor === undefined || valor === '') return '';
+    return '<div><dt>' + etiqueta + '</dt><dd class="' + (clase || '') + '">' + valor + '</dd></div>';
+  }
+
+  function bloqueNota(tipo, icono, titulo, items) {
+    if (!items || !items.length) return '';
+    return '<div class="mb-res-nota mb-res-nota--' + tipo + '">' +
+           '<i class="fas fa-' + icono + '"></i><div>' +
+           '<b>' + esc(titulo) + '</b>' +
+           '<ul class="mb-res-lista">' + items.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' +
+           '</div></div>';
+  }
+
+  function panelExito(data) {
+    var i     = data.info || {};
+    var tono  = (data.errores && data.errores.length) ? 'error'
+              : (data.avisos && data.avisos.length)   ? 'warn' : 'ok';
+    var etiqueta = (BANCOS[data.banco] && BANCOS[data.banco].etiqueta) || data.banco || '';
+    var nombre   = inputArchivo.files.length ? inputArchivo.files[0].name : '';
+
+    var html = '<div class="mb-res mb-res--' + tono + '">';
+
+    html += '<div class="mb-res-head">' +
+            '<i class="fas fa-' + (tono === 'ok' ? 'circle-check' : 'circle-exclamation') + '"></i>' +
+            '<div><b>Importación completada</b>' +
+            '<span>' + esc(etiqueta) + (nombre ? ' · ' + esc(nombre) : '') + '</span></div></div>';
+
+    // Las dos cifras que se leen primero
+    html += '<div class="mb-res-nums">' +
+            '<div><b class="' + (data.insertados > 0 ? 'n-ok' : 'n-0') + '">' +
+            Number(data.insertados).toLocaleString('en-US') + '</b><span>importados</span></div>' +
+            '<div><b class="' + (data.duplicados > 0 ? '' : 'n-0') + '">' +
+            Number(data.duplicados).toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
+            '</div>';
+
+    // Detalle: cada banco declara lo que puede, se muestra solo lo que hay
+    var detalle = filaDetalle('Cuenta', i.cuenta ? esc(i.cuenta) : '', 'mb-cuenta')
+                + filaDetalle('Empresa', i.razon_social ? esc(i.razon_social) : '')
+                + filaDetalle('Periodo', data.fecha_min && data.fecha_max
+                    ? fmtFecha(data.fecha_min) + ' – ' + fmtFecha(data.fecha_max) : '')
+                + filaDetalle('Saldo inicial', i.saldo_inicial != null ? '$' + fmtMonto(i.saldo_inicial) : '')
+                + filaDetalle('Cargos', i.cargos != null ? '$' + fmtMonto(i.cargos) : '', 'mb-cargo')
+                + filaDetalle('Abonos', i.abonos != null ? '$' + fmtMonto(i.abonos) : '', 'mb-abono')
+                + filaDetalle('Saldo final', i.saldo_final != null ? '$' + fmtMonto(i.saldo_final) : '');
+    if (detalle) html += '<dl class="mb-res-detalle">' + detalle + '</dl>';
+
+    if (i.cuadra === true) {
+      html += '<p class="mb-res-cadena mb-res-cadena--ok">' +
+              '<i class="fas fa-link"></i> Cadena de saldos verificada contra el archivo</p>';
+    } else if (i.cuadra === false) {
+      html += '<p class="mb-res-cadena mb-res-cadena--no">' +
+              '<i class="fas fa-link-slash"></i> La cadena de saldos no cuadra</p>';
+    }
+
+    html += bloqueNota('warn', 'triangle-exclamation',
+              data.avisos && data.avisos.length === 1 ? 'Cuenta sin registrar en el catálogo'
+                                                      : 'Cuentas sin registrar en el catálogo', data.avisos);
+    html += bloqueNota('error', 'circle-xmark', 'Líneas con problema', data.errores);
+
+    html += '<div class="mb-res-estado">' + (hayQueLeer(data)
+              ? '<button type="button" class="btn btn-sm btn-success" id="btnVerImportados">' +
+                '<i class="fas fa-table"></i> Ver movimientos importados</button>'
+              : '<span class="spinner-border spinner-border-sm"></span> Actualizando la tabla…') +
+            '</div>';
+
+    return html + '</div>';
+  }
+
+  function panelError(data) {
+    return '<div class="mb-res mb-res--error">' +
+           '<div class="mb-res-head"><i class="fas fa-circle-xmark"></i>' +
+           '<div><b>No se importó nada</b><span>Ningún movimiento se guardó</span></div></div>' +
+           '<div class="mb-res-nota mb-res-nota--error"><i class="fas fa-circle-info"></i><div>' +
+           esc(data.message || 'Error al importar') + '</div></div>' +
+           bloqueNota('error', 'circle-xmark', 'Detalle', data.errores) +
+           '</div>';
+  }
+
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     if (!inputArchivo.files.length) return;
+
+    var cuenta = $('#upload_cuenta').val().trim();
+    if (BANCOS[bancoActual].pide_cuenta && cuenta === '') {
+      resultado.innerHTML = panelError({
+        message: 'El archivo de ' + BANCOS[bancoActual].etiqueta +
+                 ' no incluye la cuenta: captúrala antes de subirlo',
+      });
+      resultado.style.display = 'block';
+      $('#upload_cuenta').focus();
+      return;
+    }
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
@@ -760,61 +972,35 @@ $(function () {
 
     var fd = new FormData();
     fd.append('banco', bancoActual);
+    fd.append('cuenta', cuenta);
     fd.append('archivo', inputArchivo.files[0]);
 
     fetch('/tesoreria/upload_movimientos', { method: 'POST', body: fd })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        var html;
-        if (data.success) {
-          html = '<div class="alert alert-success mb-0">' +
-                 '<strong>' + data.insertados + '</strong> movimientos importados, ' +
-                 '<strong>' + data.duplicados + '</strong> ya existían.';
-          // Inbursa declara saldo inicial y totales: se muestra el cuadre para
-          // poder verificar la importación contra el archivo del banco.
-          if (data.info && data.info.saldo_inicial !== null && data.info.saldo_inicial !== undefined) {
-            html += '<hr class="my-2"><small>' +
-                    'Cuenta <span class="mb-cuenta">' + esc(data.info.cuenta) + '</span>' +
-                    (data.info.razon_social ? ' — ' + esc(data.info.razon_social) : '') + '<br>' +
-                    'Saldo inicial: <b>$' + fmtMonto(data.info.saldo_inicial) + '</b> · ' +
-                    'Saldo final: <b>$' + fmtMonto(data.info.saldo_final) + '</b><br>' +
-                    'Cargos: $' + fmtMonto(data.info.cargos) + ' · Abonos: $' + fmtMonto(data.info.abonos) +
-                    (data.info.cuadra
-                      ? ' <span class="mb-abono">· cadena de saldos verificada</span>'
-                      : ' <span class="mb-cargo">· la cadena de saldos NO cuadra</span>') +
-                    '</small>';
-          }
-          if (data.avisos && data.avisos.length) {
-            html += '<hr class="my-2"><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ' +
-                    data.avisos.map(esc).join('<br>') + '</small>';
-          }
-          if (data.errores && data.errores.length) {
-            // Con líneas con problema no se busca en automático, para poder leerlas
-            html += '<hr class="my-2"><small>Líneas con problema:<br>' +
-                    data.errores.map(esc).join('<br>') + '</small>' +
-                    '<hr class="my-2"><button type="button" class="btn btn-sm btn-success" ' +
-                    'id="btnVerImportados">Ver movimientos importados</button>';
-          } else {
-            html += ' Actualizando tabla...';
-            setTimeout(function () { verImportados(data.fecha_min, data.fecha_max); }, 1500);
-          }
-          html += '</div>';
-        } else {
-          html = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al importar');
-          if (data.errores && data.errores.length) {
-            html += '<hr class="my-2"><small>' + data.errores.map(esc).join('<br>') + '</small>';
-          }
-          html += '</div>';
-        }
-        resultado.innerHTML = html;
+        resultado.innerHTML = data.success ? panelExito(data) : panelError(data);
         resultado.style.display = 'block';
-        $('#btnVerImportados').on('click', function () {
-          $('#uploadModal').modal('hide');
-          verImportados(data.fecha_min, data.fecha_max);
-        });
+
+        if (!data.success) return;
+
+        // El loader de página (#mbLoader, z-index 10500) tapa el modal, así
+        // que primero se cierra y después se refresca la tabla. El panel
+        // nunca se queda con un spinner colgado: o desaparece con el modal,
+        // o termina en un botón que el usuario acciona.
+        var cerrarYRefrescar = function () {
+          $('#uploadModal')
+            .one('hidden.bs.modal', function () { verImportados(data.fecha_min, data.fecha_max); })
+            .modal('hide');
+        };
+
+        if (hayQueLeer(data)) {
+          $('#btnVerImportados').on('click', cerrarYRefrescar);
+        } else {
+          setTimeout(cerrarYRefrescar, 1400);
+        }
       })
       .catch(function () {
-        resultado.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al importar</div>';
+        resultado.innerHTML = panelError({ message: 'Error de conexión al importar el archivo' });
         resultado.style.display = 'block';
       })
       .finally(function () {

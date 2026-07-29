@@ -1,7 +1,7 @@
 # Plan Maestro — Pago a Proveedores (combustible)
 
-**Fecha:** 2026-07-25
-**Estado:** Borrador para revisión — no se ha implementado nada
+**Fecha:** 2026-07-25 (revisado 2026-07-29 con respuestas a las preguntas abiertas)
+**Estado:** Aprobado en lo general — no se ha implementado nada todavía. Listo para diseñar Fase 0 a detalle.
 
 ## Visión
 
@@ -43,9 +43,13 @@ Reemplazar el flujo manual actual (escaneos por correo + Excel de compras + desc
 - Columnas nuevas en `TG.dbo.FacturasRecibidas`: `RutaXml`, `NombreXml` (NULL si el proveedor no adjuntó XML).
 - Ajustar `ImportadorFacturas.py` para poblarlas; el "mover/renombrar PDF" existente debe mover también el XML.
 - En AplicativoPhp: endpoint de descarga del XML (con permiso), análogo a como se sirven los PDF.
+- **Carga manual/masiva de XML** (mismo patrón que ya se usó con las facturas): pantalla donde abastos sube uno o varios XML para las facturas que llegaron sin él. El sistema lee el UUID del XML y lo liga a su registro en `FacturasRecibidas`; si el UUID no existe, se reporta como no conciliado.
+  - Esta es la vía de escape para proveedores que no adjuntan XML y para el histórico anterior a Fase 0. Hace que el resto del plan no dependa de que el 100% de los correos traiga XML.
 - Opcional: al tener XML, validar/completar los datos extraídos del PDF (el XML es más confiable que el texto del PDF).
 
-**Preguntas abiertas:** ¿el buzón conserva correos históricos para re-procesar y hacer backfill de XML? ¿Todos los proveedores adjuntan el XML en el correo (AEMSA/SAP, Premiergas, Enerey…)?
+**Supuesto de trabajo:** se asume que todos los proveedores adjuntan XML; los que no, se irán detectando en operación y se cubren con la carga manual. No se bloquea el diseño esperando el censo de proveedores.
+
+**Pregunta abierta:** ¿el buzón conserva correos históricos para re-procesar y hacer backfill de XML? (si no, la carga manual también cubre el histórico).
 
 ## Fase 1 — Conciliación recepción ↔ factura (sustituye la hoja "compras" del Excel)
 
@@ -53,7 +57,9 @@ Reemplazar el flujo manual actual (escaneos por correo + Excel de compras + desc
 
 - Construir sobre `fuel_reconciliation` y `FacturasMovimientosTanques` (auditar qué tanto está en uso hoy y qué le falta).
 - Snapshot/caché de recepciones en `TG` (patrón ya probado en el módulo de merma) para no depender de OPENQUERY en línea con 40+ estaciones.
-- Match automático sugerido factura↔recepción: proveedor + litros + fecha con tolerancias; confirmación manual del usuario. Cuando la estación ya subió a ControlGas, el UUID (`satuid`) da match exacto.
+- Match automático sugerido factura↔recepción: proveedor + litros + fecha con tolerancias; **la confirmación siempre la hace abastos** (nunca se concilia solo). Cuando la estación ya subió a ControlGas, el UUID (`satuid`) da match exacto.
+  - Como la confirmación es manual en el 100% de los casos, el diseño debe optimizar el esfuerzo de abastos, no la automatización: sugerencia precargada y ordenada por confianza, confirmar en un clic, **confirmación en lote** de las coincidencias exactas, y las dudosas o sin candidato separadas en su propia bandeja.
+- Recepciones marcadas como **"sin factura esperada"** (ver más abajo) no entran a la bandeja de conciliación.
 - Captura del número de remisión y del escaneo (mientras no exista el portal, lo sube abastos; después, la estación en Fase 3).
 - Reporte "compras": comprado (recepciones) vs facturado (FacturasRecibidas) vs pagado (payment_requests), por estación/proveedor/periodo.
 
@@ -66,14 +72,16 @@ Reemplazar el flujo manual actual (escaneos por correo + Excel de compras + desc
   - La deuda externa (la que entra a requisiciones de pago) es la del **proveedor real**.
   - La factura de Petrotal es intercompañía: se excluye de deuda externa para no duplicar, pero queda ligada para conciliación y para el margen (ya existe `ERComprasPetrotal` para el ER).
 - Vistas de deuda/facturas vencidas deben resolver a través de esta liga (mostrar "Tesoro (vía Petrotal)").
-
-**Pregunta abierta:** ¿la factura del proveedor real hacia Petrotal llega al mismo buzón de facturas, o hay que importarla por otra vía?
+- **Confirmado:** la factura del proveedor real → Petrotal llega al **mismo buzón**, así que ambos CFDI ya están (o estarán) en `FacturasRecibidas`. No se requiere una vía de importación aparte; el trabajo es de conciliación: distinguir cuál de las dos facturas es la del proveedor real y cuál la de Petrotal, y ligarlas a la misma recepción.
+- Pendiente de diseño: migración de los registros existentes con `Petrotal = 1` bajo el esquema actual de una sola factura (`FacturaProveedorId`).
 
 ## Fase 3 — Portal de estaciones
 
 **Objetivo:** que la estación sea autosuficiente: ver sus recepciones, subir su remisión escaneada, descargar su XML.
 
 - Nuevo controlador (p. ej. `station_portal.php`) + permiso nuevo; **filtrado forzoso** por el `IdEstacion` de la sesión (ya disponible desde el login).
+  - **Confirmado:** las estaciones ya tienen usuarios activos, porque hoy usan el tabulador. No hay trabajo de alta masiva; solo asignar el permiso nuevo.
+  - `validate.inc.php:42-45` pone `IdEstacion`/`Estacion` en `$_SESSION['tg_user']` vía `sp_consulta_usuario_estacion`, **pero solo si el SP devuelve fila**. El controlador debe negar acceso cuando la llave no exista, en lugar de asumirla (un usuario corporativo sin estación no debe ver un listado sin filtrar).
 - Vistas:
   - **Mis recepciones**: lista desde el snapshot de Fase 1, con estado y semáforo (falta remisión / falta factura / XML listo para descargar / ya subida a ControlGas).
   - **Subir remisión**: escaneo (PDF/imagen) + número de remisión → tabla en TG + archivo en servidor. Sustituye el correo de escaneos.
@@ -86,6 +94,7 @@ Reemplazar el flujo manual actual (escaneos por correo + Excel de compras + desc
 
 - Job programado (patrón cron CLI ya usado en merma; el cron por HTTP no sirve porque `index.php` exige sesión) que lee `DocumentosC.satuid` de cada estación y lo cruza con los UUID entregados → marca la recepción como "subida a ControlGas".
 - Alertas de rezago: recepciones con XML entregado y sin subir después de N días; recepciones sin factura después de N días.
+- **Recepciones sin CFDI (remisiones puras):** se marcan como **"sin factura esperada"** para que no ensucien las alertas de rezago ni la bandeja de conciliación. Se mantiene la regla actual: no van a pagos y siguen apareciendo en vencidas. Pendiente de definir en el spec de Fase 1: quién pone la marca (abastos, manual) y si es reversible.
 - Con esto, `fuel_payments` (que ya lee los documentos de compra vía API) queda alimentado sin captura manual.
 
 ---
@@ -102,9 +111,18 @@ Fase 0 (XML) ──► Fase 1 (conciliación) ──┬──► Fase 2 (Petrota
 
 ## Preguntas abiertas (resolver antes de diseñar cada fase)
 
-1. ¿El buzón de facturas conserva histórico para backfill de XML? ¿Desde cuándo se necesitaría?
-2. ¿Qué proveedores NO adjuntan XML en el correo?
-3. ¿La factura proveedor-real→Petrotal llega al mismo buzón?
-4. ¿Las estaciones ya tienen usuarios activos con `IdEstacion` poblado, o hay que darlos de alta?
-5. ¿Quién confirma el match factura↔recepción: abastos siempre, o automático cuando el match es exacto?
-6. ¿Qué pasa con recepciones sin CFDI (remisiones puras)? Hoy la regla es: no van a pagos y aparecen en vencidas.
+**Resueltas (2026-07-29):**
+
+1. ~~¿El buzón conserva histórico para backfill de XML?~~ → Sin confirmar, pero **deja de bloquear**: la carga manual/masiva de XML de Fase 0 cubre tanto el histórico como los faltantes.
+2. ~~¿Qué proveedores NO adjuntan XML?~~ → Aún no se sabe. Se asume que todos lo adjuntan y se detectan en operación; los faltantes se resuelven con la carga manual.
+3. ~~¿La factura proveedor-real→Petrotal llega al mismo buzón?~~ → **Sí**, mismo buzón. Fase 2 no necesita otra vía de importación.
+
+4. ~~¿Las estaciones ya tienen usuarios con `IdEstacion`?~~ → **Sí**, ya existen porque usan el tabulador. Solo falta asignarles el permiso del portal.
+5. ~~¿Quién confirma el match factura↔recepción?~~ → **Abastos siempre**, nunca automático. El diseño debe minimizar el esfuerzo (confirmación en lote, orden por confianza).
+6. ~~¿Recepciones sin CFDI?~~ → Se marcan **"sin factura esperada"**; se excluyen de alertas y de la bandeja. Se mantiene: no van a pagos, sí aparecen en vencidas.
+
+**Pendientes:**
+
+- ¿El buzón conserva histórico para backfill de XML? (no bloquea: la carga manual lo cubre)
+- ¿Quién marca "sin factura esperada" y es reversible? (se resuelve en el spec de Fase 1)
+- Migración de los registros existentes con `Petrotal = 1` al esquema de dos facturas (se resuelve en el spec de Fase 2)

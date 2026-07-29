@@ -16,7 +16,10 @@ CREATE TABLE dbo.movimientos_bancarios (
     hora               CHAR(5)       NULL,               -- HH:MM
     sucursal           NVARCHAR(10)  NULL,
     clave_trans        NVARCHAR(10)  NULL,
-    descripcion        NVARCHAR(60)  NULL,               -- corta (DEPOSITO VTAS...)
+    -- 150 y no 60: Bankaool manda descripciones de hasta 75 caracteres que
+    -- traen el nombre de la contraparte y la CLABE destino (ampliada el
+    -- 2026-07-29; para bases ya creadas, alter_movimientos_descripcion_150.sql).
+    descripcion        NVARCHAR(150) NULL,               -- DEPOSITO VTAS, ABONO POR SPEI -NOMBRE - ...
     cargo              DECIMAL(18,2) NULL,               -- signo '-' del TXT
     abono              DECIMAL(18,2) NULL,               -- signo '+' del TXT
     saldo              DECIMAL(18,2) NULL,               -- saldo tras el movimiento

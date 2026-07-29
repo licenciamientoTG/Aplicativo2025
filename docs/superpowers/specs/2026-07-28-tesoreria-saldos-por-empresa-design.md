@@ -230,6 +230,62 @@ del registro vía `banco_de()`.
 `get_movimientos()` devuelve `movimientos` como mapa `{BANCO: [...]}` en vez de
 las llaves fijas `santander`/`afirme`.
 
+## BBVA
+
+Cuarto banco. Sin cambios de schema: BBVA da **menos** columnas que los otros.
+
+### Formato
+
+Un `.xls` que en realidad es **SpreadsheetML 2003** (XML de Excel; PhpSpreadsheet
+lo identifica como `Xml`, no `Xls`). Tres hojas, los datos en `Hoja1`. Un
+archivo **por cuenta**, con la cuenta en `B1` y encabezados en la fila 2:
+`Fecha Operación · Concepto · Referencia · Referencia Ampliada · Cargo ·
+Abono · Saldo`. Sin fila de totales ni de saldo inicial.
+
+Mapeo: `Concepto → descripcion`, `Referencia → referencia`,
+`Referencia Ampliada → concepto`. Quedan vacías `hora`, `sucursal`,
+`clave_trans`, las tres de contraparte, `rfc_contraparte`, `clave_rastreo`,
+`descripcion_larga` y `secuencia`.
+
+### Dos particularidades
+
+1. **La fecha es un serial de Excel** (`46232` = 2026-07-29), numérica con
+   formato `dd/mm/yyyy`, no texto como en los otros tres. Se convierte con
+   `Date::excelToDateTimeObject()`, con `dd/mm/aaaa` como respaldo.
+
+2. **El archivo viene del movimiento más reciente al más viejo.** Las filas se
+   invierten antes de devolverlas. Sin eso, el `id` más alto de cada día
+   quedaría en el movimiento más antiguo y `get_saldos_finales()`
+   (`fecha DESC, id DESC`) reportaría un saldo equivocado: en el archivo de
+   prueba habría mostrado 167,649.69 en vez de 169,114.27, $1,464.58 de
+   diferencia.
+
+Ya invertido, el parser verifica que cada saldo salga del anterior
+(`saldo[i-1] + abono - cargo == saldo[i]`) y avisa sin bloquear si la cadena no
+cierra. En los archivos de prueba: 0 roturas en 263 comprobaciones.
+
+### Dedup
+
+Las 264 filas del archivo grande son únicas incluso sin el saldo en la huella
+(los movimientos de TPV se repiten mucho en concepto e importe, pero no en
+saldo). Se incluye el saldo igual, por el mismo criterio que Afirme e Inbursa.
+
+### Catálogo
+
+De 1,007 cuentas BBVA registradas, ninguna es `Propias`. Las dos cuentas de los
+archivos (`0102925486` y `0191789880`) no tienen match exacto, así que al
+importar caen en `SIN CATÁLOGO` con su saldo visible y el upload avisa. Falta
+darlas de alta con su razón social: el archivo no la trae y el nombre
+(`RSM_..._00321583_ADMIN1.xls`) tampoco.
+
+Pista parcial: `0191789880` existe como CLABE `012164001917898801` con alias
+`DG 9880 BBVA` (Terceros), que apunta a Diaz Gas.
+
+### Rendimiento
+
+El lector `Xml` es más lento que los otros: ~20 ms fijos más ~4 ms por fila
+(264 filas ≈ 1.1 s). El límite de 10 MB del upload acota el peor caso.
+
 ## Fuera de alcance
 
 El KPI "Saldo final (todas)" de la fila de tarjetas sigue sumando MXN y USD en

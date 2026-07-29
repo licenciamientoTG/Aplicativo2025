@@ -11,6 +11,9 @@
  *   SANTANDER  TXT de ancho fijo (630 chars/línea) de Enlace Santander
  *   AFIRME     ".xls" que en realidad es texto separado por tabs
  *   INBURSA    .xlsx real (Estado de Cuenta Individual), un archivo por cuenta
+ *   BBVA       ".xls" que en realidad es SpreadsheetML 2003, un archivo por
+ *              cuenta y en orden inverso (del más reciente al más viejo)
+ *   BANKAOOL   .xlsx real que NO trae la cuenta: se captura al subir
  */
 class MovimientosBancariosModel extends Model
 {
@@ -367,6 +370,287 @@ class MovimientosBancariosModel extends Model
     }
 
     /**
+     * Parsea el reporte de movimientos de BBVA: un ".xls" que en realidad es
+     * SpreadsheetML 2003 (XML de Excel). Tres hojas, los datos en Hoja1, y
+     * un archivo POR CUENTA (la cuenta va en la cabecera, como Inbursa).
+     *
+     *   A1  Cuenta · B1 <número de cuenta>
+     *   A2  Fecha Operación · Concepto · Referencia · Referencia Ampliada ·
+     *       Cargo · Abono · Saldo
+     *   A3..N  movimientos, sin fila de totales ni de saldo inicial
+     *
+     * Dos particularidades frente a los otros bancos:
+     *
+     *  - La fecha es un SERIAL de Excel (46232 = 2026-07-29), no texto.
+     *  - El archivo viene del movimiento MÁS RECIENTE al más viejo. Las filas
+     *    se invierten antes de devolverlas para que el id de BD quede en el
+     *    orden real de aplicación al saldo: get_movimientos ordena por
+     *    (fecha, id) y get_saldos_finales toma (fecha DESC, id DESC), así que
+     *    conservar el orden del archivo haría que el saldo final del panel
+     *    fuera el del primer movimiento del día en vez del último.
+     *
+     * @param string $ruta Ruta al archivo (PhpSpreadsheet lee desde disco)
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_bbva_xml(string $ruta): array
+    {
+        try {
+            $libro = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xml')->load($ruta);
+            $hoja  = $libro->getSheetByName('Hoja1') ?: $libro->getSheet(0);
+        } catch (Exception $e) {
+            return ['movimientos' => [], 'errores' =>
+                ['No se pudo leer el archivo como reporte de BBVA: ' . $e->getMessage()], 'info' => []];
+        }
+
+        if (stripos(self::celda($hoja, 'A1'), 'Cuenta') !== 0
+            || stripos(self::celda($hoja, 'A2'), 'Fecha') !== 0
+            || strcasecmp(self::celda($hoja, 'E2'), 'Cargo') !== 0
+            || strcasecmp(self::celda($hoja, 'F2'), 'Abono') !== 0
+            || strcasecmp(self::celda($hoja, 'G2'), 'Saldo') !== 0) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout del reporte de movimientos de BBVA'], 'info' => []];
+        }
+
+        $cuenta = self::celda($hoja, 'B1');
+        if ($cuenta === '') {
+            return ['movimientos' => [], 'errores' =>
+                ['No se encontró el número de cuenta en la cabecera (celda B1)'], 'info' => []];
+        }
+
+        $movimientos = [];
+        $errores     = [];
+
+        for ($f = 3; $f <= $hoja->getHighestRow(); $f++) {
+            $concepto = self::celda($hoja, "B$f");
+            $fechaRaw = self::celda($hoja, "A$f");
+            if ($concepto === '' && $fechaRaw === '') continue;
+
+            $fecha = self::fecha_bbva($fechaRaw);
+            if ($fecha === null) {
+                $errores[] = "Fila $f: fecha inválida ($fechaRaw)";
+                continue;
+            }
+
+            $cargo = self::monto($hoja, "E$f");
+            $abono = self::monto($hoja, "F$f");
+            $saldo = self::monto($hoja, "G$f");
+            if ($cargo == 0.0 && $abono == 0.0) {
+                $errores[] = "Fila $f: movimiento sin cargo ni abono ($concepto)";
+                continue;
+            }
+
+            $referencia = self::limpia(self::celda($hoja, "C$f"));
+            $ampliada   = self::limpia(self::celda($hoja, "D$f"));
+
+            $movimientos[] = [
+                'banco'              => 'BBVA',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => null,
+                'sucursal'           => null,
+                'clave_trans'        => null,
+                'descripcion'        => mb_substr($concepto, 0, 60),
+                'cargo'              => $cargo > 0 ? $cargo : null,
+                'abono'              => $abono > 0 ? $abono : null,
+                'saldo'              => $saldo,
+                'referencia'         => mb_substr($referencia, 0, 20),
+                'concepto'           => mb_substr($ampliada, 0, 120),
+                'banco_contraparte'  => '',
+                'cuenta_contraparte' => '',
+                'nombre_contraparte' => '',
+                'rfc_contraparte'    => null,
+                'clave_rastreo'      => null,
+                'descripcion_larga'  => null,
+                'huella'             => sha1('BBVA|' . implode('|', [
+                    $cuenta, $fecha, $concepto, $referencia, $ampliada,
+                    sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
+                ])),
+            ];
+        }
+
+        // Del más reciente al más viejo -> orden cronológico
+        $movimientos = array_reverse($movimientos);
+
+        // Ya en orden, cada saldo debe salir del anterior. Si la cadena no
+        // cierra, el archivo viene incompleto o se leyó mal: se avisa sin
+        // bloquear la importación.
+        $rotas = 0;
+        for ($i = 1; $i < count($movimientos); $i++) {
+            $esperado = $movimientos[$i - 1]['saldo']
+                      + ($movimientos[$i]['abono'] ?? 0) - ($movimientos[$i]['cargo'] ?? 0);
+            if (abs($esperado - $movimientos[$i]['saldo']) > 0.011) $rotas++;
+        }
+        if ($rotas > 0) {
+            $errores[] = "La cadena de saldos no cierra en $rotas de "
+                       . (count($movimientos) - 1) . ' movimientos';
+        }
+
+        $fechas = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => $cuenta,
+                'razon_social'  => '',
+                'moneda'        => '',
+                'saldo_inicial' => null,   // BBVA no lo declara
+                'saldo_final'   => $movimientos ? end($movimientos)['saldo'] : null,
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => $movimientos ? ($rotas === 0) : null,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+            ],
+        ];
+    }
+
+    /**
+     * Parsea el export de movimientos de Bankaool (.xlsx real, una hoja,
+     * encabezados en la fila 1 y datos desde la 2):
+     *
+     *   Fecha · Descripción · Referencia · Monto · Saldo · Clave Rastreo ·
+     *   Comprobante Electrónico
+     *
+     * Tres particularidades:
+     *
+     *  - NO trae el número de cuenta en ningún lado (ni cabecera, ni renglón,
+     *    ni nombre de archivo), así que se recibe por parámetro: el modal de
+     *    subida lo pide cuando el banco es Bankaool.
+     *  - Un solo campo Monto con signo (negativo = cargo, positivo = abono),
+     *    en vez de dos columnas.
+     *  - La fecha es un serial de Excel CON HORA, así que a diferencia de
+     *    Afirme, Inbursa y BBVA aquí sí se llena la columna hora.
+     *
+     * @param string $ruta   Ruta al .xlsx
+     * @param string $cuenta Cuenta a la que pertenece el archivo
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_bankaool_xlsx(string $ruta, string $cuenta = ''): array
+    {
+        $cuenta = trim($cuenta);
+        if ($cuenta === '') {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo de Bankaool no incluye la cuenta: hay que capturarla al subirlo'], 'info' => []];
+        }
+
+        try {
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
+            $reader->setReadDataOnly(true);
+            $hoja = $reader->load($ruta)->getActiveSheet();
+        } catch (Exception $e) {
+            return ['movimientos' => [], 'errores' =>
+                ['No se pudo leer el archivo como .xlsx: ' . $e->getMessage()], 'info' => []];
+        }
+
+        if (strcasecmp(self::celda($hoja, 'A1'), 'Fecha') !== 0
+            || stripos(self::celda($hoja, 'B1'), 'Descrip') !== 0
+            || strcasecmp(self::celda($hoja, 'D1'), 'Monto') !== 0
+            || strcasecmp(self::celda($hoja, 'E1'), 'Saldo') !== 0) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout del export de movimientos de Bankaool'], 'info' => []];
+        }
+
+        $movimientos = [];
+        $errores     = [];
+
+        for ($f = 2; $f <= $hoja->getHighestRow(); $f++) {
+            $descripcion = self::limpia(self::celda($hoja, "B$f"));
+            $fechaRaw    = self::celda($hoja, "A$f");
+            if ($descripcion === '' && $fechaRaw === '') continue;
+
+            if (!is_numeric($fechaRaw) || (float)$fechaRaw <= 0) {
+                $errores[] = "Fila $f: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $momento = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$fechaRaw);
+
+            $monto = self::monto($hoja, "D$f");
+            if ($monto == 0.0) {
+                $errores[] = "Fila $f: movimiento en cero ($descripcion)";
+                continue;
+            }
+
+            // La descripción trae la contraparte; sin extraerla se perdería,
+            // porque Bankaool no manda columnas de contraparte.
+            $cuentaContra = preg_match('/Cuenta:\s*(\d{10,18})/', $descripcion, $mc) ? $mc[1] : '';
+            $nombreContra = preg_match('/^\w+ POR SPEI\s*-\s*(.+?)\s*-\s*\S+$/u', $descripcion, $mn)
+                          ? trim($mn[1]) : '';
+
+            $saldo = self::monto($hoja, "E$f");
+
+            $movimientos[] = [
+                'banco'              => 'BANKAOOL',
+                'cuenta'             => $cuenta,
+                'fecha'              => $momento->format('Y-m-d'),
+                'hora'               => $momento->format('H:i'),
+                'sucursal'           => null,
+                'clave_trans'        => null,
+                'descripcion'        => mb_substr($descripcion, 0, 150),
+                'cargo'              => $monto < 0 ? abs($monto) : null,
+                'abono'              => $monto > 0 ? $monto : null,
+                'saldo'              => $saldo,
+                'referencia'         => mb_substr(self::celda($hoja, "C$f"), 0, 20),
+                'concepto'           => null,
+                'banco_contraparte'  => '',
+                'cuenta_contraparte' => mb_substr($cuentaContra, 0, 30),
+                'nombre_contraparte' => mb_substr($nombreContra, 0, 60),
+                'rfc_contraparte'    => null,
+                'clave_rastreo'      => mb_substr(self::limpia(self::celda($hoja, "F$f")), 0, 40) ?: null,
+                'descripcion_larga'  => null,
+                'huella'             => sha1('BANKAOOL|' . implode('|', [
+                    $cuenta, $fechaRaw, $descripcion, self::celda($hoja, "C$f"),
+                    sprintf('%.2f', $monto), sprintf('%.2f', $saldo),
+                ])),
+            ];
+        }
+
+        // El archivo viene en orden cronológico; se verifica que cada saldo
+        // salga del anterior para detectar un export incompleto.
+        $rotas = 0;
+        for ($i = 1; $i < count($movimientos); $i++) {
+            $delta = ($movimientos[$i]['abono'] ?? 0) - ($movimientos[$i]['cargo'] ?? 0);
+            if (abs(($movimientos[$i - 1]['saldo'] + $delta) - $movimientos[$i]['saldo']) > 0.011) $rotas++;
+        }
+        if ($rotas > 0) {
+            $errores[] = "La cadena de saldos no cierra en $rotas de "
+                       . (count($movimientos) - 1) . ' movimientos';
+        }
+
+        $fechas = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => $cuenta,
+                'razon_social'  => '',
+                'moneda'        => '',
+                'saldo_inicial' => null,   // Bankaool no lo declara
+                'saldo_final'   => $movimientos ? end($movimientos)['saldo'] : null,
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => $movimientos ? ($rotas === 0) : null,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+            ],
+        ];
+    }
+
+    /**
+     * Fecha de BBVA: normalmente un serial de Excel (46232), con dd/mm/aaaa
+     * como respaldo por si el export cambia a texto.
+     */
+    private static function fecha_bbva(string $v): ?string
+    {
+        if (is_numeric($v) && (float)$v > 0) {
+            return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$v)->format('Y-m-d');
+        }
+        if (preg_match('#^(\d{2})/(\d{2})/(\d{4})$#', $v, $m) && checkdate((int)$m[2], (int)$m[1], (int)$m[3])) {
+            return "$m[3]-$m[2]-$m[1]";
+        }
+        return null;
+    }
+
+    /**
      * Texto de una celda. Las celdas de texto de Inbursa son inlineStr y
      * PhpSpreadsheet puede devolverlas como RichText en vez de string.
      */
@@ -376,7 +660,10 @@ class MovimientosBancariosModel extends Model
         if ($v instanceof \PhpOffice\PhpSpreadsheet\RichText\RichText) {
             $v = $v->getPlainText();
         }
-        return trim((string)$v);
+        // Bankaool rellena las celdas vacías con NBSP (U+00A0), que trim() no
+        // quita: sin esto una celda "vacía" se guardaría como un espacio duro
+        // en vez de NULL.
+        return trim(str_replace("\xC2\xA0", ' ', (string)$v));
     }
 
     /** Importe de una celda; vacío o no numérico cuenta como 0. */

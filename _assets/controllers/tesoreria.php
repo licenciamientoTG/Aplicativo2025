@@ -49,6 +49,22 @@ class Tesoreria
             'parser'   => 'parse_inbursa_xlsx',
             'entrada'  => 'ruta',
         ],
+        'BBVA' => [
+            'etiqueta' => 'BBVA',
+            'ext'      => ['xls'],
+            'espera'   => 'el reporte de movimientos de BBVA',
+            'parser'   => 'parse_bbva_xml',
+            'entrada'  => 'ruta',
+        ],
+        'BANKAOOL' => [
+            'etiqueta' => 'Bankaool',
+            'ext'      => ['xlsx'],
+            'espera'   => 'el export de movimientos de Bankaool',
+            'parser'   => 'parse_bankaool_xlsx',
+            'entrada'  => 'ruta',
+            // Su archivo no trae la cuenta: el modal la pide y se pasa al parser
+            'pide_cuenta' => true,
+        ],
     ];
 
     /**
@@ -102,10 +118,41 @@ class Tesoreria
         }
 
         echo $this->twig->render($this->route . 'movimientos_bancos.html', [
-            'filtros' => $this->filtros_movimientos($_GET),
-            'cuentas' => $this->movsModel->get_cuentas(),
-            'bancos'  => self::BANCOS,
+            'filtros'          => $this->filtros_movimientos($_GET),
+            'cuentas'          => $this->movsModel->get_cuentas(),
+            'bancos'           => self::BANCOS,
+            'cuentasSugeridas' => $this->cuentas_sugeridas(),
         ]);
+    }
+
+    /**
+     * Cuentas del catálogo que se ofrecen al subir un archivo de un banco que
+     * no manda la cuenta (hoy solo Bankaool). Se sugieren las de ese banco;
+     * el campo igual acepta captura libre por si aún no está dada de alta.
+     *
+     * @return array<string, array> banco => [['cuenta' => ..., 'descripcion' => ...]]
+     */
+    private function cuentas_sugeridas(): array
+    {
+        $pide = array_keys(array_filter(self::BANCOS, fn($c) => !empty($c['pide_cuenta'])));
+        if (!$pide) return [];
+
+        $out = array_fill_keys($pide, []);
+        foreach ($this->cuentasModel->get_cuentas_admin() as $c) {
+            $banco = strtoupper((string)$c['Banco']);
+            foreach ($pide as $b) {
+                if (strpos($banco, $b) !== false) {
+                    $out[$b][] = [
+                        'cuenta'      => trim((string)$c['CuentaLocal']),
+                        'descripcion' => trim((string)$c['Descripcion']),
+                    ];
+                }
+            }
+        }
+        foreach ($out as &$lista) {
+            usort($lista, fn($a, $b) => strcmp($a['descripcion'], $b['descripcion']));
+        }
+        return $out;
     }
 
     /**
@@ -390,7 +437,19 @@ class Tesoreria
             }
         }
 
-        $parseo = MovimientosBancariosModel::{$cfg['parser']}($entrada);
+        // Bankaool no trae la cuenta en el archivo: viene del formulario
+        $args = [$entrada];
+        if (!empty($cfg['pide_cuenta'])) {
+            $cuenta = trim($_POST['cuenta'] ?? '');
+            if ($cuenta === '') {
+                json_output(['success' => false, 'message' =>
+                    'El archivo de ' . $cfg['etiqueta'] . ' no incluye la cuenta: selecciónala antes de subirlo']);
+                return;
+            }
+            $args[] = $cuenta;
+        }
+
+        $parseo = MovimientosBancariosModel::{$cfg['parser']}(...$args);
         if (empty($parseo['movimientos'])) {
             json_output([
                 'success' => false,
