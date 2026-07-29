@@ -241,6 +241,42 @@ class DespachosModel extends Model{
 
     /**
      * @param $codgas
+     * @param $fecha
+     * @return array|false
+     * @throws Exception
+     */
+    function get_dispatches_to_mark_jarreo($codgas, $fecha) : array|false {
+        
+        $query = "SELECT
+                    t1.nrotrn, t1.fchtrn, t1.nrobom, t1.can, t1.mto, t1.nrofac, t1.tiptrn, t2.abr AS station
+                FROM {$this->databases[$codgas]}.[Despachos] t1
+                    LEFT JOIN {$this->databases[$codgas]}.[Gasolineras] t2 ON t1.codgas = t2.cod
+                WHERE
+                    t1.fchcor = ?
+                    AND (t1.nrofac IS NULL OR t1.nrofac = 0);";
+        $params = [$fecha];
+        return $this->sql->select($query, $params) ?: false;
+    }
+
+    /**
+     * @param $nrotrn
+     * @param $codgas
+     * @param int $tiptrn
+     * @return bool
+     * @throws Exception
+     */
+    function mark_dispatch_as_jarreo($nrotrn, $codgas, int $tiptrn = 74) : bool {
+        $query = "UPDATE {$this->databases[$codgas]}.[Despachos] SET tiptrn = ? WHERE nrotrn = ?;";
+        $params = [$tiptrn, $nrotrn];
+        $this->sql->update($query, $params);
+
+        $query = "UPDATE [SG12].[dbo].[Despachos] SET tiptrn = ? WHERE nrotrn = ? AND codgas = ?;";
+        $params = [$tiptrn, $nrotrn, $codgas];
+        return (bool)$this->sql->update($query, $params);
+    }
+
+    /**
+     * @param $codgas
      * @param $tabDate
      * @return array|false
      * @throws Exception
