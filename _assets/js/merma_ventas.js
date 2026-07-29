@@ -36,4 +36,17 @@ $(function () {
 
     // Cualquier cambio de control recarga solo la tabla
     $('#hist_desde, #hist_hasta, #hist_prod').on('change', cargarHistorico);
+
+    // El enlace de exportación arrastra el rango y producto del histórico,
+    // para que la hoja HISTÓRICO del .xlsx refleje lo que está en pantalla.
+    function sincronizarEnlaceExportar() {
+        var $a = $('#btn_exportar');
+        if (!$a.length) return;
+        var url = new URL($a.attr('href'), window.location.origin);
+        url.searchParams.set('desde', $('#hist_desde').val());
+        url.searchParams.set('hasta', $('#hist_hasta').val());
+        url.searchParams.set('prod',  $('#hist_prod').val());
+        $a.attr('href', url.pathname + url.search);
+    }
+    $('#hist_desde, #hist_hasta, #hist_prod').on('change', sincronizarEnlaceExportar);
 });

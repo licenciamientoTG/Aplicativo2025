@@ -445,6 +445,50 @@ class Merma
             $sheet->getColumnDimension('B')->setWidth(12);
             $sheet->freezePane('C2');
         }
+
+        // Sexta hoja: el histórico mensual, con el mismo rango y producto que
+        // la pestaña tenga seleccionados (o los valores por defecto si el
+        // usuario nunca la abrió).
+        [$hDesde, $hHasta, $hProd] = $this->periodoHistorico();
+        $hist = VentasConsolidado::construirHistorico($hProd, [
+            'estaciones' => $estaciones,
+            'historico'  => $this->mermaModel->get_historico_mensual($hDesde, $hHasta),
+            'desde'      => $hDesde,
+            'hasta'      => $hHasta,
+        ]);
+
+        $hoja = $spreadsheet->createSheet();
+        $hoja->setTitle('HISTÓRICO');
+        $hoja->setCellValue('A1', 'MES');
+        $col = 2;
+        foreach ($estaciones as $e) {
+            $hoja->setCellValue(Coordinate::stringFromColumnIndex($col) . '1', $e['Nombre']);
+            $col++;
+        }
+        $colTotalHist = Coordinate::stringFromColumnIndex($col);
+        $hoja->setCellValue($colTotalHist . '1', 'TOTAL');
+        $hoja->setCellValue(Coordinate::stringFromColumnIndex($col + 2) . '1',
+                            'Producto: ' . $hist['label']);
+        $hoja->getStyle('A1:' . $colTotalHist . '1')->getFont()->setBold(true);
+
+        $fila = 2;
+        foreach ($hist['filas'] as $f) {
+            $hoja->setCellValue('A' . $fila, $f['etiqueta']);
+            $col = 2;
+            foreach ($estaciones as $e) {
+                $hoja->setCellValue(Coordinate::stringFromColumnIndex($col) . $fila,
+                                    round($f['celdas'][(int) $e['Codigo']], 2));
+                $col++;
+            }
+            $hoja->setCellValue($colTotalHist . $fila, round($f['total'], 2));
+            if ($f['tipo'] === 'anual') {
+                $hoja->getStyle('A' . $fila . ':' . $colTotalHist . $fila)->getFont()->setBold(true);
+            }
+            $fila++;
+        }
+        $hoja->getColumnDimension('A')->setWidth(20);
+        $hoja->freezePane('B2');
+
         $spreadsheet->setActiveSheetIndex(0);
 
         $archivo = sprintf('ventas_consolidado_%04d_%02d.xlsx', $anio, $mes);
