@@ -636,9 +636,10 @@ class MermaDiariaModel extends Model
     {
         $ini = sprintf('%04d-01-01', $desde);
         $fin = sprintf('%04d-01-01', $hasta);
-        // El filtro va contra "fecha" sin envolverla en una función, para no
-        // anular IX_merma_diaria_estacion. DATEADD sobre el parámetro cierra
-        // el rango en el 31 de diciembre del año $hasta.
+        // El filtro va contra "fecha" sin envolverla en una función (para
+        // que sea sargable); con las ~30 mil filas de merma_diaria el
+        // escaneo completo es irrelevante de cualquier forma. DATEADD sobre
+        // el parámetro cierra el rango en el 31 de diciembre del año $hasta.
         $query = 'SELECT YEAR(fecha) AS anio, MONTH(fecha) AS mes, codgas,
                     ' . $this->familiaCase('maxima', 'ventas_reales') . ' AS maxima,
                     ' . $this->familiaCase('super', 'ventas_reales') . '  AS [super],

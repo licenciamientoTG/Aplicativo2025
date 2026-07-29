@@ -287,6 +287,9 @@ class Merma
         // conforme se sincronice más historia hacia atrás.
         $anioMinHist = $this->mermaModel->get_anio_min_historico() ?? $anioAyer;
         if ($anioMinHist > $anioAyer) $anioMinHist = $anioAyer;
+        // No puede caer por debajo del piso que periodoHistorico() valida,
+        // o el selector ofrecería un año que el propio validador reescribe.
+        $anioMinHist = max(2020, $anioMinHist);
 
         echo $this->twig->render($this->route . 'ventas.html', $reporte + [
             'anios'  => range($anioAyer, $anioAyer - 2),
@@ -314,16 +317,7 @@ class Merma
         }
         [$desde, $hasta, $prod] = $this->periodoHistorico();
 
-        $estaciones = array_map(
-            fn($e) => ['Codigo' => (int) $e['Codigo'], 'Nombre' => $e['Nombre']],
-            $this->mermaModel->get_estaciones_ordenadas()
-        );
-        $hist = VentasConsolidado::construirHistorico($prod, [
-            'estaciones' => $estaciones,
-            'historico'  => $this->mermaModel->get_historico_mensual($desde, $hasta),
-            'desde'      => $desde,
-            'hasta'      => $hasta,
-        ]);
+        ['estaciones' => $estaciones, 'hist' => $hist] = $this->armarHistorico($desde, $hasta, $prod);
 
         echo $this->twig->render($this->route . 'ventas_historico.html',
             compact('estaciones', 'hist', 'desde', 'hasta', 'prod'));
@@ -350,6 +344,30 @@ class Merma
         if (!isset(VentasConsolidado::PESTANAS[$prod])) $prod = 'total';
 
         return [$desde, $hasta, $prod];
+    }
+
+    /**
+     * Junta modelo + calculadora para la pestaña HISTÓRICO. Lo comparten la
+     * vista (ventas_historico) y la exportación (ventas_excel) para que la
+     * tabla y su leyenda de cobertura no se puedan desincronizar entre
+     * pantalla y .xlsx.
+     *
+     * @return array{estaciones: array, hist: array}
+     */
+    private function armarHistorico(int $desde, int $hasta, string $prod): array
+    {
+        $estaciones = array_map(
+            fn($e) => ['Codigo' => (int) $e['Codigo'], 'Nombre' => $e['Nombre']],
+            $this->mermaModel->get_estaciones_ordenadas()
+        );
+        $hist = VentasConsolidado::construirHistorico($prod, [
+            'estaciones' => $estaciones,
+            'historico'  => $this->mermaModel->get_historico_mensual($desde, $hasta),
+            'desde'      => $desde,
+            'hasta'      => $hasta,
+        ]);
+
+        return ['estaciones' => $estaciones, 'hist' => $hist];
     }
 
     /**
@@ -450,18 +468,13 @@ class Merma
         // la pestaña tenga seleccionados (o los valores por defecto si el
         // usuario nunca la abrió).
         [$hDesde, $hHasta, $hProd] = $this->periodoHistorico();
-        $hist = VentasConsolidado::construirHistorico($hProd, [
-            'estaciones' => $estaciones,
-            'historico'  => $this->mermaModel->get_historico_mensual($hDesde, $hHasta),
-            'desde'      => $hDesde,
-            'hasta'      => $hHasta,
-        ]);
+        ['estaciones' => $estacionesHist, 'hist' => $hist] = $this->armarHistorico($hDesde, $hHasta, $hProd);
 
         $hoja = $spreadsheet->createSheet();
         $hoja->setTitle('HISTÓRICO');
         $hoja->setCellValue('A1', 'MES');
         $col = 2;
-        foreach ($estaciones as $e) {
+        foreach ($estacionesHist as $e) {
             $hoja->setCellValue(Coordinate::stringFromColumnIndex($col) . '1', $e['Nombre']);
             $col++;
         }
@@ -475,7 +488,7 @@ class Merma
         foreach ($hist['filas'] as $f) {
             $hoja->setCellValue('A' . $fila, $f['etiqueta']);
             $col = 2;
-            foreach ($estaciones as $e) {
+            foreach ($estacionesHist as $e) {
                 $hoja->setCellValue(Coordinate::stringFromColumnIndex($col) . $fila,
                                     round($f['celdas'][(int) $e['Codigo']], 2));
                 $col++;
@@ -486,6 +499,21 @@ class Merma
             }
             $fila++;
         }
+
+        // Leyenda de cobertura: en pantalla es la única señal que impide leer
+        // los ceros de los meses no sincronizados como una caída real de
+        // ventas, y el .xlsx es justo lo que se reenvía por correo a alguien
+        // que nunca vio la pantalla — sin esto, ese lector no tiene forma de
+        // saberlo.
+        $fila++; // renglón en blanco entre los datos y la leyenda
+        $mesesConDatos = $hist['meses_con_datos'];
+        $leyenda = $mesesConDatos
+            ? sprintf('Con datos: %d de %d meses del rango (%s). Los meses sin sincronizar aparecen en cero.',
+                       count($mesesConDatos), $hist['meses_del_rango'], implode(', ', $mesesConDatos))
+            : sprintf('Ningún mes del rango está sincronizado (%d meses, todos en cero).',
+                      $hist['meses_del_rango']);
+        $hoja->setCellValue('A' . $fila, $leyenda);
+
         $hoja->getColumnDimension('A')->setWidth(20);
         $hoja->freezePane('B2');
 

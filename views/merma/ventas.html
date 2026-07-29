@@ -156,7 +156,7 @@
                         <label for="hist_prod">Producto:</label>
                         <select class="form-control" id="hist_prod">
                             {% for clave, p in histProds %}
-                            <option value="{{ clave }}">{{ p.label }}</option>
+                            <option value="{{ clave }}" {{ clave == 'total' ? 'selected' : '' }}>{{ p.label }}</option>
                             {% endfor %}
                         </select>
                     </div>
