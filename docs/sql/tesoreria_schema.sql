@@ -23,7 +23,10 @@ CREATE TABLE dbo.movimientos_bancarios (
     cargo              DECIMAL(18,2) NULL,               -- signo '-' del TXT
     abono              DECIMAL(18,2) NULL,               -- signo '+' del TXT
     saldo              DECIMAL(18,2) NULL,               -- saldo tras el movimiento
-    referencia         NVARCHAR(20)  NULL,
+    -- 40 y no 20: la Referencia de Banregio llega a 26 y es polimórfica
+    -- (clave de rastreo SPEI, folio de crédito o texto libre). Ampliada el
+    -- 2026-07-30; para bases ya creadas, alter_movimientos_referencia_40.sql.
+    referencia         NVARCHAR(40)  NULL,
     concepto           NVARCHAR(120) NULL,               -- referencia del cliente
     banco_contraparte  NVARCHAR(60)  NULL,               -- solo SPEI/transferencias
     cuenta_contraparte NVARCHAR(30)  NULL,

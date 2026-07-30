@@ -62,42 +62,11 @@
   .mb-tabs .nav-link.active { color: #dc3545; }
   .mb-tabs .nav-link#tab-afirme-btn.active { color: #009559; }
 
-  /* KPI cards: valor global grande + desglose por banco */
-  .mb-kpi {
-    border: 1px solid #e2e8f0; border-radius: .6rem; background: #fff;
-    padding: .7rem .9rem; height: 100%;
-    display: flex; flex-direction: column; gap: .2rem;
-  }
-  .mb-kpi .k-label {
-    font-size: .62rem; font-weight: 700; letter-spacing: .07em;
-    text-transform: uppercase; color: #64748b;
-    display: flex; align-items: center; gap: .4rem;
-  }
-  .mb-kpi .k-value {
-    font-size: 1.2rem; font-weight: 700; line-height: 1.15;
-    font-variant-numeric: tabular-nums; color: #0f172a;
-  }
-  .mb-kpi .k-sub { font-size: .68rem; color: #94a3b8; }
-  .mb-kpi .k-bancos {
-    margin-top: .25rem; padding-top: .35rem; border-top: 1px dashed #e2e8f0;
-    display: flex; flex-direction: column; gap: .12rem;
-  }
-  .mb-kpi .k-banco {
-    display: flex; justify-content: space-between; gap: .5rem;
-    font-size: .7rem; color: #64748b; font-variant-numeric: tabular-nums;
-  }
-  .mb-kpi .k-banco b { font-weight: 600; color: #334155; }
-  .mb-kpi-abonos { border-color: #a7f3d0; background: #f6fefb; }
-  .mb-kpi-abonos .k-label, .mb-kpi-abonos .k-value { color: #009559; }
-  .mb-kpi-cargos { border-color: #fecdd3; background: #fffafb; }
-  .mb-kpi-cargos .k-label, .mb-kpi-cargos .k-value { color: #dc3545; }
-  .mb-kpi-saldo { border-color: #bfdbfe; background: #f8fbff; }
-  .mb-kpi-saldo .k-label, .mb-kpi-saldo .k-value { color: #1d4ed8; }
-
-  /* Panel colapsable de saldos finales */
+  /* Cabeceras colapsables (los tres cards de saldo comparten el patrón) */
   .mb-chevron { transition: transform .2s; color: #94a3b8; }
-  #btnSaldosCollapse:not(.collapsed) .mb-chevron { transform: rotate(180deg); }
-  #btnSaldosCollapse:focus { box-shadow: none; }
+  .mb-collapse-btn:not(.collapsed) .mb-chevron { transform: rotate(180deg); }
+  .mb-collapse-btn:focus { box-shadow: none; }
+  .mb-collapse-btn { text-align: left; }
   .mb-saldos-tabla { font-size: .8rem; margin-bottom: 0; }
   .mb-saldos-tabla th { background: #f8fafc; color: #475569; font-size: .68rem;
                         text-transform: uppercase; letter-spacing: .05em; }
@@ -115,6 +84,93 @@
   .mb-moneda { font-size: .68rem; color: #94a3b8; font-weight: 600; margin-right: .25rem; }
   .mb-linea-usd td { font-weight: 600; }
   .mb-saldos-tabla tr.mb-cuenta-fila td:first-child { padding-left: 1.75rem; }
+
+  /* ===== Tarjetas de resumen de saldo (por banco y por razón social) =====
+     Rejilla que se acomoda sola: 6 bancos caben en una fila, las 20 empresas
+     fluyen en varias. La cifra manda; el resto es contexto. */
+  .mb-resumen {
+    display: grid; gap: .5rem;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+  .mb-rcard {
+    border: 1px solid #e2e8f0; border-left: 3px solid #cbd5e1; border-radius: .5rem;
+    padding: .55rem .7rem; background: #fff; min-width: 0;
+  }
+  .mb-rcard .r-nombre {
+    font-size: .68rem; font-weight: 700; color: #475569; text-transform: uppercase;
+    letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mb-rcard .r-monto {
+    font-size: 1.05rem; font-weight: 700; color: #334155; line-height: 1.25;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .mb-rcard .r-monto .r-div { font-size: .6rem; color: #94a3b8; margin-right: .2rem; font-weight: 600; }
+  .mb-rcard .r-usd { font-size: .82rem; font-weight: 600; color: #0f766e; font-variant-numeric: tabular-nums; }
+  .mb-rcard .r-usd .r-div { color: #5eead4; }
+  .mb-rcard .r-pie { font-size: .66rem; color: #94a3b8; margin-top: .15rem; }
+  /* Desglose por banco de la razón social: renglón por banco, nombre a la
+     izquierda y saldo a la derecha, alineado por la columna de cifras. */
+  .mb-rcard .r-bancos {
+    margin-top: .35rem; padding-top: .3rem; border-top: 1px dashed #e2e8f0;
+    font-size: .68rem; color: #64748b;
+  }
+  .mb-rcard .r-bancos .r-bl {
+    display: flex; justify-content: space-between; gap: .5rem; line-height: 1.45;
+  }
+  .mb-rcard .r-bancos .r-bn {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mb-rcard .r-bancos .r-bs {
+    font-variant-numeric: tabular-nums; white-space: nowrap; color: #475569; font-weight: 600;
+  }
+  .mb-rcard .r-bancos .r-bl.usd .r-bs { color: #0f766e; }
+  .mb-rcard .r-bancos .r-bl.usd .r-div { font-size: .58rem; color: #5eead4; margin-right: .2rem; font-weight: 600; }
+  .mb-rcard.destacada { border-left-color: #1d4ed8; }
+  .mb-rcard.sin-catalogo { border-left-color: #f59e0b; background: #fffbeb; }
+  .mb-rcard.sin-catalogo .r-nombre { color: #b45309; }
+
+  .mb-resumen-total { font-size: .74rem; color: #64748b; font-variant-numeric: tabular-nums; }
+  .mb-resumen-total b { color: #334155; }
+
+  /* Esqueleto mientras llegan los saldos */
+  .mb-rcard.cargando { border-left-color: #e2e8f0; }
+  .mb-rcard.cargando .barra {
+    height: .55rem; border-radius: .3rem; background: #eef2f7; margin-bottom: .4rem;
+    animation: mbPulso 1.1s ease-in-out infinite;
+  }
+  .mb-rcard.cargando .barra.corta { width: 55%; }
+  .mb-rcard.cargando .barra.alta  { height: 1rem; width: 80%; margin-bottom: .25rem; }
+  @keyframes mbPulso { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+
+  /* ===== Modal de subida: zona de carga =====
+     Mismo patrón que el modal de conciliar comprobantes de payment_list
+     (cabecera de color + dropzone punteado), en el azul de este módulo. */
+  .mb-up-header { background: #1d4ed8; color: #fff; }
+  .mb-up-header .modal-title { font-size: 1rem; }
+
+  .mb-dropzone {
+    border: 2px dashed #bfdbfe; border-radius: .75rem; padding: 1.75rem 1rem;
+    text-align: center; background: #f8fbff; cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .mb-dropzone:hover { border-color: #93c5fd; background: #eff6ff; }
+  .mb-dropzone.arrastrando { border-color: #1d4ed8; background: #dbeafe; }
+  .mb-dropzone i { font-size: 2rem; color: #1d4ed8; }
+  .mb-dropzone p { margin: .6rem 0 .15rem; font-weight: 600; color: #1e40af; }
+  .mb-dropzone small { color: #64748b; font-size: .74rem; }
+
+  .mb-archivo-sel {
+    display: flex; align-items: center; gap: .5rem; margin-top: .6rem;
+    padding: .45rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem;
+    background: #f8fafc; font-size: .78rem; color: #334155;
+  }
+  .mb-archivo-sel .nombre { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mb-archivo-sel .peso   { color: #94a3b8; margin-left: auto; white-space: nowrap; }
+  .mb-archivo-sel.invalido { border-color: #fca5a5; background: #fffafb; color: #991b1b; }
+
+  .mb-btn-importar { background: #009559; color: #fff; }
+  .mb-btn-importar:hover:not(:disabled) { background: #007a49; color: #fff; }
+  .mb-btn-importar:disabled { background: #94a3b8; color: #fff; }
 
   /* ===== Resultado de la importación (modal de subida) =====
      Este panel es el momento en que tesorería verifica el archivo contra el
@@ -246,11 +302,56 @@
   </div>
 </div>
 
+{# Resúmenes de SALDO (no de flujo del rango): se llenan con una sola llamada
+   asíncrona a saldos_finales al cargar la página, que también alimenta el
+   panel colapsable de abajo. Siempre separan MXN de USD. #}
+<div class="card mb-3">
+  <div class="card-header p-0 bg-white">
+    <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
+            type="button" data-bs-toggle="collapse" data-bs-target="#bancosCollapse">
+      <span style="color:#334155;">
+        <i class="fas fa-university me-2 text-primary"></i><strong>Saldo por banco</strong>
+        <small class="text-muted">al <span class="mb-corte">{{ filtros.hasta|date('d/m/Y') }}</span></small>
+      </span>
+      <span class="d-flex align-items-center gap-2">
+        <span class="mb-resumen-total" id="resumenTotalBancos"></span>
+        <i class="fas fa-chevron-down mb-chevron"></i>
+      </span>
+    </button>
+  </div>
+  <div class="collapse" id="bancosCollapse">
+    <div class="card-body p-2">
+      <div class="mb-resumen" id="resumenBancos"></div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header p-0 bg-white">
+    <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
+            type="button" data-bs-toggle="collapse" data-bs-target="#empresasCollapse">
+      <span style="color:#334155;">
+        <i class="fas fa-building me-2 text-primary"></i><strong>Saldo por razón social</strong>
+        <small class="text-muted">al <span class="mb-corte">{{ filtros.hasta|date('d/m/Y') }}</span></small>
+      </span>
+      <span class="d-flex align-items-center gap-2">
+        <span class="mb-resumen-total" id="resumenTotal"></span>
+        <i class="fas fa-chevron-down mb-chevron"></i>
+      </span>
+    </button>
+  </div>
+  <div class="collapse" id="empresasCollapse">
+    <div class="card-body p-2">
+      <div class="mb-resumen" id="resumenEmpresas"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Panel colapsable: saldo final de todas las cuentas (carga asíncrona) -->
 <div class="card mb-3">
   <div class="card-header p-0 bg-white">
-    <button class="btn w-100 d-flex justify-content-between align-items-center collapsed" type="button"
-            id="btnSaldosCollapse" data-bs-toggle="collapse" data-bs-target="#saldosCollapse">
+    <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
+            type="button" id="btnSaldosCollapse" data-bs-toggle="collapse" data-bs-target="#saldosCollapse">
       <span style="color:#334155;">
         <i class="fas fa-wallet me-2 text-primary"></i>
         <strong>Saldo final por cuenta</strong>
@@ -281,67 +382,7 @@
   </div>
 </div>
 
-{# El desglose por banco de cada KPI sale del registro BANCOS del controlador:
-   agregar un banco no obliga a tocar esta plantilla. #}
 <div id="mbResultado" style="display:none;">
-<div class="row g-2 mb-3">
-  <div class="col-md">
-    <div class="mb-kpi mb-kpi-abonos">
-      <span class="k-label"><i class="fas fa-arrow-down"></i> Abonos</span>
-      <span class="k-value" id="kpiAbonos">—</span>
-      <div class="k-bancos">
-        {% for cod, b in bancos %}
-        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="abonos" data-banco="{{ cod }}">—</b></span>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-  <div class="col-md">
-    <div class="mb-kpi mb-kpi-cargos">
-      <span class="k-label"><i class="fas fa-arrow-up"></i> Cargos</span>
-      <span class="k-value" id="kpiCargos">—</span>
-      <div class="k-bancos">
-        {% for cod, b in bancos %}
-        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="cargos" data-banco="{{ cod }}">—</b></span>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-  <div class="col-md">
-    <div class="mb-kpi">
-      <span class="k-label"><i class="fas fa-balance-scale"></i> Neto</span>
-      <span class="k-value" id="kpiNeto">—</span>
-      <div class="k-bancos">
-        {% for cod, b in bancos %}
-        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="neto" data-banco="{{ cod }}">—</b></span>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-  <div class="col-md">
-    <div class="mb-kpi mb-kpi-saldo">
-      <span class="k-label"><i class="fas fa-wallet"></i> Saldo final (<span id="kpiSaldoCuenta">todas</span>)</span>
-      <span class="k-value" id="kpiSaldo">—</span>
-      <span class="k-sub" id="kpiSaldoFecha" style="display:none;"></span>
-      <div class="k-bancos">
-        {% for cod, b in bancos %}
-        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="saldo" data-banco="{{ cod }}">—</b></span>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-  <div class="col-md">
-    <div class="mb-kpi">
-      <span class="k-label"><i class="fas fa-list"></i> Movimientos</span>
-      <span class="k-value" id="kpiMovs">—</span>
-      <div class="k-bancos">
-        {% for cod, b in bancos %}
-        <span class="k-banco"><span>{{ b.etiqueta }}</span><b data-kpi="movs" data-banco="{{ cod }}">—</b></span>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- Tabs por banco: tablas independientes -->
 <ul class="nav nav-tabs mb-tabs mb-2">
@@ -391,16 +432,16 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <form id="formUpload">
-        <div class="modal-header">
-          <h5 class="modal-title" id="uploadTitle">Subir movimientos</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        <div class="modal-header mb-up-header">
+          <h5 class="modal-title" id="uploadTitle">
+            <i class="fas fa-file-upload me-1"></i> Subir movimientos
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
-          <p class="text-muted mb-2" id="uploadHint"></p>
-
           {# Solo para los bancos cuyo archivo no trae la cuenta (Bankaool).
              El JS muestra este bloque según el registro BANCOS. #}
-          <div id="uploadCuentaWrap" class="mb-2" style="display:none;">
+          <div id="uploadCuentaWrap" class="mb-3" style="display:none;">
             <label class="form-label form-label-sm mb-1" for="upload_cuenta">
               Cuenta <span class="text-danger">*</span>
               <small class="text-muted">— el archivo de este banco no la incluye</small>
@@ -410,12 +451,22 @@
             <datalist id="uploadCuentaLista"></datalist>
           </div>
 
-          <input type="file" class="form-control" id="archivo_banco" required>
+          {# El input real va oculto y SIN required: un campo required oculto
+             impide que el navegador envíe el formulario. La validación la hace
+             el JS antes de armar el FormData. #}
+          <div id="uploadDropzone" class="mb-dropzone">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>Arrastra el archivo aquí o haz clic para seleccionarlo</p>
+            <small id="uploadHint"></small>
+          </div>
+          <input type="file" id="archivo_banco" style="display:none;">
+          <div id="uploadArchivoSel" class="mb-archivo-sel" style="display:none;"></div>
+
           <div id="uploadResultado" class="mt-3" style="display:none"></div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          <button type="submit" class="btn btn-primary" id="btnUpload">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-sm mb-btn-importar" id="btnUpload">
             <i class="fas fa-file-upload"></i> Importar
           </button>
         </div>
@@ -586,43 +637,6 @@ $(function () {
   function mostrarLoader() { document.getElementById('mbLoader').style.display = 'flex'; }
   function ocultarLoader() { document.getElementById('mbLoader').style.display = 'none'; }
 
-  function signo(v) { return Number(v) < 0 ? 'mb-cargo' : 'mb-abono'; }
-
-  // Pinta el desglose de un KPI en el <b data-kpi=... data-banco=...> de cada
-  // banco. El HTML lo generó Twig desde el mismo registro BANCOS.
-  function pintarDesglose(kpi, valorDe, formato) {
-    $('[data-kpi="' + kpi + '"]').each(function () {
-      var v = valorDe($(this).data('banco'));
-      $(this).text(formato(v)).toggleClass('mb-cargo', kpi === 'neto' && Number(v) < 0);
-    });
-  }
-
-  function pintarKpis(k, filtros) {
-    var t = k.totales, pb = k.porBanco, s = k.saldo;
-    var pesos = function (v) { return '$' + fmtMonto(v || 0); };
-    var enteros = function (v) { return Number(v || 0).toLocaleString('en-US'); };
-
-    $('#kpiAbonos').text(pesos(t.abonos));
-    $('#kpiCargos').text(pesos(t.cargos));
-    $('#kpiNeto').text(pesos(t.neto)).removeClass('mb-cargo mb-abono').addClass(signo(t.neto));
-    $('#kpiMovs').text(enteros(t.movs));
-
-    pintarDesglose('abonos', function (b) { return pb[b] && pb[b].abonos; }, pesos);
-    pintarDesglose('cargos', function (b) { return pb[b] && pb[b].cargos; }, pesos);
-    pintarDesglose('neto',   function (b) { return pb[b] && pb[b].neto;   }, pesos);
-    pintarDesglose('movs',   function (b) { return pb[b] && pb[b].movs;   }, enteros);
-    pintarDesglose('saldo',  function (b) { return s.porBanco[b];         }, pesos);
-
-    $('#kpiSaldoCuenta').text(filtros.cuenta || 'todas');
-    $('#kpiSaldo').text(s.final === null ? '—' : pesos(s.final));
-    // La fecha solo importa si el último movimiento es anterior al corte
-    if (s.fecha && s.fecha !== filtros.hasta) {
-      $('#kpiSaldoFecha').text('último mov: ' + fmtFecha(s.fecha)).show();
-    } else {
-      $('#kpiSaldoFecha').hide();
-    }
-  }
-
   // Deja el scroll al fondo: la última fila es el saldo más reciente
   function scrollAlFondo(sel) {
     var sc = $(sel).closest('.mb-scroll')[0];
@@ -681,8 +695,6 @@ $(function () {
         $('[data-tabcount="' + cod + '"]').text(filas.length);
         scrollAlFondo('#tabla' + cod);
       });
-      pintarKpis(r.kpis, r.filtros);
-
       // Al frente el banco de la cuenta filtrada: si buscas una cuenta de
       // Afirme no tiene caso quedarte viendo la tabla de Santander vacía.
       abrirTab(bancoDelTab());
@@ -713,50 +725,123 @@ $(function () {
     buscarMovimientos();
   });
 
-  // El encabezado del panel de saldos anuncia el corte: seguir a "Hasta"
-  $('#hasta').on('change', function () {
-    $('#saldosCorte').text(fmtFecha(this.value));
-  });
   window.addEventListener('pageshow', function (e) {
     // al volver con el botón "atrás" el navegador puede restaurar la página
     // con el loader visible: ocultarlo
     if (e.persisted) ocultarLoader();
   });
 
-  // ===== Panel colapsable: saldos finales por cuenta (carga asíncrona) =====
-  // El corte lo fija el campo "Hasta". Como los filtros ya no recargan la
-  // página, se recuerda con qué fecha se cargó: si cambió, se vuelve a pedir.
-  var saldosCargados = false;
-  var saldosHasta    = null;
+  // ===== Saldos: una sola llamada alimenta los dos resúmenes y el detalle ==
+  // El corte lo fija el campo "Hasta". Se pide al cargar la página (asíncrono,
+  // el render no espera) y cada vez que cambia el corte.
+  var saldosHasta = null;
 
-  document.getElementById('saldosCollapse').addEventListener('show.bs.collapse', function () {
+  /** Subtotal de una moneda, o null si el grupo no tiene cuentas en ella. */
+  function lineaMoneda(totales, moneda) {
+    var t = totales && totales[moneda];
+    return t ? { n: t.n, saldo: t.saldo } : null;
+  }
+
+  function esqueleto(n) {
+    var h = '';
+    for (var i = 0; i < n; i++) {
+      h += '<div class="mb-rcard cargando"><div class="barra corta"></div>' +
+           '<div class="barra alta"></div><div class="barra corta"></div></div>';
+    }
+    return h;
+  }
+
+  function ctas(n) { return n + (n === 1 ? ' cuenta' : ' cuentas'); }
+
+  /**
+   * Una tarjeta de resumen. La cifra grande es la de pesos, y los dólares van
+   * en una línea aparte. Si no hay cuentas en pesos —Vantage, por ejemplo— la
+   * grande son los dólares: un "MXN 0.00" ahí no significaría nada.
+   * `pie` y `desglose` son opcionales: las tarjetas de banco usan el pie de
+   * texto, las de razón social el desglose por banco.
+   */
+  function tarjetaResumen(nombre, totales, pie, clases, desglose) {
+    var mxn = lineaMoneda(totales, 'MXN');
+    var usd = lineaMoneda(totales, 'USD');
+    var h = '<div class="mb-rcard ' + (clases || '') + '">' +
+            '<div class="r-nombre" title="' + esc(nombre) + '">' + esc(nombre) + '</div>' +
+            '<div class="r-monto"><span class="r-div">' + (mxn ? 'MXN' : 'USD') + '</span>' +
+            fmtMonto(mxn ? mxn.saldo : (usd ? usd.saldo : 0)) + '</div>';
+    if (mxn && usd) h += '<div class="r-usd"><span class="r-div">USD</span>' + fmtMonto(usd.saldo) + '</div>';
+    if (pie) h += '<div class="r-pie">' + pie + '</div>';
+    return h + (desglose || '') + '</div>';
+  }
+
+  /**
+   * Saldo por banco de una razón social: un renglón por banco y moneda, en el
+   * mismo orden que las tarjetas de banco (por el mayor saldo del banco, sea
+   * en la moneda que sea). Sustituye a la lista de nombres de banco sin cifras.
+   */
+  function desgloseBancos(porBanco) {
+    var filas = (porBanco || []).map(function (b) {
+      return ['MXN', 'USD'].map(function (m) {
+        var t = b.totales[m];
+        if (!t) return '';
+        return '<div class="r-bl' + (m === 'USD' ? ' usd' : '') + '">' +
+               '<span class="r-bn" title="' + esc(b.etiqueta) + ' · ' + ctas(t.n) + '">' +
+               esc(b.etiqueta) + '</span>' +
+               '<span class="r-bs">' + (m === 'USD' ? '<span class="r-div">USD</span>' : '') +
+               fmtMonto(t.saldo) + '</span></div>';
+      }).join('');
+    }).join('');
+    return filas ? '<div class="r-bancos">' + filas + '</div>' : '';
+  }
+
+  function pintarResumenes(data) {
+    $('#resumenBancos').html((data.porBanco || []).map(function (b) {
+      return tarjetaResumen(b.etiqueta, b.totales,
+        ctas(b.cuentas) + ' · ' + b.empresas + (b.empresas === 1 ? ' empresa' : ' empresas'), 'destacada');
+    }).join('') || '<div class="text-muted small p-2">Sin saldos al corte</div>');
+
+    $('#resumenEmpresas').html((data.grupos || []).map(function (g) {
+      return tarjetaResumen(g.descripcion, g.totales, '',
+        g.sin_catalogo ? 'sin-catalogo' : '', desgloseBancos(g.porBanco));
+    }).join('') || '<div class="text-muted small p-2">Sin saldos al corte</div>');
+
+    // Los cards vienen contraídos: el total del encabezado es lo único que se
+    // ve sin abrirlos, así que va en los dos.
+    var tm = lineaMoneda(data.totales, 'MXN');
+    var tu = lineaMoneda(data.totales, 'USD');
+    $('#resumenTotal, #resumenTotalBancos').html(
+      (tm ? '<b>$' + fmtMonto(tm.saldo) + '</b> MXN' : '') +
+      (tu ? ' · <b>$' + fmtMonto(tu.saldo) + '</b> USD' : ''));
+  }
+
+  function cargarSaldos() {
     var hasta = $('#hasta').val();
-    if (saldosCargados && saldosHasta === hasta) return;
-    saldosCargados = true;
-    saldosHasta    = hasta;
+    if (saldosHasta === hasta) return;
+    saldosHasta = hasta;
+
+    $('#resumenBancos').html(esqueleto(6));
+    $('#resumenEmpresas').html(esqueleto(8));
+    $('.mb-corte, #saldosCorte').text(fmtFecha(hasta));
 
     var body = document.getElementById('saldosCollapseBody');
     body.innerHTML = '<div class="text-center text-muted py-3">' +
                      '<span class="spinner-border spinner-border-sm"></span> Cargando saldos...</div>';
+
     fetch('/tesoreria/saldos_finales?hasta=' + encodeURIComponent(hasta))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data.success) {
-          body.innerHTML = '<div class="alert alert-danger mb-0">' + (data.message || 'Error al cargar saldos') + '</div>';
+          saldosHasta = null;   // permitir reintentar
+          $('#resumenBancos, #resumenEmpresas').html(
+            '<div class="text-danger small p-2">' + esc(data.message || 'Error al cargar saldos') + '</div>');
+          body.innerHTML = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al cargar saldos') + '</div>';
           return;
         }
+
+        pintarResumenes(data);
+
         var grupos = data.grupos || [];
         if (!grupos.length) {
           body.innerHTML = '<div class="text-center text-muted py-3">Sin saldos registrados al ' + fmtFecha(data.hasta) + '</div>';
           return;
-        }
-
-        // Línea de subtotal/total por moneda. MXN siempre; USD solo si el
-        // grupo tiene cuentas en dólares (nunca se suman divisas distintas).
-        function lineaMoneda(totales, moneda) {
-          var t = totales && totales[moneda];
-          if (!t) return null;
-          return { n: t.n, saldo: t.saldo };
         }
 
         var html = '<div class="mb-saldos-scroll"><table class="table table-sm table-hover mb-saldos-tabla">' +
@@ -814,17 +899,24 @@ $(function () {
 
         // Los grupos arrancan colapsados: al abrir el card se ve la posición
         // por empresa completa en una pantalla.
-        $(body).on('click', '.mb-grupo', function () {
+        $(body).off('click', '.mb-grupo').on('click', '.mb-grupo', function () {
           var gi = $(this).data('grupo');
           var abierto = $(body).find('.mb-grupo[data-grupo="' + gi + '"]').toggleClass('abierto').hasClass('abierto');
           $(body).find('.mb-cuentas-' + gi).toggle(abierto);
         });
       })
       .catch(function () {
-        saldosCargados = false;   // permitir reintentar al volver a abrir
+        saldosHasta = null;   // permitir reintentar
+        $('#resumenBancos, #resumenEmpresas').html(
+          '<div class="text-danger small p-2">Error de conexión al cargar los saldos</div>');
         body.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al cargar los saldos</div>';
       });
-  });
+  }
+
+  // Los saldos son lo primero que interesa: se piden al cargar la página, sin
+  // que el render espere, y se rehacen si cambias el corte.
+  cargarSaldos();
+  $('#hasta').on('change', cargarSaldos);
 
   // ===== Upload de archivos de banco (modal y endpoint compartidos) =====
   var bancoActual = Object.keys(BANCOS)[0];
@@ -837,20 +929,69 @@ $(function () {
   // Cuentas del catálogo que se sugieren cuando el archivo no trae la suya
   var CUENTAS_SUGERIDAS = {{ cuentasSugeridas|json_encode|raw }};
 
+  // El archivo se guarda aquí y no se lee de inputArchivo.files: lo que se
+  // suelta con drag & drop nunca llega al input. Mismo patrón que el modal de
+  // comprobantes de payment_list.
+  var archivoActual = null;
+
+  function fmtPeso(bytes) {
+    return bytes < 1024 * 1024
+      ? (bytes / 1024).toFixed(0) + ' KB'
+      : (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  /** Acepta el archivo si su extensión es de las que espera el banco elegido. */
+  function elegirArchivo(file) {
+    if (!file) return;
+    var cfg = BANCOS[bancoActual];
+    var ext = (file.name.split('.').pop() || '').toLowerCase();
+
+    if (cfg.ext.indexOf(ext) === -1) {
+      archivoActual = null;
+      $('#uploadArchivoSel').addClass('invalido').show().html(
+        '<i class="fas fa-circle-exclamation"></i>' +
+        '<span class="nombre">' + esc(file.name) + '</span>' +
+        '<span class="peso">' + cfg.etiqueta + ' espera .' + cfg.ext.join(' o .') + '</span>');
+      return;
+    }
+
+    archivoActual = file;
+    $('#uploadArchivoSel').removeClass('invalido').show().html(
+      '<i class="fas fa-paperclip text-primary"></i>' +
+      '<span class="nombre">' + esc(file.name) + '</span>' +
+      '<span class="peso">' + fmtPeso(file.size) + '</span>');
+    resultado.style.display = 'none';
+  }
+
+  $('#uploadDropzone').on('click', function () { inputArchivo.click(); });
+  $(inputArchivo).on('change', function () { elegirArchivo(this.files[0]); });
+  $('#uploadDropzone')
+    .on('dragover', function (e) { e.preventDefault(); $(this).addClass('arrastrando'); })
+    .on('dragleave drop', function (e) { e.preventDefault(); $(this).removeClass('arrastrando'); })
+    .on('drop', function (e) {
+      var files = e.originalEvent.dataTransfer.files;
+      if (files && files.length) elegirArchivo(files[0]);
+    });
+
   $('.btn-upload-banco').on('click', function () {
     bancoActual = $(this).data('banco');
     var cfg = BANCOS[bancoActual];
-    document.getElementById('uploadTitle').textContent = 'Subir movimientos de ' + cfg.etiqueta;
+    document.getElementById('uploadTitle').innerHTML =
+      '<i class="fas fa-file-upload me-1"></i> Subir movimientos de ' + esc(cfg.etiqueta);
     document.getElementById('uploadHint').textContent =
-      'Sube ' + cfg.espera + '. Los movimientos ya importados se detectan y se saltan automáticamente.';
+      cfg.espera.charAt(0).toUpperCase() + cfg.espera.slice(1) + ' · .' + cfg.ext.join(' o .');
     inputArchivo.setAttribute('accept', '.' + cfg.ext.join(',.'));
     inputArchivo.value = '';
+    archivoActual = null;
+    $('#uploadArchivoSel').hide().removeClass('invalido').empty();
     resultado.style.display = 'none';
 
     // El campo de cuenta solo existe para los bancos que no la mandan
     var pide = !!cfg.pide_cuenta;
     $('#uploadCuentaWrap').toggle(pide);
-    $('#upload_cuenta').val('').prop('required', pide);
+    // Sin required nativo: lo valida el JS para que el error salga en el panel
+    // del modal y no en un globo del navegador, como el resto de los avisos.
+    $('#upload_cuenta').val('');
     if (pide) {
       $('#uploadCuentaLista').html((CUENTAS_SUGERIDAS[bancoActual] || []).map(function (c) {
         return '<option value="' + esc(c.cuenta) + '">' + esc(c.descripcion) + '</option>';
@@ -889,7 +1030,7 @@ $(function () {
     var tono  = (data.errores && data.errores.length) ? 'error'
               : (data.avisos && data.avisos.length)   ? 'warn' : 'ok';
     var etiqueta = (BANCOS[data.banco] && BANCOS[data.banco].etiqueta) || data.banco || '';
-    var nombre   = inputArchivo.files.length ? inputArchivo.files[0].name : '';
+    var nombre   = archivoActual ? archivoActual.name : '';
 
     var html = '<div class="mb-res mb-res--' + tono + '">';
 
@@ -953,7 +1094,11 @@ $(function () {
 
   form.addEventListener('submit', function (e) {
     e.preventDefault();
-    if (!inputArchivo.files.length) return;
+    if (!archivoActual) {
+      resultado.innerHTML = panelError({ message: 'Elige el archivo que vas a importar' });
+      resultado.style.display = 'block';
+      return;
+    }
 
     var cuenta = $('#upload_cuenta').val().trim();
     if (BANCOS[bancoActual].pide_cuenta && cuenta === '') {
@@ -973,7 +1118,7 @@ $(function () {
     var fd = new FormData();
     fd.append('banco', bancoActual);
     fd.append('cuenta', cuenta);
-    fd.append('archivo', inputArchivo.files[0]);
+    fd.append('archivo', archivoActual);
 
     fetch('/tesoreria/upload_movimientos', { method: 'POST', body: fd })
       .then(function (r) { return r.json(); })

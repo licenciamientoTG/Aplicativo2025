@@ -2540,13 +2540,18 @@ class Payment
             // 1. Agrupar requisiciones del día por empresa
             $group_result = $this->PaymentAccountingGroupsModel->auto_group_by_date($today, $user_id);
 
-            // 2. Obtener pagos pendientes con PDF completo para el correo
-            $pagos = $this->PaymentRequestsModel->get_payments_ready_for_request();
+            // 2. Para el correo se toma lo que quedó agrupado HOY (grupos de contabilidad
+            //    creados hoy), no "todo lo pendiente con PDF completo". Así cada requisición
+            //    se notifica el día en que se cierra, sin dejar huecos: una requisición creada
+            //    días atrás que completa sus PDFs hoy se agrupa hoy y por lo tanto sale hoy.
+            //    Es el mismo criterio que usa resend_today_payments(), para que el reenvío
+            //    mande exactamente lo mismo que el envío original.
+            $pagos = $this->PaymentAccountingGroupsModel->get_payments_by_group_date($today);
 
             if (empty($pagos)) {
                 json_output([
                     'success'        => true,
-                    'message'        => 'Requisiciones agrupadas pero no hay pagos con PDF completo para notificar.' . ($group_result['grupos'] > 0 ? " Se crearon {$group_result['grupos']} grupo(s)." : ''),
+                    'message'        => 'No hay requisiciones agrupadas hoy para notificar.' . ($group_result['grupos'] > 0 ? " Se crearon {$group_result['grupos']} grupo(s)." : ''),
                     'grupos_creados' => $group_result['grupos'] ?? 0
                 ]);
                 return;
@@ -2762,7 +2767,7 @@ class Payment
                 <p style="margin:4px 0 0;font-size:13px;">' . date('d/m/Y H:i') . ' &middot; ' . count($pagos) . ' pago(s) listos para su pago</p>
             </div>
             <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px;">
-                <p style="font-size:14px;">Los siguientes pagos tienen <strong>todas sus facturas con PDF recibido</strong> y están listos para solicitar su pago a Tesorería:</p>
+                <p style="font-size:14px;">Los siguientes pagos se <strong>cerraron hoy en contabilidad</strong> y están listos para solicitar su pago a Tesorería:</p>
                 <table style="width:100%;border-collapse:collapse;font-size:13px;">
                     <thead>
                         <tr style="background:#f1f5f9;">

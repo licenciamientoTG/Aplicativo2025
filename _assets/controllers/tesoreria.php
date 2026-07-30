@@ -72,6 +72,13 @@ class Tesoreria
             'parser'   => 'parse_vantage_xls',
             'entrada'  => 'ruta',
         ],
+        'BANREGIO' => [
+            'etiqueta' => 'Banregio',
+            'ext'      => ['csv'],
+            'espera'   => 'el reporte de movimientos de Banregio',
+            'parser'   => 'parse_banregio_csv',
+            'entrada'  => 'contenido',
+        ],
     ];
 
     /**
@@ -163,8 +170,10 @@ class Tesoreria
     }
 
     /**
-     * POST AJAX: movimientos del rango, ya partidos por banco, más los KPIs
-     * de la cabecera. Una sola consulta alimenta las dos tablas y las tarjetas.
+     * POST AJAX: movimientos del rango, ya partidos por banco.
+     *
+     * Solo devuelve las filas de las tablas: los resúmenes de la cabecera son
+     * de SALDOS, no de flujo del rango, y los sirve saldos_finales().
      */
     public function movimientos_table(): void
     {
@@ -190,34 +199,15 @@ class Tesoreria
 
         // Una tabla independiente por banco: el export a Excel de cada una
         // alimenta el Drive de tesorería, por eso no se mezclan.
-        // porBanco alimenta el desglose de los KPI cards.
         $porTabla = self::por_banco_vacio([]);
-        $totales  = ['abonos' => 0.0, 'cargos' => 0.0, 'movs' => count($movimientos)];
-        $porBanco = self::por_banco_vacio(['abonos' => 0.0, 'cargos' => 0.0, 'movs' => 0]);
-
         foreach ($movimientos as $m) {
-            $totales['abonos'] += (float)($m['abono'] ?? 0);
-            $totales['cargos'] += (float)($m['cargo'] ?? 0);
-            $b = self::banco_de($m['banco']);
-            $porBanco[$b]['abonos'] += (float)($m['abono'] ?? 0);
-            $porBanco[$b]['cargos'] += (float)($m['cargo'] ?? 0);
-            $porBanco[$b]['movs']++;
-            $porTabla[$b][] = $m;
-        }
-        $totales['neto'] = $totales['abonos'] - $totales['cargos'];
-        foreach ($porBanco as $b => $t) {
-            $porBanco[$b]['neto'] = $t['abonos'] - $t['cargos'];
+            $porTabla[self::banco_de($m['banco'])][] = $m;
         }
 
         json_output([
             'success'     => true,
             'filtros'     => $filtros,
             'movimientos' => $porTabla,
-            'kpis'        => [
-                'totales'  => $totales,
-                'porBanco' => $porBanco,
-                'saldo'    => $this->kpi_saldo($filtros),
-            ],
         ]);
     }
 
@@ -246,38 +236,6 @@ class Tesoreria
     }
 
     /**
-     * KPI de saldo al corte de "hasta": el de la cuenta filtrada, o la suma
-     * del último saldo de cada cuenta si se ven todas. saldoBanco es la
-     * posición global por banco, independiente del filtro de cuenta.
-     */
-    private function kpi_saldo(array $filtros): array
-    {
-        $final      = null;
-        $finalFecha = null;
-        $porBanco   = array_map(fn() => 0.0, self::BANCOS);
-        $saldos     = $this->movsModel->get_saldos_finales($filtros['hasta']);
-
-        if ($filtros['cuenta'] !== '') {
-            foreach ($saldos as $s) {
-                if ($s['cuenta'] === $filtros['cuenta']) {
-                    $final      = (float)$s['saldo'];
-                    $finalFecha = substr((string)$s['fecha'], 0, 10);
-                    break;
-                }
-            }
-        } elseif (!empty($saldos)) {
-            $final = 0.0;
-            foreach ($saldos as $s) $final += (float)$s['saldo'];
-        }
-
-        foreach ($saldos as $s) {
-            $porBanco[self::banco_de($s['banco'])] += (float)$s['saldo'];
-        }
-
-        return ['final' => $final, 'fecha' => $finalFecha, 'porBanco' => $porBanco];
-    }
-
-    /**
      * GET AJAX: último saldo de cada cuenta al corte de ?hasta, agrupado por
      * empresa (Descripcion del catálogo de cuentas), para el panel colapsable
      * de saldos finales. Tesorería razona por empresa, no por cuenta suelta.
@@ -302,13 +260,14 @@ class Tesoreria
         foreach ($saldos as $s) $total += (float)$s['saldo'];
 
         json_output([
-            'success' => true,
-            'hasta'   => $hasta,
-            'grupos'  => $this->agrupar_saldos_por_empresa($saldos),
-            'totales' => $this->totalizar_por_moneda($saldos),
+            'success'  => true,
+            'hasta'    => $hasta,
+            'grupos'   => $this->agrupar_saldos_por_empresa($saldos),
+            'porBanco' => $this->resumen_por_banco($saldos),
+            'totales'  => $this->totalizar_por_moneda($saldos),
             // contrato plano anterior, por si otro consumidor lo usa
-            'saldos'  => $saldos,
-            'total'   => $total,
+            'saldos'   => $saldos,
+            'total'    => $total,
         ]);
     }
 
@@ -330,12 +289,26 @@ class Tesoreria
                     'descripcion'  => $key,
                     'sin_catalogo' => $desc === '',
                     'totales'      => [],
+                    'porBanco'     => [],
                     'cuentas'      => [],
                 ];
             }
 
+            $banco  = self::banco_de($s['banco']);
             $moneda = self::moneda($s['divisa'] ?? null);
             $saldo  = (float)$s['saldo'];
+
+            if (!isset($grupos[$key]['porBanco'][$banco])) {
+                $grupos[$key]['porBanco'][$banco] = [
+                    'banco'    => $banco,
+                    'etiqueta' => self::BANCOS[$banco]['etiqueta'],
+                    'totales'  => [],
+                ];
+            }
+            $grupos[$key]['porBanco'][$banco]['totales'][$moneda]['n']
+                = ($grupos[$key]['porBanco'][$banco]['totales'][$moneda]['n'] ?? 0) + 1;
+            $grupos[$key]['porBanco'][$banco]['totales'][$moneda]['saldo']
+                = ($grupos[$key]['porBanco'][$banco]['totales'][$moneda]['saldo'] ?? 0.0) + $saldo;
 
             $grupos[$key]['cuentas'][] = [
                 'cuenta' => trim((string)$s['cuenta']),
@@ -349,8 +322,15 @@ class Tesoreria
             $grupos[$key]['totales'][$moneda]['saldo'] = ($grupos[$key]['totales'][$moneda]['saldo'] ?? 0.0) + $saldo;
         }
 
+        // Mismo criterio que las tarjetas de banco: el mayor saldo del banco,
+        // sea en la moneda que sea, para que un banco solo en dólares no quede
+        // hasta abajo por no tener pesos.
+        $peso = fn($b) => max(array_column($b['totales'], 'saldo') ?: [0]);
+
         foreach ($grupos as &$g) {
             usort($g['cuentas'], fn($a, $b) => $b['saldo'] <=> $a['saldo']);
+            uasort($g['porBanco'], fn($a, $b) => $peso($b) <=> $peso($a));
+            $g['porBanco'] = array_values($g['porBanco']);
         }
         unset($g);
 
@@ -361,6 +341,46 @@ class Tesoreria
         });
 
         return array_values($grupos);
+    }
+
+    /**
+     * Saldo de cada banco, separado por moneda y con cuántas empresas tiene.
+     * Alimenta las tarjetas de "Saldo por banco".
+     *
+     * Se ordena por el saldo de la moneda dominante del propio banco: Vantage
+     * solo tiene cuentas en dólares, y ordenar por MXN lo dejaría al final con
+     * un $0.00 que no significa nada.
+     */
+    private function resumen_por_banco(array $saldos): array
+    {
+        $out = [];
+        foreach ($saldos as $s) {
+            $b = self::banco_de($s['banco']);
+            $m = self::moneda($s['divisa'] ?? null);
+            if (!isset($out[$b])) {
+                $out[$b] = [
+                    'banco'    => $b,
+                    'etiqueta' => self::BANCOS[$b]['etiqueta'],
+                    'totales'  => [],
+                    'empresas' => [],
+                ];
+            }
+            $out[$b]['totales'][$m]['n']     = ($out[$b]['totales'][$m]['n'] ?? 0) + 1;
+            $out[$b]['totales'][$m]['saldo'] = ($out[$b]['totales'][$m]['saldo'] ?? 0.0) + (float)$s['saldo'];
+            $out[$b]['empresas'][trim((string)($s['descripcion'] ?? '')) ?: self::GRUPO_SIN_CATALOGO] = true;
+        }
+
+        foreach ($out as &$b) {
+            $b['empresas'] = count($b['empresas']);
+            $b['cuentas']  = array_sum(array_column($b['totales'], 'n'));
+        }
+        unset($b);
+
+        // el mayor saldo del banco, sea en la moneda que sea
+        $peso = fn($b) => max(array_column($b['totales'], 'saldo') ?: [0]);
+        uasort($out, fn($a, $b) => $peso($b) <=> $peso($a));
+
+        return array_values($out);
     }
 
     /** Totales generales separados por moneda (no se suman divisas distintas). */

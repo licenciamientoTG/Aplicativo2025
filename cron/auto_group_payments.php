@@ -48,12 +48,15 @@ if (!empty($groupResult['errors'])) {
     }
 }
 
-// ─── 2. Obtener pagos con PDF completo ────────────────────────────────────────
-$paymentModel = new PaymentRequestsModel();
-$pagos        = $paymentModel->get_payments_ready_for_request();
+// ─── 2. Obtener los pagos que quedaron agrupados HOY ──────────────────────────
+// Mismo criterio que Payment::send_to_payments(): se notifica lo que se cerró en
+// contabilidad hoy, no "todo lo pendiente con PDF completo". Así una requisición
+// creada días atrás que completa sus PDFs hoy se agrupa hoy y sale en el correo
+// de hoy, en lugar de quedar cerrada sin notificar nunca.
+$pagos = $groupModel->get_payments_by_group_date($today);
 
 if (empty($pagos)) {
-    echo "[" . date('Y-m-d H:i:s') . "] No hay pagos con PDF completo para notificar. Fin.\n";
+    echo "[" . date('Y-m-d H:i:s') . "] No hay requisiciones agrupadas hoy para notificar. Fin.\n";
     exit(0);
 }
 
@@ -67,7 +70,7 @@ if (empty($emails)) {
 }
 
 // ─── 4. Enviar correo ─────────────────────────────────────────────────────────
-$total_general = array_sum(array_map(fn($p) => (float)$p['total_amount'], $pagos));
+$total_general = array_sum(array_map(fn($p) => (float)$p['monto_neto'], $pagos));
 $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
 $body    = generar_html_solicitud_pagos_cron($pagos, $total_general);
 $from    = 'no-reply@totalgas.com';
@@ -96,7 +99,7 @@ function generar_html_solicitud_pagos_cron(array $pagos, float $total_general): 
         $fecha_pago = $p['scheduled_payment_date']
             ? date('d/m/Y', strtotime($p['scheduled_payment_date']))
             : '—';
-        $monto = '$' . number_format((float)$p['total_amount'], 2, '.', ',');
+        $monto = '$' . number_format((float)$p['monto_neto'], 2, '.', ',');
         $filas .= "
         <tr>
             <td style='padding:8px;border:1px solid #e2e8f0;'>#{$p['id']}</td>
@@ -115,7 +118,7 @@ function generar_html_solicitud_pagos_cron(array $pagos, float $total_general): 
             <p style='margin:4px 0 0;font-size:13px;'>$fecha &middot; " . count($pagos) . " pago(s) listos para su pago</p>
         </div>
         <div style='border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px;'>
-            <p style='font-size:14px;'>Los siguientes pagos tienen <strong>todas sus facturas con PDF recibido</strong> y están listos para solicitar su pago a Tesorería:</p>
+            <p style='font-size:14px;'>Los siguientes pagos se <strong>cerraron hoy en contabilidad</strong> y están listos para solicitar su pago a Tesorería:</p>
             <table style='width:100%;border-collapse:collapse;font-size:13px;'>
                 <thead>
                     <tr style='background:#f1f5f9;'>
@@ -124,7 +127,7 @@ function generar_html_solicitud_pagos_cron(array $pagos, float $total_general): 
                         <th style='padding:8px;border:1px solid #e2e8f0;text-align:left;'>Proveedor</th>
                         <th style='padding:8px;border:1px solid #e2e8f0;text-align:center;'>Facturas</th>
                         <th style='padding:8px;border:1px solid #e2e8f0;text-align:center;'>Fecha pago esp.</th>
-                        <th style='padding:8px;border:1px solid #e2e8f0;text-align:right;'>Monto</th>
+                        <th style='padding:8px;border:1px solid #e2e8f0;text-align:right;'>Monto Neto</th>
                     </tr>
                 </thead>
                 <tbody>$filas</tbody>

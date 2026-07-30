@@ -162,9 +162,11 @@
   <div class="flecha">↓ <small>correo "pagos listos"</small></div>
   <div class="caja php"><span class="num">6</span>
     <b>Mandar pagos — <code>send_to_payments()</code></b>
-    <small>Botón (dot verde) que envía por correo la relación de pagos listos del día a los
-    destinatarios de <code>payment_notification_recipients</code>.
-    <code>resend_today_payments()</code> permite reenviar (restringido a un usuario hardcodeado).</small>
+    <small>Botón (dot verde) que agrupa las requisiciones pendientes con PDF completo y envía
+    por correo la relación de las que quedaron <b>agrupadas hoy</b> (grupos de contabilidad
+    creados hoy) a los destinatarios de <code>payment_notification_recipients</code>.
+    <code>resend_today_payments()</code> reenvía esa misma relación sin volver a agrupar
+    (restringido a un usuario hardcodeado).</small>
   </div>
 </div>
 

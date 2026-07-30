@@ -16,6 +16,8 @@
  *   BANKAOOL   .xlsx real que NO trae la cuenta: se captura al subir
  *   VANTAGE    .xls binario (OLE2/BIFF) de verdad, en dólares, en orden
  *              inverso y con la cuenta enmascarada a 4 dígitos
+ *   BANREGIO   CSV real; el más completo: la cabecera trae cuenta, CLABE,
+ *              razón social y RFC, y la descripción trae la contraparte
  */
 class MovimientosBancariosModel extends Model
 {
@@ -769,6 +771,213 @@ class MovimientosBancariosModel extends Model
                 'hasta'         => $fechas ? max($fechas) : null,
                 'pendientes'    => $pendientes,
             ],
+        ];
+    }
+
+    /**
+     * Parsea el reporte de movimientos de Banregio: un CSV de verdad (UTF-8,
+     * separado por comas). Es el archivo más completo de todos los bancos.
+     *
+     * Cabecera (9 líneas, la primera columna vacía):
+     *   CUENTA: 066001530012 · CLABE: 058164660015300120 · razón social ·
+     *   RFC · domicilio · Fecha inicio / Fecha fin
+     * Luego los encabezados y los movimientos:
+     *   Fecha · Descripción · Referencia · Cargo · Abonos · Saldo · Clasificación
+     *
+     * Se parsea con fgetcsv y no partiendo por comas: la razón social de la
+     * cabecera es "DIAZ GAS, S.A. DE C.V." y esa coma interna partiría la
+     * línea en tres campos.
+     *
+     * La descripción de los SPEI trae la contraparte completa, separada por
+     * puntos, y de ahí salen cuatro columnas que ningún otro banco llena
+     * salvo Santander:
+     *   YUWM447 SPEI. BANORTE. 072164006015009472. DIAZ GAS SA DE CV.
+     *   8846APR2202607075509271085. 0000007. TRASPASO ENTRE CUENTAS
+     *   folio         banco     cuenta CLABE       nombre     clave rastreo
+     *
+     * La fila "Saldo Inicial" se salta por el mismo motivo que en Inbursa: no
+     * es un movimiento y con archivos traslapados rompería el orden del que
+     * depende la cadena de saldos.
+     *
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_banregio_csv(string $contenido): array
+    {
+        if (!mb_check_encoding($contenido, 'UTF-8')) {
+            $contenido = mb_convert_encoding($contenido, 'UTF-8', 'Windows-1252');
+        }
+        $contenido = preg_replace('/^\xEF\xBB\xBF/', '', $contenido);
+
+        $fh = fopen('php://memory', 'r+');
+        fwrite($fh, $contenido);
+        rewind($fh);
+        $filas = [];
+        while (($c = fgetcsv($fh, 0, ',')) !== false) $filas[] = $c;
+        fclose($fh);
+
+        // Los encabezados marcan dónde empiezan los datos; lo de arriba es
+        // la cabecera con los datos de la cuenta.
+        $iEnc = null;
+        foreach ($filas as $i => $c) {
+            if (strcasecmp(trim((string)($c[0] ?? '')), 'Fecha') === 0 && in_array('Saldo', $c, true)) {
+                $iEnc = $i;
+                break;
+            }
+        }
+        if ($iEnc === null) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout del reporte de movimientos de Banregio'], 'info' => []];
+        }
+
+        $cabecera = '';
+        foreach (array_slice($filas, 0, $iEnc) as $c) $cabecera .= implode(',', $c) . "\n";
+
+        if (!preg_match('/CUENTA:\s*(\S+)/u', $cabecera, $mc)) {
+            return ['movimientos' => [], 'errores' =>
+                ['No se encontró el número de cuenta en la cabecera'], 'info' => []];
+        }
+        $cuenta = $mc[1];
+        preg_match('/CLABE:\s*(\S+)/u', $cabecera, $mcl);
+
+        // La razón social va en la línea siguiente a la CLABE. Se localiza por
+        // posición y no por "la línea sin etiqueta": la primera de la cabecera
+        // es el título "Saldo", que tampoco lleva etiqueta.
+        // Sus campos se vuelven a unir con coma porque "DIAZ GAS, S.A. DE C.V."
+        // trae una y el CSV la partió.
+        $razon = '';
+        foreach (array_slice($filas, 0, $iEnc) as $j => $c) {
+            $etiqueta = self::limpia((string)($c[1] ?? ''));
+            if (stripos($etiqueta, 'CLABE:') === 0 && isset($filas[$j + 1])) {
+                $razon = self::limpia(implode(', ', array_slice($filas[$j + 1], 1)));
+                break;
+            }
+        }
+
+        $movimientos  = [];
+        $errores      = [];
+        $saldoInicial = null;
+        $importe = fn($v) => (float)str_replace(['$', ',', ' '], '', trim((string)$v));
+
+        foreach (array_slice($filas, $iEnc + 1) as $n => $c) {
+            $linea       = $iEnc + $n + 2;
+            $fechaRaw    = trim((string)($c[0] ?? ''));
+            $descripcion = self::limpia((string)($c[1] ?? ''));
+            if ($fechaRaw === '' && $descripcion === '') continue;
+
+            if (stripos($descripcion, 'Saldo Inicial') !== false) {
+                $saldoInicial = $importe($c[5] ?? 0);
+                continue;
+            }
+            if (!preg_match('#^(\d{2})/(\d{2})/(\d{4})$#', $fechaRaw, $mf)
+                || !checkdate((int)$mf[2], (int)$mf[1], (int)$mf[3])) {
+                $errores[] = "Línea $linea: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $fecha = "$mf[3]-$mf[2]-$mf[1]";
+
+            $cargo = $importe($c[3] ?? 0);
+            $abono = $importe($c[4] ?? 0);
+            $saldo = $importe($c[5] ?? 0);
+            if ($cargo == 0.0 && $abono == 0.0) {
+                $errores[] = "Línea $linea: movimiento sin cargo ni abono ($descripcion)";
+                continue;
+            }
+
+            // El guion bajo es un prefijo del propio archivo, no parte del dato
+            $referencia = ltrim(self::limpia((string)($c[2] ?? '')), '_');
+            $clasific   = self::limpia((string)($c[6] ?? ''));
+
+            $contraparte = self::contraparte_banregio($descripcion);
+
+            $movimientos[] = [
+                'banco'              => 'BANREGIO',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => null,
+                'sucursal'           => null,
+                'clave_trans'        => mb_substr($contraparte['folio'], 0, 10) ?: null,
+                'descripcion'        => mb_substr($descripcion, 0, 150),
+                'cargo'              => $cargo > 0 ? $cargo : null,
+                'abono'              => $abono > 0 ? $abono : null,
+                'saldo'              => $saldo,
+                'referencia'         => mb_substr($referencia, 0, 40),
+                // La Clasificación es la categoría con la que el banco agrupa
+                // el movimiento; sirve para conciliar y no cabe en clave_trans.
+                'concepto'           => mb_substr($clasific, 0, 120),
+                'banco_contraparte'  => mb_substr($contraparte['banco'], 0, 60),
+                'cuenta_contraparte' => mb_substr($contraparte['cuenta'], 0, 30),
+                'nombre_contraparte' => mb_substr($contraparte['nombre'], 0, 60),
+                'rfc_contraparte'    => null,
+                'clave_rastreo'      => mb_substr($contraparte['rastreo'], 0, 40) ?: null,
+                'descripcion_larga'  => null,
+                'huella'             => sha1('BANREGIO|' . implode('|', [
+                    $cuenta, $fecha, $descripcion, $referencia,
+                    sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
+                ])),
+            ];
+        }
+
+        // El archivo viene en orden cronológico y declara el saldo inicial:
+        // se verifica que la cadena cierre para detectar un export incompleto.
+        $rotas = 0;
+        for ($i = 1; $i < count($movimientos); $i++) {
+            $delta = ($movimientos[$i]['abono'] ?? 0) - ($movimientos[$i]['cargo'] ?? 0);
+            if (abs(($movimientos[$i - 1]['saldo'] + $delta) - $movimientos[$i]['saldo']) > 0.011) $rotas++;
+        }
+        $cuadra = null;
+        if ($saldoInicial !== null && $movimientos) {
+            $delta  = ($movimientos[0]['abono'] ?? 0) - ($movimientos[0]['cargo'] ?? 0);
+            if (abs(($saldoInicial + $delta) - $movimientos[0]['saldo']) > 0.011) $rotas++;
+            $cuadra = ($rotas === 0);
+        }
+        if ($rotas > 0) {
+            $errores[] = "La cadena de saldos no cierra en $rotas de " . count($movimientos) . ' movimientos';
+        }
+
+        $fechas = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => $cuenta,
+                'clabe'         => $mcl[1] ?? '',
+                'razon_social'  => $razon,
+                'moneda'        => '',
+                'saldo_inicial' => $saldoInicial,
+                'saldo_final'   => $movimientos ? end($movimientos)['saldo'] : null,
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => $cuadra,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+            ],
+        ];
+    }
+
+    /**
+     * Saca la contraparte de la descripción de Banregio, que en los SPEI trae
+     * los datos separados por puntos. En los movimientos que no son SPEI
+     * (pagos de crédito, cargos) no hay nada que extraer y se devuelve vacío.
+     *
+     * @return array{folio:string,banco:string,cuenta:string,nombre:string,rastreo:string}
+     */
+    private static function contraparte_banregio(string $descripcion): array
+    {
+        $vacio = ['folio' => '', 'banco' => '', 'cuenta' => '', 'nombre' => '', 'rastreo' => ''];
+        if (stripos($descripcion, 'SPEI') === false) return $vacio;
+
+        $p = array_map('trim', explode('.', $descripcion));
+        if (count($p) < 4) return $vacio;
+
+        // El primer segmento es "FOLIO SPEI"; el folio es lo que va antes
+        $folio = trim(preg_replace('/\s*SPEI\s*$/i', '', $p[0]));
+
+        return [
+            'folio'   => preg_match('/^[A-Z0-9]{4,10}$/i', $folio) ? $folio : '',
+            'banco'   => $p[1],
+            'cuenta'  => ctype_digit($p[2]) ? $p[2] : '',
+            'nombre'  => $p[3],
+            'rastreo' => isset($p[4]) && preg_match('/^[A-Z0-9]{10,}$/i', $p[4]) ? $p[4] : '',
         ];
     }
 
