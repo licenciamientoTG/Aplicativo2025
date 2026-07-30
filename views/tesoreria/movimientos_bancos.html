@@ -85,6 +85,27 @@
   .mb-linea-usd td { font-weight: 600; }
   .mb-saldos-tabla tr.mb-cuenta-fila td:first-child { padding-left: 1.75rem; }
 
+  /* Saldo final por grupo: tres niveles plegables (grupo, empresa, cuenta).
+     La sangría y el peso de la tipografía marcan la jerarquía. */
+  .mb-gfila.mb-n1 { cursor: pointer; background: #e2e8f0; }
+  .mb-gfila.mb-n1:hover { background: #cbd5e1; }
+  .mb-gfila.mb-n1 td { font-weight: 700; color: #1e293b; border-top: 1px solid #cbd5e1; }
+  .mb-gfila.mb-n2 { cursor: pointer; background: #f8fafc; }
+  .mb-gfila.mb-n2:hover { background: #f1f5f9; }
+  .mb-gfila.mb-n2 td { font-weight: 600; color: #334155; }
+  .mb-gfila.mb-n2 td:first-child { padding-left: 1.5rem; }
+  .mb-gfila.mb-n3 td:first-child { padding-left: 3rem; }
+  .mb-gfila .g-chevron { transition: transform .2s; color: #94a3b8; margin-right: .4rem; }
+  .mb-gfila.abierto .g-chevron { transform: rotate(90deg); }
+  .mb-gfila.mb-n3 .g-chevron { display: none; }
+
+  /* Columna de dólares: separada de la de pesos por un borde y en otro color,
+     para que no se lean como una sola cifra ni se sumen de vista. */
+  .mb-saldos-tabla .mb-col-usd {
+    border-left: 1px solid #e2e8f0; color: #0f766e;
+  }
+  .mb-saldos-tabla thead th.mb-col-usd { color: #0f766e !important; }
+
   /* ===== Tarjetas de resumen de saldo (por banco y por razón social) =====
      Rejilla que se acomoda sola: 6 bancos caben en una fila, las 20 empresas
      fluyen en varias. La cifra manda; el resto es contexto. */
@@ -302,9 +323,12 @@
   </div>
 </div>
 
-{# Resúmenes de SALDO (no de flujo del rango): se llenan con una sola llamada
-   asíncrona a saldos_finales al cargar la página, que también alimenta el
-   panel colapsable de abajo. Siempre separan MXN de USD. #}
+{# ─────────────────────────────────────────────────────────────────────────
+   DESACTIVADOS a petición del usuario (2026-07-30): los resúmenes en tarjetas
+   por banco y por razón social no se usan por ahora. Se dejan comentados, no
+   borrados, porque el backend los sigue calculando (porBanco / grupos) y
+   volver a encenderlos es quitar este comentario y el de pintarResumenes().
+
 <div class="card mb-3">
   <div class="card-header p-0 bg-white">
     <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
@@ -343,6 +367,37 @@
   <div class="collapse" id="empresasCollapse">
     <div class="card-body p-2">
       <div class="mb-resumen" id="resumenEmpresas"></div>
+    </div>
+  </div>
+</div>
+   ───────────────────────────────────────────────────────────────────────── #}
+
+{# Saldo final por GRUPO: mismo panel que el de por cuenta, con un nivel más
+   arriba (grupo empresarial). Se alimenta de la misma llamada. #}
+<div class="card mb-3">
+  <div class="card-header p-0 bg-white d-flex align-items-center">
+    <button class="btn flex-grow-1 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
+            type="button" data-bs-toggle="collapse" data-bs-target="#gruposCollapse">
+      <span style="color:#334155;">
+        <i class="fas fa-sitemap me-2 text-primary"></i>
+        <strong>Saldo final por grupo</strong>
+        <small class="text-muted">al <span class="mb-corte">{{ filtros.hasta|date('d/m/Y') }}</span></small>
+      </span>
+      <span class="d-flex align-items-center gap-2">
+        <span class="mb-resumen-total" id="gruposTotal"></span>
+        <i class="fas fa-chevron-down mb-chevron"></i>
+      </span>
+    </button>
+    <a class="btn btn-sm btn-success me-2" id="btnExportarGrupos"
+       href="/tesoreria/exportar_saldos_grupo" title="Descargar en Excel">
+      <i class="fas fa-file-excel"></i> Excel
+    </a>
+  </div>
+  <div class="collapse" id="gruposCollapse">
+    <div class="card-body p-2" id="gruposCollapseBody">
+      <div class="text-center text-muted py-3">
+        <span class="spinner-border spinner-border-sm"></span> Cargando saldos...
+      </div>
     </div>
   </div>
 </div>
@@ -793,6 +848,10 @@ $(function () {
   }
 
   function pintarResumenes(data) {
+    /* DESACTIVADO (2026-07-30): las tarjetas por banco y por razón social no
+       se usan por ahora. El backend sigue mandando porBanco y grupos, así que
+       reactivarlas es quitar este comentario y el del HTML.
+
     $('#resumenBancos').html((data.porBanco || []).map(function (b) {
       return tarjetaResumen(b.etiqueta, b.totales,
         ctas(b.cuentas) + ' · ' + b.empresas + (b.empresas === 1 ? ' empresa' : ' empresas'), 'destacada');
@@ -803,13 +862,102 @@ $(function () {
         g.sin_catalogo ? 'sin-catalogo' : '', desgloseBancos(g.porBanco));
     }).join('') || '<div class="text-muted small p-2">Sin saldos al corte</div>');
 
-    // Los cards vienen contraídos: el total del encabezado es lo único que se
-    // ve sin abrirlos, así que va en los dos.
+    $('#resumenTotal, #resumenTotalBancos').html(...);
+    */
+
+    // El card viene contraído: el total del encabezado es lo único que se ve
+    // sin abrirlo.
     var tm = lineaMoneda(data.totales, 'MXN');
     var tu = lineaMoneda(data.totales, 'USD');
-    $('#resumenTotal, #resumenTotalBancos').html(
+    $('#gruposTotal').html(
       (tm ? '<b>$' + fmtMonto(tm.saldo) + '</b> MXN' : '') +
       (tu ? ' · <b>$' + fmtMonto(tu.saldo) + '</b> USD' : ''));
+  }
+
+  /**
+   * Panel "Saldo final por grupo": el mismo detalle que el de por cuenta con
+   * un nivel más arriba. Tres niveles plegables — grupo, empresa y cuenta.
+   *
+   * Los pesos y los dólares van en COLUMNAS separadas, no en renglones: así
+   * cada grupo, empresa o cuenta ocupa una sola línea y las dos monedas se
+   * comparan de un vistazo hacia abajo. Nunca se suman entre sí.
+   */
+  function pintarGrupos(data, body) {
+    var porGrupo = data.porGrupo || [];
+    if (!porGrupo.length) {
+      body.innerHTML = '<div class="text-center text-muted py-3">Sin saldos registrados al ' +
+                       fmtFecha(data.hasta) + '</div>';
+      return;
+    }
+
+    /** Celda de importe; vacía si esa entidad no tiene cuentas en esa moneda. */
+    function celda(totales, moneda) {
+      var t = lineaMoneda(totales, moneda);
+      var clase = 'mb-monto' + (moneda === 'USD' ? ' mb-col-usd' : '');
+      return '<td class="' + clase + '">' + (t ? fmtMonto(t.saldo) : '') + '</td>';
+    }
+
+    /** Un renglón de total, reutilizado en los niveles de grupo y de empresa. */
+    function fila(totales, nivel, id, etiqueta, extra) {
+      var n = (totales.MXN ? totales.MXN.n : 0) + (totales.USD ? totales.USD.n : 0);
+      return '<tr class="mb-gfila mb-n' + nivel + '" data-nivel="' + nivel + '" data-id="' + id + '">' +
+             '<td colspan="2"><i class="fas fa-chevron-right g-chevron"></i>' + etiqueta + (extra || '') + '</td>' +
+             '<td class="g-ctas">' + ctas(n) + '</td>' +
+             celda(totales, 'MXN') + celda(totales, 'USD') + '</tr>';
+    }
+
+    var html = '<div class="mb-saldos-scroll"><table class="table table-sm table-hover mb-saldos-tabla">' +
+               '<thead><tr><th>Grupo / Empresa / Cuenta</th><th>Banco</th><th>Último movimiento</th>' +
+               '<th class="text-end">Saldo MXN</th><th class="text-end mb-col-usd">Saldo USD</th>' +
+               '</tr></thead><tbody>';
+
+    porGrupo.forEach(function (g, gi) {
+      html += fila(g.totales, 1, 'g' + gi, '<strong>' + esc(g.grupo) + '</strong>',
+                   ' <span class="g-ctas">' + g.empresas.length +
+                   (g.empresas.length === 1 ? ' empresa' : ' empresas') + '</span>');
+
+      g.empresas.forEach(function (e, ei) {
+        var idE = 'g' + gi + 'e' + ei;
+        html += fila(e.totales, 2, idE, esc(e.descripcion) +
+                     (e.sin_catalogo ? ' <i class="fas fa-exclamation-triangle text-warning"></i>' : ''))
+                .replace(/class="mb-gfila mb-n2/g, 'class="mb-gfila mb-n2 hijo-g' + gi);
+
+        e.cuentas.forEach(function (c) {
+          var viejo = c.fecha !== data.hasta;
+          // Una cuenta tiene una sola moneda: su saldo va en la columna que le
+          // toca y la otra queda vacía.
+          var unaMoneda = {};
+          unaMoneda[c.moneda] = { n: 1, saldo: c.saldo };
+          html += '<tr class="mb-gfila mb-n3 hijo-' + idE + '" style="display:none;">' +
+                  '<td class="mb-cuenta">' + c.cuenta + '</td>' +
+                  '<td>' + (c.banco || '') + '</td>' +
+                  '<td class="' + (viejo ? 'text-warning' : 'text-muted') + '">' + fmtFecha(c.fecha) +
+                  (viejo ? ' <i class="fas fa-exclamation-triangle" title="Sin movimientos al corte: saldo de un día anterior"></i>' : '') +
+                  '</td>' + celda(unaMoneda, 'MXN') + celda(unaMoneda, 'USD') + '</tr>';
+        });
+      });
+    });
+
+    var tm = lineaMoneda(data.totales, 'MXN');
+    var tu = lineaMoneda(data.totales, 'USD');
+    html += '</tbody><tfoot><tr><td colspan="2">TOTAL</td>' +
+            '<td class="g-ctas">' + ctas((tm ? tm.n : 0) + (tu ? tu.n : 0)) + '</td>' +
+            celda(data.totales, 'MXN') + celda(data.totales, 'USD') + '</tr>';
+    body.innerHTML = html + '</tfoot></table></div>';
+
+    // Las empresas arrancan ocultas; al cerrar un grupo se cierra todo lo suyo
+    $(body).find('.mb-n2').hide();
+    $(body).off('click', '.mb-gfila').on('click', '.mb-gfila', function () {
+      var nivel = $(this).data('nivel');
+      if (!nivel || nivel === 3) return;
+      var id = $(this).data('id');
+      var abierto = $(body).find('[data-id="' + id + '"]').toggleClass('abierto').hasClass('abierto');
+      $(body).find('.hijo-' + id).toggle(abierto);
+      if (!abierto) {
+        // cerrar el grupo esconde también las cuentas de sus empresas
+        $(body).find('[class*="hijo-' + id + '"]').hide().removeClass('abierto');
+      }
+    });
   }
 
   function cargarSaldos() {
@@ -817,26 +965,31 @@ $(function () {
     if (saldosHasta === hasta) return;
     saldosHasta = hasta;
 
-    $('#resumenBancos').html(esqueleto(6));
-    $('#resumenEmpresas').html(esqueleto(8));
     $('.mb-corte, #saldosCorte').text(fmtFecha(hasta));
+    // El export lleva el mismo corte que se está viendo
+    $('#btnExportarGrupos').attr('href',
+      '/tesoreria/exportar_saldos_grupo?hasta=' + encodeURIComponent(hasta));
 
-    var body = document.getElementById('saldosCollapseBody');
-    body.innerHTML = '<div class="text-center text-muted py-3">' +
-                     '<span class="spinner-border spinner-border-sm"></span> Cargando saldos...</div>';
+    var cargando = '<div class="text-center text-muted py-3">' +
+                   '<span class="spinner-border spinner-border-sm"></span> Cargando saldos...</div>';
+    var body     = document.getElementById('saldosCollapseBody');
+    var bodyGr   = document.getElementById('gruposCollapseBody');
+    body.innerHTML = cargando;
+    bodyGr.innerHTML = cargando;
 
     fetch('/tesoreria/saldos_finales?hasta=' + encodeURIComponent(hasta))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data.success) {
           saldosHasta = null;   // permitir reintentar
-          $('#resumenBancos, #resumenEmpresas').html(
-            '<div class="text-danger small p-2">' + esc(data.message || 'Error al cargar saldos') + '</div>');
-          body.innerHTML = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al cargar saldos') + '</div>';
+          var err = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al cargar saldos') + '</div>';
+          body.innerHTML = err;
+          bodyGr.innerHTML = err;
           return;
         }
 
         pintarResumenes(data);
+        pintarGrupos(data, bodyGr);
 
         var grupos = data.grupos || [];
         if (!grupos.length) {
@@ -907,9 +1060,9 @@ $(function () {
       })
       .catch(function () {
         saldosHasta = null;   // permitir reintentar
-        $('#resumenBancos, #resumenEmpresas').html(
-          '<div class="text-danger small p-2">Error de conexión al cargar los saldos</div>');
-        body.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al cargar los saldos</div>';
+        var err = '<div class="alert alert-danger mb-0">Error de conexión al cargar los saldos</div>';
+        body.innerHTML = err;
+        bodyGr.innerHTML = err;
       });
   }
 

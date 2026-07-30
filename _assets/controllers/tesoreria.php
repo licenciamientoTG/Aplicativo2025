@@ -20,6 +20,32 @@ class Tesoreria
     private const GRUPO_SIN_CATALOGO = 'SIN CATÁLOGO';
 
     /**
+     * Grupos empresariales para el panel "Saldo final por grupo": a qué grupo
+     * pertenece cada razón social, por coincidencia de texto en su
+     * Descripcion del catálogo. Lo que no empate cae en OTRAS.
+     *
+     * El orden importa: se toma el primer grupo que empate.
+     */
+    private const GRUPOS_EMPRESA = [
+        'ALIANZA COMERCIAL' => ['GASOMEX', 'GASO MEX', 'CLARA', 'JARUDO'],
+        'SMA'               => ['VENTANAS', 'PICACHOS'],
+        // "DIAZ GAS" y no "DIAZ" a secas: INMO DIAZ es otra empresa y va en OTRAS
+        'DIAZ GAS'          => ['DIAZ GAS'],
+    ];
+
+    /** Grupo al que pertenece una razón social. */
+    private static function grupo_de(string $descripcion): string
+    {
+        $d = mb_strtoupper($descripcion);
+        foreach (self::GRUPOS_EMPRESA as $grupo => $claves) {
+            foreach ($claves as $clave) {
+                if (mb_strpos($d, $clave) !== false) return $grupo;
+            }
+        }
+        return 'OTRAS';
+    }
+
+    /**
      * Bancos soportados. Agregar uno nuevo es una entrada aquí más su parser
      * en MovimientosBancariosModel; el endpoint de importación, los KPI por
      * banco y los tabs de la vista salen de este registro.
@@ -266,10 +292,13 @@ class Tesoreria
         $total  = 0.0;
         foreach ($saldos as $s) $total += (float)$s['saldo'];
 
+        $grupos = $this->agrupar_saldos_por_empresa($saldos);
+
         json_output([
             'success'  => true,
             'hasta'    => $hasta,
-            'grupos'   => $this->agrupar_saldos_por_empresa($saldos),
+            'grupos'   => $grupos,
+            'porGrupo' => $this->agrupar_por_grupo_empresarial($grupos),
             'porBanco' => $this->resumen_por_banco($saldos),
             'totales'  => $this->totalizar_por_moneda($saldos),
             // contrato plano anterior, por si otro consumidor lo usa
@@ -348,6 +377,129 @@ class Tesoreria
         });
 
         return array_values($grupos);
+    }
+
+    /**
+     * GET: descarga el saldo por grupo en .xlsx, una fila por empresa con sus
+     * subtotales de grupo. Sirve para pegarlo en el Drive de tesorería.
+     */
+    public function exportar_saldos_grupo(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            (new Errors())->get404();
+            return;
+        }
+        $hasta = $_GET['hasta'] ?? '';
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) $hasta = date('Y-m-d');
+
+        $libro  = $this->libro_saldos_grupo($hasta);
+        $nombre = 'saldo_por_grupo_' . $hasta . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $nombre . '"');
+        header('Cache-Control: max-age=0');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($libro))->save('php://output');
+        exit;
+    }
+
+    /**
+     * Arma el libro del saldo por grupo. Separado del endpoint para poder
+     * generarlo y revisarlo sin la descarga (headers + exit) de por medio.
+     */
+    private function libro_saldos_grupo(string $hasta): \PhpOffice\PhpSpreadsheet\Spreadsheet
+    {
+        $porGrupo = $this->agrupar_por_grupo_empresarial(
+            $this->agrupar_saldos_por_empresa($this->movsModel->get_saldos_finales($hasta))
+        );
+
+        $libro = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $hoja  = $libro->getActiveSheet();
+        $hoja->setTitle('Saldo por grupo');
+
+        $hoja->fromArray(['Saldo final por grupo al ' . date('d/m/Y', strtotime($hasta))], null, 'A1');
+        $hoja->mergeCells('A1:E1');
+        $hoja->getStyle('A1')->getFont()->setBold(true)->setSize(12);
+
+        $hoja->fromArray(['Grupo', 'Empresa', 'Cuentas', 'MXN', 'USD'], null, 'A3');
+        $hoja->getStyle('A3:E3')->getFont()->setBold(true);
+        $hoja->getStyle('A3:E3')->getFill()
+             ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+             ->getStartColor()->setRGB('E2E8F0');
+
+        $fila  = 4;
+        $tMxn  = 0.0; $tUsd = 0.0; $tCtas = 0;
+
+        foreach ($porGrupo as $g) {
+            foreach ($g['empresas'] as $e) {
+                $n = ($e['totales']['MXN']['n'] ?? 0) + ($e['totales']['USD']['n'] ?? 0);
+                $hoja->fromArray([
+                    $g['grupo'],
+                    $e['descripcion'],
+                    $n,
+                    $e['totales']['MXN']['saldo'] ?? null,
+                    $e['totales']['USD']['saldo'] ?? null,
+                ], null, 'A' . $fila);
+                $fila++;
+            }
+
+            $nG = ($g['totales']['MXN']['n'] ?? 0) + ($g['totales']['USD']['n'] ?? 0);
+            $hoja->fromArray([
+                '', 'Total ' . $g['grupo'], $nG,
+                $g['totales']['MXN']['saldo'] ?? null,
+                $g['totales']['USD']['saldo'] ?? null,
+            ], null, 'A' . $fila);
+            $hoja->getStyle("A$fila:E$fila")->getFont()->setBold(true);
+            $hoja->getStyle("A$fila:E$fila")->getFill()
+                 ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                 ->getStartColor()->setRGB('F1F5F9');
+            $fila += 2;   // renglón en blanco entre grupos
+
+            $tMxn  += $g['totales']['MXN']['saldo'] ?? 0;
+            $tUsd  += $g['totales']['USD']['saldo'] ?? 0;
+            $tCtas += $nG;
+        }
+
+        $hoja->fromArray(['', 'TOTAL GENERAL', $tCtas, $tMxn, $tUsd], null, 'A' . $fila);
+        $hoja->getStyle("A$fila:E$fila")->getFont()->setBold(true)->setSize(11);
+        $hoja->getStyle("A$fila:E$fila")->getBorders()->getTop()
+             ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE);
+
+        $hoja->getStyle('D4:E' . $fila)->getNumberFormat()->setFormatCode('#,##0.00');
+        $hoja->getStyle('C4:C' . $fila)->getAlignment()->setHorizontal('center');
+        foreach (range('A', 'E') as $col) $hoja->getColumnDimension($col)->setAutoSize(true);
+        $hoja->freezePane('A4');
+
+        return $libro;
+    }
+
+    /**
+     * Mete las empresas ya agrupadas en su grupo empresarial, conservando el
+     * detalle de cuentas de cada una. Alimenta el panel "Saldo final por
+     * grupo" y su export a Excel.
+     *
+     * Los grupos salen en el orden de GRUPOS_EMPRESA y OTRAS siempre al final;
+     * dentro de cada uno las empresas van por saldo MXN descendente, que es el
+     * orden con el que ya llegan.
+     */
+    private function agrupar_por_grupo_empresarial(array $porEmpresa): array
+    {
+        $out = [];
+        foreach (array_keys(self::GRUPOS_EMPRESA) as $g) {
+            $out[$g] = ['grupo' => $g, 'totales' => [], 'empresas' => []];
+        }
+        $out['OTRAS'] = ['grupo' => 'OTRAS', 'totales' => [], 'empresas' => []];
+
+        foreach ($porEmpresa as $e) {
+            $g = self::grupo_de($e['descripcion']);
+            $out[$g]['empresas'][] = $e;
+            foreach ($e['totales'] as $moneda => $t) {
+                $out[$g]['totales'][$moneda]['n']     = ($out[$g]['totales'][$moneda]['n'] ?? 0) + $t['n'];
+                $out[$g]['totales'][$moneda]['saldo'] = ($out[$g]['totales'][$moneda]['saldo'] ?? 0.0) + $t['saldo'];
+            }
+        }
+
+        // Un grupo sin empresas no se muestra
+        return array_values(array_filter($out, fn($g) => !empty($g['empresas'])));
     }
 
     /**
