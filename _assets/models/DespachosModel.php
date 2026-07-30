@@ -276,6 +276,16 @@ class DespachosModel extends Model{
     }
 
     /**
+     * @param $nrotrn
+     * @param $codgas
+     * @return bool
+     * @throws Exception
+     */
+    function unmark_dispatch_as_jarreo($nrotrn, $codgas) : bool {
+        return $this->mark_dispatch_as_jarreo($nrotrn, $codgas, 0);
+    }
+
+    /**
      * @param $codgas
      * @param $tabDate
      * @return array|false

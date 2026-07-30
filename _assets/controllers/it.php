@@ -605,7 +605,7 @@ class It{
         if ($despachos = $this->despachosModel->get_dispatches_to_mark_jarreo($_GET['codgas'], dateToInt($_GET['fecha']))) {
             foreach ($despachos as $despacho) {
                 $data[] = array(
-                    'SELECT'    => '<input type="checkbox" class="jarreo-checkbox" value="' . (int)$despacho['nrotrn'] . '">',
+                    'SELECT'    => '<input type="checkbox" class="jarreo-checkbox" value="' . (int)$despacho['nrotrn'] . '" data-tiptrn="' . (int)$despacho['tiptrn'] . '">',
                     'DESPACHO'  => $despacho['nrotrn'],
                     'TIPO'      => match(true) {
                         in_array((int)$despacho['tiptrn'], [65, 74], true) => 'Jarreo',
@@ -650,6 +650,30 @@ class It{
             json_output(["status" => "OK", "message" => "¡Se marcaron {$marcados} despacho(s) como jarreo correctamente!"]);
         } else {
             json_output(["status" => "ERROR", "message" => "¡Los despachos no pudieron ser marcados como jarreo!"]);
+        }
+    }
+
+    /**
+     * @return void
+     * @throws Exception
+     */
+    public function unmark_jarreo_dispatches() : void {
+        if (!isset($_POST['codgas'], $_POST['nrotrn']) || !is_array($_POST['nrotrn']) || empty($_POST['nrotrn'])) {
+            json_output(["status" => "ERROR", "message" => "¡No se recibieron los datos necesarios!"]);
+            return;
+        }
+
+        $desmarcados = 0;
+        foreach ($_POST['nrotrn'] as $nrotrn) {
+            if ($this->despachosModel->unmark_dispatch_as_jarreo($nrotrn, $_POST['codgas'])) {
+                $desmarcados++;
+            }
+        }
+
+        if ($desmarcados > 0) {
+            json_output(["status" => "OK", "message" => "¡Se desmarcaron {$desmarcados} despacho(s) de jarreo y se pasaron a contado correctamente!"]);
+        } else {
+            json_output(["status" => "ERROR", "message" => "¡Los despachos no pudieron ser desmarcados de jarreo!"]);
         }
     }
 
