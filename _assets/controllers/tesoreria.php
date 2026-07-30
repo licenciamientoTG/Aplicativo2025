@@ -79,6 +79,13 @@ class Tesoreria
             'parser'   => 'parse_banregio_csv',
             'entrada'  => 'contenido',
         ],
+        'MIFEL' => [
+            'etiqueta' => 'Mifel',
+            'ext'      => ['csv'],
+            'espera'   => 'el reporte de movimientos de Mifel Empresas',
+            'parser'   => 'parse_mifel_csv',
+            'entrada'  => 'contenido',
+        ],
     ];
 
     /**

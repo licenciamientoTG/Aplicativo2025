@@ -18,6 +18,8 @@
  *              inverso y con la cuenta enmascarada a 4 dígitos
  *   BANREGIO   CSV real; el más completo: la cabecera trae cuenta, CLABE,
  *              razón social y RFC, y la descripción trae la contraparte
+ *   MIFEL      CSV con BOM, en orden inverso y con pie legal después de los
+ *              datos; la cabecera declara el saldo final para cuadrar
  */
 class MovimientosBancariosModel extends Model
 {
@@ -948,6 +950,176 @@ class MovimientosBancariosModel extends Model
                 'cargos'        => array_sum(array_column($movimientos, 'cargo')),
                 'abonos'        => array_sum(array_column($movimientos, 'abono')),
                 'cuadra'        => $cuadra,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+            ],
+        ];
+    }
+
+    /**
+     * Parsea el reporte de movimientos de Mifel: un CSV con BOM UTF-8.
+     *
+     *   1  Mifel Empresas | Reporte de movimientos: Cuenta 01600408972
+     *   4  Saldo total (MXN):,$33758.32     (y disponible / retenido / tránsito)
+     *   9  Fecha · Descripción · Folio · Referencia · Cargo (MXN) · Abono (MXN)
+     *      · Saldo total (MXN) · RFC · IVA(MXN) · Cheque
+     *   10..N  movimientos
+     *   N+2..  pie legal del banco
+     *
+     * Particularidades:
+     *
+     *  - Es el único archivo con contenido DESPUÉS de los datos (tres líneas
+     *    de pie legal), así que se corta en la primera fila cuyo primer campo
+     *    no sea una fecha.
+     *  - Viene del movimiento MÁS RECIENTE al más viejo, como BBVA y Vantage:
+     *    las filas se invierten para que el id de BD quede en el orden real de
+     *    aplicación al saldo.
+     *  - Referencia, RFC, IVA y Cheque vienen con los rellenos "-" y
+     *    "No aplica"; se tratan como vacío en vez de guardarlos literalmente.
+     *    El identificador real del movimiento es el Folio.
+     *  - La cabecera declara el saldo total, que debe coincidir con el del
+     *    último movimiento: es una verificación cruzada contra el banco que
+     *    ningún otro export ofrece tan directa.
+     *
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_mifel_csv(string $contenido): array
+    {
+        if (!mb_check_encoding($contenido, 'UTF-8')) {
+            $contenido = mb_convert_encoding($contenido, 'UTF-8', 'Windows-1252');
+        }
+        $contenido = preg_replace('/^\xEF\xBB\xBF/', '', $contenido);
+
+        $fh = fopen('php://memory', 'r+');
+        fwrite($fh, $contenido);
+        rewind($fh);
+        $filas = [];
+        while (($c = fgetcsv($fh, 0, ',')) !== false) $filas[] = $c;
+        fclose($fh);
+
+        $iEnc = null;
+        foreach ($filas as $i => $c) {
+            if (strcasecmp(trim((string)($c[0] ?? '')), 'Fecha') === 0
+                && stripos(implode(',', $c), 'Saldo') !== false) {
+                $iEnc = $i;
+                break;
+            }
+        }
+        if ($iEnc === null) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout del reporte de movimientos de Mifel'], 'info' => []];
+        }
+
+        $cabecera = '';
+        foreach (array_slice($filas, 0, $iEnc) as $c) $cabecera .= implode(',', $c) . "\n";
+
+        if (!preg_match('/Cuenta\s+(\S+)/u', $cabecera, $mc)) {
+            return ['movimientos' => [], 'errores' =>
+                ['No se encontró el número de cuenta en la cabecera'], 'info' => []];
+        }
+        $cuenta = $mc[1];
+
+        $importe    = fn($v) => (float)str_replace(['$', ',', ' '], '', trim((string)$v));
+        // "-" y "No aplica" son rellenos del propio reporte, no datos
+        $dato       = function ($v) {
+            $v = self::limpia((string)$v);
+            return ($v === '' || $v === '-' || strcasecmp($v, 'No aplica') === 0) ? '' : $v;
+        };
+        $saldoDeclarado = preg_match('/Saldo total \(MXN\):,\$?\s*([\d.,]+)/u', $cabecera, $ms)
+                        ? $importe($ms[1]) : null;
+
+        $movimientos = [];
+        $errores     = [];
+
+        foreach (array_slice($filas, $iEnc + 1) as $n => $c) {
+            $fechaRaw = trim((string)($c[0] ?? ''));
+            // El pie legal del banco va después de los movimientos: en cuanto
+            // una fila no empieza con fecha, se acabaron los datos.
+            if (!preg_match('#^(\d{2})/(\d{2})/(\d{4})$#', $fechaRaw, $mf)) break;
+            if (!checkdate((int)$mf[2], (int)$mf[1], (int)$mf[3])) {
+                $errores[] = 'Línea ' . ($iEnc + $n + 2) . ": fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $fecha = "$mf[3]-$mf[2]-$mf[1]";
+
+            $cargo = $importe($c[4] ?? 0);
+            $abono = $importe($c[5] ?? 0);
+            $saldo = $importe($c[6] ?? 0);
+            $descripcion = self::limpia((string)($c[1] ?? ''));
+            if ($cargo == 0.0 && $abono == 0.0) {
+                $errores[] = 'Línea ' . ($iEnc + $n + 2) . ": movimiento sin cargo ni abono ($descripcion)";
+                continue;
+            }
+
+            $folio = $dato($c[2] ?? '');
+            $rfc   = $dato($c[7] ?? '');
+
+            $movimientos[] = [
+                'banco'              => 'MIFEL',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => null,
+                'sucursal'           => null,
+                'clave_trans'        => null,
+                'descripcion'        => mb_substr($descripcion, 0, 150),
+                'cargo'              => $cargo > 0 ? $cargo : null,
+                'abono'              => $abono > 0 ? $abono : null,
+                'saldo'              => $saldo,
+                // El Folio es el identificador real; la columna Referencia
+                // siempre trae "-".
+                'referencia'         => mb_substr($folio, 0, 40),
+                'concepto'           => null,
+                'banco_contraparte'  => '',
+                'cuenta_contraparte' => '',
+                'nombre_contraparte' => '',
+                'rfc_contraparte'    => $rfc !== '' ? mb_substr($rfc, 0, 15) : null,
+                'clave_rastreo'      => null,
+                'descripcion_larga'  => null,
+                'huella'             => sha1('MIFEL|' . implode('|', [
+                    $cuenta, $fecha, $descripcion, $folio,
+                    sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
+                ])),
+            ];
+        }
+
+        // Del más reciente al más viejo -> orden cronológico
+        $movimientos = array_reverse($movimientos);
+
+        $rotas = 0;
+        for ($i = 1; $i < count($movimientos); $i++) {
+            $delta = ($movimientos[$i]['abono'] ?? 0) - ($movimientos[$i]['cargo'] ?? 0);
+            if (abs(($movimientos[$i - 1]['saldo'] + $delta) - $movimientos[$i]['saldo']) > 0.011) $rotas++;
+        }
+        if ($rotas > 0) {
+            $errores[] = "La cadena de saldos no cierra en $rotas de "
+                       . (count($movimientos) - 1) . ' movimientos';
+        }
+
+        // El saldo que declara la cabecera debe ser el del último movimiento
+        $saldoFinal = $movimientos ? end($movimientos)['saldo'] : null;
+        $coincide   = null;
+        if ($saldoDeclarado !== null && $saldoFinal !== null) {
+            $coincide = abs($saldoDeclarado - $saldoFinal) < 0.01;
+            if (!$coincide) {
+                $errores[] = sprintf(
+                    'El saldo del último movimiento (%s) no coincide con el saldo total que declara el archivo (%s)',
+                    number_format($saldoFinal, 2), number_format($saldoDeclarado, 2));
+            }
+        }
+
+        $fechas = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => $cuenta,
+                'razon_social'  => '',
+                'moneda'        => '',
+                'saldo_inicial' => null,   // Mifel declara el final, no el inicial
+                'saldo_final'   => $saldoFinal,
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => $movimientos ? ($rotas === 0 && $coincide !== false) : null,
                 'desde'         => $fechas ? min($fechas) : null,
                 'hasta'         => $fechas ? max($fechas) : null,
             ],
