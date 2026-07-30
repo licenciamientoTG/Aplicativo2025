@@ -674,8 +674,15 @@ function toggleSelectAllJarreo() {
 }
 
 function updateBtnMarcarJarreo() {
-    const totalChecked = $('.jarreo-checkbox:checked').length;
+    const checked = $('.jarreo-checkbox:checked');
+    const totalChecked = checked.length;
     $('#btnMarcarJarreo').prop('disabled', totalChecked === 0);
+
+    const allJarreo = totalChecked > 0 && checked.toArray().every(function (el) {
+        const tiptrn = parseInt($(el).data('tiptrn'), 10);
+        return tiptrn === 65 || tiptrn === 74;
+    });
+    $('#btnDesmarcarJarreo').prop('disabled', !allJarreo);
 
     const totalCheckboxes = $('.jarreo-checkbox').length;
     $('#selectAllJarreo').prop('checked', totalCheckboxes > 0 && totalCheckboxes === totalChecked);
@@ -742,7 +749,67 @@ function marcar_jarreo_seleccionados() {
     });
 }
 
+function desmarcar_jarreo_seleccionados() {
+    const codgas = $('#datatables_mark_jarreo').data('codgas');
+    const nrotrn = $('.jarreo-checkbox:checked').map(function () {
+        return $(this).val();
+    }).get();
 
+    if (nrotrn.length === 0) {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Favor de seleccionar al menos un despacho.</p>
+            </div>`
+        );
+        return;
+    }
+
+    $('.table-responsive').addClass('loading');
+    $.ajax({
+        url: '/it/unmark_jarreo_dispatches',
+        method: 'POST',
+        data: {
+            'codgas': codgas,
+            'nrotrn': nrotrn
+        },
+        dataType: 'json',
+        success: function(data) {
+            $('.table-responsive').removeClass('loading');
+            if (data.status === 'OK') {
+                datatables_mark_jarreo.clear().draw();
+                datatables_mark_jarreo.ajax.reload();
+                $('#datatables_mark_jarreo').waitMe('hide');
+                $('#btnMarcarJarreo').prop('disabled', true);
+                $('#btnDesmarcarJarreo').prop('disabled', true);
+                $('#selectAllJarreo').prop('checked', false);
+                alertify.myAlert(
+                    `<div class="container text-center text-success">
+                        <h4 class="mt-2 text-success">¡Éxito!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">${data.message}</p>
+                    </div>`
+                );
+            } else {
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">${data.message}</p>
+                    </div>`
+                );
+            }
+        },
+        error: function(xhr, textStatus, errorThrown) {
+            $('.table-responsive').removeClass('loading');
+            console.error('AJAX error:', errorThrown);
+        }
+    });
+}
 
 // Asignar o remover permiso a un usuario
 function assignPermission(checkbox) {
