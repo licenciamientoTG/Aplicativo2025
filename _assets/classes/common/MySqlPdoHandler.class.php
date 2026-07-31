@@ -48,6 +48,24 @@ class MySqlPdoHandler{
 	}
 
 	/**
+	 * PDO convierte los floats de PHP a string al hacer bind; para valores
+	 * como 0.07 esa conversión puede salir en notación científica
+	 * (ej. "7.0000000000000007E-2"), que SQL Server no puede convertir a
+	 * money/decimal. Se formatean a notación decimal plana antes del bind.
+	 */
+	private function normalizeFloatParams($params) {
+		if (empty($params)) {
+			return $params;
+		}
+		foreach ($params as $key => $param) {
+			if (is_float($param)) {
+				$params[$key] = rtrim(rtrim(sprintf('%.6F', $param), '0'), '.');
+			}
+		}
+		return $params;
+	}
+
+	/**
 	 * Termina la ejecución con un mensaje genérico y status 500, para los
 	 * métodos que históricamente hacían die() ante un error de BD.
 	 */
@@ -101,7 +119,7 @@ class MySqlPdoHandler{
 		if(stristr($query,"select") && !empty($this->_connection)) {
 			try{
 				$stmt = $this->_connection->prepare($query);
-				$stmt->execute($params);
+				$stmt->execute($this->normalizeFloatParams($params));
 				$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 				$stmt->closeCursor();	//Release database resources before issuing next call
 			} catch(Exception $e) {
@@ -129,40 +147,12 @@ class MySqlPdoHandler{
 		$records = array();
 		try {
 			$stmt = $this->_connection->prepare($query);
-			$stmt->execute($params);
+			$stmt->execute($this->normalizeFloatParams($params));
 			$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 			$stmt->closeCursor();
 		} catch (Exception $e) {
 			error_log('selectSafe error: ' . $e->getMessage());
 			return false;
-		}
-		return $records;
-	}
-
-	public function select2($query, $params=NULL) {
-		$records=array();
-		//Make sure query contains the word "select" and connection is valid
-		try{
-			$stmt = $this->_connection->prepare($query);
-			$stmt->execute($params);
-			$i=0;
-			echo '<pre>';
-			var_dump($stmt->fetch(PDO::FETCH_COLUMN, 0));
-			die();
-			while($row = $stmt->fetch(PDO::FETCH_COLUMN, 0)) {
-				$records[$i++] = $row;	//Put row into array
-			}
-			$stmt->closeCursor();	//Release database resources before issuing next call
-		} catch(Exception $e) {
-			$errorMessage = 'Error en la consulta: ' . $e->getMessage();
-			$errorMessage .= "\nQuery: " . $query; // Agrega la consulta al mensaje de error
-			$errorMessage .= "\nParams: " . print_r($params, true); // Agrega los parámetros al mensaje de error
-
-			echo $errorMessage; // Muestra el mensaje de error en pantalla
-			echo '<pre>';
-			var_dump($errorMessage);
-			die();
-			throw new Exception("Error en la base de datos", 1);
 		}
 		return $records;
 	}
@@ -176,7 +166,7 @@ class MySqlPdoHandler{
 		if(stristr($query,"update") && !empty($this->_connection) && !empty($params)) {
 			try{
 				$stmt = $this->_connection->prepare($query);
-				$status=$stmt->execute($params);
+				$status=$stmt->execute($this->normalizeFloatParams($params));
 				//$rowsAffected = $stmt->rowCount();
 				$stmt->closeCursor();	//Release database resources before issuing next call
 				if($status)
@@ -198,7 +188,7 @@ class MySqlPdoHandler{
 		if(stristr($query,"insert") && !empty($this->_connection)) {
 			try{
 				$stmt = $this->_connection->prepare($query);
-				$status = !empty($params) ? $stmt->execute($params) : $stmt->execute();
+				$status = !empty($params) ? $stmt->execute($this->normalizeFloatParams($params)) : $stmt->execute();
 				$pk=$this->_connection->lastInsertId();
 				$stmt->closeCursor();	//Release database resources before issuing next call
 				if(is_numeric($pk) && $pk>0)
@@ -227,7 +217,7 @@ class MySqlPdoHandler{
 		if(stristr($query,"delete") && !empty($this->_connection) && !empty($params)) {
 			try{
 				$stmt = $this->_connection->prepare($query);
-				$status=$stmt->execute($params);
+				$status=$stmt->execute($this->normalizeFloatParams($params));
 				$stmt->closeCursor();	//Release database resources before issuing next call
 				if($status)
 					return true;
@@ -255,7 +245,7 @@ class MySqlPdoHandler{
 				$stmt = $this->_connection->prepare($query);
 				// Asociar los parámetros al statement
 				$i = 1;
-				foreach ($params as $param) {
+				foreach ($this->normalizeFloatParams($params) as $param) {
 					$stmt->bindValue($i++, $param);
 				}
 
@@ -285,7 +275,7 @@ class MySqlPdoHandler{
 		if(!empty($query) && !empty($this->_connection)) {
 			try{
 				$stmt = $this->_connection->prepare($query);
-				$status=$stmt->execute($params);
+				$status=$stmt->execute($this->normalizeFloatParams($params));
 				$stmt->closeCursor();	//Release database resources before issuing next call
 				if($status)
 					return true;
@@ -306,7 +296,7 @@ class MySqlPdoHandler{
         if (!empty($this->_connection)) {
             try {
                 $stmt = $this->_connection->prepare($query);
-                $stmt->execute($params ?: []);
+                $stmt->execute($this->normalizeFloatParams($params) ?: []);
                 do {
                     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     $results[] = $rows ?: false;
