@@ -52,10 +52,16 @@ class Tesoreria
      *
      * entrada: 'contenido' pasa el archivo leído al parser, 'ruta' pasa el
      * path (PhpSpreadsheet necesita abrir el .xlsx desde disco).
+     *
+     * color: identidad de cada banco, para teñir su tab, su botón de subida y
+     * la cabecera de su modal. Los tomados de la marca vienen anotados; los
+     * tres sin identidad publicada se eligieron para que se distingan entre sí
+     * y de los dos rojos (Santander y Banorte).
      */
     private const BANCOS = [
         'SANTANDER' => [
             'etiqueta' => 'Santander',
+            'color'    => '#EA1D25',   // rojo Santander, oficial desde 2018
             'ext'      => ['txt'],
             'espera'   => 'el TXT de Enlace Santander',
             'parser'   => 'parse_santander_txt',
@@ -63,6 +69,7 @@ class Tesoreria
         ],
         'AFIRME' => [
             'etiqueta' => 'Afirme',
+            'color'    => '#009D29',   // verde del logo
             'ext'      => ['xls', 'txt', 'tsv', 'csv'],
             'espera'   => 'el export de movimientos de Afirme',
             'parser'   => 'parse_afirme_tsv',
@@ -70,6 +77,7 @@ class Tesoreria
         ],
         'INBURSA' => [
             'etiqueta' => 'Inbursa',
+            'color'    => '#10284A',   // azul oscuro del logo
             'ext'      => ['xlsx'],
             'espera'   => 'el Estado de Cuenta Individual de Inbursa',
             'parser'   => 'parse_inbursa_xlsx',
@@ -77,6 +85,7 @@ class Tesoreria
         ],
         'BBVA' => [
             'etiqueta' => 'BBVA',
+            'color'    => '#004481',   // Core Blue del manual de identidad
             'ext'      => ['xls'],
             'espera'   => 'el reporte de movimientos de BBVA',
             'parser'   => 'parse_bbva_xml',
@@ -84,6 +93,7 @@ class Tesoreria
         ],
         'BANKAOOL' => [
             'etiqueta' => 'Bankaool',
+            'color'    => '#0F766E',   // sin identidad publicada: teal elegido para distinguirlo
             'ext'      => ['xlsx'],
             'espera'   => 'el export de movimientos de Bankaool',
             'parser'   => 'parse_bankaool_xlsx',
@@ -93,6 +103,7 @@ class Tesoreria
         ],
         'VANTAGE' => [
             'etiqueta' => 'Vantage',
+            'color'    => '#7E22CE',   // su paleta nueva es morados y rojos
             'ext'      => ['xls'],
             'espera'   => 'el AccountHistory de Vantage Bank',
             'parser'   => 'parse_vantage_xls',
@@ -100,6 +111,9 @@ class Tesoreria
         ],
         'BANREGIO' => [
             'etiqueta' => 'Banregio',
+            // naranja de su rebranding (hex exacto no publicado); tono oscuro
+            // para que el texto se lea sobre blanco: el naranja vivo daba 2.8:1
+            'color'    => '#EA580C',
             'ext'      => ['csv'],
             'espera'   => 'el reporte de movimientos de Banregio',
             'parser'   => 'parse_banregio_csv',
@@ -107,6 +121,7 @@ class Tesoreria
         ],
         'MIFEL' => [
             'etiqueta' => 'Mifel',
+            'color'    => '#124679',   // azul del logo
             'ext'      => ['csv'],
             'espera'   => 'el reporte de movimientos de Mifel Empresas',
             'parser'   => 'parse_mifel_csv',
@@ -116,6 +131,7 @@ class Tesoreria
         // cuentas del mismo banco con su propio layout.
         'BANORTE_CHEQUES' => [
             'etiqueta' => 'Cheques Banorte',
+            'color'    => '#EF2945',   // rojo Banorte
             'ext'      => ['csv'],
             'espera'   => 'el CSV de Cuentas de Cheques de Banorte',
             'parser'   => 'parse_banorte_cheques_csv',

@@ -2480,17 +2480,28 @@ function addSelectedInvoices() {
 function addFilteredDataToPayment(dataToAdd) {
   let addedCount = 0;
   let skippedCount = 0;
+  const skippedFolios = [];
 
   dataToAdd.forEach((rowData) => {
     // Verificar UUID
     if (!rowData.satuid) {
       skippedCount++;
+      skippedFolios.push(rowData.nro);
+      console.warn(
+        `Folio ${rowData.nro} (estación ${rowData.codgas} - ${rowData.gasolinera}) omitido: no tiene UUID del SAT.`,
+        rowData,
+      );
       return;
     }
 
-    // Verificar si ya existe
-    const exists = paymentItems.some((item) => item.nro === rowData.nro);
-    if (!exists) {
+    // Verificar si ya existe (mismo folio, factura y estación — el folio solo se repite entre estaciones)
+    const existing = paymentItems.find(
+      (item) =>
+        item.nro === rowData.nro &&
+        item.Factura === rowData.Factura &&
+        item.codgas === rowData.codgas,
+    );
+    if (!existing) {
       // Establecer proveedor si es el primero
       if (paymentItems.length === 0) {
         currentProvider = rowData.proveedor;
@@ -2499,6 +2510,12 @@ function addFilteredDataToPayment(dataToAdd) {
       addedCount++;
     } else {
       skippedCount++;
+      skippedFolios.push(rowData.nro);
+      console.warn(
+        `Folio ${rowData.nro} (estación ${rowData.codgas} - ${rowData.gasolinera}) omitido: ` +
+          `ya hay en el pago un documento con el mismo folio (estación ${existing.codgas} - ${existing.gasolinera}, factura ${existing.Factura}).`,
+        { seleccionado: rowData, yaEnElPago: existing },
+      );
     }
   });
 
@@ -2507,12 +2524,16 @@ function addFilteredDataToPayment(dataToAdd) {
 
   if (addedCount > 0) {
     let message = `✓ Se agregaron ${addedCount} documento(s) al pago.`;
-    if (skippedCount > 0) {
-      message += ` (${skippedCount} omitidos)`;
-    }
     alertify.success(message);
-  } else if (skippedCount > 0) {
-    alertify.warning("No se agregaron documentos nuevos.");
+  }
+  if (skippedCount > 0) {
+    alertify.warning(
+      `Se omitieron ${skippedCount} folio(s): ${skippedFolios.join(", ")}.<br>` +
+        `<small>Revisa la consola del navegador (F12) para ver el motivo de cada uno.</small>`,
+    );
+    if (addedCount === 0) {
+      alertify.warning("No se agregaron documentos nuevos.");
+    }
   }
 }
 

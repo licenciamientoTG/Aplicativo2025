@@ -57,10 +57,36 @@
   .mb-movs tr > :last-child { border-right: none; }
 
   /* Tabs por banco (una tabla independiente por banco: su export a Excel
-     alimenta el Drive de tesorería, no se mezclan) */
-  .mb-tabs .nav-link { color: #64748b; font-weight: 600; font-size: .85rem; }
-  .mb-tabs .nav-link.active { color: #dc3545; }
-  .mb-tabs .nav-link#tab-afirme-btn.active { color: #009559; }
+     alimenta el Drive de tesorería, no se mezclan).
+
+     Cada banco lleva su color de marca —definido en el registro BANCOS del
+     controlador— en el punto del tab, el tab activo y su botón de subida. El
+     punto se ve siempre, para reconocer el banco sin tener que activarlo. */
+  .mb-tabs .nav-link {
+    color: #64748b; font-weight: 600; font-size: .85rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  .mb-tabs .nav-link .mb-punto {
+    width: .55rem; height: .55rem; border-radius: 50%;
+    background: var(--mb-banco, #cbd5e1); flex: none;
+    opacity: .45; transition: opacity .15s;
+  }
+  .mb-tabs .nav-link:hover .mb-punto { opacity: .8; }
+  .mb-tabs .nav-link.active { color: var(--mb-banco, #334155); }
+  .mb-tabs .nav-link.active .mb-punto { opacity: 1; }
+  .mb-tabs .nav-link.active { border-bottom: 2px solid var(--mb-banco, transparent); }
+
+  /* Botones de subida: contorno en el color del banco, relleno al pasar */
+  .btn-upload-banco {
+    border: 1px solid var(--mb-banco, #cbd5e1);
+    color: var(--mb-banco, #475569);
+    background: #fff; font-weight: 600;
+    transition: background .15s, color .15s;
+  }
+  .btn-upload-banco:hover, .btn-upload-banco:focus {
+    background: var(--mb-banco, #475569); color: #fff;
+    border-color: var(--mb-banco, #475569);
+  }
 
   /* Cabeceras colapsables (los tres cards de saldo comparten el patrón) */
   .mb-chevron { transition: transform .2s; color: #94a3b8; }
@@ -166,7 +192,9 @@
   /* ===== Modal de subida: zona de carga =====
      Mismo patrón que el modal de conciliar comprobantes de payment_list
      (cabecera de color + dropzone punteado), en el azul de este módulo. */
-  .mb-up-header { background: #1d4ed8; color: #fff; }
+  /* La cabecera del modal toma el color del banco que se está subiendo, para
+     que no quede duda de a cuál va el archivo. El JS fija --mb-banco al abrir. */
+  .mb-up-header { background: var(--mb-banco, #1d4ed8); color: #fff; }
   .mb-up-header .modal-title { font-size: 1rem; }
 
   .mb-dropzone {
@@ -264,6 +292,13 @@
   }
   #mbLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
   #mbLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
+
+  /* Color de marca de cada banco, salido del registro BANCOS del controlador:
+     agregar un banco no obliga a tocar el CSS. */
+  {% for cod, b in bancos %}
+  .mb-tabs .nav-link[data-bs-target="#tab{{ cod }}"],
+  .btn-upload-banco[data-banco="{{ cod }}"] { --mb-banco: {{ b.color }}; }
+  {% endfor %}
 </style>
 {% endblock %}
 
@@ -445,7 +480,7 @@
   <li class="nav-item">
     <button class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
             data-bs-target="#tab{{ cod }}" type="button">
-      <i class="fas fa-university me-1"></i> {{ b.etiqueta }} (<span data-tabcount="{{ cod }}">0</span>)
+      <span class="mb-punto"></span>{{ b.etiqueta }} (<span data-tabcount="{{ cod }}">0</span>)
     </button>
   </li>
   {% endfor %}
@@ -1133,6 +1168,10 @@ $(function () {
       '<i class="fas fa-file-upload me-1"></i> Subir movimientos de ' + esc(cfg.etiqueta);
     document.getElementById('uploadHint').textContent =
       cfg.espera.charAt(0).toUpperCase() + cfg.espera.slice(1) + ' · .' + cfg.ext.join(' o .');
+    // La cabecera y el dropzone toman el color del banco: al abrir el modal se
+    // ve de inmediato a cuál se está subiendo el archivo.
+    $('#uploadModal .modal-content').css('--mb-banco', cfg.color || '#1d4ed8');
+
     inputArchivo.setAttribute('accept', '.' + cfg.ext.join(',.'));
     inputArchivo.value = '';
     archivoActual = null;
