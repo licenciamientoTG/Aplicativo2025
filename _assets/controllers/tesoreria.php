@@ -112,6 +112,15 @@ class Tesoreria
             'parser'   => 'parse_mifel_csv',
             'entrada'  => 'contenido',
         ],
+        // "Cheques Banorte" y no solo "Banorte": más adelante entran otras
+        // cuentas del mismo banco con su propio layout.
+        'BANORTE_CHEQUES' => [
+            'etiqueta' => 'Cheques Banorte',
+            'ext'      => ['csv'],
+            'espera'   => 'el CSV de Cuentas de Cheques de Banorte',
+            'parser'   => 'parse_banorte_cheques_csv',
+            'entrada'  => 'contenido',
+        ],
     ];
 
     /**

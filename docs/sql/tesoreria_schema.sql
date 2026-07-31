@@ -33,7 +33,10 @@ CREATE TABLE dbo.movimientos_bancarios (
     nombre_contraparte NVARCHAR(60)  NULL,
     rfc_contraparte    NVARCHAR(15)  NULL,
     clave_rastreo      NVARCHAR(40)  NULL,
-    descripcion_larga  NVARCHAR(150) NULL,
+    -- 400 y no 150: la DESCRIPCIÓN DETALLADA de Banorte llega a 304 y de ella
+    -- se extrae la contraparte de los SPEI (ampliada el 2026-07-30; para bases
+    -- ya creadas, alter_movimientos_descripcion_larga_400.sql).
+    descripcion_larga  NVARCHAR(400) NULL,
     huella             CHAR(40)      NOT NULL,           -- SHA1 de campos crudos (dedup)
     secuencia          INT           NULL,               -- No. Secuencia de Afirme (orden de aplicación); NULL en Santander
     archivo_origen     NVARCHAR(120) NULL,

@@ -20,6 +20,8 @@
  *              razón social y RFC, y la descripción trae la contraparte
  *   MIFEL      CSV con BOM, en orden inverso y con pie legal después de los
  *              datos; la cabecera declara el saldo final para cuadrar
+ *   BANORTE_CHEQUES  CSV de Cuentas de Cheques; trae folio consecutivo del
+ *              banco y la contraparte dentro de la descripción detallada
  */
 class MovimientosBancariosModel extends Model
 {
@@ -1124,6 +1126,207 @@ class MovimientosBancariosModel extends Model
                 'hasta'         => $fechas ? max($fechas) : null,
             ],
         ];
+    }
+
+    /**
+     * Parsea el CSV "Cuentas de Cheques" de Banorte: BOM UTF-8, todo
+     * entrecomillado, 13 columnas y una sola cuenta por archivo.
+     *
+     *   CUENTA · FECHA DE OPERACIÓN · FECHA · REFERENCIA · DESCRIPCIÓN ·
+     *   COD. TRANSAC · SUCURSAL · DEPÓSITOS · RETIROS · SALDO · MOVIMIENTO ·
+     *   DESCRIPCIÓN DETALLADA · CHEQUE
+     *
+     * Particularidades:
+     *
+     *  - La cuenta viene con un apóstrofo delante ('0601500947): es el truco
+     *    de Excel para forzar texto, no parte del dato.
+     *  - MOVIMIENTO es el folio del banco, consecutivo y sin huecos: entra a
+     *    la huella y sirve para detectar movimientos faltantes.
+     *  - Las dos fechas son la misma en todo el archivo; se usa FECHA.
+     *  - DESCRIPCIÓN DETALLADA llega a 304 caracteres y trae la contraparte
+     *    de los SPEI, que se extrae a sus columnas. Por eso descripcion_larga
+     *    se amplió a 400.
+     *
+     * Se llama "Cheques Banorte" porque más adelante entran otras cuentas del
+     * mismo banco con otro layout.
+     *
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_banorte_cheques_csv(string $contenido): array
+    {
+        if (!mb_check_encoding($contenido, 'UTF-8')) {
+            $contenido = mb_convert_encoding($contenido, 'UTF-8', 'Windows-1252');
+        }
+        $contenido = preg_replace('/^\xEF\xBB\xBF/', '', $contenido);
+
+        $fh = fopen('php://memory', 'r+');
+        fwrite($fh, $contenido);
+        rewind($fh);
+        $filas = [];
+        while (($c = fgetcsv($fh, 0, ',')) !== false) $filas[] = $c;
+        fclose($fh);
+
+        $enc = array_map(fn($x) => self::limpia(mb_strtoupper((string)$x)), $filas[0] ?? []);
+        if (($enc[0] ?? '') !== 'CUENTA' || !in_array('DEPÓSITOS', $enc, true)
+            || !in_array('RETIROS', $enc, true) || !in_array('MOVIMIENTO', $enc, true)) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout de Cuentas de Cheques de Banorte'], 'info' => []];
+        }
+
+        $movimientos = [];
+        $errores     = [];
+        $cuentas     = [];
+        // '-' es el vacío de este export
+        $dato    = function ($v) { $v = self::limpia((string)$v); return $v === '-' ? '' : $v; };
+        $importe = function ($v) {
+            $v = str_replace(['$', ',', ' '], '', trim((string)$v));
+            return ($v === '-' || $v === '') ? 0.0 : (float)$v;
+        };
+
+        foreach (array_slice($filas, 1) as $n => $c) {
+            $linea = $n + 2;
+            if (count($c) < 12) continue;
+
+            $cuenta = ltrim(self::limpia((string)$c[0]), "'");
+            $fechaRaw = self::limpia((string)$c[2]);
+            if ($cuenta === '' && $fechaRaw === '') continue;
+
+            if (!preg_match('#^(\d{2})/(\d{2})/(\d{4})$#', $fechaRaw, $mf)
+                || !checkdate((int)$mf[2], (int)$mf[1], (int)$mf[3])) {
+                $errores[] = "Línea $linea: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $fecha = "$mf[3]-$mf[2]-$mf[1]";
+
+            $deposito = $importe($c[7] ?? 0);
+            $retiro   = $importe($c[8] ?? 0);
+            $saldo    = $importe($c[9] ?? 0);
+            $desc     = self::limpia((string)($c[4] ?? ''));
+            if ($deposito == 0.0 && $retiro == 0.0) {
+                $errores[] = "Línea $linea: movimiento sin depósito ni retiro ($desc)";
+                continue;
+            }
+
+            $detalle = self::limpia((string)($c[11] ?? ''));
+            $cp      = self::contraparte_banorte($detalle);
+            $folio   = $dato($c[10] ?? '');
+            $cuentas[$cuenta] = true;
+
+            $movimientos[] = [
+                'banco'              => 'BANORTE_CHEQUES',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => $cp['hora'] !== '' ? $cp['hora'] : null,
+                'sucursal'           => mb_substr($dato($c[6] ?? ''), 0, 10) ?: null,
+                'clave_trans'        => mb_substr($dato($c[5] ?? ''), 0, 10) ?: null,
+                'descripcion'        => mb_substr($desc, 0, 150),
+                'cargo'              => $retiro   > 0 ? $retiro   : null,
+                'abono'              => $deposito > 0 ? $deposito : null,
+                'saldo'              => $saldo,
+                'referencia'         => mb_substr($dato($c[3] ?? ''), 0, 40),
+                'concepto'           => mb_substr($cp['concepto'], 0, 120) ?: null,
+                'banco_contraparte'  => mb_substr($cp['banco'], 0, 60),
+                'cuenta_contraparte' => mb_substr($cp['cuenta'], 0, 30),
+                'nombre_contraparte' => mb_substr($cp['nombre'], 0, 60),
+                'rfc_contraparte'    => $cp['rfc'] !== '' ? mb_substr($cp['rfc'], 0, 15) : null,
+                'clave_rastreo'      => $cp['rastreo'] !== '' ? mb_substr($cp['rastreo'], 0, 40) : null,
+                'descripcion_larga'  => mb_substr($detalle, 0, 400) ?: null,
+                // El folio del banco entra a la huella: es único por cuenta y
+                // hace imposible que dos movimientos iguales se confundan.
+                'huella'             => sha1('BANORTE_CHEQUES|' . implode('|', [
+                    $cuenta, $fecha, $folio, $desc,
+                    sprintf('%.2f', $deposito), sprintf('%.2f', $retiro), sprintf('%.2f', $saldo),
+                ])),
+                'secuencia'          => is_numeric($folio) ? (int)$folio : null,
+            ];
+        }
+
+        $rotas = 0;
+        for ($i = 1; $i < count($movimientos); $i++) {
+            $delta = ($movimientos[$i]['abono'] ?? 0) - ($movimientos[$i]['cargo'] ?? 0);
+            if (abs(($movimientos[$i - 1]['saldo'] + $delta) - $movimientos[$i]['saldo']) > 0.011) $rotas++;
+        }
+        if ($rotas > 0) {
+            $errores[] = "La cadena de saldos no cierra en $rotas de "
+                       . (count($movimientos) - 1) . ' movimientos';
+        }
+
+        // El folio del banco es consecutivo: un hueco significa que al export
+        // le faltan movimientos del rango.
+        $folios = array_filter(array_column($movimientos, 'secuencia'), fn($v) => $v !== null);
+        $huecos = 0;
+        if (count($folios) > 1) {
+            $huecos = (max($folios) - min($folios) + 1) - count($folios);
+            if ($huecos > 0) {
+                $errores[] = "Faltan $huecos movimientos en la numeración del banco (folios "
+                           . min($folios) . ' a ' . max($folios) . ')';
+            }
+        }
+
+        $fechas = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => implode(', ', array_keys($cuentas)),
+                'razon_social'  => '',
+                'moneda'        => '',
+                // El export no lo declara: se deduce del primer movimiento
+                'saldo_inicial' => $movimientos
+                    ? $movimientos[0]['saldo'] - ($movimientos[0]['abono'] ?? 0) + ($movimientos[0]['cargo'] ?? 0)
+                    : null,
+                'saldo_final'   => $movimientos ? end($movimientos)['saldo'] : null,
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => $movimientos ? ($rotas === 0 && $huecos === 0) : null,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+                'folios'        => $folios ? min($folios) . '-' . max($folios) : '',
+            ],
+        ];
+    }
+
+    /**
+     * Extrae la contraparte de la DESCRIPCIÓN DETALLADA de Banorte, que usa
+     * dos formatos según la dirección del SPEI:
+     *
+     *  enviado:  =REFERENCIA CTA/CLABE: <clabe>, BEM SPEI, BCO:<n> BENEF:<nombre>
+     *            (DATO NO VERIFICADO...), <concepto>, CVE RASTREO: <clave>
+     *            RFC: <rfc>, IVA: <n> <BANCO> HORA LIQ: <hh:mm:ss>
+     *  recibido: SPEI RECIBIDO, BCO:<n> <BANCO> HR LIQ: <hh:mm:ss>, DEL CLIENTE
+     *            <nombre>, DE LA CLABE <clabe> CON RFC <rfc>, CONCEPTO: <texto>,
+     *            REFERENCIA: <n> CVE RAST: <clave>
+     *
+     * Lo que no sea un SPEI (comisiones, pagos, traspasos) no trae nada que
+     * extraer y devuelve todo vacío.
+     *
+     * @return array{banco:string,cuenta:string,nombre:string,rfc:string,rastreo:string,concepto:string,hora:string}
+     */
+    private static function contraparte_banorte(string $detalle): array
+    {
+        $r = ['banco'=>'', 'cuenta'=>'', 'nombre'=>'', 'rfc'=>'', 'rastreo'=>'', 'concepto'=>'', 'hora'=>''];
+        if ($detalle === '') return $r;
+
+        $tomar = function (string $re) use ($detalle) {
+            return preg_match($re, $detalle, $m) ? trim($m[1]) : '';
+        };
+
+        // CLABE de la contraparte, en cualquiera de las dos redacciones
+        $r['cuenta']  = $tomar('#(?:CTA/CLABE:|DE LA CLABE|A LA CLABE)\s*(\d{10,18})#u');
+        $r['rastreo'] = $tomar('#CVE\s*RAST(?:REO)?:?\s*([A-Z0-9]{10,})#u');
+        $r['rfc']     = $tomar('#RFC:?\s*([A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{0,3})#u');
+        $r['concepto'] = $tomar('#CONCEPTO:\s*([^,]+)#u');
+        $r['hora']    = $tomar('#H(?:ORA|R)\s*LIQ:\s*(\d{2}:\d{2})#u');
+
+        // Enviado: el beneficiario va tras BENEF: y termina en el paréntesis
+        // de la leyenda "(DATO NO VERIFICADO...)"
+        $r['nombre'] = $tomar('#BENEF:\s*([^(,]+)#u');
+        if ($r['nombre'] === '') $r['nombre'] = $tomar('#DEL CLIENTE\s+([^,]+)#u');
+
+        // El banco va justo antes de la hora de liquidación en los dos formatos
+        $r['banco'] = $tomar('#(?:IVA:\s*[\d.]+|BCO:\s*\d+)\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ .]{2,29}?)\s+H(?:ORA|R)\s*LIQ:#u');
+
+        return $r;
     }
 
     /**
