@@ -2636,7 +2636,11 @@ class Operations{
 
         $valores = $this->ballotModel->get_ballot_values($formatDate2, $turno, $ballot[0]['CodEstacion']);
 
-        $moneda = ($ballot[0]['Moneda'] == 'MXN') ? $valores[0] : $valores[1];
+        $moneda = ($ballot[0]['Moneda'] == 'MXN') ? ($valores[0] ?? null) : ($valores[1] ?? null);
+
+        if (empty($moneda)) {
+            die('Error: No se encontraron valores para el corte ' . htmlspecialchars($formatDate) . ', turno ' . htmlspecialchars($turno) . ', estación ' . htmlspecialchars($ballot[0]['CodEstacion']) . '. Verifique que existan valores registrados en ese corte.');
+        }
 
         function numeroALetras($numero) {
             $formatter = new NumberFormatter("es", NumberFormatter::SPELLOUT);
