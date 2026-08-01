@@ -30,6 +30,12 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#credit_consumos" type="button">Consumos Crédito</button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_credit" type="button">Edo. Cuenta Crédito</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_debit" type="button">Edo. Cuenta Débito</button>
+    </li>
 </ul>
 
 <div class="tab-content">
@@ -233,6 +239,381 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
     </div>
 
+    {# ── TAB 5: EDO. CUENTA CRÉDITO ── #}
+    <div class="tab-pane" id="edo_credit" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-2 mb-2">
+                    <div class="col-12 col-md-4">
+                        <label class="col-form-label-sm">Cliente</label>
+                        <select class="selectpicker" id="cliente_edo_credit" data-live-search="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
+                            <option value="0">— Todos los clientes (resumen) —</option>
+                            {% for c in clientes_credit %}
+                            <option value="{{ c.cod }}">{{ c.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Desde</label>
+                        <input type="date" class="form-control form-control-sm" id="from_edo_credit" value="{{ 'now'|date('Y-01-01') }}">
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Hasta</label>
+                        <input type="date" class="form-control form-control-sm" id="until_edo_credit" value="{{ 'now'|date('Y-m-d') }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-auto">
+                        <button id="btn_edo_credit" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row" id="summary_edo_credit" style="display:none;">
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Saldo Inicial</small><h6 id="sum_ini_credit" class="mb-0"></h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Cargos del Periodo</small><h6 id="sum_cargos_credit" class="mb-0"></h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Abonos del Periodo</small><h6 id="sum_abonos_credit" class="mb-0"></h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Saldo Final</small><h6 id="sum_final_credit" class="mb-0"></h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Saldo Sistema</small><h6 id="sum_sistema_credit" class="mb-0"></h6>
+            </div></div></div>
+        </div>
+        <div class="card" id="edo_credit_detail_card">
+            <div class="card-header"><h5 class="card-title">Estado de Cuenta — Cliente Crédito</h5></div>
+            <div class="card-body table-responsive">
+                <table id="edo_credit_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th><th>Vencimiento</th><th>Movimiento</th><th>Documento</th>
+                            <th>Estación</th><th>Importe</th><th>Pendiente</th><th>Estatus</th><th>Saldo Corrido</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Fecha</th><th>Vencimiento</th><th>Movimiento</th><th>Documento</th>
+                            <th>Estación</th><th>Importe</th><th>Pendiente</th><th>Estatus</th><th>Saldo Corrido</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        <div class="card" id="edo_credit_summary_card" style="display:none;">
+            <div class="card-header">
+                <h5 class="card-title">
+                    Resumen del Periodo — Todos los Clientes Crédito
+                    <a href="#" class="ms-1" data-bs-toggle="modal" data-bs-target="#modal_info_edo_credit" title="¿De dónde viene esta información?">
+                        <i class="fas fa-question-circle"></i>
+                    </a>
+                </h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="edo_credit_summary_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Código</th><th>Cliente</th><th>Saldo Inicial</th><th>Cargos</th>
+                            <th>Consumos (Despachos)</th><th>Abonos</th><th>Dif. Consumos − Abonos</th>
+                            <th>Saldo Final</th><th>Saldo Sistema</th>
+                            <th>Por Vencer</th><th>Vencido</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── TAB 6: EDO. CUENTA DÉBITO ── #}
+    <div class="tab-pane" id="edo_debit" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-2 mb-2">
+                    <div class="col-12 col-md-4">
+                        <label class="col-form-label-sm">Cliente</label>
+                        <select class="selectpicker" id="cliente_edo_debit" data-live-search="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
+                            <option value="0">— Todos los clientes (resumen) —</option>
+                            {% for c in clientes_debit %}
+                            <option value="{{ c.cod }}">{{ c.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Desde</label>
+                        <input type="date" class="form-control form-control-sm" id="from_edo_debit" value="{{ 'now'|date('Y-01-01') }}">
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Hasta</label>
+                        <input type="date" class="form-control form-control-sm" id="until_edo_debit" value="{{ 'now'|date('Y-m-d') }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-auto">
+                        <button id="btn_edo_debit" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row" id="summary_edo_debit" style="display:none;">
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Saldo Inicial</small><h6 id="sum_ini_debit" class="mb-0"></h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Consumos del Periodo</small><h6 id="sum_cargos_debit" class="mb-0"></h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Anticipos del Periodo</small><h6 id="sum_abonos_debit" class="mb-0"></h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Saldo Final</small><h6 id="sum_final_debit" class="mb-0"></h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Saldo Sistema (bolsa)</small><h6 id="sum_sistema_debit" class="mb-0"></h6>
+            </div></div></div>
+        </div>
+        <div class="card" id="edo_debit_detail_card">
+            <div class="card-header"><h5 class="card-title">Estado de Cuenta — Cliente Débito</h5></div>
+            <div class="card-body table-responsive">
+                <table id="edo_debit_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th><th>Movimiento</th><th>Detalle</th>
+                            <th>Estación</th><th>Monto</th><th>Saldo Corrido</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Fecha</th><th>Movimiento</th><th>Detalle</th>
+                            <th>Estación</th><th>Monto</th><th>Saldo Corrido</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        <div class="card" id="edo_debit_summary_card" style="display:none;">
+            <div class="card-header">
+                <h5 class="card-title">
+                    Resumen del Periodo — Todos los Clientes Débito
+                    <a href="#" class="ms-1" data-bs-toggle="modal" data-bs-target="#modal_info_edo_debit" title="¿De dónde viene esta información?">
+                        <i class="fas fa-question-circle"></i>
+                    </a>
+                </h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="edo_debit_summary_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Código</th><th>Cliente</th><th>Anticipos</th><th>Consumos</th>
+                            <th>Diferencia</th><th>Saldo Sistema (bolsa)</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{# ── Modal: origen de la información del resumen crédito ── #}
+<div class="modal fade" id="modal_info_edo_credit" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-question-circle"></i> ¿De dónde viene esta información?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    Este resumen muestra un renglón por cada <strong>cliente de crédito</strong> que tuvo
+                    movimientos dentro del rango de fechas seleccionado. La fuente es la cartera de
+                    cuentas por cobrar del sistema de estaciones (tabla <code>MovimientosAnl</code> de SG12),
+                    la misma que alimenta la Antigüedad de Saldos del aplicativo.
+                </p>
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr><th style="width:22%">Columna</th><th>Origen</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Código / Cliente</strong></td>
+                            <td>Catálogo central de clientes (tabla <code>Clientes</code> de SG12). Los clientes
+                                de crédito consumen primero y pagan después, según su condición de pago.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Saldo Inicial</strong></td>
+                            <td>Suma de los movimientos del cliente <strong>anteriores</strong> a la fecha
+                                "Desde", considerando <strong>únicamente el año de esa fecha</strong> (corte al
+                                1 de enero): el histórico de años anteriores se ignora. Si "Desde" es el 1 de
+                                enero, el Saldo Inicial siempre será $0.00.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cargos</strong></td>
+                            <td>Facturas de venta emitidas al cliente dentro del periodo (aumentan su deuda).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Consumos (Despachos)</strong></td>
+                            <td>Suma de los <strong>despachos</strong> (cargas de combustible) del cliente en el
+                                periodo, en todas las estaciones (tabla <code>Despachos</code>). Es lo
+                                <em>despachado</em>, mientras que Cargos es lo <em>facturado</em>: si Consumos
+                                es mayor que Cargos, hay consumo pendiente de facturar; también pueden diferir
+                                por facturas que agrupan despachos de fechas anteriores. Esta columna es
+                                informativa y <strong>no</strong> entra al cálculo del Saldo Final.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Abonos</strong></td>
+                            <td>Pagos y notas de crédito registrados en el sistema de estaciones dentro del
+                                periodo (disminuyen su deuda; por eso aparecen en negativo).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Dif. Consumos − Abonos</strong></td>
+                            <td>Cálculo: lo <em>despachado</em> menos lo <em>pagado</em> en el periodo.
+                                Positiva = el cliente consumió más de lo que pagó (su deuda por consumo
+                                creció); negativa = pagó más de lo que consumió (fue bajando su deuda).
+                                Es informativa y no entra al cálculo del Saldo Final.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Saldo Final</strong></td>
+                            <td>Cálculo: <code>Saldo Inicial + Cargos + Abonos</code>. Lo que el cliente debe
+                                al cierre del periodo según los movimientos.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Saldo Sistema</strong></td>
+                            <td>Saldo <strong>actual</strong> de la cuenta según el sistema de estaciones
+                                (campo <code>cresdo</code> del catálogo de clientes). Sirve de comparación: si
+                                la fecha "Hasta" es hoy, debería parecerse al Saldo Final.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Por Vencer / Vencido</strong></td>
+                            <td>Saldo pendiente <strong>al día de hoy</strong> de las facturas abiertas del
+                                cliente, separado según si su fecha de vencimiento ya pasó (Vencido) o no
+                                (Por Vencer). Misma lógica que la Antigüedad de Saldos.
+                                <strong>Ojo:</strong> no depende del rango de fechas seleccionado — siempre
+                                refleja la cartera actual.</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle"></i> El total del pie de la tabla suma únicamente los
+                    renglones visibles con los filtros aplicados.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Modal genérico: drill-down de anticipos / consumos del resumen débito ── #}
+<div class="modal fade" id="modal_edo_drill" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal_edo_drill_title"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped w-100" id="modal_edo_drill_table">
+                        <thead></thead>
+                        <tbody></tbody>
+                        <tfoot></tfoot>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Modal: origen de la información del resumen débito ── #}
+<div class="modal fade" id="modal_info_edo_debit" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-question-circle"></i> ¿De dónde viene esta información?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    Este resumen muestra un renglón por cada <strong>cliente de débito (prepago)</strong> que tuvo
+                    movimientos dentro del rango de fechas seleccionado. Solo aparecen clientes activos o
+                    suspendidos con al menos un anticipo o consumo en el periodo.
+                </p>
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr><th style="width:22%">Columna</th><th>Origen</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Código / Cliente</strong></td>
+                            <td>Catálogo central de clientes (tabla <code>Clientes</code> de SG12). Los clientes
+                                de débito son los de tipo prepago: depositan dinero por adelantado y lo van
+                                consumiendo en las estaciones.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Anticipos</strong></td>
+                            <td>Suma de las <strong>facturas de anticipo</strong> del periodo
+                                ("Anticipo del bien o servicio") registradas en <code>DocumentosC</code> /
+                                <code>Documentos</code>. Es el dinero que el cliente depositó a su bolsa.
+                                Es la misma fuente que usa el reporte de Anticipos del aplicativo.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Consumos</strong></td>
+                            <td>Suma de los <strong>despachos</strong> (cargas de combustible) del cliente en el
+                                periodo, en todas las estaciones (tabla <code>Despachos</code> de SG12). Es la
+                                misma fuente que la pestaña "Consumos Débito".</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Diferencia</strong></td>
+                            <td>Cálculo: <code>Anticipos − Consumos</code> del periodo. Positiva = el cliente
+                                depositó más de lo que consumió en el periodo; negativa = consumió más de lo
+                                que depositó (usó saldo de su bolsa acumulada).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Saldo Sistema (bolsa)</strong></td>
+                            <td>Saldo <strong>actual</strong> de la bolsa del cliente según el sistema de
+                                estaciones (campo <code>debsdo</code> del catálogo de clientes). Incluye todo su
+                                histórico y ajustes manuales, no solo el periodo consultado — por eso puede no
+                                coincidir con la Diferencia.</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle"></i> El total del pie de la tabla suma únicamente los
+                    renglones visibles con los filtros aplicados.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -259,6 +640,14 @@ $('#btn_debit_consumos').on('click', function () {
 $('#btn_credit_consumos').on('click', function () {
     // $('#cliente_credit').selectpicker('hide');
     clients_dispatches_table('credit');
+});
+
+// ── Estado de Cuenta ──
+$('#btn_edo_credit').on('click', function () {
+    account_statement_table('credit');
+});
+$('#btn_edo_debit').on('click', function () {
+    account_statement_table('debit');
 });
 
 </script>

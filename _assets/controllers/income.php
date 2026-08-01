@@ -322,6 +322,92 @@ public function balance_age()
         json_output(["data" => $data]);
     }
 
+    public function client_anticipos_table() : void {
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        $from   = $this->createDateTime($_POST['from']  ?? date('Y-01-01'));
+        $until  = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+
+        if ($codcli <= 0) {
+            json_output(['data' => []]);
+            return;
+        }
+
+        $rows = $this->clientesModel->get_client_anticipos(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $codcli
+        );
+        json_output(['data' => $rows ?: []]);
+    }
+
+    public function client_overdue_table() : void {
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        if ($codcli <= 0) {
+            json_output(['data' => []]);
+            return;
+        }
+        json_output(['data' => $this->clientesModel->get_client_overdue($codcli) ?: []]);
+    }
+
+    public function account_statement_table() : void {
+        $tipo   = ($_POST['tipo'] ?? 'credit') === 'debit' ? 'debit' : 'credit';
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        $from   = $this->createDateTime($_POST['from']  ?? date('Y-01-01'));
+        $until  = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+
+        if ($codcli < 0 || !isset($_POST['codcli'])) {
+            json_output(['data' => [], 'summary' => null]);
+            return;
+        }
+
+        $fromInt  = dateToInt($from->format('Y-m-d'));
+        $untilInt = dateToInt($until->format('Y-m-d'));
+
+        // codcli = 0 → resumen de todos los clientes con movimientos en el periodo
+        if ($codcli === 0) {
+            $rows = ($tipo === 'debit')
+                ? $this->clientesModel->get_account_summary_debit($fromInt, $untilInt)
+                : $this->clientesModel->get_account_summary_credit($fromInt, $untilInt);
+            json_output(['data' => $rows ?: [], 'summary' => null]);
+            return;
+        }
+
+        if ($tipo === 'debit') {
+            $ini  = $this->clientesModel->get_initial_balance_debit($fromInt, $codcli);
+            $rows = $this->clientesModel->get_account_statement_debit($fromInt, $untilInt, $codcli) ?: [];
+        } else {
+            $ini  = $this->clientesModel->get_initial_balance_credit($fromInt, $codcli);
+            $rows = $this->clientesModel->get_account_statement_credit($fromInt, $untilInt, $codcli) ?: [];
+        }
+
+        $saldo  = $ini ? (float)$ini['SaldoInicial'] : 0.0;
+        $cargos = $abonos = 0.0;
+        $data   = [];
+        foreach ($rows as $r) {
+            $monto = (float)($r['Importe'] ?? $r['Monto']);
+            $esCargo = ($tipo === 'debit')
+                ? strpos($r['Movimiento'], 'CARGO') === 0
+                : (int)($r['tipope'] ?? 0) === 3;
+            if ($esCargo) { $cargos += $monto; } else { $abonos += $monto; }
+            $saldo += $monto;
+            $r['SaldoCorrido'] = round($saldo, 2);
+            unset($r['tipope']);
+            $data[] = $r;
+        }
+
+        json_output([
+            'data'    => $data,
+            'summary' => [
+                'cliente'       => $ini['Cliente'] ?? '',
+                'saldo_inicial' => $ini ? round((float)$ini['SaldoInicial'], 2) : 0,
+                'cargos'        => round($cargos, 2),
+                'abonos'        => round($abonos, 2),
+                'saldo_final'   => round($saldo, 2),
+                'saldo_sistema' => $ini ? round((float)$ini['SaldoSistema'], 2) : 0,
+            ],
+        ]);
+    }
+
 
     /**
      * @return void
@@ -504,9 +590,6 @@ function invoice_client_desp(){
         $until = dateToInt($_POST['until']);
     
         if ($facturas = $this->documentosModel->relation_credit_table($from, $until)) {
-             echo '<pre>';
-             var_dump($facturas);
-            die();
             foreach ($facturas as $factura) {
                 $data[] = array(
                     'fecha'             => $factura['fecha'],

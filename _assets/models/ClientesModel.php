@@ -509,6 +509,318 @@ SQL;
     return $this->sql->select($sql, $params) ?: false;
 }
 
+// ── Estado de cuenta ────────────────────────────────────────────────────────
 
+/**
+ * Movimientos de un cliente de crédito en el periodo (fechas internas int).
+ * Fuente: MovimientosAnl, mismos filtros que sp_SelMovPen / antigüedad de saldos.
+ */
+public function get_account_statement_credit(int $from, int $until, int $codcli) : array|false {
+    $query = "
+        SELECT
+            M.tipope,
+            G.den AS Estacion,
+            CONVERT(varchar(10), DATEADD(DAY, M.fchope - 1, '19000101'), 23) AS Fecha,
+            CONVERT(varchar(10), DATEADD(DAY, M.fchvto - 1, '19000101'), 23) AS Vencimiento,
+            CASE WHEN M.tipope = 3      THEN 'CARGO (factura)'
+                 WHEN M.tipope IN (4,6) THEN 'ABONO (pago / nota de crédito)'
+                 ELSE 'OTRO (' + CAST(M.tipope AS varchar) + ')' END AS Movimiento,
+            CASE
+              WHEN M.nroope BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1200000000 AND 1299999999 THEN 'D ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1500000000 AND 1599999999 THEN 'G ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              ELSE CAST(M.nroope AS varchar(10))
+            END AS Documento,
+            CAST(M.mtoopeori/100.0 AS decimal(18,2)) AS Importe,
+            CAST(M.mtopenori/100.0 AS decimal(18,2)) AS Pendiente,
+            CASE WHEN M.mtopenori = 0            THEN 'Saldado'
+                 WHEN M.mtopenori = M.mtoopeori  THEN 'Sin aplicar'
+                 ELSE 'Parcial' END AS Estatus,
+            CASE
+              WHEN ISNULL(M.nroref, 0) = 0 THEN ''
+              WHEN M.nroref BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(M.nroref AS varchar(10)),4,10)
+              WHEN M.nroref BETWEEN 1200000000 AND 1299999999 THEN 'D ' + SUBSTRING(CAST(M.nroref AS varchar(10)),4,10)
+              WHEN M.nroref BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(M.nroref AS varchar(10)),4,10)
+              WHEN M.nroref BETWEEN 1500000000 AND 1599999999 THEN 'G ' + SUBSTRING(CAST(M.nroref AS varchar(10)),4,10)
+              WHEN M.nroref BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(M.nroref AS varchar(10)),4,10)
+              WHEN M.nroref BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(M.nroref AS varchar(10)),4,10)
+              WHEN M.nroref BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(M.nroref AS varchar(10)),4,10)
+              WHEN M.nroref BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(M.nroref AS varchar(10)),4,10)
+              ELSE CAST(M.nroref AS varchar(10))
+            END AS Referencia
+        FROM [SG12].dbo.MovimientosAnl M WITH (NOLOCK)
+        LEFT JOIN [SG12].dbo.Gasolineras G ON G.cod = M.codgas
+        WHERE M.tipopr = 1
+          AND M.tipmov = 1
+          AND M.tipope <> 101
+          AND M.codopr = ?
+          AND M.fchope BETWEEN ? AND ?
+        ORDER BY M.fchope, M.nroope";
+    return $this->sql->select($query, [$codcli, $from, $until]) ?: false;
+}
+
+/**
+ * Saldo inicial (movimientos previos al periodo) y saldo oficial de un cliente de crédito.
+ * EXPERIMENTO: el saldo inicial solo considera movimientos del año de la fecha "Desde"
+ * (corte al 1 de enero) — ignora el histórico anterior.
+ */
+public function get_initial_balance_credit(int $from, int $codcli) : array|false {
+    $query = "
+        DECLARE @Desde INT = ?;
+        DECLARE @IniAnio INT = DATEDIFF(dd, 0, DATEFROMPARTS(YEAR(DATEADD(DAY, @Desde - 1, '19000101')), 1, 1)) + 1;
+
+        SELECT
+            (SELECT CAST(ISNULL(SUM(mtoopeori),0)/100.0 AS decimal(18,2))
+               FROM [SG12].dbo.MovimientosAnl WITH (NOLOCK)
+              WHERE tipopr = 1 AND tipmov = 1 AND tipope <> 101
+                AND codopr = ?
+                AND fchope >= @IniAnio AND fchope < @Desde) AS SaldoInicial,
+            C.cresdo AS SaldoSistema,
+            C.den    AS Cliente
+        FROM [SG12].dbo.Clientes C
+        WHERE C.cod = ?";
+    return ($rs = $this->sql->select($query, [$from, $codcli, $codcli])) ? $rs[0] : false;
+}
+
+/**
+ * Movimientos de un cliente de débito en el periodo (fechas internas int).
+ * Abonos = facturas de anticipo (DocumentosC/Documentos); cargos = consumos (Despachos).
+ */
+public function get_account_statement_debit(int $from, int $until, int $codcli) : array|false {
+    $query = "
+        SELECT Fecha, Movimiento, Detalle, Estacion, Monto FROM (
+            SELECT
+                CONVERT(varchar(10), DATEADD(DAY, t1.fch - 1, '19000101'), 23) AS Fecha,
+                t1.fch AS fchint,
+                'ABONO (anticipo)' AS Movimiento,
+                'Anticipo ' + CAST(t1.nro AS varchar(12)) AS Detalle,
+                G.den AS Estacion,
+                CAST(SUM(t2.mtoori + t2.mtoiva)/100.0 AS decimal(18,2)) AS Monto
+            FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
+            JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
+              ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+            LEFT JOIN [SG12].dbo.Gasolineras G ON t1.codgas = G.cod
+            WHERE t2.codopr = ?
+              AND t1.fch BETWEEN ? AND ?
+              AND t2.mtoiva > 0
+              AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
+              AND t2.mto > 100
+              AND ISNULL(t1.flgcon, 0) <> 141   -- excluir facturas de anticipo canceladas
+            GROUP BY t1.fch, t1.nro, G.den
+
+            UNION ALL
+
+            SELECT
+                CONVERT(varchar(10), CAST(d.fchtrn AS datetime) - 1, 23),
+                d.fchtrn,
+                'CARGO (consumo)',
+                ISNULL(p.den,'') + ' / trn ' + CAST(d.nrotrn AS varchar(12)),
+                g.abr,
+                CAST(-d.mto AS decimal(18,2))   -- Despachos.mto ya viene en pesos
+            FROM [SG12].dbo.Despachos d WITH (NOLOCK)
+            LEFT JOIN [SG12].dbo.Productos   p ON d.codprd = p.cod
+            LEFT JOIN [SG12].dbo.Gasolineras g ON d.codgas = g.cod
+            WHERE d.codcli = ?
+              AND d.fchtrn BETWEEN ? AND ?
+        ) X
+        ORDER BY fchint, Movimiento";
+    return $this->sql->select($query, [$codcli, $from, $until, $codcli, $from, $until]) ?: false;
+}
+
+/**
+ * Resumen del periodo para TODOS los clientes de crédito con movimientos:
+ * saldo inicial, cargos, consumos (despachos), abonos y saldo final por cliente.
+ * Consumos viene de Despachos (lo despachado); Cargos de MovimientosAnl (lo
+ * facturado) — si difieren hay consumo pendiente de facturar.
+ */
+public function get_account_summary_credit(int $from, int $until) : array|false {
+    $query = "
+        DECLARE @Hoy INT = DATEDIFF(dd, 0, CAST(GETDATE() AS date)) + 1;
+        DECLARE @Desde INT = ?;
+        DECLARE @Hasta INT = ?;
+        -- EXPERIMENTO: el saldo inicial solo considera movimientos del año de \"Desde\"
+        DECLARE @IniAnio INT = DATEDIFF(dd, 0, DATEFROMPARTS(YEAR(DATEADD(DAY, @Desde - 1, '19000101')), 1, 1)) + 1;
+
+        ;WITH Mov AS (
+            SELECT M.codopr, M.tipope, M.fchope, M.fchvto, M.mtoopeori, M.mtopenori
+            FROM [SG12].dbo.MovimientosAnl M WITH (NOLOCK)
+            JOIN [SG12].dbo.Clientes C ON C.cod = M.codopr
+            WHERE M.tipopr = 1 AND M.tipmov = 1 AND M.tipope <> 101
+              AND C.tipval = 3 AND C.codest <> -1
+        ),
+        SaldoIni AS (
+            SELECT codopr, SUM(mtoopeori)/100.0 AS SaldoInicial
+            FROM Mov WHERE fchope >= @IniAnio AND fchope < @Desde GROUP BY codopr
+        ),
+        Det AS (
+            SELECT codopr,
+                   SUM(CASE WHEN tipope = 3      THEN mtoopeori/100.0 ELSE 0 END) AS Cargos,
+                   SUM(CASE WHEN tipope IN (4,6) THEN mtoopeori/100.0 ELSE 0 END) AS Abonos,
+                   SUM(mtoopeori/100.0) AS Neto
+            FROM Mov WHERE fchope BETWEEN @Desde AND @Hasta
+            GROUP BY codopr
+        ),
+        Con AS (
+            SELECT d.codcli, CAST(SUM(d.mto) AS decimal(18,2)) AS Consumos
+            FROM [SG12].dbo.Despachos d WITH (NOLOCK)
+            WHERE d.fchtrn BETWEEN @Desde AND @Hasta AND d.codcli > 0
+            GROUP BY d.codcli
+        ),
+        Pen AS (   -- partidas abiertas HOY, clasificadas por su fecha de vencimiento
+            SELECT codopr,
+                   SUM(CASE WHEN fchvto >= @Hoy THEN mtopenori/100.0 ELSE 0 END) AS PorVencer,
+                   SUM(CASE WHEN fchvto <  @Hoy THEN mtopenori/100.0 ELSE 0 END) AS Vencido
+            FROM Mov WHERE mtopenori <> 0
+            GROUP BY codopr
+        )
+        SELECT
+            C.cod AS CodCliente,
+            C.den AS Cliente,
+            CAST(ISNULL(SI.SaldoInicial,0) AS decimal(18,2)) AS SaldoInicial,
+            CAST(ISNULL(D.Cargos,0)  AS decimal(18,2)) AS Cargos,
+            ISNULL(Co.Consumos,0)                      AS Consumos,
+            CAST(ISNULL(D.Abonos,0)  AS decimal(18,2)) AS Abonos,
+            -- Abonos viene con signo negativo: positiva = consumió más de lo que pagó
+            CAST(ISNULL(Co.Consumos,0) + ISNULL(D.Abonos,0) AS decimal(18,2)) AS Diferencia,
+            CAST(ISNULL(SI.SaldoInicial,0) + ISNULL(D.Neto,0) AS decimal(18,2)) AS SaldoFinal,
+            C.cresdo AS SaldoSistema,
+            CAST(ISNULL(P.PorVencer,0) AS decimal(18,2)) AS PorVencer,
+            CAST(ISNULL(P.Vencido,0)   AS decimal(18,2)) AS Vencido
+        FROM [SG12].dbo.Clientes C
+        LEFT JOIN Det D       ON D.codopr  = C.cod
+        LEFT JOIN SaldoIni SI ON SI.codopr = C.cod
+        LEFT JOIN Con Co      ON Co.codcli = C.cod
+        LEFT JOIN Pen P       ON P.codopr  = C.cod
+        WHERE C.tipval = 3 AND C.codest <> -1
+          AND (D.codopr IS NOT NULL OR Co.codcli IS NOT NULL)
+        ORDER BY C.den";
+    return $this->sql->select($query, [$from, $until]) ?: false;
+}
+
+/** Facturas vencidas HOY de un cliente de crédito (partidas abiertas con vencimiento pasado). */
+public function get_client_overdue(int $codcli) : array|false {
+    $query = "
+        SELECT
+            CONVERT(varchar(10), DATEADD(DAY, M.fchope - 1, '19000101'), 23) AS Fecha,
+            CONVERT(varchar(10), DATEADD(DAY, M.fchvto - 1, '19000101'), 23) AS Vencimiento,
+            CASE
+              WHEN M.nroope BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1200000000 AND 1299999999 THEN 'D ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1500000000 AND 1599999999 THEN 'G ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              WHEN M.nroope BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(M.nroope AS varchar(10)),4,10)
+              ELSE CAST(M.nroope AS varchar(10))
+            END AS Documento,
+            G.den AS Estacion,
+            CAST(M.mtoopeori/100.0 AS decimal(18,2)) AS Importe,
+            CAST(M.mtopenori/100.0 AS decimal(18,2)) AS Pendiente,
+            DATEDIFF(DAY, DATEADD(DAY, M.fchvto - 1, '19000101'), CAST(GETDATE() AS date)) AS DiasVencido
+        FROM [SG12].dbo.MovimientosAnl M WITH (NOLOCK)
+        LEFT JOIN [SG12].dbo.Gasolineras G ON G.cod = M.codgas
+        WHERE M.tipopr = 1 AND M.tipmov = 1 AND M.tipope <> 101
+          AND M.codopr = ?
+          AND M.mtopenori <> 0
+          AND M.fchvto < DATEDIFF(dd, 0, CAST(GETDATE() AS date)) + 1
+        ORDER BY M.fchvto, M.nroope";
+    return $this->sql->select($query, [$codcli]) ?: false;
+}
+
+/**
+ * Resumen del periodo para TODOS los clientes de débito con movimientos:
+ * anticipos y consumos del periodo (sin saldo inicial, para no recorrer
+ * todo el histórico de Despachos) más la bolsa oficial.
+ */
+public function get_account_summary_debit(int $from, int $until) : array|false {
+    $query = "
+        ;WITH Ant AS (
+            SELECT t2.codopr, CAST(SUM(t2.mtoori + t2.mtoiva)/100.0 AS decimal(18,2)) AS Anticipos
+            FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
+            JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
+              ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+            WHERE t1.fch BETWEEN ? AND ?
+              AND t2.mtoiva > 0
+              AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
+              AND t2.mto > 100
+              AND t2.codopr <> 0
+              AND ISNULL(t1.flgcon, 0) <> 141   -- excluir facturas de anticipo canceladas
+            GROUP BY t2.codopr
+        ),
+        Con AS (
+            SELECT d.codcli AS codopr, CAST(SUM(d.mto) AS decimal(18,2)) AS Consumos
+            FROM [SG12].dbo.Despachos d WITH (NOLOCK)
+            WHERE d.fchtrn BETWEEN ? AND ? AND d.codcli > 0
+            GROUP BY d.codcli
+        )
+        SELECT
+            C.cod AS CodCliente,
+            C.den AS Cliente,
+            ISNULL(A.Anticipos,0) AS Anticipos,
+            ISNULL(Co.Consumos,0) AS Consumos,
+            CAST(ISNULL(A.Anticipos,0) - ISNULL(Co.Consumos,0) AS decimal(18,2)) AS Diferencia,
+            C.debsdo AS SaldoSistema
+        FROM [SG12].dbo.Clientes C
+        LEFT JOIN Ant A  ON A.codopr  = C.cod
+        LEFT JOIN Con Co ON Co.codopr = C.cod
+        WHERE C.tipval = 4 AND C.codest <> -1
+          AND (A.codopr IS NOT NULL OR Co.codopr IS NOT NULL)
+        ORDER BY C.den";
+    return $this->sql->select($query, [$from, $until, $from, $until]) ?: false;
+}
+
+/** Facturas de anticipo de un cliente de débito en el periodo (para el drill-down del resumen). */
+public function get_client_anticipos(int $from, int $until, int $codcli) : array|false {
+    $query = "
+        SELECT
+            CONVERT(varchar(10), DATEADD(DAY, t1.fch - 1, '19000101'), 23) AS Fecha,
+            t1.nro AS Factura,
+            G.den AS Estacion,
+            CAST(SUM(t2.mtoori)/100.0 AS decimal(18,2)) AS Subtotal,
+            CAST(SUM(t2.mtoiva)/100.0 AS decimal(18,2)) AS IVA,
+            CAST(SUM(t2.mtoori + t2.mtoiva)/100.0 AS decimal(18,2)) AS Total
+        FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
+        JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
+          ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+        LEFT JOIN [SG12].dbo.Gasolineras G ON t1.codgas = G.cod
+        WHERE t2.codopr = ?
+          AND t1.fch BETWEEN ? AND ?
+          AND t2.mtoiva > 0
+          AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
+          AND t2.mto > 100
+          AND ISNULL(t1.flgcon, 0) <> 141   -- excluir facturas de anticipo canceladas
+        GROUP BY t1.fch, t1.nro, G.den
+        ORDER BY t1.fch, t1.nro";
+    return $this->sql->select($query, [$codcli, $from, $until]) ?: false;
+}
+
+/** Saldo inicial (anticipos menos consumos previos al periodo) y bolsa oficial de un cliente de débito. */
+public function get_initial_balance_debit(int $from, int $codcli) : array|false {
+    $query = "
+        SELECT
+            (SELECT CAST(ISNULL(SUM(t2.mtoori + t2.mtoiva),0)/100.0 AS decimal(18,2))
+               FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
+               JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
+                 ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+              WHERE t2.codopr = ? AND t1.fch < ?
+                AND t2.mtoiva > 0
+                AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
+                AND t2.mto > 100
+                AND ISNULL(t1.flgcon, 0) <> 141)
+          - (SELECT CAST(ISNULL(SUM(d.mto),0) AS decimal(18,2))
+               FROM [SG12].dbo.Despachos d WITH (NOLOCK)
+              WHERE d.codcli = ? AND d.fchtrn < ?) AS SaldoInicial,
+            C.debsdo AS SaldoSistema,
+            C.den    AS Cliente
+        FROM [SG12].dbo.Clientes C
+        WHERE C.cod = ?";
+    return ($rs = $this->sql->select($query, [$codcli, $from, $codcli, $from, $codcli])) ? $rs[0] : false;
+}
 
 }

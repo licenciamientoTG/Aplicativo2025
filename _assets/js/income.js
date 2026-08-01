@@ -2338,4 +2338,345 @@ async function clients_dispatches_table(tipo) {
     });
 }
 
+// ── Estado de Cuenta por Cliente (Débito / Crédito) ─────────────────────────
+
+async function account_statement_table(tipo) {
+    var sfx     = tipo === 'debit' ? 'debit' : 'credit';
+    var from    = $('#from_edo_' + sfx).val();
+    var until   = $('#until_edo_' + sfx).val();
+    var codcli  = $('#cliente_edo_' + sfx).val();
+
+    if (codcli === null || codcli === undefined || codcli === '') {
+        alertify.myAlert('<div class="text-center text-warning"><h5>Selecciona un cliente</h5><p>Debes elegir un cliente (o "Todos") antes de consultar.</p></div>');
+        return;
+    }
+
+    var allMode = codcli === '0';
+    var tableId = 'edo_' + sfx + (allMode ? '_summary_table' : '_table');
+
+    // Alternar entre la tabla de detalle y la de resumen
+    $('#edo_' + sfx + '_detail_card').toggle(!allMode);
+    $('#edo_' + sfx + '_summary_card').toggle(allMode);
+    if (allMode) { $('#summary_edo_' + sfx).hide(); }
+
+    if ($.fn.DataTable.isDataTable('#' + tableId)) {
+        $('#' + tableId).DataTable().destroy();
+        $('#' + tableId + ' thead .filter').remove();
+    }
+
+    $('#' + tableId + ' thead').prepend($('#' + tableId + ' thead tr').clone().addClass('filter'));
+    $('#' + tableId + ' thead tr.filter th').each(function (index) {
+        var col = $('#' + tableId + ' thead th').length / 2;
+        if (index < col) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#' + tableId + ' thead tr.filter th input').on('keyup change', function () {
+        $('#' + tableId).DataTable()
+            .column($(this).parent().index())
+            .search(this.value).draw();
+    });
+
+    var fmtMoney = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    var columnsCredit = [
+        { data: 'Fecha',        className: 'text-center' },
+        { data: 'Vencimiento',  className: 'text-center' },
+        { data: 'Movimiento',   className: 'text-nowrap' },
+        { data: 'Documento',    className: 'text-nowrap' },
+        { data: 'Estacion',     className: 'text-nowrap' },
+        { data: 'Importe',      render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'Pendiente',    render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'Estatus',      className: 'text-center' },
+        { data: 'SaldoCorrido', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+    ];
+    var columnsDebit = [
+        { data: 'Fecha',        className: 'text-center' },
+        { data: 'Movimiento',   className: 'text-nowrap' },
+        { data: 'Detalle',      className: 'text-nowrap' },
+        { data: 'Estacion',     className: 'text-nowrap' },
+        { data: 'Monto',        render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'SaldoCorrido', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+    ];
+    // Monto clicable que abre el drill-down (solo si hay importe)
+    var drillRender = function (drill) {
+        var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
+        return function (d, type) {
+            if (type !== 'display') return d;
+            var f = numFmt.display(d);
+            if (!parseFloat(d)) return f;
+            return '<a href="#" class="edo-drill" data-drill="' + drill + '" title="Ver detalle">' + f + ' <i class="fas fa-list-ul"></i></a>';
+        };
+    };
+    var columnsSummaryCredit = [
+        { data: 'CodCliente' },
+        { data: 'Cliente',      className: 'text-nowrap' },
+        { data: 'SaldoInicial', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'Cargos',       render: drillRender('cargos'),   className: 'text-nowrap text-end' },
+        { data: 'Consumos',     render: drillRender('consumos'), className: 'text-nowrap text-end' },
+        { data: 'Abonos',       render: drillRender('abonos'),   className: 'text-nowrap text-end' },
+        { data: 'Diferencia',   render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'SaldoFinal',   render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'SaldoSistema', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'PorVencer',    render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'Vencido',      render: drillRender('vencido'), className: 'text-nowrap text-end' },
+    ];
+    var columnsSummaryDebit = [
+        { data: 'CodCliente' },
+        { data: 'Cliente',      className: 'text-nowrap' },
+        { data: 'Anticipos',    render: drillRender('anticipos'), className: 'text-nowrap text-end' },
+        { data: 'Consumos',     render: drillRender('consumos'),  className: 'text-nowrap text-end' },
+        { data: 'Diferencia',   render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'SaldoSistema', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+    ];
+
+    var columns;
+    if (allMode) {
+        columns = tipo === 'debit' ? columnsSummaryDebit : columnsSummaryCredit;
+    } else {
+        columns = tipo === 'debit' ? columnsDebit : columnsCredit;
+    }
+    // Columnas de dinero a totalizar en el pie (solo modo resumen)
+    var moneyCols = tipo === 'debit' ? [2, 3, 4, 5] : [2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+    $('#' + tableId).DataTable({
+        ordering: allMode,      // en detalle, el orden cronológico es lo que da sentido al saldo corrido
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        ajax: {
+            method: 'POST',
+            data: { 'tipo': tipo, 'codcli': codcli, 'from': from, 'until': until },
+            url: '/income/account_statement_table',
+            timeout: 600000,
+            dataSrc: function (json) {
+                var s = json.summary;
+                if (s) {
+                    $('#sum_ini_' + sfx).text(fmtMoney(s.saldo_inicial));
+                    $('#sum_cargos_' + sfx).text(fmtMoney(s.cargos));
+                    $('#sum_abonos_' + sfx).text(fmtMoney(s.abonos));
+                    $('#sum_final_' + sfx).text(fmtMoney(s.saldo_final));
+                    $('#sum_sistema_' + sfx).text(fmtMoney(s.saldo_sistema));
+                    $('#summary_edo_' + sfx).show();
+                }
+                return json.data || [];
+            },
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No existen registros con los parámetros dados.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        columns: columns,
+        deferRender: true,
+        initComplete: function () { $('.table-responsive').removeClass('loading'); },
+        footerCallback: function () {
+            if (!allMode) return;
+            var api = this.api();
+            moneyCols.forEach(function (idx) {
+                var total = api.column(idx, { search: 'applied' }).data()
+                    .reduce(function (a, b) { return (parseFloat(a) || 0) + (parseFloat(b) || 0); }, 0);
+                $(api.column(idx).footer()).html('$' + total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            });
+        }
+    });
+}
+
+// ── Drill-down del resumen débito: anticipos / consumos de un cliente ───────
+
+$(document).on('click', '#edo_debit_summary_table .edo-drill', function (e) {
+    e.preventDefault();
+    var row = $('#edo_debit_summary_table').DataTable().row($(this).closest('tr')).data();
+    if (row) edo_debit_drill($(this).data('drill'), row.CodCliente, row.Cliente);
+});
+
+// Modal de consumos (despachos) compartido: débito tipval=4 / crédito tipval=3
+function edo_consumos_modal(codcli, cliente, from, until, tipval) {
+    var money = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    var headers = ['Fecha', 'Hora', 'Despacho', 'Estación', 'Producto', 'Litros', 'Monto'];
+
+    $('#modal_edo_drill_title').html('Consumos (Despachos) — ' + cliente + ' <small class="text-muted">(' + from + ' → ' + until + ')</small>');
+    $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
+    $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+    $('#modal_edo_drill_table tfoot').empty();
+    $('#modal_edo_drill').modal('show');
+
+    $.post('/income/clients_dispatches_table', { codcli: codcli, from: from, until: until, tipval: tipval }, function (json) {
+        var rows = (json && json.data) || [];
+        if (!rows.length) {
+            $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Sin registros en el periodo.</td></tr>');
+            return;
+        }
+        $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
+            var h = parseInt(r.hratrn, 10), hora = '';
+            if (!isNaN(h)) {
+                var hh = Math.floor(h / 100), mm = h % 100, ap = hh >= 12 ? 'PM' : 'AM';
+                hh = hh % 12 || 12;
+                hora = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + ' ' + ap;
+            }
+            return '<tr><td>' + r.Fecha + '</td><td>' + hora + '</td><td>' + r.nrotrn + '</td>' +
+                   '<td>' + (r.Estacion || '') + '</td><td>' + (r.producto || '') + '</td>' +
+                   '<td class="text-end">' + (parseFloat(r.Litros) || 0).toLocaleString('es-MX', { minimumFractionDigits: 3 }) + '</td>' +
+                   '<td class="text-end">' + money(r.Monto) + '</td></tr>';
+        }).join(''));
+        var lt = rows.reduce(function (a, r) { return a + (parseFloat(r.Litros) || 0); }, 0);
+        var mt = rows.reduce(function (a, r) { return a + (parseFloat(r.Monto) || 0); }, 0);
+        $('#modal_edo_drill_table tfoot').html(
+            '<tr><th colspan="5" class="text-end">Total</th>' +
+            '<th class="text-end">' + lt.toLocaleString('es-MX', { minimumFractionDigits: 3 }) + '</th>' +
+            '<th class="text-end">' + money(mt) + '</th></tr>'
+        );
+    }, 'json').fail(function () {
+        $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
+    });
+}
+
+// ── Drill-down del resumen crédito: cargos / consumos / abonos de un cliente ─
+
+$(document).on('click', '#edo_credit_summary_table .edo-drill', function (e) {
+    e.preventDefault();
+    var row = $('#edo_credit_summary_table').DataTable().row($(this).closest('tr')).data();
+    if (row) edo_credit_drill($(this).data('drill'), row.CodCliente, row.Cliente);
+});
+
+function edo_credit_drill(drill, codcli, cliente) {
+    var from  = $('#from_edo_credit').val();
+    var until = $('#until_edo_credit').val();
+
+    if (drill === 'consumos') {
+        edo_consumos_modal(codcli, cliente, from, until, 3);
+        return;
+    }
+
+    var money = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    if (drill === 'vencido') {
+        var hdrs = ['Fecha', 'Vencimiento', 'Documento', 'Estación', 'Importe', 'Pendiente', 'Días Vencido'];
+        $('#modal_edo_drill_title').html('Facturas vencidas — ' + cliente + ' <small class="text-muted">(al día de hoy)</small>');
+        $('#modal_edo_drill_table thead').html('<tr><th>' + hdrs.join('</th><th>') + '</th></tr>');
+        $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + hdrs.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+        $('#modal_edo_drill_table tfoot').empty();
+        $('#modal_edo_drill').modal('show');
+
+        $.post('/income/client_overdue_table', { codcli: codcli }, function (json) {
+            var rows = (json && json.data) || [];
+            if (!rows.length) {
+                $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + hdrs.length + '" class="text-center py-3">Sin facturas vencidas.</td></tr>');
+                return;
+            }
+            $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
+                return '<tr><td>' + r.Fecha + '</td><td>' + r.Vencimiento + '</td><td>' + r.Documento + '</td>' +
+                       '<td>' + (r.Estacion || '') + '</td>' +
+                       '<td class="text-end">' + money(r.Importe) + '</td>' +
+                       '<td class="text-end">' + money(r.Pendiente) + '</td>' +
+                       '<td class="text-center">' + r.DiasVencido + '</td></tr>';
+            }).join(''));
+            var tp = rows.reduce(function (a, r) { return a + (parseFloat(r.Pendiente) || 0); }, 0);
+            $('#modal_edo_drill_table tfoot').html(
+                '<tr><th colspan="5" class="text-end">Total vencido</th>' +
+                '<th class="text-end">' + money(tp) + '</th><th></th></tr>'
+            );
+        }, 'json').fail(function () {
+            $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + hdrs.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
+        });
+        return;
+    }
+    var esCargos = drill === 'cargos';
+    var titulo   = (esCargos ? 'Cargos (facturas) — ' : 'Abonos (pagos / notas de crédito) — ') + cliente;
+    var headers  = esCargos
+        ? ['Fecha', 'Vencimiento', 'Documento', 'Estación', 'Importe', 'Pendiente', 'Estatus']
+        : ['Fecha', 'Vencimiento', 'Documento', 'Aplicada a Factura', 'Estación', 'Importe', 'Pendiente', 'Estatus'];
+
+    $('#modal_edo_drill_title').html(titulo + ' <small class="text-muted">(' + from + ' → ' + until + ')</small>');
+    $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
+    $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+    $('#modal_edo_drill_table tfoot').empty();
+    $('#modal_edo_drill').modal('show');
+
+    // Reutiliza el endpoint del estado de cuenta y filtra la clase de movimiento aquí
+    $.post('/income/account_statement_table', { tipo: 'credit', codcli: codcli, from: from, until: until }, function (json) {
+        var rows = ((json && json.data) || []).filter(function (r) {
+            return (r.Movimiento || '').indexOf(esCargos ? 'CARGO' : 'ABONO') === 0;
+        });
+        if (!rows.length) {
+            $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Sin registros en el periodo.</td></tr>');
+            return;
+        }
+        $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
+            return '<tr><td>' + r.Fecha + '</td><td>' + r.Vencimiento + '</td><td>' + r.Documento + '</td>' +
+                   (esCargos ? '' : '<td>' + (r.Referencia || '') + '</td>') +
+                   '<td>' + (r.Estacion || '') + '</td>' +
+                   '<td class="text-end">' + money(r.Importe) + '</td>' +
+                   '<td class="text-end">' + money(r.Pendiente) + '</td>' +
+                   '<td class="text-center">' + r.Estatus + '</td></tr>';
+        }).join(''));
+        var ti = rows.reduce(function (a, r) { return a + (parseFloat(r.Importe)   || 0); }, 0);
+        var tp = rows.reduce(function (a, r) { return a + (parseFloat(r.Pendiente) || 0); }, 0);
+        $('#modal_edo_drill_table tfoot').html(
+            '<tr><th colspan="' + (esCargos ? 4 : 5) + '" class="text-end">Total</th>' +
+            '<th class="text-end">' + money(ti) + '</th>' +
+            '<th class="text-end">' + money(tp) + '</th><th></th></tr>'
+        );
+    }, 'json').fail(function () {
+        $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
+    });
+}
+
+function edo_debit_drill(drill, codcli, cliente) {
+    var from  = $('#from_edo_debit').val();
+    var until = $('#until_edo_debit').val();
+    var money = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    if (drill === 'consumos') {
+        edo_consumos_modal(codcli, cliente, from, until, 4);
+        return;
+    }
+
+    var cfg = {
+        titulo : 'Anticipos — ' + cliente,
+        url    : '/income/client_anticipos_table',
+        data   : { codcli: codcli, from: from, until: until },
+        headers: ['Fecha', 'Factura', 'Estación', 'Subtotal', 'IVA', 'Total'],
+        row    : function (r) {
+            return '<tr><td>' + r.Fecha + '</td><td>' + r.Factura + '</td><td>' + (r.Estacion || '') + '</td>' +
+                   '<td class="text-end">' + money(r.Subtotal) + '</td>' +
+                   '<td class="text-end">' + money(r.IVA) + '</td>' +
+                   '<td class="text-end">' + money(r.Total) + '</td></tr>';
+        },
+        total  : function (rows) {
+            var t = rows.reduce(function (a, r) { return a + (parseFloat(r.Total) || 0); }, 0);
+            return '<tr><th colspan="5" class="text-end">Total</th><th class="text-end">' + money(t) + '</th></tr>';
+        }
+    };
+
+    $('#modal_edo_drill_title').html(cfg.titulo + ' <small class="text-muted">(' + from + ' → ' + until + ')</small>');
+    $('#modal_edo_drill_table thead').html('<tr><th>' + cfg.headers.join('</th><th>') + '</th></tr>');
+    $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + cfg.headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+    $('#modal_edo_drill_table tfoot').empty();
+    $('#modal_edo_drill').modal('show');
+
+    $.post(cfg.url, cfg.data, function (json) {
+        var rows = (json && json.data) || [];
+        if (!rows.length) {
+            $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + cfg.headers.length + '" class="text-center py-3">Sin registros en el periodo.</td></tr>');
+            return;
+        }
+        $('#modal_edo_drill_table tbody').html(rows.map(cfg.row).join(''));
+        $('#modal_edo_drill_table tfoot').html(cfg.total(rows));
+    }, 'json').fail(function () {
+        $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + cfg.headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
+    });
+}
+
 // cargarGraficaDesdeController();
