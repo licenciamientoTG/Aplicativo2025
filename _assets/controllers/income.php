@@ -3904,100 +3904,96 @@ public function anomalies_client_tickets()
         exit;
     }
 
+    /**
+     * Fuente común para Santander y Afirme en Conciliación V3. La tabla de
+     * movimientos no conoce afiliaciones: se preserva la regla histórica de
+     * encontrarlas en los textos del movimiento contra Tesoreria_afil.
+     */
+    private function emitir_tesoreria_movimientos_bancarios(int $entidadId): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $bancos = [1 => 'SANTANDER', 13 => 'AFIRME'];
+        $banco = $bancos[$entidadId] ?? null;
+        $year  = (int)($_GET['year'] ?? date('Y'));
+        $month = (int)($_GET['month'] ?? date('m'));
+        if (!$banco || $month < 1 || $month > 12) {
+            echo json_encode(['status' => 'error', 'message' => 'Entidad o periodo inválido']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+            $stmtCatalogo = $conn->prepare(
+                "SELECT A.afiliacion, ISNULL(S.Nombre, V.Nombre) AS Estacion, ISNULL(A.rfc, 'FORANEAS') AS RFC
+                 FROM Tesoreria_afil A
+                 LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                 LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                 WHERE A.entidad_id = ? AND LEN(ISNULL(A.afiliacion,'')) > 0
+                   AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)"
+            );
+            $stmtCatalogo->execute([$entidadId]);
+            $catalogo = [];
+            while ($r = $stmtCatalogo->fetch(PDO::FETCH_ASSOC)) {
+                foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
+                    $original = trim($token);
+                    $token = ltrim($original, '0') ?: $original;
+                    if ($token !== '') $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
+                }
+            }
+            usort($catalogo, fn($a, $b) => [ $a['Estacion'], $a['afiliacion'] ] <=> [ $b['Estacion'], $b['afiliacion'] ]);
+
+            $filtro = '';
+            if ($banco === 'AFIRME') {
+                $filtro = " AND descripcion LIKE '%VENTA%'";
+            } else {
+                // Antigua hoja 5117: excluir DCC, IVA y bonificaciones; la
+                // cuenta conserva el último bloque de dígitos de dicha hoja.
+                $filtro = " AND (cuenta <> '65505675117' OR descripcion LIKE '%DEPOSITO VENTAS DEL DIA%' OR descripcion LIKE '%DEPOSITO VTAS%')";
+            }
+            $stmtMovimientos = $conn->prepare(
+                "SELECT id, fecha, abono, cuenta, referencia, concepto, descripcion, descripcion_larga
+                 FROM [TG].[dbo].[movimientos_bancarios]
+                 WHERE banco = ? AND abono > 0 AND YEAR(fecha) = ? AND MONTH(fecha) = ?$filtro
+                 ORDER BY fecha, id"
+            );
+            $stmtMovimientos->execute([$banco, $year, $month]);
+
+            $resultado = [];
+            while ($mov = $stmtMovimientos->fetch(PDO::FETCH_ASSOC)) {
+                $texto = implode(' ', [
+                    (string)($mov['referencia'] ?? ''), (string)($mov['concepto'] ?? ''),
+                    (string)($mov['descripcion'] ?? ''), (string)($mov['descripcion_larga'] ?? ''),
+                ]);
+                foreach ($catalogo as $afil) {
+                    if (stripos($texto, $afil['afiliacion']) === false) continue;
+                    $fecha = $mov['fecha'] instanceof DateTime
+                        ? $mov['fecha']->format('Y-m-d')
+                        : substr((string)$mov['fecha'], 0, 10);
+                    $resultado[] = [
+                        'Fecha'        => $fecha,
+                        'Afiliacion'   => $afil['afiliacion'],
+                        'Estacion'     => $afil['Estacion'],
+                        'Total'        => (float)$mov['abono'],
+                        'MovimientoId' => 'mb_' . (int)$mov['id'],
+                        'Descripcion'  => trim((string)($mov['descripcion'] ?: $mov['concepto'] ?: '')),
+                    ];
+                    break;
+                }
+            }
+
+            echo json_encode(['status' => 'success', 'data' => $resultado, 'catalog' => $catalogo]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error BD: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
     // =========================================================================
     // 3. TESORERIA SANTANDER
     // =========================================================================
     public function get_tesoreria_santander() {
-        ob_clean();
-        header('Content-Type: application/json');
-        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
-        $year = $_GET['year'] ?? date('Y');
-        $month = $_GET['month'] ?? date('m');
-
-        try {
-            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
-            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-            $sqlAfil = "SELECT A.afiliacion,
-                               ISNULL(S.Nombre, V.Nombre) as Estacion,
-                               ISNULL(A.rfc, 'FORANEAS') as RFC
-                        FROM Tesoreria_afil A
-                        LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
-                        LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
-                        WHERE A.entidad_id = 1
-                        AND LEN(ISNULL(A.afiliacion,'')) > 0
-                        AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
-            
-            $stmtAfil = $conn->query($sqlAfil);
-            $catalogo = [];
-            while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
-                foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = ltrim(trim($token), '0') ?: trim($token);
-                    if ($token === '') continue;
-                    $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
-                }
-            }
-            usort($catalogo, function($a, $b) {
-                $res = strcmp($a['Estacion'], $b['Estacion']);
-                return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
-            });
-
-            $tablas = ['Tesoreria_5117', 'Tesoreria_8973', 'Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4547',
-                       'Tesoreria_A6115', 'Tesoreria_5791', 'Tesoreria_2951', 'Tesoreria_5247',
-                       'Tesoreria_4098', 'Tesoreria_8876', 'Tesoreria_7291', 'Tesoreria_7533'];
-            $movimientosRaw = [];
-
-            foreach ($tablas as $tabla) {
-                try {
-                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
-                    if ($check->fetchColumn() == 0) continue;
-                    $hasConcepto = $conn->query("SELECT count(*) FROM information_schema.columns WHERE table_name='$tabla' AND column_name='Concepto'")->fetchColumn() > 0;
-                    $cols = $hasConcepto ? 'Fecha, Referencia, Descripcion, Concepto, Depositos' : 'Fecha, Referencia, Descripcion, NULL as Concepto, Depositos';
-                    // En 5117 también llegan abonos ajenos a ventas (DCC, bonificaciones, etc.).
-                    // Para conciliación sólo deben considerarse los depósitos de ventas.
-                    $filtroDepositoVentas = ($tabla === 'Tesoreria_5117')
-                        ? " AND (Descripcion LIKE '%DEPOSITO VENTAS DEL DIA%' OR Descripcion LIKE '%DEPOSITO VTAS%')"
-                        : '';
-                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0$filtroDepositoVentas AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
-                    $stmt = $conn->prepare($sql);
-                    $stmt->execute([$year, $month]);
-                    while($r = $stmt->fetch(PDO::FETCH_ASSOC)) $movimientosRaw[] = $r;
-                } catch(Exception $e){}
-            }
-
-            $agrupado = [];
-            foreach($movimientosRaw as $row){
-                // Normalizar Referencia: quitar formato moneda ($8,828,251.00 → 8828251)
-                $ref      = preg_replace('/[^0-9A-Za-z]/', '', trim($row['Referencia'] ?? ''));
-                $concepto = trim($row['Concepto'] ?? '');
-                $desc     = trim($row['Descripcion'] ?? '');
-                $fechaVal = $row['Fecha'];
-                $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
-                $monto = (float)$row['Depositos'];
-
-                foreach ($catalogo as $afilItem) {
-                    $afiliacionStr = $afilItem['afiliacion'];
-                    if (stripos($ref, $afiliacionStr) !== false || stripos($concepto, $afiliacionStr) !== false || stripos($desc, $afiliacionStr) !== false) {
-                        $key = $fecha . '_' . $afiliacionStr;
-                        if (!isset($agrupado[$key])) {
-                            $agrupado[$key] = [
-                                'Fecha' => $fecha, 'Afiliacion' => $afiliacionStr, 'Estacion' => $afilItem['Estacion'], 'Total' => 0
-                            ];
-                        }
-                        $agrupado[$key]['Total'] += $monto;
-                        break; 
-                    }
-                }
-            }
-
-            $resultado = array_values($agrupado);
-            usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
-
-            echo json_encode(["status" => "success", "data" => $resultado, "catalog" => $catalogo]);
-        } catch (PDOException $e) {
-            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
-        }
-        exit;
+        $this->emitir_tesoreria_movimientos_bancarios(1);
     }
 
     // =========================================================================
@@ -4121,68 +4117,7 @@ public function anomalies_client_tickets()
     // 5. TESORERIA AFIRME
     // =========================================================================
     public function get_tesoreria_afirme() {
-        ob_clean();
-        header('Content-Type: application/json');
-        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
-        $id_afirme = 13;
-        $year = $_GET['year'] ?? date('Y');
-        $month = $_GET['month'] ?? date('m'); 
-
-        try {
-            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
-            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-            $sqlAfil = "SELECT A.afiliacion, 
-                               ISNULL(S.Nombre, V.Nombre) as Estacion,
-                               ISNULL(A.rfc, 'FORANEAS') as RFC 
-                        FROM Tesoreria_afil A
-                        LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
-                        LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
-                        WHERE A.entidad_id = $id_afirme 
-                        AND LEN(ISNULL(A.afiliacion,'')) > 0
-                        AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
-            
-            $stmtAfil = $conn->query($sqlAfil);
-            $catalogo = [];
-            while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
-                foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = ltrim(trim($token), '0') ?: trim($token);
-                    if ($token === '') continue;
-                    $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
-                }
-            }
-            usort($catalogo, function($a, $b) {
-                $res = strcmp($a['Estacion'], $b['Estacion']);
-                return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
-            });
-
-            $sql = "SELECT Fecha, Descripcion, Depositos FROM Tesoreria_Afirme WHERE Depositos > 0 AND Descripcion LIKE '%VENTA%' AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->execute([$year, $month]);
-            $agrupado = [];
-
-            while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                $descripcion = trim($row['Descripcion'] ?? '');
-                $fechaVal = $row['Fecha'];
-                $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
-                $monto = (float)$row['Depositos'];
-
-                foreach ($catalogo as $afilItem) {
-                    if (stripos($descripcion, $afilItem['afiliacion']) !== false) {
-                        $key = $fecha . '_' . $afilItem['afiliacion'];
-                        if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilItem['afiliacion'],'Estacion'=>$afilItem['Estacion'],'Total'=>0];
-                        $agrupado[$key]['Total'] += $monto;
-                        break; 
-                    }
-                }
-            }
-
-            $resultado = array_values($agrupado);
-            usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
-            echo json_encode(["status" => "success", "data" => $resultado, "catalog" => $catalogo]);
-
-        } catch (PDOException $e) { echo json_encode(["status" => "error", "message" => $e->getMessage()]); }
-        exit;
+        $this->emitir_tesoreria_movimientos_bancarios(13);
     }
 
     // =========================================================================
@@ -6236,7 +6171,8 @@ public function stamped_invoices_detail(): void
     //
     // Tablas: Conciliacion_V3_Grupos, Conciliacion_V3_Detalles,
     //         Conciliacion_V3_Transito, Conciliacion_V3_CierreMes
-    // Vista:  Tesoreria_V3_Unificada  (une 0956 + 5117 + 8973 + Afirme)
+    // Vista: Tesoreria_V3_Unificada para fuentes históricas; Santander y
+    // Afirme en test_v3 se leen directamente de movimientos_bancarios.
     // =========================================================================
 
     // ── VISTAS ────────────────────────────────────────────────────────────────
@@ -8685,19 +8621,25 @@ public function stamped_invoices_detail(): void
                     d.grupo_id,
                     d.referencia_externa,
                     d.monto                       AS monto_concil,
-                    CAST(t.Depositos AS DECIMAL(18,2)) AS monto_actual,
+                    CAST(COALESCE(m.abono, t.Depositos) AS DECIMAL(18,2)) AS monto_actual,
                     d.concepto,
                     CONVERT(VARCHAR(10), g.fecha_operativa, 23) AS fecha_operativa
                 FROM Conciliacion_V3_Detalles d
                 JOIN Conciliacion_V3_Grupos g   ON d.grupo_id = g.id
-                JOIN Tesoreria_V3_Unificada t   ON t.id_origen = d.referencia_externa
+                LEFT JOIN [TG].[dbo].[movimientos_bancarios] m
+                       ON d.referencia_externa LIKE 'mb[_]%'
+                      AND m.id = TRY_CONVERT(INT, SUBSTRING(d.referencia_externa, 4, 50))
+                LEFT JOIN Tesoreria_V3_Unificada t
+                       ON d.referencia_externa NOT LIKE 'mb[_]%'
+                      AND t.id_origen = d.referencia_externa
                 WHERE d.origen       = 'TES'
                   AND g.estacion_id  = ?
                   AND g.entidad_id   = ?
                   AND (g.afiliacion  = ? OR (g.afiliacion IS NULL AND ? = ''))
                   AND YEAR(g.fecha_operativa)  = ?
                   AND MONTH(g.fecha_operativa) = ?
-                  AND ABS(d.monto - CAST(t.Depositos AS DECIMAL(18,2))) > 0.001
+                  AND (m.id IS NOT NULL OR t.id_origen IS NOT NULL)
+                  AND ABS(d.monto - CAST(COALESCE(m.abono, t.Depositos) AS DECIMAL(18,2))) > 0.001
             ";
 
             $stmt = $conn->prepare($sql);
@@ -8742,12 +8684,18 @@ public function stamped_invoices_detail(): void
 
             $ph   = implode(',', array_fill(0, count($ids), '?'));
 
-            // 1. Obtener montos actuales desde Tesoreria_V3_Unificada
+            // 1. Obtener montos actuales desde la fuente histórica o
+            // movimientos_bancarios cuando la referencia es mb_<id>.
             $rows = $conn->prepare("
-                SELECT d.id, d.grupo_id, CAST(t.Depositos AS DECIMAL(18,2)) AS monto_nuevo
+                SELECT d.id, d.grupo_id, CAST(COALESCE(m.abono, t.Depositos) AS DECIMAL(18,2)) AS monto_nuevo
                 FROM Conciliacion_V3_Detalles d
-                JOIN Tesoreria_V3_Unificada t ON t.id_origen = d.referencia_externa
-                WHERE d.id IN ($ph)
+                LEFT JOIN [TG].[dbo].[movimientos_bancarios] m
+                       ON d.referencia_externa LIKE 'mb[_]%'
+                      AND m.id = TRY_CONVERT(INT, SUBSTRING(d.referencia_externa, 4, 50))
+                LEFT JOIN Tesoreria_V3_Unificada t
+                       ON d.referencia_externa NOT LIKE 'mb[_]%'
+                      AND t.id_origen = d.referencia_externa
+                WHERE d.id IN ($ph) AND (m.id IS NOT NULL OR t.id_origen IS NOT NULL)
             ");
             $rows->execute($ids);
             $items = $rows->fetchAll(PDO::FETCH_ASSOC);
