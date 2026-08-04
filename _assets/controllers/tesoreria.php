@@ -13,8 +13,11 @@
  */
 class Tesoreria
 {
-    private const PERM_VER      = 79;   // Ver módulo de Tesorería
-    private const MAX_TXT_BYTES = 10 * 1024 * 1024;
+    private const PERM_MOVIMIENTOS  = 80;   // Ver Movimientos Bancos
+    private const PERM_CUENTAS      = 79;   // Ver Cuentas Bancarias
+    private const PERM_SUBIR_MOV    = 81;   // Subir Movimientos Bancos
+    private const PERM_SALDO_GRUPO  = 82;   // Ver Saldo por Grupo
+    private const MAX_TXT_BYTES     = 10 * 1024 * 1024;
 
     /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
     private const GRUPO_SIN_CATALOGO = 'SIN CATÁLOGO';
@@ -184,7 +187,7 @@ class Tesoreria
      */
     public function movimientos_bancos(): void
     {
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_MOVIMIENTOS)) {
             (new Errors())->get404();
             return;
         }
@@ -236,7 +239,7 @@ class Tesoreria
     public function movimientos_table(): void
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_MOVIMIENTOS)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
@@ -306,7 +309,7 @@ class Tesoreria
      */
     public function saldos_finales()
     {
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_SALDO_GRUPO)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
@@ -410,7 +413,7 @@ class Tesoreria
      */
     public function exportar_saldos_grupo(): void
     {
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_SALDO_GRUPO)) {
             (new Errors())->get404();
             return;
         }
@@ -442,12 +445,12 @@ class Tesoreria
         $hoja->setTitle('Saldo por grupo');
 
         $hoja->fromArray(['Saldo final por grupo al ' . date('d/m/Y', strtotime($hasta))], null, 'A1');
-        $hoja->mergeCells('A1:E1');
+        $hoja->mergeCells('A1:F1');
         $hoja->getStyle('A1')->getFont()->setBold(true)->setSize(12);
 
-        $hoja->fromArray(['Grupo', 'Empresa', 'Cuentas', 'MXN', 'USD'], null, 'A3');
-        $hoja->getStyle('A3:E3')->getFont()->setBold(true);
-        $hoja->getStyle('A3:E3')->getFill()
+        $hoja->fromArray(['Grupo', 'Empresa / Cuenta', 'Banco', 'Cuentas', 'MXN', 'USD'], null, 'A3');
+        $hoja->getStyle('A3:F3')->getFont()->setBold(true);
+        $hoja->getStyle('A3:F3')->getFill()
              ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
              ->getStartColor()->setRGB('E2E8F0');
 
@@ -460,21 +463,38 @@ class Tesoreria
                 $hoja->fromArray([
                     $g['grupo'],
                     $e['descripcion'],
+                    '',
                     $n,
                     $e['totales']['MXN']['saldo'] ?? null,
                     $e['totales']['USD']['saldo'] ?? null,
                 ], null, 'A' . $fila);
                 $fila++;
+
+                // Detalle de cuentas: colapsado por default (mismo patrón que
+                // el card, que arranca cerrado y se expande por empresa).
+                foreach ($e['cuentas'] as $c) {
+                    $hoja->fromArray([
+                        '',
+                        $c['cuenta'],
+                        $c['banco'],
+                        '',
+                        $c['moneda'] === 'MXN' ? $c['saldo'] : null,
+                        $c['moneda'] === 'USD' ? $c['saldo'] : null,
+                    ], null, 'A' . $fila);
+                    $hoja->getStyle("B$fila")->getFont()->getColor()->setRGB('64748B');
+                    $hoja->getRowDimension($fila)->setOutlineLevel(1)->setVisible(false);
+                    $fila++;
+                }
             }
 
             $nG = ($g['totales']['MXN']['n'] ?? 0) + ($g['totales']['USD']['n'] ?? 0);
             $hoja->fromArray([
-                '', 'Total ' . $g['grupo'], $nG,
+                '', 'Total ' . $g['grupo'], '', $nG,
                 $g['totales']['MXN']['saldo'] ?? null,
                 $g['totales']['USD']['saldo'] ?? null,
             ], null, 'A' . $fila);
-            $hoja->getStyle("A$fila:E$fila")->getFont()->setBold(true);
-            $hoja->getStyle("A$fila:E$fila")->getFill()
+            $hoja->getStyle("A$fila:F$fila")->getFont()->setBold(true);
+            $hoja->getStyle("A$fila:F$fila")->getFill()
                  ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
                  ->getStartColor()->setRGB('F1F5F9');
             $fila += 2;   // renglón en blanco entre grupos
@@ -484,15 +504,20 @@ class Tesoreria
             $tCtas += $nG;
         }
 
-        $hoja->fromArray(['', 'TOTAL GENERAL', $tCtas, $tMxn, $tUsd], null, 'A' . $fila);
-        $hoja->getStyle("A$fila:E$fila")->getFont()->setBold(true)->setSize(11);
-        $hoja->getStyle("A$fila:E$fila")->getBorders()->getTop()
+        $hoja->fromArray(['', 'TOTAL GENERAL', '', $tCtas, $tMxn, $tUsd], null, 'A' . $fila);
+        $hoja->getStyle("A$fila:F$fila")->getFont()->setBold(true)->setSize(11);
+        $hoja->getStyle("A$fila:F$fila")->getBorders()->getTop()
              ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE);
 
-        $hoja->getStyle('D4:E' . $fila)->getNumberFormat()->setFormatCode('#,##0.00');
-        $hoja->getStyle('C4:C' . $fila)->getAlignment()->setHorizontal('center');
-        foreach (range('A', 'E') as $col) $hoja->getColumnDimension($col)->setAutoSize(true);
+        $hoja->getStyle('E4:F' . $fila)->getNumberFormat()->setFormatCode('#,##0.00');
+        $hoja->getStyle('D4:D' . $fila)->getAlignment()->setHorizontal('center');
+        foreach (range('A', 'F') as $col) $hoja->getColumnDimension($col)->setAutoSize(true);
         $hoja->freezePane('A4');
+
+        // Outline por filas: los "[-]" de agrupado quedan a la izquierda y
+        // el resumen (fila "Total ...") va arriba del detalle que resume,
+        // igual que el card en la vista (la empresa antes que sus cuentas).
+        $hoja->setShowSummaryBelow(false);
 
         return $libro;
     }
@@ -600,7 +625,7 @@ class Tesoreria
     public function upload_movimientos(): void
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_MOVIMIENTOS) || !authorized(self::PERM_SUBIR_MOV)) {
             json_output(['success' => false, 'message' => 'No tienes permiso para importar movimientos']);
             return;
         }
@@ -730,7 +755,7 @@ class Tesoreria
     /** Vista de administración del catálogo de cuentas bancarias. */
     public function bank_accounts()
     {
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CUENTAS)) {
             (new Errors())->get404();
             return;
         }
@@ -742,7 +767,7 @@ class Tesoreria
     public function bank_accounts_table()
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CUENTAS)) {
             json_output(['data' => [], 'error' => 'Sin permiso']);
             return;
         }
@@ -754,7 +779,7 @@ class Tesoreria
     public function create_bank_account()
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CUENTAS)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
@@ -794,7 +819,7 @@ class Tesoreria
     public function update_bank_account()
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CUENTAS)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
@@ -842,7 +867,7 @@ class Tesoreria
     public function toggle_bank_account()
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CUENTAS)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }

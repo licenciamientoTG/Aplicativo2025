@@ -94,11 +94,6 @@
           <span class="align-middle">Herramientas</span>
         </a>
         <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          {% if authorized(41) %}
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/administration/exchange_rate">Tipo de cambio</a>
-          </li>
-          {% endif %}
           {% if authorized(39) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a>
@@ -295,20 +290,32 @@
       </li>
 
       {% endif %}
-      {% if authorized(79) %} {# Ver módulo de Tesorería #}
+      {% if authorized(41) or authorized(79) or authorized(80) %} {# Ver módulo de Tesorería #}
       <li class="sidebar-header">TESORERÍA</li>
+      {% if authorized(80) %}
       <li class="sidebar-item">
         <a class="sidebar-link" href="/tesoreria/movimientos_bancos">
           <i data-feather="credit-card"></i>
           <span class="align-middle">Movimientos bancos</span>
         </a>
       </li>
+      {% endif %}
+      {% if authorized(79) %}
       <li class="sidebar-item">
         <a class="sidebar-link" href="/tesoreria/bank_accounts">
           <i data-feather="briefcase"></i>
           <span class="align-middle">Cuentas Bancarias</span>
         </a>
       </li>
+      {% endif %}
+      {% if authorized(41) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/administration/exchange_rate">
+          <i data-feather="dollar-sign"></i>
+          <span class="align-middle">Tipo de cambio</span>
+        </a>
+      </li>
+      {% endif %}
       {% endif %} {% if authorized(62) %}
       <li class="sidebar-header">COMERCIAL</li>
       <li class="sidebar-item">
