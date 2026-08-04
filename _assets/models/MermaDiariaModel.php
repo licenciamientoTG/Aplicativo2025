@@ -541,6 +541,22 @@ class MermaDiariaModel extends Model
         );
     }
 
+    /**
+     * Última fila de merma_sync_log que sí trajo datos (estaciones_ok > 0).
+     * Excluye intentos que fallaron por completo (ApiER caído, etc.) para
+     * que "última actualización" no muestre un sync que no actualizó nada.
+     */
+    public function get_ultimo_sync_ok(): ?array
+    {
+        $rows = $this->sql->select(
+            'SELECT TOP 1 fecha_sync, origen
+             FROM [TG].[dbo].[merma_sync_log]
+             WHERE estaciones_ok > 0
+             ORDER BY id DESC;'
+        );
+        return $rows ? $rows[0] : null;
+    }
+
     /* ===================================================================== */
     /* Reporte de ventas consolidado (/merma/ventas)                         */
     /* ===================================================================== */
