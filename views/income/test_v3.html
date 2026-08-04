@@ -2046,6 +2046,18 @@ function getAmexComisionByRef(ref, fechaFallback = '') {
     return amexComisiones[key] || null;
 }
 
+// El detalle guardado de AMEX debe representar el cobro bruto: depósito neto
+// más comisión e IVA. Se usa tanto al seleccionar una fila como al conciliar
+// todos los movimientos de un día.
+function montoConciliacionTesComponente(comp, fecha) {
+    let monto = parseFloat(comp.monto || 0);
+    if (isAmex) {
+        const comision = getAmexComisionByRef(comp.ref, fecha);
+        if (comision) monto += parseFloat(comision.comision || 0) + parseFloat(comision.iva || 0);
+    }
+    return monto;
+}
+
 // ── RENDER TESORERÍA (flat — un total por día, sin desplegable) ──
 function renderTes() {
     const $c = $('#tes-content').empty();
@@ -2351,7 +2363,7 @@ function conciliarDia(fecha) {
         if (refsHistoricas.some(ref => hasConciliada('TES', ref))) return;
         componentes.forEach(comp => {
             const ref = normalizarRef(comp.ref);
-            const monto = parseFloat(comp.monto || 0);
+            const monto = montoConciliacionTesComponente(comp, fecha);
             if (!ref || monto <= 0 || hasConciliada('TES', ref) || sel.tes.some(s => s.ref === ref)) return;
             sel.tes.push({ ref, fecha, monto, concepto: comp.descripcion || item.descripcion || '' });
         });
@@ -2444,7 +2456,7 @@ function toggleTESComponentes(el) {
             sel.tes.push({
                 ref,
                 fecha: $(el).attr('data-fecha') || '',
-                monto: parseFloat(c.monto || 0),
+                monto: montoConciliacionTesComponente(c, $(el).attr('data-fecha') || ''),
                 concepto: c.descripcion || ''
             });
         });
