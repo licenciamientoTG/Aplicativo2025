@@ -1364,6 +1364,10 @@ async function fetchTesoreria(eid, year, month) {
             }
             byFecha[fecha].monto += monto;
             byFecha[fecha].afils.push(afil);
+            // Conciliaciones V3 iniciales guardaban el total diario usando
+            // únicamente la fecha como referencia. Conservar ese alias evita
+            // que un depósito ya conciliado aparezca como pendiente.
+            if (!byFecha[fecha].legacy_refs.includes(fecha)) byFecha[fecha].legacy_refs.push(fecha);
             const legacyRef = `${fecha}_${afil}`;
             if (!byFecha[fecha].legacy_refs.includes(legacyRef)) byFecha[fecha].legacy_refs.push(legacyRef);
             if (!byFecha[fecha].desc) byFecha[fecha].desc = m.Estacion || afil || '';
