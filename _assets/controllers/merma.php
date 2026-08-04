@@ -126,9 +126,11 @@ class Merma
         $syncHasta = $hasta;
         $maxHasta  = $ayerStr;
 
+        $ultimoSync = $this->mermaModel->get_ultimo_sync_ok();
+
         echo $this->twig->render($this->route . 'analisis.html',
             compact('anio', 'mes', 'desde', 'hasta', 'maxHasta', 'filas', 'totales',
-                    'syncDesde', 'syncHasta'));
+                    'syncDesde', 'syncHasta', 'ultimoSync'));
     }
 
     /** Detalle día × turno de una estación (equivalente a la hoja del Excel). */
