@@ -6737,8 +6737,22 @@ public function stamped_invoices_detail(): void
 
             $afil_filter = '';
             if ($afiliacion !== '') {
-                $afil_filter = ' AND G.afiliacion = ?';
-                $params[]    = $afiliacion;
+                // Una estación puede tener varias afiliaciones y sus grupos se
+                // guardan como "A / B / C". La comparación exacta ocultaba
+                // esos grupos al consultar una afiliación individual.
+                $afil_parts = array_values(array_filter(array_map(
+                    'trim', preg_split('/[,\/]+/', $afiliacion)
+                ), fn($part) => $part !== ''));
+
+                $afil_conditions = [];
+                foreach ($afil_parts as $part) {
+                    $afil_conditions[] = '(G.afiliacion = ? OR G.afiliacion LIKE ?)';
+                    $params[] = $part;
+                    $params[] = '%' . $part . '%';
+                }
+                if ($afil_conditions) {
+                    $afil_filter = ' AND (' . implode(' OR ', $afil_conditions) . ')';
+                }
             }
 
             $sql = "SELECT D.id, D.grupo_id, D.origen,

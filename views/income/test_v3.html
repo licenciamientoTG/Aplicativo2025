@@ -1294,6 +1294,10 @@ function actualizarTodo() {
         isAmex ? fetchAmexComisiones(year, month) : Promise.resolve(),
     ]).finally(() => {
         body_loading(false);
+        // Un depósito ya conciliado puede dejar de venir en el extracto actual
+        // (por ejemplo, si cambió su texto de afiliación). Conservamos su
+        // detalle histórico para no mostrar la conciliación sólo del lado CG.
+        integrarTesoreriaHistorica();
         // Render único después de que TODOS los datos cargaron
         renderCG();
         renderTes();
@@ -1439,6 +1443,43 @@ async function fetchConciliadas(estid, eid, afil, year, month) {
         if (d.origen === 'DIFERIDO') conciliadasSet.DIFERIDO.add(normalizarRef(d.ref));
         gruposConDiff[d.grupo_id] = d.diferencia;
     });
+}
+
+// Agrega únicamente los depósitos TES ya conciliados que no se pudieron
+// recuperar de la fuente actual de Tesorería. No toca la base de datos: es
+// una capa de visualización/auditoría para que ambos lados del grupo sigan
+// siendo visibles.
+function integrarTesoreriaHistorica() {
+    const refsVisibles = new Set();
+    tesData.forEach(item => {
+        [item.id_origen, ...(item.all_refs || [])].forEach(ref => {
+            ref = normalizarRef(ref);
+            if (ref) refsVisibles.add(ref);
+        });
+        (item.components || []).forEach(comp => {
+            const ref = normalizarRef(comp.ref);
+            if (ref) refsVisibles.add(ref);
+        });
+    });
+
+    historial
+        .filter(item => item.origen === 'TES')
+        .forEach(item => {
+            const ref = normalizarRef(item.ref);
+            if (!ref || refsVisibles.has(ref)) return;
+
+            tesData.push({
+                fecha:       (item.fecha || '').substring(0, 10),
+                monto:       parseFloat(item.monto || 0),
+                descripcion: item.concepto || 'Depósito conciliado',
+                id_origen:   ref,
+                all_refs:    [ref],
+                components:  [{ ref, monto: parseFloat(item.monto || 0), descripcion: item.concepto || 'Depósito conciliado' }],
+                sucursal:    '',
+                historico:   true
+            });
+            refsVisibles.add(ref);
+        });
 }
 
 // ── FETCH DIFERIDOS CG V3 ─────────────────────────────────────
