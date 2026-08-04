@@ -1,10 +1,12 @@
 <?php
 /**
- * Tarea programada: sincronización diaria del snapshot de merma (D-2 y D-1).
- * Equivale al botón "Actualizar datos" de /merma/analisis para todas las
- * estaciones. Consulta ApiER en paralelo y reemplaza TG.dbo.merma_diaria.
+ * Tarea programada: sincronización diaria del snapshot de merma, cubriendo
+ * el mes en curso completo (día 1 -> ayer) para no dejar huecos si algún
+ * día falla. Equivale al botón "Actualizar datos" de /merma/analisis para
+ * todas las estaciones. Consulta ApiER en paralelo y reemplaza
+ * TG.dbo.merma_diaria.
  *
- * Configurar en Programador de Tareas de Windows a las 05:00 AM:
+ * Configurar en Programador de Tareas de Windows a las 06:00 AM:
  *   Programa:   php
  *   Argumentos: C:\ruta\AplicativoPhp\cron\merma_sync_diario.php
  *

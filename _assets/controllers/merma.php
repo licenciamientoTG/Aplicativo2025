@@ -892,8 +892,13 @@ class Merma
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $desde = date('Y-m-d', strtotime('-2 days'));
+        // Día 1 del mes en curso -> ayer, para que un fallo puntual de un
+        // día no deje huecos permanentes: el cron del día siguiente lo
+        // vuelve a cubrir. Si hoy es día 1, "ayer" cae en el mes anterior;
+        // en ese caso se acota a solo ayer (mismo criterio que analisis()).
         $hasta = date('Y-m-d', strtotime('-1 day'));
+        $desde = date('Y-m-01');
+        if ($desde > $hasta) $desde = date('Y-m-01', strtotime($hasta));
         $res = $this->runSync($desde, $hasta, 0, 'cron', null);
         if (PHP_SAPI === 'cli') {
             // Corrida por Task Scheduler: el exit code es la única señal externa
