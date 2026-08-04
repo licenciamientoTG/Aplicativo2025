@@ -882,7 +882,7 @@ class Merma
     }
 
     /**
-     * Cron de madrugada: sincroniza D-2 y D-1 de todas las estaciones.
+     * Cron de madrugada: sincroniza el mes en curso (día 1 -> ayer) de todas las estaciones.
      * GET/POST /merma/sync_diario?cron_token=CRON_SECRET
      */
     public function sync_diario(): void
