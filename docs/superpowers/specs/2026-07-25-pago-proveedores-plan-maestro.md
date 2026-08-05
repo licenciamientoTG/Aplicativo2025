@@ -10,7 +10,7 @@ Reemplazar el flujo manual actual (escaneos por correo + Excel de compras + desc
 1. La estación captura su recepción en ControlGas (como hoy) → `MovimientosTan`.
 2. Las facturas llegan por correo y se importan automáticamente (como hoy) → `TG.dbo.FacturasRecibidas`, **ahora también con el XML**.
 3. El sistema concilia recepción ↔ factura (con bandera Petrotal cuando aplica).
-4. La estación entra a un portal, ve sus recepciones, sube el escaneo de su remisión y **descarga el XML** que le corresponde para subirlo a ControlGas.
+4. La estación entra a un portal y, en la misma pantalla de cada recepción, sube el escaneo de su remisión, ve la factura en cuanto Abastos se la asigna, y **descarga el XML** que le corresponde para subirlo a ControlGas.
 5. El sistema verifica en ControlGas que el UUID ya quedó en `DocumentosC.satuid` y cierra el ciclo; de ahí alimenta el módulo de pagos existente (`/payment/...`).
 6. En compras vía Petrotal, la deuda se sigue contra el **proveedor real** (ej. Tesoro), aunque en ControlGas se suba la factura de Petrotal.
 
@@ -77,15 +77,16 @@ Reemplazar el flujo manual actual (escaneos por correo + Excel de compras + desc
 
 ## Fase 3 — Portal de estaciones
 
-**Objetivo:** que la estación sea autosuficiente: ver sus recepciones, subir su remisión escaneada, descargar su XML.
+**Objetivo:** que la estación sea autosuficiente: una sola pantalla por recepción para ver su estado, subir su remisión escaneada, ver la factura que Abastos le asignó y descargar su XML.
 
 - Nuevo controlador (p. ej. `station_portal.php`) + permiso nuevo; **filtrado forzoso** por el `IdEstacion` de la sesión (ya disponible desde el login).
   - **Confirmado:** las estaciones ya tienen usuarios activos, porque hoy usan el tabulador. No hay trabajo de alta masiva; solo asignar el permiso nuevo.
   - `validate.inc.php:42-45` pone `IdEstacion`/`Estacion` en `$_SESSION['tg_user']` vía `sp_consulta_usuario_estacion`, **pero solo si el SP devuelve fila**. El controlador debe negar acceso cuando la llave no exista, en lugar de asumirla (un usuario corporativo sin estación no debe ver un listado sin filtrar).
-- Vistas:
-  - **Mis recepciones**: lista desde el snapshot de Fase 1, con estado y semáforo (falta remisión / falta factura / XML listo para descargar / ya subida a ControlGas).
-  - **Subir remisión**: escaneo (PDF/imagen) + número de remisión → tabla en TG + archivo en servidor. Sustituye el correo de escaneos.
-  - **Descargar XML**: habilitado cuando la conciliación de Fase 1 ya asignó factura a esa recepción.
+- Vista única — **Mis recepciones**: una sola pantalla por recepción (basada en `MovimientosTan`, snapshot de Fase 1), no un flujo separado por tarea. Desde ahí la estación:
+  - Ve la lista de sus recepciones con estado y semáforo (falta remisión / falta factura / XML listo para descargar / ya subida a ControlGas).
+  - **Sube el escaneo de su remisión** (PDF/imagen) directamente sobre la recepción correspondiente → tabla en TG + archivo en servidor. Sustituye el correo de escaneos.
+  - **Ve la factura en cuanto Abastos la asigna** a esa recepción en la conciliación de Fase 1 (no necesita ir a buscarla aparte).
+  - **Descarga el XML** de esa misma pantalla, habilitado en cuanto la factura queda asignada, para subirlo a ControlGas.
 - Notificación (correo o campana) a la estación cuando su XML esté disponible.
 
 ## Fase 4 — Cierre del ciclo y verificación

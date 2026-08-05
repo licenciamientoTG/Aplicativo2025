@@ -1011,9 +1011,7 @@ $(function () {
                '</tr></thead><tbody>';
 
     porGrupo.forEach(function (g, gi) {
-      html += fila(g.totales, 1, 'g' + gi, '<strong>' + esc(g.grupo) + '</strong>',
-                   ' <span class="g-ctas">' + g.empresas.length +
-                   (g.empresas.length === 1 ? ' empresa' : ' empresas') + '</span>');
+      html += fila(g.totales, 1, 'g' + gi, '<strong>' + esc(g.grupo) + '</strong>');
 
       g.empresas.forEach(function (e, ei) {
         var idE = 'g' + gi + 'e' + ei;

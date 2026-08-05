@@ -97,14 +97,6 @@ class Tesoreria
             'parser'   => 'parse_inbursa_xlsx',
             'entrada'  => 'ruta',
         ],
-        'BBVA' => [
-            'etiqueta' => 'BBVA',
-            'color'    => '#004481',   // Core Blue del manual de identidad
-            'ext'      => ['xls'],
-            'espera'   => 'el reporte de movimientos de BBVA',
-            'parser'   => 'parse_bbva_xml',
-            'entrada'  => 'ruta',
-        ],
         'BANKAOOL' => [
             'etiqueta' => 'Bankaool',
             'color'    => '#0F766E',   // sin identidad publicada: teal elegido para distinguirlo
@@ -114,6 +106,14 @@ class Tesoreria
             'entrada'  => 'ruta',
             // Su archivo no trae la cuenta: el modal la pide y se pasa al parser
             'pide_cuenta' => true,
+        ],
+        'BBVA' => [
+            'etiqueta' => 'BBVA',
+            'color'    => '#004481',   // Core Blue del manual de identidad
+            'ext'      => ['xls'],
+            'espera'   => 'el reporte de movimientos de BBVA',
+            'parser'   => 'parse_bbva_xml',
+            'entrada'  => 'ruta',
         ],
         'VANTAGE' => [
             'etiqueta' => 'Vantage',
@@ -393,7 +393,12 @@ class Tesoreria
         $peso = fn($b) => max(array_column($b['totales'], 'saldo') ?: [0]);
 
         foreach ($grupos as &$g) {
-            usort($g['cuentas'], fn($a, $b) => $b['saldo'] <=> $a['saldo']);
+            // Por banco (etiqueta) y, dentro del mismo banco, por saldo desc.
+            usort($g['cuentas'], function ($a, $b) {
+                $etiquetaA = self::BANCOS[self::banco_de($a['banco'])]['etiqueta'];
+                $etiquetaB = self::BANCOS[self::banco_de($b['banco'])]['etiqueta'];
+                return $etiquetaA <=> $etiquetaB ?: $b['saldo'] <=> $a['saldo'];
+            });
             uasort($g['porBanco'], fn($a, $b) => $peso($b) <=> $peso($a));
             $g['porBanco'] = array_values($g['porBanco']);
         }
