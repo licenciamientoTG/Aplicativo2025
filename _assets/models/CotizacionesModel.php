@@ -73,77 +73,52 @@ class CotizacionesModel extends Model{
     }
 
     /**
-     * Verifica conectividad básica al puerto SQL Server de una estación.
-     */
-    private function puertoAbierto($host, $port = 1433, $timeout = 0.5) : bool {
-        $conn = @fsockopen($host, $port, $errno, $errstr, $timeout);
-        if ($conn) {
-            fclose($conn);
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
      * Devuelve el último tipo de cambio de cada estación.
      *
-     * Cada estación se consulta de forma INDEPENDIENTE: primero se valida que el
-     * puerto SQL Server esté abierto y luego se ejecuta la consulta con un método
-     * que NO termina la ejecución ante un error. Así, si una estación pierde
-     * conexión, simplemente se omite y el resto de los registros se siguen
-     * mostrando.
+     * La consulta a las 34 estaciones se delega a ApiER (endpoint
+     * /api/TG_php/exchange_rates/), que las ejecuta en paralelo con
+     * ThreadPoolExecutor en vez del foreach secuencial que corría antes aquí.
+     * Si una estación individual falla, ApiER simplemente la omite del
+     * resultado. Si ApiER completo no responde, se loguea y se devuelve un
+     * array vacío para que la vista muestre la tabla vacía sin tronar.
      */
-    function get_exchange_rates() : array|false {
-        $rows = [];
-
+    function get_exchange_rates() : array {
+        $payload = [];
         foreach ($this->exchange_rate_stations() as $codgas => $meta) {
-            // [192.168.7.101] -> 192.168.7.101 para el chequeo de puerto.
-            $host = trim($this->linked_server[$codgas] ?? '', '[]');
-            if ($host === '') {
+            if (empty($this->linked_server[$codgas]) || empty($this->short_databases[$codgas])) {
                 continue;
             }
+            $payload[] = [
+                'codgas'       => $codgas,
+                'linked_server'=> $this->linked_server[$codgas],
+                'short_db'     => $this->short_databases[$codgas],
+                'station_name' => $meta['station_name'],
+                'no_station'   => $meta['no_station'],
+                'description'  => $meta['description'],
+            ];
+        }
 
-            // Si la estación no responde en el puerto, la omitimos sin tronar.
-            if (!$this->puertoAbierto($host)) {
-                error_log("get_exchange_rates: estación {$meta['station_name']} ({$host}) sin conexión, se omite.");
-                continue;
-            }
+        $ch = curl_init('http://192.168.0.109:82/api/TG_php/exchange_rates/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['estaciones' => $payload]));
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
 
-            $linked = $this->linked_server[$codgas];      // [192.168.7.101]
-            $remote = $this->short_databases[$codgas];    // [SG12_41882020].[dbo]
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
 
-            // Escapamos comillas simples para los literales que van dentro de OPENQUERY.
-            $station_name = str_replace("'", "''", $meta['station_name']);
-            $no_station   = str_replace("'", "''", $meta['no_station']);
-            $description  = str_replace("'", "''", $meta['description']);
+        if ($response === false || $httpCode !== 200) {
+            error_log("get_exchange_rates: fallo al llamar a ApiER (HTTP {$httpCode}) {$curlError}");
+            return [];
+        }
 
-            $query = "
-            WITH cte AS (
-                SELECT *,
-                     CAST(CONVERT(VARCHAR(100), CAST(fch AS DATETIME) - 1, 23) AS VARCHAR(10)) AS Fecha
-                FROM (
-                    SELECT TOP (1) [codmda], [codgas], [fch], CONCAT(RIGHT('00' + CAST(FLOOR(hra / 100) AS VARCHAR(2)), 2), ':', RIGHT('00' + CAST(hra % 100 AS VARCHAR(2)), 2)) AS hra_format, [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew], N'{$station_name}' AS station_name, N'{$no_station}' AS no_station, N'{$description}' AS description
-                    FROM OPENQUERY({$linked}, '
-                        SELECT TOP (1) [codmda], [codgas], [fch], [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew] FROM {$remote}.[Cotizaciones]
-                        WHERE codgas = {$codgas} ORDER BY lognew DESC
-                    ')
-                ) AS inner_cte
-            )
-            SELECT * FROM cte;
-            ";
-
-            $result = $this->sql->selectSafe($query);
-            if ($result === false) {
-                // El puerto estaba abierto pero la consulta falló (linked server
-                // mal configurado, BD inaccesible, etc.). Se omite la estación.
-                error_log("get_exchange_rates: fallo al consultar estación {$meta['station_name']} ({$host}), se omite.");
-                continue;
-            }
-
-            foreach ($result as $r) {
-                $rows[] = $r;
-            }
+        $rows = json_decode($response, true);
+        if (!is_array($rows)) {
+            error_log("get_exchange_rates: respuesta de ApiER no es un array válido: {$response}");
+            return [];
         }
 
         return $rows;
