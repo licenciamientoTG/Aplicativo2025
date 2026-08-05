@@ -501,7 +501,7 @@
       <table id="tabla{{ cod }}" data-banco="{{ cod }}" data-etiqueta="{{ b.etiqueta }}"
              class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
         <thead>
-          {% if cod == 'BANORTE_CHEQUES' %}
+          {% if cod == 'BANORTE' %}
           <tr>
             <th class="no-export">Id</th>
             <th>Fecha de Operación</th>
@@ -675,7 +675,7 @@ $(function () {
   ];
 
   function initMovsTable(sel, excelTitle, emptyMsg, cod) {
-    var esBanorte = cod === 'BANORTE_CHEQUES';
+    var esBanorte = cod === 'BANORTE';
     var api = $(sel).DataTable({
       responsive: true,
       // Sin paginación (contenedor .mb-scroll con cabeceras sticky) y sin

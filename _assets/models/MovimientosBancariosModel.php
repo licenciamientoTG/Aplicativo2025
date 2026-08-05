@@ -20,8 +20,8 @@
  *              razón social y RFC, y la descripción trae la contraparte
  *   MIFEL      CSV con BOM, en orden inverso y con pie legal después de los
  *              datos; la cabecera declara el saldo final para cuadrar
- *   BANORTE_CHEQUES  CSV de Cuentas de Cheques; trae folio consecutivo del
- *              banco y la contraparte dentro de la descripción detallada
+ *   BANORTE    CSV de Cuentas de Cheques; trae folio consecutivo del banco
+ *              y la contraparte dentro de la descripción detallada
  */
 class MovimientosBancariosModel extends Model
 {
@@ -1213,7 +1213,7 @@ class MovimientosBancariosModel extends Model
             $cuentas[$cuenta] = true;
 
             $movimientos[] = [
-                'banco'              => 'BANORTE_CHEQUES',
+                'banco'              => 'BANORTE',
                 'cuenta'             => $cuenta,
                 'fecha'              => $fecha,
                 'hora'               => $cp['hora'] !== '' ? $cp['hora'] : null,
@@ -1233,7 +1233,7 @@ class MovimientosBancariosModel extends Model
                 'descripcion_larga'  => mb_substr($detalle, 0, 400) ?: null,
                 // El folio del banco entra a la huella: es único por cuenta y
                 // hace imposible que dos movimientos iguales se confundan.
-                'huella'             => sha1('BANORTE_CHEQUES|' . implode('|', [
+                'huella'             => sha1('BANORTE|' . implode('|', [
                     $cuenta, $fecha, $folio, $desc,
                     sprintf('%.2f', $deposito), sprintf('%.2f', $retiro), sprintf('%.2f', $saldo),
                 ])),

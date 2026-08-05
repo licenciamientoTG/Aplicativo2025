@@ -70,6 +70,17 @@ class Tesoreria
             'parser'   => 'parse_santander_txt',
             'entrada'  => 'contenido',
         ],
+        // "BANORTE" y no "BANORTE_CHEQUES": se simplificó el 2026-08-05, hasta
+        // ahora es la única cuenta/layout de Banorte que se importa. Junto a
+        // Santander porque son los dos bancos que más se suben.
+        'BANORTE' => [
+            'etiqueta' => 'Banorte',
+            'color'    => '#EF2945',   // rojo Banorte
+            'ext'      => ['csv'],
+            'espera'   => 'el CSV de Cuentas de Cheques de Banorte',
+            'parser'   => 'parse_banorte_cheques_csv',
+            'entrada'  => 'contenido',
+        ],
         'AFIRME' => [
             'etiqueta' => 'Afirme',
             'color'    => '#009D29',   // verde del logo
@@ -128,16 +139,6 @@ class Tesoreria
             'ext'      => ['csv'],
             'espera'   => 'el reporte de movimientos de Mifel Empresas',
             'parser'   => 'parse_mifel_csv',
-            'entrada'  => 'contenido',
-        ],
-        // "Cheques Banorte" y no solo "Banorte": más adelante entran otras
-        // cuentas del mismo banco con su propio layout.
-        'BANORTE_CHEQUES' => [
-            'etiqueta' => 'Cheques Banorte',
-            'color'    => '#EF2945',   // rojo Banorte
-            'ext'      => ['csv'],
-            'espera'   => 'el CSV de Cuentas de Cheques de Banorte',
-            'parser'   => 'parse_banorte_cheques_csv',
             'entrada'  => 'contenido',
         ],
     ];
