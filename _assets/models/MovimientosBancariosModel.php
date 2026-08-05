@@ -1498,7 +1498,7 @@ class MovimientosBancariosModel extends Model
         $query = "SELECT id, banco, cuenta, fecha, hora, sucursal, descripcion,
                          cargo, abono, saldo, referencia, concepto, clave_rastreo,
                          descripcion_larga, nombre_contraparte, banco_contraparte,
-                         cuenta_contraparte
+                         cuenta_contraparte, clave_trans, secuencia
                   FROM [TG].[dbo].[movimientos_bancarios]
                   $where ORDER BY fecha, id;";
         return $this->sql->select($query, $params) ?: [];
