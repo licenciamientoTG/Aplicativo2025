@@ -96,7 +96,7 @@
   <div class="caja php"><span class="num">3</span>
     <b>AplicativoPhp — <code>Merma::sync()</code></b>
     <small>Se dispara desde el botón "Actualizar datos" (analisis), "Re-sincronizar estación" (detalle)
-    o el cron de las 5:00 AM (D-2 a D-1). Valida el rango (máx. 40 días, nunca el día en curso) y
+    o el cron de las 6:00 AM (mes en curso: día 1 → ayer). Valida el rango (máx. 40 días, nunca el día en curso) y
     reparte las filas recibidas al modelo.</small>
   </div>
   <div class="flecha">↓ <small>DELETE del rango + INSERT (transacción por estación)</small></div>
@@ -178,7 +178,7 @@ un archivo por mes:
   <div class="bueno">
     <b>Ahora (módulo /merma/)</b>
     <ul>
-      <li>Sincronización con un clic o automática (cron 5:00 AM), 37+ estaciones en paralelo en ~40 s.</li>
+      <li>Sincronización con un clic o automática (cron 6:00 AM), 37+ estaciones en paralelo en ~40 s.</li>
       <li>Snapshot histórico en SQL con bitácora de cada corrida (<code>merma_sync_log</code>).</li>
       <li>Encadenamiento calculado en SQL (LAG): consistente, recalculable, cruza meses solo.</li>
       <li>Lecturas corruptas detectadas: visibles en rojo pero excluidas de los cálculos.</li>

@@ -103,7 +103,7 @@ Casos de borde:
   `$desde > $hasta`. `runSync()`/`replace_station_range` no validan
   desde ≤ hasta como sí lo hace `sync()`, así que hay que guardar el caso:
   si `$hasta < $desde`, usar como `$desde` el día 1 del mes de `$hasta`
-  (es decir, sincronizar solo ayer, que cae en el mes previo). Mismo
+  (es decir, sincronizar el mes anterior completo). Mismo
   criterio que ya usa `analisis()` para acotar rangos.
 - Rango de hasta 31 días — sin problema de performance distinto al de hoy
   (ya se sincronizan rangos de mes completo desde la UI).

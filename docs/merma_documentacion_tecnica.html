@@ -93,7 +93,7 @@ medido en tanques contra el <b>inventario contable</b> esperado
   <tr><td><code>/merma/analisis</code></td><td>GET</td><td>Resumen por estación en un rango <code>desde</code>/<code>hasta</code>. Requiere permiso 33 (Reportes de Abastos).</td></tr>
   <tr><td><code>/merma/detalle/{codgas}</code></td><td>GET</td><td>Detalle día × turno de una estación (equivalente a la hoja del Excel), con parámetros <code>anio</code>/<code>mes</code>.</td></tr>
   <tr><td><code>/merma/sync</code></td><td>POST</td><td>Sincroniza un rango (<code>from</code>, <code>to</code>, <code>codgas</code>; 0 = todas). Permiso 33 o <code>cron_token</code>. Tope de 40 días por corrida.</td></tr>
-  <tr><td><code>/merma/sync_diario</code></td><td>CLI</td><td>Cron de madrugada (D-2 a D-1). Se ejecuta con <code>cron/merma_sync_diario.php</code> vía Programador de Tareas — la ruta HTTP no sirve porque <code>index.php</code> exige sesión.</td></tr>
+  <tr><td><code>/merma/sync_diario</code></td><td>CLI</td><td>Cron de madrugada (mes en curso: día 1 → ayer). Se ejecuta con <code>cron/merma_sync_diario.php</code> vía Programador de Tareas — la ruta HTTP no sirve porque <code>index.php</code> exige sesión.</td></tr>
   <tr><td><code>/merma/guardar_manual</code></td><td>POST</td><td>Captura de merma s/d y comentarios por estación/mes (tabla <code>merma_manual</code>).</td></tr>
   <tr><td><code>/merma/guardar_precio</code></td><td>POST</td><td>Precio por litro del mes (tabla <code>merma_mes_config</code>) para valorizaciones.</td></tr>
 </table>
@@ -165,7 +165,7 @@ Por eso <b>toda fecha se topa en "ayer"</b>:
 <ul>
   <li><code>/merma/analisis</code> filtra por rango <code>desde</code>/<code>hasta</code>; ambos inputs tienen <code>max = ayer</code> y el servidor recorta <code>hasta &gt; ayer</code> aunque venga por URL.</li>
   <li>Default sin parámetros: del 1° del mes de ayer hasta ayer. El día 1 del mes, eso significa <b>el mes anterior completo</b>.</li>
-  <li>El re-sync de detalle topa su rango en <code>min(fin de mes, ayer)</code>; el cron sincroniza D-2 a D-1.</li>
+  <li>El re-sync de detalle topa su rango en <code>min(fin de mes, ayer)</code>; el cron sincroniza el mes en curso (día 1 → ayer).</li>
   <li>Compatibilidad: los links viejos <code>?anio=YYYY&amp;mes=M</code> se convierten al rango del mes completo (topado en ayer).</li>
 </ul>
 

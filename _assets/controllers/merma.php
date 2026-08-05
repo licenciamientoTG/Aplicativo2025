@@ -895,7 +895,8 @@ class Merma
         // Día 1 del mes en curso -> ayer, para que un fallo puntual de un
         // día no deje huecos permanentes: el cron del día siguiente lo
         // vuelve a cubrir. Si hoy es día 1, "ayer" cae en el mes anterior;
-        // en ese caso se acota a solo ayer (mismo criterio que analisis()).
+        // en ese caso se sincroniza ese mes anterior completo — mismo
+        // criterio que el default de analisis().
         $hasta = date('Y-m-d', strtotime('-1 day'));
         $desde = date('Y-m-01');
         if ($desde > $hasta) $desde = date('Y-m-01', strtotime($hasta));
