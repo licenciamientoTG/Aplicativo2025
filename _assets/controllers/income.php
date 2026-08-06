@@ -3948,8 +3948,10 @@ public function anomalies_client_tickets()
                 $filtro = " AND descripcion LIKE '%VENTA%'";
             } else {
                 // Antigua hoja 5117: excluir DCC, IVA y bonificaciones; la
-                // cuenta conserva el último bloque de dígitos de dicha hoja.
-                $filtro = " AND (cuenta <> '65505675117' OR descripcion LIKE '%DEPOSITO VENTAS DEL DIA%' OR descripcion LIKE '%DEPOSITO VTAS%')";
+                // cuenta puede llegar con ceros a la izquierda desde el TXT,
+                // por eso se identifica por los últimos cuatro dígitos y no
+                // por una comparación exacta del número completo.
+                $filtro = " AND (RIGHT(RTRIM(cuenta), 4) <> '5117' OR descripcion LIKE '%DEPOSITO VENTAS DEL DIA%' OR descripcion LIKE '%DEPOSITO VTAS%')";
             }
             $stmtMovimientos = $conn->prepare(
                 "SELECT id, fecha, abono, cuenta, referencia, concepto, descripcion, descripcion_larga
