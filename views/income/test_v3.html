@@ -1471,6 +1471,9 @@ function integrarTesoreriaHistorica() {
         .forEach(item => {
             const ref = normalizarRef(item.ref);
             if (!ref || refsVisibles.has(ref)) return;
+            // Si ya se sincronizó a cero, no debe resucitar como una fila
+            // histórica; el detalle queda sólo como trazabilidad en el grupo.
+            if (Math.abs(parseFloat(item.monto) || 0) < 0.01) return;
 
             tesData.push({
                 fecha:       (item.fecha || '').substring(0, 10),
@@ -2108,7 +2111,14 @@ function renderTes() {
                 difTag    = `<span class="diff-tag ${ok?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span>`;
                 unlinkBtn = !mesCerrado ? `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>` : '';
                 const syncItemsTes = [];
-                const componentesTes = componentes;
+                if (!mesCerrado && item.historico && Math.abs(parseFloat(hRec.monto) || 0) > 0.01) {
+                    // Esta fila se reconstruyó desde el historial porque ya
+                    // no llegó en el extracto actual. Su componente copia el
+                    // monto guardado, por lo que no detectaba desfase alguno.
+                    statusClass = 'row-concil-diff';
+                    staleBtn = `<button class="btn-action-mini btn-action-sync" onclick="event.stopPropagation();excluirDetalleTes(${hRec.id},${parseFloat(hRec.monto) || 0})" title="Este depósito ya no viene en el extracto. Clic para actualizarlo a $0.00."><i class="fas fa-exclamation-triangle"></i></button>`;
+                } else {
+                    const componentesTes = componentes;
                 componentesTes.forEach(comp => {
                     const hComp = getHistorialDetalle('TES', comp.ref);
                     if (!hComp) return;
@@ -2131,6 +2141,7 @@ function renderTes() {
                     } else {
                         staleBtn = `<button class="btn-action-mini" style="background:#f39c12;color:#fff;" onclick="event.stopPropagation();recalcularDetallesTes(${JSON.stringify(syncItemsTes).replace(/"/g,'&quot;')})" title="Hay ${syncItemsTes.length} detalles de TesorerÃ­a con monto actualizado. Clic para sincronizarlos."><i class="fas fa-exclamation-triangle"></i></button>`;
                     }
+                }
                 }
                 if (false && !mesCerrado && Math.abs(hRec.monto - montoConc) > 0.01) {
                     statusClass = 'row-concil-diff';
@@ -3987,6 +3998,11 @@ async function recalcularDetalleTes(idDetalle, nuevoMonto) {
 }
 
 // ── CAMBIOS TESORERÍA ─────────────────────────────────────────
+async function excluirDetalleTes(idDetalle, montoAnterior) {
+    if (!confirm(`Este depósito ya no está en el extracto actual.\n\nSe cambiará de ${fmt.format(montoAnterior)} a $0.00 y se recalculará la diferencia. ¿Continuar?`)) return;
+    await recalcularDetalleTes(idDetalle, 0);
+}
+
 async function recalcularDetallesTes(items) {
     if (!Array.isArray(items) || !items.length) return;
     const etiqueta = items.length === 1 ? '1 detalle' : `${items.length} detalles`;
