@@ -126,9 +126,11 @@ class Merma
         $syncHasta = $hasta;
         $maxHasta  = $ayerStr;
 
+        $ultimoSync = $this->mermaModel->get_ultimo_sync_ok();
+
         echo $this->twig->render($this->route . 'analisis.html',
             compact('anio', 'mes', 'desde', 'hasta', 'maxHasta', 'filas', 'totales',
-                    'syncDesde', 'syncHasta'));
+                    'syncDesde', 'syncHasta', 'ultimoSync'));
     }
 
     /** Detalle día × turno de una estación (equivalente a la hoja del Excel). */
@@ -880,7 +882,7 @@ class Merma
     }
 
     /**
-     * Cron de madrugada: sincroniza D-2 y D-1 de todas las estaciones.
+     * Cron de madrugada: sincroniza el mes en curso (día 1 -> ayer) de todas las estaciones.
      * GET/POST /merma/sync_diario?cron_token=CRON_SECRET
      */
     public function sync_diario(): void
@@ -890,8 +892,14 @@ class Merma
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $desde = date('Y-m-d', strtotime('-2 days'));
+        // Día 1 del mes en curso -> ayer, para que un fallo puntual de un
+        // día no deje huecos permanentes: el cron del día siguiente lo
+        // vuelve a cubrir. Si hoy es día 1, "ayer" cae en el mes anterior;
+        // en ese caso se sincroniza ese mes anterior completo — mismo
+        // criterio que el default de analisis().
         $hasta = date('Y-m-d', strtotime('-1 day'));
+        $desde = date('Y-m-01');
+        if ($desde > $hasta) $desde = date('Y-m-01', strtotime($hasta));
         $res = $this->runSync($desde, $hasta, 0, 'cron', null);
         if (PHP_SAPI === 'cli') {
             // Corrida por Task Scheduler: el exit code es la única señal externa

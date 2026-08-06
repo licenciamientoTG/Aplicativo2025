@@ -3947,9 +3947,10 @@ public function anomalies_client_tickets()
             if ($banco === 'AFIRME') {
                 $filtro = " AND descripcion LIKE '%VENTA%'";
             } else {
-                // Antigua hoja 5117: excluir DCC, IVA y bonificaciones; la
-                // cuenta conserva el último bloque de dígitos de dicha hoja.
-                $filtro = " AND (cuenta <> '65505675117' OR descripcion LIKE '%DEPOSITO VENTAS DEL DIA%' OR descripcion LIKE '%DEPOSITO VTAS%')";
+                // Los abonos Santander incluyen DCC, IVA y bonificaciones.
+                // En cualquier cuenta, la conciliación sólo debe tomar los
+                // depósitos provenientes de ventas.
+                $filtro = " AND (descripcion LIKE '%DEPOSITO VENTAS DEL DIA%' OR descripcion LIKE '%DEPOSITO VTAS%')";
             }
             $stmtMovimientos = $conn->prepare(
                 "SELECT id, fecha, abono, cuenta, referencia, concepto, descripcion, descripcion_larga
@@ -6737,8 +6738,22 @@ public function stamped_invoices_detail(): void
 
             $afil_filter = '';
             if ($afiliacion !== '') {
-                $afil_filter = ' AND G.afiliacion = ?';
-                $params[]    = $afiliacion;
+                // Una estación puede tener varias afiliaciones y sus grupos se
+                // guardan como "A / B / C". La comparación exacta ocultaba
+                // esos grupos al consultar una afiliación individual.
+                $afil_parts = array_values(array_filter(array_map(
+                    'trim', preg_split('/[,\/]+/', $afiliacion)
+                ), fn($part) => $part !== ''));
+
+                $afil_conditions = [];
+                foreach ($afil_parts as $part) {
+                    $afil_conditions[] = '(G.afiliacion = ? OR G.afiliacion LIKE ?)';
+                    $params[] = $part;
+                    $params[] = '%' . $part . '%';
+                }
+                if ($afil_conditions) {
+                    $afil_filter = ' AND (' . implode(' OR ', $afil_conditions) . ')';
+                }
             }
 
             $sql = "SELECT D.id, D.grupo_id, D.origen,

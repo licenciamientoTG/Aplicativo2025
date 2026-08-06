@@ -1294,6 +1294,10 @@ function actualizarTodo() {
         isAmex ? fetchAmexComisiones(year, month) : Promise.resolve(),
     ]).finally(() => {
         body_loading(false);
+        // Un depósito ya conciliado puede dejar de venir en el extracto actual
+        // (por ejemplo, si cambió su texto de afiliación). Conservamos su
+        // detalle histórico para no mostrar la conciliación sólo del lado CG.
+        integrarTesoreriaHistorica();
         // Render único después de que TODOS los datos cargaron
         renderCG();
         renderTes();
@@ -1360,6 +1364,10 @@ async function fetchTesoreria(eid, year, month) {
             }
             byFecha[fecha].monto += monto;
             byFecha[fecha].afils.push(afil);
+            // Conciliaciones V3 iniciales guardaban el total diario usando
+            // únicamente la fecha como referencia. Conservar ese alias evita
+            // que un depósito ya conciliado aparezca como pendiente.
+            if (!byFecha[fecha].legacy_refs.includes(fecha)) byFecha[fecha].legacy_refs.push(fecha);
             const legacyRef = `${fecha}_${afil}`;
             if (!byFecha[fecha].legacy_refs.includes(legacyRef)) byFecha[fecha].legacy_refs.push(legacyRef);
             if (!byFecha[fecha].desc) byFecha[fecha].desc = m.Estacion || afil || '';
@@ -1439,6 +1447,62 @@ async function fetchConciliadas(estid, eid, afil, year, month) {
         if (d.origen === 'DIFERIDO') conciliadasSet.DIFERIDO.add(normalizarRef(d.ref));
         gruposConDiff[d.grupo_id] = d.diferencia;
     });
+}
+
+// Agrega únicamente los depósitos TES ya conciliados que no se pudieron
+// recuperar de la fuente actual de Tesorería. No toca la base de datos: es
+// una capa de visualización/auditoría para que ambos lados del grupo sigan
+// siendo visibles.
+function integrarTesoreriaHistorica() {
+    const refsVisibles = new Set();
+    tesData.forEach(item => {
+        [item.id_origen, ...(item.all_refs || [])].forEach(ref => {
+            ref = normalizarRef(ref);
+            if (ref) refsVisibles.add(ref);
+        });
+        (item.components || []).forEach(comp => {
+            const ref = normalizarRef(comp.ref);
+            if (ref) refsVisibles.add(ref);
+        });
+    });
+
+    historial
+        .filter(item => item.origen === 'TES')
+        .forEach(item => {
+            const ref = normalizarRef(item.ref);
+            if (!ref || refsVisibles.has(ref)) return;
+            // Si ya se sincronizó a cero, no debe resucitar como una fila
+            // histórica; el detalle queda sólo como trazabilidad en el grupo.
+            if (Math.abs(parseFloat(item.monto) || 0) < 0.01) return;
+
+            const fecha = (item.fecha || '').substring(0, 10);
+            const monto = parseFloat(item.monto || 0);
+            const existente = tesData.find(t => t.fecha === fecha);
+            if (existente) {
+                // Tesorería se presenta por día. El detalle que ya no viene
+                // en la fuente se conserva dentro de ese mismo día para
+                // sincronizarlo, en lugar de crear una fila adicional.
+                existente.monto = parseFloat(existente.monto || 0) + monto;
+                existente.components = Array.isArray(existente.components) ? existente.components : [];
+                existente.components.push({ ref, monto, descripcion: item.concepto || '', historico: true });
+                existente.all_refs = Array.isArray(existente.all_refs) ? existente.all_refs : [];
+                if (!existente.all_refs.includes(ref)) existente.all_refs.push(ref);
+                refsVisibles.add(ref);
+                return;
+            }
+
+            tesData.push({
+                fecha:       (item.fecha || '').substring(0, 10),
+                monto:       parseFloat(item.monto || 0),
+                descripcion: item.concepto || 'Depósito conciliado',
+                id_origen:   ref,
+                all_refs:    [ref],
+                components:  [{ ref, monto: parseFloat(item.monto || 0), descripcion: item.concepto || 'Depósito conciliado', historico: true }],
+                sucursal:    '',
+                historico:   true
+            });
+            refsVisibles.add(ref);
+        });
 }
 
 // ── FETCH DIFERIDOS CG V3 ─────────────────────────────────────
@@ -2001,6 +2065,18 @@ function getAmexComisionByRef(ref, fechaFallback = '') {
     return amexComisiones[key] || null;
 }
 
+// El detalle guardado de AMEX debe representar el cobro bruto: depósito neto
+// más comisión e IVA. Se usa tanto al seleccionar una fila como al conciliar
+// todos los movimientos de un día.
+function montoConciliacionTesComponente(comp, fecha) {
+    let monto = parseFloat(comp.monto || 0);
+    if (isAmex) {
+        const comision = getAmexComisionByRef(comp.ref, fecha);
+        if (comision) monto += parseFloat(comision.comision || 0) + parseFloat(comision.iva || 0);
+    }
+    return monto;
+}
+
 // ── RENDER TESORERÍA (flat — un total por día, sin desplegable) ──
 function renderTes() {
     const $c = $('#tes-content').empty();
@@ -2055,6 +2131,19 @@ function renderTes() {
                 componentesTes.forEach(comp => {
                     const hComp = getHistorialDetalle('TES', comp.ref);
                     if (!hComp) return;
+                    if (comp.historico) {
+                        // El movimiento fue retirado de la fuente actual. Al
+                        // sincronizarlo deja de aportar al total del día.
+                        if (Math.abs(parseFloat(hComp.monto) || 0) > 0.01) {
+                            syncItemsTes.push({
+                                id_detalle: hComp.id,
+                                nuevo_monto: 0,
+                                monto_anterior: parseFloat(hComp.monto) || 0,
+                                ausente: true
+                            });
+                        }
+                        return;
+                    }
                     const amexComp = getAmexComisionByRef(comp.ref, fecha);
                     const montoActualComp = parseFloat(comp.monto || 0)
                         + ((isAmex && amexComp) ? (parseFloat(amexComp.comision || 0) + parseFloat(amexComp.iva || 0)) : 0);
@@ -2306,7 +2395,7 @@ function conciliarDia(fecha) {
         if (refsHistoricas.some(ref => hasConciliada('TES', ref))) return;
         componentes.forEach(comp => {
             const ref = normalizarRef(comp.ref);
-            const monto = parseFloat(comp.monto || 0);
+            const monto = montoConciliacionTesComponente(comp, fecha);
             if (!ref || monto <= 0 || hasConciliada('TES', ref) || sel.tes.some(s => s.ref === ref)) return;
             sel.tes.push({ ref, fecha, monto, concepto: comp.descripcion || item.descripcion || '' });
         });
@@ -2399,7 +2488,7 @@ function toggleTESComponentes(el) {
             sel.tes.push({
                 ref,
                 fecha: $(el).attr('data-fecha') || '',
-                monto: parseFloat(c.monto || 0),
+                monto: montoConciliacionTesComponente(c, $(el).attr('data-fecha') || ''),
                 concepto: c.descripcion || ''
             });
         });

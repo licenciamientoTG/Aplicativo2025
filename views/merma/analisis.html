@@ -24,10 +24,17 @@
             <div class="col-auto">
                 <button type="submit" class="btn btn-merma-neutro">Buscar</button>
             </div>
-            <div class="col-auto ms-auto">
+            <div class="col-auto ms-auto text-end">
                 <button type="button" class="btn btn-merma-sync" data-bs-toggle="modal" data-bs-target="#syncModal">
                     <i class="fas fa-sync"></i> Actualizar datos
                 </button>
+                <div class="small text-muted mt-1">
+                    {% if ultimoSync %}
+                        Última actualización: {{ ultimoSync.fecha_sync|date('d-m-Y H:i') }}
+                    {% else %}
+                        Sin sincronizar
+                    {% endif %}
+                </div>
             </div>
         </form>
     </div>

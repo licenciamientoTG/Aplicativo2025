@@ -346,6 +346,7 @@
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
+      {% if authorized(81) %}
       <div class="col-auto ms-auto d-flex gap-2">
         {% for cod, b in bancos %}
         <button type="button" class="btn btn-sm btn-outline-primary btn-upload-banco" data-banco="{{ cod }}"
@@ -354,6 +355,7 @@
         </button>
         {% endfor %}
       </div>
+      {% endif %}
     </form>
   </div>
 </div>
@@ -407,6 +409,7 @@
 </div>
    ───────────────────────────────────────────────────────────────────────── #}
 
+{% if authorized(82) %}
 {# Saldo final por GRUPO: mismo panel que el de por cuenta, con un nivel más
    arriba (grupo empresarial). Se alimenta de la misma llamada. #}
 <div class="card mb-3">
@@ -436,7 +439,11 @@
     </div>
   </div>
 </div>
+{% endif %}
 
+{# Panel "Saldo final por cuenta" desactivado: se dejó solo "Saldo final por
+   grupo" para no duplicar el mismo detalle en dos paneles (mismo dato, un
+   nivel menos). El HTML se conserva comentado por si se reactiva.
 <!-- Panel colapsable: saldo final de todas las cuentas (carga asíncrona) -->
 <div class="card mb-3">
   <div class="card-header p-0 bg-white">
@@ -458,6 +465,7 @@
     </div>
   </div>
 </div>
+#}
 
 {# Estado vacío: se muestra hasta que el usuario presiona Buscar. A partir de
    ahí lo reemplazan los KPIs y las tablas, que llena pintarResultado(). #}
@@ -467,7 +475,7 @@
     <h6 style="color:#334155;">Elige el rango de fechas y presiona <strong>Buscar</strong></h6>
     <small class="text-muted">
       Los movimientos no se cargan al entrar para no consultar rangos que no pediste.
-      El saldo final por cuenta ya está disponible en el panel de arriba.
+      {% if authorized(82) %}El saldo final por grupo ya está disponible en el panel de arriba.{% endif %}
     </small>
   </div>
 </div>
@@ -493,6 +501,22 @@
       <table id="tabla{{ cod }}" data-banco="{{ cod }}" data-etiqueta="{{ b.etiqueta }}"
              class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
         <thead>
+          {% if cod == 'BANORTE' %}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Fecha de Operación</th>
+            <th>Fecha</th>
+            <th>Referencia</th>
+            <th>Descripción</th>
+            <th>Cod. Transac</th>
+            <th>Sucursal</th>
+            <th class="mb-monto">Depósitos</th>
+            <th class="mb-monto">Retiros</th>
+            <th class="mb-monto">Saldo</th>
+            <th>Movimiento</th>
+            <th>Descripción Detallada</th>
+          </tr>
+          {% else %}
           <tr>
             <th class="no-export">Id</th>
             <th>Cuenta</th>
@@ -508,6 +532,7 @@
             <th>Concepto</th>
             <th>Contraparte</th>
           </tr>
+          {% endif %}
         </thead>
         <tbody></tbody>
       </table>
@@ -571,7 +596,86 @@
 <script>
 $(function () {
   // ===== Tablas por banco: mismo patrón que payment_list_table =====
-  function initMovsTable(sel, excelTitle, emptyMsg) {
+
+  // Columnas genéricas: mismo layout para todos los bancos salvo los que
+  // tienen su propio set más abajo (hoy solo Banorte).
+  var COLUMNS_GENERICO = [
+    { data: 'id' },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'hora', defaultContent: '' },
+    { data: 'sucursal', defaultContent: '' },
+    { data: 'descripcion', defaultContent: '' },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    {
+      data: 'saldo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+    },
+    { data: 'referencia', defaultContent: '' },
+    {
+      data: 'concepto', defaultContent: '',
+      createdCell: function (td, d, row) {
+        if (row.clave_rastreo) $(td).attr('title', 'Rastreo: ' + row.clave_rastreo);
+      },
+    },
+    { data: 'descripcion_larga', defaultContent: '' },
+    {
+      data: 'nombre_contraparte', defaultContent: '',
+      render: function (d, type, row) {
+        if (type !== 'display') return d || '';
+        var html = esc(d || '');
+        if (row.banco_contraparte) {
+          html += '<small class="text-muted d-block">' +
+                  esc(row.banco_contraparte) + ' ' + esc(row.cuenta_contraparte || '') + '</small>';
+        }
+        return html;
+      },
+    },
+  ];
+  var COLUMNDEFS_GENERICO = [{ targets: [1, 12], visible: false }];   // Cuenta y Contraparte ocultas por default
+
+  // Banorte: calcado del encabezado de su CSV "Cuentas de Cheques", sin la
+  // columna Cuenta (un archivo trae una sola cuenta, no aporta en la tabla).
+  // FECHA DE OPERACIÓN y FECHA llegan siempre iguales en el export (ver
+  // parse_banorte_cheques_csv), pero se muestran ambas para calcar el layout
+  // que ya conoce quien concilia estos movimientos.
+  var COLUMNS_BANORTE = [
+    { data: 'id' },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'referencia', defaultContent: '' },
+    { data: 'descripcion', defaultContent: '' },
+    { data: 'clave_trans', defaultContent: '' },
+    { data: 'sucursal', defaultContent: '' },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'saldo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+    },
+    { data: 'secuencia', defaultContent: '' },
+    { data: 'descripcion_larga', defaultContent: '' },
+  ];
+
+  function initMovsTable(sel, excelTitle, emptyMsg, cod) {
+    var esBanorte = cod === 'BANORTE';
     var api = $(sel).DataTable({
       responsive: true,
       // Sin paginación (contenedor .mb-scroll con cabeceras sticky) y sin
@@ -601,54 +705,14 @@ $(function () {
           className: 'btn btn-sm btn-outline-secondary',
         },
       ],
-      // Cuenta y Contraparte ocultas por default; activables con Columnas
-      columnDefs: [{ targets: [1, 12], visible: false }],
+      // Cuenta y Contraparte ocultas por default en el layout genérico;
+      // activables con Columnas. Banorte no tiene esas columnas.
+      columnDefs: esBanorte ? [] : COLUMNDEFS_GENERICO,
       // Las filas llegan por POST desde buscarMovimientos(); la tabla arranca
       // vacía para no consultar nada al entrar al módulo.
       data: [],
       deferRender: true,
-      columns: [
-        { data: 'id' },
-        { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
-        { data: 'fecha', render: function (d) { return fmtFecha(d); } },
-        { data: 'hora', defaultContent: '' },
-        { data: 'sucursal', defaultContent: '' },
-        { data: 'descripcion', defaultContent: '' },
-        {
-          data: 'cargo', className: 'mb-monto', defaultContent: '',
-          render: function (d) { return fmtMonto(d || 0); },
-          createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
-        },
-        {
-          data: 'abono', className: 'mb-monto', defaultContent: '',
-          render: function (d) { return fmtMonto(d || 0); },
-          createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
-        },
-        {
-          data: 'saldo', className: 'mb-monto', defaultContent: '',
-          render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
-        },
-        { data: 'referencia', defaultContent: '' },
-        {
-          data: 'concepto', defaultContent: '',
-          createdCell: function (td, d, row) {
-            if (row.clave_rastreo) $(td).attr('title', 'Rastreo: ' + row.clave_rastreo);
-          },
-        },
-        { data: 'descripcion_larga', defaultContent: '' },
-        {
-          data: 'nombre_contraparte', defaultContent: '',
-          render: function (d, type, row) {
-            if (type !== 'display') return d || '';
-            var html = esc(d || '');
-            if (row.banco_contraparte) {
-              html += '<small class="text-muted d-block">' +
-                      esc(row.banco_contraparte) + ' ' + esc(row.cuenta_contraparte || '') + '</small>';
-            }
-            return html;
-          },
-        },
-      ],
+      columns: esBanorte ? COLUMNS_BANORTE : COLUMNS_GENERICO,
       initComplete: function () {
         var api = this.api();
 
@@ -711,7 +775,7 @@ $(function () {
   var tablas = {};
   Object.keys(BANCOS).forEach(function (cod) {
     tablas[cod] = initMovsTable('#tabla' + cod, 'Movimientos ' + BANCOS[cod].etiqueta,
-      'Sin movimientos de ' + BANCOS[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.');
+      'Sin movimientos de ' + BANCOS[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.', cod);
   });
 
   // Al cambiar de tab: reajustar anchos (la tabla oculta se inicializa sin
@@ -947,9 +1011,7 @@ $(function () {
                '</tr></thead><tbody>';
 
     porGrupo.forEach(function (g, gi) {
-      html += fila(g.totales, 1, 'g' + gi, '<strong>' + esc(g.grupo) + '</strong>',
-                   ' <span class="g-ctas">' + g.empresas.length +
-                   (g.empresas.length === 1 ? ' empresa' : ' empresas') + '</span>');
+      html += fila(g.totales, 1, 'g' + gi, '<strong>' + esc(g.grupo) + '</strong>');
 
       g.empresas.forEach(function (e, ei) {
         var idE = 'g' + gi + 'e' + ei;
@@ -996,20 +1058,22 @@ $(function () {
   }
 
   function cargarSaldos() {
+    // Sin el permiso "Ver Saldo por Grupo" el panel no se renderiza (ver
+    // authorized(82) en la vista): no hay nada que pintar ni endpoint que pedir.
+    var bodyGr = document.getElementById('gruposCollapseBody');
+    if (!bodyGr) return;
+
     var hasta = $('#hasta').val();
     if (saldosHasta === hasta) return;
     saldosHasta = hasta;
 
-    $('.mb-corte, #saldosCorte').text(fmtFecha(hasta));
+    $('.mb-corte').text(fmtFecha(hasta));
     // El export lleva el mismo corte que se está viendo
     $('#btnExportarGrupos').attr('href',
       '/tesoreria/exportar_saldos_grupo?hasta=' + encodeURIComponent(hasta));
 
     var cargando = '<div class="text-center text-muted py-3">' +
                    '<span class="spinner-border spinner-border-sm"></span> Cargando saldos...</div>';
-    var body     = document.getElementById('saldosCollapseBody');
-    var bodyGr   = document.getElementById('gruposCollapseBody');
-    body.innerHTML = cargando;
     bodyGr.innerHTML = cargando;
 
     fetch('/tesoreria/saldos_finales?hasta=' + encodeURIComponent(hasta))
@@ -1017,87 +1081,16 @@ $(function () {
       .then(function (data) {
         if (!data.success) {
           saldosHasta = null;   // permitir reintentar
-          var err = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al cargar saldos') + '</div>';
-          body.innerHTML = err;
-          bodyGr.innerHTML = err;
+          bodyGr.innerHTML = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al cargar saldos') + '</div>';
           return;
         }
 
         pintarResumenes(data);
         pintarGrupos(data, bodyGr);
-
-        var grupos = data.grupos || [];
-        if (!grupos.length) {
-          body.innerHTML = '<div class="text-center text-muted py-3">Sin saldos registrados al ' + fmtFecha(data.hasta) + '</div>';
-          return;
-        }
-
-        var html = '<div class="mb-saldos-scroll"><table class="table table-sm table-hover mb-saldos-tabla">' +
-                   '<thead><tr><th>Empresa / Cuenta</th><th>Banco</th><th>Último movimiento</th>' +
-                   '<th class="text-end">Saldo final</th></tr></thead><tbody>';
-
-        grupos.forEach(function (g, gi) {
-          var mxn = lineaMoneda(g.totales, 'MXN');
-          var usd = lineaMoneda(g.totales, 'USD');
-          var principal = mxn || usd;   // un grupo solo en dólares no tiene MXN
-
-          html += '<tr class="mb-grupo' + (g.sin_catalogo ? ' mb-grupo-sc' : '') + '" data-grupo="' + gi + '">' +
-                  '<td colspan="2"><i class="fas fa-chevron-right g-chevron"></i>' +
-                  esc(g.descripcion) +
-                  (g.sin_catalogo ? ' <i class="fas fa-exclamation-triangle" title="Cuentas que no están dadas de alta en el catálogo de cuentas bancarias"></i>' : '') +
-                  '</td>' +
-                  '<td class="g-ctas">' + principal.n + (principal.n === 1 ? ' cuenta' : ' cuentas') + '</td>' +
-                  '<td class="mb-monto"><span class="mb-moneda">' + (mxn ? 'MXN' : 'USD') + '</span>' +
-                  fmtMonto(principal.saldo) + '</td></tr>';
-
-          if (mxn && usd) {
-            html += '<tr class="mb-grupo mb-linea-usd' + (g.sin_catalogo ? ' mb-grupo-sc' : '') + '" data-grupo="' + gi + '">' +
-                    '<td colspan="2"></td>' +
-                    '<td class="g-ctas">' + usd.n + (usd.n === 1 ? ' cuenta' : ' cuentas') + '</td>' +
-                    '<td class="mb-monto"><span class="mb-moneda">USD</span>' + fmtMonto(usd.saldo) + '</td></tr>';
-          }
-
-          g.cuentas.forEach(function (s) {
-            var viejo = s.fecha !== data.hasta;
-            html += '<tr class="mb-cuenta-fila mb-cuentas-' + gi + '" style="display:none;">' +
-                    '<td class="mb-cuenta">' + s.cuenta + '</td>' +
-                    '<td>' + (s.banco || '') + '</td>' +
-                    '<td class="' + (viejo ? 'text-warning' : 'text-muted') + '">' + fmtFecha(s.fecha) +
-                    (viejo ? ' <i class="fas fa-exclamation-triangle" title="Sin movimientos al corte: saldo de un día anterior"></i>' : '') +
-                    '</td>' +
-                    '<td class="mb-monto">' +
-                    (s.moneda === 'USD' ? '<span class="mb-moneda">USD</span>' : '') +
-                    fmtMonto(s.saldo) + '</td></tr>';
-          });
-        });
-
-        var tm = lineaMoneda(data.totales, 'MXN');
-        var tu = lineaMoneda(data.totales, 'USD');
-        html += '</tbody><tfoot>';
-        if (tm) {
-          html += '<tr><td colspan="3">TOTAL (' + tm.n + ' cuentas)</td>' +
-                  '<td class="mb-monto"><span class="mb-moneda">MXN</span>' + fmtMonto(tm.saldo) + '</td></tr>';
-        }
-        if (tu) {
-          html += '<tr><td colspan="3">TOTAL (' + tu.n + ' cuentas)</td>' +
-                  '<td class="mb-monto"><span class="mb-moneda">USD</span>' + fmtMonto(tu.saldo) + '</td></tr>';
-        }
-        html += '</tfoot></table></div>';
-        body.innerHTML = html;
-
-        // Los grupos arrancan colapsados: al abrir el card se ve la posición
-        // por empresa completa en una pantalla.
-        $(body).off('click', '.mb-grupo').on('click', '.mb-grupo', function () {
-          var gi = $(this).data('grupo');
-          var abierto = $(body).find('.mb-grupo[data-grupo="' + gi + '"]').toggleClass('abierto').hasClass('abierto');
-          $(body).find('.mb-cuentas-' + gi).toggle(abierto);
-        });
       })
       .catch(function () {
         saldosHasta = null;   // permitir reintentar
-        var err = '<div class="alert alert-danger mb-0">Error de conexión al cargar los saldos</div>';
-        body.innerHTML = err;
-        bodyGr.innerHTML = err;
+        bodyGr.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al cargar los saldos</div>';
       });
   }
 
