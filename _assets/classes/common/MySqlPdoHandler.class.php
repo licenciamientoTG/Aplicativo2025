@@ -180,6 +180,32 @@ class MySqlPdoHandler{
 	}
 
 	/**
+	 * Igual que update() pero NO termina la ejecución (die) cuando falla.
+	 * Devuelve el número de filas afectadas (puede ser 0 si el WHERE no
+	 * encontró ninguna fila — un UPDATE sin error no significa que haya
+	 * modificado algo) o false ante cualquier error de conexión/consulta,
+	 * para que el llamador pueda decidir qué hacer (por ejemplo, compensar
+	 * un cambio ya aplicado en otro lado).
+	 *
+	 * @return int|false
+	 */
+	public function updateSafe($query, $params) {
+		if (!stristr($query, "update") || empty($this->_connection) || empty($params)) {
+			return false;
+		}
+		try {
+			$stmt = $this->_connection->prepare($query);
+			$stmt->execute($this->normalizeFloatParams($params));
+			$affected = $stmt->rowCount();
+			$stmt->closeCursor();
+			return $affected;
+		} catch (Exception $e) {
+			$this->logQueryError($e, $query, $params);
+			return false;
+		}
+	}
+
+	/**
 	 * Return: Primary key or true
 	 */
 	public function insert($query, $params) {

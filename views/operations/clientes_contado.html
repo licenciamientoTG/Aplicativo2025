@@ -1,0 +1,121 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Clientes Contado{% endblock %}
+{% block menutitle %}Clientes Contado{% endblock %}
+
+{% block content %}
+
+<div class="row mt-3">
+    <div class="card flex-fill w-100">
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-12 col-md-4">
+                    <label class="col-form-label-sm">Estación</label>
+                    <select class="form-control form-control-sm" id="contado_estacion">
+                        <option value="">Selecciona una estación...</option>
+                        {% for st in stations %}
+                        <option value="{{ st.Codigo }}">{{ st.Nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="col-form-label-sm">Buscar (nombre, RFC o código)</label>
+                    <input type="text" class="form-control form-control-sm" id="contado_termino"
+                           placeholder="Vacío = últimos registrados">
+                </div>
+                <div class="col-auto d-flex flex-column justify-content-end">
+                    <button type="button" class="btn btn-success" id="btn_buscar_contado">
+                        <i data-feather="search"></i> Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="card shadow">
+        <div class="card-header">
+            <div class="card-actions float-end">
+                <div class="dropdown position-relative">
+                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round"
+                             class="feather feather-more-horizontal align-middle">
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="19" cy="12" r="1"></circle>
+                            <circle cx="5" cy="12" r="1"></circle>
+                        </svg>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        <a class="dropdown-item" href="#" id="exportExcelContado">
+                            <i data-feather="file-text"></i> Exportar a Excel
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <h5 class="card-title mb-0">Clientes Contado</h5>
+        </div>
+        <div class="card-body table-responsive">
+            <table class="table table-borderless my-0 w-100 table-striped table-sm"
+                   style="font-size: small" id="clientes_contado_table">
+                <thead>
+                    <tr>
+                        <th>Estación</th><th>Código</th><th>Nombre</th><th>Domicilio</th>
+                        <th>RFC</th><th>C.P.</th><th>Teléfono</th><th>Correo</th><th>Estatus</th><th>Registrado</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ── Modal: editar razón social / RFC / código postal ── #}
+<div class="modal fade" id="modal_edit_cliente_contado" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar cliente de contado</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    El cambio se aplica primero en la estación y luego se replica al corporativo.
+                    Si alguno de los dos falla, no se guarda ningún cambio.
+                </p>
+                <input type="hidden" id="edit_codgas">
+                <input type="hidden" id="edit_cod">
+                <div class="mb-2">
+                    <label class="col-form-label-sm">Estación</label>
+                    <input type="text" class="form-control form-control-sm" id="edit_estacion_nombre" disabled>
+                </div>
+                <div class="mb-2">
+                    <label class="col-form-label-sm">Razón social</label>
+                    <input type="text" class="form-control form-control-sm" id="edit_den" maxlength="255"
+                           placeholder="Letras, números, espacios y & . , - / ( ) '">
+                </div>
+                <div class="mb-2">
+                    <label class="col-form-label-sm">RFC</label>
+                    <input type="text" class="form-control form-control-sm" id="edit_rfc" maxlength="13"
+                           placeholder="12 o 13 caracteres">
+                </div>
+                <div class="mb-2">
+                    <label class="col-form-label-sm">Código Postal</label>
+                    <input type="text" class="form-control form-control-sm" id="edit_codpos" maxlength="5"
+                           placeholder="2 a 5 dígitos" inputmode="numeric">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btn_guardar_cliente_contado">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script src="{{ js_v('operations/clientes_contado.js') }}"></script>
+{% endblock %}

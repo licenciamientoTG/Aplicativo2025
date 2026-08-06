@@ -352,6 +352,13 @@
           <span class="align-middle">Tabulador</span>
         </a>
       </li>
+      {% endif %} {% if authorized(21) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/operations/clientes_contado">
+          <i data-feather="users"></i>
+          <span class="align-middle">Clientes contado</span>
+        </a>
+      </li>
       {% endif %} {% if authorized(37) %}
       <li class="sidebar-item">
         <a data-bs-target="#operations_reports" data-bs-toggle="collapse" class="sidebar-link collapsed"

@@ -241,6 +241,147 @@ class ClientesModel extends Model{
         return $this->sql->select($query) ?: [];
     }
 
+    /* ===================================================================== */
+    /* Clientes de contado (/operations/clientes_contado)                    */
+    /* No se replican a SG12, se leen y editan directamente en la estación   */
+    /* vía linked server (mismo patrón que MermaDiariaModel::get_cortes_fisicos). */
+    /* ===================================================================== */
+
+    /** Servidor (linked server) y base de datos de una estación. */
+    public function get_estacion_conexion(int $codgas) : ?array {
+        $rs = $this->sql->selectSafe(
+            'SELECT Servidor, BaseDatos, Nombre FROM [TG].[dbo].[Estaciones] WHERE Codigo = ?;',
+            [$codgas]);
+        return ($rs && !empty($rs[0]['Servidor']) && !empty($rs[0]['BaseDatos'])) ? $rs[0] : null;
+    }
+
+    /**
+     * Busca clientes con tipval distinto de 3 (Crédito) y 4 (Débito) en UNA
+     * estación, por nombre/RFC/código. La tabla Clientes de cada estación
+     * tiene ~230k filas de tipval=0 (facturación de mostrador acumulada desde
+     * 2022): jamás se debe traer completa, por eso el filtro y el TOP van en
+     * la consulta remota, no en PHP. Con $termino vacío, regresa los últimos
+     * 200 registrados (por logfch) en vez de filtrar por texto — útil para
+     * ver qué acaba de darse de alta en la estación.
+     *
+     * @return array|false false = error de conexión/consulta en la estación
+     */
+    public function search_contado_por_estacion(string $servidor, string $baseDatos, string $termino) : array|false {
+        $select = "SELECT TOP 200 cod, den, dom, rfc, codpos, tel, correo, tipval, logfch,
+                    CASE WHEN codest = 1 THEN 'Suspendido' WHEN codest = 0 THEN 'Activo' ELSE 'NA' END AS estatus
+                  FROM [{$baseDatos}].dbo.Clientes
+                  WHERE tipval NOT IN (3,4)";
+
+        if ($termino === '') {
+            $inner = $select . " ORDER BY logfch DESC";
+        } else {
+            // Escapa para el literal T-SQL interno (nivel 1); el wrap de OPENQUERY
+            // de abajo vuelve a escapar TODO $inner (nivel 2, incluye este term).
+            $term = str_replace("'", "''", $termino);
+            $inner = $select .
+                " AND (den LIKE '%{$term}%' OR rfc LIKE '%{$term}%' OR CAST(cod AS VARCHAR(20)) LIKE '%{$term}%')
+                  ORDER BY den";
+        }
+
+        $query = sprintf(
+            "SELECT * FROM OPENQUERY([%s], '%s');",
+            $servidor,
+            str_replace("'", "''", $inner)
+        );
+        return $this->sql->selectSafe($query);
+    }
+
+    /** Valores actuales (den/rfc/codpos) de un cliente en la estación, para capturar el "anterior" antes de editar. */
+    public function get_cliente_contado_actual(array $est, int $cod) : ?array {
+        $inner = "SELECT cod, den, rfc, codpos FROM [{$est['BaseDatos']}].dbo.Clientes WHERE cod = {$cod}";
+        $query = sprintf("SELECT * FROM OPENQUERY([%s], '%s');", $est['Servidor'], str_replace("'", "''", $inner));
+        $rs = $this->sql->selectSafe($query);
+        return ($rs && count($rs) === 1) ? $rs[0] : null;
+    }
+
+    /**
+     * Edita razón social/RFC/código postal de un cliente de contado. Política
+     * todo o nada: primero se actualiza la estación (fuente de verdad); si la
+     * réplica a SG12 falla, se revierte la estación y no queda ningún cambio
+     * aplicado. Solo se registra en la bitácora cuando ambos lados quedaron
+     * correctos.
+     */
+    public function update_cliente_contado(int $codgas, int $cod, string $den, string $rfc, string $codpos, int $usuario) : array {
+        $est = $this->get_estacion_conexion($codgas);
+        if (!$est) {
+            return ['success' => false, 'message' => 'Estación sin servidor/base de datos configurados.'];
+        }
+
+        $actual = $this->get_cliente_contado_actual($est, $cod);
+        if (!$actual) {
+            return ['success' => false, 'message' => 'No se identificó exactamente un cliente con ese código en la estación.'];
+        }
+
+        $inner = "SELECT cod, den, rfc, codpos FROM [{$est['BaseDatos']}].dbo.Clientes WHERE cod = {$cod}";
+        $updateSql = sprintf("UPDATE OPENQUERY([%s], '%s') SET den = ?, rfc = ?, codpos = ?;",
+            $est['Servidor'], str_replace("'", "''", $inner));
+
+        // 1) Estación (updateSafe: no debe morir el proceso si la estación no responde)
+        $okEstacion = $this->sql->updateSafe($updateSql, [$den, $rfc, $codpos]);
+        if ($okEstacion === false) {
+            return ['success' => false, 'message' => 'No se pudo actualizar el cliente en la estación. No se realizó ningún cambio.'];
+        }
+        if ($okEstacion === 0) {
+            // get_cliente_contado_actual ya confirmó que la fila existía: si
+            // el UPDATE no tocó ninguna, algo la borró/cambió entre medio.
+            return ['success' => false, 'message' => 'El cliente ya no se encontró en la estación al momento de guardar. No se realizó ningún cambio.'];
+        }
+
+        // 2) Corporativo. rowCount() = 0 (sin error) significa que SG12 aún
+        // no tiene este cliente replicado desde la estación — se trata igual
+        // que un fallo real: no queda ningún cambio a medias.
+        $okSg12 = $this->sql->updateSafe(
+            'UPDATE [SG12].[dbo].[Clientes] SET den = ?, rfc = ?, codpos = ? WHERE cod = ?;',
+            [$den, $rfc, $codpos, $cod]
+        );
+
+        if (!$okSg12) {
+            $noReplicadoAun = ($okSg12 === 0);
+
+            // Compensar: regresar la estación a sus valores anteriores
+            $revertOk = $this->sql->updateSafe($updateSql, [$actual['den'], $actual['rfc'], $actual['codpos']]);
+            if ($revertOk === false) {
+                error_log("update_cliente_contado: INCONSISTENCIA codgas={$codgas} cod={$cod} — SG12 falló y la reversión en la estación también falló. Requiere corrección manual.");
+                return ['success' => false, 'message' => 'Error crítico: el corporativo no se actualizó y tampoco se pudo revertir el cambio en la estación. Contacte a sistemas.'];
+            }
+
+            $motivo = $noReplicadoAun
+                ? 'Este cliente todavía no está replicado en el corporativo (SG12).'
+                : 'No se pudo actualizar el corporativo.';
+            return ['success' => false, 'message' => "{$motivo} El cambio fue revertido en la estación. No se guardó nada."];
+        }
+
+        // Ambos lados OK: bitácora por cada campo que realmente cambió
+        $cambios = [
+            'den'    => [$actual['den'], $den],
+            'rfc'    => [$actual['rfc'], $rfc],
+            'codpos' => [$actual['codpos'], $codpos],
+        ];
+        foreach ($cambios as $campo => [$anterior, $nuevo]) {
+            if ((string)$anterior === (string)$nuevo) continue;
+            try {
+                // Los dos UPDATE reales ya quedaron aplicados: un fallo aquí
+                // (p. ej. la tabla de bitácora aún no existe) no debe tumbar
+                // la respuesta de éxito, solo queda sin registrar.
+                $this->sql->insert(
+                    'INSERT INTO [TG].[dbo].[clientes_contado_log]
+                        (usuario, codgas, cod, campo, valor_anterior, valor_nuevo, sg12_sync)
+                     VALUES (?, ?, ?, ?, ?, ?, 1);',
+                    [$usuario, $codgas, $cod, $campo, $anterior, $nuevo]
+                );
+            } catch (Throwable $e) {
+                error_log("update_cliente_contado: no se pudo escribir bitácora ({$campo}, cod={$cod}): " . $e->getMessage());
+            }
+        }
+
+        return ['success' => true, 'message' => 'Cliente actualizado correctamente en la estación y en el corporativo.'];
+    }
+
 // Para el reporte de antiguedad de saldos
 
 // Obtiene opciones para el <select> de estaciones

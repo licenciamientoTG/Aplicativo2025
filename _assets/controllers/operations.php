@@ -29,6 +29,7 @@ class Operations{
     public BallotModel $ballotModel;
     public VentasModel $ventas;
     public XmlVsVentasModel $xmlVsVentasModel;
+    public ClientesModel $clientesModel;
 
 
     /**
@@ -59,6 +60,7 @@ class Operations{
         $this->ballotModel                  = new BallotModel();
         $this->ventas                       = new VentasModel;
         $this->xmlVsVentasModel             = new XmlVsVentasModel();
+        $this->clientesModel                = new ClientesModel();
 
     }
 
@@ -3020,6 +3022,113 @@ class Operations{
         } catch (Exception $e) {
             echo json_encode(['data' => [], 'error' => $e->getMessage()]);
         }
+    }
+
+    /* ===================================================================== */
+    /* Clientes de contado (directo de cada estación, no está en SG12)       */
+    /* ===================================================================== */
+
+    function clientes_contado() : void {
+        $stations = $this->estacionesModel->get_select_stations() ?: [];
+        echo $this->twig->render($this->route . 'clientes_contado.html', compact('stations'));
+    }
+
+    /**
+     * Busca clientes de contado en UNA estación. La tabla Clientes de cada
+     * estación tiene ~230k filas de tipval=0 (facturación de mostrador
+     * acumulada desde 2022), así que nunca se consultan las 40 estaciones a
+     * la vez ni se trae el catálogo completo de una. Con término vacío
+     * regresa los últimos 200 registrados (por fecha de alta) en vez de
+     * filtrar por texto, para poder ver qué acaba de darse de alta.
+     */
+    function clientes_contado_search() : void {
+        $codgas  = (int)($_POST['codgas'] ?? 0);
+        $termino = trim($_POST['termino'] ?? '');
+
+        if (!$codgas) {
+            json_output(['data' => [], 'error' => 'Selecciona una estación.']);
+            return;
+        }
+        if ($termino !== '' && mb_strlen($termino) < 3) {
+            json_output(['data' => [], 'error' => 'Escribe al menos 3 caracteres para buscar, o déjalo vacío para ver los últimos registrados.']);
+            return;
+        }
+
+        $est = $this->clientesModel->get_estacion_conexion($codgas);
+        if (!$est) {
+            json_output(['data' => [], 'error' => 'Estación sin servidor/base de datos configurados.']);
+            return;
+        }
+
+        $rows = $this->clientesModel->search_contado_por_estacion($est['Servidor'], $est['BaseDatos'], $termino);
+        if ($rows === false) {
+            json_output(['data' => [], 'error' => 'No se pudo consultar la estación (¿está disponible el enlace?).']);
+            return;
+        }
+
+        $data = [];
+        foreach ($rows as $r) {
+            $data[] = [
+                'CodigoEstacion' => $codgas,
+                'Estacion'       => $est['Nombre'],
+                'Codigo'         => $r['cod'],
+                'Nombre'         => $r['den'],
+                'Domicilio'      => $r['dom'],
+                'RFC'            => $r['rfc'],
+                'CodigoPostal'   => $r['codpos'],
+                'Telefono'       => $r['tel'],
+                'Correo'         => $r['correo'],
+                'Estatus'        => $r['estatus'],
+                'Registrado'     => $r['logfch'],
+            ];
+        }
+
+        json_output(['data' => $data]);
+    }
+
+    function edit_cliente_contado() : void {
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $cod    = (int)($_POST['cod'] ?? 0);
+        $den    = (string)($_POST['den'] ?? '');
+        $rfc    = trim((string)($_POST['rfc'] ?? ''));
+        $codpos = trim((string)($_POST['codpos'] ?? ''));
+
+        if (!$codgas || !$cod) {
+            json_output(['success' => false, 'message' => 'Faltan datos requeridos (estación o código de cliente).']);
+            return;
+        }
+
+        // Razón social: colapsa espacios múltiples y recorta extremos antes
+        // de validar, para que "EMPRESA    SA " quede en "EMPRESA SA".
+        $den = trim(preg_replace('/\s+/', ' ', $den));
+        if ($den === '') {
+            json_output(['success' => false, 'message' => 'La razón social no puede estar vacía.']);
+            return;
+        }
+        if (mb_strlen($den) < 3 || mb_strlen($den) > 255) {
+            json_output(['success' => false, 'message' => 'La razón social debe tener entre 3 y 255 caracteres.']);
+            return;
+        }
+        if (!preg_match('/^[\p{L}0-9 &.,\-\/()\']+$/u', $den)) {
+            json_output(['success' => false, 'message' => "La razón social tiene caracteres no permitidos. Solo letras, números, espacios y & . , - / ( ) '."]);
+            return;
+        }
+
+        // RFC: 12 (persona moral) o 13 (persona física) caracteres, formato SAT
+        $rfc = strtoupper($rfc);
+        if (!preg_match('/^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$/', $rfc)) {
+            json_output(['success' => false, 'message' => 'El RFC no es válido. Debe tener 12 o 13 caracteres con el formato del SAT.']);
+            return;
+        }
+
+        // Código postal: numérico, de 2 a 5 dígitos
+        if (!preg_match('/^[0-9]{2,5}$/', $codpos)) {
+            json_output(['success' => false, 'message' => 'El código postal debe ser numérico, de 2 a 5 dígitos.']);
+            return;
+        }
+
+        $result = $this->clientesModel->update_cliente_contado($codgas, $cod, $den, $rfc, $codpos, (int)$_SESSION['tg_user']['Id']);
+        json_output($result);
     }
 
 }
