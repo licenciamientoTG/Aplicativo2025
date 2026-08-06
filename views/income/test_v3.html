@@ -1475,13 +1475,29 @@ function integrarTesoreriaHistorica() {
             // histórica; el detalle queda sólo como trazabilidad en el grupo.
             if (Math.abs(parseFloat(item.monto) || 0) < 0.01) return;
 
+            const fecha = (item.fecha || '').substring(0, 10);
+            const monto = parseFloat(item.monto || 0);
+            const existente = tesData.find(t => t.fecha === fecha);
+            if (existente) {
+                // Tesorería se presenta por día. El detalle que ya no viene
+                // en la fuente se conserva dentro de ese mismo día para
+                // sincronizarlo, en lugar de crear una fila adicional.
+                existente.monto = parseFloat(existente.monto || 0) + monto;
+                existente.components = Array.isArray(existente.components) ? existente.components : [];
+                existente.components.push({ ref, monto, descripcion: item.concepto || '', historico: true });
+                existente.all_refs = Array.isArray(existente.all_refs) ? existente.all_refs : [];
+                if (!existente.all_refs.includes(ref)) existente.all_refs.push(ref);
+                refsVisibles.add(ref);
+                return;
+            }
+
             tesData.push({
                 fecha:       (item.fecha || '').substring(0, 10),
                 monto:       parseFloat(item.monto || 0),
                 descripcion: item.concepto || 'Depósito conciliado',
                 id_origen:   ref,
                 all_refs:    [ref],
-                components:  [{ ref, monto: parseFloat(item.monto || 0), descripcion: item.concepto || 'Depósito conciliado' }],
+                components:  [{ ref, monto: parseFloat(item.monto || 0), descripcion: item.concepto || 'Depósito conciliado', historico: true }],
                 sucursal:    '',
                 historico:   true
             });
@@ -2111,17 +2127,23 @@ function renderTes() {
                 difTag    = `<span class="diff-tag ${ok?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span>`;
                 unlinkBtn = !mesCerrado ? `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>` : '';
                 const syncItemsTes = [];
-                if (!mesCerrado && item.historico && Math.abs(parseFloat(hRec.monto) || 0) > 0.01) {
-                    // Esta fila se reconstruyó desde el historial porque ya
-                    // no llegó en el extracto actual. Su componente copia el
-                    // monto guardado, por lo que no detectaba desfase alguno.
-                    statusClass = 'row-concil-diff';
-                    staleBtn = `<button class="btn-action-mini btn-action-sync" onclick="event.stopPropagation();excluirDetalleTes(${hRec.id},${parseFloat(hRec.monto) || 0})" title="Este depósito ya no viene en el extracto. Clic para actualizarlo a $0.00."><i class="fas fa-exclamation-triangle"></i></button>`;
-                } else {
-                    const componentesTes = componentes;
+                const componentesTes = componentes;
                 componentesTes.forEach(comp => {
                     const hComp = getHistorialDetalle('TES', comp.ref);
                     if (!hComp) return;
+                    if (comp.historico) {
+                        // El movimiento fue retirado de la fuente actual. Al
+                        // sincronizarlo deja de aportar al total del día.
+                        if (Math.abs(parseFloat(hComp.monto) || 0) > 0.01) {
+                            syncItemsTes.push({
+                                id_detalle: hComp.id,
+                                nuevo_monto: 0,
+                                monto_anterior: parseFloat(hComp.monto) || 0,
+                                ausente: true
+                            });
+                        }
+                        return;
+                    }
                     const amexComp = getAmexComisionByRef(comp.ref, fecha);
                     const montoActualComp = parseFloat(comp.monto || 0)
                         + ((isAmex && amexComp) ? (parseFloat(amexComp.comision || 0) + parseFloat(amexComp.iva || 0)) : 0);
@@ -2141,7 +2163,6 @@ function renderTes() {
                     } else {
                         staleBtn = `<button class="btn-action-mini" style="background:#f39c12;color:#fff;" onclick="event.stopPropagation();recalcularDetallesTes(${JSON.stringify(syncItemsTes).replace(/"/g,'&quot;')})" title="Hay ${syncItemsTes.length} detalles de TesorerÃ­a con monto actualizado. Clic para sincronizarlos."><i class="fas fa-exclamation-triangle"></i></button>`;
                     }
-                }
                 }
                 if (false && !mesCerrado && Math.abs(hRec.monto - montoConc) > 0.01) {
                     statusClass = 'row-concil-diff';
@@ -3998,11 +4019,6 @@ async function recalcularDetalleTes(idDetalle, nuevoMonto) {
 }
 
 // ── CAMBIOS TESORERÍA ─────────────────────────────────────────
-async function excluirDetalleTes(idDetalle, montoAnterior) {
-    if (!confirm(`Este depósito ya no está en el extracto actual.\n\nSe cambiará de ${fmt.format(montoAnterior)} a $0.00 y se recalculará la diferencia. ¿Continuar?`)) return;
-    await recalcularDetalleTes(idDetalle, 0);
-}
-
 async function recalcularDetallesTes(items) {
     if (!Array.isArray(items) || !items.length) return;
     const etiqueta = items.length === 1 ? '1 detalle' : `${items.length} detalles`;
