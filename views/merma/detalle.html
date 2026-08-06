@@ -375,9 +375,11 @@ $(document).ready(function () {
             let html = '<table class="table table-sm align-middle mb-0"><thead><tr>'
                 + '<th>Producto</th><th>Turno</th><th>Tanque</th><th>Valor actual (lts)</th>'
                 + '<th>Sugerido</th><th style="width:170px">Nuevo valor</th><th></th></tr></thead><tbody>';
-            res.cortes.forEach(function (c) {
+            res.cortes.forEach(function (c, idx) {
                 const corrupto = c.can !== null && (Number(c.can) < res.min || Number(c.can) > res.max);
                 const sugerido = (c.recomendado !== null && c.recomendado !== undefined) ? Number(c.recomendado) : null;
+                const hist = c.historial || [];
+                const rowId = 'fisico-hist-' + idx;
                 html += '<tr' + (corrupto ? ' class="table-danger"' : '') + '>'
                     + '<td>' + (PRD_LBL[c.codprd] || '') + ' (' + c.codprd + ')</td>'
                     + '<td>' + (TURNO_LBL[c.nrotur] || c.nrotur) + '</td>'
@@ -386,13 +388,26 @@ $(document).ready(function () {
                     + (corrupto ? ' <i class="fas fa-exclamation-triangle text-danger"></i>' : '') + '</td>'
                     + '<td class="text-muted" title="Contable del turno: último físico válido anterior − ventas + compras">'
                     + (sugerido !== null ? sugerido.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-') + '</td>'
-                    // Solo la fila corrupta se precarga con el sugerido: en las
-                    // sanas el default debe ser el valor real, no el contable
                     + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm fisico-nuevo"'
                     + (corrupto && sugerido !== null ? ' value="' + sugerido + '"' : '') + '></td>'
-                    + '<td><button type="button" class="btn btn-sm btn-merma-sync fisico-guardar" data-fecha="' + fecha
-                    + '" data-codprd="' + c.codprd + '" data-nrotur="' + c.nrotur + '" data-codtan="' + c.codtan + '">Guardar</button></td>'
+                    + '<td>'
+                    + '<button type="button" class="btn btn-sm btn-merma-sync fisico-guardar" data-fecha="' + fecha
+                    + '" data-codprd="' + c.codprd + '" data-nrotur="' + c.nrotur + '" data-codtan="' + c.codtan + '">Guardar</button>'
+                    + (hist.length ? ' <button type="button" class="btn btn-sm btn-link p-0 ms-1 fisico-hist-toggle" data-target="#' + rowId + '" title="Ver últimos días"><i class="fas fa-chevron-down"></i></button>' : '')
+                    + '</td>'
                     + '</tr>';
+                if (hist.length) {
+                    html += '<tr id="' + rowId + '" class="d-none"><td colspan="7" class="p-0">'
+                        + '<table class="table table-sm table-borderless mb-0 bg-light"><tbody>'
+                        + '<tr><td class="text-muted small" style="width:120px">Físico</td>'
+                        + hist.map(h => '<td class="small">' + (h.fisico !== null ? Number(h.fisico).toLocaleString('en-US', { maximumFractionDigits: 2 }) : 's/d') + '<br><span class="text-muted" style="font-size:0.7em">' + h.fecha + '</span></td>').join('')
+                        + '</tr>'
+                        + '<tr><td class="text-muted small">Contable</td>'
+                        + hist.map(h => '<td class="small">' + (h.contable !== null ? Number(h.contable).toLocaleString('en-US', { maximumFractionDigits: 2 }) : 's/d') + '</td>').join('')
+                        + '</tr>'
+                        + '</tbody></table>'
+                        + '</td></tr>';
+                }
             });
             $('#fisico_rows').html(html + '</tbody></table>');
         }, 'json').fail(() => $('#fisico_rows').html('<div class="alert alert-danger">Error de servidor</div>'));
@@ -507,6 +522,12 @@ $(document).ready(function () {
             if (res.success) { mermaToastReload(res.message, 'success'); }
             else { mermaToast(res.message, 'danger'); $btn.prop('disabled', false).text('Incluir'); }
         }, 'json').fail(function () { mermaToast('Error de servidor', 'danger'); $btn.prop('disabled', false).text('Incluir'); });
+    });
+
+    $(document).on('click', '.fisico-hist-toggle', function () {
+        const $icon = $(this).find('i');
+        $($(this).data('target')).toggleClass('d-none');
+        $icon.toggleClass('fa-chevron-down fa-chevron-up');
     });
 
     $(document).on('click', '.fisico-guardar', function () {
