@@ -244,18 +244,27 @@ class MermaDiariaModel extends Model
         // físico válido anterior (encadena días previos) − ventas + compras
         // del turno, calculado desde el snapshot local
         $snap = $this->sql->select(
-            'SELECT fecha, codprd, turno, ventas_reales, compras, inv_fisico
+            'SELECT fecha, codprd, turno, ventas_reales, compras, inv_fisico, inv_contable
              FROM [TG].[dbo].[merma_diaria]
              WHERE codgas = ? AND fecha BETWEEN DATEADD(DAY, -7, CAST(? AS DATE)) AND CAST(? AS DATE)
              ORDER BY codprd, fecha, turno;',
             [$codgas, $fecha, $fecha]);
-        $rec  = [];  // "codprd-turno" => sugerido (solo turnos del día pedido)
-        $last = [];  // codprd => último físico válido de la cadena
+        $rec       = [];  // "codprd-turno" => sugerido (solo turnos del día pedido)
+        $last      = [];  // codprd => último físico válido de la cadena
+        $historial = [];  // "codprd-turno" => [{fecha, fisico, contable}, ...] días previos a $fecha
         foreach ($snap ?: [] as $s) {
             $prd = (int)$s['codprd'];
-            if (substr($s['fecha'], 0, 10) === $fecha && isset($last[$prd])) {
+            $day = substr($s['fecha'], 0, 10);
+            if ($day === $fecha && isset($last[$prd])) {
                 $rec[$prd . '-' . (int)$s['turno']] = round(
                     $last[$prd] - (float)$s['ventas_reales'] + (float)($s['compras'] ?? 0), 2);
+            }
+            if ($day < $fecha) {
+                $historial[$prd . '-' . (int)$s['turno']][] = [
+                    'fecha'    => $day,
+                    'fisico'   => $s['inv_fisico'] !== null ? (float)$s['inv_fisico'] : null,
+                    'contable' => $s['inv_contable'] !== null ? (float)$s['inv_contable'] : null,
+                ];
             }
             $fis = $s['inv_fisico'];
             if ($fis !== null && $fis >= self::INV_FISICO_MIN && $fis <= self::INV_FISICO_MAX) {
@@ -278,12 +287,16 @@ class MermaDiariaModel extends Model
         foreach ($cortes as &$c) {
             $turno = $turnoMap[(int)$c['nrotur']] ?? (int)$c['nrotur'];
             $recTurno = $rec[(int)$c['codprd'] . '-' . $turno] ?? null;
-            if ($recTurno === null) { $c['recomendado'] = null; continue; }
-            $otros = 0.0;
-            foreach ($validosPorCorte[$c['codprd'] . '-' . $c['nrotur']] ?? [] as $tan => $can) {
-                if ($tan !== (int)$c['codtan']) $otros += $can;
+            if ($recTurno === null) { $c['recomendado'] = null; } else {
+                $otros = 0.0;
+                foreach ($validosPorCorte[$c['codprd'] . '-' . $c['nrotur']] ?? [] as $tan => $can) {
+                    if ($tan !== (int)$c['codtan']) $otros += $can;
+                }
+                $c['recomendado'] = max(0, round($recTurno - $otros, 2));
             }
-            $c['recomendado'] = max(0, round($recTurno - $otros, 2));
+            $hist = $historial[(int)$c['codprd'] . '-' . $turno] ?? [];
+            usort($hist, fn($a, $b) => strcmp($b['fecha'], $a['fecha'])); // descendente
+            $c['historial'] = array_slice($hist, 0, 5);
         }
         unset($c);
         return $cortes;
