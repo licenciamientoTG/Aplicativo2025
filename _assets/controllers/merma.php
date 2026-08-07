@@ -21,6 +21,7 @@ class Merma
 {
     private const PERM_VER = 33;   // Reportes de Abastos
     private const API_URL  = 'http://192.168.0.109:82/api/inventarios_turnos/';
+    private const CODGAS_PRAXEDIS = 40;
 
     private $twig;
     private $route;
@@ -907,6 +908,120 @@ class Merma
             exit(($res['success'] && ($res['estaciones_error'] ?? 0) == 0) ? 0 : 1);
         }
         json_output($res);
+    }
+
+    /**
+     * Preview de carga manual de "Balance de Producto" (Praxedis) — no persiste.
+     * POST $_FILES['balances'][] (PDFs).
+     */
+    public function preview_balance_praxedis(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        if (empty($_FILES['balances']) || !is_array($_FILES['balances']['name'])) {
+            json_output(['success' => false, 'message' => 'No se recibieron PDFs']);
+            return;
+        }
+
+        $files = $_FILES['balances'];
+        $total = count($files['name']);
+        $resultados = [];
+        $resumen = ['ok' => 0, 'error' => 0, 'total' => $total];
+
+        for ($i = 0; $i < $total; $i++) {
+            $nombre = $files['name'][$i];
+            if ($files['error'][$i] !== UPLOAD_ERR_OK || strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
+                $resultados[] = ['archivo' => $nombre, 'ok' => false, 'error' => 'Archivo inválido', 'fecha' => '', 'filas' => []];
+                $resumen['error']++;
+                continue;
+            }
+            $r = BalanceProductoPdfParser::parse($files['tmp_name'][$i], $nombre);
+            $resultados[] = $r;
+            $r['ok'] ? $resumen['ok']++ : $resumen['error']++;
+        }
+
+        json_output(['success' => true, 'resumen' => $resumen, 'archivos' => $resultados]);
+    }
+
+    /**
+     * Confirma la carga: re-parsea los PDFs recibidos, agrupa por fecha y
+     * reemplaza el snapshot de Praxedis en TG.dbo.merma_diaria (turno
+     * sintético 41 — el "Balance de Producto" no trae desglose por turno).
+     * POST $_FILES['balances'][] (los mismos PDFs del preview).
+     */
+    public function guardar_balance_praxedis(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        if (empty($_FILES['balances']) || !is_array($_FILES['balances']['name'])) {
+            json_output(['success' => false, 'message' => 'No se recibieron PDFs']);
+            return;
+        }
+
+        $files = $_FILES['balances'];
+        $total = count($files['name']);
+
+        // Agrupar filas válidas por fecha (un PDF = un día; el lote puede traer varios días)
+        $porFecha = [];
+        $resultados = [];
+        for ($i = 0; $i < $total; $i++) {
+            $nombre = $files['name'][$i];
+            if ($files['error'][$i] !== UPLOAD_ERR_OK || strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
+                $resultados[] = ['archivo' => $nombre, 'success' => false, 'message' => 'Archivo inválido'];
+                continue;
+            }
+            $r = BalanceProductoPdfParser::parse($files['tmp_name'][$i], $nombre);
+            if (!$r['ok']) {
+                $resultados[] = ['archivo' => $nombre, 'success' => false, 'message' => $r['error']];
+                continue;
+            }
+            $porFecha[$r['fecha']] = $r['filas']; // último archivo de esa fecha gana si hay duplicado en el mismo lote
+            $resultados[] = ['archivo' => $nombre, 'success' => true, 'message' => "Fecha {$r['fecha']} lista"];
+        }
+
+        if (empty($porFecha)) {
+            json_output(['success' => false, 'message' => 'Ningún PDF válido para guardar', 'resultados' => $resultados]);
+            return;
+        }
+
+        $filasInsertadas = 0;
+        $fechasOk = [];
+        foreach ($porFecha as $fecha => $filasProducto) {
+            $filas = array_map(fn($f) => [
+                'Fecha'               => $fecha,
+                'CodProducto'         => $f['codprd'],
+                'Producto'            => $f['producto'],
+                'Turno'               => 41,
+                'VentasReales'        => $f['ventas_reales'],
+                'Inventario'          => $f['inv_fisico'],
+                'CantidadCompra'      => $f['compras'],
+                'InventarioInicial'   => null,
+                'InventarioContable'  => null,
+                'Diferencia'          => null,
+            ], $filasProducto);
+
+            try {
+                $filasInsertadas += $this->mermaModel->replace_station_range(
+                    self::CODGAS_PRAXEDIS, 'PRAXEDIS', $fecha, $fecha, $filas
+                );
+                $fechasOk[] = $fecha;
+            } catch (Throwable $e) {
+                $resultados[] = ['archivo' => "fecha {$fecha}", 'success' => false, 'message' => $e->getMessage()];
+            }
+        }
+
+        json_output([
+            'success'     => count($fechasOk) > 0,
+            'fechas'      => $fechasOk,
+            'filas'       => $filasInsertadas,
+            'resultados'  => $resultados,
+        ]);
     }
 
     /* ===================================================================== */
