@@ -87,4 +87,127 @@ $(document).ready(function () {
             $('#sync_result').html('<div class="alert alert-danger mb-0">Error de servidor (' + xhr.status + ')</div>');
         }).always(() => $btn.prop('disabled', false).html('<i class="fas fa-sync"></i> Sincronizar'));
     });
+
+    // ---- Carga manual: Balance de Producto (Praxedis) ---------------------
+    let balanceFiles = [];
+    let balancePreview = [];
+
+    window.abrirModalBalancePraxedis = function () {
+        $('#inputBalances').val('');
+        $('#balanceArchivosSel').html('');
+        $('#balanceResumen').hide();
+        $('#balanceTablaWrap').hide();
+        $('#balanceLoading').hide();
+        $('#tablaBalancePreview tbody').empty();
+        $('#btnGuardarBalance').prop('disabled', true);
+        balanceFiles = [];
+        balancePreview = [];
+        $('#balancePraxedisModal').modal('show');
+    };
+
+    $(document).on('click', '#balanceDropzone', function () { $('#inputBalances').click(); });
+    $(document).on('change', '#inputBalances', function () {
+        if (this.files && this.files.length) subirBalancePreview(this.files);
+    });
+    $(document).on('dragover', '#balanceDropzone', function (e) { e.preventDefault(); $(this).css('background', '#eef2ff'); });
+    $(document).on('dragleave drop', '#balanceDropzone', function (e) { e.preventDefault(); $(this).css('background', '#f9fafb'); });
+    $(document).on('drop', '#balanceDropzone', function (e) {
+        e.preventDefault();
+        const files = e.originalEvent.dataTransfer.files;
+        if (files && files.length) subirBalancePreview(files);
+    });
+
+    function subirBalancePreview(fileList) {
+        const files = Array.from(fileList).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+        if (files.length === 0) { Swal.fire({ icon: 'warning', title: 'Selecciona PDFs' }); return; }
+
+        balanceFiles = files;
+        $('#balanceArchivosSel').html('<i class="fas fa-paperclip"></i> ' + files.length + ' archivo(s) seleccionado(s)');
+        $('#balanceLoading').show();
+        $('#balanceTablaWrap').hide();
+        $('#balanceResumen').hide();
+
+        const fd = new FormData();
+        files.forEach(f => fd.append('balances[]', f));
+
+        fetch('/merma/preview_balance_praxedis', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(res => {
+                $('#balanceLoading').hide();
+                if (!res.success) { Swal.fire({ icon: 'error', title: 'Error', text: res.message || 'Error al procesar' }); return; }
+                balancePreview = res.archivos || [];
+                $('#balanceOk').text(res.resumen.ok || 0);
+                $('#balanceErr').text(res.resumen.error || 0);
+                $('#balanceResumen').show();
+                renderBalanceTabla(balancePreview);
+                $('#btnGuardarBalance').prop('disabled', res.resumen.ok === 0);
+            })
+            .catch(err => { $('#balanceLoading').hide(); Swal.fire({ icon: 'error', title: 'Conexión', text: err.message }); });
+    }
+
+    function renderBalanceTabla(archivos) {
+        let html = '';
+        archivos.forEach(function (a) {
+            if (!a.ok) {
+                html += '<tr style="background:#fef2f2;"><td><small>' + a.archivo + '</small></td>'
+                    + '<td colspan="5"><small class="text-danger">' + (a.error || 'Error') + '</small></td>'
+                    + '<td><span class="badge bg-danger">Error</span></td></tr>';
+                return;
+            }
+            a.filas.forEach(function (f, idx) {
+                html += '<tr style="background:#ecfdf5;">'
+                    + (idx === 0 ? '<td rowspan="' + a.filas.length + '"><small>' + a.archivo + '</small></td>'
+                                   + '<td rowspan="' + a.filas.length + '">' + a.fecha + '</td>' : '')
+                    + '<td>' + f.producto + '</td>'
+                    + '<td class="text-end">' + Number(f.inv_fisico).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
+                    + '<td class="text-end">' + Number(f.ventas_reales).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
+                    + '<td class="text-end">' + Number(f.compras).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
+                    + (idx === 0 ? '<td rowspan="' + a.filas.length + '"><span class="badge bg-success">Listo</span></td>' : '')
+                    + '</tr>';
+            });
+        });
+        $('#tablaBalancePreview tbody').html(html);
+        $('#balanceTablaWrap').show();
+    }
+
+    window.guardarBalancePraxedis = function () {
+        if (balanceFiles.length === 0) { Swal.fire({ icon: 'warning', title: 'Sin archivos' }); return; }
+
+        Swal.fire({
+            icon: 'question', title: 'Confirmar carga',
+            html: 'Vas a guardar el corte de Praxedis para las fechas leídas. Si ya existía un corte para alguna de esas fechas, se sobrescribirá.',
+            showCancelButton: true, confirmButtonText: 'Sí, guardar', cancelButtonText: 'Cancelar',
+        }).then(function (r) {
+            if (!r.isConfirmed) return;
+
+            const fd = new FormData();
+            balanceFiles.forEach(f => fd.append('balances[]', f));
+
+            $('#btnGuardarBalance').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
+            fetch('/merma/guardar_balance_praxedis', { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(function (res) {
+                    $('#btnGuardarBalance').html('<i class="fas fa-save"></i> Confirmar carga');
+                    const detalle = (res.resultados || []).map(x =>
+                        '<li>' + (x.success ? '✅' : '❌') + ' <strong>' + x.archivo + '</strong>: ' + x.message + '</li>').join('');
+                    Swal.fire({
+                        icon: res.success ? 'success' : 'error',
+                        title: 'Resultado',
+                        html: '<div class="alert alert-' + (res.success ? 'success' : 'danger') + '">'
+                            + (res.filas || 0) + ' filas guardadas en ' + ((res.fechas || []).length) + ' fecha(s)</div>'
+                            + '<ul style="text-align:left;font-size:.85rem;max-height:300px;overflow:auto;">' + detalle + '</ul>',
+                    });
+                    if (res.success) {
+                        $('#balancePraxedisModal').modal('hide');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        $('#btnGuardarBalance').prop('disabled', false);
+                    }
+                })
+                .catch(function (err) {
+                    $('#btnGuardarBalance').prop('disabled', false).html('<i class="fas fa-save"></i> Confirmar carga');
+                    Swal.fire({ icon: 'error', title: 'Conexión', text: err.message });
+                });
+        });
+    };
 });
