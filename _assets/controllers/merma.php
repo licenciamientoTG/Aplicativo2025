@@ -922,12 +922,21 @@ class Merma
             return;
         }
         if (empty($_FILES['balances']) || !is_array($_FILES['balances']['name'])) {
-            json_output(['success' => false, 'message' => 'No se recibieron PDFs']);
+            $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+            // Si se excede max_file_uploads, PHP descarta $_FILES y deja el warning.
+            json_output(['success' => false, 'message' => "No se recibieron PDFs (¿superaste el máximo de {$maxUploads} archivos por carga? Súbelos en grupos más pequeños)"]);
             return;
         }
 
         $files = $_FILES['balances'];
         $total = count($files['name']);
+
+        $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+        if ($total > $maxUploads) {
+            json_output(['success' => false, 'message' => "Enviaste {$total} archivos; el máximo por carga es {$maxUploads}. Súbelos en grupos."]);
+            return;
+        }
+
         $resultados = [];
         $resumen = ['ok' => 0, 'error' => 0, 'total' => $total];
 
@@ -960,12 +969,20 @@ class Merma
             return;
         }
         if (empty($_FILES['balances']) || !is_array($_FILES['balances']['name'])) {
-            json_output(['success' => false, 'message' => 'No se recibieron PDFs']);
+            $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+            // Si se excede max_file_uploads, PHP descarta $_FILES y deja el warning.
+            json_output(['success' => false, 'message' => "No se recibieron PDFs (¿superaste el máximo de {$maxUploads} archivos por carga? Súbelos en grupos más pequeños)"]);
             return;
         }
 
         $files = $_FILES['balances'];
         $total = count($files['name']);
+
+        $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+        if ($total > $maxUploads) {
+            json_output(['success' => false, 'message' => "Enviaste {$total} archivos; el máximo por carga es {$maxUploads}. Súbelos en grupos."]);
+            return;
+        }
 
         // Agrupar filas válidas por fecha (un PDF = un día; el lote puede traer varios días)
         $porFecha = [];
@@ -981,7 +998,12 @@ class Merma
                 $resultados[] = ['archivo' => $nombre, 'success' => false, 'message' => $r['error']];
                 continue;
             }
-            $porFecha[$r['fecha']] = $r['filas']; // último archivo de esa fecha gana si hay duplicado en el mismo lote
+            if (isset($porFecha[$r['fecha']])) {
+                $resultados[] = ['archivo' => $nombre, 'success' => false,
+                    'message' => "Fecha {$r['fecha']} duplicada en este lote; se ignoró este archivo"];
+                continue;
+            }
+            $porFecha[$r['fecha']] = $r['filas'];
             $resultados[] = ['archivo' => $nombre, 'success' => true, 'message' => "Fecha {$r['fecha']} lista"];
         }
 
