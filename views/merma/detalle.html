@@ -8,6 +8,9 @@
 {% endblock %}
 
 {% block content %}
+{% if estacion.Codigo == 40 %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{% endif %}
 
 <div class="card">
     <div class="card-body py-2">
@@ -32,10 +35,16 @@
                 <button type="button" class="btn btn-sm btn-merma-neutro" id="validar_compras">
                     <i class="fas fa-truck"></i> Validar compras
                 </button>
+                {% if estacion.Codigo == 40 %}
+                <button type="button" class="btn btn-sm btn-merma-neutro" onclick="abrirModalBalancePraxedis()">
+                    <i class="fas fa-file-upload"></i> Cargar Balance PDF
+                </button>
+                {% else %}
                 <button type="button" class="btn btn-sm btn-merma-sync" id="sync_estacion"
                         data-codgas="{{ estacion.Codigo }}" data-anio="{{ anio }}" data-mes="{{ mes }}">
                     <i class="fas fa-sync"></i> Re-sincronizar estación
                 </button>
+                {% endif %}
             </div>
         </form>
     </div>
@@ -324,6 +333,61 @@
     </div>
 </div>
 
+{% if estacion.Codigo == 40 %}
+<!-- Modal de carga manual: Balance de Producto (Praxedis) -->
+<div class="modal fade" id="balancePraxedisModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-file-upload"></i> Cargar Balance de Producto — Praxedis</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="balanceDropzone" style="border:2px dashed #9ca3af;border-radius:.75rem;padding:1.75rem;text-align:center;background:#f9fafb;cursor:pointer;">
+                    <i class="fas fa-cloud-upload-alt" style="font-size:2rem;color:#4b5563;"></i>
+                    <p class="mb-1 mt-2 fw-semibold">Arrastra aquí el/los PDF "Balance de Producto" o haz clic para seleccionar</p>
+                    <small class="text-muted">Praxedis no tiene sync automático · Un PDF = un día · No se guarda nada hasta que confirmes.</small>
+                </div>
+                <input type="file" id="inputBalances" accept="application/pdf" multiple style="display:none;">
+                <div id="balanceArchivosSel" class="mt-2 small text-muted"></div>
+
+                <div id="balanceResumen" class="row g-2 mt-2" style="display:none;">
+                    <div class="col"><div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#047857;text-transform:uppercase;font-weight:700;">Listos</div><div style="color:#065f46;font-size:1.2rem;font-weight:700;" id="balanceOk">0</div></div></div>
+                    <div class="col"><div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#b91c1c;text-transform:uppercase;font-weight:700;">Con error</div><div style="color:#991b1b;font-size:1.2rem;font-weight:700;" id="balanceErr">0</div></div></div>
+                </div>
+
+                <div id="balanceLoading" class="text-center py-4" style="display:none;">
+                    <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;"></i>
+                    <p class="text-muted mt-2 mb-0">Leyendo PDFs…</p>
+                </div>
+
+                <div class="table-responsive mt-3" id="balanceTablaWrap" style="display:none;">
+                    <table class="table table-sm" id="tablaBalancePreview">
+                        <thead>
+                            <tr>
+                                <th>Archivo</th>
+                                <th>Fecha</th>
+                                <th>Producto</th>
+                                <th class="text-end">Inv. Físico</th>
+                                <th class="text-end">Ventas</th>
+                                <th class="text-end">Compras</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-merma-neutro" id="btnGuardarBalance" disabled onclick="guardarBalancePraxedis()">
+                    <i class="fas fa-save"></i> Confirmar carga
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block myjs %}
@@ -574,4 +638,8 @@ $(document).ready(function () {
     });
 });
 </script>
+{% if estacion.Codigo == 40 %}
+<script>const MERMA_CTX = { anio: {{ anio }}, mes: {{ mes }} };</script>
+<script src="{{ js_v('merma.js') }}"></script>
+{% endif %}
 {% endblock %}

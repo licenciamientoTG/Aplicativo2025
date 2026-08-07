@@ -172,6 +172,24 @@ class MermaDiariaModel extends Model
         $this->sql->update($query, $params);
     }
 
+    /**
+     * ¿Ya existe algún corte físico plausible (dentro de INV_FISICO_MIN/MAX)
+     * para este codgas/codprd en una fecha estrictamente anterior a $fecha?
+     * Usado por la carga manual de Praxedis para decidir si hace falta
+     * sembrar un día previo con el "Inv Inicial" que trae el propio PDF
+     * (si no, el LAG de recalc_contable no tiene de dónde encadenar y
+     * inv_inicial/inv_contable/diferencia quedan en s/d).
+     */
+    public function existe_fisico_previo(int $codgas, int $codprd, string $fecha): bool
+    {
+        $rs = $this->sql->select(
+            'SELECT TOP 1 1 FROM [TG].[dbo].[merma_diaria]
+             WHERE codgas = ? AND codprd = ? AND fecha < ?
+               AND inv_fisico BETWEEN ? AND ?;',
+            [$codgas, $codprd, $fecha, self::INV_FISICO_MIN, self::INV_FISICO_MAX]);
+        return !empty($rs);
+    }
+
     public function get_resumen_rango(string $desde, string $hasta): array
     {
         $query = 'SELECT codgas, MAX(estacion) AS estacion,

@@ -61,9 +61,16 @@ class BalanceProductoPdfParser
                 $filas[] = [
                     'codprd'        => $meta['codprd'],
                     'producto'      => $meta['producto'],
-                    'inv_fisico'    => $fila['inv_lec'],
+                    // Inv Final (no Inv Lec): es el inventario de cierre del
+                    // día ya con la merma aplicada, consistente con lo que
+                    // encadena inv_inicial del día siguiente en este reporte.
+                    'inv_fisico'    => $fila['inv_final'],
                     'ventas_reales' => $fila['ventas'],
                     'compras'       => $fila['compras_doc'],
+                    // Cierre del día anterior según ControlGas — se usa para
+                    // sembrar ese día si el sistema aún no tiene un corte
+                    // físico previo del que encadenar (ver guardar_balance_praxedis).
+                    'inv_inicial'   => $fila['inv_inicial'],
                 ];
             }
         }

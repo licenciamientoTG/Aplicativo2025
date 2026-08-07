@@ -1028,7 +1028,36 @@ class Merma
                 'Diferencia'          => null,
             ], $filasProducto);
 
+            // Si no hay ningún corte físico previo para este producto, el
+            // LAG de recalc_contable no tiene de dónde encadenar y el día
+            // queda en s/d. Se siembra el día anterior con el "Inv Inicial"
+            // que trae el propio PDF (el cierre real del día previo según
+            // ControlGas), solo si ese día anterior no tiene ya un dato.
+            $fechaAnterior = date('Y-m-d', strtotime($fecha . ' -1 day'));
+            $filasSemilla = [];
+            foreach ($filasProducto as $f) {
+                if ($f['inv_inicial'] === null) continue;
+                if ($this->mermaModel->existe_fisico_previo(self::CODGAS_PRAXEDIS, $f['codprd'], $fecha)) continue;
+                $filasSemilla[] = [
+                    'Fecha'               => $fechaAnterior,
+                    'CodProducto'         => $f['codprd'],
+                    'Producto'            => $f['producto'],
+                    'Turno'               => 41,
+                    'VentasReales'        => null,
+                    'Inventario'          => $f['inv_inicial'],
+                    'CantidadCompra'      => null,
+                    'InventarioInicial'   => null,
+                    'InventarioContable'  => null,
+                    'Diferencia'          => null,
+                ];
+            }
+
             try {
+                if ($filasSemilla) {
+                    $this->mermaModel->replace_station_range(
+                        self::CODGAS_PRAXEDIS, 'PRAXEDIS', $fechaAnterior, $fechaAnterior, $filasSemilla
+                    );
+                }
                 $filasInsertadas += $this->mermaModel->replace_station_range(
                     self::CODGAS_PRAXEDIS, 'PRAXEDIS', $fecha, $fecha, $filas
                 );
