@@ -51,6 +51,14 @@
                             <i data-feather="search"></i> Buscar
                         </button> -->
                     </div>
+                    <div class="col-3 d-flex flex-column justify-content-end">
+                        <label class="col-form-label col-form-label-sm">Posición de la leyenda: </label>
+                        <div class="btn-group" role="group" id="legend_position_group">
+                            <button type="button" class="btn btn-outline-primary btn-sm legend-position-btn" data-position="top">Arriba</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm legend-position-btn" data-position="bottom">Abajo</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm legend-position-btn" data-position="right">Derecha</button>
+                        </div>
+                    </div>
                 </div>
             </form>
         </div>
@@ -128,32 +136,46 @@
              <div class="col-12">
                 <div class="card flex-fill style_card_graph" style="padding:30px">
                    <div class="card-header">
-                            <div class="card-actions float-end">
-                                <div class="dropdown position-relative">
-                                </div>
-                            </div>
                             <h5 class="card-title mb-0 title_semanal">T-Máxima  (Semanal)</h5>
                         </div>
-                     <div style="width:100%;height:420px;" id="week_graph_maxima"></div>
+                     <div style="width:100%;height:550px;" id="week_graph_maxima"></div>
                     </div>
                 </div>
+             <!-- ECharts deshabilitado, se prefirio Chart.js
+             <div class="col-6">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <span class="badge bg-success float-end">ECharts</span>
+                            <h5 class="card-title mb-0 title_semanal_ec">T-Máxima  (Semanal)</h5>
+                        </div>
+                     <div style="width:100%;height:550px;" id="week_graph_maxima_ec"></div>
+                    </div>
+                </div>
+             -->
             </div>
-    
-    
-    
+
+
+
             <div class="row">
              <div class="col-12">
                 <div class="card flex-fill style_card_graph" style="padding:30px">
                    <div class="card-header">
-                            <div class="card-actions float-end">
-                                <div class="dropdown position-relative">
-                                </div>
-                            </div>
                             <h5 class="card-title mb-0 title_mensual">T-Máxima  (Mensual)</h5>
                         </div>
-                     <div style="width:100%;height:420px;" id="month_graph_maxima"></div>
+                     <div style="width:100%;height:550px;" id="month_graph_maxima"></div>
                     </div>
                 </div>
+             <!-- ECharts deshabilitado, se prefirio Chart.js
+             <div class="col-6">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <span class="badge bg-success float-end">ECharts</span>
+                            <h5 class="card-title mb-0 title_mensual_ec">T-Máxima  (Mensual)</h5>
+                        </div>
+                     <div style="width:100%;height:550px;" id="month_graph_maxima_ec"></div>
+                    </div>
+                </div>
+             -->
             </div>
         </div>
         <div class="tab-pane fade" id="super" role="tabpanel" aria-labelledby="super-tab">
@@ -202,32 +224,46 @@
              <div class="col-12">
                 <div class="card flex-fill style_card_graph" style="padding:30px">
                    <div class="card-header">
-                            <div class="card-actions float-end">
-                                <div class="dropdown position-relative">
-                                </div>
-                            </div>
                             <h5 class="card-title mb-0 title_semanal_super"></h5>
                         </div>
-                     <div style="width:100%;height:420px;" id="week_graph_super"></div>
+                     <div style="width:100%;height:550px;" id="week_graph_super"></div>
                     </div>
                 </div>
+             <!-- ECharts deshabilitado, se prefirio Chart.js
+             <div class="col-6">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <span class="badge bg-success float-end">ECharts</span>
+                            <h5 class="card-title mb-0 title_semanal_super_ec"></h5>
+                        </div>
+                     <div style="width:100%;height:550px;" id="week_graph_super_ec"></div>
+                    </div>
+                </div>
+             -->
             </div>
-    
-    
-    
+
+
+
             <div class="row">
              <div class="col-12">
                 <div class="card flex-fill style_card_graph" style="padding:30px">
                    <div class="card-header">
-                            <div class="card-actions float-end">
-                                <div class="dropdown position-relative">
-                                </div>
-                            </div>
                             <h5 class="card-title mb-0 title_mensual_super">T-Super (Mensual)</h5>
                         </div>
-                     <div style="width:100%;height:420px;" id="month_graph_super"></div>
+                     <div style="width:100%;height:550px;" id="month_graph_super"></div>
                     </div>
                 </div>
+             <!-- ECharts deshabilitado, se prefirio Chart.js
+             <div class="col-6">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <span class="badge bg-success float-end">ECharts</span>
+                            <h5 class="card-title mb-0 title_mensual_super_ec">T-Super (Mensual)</h5>
+                        </div>
+                     <div style="width:100%;height:550px;" id="month_graph_super_ec"></div>
+                    </div>
+                </div>
+             -->
             </div>
         </div>
         <div class="tab-pane fade" id="diesel" role="tabpanel" aria-labelledby="diesel-tab">
@@ -277,32 +313,46 @@
              <div class="col-12">
                 <div class="card flex-fill style_card_graph" style="padding:30px">
                    <div class="card-header">
-                            <div class="card-actions float-end">
-                                <div class="dropdown position-relative">
-                                </div>
-                            </div>
                             <h5 class="card-title mb-0 title_semanal_diesel">Diesel  (Semanal)</h5>
                         </div>
-                     <div style="width:100%;height:420px;" id="week_graph_diesel"></div>
+                     <div style="width:100%;height:550px;" id="week_graph_diesel"></div>
                     </div>
                 </div>
+             <!-- ECharts deshabilitado, se prefirio Chart.js
+             <div class="col-6">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <span class="badge bg-success float-end">ECharts</span>
+                            <h5 class="card-title mb-0 title_semanal_diesel_ec">Diesel  (Semanal)</h5>
+                        </div>
+                     <div style="width:100%;height:550px;" id="week_graph_diesel_ec"></div>
+                    </div>
+                </div>
+             -->
             </div>
-    
-    
-    
+
+
+
             <div class="row">
              <div class="col-12">
                 <div class="card flex-fill style_card_graph" style="padding:30px">
                    <div class="card-header">
-                            <div class="card-actions float-end">
-                                <div class="dropdown position-relative">
-                                </div>
-                            </div>
                             <h5 class="card-title mb-0 title_mensual_diesel">Diesel  (Mensual)</h5>
                         </div>
-                     <div style="width:100%;height:420px;" id="month_graph_diesel"></div>
+                     <div style="width:100%;height:550px;" id="month_graph_diesel"></div>
                     </div>
                 </div>
+             <!-- ECharts deshabilitado, se prefirio Chart.js
+             <div class="col-6">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <span class="badge bg-success float-end">ECharts</span>
+                            <h5 class="card-title mb-0 title_mensual_diesel_ec">Diesel  (Mensual)</h5>
+                        </div>
+                     <div style="width:100%;height:550px;" id="month_graph_diesel_ec"></div>
+                    </div>
+                </div>
+             -->
             </div>
         </div>
     </div>
@@ -322,16 +372,13 @@
     var untilDatepost = "{{ until | raw }}";
     var plazaIdpost = "{{ plaza_id | raw }}";
 
-    // ── SWITCH DE MOTOR DE GRÁFICAS ──────────────────────────────────────────
-    // true  → ECharts (nuevo)
-    // false → Chart.js v2 (original, sin tocar)
-    var USE_ECHARTS = false;
-    // ─────────────────────────────────────────────────────────────────────────
 </script>
 
+<!-- ECharts deshabilitado, se prefirio Chart.js. Para reactivar, descomentar estas 2 lineas y las llamadas a graph_*_echarts mas abajo.
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
-<script src="{{ js_v('/direction/graph_historic_prices.js') }}"></script>
 <script src="{{ js_v('/direction/graph_historic_prices_echarts.js') }}"></script>
+-->
+<script src="{{ js_v('/direction/graph_historic_prices.js') }}"></script>
 
 <script>
     function makeCanvas(divId) {
@@ -346,6 +393,54 @@
         return str.trim().toLowerCase().split(' ')
             .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     }
+
+    var LEGEND_POSITION_KEY = 'graph_legend_position';
+
+    function getLegendPosition() {
+        return localStorage.getItem(LEGEND_POSITION_KEY) || 'top';
+    }
+
+    function setLegendPosition(position) {
+        localStorage.setItem(LEGEND_POSITION_KEY, position);
+    }
+
+    function markActiveLegendButton(position) {
+        document.querySelectorAll('.legend-position-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.position === position);
+        });
+    }
+
+    async function redrawGraphs(legendPosition) {
+        var plaza_id = document.getElementById('plaza_id').value;
+
+        var week_graph_maxima  = makeCanvas('week_graph_maxima');
+        var month_graph_maxima = makeCanvas('month_graph_maxima');
+        var week_graph_super   = makeCanvas('week_graph_super');
+        var month_graph_super  = makeCanvas('month_graph_super');
+
+        await graph_week(week_graph_maxima, 1, legendPosition);
+        await graph_month(month_graph_maxima, 1, legendPosition);
+        await graph_week(week_graph_super, 2, legendPosition);
+        await graph_month(month_graph_super, 2, legendPosition);
+        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
+            var week_graph_diesel  = makeCanvas('week_graph_diesel');
+            var month_graph_diesel = makeCanvas('month_graph_diesel');
+            await graph_week(week_graph_diesel, 3, legendPosition);
+            await graph_month(month_graph_diesel, 3, legendPosition);
+        }
+    }
+
+    document.querySelectorAll('.legend-position-btn').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            var position = btn.dataset.position;
+            setLegendPosition(position);
+            markActiveLegendButton(position);
+            if (!document.getElementById('div_graph').hasAttribute('hidden')) {
+                await redrawGraphs(position);
+            }
+        });
+    });
+    markActiveLegendButton(getLegendPosition());
 
 document.addEventListener('DOMContentLoaded', async function() {
     if (plazaIdpost == 0 || fromDatepost == '' || untilDatepost == '') return;
@@ -364,6 +459,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.querySelector('.title_mensual_super').innerHTML = `T-Super (Mensual) - ${plazaNombre}`;
     document.querySelector('.title_semanal_diesel').innerHTML= `Diesel (Semanal) - ${plazaNombre}`;
     document.querySelector('.title_mensual_diesel').innerHTML= `Diesel (Mensual) - ${plazaNombre}`;
+    // ECharts deshabilitado, se prefirio Chart.js: sus titulos _ec ya no existen en el DOM
+    // document.querySelector('.title_semanal_ec').innerHTML       = `T-Máxima (Semanal) - ${plazaNombre}`;
+    // document.querySelector('.title_mensual_ec').innerHTML       = `T-Máxima (Mensual) - ${plazaNombre}`;
+    // document.querySelector('.title_semanal_super_ec').innerHTML = `T-Super (Semanal) - ${plazaNombre}`;
+    // document.querySelector('.title_mensual_super_ec').innerHTML = `T-Super (Mensual) - ${plazaNombre}`;
+    // document.querySelector('.title_semanal_diesel_ec').innerHTML= `Diesel (Semanal) - ${plazaNombre}`;
+    // document.querySelector('.title_mensual_diesel_ec').innerHTML= `Diesel (Mensual) - ${plazaNombre}`;
 
     var currentYear = new Date().getFullYear();
     var fromYear    = new Date(fromDate).getFullYear();
@@ -378,32 +480,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 
-    if (USE_ECHARTS) {
-        await graph_week_echarts('week_graph_maxima', 1);
-        await graph_month_echarts('month_graph_maxima', 1);
-        await graph_week_echarts('week_graph_super', 2);
-        await graph_month_echarts('month_graph_super', 2);
-        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
-            await graph_week_echarts('week_graph_diesel', 3);
-            await graph_month_echarts('month_graph_diesel', 3);
-        }
-    } else {
-        var week_graph_maxima  = makeCanvas('week_graph_maxima');
-        var month_graph_maxima = makeCanvas('month_graph_maxima');
-        var week_graph_super   = makeCanvas('week_graph_super');
-        var month_graph_super  = makeCanvas('month_graph_super');
-        var week_graph_diesel  = makeCanvas('week_graph_diesel');
-        var month_graph_diesel = makeCanvas('month_graph_diesel');
-
-        await graph_week(week_graph_maxima, 1);
-        await graph_month(month_graph_maxima, 1);
-        await graph_week(week_graph_super, 2);
-        await graph_month(month_graph_super, 2);
-        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
-            await graph_week(week_graph_diesel, 3);
-            await graph_month(month_graph_diesel, 3);
-        }
-    }
+    await redrawGraphs(getLegendPosition());
 });
 
 $('#search_graph').on('click', async function () {
@@ -424,32 +501,7 @@ $('#search_graph').on('click', async function () {
         }
     }
 
-    if (USE_ECHARTS) {
-        await graph_week_echarts('week_graph_maxima', 1);
-        await graph_month_echarts('month_graph_maxima', 1);
-        await graph_week_echarts('week_graph_super', 2);
-        await graph_month_echarts('month_graph_super', 2);
-        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
-            await graph_week_echarts('week_graph_diesel', 3);
-            await graph_month_echarts('month_graph_diesel', 3);
-        }
-    } else {
-        var week_graph_maxima  = makeCanvas('week_graph_maxima');
-        var month_graph_maxima = makeCanvas('month_graph_maxima');
-        var week_graph_super   = makeCanvas('week_graph_super');
-        var month_graph_super  = makeCanvas('month_graph_super');
-        var week_graph_diesel  = makeCanvas('week_graph_diesel');
-        var month_graph_diesel = makeCanvas('month_graph_diesel');
-
-        await graph_week(week_graph_maxima, 1);
-        await graph_month(month_graph_maxima, 1);
-        await graph_week(week_graph_super, 2);
-        await graph_month(month_graph_super, 2);
-        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
-            await graph_week(week_graph_diesel, 3);
-            await graph_month(month_graph_diesel, 3);
-        }
-    }
+    await redrawGraphs(getLegendPosition());
 });
 </script>
 

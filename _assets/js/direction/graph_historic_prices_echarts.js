@@ -5,8 +5,35 @@ function destroyEChart(domId) {
     if (instance) instance.dispose();
 }
 
+// Rango del eje Y: redondea al entero mas cercano (ej: 24.6 -> 25, 24.4 -> 24)
+function getYAxisRangeEcharts(data) {
+    var min = Infinity;
+    var max = -Infinity;
+    data.forEach(function(grupo) {
+        grupo.precios.forEach(function(precio) {
+            if (precio !== null && precio !== undefined) {
+                if (precio > max) max = precio;
+                if (precio < min) min = precio;
+            }
+        });
+    });
+    if (max === -Infinity) return { min: undefined, max: undefined };
+    var roundedMin = Math.round(min);
+    var roundedMax = Math.round(max);
+    // Si el redondeo deja el limite por dentro del dato real, se corrige para no recortar la grafica
+    if (roundedMin > min) roundedMin -= 1;
+    if (roundedMax < max) roundedMax += 1;
+    // Margen extra arriba para que la linea no quede pegada al borde superior
+    roundedMax = Math.round((roundedMax + 0.2) * 10) / 10;
+    return {
+        min: roundedMin,
+        max: roundedMax
+    };
+}
+
 function buildEChartOption(data, isMes) {
     var allFechas = data.length > 0 ? data[0].fechas : [];
+    var yRange = getYAxisRangeEcharts(data);
 
     var series = data.map(function(grupo) {
         var values = grupo.precios.map(function(p) {
@@ -49,9 +76,9 @@ function buildEChartOption(data, isMes) {
         legend: {
             type: 'scroll',
             orient: 'horizontal',
-            bottom: 40,
+            top: 0,
         },
-        grid: { left: 60, right: 20, top: 30, bottom: 100 },
+        grid: { left: 60, right: 20, top: 60, bottom: 40 },
         xAxis: {
             type: 'category',
             data: allFechas,
@@ -59,13 +86,13 @@ function buildEChartOption(data, isMes) {
         },
         yAxis: {
             type: 'value',
-            scale: true,
+            min: yRange.min,
+            max: yRange.max,
             axisLabel: { formatter: '${value}' },
             splitLine: { lineStyle: { type: 'dashed' } },
         },
         dataZoom: [
             { type: 'inside', xAxisIndex: 0 },
-            { type: 'slider', xAxisIndex: 0, bottom: 10, height: 20 },
         ],
         series: series,
     };

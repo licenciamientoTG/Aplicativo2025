@@ -1186,6 +1186,9 @@ class Direction{
 
     public function import_file_historic_price_horizontal(){
         if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['file_to_upload'])) {
+            ini_set('max_execution_time', 5000);
+            ini_set('memory_limit', '1024M');
+            set_time_limit(0);
             $response = ['status' => 0, 'message' => ''];
 
             // Captura errores fatales que no atrapa el try/catch
@@ -1240,7 +1243,7 @@ class Direction{
                 }
                 
                 // Procesar filas
-                for ($row = 4; $row <= min($highestRow, 500); $row++) {
+                for ($row = 4; $row <= $highestRow; $row++) {
                     $idGrupo = trim((string) $sheet->getCell("B{$row}")->getValue());
                     $idPlaza = $sheet->getCell("C{$row}")->getValue();
                     

@@ -213,19 +213,24 @@ class HistoricoPreciosModel extends Model{
 
     public function insert_prices_with_transaction(array $priceInserts) : bool {
         $pdo = $this->sql->getConnection();
+        // Tope por lote: SQL Server permite máx. 2100 parámetros por consulta (5 por fila).
+        $batchSize = 400;
         try {
             $pdo->beginTransaction();
-            $stmt = $pdo->prepare('INSERT INTO [TGV2].dbo.Historico_precios
-                                   (id_grupo, id_productos, Id_plaza, precios, fecha_precio)
-                                   VALUES (?, ?, ?, ?, ?)');
-            foreach ($priceInserts as $insert) {
-                $stmt->execute([
-                    $insert['id_grupo'],
-                    $insert['id_productos'],
-                    $insert['Id_plaza'],
-                    $insert['precios'],
-                    $insert['fecha']
-                ]);
+            foreach (array_chunk($priceInserts, $batchSize) as $batch) {
+                $placeholders = implode(',', array_fill(0, count($batch), '(?, ?, ?, ?, ?)'));
+                $stmt = $pdo->prepare("INSERT INTO [TGV2].dbo.Historico_precios
+                                       (id_grupo, id_productos, Id_plaza, precios, fecha_precio)
+                                       VALUES {$placeholders}");
+                $params = [];
+                foreach ($batch as $insert) {
+                    $params[] = $insert['id_grupo'];
+                    $params[] = $insert['id_productos'];
+                    $params[] = $insert['Id_plaza'];
+                    $params[] = $insert['precios'];
+                    $params[] = $insert['fecha'];
+                }
+                $stmt->execute($params);
             }
             $pdo->commit();
             return true;

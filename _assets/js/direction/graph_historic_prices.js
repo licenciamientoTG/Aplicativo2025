@@ -12,7 +12,34 @@ function toggleVisibility() {
     noSelected.setAttribute('hidden', true);
 }
 
-async function graph_week(ctx,product) {
+// Rango del eje Y: redondea al entero mas cercano (ej: 24.6 -> 25, 24.4 -> 24)
+function getYAxisRange(datasets) {
+    var min = Infinity;
+    var max = -Infinity;
+    datasets.forEach(function(dataset) {
+        dataset.data.forEach(function(point) {
+            var value = (point && typeof point === 'object') ? point.y : point;
+            if (value !== null && value !== undefined) {
+                if (value > max) max = value;
+                if (value < min) min = value;
+            }
+        });
+    });
+    if (max === -Infinity) return { min: undefined, max: undefined };
+    var roundedMin = Math.round(min);
+    var roundedMax = Math.round(max);
+    // Si el redondeo deja el limite por dentro del dato real, se corrige para no recortar la grafica
+    if (roundedMin > min) roundedMin -= 1;
+    if (roundedMax < max) roundedMax += 1;
+    // Margen extra arriba para que la linea no quede pegada al borde superior
+    roundedMax = Math.round((roundedMax + 0.2) * 10) / 10;
+    return {
+        min: roundedMin,
+        max: roundedMax
+    };
+}
+
+async function graph_week(ctx,product,legendPosition) {
     var Id_plaza = document.getElementById('plaza_id').value;
     var fromDate = document.getElementById('from').value;
     var untilDate = document.getElementById('until').value;
@@ -52,6 +79,7 @@ async function graph_week(ctx,product) {
             removeData(ctx.chart);
             addData(ctx.chart, data[0].fechas, data[0].precios);
         }else{
+            var yRange = getYAxisRange(datasets);
             var config = {type: 'line',
                 data: {
                     labels: data[0].fechas, // Usamos las fechas del primer grupo como etiquetas del eje X
@@ -73,16 +101,15 @@ async function graph_week(ctx,product) {
                                 display: true,
                                 text: 'Precio'
                             },
-                            // beginAtZero: false,
-                            // min: 10,
                             ticks: {
+                                min: yRange.min,
+                                max: yRange.max,
                                 stepSize: 0.2,// Ajusta el paso de los valores en el eje Y a 0.2
-                                // min: 16,
                             }
                         }]
                     },
                     legend: {
-                        position:'right'
+                        position: legendPosition || 'top'
                     }
 
                 }};
@@ -112,7 +139,7 @@ function removeData(chart) {
     chart.update();
 }
  
-async function graph_month(ctx,product) {
+async function graph_month(ctx,product,legendPosition) {
     var Id_plaza = document.getElementById('plaza_id').value;
     var fromDate = document.getElementById('from').value;
     var untilDate = document.getElementById('until').value;
@@ -163,6 +190,7 @@ async function graph_month(ctx,product) {
             spanGaps: true,
             borderWidth: grupo.label === 'TOTALGAS' ? 4 : 1.25,
         }));
+        var yRange = getYAxisRange(datasets);
         new Chart(ctx, {
             type: 'line',
             data: {
@@ -186,13 +214,14 @@ async function graph_month(ctx,product) {
                         },
                         beginAtZero: false,
                         ticks: {
+                            min: yRange.min,
+                            max: yRange.max,
                             stepSize: 0.2, // Ajusta el paso de los valores en el eje Y a 0.2
-                            // min: 16,
                         }
                     }]
                 },
                 legend: {
-                    position:'right',
+                    position: legendPosition || 'top',
                 }
 
             }
