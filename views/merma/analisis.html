@@ -32,6 +32,9 @@
                 <button type="button" class="btn btn-merma-neutro" onclick="abrirModalBalancePraxedis()">
                     <i class="fas fa-file-upload"></i> Cargar Balance PDF (Praxedis)
                 </button>
+                <button type="button" class="btn btn-merma-neutro" data-bs-toggle="modal" data-bs-target="#capturaColosioModal">
+                    <i class="fas fa-keyboard"></i> Captura manual (Colosio)
+                </button>
                 <div class="small text-muted mt-1">
                     {% if ultimoSync %}
                         Última actualización: {{ ultimoSync.fecha_sync|date('d-m-Y H:i') }}
@@ -193,6 +196,52 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-merma-neutro" id="btnGuardarBalance" disabled onclick="guardarBalancePraxedis()">
                     <i class="fas fa-save"></i> Confirmar carga
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de captura manual sin PDF: Colosio (Repsol, Aguascalientes — no está en ControlGas) -->
+<div class="modal fade" id="capturaColosioModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-keyboard"></i> Captura manual — Colosio</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Colosio (Repsol, Aguascalientes) no está en ControlGas — la administramos pero la información llega por otro medio. Captura el corte del día; deja en blanco los productos que ese día no aplique.</p>
+                <div class="row g-2 mb-3">
+                    <div class="col-auto">
+                        <label>Fecha:</label>
+                        <input type="date" id="captura_fecha" class="form-control" value="{{ maxHasta }}" max="{{ maxHasta }}" required>
+                    </div>
+                </div>
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Inv. Físico</th>
+                            <th>Ventas</th>
+                            <th>Compras</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fam, lbl in {'maxima': 'MAXIMA', 'super': 'SUPER', 'diesel': 'DIESEL'} %}
+                        <tr>
+                            <td>{{ lbl }}</td>
+                            <td><input type="number" step="0.01" class="form-control form-control-sm" id="captura_{{ fam }}_fisico" placeholder="lts"></td>
+                            <td><input type="number" step="0.01" class="form-control form-control-sm" id="captura_{{ fam }}_ventas" placeholder="lts"></td>
+                            <td><input type="number" step="0.01" class="form-control form-control-sm" id="captura_{{ fam }}_compras" placeholder="lts (opcional)"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-merma-neutro" id="btnGuardarCapturaColosio" onclick="guardarCapturaColosio()">
+                    <i class="fas fa-save"></i> Guardar corte
                 </button>
             </div>
         </div>

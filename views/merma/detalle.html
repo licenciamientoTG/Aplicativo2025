@@ -35,6 +35,9 @@
                 <button type="button" class="btn btn-sm btn-merma-neutro" id="validar_compras">
                     <i class="fas fa-truck"></i> Validar compras
                 </button>
+                <button type="button" class="btn btn-sm btn-merma-neutro" id="ver_cambios">
+                    <i class="fas fa-history"></i> Cambios
+                </button>
                 {% if estacion.Codigo == 40 %}
                 <button type="button" class="btn btn-sm btn-merma-neutro" onclick="abrirModalBalancePraxedis()">
                     <i class="fas fa-file-upload"></i> Cargar Balance PDF
@@ -173,13 +176,19 @@
                     <td>{{ b.vr is null ? '-' : b.vr|number_format(2, '.', ',') }}</td>
                     <td>{{ b.cont is null ? '-' : b.cont|number_format(2, '.', ',') }}</td>
                     <td class="col-fis">
-                        {%- if b.fis_corrupta -%}
+                        {%- if b.fis is null -%}
+                        -
+                        {%- elseif b.fis_corrupta -%}
                         <span class="fis-corrupta fis-editable" data-fecha="{{ t.fecha }}" data-fam="{{ fam }}" data-turno="{{ t.turno }}"
                               title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo. Clic para corregirla en la estación.">
                             {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
                         </span>
                         {%- else -%}
-                        {{ b.fis is null ? '-' : b.fis|number_format(2, '.', ',') }}
+                        <span class="fis-editable" data-fecha="{{ t.fecha }}" data-fam="{{ fam }}" data-turno="{{ t.turno }}"
+                              title="{{ b.fis_corregido ? 'Este corte ya fue corregido antes. Clic para volver a editarlo en la estación.' : 'Clic para corregir este corte en la estación.' }}">
+                            {{ b.fis|number_format(2, '.', ',') }}
+                            {%- if b.fis_corregido %} <i class="fas fa-exclamation-circle fis-corregido-icon"></i>{% endif -%}
+                        </span>
                         {%- endif -%}
                     </td>
                     <td class="{{ b.dif is null ? '' : (b.dif < 0 ? 'dif-neg' : 'dif-pos') }}">
@@ -305,6 +314,23 @@
                     <strong>desviación</strong> = más de ±10% entre documento y volumen medido.
                 </p>
                 <div id="compras_rows"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de bitácora de cambios (correcciones de cortes físicos) -->
+<div class="modal fade" id="cambiosModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Cambios — {{ estacion.Nombre }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div id="cambiosModalContent">
+                <div class="modal-body text-center py-4">
+                    <span class="spinner-border spinner-border-sm"></span> Consultando...
+                </div>
             </div>
         </div>
     </div>
@@ -475,6 +501,20 @@ $(document).ready(function () {
             });
             $('#fisico_rows').html(html + '</tbody></table>');
         }, 'json').fail(() => $('#fisico_rows').html('<div class="alert alert-danger">Error de servidor</div>'));
+    });
+
+    // ---- Bitácora de cambios (correcciones de cortes físicos) --------------
+    $('#ver_cambios').click(function () {
+        $('#cambiosModalContent').html('<div class="modal-body text-center py-4"><span class="spinner-border spinner-border-sm"></span> Consultando...</div>');
+        new bootstrap.Modal(document.getElementById('cambiosModal')).show();
+        fetch('/merma/cambios_fisico', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ codgas: CODGAS, desde: $('#desde').val(), hasta: $('#hasta').val() }),
+        })
+            .then(r => r.text())
+            .then(html => { $('#cambiosModalContent').html(html); })
+            .catch(() => { $('#cambiosModalContent').html('<div class="modal-body"><div class="alert alert-danger mb-0">Error de servidor</div></div>'); });
     });
 
     // ---- Validación de compras vs recepción física --------------------------

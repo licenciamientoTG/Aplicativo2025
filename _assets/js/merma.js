@@ -210,4 +210,39 @@ $(document).ready(function () {
                 });
         });
     };
+
+    // ---- Captura manual sin PDF: Colosio -----------------------------------
+    window.guardarCapturaColosio = function () {
+        const fecha = $('#captura_fecha').val();
+        if (!fecha) { Swal.fire({ icon: 'warning', title: 'Captura la fecha' }); return; }
+
+        const data = { fecha: fecha };
+        let algunaFamilia = false;
+        ['maxima', 'super', 'diesel'].forEach(function (fam) {
+            const fisico  = $('#captura_' + fam + '_fisico').val();
+            const ventas  = $('#captura_' + fam + '_ventas').val();
+            const compras = $('#captura_' + fam + '_compras').val();
+            if (fisico !== '' || ventas !== '' || compras !== '') algunaFamilia = true;
+            data[fam + '_fisico']  = fisico;
+            data[fam + '_ventas']  = ventas;
+            data[fam + '_compras'] = compras;
+        });
+        if (!algunaFamilia) { Swal.fire({ icon: 'warning', title: 'Captura al menos un producto' }); return; }
+
+        const $btn = $('#btnGuardarCapturaColosio');
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Guardando...');
+        $.post('/merma/guardar_captura_manual_merma', data, function (res) {
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'Guardado', text: res.message });
+                $('#capturaColosioModal').modal('hide');
+                setTimeout(() => location.reload(), 800);
+            } else {
+                Swal.fire({ icon: 'error', title: 'Error', text: res.message });
+                $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Guardar corte');
+            }
+        }, 'json').fail(function () {
+            Swal.fire({ icon: 'error', title: 'Error de servidor' });
+            $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Guardar corte');
+        });
+    };
 });

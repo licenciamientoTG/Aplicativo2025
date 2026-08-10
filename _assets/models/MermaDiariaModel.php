@@ -20,6 +20,13 @@ class MermaDiariaModel extends Model
         'diesel' => [3, 181],
     ];
 
+    /** codprd base para captura manual sin conexión (Praxedis, Colosio). */
+    public const FAMILIAS_CAPTURA_MANUAL = [
+        'maxima' => ['codprd' => 1, 'producto' => 'MAXIMA'],
+        'super'  => ['codprd' => 2, 'producto' => 'SUPER'],
+        'diesel' => ['codprd' => 3, 'producto' => 'DIESEL'],
+    ];
+
     /**
      * Rango plausible de un corte físico en litros. StockReal de las
      * estaciones trae lecturas corruptas (se han visto 2.5e+32, 1.7e+12,
@@ -368,6 +375,48 @@ class MermaDiariaModel extends Model
             [$usuario, $codgas, $fecha, $fch, $codprd, $nrotur, $codtan, $anterior, $valor]);
 
         return ['success' => true, 'anterior' => $anterior, 'sg12' => (bool)$sg12, 'log' => (bool)$log];
+    }
+
+    /**
+     * Set "fecha-familia-turno" (familia = maxima/super/diesel, turno
+     * normalizado 11/21/41, no el nrotur crudo 10/20/40 de StockReal) de
+     * todos los turnos del rango que ya tienen al menos una corrección en
+     * merma_fisico_log — para marcar en el detalle qué celdas fueron
+     * editadas antes (aunque ya no estén corruptas) y así seguir
+     * permitiendo reabrir el modal de corrección sobre ellas.
+     */
+    public function get_turnos_corregidos(int $codgas, string $desde, string $hasta): array
+    {
+        $rs = $this->sql->select(
+            'SELECT DISTINCT fecha, codprd, nrotur FROM [TG].[dbo].[merma_fisico_log]
+             WHERE codgas = ? AND fecha BETWEEN ? AND ?;',
+            [$codgas, $desde, $hasta]);
+        $turnoMap = [10 => 11, 11 => 11, 20 => 21, 21 => 21, 30 => 41, 31 => 41, 40 => 41, 41 => 41];
+        $codprdFamilia = [];
+        foreach (self::FAMILIAS as $fam => $codes) {
+            foreach ($codes as $c) $codprdFamilia[$c] = $fam;
+        }
+        $set = [];
+        foreach ($rs ?: [] as $r) {
+            $fam = $codprdFamilia[(int)$r['codprd']] ?? null;
+            if (!$fam) continue;
+            $turno = $turnoMap[(int)$r['nrotur']] ?? (int)$r['nrotur'];
+            $set[substr($r['fecha'], 0, 10) . '-' . $fam . '-' . $turno] = true;
+        }
+        return $set;
+    }
+
+    /** Bitácora de correcciones de cortes físicos de una estación en un rango, con usuario. */
+    public function get_bitacora_fisico(int $codgas, string $desde, string $hasta): array
+    {
+        return $this->sql->select(
+            'SELECT l.fecha_correccion, l.fecha, l.codprd, l.nrotur, l.codtan,
+                    l.valor_anterior, l.valor_nuevo, u.Nombre AS usuario_nombre
+             FROM [TG].[dbo].[merma_fisico_log] l
+             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = l.usuario
+             WHERE l.codgas = ? AND l.fecha BETWEEN ? AND ?
+             ORDER BY l.fecha_correccion DESC;',
+            [$codgas, $desde, $hasta]) ?: [];
     }
 
     /**

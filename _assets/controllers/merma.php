@@ -22,6 +22,7 @@ class Merma
     private const PERM_VER = 33;   // Reportes de Abastos
     private const API_URL  = 'http://192.168.0.109:82/api/inventarios_turnos/';
     private const CODGAS_PRAXEDIS = 40;
+    private const CODGAS_COLOSIO  = 199;
 
     private $twig;
     private $route;
@@ -176,6 +177,7 @@ class Merma
         }
 
         $rows = $this->mermaModel->get_detalle_rango($codgas, $desde, $hasta);
+        $corregidos = $this->mermaModel->get_turnos_corregidos($codgas, $desde, $hasta);
 
         // Acumulado de diferencia por familia (como las columnas I/P del Excel)
         $acum    = ['maxima' => 0.0, 'super' => 0.0, 'diesel' => 0.0];
@@ -183,7 +185,9 @@ class Merma
         $ventas  = ['maxima' => 0.0, 'super' => 0.0, 'diesel' => 0.0];
         $filas   = [];
         foreach ($rows as $r) {
-            $fila = ['fecha' => substr($r['fecha'], 0, 10), 'turno' => (int)$r['turno']];
+            $fechaFila = substr($r['fecha'], 0, 10);
+            $turnoFila = (int)$r['turno'];
+            $fila = ['fecha' => $fechaFila, 'turno' => $turnoFila];
             foreach (array_keys(MermaDiariaModel::FAMILIAS) as $fam) {
                 $dif = $r["dif_$fam"];
                 if ($dif !== null) $acum[$fam] += (float)$dif;
@@ -200,6 +204,10 @@ class Merma
                     'fis_corrupta' => $fis !== null
                         && ($fis < MermaDiariaModel::INV_FISICO_MIN
                             || $fis > MermaDiariaModel::INV_FISICO_MAX),
+                    // Ya se corrigió antes (aunque ya no esté corrupta): la
+                    // celda sigue siendo editable y se marca con "!" en vez
+                    // del triángulo rojo de corrupta.
+                    'fis_corregido' => isset($corregidos[$fechaFila . '-' . $fam . '-' . $turnoFila]),
                     'dif'     => $dif,
                     'acum'    => $dif !== null ? $acum[$fam] : null,
                 ];
@@ -610,6 +618,28 @@ class Merma
         json_output(['success' => true, 'cortes' => $cortes,
                      'min' => MermaDiariaModel::INV_FISICO_MIN,
                      'max' => MermaDiariaModel::INV_FISICO_MAX]);
+    }
+
+    /**
+     * Vista parcial con la bitácora de correcciones de cortes físicos
+     * (merma_fisico_log) de una estación en un rango — botón "Cambios"
+     * junto a "Validar compras" en el detalle.
+     */
+    public function cambios_fisico(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            echo '<div class="modal-body"><div class="alert alert-danger mb-0">No autorizado</div></div>';
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $desde  = $_POST['desde'] ?? '';
+        $hasta  = $_POST['hasta'] ?? '';
+        if (!$codgas || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) {
+            echo '<div class="modal-body"><div class="alert alert-danger mb-0">Parámetros inválidos</div></div>';
+            return;
+        }
+        $cambios = $this->mermaModel->get_bitacora_fisico($codgas, $desde, $hasta);
+        echo $this->twig->render($this->route . 'modals/cambios_fisico.html', compact('cambios', 'desde', 'hasta'));
     }
 
     /** Cruce compras vs recepción física de la estación (modal Validar compras). */
@@ -1073,6 +1103,71 @@ class Merma
             'filas'       => $filasInsertadas,
             'resultados'  => $resultados,
         ]);
+    }
+
+    /**
+     * Captura manual (sin PDF) del corte diario de Colosio (Repsol,
+     * Aguascalientes) — estación que TotalGas administra pero que no está
+     * en ControlGas; la información llega por otro medio y se transcribe
+     * aquí a mano. Mismo esquema que la carga de Praxedis: turno sintético
+     * 41, inv_inicial/inv_contable/diferencia los calcula recalc_contable().
+     * POST fecha (YYYY-MM-DD), y por familia (maxima/super/diesel) los
+     * campos <familia>_fisico/<familia>_ventas/<familia>_compras (vacíos si
+     * la estación no vendió ese producto ese día).
+     */
+    public function guardar_captura_manual_merma(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $fecha = $_POST['fecha'] ?? '';
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            json_output(['success' => false, 'message' => 'Fecha inválida']);
+            return;
+        }
+
+        $familias = MermaDiariaModel::FAMILIAS_CAPTURA_MANUAL;
+        $filas = [];
+        foreach ($familias as $familia => $meta) {
+            $fisico  = $_POST[$familia . '_fisico'] ?? '';
+            $ventas  = $_POST[$familia . '_ventas'] ?? '';
+            $compras = $_POST[$familia . '_compras'] ?? '';
+            if ($fisico === '' && $ventas === '' && $compras === '') continue; // familia no capturada ese día
+            if (!is_numeric($fisico) || !is_numeric($ventas)) {
+                json_output(['success' => false, 'message' => "Inv. físico y ventas de {$meta['producto']} deben ser numéricos"]);
+                return;
+            }
+            $filas[] = [
+                'Fecha'               => $fecha,
+                'CodProducto'         => $meta['codprd'],
+                'Producto'            => $meta['producto'],
+                'Turno'               => 41,
+                'VentasReales'        => (float)$ventas,
+                'Inventario'          => (float)$fisico,
+                'CantidadCompra'      => $compras === '' ? 0 : (float)$compras,
+                'InventarioInicial'   => null,
+                'InventarioContable'  => null,
+                'Diferencia'          => null,
+            ];
+        }
+
+        if (empty($filas)) {
+            json_output(['success' => false, 'message' => 'Captura al menos una familia de producto']);
+            return;
+        }
+
+        try {
+            $insertadas = $this->mermaModel->replace_station_range(
+                self::CODGAS_COLOSIO, 'COLOSIO', $fecha, $fecha, $filas
+            );
+        } catch (Throwable $e) {
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+            return;
+        }
+
+        json_output(['success' => true, 'message' => "Fecha {$fecha} guardada", 'filas' => $insertadas]);
     }
 
     /* ===================================================================== */

@@ -1,0 +1,40 @@
+{# Modal: Bitácora de correcciones de cortes físicos (merma_fisico_log) #}
+<div class="modal-body">
+    <p class="text-muted small mb-2">
+        Correcciones de cortes físicos hechas desde este módulo en el periodo
+        {{ desde|date('d-m-Y') }} — {{ hasta|date('d-m-Y') }}. Cada cambio se
+        escribió en <code>StockReal</code> de la estación.
+    </p>
+    {% if cambios|length == 0 %}
+    <div class="alert alert-secondary mb-0">Sin correcciones en este periodo.</div>
+    {% else %}
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Fecha corrección</th>
+                    <th>Usuario</th>
+                    <th>Día del corte</th>
+                    <th>Producto</th>
+                    <th>Turno</th>
+                    <th class="text-end">Valor anterior</th>
+                    <th class="text-end">Valor nuevo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in cambios %}
+                <tr>
+                    <td>{{ c.fecha_correccion|date('d-m-Y H:i') }}</td>
+                    <td>{{ c.usuario_nombre ?: ('Usuario #' ~ c.usuario) }}</td>
+                    <td>{{ c.fecha|date('d-m-Y') }}</td>
+                    <td>{{ c.codprd }}</td>
+                    <td>{{ c.nrotur }}</td>
+                    <td class="text-end">{{ c.valor_anterior|number_format(2, '.', ',') }}</td>
+                    <td class="text-end">{{ c.valor_nuevo|number_format(2, '.', ',') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
