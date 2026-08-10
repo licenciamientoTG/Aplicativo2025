@@ -359,6 +359,13 @@
           <span class="align-middle">Tabulador</span>
         </a>
       </li>
+      {% endif %} {% if authorized(84) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/station_portal/mis_recepciones">
+          <i data-feather="truck"></i>
+          <span class="align-middle">Mis Recepciones</span>
+        </a>
+      </li>
       {% endif %} {% if authorized(21) %}
       <li class="sidebar-item">
         <a class="sidebar-link" href="/operations/clientes_contado">
