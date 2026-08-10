@@ -19,87 +19,20 @@
 
 ---
 
-## Task 1: Catálogo de permisos + tabla `recepcion_remisiones`
+## Task 1: Catálogo de permisos + tabla `recepcion_remisiones` — COMPLETADA (2026-08-09)
 
-**Files:**
-- Create: `docs/superpowers/plans/sql/2026-08-09-recepcion-remisiones.sql` (script de referencia, no se ejecuta por el engineer vía código — se corre a mano contra `TG` y se documenta aquí para trazabilidad)
+**Estado: ejecutada directamente contra `TG` en producción, fuera del flujo de subagentes** (requería credenciales de BD que solo el humano/controlador puede autorizar usar). No re-ejecutar.
 
-**Interfaces:**
-- Produces: tabla `[TG].[dbo].[recepcion_remisiones]` con columnas `id, nrotrn, codgas, fchtrn, file_path, file_extension, original_filename, file_size, created_by, created_at, is_deleted, deleted_at, deleted_by`. Produce también 3 filas nuevas en `[TG].[dbo].[tg_permissions]` cuyos `id` reales se usan literalmente en todas las tareas siguientes (Task 4, 6, 7, 8).
+Resultado real:
+- Tabla `[TG].[dbo].[recepcion_remisiones]` creada con las columnas `id, nrotrn, codgas, fchtrn, file_path, file_extension, original_filename, file_size, created_by, created_at, is_deleted, deleted_at, deleted_by` + índice `IX_recepcion_remisiones_recepcion`.
+- 3 permisos dados de alta en `[TG].[dbo].[tg_permissions]`:
+  - **id 84** = "Ver Mis Recepciones (portal estaciones)" (`PERM_VER`)
+  - **id 85** = "Mis Recepciones: ver todas las estaciones" (`PERM_TODAS_ESTACIONES`)
+  - **id 86** = "Mis Recepciones: eliminar remisión" (`PERM_ELIMINAR`)
 
-- [ ] **Step 1: Escribir el script SQL de la tabla nueva**
+Script de referencia (ya ejecutado, se conserva para trazabilidad): `docs/superpowers/plans/sql/2026-08-09-recepcion-remisiones.sql`.
 
-```sql
--- docs/superpowers/plans/sql/2026-08-09-recepcion-remisiones.sql
-CREATE TABLE [TG].[dbo].[recepcion_remisiones] (
-    id                 INT IDENTITY(1,1) PRIMARY KEY,
-    nrotrn             INT NOT NULL,
-    codgas             INT NOT NULL,
-    fchtrn             INT NOT NULL,
-    file_path          VARCHAR(500) NOT NULL,
-    file_extension     VARCHAR(10) NOT NULL,
-    original_filename  VARCHAR(255) NOT NULL,
-    file_size          INT NOT NULL,
-    created_by         INT NOT NULL,
-    created_at         DATETIME NOT NULL DEFAULT GETDATE(),
-    is_deleted         BIT NOT NULL DEFAULT 0,
-    deleted_at         DATETIME NULL,
-    deleted_by         INT NULL
-);
-GO
-
-CREATE INDEX IX_recepcion_remisiones_recepcion
-    ON [TG].[dbo].[recepcion_remisiones] (codgas, fchtrn, nrotrn)
-    WHERE is_deleted = 0;
-GO
-```
-
-- [ ] **Step 2: Ejecutar el script contra `TG`**
-
-Correr el script de Step 1 contra la base `TG` (mismo mecanismo que ya usa el proyecto para migraciones ad-hoc — no hay runner de migraciones, se ejecuta manualmente vía SSMS o la herramienta que ya use el equipo). Confirmar con:
-
-```sql
-SELECT * FROM [TG].[dbo].[recepcion_remisiones];
--- Expected: 0 filas, sin error (tabla existe y está vacía)
-```
-
-- [ ] **Step 3: Dar de alta los 3 permisos nuevos**
-
-Insertar usando el mismo patrón que `PermissionsModel::add()` (`_assets/models/PermissionsModel.php:33-36`):
-
-```sql
-INSERT INTO [TG].[dbo].[tg_permissions] ([action],[department],[description],[status],[updated_at],[created_at])
-VALUES ('read', 'Operaciones', 'Ver Mis Recepciones (portal estaciones)', 1, GETDATE(), GETDATE());
-
-INSERT INTO [TG].[dbo].[tg_permissions] ([action],[department],[description],[status],[updated_at],[created_at])
-VALUES ('read', 'Operaciones', 'Mis Recepciones: ver todas las estaciones', 1, GETDATE(), GETDATE());
-
-INSERT INTO [TG].[dbo].[tg_permissions] ([action],[department],[description],[status],[updated_at],[created_at])
-VALUES ('delete', 'Operaciones', 'Mis Recepciones: eliminar remisión', 1, GETDATE(), GETDATE());
-```
-
-(Alternativa equivalente: darlos de alta desde la UI en `/it/permissions`, que llama al mismo `PermissionsModel::add()` — cualquiera de las dos vías es válida, el resultado es el mismo insert.)
-
-- [ ] **Step 4: Capturar los 3 ids generados**
-
-```sql
-SELECT id, description FROM [TG].[dbo].[tg_permissions]
-WHERE description LIKE 'Mis Recepciones%' OR description LIKE 'Ver Mis Recepciones%'
-ORDER BY id;
-```
-
-Anotar los 3 ids resultantes (ejemplo de nomenclatura para el resto del plan: `PERM_VER`, `PERM_TODAS_ESTACIONES`, `PERM_ELIMINAR`). **Estos ids reemplazan literalmente los placeholders `PERM_VER` / `PERM_TODAS_ESTACIONES` / `PERM_ELIMINAR` en todas las tareas siguientes** — antes de escribir código en Task 4/6/7/8, sustituir por el entero real.
-
-- [ ] **Step 5: Asignar el permiso `PERM_VER` a un usuario de prueba**
-
-Vía `/it/permission_users/{user_id}` (UI existente, `_assets/controllers/it.php:420-422` + `450-453`) o directo:
-
-```sql
-INSERT INTO [TG].[dbo].[tg_permissions_users] (user_id, permission_id)
-VALUES (?, ?); -- ? = id de un usuario de prueba, PERM_VER
-```
-
-Esto es necesario para poder probar manualmente Task 4 en adelante.
+**Pendiente, fuera del alcance de este plan de implementación:** asignar el permiso 84 a un usuario de prueba real (vía `/it/permission_users/{user_id}` en la app) para poder validar Task 8 manualmente. Esto lo hace el humano directamente en la UI — ningún subagente de este plan tiene el `user_id` correcto ni acceso para decidirlo.
 
 ---
 
@@ -321,7 +254,7 @@ git commit -m "fix: sp_obtener_recepciones_combustible acepta codprd=0 como todo
 
 - [ ] **Step 1: Crear el esqueleto del controlador con el guard de acceso**
 
-Sustituir los valores `101`/`102`/`103` de las constantes de clase por los ids reales capturados en Task 1 Step 4 (son placeholders de ejemplo, no ids garantizados — el autoincremental de `tg_permissions` depende de cuántas filas existan ya en esa tabla).
+Los 3 permisos ya fueron dados de alta en `TG.dbo.tg_permissions` (Task 1, ejecutado 2026-08-09): id 84 = "Ver Mis Recepciones (portal estaciones)", id 85 = "Mis Recepciones: ver todas las estaciones", id 86 = "Mis Recepciones: eliminar remisión". Usar estos valores literales.
 
 ```php
 <?php
@@ -333,9 +266,9 @@ class station_portal
     public RecepcionRemisionesModel $recepcionRemisionesModel;
     public GasolinerasModel $gasolinerasModel;
 
-    const PERM_VER              = 101; // reemplazar por el id real de Task 1 Step 4 (ver: permiso "Ver Mis Recepciones")
-    const PERM_TODAS_ESTACIONES = 102; // reemplazar por el id real de Task 1 Step 4 (ver: "todas las estaciones")
-    const PERM_ELIMINAR         = 103; // reemplazar por el id real de Task 1 Step 4 (delete: "eliminar remisión")
+    const PERM_VER              = 84; // "Ver Mis Recepciones (portal estaciones)"
+    const PERM_TODAS_ESTACIONES = 85; // "Mis Recepciones: ver todas las estaciones"
+    const PERM_ELIMINAR         = 86; // "Mis Recepciones: eliminar remisión"
 
     public function __construct($twig)
     {
@@ -863,10 +796,10 @@ git commit -m "feat: endpoints de subida, consulta y soft-delete de remisiones"
 
 - [ ] **Step 1: Insertar la entrada dentro del bloque de Operaciones**
 
-En `views/layouts/sidebar.html`, inmediatamente después del bloque `{% if authorized(21) %}...Tabulador...{% endif %}` (líneas 355-361), agregar. `authorized()` en Twig (`_assets/classes/twig_functions.php:92-97`) espera el id entero literal, no una constante PHP — sustituir `101` por el id real de `PERM_VER` (Task 1 Step 4):
+En `views/layouts/sidebar.html`, inmediatamente después del bloque `{% if authorized(21) %}...Tabulador...{% endif %}` (líneas 355-361), agregar. `authorized()` en Twig (`_assets/classes/twig_functions.php:92-97`) espera el id entero literal, no una constante PHP — el id real de `PERM_VER` es 84 (Task 1):
 
 ```html
-{% if authorized(101) %}
+{% if authorized(84) %}
 <li class="sidebar-item">
   <a class="sidebar-link" href="/station_portal/mis_recepciones">
     <i data-feather="truck"></i>
