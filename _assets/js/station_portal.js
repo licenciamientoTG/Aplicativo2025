@@ -1,59 +1,85 @@
-let datatables_mis_recepciones = $('#datatables_mis_recepciones').DataTable({
-    dom: '<"top"f>rt<"bottom"lip>',
-    pageLength: 100,
-    ajax: {
-        url: '/station_portal/datatables_recepciones',
-        data: function (d) {
-            d.fecha = $('#fecha_recepciones').val();
-            const codgasSelect = $('#codgas_recepciones');
-            if (codgasSelect.length) {
-                d.codgas = codgasSelect.val();
-            }
-        },
-        error: function() {
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No se pudieron cargar las recepciones. Intente nuevamente.</p>
-                </div>`
-            );
-        }
-    },
-    deferRender: true,
-    columns: [
-        { data: 'hora' },
-        { data: 'producto' },
-        { data: 'volumen', render: $.fn.dataTable.render.number(',', '.', 2) },
-        {
-            data: 'total_remisiones',
-            render: function (data) {
-                return data > 0
-                    ? `<span class="badge bg-success">${data} subida(s)</span>`
-                    : `<span class="badge bg-warning text-dark">Sin remisión</span>`;
-            }
-        },
-        {
-            data: null,
-            render: function (row) {
-                const canDelete = $('#datatables_mis_recepciones').data('can-delete') == 1;
-                let html = `<button type="button" class="btn btn-sm btn-primary btn-subir-remision" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}">Subir</button> `;
-                if (row.total_remisiones > 0) {
-                    html += `<button type="button" class="btn btn-sm btn-secondary btn-ver-remisiones" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}">Ver</button>`;
+let datatables_mis_recepciones = null;
+
+function construirConfigDataTable() {
+    return {
+        dom: '<"top"f>rt<"bottom"lip>',
+        pageLength: 100,
+        ajax: {
+            url: '/station_portal/datatables_recepciones',
+            data: function (d) {
+                d.fecha_desde = $('#fecha_desde').val();
+                d.fecha_hasta = $('#fecha_hasta').val();
+                const codgasSelect = $('#codgas_recepciones');
+                if (codgasSelect.length) {
+                    d.codgas = codgasSelect.val();
                 }
-                return html;
+            },
+            error: function() {
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No se pudieron cargar las recepciones. Intente nuevamente.</p>
+                    </div>`
+                );
             }
         },
-    ],
-});
+        deferRender: true,
+        columns: [
+            { data: 'fecha' },
+            { data: 'hora' },
+            { data: 'producto' },
+            { data: 'volumen', render: $.fn.dataTable.render.number(',', '.', 2) },
+            {
+                data: 'total_remisiones',
+                render: function (data) {
+                    return data > 0
+                        ? `<span class="badge bg-success">${data} subida(s)</span>`
+                        : `<span class="badge bg-warning text-dark">Sin remisión</span>`;
+                }
+            },
+            {
+                data: null,
+                render: function (row) {
+                    let html = `<button type="button" class="btn btn-sm btn-primary btn-subir-remision" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}" data-fecha="${row.fecha}">Subir</button> `;
+                    if (row.total_remisiones > 0) {
+                        html += `<button type="button" class="btn btn-sm btn-secondary btn-ver-remisiones" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}">Ver</button>`;
+                    }
+                    return html;
+                }
+            },
+        ],
+    };
+}
 
-$('#fecha_recepciones').on('change', function () {
-    datatables_mis_recepciones.ajax.reload();
-});
+function rangoEsValido() {
+    const desde = $('#fecha_desde').val();
+    const hasta = $('#fecha_hasta').val();
 
-$('#codgas_recepciones').on('change', function () {
-    datatables_mis_recepciones.ajax.reload();
+    if (!desde || !hasta) {
+        alertify.myAlert('<div class="text-danger text-center"><p>Selecciona ambas fechas.</p></div>');
+        return false;
+    }
+
+    if (desde > hasta) {
+        alertify.myAlert('<div class="text-danger text-center"><p>La fecha "Desde" no puede ser posterior a "Hasta".</p></div>');
+        return false;
+    }
+
+    return true;
+}
+
+$('#btnBuscarRecepciones').on('click', function () {
+    if (!rangoEsValido()) {
+        return;
+    }
+
+    if (datatables_mis_recepciones === null) {
+        datatables_mis_recepciones = $('#datatables_mis_recepciones').DataTable(construirConfigDataTable());
+    } else {
+        datatables_mis_recepciones.ajax.reload();
+    }
 });
 
 $(document).on('click', '.btn-subir-remision', function () {
@@ -63,7 +89,7 @@ $(document).on('click', '.btn-subir-remision', function () {
     $('#subir_nrotrn').val($(this).data('nrotrn'));
     $('#subir_codgas').val($(this).data('codgas'));
     $('#subir_fchtrn').val($(this).data('fchtrn'));
-    $('#subir_fecha').val($('#fecha_recepciones').val());
+    $('#subir_fecha').val($(this).data('fecha'));
     $('#modalSubirRemision').modal('show');
 });
 
