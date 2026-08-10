@@ -1,0 +1,14 @@
+{% if remisiones is empty %}
+<p class="text-center text-muted">No hay remisiones subidas para esta recepción.</p>
+{% else %}
+<ul class="list-group remisiones-list">
+    {% for r in remisiones %}
+    <li class="list-group-item d-flex justify-content-between align-items-center remision-row">
+        <a href="/{{ r.file_path }}" target="_blank">{{ r.original_filename }}</a>
+        {% if canDelete %}
+        <button type="button" class="btn btn-sm btn-danger btn-eliminar-remision" data-id="{{ r.id }}">Eliminar</button>
+        {% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}

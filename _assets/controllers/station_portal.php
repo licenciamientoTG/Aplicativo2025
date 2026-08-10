@@ -97,4 +97,75 @@ class station_portal
 
         json_output(['data' => $data]);
     }
+
+    public function upload_remision(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+
+        $nrotrn = (int)($_POST['nrotrn'] ?? 0);
+        $codgasPost = (int)($_POST['codgas'] ?? 0);
+        $fchtrn = (int)($_POST['fchtrn'] ?? 0);
+
+        if ($nrotrn <= 0 || $codgasPost <= 0 || $fchtrn <= 0 || !isset($_FILES['archivo'])) {
+            json_output(['success' => false, 'message' => 'Datos incompletos']);
+            return;
+        }
+
+        // El codgas del POST solo se respeta si el usuario tiene el permiso de
+        // todas las estaciones; si no, se ignora por completo y se fuerza el de
+        // sesión, sin importar qué haya mandado el cliente.
+        $hasIdEstacion = isset($_SESSION['tg_user']['IdEstacion']) && (int)$_SESSION['tg_user']['IdEstacion'] > 0;
+        if (authorized(self::PERM_TODAS_ESTACIONES)) {
+            $codgasEfectivo = $codgasPost;
+        } elseif ($hasIdEstacion) {
+            $codgasEfectivo = (int)$_SESSION['tg_user']['IdEstacion'];
+        } else {
+            json_output(['success' => false, 'message' => 'No autorizado para esta estación']);
+            return;
+        }
+
+        $userId = (int)$_SESSION['tg_user']['Id'];
+        $result = $this->recepcionRemisionesModel->upload($nrotrn, $codgasEfectivo, $fchtrn, $_FILES['archivo'], $userId);
+
+        json_output($result);
+    }
+
+    public function remisiones_by_recepcion(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            http_response_code(403);
+            exit;
+        }
+
+        $nrotrn = (int)($_GET['nrotrn'] ?? 0);
+        $codgas = (int)($_GET['codgas'] ?? 0);
+        $fchtrn = (int)($_GET['fchtrn'] ?? 0);
+        $canDelete = authorized(self::PERM_ELIMINAR);
+
+        $remisiones = $this->recepcionRemisionesModel->get_by_recepcion($nrotrn, $codgas, $fchtrn);
+
+        echo $this->twig->render($this->route . 'modals/remisiones_list.html', compact('remisiones', 'canDelete'));
+    }
+
+    public function delete_remision(): void
+    {
+        if (!authorized(self::PERM_ELIMINAR)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            json_output(['success' => false, 'message' => 'Id inválido']);
+            return;
+        }
+
+        $userId = (int)$_SESSION['tg_user']['Id'];
+        $result = $this->recepcionRemisionesModel->soft_delete($id, $userId);
+
+        json_output($result);
+    }
 }
