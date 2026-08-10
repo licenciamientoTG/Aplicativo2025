@@ -141,11 +141,24 @@ class station_portal
         }
 
         $nrotrn = (int)($_GET['nrotrn'] ?? 0);
-        $codgas = (int)($_GET['codgas'] ?? 0);
+        $codgasGet = (int)($_GET['codgas'] ?? 0);
         $fchtrn = (int)($_GET['fchtrn'] ?? 0);
         $canDelete = authorized(self::PERM_ELIMINAR);
 
-        $remisiones = $this->recepcionRemisionesModel->get_by_recepcion($nrotrn, $codgas, $fchtrn);
+        // El codgas del GET solo se respeta si el usuario tiene el permiso de
+        // todas las estaciones; si no, se ignora por completo y se fuerza el de
+        // sesión, sin importar qué haya mandado el cliente.
+        $hasIdEstacion = isset($_SESSION['tg_user']['IdEstacion']) && (int)$_SESSION['tg_user']['IdEstacion'] > 0;
+        if (authorized(self::PERM_TODAS_ESTACIONES)) {
+            $codgasEfectivo = $codgasGet;
+        } elseif ($hasIdEstacion) {
+            $codgasEfectivo = (int)$_SESSION['tg_user']['IdEstacion'];
+        } else {
+            http_response_code(403);
+            exit;
+        }
+
+        $remisiones = $this->recepcionRemisionesModel->get_by_recepcion($nrotrn, $codgasEfectivo, $fchtrn);
 
         echo $this->twig->render($this->route . 'modals/remisiones_list.html', compact('remisiones', 'canDelete'));
     }
