@@ -101,24 +101,72 @@ class station_portal
             return;
         }
 
-        $fecha = $_REQUEST['fecha'] ?? date('Y-m-d');
-        $fchtrn = dateToInt($fecha);
+        $fechaDesde = $_REQUEST['fecha_desde'] ?? date('Y-m-d');
+        $fechaHasta = $_REQUEST['fecha_hasta'] ?? date('Y-m-d');
 
-        $recepciones = $this->movimientosTanModel->sp_obtener_recepciones_combustible($fecha, $codgas, 0) ?: [];
-        $counts = $this->recepcionRemisionesModel->get_counts_by_day($codgas, $fchtrn);
+        $postData = [
+            'from'   => dateToInt($fechaDesde),
+            'until'  => dateToInt($fechaHasta),
+            'codgas' => $codgas,
+            'codprd' => 0,
+        ];
 
-        $data = array_map(function ($r) use ($counts) {
+        try {
+            $ch = curl_init('http://192.168.0.109:82/api/get_recepciones_combustible_rango/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+            if (curl_errno($ch)) {
+                throw new Exception('Error de cURL: ' . curl_error($ch));
+            }
+            curl_close($ch);
+
+            if ($httpCode !== 200) {
+                throw new Exception("Error HTTP: $httpCode");
+            }
+
+            $recepciones = json_decode($response, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($recepciones)) {
+                throw new Exception('Respuesta inválida de la API');
+            }
+        } catch (Exception $e) {
+            json_output(['data' => [], 'error' => 'Error al consultar recepciones: ' . $e->getMessage()]);
+            return;
+        }
+
+        // resolveCodgas() nunca devuelve 0 (o entero >0, o null ya atajado
+        // arriba), así que $codgas aquí siempre es una sola estación real:
+        // la API sólo consulta esa estación. El conteo de remisiones se
+        // cachea por fchtrn (el rango puede cubrir varios días) para no
+        // repetir la consulta a TG por cada fila con la misma fecha.
+        $counts = [];
+        foreach ($recepciones as $r) {
+            $fchtrnFila = (int)$r['fchtrn'];
+            if (!isset($counts[$fchtrnFila])) {
+                $counts[$fchtrnFila] = $this->recepcionRemisionesModel->get_counts_by_day($codgas, $fchtrnFila);
+            }
+        }
+
+        $data = array_map(function ($r) use ($counts, $codgas) {
             $nrotrn = (int)$r['nrotrn'];
-            $totalRemisiones = $counts[$nrotrn] ?? 0;
+            $fchtrn = (int)$r['fchtrn'];
+            $totalRemisiones = $counts[$fchtrn][$nrotrn] ?? 0;
 
             return [
-                'nrotrn'          => $nrotrn,
-                'codgas'          => (int)$r['codgas'],
-                'fchtrn'          => (int)$r['fchtrn'],
-                'hora'            => $r['hora'],
-                'producto'        => $r['den'],
-                'volumen'         => $r['VolumenRecibido'],
-                'total_remisiones'=> $totalRemisiones,
+                'nrotrn'           => $nrotrn,
+                'codgas'           => $codgas,
+                'fchtrn'           => $fchtrn,
+                'fecha'            => $r['fecha'],
+                'hora'             => $r['hora'],
+                'producto'         => $r['den'],
+                'volumen'          => $r['VolumenRecibido'],
+                'total_remisiones' => $totalRemisiones,
             ];
         }, $recepciones);
 
