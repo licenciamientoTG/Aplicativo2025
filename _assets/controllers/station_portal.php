@@ -165,8 +165,11 @@ class station_portal
                 'fchtrn'           => $fchtrn,
                 'fecha'            => $r['fecha'],
                 'hora'             => $r['hora'],
+                'tanque'           => $r['codtan'],
                 'producto'         => $r['den'],
                 'volumen'          => $r['VolumenRecibido'],
+                'documento'        => $r['documento'],
+                'referencia'       => $r['referencia'],
                 'total_remisiones' => $totalRemisiones,
             ];
         }, $recepciones);

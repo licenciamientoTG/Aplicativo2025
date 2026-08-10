@@ -7,47 +7,62 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0">Mis Recepciones</h5>
+                <h5 class="card-title mb-0">Filtros de Búsqueda</h5>
             </div>
-            <div class="card-body h-100 table-responsive">
-                <div class="row mb-3">
-                    <div class="col-auto">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2">
                         <label for="fecha_desde" class="form-label">Desde:</label>
                         <input type="date" class="form-control" id="fecha_desde" value="{{ now | date('Y-m-d') }}">
                     </div>
-                    <div class="col-auto">
+                    <div class="col-md-2">
                         <label for="fecha_hasta" class="form-label">Hasta:</label>
                         <input type="date" class="form-control" id="fecha_hasta" value="{{ now | date('Y-m-d') }}">
                     </div>
                     {% if showStationSelect %}
-                    <div class="col-auto">
+                    <div class="col-md-3">
                         <label for="codgas_recepciones" class="form-label">Estación:</label>
-                        <select class="selectpicker form-control" data-live-search="true" id="codgas_recepciones">
+                        <select class="selectpicker form-control" data-live-search="true" data-size="10" data-width="100%" data-container="body" id="codgas_recepciones">
                             {% for station in stations %}
                             <option value="{{ station.cod }}">{{ station.abr }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     {% endif %}
-                    <div class="col-auto d-flex align-items-end">
-                        <button type="button" class="btn btn-primary" id="btnBuscarRecepciones">
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary w-100" id="btnBuscarRecepciones">
                             <i data-feather="search"></i> Buscar
                         </button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Mis Recepciones</h5>
+            </div>
+            <div class="card-body h-100 table-responsive">
                 <table id="datatables_mis_recepciones" class="table table-sm w-100" data-codgas="{{ tg_user['IdEstacion'] }}" data-can-delete="{{ canDelete ? '1' : '0' }}">
                     <thead>
                         <tr>
                             <th>FECHA</th>
                             <th>HORA</th>
+                            <th>TANQUE</th>
                             <th>PRODUCTO</th>
                             <th>VOLUMEN RECIBIDO</th>
+                            <th>DOCUMENTO</th>
+                            <th>REFERENCIA</th>
                             <th>REMISIÓN</th>
                             <th>ACCIONES</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td colspan="6" class="text-center text-muted">Selecciona un rango y presiona Buscar</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted">Selecciona un rango y presiona Buscar</td></tr>
                     </tbody>
                 </table>
             </div>

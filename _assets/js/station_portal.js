@@ -14,6 +14,14 @@ function construirConfigDataTable() {
                     d.codgas = codgasSelect.val();
                 }
             },
+            beforeSend: function () {
+                $('#datatables_mis_recepciones').closest('.table-responsive').addClass('loading');
+                $('#btnBuscarRecepciones').prop('disabled', true);
+            },
+            complete: function () {
+                $('#datatables_mis_recepciones').closest('.table-responsive').removeClass('loading');
+                $('#btnBuscarRecepciones').prop('disabled', false);
+            },
             error: function() {
                 alertify.myAlert(
                     `<div class="container text-center text-danger">
@@ -29,8 +37,11 @@ function construirConfigDataTable() {
         columns: [
             { data: 'fecha' },
             { data: 'hora' },
+            { data: 'tanque' },
             { data: 'producto' },
             { data: 'volumen', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'documento', defaultContent: '' },
+            { data: 'referencia', defaultContent: '' },
             {
                 data: 'total_remisiones',
                 render: function (data) {
