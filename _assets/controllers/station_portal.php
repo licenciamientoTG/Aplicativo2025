@@ -122,10 +122,11 @@ class station_portal
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-            if (curl_errno($ch)) {
-                throw new Exception('Error de cURL: ' . curl_error($ch));
-            }
+            $curlErr = curl_errno($ch) ? curl_error($ch) : null;
             curl_close($ch);
+            if ($curlErr !== null) {
+                throw new Exception('Error de cURL: ' . $curlErr);
+            }
 
             if ($httpCode !== 200) {
                 throw new Exception("Error HTTP: $httpCode");
