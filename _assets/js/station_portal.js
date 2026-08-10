@@ -57,10 +57,13 @@ $('#codgas_recepciones').on('change', function () {
 });
 
 $(document).on('click', '.btn-subir-remision', function () {
+    // reset() primero: limpia el input de archivo y también pondría en blanco
+    // los hidden inputs, así que los valores se asignan después.
+    $('#formSubirRemision')[0].reset();
     $('#subir_nrotrn').val($(this).data('nrotrn'));
     $('#subir_codgas').val($(this).data('codgas'));
     $('#subir_fchtrn').val($(this).data('fchtrn'));
-    $('#formSubirRemision')[0].reset();
+    $('#subir_fecha').val($('#fecha_recepciones').val());
     $('#modalSubirRemision').modal('show');
 });
 

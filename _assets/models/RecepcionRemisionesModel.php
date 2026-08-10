@@ -57,12 +57,28 @@ class RecepcionRemisionesModel extends Model
     public function get_by_recepcion(int $nrotrn, int $codgas, int $fchtrn): array
     {
         $query = "
-            SELECT id, original_filename, file_path, file_extension, file_size, created_at, created_by
-            FROM [TG].[dbo].[recepcion_remisiones]
-            WHERE nrotrn = ? AND codgas = ? AND fchtrn = ? AND is_deleted = 0
-            ORDER BY created_at ASC
+            SELECT r.id, r.original_filename, r.file_path, r.file_extension, r.file_size, r.created_at, r.created_by, u.Nombre as created_by_name
+            FROM [TG].[dbo].[recepcion_remisiones] r
+            LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = r.created_by
+            WHERE r.nrotrn = ? AND r.codgas = ? AND r.fchtrn = ? AND r.is_deleted = 0
+            ORDER BY r.created_at ASC
         ";
         return $this->sql->select($query, [$nrotrn, $codgas, $fchtrn]) ?: [];
+    }
+
+    /**
+     * Trae una fila completa de recepcion_remisiones por id, solo si sigue activa
+     * (is_deleted = 0). Usado para servir el archivo con control de acceso.
+     */
+    public function get_by_id(int $id): ?array
+    {
+        $query = "
+            SELECT id, nrotrn, codgas, fchtrn, file_path, file_extension, original_filename, file_size, created_by, created_at
+            FROM [TG].[dbo].[recepcion_remisiones]
+            WHERE id = ? AND is_deleted = 0
+        ";
+        $rows = $this->sql->select($query, [$id]);
+        return $rows ? $rows[0] : null;
     }
 
     public function get_counts_by_day(int $codgas, int $fchtrn): array
@@ -82,22 +98,35 @@ class RecepcionRemisionesModel extends Model
         return $out;
     }
 
-    public function soft_delete(int $id, int $user_id): array
+    /**
+     * Soft-delete de una remisión. Si $codgas no es null, se restringe la
+     * operación a remisiones de esa estación (usuario sin permiso de "todas
+     * las estaciones"); si es null, no se restringe por estación (usuario con
+     * permiso de "todas las estaciones").
+     */
+    public function soft_delete(int $id, int $user_id, ?int $codgas): array
     {
+        $params = [$id];
+        $stationFilter = '';
+        if ($codgas !== null) {
+            $stationFilter = ' AND codgas = ?';
+            $params[] = $codgas;
+        }
+
         $existing = $this->sql->select(
-            "SELECT id FROM [TG].[dbo].[recepcion_remisiones] WHERE id = ? AND is_deleted = 0",
-            [$id]
+            "SELECT id FROM [TG].[dbo].[recepcion_remisiones] WHERE id = ? AND is_deleted = 0" . $stationFilter,
+            $params
         );
 
         if (!$existing) {
-            return ['success' => false, 'message' => 'La remisión no existe o ya fue eliminada'];
+            return ['success' => false, 'message' => 'La remisión no existe, ya fue eliminada o no pertenece a tu estación'];
         }
 
         $this->sql->update(
             "UPDATE [TG].[dbo].[recepcion_remisiones]
              SET is_deleted = 1, deleted_at = GETDATE(), deleted_by = ?
-             WHERE id = ?",
-            [$user_id, $id]
+             WHERE id = ?" . $stationFilter,
+            array_merge([$user_id, $id], $codgas !== null ? [$codgas] : [])
         );
 
         return ['success' => true, 'message' => 'Remisión eliminada correctamente'];
