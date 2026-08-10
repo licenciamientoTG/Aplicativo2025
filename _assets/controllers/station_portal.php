@@ -268,7 +268,7 @@ class station_portal
             exit;
         }
 
-        $fullPath = realpath(__DIR__ . '/../' . $doc['file_path']);
+        $fullPath = realpath(__DIR__ . '/../../' . $doc['file_path']);
         $baseAllowed = realpath(__DIR__ . '/../uploads/recepcion_remisiones');
 
         if ($fullPath === false || $baseAllowed === false || strpos($fullPath, $baseAllowed) !== 0) {
