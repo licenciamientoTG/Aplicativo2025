@@ -33,7 +33,7 @@ class MovimientosTanModel extends Model{
                     AND M.tiptrn = 3
                     AND M.fchtrn = " . $params['fchtrn'] . "
                     AND M.codgas = " . $params['codgas'] . "
-                    AND T.codprd = " . $params['codprd'] . "
+                    AND (" . $params['codprd'] . " = 0 OR T.codprd = " . $params['codprd'] . ")
                 ORDER BY
                     M.nrotrn DESC
             ');
