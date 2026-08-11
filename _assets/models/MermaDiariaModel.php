@@ -253,8 +253,9 @@ class MermaDiariaModel extends Model
         $prds = isset(self::FAMILIAS[$familia])
             ? implode(',', self::FAMILIAS[$familia])
             : implode(',', array_merge(...array_values(self::FAMILIAS)));
-        // Turno mostrado (11/21/41) → nrotur crudos de StockReal
+        // Turno mostrado (11/21/41) → nrotur crudos de StockReal, y su inverso
         $turnoNrotur = [11 => '10, 11', 21 => '20, 21', 41 => '40, 41'];
+        $turnoMap    = [10 => 11, 20 => 21, 30 => 41, 40 => 41];
         $filtroTurno = isset($turnoNrotur[$turno]) ? " AND nrotur IN ({$turnoNrotur[$turno]})" : '';
         $inner = sprintf(
             'SELECT fch, codgas, codprd, nrotur, codtan, can, logfch, lognew
@@ -266,17 +267,18 @@ class MermaDiariaModel extends Model
         $cortes = $this->sql->select($query) ?: [];
 
         // Valor sugerido por corte = contable del libro amarillo: último
-        // físico válido anterior (encadena días previos) − ventas + compras
-        // del turno, calculado desde el snapshot local
+        // físico válido anterior (encadena días previos, sin importar el
+        // turno) − ventas + compras del turno, calculado desde el snapshot
+        // local. Ventana de 7 días: alcanza para encadenar el "último físico
+        // válido" incluso con turnos intermedios sin dato.
         $snap = $this->sql->select(
-            'SELECT fecha, codprd, turno, ventas_reales, compras, inv_fisico, inv_contable
+            'SELECT fecha, codprd, turno, ventas_reales, compras, inv_fisico
              FROM [TG].[dbo].[merma_diaria]
              WHERE codgas = ? AND fecha BETWEEN DATEADD(DAY, -7, CAST(? AS DATE)) AND CAST(? AS DATE)
              ORDER BY codprd, fecha, turno;',
             [$codgas, $fecha, $fecha]);
-        $rec       = [];  // "codprd-turno" => sugerido (solo turnos del día pedido)
-        $last      = [];  // codprd => último físico válido de la cadena
-        $historial = [];  // "codprd-turno" => [{fecha, fisico, contable}, ...] días previos a $fecha
+        $rec  = [];  // "codprd-turno" => sugerido (solo turnos del día pedido)
+        $last = [];  // codprd => último físico válido de la cadena
         foreach ($snap ?: [] as $s) {
             $prd = (int)$s['codprd'];
             $day = substr($s['fecha'], 0, 10);
@@ -284,23 +286,64 @@ class MermaDiariaModel extends Model
                 $rec[$prd . '-' . (int)$s['turno']] = round(
                     $last[$prd] - (float)$s['ventas_reales'] + (float)($s['compras'] ?? 0), 2);
             }
-            if ($day < $fecha) {
-                $historial[$prd . '-' . (int)$s['turno']][] = [
-                    'fecha'    => $day,
-                    'fisico'   => $s['inv_fisico'] !== null ? (float)$s['inv_fisico'] : null,
-                    'contable' => $s['inv_contable'] !== null ? (float)$s['inv_contable'] : null,
-                ];
-            }
             $fis = $s['inv_fisico'];
             if ($fis !== null && $fis >= self::INV_FISICO_MIN && $fis <= self::INV_FISICO_MAX) {
                 $last[$prd] = (float)$fis;
             }
         }
+
+        // Historial mostrado en el modal: últimos 5 cortes de CADA tanque
+        // específico (codprd+nrotur+codtan), leído directo de StockReal (no
+        // de merma_diaria, que ya viene sumado por turno) — así una estación
+        // con 2 tanques por producto (ej. Satélite) muestra cada tanque por
+        // separado en vez de un solo total que mezcla ambos. Con 1 tanque se
+        // ve igual que antes (una sola columna). "rn<=5" por tanque, no por
+        // día calendario, por la misma razón que el turno: un tanque que
+        // reporta poco no debe salir con historial vacío.
+        $innerHist = sprintf(
+            'SELECT fch, codprd, nrotur, codtan, can FROM [%s].dbo.StockReal
+             WHERE fch < %d AND codgas = %d AND codprd IN (%s) AND nrotur NOT IN (30, 31)',
+            $est['BaseDatos'], $fch, $codgas, $prds);
+        $queryHist = sprintf(
+            "SELECT * FROM (
+                 SELECT *, ROW_NUMBER() OVER (PARTITION BY codprd, nrotur, codtan ORDER BY fch DESC) AS rn
+                 FROM OPENQUERY([%s], '%s')
+             ) u WHERE rn <= 5 ORDER BY codprd, nrotur, codtan, fch DESC;",
+            $est['Servidor'], str_replace("'", "''", $innerHist));
+        $histRows = $this->sql->select($queryHist) ?: [];
+
+        $historial = [];  // "codprd-turno" => [{fecha, tanques: {codtan: fisico}}, ...] descendente
+        $porFechaTurno = [];  // "codprd-turno-fch" => ['fecha'=>, 'tanques'=>[codtan=>fisico]]
+        foreach ($histRows as $h) {
+            $prd    = (int)$h['codprd'];
+            $turno  = $turnoMap[(int)$h['nrotur']] ?? (int)$h['nrotur'];
+            $fchDia = (int)$h['fch'];
+            $key    = $prd . '-' . $turno . '-' . $fchDia;
+            $can    = $h['can'] !== null ? (float)$h['can'] : null;
+            $corrupto = $can !== null && ($can < self::INV_FISICO_MIN || $can > self::INV_FISICO_MAX);
+            if (!isset($porFechaTurno[$key])) {
+                $porFechaTurno[$key] = ['prd' => $prd, 'turno' => $turno, 'fch' => $fchDia, 'tanques' => []];
+            }
+            $porFechaTurno[$key]['tanques'][(int)$h['codtan']] = $corrupto ? null : $can;
+        }
+        // Ordena por fch desc dentro de cada codprd-turno y limita a 5 fechas
+        // (un tanque corrupto/faltante ya insertó su fecha con valor null,
+        // así que el conteo de "5 más recientes" es por fecha, no por fila)
+        $porGrupo = [];
+        foreach ($porFechaTurno as $row) {
+            $porGrupo[$row['prd'] . '-' . $row['turno']][] = $row;
+        }
+        foreach ($porGrupo as $gk => $rows) {
+            usort($rows, fn($a, $b) => $b['fch'] <=> $a['fch']);
+            $historial[$gk] = array_map(fn($r) => [
+                'fecha'   => intToDate($r['fch']),
+                'tanques' => $r['tanques'], // codtan => fisico|null
+            ], array_slice($rows, 0, 5));
+        }
         // El contable es del TURNO completo (suma de tanques): a cada fila se
         // le sugiere contable - los demás tanques válidos de su mismo corte,
         // para no duplicar el turno en estaciones con varios tanques por
         // producto (caso Gemela Grande: tanque 7 real + tanque 78 en 0)
-        $turnoMap = [10 => 11, 20 => 21, 30 => 41, 40 => 41];
         $validosPorCorte = [];
         foreach ($cortes as $c) {
             $key = $c['codprd'] . '-' . $c['nrotur'];
@@ -319,12 +362,139 @@ class MermaDiariaModel extends Model
                 }
                 $c['recomendado'] = max(0, round($recTurno - $otros, 2));
             }
-            $hist = $historial[(int)$c['codprd'] . '-' . $turno] ?? [];
-            usort($hist, fn($a, $b) => strcmp($b['fecha'], $a['fecha'])); // descendente
-            $c['historial'] = array_slice($hist, 0, 5);
+            // Historial por tanque (ver arriba): [{fecha, tanques:{codtan:fisico|null}}, ...]
+            $c['historial'] = $historial[(int)$c['codprd'] . '-' . $turno] ?? [];
         }
         unset($c);
+
+        // Sugerencia retro por tanque — SOLO Satélite (codgas 24) por ahora:
+        // es la única estación confirmada con 2 tanques por producto y el
+        // patrón de "cae el turno completo, se recupera solo en el
+        // siguiente" (ver docs/superpowers/specs de este análisis). Usa el
+        // turno SIGUIENTE (ya válido) para retro-calcular hacia atrás:
+        // retro_total = físico_total_siguiente + ventas_siguiente − compras_siguiente,
+        // repartido entre tanques proporcional al peso de cada uno en el
+        // turno siguiente (StockReal no reporta venta/compra por tanque,
+        // solo por turno completo, así que el reparto es una aproximación
+        // explícita, no un hecho — se etiqueza "recomendado_retro" para no
+        // confundirla con "recomendado", que si es exacto).
+        if ($codgas === 24) {
+            $this->agregarRecomendadoRetro($cortes, $est, $fecha, $turnoMap);
+        }
+
         return $cortes;
+    }
+
+    /**
+     * Calcula recomendado_retro por tanque para Satélite (ver comentario en
+     * get_cortes_fisicos). Muta $cortes por referencia agregando la clave.
+     */
+    private function agregarRecomendadoRetro(array &$cortes, array $est, string $fecha, array $turnoMap): void
+    {
+        // Orden cronológico de turnos: 11 → 21 → 41 → 11 del día siguiente
+        $secuenciaTurno = [11 => 21, 21 => 41, 41 => 11];
+
+        // Candidatos a "turno siguiente": todos los turnos de merma_diaria
+        // en los 5 días posteriores a la fecha pedida, para encontrar el
+        // primero con ventas/compras y físico por tanque válidos.
+        $siguientes = $this->sql->select(
+            'SELECT fecha, codprd, turno, ventas_reales, compras
+             FROM [TG].[dbo].[merma_diaria]
+             WHERE codgas = 24 AND fecha BETWEEN CAST(? AS DATE) AND DATEADD(DAY, 5, CAST(? AS DATE))
+             ORDER BY codprd, fecha, turno;',
+            [$fecha, $fecha]) ?: [];
+        // "codprd-fecha-turno" => ['ventas'=>, 'compras'=>]
+        $ventasCompras = [];
+        foreach ($siguientes as $s) {
+            $key = (int)$s['codprd'] . '-' . substr($s['fecha'], 0, 10) . '-' . (int)$s['turno'];
+            $ventasCompras[$key] = ['ventas' => (float)$s['ventas_reales'], 'compras' => (float)($s['compras'] ?? 0)];
+        }
+
+        // Por cada codprd+turno presente en $cortes, busca el primer turno
+        // siguiente (misma secuencia 11→21→41→11 del día siguiente...) con
+        // físico por tanque válido en TODOS los tanques de ese codprd.
+        $codprds = array_unique(array_map(fn($c) => (int)$c['codprd'], $cortes));
+        $retroPorGrupo = []; // "codprd-turno" => [codtan => valor]
+        foreach ($codprds as $prd) {
+            $tanquesProd = array_unique(array_map(fn($c) => (int)$c['codtan'],
+                array_filter($cortes, fn($c) => (int)$c['codprd'] === $prd)));
+            if (count($tanquesProd) < 2) continue; // solo aplica con 2+ tanques
+
+            foreach ([11, 21, 41] as $turnoOrigen) {
+                $filasGrupo = array_filter($cortes, fn($c) => (int)$c['codprd'] === $prd
+                    && ($turnoMap[(int)$c['nrotur']] ?? (int)$c['nrotur']) === $turnoOrigen);
+                if (!$filasGrupo) continue;
+                // Sin ningún tanque dañado en este corte, la sugerencia retro no aporta nada
+                $hayCorrupto = false;
+                foreach ($filasGrupo as $f) {
+                    $canF = (float)$f['can'];
+                    if ($canF < self::INV_FISICO_MIN || $canF > self::INV_FISICO_MAX) { $hayCorrupto = true; break; }
+                }
+                if (!$hayCorrupto) continue;
+
+                $diaOffset = 0;
+                $turnoBusca = $turnoOrigen;
+                $encontrado = null;
+                for ($i = 0; $i < 6; $i++) { // hasta 6 turnos hacia adelante (2 días)
+                    $turnoBusca = $secuenciaTurno[$turnoBusca];
+                    if ($turnoBusca === 11) $diaOffset++;
+                    $fechaBusca = date('Y-m-d', strtotime($fecha . " +{$diaOffset} day"));
+                    $key = $prd . '-' . $fechaBusca . '-' . $turnoBusca;
+                    if (!isset($ventasCompras[$key])) continue;
+
+                    $fisicoTanques = $this->get_fisico_tanques_dia($est, $fechaBusca, $prd, $turnoBusca, $tanquesProd);
+                    if ($fisicoTanques === null) continue; // algún tanque sin valor válido
+
+                    $totalSiguiente = array_sum($fisicoTanques);
+                    if ($totalSiguiente <= 0) continue;
+                    $retroTotal = $totalSiguiente + $ventasCompras[$key]['ventas'] - $ventasCompras[$key]['compras'];
+                    $encontrado = [];
+                    foreach ($fisicoTanques as $tan => $val) {
+                        $encontrado[$tan] = max(0, round($retroTotal * ($val / $totalSiguiente), 2));
+                    }
+                    break;
+                }
+                if ($encontrado !== null) $retroPorGrupo[$prd . '-' . $turnoOrigen] = $encontrado;
+            }
+        }
+
+        foreach ($cortes as &$c) {
+            $can = (float)$c['can'];
+            $corrupto = $can < self::INV_FISICO_MIN || $can > self::INV_FISICO_MAX;
+            if (!$corrupto) { $c['recomendado_retro'] = null; continue; } // solo tiene sentido si el corte real está dañado
+            $turno = $turnoMap[(int)$c['nrotur']] ?? (int)$c['nrotur'];
+            $grupo = $retroPorGrupo[(int)$c['codprd'] . '-' . $turno] ?? null;
+            $c['recomendado_retro'] = $grupo[(int)$c['codtan']] ?? null;
+        }
+        unset($c);
+    }
+
+    /**
+     * Físico por tanque de un codprd+turno en un día dado, leído de
+     * StockReal. Retorna null si falta algún tanque de $tanquesEsperados o
+     * si alguno está fuera del rango plausible (no sirve como referencia).
+     */
+    private function get_fisico_tanques_dia(array $est, string $fecha, int $codprd, int $turno, array $tanquesEsperados): ?array
+    {
+        $turnoNrotur = [11 => '10, 11', 21 => '20, 21', 41 => '40, 41'];
+        $fch = dateToInt($fecha);
+        $inner = sprintf(
+            'SELECT codtan, can FROM [%s].dbo.StockReal
+             WHERE fch = %d AND codgas = 24 AND codprd = %d AND nrotur IN (%s)',
+            $est['BaseDatos'], $fch, $codprd, $turnoNrotur[$turno]);
+        $rows = $this->sql->select(sprintf("SELECT * FROM OPENQUERY([%s], '%s');",
+            $est['Servidor'], str_replace("'", "''", $inner))) ?: [];
+
+        $porTanque = [];
+        foreach ($rows as $r) $porTanque[(int)$r['codtan']] = (float)$r['can'];
+
+        $out = [];
+        foreach ($tanquesEsperados as $tan) {
+            $val = $porTanque[$tan] ?? null;
+            if ($val === null || $val < self::INV_FISICO_MIN || $val > self::INV_FISICO_MAX) return null;
+            $out[$tan] = $val;
+        }
+        return $out;
     }
 
     /**

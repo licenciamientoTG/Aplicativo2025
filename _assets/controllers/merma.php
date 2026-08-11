@@ -19,7 +19,8 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
  */
 class Merma
 {
-    private const PERM_VER = 33;   // Reportes de Abastos
+    private const PERM_VER      = 33;  // Ver sección de Reportes (Abastos)
+    private const PERM_CORREGIR = 83;  // Corregir físico y compras (Merma)
     private const API_URL  = 'http://192.168.0.109:82/api/inventarios_turnos/';
     private const CODGAS_PRAXEDIS = 40;
     private const CODGAS_COLOSIO  = 199;
@@ -27,12 +28,14 @@ class Merma
     private $twig;
     private $route;
     private $mermaModel;
+    private $evidenciaModel;
 
     public function __construct($twig)
     {
-        $this->twig       = $twig;
-        $this->route      = 'views/merma/';
-        $this->mermaModel = new MermaDiariaModel();
+        $this->twig           = $twig;
+        $this->route          = 'views/merma/';
+        $this->mermaModel     = new MermaDiariaModel();
+        $this->evidenciaModel = new MermaFisicoEvidenciaModel();
     }
 
     /* ===================================================================== */
@@ -557,12 +560,9 @@ class Merma
         $mesAnt  = $mes === 1 ? 12 : $mes - 1;
         $anioAnt = $mes === 1 ? $anio - 1 : $anio;
 
-        // Presupuesto: BudgetModel devuelve filas planas; se indexa por estación y producto.
-        $budget      = (new BudgetModel())->getBudget($mes, $anio) ?: [];
-        $presupuesto = [];
-        foreach ($budget as $b) {
-            $presupuesto[(int) $b['codgas']][(int) $b['codprd']] = (float) $b['budget_monthy'];
-        }
+        // Presupuesto: hrms.dbo.incentives_presupuestoventa (equipo de Incentivos),
+        // ya resuelto e indexado por estación y familia en el modelo.
+        $presupuesto = (new IncentivesPresupuestoModel())->getPresupuesto($mes, $anio);
 
         $ctx = [
             'estaciones'    => $estaciones,
@@ -595,7 +595,7 @@ class Merma
     /** Filas crudas de StockReal de un día, para el modal de corrección. */
     public function cortes_fisicos(): void
     {
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CORREGIR)) {
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
@@ -669,7 +669,7 @@ class Merma
     public function excluir_compra(): void
     {
         set_time_limit(0);
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CORREGIR)) {
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
@@ -706,7 +706,7 @@ class Merma
     public function incluir_compra(): void
     {
         set_time_limit(0);
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CORREGIR)) {
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
@@ -735,7 +735,7 @@ class Merma
     public function corregir_fisico(): void
     {
         set_time_limit(0);
-        if (!authorized(self::PERM_VER)) {
+        if (!authorized(self::PERM_CORREGIR)) {
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
@@ -775,6 +775,181 @@ class Merma
                           . ($sync['success'] ? '; día resincronizado.'
                                               : '; pero la resincronización falló: ' . $sync['message']),
         ]);
+    }
+
+    /**
+     * Corrige varios cortes físicos del modal en un solo clic (uno o más
+     * tanques/turnos del mismo día). Cada fila válida se corrige en la
+     * estación como corregir_fisico(); el día se resincroniza UNA sola vez
+     * al final del lote, no por cada fila. POST filas = JSON array de
+     * {codprd, nrotur, codtan, valor}.
+     */
+    public function corregir_fisico_lote(): void
+    {
+        set_time_limit(0);
+        if (!authorized(self::PERM_CORREGIR)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $fecha  = $_POST['fecha'] ?? '';
+        $filas  = json_decode($_POST['filas'] ?? '[]', true);
+        if (!$codgas || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha) || !is_array($filas) || empty($filas)) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $usuario   = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        $resultados = [];
+        $corregidas = 0;
+
+        foreach ($filas as $f) {
+            $codprd = (int)($f['codprd'] ?? 0);
+            $nrotur = (int)($f['nrotur'] ?? 0);
+            $codtan = (int)($f['codtan'] ?? 0);
+            $valor  = $f['valor'] ?? '';
+            if (!$codprd || !$nrotur || !$codtan || !is_numeric($valor) || (float)$valor < 0) {
+                $resultados[] = ['codprd' => $codprd, 'nrotur' => $nrotur, 'codtan' => $codtan,
+                                  'success' => false, 'message' => 'Fila inválida, se omitió'];
+                continue;
+            }
+            try {
+                $res = $this->mermaModel->update_corte_fisico(
+                    $codgas, $fecha, $codprd, $nrotur, $codtan, (float)$valor, $usuario);
+            } catch (Throwable $e) {
+                $res = ['success' => false, 'message' => 'Error actualizando en la estación: ' . $e->getMessage()];
+            }
+            $res['codprd'] = $codprd; $res['nrotur'] = $nrotur; $res['codtan'] = $codtan;
+            $resultados[] = $res;
+            if ($res['success']) $corregidas++;
+        }
+
+        // Un solo resync del día, después de aplicar todas las correcciones
+        // del lote — evita resincronizar N veces si hay varias filas.
+        $sync = $corregidas > 0 ? $this->runSync($fecha, $fecha, $codgas, 'correccion', $usuario) : null;
+
+        json_output([
+            'success'     => $corregidas > 0,
+            'corregidas'  => $corregidas,
+            'total'       => count($filas),
+            'resultados'  => $resultados,
+            'message'     => $corregidas > 0
+                ? "{$corregidas} corte(s) corregido(s)"
+                    . ($sync && $sync['success'] ? '; día resincronizado.'
+                                                  : ($sync ? '; pero la resincronización falló: ' . $sync['message'] : ''))
+                : 'Ningún corte válido para corregir',
+        ]);
+    }
+
+    /* ===================================================================== */
+    /* Evidencia de corrección de corte físico                              */
+    /* ===================================================================== */
+
+    /** Lista la evidencia (imagen/PDF) ya subida para una celda fecha+producto+turno. */
+    public function evidencia_fisico(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_CORREGIR)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $fecha  = $_POST['fecha'] ?? '';
+        $codprd = (int)($_POST['codprd'] ?? 0);
+        $turno  = (int)($_POST['turno'] ?? 0);
+        if (!$codgas || !$codprd || !$turno || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        $archivos = $this->evidenciaModel->get_by_celda($codgas, $fecha, $codprd, $turno);
+        json_output(['success' => true, 'archivos' => $archivos]);
+    }
+
+    /** Sube uno o más archivos de evidencia para una celda fecha+producto+turno. */
+    public function subir_evidencia_fisico(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_CORREGIR)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $fecha  = $_POST['fecha'] ?? '';
+        $codprd = (int)($_POST['codprd'] ?? 0);
+        $turno  = (int)($_POST['turno'] ?? 0);
+        if (!$codgas || !$codprd || !$turno || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        if (empty($_FILES['evidencia']) || !is_array($_FILES['evidencia']['name'])) {
+            json_output(['success' => false, 'message' => 'No se recibieron archivos']);
+            return;
+        }
+
+        $usuario  = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        $files    = $_FILES['evidencia'];
+        $total    = count($files['name']);
+        $subidos  = 0;
+        $errores  = [];
+
+        for ($i = 0; $i < $total; $i++) {
+            $file = [
+                'name'     => $files['name'][$i],
+                'type'     => $files['type'][$i],
+                'tmp_name' => $files['tmp_name'][$i],
+                'error'    => $files['error'][$i],
+                'size'     => $files['size'][$i],
+            ];
+            $res = $this->evidenciaModel->upload($codgas, $fecha, $codprd, $turno, $file, $usuario);
+            if ($res['success']) $subidos++;
+            else $errores[] = $file['name'] . ': ' . $res['message'];
+        }
+
+        json_output([
+            'success'  => $subidos > 0,
+            'subidos'  => $subidos,
+            'errores'  => $errores,
+            'message'  => $subidos > 0
+                ? "{$subidos} archivo(s) subido(s)" . ($errores ? ' (' . count($errores) . ' con error)' : '')
+                : 'No se pudo subir ningún archivo',
+        ]);
+    }
+
+    /** Sirve un archivo de evidencia (imagen/PDF). GET /merma/view_evidencia_fisico/ID */
+    public function view_evidencia_fisico($id): void
+    {
+        if (!authorized(self::PERM_CORREGIR)) {
+            http_response_code(403);
+            echo 'No autorizado';
+            return;
+        }
+        $doc = $this->evidenciaModel->get_by_id((int)$id);
+        if (!$doc) {
+            http_response_code(404);
+            echo 'Documento no encontrado';
+            return;
+        }
+
+        $fullPath = realpath(__DIR__ . '/../../' . $doc['file_path']);
+        $base     = realpath(__DIR__ . '/../../' . MermaFisicoEvidenciaModel::UPLOAD_BASE);
+
+        if (!$fullPath || !$base || !str_starts_with($fullPath, $base) || !file_exists($fullPath)) {
+            http_response_code(404);
+            echo 'Archivo no encontrado';
+            return;
+        }
+
+        $mime = match ($doc['file_extension']) {
+            'pdf'        => 'application/pdf',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png'        => 'image/png',
+            default      => 'application/octet-stream',
+        };
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
     }
 
     /* ===================================================================== */

@@ -34,6 +34,7 @@ function construirConfigDataTable() {
             }
         },
         deferRender: true,
+        order: [[0, 'desc'], [1, 'desc']],
         columns: [
             { data: 'fecha' },
             { data: 'hora' },

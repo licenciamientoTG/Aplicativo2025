@@ -13,17 +13,15 @@ class VentasConsolidado
 {
     /**
      * Las cinco hojas vivas del libro, en orden de pestaña.
-     *  - familias: qué sumar de la matriz de ventas.
-     *  - codprd:   qué sumar de TGV2.dbo.Budget. Los pares 179/192 (máxima) y
-     *              180/193 (súper) conviven porque los años viejos usan los
-     *              segundos; sumar ambos funciona en cualquier año.
+     *  - familias: qué sumar de la matriz de ventas Y del presupuesto
+     *    (ambos indexados por familia — ver IncentivesPresupuestoModel).
      */
     public const PESTANAS = [
-        'total'    => ['label' => 'LITROS DE COMBUSTIBLE', 'familias' => ['maxima', 'super', 'diesel'], 'codprd' => [179, 192, 180, 193, 181]],
-        'reg_prem' => ['label' => 'REGULAR + PREMIUM',     'familias' => ['maxima', 'super'],           'codprd' => [179, 192, 180, 193]],
-        'regular'  => ['label' => 'REGULAR',               'familias' => ['maxima'],                    'codprd' => [179, 192]],
-        'premium'  => ['label' => 'PREMIUM',               'familias' => ['super'],                     'codprd' => [180, 193]],
-        'diesel'   => ['label' => 'DIESEL',                'familias' => ['diesel'],                    'codprd' => [181]],
+        'total'    => ['label' => 'LITROS DE COMBUSTIBLE', 'familias' => ['maxima', 'super', 'diesel']],
+        'reg_prem' => ['label' => 'REGULAR + PREMIUM',     'familias' => ['maxima', 'super']],
+        'regular'  => ['label' => 'REGULAR',               'familias' => ['maxima']],
+        'premium'  => ['label' => 'PREMIUM',               'familias' => ['super']],
+        'diesel'   => ['label' => 'DIESEL',                'familias' => ['diesel']],
     ];
 
     /** Días de la semana en español, indexados por date('w'). */
@@ -38,7 +36,7 @@ class VentasConsolidado
      * @param array  $ctx    [
      *   'estaciones'    => [['Codigo'=>string|int,'Nombre'=>string,'cveest'=>?string], ...] en orden de columna
      *   'ventas'        => ['YYYY-MM-DD' => [codgas => ['maxima'=>?float,'super'=>?float,'diesel'=>?float]]]
-     *   'presupuesto'   => [codgas => [codprd => float]]
+     *   'presupuesto'   => [codgas => [familia => float]]
      *   'mes_anterior'  => [codgas => ['maxima'=>?float,'super'=>?float,'diesel'=>?float]]
      *   'anio_anterior' => [codgas => ['maxima'=>?float,'super'=>?float,'diesel'=>?float]]
      *   'anio'          => int
@@ -125,13 +123,9 @@ class VentasConsolidado
         // --- PRESUPUESTO ---
         $ppto = self::filaVacia($codgases);
         foreach ($codgases as $cod) {
-            $porPrd = $ctx['presupuesto'][$cod] ?? null;
-            if ($porPrd === null) continue;
-            $suma = null;
-            foreach ($pestana['codprd'] as $prd) {
-                if (isset($porPrd[$prd])) $suma = ($suma ?? 0.0) + (float) $porPrd[$prd];
-            }
-            $ppto['celdas'][$cod] = $suma;
+            $porFamilia = $ctx['presupuesto'][$cod] ?? null;
+            if ($porFamilia === null) continue;
+            $ppto['celdas'][$cod] = self::sumarFamilias($porFamilia, $familias);
         }
         $ppto['total'] = self::sumarCeldas($ppto['celdas']);
 

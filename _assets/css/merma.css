@@ -65,9 +65,13 @@
 }
 
 /* Tab Diario: fila de día clickeable + subfilas de turno.
-   td./th. para ganarle en especificidad al ancho de 96px de .col-fecha */
+   td./th. para ganarle en especificidad al ancho de 96px de .col-fecha.
+   170px (no 125px): con el padding de 1.4rem/lado de .merma-tabla, 125px no
+   alcanzaba para "dd-mm-aaaa" + chevron (+ el triángulo de alerta cuando
+   aplica) y la fecha se cortaba visualmente contra la columna INICIAL. Solo
+   afecta detalle.html — analisis.html usa .col-est, no .col-dia/.col-fecha. */
 .merma-tabla td.col-dia, .merma-tabla th.col-dia {
-    width: 125px; min-width: 125px; max-width: 125px;
+    width: 170px; min-width: 170px; max-width: 170px;
     white-space: nowrap; box-shadow: 2px 0 0 0 #cbd5e1;
 }
 .merma-tabla thead th.col-dia, .merma-tabla tfoot td.col-dia { z-index: 40; }
@@ -86,18 +90,75 @@
 /* Variante del detalle: el contenedor abraza el ancho real de la tabla en
    lugar de estirarse a toda la pantalla; si la tabla es más ancha que la
    ventana, conserva su scroll horizontal interno */
-.merma-tabla-wrap.wrap-fit { width: fit-content; max-width: 100%; }
+.merma-tabla-wrap.wrap-fit { 
+    width: fit-content; 
+    min-width: 65%; 
+    max-width: none; 
+}
+
+/* Tab Diario: mismo problema que Desglosado — 3 familias × 7 columnas con la
+   tipografía de 1.15rem de analisis.html no caben en pantalla y SUPER/DIESEL
+   quedaban recortados por .merma-tabla-wrap (overflow: hidden), visibles
+   solo hasta el scroll. Densidad compacta para que quepa sin scroll en
+   laptops de 14" estándar (~1920px con sidebar colapsado): medido en
+   navegador con .85rem/.7rem = 2027px de ancho real (22 columnas, Fecha
+   170px fija); con .80rem/.40rem baja a ~1768px, que cabe en 1920px sin
+   sacrificar legibilidad. Por debajo de ~1600px (laptops 14" más modestas)
+   ninguna densidad razonable evita el scroll sin volver la tabla
+   ilegible — ahí el scroll horizontal (habilitado arriba en
+   #tab_diario .merma-scroll) sigue de respaldo, es esperado.
+   Scoped a #tab_diario — analisis.html usa .merma-tabla fuera de este ID. */
+#tab_diario .merma-tabla-wrap.wrap-fit { width: 100%; min-width: 0; }
+#tab_diario .merma-tabla { font-size: .8rem !important; }
+#tab_diario .merma-tabla th, #tab_diario .merma-tabla td {
+    padding: .4rem .5rem; white-space: nowrap;
+}
 
 /* Tab Desglosado: densidad compacta para caber a lo ancho SIN deformar la
    tabla — cada columna conserva su ancho natural (nada de table-layout fixed:
    parte números y encabezados), tipografía y padding menores. Si aun así no
    cabe (pantallas chicas), el scroll horizontal del contenedor es el respaldo. */
-#tab_desglosado .merma-tabla-wrap { width: 100%; }
-#tab_desglosado .merma-tabla { width: 100%; font-size: .76rem; }
+/* Dentro del tab Desglosado: el contenedor ocupa todo el ancho disponible
+   y el scroll horizontal lo maneja el .merma-scroll interno — de esta forma
+   analisis.html (que usa las mismas clases pero SIN este ID) no se ve afectada. */
+#tab_desglosado .merma-tabla-wrap { width: 100%; overflow-x: visible; }
+#tab_desglosado .merma-tabla { width: 100%; font-size: .82rem !important; }
 #tab_desglosado .merma-tabla th, #tab_desglosado .merma-tabla td {
-    padding: .3rem .4rem; white-space: nowrap;
+    padding: .35rem .5rem; white-space: nowrap;
 }
-.merma-scroll { overflow: auto; max-height: 72vh; }
+/* FECHA más ancha en Desglosado: con la densidad compacta de arriba, 96px
+   se veía apretado contra el ícono de INV. FÍSICO corrupto en la columna
+   de al lado. .col-turno se recorre a la derecha en la misma medida para
+   no encimarse (ambas son sticky con "left" fijo). Scoped a #tab_desglosado
+   para no tocar ventas.html/ventas_historico.html, que comparten las clases. */
+#tab_desglosado .merma-tabla .col-fecha { width: 120px; min-width: 120px; max-width: 120px; }
+#tab_desglosado .merma-tabla .col-turno { left: 120px; }
+
+/* Responsive de Diario/Desglosado: baja un escalón más la densidad en
+   laptops de 14" más modestas (~1600px) y en pantallas aún menores
+   (~1366px), donde ni la base de arriba evita el scroll — reduce cuánto
+   hay que desplazarse, no lo elimina (ver nota arriba). Scoped a ambos
+   IDs: no toca los media queries genéricos de .merma-tabla que ya sirven
+   a analisis.html sin cambios. */
+@media (max-width: 1600px) {
+    #tab_diario .merma-tabla { font-size: .74rem !important; }
+    #tab_diario .merma-tabla th, #tab_diario .merma-tabla td { padding: .35rem .4rem; }
+    #tab_desglosado .merma-tabla { font-size: .76rem !important; }
+    #tab_desglosado .merma-tabla th, #tab_desglosado .merma-tabla td { padding: .3rem .4rem; }
+}
+@media (max-width: 1366px) {
+    #tab_diario .merma-tabla { font-size: .68rem !important; }
+    #tab_diario .merma-tabla th, #tab_diario .merma-tabla td { padding: .3rem .35rem; }
+    #tab_desglosado .merma-tabla { font-size: .7rem !important; }
+    #tab_desglosado .merma-tabla th, #tab_desglosado .merma-tabla td { padding: .28rem .35rem; }
+}
+.merma-scroll { overflow-x: visible; overflow-y: visible; max-height: none; }
+/* Scroll horizontal en los tabs Diario y Desglosado de detalle.html;
+   analisis.html usa .merma-scroll fuera de #tab_diario/#tab_desglosado →
+   no se ve afectada. Sin esto, .merma-tabla-wrap (overflow: hidden) recorta
+   en silencio las columnas que no caben (ej. DIESEL en el tab Diario con
+   3 familias × 7 columnas) sin dar forma de desplazarse para verlas. */
+#tab_diario .merma-scroll, #tab_desglosado .merma-scroll { overflow-x: auto; }
 /* Scrollbar siempre visible */
 .merma-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
 .merma-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
@@ -119,11 +180,32 @@
 /* ---- Tabla ------------------------------------------------------------- */
 .merma-tabla {
     width: 100%; border-collapse: separate; border-spacing: 0;
-    font-size: 1.1 rem !important; text-align: right; margin-bottom: 0;
+    font-size: 1.15rem !important; text-align: right; margin-bottom: 0;
 }
 .merma-tabla th, .merma-tabla td {
-    padding: .45rem .6rem; white-space: nowrap;
+    padding: .75rem 1.4rem; white-space: nowrap;
     border-bottom: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1;
+}
+
+/* Responsive Table Ajustes */
+@media (max-width: 1400px) {
+    .merma-tabla-wrap.wrap-fit { width: 85%; }
+    .merma-tabla { font-size: 1.05rem !important; }
+    .merma-tabla th, .merma-tabla td { padding: 0.6rem 1rem; }
+}
+@media (max-width: 1100px) {
+    .merma-tabla-wrap.wrap-fit { width: 95%; }
+    .merma-tabla { font-size: 0.95rem !important; }
+    .merma-tabla th, .merma-tabla td { padding: 0.5rem 0.8rem; }
+}
+@media (max-width: 768px) {
+    .merma-tabla-wrap.wrap-fit { width: 100%; }
+    .merma-tabla { font-size: 0.85rem !important; }
+    .merma-tabla th, .merma-tabla td { padding: 0.4rem 0.5rem; }
+}
+@media (max-width: 576px) {
+    .merma-tabla { font-size: 0.75rem !important; }
+    .merma-tabla th, .merma-tabla td { padding: 0.3rem 0.3rem; white-space: normal; }
 }
 .merma-tabla .sep-r { border-right-width: 2px; }
 .merma-tabla tr > :last-child { border-right: none; }
@@ -153,6 +235,9 @@
 .fis-editable { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 /* Ya se corrigió antes (menos alarmante que .fis-corrupta): sigue editable */
 .fis-corregido-icon { color: #b45309; }
+/* Ícono para ver/adjuntar evidencia del cambio, junto al valor corregido */
+.evidencia-icon { cursor: pointer; color: #64748b; margin-left: 4px; font-size: 0.85em; }
+.evidencia-icon:hover { color: #334155; }
 
 /* Pie de totales fijo al fondo del contenedor */
 .merma-tabla tfoot td {
@@ -179,7 +264,7 @@
 .merma-tabla .col-est a { color: #1d4ed8; text-decoration: none; font-weight: 500; }
 .merma-tabla .col-est a:hover { text-decoration: underline; }
 .merma-tabla .col-fis { font-weight: 500; }
-.merma-tabla .col-acum, .merma-tabla .col-total { font-weight: 700; color: #0f172a; }
+.merma-tabla .col-acum, .merma-tabla .col-total { font-weight: 700; color: #0f172a; padding-right: 1.2rem; }
 .merma-tabla .dif-pos { color: #059669; font-weight: 500; }
 .merma-tabla .dif-neg { color: #dc2626; font-weight: 500; }
 /* % merma por signo: positiva azul (sobrante), negativa roja (faltante).
@@ -190,11 +275,22 @@
 .dif-alerta { margin-left: .3rem; color: #b91c1c; font-size: .7rem; }
 
 /* ---- Reporte de ventas consolidado (/merma/ventas) --------------------- */
-/* Reusa .merma-tabla; solo redefine el ancho de las dos columnas fijas:
-   la primera es el número de día y la segunda el día de la semana. */
-.vc-tabla .col-fecha { width: 130px; min-width: 130px; max-width: 130px; font-weight: 600; }
-.vc-tabla .col-turno { left: 130px; width: 90px; min-width: 90px; max-width: 90px;
-                       text-align: left; text-transform: capitalize; }
+/* Densidad compacta: .vc-tabla tiene ~40 columnas (una por estación), muchas
+   más que analisis.html/detalle.html. El padding/font-size grande de la base
+   .merma-tabla (.75rem 1.4rem / 1.15rem, pensado para pocas columnas) la
+   vuelve casi 3x más ancha que antes y rompe el layout que ya se veía bien.
+   Se restaura aquí el tamaño compacto original, scoped a .vc-tabla para no
+   tocar analisis.html/detalle.html. !important porque .merma-tabla usa
+   !important en font-size y hay que ganarle. */
+.vc-tabla { font-size: .85rem !important; }
+.vc-tabla th, .vc-tabla td { padding: .45rem .6rem; }
+
+/* Reusa .merma-tabla; redefine el ancho de la única columna fija: día +
+   nombre del día concatenados en una celda (ej. "31-Miércoles") en tbody,
+   y la etiqueta de cada fila de resumen (ej. "VS SEMANA PREVIA") en tfoot.
+   Ancho fijo al peor caso real: "VS SEMANA PREVIA" a .72rem (tfoot) es más
+   ancho que "31-Miércoles" a .85rem (tbody). */
+.vc-tabla .col-fecha { width: 145px; min-width: 145px; max-width: 145px; font-weight: 600; text-align: left; }
 
 /* Las 9 filas de resumen van en tfoot; a diferencia del detalle, aquí NO se
    pegan al fondo (son nueve, taparían media tabla). */
@@ -204,8 +300,7 @@
     border-top: 1px solid #cbd5e1;
 }
 .vc-tabla tfoot tr.vc-resumen:first-child td { border-top: 2px solid #94a3b8; }
-.vc-tabla tfoot tr.vc-resumen td.col-fecha,
-.vc-tabla tfoot tr.vc-resumen td.col-turno {
+.vc-tabla tfoot tr.vc-resumen td.col-fecha {
     position: sticky; z-index: 20; background: #f1f5f9;
     font-size: .72rem; letter-spacing: .03em; text-transform: none;
 }
@@ -222,16 +317,15 @@
    gris: tres fondos en una sola fila.
    Se sube la especificidad con el selector compuesto .merma-tabla.vc-tabla
    (dos clases en el mismo elemento — la tabla ya lleva ambas clases) más
-   ".. thead tr .col-fecha/.col-turno" para IGUALAR la especificidad de las
-   reglas que hay que vencer; al estar más abajo en el archivo, el empate
-   lo gana esta regla. TOTAL (.th-grupo) se deja con su fondo distinto a
-   propósito: usa !important como marca visual de columna de cierre, igual
-   que en analisis/detalle, y unificarlo aquí perdería esa señal — pero sí
-   se pega a top:0 como el resto, porque el problema de posición es de toda
-   la fila, no solo del fondo. */
+   ".. thead tr .col-fecha" para IGUALAR la especificidad de las reglas que
+   hay que vencer; al estar más abajo en el archivo, el empate lo gana esta
+   regla. TOTAL (.th-grupo) se deja con su fondo distinto a propósito: usa
+   !important como marca visual de columna de cierre, igual que en
+   analisis/detalle, y unificarlo aquí perdería esa señal — pero sí se pega
+   a top:0 como el resto, porque el problema de posición es de toda la
+   fila, no solo del fondo. */
 .merma-tabla.vc-tabla thead tr th,
-.merma-tabla.vc-tabla thead tr .col-fecha,
-.merma-tabla.vc-tabla thead tr .col-turno { top: 0; background: #f8fafc; }
+.merma-tabla.vc-tabla thead tr .col-fecha { top: 0; background: #f8fafc; }
 
 /* ---- Pestaña HISTÓRICO (/merma/ventas) -------------------------------- */
 /* Una sola columna fija (la etiqueta del mes), a diferencia de las pestañas

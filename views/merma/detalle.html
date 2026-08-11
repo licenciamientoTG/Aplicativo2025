@@ -178,17 +178,26 @@
                     <td class="col-fis">
                         {%- if b.fis is null -%}
                         -
-                        {%- elseif b.fis_corrupta -%}
+                        {%- elseif b.fis_corrupta and authorized(83) -%}
                         <span class="fis-corrupta fis-editable" data-fecha="{{ t.fecha }}" data-fam="{{ fam }}" data-turno="{{ t.turno }}"
                               title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo. Clic para corregirla en la estación.">
                             {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
                         </span>
-                        {%- else -%}
-                        <span class="fis-editable" data-fecha="{{ t.fecha }}" data-fam="{{ fam }}" data-turno="{{ t.turno }}"
-                              title="{{ b.fis_corregido ? 'Este corte ya fue corregido antes. Clic para volver a editarlo en la estación.' : 'Clic para corregir este corte en la estación.' }}">
-                            {{ b.fis|number_format(2, '.', ',') }}
-                            {%- if b.fis_corregido %} <i class="fas fa-exclamation-circle fis-corregido-icon"></i>{% endif -%}
+                        {%- elseif b.fis_corrupta -%}
+                        <span class="fis-corrupta" title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo.">
+                            {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
                         </span>
+                        {%- elseif b.fis_corregido and authorized(83) -%}
+                        <span class="fis-editable" data-fecha="{{ t.fecha }}" data-fam="{{ fam }}" data-turno="{{ t.turno }}"
+                              title="Este corte ya fue corregido antes. Clic para volver a editarlo en la estación.">
+                            {{ b.fis|number_format(2, '.', ',') }} <i class="fas fa-exclamation-circle fis-corregido-icon"></i>
+                        </span>
+                        <i class="fas fa-paperclip evidencia-icon" data-fecha="{{ t.fecha }}" data-fam="{{ fam }}" data-turno="{{ t.turno }}"
+                           title="Ver/adjuntar evidencia de este cambio"></i>
+                        {%- elseif b.fis_corregido -%}
+                        {{ b.fis|number_format(2, '.', ',') }} <i class="fas fa-exclamation-circle fis-corregido-icon" title="Este corte ya fue corregido antes"></i>
+                        {%- else -%}
+                        {{ b.fis|number_format(2, '.', ',') }}
                         {%- endif -%}
                     </td>
                     <td class="{{ b.dif is null ? '' : (b.dif < 0 ? 'dif-neg' : 'dif-pos') }}">
@@ -258,11 +267,24 @@
                     <td>{{ b.compras is null or b.compras == 0 ? '-' : b.compras|number_format(0, '.', ',') }}</td>
                     <td>{{ b.cont is null ? '-' : b.cont|number_format(0, '.', ',') }}</td>
                     <td class="col-fis">
-                        {%- if b.fis_corrupta -%}
+                        {%- if b.fis_corrupta and authorized(83) -%}
                         <span class="fis-corrupta fis-editable" data-fecha="{{ f.fecha }}" data-fam="{{ fam }}" data-turno="{{ f.turno }}"
                               title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo. Clic para corregirla en la estación.">
                             {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
                         </span>
+                        {%- elseif b.fis_corrupta -%}
+                        <span class="fis-corrupta" title="Lectura corrupta reportada por la estación: {{ b.fis }}. No entra al cálculo.">
+                            {{ "%.1e"|format(b.fis) }} <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                        {%- elseif b.fis is not null and b.fis_corregido and authorized(83) -%}
+                        <span class="fis-editable" data-fecha="{{ f.fecha }}" data-fam="{{ fam }}" data-turno="{{ f.turno }}"
+                              title="Este corte ya fue corregido antes. Clic para volver a editarlo en la estación.">
+                            {{ b.fis|number_format(0, '.', ',') }} <i class="fas fa-exclamation-circle fis-corregido-icon"></i>
+                        </span>
+                        <i class="fas fa-paperclip evidencia-icon" data-fecha="{{ f.fecha }}" data-fam="{{ fam }}" data-turno="{{ f.turno }}"
+                           title="Ver/adjuntar evidencia de este cambio"></i>
+                        {%- elseif b.fis is not null and b.fis_corregido -%}
+                        {{ b.fis|number_format(0, '.', ',') }} <i class="fas fa-exclamation-circle fis-corregido-icon" title="Este corte ya fue corregido antes"></i>
                         {%- else -%}
                         {{ b.fis is null ? '-' : b.fis|number_format(0, '.', ',') }}
                         {%- endif -%}
@@ -348,12 +370,39 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small mb-2">
-                    Cortes crudos de <code>StockReal</code> leídos directo de la estación (una fila por
-                    producto/turno/tanque). Corrige la fila dañada y guarda: el cambio se escribe en la
-                    estación, queda en bitácora y el día se resincroniza automáticamente.
-                </p>
                 <div id="fisico_rows"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-merma-sync" id="btnGuardarFisico" style="display:none;">
+                    Guardar cambios
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de evidencia (imagen/PDF) de una corrección de corte físico -->
+<div class="modal fade" id="evidenciaModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-paperclip"></i> Evidencia — <span id="evidencia_fecha_lbl"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">
+                    Imágenes o PDF que justifiquen este cambio de inventario. No es obligatorio subir nada.
+                </p>
+                <div id="evidencia_lista"></div>
+                <hr>
+                <div id="evidenciaDropzone" style="border:2px dashed #9ca3af;border-radius:.75rem;padding:1.25rem;text-align:center;background:#f9fafb;cursor:pointer;">
+                    <i class="fas fa-cloud-upload-alt" style="font-size:1.5rem;color:#4b5563;"></i>
+                    <p class="mb-0 mt-1 small">Arrastra aquí imágenes o PDF, o haz clic para seleccionar (puedes elegir varios)</p>
+                </div>
+                <input type="file" id="evidenciaInput" accept="application/pdf,image/jpeg,image/png" multiple style="display:none;">
+                <div id="evidencia_subiendo" class="text-center py-2" style="display:none;">
+                    <span class="spinner-border spinner-border-sm"></span> Subiendo...
+                </div>
             </div>
         </div>
     </div>
@@ -449,6 +498,8 @@ $(document).ready(function () {
     const CODGAS   = {{ estacion.Codigo }};
     const PRD_LBL  = {1:'MAXIMA', 179:'MAXIMA', 192:'MAXIMA', 2:'SUPER', 180:'SUPER', 193:'SUPER', 3:'DIESEL', 181:'DIESEL'};
     const TURNO_LBL = {10:11, 20:21, 40:41};
+    const FAM_CODPRD = {maxima: 1, super: 2, diesel: 3}; // codprd base por familia, para ligar la evidencia
+    const PUEDE_CORREGIR = {{ authorized(83) ? 'true' : 'false' }}; // permiso 83: Corregir físico y compras (Merma)
 
     $(document).on('click', '.fis-editable', function (e) {
         e.stopPropagation();
@@ -457,17 +508,26 @@ $(document).ready(function () {
         const turno = $(this).data('turno') || '';
         if (!fecha) return;
         $('#fisico_fecha_lbl').text(fecha + (fam ? ' — ' + fam.toUpperCase() : '') + (turno ? ' — Turno ' + turno : ''));
+        $('#fisicoModal').data('fecha', fecha);
         $('#fisico_rows').html('<div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span> Consultando estación...</div>');
+        $('#btnGuardarFisico').prop('disabled', true).show();
         new bootstrap.Modal(document.getElementById('fisicoModal')).show();
         $.post('/merma/cortes_fisicos', { codgas: CODGAS, fecha: fecha, familia: fam, turno: turno }, function (res) {
-            if (!res.success) { $('#fisico_rows').html('<div class="alert alert-danger">' + res.message + '</div>'); return; }
-            if (!res.cortes.length) { $('#fisico_rows').html('<div class="alert alert-warning">La estación no tiene cortes para este día.</div>'); return; }
-            let html = '<table class="table table-sm align-middle mb-0"><thead><tr>'
+            if (!res.success) { $('#fisico_rows').html('<div class="alert alert-danger">' + res.message + '</div>'); $('#btnGuardarFisico').hide(); return; }
+            if (!res.cortes.length) { $('#fisico_rows').html('<div class="alert alert-warning">La estación no tiene cortes para este día.</div>'); $('#btnGuardarFisico').hide(); return; }
+            const hayRetro = res.cortes.some(c => c.recomendado_retro !== null && c.recomendado_retro !== undefined);
+            let html = '<p class="text-muted small mb-2">Captura solo los tanques que quieras corregir; deja vacíos los demás — no se tocan. Un valor igual al actual tampoco se envía.</p>'
+                + '<table class="table table-sm align-middle mb-0"><thead><tr>'
                 + '<th>Producto</th><th>Turno</th><th>Tanque</th><th>Valor actual (lts)</th>'
-                + '<th>Sugerido</th><th style="width:170px">Nuevo valor</th><th></th></tr></thead><tbody>';
+                + '<th>Sugerido</th>' + (hayRetro ? '<th title="Calculado desde el turno siguiente (ya válido), repartido por tanque">Sugerido por tanque</th>' : '')
+                + '<th style="width:170px">Nuevo valor</th><th></th></tr></thead><tbody>';
             res.cortes.forEach(function (c, idx) {
                 const corrupto = c.can !== null && (Number(c.can) < res.min || Number(c.can) > res.max);
                 const sugerido = (c.recomendado !== null && c.recomendado !== undefined) ? Number(c.recomendado) : null;
+                const sugeridoRetro = (c.recomendado_retro !== null && c.recomendado_retro !== undefined) ? Number(c.recomendado_retro) : null;
+                // Con sugerencia por tanque disponible, precargar esa (más específica
+                // que el total del turno repartido "a ciegas" entre tanques).
+                const precarga = sugeridoRetro !== null ? sugeridoRetro : sugerido;
                 const hist = c.historial || [];
                 const rowId = 'fisico-hist-' + idx;
                 html += '<tr' + (corrupto ? ' class="table-danger"' : '') + '>'
@@ -478,29 +538,85 @@ $(document).ready(function () {
                     + (corrupto ? ' <i class="fas fa-exclamation-triangle text-danger"></i>' : '') + '</td>'
                     + '<td class="text-muted" title="Contable del turno: último físico válido anterior − ventas + compras">'
                     + (sugerido !== null ? sugerido.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-') + '</td>'
+                    + (hayRetro ? '<td class="text-muted" title="Retro-cálculo desde el turno siguiente, repartido proporcional al peso de este tanque — es una aproximación">'
+                        + (sugeridoRetro !== null ? sugeridoRetro.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-') + '</td>' : '')
                     + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm fisico-nuevo"'
-                    + (corrupto && sugerido !== null ? ' value="' + sugerido + '"' : '') + '></td>'
+                    + ' data-can="' + Number(c.can) + '" data-codprd="' + c.codprd + '" data-nrotur="' + c.nrotur + '" data-codtan="' + c.codtan + '"'
+                    + (corrupto && precarga !== null ? ' value="' + precarga + '"' : '') + '></td>'
                     + '<td>'
-                    + '<button type="button" class="btn btn-sm btn-merma-sync fisico-guardar" data-fecha="' + fecha
-                    + '" data-codprd="' + c.codprd + '" data-nrotur="' + c.nrotur + '" data-codtan="' + c.codtan + '">Guardar</button>'
-                    + (hist.length ? ' <button type="button" class="btn btn-sm btn-link p-0 ms-1 fisico-hist-toggle" data-target="#' + rowId + '" title="Ver últimos días"><i class="fas fa-chevron-down"></i></button>' : '')
+                    + (hist.length ? '<button type="button" class="btn btn-sm btn-link p-0 fisico-hist-toggle" data-target="#' + rowId + '" title="Ver últimos días"><i class="fas fa-chevron-down"></i></button>' : '')
                     + '</td>'
                     + '</tr>';
                 if (hist.length) {
-                    html += '<tr id="' + rowId + '" class="d-none"><td colspan="7" class="p-0">'
+                    // Un tanque por fila (uno solo si el producto tiene un tanque,
+                    // varios si tiene más — ej. Satélite con 2 por producto).
+                    // Todos los cortes del historial comparten los mismos tanques
+                    // (misma llave codprd-turno), así que se listan desde el primero.
+                    const tanquesHist = Object.keys(hist[0].tanques || {}).sort((a, b) => a - b);
+                    html += '<tr id="' + rowId + '" class="d-none"><td colspan="' + (hayRetro ? 8 : 7) + '" class="p-0">'
                         + '<table class="table table-sm table-borderless mb-0 bg-light"><tbody>'
-                        + '<tr><td class="text-muted small" style="width:120px">Físico</td>'
-                        + hist.map(h => '<td class="small">' + (h.fisico !== null ? Number(h.fisico).toLocaleString('en-US', { maximumFractionDigits: 2 }) : 's/d') + '<br><span class="text-muted" style="font-size:0.7em">' + h.fecha + '</span></td>').join('')
+                        + '<tr><td class="text-muted small" style="width:120px"></td>'
+                        + hist.map(h => '<td class="text-muted small">' + h.fecha + '</td>').join('')
                         + '</tr>'
-                        + '<tr><td class="text-muted small">Contable</td>'
-                        + hist.map(h => '<td class="small">' + (h.contable !== null ? Number(h.contable).toLocaleString('en-US', { maximumFractionDigits: 2 }) : 's/d') + '</td>').join('')
-                        + '</tr>'
+                        + tanquesHist.map(function (tan) {
+                            return '<tr><td class="text-muted small">Tanque ' + tan + '</td>'
+                                + hist.map(function (h) {
+                                    const v = h.tanques[tan];
+                                    return '<td class="small">' + (v !== null && v !== undefined ? Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }) : 's/d') + '</td>';
+                                }).join('')
+                                + '</tr>';
+                        }).join('')
                         + '</tbody></table>'
                         + '</td></tr>';
                 }
             });
             $('#fisico_rows').html(html + '</tbody></table>');
-        }, 'json').fail(() => $('#fisico_rows').html('<div class="alert alert-danger">Error de servidor</div>'));
+            $('#btnGuardarFisico').prop('disabled', false).show();
+        }, 'json').fail(() => { $('#fisico_rows').html('<div class="alert alert-danger">Error de servidor</div>'); $('#btnGuardarFisico').hide(); });
+    });
+
+    // Guardado en lote: solo filas con valor capturado Y distinto del actual.
+    $(document).on('click', '#btnGuardarFisico', function () {
+        const $btn   = $(this);
+        const fecha  = $('#fisicoModal').data('fecha');
+        const filas  = [];
+        const omitidas = { vacias: 0, iguales: 0 };
+
+        $('#fisico_rows .fisico-nuevo').each(function () {
+            const $input = $(this);
+            const valor  = $input.val();
+            if (valor === '' || valor === null) { omitidas.vacias++; return; }
+            if (isNaN(valor)) { $input.addClass('is-invalid'); return; }
+            const can = Number($input.data('can'));
+            // Tolerancia por precisión flotante del origen (StockReal trae decimales largos)
+            if (Math.abs(Number(valor) - can) < 0.005) { omitidas.iguales++; return; }
+            $input.removeClass('is-invalid');
+            filas.push({
+                codprd: $input.data('codprd'), nrotur: $input.data('nrotur'),
+                codtan: $input.data('codtan'), valor: Number(valor),
+            });
+        });
+
+        if (filas.length === 0) {
+            const detalle = [];
+            if (omitidas.vacias)  detalle.push(omitidas.vacias + ' sin capturar');
+            if (omitidas.iguales) detalle.push(omitidas.iguales + ' igual al valor actual');
+            mermaToast('Nada que guardar' + (detalle.length ? ' (' + detalle.join(', ') + ')' : '.'), 'warning');
+            return;
+        }
+
+        if (!confirm('¿Corregir ' + filas.length + ' corte(s) en la estación?\nSe escribirán en StockReal y el día se resincronizará una vez al final.')) return;
+
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Guardando...');
+        $.post('/merma/corregir_fisico_lote', {
+            codgas: CODGAS, fecha: fecha, filas: JSON.stringify(filas),
+        }, function (res) {
+            if (res.success) { mermaToastReload(res.message, 'success'); }
+            else { mermaToast(res.message, 'danger'); $btn.prop('disabled', false).html('Guardar cambios'); }
+        }, 'json').fail(function () {
+            mermaToast('Error de servidor', 'danger');
+            $btn.prop('disabled', false).html('Guardar cambios');
+        });
     });
 
     // ---- Bitácora de cambios (correcciones de cortes físicos) --------------
@@ -542,12 +658,12 @@ $(document).ready(function () {
                     : (c.estado === 'desviacion' ? '<span class="badge bg-warning text-dark">DESVIACIÓN</span>'
                                                  : '<span class="badge bg-success">OK</span>');
                 if (c.excluida) badge += ' <span class="badge bg-secondary">EXCLUIDA</span>';
-                const accion = c.excluida
+                const accion = !PUEDE_CORREGIR ? '' : (c.excluida
                     ? '<button type="button" class="btn btn-sm btn-merma-neutro compra-incluir" data-fecha="' + c.fecha
                       + '" data-codprd="' + c.codprd + '" data-nro="' + c.nro + '">Incluir</button>'
                     : '<button type="button" class="btn btn-sm btn-merma-neutro compra-excluir" data-fecha="' + c.fecha
                       + '" data-codprd="' + c.codprd + '" data-turno="' + c.turno + '" data-nro="' + c.nro
-                      + '" data-litros="' + doc + '">Excluir</button>';
+                      + '" data-litros="' + doc + '">Excluir</button>');
                 html += '<tr class="' + cls + '">'
                     + '<td>' + c.fecha + '</td>'
                     + '<td>' + (PRD_LBL[c.codprd] || '') + ' (' + c.codprd + ')</td>'
@@ -634,30 +750,78 @@ $(document).ready(function () {
         $icon.toggleClass('fa-chevron-down fa-chevron-up');
     });
 
-    $(document).on('click', '.fisico-guardar', function () {
-        const $btn   = $(this);
-        const $input = $btn.closest('tr').find('.fisico-nuevo');
-        const valor  = $input.val();
-        if (valor === '' || isNaN(valor)) {
-            $input.addClass('is-invalid').focus();
-            mermaToast('Captura el nuevo valor en litros.', 'warning');
-            return;
-        }
-        $input.removeClass('is-invalid');
-        if (!confirm('¿Corregir este corte en la estación a ' + valor + ' lts?\nSe escribirá en StockReal y se resincronizará el día.')) return;
-        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
-        $.post('/merma/corregir_fisico', {
-            codgas: CODGAS, fecha: $btn.data('fecha'),
-            codprd: $btn.data('codprd'), nrotur: $btn.data('nrotur'),
-            codtan: $btn.data('codtan'), valor: valor,
+    // ---- Evidencia (imagen/PDF) de una corrección de corte físico ----------
+    let evidenciaCtx = null; // {fecha, codprd, turno}
+
+    function cargarEvidencia() {
+        $('#evidencia_lista').html('<div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span></div>');
+        $.post('/merma/evidencia_fisico', {
+            codgas: CODGAS, fecha: evidenciaCtx.fecha, codprd: evidenciaCtx.codprd, turno: evidenciaCtx.turno,
         }, function (res) {
-            if (res.success) { mermaToastReload(res.message, 'success'); }
-            else { mermaToast(res.message, 'danger'); $btn.prop('disabled', false).text('Guardar'); }
-        }, 'json').fail(function () {
-            mermaToast('Error de servidor', 'danger');
-            $btn.prop('disabled', false).text('Guardar');
-        });
+            if (!res.success) { $('#evidencia_lista').html('<div class="alert alert-danger py-2 mb-0">' + res.message + '</div>'); return; }
+            if (!res.archivos.length) { $('#evidencia_lista').html('<div class="text-muted small">Sin evidencia subida todavía.</div>'); return; }
+            let html = '<ul class="list-group">';
+            res.archivos.forEach(function (a) {
+                html += '<li class="list-group-item d-flex justify-content-between align-items-center py-1">'
+                    + '<a href="/merma/view_evidencia_fisico/' + a.id + '" target="_blank">'
+                    + '<i class="fas ' + (a.file_extension === 'pdf' ? 'fa-file-pdf' : 'fa-file-image') + '"></i> '
+                    + a.original_filename + '</a>'
+                    + '<small class="text-muted">' + (a.usuario_nombre || ('Usuario #' + a.created_by)) + ' — ' + String(a.created_at).substring(0, 16) + '</small>'
+                    + '</li>';
+            });
+            $('#evidencia_lista').html(html + '</ul>');
+        }, 'json').fail(() => $('#evidencia_lista').html('<div class="alert alert-danger py-2 mb-0">Error de servidor</div>'));
+    }
+
+    $(document).on('click', '.evidencia-icon', function (e) {
+        e.stopPropagation();
+        const fecha = $(this).data('fecha');
+        const fam   = $(this).data('fam') || '';
+        const turno = $(this).data('turno') || '';
+        const codprd = FAM_CODPRD[fam];
+        if (!fecha || !codprd || !turno) return;
+        evidenciaCtx = { fecha: fecha, codprd: codprd, turno: turno };
+        $('#evidencia_fecha_lbl').text(fecha + (fam ? ' — ' + fam.toUpperCase() : '') + (turno ? ' — Turno ' + turno : ''));
+        new bootstrap.Modal(document.getElementById('evidenciaModal')).show();
+        cargarEvidencia();
     });
+
+    $(document).on('click', '#evidenciaDropzone', function () { $('#evidenciaInput').click(); });
+    $(document).on('change', '#evidenciaInput', function () {
+        if (this.files && this.files.length) subirEvidencia(this.files);
+    });
+    $(document).on('dragover', '#evidenciaDropzone', function (e) { e.preventDefault(); $(this).css('background', '#eef2ff'); });
+    $(document).on('dragleave drop', '#evidenciaDropzone', function (e) { e.preventDefault(); $(this).css('background', '#f9fafb'); });
+    $(document).on('drop', '#evidenciaDropzone', function (e) {
+        e.preventDefault();
+        const files = e.originalEvent.dataTransfer.files;
+        if (files && files.length) subirEvidencia(files);
+    });
+
+    function subirEvidencia(fileList) {
+        if (!evidenciaCtx) return;
+        const fd = new FormData();
+        fd.append('codgas', CODGAS);
+        fd.append('fecha', evidenciaCtx.fecha);
+        fd.append('codprd', evidenciaCtx.codprd);
+        fd.append('turno', evidenciaCtx.turno);
+        Array.from(fileList).forEach(f => fd.append('evidencia[]', f));
+
+        $('#evidenciaInput').val('');
+        $('#evidencia_subiendo').show();
+        fetch('/merma/subir_evidencia_fisico', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(function (res) {
+                $('#evidencia_subiendo').hide();
+                if (res.subidos > 0) mermaToast(res.message, res.errores.length ? 'warning' : 'success');
+                else mermaToast(res.message, 'danger');
+                cargarEvidencia();
+            })
+            .catch(function (err) {
+                $('#evidencia_subiendo').hide();
+                mermaToast('Error de servidor: ' + err.message, 'danger');
+            });
+    }
 
     $('#sync_estacion').click(function () {
         const $btn = $(this);

@@ -42,9 +42,9 @@
 
 {% if sin_presupuesto %}
 <div class="alert alert-warning py-2">
-    Sin presupuesto cargado para {{ meses[mes - 1]|lower }} {{ anio }}.
-    Cárgalo en Comercial &rarr; Importar presupuesto. Mientras tanto, las filas
-    PRESUPUESTO, DIFERENCIA y % PRESUPUESTO salen vacías.
+    Sin presupuesto cargado para {{ meses[mes - 1]|lower }} {{ anio }} en
+    incentives_presupuestoventa. Mientras tanto, las filas PRESUPUESTO,
+    DIFERENCIA y % PRESUPUESTO salen vacías.
 </div>
 {% endif %}
 
@@ -70,7 +70,6 @@
                     <thead>
                         <tr>
                             <th class="col-fecha">DÍA</th>
-                            <th class="col-turno">&nbsp;</th>
                             {% for e in estaciones %}
                             <th>{{ e.Nombre }}</th>
                             {% endfor %}
@@ -80,8 +79,7 @@
                     <tbody>
                         {% for d in p.dias %}
                         <tr>
-                            <td class="col-fecha">{{ d.dia }}</td>
-                            <td class="col-turno">{{ d.nombre }}</td>
+                            <td class="col-fecha">{{ d.dia }}-{{ d.nombre|capitalize }}</td>
                             {% for e in estaciones %}
                             {% set v = d.celdas[e.Codigo] %}
                             <td>{{ v is null ? '—' : v|number_format(0, '.', ',') }}</td>
@@ -105,7 +103,6 @@
                         {% set fila = p.resumen[r.k] %}
                         <tr class="vc-resumen">
                             <td class="col-fecha">{{ r.l }}</td>
-                            <td class="col-turno">&nbsp;</td>
                             {% for e in estaciones %}
                             {% set v = fila.celdas[e.Codigo] %}
                             <td class="{{ v is null or r.t == 'lts' or r.t == 'pct_plano' ? '' : (v < 0 ? 'pct-neg' : 'pct-pos') }}">
