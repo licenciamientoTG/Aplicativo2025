@@ -95,13 +95,14 @@
 </table>
 
 <div class="seccion-titulo">Total de arqueo físico (considerando vales)</div>
+{% set usd_cp = (caja.total_fisico_dolares + caja.total_vales_dolares) * caja.costo_promedio %}
 <table>
     <tr><th style="width:56%;">Concepto</th><th class="num" style="width:22%;">Total Dólares</th><th class="num" style="width:22%;">Total Moneda Nacional</th></tr>
     <tr><td>Dólares × costo promedio · M.N. físico + vales</td>
-        <td class="num">{{ (caja.total_fisico_dolares * caja.costo_promedio)|number_format(2,'.',',') }}</td>
+        <td class="num">{{ usd_cp|number_format(2,'.',',') }}</td>
         <td class="num">{{ caja.total_arqueo_mxn|number_format(2,'.',',') }}</td></tr>
     <tr><td><b>Total</b></td>
-        <td class="num" colspan="2"><b>{{ (caja.total_fisico_dolares * caja.costo_promedio + caja.total_arqueo_mxn)|number_format(2,'.',',') }}</b></td></tr>
+        <td class="num" colspan="2"><b>{{ (usd_cp + caja.total_arqueo_mxn)|number_format(2,'.',',') }}</b></td></tr>
     <tr><td>Total en sistema M.N.</td>
         <td class="num" colspan="2">{{ caja.total_en_sistema|number_format(2,'.',',') }}</td></tr>
 </table>

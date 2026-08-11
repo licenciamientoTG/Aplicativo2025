@@ -138,19 +138,29 @@ function recalcular() {
     valesMxn = 0;
   document.querySelectorAll(".vale-dolares").forEach((i) => (valesUsd += parseFloat(i.value) || 0));
   document.querySelectorAll(".vale-mxn").forEach((i) => (valesMxn += parseFloat(i.value) || 0));
-  const granTotalValesMxn = valesUsd + valesMxn;
 
   const goUsd = parseFloat(document.getElementById("go_exchange_dolares").value) || 0;
   const goMxn = parseFloat(document.getElementById("go_exchange_mxn").value) || 0;
   const costoPromedio = parseFloat(document.getElementById("costo_promedio").value) || 0;
 
-  const usdCostoPromedio = fisicoUsd * costoPromedio;
+  // Los vales en dólares se convierten a MXN igual que el efectivo físico
+  // en dólares (multiplican por costoPromedio), no se suman 1:1.
+  const granTotalValesMxn = valesUsd * costoPromedio + valesMxn;
+
+  // "Total Dólares" del panel: físico + vales, ya convertidos.
+  const usdCostoPromedio = (fisicoUsd + valesUsd) * costoPromedio;
+  // "Total Moneda Nacional" del panel: físico + vales, ambos ya en MXN.
   const arqueoMxn = fisicoMxn + valesMxn;
   const totalArqueo = usdCostoPromedio + arqueoMxn;
   const totalSistema = goUsd * costoPromedio + goMxn;
+
+  // Diferencias mostradas: informativas, solo conteo físico (sin vales).
   const difUsd = fisicoUsd - goUsd;
   const difMxn = arqueoMxn - goMxn;
-  const resultado = difMxn + difUsd * costoPromedio;
+  // Resultado final: se deriva de los totales ya sumados (incluyen vales en
+  // USD exactamente una vez, vía usdCostoPromedio), no de difMxn + difUsd
+  // por separado (evita contar el vale en USD dos veces).
+  const resultado = totalArqueo - totalSistema;
 
   // Pintar vales.
   document.getElementById("total_vales_dolares").textContent = fmtMoney(valesUsd);
