@@ -305,6 +305,29 @@
     font-size: .72rem; letter-spacing: .03em; text-transform: none;
 }
 
+/* Colores de las 4 filas que el libro amarillo (Excel) ya distinguía con
+   fondo — "VETS X EST X MARCA Y PROTS <Mes><Año>.xlsm", hoja LITROS DE
+   COMBUSTIBLE, filas 41/42/44/45. Se traducen a la paleta pastel del resto
+   del módulo en vez de los colores planos de Office (amarillo puro, azul
+   marino), salvo PRESUPUESTO: en el Excel es la única fila con fondo sólido
+   y texto invertido (la más "fuerte" visualmente), así que aquí usa el azul
+   de marca TotalGas sólido para conservar esa misma jerarquía. */
+.vc-tabla tfoot tr.vc-resumen-proy td { background: #fef9c3; color: #854d0e; }
+.vc-tabla tfoot tr.vc-resumen-proy td.col-fecha { background: #fef08a; }
+.vc-tabla tfoot tr.vc-resumen-ppto td { background: #0095DA; color: #fff; }
+.vc-tabla tfoot tr.vc-resumen-ppto td.col-fecha { background: #0077ad; color: #fff; }
+.vc-tabla tfoot tr.vc-resumen-pct_ppto td,
+.vc-tabla tfoot tr.vc-resumen-vs_semana td { background: #f5f3e7; color: #78716c; }
+.vc-tabla tfoot tr.vc-resumen-pct_ppto td.col-fecha,
+.vc-tabla tfoot tr.vc-resumen-vs_semana td.col-fecha { background: #e7e3d0; }
+/* pct-pos/pct-neg deben seguir leyéndose sobre estos fondos nuevos */
+.vc-tabla tfoot tr.vc-resumen-proy td.pct-pos, .vc-tabla tfoot tr.vc-resumen-pct_ppto td.pct-pos,
+.vc-tabla tfoot tr.vc-resumen-vs_semana td.pct-pos { color: #006ba1; }
+.vc-tabla tfoot tr.vc-resumen-proy td.pct-neg, .vc-tabla tfoot tr.vc-resumen-pct_ppto td.pct-neg,
+.vc-tabla tfoot tr.vc-resumen-vs_semana td.pct-neg { color: #dc2626; }
+.vc-tabla tfoot tr.vc-resumen-ppto td.pct-pos { color: #bfdbfe; }
+.vc-tabla tfoot tr.vc-resumen-ppto td.pct-neg { color: #fecaca; }
+
 /* thead de una sola fila: analisis.html y detalle.html tienen DOS <tr> en
    el thead (familia + columna), y las reglas de arriba (líneas ~133-141,
    ~168) fueron escritas para eso: tr:first-child es la fila de familia

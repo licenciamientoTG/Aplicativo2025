@@ -101,7 +101,7 @@
                             {'k': 'aa',        'l': '% A.A.',           't': 'pct'}
                         ] %}
                         {% set fila = p.resumen[r.k] %}
-                        <tr class="vc-resumen">
+                        <tr class="vc-resumen vc-resumen-{{ r.k }}">
                             <td class="col-fecha">{{ r.l }}</td>
                             {% for e in estaciones %}
                             {% set v = fila.celdas[e.Codigo] %}
