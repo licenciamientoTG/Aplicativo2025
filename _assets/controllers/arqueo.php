@@ -1075,16 +1075,26 @@ class Arqueo
             $total_vales_dolares += (float) ($v['dolares'] ?? 0);
             $total_vales_mxn     += (float) ($v['mxn'] ?? 0);
         }
-        $gran_total_vales_mxn = $total_vales_dolares + $total_vales_mxn;
-
         $costo_promedio = (float) $go['costo_promedio'];
 
+        // Los vales en dólares se convierten a MXN igual que el efectivo
+        // físico en dólares (multiplican por costo_promedio), no se suman 1:1.
+        $gran_total_vales_mxn = ($total_vales_dolares * $costo_promedio) + $total_vales_mxn;
+
+        // "Total Dólares" del panel: físico + vales, ya convertidos.
+        $usd_costo_promedio = ($total_fisico_dolares + $total_vales_dolares) * $costo_promedio;
+        // "Total Moneda Nacional" del panel: físico + vales, ambos ya en MXN.
         $total_arqueo_mxn = $total_fisico_mxn + $total_vales_mxn;
         $total_en_sistema = ((float) $go['go_exchange_dolares'] * $costo_promedio) + (float) $go['go_exchange_mxn'];
 
+        // Diferencias mostradas: informativas, solo conteo físico (sin vales).
         $diferencia_dolares = $total_fisico_dolares - (float) $go['go_exchange_dolares'];
         $diferencia_mxn     = $total_arqueo_mxn - (float) $go['go_exchange_mxn'];
-        $resultado_final    = $diferencia_mxn + ($diferencia_dolares * $costo_promedio);
+        // Resultado final: se deriva de los totales ya sumados (incluyen vales
+        // en USD exactamente una vez, vía usd_costo_promedio), no de
+        // diferencia_mxn + diferencia_dolares por separado.
+        $total_arqueo     = $usd_costo_promedio + $total_arqueo_mxn;
+        $resultado_final  = $total_arqueo - $total_en_sistema;
 
         return [
             'go_exchange_dolares'  => (float) $go['go_exchange_dolares'],
@@ -1092,7 +1102,9 @@ class Arqueo
             'costo_promedio'       => $costo_promedio,
             'total_fisico_dolares' => $total_fisico_dolares,
             'total_fisico_mxn'     => $total_fisico_mxn,
+            'usd_costo_promedio'   => $usd_costo_promedio,
             'total_arqueo_mxn'     => $total_arqueo_mxn,
+            'total_arqueo'         => $total_arqueo,
             'total_en_sistema'     => $total_en_sistema,
             'total_vales_dolares'  => $total_vales_dolares,
             'total_vales_mxn'      => $total_vales_mxn,
