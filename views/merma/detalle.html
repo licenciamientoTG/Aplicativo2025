@@ -400,6 +400,12 @@
                     <p class="mb-0 mt-1 small">Arrastra aquí imágenes o PDF, o haz clic para seleccionar (puedes elegir varios)</p>
                 </div>
                 <input type="file" id="evidenciaInput" accept="application/pdf,image/jpeg,image/png" multiple style="display:none;">
+                <div id="evidencia_pendientes" class="mt-2" style="display:none;">
+                    <ul id="evidencia_pendientes_lista" class="list-group mb-2"></ul>
+                    <button type="button" id="btn_subir_evidencia" class="btn btn-merma-sync btn-sm">
+                        <i class="fas fa-upload"></i> Subir <span id="evidencia_pendientes_count"></span>
+                    </button>
+                </div>
                 <div id="evidencia_subiendo" class="text-center py-2" style="display:none;">
                     <span class="spinner-border spinner-border-sm"></span> Subiendo...
                 </div>
@@ -752,21 +758,31 @@ $(document).ready(function () {
 
     // ---- Evidencia (imagen/PDF) de una corrección de corte físico ----------
     let evidenciaCtx = null; // {fecha, codprd, turno}
+    let evidenciaPendientes = []; // File[] elegidos, esperando confirmar "Subir"
+
+    function escHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        }[c]));
+    }
 
     function cargarEvidencia() {
         $('#evidencia_lista').html('<div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span></div>');
         $.post('/merma/evidencia_fisico', {
             codgas: CODGAS, fecha: evidenciaCtx.fecha, codprd: evidenciaCtx.codprd, turno: evidenciaCtx.turno,
         }, function (res) {
-            if (!res.success) { $('#evidencia_lista').html('<div class="alert alert-danger py-2 mb-0">' + res.message + '</div>'); return; }
+            if (!res.success) { $('#evidencia_lista').html('<div class="alert alert-danger py-2 mb-0">' + escHtml(res.message) + '</div>'); return; }
             if (!res.archivos.length) { $('#evidencia_lista').html('<div class="text-muted small">Sin evidencia subida todavía.</div>'); return; }
             let html = '<ul class="list-group">';
             res.archivos.forEach(function (a) {
                 html += '<li class="list-group-item d-flex justify-content-between align-items-center py-1">'
                     + '<a href="/merma/view_evidencia_fisico/' + a.id + '" target="_blank">'
                     + '<i class="fas ' + (a.file_extension === 'pdf' ? 'fa-file-pdf' : 'fa-file-image') + '"></i> '
-                    + a.original_filename + '</a>'
-                    + '<small class="text-muted">' + (a.usuario_nombre || ('Usuario #' + a.created_by)) + ' — ' + String(a.created_at).substring(0, 16) + '</small>'
+                    + escHtml(a.original_filename) + '</a>'
+                    + '<span>'
+                    + '<small class="text-muted me-2">' + escHtml(a.usuario_nombre || ('Usuario #' + a.created_by)) + ' — ' + escHtml(String(a.created_at).substring(0, 16)) + '</small>'
+                    + '<i class="fas fa-trash text-danger evidencia-eliminar" data-id="' + a.id + '" style="cursor:pointer;" title="Eliminar"></i>'
+                    + '</span>'
                     + '</li>';
             });
             $('#evidencia_lista').html(html + '</ul>');
@@ -781,21 +797,66 @@ $(document).ready(function () {
         const codprd = FAM_CODPRD[fam];
         if (!fecha || !codprd || !turno) return;
         evidenciaCtx = { fecha: fecha, codprd: codprd, turno: turno };
+        evidenciaPendientes = [];
+        renderPendientes();
         $('#evidencia_fecha_lbl').text(fecha + (fam ? ' — ' + fam.toUpperCase() : '') + (turno ? ' — Turno ' + turno : ''));
         new bootstrap.Modal(document.getElementById('evidenciaModal')).show();
         cargarEvidencia();
     });
 
+    $(document).on('click', '.evidencia-eliminar', function () {
+        const id = $(this).data('id');
+        if (!confirm('¿Eliminar este archivo de evidencia?')) return;
+        $.post('/merma/eliminar_evidencia_fisico', { id: id }, function (res) {
+            mermaToast(res.message, res.success ? 'success' : 'danger');
+            if (res.success) cargarEvidencia();
+        }, 'json').fail(() => mermaToast('Error de servidor', 'danger'));
+    });
+
     $(document).on('click', '#evidenciaDropzone', function () { $('#evidenciaInput').click(); });
     $(document).on('change', '#evidenciaInput', function () {
-        if (this.files && this.files.length) subirEvidencia(this.files);
+        if (this.files && this.files.length) agregarPendientes(this.files);
     });
     $(document).on('dragover', '#evidenciaDropzone', function (e) { e.preventDefault(); $(this).css('background', '#eef2ff'); });
     $(document).on('dragleave drop', '#evidenciaDropzone', function (e) { e.preventDefault(); $(this).css('background', '#f9fafb'); });
     $(document).on('drop', '#evidenciaDropzone', function (e) {
         e.preventDefault();
         const files = e.originalEvent.dataTransfer.files;
-        if (files && files.length) subirEvidencia(files);
+        if (files && files.length) agregarPendientes(files);
+    });
+
+    // Selección/drop solo junta archivos en evidenciaPendientes; nada se
+    // sube al servidor hasta que el usuario confirme con "Subir".
+    function agregarPendientes(fileList) {
+        Array.from(fileList).forEach(f => evidenciaPendientes.push(f));
+        $('#evidenciaInput').val('');
+        renderPendientes();
+    }
+
+    function renderPendientes() {
+        const $wrap = $('#evidencia_pendientes');
+        if (!evidenciaPendientes.length) { $wrap.hide(); $('#evidencia_pendientes_lista').empty(); return; }
+
+        let html = '';
+        evidenciaPendientes.forEach(function (f, i) {
+            html += '<li class="list-group-item d-flex justify-content-between align-items-center py-1">'
+                + '<span><i class="fas ' + (f.name.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf' : 'fa-file-image') + '"></i> '
+                + escHtml(f.name) + '</span>'
+                + '<i class="fas fa-times text-danger evidencia-quitar-pendiente" data-i="' + i + '" style="cursor:pointer;" title="Quitar"></i>'
+                + '</li>';
+        });
+        $('#evidencia_pendientes_lista').html(html);
+        $('#evidencia_pendientes_count').text('(' + evidenciaPendientes.length + ')');
+        $wrap.show();
+    }
+
+    $(document).on('click', '.evidencia-quitar-pendiente', function () {
+        evidenciaPendientes.splice($(this).data('i'), 1);
+        renderPendientes();
+    });
+
+    $(document).on('click', '#btn_subir_evidencia', function () {
+        if (evidenciaPendientes.length) subirEvidencia(evidenciaPendientes);
     });
 
     function subirEvidencia(fileList) {
@@ -807,7 +868,8 @@ $(document).ready(function () {
         fd.append('turno', evidenciaCtx.turno);
         Array.from(fileList).forEach(f => fd.append('evidencia[]', f));
 
-        $('#evidenciaInput').val('');
+        evidenciaPendientes = [];
+        renderPendientes();
         $('#evidencia_subiendo').show();
         fetch('/merma/subir_evidencia_fisico', { method: 'POST', body: fd })
             .then(r => r.json())

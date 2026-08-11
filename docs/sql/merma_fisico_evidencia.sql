@@ -25,3 +25,11 @@ GO
 CREATE INDEX IX_merma_fisico_evidencia_lookup
     ON [dbo].[merma_fisico_evidencia] (codgas, fecha, codprd, turno);
 GO
+
+-- Soft-delete: el archivo nunca se borra de disco, solo se oculta de la
+-- lista. Migración para tablas ya creadas con el schema de arriba.
+ALTER TABLE [dbo].[merma_fisico_evidencia] ADD
+    is_deleted INT      NOT NULL DEFAULT 0,
+    deleted_at DATETIME NULL,
+    deleted_by INT      NULL;  -- TG.dbo.Usuario.Id
+GO

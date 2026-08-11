@@ -18,7 +18,7 @@ class MermaFisicoEvidenciaModel extends Model
             'SELECT e.*, u.Nombre AS usuario_nombre
              FROM [TG].[dbo].[merma_fisico_evidencia] e
              LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = e.created_by
-             WHERE e.codgas = ? AND e.fecha = ? AND e.codprd = ? AND e.turno = ?
+             WHERE e.codgas = ? AND e.fecha = ? AND e.codprd = ? AND e.turno = ? AND e.is_deleted = 0
              ORDER BY e.created_at ASC;',
             [$codgas, $fecha, $codprd, $turno]
         ) ?: [];
@@ -29,7 +29,7 @@ class MermaFisicoEvidenciaModel extends Model
     {
         $rs = $this->sql->select(
             'SELECT DISTINCT fecha, codprd, turno FROM [TG].[dbo].[merma_fisico_evidencia]
-             WHERE codgas = ? AND fecha BETWEEN ? AND ?;',
+             WHERE codgas = ? AND fecha BETWEEN ? AND ? AND is_deleted = 0;',
             [$codgas, $desde, $hasta]
         ) ?: [];
         $set = [];
@@ -85,5 +85,16 @@ class MermaFisicoEvidenciaModel extends Model
         $this->sql->update('UPDATE [TG].[dbo].[merma_fisico_evidencia] SET file_path = ? WHERE id = ?;', [$storedPath, $id]);
 
         return ['success' => true, 'id' => $id, 'message' => 'Archivo subido correctamente'];
+    }
+
+    /** Soft-delete: oculta el archivo de la lista, nunca lo borra de disco. */
+    public function soft_delete(int $id, int $userId): bool
+    {
+        return (bool) $this->sql->update(
+            'UPDATE [TG].[dbo].[merma_fisico_evidencia]
+             SET is_deleted = 1, deleted_at = GETDATE(), deleted_by = ?
+             WHERE id = ? AND is_deleted = 0;',
+            [$userId, $id]
+        );
     }
 }

@@ -915,6 +915,26 @@ class Merma
         ]);
     }
 
+    /** Soft-delete de un archivo de evidencia: se oculta de la lista, no se borra de disco. */
+    public function eliminar_evidencia_fisico(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_CORREGIR)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        $ok = $this->evidenciaModel->soft_delete($id, $usuario);
+        json_output($ok
+            ? ['success' => true, 'message' => 'Archivo eliminado']
+            : ['success' => false, 'message' => 'No se pudo eliminar (¿ya estaba eliminado?)']);
+    }
+
     /** Sirve un archivo de evidencia (imagen/PDF). GET /merma/view_evidencia_fisico/ID */
     public function view_evidencia_fisico($id): void
     {
