@@ -6186,6 +6186,10 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'summary_v3.html');
     }
 
+    public function cash_reconciliation(): void {
+        echo $this->twig->render($this->route . 'cash_reconciliation.html');
+    }
+
     // ── DASHBOARD V3 — GET /income/get_dashboard_v3 ───────────────────────────
     public function get_dashboard_v3(): void {
         ob_clean();
