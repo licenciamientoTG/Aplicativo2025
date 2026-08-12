@@ -3771,6 +3771,22 @@ public function anomalies_client_tickets()
     // =========================================================================
     // 2. TESORERIA BANORTE
     // =========================================================================
+    /**
+     * Los estados de cuenta Banorte mezclan los depósitos de ventas con
+     * reembolsos, IVA/comisiones de DCC, traspasos y devoluciones SPEI. Estos
+     * últimos pueden traer la afiliación en el texto, pero no son venta y no
+     * deben llegar a la conciliación.
+     */
+    private function es_deposito_venta_banorte(string ...$campos): bool {
+        $texto = strtoupper(implode(' ', array_filter(array_map('trim', $campos))));
+        if ($texto === '') return false;
+
+        return preg_match(
+            '/\b(?:COM\.?\s*PAG\.?|COMISI[ÓO]N(?:ES)?|IVA|DCC|REEMB(?:OLSO)?|TRASPASO|PR[ÉE]STAMO|CUENTA\s+PROPIA|DEV\.?\s*SPEI(?:CUENTA)?|SPEI\s+RECIBIDO)\b/u',
+            $texto
+        ) !== 1;
+    }
+
     public function get_tesoreria_banorte() {
         ob_clean();
         header('Content-Type: application/json');
@@ -3818,6 +3834,7 @@ public function anomalies_client_tickets()
             while($row = $stmtMovs->fetch(PDO::FETCH_ASSOC)){
                 $desc = trim($row['Descripcion']);
                 if (stripos($desc, 'TOTAL GAS') !== 0 && stripos($desc, 'TotalGas') !== 0 && stripos($desc, 'DIAZ GAS') !== 0) continue;
+                if (!$this->es_deposito_venta_banorte($desc)) continue;
 
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
@@ -3850,6 +3867,7 @@ public function anomalies_client_tickets()
                         $concepto = '';
                         $desc     = trim($row['Descripcion'] ?? '');
                         if ($ref === '' && $desc === '') continue;
+                        if (!$this->es_deposito_venta_banorte($ref, $concepto, $desc)) continue;
                         $monto = (float)$row['Depositos'];
                         $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
                         foreach ($catalogo as $afilItem) {
@@ -3884,6 +3902,7 @@ public function anomalies_client_tickets()
                     while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                         $desc = trim($row['Descripcion'] ?? '');
                         if (stripos($desc, $afilFija) === false && stripos($desc, 'FORMULA GAS') === false) continue;
+                        if (!$this->es_deposito_venta_banorte($desc)) continue;
                         $monto = (float)$row['Depositos'];
                         $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
                         $key = $fecha . '_' . $afilFija;
