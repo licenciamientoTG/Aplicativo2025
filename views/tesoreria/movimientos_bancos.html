@@ -686,7 +686,10 @@ $(function () {
   // que ya conoce quien concilia estos movimientos.
   var COLUMNS_BANORTE = [
     { data: 'id' },
-    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    {
+      data: 'fecha_operacion', defaultContent: '',
+      render: function (d) { return d ? fmtFecha(d) : ''; },
+    },
     { data: 'fecha', render: function (d) { return fmtFecha(d); } },
     { data: 'referencia', defaultContent: '' },
     { data: 'descripcion', defaultContent: '' },

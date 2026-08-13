@@ -12,7 +12,10 @@ CREATE TABLE dbo.movimientos_bancarios (
     id                 INT IDENTITY(1,1) PRIMARY KEY,
     banco              NVARCHAR(20)  NOT NULL,           -- 'SANTANDER'
     cuenta             NVARCHAR(20)  NOT NULL,
-    fecha              DATE          NOT NULL,
+    fecha              DATE          NOT NULL,           -- fecha de aplicación/liquidación
+    -- Solo Banorte la trae distinta de 'fecha' (su CSV separa FECHA DE
+    -- OPERACIÓN de FECHA); NULL en el resto de bancos.
+    fecha_operacion    DATE          NULL,
     hora               CHAR(5)       NULL,               -- HH:MM
     sucursal           NVARCHAR(10)  NULL,
     clave_trans        NVARCHAR(10)  NULL,
@@ -45,5 +48,13 @@ CREATE TABLE dbo.movimientos_bancarios (
     CONSTRAINT UQ_movimientos_bancarios_huella UNIQUE (huella)
 );
 CREATE INDEX IX_movimientos_bancarios_fecha ON dbo.movimientos_bancarios (banco, cuenta, fecha);
+END
+GO
+
+-- Para bases ya creadas antes de fecha_operacion (Banorte: FECHA DE
+-- OPERACIÓN vs FECHA venían distintas y el parser solo guardaba una).
+IF COL_LENGTH('dbo.movimientos_bancarios', 'fecha_operacion') IS NULL
+BEGIN
+ALTER TABLE dbo.movimientos_bancarios ADD fecha_operacion DATE NULL;
 END
 GO

@@ -1198,6 +1198,16 @@ class MovimientosBancariosModel extends Model
             }
             $fecha = "$mf[3]-$mf[2]-$mf[1]";
 
+            // FECHA DE OPERACIÓN (columna B) puede venir distinta de FECHA
+            // (columna C, la de aplicación/liquidación): se guarda aparte en
+            // vez de descartarla. Si no valida, no bloquea el movimiento.
+            $fechaOperacionRaw = self::limpia((string)($c[1] ?? ''));
+            $fechaOperacion = null;
+            if (preg_match('#^(\d{2})/(\d{2})/(\d{4})$#', $fechaOperacionRaw, $mfo)
+                && checkdate((int)$mfo[2], (int)$mfo[1], (int)$mfo[3])) {
+                $fechaOperacion = "$mfo[3]-$mfo[2]-$mfo[1]";
+            }
+
             $deposito = $importe($c[7] ?? 0);
             $retiro   = $importe($c[8] ?? 0);
             $saldo    = $importe($c[9] ?? 0);
@@ -1216,6 +1226,7 @@ class MovimientosBancariosModel extends Model
                 'banco'              => 'BANORTE',
                 'cuenta'             => $cuenta,
                 'fecha'              => $fecha,
+                'fecha_operacion'    => $fechaOperacion,
                 'hora'               => $cp['hora'] !== '' ? $cp['hora'] : null,
                 'sucursal'           => mb_substr($dato($c[6] ?? ''), 0, 10) ?: null,
                 'clave_trans'        => mb_substr($dato($c[5] ?? ''), 0, 10) ?: null,
@@ -1438,14 +1449,15 @@ class MovimientosBancariosModel extends Model
                 $vistas[$m['huella']] = true;   // dedup también dentro del mismo archivo
                 $this->sql->insert(
                     'INSERT INTO [TG].[dbo].[movimientos_bancarios]
-                     (banco, cuenta, fecha, hora, sucursal, clave_trans, descripcion,
+                     (banco, cuenta, fecha, fecha_operacion, hora, sucursal, clave_trans, descripcion,
                       cargo, abono, saldo, referencia, concepto, banco_contraparte,
                       cuenta_contraparte, nombre_contraparte, rfc_contraparte,
                       clave_rastreo, descripcion_larga, huella, secuencia,
                       archivo_origen, created_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
                     [
-                        $m['banco'], $m['cuenta'], $m['fecha'], $m['hora'], $m['sucursal'],
+                        $m['banco'], $m['cuenta'], $m['fecha'], $m['fecha_operacion'] ?? null,
+                        $m['hora'], $m['sucursal'],
                         $m['clave_trans'], $m['descripcion'], $m['cargo'], $m['abono'],
                         $m['saldo'], $m['referencia'], $m['concepto'], $m['banco_contraparte'],
                         $m['cuenta_contraparte'], $m['nombre_contraparte'], $m['rfc_contraparte'],
@@ -1504,7 +1516,7 @@ class MovimientosBancariosModel extends Model
         // Se proyectan solo las columnas que la tabla muestra: el resultado
         // viaja como JSON al DataTable y un SELECT * arrastraba huella,
         // archivo_origen y created_* sin que nadie los use.
-        $query = "SELECT id, banco, cuenta, fecha, hora, sucursal, descripcion,
+        $query = "SELECT id, banco, cuenta, fecha, fecha_operacion, hora, sucursal, descripcion,
                          cargo, abono, saldo, referencia, concepto, clave_rastreo,
                          descripcion_larga, nombre_contraparte, banco_contraparte,
                          cuenta_contraparte, clave_trans, secuencia
