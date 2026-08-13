@@ -504,6 +504,7 @@
           {% if cod == 'BANORTE' %}
           <tr>
             <th class="no-export">Id</th>
+            <th>Cuenta</th>
             <th>Fecha de Operación</th>
             <th>Fecha</th>
             <th>Referencia</th>
@@ -686,6 +687,7 @@ $(function () {
   // que ya conoce quien concilia estos movimientos.
   var COLUMNS_BANORTE = [
     { data: 'id' },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
     {
       data: 'fecha_operacion', defaultContent: '',
       render: function (d) { return d ? fmtFecha(d) : ''; },
@@ -811,12 +813,11 @@ $(function () {
         },
       ],
       // Cuenta y Contraparte ocultas por default en el layout genérico;
-      // activables con Columnas. Banorte y Bankaool no tienen esas columnas
-      // en su propio layout (ya no comparten índices con el genérico).
-      // Inbursa sí repite el criterio "Cuenta oculta al inicio" (índice 1),
-      // solo que con su propio orden de columnas después.
-      columnDefs: esInbursa ? [{ targets: [1], visible: false }]
-                : (esBanorte || esBankaool) ? [] : COLUMNDEFS_GENERICO,
+      // activables con Columnas. Bankaool no tiene esa columna en su propio
+      // layout. Banorte e Inbursa sí repiten el criterio "Cuenta oculta al
+      // inicio" (índice 1), cada uno con su propio orden después.
+      columnDefs: (esBanorte || esInbursa) ? [{ targets: [1], visible: false }]
+                : esBankaool ? [] : COLUMNDEFS_GENERICO,
       // Las filas llegan por POST desde buscarMovimientos(); la tabla arranca
       // vacía para no consultar nada al entrar al módulo.
       data: [],
