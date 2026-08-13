@@ -532,6 +532,26 @@
             <th>Concepto</th>
             <th>Contraparte</th>
           </tr>
+          {% elseif cod == 'INBURSA' %}
+          {# Calca el orden de columnas del Estado de Cuenta Individual de
+             Inbursa (A a K): Id y Cuenta primero pero ocultas por default
+             (mismo criterio que el layout genérico), el resto en el mismo
+             orden que trae el Excel. #}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Cuenta</th>
+            <th>Fecha</th>
+            <th>Referencia</th>
+            <th>Ref. Externa</th>
+            <th>Referencia Leyenda</th>
+            <th>Ref. Numérica</th>
+            <th>Movimiento</th>
+            <th class="mb-monto">Cargo</th>
+            <th class="mb-monto">Abono</th>
+            <th class="mb-monto">Saldo</th>
+            <th>Ordenante</th>
+            <th>Clave de Rastreo</th>
+          </tr>
           {% else %}
           <tr>
             <th class="no-export">Id</th>
@@ -723,9 +743,41 @@ $(function () {
     },
   ];
 
+  // Inbursa: calca el orden de columnas de su Estado de Cuenta Individual
+  // (A-K). Id y Cuenta al inicio pero ocultas por default, igual que en el
+  // layout genérico; el resto ya no se reordena a la convención cargo/abono
+  // compartida, sino que sigue el Excel tal cual.
+  var COLUMNS_INBURSA = [
+    { data: 'id' },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'descripcion_larga', defaultContent: '' },   // Referencia
+    { data: 'clave_trans', defaultContent: '' },         // Ref. Externa
+    { data: 'concepto', defaultContent: '' },            // Referencia Leyenda
+    { data: 'referencia', defaultContent: '' },          // Ref. Numérica
+    { data: 'descripcion', defaultContent: '' },         // Movimiento
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    {
+      data: 'saldo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+    },
+    { data: 'nombre_contraparte', defaultContent: '' },  // Ordenante
+    { data: 'clave_rastreo', defaultContent: '' },       // Clave de Rastreo
+  ];
+
   function initMovsTable(sel, excelTitle, emptyMsg, cod) {
     var esBanorte = cod === 'BANORTE';
     var esBankaool = cod === 'BANKAOOL';
+    var esInbursa = cod === 'INBURSA';
     var api = $(sel).DataTable({
       responsive: true,
       // Sin paginación (contenedor .mb-scroll con cabeceras sticky) y sin
@@ -758,12 +810,18 @@ $(function () {
       // Cuenta y Contraparte ocultas por default en el layout genérico;
       // activables con Columnas. Banorte y Bankaool no tienen esas columnas
       // en su propio layout (ya no comparten índices con el genérico).
-      columnDefs: (esBanorte || esBankaool) ? [] : COLUMNDEFS_GENERICO,
+      // Inbursa sí repite el criterio "Cuenta oculta al inicio" (índice 1),
+      // solo que con su propio orden de columnas después.
+      columnDefs: esInbursa ? [{ targets: [1], visible: false }]
+                : (esBanorte || esBankaool) ? [] : COLUMNDEFS_GENERICO,
       // Las filas llegan por POST desde buscarMovimientos(); la tabla arranca
       // vacía para no consultar nada al entrar al módulo.
       data: [],
       deferRender: true,
-      columns: esBanorte ? COLUMNS_BANORTE : (esBankaool ? COLUMNS_BANKAOOL : COLUMNS_GENERICO),
+      columns: esBanorte ? COLUMNS_BANORTE
+             : esBankaool ? COLUMNS_BANKAOOL
+             : esInbursa ? COLUMNS_INBURSA
+             : COLUMNS_GENERICO,
       initComplete: function () {
         var api = this.api();
 
