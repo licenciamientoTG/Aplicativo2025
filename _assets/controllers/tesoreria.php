@@ -320,7 +320,16 @@ class Tesoreria
         // alimenta el Drive de tesorería, por eso no se mezclan.
         $porTabla = self::por_banco_vacio([]);
         foreach ($movimientos as $m) {
-            $porTabla[self::banco_de($m['banco'])][] = $m;
+            $banco = self::banco_de($m['banco']);
+            // Solo Bankaool: su export trae fecha+hora en una sola celda y un
+            // único "Monto" con signo (ver docs/sql, parse_bankaool_xlsx). El
+            // resto de bancos separa cargo/abono y fecha/hora porque así
+            // vienen en sus estados de cuenta y así se concilian.
+            if ($banco === 'BANKAOOL') {
+                $m['fecha_hora'] = trim($m['fecha'] . ' ' . ($m['hora'] ?? ''));
+                $m['movimiento'] = $m['cargo'] !== null ? -(float)$m['cargo'] : (float)($m['abono'] ?? 0);
+            }
+            $porTabla[$banco][] = $m;
         }
 
         json_output([

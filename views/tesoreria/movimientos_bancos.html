@@ -516,6 +516,22 @@
             <th>Movimiento</th>
             <th>Descripción Detallada</th>
           </tr>
+          {% elseif cod == 'BANKAOOL' %}
+          {# Fecha+hora en una sola columna y cargo/abono combinados en
+             "Movimiento" con signo: así viene el export de Bankaool (celda
+             de fecha con hora, columna "Monto" única). Combinación armada en
+             el controlador (movimientos_table()), solo para este banco. #}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Cuenta</th>
+            <th>Fecha</th>
+            <th>Descripción</th>
+            <th>Referencia</th>
+            <th class="mb-monto">Movimiento</th>
+            <th class="mb-monto">Saldo</th>
+            <th>Concepto</th>
+            <th>Contraparte</th>
+          </tr>
           {% else %}
           <tr>
             <th class="no-export">Id</th>
@@ -674,8 +690,42 @@ $(function () {
     { data: 'descripcion_larga', defaultContent: '' },
   ];
 
+  // Bankaool: fecha+hora en una columna y cargo/abono combinados en
+  // 'movimiento' (armado en el controlador, con signo: negativo = cargo,
+  // positivo = abono), calcando su export en vez de forzar el layout genérico.
+  var COLUMNS_BANKAOOL = [
+    { data: 'id' },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'fecha_hora', defaultContent: '' },
+    { data: 'descripcion', defaultContent: '' },
+    { data: 'referencia', defaultContent: '' },
+    {
+      data: 'movimiento', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { $(td).addClass(d < 0 ? 'mb-cargo' : 'mb-abono'); },
+    },
+    {
+      data: 'saldo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+    },
+    { data: 'concepto', defaultContent: '' },
+    {
+      data: 'nombre_contraparte', defaultContent: '',
+      render: function (d, type, row) {
+        if (type !== 'display') return d || '';
+        var html = esc(d || '');
+        if (row.banco_contraparte) {
+          html += '<small class="text-muted d-block">' +
+                  esc(row.banco_contraparte) + ' ' + esc(row.cuenta_contraparte || '') + '</small>';
+        }
+        return html;
+      },
+    },
+  ];
+
   function initMovsTable(sel, excelTitle, emptyMsg, cod) {
     var esBanorte = cod === 'BANORTE';
+    var esBankaool = cod === 'BANKAOOL';
     var api = $(sel).DataTable({
       responsive: true,
       // Sin paginación (contenedor .mb-scroll con cabeceras sticky) y sin
@@ -706,13 +756,14 @@ $(function () {
         },
       ],
       // Cuenta y Contraparte ocultas por default en el layout genérico;
-      // activables con Columnas. Banorte no tiene esas columnas.
-      columnDefs: esBanorte ? [] : COLUMNDEFS_GENERICO,
+      // activables con Columnas. Banorte y Bankaool no tienen esas columnas
+      // en su propio layout (ya no comparten índices con el genérico).
+      columnDefs: (esBanorte || esBankaool) ? [] : COLUMNDEFS_GENERICO,
       // Las filas llegan por POST desde buscarMovimientos(); la tabla arranca
       // vacía para no consultar nada al entrar al módulo.
       data: [],
       deferRender: true,
-      columns: esBanorte ? COLUMNS_BANORTE : COLUMNS_GENERICO,
+      columns: esBanorte ? COLUMNS_BANORTE : (esBankaool ? COLUMNS_BANKAOOL : COLUMNS_GENERICO),
       initComplete: function () {
         var api = this.api();
 
