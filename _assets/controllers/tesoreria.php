@@ -17,7 +17,26 @@ class Tesoreria
     private const PERM_CUENTAS      = 79;   // Ver Cuentas Bancarias
     private const PERM_SUBIR_MOV    = 81;   // Subir Movimientos Bancos
     private const PERM_SALDO_GRUPO  = 82;   // Ver Saldo por Grupo
+    // Perfil acotado: ve movimientos_bancos() pero solo de CUENTAS_PERFIL_CREDITO.
+    // No da acceso a saldos por grupo, catálogo de cuentas ni subir movimientos.
+    private const PERM_MOVIMIENTOS_CREDITO = 87;   // Ver Movimientos Bancos - Crédito
+    private const PERM_MOV_CHEQUES         = 88;   // Ver Movimientos Bancos Cheques (tarjetas de crédito)
     private const MAX_TXT_BYTES     = 10 * 1024 * 1024;
+
+    /**
+     * Cuentas visibles para el perfil "Crédito" (permiso 83), por
+     * CuentaLocal exacta del catálogo (TG.dbo.CatalogosCuentasBancarias).
+     * Confirmadas 2026-08-13 contra el catálogo: las cuentas "principales"
+     * en Santander de las 4 empresas de Alianza Comercial más la cuenta de
+     * Banorte de Héctor Armandino Fierro Holguín.
+     */
+    private const CUENTAS_PERFIL_CREDITO = [
+        '1209082994',    // Banorte, Héctor Armandino Fierro Holguín
+        '65500563281',   // Santander, Gasolinera Villa Ahumada
+        '65504998214',   // Santander, Distribuidora Gasomex
+        '65505528588',   // Santander, Distribuidora Clara
+        '65505339719',   // Santander, Servicio El Jarudo
+    ];
 
     /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
     private const GRUPO_SIN_CATALOGO = 'SIN CATÁLOGO';
@@ -144,6 +163,28 @@ class Tesoreria
     ];
 
     /**
+     * Bancos soportados en "Movimientos bancos cheques" (estados de cuenta
+     * de tarjeta de crédito en PDF). Mismo registro que BANCOS pero
+     * independiente: es un import y una tabla distintos (sin saldo corrido).
+     */
+    private const BANCOS_CHEQUES = [
+        'BANORTE' => [
+            'etiqueta' => 'Banorte',
+            'color'    => '#EF2945',
+            'ext'      => ['pdf'],
+            'espera'   => 'el PDF del estado de cuenta Empuje Negocio de Banorte',
+            'parser'   => 'parse_banorte_credito_pdf',
+        ],
+        'AMEX' => [
+            'etiqueta' => 'American Express',
+            'color'    => '#006FCF',   // azul oficial de American Express
+            'ext'      => ['pdf'],
+            'espera'   => 'el PDF del estado de cuenta de American Express',
+            'parser'   => 'parse_amex_credito_pdf',
+        ],
+    ];
+
+    /**
      * Normaliza el banco de un movimiento a una de las llaves de BANCOS.
      * Lo que no reconozca cae en SANTANDER, que es el banco histórico y el
      * único que existía cuando se creó la tabla.
@@ -167,6 +208,7 @@ class Tesoreria
     private $movsModel;
     private $cuentasModel;
     private $proveedores;
+    private $tarjetasModel;
 
     public function __construct($twig)
     {
@@ -175,6 +217,7 @@ class Tesoreria
         $this->movsModel    = new MovimientosBancariosModel();
         $this->cuentasModel = new CuentasBancariasModel();
         $this->proveedores  = new ProveedoresModel();
+        $this->tarjetasModel = new TarjetasCreditoModel();
     }
 
     /**
@@ -188,17 +231,31 @@ class Tesoreria
      */
     public function movimientos_bancos(): void
     {
-        if (!authorized(self::PERM_MOVIMIENTOS)) {
+        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)) {
             (new Errors())->get404();
             return;
         }
 
+        $cuentasPermitidas = $this->cuentas_permitidas();
+
         echo $this->twig->render($this->route . 'movimientos_bancos.html', [
             'filtros'          => $this->filtros_movimientos($_GET),
-            'cuentas'          => $this->movsModel->get_cuentas(),
+            'cuentas'          => $this->movsModel->get_cuentas($cuentasPermitidas),
             'bancos'           => self::BANCOS,
             'cuentasSugeridas' => $this->cuentas_sugeridas(),
         ]);
+    }
+
+    /**
+     * Restricción de cuentas para el usuario actual: null = sin restricción
+     * (ve todas), array = solo esas cuentas. El permiso completo (80) siempre
+     * gana sobre el acotado (83) si el usuario tuviera ambos.
+     */
+    private function cuentas_permitidas(): ?array
+    {
+        if (authorized(self::PERM_MOVIMIENTOS)) return null;
+        if (authorized(self::PERM_MOVIMIENTOS_CREDITO)) return self::CUENTAS_PERFIL_CREDITO;
+        return [];
     }
 
     /**
@@ -240,7 +297,7 @@ class Tesoreria
     public function movimientos_table(): void
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_MOVIMIENTOS)) {
+        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
@@ -252,7 +309,7 @@ class Tesoreria
         $filtros = $this->filtros_movimientos($_POST);
 
         try {
-            $movimientos = $this->movsModel->get_movimientos($filtros);
+            $movimientos = $this->movsModel->get_movimientos($filtros, $this->cuentas_permitidas());
         } catch (Exception $e) {
             error_log('movimientos_table: ' . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error al consultar los movimientos']);
@@ -894,6 +951,209 @@ class Tesoreria
             'message' => $ok
                 ? ($activo ? 'Cuenta activada' : 'Cuenta desactivada')
                 : 'No se pudo cambiar el estado',
+        ]);
+    }
+
+    /* ===================================================================== */
+    /* Movimientos bancos cheques (estados de cuenta de tarjeta de crédito)  */
+    /* ===================================================================== */
+
+    /**
+     * Vista de "Movimientos bancos cheques": casi copia de movimientos_bancos(),
+     * pero para cargos de tarjeta de crédito importados de PDF. Sin saldo
+     * corrido (no aplica a una línea de crédito), por eso no hay panel de
+     * saldos finales aquí.
+     */
+    public function movimientos_bancos_cheques(): void
+    {
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            (new Errors())->get404();
+            return;
+        }
+
+        echo $this->twig->render($this->route . 'movimientos_bancos_cheques.html', [
+            'filtros' => $this->filtros_movimientos($_GET),
+            'cuentas' => $this->tarjetasModel->get_cuentas(),
+            'bancos'  => self::BANCOS_CHEQUES,
+        ]);
+    }
+
+    /** POST AJAX: cargos de tarjeta de crédito del rango, ya partidos por banco. */
+    public function movimientos_cheques_table(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+
+        $filtros = $this->filtros_movimientos($_POST);
+
+        try {
+            $movimientos = $this->tarjetasModel->get_movimientos($filtros);
+        } catch (Exception $e) {
+            error_log('movimientos_cheques_table: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al consultar los movimientos']);
+            return;
+        }
+
+        $porTabla = array_fill_keys(array_keys(self::BANCOS_CHEQUES), []);
+        foreach ($movimientos as $m) {
+            $banco = strtoupper((string)$m['banco']);
+            $porTabla[isset(self::BANCOS_CHEQUES[$banco]) ? $banco : 'BANORTE'][] = $m;
+        }
+
+        json_output([
+            'success'     => true,
+            'filtros'     => $filtros,
+            'movimientos' => $porTabla,
+        ]);
+    }
+
+    /**
+     * POST AJAX: importa el PDF de estado de cuenta de tarjeta de crédito.
+     * Recibe $_POST['banco'] y $_FILES['archivo']; mismo esqueleto de
+     * validación que upload_movimientos(), adaptado a un solo formato (PDF)
+     * y sin campo "cuenta" manual (el PDF trae el número de cuenta/tarjeta).
+     */
+    public function upload_movimientos_cheques(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            json_output(['success' => false, 'message' => 'No tienes permiso para importar movimientos']);
+            return;
+        }
+
+        $banco = strtoupper(trim($_POST['banco'] ?? ''));
+        $cfg   = self::BANCOS_CHEQUES[$banco] ?? null;
+        if ($cfg === null) {
+            json_output(['success' => false, 'message' => 'Banco no reconocido']);
+            return;
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['archivo']['tmp_name'])) {
+            json_output(['success' => false, 'message' => 'No se recibió ningún archivo']);
+            return;
+        }
+
+        $file = $_FILES['archivo'];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            json_output(['success' => false, 'message' => 'Error al subir el archivo (código ' . $file['error'] . ')']);
+            return;
+        }
+        if ($file['size'] > self::MAX_TXT_BYTES) {
+            json_output(['success' => false, 'message' => 'El archivo excede el tamaño máximo (10 MB)']);
+            return;
+        }
+        if ($file['size'] === 0) {
+            json_output(['success' => false, 'message' => 'El archivo está vacío']);
+            return;
+        }
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, $cfg['ext'])) {
+            json_output(['success' => false, 'message' =>
+                'El archivo debe ser ' . $cfg['espera'] . ' (.' . implode('/.', $cfg['ext']) . ')']);
+            return;
+        }
+
+        // El parser necesita la ruta en disco (pdftotext abre el archivo).
+        $periodo = TarjetasCreditoModel::extraer_periodo_corte($file['tmp_name']);
+        if ($periodo === null) {
+            json_output(['success' => false, 'message' => 'No se pudo leer la fecha de corte del PDF']);
+            return;
+        }
+
+        $parseo = TarjetasCreditoModel::{$cfg['parser']}($file['tmp_name']);
+        if (empty($parseo['movimientos'])) {
+            json_output([
+                'success' => false,
+                'message' => 'El archivo no contiene movimientos con el formato de ' . $banco,
+                'errores' => array_slice($parseo['errores'], 0, 20),
+            ]);
+            return;
+        }
+
+        try {
+            $res = $this->tarjetasModel->insert_bulk(
+                $parseo['movimientos'],
+                $periodo['anio'],
+                $periodo['mes'],
+                mb_substr($file['name'], 0, 120),
+                (int)($_SESSION['tg_user']['Id'] ?? 0) ?: null
+            );
+        } catch (Exception $e) {
+            error_log("upload_movimientos_cheques($banco): " . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al guardar en base de datos, no se importó nada']);
+            return;
+        }
+
+        json_output([
+            'success'    => true,
+            'banco'      => $banco,
+            'insertados' => $res['insertados'],
+            'duplicados' => $res['duplicados'],
+            'errores'    => array_slice($parseo['errores'], 0, 20),
+        ]);
+    }
+
+    /**
+     * POST: modal de clasificación manual de un movimiento (Departamento,
+     * Conf. No., Factura, Comentarios, Centro de Costo — campos que el PDF
+     * no trae, capturados a mano igual que la hoja de Excel de Susie's).
+     * Mismo patrón que accounting.php::adjustmentModal(): HTML crudo, sin JSON.
+     */
+    public function clasificar_movimiento_cheque_modal(): void
+    {
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            echo '<div class="alert alert-danger m-3">Sin permiso</div>';
+            return;
+        }
+
+        $id = intval($_POST['id'] ?? 0);
+        $movimiento = $id ? $this->tarjetasModel->get_by_id($id) : null;
+        if (!$movimiento) {
+            echo '<div class="alert alert-danger m-3">El movimiento no existe</div>';
+            return;
+        }
+
+        $departamentos = $this->tarjetasModel->get_departamentos();
+        $centrosCosto  = $this->tarjetasModel->get_centros_costo();
+
+        echo $this->twig->render($this->route . 'modals/clasificar_movimiento_cheque.html',
+            compact('movimiento', 'departamentos', 'centrosCosto'));
+    }
+
+    /** POST AJAX: guarda la clasificación manual capturada en el modal. */
+    public function guardar_clasificacion_movimiento_cheque(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id || !$this->tarjetasModel->get_by_id($id)) {
+            json_output(['success' => false, 'message' => 'El movimiento no existe']);
+            return;
+        }
+
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0) ?: null;
+        $ok = $this->tarjetasModel->update_clasificacion($id, [
+            'departamento' => $_POST['departamento'] ?? null,
+            'conf_no'      => $_POST['conf_no'] ?? null,
+            'factura'      => $_POST['factura'] ?? null,
+            'comentarios'  => $_POST['comentarios'] ?? null,
+            'centro_costo' => $_POST['centro_costo'] ?? null,
+        ], $usuario);
+
+        json_output([
+            'success' => $ok,
+            'message' => $ok ? 'Clasificación guardada' : 'No se pudo guardar la clasificación',
+            'id'      => $id,
         ]);
     }
 }

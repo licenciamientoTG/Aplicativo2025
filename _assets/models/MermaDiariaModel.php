@@ -38,6 +38,23 @@ class MermaDiariaModel extends Model
     public const INV_FISICO_MIN = 100;
     public const INV_FISICO_MAX = 1000000;
 
+    /**
+     * Tanques físicamente inhabilitados que StockReal sigue reportando junto
+     * al tanque real del mismo producto (caso Gemela Grande: tanque 7 real +
+     * tanque 78 inhabilitado). Se ignoran en todo el módulo de merma.
+     * codgas => [codtan, ...]
+     */
+    private const TANQUES_INHABILITADOS = [
+        2 => [78],
+    ];
+
+    /** Clausula SQL " AND codtan NOT IN (...)" para excluir tanques inhabilitados de una estación, o '' si no aplica. */
+    private function filtroTanquesInhabilitados(int $codgas): string
+    {
+        $tanques = self::TANQUES_INHABILITADOS[$codgas] ?? [];
+        return $tanques ? ' AND codtan NOT IN (' . implode(',', $tanques) . ')' : '';
+    }
+
     private function familiaCase(string $familia, string $columna): string
     {
         $codes = implode(',', self::FAMILIAS[$familia]);
@@ -257,11 +274,14 @@ class MermaDiariaModel extends Model
         $turnoNrotur = [11 => '10, 11', 21 => '20, 21', 41 => '40, 41'];
         $turnoMap    = [10 => 11, 20 => 21, 30 => 41, 40 => 41];
         $filtroTurno = isset($turnoNrotur[$turno]) ? " AND nrotur IN ({$turnoNrotur[$turno]})" : '';
+        // Tanque 78 de Gemela Grande (codgas 2): inhabilitado, se ignora en
+        // todo el módulo de merma (ver self::TANQUES_INHABILITADOS)
+        $filtroTanque = $this->filtroTanquesInhabilitados($codgas);
         $inner = sprintf(
             'SELECT fch, codgas, codprd, nrotur, codtan, can, logfch, lognew
              FROM [%s].dbo.StockReal
-             WHERE fch = %d AND codgas = %d AND codprd IN (%s) AND nrotur NOT IN (30, 31)%s',
-            $est['BaseDatos'], $fch, $codgas, $prds, $filtroTurno);
+             WHERE fch = %d AND codgas = %d AND codprd IN (%s) AND nrotur NOT IN (30, 31)%s%s',
+            $est['BaseDatos'], $fch, $codgas, $prds, $filtroTurno, $filtroTanque);
         $query = sprintf("SELECT * FROM OPENQUERY([%s], '%s') ORDER BY codprd, nrotur, codtan;",
             $est['Servidor'], str_replace("'", "''", $inner));
         $cortes = $this->sql->select($query) ?: [];
@@ -302,8 +322,8 @@ class MermaDiariaModel extends Model
         // reporta poco no debe salir con historial vacío.
         $innerHist = sprintf(
             'SELECT fch, codprd, nrotur, codtan, can FROM [%s].dbo.StockReal
-             WHERE fch < %d AND codgas = %d AND codprd IN (%s) AND nrotur NOT IN (30, 31)',
-            $est['BaseDatos'], $fch, $codgas, $prds);
+             WHERE fch < %d AND codgas = %d AND codprd IN (%s) AND nrotur NOT IN (30, 31)%s',
+            $est['BaseDatos'], $fch, $codgas, $prds, $filtroTanque);
         $queryHist = sprintf(
             "SELECT * FROM (
                  SELECT *, ROW_NUMBER() OVER (PARTITION BY codprd, nrotur, codtan ORDER BY fch DESC) AS rn
@@ -343,7 +363,8 @@ class MermaDiariaModel extends Model
         // El contable es del TURNO completo (suma de tanques): a cada fila se
         // le sugiere contable - los demás tanques válidos de su mismo corte,
         // para no duplicar el turno en estaciones con varios tanques por
-        // producto (caso Gemela Grande: tanque 7 real + tanque 78 en 0)
+        // producto (ej. Satélite). Gemela Grande ya no cae aquí: su tanque 78
+        // inhabilitado se filtra antes, en filtroTanquesInhabilitados().
         $validosPorCorte = [];
         foreach ($cortes as $c) {
             $key = $c['codprd'] . '-' . $c['nrotur'];

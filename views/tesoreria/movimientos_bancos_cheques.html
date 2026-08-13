@@ -1,0 +1,803 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Movimientos bancos cheques{% endblock %}
+{% block menutitle %}Tesorería — Movimientos bancos cheques{% endblock %}
+
+{% block mycss %}
+<style>
+  /* Copiado de movimientos_bancos.html: mismo patrón de tabla, tabs y modal
+     de subida. Sin los estilos de saldos/grupos (no aplican a tarjeta de
+     crédito: no hay saldo corrido). */
+  .mb-movs thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
+  .mb-movs tbody tr td { font-size: .8rem; vertical-align: middle; color: #334155; }
+  .mb-movs thead tr.filter th {
+    background-color: #e2e8f0 !important;
+    padding: 3px 6px !important;
+  }
+  .mb-movs thead tr.filter th input {
+    font-size: 0.7rem;
+    padding: 2px 5px;
+    height: 22px;
+    border-radius: 3px;
+    border: 1px solid #cbd5e1;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* El desplegable de "Columnas" (colvis) puede traer más opciones de las
+     que caben en pantalla si la tabla es chica y el navegador está poco
+     alto: sin esto, las últimas quedaban fuera de la vista sin forma de
+     llegar a ellas. */
+  div.dt-button-collection {
+    z-index: 9999 !important;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .mb-monto { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mb-cargo { color: #dc3545; font-weight: 600; }
+  .mb-abono { color: #009559; font-weight: 600; }
+  .mb-cuenta { font-family: monospace; white-space: nowrap; }
+
+  .mb-tabla-wrap { border: 2px solid #cbd5e1; border-radius: .5rem; background: #fff; overflow: hidden; }
+  .mb-tabla-wrap .mb-top {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .5rem .75rem; background: #fff; border-bottom: 2px solid #cbd5e1;
+  }
+  .mb-tabla-wrap .dataTables_filter input {
+    border: 1px solid #cbd5e1; border-radius: .375rem;
+    padding: .25rem .5rem; margin-left: .5rem;
+  }
+  .mb-tabla-wrap .mb-bottom {
+    display: flex; justify-content: flex-end; padding: .4rem .75rem;
+    background: #f8fafc; border-top: 2px solid #cbd5e1;
+    color: #475569; font-size: .75rem;
+  }
+  .mb-scroll { overflow: auto; max-height: 62vh; }
+  .mb-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
+  .mb-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
+  .mb-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 2px solid #f1f5f9; }
+  .mb-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  .mb-movs { border-collapse: separate; border-spacing: 0; }
+  .mb-movs thead th { position: sticky; top: 0; z-index: 30; }
+  .mb-movs thead tr.filter th { z-index: 30; }
+  .mb-movs th, .mb-movs td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
+  .mb-movs tr > :last-child { border-right: none; }
+
+  .mb-tabs .nav-link {
+    color: #64748b; font-weight: 600; font-size: .85rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  .mb-tabs .nav-link .mb-punto {
+    width: .55rem; height: .55rem; border-radius: 50%;
+    background: var(--mb-banco, #cbd5e1); flex: none;
+    opacity: .45; transition: opacity .15s;
+  }
+  .mb-tabs .nav-link:hover .mb-punto { opacity: .8; }
+  .mb-tabs .nav-link.active { color: var(--mb-banco, #334155); }
+  .mb-tabs .nav-link.active .mb-punto { opacity: 1; }
+  .mb-tabs .nav-link.active { border-bottom: 2px solid var(--mb-banco, transparent); }
+
+  .btn-upload-banco {
+    border: 1px solid var(--mb-banco, #cbd5e1);
+    color: var(--mb-banco, #475569);
+    background: #fff; font-weight: 600;
+    transition: background .15s, color .15s;
+  }
+  .btn-upload-banco:hover, .btn-upload-banco:focus {
+    background: var(--mb-banco, #475569); color: #fff;
+    border-color: var(--mb-banco, #475569);
+  }
+
+  .mb-up-header { background: var(--mb-banco, #1d4ed8); color: #fff; }
+  .mb-up-header .modal-title { font-size: 1rem; }
+
+  .mb-dropzone {
+    border: 2px dashed #bfdbfe; border-radius: .75rem; padding: 1.75rem 1rem;
+    text-align: center; background: #f8fbff; cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .mb-dropzone:hover { border-color: #93c5fd; background: #eff6ff; }
+  .mb-dropzone.arrastrando { border-color: #1d4ed8; background: #dbeafe; }
+  .mb-dropzone i { font-size: 2rem; color: #1d4ed8; }
+  .mb-dropzone p { margin: .6rem 0 .15rem; font-weight: 600; color: #1e40af; }
+  .mb-dropzone small { color: #64748b; font-size: .74rem; }
+
+  .mb-archivo-sel {
+    display: flex; align-items: center; gap: .5rem; margin-top: .6rem;
+    padding: .45rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem;
+    background: #f8fafc; font-size: .78rem; color: #334155;
+  }
+  .mb-archivo-sel .nombre { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mb-archivo-sel .peso   { color: #94a3b8; margin-left: auto; white-space: nowrap; }
+  .mb-archivo-sel.invalido { border-color: #fca5a5; background: #fffafb; color: #991b1b; }
+
+  .mb-btn-importar { background: #009559; color: #fff; }
+  .mb-btn-importar:hover:not(:disabled) { background: #007a49; color: #fff; }
+  .mb-btn-importar:disabled { background: #94a3b8; color: #fff; }
+
+  .mb-res { border: 1px solid #e2e8f0; border-radius: .5rem; overflow: hidden; background: #fff; }
+  .mb-res-head {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .6rem .75rem; border-bottom: 1px solid #e2e8f0;
+  }
+  .mb-res-head i { font-size: 1.1rem; }
+  .mb-res-head b { display: block; font-size: .9rem; color: #334155; line-height: 1.2; }
+  .mb-res-head span { font-size: .72rem; color: #64748b; }
+  .mb-res--ok    .mb-res-head { background: #f6fefb; } .mb-res--ok    .mb-res-head i { color: #009559; }
+  .mb-res--warn  .mb-res-head { background: #fffbeb; } .mb-res--warn  .mb-res-head i { color: #b45309; }
+  .mb-res--error .mb-res-head { background: #fffafb; } .mb-res--error .mb-res-head i { color: #dc3545; }
+
+  .mb-res-nums { display: flex; border-bottom: 1px solid #e2e8f0; }
+  .mb-res-nums > div { flex: 1; padding: .55rem .75rem; }
+  .mb-res-nums > div + div { border-left: 1px solid #e2e8f0; }
+  .mb-res-nums b {
+    display: block; font-size: 1.45rem; line-height: 1.1; color: #334155;
+    font-variant-numeric: tabular-nums; font-weight: 700;
+  }
+  .mb-res-nums .n-0 { color: #94a3b8; }
+  .mb-res-nums .n-ok { color: #009559; }
+  .mb-res-nums span {
+    font-size: .62rem; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; font-weight: 600;
+  }
+
+  .mb-res-detalle { margin: 0; padding: .4rem .75rem; font-size: .76rem; }
+  .mb-res-detalle > div {
+    display: flex; justify-content: space-between; gap: 1rem; padding: .12rem 0;
+  }
+  .mb-res-detalle dt { color: #64748b; font-weight: 500; }
+  .mb-res-detalle dd {
+    margin: 0; color: #334155; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+  }
+
+  .mb-res-nota { display: flex; gap: .5rem; padding: .55rem .75rem; font-size: .74rem; border-top: 1px solid #e2e8f0; }
+  .mb-res-nota i { margin-top: .1rem; }
+  .mb-res-nota b { display: block; font-size: .76rem; margin-bottom: .1rem; }
+  .mb-res-nota ul { margin: .15rem 0 0; padding-left: 1rem; }
+  .mb-res-nota li { margin-bottom: .1rem; }
+  .mb-res-nota--warn  { background: #fffbeb; color: #92400e; } .mb-res-nota--warn i  { color: #b45309; }
+  .mb-res-nota--error { background: #fffafb; color: #991b1b; } .mb-res-nota--error i { color: #dc3545; }
+  .mb-res-lista { max-height: 8.5rem; overflow: auto; }
+
+  .mb-res-estado {
+    display: flex; align-items: center; gap: .4rem; justify-content: center;
+    padding: .5rem .75rem; border-top: 1px solid #e2e8f0; background: #f8fafc;
+    font-size: .74rem; color: #64748b;
+  }
+
+  #mbLoader {
+    display: none; position: fixed; inset: 0; z-index: 10500;
+    background: rgba(248, 250, 252, .75); backdrop-filter: blur(1px);
+    align-items: center; justify-content: center; flex-direction: column; gap: .75rem;
+  }
+  #mbLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
+  #mbLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
+
+  {% for cod, b in bancos %}
+  .mb-tabs .nav-link[data-bs-target="#tab{{ cod }}"],
+  .btn-upload-banco[data-banco="{{ cod }}"] { --mb-banco: {{ b.color }}; }
+  {% endfor %}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div id="mbLoader">
+  <div class="spinner-border"></div>
+  <span>Cargando movimientos...</span>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    {# Los filtros no recargan la página: el submit lo intercepta el JS y pide
+       los movimientos por POST a /tesoreria/movimientos_cheques_table. #}
+    <form class="row align-items-end g-2" id="filtrosForm">
+      <div class="col-auto">
+        <label for="desde">Desde:</label>
+        <input type="date" class="form-control" name="desde" id="desde" value="{{ filtros.desde }}" required>
+      </div>
+      <div class="col-auto">
+        <label for="hasta">Hasta:</label>
+        <input type="date" class="form-control" name="hasta" id="hasta" value="{{ filtros.hasta }}" required>
+      </div>
+      <div class="col-auto">
+        <label for="cuenta">Cuenta:</label>
+        <select class="selectpicker" data-live-search="true" data-width="240px" name="cuenta" id="cuenta">
+          <option value="">Todas</option>
+          {% for c in cuentas %}
+          <option value="{{ c.cuenta }}" data-banco="{{ c.banco }}" {{ filtros.cuenta == c.cuenta ? 'selected' : '' }}>
+            {{ c.cuenta }} ({{ c.banco|lower|capitalize }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        {% for cod, b in bancos %}
+        <button type="button" class="btn btn-sm btn-outline-primary btn-upload-banco" data-banco="{{ cod }}"
+                data-bs-toggle="modal" data-bs-target="#uploadModal">
+          <i class="fas fa-file-upload"></i> Subir {{ b.etiqueta }}
+        </button>
+        {% endfor %}
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Estado vacío: se muestra hasta que el usuario presiona Buscar. #}
+<div class="card border-0 shadow-sm" id="mbVacio">
+  <div class="card-body text-center py-5">
+    <i class="fas fa-search fa-2x mb-3" style="color:#cbd5e1;"></i>
+    <h6 style="color:#334155;">Elige el rango de fechas y presiona <strong>Buscar</strong></h6>
+    <small class="text-muted">
+      Los movimientos no se cargan al entrar para no consultar rangos que no pediste.
+    </small>
+  </div>
+</div>
+
+<div id="mbResultado" style="display:none;">
+
+<!-- Tabs por banco: tablas independientes -->
+<ul class="nav nav-tabs mb-tabs mb-2">
+  {% for cod, b in bancos %}
+  <li class="nav-item">
+    <button class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
+            data-bs-target="#tab{{ cod }}" type="button">
+      <span class="mb-punto"></span>{{ b.etiqueta }} (<span data-tabcount="{{ cod }}">0</span>)
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="tab-content">
+  {% for cod, b in bancos %}
+  <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab{{ cod }}">
+    <div class="mb-tabla-wrap">
+      <table id="tabla{{ cod }}" data-banco="{{ cod }}" data-etiqueta="{{ b.etiqueta }}"
+             class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
+        <thead>
+          {# Mismo orden que la hoja de captura de Susie's (Fecha/Concepto/
+             Importe primero): Departamento, Conf. No., Factura, Comentarios
+             y Centro de Costo no vienen del PDF, se muestran vacías y
+             ocultas por defecto —activables con "Columnas"— para que el
+             layout final pueda calcar el Excel si se necesita. #}
+          <tr>
+            <th class="no-export">Id</th>
+            <th class="no-export">Acciones</th>
+            <th>Fecha</th>
+            <th>Concepto</th>
+            <th class="mb-monto">Cargo</th>
+            <th class="mb-monto">Abono</th>
+            <th>Cuenta</th>
+            <th>Departamento</th>
+            <th>Conf. No.</th>
+            <th>Factura</th>
+            <th>Comentarios</th>
+            <th>Centro de Costo</th>
+            <th>RFC / CURP</th>
+            <th>Tarjeta</th>
+            <th>Titular / Adicional</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+</div>
+
+<!-- Modal subir archivo de banco -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="formUpload">
+        <div class="modal-header mb-up-header">
+          <h5 class="modal-title" id="uploadTitle">
+            <i class="fas fa-file-upload me-1"></i> Subir movimientos
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="uploadDropzone" class="mb-dropzone">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>Arrastra el archivo aquí o haz clic para seleccionarlo</p>
+            <small id="uploadHint"></small>
+          </div>
+          <input type="file" id="archivo_banco" style="display:none;">
+          <div id="uploadArchivoSel" class="mb-archivo-sel" style="display:none;"></div>
+
+          <div id="uploadResultado" class="mt-3" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-sm mb-btn-importar" id="btnUpload">
+            <i class="fas fa-file-upload"></i> Importar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# Shell fijo del modal de clasificación manual: el contenido lo carga el JS
+   vía fetch a clasificar_movimiento_cheque_modal(), mismo patrón que
+   accounting.js::openAdjustmentModal(). #}
+<div class="modal fade" id="clasificarModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-tags me-1"></i> Clasificar movimiento</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div id="clasificarModalContent">
+        <div class="modal-body text-center py-4">
+          <span class="spinner-border spinner-border-sm"></span> Cargando...
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+$(function () {
+  // Mismo orden que la hoja de captura de Susie's (ver índice de columnas
+  // en COLUMNDEFS más abajo). Departamento/Conf. No./Factura/Comentarios/
+  // Centro de Costo se capturan a mano desde el modal "Acciones" (el PDF no
+  // los trae); ocultas por defecto para que la vista arranque con solo lo
+  // esencial, activables con el botón "Columnas".
+  var COLUMNS = [
+    { data: 'id' },
+    {
+      data: null, defaultContent: '', orderable: false,
+      render: function () {
+        return '<button type="button" class="btn btn-sm btn-outline-primary btn-clasificar" title="Clasificar">' +
+               '<i class="fas fa-tags"></i></button>';
+      },
+    },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'descripcion', defaultContent: '' },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'departamento', defaultContent: '' },
+    { data: 'conf_no', defaultContent: '' },
+    { data: 'factura', defaultContent: '' },
+    { data: 'comentarios', defaultContent: '' },
+    { data: 'centro_costo', defaultContent: '' },
+    { data: 'rfc_contraparte', defaultContent: '' },
+    { data: 'tarjeta', className: 'mb-cuenta', defaultContent: '' },
+    {
+      data: 'titular_adicional', defaultContent: '',
+      render: function (d, type, row) {
+        if (type !== 'display') return d || '';
+        return row.es_adicional ? (esc(d || '') || 'Adicional') : 'Titular';
+      },
+    },
+  ];
+  // Columnas: 0 Id, 1 Acciones, 2 Fecha, 3 Concepto, 4 Cargo, 5 Abono, 6 Cuenta,
+  // 7 Departamento .. 11 Centro de Costo, 12 RFC, 13 Tarjeta, 14 Titular.
+  // Departamento(7) .. Centro de Costo(11), RFC(12), Tarjeta(13), Titular(14)
+  // ocultos por default; activables con el botón "Columnas".
+  var COLUMNDEFS = [{ targets: [7, 8, 9, 10, 11, 12, 13, 14], visible: false }];
+
+  function initMovsTable(sel, excelTitle, emptyMsg) {
+    var api = $(sel).DataTable({
+      responsive: true,
+      paging: false,
+      ordering: false,
+      // Recuerda qué columnas dejó visibles el usuario (localStorage, por
+      // tabla/banco): la próxima vez que entra no tiene que reactivarlas.
+      stateSave: true,
+      stateDuration: -1,   // sin expiración (sessionStorage sería por pestaña)
+      dom: '<"mb-top"Bf>rt<"mb-bottom"i>',
+      language: {
+        info: 'Mostrando _TOTAL_ movimientos',
+        infoFiltered: '(filtrados de _MAX_)',
+        infoEmpty: 'Sin movimientos',
+        emptyTable: emptyMsg,
+      },
+      buttons: [
+        {
+          extend: 'excel',
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          className: 'btn btn-sm btn-success',
+          title: excelTitle,
+          exportOptions: { columns: ':visible:not(.no-export)' },
+        },
+        {
+          extend: 'colvis',
+          text: '<i class="fas fa-columns"></i> Columnas',
+          className: 'btn btn-sm btn-outline-secondary',
+        },
+      ],
+      data: [],
+      deferRender: true,
+      columns: COLUMNS,
+      columnDefs: COLUMNDEFS,
+      initComplete: function () {
+        var api = this.api();
+        $(sel).wrap('<div class="mb-scroll"></div>');
+
+        function buildFilterRow() {
+          $(sel + ' thead tr.filter').remove();
+          var filterRow = $('<tr class="filter"></tr>');
+          $(sel + ' thead tr:first th').each(function () {
+            var title = $(this).text().trim();
+            filterRow.append(
+              '<th><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>'
+            );
+          });
+          $(sel + ' thead').append(filterRow);
+
+          $(sel + ' thead tr.filter th input').on('keyup change', function () {
+            var visIdx = $(this).parent().index();
+            api.column(visIdx + ':visible').search(this.value).draw();
+          });
+
+          var altura = $(sel + ' thead tr:first th:visible').first().outerHeight() || 33;
+          $(sel + ' thead tr.filter th').css('top', altura + 'px');
+        }
+
+        buildFilterRow();
+
+        api.on('column-visibility.dt', function () {
+          api.columns().search('');
+          buildFilterRow();
+          api.draw();
+        });
+      },
+    });
+    return api;
+  }
+
+  function fmtMonto(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtFecha(iso) {
+    var p = String(iso).substring(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+
+  var BANCOS = {{ bancos|json_encode|raw }};
+
+  var tablas = {};
+  Object.keys(BANCOS).forEach(function (cod) {
+    tablas[cod] = initMovsTable('#tabla' + cod, 'Movimientos ' + BANCOS[cod].etiqueta,
+      'Sin movimientos de ' + BANCOS[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.');
+  });
+
+  // ===== Clasificación manual (modal "Acciones", vista parcial vía fetch) =====
+  // Fila y tabla del movimiento que se está clasificando ahora mismo, para
+  // poder repintar solo esa fila al guardar sin recargar la tabla completa.
+  var filaEnEdicion = null;
+
+  $('.mb-tabla-wrap').on('click', '.btn-clasificar', async function () {
+    var api = $(this).closest('table').DataTable();
+    var rowApi = api.row($(this).closest('tr'));
+    var data = rowApi.data();
+    filaEnEdicion = rowApi;
+
+    $('#clasificarModal').modal('show');
+    $('#clasificarModalContent').html(
+      '<div class="modal-body text-center py-4"><span class="spinner-border spinner-border-sm"></span> Cargando...</div>');
+
+    try {
+      var response = await fetch('/tesoreria/clasificar_movimiento_cheque_modal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        credentials: 'include',
+        body: 'id=' + encodeURIComponent(data.id),
+      });
+      var content = await response.text();
+      $('#clasificarModalContent').html(content);
+    } catch (e) {
+      $('#clasificarModalContent').html('<div class="alert alert-danger m-3">Error de conexión al abrir el modal</div>');
+    }
+  });
+
+  $('#clasificarModalContent').on('submit', '#formClasificarMovimiento', function (e) {
+    e.preventDefault();
+    var form = this;
+    var id = $(form).data('id');
+    var btn = document.getElementById('btnGuardarClasificacion');
+    var resultado = document.getElementById('clasificarResultado');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Guardando...';
+
+    fetch('/tesoreria/guardar_clasificacion_movimiento_cheque', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'id=' + encodeURIComponent(id) + '&' + $(form).serialize(),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r || !r.success) {
+          resultado.className = 'mt-2 alert alert-danger';
+          resultado.textContent = (r && r.message) || 'No se pudo guardar';
+          resultado.style.display = 'block';
+          return;
+        }
+        // Repinta solo la fila editada con los valores capturados, sin
+        // volver a consultar el servidor ni recargar la tabla completa.
+        if (filaEnEdicion) {
+          var rowData = filaEnEdicion.data();
+          rowData.departamento = $(form).find('[name="departamento"]').val();
+          rowData.conf_no      = $(form).find('[name="conf_no"]').val();
+          rowData.factura      = $(form).find('[name="factura"]').val();
+          rowData.comentarios  = $(form).find('[name="comentarios"]').val();
+          rowData.centro_costo = $(form).find('[name="centro_costo"]').val();
+          filaEnEdicion.data(rowData).draw(false);
+        }
+        $('#clasificarModal').modal('hide');
+      })
+      .catch(function () {
+        resultado.className = 'mt-2 alert alert-danger';
+        resultado.textContent = 'Error de conexión al guardar';
+        resultado.style.display = 'block';
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Guardar';
+      });
+  });
+
+  $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+  });
+
+  function mostrarLoader() { document.getElementById('mbLoader').style.display = 'flex'; }
+  function ocultarLoader() { document.getElementById('mbLoader').style.display = 'none'; }
+
+  function bancoDelTab() {
+    var banco = ($('#cuenta option:selected').attr('data-banco') || '').toUpperCase();
+    return BANCOS[banco] ? banco : Object.keys(BANCOS)[0];
+  }
+
+  function abrirTab(cod) {
+    var btn = document.querySelector('button[data-bs-target="#tab' + cod + '"]');
+    if (!btn || btn.classList.contains('active')) return;
+    if (window.bootstrap && window.bootstrap.Tab) {
+      window.bootstrap.Tab.getOrCreateInstance(btn).show();
+    } else {
+      $(btn).tab('show');
+    }
+  }
+
+  var buscando = false;
+  function buscarMovimientos() {
+    if (buscando) return;
+    buscando = true;
+    mostrarLoader();
+
+    $.ajax({
+      url: '/tesoreria/movimientos_cheques_table',
+      method: 'POST',
+      dataType: 'json',
+      timeout: 600000,
+      data: {
+        desde:  $('#desde').val(),
+        hasta:  $('#hasta').val(),
+        cuenta: $('#cuenta').val(),
+      },
+    }).done(function (r) {
+      if (!r || !r.success) {
+        alertify.error((r && r.message) || 'Error al consultar los movimientos');
+        return;
+      }
+      $('#mbVacio').hide();
+      $('#mbResultado').show();
+
+      Object.keys(BANCOS).forEach(function (cod) {
+        var filas = r.movimientos[cod] || [];
+        tablas[cod].clear().rows.add(filas).draw();
+        $('[data-tabcount="' + cod + '"]').text(filas.length);
+      });
+      abrirTab(bancoDelTab());
+      $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    }).fail(function (xhr, estado) {
+      alertify.error(estado === 'timeout'
+        ? 'La consulta tardó demasiado. Reduce el rango de fechas.'
+        : 'Error de comunicación al consultar los movimientos');
+    }).always(function () {
+      buscando = false;
+      ocultarLoader();
+    });
+  }
+
+  function recargarLimpio() {
+    mostrarLoader();
+    window.location.href = '/tesoreria/movimientos_bancos_cheques';
+  }
+
+  document.getElementById('filtrosForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    buscarMovimientos();
+  });
+
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) ocultarLoader();
+  });
+
+  // ===== Upload de archivos de banco (modal y endpoint compartidos) =====
+  var bancoActual = Object.keys(BANCOS)[0];
+
+  var form = document.getElementById('formUpload');
+  var btn = document.getElementById('btnUpload');
+  var resultado = document.getElementById('uploadResultado');
+  var inputArchivo = document.getElementById('archivo_banco');
+
+  var archivoActual = null;
+
+  function fmtPeso(bytes) {
+    return bytes < 1024 * 1024
+      ? (bytes / 1024).toFixed(0) + ' KB'
+      : (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function elegirArchivo(file) {
+    if (!file) return;
+    var cfg = BANCOS[bancoActual];
+    var ext = (file.name.split('.').pop() || '').toLowerCase();
+
+    if (cfg.ext.indexOf(ext) === -1) {
+      archivoActual = null;
+      $('#uploadArchivoSel').addClass('invalido').show().html(
+        '<i class="fas fa-circle-exclamation"></i>' +
+        '<span class="nombre">' + esc(file.name) + '</span>' +
+        '<span class="peso">' + cfg.etiqueta + ' espera .' + cfg.ext.join(' o .') + '</span>');
+      return;
+    }
+
+    archivoActual = file;
+    $('#uploadArchivoSel').removeClass('invalido').show().html(
+      '<i class="fas fa-paperclip text-primary"></i>' +
+      '<span class="nombre">' + esc(file.name) + '</span>' +
+      '<span class="peso">' + fmtPeso(file.size) + '</span>');
+    resultado.style.display = 'none';
+  }
+
+  $('#uploadDropzone').on('click', function () { inputArchivo.click(); });
+  $(inputArchivo).on('change', function () { elegirArchivo(this.files[0]); });
+  $('#uploadDropzone')
+    .on('dragover', function (e) { e.preventDefault(); $(this).addClass('arrastrando'); })
+    .on('dragleave drop', function (e) { e.preventDefault(); $(this).removeClass('arrastrando'); })
+    .on('drop', function (e) {
+      var files = e.originalEvent.dataTransfer.files;
+      if (files && files.length) elegirArchivo(files[0]);
+    });
+
+  $('.btn-upload-banco').on('click', function () {
+    bancoActual = $(this).data('banco');
+    var cfg = BANCOS[bancoActual];
+    document.getElementById('uploadTitle').innerHTML =
+      '<i class="fas fa-file-upload me-1"></i> Subir movimientos de ' + esc(cfg.etiqueta);
+    document.getElementById('uploadHint').textContent =
+      cfg.espera.charAt(0).toUpperCase() + cfg.espera.slice(1) + ' · .' + cfg.ext.join(' o .');
+    $('#uploadModal .modal-content').css('--mb-banco', cfg.color || '#1d4ed8');
+
+    inputArchivo.setAttribute('accept', '.' + cfg.ext.join(',.'));
+    inputArchivo.value = '';
+    archivoActual = null;
+    $('#uploadArchivoSel').hide().removeClass('invalido').empty();
+    resultado.style.display = 'none';
+  });
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function hayQueLeer(data) {
+    return !!(data.errores && data.errores.length);
+  }
+
+  function bloqueNota(tipo, icono, titulo, items) {
+    if (!items || !items.length) return '';
+    return '<div class="mb-res-nota mb-res-nota--' + tipo + '">' +
+           '<i class="fas fa-' + icono + '"></i><div>' +
+           '<b>' + esc(titulo) + '</b>' +
+           '<ul class="mb-res-lista">' + items.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' +
+           '</div></div>';
+  }
+
+  function panelExito(data) {
+    var tono  = (data.errores && data.errores.length) ? 'warn' : 'ok';
+    var etiqueta = (BANCOS[data.banco] && BANCOS[data.banco].etiqueta) || data.banco || '';
+    var nombre   = archivoActual ? archivoActual.name : '';
+
+    var html = '<div class="mb-res mb-res--' + tono + '">';
+
+    html += '<div class="mb-res-head">' +
+            '<i class="fas fa-' + (tono === 'ok' ? 'circle-check' : 'circle-exclamation') + '"></i>' +
+            '<div><b>Importación completada</b>' +
+            '<span>' + esc(etiqueta) + (nombre ? ' · ' + esc(nombre) : '') + '</span></div></div>';
+
+    html += '<div class="mb-res-nums">' +
+            '<div><b class="' + (data.insertados > 0 ? 'n-ok' : 'n-0') + '">' +
+            Number(data.insertados).toLocaleString('en-US') + '</b><span>importados</span></div>' +
+            '<div><b class="' + (data.duplicados > 0 ? '' : 'n-0') + '">' +
+            Number(data.duplicados).toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
+            '</div>';
+
+    html += bloqueNota('error', 'circle-xmark', 'Líneas con problema', data.errores);
+
+    html += '<div class="mb-res-estado">' + (hayQueLeer(data)
+              ? '<button type="button" class="btn btn-sm btn-success" id="btnVerImportados">' +
+                '<i class="fas fa-rotate-right"></i> Entendido, recargar</button>'
+              : '<span class="spinner-border spinner-border-sm"></span> Recargando la página…') +
+            '</div>';
+
+    return html + '</div>';
+  }
+
+  function panelError(data) {
+    return '<div class="mb-res mb-res--error">' +
+           '<div class="mb-res-head"><i class="fas fa-circle-xmark"></i>' +
+           '<div><b>No se importó nada</b><span>Ningún movimiento se guardó</span></div></div>' +
+           '<div class="mb-res-nota mb-res-nota--error"><i class="fas fa-circle-info"></i><div>' +
+           esc(data.message || 'Error al importar') + '</div></div>' +
+           bloqueNota('error', 'circle-xmark', 'Detalle', data.errores) +
+           '</div>';
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!archivoActual) {
+      resultado.innerHTML = panelError({ message: 'Elige el archivo que vas a importar' });
+      resultado.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
+    resultado.style.display = 'none';
+
+    var fd = new FormData();
+    fd.append('banco', bancoActual);
+    fd.append('archivo', archivoActual);
+
+    fetch('/tesoreria/upload_movimientos_cheques', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        resultado.innerHTML = data.success ? panelExito(data) : panelError(data);
+        resultado.style.display = 'block';
+
+        if (!data.success) return;
+
+        $('#uploadModal').one('hidden.bs.modal', recargarLimpio);
+
+        if (hayQueLeer(data)) {
+          $('#btnVerImportados').on('click', function () { $('#uploadModal').modal('hide'); });
+        } else {
+          setTimeout(function () { $('#uploadModal').modal('hide'); }, 1400);
+        }
+      })
+      .catch(function () {
+        resultado.innerHTML = panelError({ message: 'Error de conexión al importar el archivo' });
+        resultado.style.display = 'block';
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-file-upload"></i> Importar';
+      });
+  });
+});
+</script>
+{% endblock %}

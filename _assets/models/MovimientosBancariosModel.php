@@ -1466,13 +1466,22 @@ class MovimientosBancariosModel extends Model
     /**
      * Movimientos filtrados. $filtros: desde, hasta (obligatorios),
      * cuenta, tipo ('cargo'|'abono'), q (texto libre).
+     *
+     * $cuentasPermitidas: si viene no vacío, restringe SIEMPRE a esas cuentas
+     * sin importar lo que traiga $filtros['cuenta'] (perfiles con permiso
+     * acotado, p.ej. Crédito, ver Tesoreria::CUENTAS_PERFIL_CREDITO).
      */
-    public function get_movimientos(array $filtros): array
+    public function get_movimientos(array $filtros, ?array $cuentasPermitidas = null): array
     {
         $where  = 'WHERE fecha BETWEEN ? AND ?';
         $params = [$filtros['desde'], $filtros['hasta']];
 
-        if (!empty($filtros['cuenta'])) {
+        if ($cuentasPermitidas !== null) {
+            if (!$cuentasPermitidas) return [];
+            $ph      = implode(',', array_fill(0, count($cuentasPermitidas), '?'));
+            $where  .= " AND cuenta IN ($ph)";
+            array_push($params, ...$cuentasPermitidas);
+        } elseif (!empty($filtros['cuenta'])) {
             $where   .= ' AND cuenta = ?';
             $params[] = $filtros['cuenta'];
         }
@@ -1536,9 +1545,20 @@ class MovimientosBancariosModel extends Model
         return $this->sql->select($query, [$hasta]) ?: [];
     }
 
-    /** Cuentas distintas presentes en la tabla (para el filtro). */
-    public function get_cuentas(): array
+    /**
+     * Cuentas distintas presentes en la tabla (para el filtro).
+     * $cuentasPermitidas restringe el selector a esas cuentas (perfiles
+     * acotados, p.ej. Crédito).
+     */
+    public function get_cuentas(?array $cuentasPermitidas = null): array
     {
+        if ($cuentasPermitidas !== null) {
+            if (!$cuentasPermitidas) return [];
+            $ph    = implode(',', array_fill(0, count($cuentasPermitidas), '?'));
+            $query = "SELECT DISTINCT banco, cuenta FROM [TG].[dbo].[movimientos_bancarios]
+                      WHERE cuenta IN ($ph) ORDER BY banco, cuenta;";
+            return $this->sql->select($query, $cuentasPermitidas) ?: [];
+        }
         $query = 'SELECT DISTINCT banco, cuenta FROM [TG].[dbo].[movimientos_bancarios]
                   ORDER BY banco, cuenta;';
         return $this->sql->select($query) ?: [];

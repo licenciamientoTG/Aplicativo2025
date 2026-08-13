@@ -290,13 +290,21 @@
       </li>
 
       {% endif %}
-      {% if authorized(41) or authorized(79) or authorized(80) %} {# Ver módulo de Tesorería #}
+      {% if authorized(41) or authorized(79) or authorized(80) or authorized(87) or authorized(88) %} {# Ver módulo de Tesorería #}
       <li class="sidebar-header">TESORERÍA</li>
-      {% if authorized(80) %}
+      {% if authorized(80) or authorized(87) %}
       <li class="sidebar-item">
         <a class="sidebar-link" href="/tesoreria/movimientos_bancos">
           <i data-feather="credit-card"></i>
           <span class="align-middle">Movimientos bancos</span>
+        </a>
+      </li>
+      {% endif %}
+      {% if authorized(88) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/tesoreria/movimientos_bancos_cheques">
+          <i data-feather="credit-card"></i>
+          <span class="align-middle">Movimientos bancos cheques</span>
         </a>
       </li>
       {% endif %}
