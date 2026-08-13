@@ -268,7 +268,8 @@
       "PowerShell(php \"C:\\\\Users\\\\manue\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-manue-OneDrive-Desktop-proyectos-aplicativoTG-Aplicativo2025\\\\d71de4b7-b859-4d03-87cc-a5b0021a0b25\\\\scratchpad\\\\q.php\")",
       "PowerShell(node --check \"_assets/js/payment.js\")",
       "Bash(mkdir *)",
-      "Bash(sort -u -t: -k1)"
+      "Bash(sort -u -t: -k1)",
+      "PowerShell(Get-Command *)"
     ],
     "deny": [],
     "ask": []
