@@ -1,6 +1,256 @@
 {% extends "views/layouts/base.html" %}
 
 {% block title %}Conciliaciones efectivo{% endblock %}
-{% block menutitle %}Conciliar{% endblock %}
+{% block menutitle %}Conciliar efectivo{% endblock %}
 
-{% block content %}{% endblock %}
+{% block content %}
+<style>
+    .cash-conciliation { --tg-blue:#188ae2; --tg-green:#168a61; --line:#e2e9f0; --muted:#64748b; --surface:#fff; --soft:#f7fbff; }
+    .cash-conciliation .cash-toolbar, .cash-conciliation .cash-results { background:var(--surface); border:1px solid var(--line); border-radius:.85rem; box-shadow:0 3px 14px rgba(28,52,84,.06); }
+    .cash-conciliation .cash-toolbar { padding:1rem 1.15rem; }
+    .cash-conciliation .cash-toolbar-title { color:#19324a; font-weight:700; font-size:1rem; }
+    .cash-conciliation .cash-toolbar-help { color:var(--muted); font-size:.78rem; }
+    .cash-conciliation .cash-field label { color:#52657a; display:block; font-size:.7rem; font-weight:700; letter-spacing:.04em; margin-bottom:.3rem; text-transform:uppercase; }
+    .cash-conciliation .cash-field .form-control { border-color:#d6e1eb; border-radius:.55rem; color:#23384d; min-height:38px; }
+    .cash-conciliation .cash-field .form-control:focus { border-color:var(--tg-blue); box-shadow:0 0 0 .18rem rgba(24,138,226,.14); }
+    .cash-conciliation .cash-search { background:var(--tg-blue); border:0; border-radius:.55rem; box-shadow:0 2px 7px rgba(24,138,226,.24); font-weight:700; min-height:38px; transition:transform .16s ease, box-shadow .16s ease; }
+    .cash-conciliation .cash-search:hover { background:#0878cc; box-shadow:0 4px 11px rgba(24,138,226,.29); transform:translateY(-1px); }
+    .cash-conciliation .cash-kpis { display:grid; gap:.75rem; grid-template-columns:repeat(5, minmax(0, 1fr)); margin:1rem 0; }
+    .cash-conciliation .cash-kpi { background:var(--surface); border:1px solid var(--line); border-radius:.72rem; box-shadow:0 2px 9px rgba(28,52,84,.045); padding:.75rem .9rem; }
+    .cash-conciliation .cash-kpi-label { color:var(--muted); font-size:.7rem; font-weight:700; letter-spacing:.035em; text-transform:uppercase; }
+    .cash-conciliation .cash-kpi-value { color:#1e3a54; font-size:1.05rem; font-variant-numeric:tabular-nums; font-weight:700; margin-top:.22rem; white-space:nowrap; }
+    .cash-conciliation .cash-kpi--mn { border-top:3px solid var(--tg-green); }
+    .cash-conciliation .cash-kpi--mn .cash-kpi-value { color:var(--tg-green); }
+    .cash-conciliation .cash-results { overflow:hidden; }
+    .cash-conciliation .cash-results-head { align-items:center; background:var(--soft); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; padding:.78rem 1rem; }
+    .cash-conciliation .cash-results-title { color:#23384d; font-size:.92rem; font-weight:700; margin:0; }
+    .cash-conciliation .cash-results-meta { color:var(--muted); font-size:.75rem; }
+    .cash-conciliation .cash-date-group + .cash-date-group { border-top:1px solid var(--line); }
+    .cash-conciliation .cash-date-toggle { align-items:center; background:#fff; border:0; color:#263d54; cursor:pointer; display:flex; gap:.7rem; min-height:58px; padding:.65rem 1rem; text-align:left; transition:background .16s ease; width:100%; }
+    .cash-conciliation .cash-date-toggle:hover, .cash-conciliation .cash-date-toggle[aria-expanded="true"] { background:#f5faff; }
+    .cash-conciliation .cash-chevron { color:var(--tg-blue); transition:transform .18s ease; width:13px; }
+    .cash-conciliation .cash-date-toggle[aria-expanded="true"] .cash-chevron { transform:rotate(90deg); }
+    .cash-conciliation .cash-date-main { flex:1 1 215px; min-width:0; }
+    .cash-conciliation .cash-date-label { display:block; font-size:.88rem; font-weight:700; }
+    .cash-conciliation .cash-date-subtitle { color:var(--muted); display:block; font-size:.73rem; margin-top:.08rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cash-conciliation .cash-date-total { color:var(--tg-green); font-size:.92rem; font-variant-numeric:tabular-nums; font-weight:700; margin-left:auto; white-space:nowrap; }
+    .cash-conciliation .cash-date-summary { color:var(--muted); font-size:.72rem; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+    .cash-conciliation .cash-date-body { background:#fcfdff; display:none; padding:0 1rem 1rem 2.5rem; }
+    .cash-conciliation .cash-date-body.is-open { display:block; }
+    .cash-conciliation .cash-table { font-size:.82rem; margin:0; }
+    .cash-conciliation .cash-table thead th { background:#edf5fb; border-bottom:1px solid #d8e5ef; color:#52657a; font-size:.68rem; letter-spacing:.025em; padding:.55rem .65rem; text-transform:uppercase; white-space:nowrap; }
+    .cash-conciliation .cash-table td { border-color:#edf1f5; color:#344b60; padding:.55rem .65rem; vertical-align:middle; }
+    .cash-conciliation .cash-table tbody tr:hover { background:#f7fbff; }
+    .cash-conciliation .cash-table .cash-amount { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+    .cash-conciliation .cash-table .cash-mn { color:var(--tg-green); font-weight:700; }
+    .cash-conciliation .cash-turn { background:#eaf4fc; border-radius:999px; color:#1676b9; display:inline-block; font-size:.72rem; font-weight:700; min-width:25px; padding:.12rem .38rem; text-align:center; }
+    .cash-conciliation .cash-empty, .cash-conciliation .cash-error { color:var(--muted); padding:3.5rem 1rem; text-align:center; }
+    .cash-conciliation .cash-empty i, .cash-conciliation .cash-error i { color:#a7b9c9; display:block; font-size:1.7rem; margin-bottom:.65rem; }
+    .cash-conciliation .cash-error { color:#a33e3e; }
+    .cash-conciliation .cash-error i { color:#dc6a6a; }
+    .cash-conciliation .cash-loading { display:flex; align-items:center; color:var(--muted); gap:.55rem; padding:2rem 1rem; justify-content:center; }
+    @media (max-width:991.98px) { .cash-conciliation .cash-kpis { grid-template-columns:repeat(3, minmax(0, 1fr)); } .cash-conciliation .cash-date-summary { display:none; } }
+    @media (max-width:575.98px) { .cash-conciliation .cash-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); } .cash-conciliation .cash-toolbar { padding:.9rem; } .cash-conciliation .cash-date-body { padding-left:.75rem; padding-right:.75rem; } .cash-conciliation .cash-date-total { font-size:.82rem; } }
+    @media (prefers-reduced-motion:reduce) { .cash-conciliation *, .cash-conciliation *::before, .cash-conciliation *::after { scroll-behavior:auto!important; transition:none!important; } }
+</style>
+
+<section class="cash-conciliation" aria-label="Consulta de efectivo por turno">
+    <div class="cash-toolbar">
+        <div class="d-flex flex-wrap align-items-center justify-content-between mb-3" style="gap:.45rem;">
+            <div>
+                <div class="cash-toolbar-title"><i class="fas fa-money-bill-wave text-primary mr-2"></i>Control de efectivo</div>
+                <div class="cash-toolbar-help">Consulta los cortes por turno y despliega cada fecha para ver su detalle.</div>
+            </div>
+            <span class="badge badge-light border text-muted px-2 py-1"><i class="fas fa-database mr-1"></i>ControlGas</span>
+        </div>
+        <div class="row align-items-end" style="row-gap:.7rem;">
+            <div class="col-lg-5 col-md-6 cash-field">
+                <label for="cash-station">Estación</label>
+                <select id="cash-station" class="form-control" disabled aria-describedby="cash-station-help">
+                    <option>Cargando estaciones…</option>
+                </select>
+                <small id="cash-station-help" class="sr-only">Seleccione la estación a consultar</small>
+            </div>
+            <div class="col-lg-2 col-md-3 col-6 cash-field">
+                <label for="cash-date-start">Desde</label>
+                <input id="cash-date-start" class="form-control" type="date">
+            </div>
+            <div class="col-lg-2 col-md-3 col-6 cash-field">
+                <label for="cash-date-end">Hasta</label>
+                <input id="cash-date-end" class="form-control" type="date">
+            </div>
+            <div class="col-lg-3 col-md-12">
+                <button id="cash-search" type="button" class="btn btn-primary cash-search w-100"><i class="fas fa-search mr-1"></i> Consultar efectivo</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cash-kpis" aria-live="polite">
+        <div class="cash-kpi"><div class="cash-kpi-label">Registros</div><div class="cash-kpi-value" id="cash-count">—</div></div>
+        <div class="cash-kpi cash-kpi--mn"><div class="cash-kpi-label">Efectivo MN</div><div class="cash-kpi-value" id="cash-total-mn">—</div></div>
+        <div class="cash-kpi"><div class="cash-kpi-label">Dólares</div><div class="cash-kpi-value" id="cash-total-dollars">—</div></div>
+        <div class="cash-kpi"><div class="cash-kpi-label">Dólares 2</div><div class="cash-kpi-value" id="cash-total-dollars2">—</div></div>
+        <div class="cash-kpi"><div class="cash-kpi-label">Morralla y cheques</div><div class="cash-kpi-value" id="cash-total-other">—</div></div>
+    </div>
+
+    <div class="cash-results" aria-live="polite">
+        <div class="cash-results-head">
+            <h2 class="cash-results-title">Cortes por fecha</h2>
+            <span class="cash-results-meta" id="cash-results-meta">Seleccione una estación y consulte un periodo.</span>
+        </div>
+        <div id="cash-results-body">
+            <div class="cash-empty"><i class="fas fa-calendar-alt"></i>Los cortes aparecerán aquí agrupados por fecha.</div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block myjs %}
+<script>
+(() => {
+    'use strict';
+
+    const API_URL = 'http://201.174.170.236:99/api/Depositos/GetDepositosEstacion';
+    const STATIONS_URL = '/income/get_estaciones_catalogo';
+    const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+    const integer = new Intl.NumberFormat('es-MX');
+    const dateFormatter = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const station = document.getElementById('cash-station');
+    const dateStart = document.getElementById('cash-date-start');
+    const dateEnd = document.getElementById('cash-date-end');
+    const searchButton = document.getElementById('cash-search');
+    const results = document.getElementById('cash-results-body');
+    const resultsMeta = document.getElementById('cash-results-meta');
+    const kpis = {
+        count: document.getElementById('cash-count'), mn: document.getElementById('cash-total-mn'),
+        dollars: document.getElementById('cash-total-dollars'), dollars2: document.getElementById('cash-total-dollars2'), other: document.getElementById('cash-total-other')
+    };
+
+    const today = new Date();
+    const isoDate = value => value.toISOString().slice(0, 10);
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    dateStart.value = isoDate(firstDay);
+    dateEnd.value = isoDate(today);
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#039;', '"':'&quot;' })[character]);
+    }
+    function number(value) {
+        if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+        const parsed = Number(String(value ?? 0).replace(/[$,\s]/g, ''));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+    function parseApiDate(value) {
+        const match = String(value ?? '').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+        return match ? new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1])) : new Date(value);
+    }
+    function dateKey(value) {
+        const date = parseApiDate(value);
+        return Number.isNaN(date.getTime()) ? String(value ?? '') : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+    function resetKpis() { Object.values(kpis).forEach(element => { element.textContent = '—'; }); }
+    function setLoading(isLoading) {
+        searchButton.disabled = isLoading;
+        searchButton.innerHTML = isLoading ? '<span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>Consultando…' : '<i class="fas fa-search mr-1"></i> Consultar efectivo';
+    }
+    function renderError(message) {
+        results.innerHTML = `<div class="cash-error"><i class="fas fa-exclamation-circle"></i>${escapeHtml(message)}</div>`;
+    }
+    function renderRows(rows) {
+        if (!rows.length) {
+            results.innerHTML = '<div class="cash-empty"><i class="fas fa-inbox"></i>No hay cortes de efectivo para los filtros seleccionados.</div>';
+            resultsMeta.textContent = 'Sin registros en el periodo seleccionado.';
+            resetKpis();
+            return;
+        }
+
+        const totals = rows.reduce((sum, row) => ({
+            mn: sum.mn + number(row.MN), dollars: sum.dollars + number(row.Dolares), dollars2: sum.dollars2 + number(row.Dolares2),
+            morralla: sum.morralla + number(row.Morralla), cheques: sum.cheques + number(row.Cheques)
+        }), { mn:0, dollars:0, dollars2:0, morralla:0, cheques:0 });
+        kpis.count.textContent = integer.format(rows.length);
+        kpis.mn.textContent = money.format(totals.mn);
+        kpis.dollars.textContent = money.format(totals.dollars);
+        kpis.dollars2.textContent = money.format(totals.dollars2);
+        kpis.other.textContent = `${money.format(totals.morralla)} / ${money.format(totals.cheques)}`;
+
+        const byDate = rows.reduce((groups, row) => {
+            const key = dateKey(row.Fecha);
+            (groups[key] ||= []).push(row);
+            return groups;
+        }, {});
+        const groups = Object.entries(byDate).sort(([left], [right]) => right.localeCompare(left));
+        resultsMeta.textContent = `${integer.format(rows.length)} corte${rows.length === 1 ? '' : 's'} en ${groups.length} fecha${groups.length === 1 ? '' : 's'}.`;
+        results.innerHTML = groups.map(([key, groupRows], index) => {
+            const groupTotal = groupRows.reduce((sum, row) => sum + number(row.MN), 0);
+            const groupDollars = groupRows.reduce((sum, row) => sum + number(row.Dolares), 0);
+            const date = parseApiDate(groupRows[0].Fecha);
+            const label = Number.isNaN(date.getTime()) ? key : dateFormatter.format(date);
+            const stationName = groupRows[0].Gasolinera || 'Estación';
+            const bodyId = `cash-date-${index}`;
+            const tableRows = groupRows.sort((a, b) => number(a.Turno) - number(b.Turno)).map(row => `<tr>
+                <td><span class="cash-turn">${escapeHtml(row.Turno)}</span></td>
+                <td class="cash-amount">${money.format(number(row.Dolares))}</td>
+                <td class="cash-amount">${money.format(number(row.Dolares2))}</td>
+                <td class="cash-amount cash-mn">${money.format(number(row.MN))}</td>
+                <td class="cash-amount">${money.format(number(row.Morralla))}</td>
+                <td class="cash-amount">${money.format(number(row.Cheques))}</td>
+            </tr>`).join('');
+            return `<article class="cash-date-group">
+                <button type="button" class="cash-date-toggle" aria-expanded="false" aria-controls="${bodyId}">
+                    <i class="fas fa-chevron-right cash-chevron" aria-hidden="true"></i>
+                    <span class="cash-date-main"><span class="cash-date-label text-capitalize">${escapeHtml(label)}</span><span class="cash-date-subtitle">${escapeHtml(stationName)} · ${groupRows.length} turno${groupRows.length === 1 ? '' : 's'}</span></span>
+                    <span class="cash-date-summary">Dólares ${money.format(groupDollars)}</span>
+                    <span class="cash-date-total">MN ${money.format(groupTotal)}</span>
+                </button>
+                <div class="cash-date-body" id="${bodyId}"><div class="table-responsive"><table class="table cash-table"><thead><tr><th>Turno</th><th class="text-right">Dólares</th><th class="text-right">Dólares 2</th><th class="text-right">MN</th><th class="text-right">Morralla</th><th class="text-right">Cheques</th></tr></thead><tbody>${tableRows}</tbody></table></div></div>
+            </article>`;
+        }).join('');
+    }
+    async function loadStations() {
+        try {
+            const response = await fetch(STATIONS_URL, { headers: { Accept:'application/json' } });
+            const json = await response.json();
+            const stations = json.status === 'success' ? (json.respuesta || []) : [];
+            station.innerHTML = '<option value="">Seleccione una estación…</option>' + stations.map(item => `<option value="${escapeHtml(item.Codigo)}">${escapeHtml(item.Nombre)}</option>`).join('');
+        } catch (error) {
+            station.innerHTML = '<option value="">No fue posible cargar estaciones</option>';
+        } finally {
+            station.disabled = false;
+        }
+    }
+    async function search() {
+        if (!station.value) { renderError('Seleccione una estación antes de consultar.'); return; }
+        if (!dateStart.value || !dateEnd.value || dateStart.value > dateEnd.value) { renderError('Indique un rango de fechas válido.'); return; }
+        setLoading(true);
+        results.innerHTML = '<div class="cash-loading"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Consultando cortes de efectivo…</div>';
+        resultsMeta.textContent = 'Consultando ControlGas…';
+        try {
+            const payload = { Datos: { FechaInicial: dateStart.value.replaceAll('-', ''), FechaFinal: dateEnd.value.replaceAll('-', ''), Gasolinera: Number(station.value) } };
+            const response = await fetch(API_URL, { method:'POST', headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body:JSON.stringify(payload) });
+            if (!response.ok) throw new Error(`El servicio respondió con código ${response.status}.`);
+            const json = await response.json();
+            if (!json.exito && json.codigo !== 0) throw new Error(json.mensaje || 'No se pudo obtener la información de efectivo.');
+            renderRows(Array.isArray(json.respuesta) ? json.respuesta : []);
+        } catch (error) {
+            resetKpis();
+            resultsMeta.textContent = 'No fue posible completar la consulta.';
+            renderError(error.message || 'No fue posible conectar con el servicio de ControlGas.');
+        } finally {
+            setLoading(false);
+        }
+    }
+    results.addEventListener('click', event => {
+        const toggle = event.target.closest('.cash-date-toggle');
+        if (!toggle) return;
+        const body = document.getElementById(toggle.getAttribute('aria-controls'));
+        const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', String(!isOpen));
+        body.classList.toggle('is-open', !isOpen);
+    });
+    searchButton.addEventListener('click', search);
+    [station, dateStart, dateEnd].forEach(input => input.addEventListener('keydown', event => { if (event.key === 'Enter') search(); }));
+    loadStations();
+})();
+</script>
+{% endblock %}
