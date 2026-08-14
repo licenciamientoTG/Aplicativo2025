@@ -68,6 +68,7 @@
 
     /* SPLIT */
     .split-container { display:flex;gap:16px;padding:0 10px 20px;height:calc(100vh - 230px); }
+    .split-container.preconciliacion-bloqueada { pointer-events:none;opacity:.72; }
     .panel-split { flex:1;background:#fff;border-radius:12px;border:1px solid var(--border-color);display:flex;flex-direction:column;overflow:hidden;position:relative; }
     .panel-header { color:white;padding:10px 15px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid rgba(0,0,0,.1); }
     .panel-content { flex:1;overflow-y:auto;padding:0; }
@@ -92,6 +93,11 @@
     .row-concil-ok .font-numeric { color:#15803d!important; }
     .row-concil-diff          { background:#eff6ff!important;border-left:5px solid #3b82f6!important;cursor:default; }
     .row-concil-diff .font-numeric { color:#1d4ed8!important; }
+    .row-preconciliacion      { background:#fff1f2!important;border-left:5px solid #ef2945!important; }
+    .row-preconciliacion .font-numeric, .row-preconciliacion .row-line1 { color:#be123c!important; }
+    .row-preconciliacion .row-line1 { text-decoration:underline; text-decoration-color:#ef2945; text-decoration-thickness:2px; }
+    .row-preconciliacion::after { content:'PRE';font-size:.6rem;font-weight:800;letter-spacing:.04em;color:#fff;background:#ef2945;border-radius:4px;padding:2px 4px;margin-left:7px; }
+    .tx-group-header.preconciliacion-header { background:#fff1f2!important;border-left:5px solid #ef2945!important;color:#be123c!important; }
 
     /* GHOST PANEL (TX - informativo) */
     .ghost-panel { opacity:.75;background:#f8f9fa; }
@@ -199,6 +205,7 @@
     /* BARRA FLOTANTE */
     .action-bar { position:fixed;bottom:28px;left:50%;transform:translate(-50%,150%);background:#2c3e50;color:white;padding:12px 28px;border-radius:50px;box-shadow:0 10px 30px rgba(0,0,0,.4);display:flex;align-items:center;gap:18px;z-index:1000;transition:transform .3s cubic-bezier(.175,.885,.32,1.275); }
     .action-bar.visible { transform:translate(-50%,0); }
+    .preconciliacion-bar { background:#8f172d;max-width:calc(100vw - 32px); }
 
     /* DATE WIDGET */
     .date-widget-trigger { cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:bold; }
@@ -491,7 +498,7 @@
     </div>
 
     <!-- TRES PANELES -->
-    <div class="split-container">
+    <div class="split-container" id="conciliacionWorkspace">
 
         <!-- PANEL 1: CG -->
         <div class="panel-split">
@@ -545,6 +552,18 @@
     <button class="btn btn-sm btn-outline-light rounded-circle border-0 ml-2" onclick="limpiarSeleccion()">
         <i class="fas fa-times"></i>
     </button>
+</div>
+
+<!-- BARRA FLOTANTE: APROBACIÓN DE PRECONCILIACIONES BANORTE -->
+<div class="action-bar preconciliacion-bar" id="preconciliacionBanorteBar">
+    <div class="text-white-50 border-right pr-3 mr-1">
+        <div class="small text-uppercase"><i class="fas fa-exclamation-circle mr-1"></i> Preconciliaciones Banorte</div>
+        <div><strong id="preconciliaciones-banorte-count">0</strong> coincidencias por aprobar <span class="mx-1">·</span> <span class="font-numeric text-white" id="preconciliaciones-banorte-total">$0.00</span></div>
+    </div>
+    <button class="btn btn-light text-danger rounded-pill font-weight-bold shadow" id="btn-aprobar-preconciliaciones-banorte" onclick="aprobarPreconciliacionesBanorte()">
+        <i class="fas fa-check-double mr-2"></i>APROBAR TODAS
+    </button>
+    <button class="btn btn-outline-light rounded-pill font-weight-bold" onclick="descartarPreconciliacionesBanorte()"><i class="fas fa-times mr-2"></i>NO PRECONCILIAR</button>
 </div>
 
 <div id="pickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
@@ -1081,6 +1100,8 @@ let transitosCG = { enTransito: {}, fakes: [] };
 // enDiferido: { [corte_ref_id]: [ {id, monto_diferido, cg_fecha_destino, estado, ...} ] }
 // fakes:      Array de registros fake del día destino
 let diferidosCG = { enDiferido: {}, fakes: [] };
+let preconciliacionesBanorte = [];
+let preconciliacionesBanorteDescartadasPara = '';
 
 // Persistencia de grupos abiertos/cerrados (sobrevive a actualizarTodo)
 let openGroupsCG  = new Set();
@@ -1298,10 +1319,12 @@ function actualizarTodo() {
         // (por ejemplo, si cambió su texto de afiliación). Conservamos su
         // detalle histórico para no mostrar la conciliación sólo del lado CG.
         integrarTesoreriaHistorica();
+        preconciliacionesBanorte = obtenerPreconciliacionesBanorte();
         // Render único después de que TODOS los datos cargaron
         renderCG();
         renderTes();
         actualizarResumenSuperior();
+        mostrarPreconciliacionesBanorte();
         if (!$('#rango-panel').hasClass('d-none')) calcularRango();
         // Restaurar scroll
         setTimeout(() => {
@@ -1806,6 +1829,7 @@ function renderCG() {
             const montoOrig = parseFloat(item.Total || 0);
             const concepto  = item.Concepto || item.concepto || '';
             const esConcil  = hasConciliada('CG', ref);
+            const esPreconciliacion = preconciliacionesBanorte.some(p => p.left_rows.some(row => row.ref === ref));
             const transitoInfo  = transitosCG.enTransito[ref] || null;
             const difsDelCorte  = diferidosCG.enDiferido[ref] || [];
             const sumaDiferida  = difsDelCorte.reduce((s, d) => s + d.monto_diferido, 0);
@@ -1895,7 +1919,7 @@ function renderCG() {
             } else if (transitoInfo) {
                 // Parcialmente en tránsito
                 const transito_orig_id = transitoInfo.id;
-                itemsHtml += `<div class="row-item row-pendiente ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoEfectivo},'${escHtml(concepto)}',this,${transito_orig_id})">
+                itemsHtml += `<div class="row-item row-pendiente ${esPreconciliacion?'row-preconciliacion':''} ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoEfectivo},'${escHtml(concepto)}',this,${transito_orig_id})">
                     <div class="row-left">
                         <span class="row-line1"><span class="transit-badge">PARCIAL</span>${escHtml(concepto)}</span>
                         ${transitSplit}
@@ -1919,7 +1943,7 @@ function renderCG() {
                 const cancelDifOrigenBtn = difOrigIds.length && !mesCerrado
                     ? `<button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoGrupo(${JSON.stringify(difOrigIds).replace(/"/g,'&quot;')})" title="Cancelar diferido"><i class="fas fa-times"></i></button>`
                     : '';
-                itemsHtml += `<div class="row-item row-pendiente ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoEfectivo},'${escHtml(concepto)}',this,null,${JSON.stringify(difOrigIds).replace(/"/g,'&quot;')})">
+                itemsHtml += `<div class="row-item row-pendiente ${esPreconciliacion?'row-preconciliacion':''} ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoEfectivo},'${escHtml(concepto)}',this,null,${JSON.stringify(difOrigIds).replace(/"/g,'&quot;')})">
                     <div class="row-left">
                         <span class="row-line1"><span class="diferido-badge">PARCIAL-D</span>${escHtml(concepto)}</span>
                         ${diferidoSplit}
@@ -1927,7 +1951,7 @@ function renderCG() {
                     <div class="row-right">${cancelDifOrigenBtn}${diferirBtn}<span class="font-numeric">${fmt.format(montoEfectivo)}</span></div>
                 </div>`;
             } else {
-                itemsHtml += `<div class="row-item row-pendiente ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoOrig},'${escHtml(concepto)}',this)">
+                itemsHtml += `<div class="row-item row-pendiente ${esPreconciliacion?'row-preconciliacion':''} ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoOrig},'${escHtml(concepto)}',this)">
                     <div class="row-left">
                         <span class="row-line1">${escHtml(concepto)}</span>
                         <span class="row-line2">ControlGas</span>
@@ -2003,13 +2027,15 @@ function renderCG() {
             : '';
 
         const groupId = `cg-${fecha.replace(/-/g,'')}`;
+        const fechaTienePreconciliacion = preconciliacionesBanorte.some(p => p.fechaCG === fecha);
         $c.append(`
-            <div class="tx-group-header" style="${headerStyle}" id="cg-header-${fecha.replace(/-/g,'')}" onclick="seleccionarDiaCG('${fecha}')">
+            <div class="tx-group-header ${fechaTienePreconciliacion ? 'preconciliacion-header' : ''}" style="${headerStyle}" id="cg-header-${fecha.replace(/-/g,'')}" onclick="seleccionarDiaCG('${fecha}')">
                 <div>
                     <button class="tx-group-toggle-btn" onclick="event.stopPropagation();toggleGrupoCG('${groupId}','${fecha}',this)">
                         <i class="fas ${iconClass}"></i>
                     </button>
                     <span class="mr-2"><i class="far fa-calendar-alt mr-1"></i>${dateFmt}</span>
+                    ${fechaTienePreconciliacion ? '<span class="badge badge-danger mr-1">PRE</span>' : ''}
                     <span class="badge" style="${badgeStyle}">${iconExcl}${nConcil}/${nTotal}</span>
                     ${diaSyncBtn}
                     ${diaTransitBtn}
@@ -2115,6 +2141,7 @@ function renderTes() {
         const esConcil = refsHistoricas.some(r => hasConciliada('TES', r))
             || (refsMovimiento.length > 0 && refsMovimiento.every(r => hasConciliada('TES', r)));
         const esSel    = refsMovimiento.length > 0 && refsMovimiento.every(r => sel.tes.some(s => s.ref === r));
+        const esPreconciliacion = preconciliacionesBanorte.some(p => p.tes_rows.some(row => refsMovimiento.includes(row.ref)));
 
         const hRecs = getHistorialDetalles('TES', allRefs);
         const hRec = hRecs[0] || null;
@@ -2204,7 +2231,7 @@ function renderTes() {
                 <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(monto)}</span></div>
             </div>`);
         } else {
-            $c.append(`<div class="row-item row-pendiente ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentes))}" onclick="toggleTESComponentes(this)">
+            $c.append(`<div class="row-item row-pendiente ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentes))}" onclick="toggleTESComponentes(this)">
                 <div class="row-left">
                     <span class="row-line1">${dateFmt}</span>
                     <span class="row-line2">Tesorería${amexLine2Extra}</span>
@@ -2626,6 +2653,91 @@ function seleccionarDiaTransito(fecha) {
 }
 
 // ── RECALC BARRA ──────────────────────────────────────────────
+// Banorte deposita el corte de ControlGas al día siguiente. Sólo se proponen
+// días completos, pendientes y con el mismo importe en ambos lados.
+function fechaSiguiente(fecha) {
+    const d = new Date(`${fecha}T12:00:00`);
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function fechaCGItem(item) {
+    if (item.FechaVisual) {
+        const p = item.FechaVisual.split('/');
+        return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : item.FechaVisual;
+    }
+    return normalizarFecha(item.Fecha || item.fch || '');
+}
+
+function obtenerPreconciliacionesBanorte() {
+    if (!currentRule || currentRule.entidad_id !== 4 || mesCerrado) return [];
+    const keywords = currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(Boolean) : [];
+    const hoy = new Date();
+    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
+    const cgPorFecha = {};
+    cgData.forEach(item => {
+        const fecha = fechaCGItem(item), ref = getCGRef(item), concepto = item.Concepto || item.concepto || '';
+        const normalizado = concepto.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+        if (!fecha || fecha === hoyStr || !ref || hasConciliada('CG', ref) || transitosCG.enTransito[ref]) return;
+        if (keywords.length && !keywords.some(k => normalizado.includes(k))) return;
+        if ((diferidosCG.enDiferido[ref] || []).some(d => d.estado === 'PENDIENTE')) return;
+        (cgPorFecha[fecha] ||= []).push({ ref, fecha, monto: parseFloat(item.Total || 0), concepto, tipo: 'CG' });
+    });
+    return Object.entries(cgPorFecha).reduce((coincidencias, [fechaCG, filasCG]) => {
+        const fechaTES = fechaSiguiente(fechaCG), tes = tesData.find(item => item.fecha === fechaTES);
+        if (!tes) return coincidencias;
+        const componentes = Array.isArray(tes.components) && tes.components.length ? tes.components : [{ ref: tes.id_origen || '', monto: tes.monto || 0, descripcion: tes.descripcion || '' }];
+        if ((tes.all_refs || []).some(ref => hasConciliada('TES', ref)) || componentes.some(comp => hasConciliada('TES', comp.ref))) return coincidencias;
+        const filasTES = componentes.filter(comp => normalizarRef(comp.ref)).map(comp => ({ ref:normalizarRef(comp.ref), fecha:fechaTES, monto:parseFloat(comp.monto || 0), concepto:comp.descripcion || tes.descripcion || '' }));
+        const totalCG = filasCG.reduce((s, fila) => s + fila.monto, 0), totalTES = filasTES.reduce((s, fila) => s + fila.monto, 0);
+        if (filasTES.length && Math.abs(totalTES - totalCG) < 0.01) coincidencias.push({ fechaCG, fechaTES, total:totalCG, left_rows:filasCG, tes_rows:filasTES });
+        return coincidencias;
+    }, []);
+}
+
+function mostrarPreconciliacionesBanorte() {
+    const clave = currentRule ? `${$('#estacionSelect').val()}|${currentRule.entidad_id}|${currentRule.afiliacion}|${widgetState.year}-${widgetState.month}` : '';
+    const hayPendientes = preconciliacionesBanorte.length && preconciliacionesBanorteDescartadasPara !== clave;
+    if (!hayPendientes) {
+        $('#preconciliacionBanorteBar').removeClass('visible');
+        $('#conciliacionWorkspace').removeClass('preconciliacion-bloqueada');
+        return;
+    }
+    $('#preconciliaciones-banorte-count').text(preconciliacionesBanorte.length);
+    $('#preconciliaciones-banorte-total').text(fmt.format(preconciliacionesBanorte.reduce((total, item) => total + item.total, 0)));
+    $('#preconciliacionBanorteBar').addClass('visible');
+    $('#conciliacionWorkspace').addClass('preconciliacion-bloqueada');
+}
+
+function descartarPreconciliacionesBanorte() {
+    preconciliacionesBanorteDescartadasPara = currentRule ? `${$('#estacionSelect').val()}|${currentRule.entidad_id}|${currentRule.afiliacion}|${widgetState.year}-${widgetState.month}` : '';
+    $('#preconciliacionBanorteBar').removeClass('visible');
+    $('#conciliacionWorkspace').removeClass('preconciliacion-bloqueada');
+    preconciliacionesBanorte = [];
+    renderCG();
+    renderTes();
+}
+
+async function aprobarPreconciliacionesBanorte() {
+    if (!preconciliacionesBanorte.length) return;
+    const $btn = $('#btn-aprobar-preconciliaciones-banorte').prop('disabled', true);
+    body_loading(true);
+    try {
+        const resultados = [];
+        for (const item of preconciliacionesBanorte) {
+            const respuesta = await fetch(URLS_V3.guardar, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(crearPayloadConciliacion(item.left_rows, item.tes_rows)) }).then(r => r.json());
+            resultados.push(respuesta);
+        }
+        $('#preconciliacionBanorteBar').removeClass('visible');
+        $('#conciliacionWorkspace').removeClass('preconciliacion-bloqueada');
+        const fallidos = resultados.filter(r => r.status !== 'success');
+        if (fallidos.length) alert(`Se aprobaron ${resultados.length - fallidos.length} de ${resultados.length} preconciliaciones. ${fallidos[0].message || 'Revisa las restantes.'}`);
+        actualizarTodo();
+    } catch (e) { alert('No fue posible aprobar las preconciliaciones.'); }
+    finally { $btn.prop('disabled', false); body_loading(false); }
+}
+
 function recalcTotals() {
     const sumCG  = sel.left.reduce((a,b) => a+b.monto, 0);
     const sumTES = sel.tes.reduce((a,b)  => a+b.monto, 0);
@@ -2695,6 +2807,23 @@ function ejecutarGuardado() {
 }
 
 // ── SINCRONIZAR MONTO DETALLE V3 ──────────────────────────────
+function crearPayloadConciliacion(leftRows, tesRows) {
+    const totalCG = leftRows.reduce((s, row) => s + row.monto, 0);
+    const totalTES = tesRows.reduce((s, row) => s + row.monto, 0);
+    const hasTransito = leftRows.some(row => row.tipo === 'TRANSITO');
+    const fechaOperativa = hasTransito
+        ? (tesRows.length ? tesRows[0].fecha : leftRows[0].fecha)
+        : (leftRows.length ? leftRows[0].fecha : tesRows[0].fecha);
+    return {
+        estacion_id: parseInt($('#estacionSelect').val()), entidad_id: currentRule.entidad_id,
+        afiliacion: currentRule.afiliacion, fecha_operativa: fechaOperativa,
+        fecha_deposito: tesRows.length ? tesRows[0].fecha : leftRows[0].fecha,
+        total_cg: totalCG, total_tes: totalTES,
+        left_rows: leftRows.map(s => ({ ref:s.ref, fecha:s.fecha, monto:s.monto, concepto:s.concepto, tipo:s.tipo||'CG', transito_id:s.transito_id||null, transito_orig_id:s.transito_orig_id||null, diferido_ids:s.diferido_ids||[], diferido_orig_ids:s.diferido_orig_ids||[] })),
+        tes_rows: tesRows.map(s => ({ ref:s.ref, fecha:s.fecha, monto:s.monto, concepto:s.concepto })),
+    };
+}
+
 function sincronizarMontoV3(idDetalle, nuevoMonto) {
     if (!confirm(`El monto en ControlGas ha cambiado.\n\n¿Actualizar a ${fmt.format(nuevoMonto)} y recalcular el grupo?`)) return;
     body_loading(true);

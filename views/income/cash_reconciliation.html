@@ -1,256 +1,76 @@
 {% extends "views/layouts/base.html" %}
-
-{% block title %}Conciliaciones efectivo{% endblock %}
-{% block menutitle %}Conciliar efectivo{% endblock %}
+{% block title %}Conciliaci&oacute;n de efectivo{% endblock %}
+{% block menutitle %}Conciliaci&oacute;n de efectivo{% endblock %}
 
 {% block content %}
 <style>
-    .cash-conciliation { --tg-blue:#188ae2; --tg-green:#168a61; --line:#e2e9f0; --muted:#64748b; --surface:#fff; --soft:#f7fbff; }
-    .cash-conciliation .cash-toolbar, .cash-conciliation .cash-results { background:var(--surface); border:1px solid var(--line); border-radius:.85rem; box-shadow:0 3px 14px rgba(28,52,84,.06); }
-    .cash-conciliation .cash-toolbar { padding:1rem 1.15rem; }
-    .cash-conciliation .cash-toolbar-title { color:#19324a; font-weight:700; font-size:1rem; }
-    .cash-conciliation .cash-toolbar-help { color:var(--muted); font-size:.78rem; }
-    .cash-conciliation .cash-field label { color:#52657a; display:block; font-size:.7rem; font-weight:700; letter-spacing:.04em; margin-bottom:.3rem; text-transform:uppercase; }
-    .cash-conciliation .cash-field .form-control { border-color:#d6e1eb; border-radius:.55rem; color:#23384d; min-height:38px; }
-    .cash-conciliation .cash-field .form-control:focus { border-color:var(--tg-blue); box-shadow:0 0 0 .18rem rgba(24,138,226,.14); }
-    .cash-conciliation .cash-search { background:var(--tg-blue); border:0; border-radius:.55rem; box-shadow:0 2px 7px rgba(24,138,226,.24); font-weight:700; min-height:38px; transition:transform .16s ease, box-shadow .16s ease; }
-    .cash-conciliation .cash-search:hover { background:#0878cc; box-shadow:0 4px 11px rgba(24,138,226,.29); transform:translateY(-1px); }
-    .cash-conciliation .cash-kpis { display:grid; gap:.75rem; grid-template-columns:repeat(5, minmax(0, 1fr)); margin:1rem 0; }
-    .cash-conciliation .cash-kpi { background:var(--surface); border:1px solid var(--line); border-radius:.72rem; box-shadow:0 2px 9px rgba(28,52,84,.045); padding:.75rem .9rem; }
-    .cash-conciliation .cash-kpi-label { color:var(--muted); font-size:.7rem; font-weight:700; letter-spacing:.035em; text-transform:uppercase; }
-    .cash-conciliation .cash-kpi-value { color:#1e3a54; font-size:1.05rem; font-variant-numeric:tabular-nums; font-weight:700; margin-top:.22rem; white-space:nowrap; }
-    .cash-conciliation .cash-kpi--mn { border-top:3px solid var(--tg-green); }
-    .cash-conciliation .cash-kpi--mn .cash-kpi-value { color:var(--tg-green); }
-    .cash-conciliation .cash-results { overflow:hidden; }
-    .cash-conciliation .cash-results-head { align-items:center; background:var(--soft); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; padding:.78rem 1rem; }
-    .cash-conciliation .cash-results-title { color:#23384d; font-size:.92rem; font-weight:700; margin:0; }
-    .cash-conciliation .cash-results-meta { color:var(--muted); font-size:.75rem; }
-    .cash-conciliation .cash-date-group + .cash-date-group { border-top:1px solid var(--line); }
-    .cash-conciliation .cash-date-toggle { align-items:center; background:#fff; border:0; color:#263d54; cursor:pointer; display:flex; gap:.7rem; min-height:58px; padding:.65rem 1rem; text-align:left; transition:background .16s ease; width:100%; }
-    .cash-conciliation .cash-date-toggle:hover, .cash-conciliation .cash-date-toggle[aria-expanded="true"] { background:#f5faff; }
-    .cash-conciliation .cash-chevron { color:var(--tg-blue); transition:transform .18s ease; width:13px; }
-    .cash-conciliation .cash-date-toggle[aria-expanded="true"] .cash-chevron { transform:rotate(90deg); }
-    .cash-conciliation .cash-date-main { flex:1 1 215px; min-width:0; }
-    .cash-conciliation .cash-date-label { display:block; font-size:.88rem; font-weight:700; }
-    .cash-conciliation .cash-date-subtitle { color:var(--muted); display:block; font-size:.73rem; margin-top:.08rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .cash-conciliation .cash-date-total { color:var(--tg-green); font-size:.92rem; font-variant-numeric:tabular-nums; font-weight:700; margin-left:auto; white-space:nowrap; }
-    .cash-conciliation .cash-date-summary { color:var(--muted); font-size:.72rem; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
-    .cash-conciliation .cash-date-body { background:#fcfdff; display:none; padding:0 1rem 1rem 2.5rem; }
-    .cash-conciliation .cash-date-body.is-open { display:block; }
-    .cash-conciliation .cash-table { font-size:.82rem; margin:0; }
-    .cash-conciliation .cash-table thead th { background:#edf5fb; border-bottom:1px solid #d8e5ef; color:#52657a; font-size:.68rem; letter-spacing:.025em; padding:.55rem .65rem; text-transform:uppercase; white-space:nowrap; }
-    .cash-conciliation .cash-table td { border-color:#edf1f5; color:#344b60; padding:.55rem .65rem; vertical-align:middle; }
-    .cash-conciliation .cash-table tbody tr:hover { background:#f7fbff; }
-    .cash-conciliation .cash-table .cash-amount { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
-    .cash-conciliation .cash-table .cash-mn { color:var(--tg-green); font-weight:700; }
-    .cash-conciliation .cash-turn { background:#eaf4fc; border-radius:999px; color:#1676b9; display:inline-block; font-size:.72rem; font-weight:700; min-width:25px; padding:.12rem .38rem; text-align:center; }
-    .cash-conciliation .cash-empty, .cash-conciliation .cash-error { color:var(--muted); padding:3.5rem 1rem; text-align:center; }
-    .cash-conciliation .cash-empty i, .cash-conciliation .cash-error i { color:#a7b9c9; display:block; font-size:1.7rem; margin-bottom:.65rem; }
-    .cash-conciliation .cash-error { color:#a33e3e; }
-    .cash-conciliation .cash-error i { color:#dc6a6a; }
-    .cash-conciliation .cash-loading { display:flex; align-items:center; color:var(--muted); gap:.55rem; padding:2rem 1rem; justify-content:center; }
-    @media (max-width:991.98px) { .cash-conciliation .cash-kpis { grid-template-columns:repeat(3, minmax(0, 1fr)); } .cash-conciliation .cash-date-summary { display:none; } }
-    @media (max-width:575.98px) { .cash-conciliation .cash-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); } .cash-conciliation .cash-toolbar { padding:.9rem; } .cash-conciliation .cash-date-body { padding-left:.75rem; padding-right:.75rem; } .cash-conciliation .cash-date-total { font-size:.82rem; } }
-    @media (prefers-reduced-motion:reduce) { .cash-conciliation *, .cash-conciliation *::before, .cash-conciliation *::after { scroll-behavior:auto!important; transition:none!important; } }
+  .cash-recon{--blue:#188ae2;--green:#218a59;--amber:#a66b00;--red:#ba3f45;--ink:#20364a;--muted:#667a8c;--line:#dfe8ef;--soft:#f7fbff;color:var(--ink)}
+  .cash-recon .surface{background:#fff;border:1px solid var(--line);border-radius:.75rem;box-shadow:0 2px 10px rgba(31,57,80,.05)}
+  .cash-recon .recon-head{padding:1.2rem 1.3rem}.cash-recon h1{font-size:1.18rem;font-weight:700;margin:0}.cash-recon .subtitle{color:var(--muted);font-size:.78rem;margin:.25rem 0 1rem}
+  .cash-recon label{color:#536a7d;display:block;font-size:.66rem;font-weight:700;letter-spacing:.04em;margin:0 0 .36rem;text-transform:uppercase}.cash-recon .filters{display:grid;gap:.75rem;grid-template-columns:minmax(240px,1.4fr) 230px minmax(190px,1fr) 150px;align-items:end}.cash-recon .form-control{border-color:#d5e1ea;border-radius:.55rem;height:40px}.cash-recon .form-control:focus{border-color:var(--blue);box-shadow:0 0 0 .15rem rgba(24,138,226,.14)}
+  .cash-recon .primary{background:var(--blue);border:0;border-radius:.55rem;box-shadow:0 2px 6px rgba(24,138,226,.2);font-size:.8rem;font-weight:700;height:40px;width:100%}.cash-recon .primary:hover{background:#107bc9;transform:translateY(-1px)}
+  .cash-recon .period{position:relative}.cash-recon .period-trigger{align-items:center;background:#fff;border:1px solid #d5e1ea;border-radius:.55rem;color:#29465c;display:flex;font-size:.8rem;font-weight:700;height:40px;padding:0 .75rem;text-align:left;width:100%}.cash-recon .period-trigger:hover,.cash-recon .period-trigger:focus{border-color:var(--blue);outline:0}.cash-recon .period-trigger .fa-calendar-alt{margin-right:.7rem!important}.cash-recon .period-trigger .caret{margin-left:auto}.cash-recon .period-menu{background:#fff;border:1px solid var(--line);border-radius:.7rem;box-shadow:0 12px 28px rgba(25,52,75,.17);display:none;left:0;padding:.75rem;position:absolute;top:calc(100% + .35rem);width:230px;z-index:50}.cash-recon .period-menu.open{display:block}.cash-recon .period-year{align-items:center;display:flex;justify-content:space-between;margin-bottom:.5rem}.cash-recon .period-year strong{font-size:.83rem}.cash-recon .period-year button{background:#f2f7fb;border:0;border-radius:.35rem;color:var(--blue);height:28px;width:30px}.cash-recon .period-grid{display:grid;gap:.25rem;grid-template-columns:repeat(3,1fr)}.cash-recon .period-grid button{background:transparent;border:0;border-radius:.35rem;color:#4b667a;font-size:.72rem;padding:.42rem .2rem}.cash-recon .period-grid button:hover{background:#eaf5fd}.cash-recon .period-grid button.selected{background:var(--blue);color:#fff;font-weight:700}
+  .cash-recon .summary{display:grid;gap:.7rem;grid-template-columns:repeat(4,minmax(0,1fr));margin:.85rem 0}.cash-recon .metric{background:#fff;border:1px solid var(--line);border-radius:.7rem;padding:.7rem .85rem}.cash-recon .metric span{color:var(--muted);display:block;font-size:.65rem;font-weight:700;text-transform:uppercase}.cash-recon .metric strong{display:block;font-size:1.02rem;font-variant-numeric:tabular-nums;margin-top:.16rem}.cash-recon .metric.good strong{color:var(--green)}.cash-recon .metric.is-alert strong{color:var(--red)}
+  .cash-recon .tabs{border-bottom:1px solid var(--line);display:flex;padding:0 .8rem}.cash-recon .tab{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);font-size:.76rem;font-weight:700;padding:.7rem .8rem}.cash-recon .tab.active{border-color:var(--blue);color:var(--blue)}.cash-recon .work{display:grid;grid-template-columns:310px minmax(0,1fr);min-height:555px}.cash-recon .queue{border-right:1px solid var(--line);max-height:590px;overflow:auto}.cash-recon .pane-head{align-items:center;background:var(--soft);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;padding:.72rem .85rem}.cash-recon .pane-head h2{font-size:.8rem;font-weight:700;margin:0}.cash-recon .pane-head span{color:var(--muted);font-size:.66rem}.cash-recon .case{background:#fff;border:0;border-bottom:1px solid #edf2f6;cursor:pointer;display:block;padding:.72rem .85rem;text-align:left;width:100%}.cash-recon .case:hover{background:#f8fbfd}.cash-recon .case.active{background:#edf7fe;box-shadow:inset 3px 0 var(--blue)}.cash-recon .badge{border-radius:99px;display:inline-block;font-size:.6rem;font-weight:700;padding:.22rem .42rem}.cash-recon .badge.good{background:#e9f8f0;color:#19794f}.cash-recon .badge.warn{background:#fff5dc;color:#986704}.cash-recon .badge.bad{background:#fff0f0;color:#a33b40}.cash-recon .case-title{color:#29445a;display:block;font-size:.76rem;font-weight:700;margin-top:.3rem}.cash-recon .case-meta{color:var(--muted);display:block;font-size:.66rem;margin-top:.14rem}
+  .cash-recon .detail{padding:.9rem}.cash-recon .empty{color:var(--muted);padding:7rem 1rem;text-align:center}.cash-recon .empty i{color:#b4c5d3;display:block;font-size:1.9rem;margin-bottom:.65rem}.cash-recon .totals{align-items:center;background:#f8fbfd;border:1px solid var(--line);border-radius:.6rem;display:grid;gap:.5rem;grid-template-columns:repeat(3,1fr);margin-bottom:.85rem;padding:.65rem .75rem;text-align:center}.cash-recon .totals span{color:var(--muted);display:block;font-size:.64rem}.cash-recon .totals strong{font-size:.86rem;font-variant-numeric:tabular-nums}.cash-recon .totals .difference strong{color:var(--red)}.cash-recon .sources{display:grid;gap:.8rem;grid-template-columns:1fr 1fr}.cash-recon .source h3{font-size:.76rem;font-weight:700;margin:0 0 .45rem}.cash-recon .entry{align-items:flex-start;border:1px solid var(--line);border-radius:.55rem;cursor:pointer;display:flex;gap:.5rem;margin-bottom:.45rem;padding:.58rem}.cash-recon .entry:has(input:checked){background:#edf7fe;border-color:#99cdf0}.cash-recon .entry input{margin-top:.17rem}.cash-recon .entry strong{display:block;font-size:.73rem}.cash-recon .entry small{color:var(--muted);display:block;font-size:.64rem;margin-top:.12rem}.cash-recon .entry .amount{font-variant-numeric:tabular-nums;margin-left:auto;white-space:nowrap}.cash-recon .info{border-top:1px solid var(--line);color:var(--muted);font-size:.67rem;line-height:1.45;margin-top:.8rem;padding-top:.72rem}.cash-recon .actions{border-top:1px solid var(--line);display:flex;gap:.45rem;margin-top:.8rem;padding-top:.75rem}.cash-recon .actions .btn{font-size:.72rem;font-weight:700}.cash-recon .toast{background:#20364a;border-radius:.55rem;bottom:1rem;color:#fff;display:none;font-size:.75rem;left:50%;padding:.6rem .85rem;position:fixed;transform:translateX(-50%);z-index:100}.cash-recon .toast.show{display:block}
+  .cash-recon .date-group{border-bottom:1px solid #edf2f6}.cash-recon .date-group-head{align-items:center;background:#f8fbfd;border:0;color:#405d73;cursor:pointer;display:flex;font-size:.82rem;font-weight:700;justify-content:space-between;min-height:52px;padding:.85rem .95rem;text-align:left;width:100%}.cash-recon .date-group-head:hover{background:#edf7fe}.cash-recon .date-group-head:focus{box-shadow:inset 0 0 0 2px rgba(24,138,226,.35);outline:0}.cash-recon .date-group-head small{color:var(--muted);font-size:.71rem;font-weight:600}.cash-recon .date-group-head i{color:var(--blue);margin-right:.55rem}.cash-recon .date-group-body[hidden]{display:none}.cash-recon .case{min-height:82px;padding:.9rem .95rem}.cash-recon .case-title{font-size:.84rem;margin-top:.38rem}.cash-recon .case-meta{font-size:.72rem;line-height:1.45;margin-top:.2rem}.cash-recon .badge{font-size:.65rem;padding:.26rem .48rem}
+  @media(max-width:991px){.cash-recon .filters{grid-template-columns:repeat(2,minmax(0,1fr))}.cash-recon .work{grid-template-columns:270px minmax(0,1fr)}}@media(max-width:767px){.cash-recon .recon-head{padding:1rem}.cash-recon .filters,.cash-recon .summary,.cash-recon .sources{grid-template-columns:1fr}.cash-recon .work{display:block}.cash-recon .queue{border-bottom:1px solid var(--line);border-right:0;max-height:350px}.cash-recon .period-menu{width:100%}}@media(prefers-reduced-motion:reduce){.cash-recon *{transition:none!important}}
 </style>
 
-<section class="cash-conciliation" aria-label="Consulta de efectivo por turno">
-    <div class="cash-toolbar">
-        <div class="d-flex flex-wrap align-items-center justify-content-between mb-3" style="gap:.45rem;">
-            <div>
-                <div class="cash-toolbar-title"><i class="fas fa-money-bill-wave text-primary mr-2"></i>Control de efectivo</div>
-                <div class="cash-toolbar-help">Consulta los cortes por turno y despliega cada fecha para ver su detalle.</div>
-            </div>
-            <span class="badge badge-light border text-muted px-2 py-1"><i class="fas fa-database mr-1"></i>ControlGas</span>
-        </div>
-        <div class="row align-items-end" style="row-gap:.7rem;">
-            <div class="col-lg-5 col-md-6 cash-field">
-                <label for="cash-station">Estación</label>
-                <select id="cash-station" class="form-control" disabled aria-describedby="cash-station-help">
-                    <option>Cargando estaciones…</option>
-                </select>
-                <small id="cash-station-help" class="sr-only">Seleccione la estación a consultar</small>
-            </div>
-            <div class="col-lg-2 col-md-3 col-6 cash-field">
-                <label for="cash-date-start">Desde</label>
-                <input id="cash-date-start" class="form-control" type="date">
-            </div>
-            <div class="col-lg-2 col-md-3 col-6 cash-field">
-                <label for="cash-date-end">Hasta</label>
-                <input id="cash-date-end" class="form-control" type="date">
-            </div>
-            <div class="col-lg-3 col-md-12">
-                <button id="cash-search" type="button" class="btn btn-primary cash-search w-100"><i class="fas fa-search mr-1"></i> Consultar efectivo</button>
-            </div>
-        </div>
+<section class="cash-recon" aria-label="Conciliaci&oacute;n de efectivo D&iacute;az Gas">
+  <div class="surface recon-head">
+    <h1><i class="fas fa-hand-holding-usd text-primary mr-2"></i>Conciliaci&oacute;n de efectivo &middot; D&iacute;az Gas</h1>
+    <p class="subtitle">Revisa solamente las diferencias entre ControlGas y Banorte.</p>
+    <div class="filters">
+      <div><label for="cash-station">Estaci&oacute;n</label><select id="cash-station" class="form-control" disabled><option>Cargando estaciones...</option></select></div>
+      <div class="period"><label>Periodo</label><button id="period-trigger" type="button" class="period-trigger" aria-expanded="false"><i class="far fa-calendar-alt text-success mr-2"></i><span id="period-label">Cargando...</span><i class="fas fa-chevron-down caret text-muted"></i></button><div id="period-menu" class="period-menu"><div class="period-year"><button data-year="-1" type="button" aria-label="A&ntilde;o anterior"><i class="fas fa-chevron-left"></i></button><strong id="period-year"></strong><button data-year="1" type="button" aria-label="A&ntilde;o siguiente"><i class="fas fa-chevron-right"></i></button></div><div id="period-grid" class="period-grid"></div></div></div>
+      <div><label for="cash-concept">Concepto</label><select id="cash-concept" class="form-control"><option value="">Todos los conceptos</option><option value="MN">Moneda nacional</option><option value="MORRALLA">Morralla</option><option value="USD">D&oacute;lares</option></select></div>
+      <button id="cash-search" type="button" class="btn btn-primary primary"><i class="fas fa-search mr-1"></i>Consultar</button>
     </div>
-
-    <div class="cash-kpis" aria-live="polite">
-        <div class="cash-kpi"><div class="cash-kpi-label">Registros</div><div class="cash-kpi-value" id="cash-count">—</div></div>
-        <div class="cash-kpi cash-kpi--mn"><div class="cash-kpi-label">Efectivo MN</div><div class="cash-kpi-value" id="cash-total-mn">—</div></div>
-        <div class="cash-kpi"><div class="cash-kpi-label">Dólares</div><div class="cash-kpi-value" id="cash-total-dollars">—</div></div>
-        <div class="cash-kpi"><div class="cash-kpi-label">Dólares 2</div><div class="cash-kpi-value" id="cash-total-dollars2">—</div></div>
-        <div class="cash-kpi"><div class="cash-kpi-label">Morralla y cheques</div><div class="cash-kpi-value" id="cash-total-other">—</div></div>
-    </div>
-
-    <div class="cash-results" aria-live="polite">
-        <div class="cash-results-head">
-            <h2 class="cash-results-title">Cortes por fecha</h2>
-            <span class="cash-results-meta" id="cash-results-meta">Seleccione una estación y consulte un periodo.</span>
-        </div>
-        <div id="cash-results-body">
-            <div class="cash-empty"><i class="fas fa-calendar-alt"></i>Los cortes aparecerán aquí agrupados por fecha.</div>
-        </div>
-    </div>
+  </div>
+  <div class="summary" aria-live="polite"><div class="metric"><span>ControlGas</span><strong id="kpi-cg">--</strong></div><div class="metric"><span>Banorte</span><strong id="kpi-bank">--</strong></div><div class="metric good"><span>Conciliadas</span><strong id="kpi-auto">--</strong></div><div id="metric-exceptions" class="metric"><span>Excepciones</span><strong id="kpi-exceptions">--</strong></div></div>
+  <div class="surface"><div class="tabs" role="tablist"><button class="tab active" data-view="exceptions" type="button">Excepciones</button><button class="tab" data-view="auto" type="button">Conciliadas</button></div><div class="work"><aside class="queue"><div class="pane-head"><h2 id="queue-title">Excepciones</h2><span id="queue-count">Sin consulta</span></div><div id="case-list"><div class="empty"><i class="fas fa-inbox"></i>Selecciona una estaci&oacute;n y consulta.</div></div></aside><main><div class="pane-head"><h2>Turno y dep&oacute;sito</h2><span id="detail-status">Seleccione una operaci&oacute;n</span></div><div id="detail" class="detail"><div class="empty"><i class="fas fa-balance-scale"></i>Elige una operaci&oacute;n para revisarla.</div></div></main></div></div><div id="cash-toast" class="toast" role="status"></div>
 </section>
 {% endblock %}
 
 {% block myjs %}
 <script>
 (() => {
-    'use strict';
-
-    const API_URL = 'http://201.174.170.236:99/api/Depositos/GetDepositosEstacion';
-    const STATIONS_URL = '/income/get_estaciones_catalogo';
-    const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-    const integer = new Intl.NumberFormat('es-MX');
-    const dateFormatter = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-    const station = document.getElementById('cash-station');
-    const dateStart = document.getElementById('cash-date-start');
-    const dateEnd = document.getElementById('cash-date-end');
-    const searchButton = document.getElementById('cash-search');
-    const results = document.getElementById('cash-results-body');
-    const resultsMeta = document.getElementById('cash-results-meta');
-    const kpis = {
-        count: document.getElementById('cash-count'), mn: document.getElementById('cash-total-mn'),
-        dollars: document.getElementById('cash-total-dollars'), dollars2: document.getElementById('cash-total-dollars2'), other: document.getElementById('cash-total-other')
-    };
-
-    const today = new Date();
-    const isoDate = value => value.toISOString().slice(0, 10);
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    dateStart.value = isoDate(firstDay);
-    dateEnd.value = isoDate(today);
-
-    function escapeHtml(value) {
-        return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#039;', '"':'&quot;' })[character]);
-    }
-    function number(value) {
-        if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-        const parsed = Number(String(value ?? 0).replace(/[$,\s]/g, ''));
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-    function parseApiDate(value) {
-        const match = String(value ?? '').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-        return match ? new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1])) : new Date(value);
-    }
-    function dateKey(value) {
-        const date = parseApiDate(value);
-        return Number.isNaN(date.getTime()) ? String(value ?? '') : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    }
-    function resetKpis() { Object.values(kpis).forEach(element => { element.textContent = '—'; }); }
-    function setLoading(isLoading) {
-        searchButton.disabled = isLoading;
-        searchButton.innerHTML = isLoading ? '<span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>Consultando…' : '<i class="fas fa-search mr-1"></i> Consultar efectivo';
-    }
-    function renderError(message) {
-        results.innerHTML = `<div class="cash-error"><i class="fas fa-exclamation-circle"></i>${escapeHtml(message)}</div>`;
-    }
-    function renderRows(rows) {
-        if (!rows.length) {
-            results.innerHTML = '<div class="cash-empty"><i class="fas fa-inbox"></i>No hay cortes de efectivo para los filtros seleccionados.</div>';
-            resultsMeta.textContent = 'Sin registros en el periodo seleccionado.';
-            resetKpis();
-            return;
-        }
-
-        const totals = rows.reduce((sum, row) => ({
-            mn: sum.mn + number(row.MN), dollars: sum.dollars + number(row.Dolares), dollars2: sum.dollars2 + number(row.Dolares2),
-            morralla: sum.morralla + number(row.Morralla), cheques: sum.cheques + number(row.Cheques)
-        }), { mn:0, dollars:0, dollars2:0, morralla:0, cheques:0 });
-        kpis.count.textContent = integer.format(rows.length);
-        kpis.mn.textContent = money.format(totals.mn);
-        kpis.dollars.textContent = money.format(totals.dollars);
-        kpis.dollars2.textContent = money.format(totals.dollars2);
-        kpis.other.textContent = `${money.format(totals.morralla)} / ${money.format(totals.cheques)}`;
-
-        const byDate = rows.reduce((groups, row) => {
-            const key = dateKey(row.Fecha);
-            (groups[key] ||= []).push(row);
-            return groups;
-        }, {});
-        const groups = Object.entries(byDate).sort(([left], [right]) => right.localeCompare(left));
-        resultsMeta.textContent = `${integer.format(rows.length)} corte${rows.length === 1 ? '' : 's'} en ${groups.length} fecha${groups.length === 1 ? '' : 's'}.`;
-        results.innerHTML = groups.map(([key, groupRows], index) => {
-            const groupTotal = groupRows.reduce((sum, row) => sum + number(row.MN), 0);
-            const groupDollars = groupRows.reduce((sum, row) => sum + number(row.Dolares), 0);
-            const date = parseApiDate(groupRows[0].Fecha);
-            const label = Number.isNaN(date.getTime()) ? key : dateFormatter.format(date);
-            const stationName = groupRows[0].Gasolinera || 'Estación';
-            const bodyId = `cash-date-${index}`;
-            const tableRows = groupRows.sort((a, b) => number(a.Turno) - number(b.Turno)).map(row => `<tr>
-                <td><span class="cash-turn">${escapeHtml(row.Turno)}</span></td>
-                <td class="cash-amount">${money.format(number(row.Dolares))}</td>
-                <td class="cash-amount">${money.format(number(row.Dolares2))}</td>
-                <td class="cash-amount cash-mn">${money.format(number(row.MN))}</td>
-                <td class="cash-amount">${money.format(number(row.Morralla))}</td>
-                <td class="cash-amount">${money.format(number(row.Cheques))}</td>
-            </tr>`).join('');
-            return `<article class="cash-date-group">
-                <button type="button" class="cash-date-toggle" aria-expanded="false" aria-controls="${bodyId}">
-                    <i class="fas fa-chevron-right cash-chevron" aria-hidden="true"></i>
-                    <span class="cash-date-main"><span class="cash-date-label text-capitalize">${escapeHtml(label)}</span><span class="cash-date-subtitle">${escapeHtml(stationName)} · ${groupRows.length} turno${groupRows.length === 1 ? '' : 's'}</span></span>
-                    <span class="cash-date-summary">Dólares ${money.format(groupDollars)}</span>
-                    <span class="cash-date-total">MN ${money.format(groupTotal)}</span>
-                </button>
-                <div class="cash-date-body" id="${bodyId}"><div class="table-responsive"><table class="table cash-table"><thead><tr><th>Turno</th><th class="text-right">Dólares</th><th class="text-right">Dólares 2</th><th class="text-right">MN</th><th class="text-right">Morralla</th><th class="text-right">Cheques</th></tr></thead><tbody>${tableRows}</tbody></table></div></div>
-            </article>`;
-        }).join('');
-    }
-    async function loadStations() {
-        try {
-            const response = await fetch(STATIONS_URL, { headers: { Accept:'application/json' } });
-            const json = await response.json();
-            const stations = json.status === 'success' ? (json.respuesta || []) : [];
-            station.innerHTML = '<option value="">Seleccione una estación…</option>' + stations.map(item => `<option value="${escapeHtml(item.Codigo)}">${escapeHtml(item.Nombre)}</option>`).join('');
-        } catch (error) {
-            station.innerHTML = '<option value="">No fue posible cargar estaciones</option>';
-        } finally {
-            station.disabled = false;
-        }
-    }
-    async function search() {
-        if (!station.value) { renderError('Seleccione una estación antes de consultar.'); return; }
-        if (!dateStart.value || !dateEnd.value || dateStart.value > dateEnd.value) { renderError('Indique un rango de fechas válido.'); return; }
-        setLoading(true);
-        results.innerHTML = '<div class="cash-loading"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Consultando cortes de efectivo…</div>';
-        resultsMeta.textContent = 'Consultando ControlGas…';
-        try {
-            const payload = { Datos: { FechaInicial: dateStart.value.replaceAll('-', ''), FechaFinal: dateEnd.value.replaceAll('-', ''), Gasolinera: Number(station.value) } };
-            const response = await fetch(API_URL, { method:'POST', headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body:JSON.stringify(payload) });
-            if (!response.ok) throw new Error(`El servicio respondió con código ${response.status}.`);
-            const json = await response.json();
-            if (!json.exito && json.codigo !== 0) throw new Error(json.mensaje || 'No se pudo obtener la información de efectivo.');
-            renderRows(Array.isArray(json.respuesta) ? json.respuesta : []);
-        } catch (error) {
-            resetKpis();
-            resultsMeta.textContent = 'No fue posible completar la consulta.';
-            renderError(error.message || 'No fue posible conectar con el servicio de ControlGas.');
-        } finally {
-            setLoading(false);
-        }
-    }
-    results.addEventListener('click', event => {
-        const toggle = event.target.closest('.cash-date-toggle');
-        if (!toggle) return;
-        const body = document.getElementById(toggle.getAttribute('aria-controls'));
-        const isOpen = toggle.getAttribute('aria-expanded') === 'true';
-        toggle.setAttribute('aria-expanded', String(!isOpen));
-        body.classList.toggle('is-open', !isOpen);
-    });
-    searchButton.addEventListener('click', search);
-    [station, dateStart, dateEnd].forEach(input => input.addEventListener('keydown', event => { if (event.key === 'Enter') search(); }));
-    loadStations();
+  'use strict';
+  const API='http://201.174.170.236:99/api/Depositos/GetDepositosEstacion',STATIONS='/income/get_estaciones_catalogo',BANK='/income/get_cash_banorte_deposits',TOLERANCE=50;
+  const $=id=>document.getElementById(id),money=new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}),integer=new Intl.NumberFormat('es-MX');
+  const ui={station:$('cash-station'),concept:$('cash-concept'),search:$('cash-search')},state={month:new Date(new Date().getFullYear(),new Date().getMonth(),1),year:new Date().getFullYear(),cases:[],auto:[],selected:null,view:'exceptions'};
+  const months=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],shortMonths=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]));
+  const num=v=>{const n=Number(String(v??0).replace(/[$,\s]/g,''));return Number.isFinite(n)?n:0},fmt=v=>money.format(num(v)),date=v=>{const x=String(v||'');const m=x.match(/^(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:x.slice(0,10)},showDate=v=>{const x=String(v).split('-');return x.length===3?`${x[2]}/${x[1]}/${x[0]}`:v},days=(a,b)=>Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000),label=k=>({MN:'Moneda nacional',MORRALLA:'Morralla',USD:'Dolares'})[k]||k;
+  const status=k=>({PENDIENTE_BANCO:['Sin deposito','warn'],DEPOSITO_SIN_ORIGEN:['Sin turno','bad'],DIFERENCIA_IMPORTE:['Importe distinto','bad'],REFERENCIA_INVALIDA:['Referencia invalida','bad'],MATCH_PROPUESTO:['Confirmar','warn'],REQUIERE_REVISION:['Revision','warn'],CONCILIADO_AUTOMATICO:['Conciliada automatica','good'],CONCILIADO_MANUAL:['Conciliada manual','good']}[k]||[k,'warn']);
+  const toast=text=>{const node=$('cash-toast');node.textContent=text;node.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>node.classList.remove('show'),2500)};
+  function renderPeriod(){ $('period-label').textContent=`${months[state.month.getMonth()]} ${state.month.getFullYear()}`;$('period-year').textContent=state.year;$('period-grid').innerHTML=shortMonths.map((m,i)=>`<button type="button" data-month="${i}" class="${state.year===state.month.getFullYear()&&i===state.month.getMonth()?'selected':''}">${m}</button>`).join('') }
+  function closePeriod(){ $('period-menu').classList.remove('open');$('period-trigger').setAttribute('aria-expanded','false') }
+  function sales(raw){const out=[];raw.forEach(item=>{const base={date:date(item.Fecha),turn:item.Turno||'--'};[['MN',num(item.MN)],['MORRALLA',num(item.Morralla)],['USD',num(item.Dolares)+num(item.Dolares2)]].forEach(([currency,amount])=>{if(amount>0)out.push({id:`cg-${base.date}-${base.turn}-${currency}-${amount}`,date:base.date,turn:base.turn,currency,amount,description:`Turno ${base.turn} - ${label(currency)}`,selected:true})})});return out}
+  function banks(raw){return raw.map(x=>{const detail=String(x.descripcion_larga||'').trim(),match=detail.match(/REF\.?\s*([^\s]+)/i);return{id:x.id,date:x.fecha,amount:num(x.importe),description:x.descripcion,reference:x.referencia,referenceFull:match?match[1]:(detail||x.referencia),branch:x.sucursal,detail,stationStatus:x.station_status,station:x.station,selected:true}})}
+  function reconcile(rawCg,rawBank){
+    const cg=sales(rawCg),bank=banks(rawBank),cases=[],auto=[],used=new Set(),cash=cg.filter(x=>x.currency==='MN'||x.currency==='MORRALLA'),candidates=new Map();
+    cash.forEach(turn=>candidates.set(turn.id,bank.filter(deposit=>deposit.stationStatus==='IDENTIFICADA'&&Math.abs(deposit.amount-turn.amount)<=TOLERANCE&&days(turn.date,deposit.date)>=0&&days(turn.date,deposit.date)<=7)));
+    cash.forEach(turn=>{const possible=candidates.get(turn.id)||[],unique=possible.filter(deposit=>cash.filter(other=>(candidates.get(other.id)||[]).some(x=>x.id===deposit.id)).length===1&&!used.has(deposit.id));if(unique.length===1){used.add(unique[0].id);auto.push({id:`a-${turn.id}`,status:'CONCILIADO_AUTOMATICO',cg:[turn],bank:[unique[0]]})}});
+    cash.filter(turn=>!auto.some(row=>row.cg[0].id===turn.id)).forEach(turn=>{const nearby=bank.filter(deposit=>deposit.stationStatus==='IDENTIFICADA'&&days(turn.date,deposit.date)>=0&&days(turn.date,deposit.date)<=7&&!used.has(deposit.id)),possible=(candidates.get(turn.id)||[]).map(x=>({...x,selected:false}));if(possible.length)cases.push({id:`e-${turn.id}`,status:'MATCH_PROPUESTO',cg:[turn],bank:possible});else if(nearby.length)cases.push({id:`e-${turn.id}`,status:'DIFERENCIA_IMPORTE',cg:[turn],bank:nearby.map(x=>({...x,selected:false}))});else cases.push({id:`e-${turn.id}`,status:'PENDIENTE_BANCO',cg:[turn],bank:[]})});
+    bank.filter(deposit=>!used.has(deposit.id)&&!cases.some(row=>row.bank.some(x=>x.id===deposit.id))).forEach(deposit=>cases.push({id:`e-${deposit.id}`,status:deposit.stationStatus==='IDENTIFICADA'?'DEPOSITO_SIN_ORIGEN':'REFERENCIA_INVALIDA',cg:[],bank:[deposit]}));
+    cg.filter(turn=>turn.currency==='USD').forEach(turn=>cases.push({id:`u-${turn.id}`,status:'REQUIERE_REVISION',cg:[turn],bank:[],usd:true}));
+    return {cases,auto};
+  }
+  function rows(){let data=state.view==='auto'?state.auto:state.cases.filter(x=>x.status!=='APROBADO_DIFERENCIA');if(ui.concept.value)data=data.filter(x=>[...x.cg,...x.bank].some(y=>y.currency===ui.concept.value));return data}
+  function choose(items){if(!items.length)return;const selected=items.find(x=>x.selected!==false)||items[0];items.forEach(x=>x.selected=x.id===selected.id)}
+  function render(){const all=[...state.cases,...state.auto];all.forEach(x=>{choose(x.cg);choose(x.bank)});const totalCg=all.reduce((a,x)=>a+x.cg.reduce((b,y)=>b+y.amount,0),0),totalBank=all.reduce((a,x)=>a+x.bank.reduce((b,y)=>b+y.amount,0),0);$('kpi-cg').textContent=fmt(totalCg);$('kpi-bank').textContent=fmt(totalBank);$('kpi-auto').textContent=integer.format(state.auto.length);$('kpi-exceptions').textContent=integer.format(state.cases.filter(x=>x.status!=='APROBADO_DIFERENCIA').length);const visible=rows();$('queue-title').textContent=state.view==='auto'?'Conciliadas':'Excepciones';$('queue-count').textContent=`${visible.length} operacion${visible.length===1?'':'es'}`;$('case-list').innerHTML=visible.length?visible.map(row=>{const [name,kind]=status(row.status),cg=row.cg[0],bank=row.bank[0],title=cg?`${label(cg.currency)} - Turno ${cg.turn}`:`Deposito Banorte${bank?.reference?` - Ref. ${bank.reference}`:''}`,meta=[showDate(cg?.date||bank?.date||''),cg?`CG ${fmt(cg.amount)}`:'',bank?`Banorte ${fmt(bank.amount)}`:'Sin deposito'].filter(Boolean).join(' | ');return `<button class="case ${state.selected===row.id?'active':''}" type="button" data-case="${row.id}"><span class="badge ${kind}">${name}</span><span class="case-title">${esc(title)}</span><span class="case-meta">${esc(meta)}</span></button>`}).join(''):'<div class="empty"><i class="fas fa-check-circle"></i>No hay operaciones en esta vista.</div>';renderDetail(all.find(x=>x.id===state.selected))}
+  function queueItem(row){const [name,kind]=status(row.status),cg=row.cg[0],bank=row.bank[0],title=cg?`${label(cg.currency)} - Turno ${cg.turn}`:`Deposito Banorte${bank?.referenceFull?` - Ref. ${bank.referenceFull}`:''}`,meta=[showDate(cg?.date||bank?.date||''),cg?`CG ${fmt(cg.amount)}`:'',bank?`Banorte ${fmt(bank.amount)}`:'Sin deposito'].filter(Boolean).join(' | ');return `<button class="case ${state.selected===row.id?'active':''}" type="button" data-case="${row.id}"><span class="badge ${kind}">${name}</span><span class="case-title">${esc(title)}</span><span class="case-meta">${esc(meta)}</span></button>`}
+  function render(){const all=[...state.cases,...state.auto];all.forEach(row=>{if(!row.cg.some(item=>item.selected===true))choose(row.cg);if(!row.bank.some(item=>item.selected===true)){const cg=row.cg.find(item=>item.selected!==false)||row.cg[0],nearest=cg?[...row.bank].sort((a,b)=>Math.abs(days(cg.date,a.date))-Math.abs(days(cg.date,b.date))||Math.abs(a.amount-cg.amount)-Math.abs(b.amount-cg.amount))[0]:row.bank[0];if(nearest)row.bank.forEach(item=>item.selected=item.id===nearest.id)}});const totalCg=all.reduce((sum,row)=>sum+row.cg.reduce((sub,item)=>sub+item.amount,0),0),totalBank=all.reduce((sum,row)=>sum+row.bank.reduce((sub,item)=>sub+item.amount,0),0),exceptionCount=state.cases.filter(row=>row.status!=='APROBADO_DIFERENCIA').length;$('kpi-cg').textContent=fmt(totalCg);$('kpi-bank').textContent=fmt(totalBank);$('kpi-auto').textContent=integer.format(state.auto.length);$('kpi-exceptions').textContent=integer.format(exceptionCount);$('metric-exceptions').classList.toggle('is-alert',exceptionCount>0);const visible=rows(),bucket=state.groups||(state.groups={exceptions:{},auto:{}}),groups=visible.reduce((out,row)=>{const key=row.cg[0]?.date||row.bank[0]?.date||'sin-fecha';(out[key]||(out[key]=[])).push(row);return out},{}),closed=bucket[state.view]||(bucket[state.view]={});Object.keys(groups).forEach(key=>{if(!(key in closed))closed[key]=true});$('queue-title').textContent=state.view==='auto'?'Conciliadas':'Excepciones';$('queue-count').textContent=`${visible.length} operacion${visible.length===1?'':'es'}`;$('case-list').innerHTML=Object.keys(groups).sort().map(key=>`<section class="date-group"><button type="button" class="date-group-head" data-group="${key}"><span><i class="fas fa-chevron-${closed[key]?'right':'down'}"></i>${showDate(key)}</span><small>${groups[key].length} operacion${groups[key].length===1?'':'es'}</small></button><div class="date-group-body" ${closed[key]?'hidden':''}>${groups[key].map(queueItem).join('')}</div></section>`).join('')||'<div class="empty"><i class="fas fa-check-circle"></i>No hay operaciones en esta vista.</div>';renderDetail(all.find(row=>row.id===state.selected))}
+  $('case-list').addEventListener('click',event=>{const group=event.target.closest('[data-group]');if(!group)return;const bucket=state.groups||(state.groups={exceptions:{},auto:{}}),closed=bucket[state.view]||(bucket[state.view]={});closed[group.dataset.group]=!closed[group.dataset.group];render()});
+  function entries(items,side,row){const ordered=side==='bank'&&row.cg[0]?[...items].sort((a,b)=>Math.abs(days(row.cg[0].date,a.date))-Math.abs(days(row.cg[0].date,b.date))||Math.abs(a.amount-row.cg[0].amount)-Math.abs(b.amount-row.cg[0].amount)):items;return ordered.length?ordered.map(item=>`<label class="entry"><input type="radio" name="${side}-${row.id}" data-side="${side}" data-item="${item.id}" ${item.selected!==false?'checked':''}><span><strong>${esc(item.description)}</strong><small>${showDate(item.date)}${item.turn?` - Turno ${esc(item.turn)}`:''}${item.referenceFull||item.reference?` - Ref. ${esc(item.referenceFull||item.reference)}`:''}</small></span><strong class="amount">${fmt(item.amount)}</strong></label>`).join(''):'<div class="empty" style="padding:2rem .5rem"><i class="fas fa-clock"></i>Sin partida.</div>'}
+  function renderDetail(row){if(!row){$('detail').innerHTML='<div class="empty"><i class="fas fa-balance-scale"></i>Elige una operaci&oacute;n para revisarla.</div>';$('detail-status').textContent='Seleccione una operacion';return}const cg=row.cg.filter(x=>x.selected!==false),bank=row.bank.filter(x=>x.selected!==false),cgTotal=cg.reduce((a,x)=>a+x.amount,0),bankTotal=bank.reduce((a,x)=>a+x.amount,0),diff=bankTotal-cgTotal,[name,kind]=status(row.status);$('detail-status').innerHTML=`<span class="badge ${kind}">${name}</span>`;const actions=state.auto.includes(row)?'<button class="btn btn-outline-warning" data-action="error">Marcar como error</button>':`${row.status==='MATCH_PROPUESTO'?'<button class="btn btn-primary" data-action="confirm">Confirmar 1:1</button>':''}<button class="btn btn-success" data-action="approve">Aprobar diferencia</button>`;$('detail').innerHTML=`<div class="totals"><div><span>ControlGas</span><strong>${fmt(cgTotal)}</strong></div><div><span>Banorte</span><strong>${fmt(bankTotal)}</strong></div><div class="difference"><span>Diferencia</span><strong>${fmt(diff)}</strong></div></div><div class="sources"><section class="source"><h3><i class="fas fa-cash-register text-primary mr-1"></i>ControlGas</h3>${entries(row.cg,'cg',row)}</section><section class="source"><h3><i class="fas fa-university text-success mr-1"></i>${row.usd?'REGIO':'Banorte'}</h3>${entries(row.bank,'bank',row)}</section></div><div class="info">${row.usd?'Dolares se revisan con REGIO; no tienen cuenta bancaria asociada.':bank[0]?`Deposito: ${esc(bank[0].detail||bank[0].reference||'Sin detalle')}`:'No hay deposito Banorte relacionado.'}</div><div class="actions">${actions}</div>`}
+  function selectedRow(){return[...state.cases,...state.auto].find(x=>x.id===state.selected)}
+  function act(action){const row=selectedRow();if(!row)return;if(action==='error'){state.auto=state.auto.filter(x=>x!==row);row.status='REQUIERE_REVISION';state.cases.push(row);state.view='exceptions';state.selected=row.id;toast('Movida a excepciones.')}if(action==='confirm'){if(row.cg.filter(x=>x.selected!==false).length!==1||row.bank.filter(x=>x.selected!==false).length!==1){toast('Seleccione un turno y un deposito.');return}state.cases=state.cases.filter(x=>x!==row);row.status='CONCILIADO_MANUAL';state.auto.push(row);state.view='exceptions';state.selected=rows()[0]?.id||null;toast('Relacion 1:1 confirmada.')}if(action==='approve'){state.cases=state.cases.filter(x=>x!==row);row.status='CONCILIADO_MANUAL';state.auto.push(row);state.view='exceptions';state.selected=rows()[0]?.id||null;toast('Diferencia conciliada.')}document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.view===state.view));render()}
+  async function loadStations(){try{const response=await fetch(STATIONS,{headers:{Accept:'application/json'}}),json=await response.json(),data=(json.status==='success'?json.respuesta||[]:[]).filter(x=>x.RFC==='DGA930823KD3');ui.station.innerHTML='<option value="">Seleccione una estacion...</option>'+data.map(x=>`<option value="${esc(x.Codigo)}">${esc(x.Nombre)}</option>`).join('')}catch(error){ui.station.innerHTML='<option value="">No fue posible cargar estaciones</option>'}finally{ui.station.disabled=false}}
+  async function query(){if(!ui.station.value){toast('Seleccione una estacion.');return}ui.search.disabled=true;ui.search.innerHTML='<span class="spinner-border spinner-border-sm"></span> Consultando';try{const first=new Date(state.month.getFullYear(),state.month.getMonth(),1).toISOString().slice(0,10).replaceAll('-',''),last=new Date(state.month.getFullYear(),state.month.getMonth()+1,0).toISOString().slice(0,10).replaceAll('-',''),payload={Datos:{FechaInicial:first,FechaFinal:last,Gasolinera:Number(ui.station.value)}},[cgRes,bankRes]=await Promise.all([fetch(API,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(payload)}),fetch(`${BANK}?year=${state.month.getFullYear()}&month=${state.month.getMonth()+1}&estacion_id=${encodeURIComponent(ui.station.value)}`)]);if(!cgRes.ok||!bankRes.ok)throw new Error('No fue posible consultar las fuentes.');const [cg,bank]=await Promise.all([cgRes.json(),bankRes.json()]);if(!cg.exito&&cg.codigo!==0)throw new Error(cg.mensaje||'ControlGas no respondio.');if(bank.status!=='success')throw new Error(bank.message||'Banorte no respondio.');const result=reconcile(Array.isArray(cg.respuesta)?cg.respuesta:[],Array.isArray(bank.data)?bank.data:[]);state.cases=result.cases;state.auto=result.auto;state.view='exceptions';state.selected=rows()[0]?.id||null;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.view==='exceptions'));render()}catch(error){state.cases=[];state.auto=[];state.selected=null;render();toast(error.message||'No fue posible completar la consulta.')}finally{ui.search.disabled=false;ui.search.innerHTML='<i class="fas fa-search mr-1"></i>Consultar'}}
+  $('period-trigger').addEventListener('click',()=>{const open=$('period-menu').classList.toggle('open');$('period-trigger').setAttribute('aria-expanded',String(open));if(open){state.year=state.month.getFullYear();renderPeriod()}});$('period-menu').addEventListener('click',event=>{const year=event.target.closest('[data-year]'),month=event.target.closest('[data-month]');if(year){state.year+=Number(year.dataset.year);renderPeriod()}if(month){state.month=new Date(state.year,Number(month.dataset.month),1);renderPeriod();closePeriod()}});document.addEventListener('click',event=>{if(!event.target.closest('.period'))closePeriod()});ui.search.addEventListener('click',query);ui.concept.addEventListener('change',()=>{state.selected=rows()[0]?.id||null;render()});document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>{state.view=tab.dataset.view;state.selected=rows()[0]?.id||null;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===tab));render()}));$('case-list').addEventListener('click',event=>{const node=event.target.closest('[data-case]');if(node){state.selected=node.dataset.case;render()}});$('detail').addEventListener('change',event=>{const input=event.target.closest('[data-item]');if(!input)return;const row=selectedRow(),items=input.dataset.side==='cg'?row.cg:row.bank;items.forEach(x=>x.selected=x.id===input.dataset.item);renderDetail(row)});$('detail').addEventListener('click',event=>{const button=event.target.closest('[data-action]');if(button)act(button.dataset.action)});renderPeriod();loadStations();
 })();
 </script>
 {% endblock %}
