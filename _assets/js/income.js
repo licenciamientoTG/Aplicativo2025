@@ -1797,6 +1797,90 @@ async function cash_sales_table(){
     });
 }
 
+async function values_report_table(){
+    if ($.fn.DataTable.isDataTable('#values_report_table')) {
+        $('#values_report_table').DataTable().destroy();
+        $('#values_report_table thead .filter').remove();
+    }
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+    var codgas = document.getElementById('codgas').value;
+    var codVal = $('#codVal').val();
+    codVal = codVal ? codVal.join(',') : '';
+
+    $('#values_report_table thead').prepend($('#values_report_table thead tr').clone().addClass('filter'));
+    $('#values_report_table thead tr.filter th').each(function (index) {
+        col = $('#values_report_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#values_report_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#values_report_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let values_report_table = $('#values_report_table').DataTable({
+        order: [1, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
+                'codVal': codVal
+            },
+            url: '/income/values_report_table',
+            timeout: 600000,
+            error: function() {
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'Estacion' },
+            { data: 'Fecha' },
+            { data: 'Isla' },
+            { data: 'Turno' },
+            { data: 'CodigoValor' },
+            { data: 'Valor' },
+            { data: 'Cantidad' },
+            { data: 'Monto' },
+        ],
+        deferRender: true,
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+        }
+    });
+}
+
 async function clients_debit_table(){
     if ($.fn.DataTable.isDataTable('#clients_debit_table')) {
         $('#clients_debit_table').DataTable().destroy();

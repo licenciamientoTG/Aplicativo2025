@@ -1493,7 +1493,8 @@ class MovimientosBancariosModel extends Model
             $ph      = implode(',', array_fill(0, count($cuentasPermitidas), '?'));
             $where  .= " AND cuenta IN ($ph)";
             array_push($params, ...$cuentasPermitidas);
-        } elseif (!empty($filtros['cuenta'])) {
+        }
+        if (!empty($filtros['cuenta'])) {
             $where   .= ' AND cuenta = ?';
             $params[] = $filtros['cuenta'];
         }

@@ -1,0 +1,95 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Reporte de Valores{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Reporte de Valores{% endblock %}
+{% block content %}
+
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="values_report-tab" data-bs-toggle="tab" data-bs-target="#values_report" type="button" role="tab" aria-controls="values_report" aria-selected="true">Reporte de Valores</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane active" id="values_report" role="tabpanel" aria-labelledby="values_report-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date" class="form-control form-control-sm" name="from" id="from" value="{{ 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until" id="until" value="{{ 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-3">
+                        <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" placeholder="Estación">
+                            <option value="">Todas las estaciones</option>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-3">
+                        <label for="codVal" class="col-form-label col-form-label-sm">Tipo de Valor: </label>
+                        <select class="selectpicker form-control" multiple data-live-search="true" data-actions-box="true" name="codVal" id="codVal" placeholder="Todos los valores">
+                            {% for valor in valores %}
+                            <option value="{{ valor.cod }}">{{ valor.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="search_values_report_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Ingresos por Valor</h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="values_report_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Estación</th>
+                            <th>Fecha</th>
+                            <th>Isla</th>
+                            <th>Turno</th>
+                            <th>Código Valor</th>
+                            <th>Valor</th>
+                            <th>Cantidad</th>
+                            <th>Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Estación</th>
+                            <th>Fecha</th>
+                            <th>Isla</th>
+                            <th>Turno</th>
+                            <th>Código Valor</th>
+                            <th>Valor</th>
+                            <th>Cantidad</th>
+                            <th>Monto</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ js_v('income.js') }}"></script>
+<script>
+$('#search_values_report_table').on('click', function() {
+    values_report_table();
+});
+</script>
+{% endblock %}
