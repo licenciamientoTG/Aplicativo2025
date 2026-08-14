@@ -6209,6 +6209,106 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation.html');
     }
 
+    /**
+     * Depósitos de efectivo Banorte para la prueba de conciliación Díaz Gas.
+     * Sólo consulta movimientos ya importados; no modifica Tesorería ni grupos V3.
+     */
+    public function get_cash_banorte_deposits(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year       = (int)($_GET['year'] ?? date('Y'));
+        $month      = (int)($_GET['month'] ?? date('m'));
+        $estacionId = (int)($_GET['estacion_id'] ?? 0);
+        if ($year < 2020 || $month < 1 || $month > 12 || !$estacionId) {
+            echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
+            exit;
+        }
+
+        $normalizarCodigo = static function ($valor): string {
+            $digitos = preg_replace('/\D+/', '', (string)$valor);
+            return ltrim($digitos, '0') ?: '0';
+        };
+
+        try {
+            $conn = $this->v3_conn();
+
+            // Estaciones.Estacion conserva el identificador operativo que Banorte
+            // escribe en la descripción detallada (por ejemplo E04188 → 4188).
+            $stmtEstaciones = $conn->query(
+                "SELECT DISTINCT E.Codigo, E.Nombre,
+                        E.Estacion AS codigo_banco
+                 FROM [TG].[dbo].[Estaciones] E
+                 WHERE E.RFC = 'DGA930823KD3'"
+            );
+            $catalogo = [];
+            while ($est = $stmtEstaciones->fetch(PDO::FETCH_ASSOC)) {
+                $codigo = $normalizarCodigo($est['codigo_banco']);
+                if ($codigo !== '0') {
+                    $catalogo[$codigo] = [
+                        'station_id' => (int)$est['Codigo'],
+                        'station'    => trim((string)$est['Nombre']),
+                    ];
+                }
+            }
+
+            $stmt = $conn->prepare(
+                "SELECT id, fecha, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
+                 FROM [TG].[dbo].[movimientos_bancarios]
+                 WHERE banco = 'BANORTE'
+                   AND REPLACE(REPLACE(ISNULL(cuenta,''), '-', ''), ' ', '') = '0185322470'
+                   AND abono > 0
+                   AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                   AND UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                 ORDER BY fecha, id"
+            );
+            $stmt->execute([$year, $month]);
+
+            $movimientos = [];
+            while ($mov = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $texto = implode(' ', [
+                    (string)($mov['descripcion_larga'] ?? ''), (string)($mov['descripcion'] ?? ''),
+                    (string)($mov['concepto'] ?? ''), (string)($mov['referencia'] ?? ''),
+                ]);
+                preg_match_all('/\d+/', $texto, $coincidencias);
+                $codigos = [];
+                foreach ($coincidencias[0] as $crudo) {
+                    $codigo = $normalizarCodigo($crudo);
+                    if (isset($catalogo[$codigo])) $codigos[$codigo] = true;
+                }
+
+                $codigos = array_keys($codigos);
+                $estatus = count($codigos) === 1 ? 'IDENTIFICADA'
+                    : (count($codigos) === 0 ? 'ESTACION_NO_IDENTIFICADA' : 'ESTACION_AMBIGUA');
+                $estacion = count($codigos) === 1 ? $catalogo[$codigos[0]] : null;
+                $fecha = $mov['fecha'] instanceof DateTime ? $mov['fecha']->format('Y-m-d') : substr((string)$mov['fecha'], 0, 10);
+
+                // Se devuelven los depósitos de la estación seleccionada y los no
+                // identificados/ambiguos: estos últimos requieren revisión humana.
+                if ($estacion && $estacion['station_id'] !== $estacionId) continue;
+                $movimientos[] = [
+                    'id'                => 'mb_' . (int)$mov['id'],
+                    'fecha'             => $fecha,
+                    'cuenta'            => $mov['cuenta'],
+                    'referencia'        => trim((string)$mov['referencia']),
+                    'sucursal'          => trim((string)$mov['sucursal']),
+                    'descripcion'       => trim((string)$mov['descripcion']),
+                    'descripcion_larga' => trim((string)$mov['descripcion_larga']),
+                    'importe'           => (float)$mov['abono'],
+                    'station_id'        => $estacion['station_id'] ?? null,
+                    'station'           => $estacion['station'] ?? null,
+                    'station_status'    => $estatus,
+                    'station_raw'       => $coincidencias[0],
+                    'station_normalized'=> $codigos,
+                ];
+            }
+            echo json_encode(['status' => 'success', 'data' => $movimientos]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error consultando depósitos Banorte: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
     // ── DASHBOARD V3 — GET /income/get_dashboard_v3 ───────────────────────────
     public function get_dashboard_v3(): void {
         ob_clean();
