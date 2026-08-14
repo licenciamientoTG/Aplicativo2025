@@ -19,8 +19,10 @@ class Tesoreria
     private const PERM_SALDO_GRUPO  = 82;   // Ver Saldo por Grupo
     // Perfil acotado: ve movimientos_bancos() pero solo de CUENTAS_PERFIL_CREDITO.
     // No da acceso a saldos por grupo, catálogo de cuentas ni subir movimientos.
-    private const PERM_MOVIMIENTOS_CREDITO = 87;   // Ver Movimientos Bancos - Crédito
-    private const PERM_MOV_CHEQUES         = 88;   // Ver Movimientos Bancos Cheques (tarjetas de crédito)
+    private const PERM_MOVIMIENTOS_CREDITO  = 87;   // Ver Movimientos Bancos - Crédito
+    private const PERM_MOV_CHEQUES          = 88;   // Ver Movimientos Bancos Cheques (tarjetas de crédito)
+    // Mismo patrón que PERM_MOVIMIENTOS_CREDITO pero con CUENTAS_PERFIL_INGRESOS.
+    private const PERM_MOVIMIENTOS_INGRESOS = 89;   // Ver Movimientos Bancos - Ingresos
     private const MAX_TXT_BYTES     = 10 * 1024 * 1024;
 
     /**
@@ -36,6 +38,19 @@ class Tesoreria
         '65504998214',   // Santander, Distribuidora Gasomex
         '65505528588',   // Santander, Distribuidora Clara
         '65505339719',   // Santander, Servicio El Jarudo
+    ];
+
+    /**
+     * Cuentas visibles para el perfil "Ingresos" (permiso 89), por
+     * CuentaLocal exacta del catálogo (TG.dbo.CatalogosCuentasBancarias).
+     * Confirmadas 2026-08-14 contra el catálogo.
+     */
+    private const CUENTAS_PERFIL_INGRESOS = [
+        '60630878973',          // Santander, Héctor Armandino Fierro Holguín
+        '00000369',             // Bankaool, Diaz Gas SA de CV
+        '0601500741',           // Banorte, Diaz Gas SA de CV (MXN)
+        '072164006015007416',   // Banorte, DG 0741 DLLS (USD)
+        '0185322470',           // Banorte, Diaz Gas SA de CV
     ];
 
     /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
@@ -231,7 +246,8 @@ class Tesoreria
      */
     public function movimientos_bancos(): void
     {
-        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)) {
+        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS)) {
             (new Errors())->get404();
             return;
         }
@@ -255,6 +271,7 @@ class Tesoreria
     {
         if (authorized(self::PERM_MOVIMIENTOS)) return null;
         if (authorized(self::PERM_MOVIMIENTOS_CREDITO)) return self::CUENTAS_PERFIL_CREDITO;
+        if (authorized(self::PERM_MOVIMIENTOS_INGRESOS)) return self::CUENTAS_PERFIL_INGRESOS;
         return [];
     }
 
@@ -297,7 +314,8 @@ class Tesoreria
     public function movimientos_table(): void
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)) {
+        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
