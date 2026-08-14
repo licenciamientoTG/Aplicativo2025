@@ -1869,7 +1869,6 @@ async function values_report_table(){
             { data: 'Fecha' },
             { data: 'Isla' },
             { data: 'Turno' },
-            { data: 'CodigoValor' },
             { data: 'Valor' },
             { data: 'Cantidad' },
             { data: 'Monto' },
