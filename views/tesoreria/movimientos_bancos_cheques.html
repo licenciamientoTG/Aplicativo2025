@@ -214,6 +214,7 @@
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
+      {% if authorized(81) %}
       <div class="col-auto ms-auto d-flex gap-2">
         {% for cod, b in bancos %}
         <button type="button" class="btn btn-sm btn-outline-primary btn-upload-banco" data-banco="{{ cod }}"
@@ -222,6 +223,7 @@
         </button>
         {% endfor %}
       </div>
+      {% endif %}
     </form>
   </div>
 </div>

@@ -1032,7 +1032,7 @@ class Tesoreria
     public function upload_movimientos_cheques(): void
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_MOV_CHEQUES)) {
+        if (!authorized(self::PERM_MOV_CHEQUES) || !authorized(self::PERM_SUBIR_MOV)) {
             json_output(['success' => false, 'message' => 'No tienes permiso para importar movimientos']);
             return;
         }
