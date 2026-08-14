@@ -1,0 +1,6 @@
+{
+  "driver": "ODBC Driver 17 for SQL Server",
+  "server": "192.168.0.6",
+  "user": "cguser",
+  "password": "CONFIGURAR_EN_SERVIDOR"
+}

@@ -7243,11 +7243,13 @@ public function stamped_invoices_detail(): void
             $conn = $this->v3_conn();
             $conn->beginTransaction();
 
-            // 1. Obtener grupo_id
-            $stmt = $conn->prepare("SELECT grupo_id FROM Conciliacion_V3_Detalles WHERE id = ?");
+            // 1. Obtener grupo_id y origen para mantener sincronizada la
+            // caché de alertas en TG al resolver este detalle.
+            $stmt = $conn->prepare("SELECT grupo_id, origen FROM Conciliacion_V3_Detalles WHERE id = ?");
             $stmt->execute([$id_detalle]);
-            $grupo_id = $stmt->fetchColumn();
-            if (!$grupo_id) throw new Exception('Detalle no encontrado.');
+            $detalle = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$detalle) throw new Exception('Detalle no encontrado.');
+            $grupo_id = (int)$detalle['grupo_id'];
 
             // 2. Verificar que el mes no esté cerrado
             $stmt = $conn->prepare("SELECT estado FROM Conciliacion_V3_Grupos WHERE id = ?");
@@ -7258,6 +7260,14 @@ public function stamped_invoices_detail(): void
             // 3. Actualizar monto
             $conn->prepare("UPDATE Conciliacion_V3_Detalles SET monto = ? WHERE id = ?")
                  ->execute([$nuevo_monto, $id_detalle]);
+
+            // No tocamos SG12: sólo retiramos de la caché TG el aviso que el
+            // usuario acaba de resolver. La tarea lo volverá a insertar si la
+            // fuente cambia nuevamente.
+            $conn->prepare(
+                "IF OBJECT_ID('dbo.CV3_AlertasCambios', 'U') IS NOT NULL
+                 DELETE FROM dbo.CV3_AlertasCambios WHERE detalle_id = ? AND origen = ?"
+            )->execute([$id_detalle, $detalle['origen']]);
 
             // 4. Recalcular totales del grupo
             $stmt = $conn->prepare(
@@ -8879,6 +8889,10 @@ public function stamped_invoices_detail(): void
             $gruposAfectados = [];
             foreach ($items as $item) {
                 $stmtUpd->execute([(float)$item['monto_nuevo'], (int)$item['id']]);
+                $conn->prepare(
+                    "IF OBJECT_ID('dbo.CV3_AlertasCambios', 'U') IS NOT NULL
+                     DELETE FROM dbo.CV3_AlertasCambios WHERE detalle_id = ? AND origen = 'TES'"
+                )->execute([(int)$item['id']]);
                 $gruposAfectados[(int)$item['grupo_id']] = true;
             }
 
@@ -8907,6 +8921,132 @@ public function stamped_invoices_detail(): void
         } catch (PDOException $e) {
             $conn->rollBack();
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // REVISIÓN GLOBAL SILENCIOSA DE CAMBIOS V3
+    // Se ejecuta una vez al abrir la vista. Compara sólo los detalles ya
+    // conciliados contra sus fuentes actuales y devuelve un resumen compacto.
+    // -------------------------------------------------------------------------
+    public function revisar_cambios_conciliacion_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        try {
+            $conn = $this->v3_conn();
+
+            // Tesorería: referencias modernas (mb_<id>) y referencias del
+            // concentrado histórico. Se compara directamente en SQL.
+            $sqlTes = "
+                SELECT DISTINCT
+                       d.grupo_id, ISNULL(s.Nombre, CONCAT('Estación ', g.estacion_id)) AS estacion,
+                       e.Nombre AS banco, g.afiliacion,
+                       CONVERT(VARCHAR(10), g.fecha_operativa, 23) AS fecha,
+                       'TES' AS origen
+                FROM Conciliacion_V3_Detalles d
+                INNER JOIN Conciliacion_V3_Grupos g ON g.id = d.grupo_id
+                LEFT JOIN Estaciones s ON s.Codigo = g.estacion_id
+                LEFT JOIN Tesoreria_Entidad e ON e.id = g.entidad_id
+                LEFT JOIN [TG].[dbo].[movimientos_bancarios] m
+                       ON d.referencia_externa LIKE 'mb[_]%'
+                      AND m.id = TRY_CONVERT(INT, SUBSTRING(d.referencia_externa, 4, 50))
+                LEFT JOIN Tesoreria_V3_Unificada t
+                       ON d.referencia_externa NOT LIKE 'mb[_]%'
+                      AND t.id_origen = d.referencia_externa
+                WHERE d.origen = 'TES'
+                  AND (m.id IS NOT NULL OR t.id_origen IS NOT NULL)
+                  AND ABS(d.monto - CAST(COALESCE(m.abono, t.Depositos) AS DECIMAL(18,2))) > 0.001
+            ";
+            $detallesTes = $conn->query($sqlTes)->fetchAll(PDO::FETCH_ASSOC);
+
+            // CG: la referencia V3 conserva fch-codisl-nrotur-codval. Partir
+            // la referencia permite buscar el corte exacto sin recorrer todos
+            // los ingresos de ControlGas para cada conciliación.
+            $sqlCg = "
+                SELECT DISTINCT
+                       d.grupo_id, ISNULL(s.Nombre, CONCAT('Estación ', g.estacion_id)) AS estacion,
+                       e.Nombre AS banco, g.afiliacion,
+                       CONVERT(VARCHAR(10), g.fecha_operativa, 23) AS fecha,
+                       'CG' AS origen
+                FROM Conciliacion_V3_Detalles d
+                INNER JOIN Conciliacion_V3_Grupos g ON g.id = d.grupo_id
+                INNER JOIN Conciliacion_Configuracion c
+                    ON c.estacion_id = g.estacion_id AND c.entidad_id = g.entidad_id
+                   AND (c.afiliacion = g.afiliacion OR g.afiliacion LIKE '%' + c.afiliacion + '%')
+                LEFT JOIN Estaciones s ON s.Codigo = g.estacion_id
+                LEFT JOIN Tesoreria_Entidad e ON e.id = g.entidad_id
+                CROSS APPLY (
+                    SELECT
+                        TRY_CONVERT(INT, PARSENAME(REPLACE(REPLACE(d.referencia_externa, '--', '-N'), '-', '.'), 4)) AS fch,
+                        TRY_CONVERT(INT, PARSENAME(REPLACE(REPLACE(d.referencia_externa, '--', '-N'), '-', '.'), 3)) AS codisl,
+                        TRY_CONVERT(INT, PARSENAME(REPLACE(REPLACE(d.referencia_externa, '--', '-N'), '-', '.'), 2)) AS nrotur,
+                        TRY_CONVERT(INT, REPLACE(PARSENAME(REPLACE(REPLACE(d.referencia_externa, '--', '-N'), '-', '.'), 1), 'N', '-')) AS codval
+                ) ref
+                INNER JOIN [SG12].[dbo].[Ingresos] i
+                    ON i.fch = ref.fch AND i.codisl = ref.codisl
+                   AND i.nrotur = ref.nrotur AND i.codval = ref.codval
+                INNER JOIN [SG12].[dbo].[Valores] v ON v.cod = i.codval
+                WHERE d.origen = 'CG'
+                  AND ref.fch IS NOT NULL
+                  AND (
+                    NULLIF(LTRIM(RTRIM(c.conceptos_cg)), '') IS NULL
+                    OR EXISTS (
+                        SELECT 1
+                        FROM (SELECT TRY_CAST('<r><v>' + REPLACE(c.conceptos_cg, ',', '</v><v>') + '</v></r>' AS XML) AS xml_conceptos) x
+                        CROSS APPLY x.xml_conceptos.nodes('/r/v') nodo(valor)
+                        WHERE UPPER(v.den) LIKE '%' + UPPER(LTRIM(RTRIM(nodo.valor.value('.', 'VARCHAR(200)')))) + '%'
+                    )
+                  )
+                  -- Igual que el botón de sincronizar de CG en la vista.
+                  AND ABS(d.monto - CAST(i.mto AS DECIMAL(18,2))) > 0.1
+            ";
+            $detallesCg = $conn->query($sqlCg)->fetchAll(PDO::FETCH_ASSOC);
+
+            $tes = array_values(array_unique(array_map('intval', array_column($detallesTes, 'grupo_id'))));
+            $cg  = array_values(array_unique(array_map('intval', array_column($detallesCg, 'grupo_id'))));
+            echo json_encode([
+                'status' => 'success',
+                'cg'     => count($cg),
+                'tes'    => count($tes),
+                'total'  => count(array_unique(array_merge($cg, $tes))),
+                'detalles' => array_merge($detallesCg, $detallesTes),
+            ]);
+        } catch (PDOException $e) {
+            // La alerta es auxiliar: un fallo no debe afectar la conciliación.
+            error_log('revisar_cambios_conciliacion_v3: ' . $e->getMessage());
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // Lectura ligera de la caché generada por la tarea programada.
+    public function get_alertas_cambios_conciliacion_v3(): void {
+        ob_clean(); header('Content-Type: application/json');
+        $year = (int)($_GET['year'] ?? date('Y'));
+        $month = (int)($_GET['month'] ?? date('m'));
+        if ($year < 2020 || $month < 1 || $month > 12) {
+            echo json_encode(['status'=>'success', 'cg'=>0, 'tes'=>0, 'total'=>0, 'detalles'=>[]]); exit;
+        }
+        try {
+            $conn = $this->v3_conn();
+            $rows = $conn->prepare("SELECT a.origen, a.grupo_id, a.estacion, a.banco, a.afiliacion,
+                COALESCE(g.estacion_id, a.estacion_id) AS estacion_id, g.entidad_id,
+                CONVERT(VARCHAR(10), a.fecha_operativa, 23) AS fecha,
+                a.monto_guardado, a.monto_actual, a.diferencia
+                FROM dbo.CV3_AlertasCambios a
+                LEFT JOIN dbo.Conciliacion_V3_Grupos g ON g.id = a.grupo_id
+                WHERE YEAR(a.fecha_operativa) = ? AND MONTH(a.fecha_operativa) = ?
+                ORDER BY a.estacion, a.fecha_operativa");
+            $rows->execute([$year, $month]);
+            $rows = $rows->fetchAll(PDO::FETCH_ASSOC);
+            $cg = count(array_unique(array_column(array_filter($rows, fn($r) => $r['origen'] === 'CG'), 'grupo_id')));
+            $tes = count(array_unique(array_column(array_filter($rows, fn($r) => $r['origen'] === 'TES'), 'grupo_id')));
+            echo json_encode(['status'=>'success', 'cg'=>$cg, 'tes'=>$tes,
+                'total'=>count(array_unique(array_column($rows, 'grupo_id'))), 'detalles'=>$rows]);
+        } catch (PDOException $e) {
+            echo json_encode(['status'=>'success', 'cg'=>0, 'tes'=>0, 'total'=>0, 'detalles'=>[]]);
         }
         exit;
     }
