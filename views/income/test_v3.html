@@ -902,7 +902,43 @@
         justify-content: center;
         transition: background .2s, transform .15s;
     }
-    #btn-bug-report:hover { background: #e74c3c; transform: scale(1.08); }
+    #btn-bug-report:hover { background: #d91f3f!important; transform: scale(1.08); }
+    #alerta-cambios-badge {
+        position:absolute;top:-7px;right:-10px;min-width:24px;height:20px;
+        line-height:16px;padding:2px 5px!important;border:2px solid #fff;
+        border-radius:12px!important;font-size:10px;font-weight:800;
+        box-shadow:0 2px 5px rgba(0,0,0,.22);
+    }
+    .alerta-cambio-navegable { cursor:pointer; transition:background .15s ease; }
+    .alerta-cambio-navegable:hover { background:#fff4f5!important; }
+    #modalAlertaCambiosConciliacion .modal-dialog { max-width:640px; }
+    #modalAlertaCambiosConciliacion .modal-content { border-radius:14px; overflow:hidden; box-shadow:0 18px 48px rgba(28,39,56,.24)!important; }
+    .alertas-modal-header { background:#fff; border-top:4px solid #ef2945; color:#26384a; }
+    .alertas-modal-title { font-size:1.05rem; letter-spacing:-.01em; }
+    .alertas-modal-subtitle { color:#718096; font-size:.78rem; margin-top:2px; }
+    .alertas-close { width:32px; height:32px; border-radius:50%; color:#718096!important; }
+    .alertas-close:hover { background:#f1f4f7; color:#ef2945!important; }
+    .alertas-modal-body { background:#f7f9fc; padding:22px 24px; }
+    .alertas-resumen { display:flex; background:#fff; border:1px solid #e2e9f0; border-radius:10px; overflow:hidden; }
+    .alertas-metrica { flex:1; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; }
+    .alertas-metrica + .alertas-metrica { border-left:1px solid #e2e9f0; }
+    .alertas-metrica-label { color:#718096; font-size:.69rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+    .alertas-metrica-valor { color:#ef2945; font-size:1.35rem; font-weight:800; line-height:1; }
+    .alertas-seccion-label { color:#718096; font-size:.72rem; font-weight:700; letter-spacing:.03em; margin:18px 0 8px; }
+    #alerta-cambios-detalle { border:1px solid #e2e9f0!important; border-radius:10px!important; max-height:270px!important; }
+    .alerta-cambio-navegable { min-height:76px; color:#26384a; }
+    .alerta-cambio-navegable:hover { background:#f7fbff!important; }
+    .alerta-cambio-origen { min-width:28px; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; background:#fff0f2; color:#ef2945; font-size:.72rem; }
+    .alerta-cambio-estacion { color:#26384a; font-size:.83rem; font-weight:700; }
+    .alerta-cambio-contexto { color:#718096; font-size:.72rem; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .alerta-cambio-montos { display:flex; gap:8px; flex-wrap:wrap; color:#718096; font-size:.7rem; margin-top:6px; }
+    .alerta-cambio-diferencia { color:#d62945; font-weight:700; }
+    .alerta-cambio-flecha { color:#a7b3c0; font-size:.78rem; }
+    @media (max-width:575.98px) {
+        .alertas-modal-body { padding:18px; }
+        .alerta-cambio-contexto { white-space:normal; }
+    }
+    @media (prefers-reduced-motion: reduce) { .alerta-cambio-navegable { transition:none; } }
     #bug-screenshot-zone {
         border: 2px dashed #ced4da;
         border-radius: 8px;
@@ -967,9 +1003,30 @@
     #bug-count-label { font-size: 11px; color: #6c757d; margin-top: 4px; }
 </style>
 
-<button id="btn-bug-report" title="Reportar un bug" onclick="openBugModal()">
-    <i class="fas fa-bug"></i>
+<button id="btn-bug-report" title="Cambios detectados en conciliaciones" onclick="abrirAlertaCambiosConciliacion()" style="display:none;background:#ef2945;">
+    <i class="fas fa-exclamation-triangle"></i>
+    <span id="alerta-cambios-badge" class="badge badge-light text-danger" style="display:none;">0</span>
 </button>
+
+<div class="modal fade" id="modalAlertaCambiosConciliacion" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-0 py-3 px-4 alertas-modal-header">
+                <div><h5 class="modal-title font-weight-bold alertas-modal-title"><i class="fas fa-exclamation-circle text-danger mr-2"></i>Cambios en conciliaciones</h5><div class="alertas-modal-subtitle">Selecciona un registro para abrir su conciliación.</div></div>
+                <button type="button" class="btn btn-link p-0 alertas-close" data-dismiss="modal" data-bs-dismiss="modal" onclick="$('#modalAlertaCambiosConciliacion').modal('hide'); return false;" aria-label="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body alertas-modal-body">
+                <div class="alertas-resumen">
+                    <div class="alertas-metrica"><span class="alertas-metrica-label">ControlGas</span><strong class="alertas-metrica-valor" id="alerta-cambios-cg">0</strong></div>
+                    <div class="alertas-metrica"><span class="alertas-metrica-label">Tesorería</span><strong class="alertas-metrica-valor" id="alerta-cambios-tes">0</strong></div>
+                </div>
+                <div class="alertas-seccion-label">Registros que requieren revisión</div>
+                <div id="alerta-cambios-detalle" class="bg-white" style="overflow-y:auto;"></div>
+            </div>
+            <div class="modal-footer border-0 bg-white py-3 px-4"><button type="button" class="btn btn-light rounded-pill px-4" data-dismiss="modal" data-bs-dismiss="modal" onclick="$('#modalAlertaCambiosConciliacion').modal('hide'); return false;">Cerrar</button></div>
+        </div>
+    </div>
+</div>
 
 <!-- Bug Report Modal -->
 <div id="modalBugReport" class="modal" tabindex="-1" role="dialog" style="display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5);">
@@ -1048,6 +1105,7 @@ const URLS_V3 = {
     cancelar_diferido:   '/income/cancelar_diferido_v3',
     report_bug:          '/income/report_bug_v3',
     amex_comisiones:     '/income/get_amex_comisiones',
+    revisar_cambios:     '/income/get_alertas_cambios_conciliacion_v3',
 };
 
 // Misma tabla de endpoints que V2 — misma fuente de datos para Tesorería
@@ -1090,6 +1148,7 @@ let historial = [];                 // detalles conciliados actuales
 // AMEX Comisiones — mapa: "YYYY-MM-DD_ESTABLECIMIENTO" → { comision, iva, bruto }
 let amexComisiones = {};
 let isAmex = false;   // true cuando bancoId === 3
+let alertasCambiosDetalle = [];
 
 // Tránsitos CG V3
 // enTransito: { [corte_ref_id]: { id, monto_corte, monto_transito, monto_efectivo, ... } }
@@ -1148,6 +1207,8 @@ function shouldKeepCGItemVisible(item) {
 $(document).ready(function() {
     initWidget();
     cargarEstaciones();
+    // Sólo lee la caché preparada por la tarea programada; no ejecuta el mapeo.
+    setTimeout(revisarCambiosConciliacionV3, 1200);
 });
 
 // ── DATE WIDGET ──────────────────────────────────────────────
@@ -1175,6 +1236,7 @@ function selectWidgetMonth(m) {
     updateDisplayDate();
     renderWidgetYear();
     closeDatePicker();
+    revisarCambiosConciliacionV3();
     actualizarTodo();
 }
 function updateDisplayDate() {
@@ -1326,6 +1388,9 @@ function actualizarTodo() {
         actualizarResumenSuperior();
         mostrarPreconciliacionesBanorte();
         if (!$('#rango-panel').hasClass('d-none')) calcularRango();
+        // La conciliación puede haber resuelto una alerta; esta lectura sólo
+        // consulta la caché TG y actualiza el botón sin bloquear la vista.
+        revisarCambiosConciliacionV3();
         // Restaurar scroll
         setTimeout(() => {
             $('#cg-content').scrollTop(scrollCG);
@@ -1333,6 +1398,65 @@ function actualizarTodo() {
             $('#tx-content').scrollTop(scrollTX);
         }, 50);
     });
+}
+
+// Revisión global auxiliar: se dispara después de cargar la vista y jamás usa
+// el estado de carga principal. La alerta sólo existe si el servidor encontró
+// movimientos conciliados cuyo importe cambió.
+async function revisarCambiosConciliacionV3() {
+    try {
+        const respuesta = await fetch(`${URLS_V3.revisar_cambios}?year=${widgetState.year}&month=${widgetState.month}`, { credentials: 'same-origin' });
+        const json = await respuesta.json();
+        if (json.status !== 'success' || !json.total) {
+            $('#btn-bug-report').hide();
+            return;
+        }
+        $('#alerta-cambios-cg').text(json.cg || 0);
+        $('#alerta-cambios-tes').text(json.tes || 0);
+        const detalles = Array.isArray(json.detalles) ? json.detalles : [];
+        alertasCambiosDetalle = detalles;
+        $('#alerta-cambios-detalle').html(detalles.map((item, index) => {
+            const fecha = String(item.fecha || '').split('-').reverse().join('/');
+            const tipo = item.origen === 'CG' ? 'ControlGas' : 'Tesorería';
+            const navegable = item.estacion_id && item.entidad_id;
+            return `<button type="button" class="w-100 px-3 py-2 border-0 border-bottom bg-white text-left d-flex align-items-center ${navegable ? 'alerta-cambio-navegable' : ''}" ${navegable ? `onclick="abrirConciliacionDesdeAlerta(${index})"` : 'disabled'}>
+                <span class="alerta-cambio-origen mr-3" title="${tipo}"><i class="fas ${item.origen === 'CG' ? 'fa-cash-register' : 'fa-university'}"></i></span>
+                <div class="flex-fill overflow-hidden"><div class="alerta-cambio-estacion">${escHtml(item.estacion || '')}</div><div class="alerta-cambio-contexto">${escHtml(item.banco || '')} · ${escHtml(item.afiliacion || 'Sin afiliación')} · ${fecha}</div><div class="alerta-cambio-montos"><span>Guardado ${fmt.format(item.monto_guardado || 0)}</span><span>Actual ${fmt.format(item.monto_actual || 0)}</span><span class="alerta-cambio-diferencia">Dif. ${fmt.format(item.diferencia || 0)}</span></div></div>${navegable ? '<i class="fas fa-chevron-right alerta-cambio-flecha ml-2"></i>' : ''}
+            </button>`;
+        }).join('') || '<div class="p-3 text-muted">No fue posible obtener el detalle.</div>');
+        $('#alerta-cambios-badge').text(json.total > 99 ? '99+' : json.total).show();
+        $('#btn-bug-report').fadeIn(180);
+    } catch (e) {
+        // Esta verificación no debe interrumpir el uso normal de la vista.
+    }
+}
+
+function abrirAlertaCambiosConciliacion() {
+    $('#modalAlertaCambiosConciliacion').modal('show');
+}
+
+async function abrirConciliacionDesdeAlerta(index) {
+    const alerta = alertasCambiosDetalle[index];
+    if (!alerta || !alerta.estacion_id || !alerta.entidad_id) return;
+    const estacion = todasLasEstaciones.find(e => String(e.Codigo) === String(alerta.estacion_id));
+    if (!estacion) { alert('No se encontró la estación de esta alerta.'); return; }
+
+    $('#modalAlertaCambiosConciliacion').modal('hide');
+    currentRS = RS_MAPPING[estacion.RFC || 'FORANEAS'] || 'FORANEAS';
+    filtrarEstaciones();
+    $('#estacionSelect').val(String(alerta.estacion_id));
+    await alCambiarEstacion();
+    $('#bancoSelect').val(String(alerta.entidad_id));
+    alCambiarBanco();
+
+    const afils = stationConfig.filter(r => String(r.entidad_id) === String(alerta.entidad_id));
+    if (afils.length <= 1) return;
+    const afilIndex = afils.findIndex(a => String(a.afiliacion).trim() === String(alerta.afiliacion || '').trim());
+    if (afilIndex < 0) {
+        alert('La afiliación de esta alerta ya no está configurada para la estación.');
+        return;
+    }
+    $('#afiliacionSelect').val(String(afilIndex)).trigger('change');
 }
 
 function body_loading(on) {
