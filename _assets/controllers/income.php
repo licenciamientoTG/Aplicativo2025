@@ -64,6 +64,43 @@ class Income{
         }
     }
 
+    function values_report(){
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            $stations = $this->gasolinerasModel->get_active_stations();
+            $valores = $this->ingresosModel->get_valores_list();
+            echo $this->twig->render($this->route . 'values_report.html', compact('stations', 'valores'));
+        }
+    }
+
+    public function values_report_table() {
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
+
+        $data = [];
+        $codgas = !empty($_POST['codgas']) ? (int)$_POST['codgas'] : null;
+        $from = $_POST['fromDate'];
+        $until = $_POST['untilDate'];
+        $codVal = isset($_POST['codVal']) && trim($_POST['codVal']) !== '' ? trim($_POST['codVal']) : null;
+
+        if ($ingresos = $this->ingresosModel->sp_obtener_ingresos_por_estacion($codgas, $from, $until, $codVal)) {
+            foreach ($ingresos as $ingreso) {
+                $data[] = array(
+                    'CodigoEstacion' => $ingreso['CodigoEstacion'],
+                    'Estacion'       => $ingreso['Estacion'],
+                    'Fecha'          => $ingreso['Fecha'],
+                    'Isla'           => $ingreso['Isla'],
+                    'Turno'          => $ingreso['Turno'],
+                    'CodigoValor'    => $ingreso['CodigoValor'],
+                    'Valor'          => $ingreso['Valor'],
+                    'Cantidad'       => round($ingreso['Cantidad'], 3),
+                    'Monto'          => round($ingreso['Monto'], 2),
+                );
+            }
+        }
+
+        json_output(array("data" => $data));
+    }
+
     function dolar_sales() {
         echo $this->twig->render($this->route . 'dolar_sales.html');
     }

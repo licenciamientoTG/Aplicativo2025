@@ -121,6 +121,16 @@ class IngresosModel extends Model{
         return $this->sql->select($query, $params) ?: false;
     }
 
+    function get_valores_list() : array|false {
+        $query = "SELECT DISTINCT cod, den FROM [SG12].[dbo].[Valores] WHERE den IS NOT NULL ORDER BY den;";
+        return $this->sql->select($query, []) ?: false;
+    }
+
+    function sp_obtener_ingresos_por_estacion($codigoEstacion, $fechaInicio, $fechaFin, $codVal) : array|false {
+        $params = [$codigoEstacion, $fechaInicio, $fechaFin, $codVal];
+        return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_ingresos_por_estacion]', $params) ?: false;
+    }
+
     function get_dolar_sales_table($from, $until) : array|false {
         $query = "
         SELECT
