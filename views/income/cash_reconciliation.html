@@ -56,10 +56,7 @@
     const unresolved=()=>cash.filter(turn=>!auto.some(row=>row.cg[0].id===turn.id)),pairCandidates=new Map();
     unresolved().forEach(turn=>{const eligible=inWindow(turn).filter(deposit=>!used.has(deposit.id)),pairs=[];for(let i=0;i<eligible.length;i+=1)for(let j=i+1;j<eligible.length;j+=1)if(Math.abs(eligible[i].amount+eligible[j].amount-turn.amount)<=TOLERANCE)pairs.push([eligible[i],eligible[j]]);pairCandidates.set(turn.id,pairs)});
     unresolved().forEach(turn=>{
-      const pairs=(pairCandidates.get(turn.id)||[]).filter(pair=>pair.every(deposit=>{
-        const usedByAnotherTurn=unresolved().some(other=>other.id!==turn.id&&(pairCandidates.get(other.id)||[]).some(otherPair=>otherPair.some(item=>item.id===deposit.id)));
-        return !used.has(deposit.id)&&!usedByAnotherTurn;
-      }));
+      const pairs=(pairCandidates.get(turn.id)||[]).filter(pair=>pair.every(deposit=>!used.has(deposit.id)));
       if(pairs.length===1){pairs[0].forEach(deposit=>used.add(deposit.id));auto.push({id:`a-pair-${turn.id}`,status:'CONCILIADO_AUTOMATICO',cg:[turn],bank:pairs[0]})}
     });
     unresolved().forEach(turn=>{const nearby=inWindow(turn).filter(deposit=>!used.has(deposit.id)),possible=(candidates.get(turn.id)||[]).filter(deposit=>!used.has(deposit.id)).map(x=>({...x,selected:false}));if(possible.length)cases.push({id:`e-${turn.id}`,status:'MATCH_PROPUESTO',cg:[turn],bank:possible});else if(nearby.length)cases.push({id:`e-${turn.id}`,status:'DIFERENCIA_IMPORTE',cg:[turn],bank:nearby.map(x=>({...x,selected:false}))});else cases.push({id:`e-${turn.id}`,status:'PENDIENTE_BANCO',cg:[turn],bank:[]})});
