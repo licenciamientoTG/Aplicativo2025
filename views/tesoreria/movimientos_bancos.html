@@ -598,9 +598,18 @@
               Cuenta <span class="text-danger">*</span>
               <small class="text-muted">— el archivo de este banco no la incluye</small>
             </label>
-            <input type="text" class="form-control" id="upload_cuenta" list="uploadCuentaLista"
-                   placeholder="Número de cuenta o CLABE" autocomplete="off">
-            <datalist id="uploadCuentaLista"></datalist>
+            {# Select en vez de datalist: un datalist solo sugiere, no impide
+               texto libre distinto, y así se tecleó una cuenta inexistente
+               ("000003" en vez de "00000369") que generó 103 movimientos
+               huérfanos fuera del catálogo. Con select el valor SIEMPRE sale
+               del catálogo, salvo que no haya ninguna cuenta sugerida (banco
+               recién agregado, sin cuentas dadas de alta todavía). #}
+            <select class="selectpicker" data-live-search="true" data-width="100%" id="upload_cuenta"></select>
+            <input type="text" class="form-control mt-1" id="upload_cuenta_libre"
+                   placeholder="Número de cuenta o CLABE" autocomplete="off" style="display:none;">
+            <small class="text-muted" id="upload_cuenta_libre_hint" style="display:none;">
+              No hay cuentas de este banco en el catálogo: captúrala manualmente.
+            </small>
           </div>
 
           {# El input real va oculto y SIN required: un campo required oculto
@@ -1228,6 +1237,12 @@ $(function () {
   // comprobantes de payment_list.
   var archivoActual = null;
 
+  // true cuando el banco no tiene ninguna cuenta sugerida y toca el input
+  // libre; se fija al armar el modal (no se detecta por visibilidad del
+  // select: bootstrap-select lo oculta con su propio wrapper, no con
+  // display, así que jQuery .is(':visible') no sirve aquí).
+  var cuentaLibre = false;
+
   function fmtPeso(bytes) {
     return bytes < 1024 * 1024
       ? (bytes / 1024).toFixed(0) + ' KB'
@@ -1289,11 +1304,23 @@ $(function () {
     $('#uploadCuentaWrap').toggle(pide);
     // Sin required nativo: lo valida el JS para que el error salga en el panel
     // del modal y no en un globo del navegador, como el resto de los avisos.
-    $('#upload_cuenta').val('');
+    $('#upload_cuenta_libre').val('');
     if (pide) {
-      $('#uploadCuentaLista').html((CUENTAS_SUGERIDAS[bancoActual] || []).map(function (c) {
-        return '<option value="' + esc(c.cuenta) + '">' + esc(c.descripcion) + '</option>';
-      }).join(''));
+      var sugeridas = CUENTAS_SUGERIDAS[bancoActual] || [];
+      cuentaLibre = sugeridas.length === 0;
+      // Con sugerencias: select obligatorio (con buscador), la cuenta no se
+      // puede teclear mal. Sin ninguna (banco recién agregado, aún sin alta
+      // en el catálogo): se cae al input libre, único caso en que el texto
+      // libre es inevitable.
+      $('#upload_cuenta')
+        .html('<option value="">Selecciona la cuenta…</option>' + sugeridas.map(function (c) {
+          return '<option value="' + esc(c.cuenta) + '">' + esc(c.cuenta) + ' — ' + esc(c.descripcion) + '</option>';
+        }).join(''))
+        // refresh: el plugin ya inicializó el select antes de que este código
+        // le cambiara las <option>; sin refresh sigue mostrando la lista vieja.
+        .selectpicker('refresh')
+        .selectpicker(cuentaLibre ? 'hide' : 'show');
+      $('#upload_cuenta_libre, #upload_cuenta_libre_hint').toggle(cuentaLibre);
     }
   });
 
@@ -1398,14 +1425,15 @@ $(function () {
       return;
     }
 
-    var cuenta = $('#upload_cuenta').val().trim();
+    var cuenta = (cuentaLibre ? $('#upload_cuenta_libre').val() : ($('#upload_cuenta').val() || '')).trim();
     if (BANCOS[bancoActual].pide_cuenta && cuenta === '') {
       resultado.innerHTML = panelError({
         message: 'El archivo de ' + BANCOS[bancoActual].etiqueta +
-                 ' no incluye la cuenta: captúrala antes de subirlo',
+                 ' no incluye la cuenta: selecciónala antes de subirlo',
       });
       resultado.style.display = 'block';
-      $('#upload_cuenta').focus();
+      if (cuentaLibre) $('#upload_cuenta_libre').focus();
+      else $('#upload_cuenta').selectpicker('toggle');
       return;
     }
 
