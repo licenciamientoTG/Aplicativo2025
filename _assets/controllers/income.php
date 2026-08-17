@@ -4237,6 +4237,10 @@ public function anomalies_client_tickets()
             $stmt->execute(array_merge([$year, $month], $afil_parts));
             
             $result = [];
+            // Santander puede importar el mismo archivo más de una vez. La huella
+            // que se expone como IdTransaccion identifica una operación bancaria
+            // completa, por lo que se conserva sólo la primera aparición.
+            $transaccionesVistas = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                 // GENERACIÓN DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
                 // Usamos hash siempre, ya que ID_Externo en Santander puede venir duplicado.
@@ -4251,6 +4255,11 @@ public function anomalies_client_tickets()
                     (string)($row['ID_Externo'] ?? ''); 
                 
                 $idTransaccion = 'tx_' . md5($hashData);
+
+                if (isset($transaccionesVistas[$idTransaccion])) {
+                    continue;
+                }
+                $transaccionesVistas[$idTransaccion] = true;
                 
                 $fechaVal = $row['Fecha_Transaccion'];
                 $fechaIso = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
