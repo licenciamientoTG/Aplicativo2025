@@ -37,7 +37,7 @@
 <script>
 (() => {
   'use strict';
-  const API='http://201.174.170.236:99/api/Depositos/GetDepositosEstacion',STATIONS='/income/get_estaciones_catalogo',BANK='/income/get_cash_banorte_deposits',TOLERANCE=50;
+  const API='http://201.174.170.236:99/api/Depositos/GetDepositosEstacion',STATIONS='/income/get_estaciones_catalogo',BANK='/income/get_cash_banorte_deposits',TOLERANCE=20;
   const $=id=>document.getElementById(id),money=new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}),integer=new Intl.NumberFormat('es-MX');
   const ui={station:$('cash-station'),concept:$('cash-concept'),search:$('cash-search')},state={month:new Date(new Date().getFullYear(),new Date().getMonth(),1),year:new Date().getFullYear(),cases:[],auto:[],selected:null,view:'exceptions'};
   const months=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],shortMonths=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
