@@ -294,10 +294,13 @@
   #mbLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
 
   /* Color de marca de cada banco, salido del registro BANCOS del controlador:
-     agregar un banco no obliga a tocar el CSS. */
+     agregar un banco no obliga a tocar el CSS. El botón de subida lo llevan
+     todos; el tab, solo los que tienen tabla. */
   {% for cod, b in bancos %}
-  .mb-tabs .nav-link[data-bs-target="#tab{{ cod }}"],
   .btn-upload-banco[data-banco="{{ cod }}"] { --mb-banco: {{ b.color }}; }
+  {% endfor %}
+  {% for cod, b in bancosTabla %}
+  .mb-tabs .nav-link[data-bs-target="#tab{{ cod }}"] { --mb-banco: {{ b.color }}; }
   {% endfor %}
 </style>
 {% endblock %}
@@ -482,9 +485,11 @@
 
 <div id="mbResultado" style="display:none;">
 
-<!-- Tabs por banco: tablas independientes -->
+<!-- Tabs por banco: tablas independientes. Van sobre bancosTabla y no sobre
+     bancos, porque los layouts alternos (Banorte 2) solo tienen botón de
+     subida: sus movimientos se guardan bajo el banco principal. -->
 <ul class="nav nav-tabs mb-tabs mb-2">
-  {% for cod, b in bancos %}
+  {% for cod, b in bancosTabla %}
   <li class="nav-item">
     <button class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
             data-bs-target="#tab{{ cod }}" type="button">
@@ -495,7 +500,7 @@
 </ul>
 
 <div class="tab-content">
-  {% for cod, b in bancos %}
+  {% for cod, b in bancosTabla %}
   <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab{{ cod }}">
     <div class="mb-tabla-wrap">
       <table id="tabla{{ cod }}" data-banco="{{ cod }}" data-etiqueta="{{ b.etiqueta }}"
@@ -888,16 +893,19 @@ $(function () {
   }
 
   // Registro de bancos: lo genera el controlador desde su constante BANCOS,
-  // así el PHP y el JS no pueden quedar desalineados.
+  // así el PHP y el JS no pueden quedar desalineados. BANCOS son todos los que
+  // se pueden subir; BANCOS_TABLA los que tienen tab y tabla (Banorte 2 sube
+  // pero no tiene tabla: sus movimientos salen en la de Banorte).
   var BANCOS = {{ bancos|json_encode|raw }};
+  var BANCOS_TABLA = {{ bancosTabla|json_encode|raw }};
 
   // Las tablas se crean una sola vez, vacías. Cada búsqueda solo reemplaza
   // sus filas: no se destruye ni se recarga la página, así que el panel de
   // saldos abierto, el tab activo y el ancho de columnas se conservan.
   var tablas = {};
-  Object.keys(BANCOS).forEach(function (cod) {
-    tablas[cod] = initMovsTable('#tabla' + cod, 'Movimientos ' + BANCOS[cod].etiqueta,
-      'Sin movimientos de ' + BANCOS[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.', cod);
+  Object.keys(BANCOS_TABLA).forEach(function (cod) {
+    tablas[cod] = initMovsTable('#tabla' + cod, 'Movimientos ' + BANCOS_TABLA[cod].etiqueta,
+      'Sin movimientos de ' + BANCOS_TABLA[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.', cod);
   });
 
   // Al cambiar de tab: reajustar anchos (la tabla oculta se inicializa sin
@@ -926,7 +934,7 @@ $(function () {
   function bancoDelTab() {
     // attr y no data(): selectpicker re-renderiza y jQuery cachea data()
     var banco = ($('#cuenta option:selected').attr('data-banco') || '').toUpperCase();
-    return BANCOS[banco] ? banco : Object.keys(BANCOS)[0];
+    return BANCOS_TABLA[banco] ? banco : Object.keys(BANCOS_TABLA)[0];
   }
 
   function abrirTab(cod) {
@@ -965,7 +973,7 @@ $(function () {
       $('#mbVacio').hide();
       $('#mbResultado').show();
 
-      Object.keys(BANCOS).forEach(function (cod) {
+      Object.keys(BANCOS_TABLA).forEach(function (cod) {
         var filas = r.movimientos[cod] || [];
         tablas[cod].clear().rows.add(filas).draw();
         $('[data-tabcount="' + cod + '"]').text(filas.length);

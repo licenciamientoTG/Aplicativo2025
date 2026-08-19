@@ -115,6 +115,20 @@ class Tesoreria
             'parser'   => 'parse_banorte_cheques_csv',
             'entrada'  => 'contenido',
         ],
+        // Segundo layout de Banorte: el TXT de interconexión, que trae las 19
+        // cuentas en un archivo en vez de una por una. Son los MISMOS
+        // movimientos que el CSV, así que se guardan con banco BANORTE y se ven
+        // en su tab; esta entrada solo existe para tener su propio botón de
+        // subida, de ahí solo_subida.
+        'BANORTE_TXT' => [
+            'etiqueta'    => 'Banorte 2',
+            'color'       => '#EF2945',
+            'ext'         => ['txt'],
+            'espera'      => 'el TXT del Estado de Cuenta Electrónico Especial Diario de Banorte',
+            'parser'      => 'parse_banorte_edc_txt',
+            'entrada'     => 'contenido',
+            'solo_subida' => true,
+        ],
         'AFIRME' => [
             'etiqueta' => 'Afirme',
             'color'    => '#009D29',   // verde del logo
@@ -207,14 +221,24 @@ class Tesoreria
     private static function banco_de($valor): string
     {
         $b = strtoupper(trim((string)$valor));
-        return isset(self::BANCOS[$b]) ? $b : 'SANTANDER';
+        return isset(self::bancos_con_tabla()[$b]) ? $b : 'SANTANDER';
     }
 
-    /** Acumuladores en cero para cada banco soportado. */
+    /**
+     * Bancos que tienen tab y tabla propios, que son todos menos los layouts
+     * alternos de un banco ya listado (Banorte 2), cuyos movimientos se guardan
+     * y se muestran bajo el banco principal.
+     */
+    private static function bancos_con_tabla(): array
+    {
+        return array_filter(self::BANCOS, fn($c) => empty($c['solo_subida']));
+    }
+
+    /** Acumuladores en cero para cada banco con tabla. */
     private static function por_banco_vacio(array $campos): array
     {
         $out = [];
-        foreach (array_keys(self::BANCOS) as $b) $out[$b] = $campos;
+        foreach (array_keys(self::bancos_con_tabla()) as $b) $out[$b] = $campos;
         return $out;
     }
 
@@ -257,7 +281,10 @@ class Tesoreria
         echo $this->twig->render($this->route . 'movimientos_bancos.html', [
             'filtros'          => $this->filtros_movimientos($_GET),
             'cuentas'          => $this->movsModel->get_cuentas($cuentasPermitidas),
+            // bancos: todos, para los botones de subida (incluye Banorte 2)
+            // bancosTabla: los que tienen tab y tabla propios
             'bancos'           => self::BANCOS,
+            'bancosTabla'      => self::bancos_con_tabla(),
             'cuentasSugeridas' => $this->cuentas_sugeridas(),
         ]);
     }
@@ -802,6 +829,13 @@ class Tesoreria
         // Vantage marca los movimientos aún no confirmados por el banco. Se
         // importan igual, pero se avisa: si el banco los confirma con otro
         // importe, entran de nuevo como un movimiento distinto.
+        // El TXT de Banorte trae cuentas en dos monedas. Los totales del panel
+        // suman solo las de pesos, y hay que decirlo o no cuadran a ojo.
+        foreach ($parseo['info']['cuentas_usd'] ?? [] as $cta) {
+            $avisos[] = "La cuenta $cta está en dólares: sus movimientos se importan igual, "
+                      . 'pero no se suman a los totales de este panel';
+        }
+
         $pendientes = (int)($parseo['info']['pendientes'] ?? 0);
         if ($pendientes > 0) {
             $avisos[] = "$pendientes movimiento" . ($pendientes === 1 ? '' : 's')
