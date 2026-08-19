@@ -8,6 +8,7 @@ use OpenSpout\Writer\XLSX\Options as SpoutXlsxOptions;
 use OpenSpout\Writer\XLSX\Writer as SpoutXlsxWriter;
 
 require_once('./_assets/classes/code128.php');
+require_once('./_assets/models/EfcConciliacionModel.php');
 
 class Income{
     public $twig;
@@ -22,6 +23,7 @@ class Income{
     public ValesRModel $valesR;
     public DocumentosModel $documentosModel;
     Public FacturasModel $FacturasModel;
+    public EfcConciliacionModel $efcConciliacion;
 
     /**
      * @param $twig
@@ -37,6 +39,7 @@ class Income{
         $this->documentosModel  = new DocumentosModel;
         $this->clientesModel    = new ClientesModel;
         $this->FacturasModel    = new FacturasModel;
+        $this->efcConciliacion  = new EfcConciliacionModel;
         $this->twig             = $twig;
         $this->route            = 'views/income/';
 
@@ -6254,6 +6257,25 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation.html');
     }
 
+    public function cash_reconciliation_movements(): void {
+        echo $this->twig->render($this->route . 'cash_reconciliation_movements.html');
+    }
+
+    public function efc_conc_correction(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $id=(int)($data['movimiento_bancario_id']??0); if(!$id) throw new RuntimeException('Movimiento inválido.'); $station=isset($data['estacion_id'])?(int)$data['estacion_id']:null; $this->efcConciliacion->correction($id,$station,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+    public function efc_conc_save(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $type=(string)($data['type']??'MANUAL'); $id=$this->efcConciliacion->saveGroup(['station_id'=>(int)$data['station_id'],'type'=>$type,'cg_total'=>(float)$data['cg_total'],'bank_total'=>(float)$data['bank_total'],'difference'=>(float)$data['difference']],$data['cg']??[],$data['bank']??[],(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','id'=>$id]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+    public function efc_conc_undo(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try{$data=json_decode(file_get_contents('php://input'),true)?:[];$this->efcConciliacion->undo((int)($data['grupo_id']??0),(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
+    }
+
     /**
      * Depósitos de efectivo Banorte para la prueba de conciliación Díaz Gas.
      * Sólo consulta movimientos ya importados; no modifica Tesorería ni grupos V3.
@@ -6265,7 +6287,8 @@ public function stamped_invoices_detail(): void
         $year       = (int)($_GET['year'] ?? date('Y'));
         $month      = (int)($_GET['month'] ?? date('m'));
         $estacionId = (int)($_GET['estacion_id'] ?? 0);
-        if ($year < 2020 || $month < 1 || $month > 12 || !$estacionId) {
+        $todasEstaciones = ($_GET['all'] ?? '') === '1';
+        if ($year < 2020 || $month < 1 || $month > 12 || (!$todasEstaciones && !$estacionId)) {
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
             exit;
         }
@@ -6296,6 +6319,9 @@ public function stamped_invoices_detail(): void
                     ];
                 }
             }
+            $correcciones = [];
+            $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id WHERE E.RFC='DGA930823KD3'");
+            while ($correccion = $stmtCorrecciones->fetch(PDO::FETCH_ASSOC)) $correcciones[(int)$correccion['movimiento_bancario_id']] = ['station_id'=>(int)$correccion['estacion_id'],'station'=>trim($correccion['Nombre'])];
 
             $stmt = $conn->prepare(
                 "SELECT id, fecha, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
@@ -6325,12 +6351,14 @@ public function stamped_invoices_detail(): void
                 $codigos = array_keys($codigos);
                 $estatus = count($codigos) === 1 ? 'IDENTIFICADA'
                     : (count($codigos) === 0 ? 'ESTACION_NO_IDENTIFICADA' : 'ESTACION_AMBIGUA');
-                $estacion = count($codigos) === 1 ? $catalogo[$codigos[0]] : null;
+                $estacionOriginal = count($codigos) === 1 ? $catalogo[$codigos[0]] : null;
+                $estacion = $correcciones[(int)$mov['id']] ?? $estacionOriginal;
+                if (isset($correcciones[(int)$mov['id']])) $estatus = 'CORREGIDA';
                 $fecha = $mov['fecha'] instanceof DateTime ? $mov['fecha']->format('Y-m-d') : substr((string)$mov['fecha'], 0, 10);
 
                 // Se devuelven los depósitos de la estación seleccionada y los no
                 // identificados/ambiguos: estos últimos requieren revisión humana.
-                if ($estacion && $estacion['station_id'] !== $estacionId) continue;
+                if (!$todasEstaciones && $estacion && $estacion['station_id'] !== $estacionId) continue;
                 $movimientos[] = [
                     'id'                => 'mb_' . (int)$mov['id'],
                     'fecha'             => $fecha,
@@ -6343,6 +6371,8 @@ public function stamped_invoices_detail(): void
                     'station_id'        => $estacion['station_id'] ?? null,
                     'station'           => $estacion['station'] ?? null,
                     'station_status'    => $estatus,
+                    'original_station_id' => $estacionOriginal['station_id'] ?? null,
+                    'original_station'    => $estacionOriginal['station'] ?? null,
                     'station_raw'       => $coincidencias[0],
                     'station_normalized'=> $codigos,
                 ];
