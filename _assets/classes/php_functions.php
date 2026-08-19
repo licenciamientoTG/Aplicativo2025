@@ -114,11 +114,6 @@ function json_modal($title, $html) {
     exit();
 }
 
-// Subject: Bienvenido
-// Body: The HTML
-// Recipents = ['aaguirre@totalgas.com','acarrasco@totalgas.com','aochoa@totalgas.com','customerservice@totalgas.com','lcoronel@totalgas.com','dfong@totalgas.com','jfong@totalgas.com'];
-// CCAddress = ['hcastorena@totalgas.com'];
-// SetFrom: 'corsys@totalgas.com'
 function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
 
     $errorOut = null;
