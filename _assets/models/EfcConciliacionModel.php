@@ -28,7 +28,11 @@ class EfcConciliacionModel {
             if ($stationId) {
                 $check = $this->db->prepare("SELECT 1 FROM TG.dbo.Estaciones WHERE Codigo=? AND RFC='DGA930823KD3'"); $check->execute([$stationId]);
                 if (!$check->fetchColumn()) throw new RuntimeException('Estación Díaz Gas inválida.');
-                $this->db->prepare("MERGE dbo.efc_conc_correcciones_banco AS t USING (SELECT ? id) s ON t.movimiento_bancario_id=s.id WHEN MATCHED THEN UPDATE SET estacion_id=?, actualizado_por=?, actualizado_en=GETDATE() WHEN NOT MATCHED THEN INSERT(movimiento_bancario_id,estacion_id,creado_por) VALUES(?,?,?);")->execute([$movementId,$stationId,$userId,$stationId,$userId]);
+                $update = $this->db->prepare("UPDATE dbo.efc_conc_correcciones_banco SET estacion_id=?, actualizado_por=?, actualizado_en=GETDATE() WHERE movimiento_bancario_id=?");
+                $update->execute([$stationId, $userId, $movementId]);
+                if ($update->rowCount() === 0) {
+                    $this->db->prepare("INSERT dbo.efc_conc_correcciones_banco(movimiento_bancario_id,estacion_id,creado_por) VALUES(?,?,?)")->execute([$movementId, $stationId, $userId]);
+                }
                 $this->log(null,$movementId,'CORRECCION_ESTACION',json_encode(['estacion_id'=>$stationId]),$userId);
             } else { $this->db->prepare("DELETE FROM dbo.efc_conc_correcciones_banco WHERE movimiento_bancario_id=?")->execute([$movementId]); $this->log(null,$movementId,'RESTAURAR_REFERENCIA',null,$userId); }
             $this->db->commit();
