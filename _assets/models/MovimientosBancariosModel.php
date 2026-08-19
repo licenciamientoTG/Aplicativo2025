@@ -22,6 +22,11 @@
  *              datos; la cabecera declara el saldo final para cuadrar
  *   BANORTE    CSV de Cuentas de Cheques; trae folio consecutivo del banco
  *              y la contraparte dentro de la descripción detallada
+ *   BANORTE    TXT de ancho fijo (95 chars) del Estado de Cuenta Electrónico
+ *   (EDC)      Especial Diario: las mismas cuentas y movimientos que el CSV,
+ *              pero las 19 en un solo archivo. Se guarda igual, con banco
+ *              BANORTE, y la dedup contra lo que subió el CSV la hace la
+ *              llave natural de llave_natural()
  */
 class MovimientosBancariosModel extends Model
 {
@@ -1298,6 +1303,331 @@ class MovimientosBancariosModel extends Model
     }
 
     /**
+     * Parsea el TXT "Estado de Cuenta Electrónico Especial Diario" de Banorte
+     * (interconexión bancaria). Es el MISMO movimiento que trae el CSV de
+     * Cuentas de Cheques, en otro formato: se guarda igual con banco BANORTE y
+     * la dedup cruzada la resuelve llave_natural() en insert_bulk().
+     *
+     * Ancho fijo de 95 caracteres, multicuenta, con cinco tipos de registro
+     * (offsets 0-based; el layout del banco los numera desde 1):
+     *
+     *   11  abre cuenta   25-34 cuenta · 35-40 fecha inicial AAMMDD · 41-46 fecha
+     *                     final · 47 clave saldo (1=deudor) · 48-61 saldo inicial
+     *                     (2 decimales implícitos) · 62-64 divisa (484=MXN,
+     *                     840=USD) · 66-91 nombre abreviado
+     *   22  movimiento    6-9 oficina · 10-15 fecha de operación · 16-21 fecha
+     *                     valor · 22-26 UTC · 27 clave (1=cargo, 2=abono) ·
+     *                     28-41 importe · 42-51 no. de documento/cheque ·
+     *                     52-81 referencia · 82-94 folio del banco
+     *   23  complemento   4-79 concepto, hasta 5 por movimiento
+     *   33  cierra cuenta 35-39 # abonos · 40-53 importe abonos · 54-58 # cargos ·
+     *                     59-72 importe cargos · 73 clave saldo · 74-87 saldo final
+     *   88  fin de fichero  20-25 total de registros
+     *
+     * Tres cosas que el layout del banco no dice y el archivo real sí hace:
+     *
+     *  - El campo 82-94 que el .doc declara "Libre" trae el folio consecutivo
+     *    del banco, el mismo que el CSV publica como MOVIMIENTO.
+     *  - El archivo cierra con un byte 0x1A (Ctrl-Z, fin de archivo de DOS) en
+     *    su propia línea, que no cuenta como registro para el 88.
+     *  - El texto sustituye : - ( ) _ por espacios, así que la contraparte
+     *    necesita su propio extractor (contraparte_banorte_txt).
+     *
+     * El movimiento no trae saldo: se acumula desde el saldo inicial del 11 y
+     * tiene que caer en el saldo final que declara el 33 de cada cuenta.
+     *
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_banorte_edc_txt(string $contenido): array
+    {
+        $lineas = preg_split('/\r\n|\r|\n/', $contenido);
+
+        $movimientos = [];
+        $errores     = [];
+        $cuentas     = [];
+        $registros   = 0;      // para cuadrar contra el total que declara el 88
+        $declarados  = null;
+        $abierta     = null;   // cuenta abierta por el último 11
+        $ultimo      = -1;     // índice del último 22, al que se le cuelgan sus 23
+
+        // AAMMDD → AAAA-MM-DD
+        $fecha = function (string $v): ?string {
+            if (!preg_match('/^(\d{2})(\d{2})(\d{2})$/', $v, $m)) return null;
+            return checkdate((int)$m[2], (int)$m[3], 2000 + (int)$m[1])
+                ? '20' . $m[1] . '-' . $m[2] . '-' . $m[3] : null;
+        };
+        // 14 dígitos con dos decimales implícitos; la clave 1 es saldo deudor
+        $monto = function (string $v, string $clave = '2'): ?float {
+            $v = trim($v);
+            if ($v === '' || !ctype_digit($v)) return null;
+            return ($clave === '1' ? -1 : 1) * ((float)$v) / 100;
+        };
+
+        foreach ($lineas as $n => $cruda) {
+            $linea = rtrim($cruda, "\r\n");
+            // línea vacía o el Ctrl-Z final: no son registros
+            if (trim($linea, " \t\x1A\x00") === '') continue;
+            $num  = $n + 1;
+            $tipo = substr($linea, 0, 2);
+
+            if (!in_array($tipo, ['11', '22', '23', '33', '88'], true)) {
+                $errores[] = "Línea $num: tipo de registro desconocido ($tipo)";
+                continue;
+            }
+            $registros++;
+
+            if ($tipo === '11') {
+                if ($abierta !== null) {
+                    $errores[] = "Línea $num: la cuenta {$abierta['cuenta']} quedó sin su registro de cierre";
+                }
+                $cuenta = self::campo($linea, 25, 10);
+                $saldo  = $monto(substr($linea, 48, 14), substr($linea, 47, 1));
+                if ($cuenta === '' || $saldo === null) {
+                    $errores[] = "Línea $num: cabecera de cuenta ilegible";
+                    $abierta = null;
+                    continue;
+                }
+                $abierta = [
+                    'cuenta'  => $cuenta,
+                    'nombre'  => self::campo($linea, 66, 26),
+                    'divisa'  => self::campo($linea, 62, 3),
+                    'inicial' => $saldo,
+                    'saldo'   => $saldo,   // saldo corrido, arranca en el inicial
+                    'cargos'  => 0.0,
+                    'abonos'  => 0.0,
+                    'n_cargos' => 0,
+                    'n_abonos' => 0,
+                ];
+                $ultimo = -1;
+                continue;
+            }
+
+            if ($tipo === '88') {
+                $declarados = (int)trim(substr($linea, 20, 6));
+                continue;
+            }
+
+            if ($abierta === null) {
+                $errores[] = "Línea $num: registro $tipo fuera de una cuenta abierta";
+                continue;
+            }
+
+            if ($tipo === '22') {
+                $fv = $fecha(substr($linea, 16, 6));   // fecha valor → columna fecha
+                $fo = $fecha(substr($linea, 10, 6));   // fecha de operación
+                $clave  = substr($linea, 27, 1);
+                $imp    = $monto(substr($linea, 28, 14));
+                if ($fv === null || $imp === null || !in_array($clave, ['1', '2'], true)) {
+                    $errores[] = "Línea $num: movimiento ilegible (fecha, importe o clave de cargo/abono)";
+                    continue;
+                }
+                $cargo = $clave === '1' ? $imp : null;
+                $abono = $clave === '2' ? $imp : null;
+                $abierta['saldo'] += ($abono ?? 0) - ($cargo ?? 0);
+                $abierta['cargos'] += $cargo ?? 0;
+                $abierta['abonos'] += $abono ?? 0;
+                $abierta[$cargo !== null ? 'n_cargos' : 'n_abonos']++;
+
+                $folio = ltrim(self::campo($linea, 82, 13), '0');
+                $movimientos[] = [
+                    'banco'           => 'BANORTE',   // el layout es otro, el banco es el mismo
+                    'cuenta'          => $abierta['cuenta'],
+                    'divisa'          => $abierta['divisa'],
+                    'fecha'           => $fv,
+                    'fecha_operacion' => $fo,
+                    'sucursal'        => self::campo($linea, 6, 4) ?: null,
+                    // Los últimos 3 dígitos del UTC son la clave de transacción
+                    // que publica el CSV, ceros incluidos ("000").
+                    'clave_trans'     => self::campo($linea, 22, 5) !== ''
+                                         ? substr(self::campo($linea, 22, 5), -3) : null,
+                    'descripcion'     => mb_substr(self::campo($linea, 52, 30), 0, 150),
+                    'documento'       => self::campo($linea, 42, 10),
+                    'cargo'           => $cargo,
+                    'abono'           => $abono,
+                    'saldo'           => round($abierta['saldo'], 2),
+                    'secuencia'       => is_numeric($folio) ? (int)$folio : null,
+                    'detalle'         => [],
+                    'linea'           => $num,
+                ];
+                $ultimo = count($movimientos) - 1;
+                continue;
+            }
+
+            if ($tipo === '23') {
+                if ($ultimo < 0) {
+                    $errores[] = "Línea $num: complemento sin movimiento al que pertenecer";
+                    continue;
+                }
+                $texto = self::campo($linea, 4, 76);
+                if ($texto !== '') $movimientos[$ultimo]['detalle'][] = $texto;
+                continue;
+            }
+
+            // 33: cierra la cuenta y valida lo acumulado contra lo que declara
+            $cta = $abierta['cuenta'];
+            $nAbonos = (int)trim(substr($linea, 35, 5));
+            $nCargos = (int)trim(substr($linea, 54, 5));
+            $iAbonos = $monto(substr($linea, 40, 14));
+            $iCargos = $monto(substr($linea, 59, 14));
+            $final   = $monto(substr($linea, 74, 14), substr($linea, 73, 1));
+
+            if ($final === null) {
+                $errores[] = "Línea $num: cierre de la cuenta $cta ilegible";
+            } else {
+                if ($nAbonos !== $abierta['n_abonos'] || $nCargos !== $abierta['n_cargos']) {
+                    $errores[] = "Cuenta $cta: el archivo declara $nAbonos abonos y $nCargos cargos, "
+                               . "pero trae {$abierta['n_abonos']} y {$abierta['n_cargos']}";
+                }
+                if ($iAbonos !== null && abs($iAbonos - $abierta['abonos']) > 0.005) {
+                    $errores[] = "Cuenta $cta: la suma de abonos no coincide con la declarada por el banco";
+                }
+                if ($iCargos !== null && abs($iCargos - $abierta['cargos']) > 0.005) {
+                    $errores[] = "Cuenta $cta: la suma de cargos no coincide con la declarada por el banco";
+                }
+                if (abs($abierta['saldo'] - $final) > 0.005) {
+                    $errores[] = "Cuenta $cta: el saldo corrido termina en "
+                               . number_format($abierta['saldo'], 2) . ' y el banco declara '
+                               . number_format($final, 2);
+                }
+            }
+            $cuentas[$cta] = [
+                'nombre'  => $abierta['nombre'],
+                'divisa'  => $abierta['divisa'],
+                'inicial' => $abierta['inicial'],
+                'final'   => $final ?? $abierta['saldo'],
+                'cargos'  => $abierta['cargos'],
+                'abonos'  => $abierta['abonos'],
+            ];
+            $abierta = null;
+            $ultimo  = -1;
+        }
+
+        if ($abierta !== null) {
+            $errores[] = "La cuenta {$abierta['cuenta']} quedó sin su registro de cierre";
+        }
+        if ($declarados === null) {
+            $errores[] = 'El archivo no trae el registro de fin de fichero (88): puede estar incompleto';
+        } elseif ($declarados !== $registros) {
+            $errores[] = "El archivo declara $declarados registros y se leyeron $registros";
+        }
+
+        // Lo que depende de los complementos se arma al final, cuando el
+        // movimiento ya tiene todos sus 23 pegados.
+        foreach ($movimientos as &$m) {
+            // El primer complemento arranca con la referencia del banco en su
+            // propio hueco ("0000000017     , DE LA CUENTA..."): es la columna
+            // REFERENCIA del CSV, que tampoco la deja dentro de la descripción
+            // detallada. Se separa igual aquí.
+            $ref = '';
+            if (isset($m['detalle'][0]) && preg_match('/^(\d{4,20})\s+(.*)$/s', $m['detalle'][0], $mr)) {
+                $ref = $mr[1];
+                $m['detalle'][0] = $mr[2];
+            }
+            $detalle = trim(implode(' ', array_filter($m['detalle'], fn($d) => trim($d) !== '')));
+            $cp      = self::contraparte_banorte_txt($detalle);
+            unset($m['detalle'], $m['linea']);
+
+            // Sin referencia en el complemento, la del banco es el número de
+            // documento (los cheques la traen ahí).
+            if ($ref === '') $ref = $m['documento'];
+            unset($m['documento']);
+
+            $m['hora']               = $cp['hora'] !== '' ? $cp['hora'] : null;
+            $m['referencia']         = mb_substr($ref, 0, 40);
+            $m['concepto']           = mb_substr($cp['concepto'], 0, 120) ?: null;
+            $m['banco_contraparte']  = mb_substr($cp['banco'], 0, 60);
+            $m['cuenta_contraparte'] = mb_substr($cp['cuenta'], 0, 30);
+            $m['nombre_contraparte'] = mb_substr($cp['nombre'], 0, 60);
+            $m['rfc_contraparte']    = $cp['rfc'] !== '' ? mb_substr($cp['rfc'], 0, 15) : null;
+            $m['clave_rastreo']      = $cp['rastreo'] !== '' ? mb_substr($cp['rastreo'], 0, 40) : null;
+            $m['descripcion_larga']  = mb_substr($detalle, 0, 400) ?: null;
+            // La huella es la de este archivo; la dedup contra lo que subió el
+            // CSV la hace insert_bulk() con la llave natural.
+            $m['huella'] = sha1('BANORTE_TXT|' . implode('|', [
+                $m['cuenta'], $m['fecha'], (string)$m['secuencia'],
+                sprintf('%.2f', $m['cargo'] ?? 0), sprintf('%.2f', $m['abono'] ?? 0),
+            ]));
+        }
+        unset($m);
+
+        // Los totales del panel suman solo las cuentas en pesos: mezclarlas con
+        // la de dólares daría una cifra que no significa nada.
+        $mxn    = array_filter($cuentas, fn($c) => $c['divisa'] !== '840');
+        $fechas = array_column($movimientos, 'fecha');
+        $usd    = array_keys(array_filter($cuentas, fn($c) => $c['divisa'] === '840'));
+
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => count($cuentas) . ' cuenta' . (count($cuentas) === 1 ? '' : 's')
+                                   . ' · ' . count($movimientos) . ' movimientos',
+                'razon_social'  => '',
+                'moneda'        => $usd ? 'MXN y USD' : 'MXN',
+                'saldo_inicial' => $mxn ? array_sum(array_column($mxn, 'inicial')) : null,
+                'saldo_final'   => $mxn ? array_sum(array_column($mxn, 'final')) : null,
+                'cargos'        => array_sum(array_column($mxn, 'cargos')),
+                'abonos'        => array_sum(array_column($mxn, 'abonos')),
+                'cuadra'        => $movimientos ? empty($errores) : null,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+                'cuentas_usd'   => $usd,
+            ],
+        ];
+    }
+
+    /**
+     * Contraparte del complemento (23) del TXT de Banorte. Es el mismo texto
+     * que la DESCRIPCIÓN DETALLADA del CSV pero sin puntuación: el TXT cambia
+     * : - ( ) _ por espacios, así que las regex de contraparte_banorte() no
+     * enganchan y hacen falta estas, que separan por palabra clave.
+     *
+     *  enviado:  <ref> =REFERENCIA  CTA/CLABE  <clabe>, BEM SPEI BCO <n>
+     *            BENEF <nombre>  DATO NO VERIF POR ESTA INST , <concepto>
+     *            CVE RASTREO  <clave> RFC  <rfc> IVA  <n> <BANCO> HORA LIQ  hh mm ss
+     *  recibido: SPEI RECIBIDO, BCO <n> <BANCO>  HR LIQ  hh mm ss DEL CLIENTE
+     *            <nombre> DE LA CLABE <clabe>  CON RFC <rfc> CONCEPTO  <texto>
+     *            REFERENCIA  <n> CVE RAST  <clave>
+     *
+     * @return array{banco:string,cuenta:string,nombre:string,rfc:string,rastreo:string,concepto:string,hora:string}
+     */
+    private static function contraparte_banorte_txt(string $detalle): array
+    {
+        $r = ['banco'=>'', 'cuenta'=>'', 'nombre'=>'', 'rfc'=>'', 'rastreo'=>'',
+              'concepto'=>'', 'hora'=>''];
+        if (trim($detalle) === '') return $r;
+
+        $tomar = function (string $re) use ($detalle) {
+            return preg_match($re, $detalle, $m) ? trim($m[1]) : '';
+        };
+
+        $r['cuenta'] = $tomar('#(?:CTA/CLABE|DE LA CLABE|A LA CLABE)\s+(\d{10,18})#u');
+        $r['rfc']    = $tomar('#\bRFC\s+([A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{0,3})#u');
+        // En los recibidos la clave de rastreo lleva espacios dentro
+        // ("BE 14807591 260817"), así que corre hasta el RFC o el fin del texto.
+        $r['rastreo'] = $tomar('#CVE\s+RAST(?:REO)?\s+(.+?)(?:\s+RFC\s|\s*$)#u');
+        // hh mm ss donde el CSV pone hh:mm:ss
+        $r['hora'] = preg_match('#H(?:ORA|R)\s+LIQ\s+(\d{2})\s+(\d{2})#u', $detalle, $m)
+            ? "$m[1]:$m[2]" : '';
+
+        // Recibido: el concepto va entre CONCEPTO y la referencia o la clave
+        $r['concepto'] = $tomar('#\bCONCEPTO\s+(.+?)(?:\s+REFERENCIA\s|\s+CVE\s+RAST|\s*$)#u');
+        // Enviado: va suelto entre la leyenda del beneficiario y CVE RASTREO
+        if ($r['concepto'] === '') {
+            $r['concepto'] = $tomar('#DATO NO VERIF[^,]*,\s*(.+?)\s+CVE\s+RAST#u');
+        }
+
+        $r['nombre'] = $tomar('#\bBENEF\s+(.+?)\s+DATO NO VERIF#u');
+        if ($r['nombre'] === '') $r['nombre'] = $tomar('#\bBENEF\s+([^,]+)#u');
+        if ($r['nombre'] === '') $r['nombre'] = $tomar('#DEL CLIENTE\s+(.+?)\s+DE LA CLABE#u');
+
+        // El banco va justo antes de la hora de liquidación en los dos formatos
+        $r['banco'] = $tomar('#(?:IVA\s+[\d.]+|BCO\s+\d+)\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ .]{2,29}?)\s+H(?:ORA|R)\s+LIQ#u');
+
+        return $r;
+    }
+
+    /**
      * Extrae la contraparte de la DESCRIPCIÓN DETALLADA de Banorte, que usa
      * dos formatos según la dirección del SPEI:
      *
@@ -1422,8 +1752,39 @@ class MovimientosBancariosModel extends Model
     }
 
     /**
-     * Inserta los movimientos parseados saltando los que ya existen
-     * (huella UNIQUE). Todo o nada: un error de BD hace rollback.
+     * Segunda llave de dedup, para los bancos que publican el MISMO movimiento
+     * en dos archivos distintos. Hoy solo Banorte: el CSV de Cuentas de Cheques
+     * y el TXT de interconexión traen los mismos movimientos, pero el TXT
+     * escribe la descripción sin puntuación y no trae saldo, así que la huella
+     * (que incluye ambos) no los reconoce como el mismo.
+     *
+     * Lo único idéntico entre los dos archivos es cuenta + fecha + folio del
+     * banco + importes, y el folio es único por cuenta: eso es la llave.
+     *
+     * Devuelve null —y entonces solo manda la huella, como siempre— cuando el
+     * movimiento no es de Banorte o no trae folio. Es deliberado: en los bancos
+     * cuya secuencia se renumera en cada export (Afirme) o que no la traen, dos
+     * movimientos legítimamente iguales del mismo día se perderían.
+     */
+    private static function llave_natural(
+        ?string $banco, ?string $cuenta, ?string $fecha, $secuencia, $cargo, $abono
+    ): ?string {
+        if (strtoupper(trim((string)$banco)) !== 'BANORTE') return null;
+        if ($secuencia === null || $secuencia === '' || !is_numeric($secuencia)) return null;
+        return implode('|', [
+            trim((string)$cuenta),
+            substr((string)$fecha, 0, 10),
+            (int)$secuencia,
+            sprintf('%.2f', (float)$cargo),
+            sprintf('%.2f', (float)$abono),
+        ]);
+    }
+
+    /**
+     * Inserta los movimientos parseados saltando los que ya existen (huella
+     * UNIQUE, más la llave natural de llave_natural() para los bancos que
+     * publican el mismo movimiento en dos archivos). Todo o nada: un error de
+     * BD hace rollback.
      *
      * @return array ['insertados' => int, 'duplicados' => int]
      */
@@ -1433,20 +1794,34 @@ class MovimientosBancariosModel extends Model
 
         $fechas = array_column($movimientos, 'fecha');
         $existentes = $this->sql->select(
-            'SELECT huella FROM [TG].[dbo].[movimientos_bancarios] WHERE fecha BETWEEN ? AND ?;',
+            'SELECT huella, banco, cuenta, CONVERT(varchar(10), fecha, 23) AS fecha,
+                    secuencia, cargo, abono
+             FROM [TG].[dbo].[movimientos_bancarios] WHERE fecha BETWEEN ? AND ?;',
             [min($fechas), max($fechas)]
         ) ?: [];
         $vistas = array_fill_keys(array_column($existentes, 'huella'), true);
+
+        // Llaves naturales de lo ya guardado en el rango, calculadas igual que
+        // las de los movimientos entrantes.
+        $llaves = [];
+        foreach ($existentes as $e) {
+            $l = self::llave_natural($e['banco'], $e['cuenta'], $e['fecha'],
+                                     $e['secuencia'], $e['cargo'], $e['abono']);
+            if ($l !== null) $llaves[$l] = true;
+        }
 
         $insertados = $duplicados = 0;
         $this->sql->beginTransaction();
         try {
             foreach ($movimientos as $m) {
-                if (isset($vistas[$m['huella']])) {
+                $llave = self::llave_natural($m['banco'], $m['cuenta'], $m['fecha'],
+                                             $m['secuencia'] ?? null, $m['cargo'] ?? 0, $m['abono'] ?? 0);
+                if (isset($vistas[$m['huella']]) || ($llave !== null && isset($llaves[$llave]))) {
                     $duplicados++;
                     continue;
                 }
                 $vistas[$m['huella']] = true;   // dedup también dentro del mismo archivo
+                if ($llave !== null) $llaves[$llave] = true;
                 $this->sql->insert(
                     'INSERT INTO [TG].[dbo].[movimientos_bancarios]
                      (banco, cuenta, fecha, fecha_operacion, hora, sucursal, clave_trans, descripcion,
