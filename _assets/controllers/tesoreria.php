@@ -31,6 +31,8 @@ class Tesoreria
      * Confirmadas 2026-08-13 contra el catálogo: las cuentas "principales"
      * en Santander de las 4 empresas de Alianza Comercial más la cuenta de
      * Banorte de Héctor Armandino Fierro Holguín.
+     * Las 3 de Banorte/Diaz Gas se agregaron el 2026-08-19, confirmadas
+     * contra el catálogo (mismo titular, activas).
      */
     private const CUENTAS_PERFIL_CREDITO = [
         '1209082994',    // Banorte, Héctor Armandino Fierro Holguín
@@ -38,6 +40,9 @@ class Tesoreria
         '65504998214',   // Santander, Distribuidora Gasomex
         '65505528588',   // Santander, Distribuidora Clara
         '65505339719',   // Santander, Servicio El Jarudo
+        '0601500956',    // Banorte, Diaz Gas SA de CV
+        '0601500947',    // Banorte, Diaz Gas SA de CV
+        '0186932791',    // Banorte, Diaz Gas SA de CV
     ];
 
     /**
