@@ -1568,12 +1568,16 @@ class MovimientosBancariosModel extends Model
         if ($cuentasPermitidas !== null) {
             if (!$cuentasPermitidas) return [];
             $ph    = implode(',', array_fill(0, count($cuentasPermitidas), '?'));
-            $query = "SELECT DISTINCT banco, cuenta FROM [TG].[dbo].[movimientos_bancarios]
-                      WHERE cuenta IN ($ph) ORDER BY banco, cuenta;";
+            $query = "SELECT DISTINCT m.banco, m.cuenta, c.Descripcion AS descripcion
+                      FROM [TG].[dbo].[movimientos_bancarios] m
+                      LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c ON c.CuentaLocal = m.cuenta
+                      WHERE m.cuenta IN ($ph) ORDER BY m.banco, m.cuenta;";
             return $this->sql->select($query, $cuentasPermitidas) ?: [];
         }
-        $query = 'SELECT DISTINCT banco, cuenta FROM [TG].[dbo].[movimientos_bancarios]
-                  ORDER BY banco, cuenta;';
+        $query = 'SELECT DISTINCT m.banco, m.cuenta, c.Descripcion AS descripcion
+                  FROM [TG].[dbo].[movimientos_bancarios] m
+                  LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c ON c.CuentaLocal = m.cuenta
+                  ORDER BY m.banco, m.cuenta;';
         return $this->sql->select($query) ?: [];
     }
 }

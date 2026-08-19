@@ -324,13 +324,13 @@
       </div>
       <div class="col-auto">
         <label for="cuenta">Cuenta:</label>
-        <select class="selectpicker" data-live-search="true" data-width="240px" name="cuenta" id="cuenta">
+        <select class="selectpicker" data-live-search="true" data-width="320px" name="cuenta" id="cuenta">
           <option value="">Todas</option>
           {# data-banco lo usa buscarMovimientos() para abrir el tab del banco
              de la cuenta filtrada en vez de dejarte en el que estabas. #}
           {% for c in cuentas %}
           <option value="{{ c.cuenta }}" data-banco="{{ c.banco }}" {{ filtros.cuenta == c.cuenta ? 'selected' : '' }}>
-            {{ c.cuenta }} ({{ c.banco|lower|capitalize }})
+            {{ c.cuenta }} ({{ c.banco|lower|capitalize }}){{ c.descripcion ? ' — ' ~ c.descripcion : '' }}
           </option>
           {% endfor %}
         </select>
