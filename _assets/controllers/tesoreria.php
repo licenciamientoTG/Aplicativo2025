@@ -829,12 +829,8 @@ class Tesoreria
         // Vantage marca los movimientos aún no confirmados por el banco. Se
         // importan igual, pero se avisa: si el banco los confirma con otro
         // importe, entran de nuevo como un movimiento distinto.
-        // El TXT de Banorte trae cuentas en dos monedas. Los totales del panel
-        // suman solo las de pesos, y hay que decirlo o no cuadran a ojo.
-        foreach ($parseo['info']['cuentas_usd'] ?? [] as $cta) {
-            $avisos[] = "La cuenta $cta está en dólares: sus movimientos se importan igual, "
-                      . 'pero no se suman a los totales de este panel';
-        }
+        // El TXT de Banorte puede traer cuentas en dos monedas: el resumen las
+        // separa en bloques (info.por_moneda), así que no hace falta avisarlo.
 
         $pendientes = (int)($parseo['info']['pendientes'] ?? 0);
         if ($pendientes > 0) {

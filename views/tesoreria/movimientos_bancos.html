@@ -56,6 +56,14 @@
   .mb-movs th, .mb-movs td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
   .mb-movs tr > :last-child { border-right: none; }
 
+  /* Solo la descripción larga de Afirme (SPEI con rastreo/CLABE/RFC pegados,
+     hasta 227 caracteres) hace la tabla ilegible en una sola línea: se le
+     permite el salto de línea con un ancho máximo, sin tocar el dato ni el
+     import — es puramente visual. */
+  .mb-movs td.mb-desc-wrap {
+    white-space: normal; max-width: 320px; word-break: break-word;
+  }
+
   /* Tabs por banco (una tabla independiente por banco: su export a Excel
      alimenta el Drive de tesorería, no se mezclan).
 
@@ -558,6 +566,22 @@
             <th>Ordenante</th>
             <th>Clave de Rastreo</th>
           </tr>
+          {% elseif cod == 'AFIRME' %}
+          {# Calca el orden de columnas del export de Afirme (Concepto, Fecha,
+             Referencia, Cargo, Abono, Saldo, Cuenta, Código): Hora, Sucursal,
+             Concepto y Contraparte no aplican a este banco (el parser no los
+             llena) y se omiten en vez de mostrarse siempre vacíos. #}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Concepto</th>
+            <th>Fecha</th>
+            <th>Referencia</th>
+            <th class="mb-monto">Cargo</th>
+            <th class="mb-monto">Abono</th>
+            <th class="mb-monto">Saldo</th>
+            <th>Cuenta</th>
+            <th>Código</th>
+          </tr>
           {% else %}
           <tr>
             <th class="no-export">Id</th>
@@ -631,7 +655,7 @@
           <div id="uploadResultado" class="mt-3" style="display:none"></div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="button" class="btn btn-sm btn-secondary" id="btnCerrarUpload" data-bs-dismiss="modal">Cerrar</button>
           <button type="submit" class="btn btn-sm mb-btn-importar" id="btnUpload">
             <i class="fas fa-file-upload"></i> Importar
           </button>
@@ -656,7 +680,7 @@ $(function () {
     { data: 'fecha', render: function (d) { return fmtFecha(d); } },
     { data: 'hora', defaultContent: '' },
     { data: 'sucursal', defaultContent: '' },
-    { data: 'descripcion', defaultContent: '' },
+    { data: 'descripcion', className: 'mb-desc-wrap', defaultContent: '' },
     {
       data: 'cargo', className: 'mb-monto', defaultContent: '',
       render: function (d) { return fmtMonto(d || 0); },
@@ -678,7 +702,7 @@ $(function () {
         if (row.clave_rastreo) $(td).attr('title', 'Rastreo: ' + row.clave_rastreo);
       },
     },
-    { data: 'descripcion_larga', defaultContent: '' },
+    { data: 'descripcion_larga', className: 'mb-desc-wrap', defaultContent: '' },
     {
       data: 'nombre_contraparte', defaultContent: '',
       render: function (d, type, row) {
@@ -793,10 +817,38 @@ $(function () {
     { data: 'clave_rastreo', defaultContent: '' },       // Clave de Rastreo
   ];
 
+  // Afirme: calca el orden de columnas de su export (Concepto, Fecha,
+  // Referencia, Cargo, Abono, Saldo, Cuenta, Código). Hora, Sucursal,
+  // Concepto (columna aparte) y Contraparte no aplican a este banco —el
+  // parser no los llena— y se omiten en vez de mostrarse siempre vacíos.
+  var COLUMNS_AFIRME = [
+    { data: 'id' },
+    { data: 'descripcion', className: 'mb-desc-wrap', defaultContent: '' },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'referencia', defaultContent: '' },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    {
+      data: 'saldo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+    },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'clave_trans', defaultContent: '' },
+  ];
+
   function initMovsTable(sel, excelTitle, emptyMsg, cod) {
     var esBanorte = cod === 'BANORTE';
     var esBankaool = cod === 'BANKAOOL';
     var esInbursa = cod === 'INBURSA';
+    var esAfirme = cod === 'AFIRME';
     var api = $(sel).DataTable({
       responsive: true,
       // Sin paginación (contenedor .mb-scroll con cabeceras sticky) y sin
@@ -829,9 +881,10 @@ $(function () {
       // Cuenta y Contraparte ocultas por default en el layout genérico;
       // activables con Columnas. Bankaool no tiene esa columna en su propio
       // layout. Banorte e Inbursa sí repiten el criterio "Cuenta oculta al
-      // inicio" (índice 1), cada uno con su propio orden después.
+      // inicio" (índice 1), cada uno con su propio orden después. Afirme no
+      // oculta nada: su layout ya trae solo las 8 columnas del export.
       columnDefs: (esBanorte || esInbursa) ? [{ targets: [1], visible: false }]
-                : esBankaool ? [] : COLUMNDEFS_GENERICO,
+                : (esBankaool || esAfirme) ? [] : COLUMNDEFS_GENERICO,
       // Las filas llegan por POST desde buscarMovimientos(); la tabla arranca
       // vacía para no consultar nada al entrar al módulo.
       data: [],
@@ -839,6 +892,7 @@ $(function () {
       columns: esBanorte ? COLUMNS_BANORTE
              : esBankaool ? COLUMNS_BANKAOOL
              : esInbursa ? COLUMNS_INBURSA
+             : esAfirme ? COLUMNS_AFIRME
              : COLUMNS_GENERICO,
       initComplete: function () {
         var api = this.api();
@@ -1338,12 +1392,6 @@ $(function () {
     });
   }
 
-  // ¿La importación dejó algo que el usuario deba leer? Si sí, el modal se
-  // queda abierto con un botón; si no, se cierra solo.
-  function hayQueLeer(data) {
-    return !!((data.avisos && data.avisos.length) || (data.errores && data.errores.length));
-  }
-
   function filaDetalle(etiqueta, valor, clase) {
     if (valor === null || valor === undefined || valor === '') return '';
     return '<div><dt>' + etiqueta + '</dt><dd class="' + (clase || '') + '">' + valor + '</dd></div>';
@@ -1380,15 +1428,29 @@ $(function () {
             Number(data.duplicados).toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
             '</div>';
 
-    // Detalle: cada banco declara lo que puede, se muestra solo lo que hay
+    // Detalle: cada banco declara lo que puede, se muestra solo lo que hay.
+    // Banorte (y cualquier otro con cuentas en dos monedas) manda el resumen
+    // en bloques por moneda en vez de los campos planos: se usa el de MXN
+    // como cifra principal, igual que antes, y si hay USD se agrega aparte.
+    var pm  = i.por_moneda || null;
+    var mxn = pm ? pm.MXN : null;
+    var usd = pm ? pm.USD : null;
+    var saldoInicial = pm ? (mxn ? mxn.saldo_inicial : null) : i.saldo_inicial;
+    var cargos        = pm ? (mxn ? mxn.cargos        : null) : i.cargos;
+    var abonos         = pm ? (mxn ? mxn.abonos         : null) : i.abonos;
+    var saldoFinal    = pm ? (mxn ? mxn.saldo_final    : null) : i.saldo_final;
+
     var detalle = filaDetalle('Cuenta', i.cuenta ? esc(i.cuenta) : '', 'mb-cuenta')
                 + filaDetalle('Empresa', i.razon_social ? esc(i.razon_social) : '')
                 + filaDetalle('Periodo', data.fecha_min && data.fecha_max
                     ? fmtFecha(data.fecha_min) + ' – ' + fmtFecha(data.fecha_max) : '')
-                + filaDetalle('Saldo inicial', i.saldo_inicial != null ? '$' + fmtMonto(i.saldo_inicial) : '')
-                + filaDetalle('Cargos', i.cargos != null ? '$' + fmtMonto(i.cargos) : '', 'mb-cargo')
-                + filaDetalle('Abonos', i.abonos != null ? '$' + fmtMonto(i.abonos) : '', 'mb-abono')
-                + filaDetalle('Saldo final', i.saldo_final != null ? '$' + fmtMonto(i.saldo_final) : '');
+                + filaDetalle('Saldo inicial', saldoInicial != null ? '$' + fmtMonto(saldoInicial) : '')
+                + filaDetalle('Cargos', cargos != null ? '$' + fmtMonto(cargos) : '', 'mb-cargo')
+                + filaDetalle('Abonos', abonos != null ? '$' + fmtMonto(abonos) : '', 'mb-abono')
+                + filaDetalle('Saldo final', saldoFinal != null ? '$' + fmtMonto(saldoFinal) : '');
+    if (usd) {
+      detalle += filaDetalle('Saldo final (USD)', '$' + fmtMonto(usd.saldo_final) + ' USD');
+    }
     if (detalle) html += '<dl class="mb-res-detalle">' + detalle + '</dl>';
 
     if (i.cuadra === true) {
@@ -1403,14 +1465,6 @@ $(function () {
               data.avisos && data.avisos.length === 1 ? 'Cuenta sin registrar en el catálogo'
                                                       : 'Cuentas sin registrar en el catálogo', data.avisos);
     html += bloqueNota('error', 'circle-xmark', 'Líneas con problema', data.errores);
-
-    // Al cerrar se recarga la página, así que el estado lo anuncia en vez de
-    // prometer que va a mostrar los movimientos.
-    html += '<div class="mb-res-estado">' + (hayQueLeer(data)
-              ? '<button type="button" class="btn btn-sm btn-success" id="btnVerImportados">' +
-                '<i class="fas fa-rotate-right"></i> Entendido, recargar</button>'
-              : '<span class="spinner-border spinner-border-sm"></span> Recargando la página…') +
-            '</div>';
 
     return html + '</div>';
   }
@@ -1454,6 +1508,8 @@ $(function () {
     fd.append('cuenta', cuenta);
     fd.append('archivo', archivoActual);
 
+    var importado = false;
+
     fetch('/tesoreria/upload_movimientos', { method: 'POST', body: fd })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -1462,23 +1518,27 @@ $(function () {
 
         if (!data.success) return;
 
+        importado = true;
+
         // Se importó algo: la página queda obsoleta, así que se recarga al
-        // cerrar el modal. Va enganchado a hidden.bs.modal y no al botón para
-        // que cualquier forma de cerrar (botón, la X, Esc, clic fuera)
-        // termine igual y no queden datos viejos en pantalla.
+        // cerrar el modal. Va enganchado a hidden.bs.modal y no a un botón en
+        // particular para que cualquier forma de cerrar (el de abajo, la X,
+        // Esc, clic fuera) termine igual y no queden datos viejos en pantalla.
         $('#uploadModal').one('hidden.bs.modal', recargarLimpio);
 
-        if (hayQueLeer(data)) {
-          $('#btnVerImportados').on('click', function () { $('#uploadModal').modal('hide'); });
-        } else {
-          setTimeout(function () { $('#uploadModal').modal('hide'); }, 1400);
-        }
+        // Ya no hay nada más que importar en este modal: se quita el botón
+        // "Importar" y el de "Cerrar" pasa a ser la única salida, avisando
+        // que al cerrarlo se recarga.
+        $('#btnUpload').hide();
+        $('#btnCerrarUpload').removeClass('btn-secondary').addClass('btn-success')
+          .html('<i class="fas fa-rotate-right"></i> Entendido, recargar');
       })
       .catch(function () {
         resultado.innerHTML = panelError({ message: 'Error de conexión al importar el archivo' });
         resultado.style.display = 'block';
       })
       .finally(function () {
+        if (importado) return;
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-file-upload"></i> Importar';
       });

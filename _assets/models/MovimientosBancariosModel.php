@@ -117,8 +117,9 @@ class MovimientosBancariosModel extends Model
     }
 
     /**
-     * Parsea el export de movimientos de Afirme: un ".xls" que en realidad es
-     * texto separado por tabs (Windows-1252) con cabecera. Columnas:
+     * Parsea el export de movimientos de Afirme: texto con cabecera
+     * (Windows-1252), separado por tabs en el ".xls" viejo o por comas en el
+     * ".csv" que Afirme empezó a entregar después. Columnas:
      * Concepto | Fecha (DD/MM/AA) | Referencia | Cargo | Abono | Saldo |
      * Cuenta | Código | No. Secuencia.
      *
@@ -139,6 +140,7 @@ class MovimientosBancariosModel extends Model
         $movimientos = [];
         $errores     = [];
         $headerVisto = false;
+        $delim       = "\t";
 
         foreach (preg_split('/\r\n|\r|\n/', $contenido) as $i => $linea) {
             $num = $i + 1;
@@ -146,14 +148,18 @@ class MovimientosBancariosModel extends Model
 
             if (!$headerVisto) {
                 if (stripos($linea, "Concepto\tFecha") === 0) {
-                    $headerVisto = true;
-                    continue;
+                    $delim = "\t";
+                } elseif (stripos($linea, 'Concepto,Fecha') === 0) {
+                    $delim = ',';
+                } else {
+                    return ['movimientos' => [], 'errores' =>
+                        ['El archivo no tiene la cabecera esperada de Afirme (Concepto, Fecha, Referencia...)']];
                 }
-                return ['movimientos' => [], 'errores' =>
-                    ['El archivo no tiene la cabecera esperada de Afirme (Concepto, Fecha, Referencia...)']];
+                $headerVisto = true;
+                continue;
             }
 
-            $c = array_map('trim', explode("\t", $linea));
+            $c = array_map('trim', explode($delim, $linea));
             if (count($c) < 9) {
                 $errores[] = "Línea $num: columnas insuficientes (" . count($c) . ' de 9)';
                 continue;
@@ -185,6 +191,10 @@ class MovimientosBancariosModel extends Model
                 sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
             ]));
 
+            // Los movimientos normales caben sin problema en descripcion
+            // (NVARCHAR(150)), pero los SPEI traen rastreo/CLABE/RFC pegados
+            // al concepto y se van hasta 200+: se truncan para no romper el
+            // INSERT y el texto completo va aparte en descripcion_larga.
             $movimientos[] = [
                 'banco'              => 'AFIRME',
                 'cuenta'             => $cuenta,
@@ -192,7 +202,7 @@ class MovimientosBancariosModel extends Model
                 'hora'               => null,
                 'sucursal'           => null,
                 'clave_trans'        => $codigo,
-                'descripcion'        => $concepto,
+                'descripcion'        => mb_substr($concepto, 0, 150),
                 'cargo'              => $cargo > 0 ? $cargo : null,
                 'abono'              => $abono > 0 ? $abono : null,
                 'saldo'              => $saldo,
@@ -203,7 +213,7 @@ class MovimientosBancariosModel extends Model
                 'nombre_contraparte' => '',
                 'rfc_contraparte'    => null,
                 'clave_rastreo'      => null,
-                'descripcion_larga'  => null,
+                'descripcion_larga'  => mb_strlen($concepto) > 150 ? mb_substr($concepto, 0, 400) : null,
                 'secuencia'          => (int)$secuencia,
                 'huella'             => $huella,
             ];
@@ -1550,28 +1560,36 @@ class MovimientosBancariosModel extends Model
         }
         unset($m);
 
-        // Los totales del panel suman solo las cuentas en pesos: mezclarlas con
-        // la de dólares daría una cifra que no significa nada.
-        $mxn    = array_filter($cuentas, fn($c) => $c['divisa'] !== '840');
-        $fechas = array_column($movimientos, 'fecha');
-        $usd    = array_keys(array_filter($cuentas, fn($c) => $c['divisa'] === '840'));
+        // El TXT puede traer cuentas en pesos y en dólares mezcladas: sumarlas
+        // en una sola cifra daría un número que no significa nada, así que el
+        // resumen se separa un bloque de totales por cada moneda presente.
+        $fechas    = array_column($movimientos, 'fecha');
+        $usd       = array_keys(array_filter($cuentas, fn($c) => $c['divisa'] === '840'));
+        $porMoneda = [];
+        foreach ($cuentas as $c) {
+            $mon = $c['divisa'] === '840' ? 'USD' : 'MXN';
+            if (!isset($porMoneda[$mon])) {
+                $porMoneda[$mon] = ['saldo_inicial' => 0.0, 'saldo_final' => 0.0, 'cargos' => 0.0, 'abonos' => 0.0];
+            }
+            $porMoneda[$mon]['saldo_inicial'] += $c['inicial'];
+            $porMoneda[$mon]['saldo_final']   += $c['final'];
+            $porMoneda[$mon]['cargos']        += $c['cargos'];
+            $porMoneda[$mon]['abonos']        += $c['abonos'];
+        }
 
         return [
             'movimientos' => $movimientos,
             'errores'     => $errores,
             'info'        => [
-                'cuenta'        => count($cuentas) . ' cuenta' . (count($cuentas) === 1 ? '' : 's')
-                                   . ' · ' . count($movimientos) . ' movimientos',
-                'razon_social'  => '',
-                'moneda'        => $usd ? 'MXN y USD' : 'MXN',
-                'saldo_inicial' => $mxn ? array_sum(array_column($mxn, 'inicial')) : null,
-                'saldo_final'   => $mxn ? array_sum(array_column($mxn, 'final')) : null,
-                'cargos'        => array_sum(array_column($mxn, 'cargos')),
-                'abonos'        => array_sum(array_column($mxn, 'abonos')),
-                'cuadra'        => $movimientos ? empty($errores) : null,
-                'desde'         => $fechas ? min($fechas) : null,
-                'hasta'         => $fechas ? max($fechas) : null,
-                'cuentas_usd'   => $usd,
+                'cuenta'       => count($cuentas) . ' cuenta' . (count($cuentas) === 1 ? '' : 's')
+                                  . ' · ' . count($movimientos) . ' movimientos',
+                'razon_social' => '',
+                'moneda'       => $usd ? 'MXN y USD' : 'MXN',
+                'cuadra'       => $movimientos ? empty($errores) : null,
+                'desde'        => $fechas ? min($fechas) : null,
+                'hasta'        => $fechas ? max($fechas) : null,
+                'cuentas_usd'  => $usd,
+                'por_moneda'   => $porMoneda,
             ],
         ];
     }
