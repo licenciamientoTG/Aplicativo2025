@@ -19,8 +19,10 @@ class Tesoreria
     private const PERM_SALDO_GRUPO  = 82;   // Ver Saldo por Grupo
     // Perfil acotado: ve movimientos_bancos() pero solo de CUENTAS_PERFIL_CREDITO.
     // No da acceso a saldos por grupo, catálogo de cuentas ni subir movimientos.
-    private const PERM_MOVIMIENTOS_CREDITO = 87;   // Ver Movimientos Bancos - Crédito
-    private const PERM_MOV_CHEQUES         = 88;   // Ver Movimientos Bancos Cheques (tarjetas de crédito)
+    private const PERM_MOVIMIENTOS_CREDITO  = 87;   // Ver Movimientos Bancos - Crédito
+    private const PERM_MOV_CHEQUES          = 88;   // Ver Movimientos Bancos Cheques (tarjetas de crédito)
+    // Mismo patrón que PERM_MOVIMIENTOS_CREDITO pero con CUENTAS_PERFIL_INGRESOS.
+    private const PERM_MOVIMIENTOS_INGRESOS = 89;   // Ver Movimientos Bancos - Ingresos
     private const MAX_TXT_BYTES     = 10 * 1024 * 1024;
 
     /**
@@ -29,6 +31,8 @@ class Tesoreria
      * Confirmadas 2026-08-13 contra el catálogo: las cuentas "principales"
      * en Santander de las 4 empresas de Alianza Comercial más la cuenta de
      * Banorte de Héctor Armandino Fierro Holguín.
+     * Las 3 de Banorte/Diaz Gas se agregaron el 2026-08-19, confirmadas
+     * contra el catálogo (mismo titular, activas).
      */
     private const CUENTAS_PERFIL_CREDITO = [
         '1209082994',    // Banorte, Héctor Armandino Fierro Holguín
@@ -36,6 +40,22 @@ class Tesoreria
         '65504998214',   // Santander, Distribuidora Gasomex
         '65505528588',   // Santander, Distribuidora Clara
         '65505339719',   // Santander, Servicio El Jarudo
+        '0601500956',    // Banorte, Diaz Gas SA de CV
+        '0601500947',    // Banorte, Diaz Gas SA de CV
+        '0186932791',    // Banorte, Diaz Gas SA de CV
+    ];
+
+    /**
+     * Cuentas visibles para el perfil "Ingresos" (permiso 89), por
+     * CuentaLocal exacta del catálogo (TG.dbo.CatalogosCuentasBancarias).
+     * Confirmadas 2026-08-14 contra el catálogo.
+     */
+    private const CUENTAS_PERFIL_INGRESOS = [
+        '60630878973',          // Santander, Héctor Armandino Fierro Holguín
+        '00000369',             // Bankaool, Diaz Gas SA de CV
+        '0601500741',           // Banorte, Diaz Gas SA de CV (MXN)
+        '072164006015007416',   // Banorte, DG 0741 DLLS (USD)
+        '0185322470',           // Banorte, Diaz Gas SA de CV
     ];
 
     /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
@@ -99,6 +119,20 @@ class Tesoreria
             'espera'   => 'el CSV de Cuentas de Cheques de Banorte',
             'parser'   => 'parse_banorte_cheques_csv',
             'entrada'  => 'contenido',
+        ],
+        // Segundo layout de Banorte: el TXT de interconexión, que trae las 19
+        // cuentas en un archivo en vez de una por una. Son los MISMOS
+        // movimientos que el CSV, así que se guardan con banco BANORTE y se ven
+        // en su tab; esta entrada solo existe para tener su propio botón de
+        // subida, de ahí solo_subida.
+        'BANORTE_TXT' => [
+            'etiqueta'    => 'Banorte 2',
+            'color'       => '#EF2945',
+            'ext'         => ['txt'],
+            'espera'      => 'el TXT del Estado de Cuenta Electrónico Especial Diario de Banorte',
+            'parser'      => 'parse_banorte_edc_txt',
+            'entrada'     => 'contenido',
+            'solo_subida' => true,
         ],
         'AFIRME' => [
             'etiqueta' => 'Afirme',
@@ -192,14 +226,24 @@ class Tesoreria
     private static function banco_de($valor): string
     {
         $b = strtoupper(trim((string)$valor));
-        return isset(self::BANCOS[$b]) ? $b : 'SANTANDER';
+        return isset(self::bancos_con_tabla()[$b]) ? $b : 'SANTANDER';
     }
 
-    /** Acumuladores en cero para cada banco soportado. */
+    /**
+     * Bancos que tienen tab y tabla propios, que son todos menos los layouts
+     * alternos de un banco ya listado (Banorte 2), cuyos movimientos se guardan
+     * y se muestran bajo el banco principal.
+     */
+    private static function bancos_con_tabla(): array
+    {
+        return array_filter(self::BANCOS, fn($c) => empty($c['solo_subida']));
+    }
+
+    /** Acumuladores en cero para cada banco con tabla. */
     private static function por_banco_vacio(array $campos): array
     {
         $out = [];
-        foreach (array_keys(self::BANCOS) as $b) $out[$b] = $campos;
+        foreach (array_keys(self::bancos_con_tabla()) as $b) $out[$b] = $campos;
         return $out;
     }
 
@@ -231,7 +275,8 @@ class Tesoreria
      */
     public function movimientos_bancos(): void
     {
-        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)) {
+        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS)) {
             (new Errors())->get404();
             return;
         }
@@ -241,7 +286,10 @@ class Tesoreria
         echo $this->twig->render($this->route . 'movimientos_bancos.html', [
             'filtros'          => $this->filtros_movimientos($_GET),
             'cuentas'          => $this->movsModel->get_cuentas($cuentasPermitidas),
+            // bancos: todos, para los botones de subida (incluye Banorte 2)
+            // bancosTabla: los que tienen tab y tabla propios
             'bancos'           => self::BANCOS,
+            'bancosTabla'      => self::bancos_con_tabla(),
             'cuentasSugeridas' => $this->cuentas_sugeridas(),
         ]);
     }
@@ -255,6 +303,7 @@ class Tesoreria
     {
         if (authorized(self::PERM_MOVIMIENTOS)) return null;
         if (authorized(self::PERM_MOVIMIENTOS_CREDITO)) return self::CUENTAS_PERFIL_CREDITO;
+        if (authorized(self::PERM_MOVIMIENTOS_INGRESOS)) return self::CUENTAS_PERFIL_INGRESOS;
         return [];
     }
 
@@ -297,7 +346,8 @@ class Tesoreria
     public function movimientos_table(): void
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)) {
+        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
@@ -784,6 +834,9 @@ class Tesoreria
         // Vantage marca los movimientos aún no confirmados por el banco. Se
         // importan igual, pero se avisa: si el banco los confirma con otro
         // importe, entran de nuevo como un movimiento distinto.
+        // El TXT de Banorte puede traer cuentas en dos monedas: el resumen las
+        // separa en bloques (info.por_moneda), así que no hace falta avisarlo.
+
         $pendientes = (int)($parseo['info']['pendientes'] ?? 0);
         if ($pendientes > 0) {
             $avisos[] = "$pendientes movimiento" . ($pendientes === 1 ? '' : 's')

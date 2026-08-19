@@ -152,13 +152,16 @@
     #tab_desglosado .merma-tabla { font-size: .7rem !important; }
     #tab_desglosado .merma-tabla th, #tab_desglosado .merma-tabla td { padding: .28rem .35rem; }
 }
-.merma-scroll { overflow-x: visible; overflow-y: visible; max-height: none; }
-/* Scroll horizontal en los tabs Diario y Desglosado de detalle.html;
-   analisis.html usa .merma-scroll fuera de #tab_diario/#tab_desglosado →
-   no se ve afectada. Sin esto, .merma-tabla-wrap (overflow: hidden) recorta
-   en silencio las columnas que no caben (ej. DIESEL en el tab Diario con
-   3 familias × 7 columnas) sin dar forma de desplazarse para verlas. */
-#tab_diario .merma-scroll, #tab_desglosado .merma-scroll { overflow-x: auto; }
+/* Scroll horizontal por defecto: sin esto, .merma-tabla-wrap (overflow:
+   hidden) recorta en silencio las columnas que no caben (ej. DIESEL en el
+   tab Diario, o las ~40 columnas de estaciones en ventas.html) sin dar
+   forma de desplazarse para verlas. overflow-x: auto solo muestra scrollbar
+   cuando el contenido realmente desborda, así que no afecta a analisis.html
+   (tabla angosta con .wrap-fit) aunque no la necesite.
+   Antes tenía overflow-x: visible con excepción solo para #tab_diario/
+   #tab_desglosado — ventas.html también necesita el scroll y no está
+   dentro de esos IDs, así que se generaliza en vez de listar cada tab. */
+.merma-scroll { overflow-x: auto; overflow-y: visible; max-height: none; }
 /* Scrollbar siempre visible */
 .merma-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
 .merma-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }

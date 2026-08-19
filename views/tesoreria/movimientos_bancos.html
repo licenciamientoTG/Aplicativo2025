@@ -56,6 +56,14 @@
   .mb-movs th, .mb-movs td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
   .mb-movs tr > :last-child { border-right: none; }
 
+  /* Solo la descripción larga de Afirme (SPEI con rastreo/CLABE/RFC pegados,
+     hasta 227 caracteres) hace la tabla ilegible en una sola línea: se le
+     permite el salto de línea con un ancho máximo, sin tocar el dato ni el
+     import — es puramente visual. */
+  .mb-movs td.mb-desc-wrap {
+    white-space: normal; max-width: 320px; word-break: break-word;
+  }
+
   /* Tabs por banco (una tabla independiente por banco: su export a Excel
      alimenta el Drive de tesorería, no se mezclan).
 
@@ -294,10 +302,13 @@
   #mbLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
 
   /* Color de marca de cada banco, salido del registro BANCOS del controlador:
-     agregar un banco no obliga a tocar el CSS. */
+     agregar un banco no obliga a tocar el CSS. El botón de subida lo llevan
+     todos; el tab, solo los que tienen tabla. */
   {% for cod, b in bancos %}
-  .mb-tabs .nav-link[data-bs-target="#tab{{ cod }}"],
   .btn-upload-banco[data-banco="{{ cod }}"] { --mb-banco: {{ b.color }}; }
+  {% endfor %}
+  {% for cod, b in bancosTabla %}
+  .mb-tabs .nav-link[data-bs-target="#tab{{ cod }}"] { --mb-banco: {{ b.color }}; }
   {% endfor %}
 </style>
 {% endblock %}
@@ -324,13 +335,13 @@
       </div>
       <div class="col-auto">
         <label for="cuenta">Cuenta:</label>
-        <select class="selectpicker" data-live-search="true" data-width="240px" name="cuenta" id="cuenta">
+        <select class="selectpicker" data-live-search="true" data-width="320px" name="cuenta" id="cuenta">
           <option value="">Todas</option>
           {# data-banco lo usa buscarMovimientos() para abrir el tab del banco
              de la cuenta filtrada en vez de dejarte en el que estabas. #}
           {% for c in cuentas %}
           <option value="{{ c.cuenta }}" data-banco="{{ c.banco }}" {{ filtros.cuenta == c.cuenta ? 'selected' : '' }}>
-            {{ c.cuenta }} ({{ c.banco|lower|capitalize }})
+            {{ c.cuenta }} ({{ c.banco|lower|capitalize }}){{ c.descripcion ? ' — ' ~ c.descripcion : '' }}
           </option>
           {% endfor %}
         </select>
@@ -482,9 +493,11 @@
 
 <div id="mbResultado" style="display:none;">
 
-<!-- Tabs por banco: tablas independientes -->
+<!-- Tabs por banco: tablas independientes. Van sobre bancosTabla y no sobre
+     bancos, porque los layouts alternos (Banorte 2) solo tienen botón de
+     subida: sus movimientos se guardan bajo el banco principal. -->
 <ul class="nav nav-tabs mb-tabs mb-2">
-  {% for cod, b in bancos %}
+  {% for cod, b in bancosTabla %}
   <li class="nav-item">
     <button class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
             data-bs-target="#tab{{ cod }}" type="button">
@@ -495,7 +508,7 @@
 </ul>
 
 <div class="tab-content">
-  {% for cod, b in bancos %}
+  {% for cod, b in bancosTabla %}
   <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab{{ cod }}">
     <div class="mb-tabla-wrap">
       <table id="tabla{{ cod }}" data-banco="{{ cod }}" data-etiqueta="{{ b.etiqueta }}"
@@ -553,6 +566,22 @@
             <th>Ordenante</th>
             <th>Clave de Rastreo</th>
           </tr>
+          {% elseif cod == 'AFIRME' %}
+          {# Calca el orden de columnas del export de Afirme (Concepto, Fecha,
+             Referencia, Cargo, Abono, Saldo, Cuenta, Código): Hora, Sucursal,
+             Concepto y Contraparte no aplican a este banco (el parser no los
+             llena) y se omiten en vez de mostrarse siempre vacíos. #}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Concepto</th>
+            <th>Fecha</th>
+            <th>Referencia</th>
+            <th class="mb-monto">Cargo</th>
+            <th class="mb-monto">Abono</th>
+            <th class="mb-monto">Saldo</th>
+            <th>Cuenta</th>
+            <th>Código</th>
+          </tr>
           {% else %}
           <tr>
             <th class="no-export">Id</th>
@@ -598,9 +627,18 @@
               Cuenta <span class="text-danger">*</span>
               <small class="text-muted">— el archivo de este banco no la incluye</small>
             </label>
-            <input type="text" class="form-control" id="upload_cuenta" list="uploadCuentaLista"
-                   placeholder="Número de cuenta o CLABE" autocomplete="off">
-            <datalist id="uploadCuentaLista"></datalist>
+            {# Select en vez de datalist: un datalist solo sugiere, no impide
+               texto libre distinto, y así se tecleó una cuenta inexistente
+               ("000003" en vez de "00000369") que generó 103 movimientos
+               huérfanos fuera del catálogo. Con select el valor SIEMPRE sale
+               del catálogo, salvo que no haya ninguna cuenta sugerida (banco
+               recién agregado, sin cuentas dadas de alta todavía). #}
+            <select class="selectpicker" data-live-search="true" data-width="100%" id="upload_cuenta"></select>
+            <input type="text" class="form-control mt-1" id="upload_cuenta_libre"
+                   placeholder="Número de cuenta o CLABE" autocomplete="off" style="display:none;">
+            <small class="text-muted" id="upload_cuenta_libre_hint" style="display:none;">
+              No hay cuentas de este banco en el catálogo: captúrala manualmente.
+            </small>
           </div>
 
           {# El input real va oculto y SIN required: un campo required oculto
@@ -617,7 +655,7 @@
           <div id="uploadResultado" class="mt-3" style="display:none"></div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="button" class="btn btn-sm btn-secondary" id="btnCerrarUpload" data-bs-dismiss="modal">Cerrar</button>
           <button type="submit" class="btn btn-sm mb-btn-importar" id="btnUpload">
             <i class="fas fa-file-upload"></i> Importar
           </button>
@@ -642,7 +680,7 @@ $(function () {
     { data: 'fecha', render: function (d) { return fmtFecha(d); } },
     { data: 'hora', defaultContent: '' },
     { data: 'sucursal', defaultContent: '' },
-    { data: 'descripcion', defaultContent: '' },
+    { data: 'descripcion', className: 'mb-desc-wrap', defaultContent: '' },
     {
       data: 'cargo', className: 'mb-monto', defaultContent: '',
       render: function (d) { return fmtMonto(d || 0); },
@@ -664,7 +702,7 @@ $(function () {
         if (row.clave_rastreo) $(td).attr('title', 'Rastreo: ' + row.clave_rastreo);
       },
     },
-    { data: 'descripcion_larga', defaultContent: '' },
+    { data: 'descripcion_larga', className: 'mb-desc-wrap', defaultContent: '' },
     {
       data: 'nombre_contraparte', defaultContent: '',
       render: function (d, type, row) {
@@ -779,10 +817,38 @@ $(function () {
     { data: 'clave_rastreo', defaultContent: '' },       // Clave de Rastreo
   ];
 
+  // Afirme: calca el orden de columnas de su export (Concepto, Fecha,
+  // Referencia, Cargo, Abono, Saldo, Cuenta, Código). Hora, Sucursal,
+  // Concepto (columna aparte) y Contraparte no aplican a este banco —el
+  // parser no los llena— y se omiten en vez de mostrarse siempre vacíos.
+  var COLUMNS_AFIRME = [
+    { data: 'id' },
+    { data: 'descripcion', className: 'mb-desc-wrap', defaultContent: '' },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'referencia', defaultContent: '' },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    {
+      data: 'saldo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return (d === null || d === '') ? '' : fmtMonto(d); },
+    },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'clave_trans', defaultContent: '' },
+  ];
+
   function initMovsTable(sel, excelTitle, emptyMsg, cod) {
     var esBanorte = cod === 'BANORTE';
     var esBankaool = cod === 'BANKAOOL';
     var esInbursa = cod === 'INBURSA';
+    var esAfirme = cod === 'AFIRME';
     var api = $(sel).DataTable({
       responsive: true,
       // Sin paginación (contenedor .mb-scroll con cabeceras sticky) y sin
@@ -815,9 +881,10 @@ $(function () {
       // Cuenta y Contraparte ocultas por default en el layout genérico;
       // activables con Columnas. Bankaool no tiene esa columna en su propio
       // layout. Banorte e Inbursa sí repiten el criterio "Cuenta oculta al
-      // inicio" (índice 1), cada uno con su propio orden después.
+      // inicio" (índice 1), cada uno con su propio orden después. Afirme no
+      // oculta nada: su layout ya trae solo las 8 columnas del export.
       columnDefs: (esBanorte || esInbursa) ? [{ targets: [1], visible: false }]
-                : esBankaool ? [] : COLUMNDEFS_GENERICO,
+                : (esBankaool || esAfirme) ? [] : COLUMNDEFS_GENERICO,
       // Las filas llegan por POST desde buscarMovimientos(); la tabla arranca
       // vacía para no consultar nada al entrar al módulo.
       data: [],
@@ -825,6 +892,7 @@ $(function () {
       columns: esBanorte ? COLUMNS_BANORTE
              : esBankaool ? COLUMNS_BANKAOOL
              : esInbursa ? COLUMNS_INBURSA
+             : esAfirme ? COLUMNS_AFIRME
              : COLUMNS_GENERICO,
       initComplete: function () {
         var api = this.api();
@@ -879,16 +947,19 @@ $(function () {
   }
 
   // Registro de bancos: lo genera el controlador desde su constante BANCOS,
-  // así el PHP y el JS no pueden quedar desalineados.
+  // así el PHP y el JS no pueden quedar desalineados. BANCOS son todos los que
+  // se pueden subir; BANCOS_TABLA los que tienen tab y tabla (Banorte 2 sube
+  // pero no tiene tabla: sus movimientos salen en la de Banorte).
   var BANCOS = {{ bancos|json_encode|raw }};
+  var BANCOS_TABLA = {{ bancosTabla|json_encode|raw }};
 
   // Las tablas se crean una sola vez, vacías. Cada búsqueda solo reemplaza
   // sus filas: no se destruye ni se recarga la página, así que el panel de
   // saldos abierto, el tab activo y el ancho de columnas se conservan.
   var tablas = {};
-  Object.keys(BANCOS).forEach(function (cod) {
-    tablas[cod] = initMovsTable('#tabla' + cod, 'Movimientos ' + BANCOS[cod].etiqueta,
-      'Sin movimientos de ' + BANCOS[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.', cod);
+  Object.keys(BANCOS_TABLA).forEach(function (cod) {
+    tablas[cod] = initMovsTable('#tabla' + cod, 'Movimientos ' + BANCOS_TABLA[cod].etiqueta,
+      'Sin movimientos de ' + BANCOS_TABLA[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.', cod);
   });
 
   // Al cambiar de tab: reajustar anchos (la tabla oculta se inicializa sin
@@ -917,7 +988,7 @@ $(function () {
   function bancoDelTab() {
     // attr y no data(): selectpicker re-renderiza y jQuery cachea data()
     var banco = ($('#cuenta option:selected').attr('data-banco') || '').toUpperCase();
-    return BANCOS[banco] ? banco : Object.keys(BANCOS)[0];
+    return BANCOS_TABLA[banco] ? banco : Object.keys(BANCOS_TABLA)[0];
   }
 
   function abrirTab(cod) {
@@ -956,7 +1027,7 @@ $(function () {
       $('#mbVacio').hide();
       $('#mbResultado').show();
 
-      Object.keys(BANCOS).forEach(function (cod) {
+      Object.keys(BANCOS_TABLA).forEach(function (cod) {
         var filas = r.movimientos[cod] || [];
         tablas[cod].clear().rows.add(filas).draw();
         $('[data-tabcount="' + cod + '"]').text(filas.length);
@@ -1228,6 +1299,12 @@ $(function () {
   // comprobantes de payment_list.
   var archivoActual = null;
 
+  // true cuando el banco no tiene ninguna cuenta sugerida y toca el input
+  // libre; se fija al armar el modal (no se detecta por visibilidad del
+  // select: bootstrap-select lo oculta con su propio wrapper, no con
+  // display, así que jQuery .is(':visible') no sirve aquí).
+  var cuentaLibre = false;
+
   function fmtPeso(bytes) {
     return bytes < 1024 * 1024
       ? (bytes / 1024).toFixed(0) + ' KB'
@@ -1289,11 +1366,23 @@ $(function () {
     $('#uploadCuentaWrap').toggle(pide);
     // Sin required nativo: lo valida el JS para que el error salga en el panel
     // del modal y no en un globo del navegador, como el resto de los avisos.
-    $('#upload_cuenta').val('');
+    $('#upload_cuenta_libre').val('');
     if (pide) {
-      $('#uploadCuentaLista').html((CUENTAS_SUGERIDAS[bancoActual] || []).map(function (c) {
-        return '<option value="' + esc(c.cuenta) + '">' + esc(c.descripcion) + '</option>';
-      }).join(''));
+      var sugeridas = CUENTAS_SUGERIDAS[bancoActual] || [];
+      cuentaLibre = sugeridas.length === 0;
+      // Con sugerencias: select obligatorio (con buscador), la cuenta no se
+      // puede teclear mal. Sin ninguna (banco recién agregado, aún sin alta
+      // en el catálogo): se cae al input libre, único caso en que el texto
+      // libre es inevitable.
+      $('#upload_cuenta')
+        .html('<option value="">Selecciona la cuenta…</option>' + sugeridas.map(function (c) {
+          return '<option value="' + esc(c.cuenta) + '">' + esc(c.cuenta) + ' — ' + esc(c.descripcion) + '</option>';
+        }).join(''))
+        // refresh: el plugin ya inicializó el select antes de que este código
+        // le cambiara las <option>; sin refresh sigue mostrando la lista vieja.
+        .selectpicker('refresh')
+        .selectpicker(cuentaLibre ? 'hide' : 'show');
+      $('#upload_cuenta_libre, #upload_cuenta_libre_hint').toggle(cuentaLibre);
     }
   });
 
@@ -1301,12 +1390,6 @@ $(function () {
     return String(s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
-  }
-
-  // ¿La importación dejó algo que el usuario deba leer? Si sí, el modal se
-  // queda abierto con un botón; si no, se cierra solo.
-  function hayQueLeer(data) {
-    return !!((data.avisos && data.avisos.length) || (data.errores && data.errores.length));
   }
 
   function filaDetalle(etiqueta, valor, clase) {
@@ -1345,15 +1428,29 @@ $(function () {
             Number(data.duplicados).toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
             '</div>';
 
-    // Detalle: cada banco declara lo que puede, se muestra solo lo que hay
+    // Detalle: cada banco declara lo que puede, se muestra solo lo que hay.
+    // Banorte (y cualquier otro con cuentas en dos monedas) manda el resumen
+    // en bloques por moneda en vez de los campos planos: se usa el de MXN
+    // como cifra principal, igual que antes, y si hay USD se agrega aparte.
+    var pm  = i.por_moneda || null;
+    var mxn = pm ? pm.MXN : null;
+    var usd = pm ? pm.USD : null;
+    var saldoInicial = pm ? (mxn ? mxn.saldo_inicial : null) : i.saldo_inicial;
+    var cargos        = pm ? (mxn ? mxn.cargos        : null) : i.cargos;
+    var abonos         = pm ? (mxn ? mxn.abonos         : null) : i.abonos;
+    var saldoFinal    = pm ? (mxn ? mxn.saldo_final    : null) : i.saldo_final;
+
     var detalle = filaDetalle('Cuenta', i.cuenta ? esc(i.cuenta) : '', 'mb-cuenta')
                 + filaDetalle('Empresa', i.razon_social ? esc(i.razon_social) : '')
                 + filaDetalle('Periodo', data.fecha_min && data.fecha_max
                     ? fmtFecha(data.fecha_min) + ' – ' + fmtFecha(data.fecha_max) : '')
-                + filaDetalle('Saldo inicial', i.saldo_inicial != null ? '$' + fmtMonto(i.saldo_inicial) : '')
-                + filaDetalle('Cargos', i.cargos != null ? '$' + fmtMonto(i.cargos) : '', 'mb-cargo')
-                + filaDetalle('Abonos', i.abonos != null ? '$' + fmtMonto(i.abonos) : '', 'mb-abono')
-                + filaDetalle('Saldo final', i.saldo_final != null ? '$' + fmtMonto(i.saldo_final) : '');
+                + filaDetalle('Saldo inicial', saldoInicial != null ? '$' + fmtMonto(saldoInicial) : '')
+                + filaDetalle('Cargos', cargos != null ? '$' + fmtMonto(cargos) : '', 'mb-cargo')
+                + filaDetalle('Abonos', abonos != null ? '$' + fmtMonto(abonos) : '', 'mb-abono')
+                + filaDetalle('Saldo final', saldoFinal != null ? '$' + fmtMonto(saldoFinal) : '');
+    if (usd) {
+      detalle += filaDetalle('Saldo final (USD)', '$' + fmtMonto(usd.saldo_final) + ' USD');
+    }
     if (detalle) html += '<dl class="mb-res-detalle">' + detalle + '</dl>';
 
     if (i.cuadra === true) {
@@ -1368,14 +1465,6 @@ $(function () {
               data.avisos && data.avisos.length === 1 ? 'Cuenta sin registrar en el catálogo'
                                                       : 'Cuentas sin registrar en el catálogo', data.avisos);
     html += bloqueNota('error', 'circle-xmark', 'Líneas con problema', data.errores);
-
-    // Al cerrar se recarga la página, así que el estado lo anuncia en vez de
-    // prometer que va a mostrar los movimientos.
-    html += '<div class="mb-res-estado">' + (hayQueLeer(data)
-              ? '<button type="button" class="btn btn-sm btn-success" id="btnVerImportados">' +
-                '<i class="fas fa-rotate-right"></i> Entendido, recargar</button>'
-              : '<span class="spinner-border spinner-border-sm"></span> Recargando la página…') +
-            '</div>';
 
     return html + '</div>';
   }
@@ -1398,14 +1487,15 @@ $(function () {
       return;
     }
 
-    var cuenta = $('#upload_cuenta').val().trim();
+    var cuenta = (cuentaLibre ? $('#upload_cuenta_libre').val() : ($('#upload_cuenta').val() || '')).trim();
     if (BANCOS[bancoActual].pide_cuenta && cuenta === '') {
       resultado.innerHTML = panelError({
         message: 'El archivo de ' + BANCOS[bancoActual].etiqueta +
-                 ' no incluye la cuenta: captúrala antes de subirlo',
+                 ' no incluye la cuenta: selecciónala antes de subirlo',
       });
       resultado.style.display = 'block';
-      $('#upload_cuenta').focus();
+      if (cuentaLibre) $('#upload_cuenta_libre').focus();
+      else $('#upload_cuenta').selectpicker('toggle');
       return;
     }
 
@@ -1418,6 +1508,8 @@ $(function () {
     fd.append('cuenta', cuenta);
     fd.append('archivo', archivoActual);
 
+    var importado = false;
+
     fetch('/tesoreria/upload_movimientos', { method: 'POST', body: fd })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -1426,23 +1518,27 @@ $(function () {
 
         if (!data.success) return;
 
+        importado = true;
+
         // Se importó algo: la página queda obsoleta, así que se recarga al
-        // cerrar el modal. Va enganchado a hidden.bs.modal y no al botón para
-        // que cualquier forma de cerrar (botón, la X, Esc, clic fuera)
-        // termine igual y no queden datos viejos en pantalla.
+        // cerrar el modal. Va enganchado a hidden.bs.modal y no a un botón en
+        // particular para que cualquier forma de cerrar (el de abajo, la X,
+        // Esc, clic fuera) termine igual y no queden datos viejos en pantalla.
         $('#uploadModal').one('hidden.bs.modal', recargarLimpio);
 
-        if (hayQueLeer(data)) {
-          $('#btnVerImportados').on('click', function () { $('#uploadModal').modal('hide'); });
-        } else {
-          setTimeout(function () { $('#uploadModal').modal('hide'); }, 1400);
-        }
+        // Ya no hay nada más que importar en este modal: se quita el botón
+        // "Importar" y el de "Cerrar" pasa a ser la única salida, avisando
+        // que al cerrarlo se recarga.
+        $('#btnUpload').hide();
+        $('#btnCerrarUpload').removeClass('btn-secondary').addClass('btn-success')
+          .html('<i class="fas fa-rotate-right"></i> Entendido, recargar');
       })
       .catch(function () {
         resultado.innerHTML = panelError({ message: 'Error de conexión al importar el archivo' });
         resultado.style.display = 'block';
       })
       .finally(function () {
+        if (importado) return;
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-file-upload"></i> Importar';
       });

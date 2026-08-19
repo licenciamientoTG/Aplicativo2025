@@ -307,15 +307,25 @@ class VentasConsolidado
         $hasta    = (int) $ctx['hasta'];
         $codgases = array_map(fn($e) => (int) $e['Codigo'], $ctx['estaciones']);
 
+        // El histórico es mensual, no diario: el mes en curso SÍ se muestra
+        // (con lo que ya esté sincronizado), simplemente nunca incluye el
+        // día de hoy — eso ya lo garantiza merma_diaria, cuyo snapshot nunca
+        // trae el día en curso. Solo hace falta no listar meses futuros.
+        $anioActual = (int) date('Y');
+        $mesActual  = (int) date('n');
+
         $filas         = [];
         $mesesConDatos = [];
         $mesesDelRango = 0;
 
-        for ($anio = $desde; $anio <= $hasta; $anio++) {
+        for ($anio = $hasta; $anio >= $desde; $anio--) {
+            $ultimoMes = ($anio === $anioActual) ? $mesActual : 12;
+
             $anual      = array_fill_keys($codgases, 0.0);
             $anualTotal = 0.0;
+            $filasMeses = [];
 
-            for ($mes = 1; $mes <= 12; $mes++) {
+            for ($mes = 1; $mes <= $ultimoMes; $mes++) {
                 $mesesDelRango++;
                 $etiqueta = self::MESES[$mes - 1] . ' ' . $anio;
 
@@ -339,12 +349,15 @@ class VentasConsolidado
                 }
                 $anualTotal += $total;
 
-                $filas[] = ['tipo' => 'mes', 'anio' => $anio, 'mes' => $mes,
-                            'etiqueta' => $etiqueta, 'celdas' => $celdas, 'total' => $total];
+                $filasMeses[] = ['tipo' => 'mes', 'anio' => $anio, 'mes' => $mes,
+                                  'etiqueta' => $etiqueta, 'celdas' => $celdas, 'total' => $total];
             }
 
+            // TOTAL del año arriba, seguido de sus meses de más reciente a
+            // más viejo (orden descendente puro pedido para la pestaña).
             $filas[] = ['tipo' => 'anual', 'anio' => $anio, 'etiqueta' => 'TOTAL ' . $anio,
                         'celdas' => $anual, 'total' => $anualTotal];
+            foreach (array_reverse($filasMeses) as $f) $filas[] = $f;
         }
 
         return [
