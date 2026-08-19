@@ -3823,62 +3823,72 @@ public function anomalies_client_tickets()
         ) !== 1;
     }
 
+    /**
+     * Migrado 2026-08-19 de las tablas legacy Tesoreria_0956/A9475/8876/FG4113
+     * (dejaron de recibir cargas tras pasar la importación de Banorte al flujo
+     * de TG.dbo.movimientos_bancarios) a leer directamente de esa tabla, mismo
+     * patrón que Santander/Afirme en emitir_tesoreria_movimientos_bancarios().
+     * Se conserva es_deposito_venta_banorte() para excluir comisiones, IVA/DCC,
+     * traspasos y devoluciones SPEI que no son depósito de venta.
+     */
     public function get_tesoreria_banorte() {
         ob_clean();
         header('Content-Type: application/json');
-        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
-        $year = $_GET['year'] ?? date('Y');
-        $month = $_GET['month'] ?? date('m');
+        $year  = (int)($_GET['year'] ?? date('Y'));
+        $month = (int)($_GET['month'] ?? date('m'));
 
         try {
-            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
-            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $conn = $this->v3_conn();
 
-            // Traemos A.rfc
-            $sqlAfil = "SELECT A.afiliacion, 
-                               ISNULL(S.Nombre, V.Nombre) as Estacion,
-                               ISNULL(A.rfc, 'FORANEAS') as RFC 
-                        FROM Tesoreria_afil A
-                        LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
-                        LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
-                        WHERE A.entidad_id = 4 
-                        AND LEN(ISNULL(A.afiliacion,'')) > 0
-                        AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
-            
-            $stmtAfil = $conn->query($sqlAfil);
+            $stmtAfil = $conn->prepare(
+                "SELECT A.afiliacion,
+                        ISNULL(S.Nombre, V.Nombre) as Estacion,
+                        ISNULL(A.rfc, 'FORANEAS') as RFC
+                 FROM Tesoreria_afil A
+                 LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                 LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                 WHERE A.entidad_id = 4
+                 AND LEN(ISNULL(A.afiliacion,'')) > 0
+                 AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)"
+            );
+            $stmtAfil->execute();
             $catalogo = [];
-
-            while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
+            while ($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)) {
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
                     $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
             }
-
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            $sqlMovs = "SELECT Fecha, Descripcion, Depositos FROM Tesoreria_0956 
-                        WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
-            $stmtMovs = $conn->prepare($sqlMovs);
+            $stmtMovs = $conn->prepare(
+                "SELECT fecha, referencia, concepto, descripcion, descripcion_larga, abono
+                 FROM [TG].[dbo].[movimientos_bancarios]
+                 WHERE banco = 'BANORTE' AND abono > 0 AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                 ORDER BY fecha, id"
+            );
             $stmtMovs->execute([$year, $month]);
-            
-            $agrupado = [];
-            while($row = $stmtMovs->fetch(PDO::FETCH_ASSOC)){
-                $desc = trim($row['Descripcion']);
-                if (stripos($desc, 'TOTAL GAS') !== 0 && stripos($desc, 'TotalGas') !== 0 && stripos($desc, 'DIAZ GAS') !== 0) continue;
-                if (!$this->es_deposito_venta_banorte($desc)) continue;
 
-                $fechaVal = $row['Fecha'];
-                $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
-                $monto = (float)$row['Depositos'];
+            $agrupado = [];
+            while ($row = $stmtMovs->fetch(PDO::FETCH_ASSOC)) {
+                $ref      = trim((string)($row['referencia'] ?? ''));
+                $concepto = trim((string)($row['concepto'] ?? ''));
+                $desc     = trim((string)($row['descripcion'] ?? ''));
+                $descLarga= trim((string)($row['descripcion_larga'] ?? ''));
+                if ($ref === '' && $concepto === '' && $desc === '' && $descLarga === '') continue;
+                if (!$this->es_deposito_venta_banorte($ref, $concepto, $desc, $descLarga)) continue;
+
+                $monto = (float)$row['abono'];
+                $fecha = ($row['fecha'] instanceof DateTime) ? $row['fecha']->format('Y-m-d') : substr((string)$row['fecha'], 0, 10);
+                $texto = implode(' ', [$ref, $concepto, $desc, $descLarga]);
 
                 foreach ($catalogo as $afilItem) {
                     $afiliacionStr = $afilItem['afiliacion'];
-                    if (strpos($desc, $afiliacionStr) !== false) {
+                    if (stripos($texto, $afiliacionStr) !== false) {
                         $key = $fecha . '_' . $afiliacionStr;
                         if (!isset($agrupado[$key])) {
                             $agrupado[$key] = [
@@ -3886,66 +3896,9 @@ public function anomalies_client_tickets()
                             ];
                         }
                         $agrupado[$key]['Total'] += $monto;
-                        break; 
+                        break;
                     }
                 }
-            }
-
-            // Tablas Banorte con afiliación embebida en Referencia/Concepto/Descripcion
-            foreach (['Tesoreria_A9475', 'Tesoreria_8876'] as $tablaRef) {
-                try {
-                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
-                    if ($check->fetchColumn() == 0) continue;
-                    $sqlRef = "SELECT Fecha, Referencia, Descripcion, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
-                    $stmt = $conn->prepare($sqlRef); $stmt->execute([$year, $month]);
-                    while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                        $ref      = trim($row['Referencia']  ?? '');
-                        $concepto = '';
-                        $desc     = trim($row['Descripcion'] ?? '');
-                        if ($ref === '' && $desc === '') continue;
-                        if (!$this->es_deposito_venta_banorte($ref, $concepto, $desc)) continue;
-                        $monto = (float)$row['Depositos'];
-                        $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
-                        foreach ($catalogo as $afilItem) {
-                            $afiliacionStr = $afilItem['afiliacion'];
-                            if (stripos($ref, $afiliacionStr) !== false || stripos($concepto, $afiliacionStr) !== false || stripos($desc, $afiliacionStr) !== false) {
-                                $key = $fecha . '_' . $afiliacionStr;
-                                if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afiliacionStr,'Estacion'=>$afilItem['Estacion'],'Total'=>0];
-                                $agrupado[$key]['Total'] += $monto;
-                                break;
-                            }
-                        }
-                    }
-                } catch(Exception $e){}
-            }
-
-            // Tablas Banorte dedicadas (todos sus depósitos pertenecen a una afiliación fija)
-            $tablasDedicadas = [
-                'Tesoreria_FG4113' => '9662848',
-            ];
-            foreach ($tablasDedicadas as $tablaRef => $afilFija) {
-                // Buscar el item del catálogo correspondiente a esta afiliación
-                $afilItem = null;
-                foreach ($catalogo as $c) {
-                    if ($c['afiliacion'] === $afilFija) { $afilItem = $c; break; }
-                }
-                if (!$afilItem) continue;
-                try {
-                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
-                    if ($check->fetchColumn() == 0) continue;
-                    $stmt = $conn->prepare("SELECT Fecha, Depositos, Descripcion FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?");
-                    $stmt->execute([$year, $month]);
-                    while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                        $desc = trim($row['Descripcion'] ?? '');
-                        if (stripos($desc, $afilFija) === false && stripos($desc, 'FORMULA GAS') === false) continue;
-                        if (!$this->es_deposito_venta_banorte($desc)) continue;
-                        $monto = (float)$row['Depositos'];
-                        $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
-                        $key = $fecha . '_' . $afilFija;
-                        if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilFija,'Estacion'=>$afilItem['Estacion'],'Total'=>0];
-                        $agrupado[$key]['Total'] += $monto;
-                    }
-                } catch(Exception $e){}
             }
 
             $resultado = array_values($agrupado);
