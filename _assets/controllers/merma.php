@@ -1428,7 +1428,38 @@ class Merma
                 'Diferencia'          => null,
             ], $filasProducto);
 
+            // Si no hay un corte físico plausible justo el día inmediato
+            // anterior (nunca hubo dato, o hay un hueco de captura), el LAG
+            // de recalc_contable encadenaría inv_inicial contra el dato
+            // guardado más lejano que encuentre, aunque sea de semanas atrás,
+            // disparando una diferencia falsa. Se siembra ese día anterior con
+            // el "Inicio" que trae el propio PDF (el cierre real del día
+            // previo según Colosio) para que el LAG encadene correctamente.
+            $fechaAnterior = date('Y-m-d', strtotime($fecha . ' -1 day'));
+            $filasSemilla = [];
+            foreach ($filasProducto as $f) {
+                if ($f['inv_inicial'] === null) continue;
+                if ($this->mermaModel->existe_fisico_previo(self::CODGAS_COLOSIO, $f['codprd'], $fecha, $fechaAnterior)) continue;
+                $filasSemilla[] = [
+                    'Fecha'               => $fechaAnterior,
+                    'CodProducto'         => $f['codprd'],
+                    'Producto'            => $f['producto'],
+                    'Turno'               => 41,
+                    'VentasReales'        => null,
+                    'Inventario'          => $f['inv_inicial'],
+                    'CantidadCompra'      => null,
+                    'InventarioInicial'   => null,
+                    'InventarioContable'  => null,
+                    'Diferencia'          => null,
+                ];
+            }
+
             try {
+                if ($filasSemilla) {
+                    $this->mermaModel->replace_station_range(
+                        self::CODGAS_COLOSIO, 'COLOSIO', $fechaAnterior, $fechaAnterior, $filasSemilla
+                    );
+                }
                 $filasInsertadas += $this->mermaModel->replace_station_range(
                     self::CODGAS_COLOSIO, 'COLOSIO', $fecha, $fecha, $filas
                 );

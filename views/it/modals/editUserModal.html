@@ -9,6 +9,15 @@
             </select>
         </div>
         <div class="mb-3">
+            <label for="department_id" class="form-label">Departamento: </label>
+            <select class="selectpicker w-100" data-live-search="true" name="department_id" id="department_id" placeholder="Departamento">
+                <option value="">(sin asignar)</option>
+                {% for department in departments %}
+                <option value="{{ department.Id }}" {{ (department.Id == user.IdDepartamento) ? 'selected' : '' }}>{{ department.Nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
             <label for="name" class="form-label">Nombre: <b class="text-danger">*</b></label>
             <input type="text" class="form-control" id="name" name="name" value="{{ user.Nombre }}" required>
         </div>

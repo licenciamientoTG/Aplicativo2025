@@ -41,7 +41,7 @@
   /* Campos de clasificación editados en línea directo en la tabla: guardan
      al salir del campo (blur). El borde de color es el único feedback —sin
      modal ni mensaje— para no interrumpir la captura de la siguiente celda. */
-  .mb-movs td:has(> .mb-campo-editable) { padding: 2px 4px; }
+  .mb-movs td:has(.mb-campo-editable) { padding: 2px 4px; }
   .mb-campo-editable {
     font-size: .8rem; min-width: 110px; border-color: transparent; background: transparent;
   }
@@ -54,8 +54,13 @@
 
   /* Icono de documentos junto al input de Factura: gris sin adjuntos, verde
      con contador cuando ya tiene al menos uno, para saber de un vistazo qué
-     movimientos están respaldados sin abrir el modal de cada uno. */
-  .mb-celda-factura { display: flex; align-items: center; gap: .35rem; white-space: nowrap; }
+     movimientos están respaldados sin abrir el modal de cada uno.
+     El flex va en el DIV interno, no en el <td> (mb-celda-factura): forzar
+     display:flex directo en una celda de tabla es frágil entre navegadores
+     y fue lo que distorsionaba esta columna respecto a las demás. */
+  .mb-celda-factura { min-width: 150px; }
+  .mb-celda-factura-wrap { display: flex; align-items: center; gap: .35rem; }
+  .mb-celda-factura-wrap .mb-campo-editable { flex: 1 1 auto; min-width: 0; }
   .mb-doc-icon { position: relative; color: #94a3b8; cursor: pointer; font-size: .85rem; flex: none; }
   .mb-doc-icon:hover { color: #475569; }
   .mb-doc-icon--con { color: #009559; }
@@ -189,6 +194,7 @@
   .mb-res-nota li { margin-bottom: .1rem; }
   .mb-res-nota--warn  { background: #fffbeb; color: #92400e; } .mb-res-nota--warn i  { color: #b45309; }
   .mb-res-nota--error { background: #fffafb; color: #991b1b; } .mb-res-nota--error i { color: #dc3545; }
+  .mb-res-nota--info  { background: #eff6ff; color: #1e40af; } .mb-res-nota--info i  { color: #2563eb; }
   .mb-res-lista { max-height: 8.5rem; overflow: auto; }
 
   .mb-res-estado {
@@ -254,6 +260,9 @@
           <i class="fas fa-file-upload"></i> Subir {{ b.etiqueta }}
         </button>
         {% endfor %}
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#reglasDeptoModal">
+          <i class="fas fa-sitemap"></i> Reglas de departamento
+        </button>
       </div>
       {% endif %}
     </form>
@@ -389,21 +398,74 @@
   </div>
 </div>
 
-{# Sugerencias para los inputs de Departamento/Centro de Costo, editados en
-   línea en la tabla (ver COLUMNS en myjs): se cargan una sola vez al entrar
-   al módulo y se comparten entre todas las filas. #}
-<datalist id="departamentoList">
-  {% for d in departamentos %}<option value="{{ d }}">{% endfor %}
-</datalist>
+{# Sugerencias para el input de Centro de Costo, editado en línea en la tabla
+   (ver COLUMNS en myjs): se cargan una sola vez al entrar al módulo y se
+   comparten entre todas las filas. Departamento ya no usa datalist: es un
+   catálogo cerrado (<select>, ver selectDepartamento en myjs). #}
 <datalist id="centroCostoList">
   {% for c in centrosCosto %}<option value="{{ c }}">{% endfor %}
 </datalist>
+
+{# Modal "Reglas de departamento": palabra clave del concepto -> departamento
+   que se asigna automáticamente al importar un cargo nuevo (si no trae
+   departamento capturado) o al presionar "Reaplicar reglas". #}
+<div class="modal fade" id="reglasDeptoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-sitemap"></i> Reglas de departamento</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">
+          Si el concepto de un cargo nuevo contiene la palabra clave, se le asigna el departamento
+          automáticamente. Si varias reglas matchean, gana la palabra clave más larga.
+        </p>
+        <div id="reglasDepto_lista"></div>
+        <hr>
+        <form id="formNuevaReglaDepto" class="row g-2 align-items-end">
+          <div class="col-6">
+            <label class="form-label form-label-sm mb-1">Palabra clave</label>
+            <input type="text" class="form-control form-control-sm" id="reglaDepto_palabra" placeholder="Ej. ANTHROPIC" required>
+          </div>
+          <div class="col-4">
+            <label class="form-label form-label-sm mb-1">Departamento</label>
+            <select class="form-select form-select-sm" id="reglaDepto_departamento" required>
+              <option value="">Elige...</option>
+              {% for d in departamentos %}
+              <option value="{{ d.Id }}">{{ d.Nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-2">
+            <button type="submit" class="btn btn-sm btn-success w-100"><i class="fas fa-plus"></i></button>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-primary" id="btnReaplicarReglas">
+          <i class="fas fa-rotate"></i> Reaplicar reglas a cargos existentes
+        </button>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}
 
 {% block myjs %}
 <script>
 $(function () {
+  // Esta tabla es ancha (fecha, concepto, montos, 5 campos editables, etc.):
+  // se contrae el sidebar solo en esta vista para dejarle más espacio. Es
+  // puramente visual —no toca localStorage (main.js lo usa para recordar la
+  // preferencia real del usuario en el resto de la app)—, así que al salir a
+  // cualquier otra página el sidebar vuelve a mostrarse como lo dejó el
+  // usuario. El usuario puede seguir expandiéndolo aquí mismo con el botón
+  // de toggle si lo necesita.
+  document.getElementById('sidebar')?.classList.add('collapsed');
+
   /**
    * Celda editable en línea: un <input> (o <textarea> para Comentarios) con
    * el valor precargado, que guarda al perder el foco (blur) solo si
@@ -424,6 +486,25 @@ $(function () {
     return opts.textarea
       ? '<textarea' + atributos + '>' + valor + '</textarea>'
       : '<input type="text"' + atributos + ' value="' + valor + '">';
+  }
+
+  // Departamento es un catálogo cerrado (TG.dbo.Departamentos), a diferencia
+  // de los demás campos de clasificación que son texto libre: mismo guardado
+  // al cambiar (blur/change delegado más abajo), pero con <select> en vez de
+  // <input>. Si el movimiento no trae departamento capturado, se preselecciona
+  // el del usuario logueado — sigue siendo editable a cualquier otro valor.
+  var DEPARTAMENTOS = {{ departamentos|json_encode|raw }};
+  var DEPARTAMENTO_USUARIO = {{ departamentoUsuario ? departamentoUsuario|json_encode|raw : 'null' }};
+
+  function selectDepartamento(row) {
+    var actual = row.departamento || DEPARTAMENTO_USUARIO || '';
+    var html = '<select class="form-select form-select-sm mb-campo-editable"' +
+               ' data-id="' + row.id + '" data-campo="departamento">' +
+               '<option value=""' + (actual === '' ? ' selected' : '') + '>(sin asignar)</option>';
+    DEPARTAMENTOS.forEach(function (d) {
+      html += '<option value="' + esc(d.Nombre) + '"' + (d.Nombre === actual ? ' selected' : '') + '>' + esc(d.Nombre) + '</option>';
+    });
+    return html + '</select>';
   }
 
   // Mismo orden que la hoja de captura de Susie's. Departamento/Conf. No./
@@ -448,35 +529,54 @@ $(function () {
     { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
     {
       data: null, defaultContent: '', orderable: false,
-      render: function (d, type, row) { return inputEditable(row, 'departamento', { datalist: 'departamentoList' }); },
+      // El buscador de columna (buildFilterRow) y el sort/type de DataTables
+      // llaman a render con type distinto de 'display': sin esta rama, el
+      // filtro de texto compara contra el HTML crudo del <select> en vez del
+      // valor visible ("Sistemas"), y nunca matchea nada.
+      render: function (d, type, row) {
+        if (type !== 'display') return row.departamento || '';
+        return selectDepartamento(row);
+      },
     },
     {
       data: null, defaultContent: '', orderable: false,
-      render: function (d, type, row) { return inputEditable(row, 'conf_no'); },
+      render: function (d, type, row) {
+        if (type !== 'display') return row.conf_no || '';
+        return inputEditable(row, 'conf_no');
+      },
     },
     {
       data: null, defaultContent: '', orderable: false,
       className: 'mb-celda-factura',
       render: function (d, type, row) {
+        if (type !== 'display') return row.factura || '';
         var n = row.n_documentos || 0;
         // El contador viene de movimientos_cheques_table() (conteo por
         // movimiento en un solo query): sin él, el icono de clip se vería
         // igual con 0 o con 5 documentos, obligando a abrir el modal para
         // saberlo.
-        return inputEditable(row, 'factura') +
+        return '<div class="mb-celda-factura-wrap">' +
+               inputEditable(row, 'factura') +
                '<i class="fas fa-paperclip mb-doc-icon' + (n ? ' mb-doc-icon--con' : '') + '"' +
                ' data-id="' + row.id + '" title="' +
                (n ? n + ' documento' + (n === 1 ? '' : 's') + ' adjunto' + (n === 1 ? '' : 's') : 'Adjuntar documento') + '">' +
-               (n ? '<span class="mb-doc-count">' + n + '</span>' : '') + '</i>';
+               (n ? '<span class="mb-doc-count">' + n + '</span>' : '') + '</i>' +
+               '</div>';
       },
     },
     {
       data: null, defaultContent: '', orderable: false,
-      render: function (d, type, row) { return inputEditable(row, 'comentarios', { textarea: true }); },
+      render: function (d, type, row) {
+        if (type !== 'display') return row.comentarios || '';
+        return inputEditable(row, 'comentarios', { textarea: true });
+      },
     },
     {
       data: null, defaultContent: '', orderable: false,
-      render: function (d, type, row) { return inputEditable(row, 'centro_costo', { datalist: 'centroCostoList' }); },
+      render: function (d, type, row) {
+        if (type !== 'display') return row.centro_costo || '';
+        return inputEditable(row, 'centro_costo', { datalist: 'centroCostoList' });
+      },
     },
     { data: 'rfc_contraparte', defaultContent: '' },
     { data: 'tarjeta', className: 'mb-cuenta', defaultContent: '' },
@@ -581,17 +681,18 @@ $(function () {
   });
 
   // ===== Clasificación manual: edición en línea directo en la celda =====
-  // Cada input/textarea .mb-campo-editable guarda solo al perder el foco
-  // (blur), y solo si el valor cambió respecto al que tenía al entrar al
-  // campo (evita un POST en cada clic que no editó nada). Delegado en la
-  // tabla en vez de un listener por celda: sobrevive a los redibujados de
-  // DataTables sin tener que re-enganchar nada.
+  // Cada input/textarea/select .mb-campo-editable guarda solo al perder el
+  // foco (blur en input/textarea; change en select, que es cuando el
+  // usuario espera que se guarde al elegir una opción), y solo si el valor
+  // cambió respecto al que tenía al entrar al campo (evita un POST en cada
+  // clic que no editó nada). Delegado en la tabla en vez de un listener por
+  // celda: sobrevive a los redibujados de DataTables sin tener que
+  // re-enganchar nada.
   $('.mb-tabla-wrap').on('focus', '.mb-campo-editable', function () {
     $(this).data('valorPrevio', $(this).val());
   });
 
-  $('.mb-tabla-wrap').on('blur', '.mb-campo-editable', function () {
-    var $campo = $(this);
+  function guardarCampo($campo) {
     var valor = $campo.val();
     if (valor === $campo.data('valorPrevio')) return;   // sin cambios: no hay nada que guardar
 
@@ -616,18 +717,25 @@ $(function () {
         $campo.data('valorPrevio', valor).attr('title', '').addClass('mb-campo-ok');
         setTimeout(function () { $campo.removeClass('mb-campo-ok'); }, 1500);
 
-        // Un valor nuevo de Departamento/Centro de Costo enriquece el
-        // datalist compartido para que la próxima celda ya lo sugiera.
-        if (valor && (nombreCampo === 'departamento' || nombreCampo === 'centro_costo')) {
-          var listaId = nombreCampo === 'departamento' ? 'departamentoList' : 'centroCostoList';
-          if (!$('#' + listaId + ' option[value="' + CSS.escape(valor) + '"]').length) {
-            $('#' + listaId).append('<option value="' + esc(valor) + '">');
+        // Un valor nuevo de Centro de Costo enriquece el datalist compartido
+        // para que la próxima celda ya lo sugiera. Departamento no aplica:
+        // es un catálogo cerrado (<select>), no admite valores nuevos.
+        if (valor && nombreCampo === 'centro_costo') {
+          if (!$('#centroCostoList option[value="' + CSS.escape(valor) + '"]').length) {
+            $('#centroCostoList').append('<option value="' + esc(valor) + '">');
           }
         }
       })
       .catch(function () {
         $campo.removeClass('mb-campo-guardando').addClass('mb-campo-error').attr('title', 'Error de conexión al guardar');
       });
+  }
+
+  $('.mb-tabla-wrap').on('blur', 'input.mb-campo-editable, textarea.mb-campo-editable', function () {
+    guardarCampo($(this));
+  });
+  $('.mb-tabla-wrap').on('change', 'select.mb-campo-editable', function () {
+    guardarCampo($(this));
   });
 
   // Enter en un input de una sola línea = salir del campo (dispara el blur
@@ -795,6 +903,93 @@ $(function () {
       });
   }
 
+  // ===== Reglas de departamento (palabra clave -> departamento) =====
+  function cargarReglasDepto() {
+    $('#reglasDepto_lista').html('<div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span></div>');
+    fetch('/tesoreria/reglas_departamento_cheque', { credentials: 'include' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.success) {
+          $('#reglasDepto_lista').html('<div class="alert alert-danger py-2 mb-0">' + esc(res.message) + '</div>');
+          return;
+        }
+        if (!res.reglas.length) {
+          $('#reglasDepto_lista').html('<div class="text-muted small">Sin reglas capturadas todavía.</div>');
+          return;
+        }
+        var html = '<ul class="list-group">';
+        res.reglas.forEach(function (r) {
+          html += '<li class="list-group-item d-flex justify-content-between align-items-center py-1">'
+            + '<span><strong>' + esc(r.palabra_clave) + '</strong> <i class="fas fa-arrow-right text-muted mx-1"></i> ' + esc(r.departamento) + '</span>'
+            + '<i class="fas fa-trash text-danger regla-depto-eliminar" data-id="' + r.id + '" style="cursor:pointer;" title="Eliminar"></i>'
+            + '</li>';
+        });
+        $('#reglasDepto_lista').html(html + '</ul>');
+      })
+      .catch(function () {
+        $('#reglasDepto_lista').html('<div class="alert alert-danger py-2 mb-0">Error de servidor</div>');
+      });
+  }
+
+  $('#reglasDeptoModal').on('show.bs.modal', cargarReglasDepto);
+
+  $('#formNuevaReglaDepto').on('submit', function (e) {
+    e.preventDefault();
+    var palabra = $('#reglaDepto_palabra').val().trim();
+    var deptoId = $('#reglaDepto_departamento').val();
+    if (!palabra || !deptoId) return;
+
+    fetch('/tesoreria/crear_regla_departamento_cheque', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'palabra_clave=' + encodeURIComponent(palabra) + '&departamento_id=' + encodeURIComponent(deptoId),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.success) { alert(res.message); return; }
+        $('#reglaDepto_palabra').val('');
+        $('#reglaDepto_departamento').val('');
+        cargarReglasDepto();
+      })
+      .catch(function () { alert('Error de servidor al crear la regla'); });
+  });
+
+  $(document).on('click', '.regla-depto-eliminar', function () {
+    var id = $(this).data('id');
+    if (!confirm('¿Eliminar esta regla?')) return;
+    fetch('/tesoreria/eliminar_regla_departamento_cheque', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'id=' + encodeURIComponent(id),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.success) { alert(res.message); return; }
+        cargarReglasDepto();
+      })
+      .catch(function () { alert('Error de servidor al eliminar la regla'); });
+  });
+
+  $('#btnReaplicarReglas').on('click', function () {
+    var $btn = $(this);
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Aplicando...');
+    fetch('/tesoreria/reaplicar_reglas_departamento_cheque', { method: 'POST', credentials: 'include' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        alert(res.message);
+        // Los departamentos que se llenaron no se ven hasta recargar la
+        // tabla: es más simple releer el rango actual que repintar fila por
+        // fila sin saber cuáles cambiaron.
+        if (res.actualizados > 0) buscarMovimientos();
+      })
+      .catch(function () { alert('Error de servidor al reaplicar las reglas'); })
+      .finally(function () {
+        $btn.prop('disabled', false).html('<i class="fas fa-rotate"></i> Reaplicar reglas a cargos existentes');
+      });
+  });
+
   $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
     $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
   });
@@ -943,7 +1138,7 @@ $(function () {
   }
 
   function hayQueLeer(data) {
-    return !!(data.errores && data.errores.length);
+    return !!((data.errores && data.errores.length) || (data.detalleDuplicados && data.detalleDuplicados.length));
   }
 
   function bloqueNota(tipo, icono, titulo, items) {
@@ -974,6 +1169,11 @@ $(function () {
             Number(data.duplicados).toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
             '</div>';
 
+    // "Ya existían" puede ser un cargo real duplicado por error del banco o
+    // dos cargos legítimos que coinciden en fecha+concepto+importe (ej. un
+    // servicio recurrente el mismo día en dos meses distintos): el detalle
+    // deja al usuario decidir cuál es el caso, en vez de un número pelón.
+    html += bloqueNota('info', 'circle-info', 'Ya existían (mismo concepto, fecha e importe que algo ya guardado)', data.detalleDuplicados);
     html += bloqueNota('error', 'circle-xmark', 'Líneas con problema', data.errores);
 
     html += '<div class="mb-res-estado">' + (hayQueLeer(data)

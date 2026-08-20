@@ -278,6 +278,8 @@ class Tesoreria
     private $proveedores;
     private $tarjetasModel;
     private $tarjetasDocsModel;
+    private $departamentosModel;
+    private $reglasDeptoModel;
 
     public function __construct($twig)
     {
@@ -288,6 +290,8 @@ class Tesoreria
         $this->proveedores  = new ProveedoresModel();
         $this->tarjetasModel = new TarjetasCreditoModel();
         $this->tarjetasDocsModel = new TarjetasCreditoDocumentosModel();
+        $this->departamentosModel = new DepartamentosModel();
+        $this->reglasDeptoModel = new TarjetasCreditoReglasDepartamentoModel();
     }
 
     /**
@@ -1065,15 +1069,22 @@ class Tesoreria
             return;
         }
 
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0);
+
         echo $this->twig->render($this->route . 'movimientos_bancos_cheques.html', [
             'filtros'       => $this->filtros_movimientos($_GET),
             'cuentas'       => $this->tarjetasModel->get_cuentas(),
             'bancos'        => self::BANCOS_CHEQUES,
-            // Para los <datalist> de Departamento/Centro de Costo: se
-            // comparten entre todas las filas de la tabla (edición en línea),
-            // así que se cargan una sola vez al entrar al módulo.
-            'departamentos' => $this->tarjetasModel->get_departamentos(),
+            // Departamento es un catálogo cerrado (TG.dbo.Departamentos): se
+            // carga una sola vez al entrar al módulo y se comparte entre
+            // todas las filas de la tabla (edición en línea).
+            'departamentos' => $this->departamentosModel->all() ?: [],
+            // Centro de Costo sigue siendo texto libre con sugerencias.
             'centrosCosto'  => $this->tarjetasModel->get_centros_costo(),
+            // Departamento del usuario logueado: preselecciona el select en
+            // filas sin departamento capturado, sin forzar el valor (sigue
+            // siendo editable a cualquier otro de la lista).
+            'departamentoUsuario' => $usuario ? $this->departamentosModel->nombre_de_usuario($usuario) : null,
         ]);
     }
 
@@ -1219,6 +1230,12 @@ class Tesoreria
                 mb_substr($file['name'], 0, 120),
                 (int)($_SESSION['tg_user']['Id'] ?? 0) ?: null
             );
+            // Los cargos recién importados llegan sin departamento capturado:
+            // se les aplica la regla por concepto si alguna matchea (nunca
+            // pisa una edición manual, porque solo toca los que están vacíos).
+            if ($res['insertados'] > 0) {
+                $this->reglasDeptoModel->aplicar_a_pendientes();
+            }
         } catch (Exception $e) {
             error_log("upload_movimientos_cheques($banco): " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error al guardar en base de datos, no se importó nada']);
@@ -1230,6 +1247,11 @@ class Tesoreria
             'banco'      => $banco,
             'insertados' => $res['insertados'],
             'duplicados' => $res['duplicados'],
+            // Detalle de qué se consideró "ya existía" (mismo banco+cuenta+
+            // tarjeta+fecha+descripción+RFC+cargo/abono que algo ya
+            // guardado): para que el usuario pueda revisar si de verdad son
+            // duplicados o cargos legítimos que coinciden en fecha e importe.
+            'detalleDuplicados' => array_slice($res['detalleDuplicados'] ?? [], 0, 20),
             'errores'    => array_slice($parseo['errores'], 0, 20),
         ]);
     }
@@ -1391,5 +1413,76 @@ class Tesoreria
         header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
         header('Content-Length: ' . filesize($fullPath));
         readfile($fullPath);
+    }
+
+    /* ===================================================================== */
+    /* Reglas de auto-clasificación de Departamento por concepto             */
+    /* ===================================================================== */
+
+    /** Lista las reglas activas, para el modal "Reglas de departamento". */
+    public function reglas_departamento_cheque(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        json_output(['success' => true, 'reglas' => $this->reglasDeptoModel->all()]);
+    }
+
+    /** Crea una regla (palabra clave -> departamento). */
+    public function crear_regla_departamento_cheque(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES) || !authorized(self::PERM_SUBIR_MOV)) {
+            json_output(['success' => false, 'message' => 'No tienes permiso para crear reglas']);
+            return;
+        }
+        $palabraClave = trim($_POST['palabra_clave'] ?? '');
+        $departamentoId = (int)($_POST['departamento_id'] ?? 0);
+        if ($palabraClave === '' || !$departamentoId) {
+            json_output(['success' => false, 'message' => 'Captura la palabra clave y elige un departamento']);
+            return;
+        }
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0) ?: null;
+        $ok = $this->reglasDeptoModel->create($palabraClave, $departamentoId, $usuario);
+        json_output(['success' => $ok, 'message' => $ok ? 'Regla creada' : 'No se pudo crear la regla']);
+    }
+
+    /** Elimina una regla. */
+    public function eliminar_regla_departamento_cheque(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES) || !authorized(self::PERM_SUBIR_MOV)) {
+            json_output(['success' => false, 'message' => 'No tienes permiso para eliminar reglas']);
+            return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        $ok = $this->reglasDeptoModel->delete($id);
+        json_output(['success' => $ok, 'message' => $ok ? 'Regla eliminada' : 'No se pudo eliminar']);
+    }
+
+    /**
+     * Botón "Reaplicar reglas": corre las reglas activas contra los cargos
+     * que sigan sin departamento capturado (nunca pisa una edición manual ya
+     * hecha ni un departamento ya asignado por una regla anterior).
+     */
+    public function reaplicar_reglas_departamento_cheque(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES) || !authorized(self::PERM_SUBIR_MOV)) {
+            json_output(['success' => false, 'message' => 'No tienes permiso para reaplicar reglas']);
+            return;
+        }
+        $n = $this->reglasDeptoModel->aplicar_a_pendientes();
+        json_output([
+            'success' => true,
+            'actualizados' => $n,
+            'message' => $n > 0 ? "$n cargo(s) clasificado(s)" : 'No había cargos pendientes que matchearan alguna regla',
+        ]);
     }
 }

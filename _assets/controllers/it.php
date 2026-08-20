@@ -11,6 +11,7 @@ class It{
     public GasolinerasModel $gasolinerasModel;
     public DespachosModel $despachosModel;
     public PerfilModel $profileModel;
+    public DepartamentosModel $departamentosModel;
     public EstacionesModel $estacionesModel;
     public DespachosLealtadModel $despachosLealtadModel;
     public BinnacleActivitiesModel $binnacleActivitiesModel;
@@ -30,6 +31,7 @@ class It{
         $this->estacionesModel         = new EstacionesModel;
         $this->despachosModel          = new DespachosModel;
         $this->profileModel            = new PerfilModel;
+        $this->departamentosModel      = new DepartamentosModel;
         $this->despachosLealtadModel   = new DespachosLealtadModel();
         $this->binnacleActivitiesModel = new BinnacleActivitiesModel();
         $this->pageVisitsModel = new PageVisitsModel;
@@ -700,12 +702,13 @@ class It{
     public function editUserModal($id) : void {
         $user = $this->usersModel->get_user($id);
         $profiles = $this->profileModel->all();
+        $departments = $this->departamentosModel->all();
         $stations = $this->estacionesModel->get_stations();
         $modal = [
             "title"    => "Editar usuario",
             "size"     => "modal-sm",
             "position" => "modal-dialog-centered",
-            "content"  => $this->twig->render($this->route . 'modals/editUserModal.html', compact('profiles', 'user', 'stations'))
+            "content"  => $this->twig->render($this->route . 'modals/editUserModal.html', compact('profiles', 'departments', 'user', 'stations'))
         ];
         json_output($modal);
     }
@@ -751,7 +754,7 @@ class It{
      * @throws Exception
      */
     public function editUserForm() {
-        $rs = $this->usersModel->editUser(trim($_POST['name']), $_POST['profile_id'], trim(strtolower($_POST['email'])), $_POST['IdEstacion'], $_POST['status'], $_POST['id']);
+        $rs = $this->usersModel->editUser(trim($_POST['name']), $_POST['profile_id'], trim(strtolower($_POST['email'])), $_POST['IdEstacion'], $_POST['status'], $_POST['id'], $_POST['department_id'] ?? null);
         return json_output(($rs ? 1 : 0));
     }
 

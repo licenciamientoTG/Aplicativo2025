@@ -419,7 +419,13 @@ class TarjetasCreditoModel extends Model
             }
             $fecha = sprintf('%04d-%02d-%02d', (int)$fm[3], $mes, (int)$fm[1]);
 
-            $descripcion = mb_substr(trim((string)$hoja->getCell($col('Descripción') . $f)->getValue()), 0, 150);
+            // La celda de Excel conserva el relleno de espacios del ancho de
+            // columna original ("STARLINK                CIUDAD DE MEXIC"),
+            // a diferencia del PDF (que ya llega normalizado): sin colapsar
+            // los espacios aquí, esta descripción no matchea contra la misma
+            // regla de departamento que sí matchea la versión del PDF.
+            $descripcionRaw = trim((string)$hoja->getCell($col('Descripción') . $f)->getValue());
+            $descripcion = mb_substr(trim(preg_replace('/\s+/', ' ', $descripcionRaw)), 0, 150);
             $importeRaw  = $hoja->getCell($col('Importe') . $f)->getValue();
             if (!is_numeric($importeRaw)) {
                 $errores[] = "Fila $f: importe inválido ($importeRaw)";
@@ -689,7 +695,7 @@ class TarjetasCreditoModel extends Model
      */
     public function insert_bulk(array $movimientos, int $anioCorte, int $mesCorte, string $archivo, ?int $usuario): array
     {
-        if (empty($movimientos)) return ['insertados' => 0, 'duplicados' => 0];
+        if (empty($movimientos)) return ['insertados' => 0, 'duplicados' => 0, 'detalleDuplicados' => []];
 
         $movimientos = self::resolverFechasYHuellas($movimientos, $anioCorte, $mesCorte, $archivo);
 
@@ -701,11 +707,24 @@ class TarjetasCreditoModel extends Model
         $vistas = array_fill_keys(array_column($existentes, 'huella'), true);
 
         $insertados = $duplicados = 0;
+        // Detalle de qué se consideró "ya existía": mismo banco+cuenta+tarjeta
+        // +fecha+descripción+RFC+cargo+abono que algo ya guardado (huella
+        // idéntica). Sin esto, dos cargos legítimos iguales el mismo día
+        // (o un cargo real duplicado por error del banco) se ven igual en el
+        // mensaje genérico "N ya existían" — el usuario no puede distinguirlos
+        // sin ir a revisar la base de datos a mano.
+        $detalleDuplicados = [];
         $this->sql->beginTransaction();
         try {
             foreach ($movimientos as $m) {
                 if (isset($vistas[$m['huella']])) {
                     $duplicados++;
+                    $detalleDuplicados[] = sprintf(
+                        '%s — %s — $%s',
+                        $m['fecha'],
+                        $m['descripcion'],
+                        number_format((float)($m['cargo'] ?? $m['abono'] ?? 0), 2)
+                    );
                     continue;
                 }
                 $vistas[$m['huella']] = true;
@@ -729,7 +748,7 @@ class TarjetasCreditoModel extends Model
             $this->sql->rollBack();
             throw $e;
         }
-        return ['insertados' => $insertados, 'duplicados' => $duplicados];
+        return ['insertados' => $insertados, 'duplicados' => $duplicados, 'detalleDuplicados' => $detalleDuplicados];
     }
 
     /**

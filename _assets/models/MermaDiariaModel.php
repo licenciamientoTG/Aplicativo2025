@@ -186,11 +186,13 @@ class MermaDiariaModel extends Model
                   )
                   UPDATE m SET
                       inv_inicial  = b.fis_prev,
-                      inv_contable = ROUND(b.fis_prev - ISNULL(m.ventas_reales, 0)
-                                           + ISNULL(m.compras, 0), 2),
-                      diferencia   = ROUND(b.fis_ok - (b.fis_prev
-                                           - ISNULL(m.ventas_reales, 0)
-                                           + ISNULL(m.compras, 0)), 2)
+                      inv_contable = CASE WHEN m.ventas_reales IS NULL THEN NULL ELSE
+                                     ROUND(b.fis_prev - ISNULL(m.ventas_reales, 0)
+                                          + ISNULL(m.compras, 0), 2) END,
+                      diferencia   = CASE WHEN m.ventas_reales IS NULL THEN NULL ELSE
+                                     ROUND(b.fis_ok - (b.fis_prev
+                                          - ISNULL(m.ventas_reales, 0)
+                                          + ISNULL(m.compras, 0)), 2) END
                   FROM [TG].[dbo].[merma_diaria] m
                   JOIN b ON b.id = m.id;";
         $this->sql->update($query, $params);
@@ -199,18 +201,31 @@ class MermaDiariaModel extends Model
     /**
      * ¿Ya existe algún corte físico plausible (dentro de INV_FISICO_MIN/MAX)
      * para este codgas/codprd en una fecha estrictamente anterior a $fecha?
-     * Usado por la carga manual de Praxedis para decidir si hace falta
-     * sembrar un día previo con el "Inv Inicial" que trae el propio PDF
-     * (si no, el LAG de recalc_contable no tiene de dónde encadenar y
-     * inv_inicial/inv_contable/diferencia quedan en s/d).
+     * Usado por la carga manual de Praxedis/Colosio para decidir si hace
+     * falta sembrar un día previo con el "Inv Inicial"/"Inicio" que trae el
+     * propio PDF (si no, el LAG de recalc_contable no tiene de dónde
+     * encadenar y inv_inicial/inv_contable/diferencia quedan en s/d).
+     *
+     * Con $desdeFecha se acota la búsqueda a partir de esa fecha (inclusive)
+     * en vez de "cualquier fecha anterior" — evita que el LAG encadene contra
+     * un dato viejo y lejano cuando hay un hueco de captura entre medio
+     * (p.ej. Colosio: cierre de julio con hueco hasta mediados de agosto).
      */
-    public function existe_fisico_previo(int $codgas, int $codprd, string $fecha): bool
+    public function existe_fisico_previo(int $codgas, int $codprd, string $fecha, ?string $desdeFecha = null): bool
     {
+        $params = [$codgas, $codprd, $fecha];
+        $condDesde = '';
+        if ($desdeFecha !== null) {
+            $condDesde = ' AND fecha >= ?';
+            $params[] = $desdeFecha;
+        }
+        $params[] = self::INV_FISICO_MIN;
+        $params[] = self::INV_FISICO_MAX;
         $rs = $this->sql->select(
-            'SELECT TOP 1 1 FROM [TG].[dbo].[merma_diaria]
-             WHERE codgas = ? AND codprd = ? AND fecha < ?
-               AND inv_fisico BETWEEN ? AND ?;',
-            [$codgas, $codprd, $fecha, self::INV_FISICO_MIN, self::INV_FISICO_MAX]);
+            "SELECT TOP 1 1 FROM [TG].[dbo].[merma_diaria]
+             WHERE codgas = ? AND codprd = ? AND fecha < ?{$condDesde}
+               AND inv_fisico BETWEEN ? AND ?;",
+            $params);
         return !empty($rs);
     }
 
