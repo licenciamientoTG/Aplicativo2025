@@ -1461,7 +1461,10 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
                 );
             }
         }
-        json_output(array("data" => $data));
+        json_output(array(
+            "data" => $data,
+            "disconnected" => $this->cotizacionesModel->disconnectedStations
+        ));
     }
 
     function exchange_rate_process() {
