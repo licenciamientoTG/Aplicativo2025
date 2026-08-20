@@ -6228,6 +6228,21 @@ public function stamped_invoices_detail(): void
         ob_clean(); header('Content-Type: application/json');
         try{$data=json_decode(file_get_contents('php://input'),true)?:[];$this->efcConciliacion->undo((int)($data['grupo_id']??0),(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
     }
+    public function efc_conc_reclasificaciones(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); if(!$station||$year<2020||$month<1||$month>12) throw new RuntimeException('Periodo o estacion invalidos.'); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->activeReclassifications($station,$year,$month)]); }
+        catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); } exit;
+    }
+    public function efc_conc_reclasificar(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $id=$this->efcConciliacion->reclassify($data,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','id'=>$id]); }
+        catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); } exit;
+    }
+    public function efc_conc_revertir_reclasificacion(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->reverseReclassification((int)($data['reclasificacion_id']??0),(string)($data['modo']??''),(string)($data['concepto']??''),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
+        catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); } exit;
+    }
 
     /**
      * Depósitos de efectivo Banorte para la prueba de conciliación Díaz Gas.
