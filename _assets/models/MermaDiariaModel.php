@@ -244,6 +244,24 @@ class MermaDiariaModel extends Model
         return $out;
     }
 
+    /**
+     * Subconjunto de $fechas que ya tienen al menos una fila guardada para
+     * este codgas. Usado en el preview de cargas manuales por PDF (Praxedis,
+     * Colosio) para avisar antes de confirmar que una fecha se sobrescribirá.
+     */
+    public function fechas_existentes(int $codgas, array $fechas): array
+    {
+        $fechas = array_values(array_unique($fechas));
+        if (empty($fechas)) return [];
+        $placeholders = implode(',', array_fill(0, count($fechas), '?'));
+        $rows = $this->sql->select(
+            "SELECT DISTINCT fecha FROM [TG].[dbo].[merma_diaria]
+             WHERE codgas = ? AND fecha IN ({$placeholders});",
+            array_merge([$codgas], $fechas)
+        ) ?: [];
+        return array_map(fn($r) => substr($r['fecha'], 0, 10), $rows);
+    }
+
     /* ===================================================================== */
     /* Corrección de cortes físicos en la estación (StockReal vía OPENQUERY)  */
     /* ===================================================================== */

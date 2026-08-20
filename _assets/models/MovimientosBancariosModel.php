@@ -1925,6 +1925,10 @@ class MovimientosBancariosModel extends Model
      * Incluye la fecha de ese movimiento: si es anterior al corte, la cuenta
      * no tuvo movimientos ese día y el saldo viene de un día previo.
      *
+     * El día de hoy nunca está cerrado: si el corte pedido es hoy, se recorta
+     * al día anterior para todas las cuentas por igual. Con corte a una fecha
+     * pasada no cambia nada (ese día ya está cerrado).
+     *
      * El LEFT JOIN al catálogo trae la empresa (Descripcion) y la divisa para
      * agrupar los saldos por empresa. Es match exacto de CuentaLocal a
      * propósito: no hay CuentaLocal duplicada en el catálogo, así que el join
@@ -1934,6 +1938,10 @@ class MovimientosBancariosModel extends Model
      */
     public function get_saldos_finales(string $hasta): array
     {
+        if ($hasta === date('Y-m-d')) {
+            $hasta = date('Y-m-d', strtotime($hasta . ' -1 day'));
+        }
+
         $query = "SELECT t.banco, t.cuenta, t.fecha, t.saldo,
                          c.Descripcion AS descripcion,
                          c.Divisa      AS divisa,

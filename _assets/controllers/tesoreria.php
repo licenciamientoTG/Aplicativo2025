@@ -62,6 +62,18 @@ class Tesoreria
     private const GRUPO_SIN_CATALOGO = 'SIN CATÁLOGO';
 
     /**
+     * Corte efectivo para el saldo final por grupo/cuenta: el día de hoy
+     * nunca está cerrado (el banco puede seguir mandando movimientos), así
+     * que si se pide el corte de hoy se usa el de ayer. Un corte a una fecha
+     * pasada no cambia. Mismo criterio replicado en
+     * MovimientosBancariosModel::get_saldos_finales().
+     */
+    private static function corte_efectivo(string $hasta): string
+    {
+        return $hasta === date('Y-m-d') ? date('Y-m-d', strtotime($hasta . ' -1 day')) : $hasta;
+    }
+
+    /**
      * Grupos empresariales para el panel "Saldo final por grupo": a qué grupo
      * pertenece cada razón social, por coincidencia de texto en su
      * Descripcion del catálogo. Lo que no empate cae en OTRAS.
@@ -209,14 +221,26 @@ class Tesoreria
             'espera'   => 'el PDF del estado de cuenta Empuje Negocio de Banorte',
             'parser'   => 'parse_banorte_credito_pdf',
         ],
+        // Un solo botón de subida para Amex, sin pedirle al usuario qué
+        // tarjeta o formato es: acepta el PDF del estado de cuenta (Platinum
+        // o Gold Corporate, hay más de un layout) y el Excel de "actividad"
+        // (mismo formato de columnas para cualquier tarjeta Amex). El
+        // controlador decide el parser por extensión y, en PDF, prueba los
+        // layouts conocidos hasta que uno reconoce el archivo — ver
+        // upload_movimientos_cheques().
         'AMEX' => [
             'etiqueta' => 'American Express',
             'color'    => '#006FCF',   // azul oficial de American Express
-            'ext'      => ['pdf'],
-            'espera'   => 'el PDF del estado de cuenta de American Express',
-            'parser'   => 'parse_amex_credito_pdf',
+            'ext'      => ['pdf', 'xlsx'],
+            'espera'   => 'el PDF del estado de cuenta o el Excel de actividad de American Express',
         ],
     ];
+
+    /**
+     * Parsers de PDF de Amex a probar en orden hasta que uno reconozca el
+     * archivo (cada layout de tarjeta trae su propio formato de encabezado).
+     */
+    private const AMEX_PDF_PARSERS = ['parse_amex_credito_pdf', 'parse_amex_gold_credito_pdf'];
 
     /**
      * Normaliza el banco de un movimiento a una de las llaves de BANCOS.
@@ -253,6 +277,7 @@ class Tesoreria
     private $cuentasModel;
     private $proveedores;
     private $tarjetasModel;
+    private $tarjetasDocsModel;
 
     public function __construct($twig)
     {
@@ -262,6 +287,7 @@ class Tesoreria
         $this->cuentasModel = new CuentasBancariasModel();
         $this->proveedores  = new ProveedoresModel();
         $this->tarjetasModel = new TarjetasCreditoModel();
+        $this->tarjetasDocsModel = new TarjetasCreditoDocumentosModel();
     }
 
     /**
@@ -433,6 +459,11 @@ class Tesoreria
         $hasta = $_GET['hasta'] ?? '';
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) $hasta = date('Y-m-d');
 
+        // Se calcula aquí (y no solo dentro del modelo) para poder informarlo
+        // en la respuesta: la vista lo usa tanto para el encabezado "al ..."
+        // como para decidir qué cuenta marcar como atrasada respecto al corte.
+        $hastaEfectivo = self::corte_efectivo($hasta);
+
         $saldos = $this->movsModel->get_saldos_finales($hasta);
         $total  = 0.0;
         foreach ($saldos as $s) $total += (float)$s['saldo'];
@@ -441,7 +472,7 @@ class Tesoreria
 
         json_output([
             'success'  => true,
-            'hasta'    => $hasta,
+            'hasta'    => $hastaEfectivo,
             'grupos'   => $grupos,
             'porGrupo' => $this->agrupar_por_grupo_empresarial($grupos),
             'porBanco' => $this->resumen_por_banco($saldos),
@@ -558,6 +589,7 @@ class Tesoreria
      */
     private function libro_saldos_grupo(string $hasta): \PhpOffice\PhpSpreadsheet\Spreadsheet
     {
+        $hastaEfectivo = self::corte_efectivo($hasta);
         $porGrupo = $this->agrupar_por_grupo_empresarial(
             $this->agrupar_saldos_por_empresa($this->movsModel->get_saldos_finales($hasta))
         );
@@ -566,7 +598,7 @@ class Tesoreria
         $hoja  = $libro->getActiveSheet();
         $hoja->setTitle('Saldo por grupo');
 
-        $hoja->fromArray(['Saldo final por grupo al ' . date('d/m/Y', strtotime($hasta))], null, 'A1');
+        $hoja->fromArray(['Saldo final por grupo al ' . date('d/m/Y', strtotime($hastaEfectivo))], null, 'A1');
         $hoja->mergeCells('A1:F1');
         $hoja->getStyle('A1')->getFont()->setBold(true)->setSize(12);
 
@@ -1034,9 +1066,14 @@ class Tesoreria
         }
 
         echo $this->twig->render($this->route . 'movimientos_bancos_cheques.html', [
-            'filtros' => $this->filtros_movimientos($_GET),
-            'cuentas' => $this->tarjetasModel->get_cuentas(),
-            'bancos'  => self::BANCOS_CHEQUES,
+            'filtros'       => $this->filtros_movimientos($_GET),
+            'cuentas'       => $this->tarjetasModel->get_cuentas(),
+            'bancos'        => self::BANCOS_CHEQUES,
+            // Para los <datalist> de Departamento/Centro de Costo: se
+            // comparten entre todas las filas de la tabla (edición en línea),
+            // así que se cargan una sola vez al entrar al módulo.
+            'departamentos' => $this->tarjetasModel->get_departamentos(),
+            'centrosCosto'  => $this->tarjetasModel->get_centros_costo(),
         ]);
     }
 
@@ -1062,6 +1099,15 @@ class Tesoreria
             json_output(['success' => false, 'message' => 'Error al consultar los movimientos']);
             return;
         }
+
+        // Conteo de documentos adjuntos por movimiento, para el icono junto
+        // al campo Factura: un solo query para todo el rango en vez de una
+        // consulta por fila.
+        $conteoDocs = $this->tarjetasDocsModel->get_conteos(array_column($movimientos, 'id'));
+        foreach ($movimientos as &$m) {
+            $m['n_documentos'] = $conteoDocs[(int)$m['id']] ?? 0;
+        }
+        unset($m);
 
         $porTabla = array_fill_keys(array_keys(self::BANCOS_CHEQUES), []);
         foreach ($movimientos as $m) {
@@ -1121,14 +1167,41 @@ class Tesoreria
             return;
         }
 
-        // El parser necesita la ruta en disco (pdftotext abre el archivo).
-        $periodo = TarjetasCreditoModel::extraer_periodo_corte($file['tmp_name']);
-        if ($periodo === null) {
-            json_output(['success' => false, 'message' => 'No se pudo leer la fecha de corte del PDF']);
-            return;
+        if ($ext === 'xlsx') {
+            // El Excel de Amex ya trae fecha completa (con año) en cada fila:
+            // no hay "periodo de corte" que leer ni resolver, a diferencia
+            // del PDF. anio/mes van en 0 porque resolverFechasYHuellas() no
+            // los usa cuando el movimiento ya trae 'fecha' resuelta.
+            $parseo = TarjetasCreditoModel::parse_amex_excel_credito($file['tmp_name']);
+            $anioCorte = $mesCorte = 0;
+        } else {
+            // El parser necesita la ruta en disco (pdftotext abre el archivo).
+            $periodo = TarjetasCreditoModel::extraer_periodo_corte($file['tmp_name']);
+            if ($periodo === null) {
+                json_output(['success' => false, 'message' => 'No se pudo leer la fecha de corte del PDF']);
+                return;
+            }
+            $anioCorte = $periodo['anio'];
+            $mesCorte  = $periodo['mes'];
+
+            if (isset($cfg['parser'])) {
+                $parseo = TarjetasCreditoModel::{$cfg['parser']}($file['tmp_name']);
+            } else {
+                // Amex tiene más de un layout de PDF (Platinum, Gold
+                // Corporate...): se prueban en orden hasta que uno reconozca
+                // el archivo, sin que el usuario tenga que saber cuál es.
+                $parseo = ['movimientos' => [], 'errores' => []];
+                foreach (self::AMEX_PDF_PARSERS as $parser) {
+                    $intento = TarjetasCreditoModel::$parser($file['tmp_name']);
+                    if (!empty($intento['movimientos'])) {
+                        $parseo = $intento;
+                        break;
+                    }
+                    $parseo = $intento;   // se conserva el último para reportar sus errores si ninguno reconoce el archivo
+                }
+            }
         }
 
-        $parseo = TarjetasCreditoModel::{$cfg['parser']}($file['tmp_name']);
         if (empty($parseo['movimientos'])) {
             json_output([
                 'success' => false,
@@ -1141,8 +1214,8 @@ class Tesoreria
         try {
             $res = $this->tarjetasModel->insert_bulk(
                 $parseo['movimientos'],
-                $periodo['anio'],
-                $periodo['mes'],
+                $anioCorte,
+                $mesCorte,
                 mb_substr($file['name'], 0, 120),
                 (int)($_SESSION['tg_user']['Id'] ?? 0) ?: null
             );
@@ -1162,34 +1235,14 @@ class Tesoreria
     }
 
     /**
-     * POST: modal de clasificación manual de un movimiento (Departamento,
-     * Conf. No., Factura, Comentarios, Centro de Costo — campos que el PDF
-     * no trae, capturados a mano igual que la hoja de Excel de Susie's).
-     * Mismo patrón que accounting.php::adjustmentModal(): HTML crudo, sin JSON.
+     * POST AJAX: guarda UN campo de la clasificación manual (Departamento,
+     * Conf. No., Factura, Comentarios o Centro de Costo — campos que el PDF
+     * no trae), editado en línea directo en la tabla. Cada campo se guarda
+     * por separado al salir de él (blur), no los 5 juntos: más simple para
+     * el usuario y evita pisar un cambio concurrente en otro campo de la
+     * misma fila.
      */
-    public function clasificar_movimiento_cheque_modal(): void
-    {
-        if (!authorized(self::PERM_MOV_CHEQUES)) {
-            echo '<div class="alert alert-danger m-3">Sin permiso</div>';
-            return;
-        }
-
-        $id = intval($_POST['id'] ?? 0);
-        $movimiento = $id ? $this->tarjetasModel->get_by_id($id) : null;
-        if (!$movimiento) {
-            echo '<div class="alert alert-danger m-3">El movimiento no existe</div>';
-            return;
-        }
-
-        $departamentos = $this->tarjetasModel->get_departamentos();
-        $centrosCosto  = $this->tarjetasModel->get_centros_costo();
-
-        echo $this->twig->render($this->route . 'modals/clasificar_movimiento_cheque.html',
-            compact('movimiento', 'departamentos', 'centrosCosto'));
-    }
-
-    /** POST AJAX: guarda la clasificación manual capturada en el modal. */
-    public function guardar_clasificacion_movimiento_cheque(): void
+    public function guardar_campo_movimiento_cheque(): void
     {
         header('Content-Type: application/json');
         if (!authorized(self::PERM_MOV_CHEQUES)) {
@@ -1203,19 +1256,140 @@ class Tesoreria
             return;
         }
 
+        $campo = trim($_POST['campo'] ?? '');
         $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0) ?: null;
-        $ok = $this->tarjetasModel->update_clasificacion($id, [
-            'departamento' => $_POST['departamento'] ?? null,
-            'conf_no'      => $_POST['conf_no'] ?? null,
-            'factura'      => $_POST['factura'] ?? null,
-            'comentarios'  => $_POST['comentarios'] ?? null,
-            'centro_costo' => $_POST['centro_costo'] ?? null,
-        ], $usuario);
+        $ok = $this->tarjetasModel->update_campo_clasificacion($id, $campo, $_POST['valor'] ?? null, $usuario);
 
         json_output([
             'success' => $ok,
-            'message' => $ok ? 'Clasificación guardada' : 'No se pudo guardar la clasificación',
+            'message' => $ok ? 'Guardado' : 'No se pudo guardar',
             'id'      => $id,
+            'campo'   => $campo,
         ]);
+    }
+
+    /* ===================================================================== */
+    /* Documentos (factura/comprobante) adjuntos a un movimiento de tarjeta  */
+    /* ===================================================================== */
+
+    /** Lista los documentos ya subidos para un movimiento. */
+    public function documentos_movimiento_cheque(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        $movimientoId = (int)($_POST['movimiento_id'] ?? 0);
+        if (!$movimientoId || !$this->tarjetasModel->get_by_id($movimientoId)) {
+            json_output(['success' => false, 'message' => 'El movimiento no existe']);
+            return;
+        }
+        $archivos = $this->tarjetasDocsModel->get_by_movimiento($movimientoId);
+        json_output(['success' => true, 'archivos' => $archivos]);
+    }
+
+    /** Sube uno o más documentos para un movimiento de tarjeta de crédito. */
+    public function subir_documento_movimiento_cheque(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES) || !authorized(self::PERM_SUBIR_MOV)) {
+            json_output(['success' => false, 'message' => 'No tienes permiso para subir documentos']);
+            return;
+        }
+        $movimientoId = (int)($_POST['movimiento_id'] ?? 0);
+        if (!$movimientoId || !$this->tarjetasModel->get_by_id($movimientoId)) {
+            json_output(['success' => false, 'message' => 'El movimiento no existe']);
+            return;
+        }
+        if (empty($_FILES['documento']) || !is_array($_FILES['documento']['name'])) {
+            json_output(['success' => false, 'message' => 'No se recibieron archivos']);
+            return;
+        }
+
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        $files   = $_FILES['documento'];
+        $total   = count($files['name']);
+        $subidos = 0;
+        $errores = [];
+
+        for ($i = 0; $i < $total; $i++) {
+            $file = [
+                'name'     => $files['name'][$i],
+                'type'     => $files['type'][$i],
+                'tmp_name' => $files['tmp_name'][$i],
+                'error'    => $files['error'][$i],
+                'size'     => $files['size'][$i],
+            ];
+            $res = $this->tarjetasDocsModel->upload($movimientoId, $file, $usuario);
+            if ($res['success']) $subidos++;
+            else $errores[] = $file['name'] . ': ' . $res['message'];
+        }
+
+        json_output([
+            'success' => $subidos > 0,
+            'subidos' => $subidos,
+            'errores' => $errores,
+            'message' => $subidos > 0
+                ? "$subidos archivo(s) subido(s)" . ($errores ? ' (' . count($errores) . ' con error)' : '')
+                : 'No se pudo subir ningún archivo',
+        ]);
+    }
+
+    /** Soft-delete de un documento: se oculta de la lista, no se borra de disco. */
+    public function eliminar_documento_movimiento_cheque(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        $usuario = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        $ok = $this->tarjetasDocsModel->soft_delete($id, $usuario);
+        json_output($ok
+            ? ['success' => true, 'message' => 'Archivo eliminado']
+            : ['success' => false, 'message' => 'No se pudo eliminar (¿ya estaba eliminado?)']);
+    }
+
+    /** Sirve un documento (PDF/imagen). GET /tesoreria/ver_documento_movimiento_cheque/ID */
+    public function ver_documento_movimiento_cheque($id): void
+    {
+        if (!authorized(self::PERM_MOV_CHEQUES)) {
+            http_response_code(403);
+            echo 'No autorizado';
+            return;
+        }
+        $doc = $this->tarjetasDocsModel->get_by_id((int)$id);
+        if (!$doc) {
+            http_response_code(404);
+            echo 'Documento no encontrado';
+            return;
+        }
+
+        $fullPath = realpath(__DIR__ . '/../../' . $doc['file_path']);
+        $base     = realpath(__DIR__ . '/../../' . TarjetasCreditoDocumentosModel::UPLOAD_BASE);
+
+        if (!$fullPath || !$base || !str_starts_with($fullPath, $base) || !file_exists($fullPath)) {
+            http_response_code(404);
+            echo 'Archivo no encontrado';
+            return;
+        }
+
+        $mime = match ($doc['file_extension']) {
+            'pdf'         => 'application/pdf',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png'         => 'image/png',
+            default       => 'application/octet-stream',
+        };
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
     }
 }
