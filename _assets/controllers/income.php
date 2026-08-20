@@ -6305,8 +6305,11 @@ public function stamped_invoices_detail(): void
                 $estatus = count($codigos) === 1 ? 'IDENTIFICADA'
                     : (count($codigos) === 0 ? 'ESTACION_NO_IDENTIFICADA' : 'ESTACION_AMBIGUA');
                 $estacionOriginal = count($codigos) === 1 ? $catalogo[$codigos[0]] : null;
+                $corregida = isset($correcciones[(int)$mov['id']]);
                 $estacion = $correcciones[(int)$mov['id']] ?? $estacionOriginal;
-                if (isset($correcciones[(int)$mov['id']])) $estatus = 'CORREGIDA';
+                // Una corrección válida identifica la estación para fines de
+                // conciliación; el indicador se devuelve por separado.
+                if ($corregida) $estatus = 'IDENTIFICADA';
                 $fecha = $mov['fecha'] instanceof DateTime ? $mov['fecha']->format('Y-m-d') : substr((string)$mov['fecha'], 0, 10);
 
                 // Se devuelven los depósitos de la estación seleccionada y los no
@@ -6324,6 +6327,7 @@ public function stamped_invoices_detail(): void
                     'station_id'        => $estacion['station_id'] ?? null,
                     'station'           => $estacion['station'] ?? null,
                     'station_status'    => $estatus,
+                    'station_corrected' => $corregida,
                     'original_station_id' => $estacionOriginal['station_id'] ?? null,
                     'original_station'    => $estacionOriginal['station'] ?? null,
                     'station_raw'       => $coincidencias[0],
