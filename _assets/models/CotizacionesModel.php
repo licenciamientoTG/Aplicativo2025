@@ -103,7 +103,11 @@ class CotizacionesModel extends Model{
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['estaciones' => $payload]));
-        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        // 20s se cortaba antes de que ApiER terminara de fallar las estaciones caídas
+        // (OPENQUERY tarda en reportar el error, no es instantáneo), tirando el reporte
+        // completo en vez de solo excluir esas estaciones. Confirmado con pruebas manuales:
+        // el lote de 34 estaciones tomó >30s en un caso.
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
