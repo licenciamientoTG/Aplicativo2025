@@ -1301,68 +1301,180 @@ class Merma
     }
 
     /**
-     * Captura manual (sin PDF) del corte diario de Colosio (Repsol,
-     * Aguascalientes) — estación que TotalGas administra pero que no está
-     * en ControlGas; la información llega por otro medio y se transcribe
-     * aquí a mano. Mismo esquema que la carga de Praxedis: turno sintético
-     * 41, inv_inicial/inv_contable/diferencia los calcula recalc_contable().
-     * POST fecha (YYYY-MM-DD), y por familia (maxima/super/diesel) los
-     * campos <familia>_fisico/<familia>_ventas/<familia>_compras (vacíos si
-     * la estación no vendió ese producto ese día).
+     * Preview de carga de "Ventas Periodo Inventario" (Colosio) — no persiste.
+     * POST $_FILES['ventas'][] (PDFs). Mismo mecanismo que preview_balance_praxedis.
      */
-    public function guardar_captura_manual_merma(): void
+    public function preview_colosio_pdf(): void
     {
         header('Content-Type: application/json');
         if (!authorized(self::PERM_VER)) {
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $fecha = $_POST['fecha'] ?? '';
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
-            json_output(['success' => false, 'message' => 'Fecha inválida']);
+        if (empty($_FILES['ventas']) || !is_array($_FILES['ventas']['name'])) {
+            $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+            json_output(['success' => false, 'message' => "No se recibieron PDFs (¿superaste el máximo de {$maxUploads} archivos por carga? Súbelos en grupos más pequeños)"]);
             return;
         }
 
-        $familias = MermaDiariaModel::FAMILIAS_CAPTURA_MANUAL;
-        $filas = [];
-        foreach ($familias as $familia => $meta) {
-            $fisico  = $_POST[$familia . '_fisico'] ?? '';
-            $ventas  = $_POST[$familia . '_ventas'] ?? '';
-            $compras = $_POST[$familia . '_compras'] ?? '';
-            if ($fisico === '' && $ventas === '' && $compras === '') continue; // familia no capturada ese día
-            if (!is_numeric($fisico) || !is_numeric($ventas)) {
-                json_output(['success' => false, 'message' => "Inv. físico y ventas de {$meta['producto']} deben ser numéricos"]);
-                return;
+        $files = $_FILES['ventas'];
+        $total = count($files['name']);
+
+        $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+        if ($total > $maxUploads) {
+            json_output(['success' => false, 'message' => "Enviaste {$total} archivos; el máximo por carga es {$maxUploads}. Súbelos en grupos."]);
+            return;
+        }
+
+        $resultados = [];
+        $resumen = ['ok' => 0, 'error' => 0, 'total' => $total];
+
+        for ($i = 0; $i < $total; $i++) {
+            $nombre = $files['name'][$i];
+            if ($files['error'][$i] !== UPLOAD_ERR_OK || strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
+                $resultados[] = ['archivo' => $nombre, 'ok' => false, 'error' => 'Archivo inválido', 'fecha' => '', 'filas' => [], 'ya_existe' => false];
+                $resumen['error']++;
+                continue;
             }
-            $filas[] = [
+            $r = VentasPeriodoInventarioPdfParser::parse($files['tmp_name'][$i], $nombre);
+            $r['ya_existe'] = false;
+            $resultados[] = $r;
+            $r['ok'] ? $resumen['ok']++ : $resumen['error']++;
+        }
+
+        // Marca qué fechas leídas ya tienen un corte guardado, para avisar
+        // en el preview que confirmar la carga las sobrescribirá.
+        $fechasLeidas = array_values(array_unique(array_filter(array_column($resultados, 'fecha'))));
+        $fechasExistentes = $this->mermaModel->fechas_existentes(self::CODGAS_COLOSIO, $fechasLeidas);
+        foreach ($resultados as &$r) {
+            if ($r['ok']) $r['ya_existe'] = in_array($r['fecha'], $fechasExistentes, true);
+        }
+        unset($r);
+
+        json_output(['success' => true, 'resumen' => $resumen, 'archivos' => $resultados]);
+    }
+
+    /**
+     * Confirma la carga: re-parsea los PDFs recibidos, agrupa por fecha y
+     * reemplaza el snapshot de Colosio en TG.dbo.merma_diaria (turno
+     * sintético 41 — el reporte no trae desglose por turno). Colosio (Repsol,
+     * Aguascalientes) es una estación que TotalGas administra pero que no
+     * está en ControlGas; la información llega por PDF y no por sync ApiER.
+     * POST $_FILES['ventas'][] (los mismos PDFs del preview).
+     */
+    public function guardar_colosio_pdf(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        if (empty($_FILES['ventas']) || !is_array($_FILES['ventas']['name'])) {
+            $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+            json_output(['success' => false, 'message' => "No se recibieron PDFs (¿superaste el máximo de {$maxUploads} archivos por carga? Súbelos en grupos más pequeños)"]);
+            return;
+        }
+
+        $files = $_FILES['ventas'];
+        $total = count($files['name']);
+
+        $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+        if ($total > $maxUploads) {
+            json_output(['success' => false, 'message' => "Enviaste {$total} archivos; el máximo por carga es {$maxUploads}. Súbelos en grupos."]);
+            return;
+        }
+
+        // Agrupar filas válidas por fecha (un PDF = un día; el lote puede traer varios días)
+        $porFecha = [];
+        $resultados = [];
+        for ($i = 0; $i < $total; $i++) {
+            $nombre = $files['name'][$i];
+            if ($files['error'][$i] !== UPLOAD_ERR_OK || strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
+                $resultados[] = ['archivo' => $nombre, 'success' => false, 'message' => 'Archivo inválido'];
+                continue;
+            }
+            $r = VentasPeriodoInventarioPdfParser::parse($files['tmp_name'][$i], $nombre);
+            if (!$r['ok']) {
+                $resultados[] = ['archivo' => $nombre, 'success' => false, 'message' => $r['error']];
+                continue;
+            }
+            if (isset($porFecha[$r['fecha']])) {
+                $resultados[] = ['archivo' => $nombre, 'success' => false,
+                    'message' => "Fecha {$r['fecha']} duplicada en este lote; se ignoró este archivo"];
+                continue;
+            }
+            $porFecha[$r['fecha']] = $r['filas'];
+            $resultados[] = ['archivo' => $nombre, 'success' => true, 'message' => "Fecha {$r['fecha']} lista"];
+        }
+
+        if (empty($porFecha)) {
+            json_output(['success' => false, 'message' => 'Ningún PDF válido para guardar', 'resultados' => $resultados]);
+            return;
+        }
+
+        $filasInsertadas = 0;
+        $fechasOk = [];
+        foreach ($porFecha as $fecha => $filasProducto) {
+            $filas = array_map(fn($f) => [
                 'Fecha'               => $fecha,
-                'CodProducto'         => $meta['codprd'],
-                'Producto'            => $meta['producto'],
+                'CodProducto'         => $f['codprd'],
+                'Producto'            => $f['producto'],
                 'Turno'               => 41,
-                'VentasReales'        => (float)$ventas,
-                'Inventario'          => (float)$fisico,
-                'CantidadCompra'      => $compras === '' ? 0 : (float)$compras,
+                'VentasReales'        => $f['ventas_reales'],
+                'Inventario'          => $f['inv_fisico'],
+                'CantidadCompra'      => $f['compras'],
                 'InventarioInicial'   => null,
                 'InventarioContable'  => null,
                 'Diferencia'          => null,
-            ];
+            ], $filasProducto);
+
+            // Si no hay un corte físico plausible justo el día inmediato
+            // anterior (nunca hubo dato, o hay un hueco de captura), el LAG
+            // de recalc_contable encadenaría inv_inicial contra el dato
+            // guardado más lejano que encuentre, aunque sea de semanas atrás,
+            // disparando una diferencia falsa. Se siembra ese día anterior con
+            // el "Inicio" que trae el propio PDF (el cierre real del día
+            // previo según Colosio) para que el LAG encadene correctamente.
+            $fechaAnterior = date('Y-m-d', strtotime($fecha . ' -1 day'));
+            $filasSemilla = [];
+            foreach ($filasProducto as $f) {
+                if ($f['inv_inicial'] === null) continue;
+                if ($this->mermaModel->existe_fisico_previo(self::CODGAS_COLOSIO, $f['codprd'], $fecha, $fechaAnterior)) continue;
+                $filasSemilla[] = [
+                    'Fecha'               => $fechaAnterior,
+                    'CodProducto'         => $f['codprd'],
+                    'Producto'            => $f['producto'],
+                    'Turno'               => 41,
+                    'VentasReales'        => null,
+                    'Inventario'          => $f['inv_inicial'],
+                    'CantidadCompra'      => null,
+                    'InventarioInicial'   => null,
+                    'InventarioContable'  => null,
+                    'Diferencia'          => null,
+                ];
+            }
+
+            try {
+                if ($filasSemilla) {
+                    $this->mermaModel->replace_station_range(
+                        self::CODGAS_COLOSIO, 'COLOSIO', $fechaAnterior, $fechaAnterior, $filasSemilla
+                    );
+                }
+                $filasInsertadas += $this->mermaModel->replace_station_range(
+                    self::CODGAS_COLOSIO, 'COLOSIO', $fecha, $fecha, $filas
+                );
+                $fechasOk[] = $fecha;
+            } catch (Throwable $e) {
+                $resultados[] = ['archivo' => "fecha {$fecha}", 'success' => false, 'message' => $e->getMessage()];
+            }
         }
 
-        if (empty($filas)) {
-            json_output(['success' => false, 'message' => 'Captura al menos una familia de producto']);
-            return;
-        }
-
-        try {
-            $insertadas = $this->mermaModel->replace_station_range(
-                self::CODGAS_COLOSIO, 'COLOSIO', $fecha, $fecha, $filas
-            );
-        } catch (Throwable $e) {
-            json_output(['success' => false, 'message' => $e->getMessage()]);
-            return;
-        }
-
-        json_output(['success' => true, 'message' => "Fecha {$fecha} guardada", 'filas' => $insertadas]);
+        json_output([
+            'success'     => count($fechasOk) > 0,
+            'fechas'      => $fechasOk,
+            'filas'       => $filasInsertadas,
+            'resultados'  => $resultados,
+        ]);
     }
 
     /* ===================================================================== */

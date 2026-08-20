@@ -1251,7 +1251,6 @@ $(function () {
     if (saldosHasta === hasta) return;
     saldosHasta = hasta;
 
-    $('.mb-corte').text(fmtFecha(hasta));
     // El export lleva el mismo corte que se está viendo
     $('#btnExportarGrupos').attr('href',
       '/tesoreria/exportar_saldos_grupo?hasta=' + encodeURIComponent(hasta));
@@ -1268,6 +1267,11 @@ $(function () {
           bodyGr.innerHTML = '<div class="alert alert-danger mb-0">' + esc(data.message || 'Error al cargar saldos') + '</div>';
           return;
         }
+
+        // data.hasta es el corte EFECTIVO (si se pidió hoy, el backend usa
+        // ayer porque hoy nunca está cerrado): el encabezado muestra ese, no
+        // lo que se pidió, para no anunciar una fecha con datos de otro día.
+        $('.mb-corte').text(fmtFecha(data.hasta));
 
         pintarResumenes(data);
         pintarGrupos(data, bodyGr);

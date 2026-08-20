@@ -36,13 +36,16 @@ class UsuariosModel extends Model{
     public function get_user($id) : array|false {
         $query = 'SELECT
                         t1.Id, t1.Usuario, t1.Nombre, t1.Estatus, t1.IdPerfil, t1.Correo, t1.FechaRegistro,
+                        t1.IdDepartamento,
                         t2.Nombre Perfil,
-                        t4.Nombre Estacion
+                        t4.Nombre Estacion,
+                        t6.Nombre Departamento
                     FROM
                         [TG].[dbo].[Usuario] t1
                         LEFT JOIN [TG].[dbo].[Perfil] t2 ON t1.IdPerfil = t2.Id
                         LEFT JOIN [TG].[dbo].[UsuarioEstacion] t3 ON t1.Id = t3.IdUsuario
                         LEFT JOIN [TG].[dbo].[Estaciones] t4 ON t3.IdEstacion = t4.Codigo
+                        LEFT JOIN [TG].[dbo].[Departamentos] t6 ON t1.IdDepartamento = t6.Id
                     WHERE t1.Id = ?;
                     ;';
         $params = [$id];
@@ -84,15 +87,17 @@ class UsuariosModel extends Model{
      * @param $IdEstacion
      * @param $status
      * @param $id
+     * @param $department_id ID de Departamentos, o null/vacío para dejarlo sin asignar
      * @return bool
      * @throws Exception
      */
-    function editUser($name, $profile_id, $email, $IdEstacion, $status, $id) : bool {
+    function editUser($name, $profile_id, $email, $IdEstacion, $status, $id, $department_id = null) : bool {
+        $department_id = ($department_id === '' || $department_id === null) ? null : (int)$department_id;
         $query = 'UPDATE [TG].[dbo].[Usuario] SET
-                    [Nombre] = ?,[Estatus] = ?,[IdPerfil] = ?,[Correo] = ?
+                    [Nombre] = ?,[Estatus] = ?,[IdPerfil] = ?,[Correo] = ?,[IdDepartamento] = ?
                 WHERE
                     [Id] = ?;';
-        if ($this->sql->update($query, [$name, $status, $profile_id, $email, $id])) { // Si logramos actualizar los datos del usuario
+        if ($this->sql->update($query, [$name, $status, $profile_id, $email, $department_id, $id])) { // Si logramos actualizar los datos del usuario
             if ($this->sql->select("SELECT * FROM [TG].[dbo].[UsuarioEstacion] WHERE IdUsuario = ?", [$id])) {
                 if ($IdEstacion == 0) {
                     // Editamos ese registro

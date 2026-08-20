@@ -38,6 +38,43 @@
   .mb-abono { color: #009559; font-weight: 600; }
   .mb-cuenta { font-family: monospace; white-space: nowrap; }
 
+  /* Campos de clasificación editados en línea directo en la tabla: guardan
+     al salir del campo (blur). El borde de color es el único feedback —sin
+     modal ni mensaje— para no interrumpir la captura de la siguiente celda. */
+  .mb-movs td:has(.mb-campo-editable) { padding: 2px 4px; }
+  .mb-campo-editable {
+    font-size: .8rem; min-width: 110px; border-color: transparent; background: transparent;
+  }
+  .mb-campo-editable:hover { border-color: #cbd5e1; }
+  .mb-campo-editable:focus { background: #fff; border-color: #86b7fe; box-shadow: 0 0 0 .2rem rgba(13,110,253,.15); }
+  textarea.mb-campo-editable { min-height: 30px; resize: vertical; }
+  .mb-campo-guardando { border-color: #86b7fe !important; }
+  .mb-campo-ok { border-color: #009559 !important; background: #eafaf1 !important; transition: background .3s; }
+  .mb-campo-error { border-color: #dc3545 !important; background: #fdecea !important; }
+
+  /* Icono de documentos junto al input de Factura: gris sin adjuntos, verde
+     con contador cuando ya tiene al menos uno, para saber de un vistazo qué
+     movimientos están respaldados sin abrir el modal de cada uno.
+     El flex va en el DIV interno, no en el <td> (mb-celda-factura): forzar
+     display:flex directo en una celda de tabla es frágil entre navegadores
+     y fue lo que distorsionaba esta columna respecto a las demás. */
+  .mb-celda-factura { min-width: 150px; }
+  .mb-celda-factura-wrap { display: flex; align-items: center; gap: .35rem; }
+  .mb-celda-factura-wrap .mb-campo-editable { flex: 1 1 auto; min-width: 0; }
+  .mb-doc-icon { position: relative; color: #94a3b8; cursor: pointer; font-size: .85rem; flex: none; }
+  .mb-doc-icon:hover { color: #475569; }
+  .mb-doc-icon--con { color: #009559; }
+  .mb-doc-icon--con:hover { color: #00693f; }
+  .mb-doc-count {
+    position: absolute; top: -6px; right: -8px; background: #009559; color: #fff;
+    border-radius: 999px; font-size: .6rem; line-height: 1; padding: 2px 4px; font-weight: 700;
+  }
+  .mb-doc-dropzone {
+    border: 2px dashed #9ca3af; border-radius: .75rem; padding: 1.25rem; text-align: center;
+    background: #f9fafb; cursor: pointer; color: #4b5563;
+  }
+  .mb-doc-dropzone.mb-doc-dropzone--over { background: #eef2ff; }
+
   .mb-tabla-wrap { border: 2px solid #cbd5e1; border-radius: .5rem; background: #fff; overflow: hidden; }
   .mb-tabla-wrap .mb-top {
     display: flex; justify-content: space-between; align-items: center;
@@ -157,6 +194,7 @@
   .mb-res-nota li { margin-bottom: .1rem; }
   .mb-res-nota--warn  { background: #fffbeb; color: #92400e; } .mb-res-nota--warn i  { color: #b45309; }
   .mb-res-nota--error { background: #fffafb; color: #991b1b; } .mb-res-nota--error i { color: #dc3545; }
+  .mb-res-nota--info  { background: #eff6ff; color: #1e40af; } .mb-res-nota--info i  { color: #2563eb; }
   .mb-res-lista { max-height: 8.5rem; overflow: auto; }
 
   .mb-res-estado {
@@ -222,6 +260,9 @@
           <i class="fas fa-file-upload"></i> Subir {{ b.etiqueta }}
         </button>
         {% endfor %}
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#reglasDeptoModal">
+          <i class="fas fa-sitemap"></i> Reglas de departamento
+        </button>
       </div>
       {% endif %}
     </form>
@@ -262,12 +303,12 @@
         <thead>
           {# Mismo orden que la hoja de captura de Susie's (Fecha/Concepto/
              Importe primero): Departamento, Conf. No., Factura, Comentarios
-             y Centro de Costo no vienen del PDF, se muestran vacías y
-             ocultas por defecto —activables con "Columnas"— para que el
-             layout final pueda calcar el Excel si se necesita. #}
+             y Centro de Costo no vienen del PDF —se editan en línea, como
+             inputs directo en la celda, guardando al salir del campo (blur)—
+             y por eso están visibles por defecto, a diferencia del resto de
+             columnas informativas (RFC, Tarjeta, Titular) que siguen ocultas. #}
           <tr>
             <th class="no-export">Id</th>
-            <th class="no-export">Acciones</th>
             <th>Fecha</th>
             <th>Concepto</th>
             <th class="mb-monto">Cargo</th>
@@ -324,20 +365,88 @@
   </div>
 </div>
 
-{# Shell fijo del modal de clasificación manual: el contenido lo carga el JS
-   vía fetch a clasificar_movimiento_cheque_modal(), mismo patrón que
-   accounting.js::openAdjustmentModal(). #}
-<div class="modal fade" id="clasificarModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+{# Modal de documentos (factura/comprobante) de un movimiento de tarjeta de
+   crédito: se abre desde el icono junto al input de Factura en la tabla.
+   Mismo patrón que el modal de evidencia de merma (views/merma/detalle.html). #}
+<div class="modal fade" id="documentosModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="fas fa-tags me-1"></i> Clasificar movimiento</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        <h5 class="modal-title"><i class="fas fa-paperclip"></i> Documentos — <span id="documentos_mov_lbl"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div id="clasificarModalContent">
-        <div class="modal-body text-center py-4">
-          <span class="spinner-border spinner-border-sm"></span> Cargando...
+      <div class="modal-body">
+        <p class="text-muted small mb-2">Factura, comprobante de pago u otro documento de este cargo.</p>
+        <div id="documentos_lista"></div>
+        <hr>
+        <div id="documentosDropzone" class="mb-doc-dropzone">
+          <i class="fas fa-cloud-upload-alt"></i>
+          <p class="mb-0 mt-1 small">Arrastra aquí PDF o imágenes, o haz clic para seleccionar (puedes elegir varios)</p>
         </div>
+        <input type="file" id="documentosInput" accept="application/pdf,image/jpeg,image/png" multiple style="display:none;">
+        <div id="documentos_pendientes" class="mt-2" style="display:none;">
+          <ul id="documentos_pendientes_lista" class="list-group mb-2"></ul>
+          <button type="button" id="btn_subir_documentos" class="btn btn-sm btn-success">
+            <i class="fas fa-upload"></i> Subir <span id="documentos_pendientes_count"></span>
+          </button>
+        </div>
+        <div id="documentos_subiendo" class="text-center py-2" style="display:none;">
+          <span class="spinner-border spinner-border-sm"></span> Subiendo...
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Sugerencias para el input de Centro de Costo, editado en línea en la tabla
+   (ver COLUMNS en myjs): se cargan una sola vez al entrar al módulo y se
+   comparten entre todas las filas. Departamento ya no usa datalist: es un
+   catálogo cerrado (<select>, ver selectDepartamento en myjs). #}
+<datalist id="centroCostoList">
+  {% for c in centrosCosto %}<option value="{{ c }}">{% endfor %}
+</datalist>
+
+{# Modal "Reglas de departamento": palabra clave del concepto -> departamento
+   que se asigna automáticamente al importar un cargo nuevo (si no trae
+   departamento capturado) o al presionar "Reaplicar reglas". #}
+<div class="modal fade" id="reglasDeptoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-sitemap"></i> Reglas de departamento</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">
+          Si el concepto de un cargo nuevo contiene la palabra clave, se le asigna el departamento
+          automáticamente. Si varias reglas matchean, gana la palabra clave más larga.
+        </p>
+        <div id="reglasDepto_lista"></div>
+        <hr>
+        <form id="formNuevaReglaDepto" class="row g-2 align-items-end">
+          <div class="col-6">
+            <label class="form-label form-label-sm mb-1">Palabra clave</label>
+            <input type="text" class="form-control form-control-sm" id="reglaDepto_palabra" placeholder="Ej. ANTHROPIC" required>
+          </div>
+          <div class="col-4">
+            <label class="form-label form-label-sm mb-1">Departamento</label>
+            <select class="form-select form-select-sm" id="reglaDepto_departamento" required>
+              <option value="">Elige...</option>
+              {% for d in departamentos %}
+              <option value="{{ d.Id }}">{{ d.Nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-2">
+            <button type="submit" class="btn btn-sm btn-success w-100"><i class="fas fa-plus"></i></button>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-primary" id="btnReaplicarReglas">
+          <i class="fas fa-rotate"></i> Reaplicar reglas a cargos existentes
+        </button>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>
@@ -348,20 +457,63 @@
 {% block myjs %}
 <script>
 $(function () {
-  // Mismo orden que la hoja de captura de Susie's (ver índice de columnas
-  // en COLUMNDEFS más abajo). Departamento/Conf. No./Factura/Comentarios/
-  // Centro de Costo se capturan a mano desde el modal "Acciones" (el PDF no
-  // los trae); ocultas por defecto para que la vista arranque con solo lo
-  // esencial, activables con el botón "Columnas".
+  // Esta tabla es ancha (fecha, concepto, montos, 5 campos editables, etc.):
+  // se contrae el sidebar solo en esta vista para dejarle más espacio. Es
+  // puramente visual —no toca localStorage (main.js lo usa para recordar la
+  // preferencia real del usuario en el resto de la app)—, así que al salir a
+  // cualquier otra página el sidebar vuelve a mostrarse como lo dejó el
+  // usuario. El usuario puede seguir expandiéndolo aquí mismo con el botón
+  // de toggle si lo necesita.
+  document.getElementById('sidebar')?.classList.add('collapsed');
+
+  /**
+   * Celda editable en línea: un <input> (o <textarea> para Comentarios) con
+   * el valor precargado, que guarda al perder el foco (blur) solo si
+   * cambió. data-id/data-campo identifican la fila y la columna para el
+   * handler delegado de blur más abajo — así no hace falta un listener por
+   * celda ni reconstruirlos en cada redibujado de DataTables.
+   */
+  function inputEditable(row, campo, opts) {
+    opts = opts || {};
+    var valor = esc(row[campo] || '');
+    var atributos = ' class="form-control form-control-sm mb-campo-editable"' +
+                    ' data-id="' + row.id + '" data-campo="' + campo + '"' +
+                    (opts.datalist ? ' list="' + opts.datalist + '"' : '') +
+                    ' autocomplete="off"';
+    // <input> es un elemento vacío: el valor va en el atributo value, no
+    // como contenido. <textarea> es al revés: su valor SIEMPRE va como
+    // contenido interno, nunca en un atributo value.
+    return opts.textarea
+      ? '<textarea' + atributos + '>' + valor + '</textarea>'
+      : '<input type="text"' + atributos + ' value="' + valor + '">';
+  }
+
+  // Departamento es un catálogo cerrado (TG.dbo.Departamentos), a diferencia
+  // de los demás campos de clasificación que son texto libre: mismo guardado
+  // al cambiar (blur/change delegado más abajo), pero con <select> en vez de
+  // <input>. Si el movimiento no trae departamento capturado, se preselecciona
+  // el del usuario logueado — sigue siendo editable a cualquier otro valor.
+  var DEPARTAMENTOS = {{ departamentos|json_encode|raw }};
+  var DEPARTAMENTO_USUARIO = {{ departamentoUsuario ? departamentoUsuario|json_encode|raw : 'null' }};
+
+  function selectDepartamento(row) {
+    var actual = row.departamento || DEPARTAMENTO_USUARIO || '';
+    var html = '<select class="form-select form-select-sm mb-campo-editable"' +
+               ' data-id="' + row.id + '" data-campo="departamento">' +
+               '<option value=""' + (actual === '' ? ' selected' : '') + '>(sin asignar)</option>';
+    DEPARTAMENTOS.forEach(function (d) {
+      html += '<option value="' + esc(d.Nombre) + '"' + (d.Nombre === actual ? ' selected' : '') + '>' + esc(d.Nombre) + '</option>';
+    });
+    return html + '</select>';
+  }
+
+  // Mismo orden que la hoja de captura de Susie's. Departamento/Conf. No./
+  // Factura/Comentarios/Centro de Costo no vienen del PDF: se capturan a
+  // mano directo en la celda (edición en línea, guarda al salir del campo)
+  // y por eso van visibles por defecto, a diferencia del resto de columnas
+  // informativas (RFC, Tarjeta, Titular) que siguen ocultas.
   var COLUMNS = [
     { data: 'id' },
-    {
-      data: null, defaultContent: '', orderable: false,
-      render: function () {
-        return '<button type="button" class="btn btn-sm btn-outline-primary btn-clasificar" title="Clasificar">' +
-               '<i class="fas fa-tags"></i></button>';
-      },
-    },
     { data: 'fecha', render: function (d) { return fmtFecha(d); } },
     { data: 'descripcion', defaultContent: '' },
     {
@@ -375,11 +527,57 @@ $(function () {
       createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
     },
     { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
-    { data: 'departamento', defaultContent: '' },
-    { data: 'conf_no', defaultContent: '' },
-    { data: 'factura', defaultContent: '' },
-    { data: 'comentarios', defaultContent: '' },
-    { data: 'centro_costo', defaultContent: '' },
+    {
+      data: null, defaultContent: '', orderable: false,
+      // El buscador de columna (buildFilterRow) y el sort/type de DataTables
+      // llaman a render con type distinto de 'display': sin esta rama, el
+      // filtro de texto compara contra el HTML crudo del <select> en vez del
+      // valor visible ("Sistemas"), y nunca matchea nada.
+      render: function (d, type, row) {
+        if (type !== 'display') return row.departamento || '';
+        return selectDepartamento(row);
+      },
+    },
+    {
+      data: null, defaultContent: '', orderable: false,
+      render: function (d, type, row) {
+        if (type !== 'display') return row.conf_no || '';
+        return inputEditable(row, 'conf_no');
+      },
+    },
+    {
+      data: null, defaultContent: '', orderable: false,
+      className: 'mb-celda-factura',
+      render: function (d, type, row) {
+        if (type !== 'display') return row.factura || '';
+        var n = row.n_documentos || 0;
+        // El contador viene de movimientos_cheques_table() (conteo por
+        // movimiento en un solo query): sin él, el icono de clip se vería
+        // igual con 0 o con 5 documentos, obligando a abrir el modal para
+        // saberlo.
+        return '<div class="mb-celda-factura-wrap">' +
+               inputEditable(row, 'factura') +
+               '<i class="fas fa-paperclip mb-doc-icon' + (n ? ' mb-doc-icon--con' : '') + '"' +
+               ' data-id="' + row.id + '" title="' +
+               (n ? n + ' documento' + (n === 1 ? '' : 's') + ' adjunto' + (n === 1 ? '' : 's') : 'Adjuntar documento') + '">' +
+               (n ? '<span class="mb-doc-count">' + n + '</span>' : '') + '</i>' +
+               '</div>';
+      },
+    },
+    {
+      data: null, defaultContent: '', orderable: false,
+      render: function (d, type, row) {
+        if (type !== 'display') return row.comentarios || '';
+        return inputEditable(row, 'comentarios', { textarea: true });
+      },
+    },
+    {
+      data: null, defaultContent: '', orderable: false,
+      render: function (d, type, row) {
+        if (type !== 'display') return row.centro_costo || '';
+        return inputEditable(row, 'centro_costo', { datalist: 'centroCostoList' });
+      },
+    },
     { data: 'rfc_contraparte', defaultContent: '' },
     { data: 'tarjeta', className: 'mb-cuenta', defaultContent: '' },
     {
@@ -390,11 +588,11 @@ $(function () {
       },
     },
   ];
-  // Columnas: 0 Id, 1 Acciones, 2 Fecha, 3 Concepto, 4 Cargo, 5 Abono, 6 Cuenta,
-  // 7 Departamento .. 11 Centro de Costo, 12 RFC, 13 Tarjeta, 14 Titular.
-  // Departamento(7) .. Centro de Costo(11), RFC(12), Tarjeta(13), Titular(14)
-  // ocultos por default; activables con el botón "Columnas".
-  var COLUMNDEFS = [{ targets: [7, 8, 9, 10, 11, 12, 13, 14], visible: false }];
+  // Columnas: 0 Id, 1 Fecha, 2 Concepto, 3 Cargo, 4 Abono, 5 Cuenta,
+  // 6 Departamento .. 10 Centro de Costo, 11 RFC, 12 Tarjeta, 13 Titular.
+  // RFC(11), Tarjeta(12), Titular(13) ocultas por default; activables con
+  // el botón "Columnas". Los campos editables (6-10) van siempre visibles.
+  var COLUMNDEFS = [{ targets: [11, 12, 13], visible: false }];
 
   function initMovsTable(sel, excelTitle, emptyMsg) {
     var api = $(sel).DataTable({
@@ -482,80 +680,313 @@ $(function () {
       'Sin movimientos de ' + BANCOS[cod].etiqueta + ' en el rango. Sube el archivo para importarlos.');
   });
 
-  // ===== Clasificación manual (modal "Acciones", vista parcial vía fetch) =====
-  // Fila y tabla del movimiento que se está clasificando ahora mismo, para
-  // poder repintar solo esa fila al guardar sin recargar la tabla completa.
-  var filaEnEdicion = null;
-
-  $('.mb-tabla-wrap').on('click', '.btn-clasificar', async function () {
-    var api = $(this).closest('table').DataTable();
-    var rowApi = api.row($(this).closest('tr'));
-    var data = rowApi.data();
-    filaEnEdicion = rowApi;
-
-    $('#clasificarModal').modal('show');
-    $('#clasificarModalContent').html(
-      '<div class="modal-body text-center py-4"><span class="spinner-border spinner-border-sm"></span> Cargando...</div>');
-
-    try {
-      var response = await fetch('/tesoreria/clasificar_movimiento_cheque_modal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        credentials: 'include',
-        body: 'id=' + encodeURIComponent(data.id),
-      });
-      var content = await response.text();
-      $('#clasificarModalContent').html(content);
-    } catch (e) {
-      $('#clasificarModalContent').html('<div class="alert alert-danger m-3">Error de conexión al abrir el modal</div>');
-    }
+  // ===== Clasificación manual: edición en línea directo en la celda =====
+  // Cada input/textarea/select .mb-campo-editable guarda solo al perder el
+  // foco (blur en input/textarea; change en select, que es cuando el
+  // usuario espera que se guarde al elegir una opción), y solo si el valor
+  // cambió respecto al que tenía al entrar al campo (evita un POST en cada
+  // clic que no editó nada). Delegado en la tabla en vez de un listener por
+  // celda: sobrevive a los redibujados de DataTables sin tener que
+  // re-enganchar nada.
+  $('.mb-tabla-wrap').on('focus', '.mb-campo-editable', function () {
+    $(this).data('valorPrevio', $(this).val());
   });
 
-  $('#clasificarModalContent').on('submit', '#formClasificarMovimiento', function (e) {
-    e.preventDefault();
-    var form = this;
-    var id = $(form).data('id');
-    var btn = document.getElementById('btnGuardarClasificacion');
-    var resultado = document.getElementById('clasificarResultado');
+  function guardarCampo($campo) {
+    var valor = $campo.val();
+    if (valor === $campo.data('valorPrevio')) return;   // sin cambios: no hay nada que guardar
 
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Guardando...';
+    var id = $campo.data('id');
+    var nombreCampo = $campo.data('campo');
+    $campo.removeClass('mb-campo-ok mb-campo-error').addClass('mb-campo-guardando');
 
-    fetch('/tesoreria/guardar_clasificacion_movimiento_cheque', {
+    fetch('/tesoreria/guardar_campo_movimiento_cheque', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       credentials: 'include',
-      body: 'id=' + encodeURIComponent(id) + '&' + $(form).serialize(),
+      body: 'id=' + encodeURIComponent(id) + '&campo=' + encodeURIComponent(nombreCampo)
+          + '&valor=' + encodeURIComponent(valor),
     })
       .then(function (r) { return r.json(); })
       .then(function (r) {
+        $campo.removeClass('mb-campo-guardando');
         if (!r || !r.success) {
-          resultado.className = 'mt-2 alert alert-danger';
-          resultado.textContent = (r && r.message) || 'No se pudo guardar';
-          resultado.style.display = 'block';
+          $campo.addClass('mb-campo-error').attr('title', (r && r.message) || 'No se pudo guardar');
           return;
         }
-        // Repinta solo la fila editada con los valores capturados, sin
-        // volver a consultar el servidor ni recargar la tabla completa.
-        if (filaEnEdicion) {
-          var rowData = filaEnEdicion.data();
-          rowData.departamento = $(form).find('[name="departamento"]').val();
-          rowData.conf_no      = $(form).find('[name="conf_no"]').val();
-          rowData.factura      = $(form).find('[name="factura"]').val();
-          rowData.comentarios  = $(form).find('[name="comentarios"]').val();
-          rowData.centro_costo = $(form).find('[name="centro_costo"]').val();
-          filaEnEdicion.data(rowData).draw(false);
+        $campo.data('valorPrevio', valor).attr('title', '').addClass('mb-campo-ok');
+        setTimeout(function () { $campo.removeClass('mb-campo-ok'); }, 1500);
+
+        // Un valor nuevo de Centro de Costo enriquece el datalist compartido
+        // para que la próxima celda ya lo sugiera. Departamento no aplica:
+        // es un catálogo cerrado (<select>), no admite valores nuevos.
+        if (valor && nombreCampo === 'centro_costo') {
+          if (!$('#centroCostoList option[value="' + CSS.escape(valor) + '"]').length) {
+            $('#centroCostoList').append('<option value="' + esc(valor) + '">');
+          }
         }
-        $('#clasificarModal').modal('hide');
       })
       .catch(function () {
-        resultado.className = 'mt-2 alert alert-danger';
-        resultado.textContent = 'Error de conexión al guardar';
-        resultado.style.display = 'block';
+        $campo.removeClass('mb-campo-guardando').addClass('mb-campo-error').attr('title', 'Error de conexión al guardar');
+      });
+  }
+
+  $('.mb-tabla-wrap').on('blur', 'input.mb-campo-editable, textarea.mb-campo-editable', function () {
+    guardarCampo($(this));
+  });
+  $('.mb-tabla-wrap').on('change', 'select.mb-campo-editable', function () {
+    guardarCampo($(this));
+  });
+
+  // Enter en un input de una sola línea = salir del campo (dispara el blur
+  // de guardado) en vez de someter ningún formulario.
+  $('.mb-tabla-wrap').on('keydown', 'input.mb-campo-editable', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); $(this).trigger('blur'); }
+  });
+
+  // ===== Documentos (factura/comprobante) de un movimiento de tarjeta =====
+  // Mismo patrón que la evidencia de merma (views/merma/detalle.html):
+  // seleccionar/soltar archivos solo los junta en documentosPendientes,
+  // nada se sube hasta que el usuario confirma con "Subir".
+  var documentosMovId = null;
+  var documentosPendientes = [];
+
+  // Devuelve la promesa para que quien la llama (subir/eliminar) pueda
+  // actualizar el icono de la fila con el conteo real que responde el
+  // servidor, sin leerlo del DOM ni depender de un timeout arbitrario.
+  function cargarDocumentos() {
+    $('#documentos_lista').html('<div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span></div>');
+    return fetch('/tesoreria/documentos_movimiento_cheque', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'movimiento_id=' + encodeURIComponent(documentosMovId),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.success) {
+          $('#documentos_lista').html('<div class="alert alert-danger py-2 mb-0">' + esc(res.message) + '</div>');
+          return 0;
+        }
+        if (!res.archivos.length) {
+          $('#documentos_lista').html('<div class="text-muted small">Sin documentos subidos todavía.</div>');
+          return 0;
+        }
+        var html = '<ul class="list-group">';
+        res.archivos.forEach(function (a) {
+          html += '<li class="list-group-item d-flex justify-content-between align-items-center py-1">'
+            + '<a href="/tesoreria/ver_documento_movimiento_cheque/' + a.id + '" target="_blank">'
+            + '<i class="fas ' + (a.file_extension === 'pdf' ? 'fa-file-pdf' : 'fa-file-image') + '"></i> '
+            + esc(a.original_filename) + '</a>'
+            + '<span>'
+            + '<small class="text-muted me-2">' + esc(a.usuario_nombre || ('Usuario #' + a.created_by))
+            + ' — ' + esc(String(a.created_at).substring(0, 16)) + '</small>'
+            + '<i class="fas fa-trash text-danger mb-doc-eliminar" data-id="' + a.id + '" style="cursor:pointer;" title="Eliminar"></i>'
+            + '</span></li>';
+        });
+        $('#documentos_lista').html(html + '</ul>');
+        return res.archivos.length;
       })
+      .catch(function () {
+        $('#documentos_lista').html('<div class="alert alert-danger py-2 mb-0">Error de servidor</div>');
+        return 0;
+      });
+  }
+
+  /** Repinta el icono/contador de la fila sin recargar la tabla completa. */
+  function actualizarIconoFila(movId, n) {
+    var $icon = $('.mb-doc-icon[data-id="' + movId + '"]');
+    $icon.toggleClass('mb-doc-icon--con', n > 0)
+         .attr('title', n ? n + ' documento' + (n === 1 ? '' : 's') + ' adjunto' + (n === 1 ? '' : 's') : 'Adjuntar documento')
+         .find('.mb-doc-count').remove();
+    if (n > 0) $icon.append('<span class="mb-doc-count">' + n + '</span>');
+  }
+
+  $('.mb-tabla-wrap').on('click', '.mb-doc-icon', function () {
+    documentosMovId = $(this).data('id');
+    documentosPendientes = [];
+    renderDocumentosPendientes();
+    var fila = $(this).closest('tr');
+    var fecha = fila.find('td').eq(1).text().trim();
+    $('#documentos_mov_lbl').text('Movimiento ' + documentosMovId + (fecha ? ' — ' + fecha : ''));
+    $('#documentosModal').modal('show');
+    cargarDocumentos();
+  });
+
+  $('#documentosModal').on('hidden.bs.modal', function () {
+    // Al cerrar, la tabla ya refleja el conteo actual (se actualizó en cada
+    // subida/eliminación): no hace falta recargarla completa.
+    documentosMovId = null;
+  });
+
+  $(document).on('click', '.mb-doc-eliminar', function () {
+    var id = $(this).data('id');
+    var movId = documentosMovId;
+    if (!confirm('¿Eliminar este documento?')) return;
+    fetch('/tesoreria/eliminar_documento_movimiento_cheque', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'id=' + encodeURIComponent(id),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.success) { alert(res.message); return; }
+        cargarDocumentos().then(function (n) { actualizarIconoFila(movId, n); });
+      });
+  });
+
+  $('#documentosDropzone').on('click', function () { $('#documentosInput').click(); });
+  $('#documentosInput').on('change', function () {
+    if (this.files && this.files.length) agregarDocumentosPendientes(this.files);
+  });
+  $('#documentosDropzone').on('dragover', function (e) { e.preventDefault(); $(this).addClass('mb-doc-dropzone--over'); });
+  $('#documentosDropzone').on('dragleave drop', function (e) { e.preventDefault(); $(this).removeClass('mb-doc-dropzone--over'); });
+  $('#documentosDropzone').on('drop', function (e) {
+    e.preventDefault();
+    var files = e.originalEvent.dataTransfer.files;
+    if (files && files.length) agregarDocumentosPendientes(files);
+  });
+
+  function agregarDocumentosPendientes(fileList) {
+    Array.from(fileList).forEach(function (f) { documentosPendientes.push(f); });
+    $('#documentosInput').val('');
+    renderDocumentosPendientes();
+  }
+
+  function renderDocumentosPendientes() {
+    var $wrap = $('#documentos_pendientes');
+    if (!documentosPendientes.length) { $wrap.hide(); $('#documentos_pendientes_lista').empty(); return; }
+
+    var html = '';
+    documentosPendientes.forEach(function (f, i) {
+      html += '<li class="list-group-item d-flex justify-content-between align-items-center py-1">'
+        + '<span><i class="fas ' + (f.name.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf' : 'fa-file-image') + '"></i> '
+        + esc(f.name) + '</span>'
+        + '<i class="fas fa-times text-danger mb-doc-quitar-pendiente" data-i="' + i + '" style="cursor:pointer;" title="Quitar"></i>'
+        + '</li>';
+    });
+    $('#documentos_pendientes_lista').html(html);
+    $('#documentos_pendientes_count').text('(' + documentosPendientes.length + ')');
+    $wrap.show();
+  }
+
+  $(document).on('click', '.mb-doc-quitar-pendiente', function () {
+    documentosPendientes.splice($(this).data('i'), 1);
+    renderDocumentosPendientes();
+  });
+
+  $('#btn_subir_documentos').on('click', function () {
+    if (documentosPendientes.length) subirDocumentos(documentosPendientes);
+  });
+
+  function subirDocumentos(fileList) {
+    if (!documentosMovId) return;
+    var fd = new FormData();
+    fd.append('movimiento_id', documentosMovId);
+    Array.from(fileList).forEach(function (f) { fd.append('documento[]', f); });
+
+    documentosPendientes = [];
+    renderDocumentosPendientes();
+    $('#documentos_subiendo').show();
+    var movId = documentosMovId;
+    fetch('/tesoreria/subir_documento_movimiento_cheque', { method: 'POST', body: fd, credentials: 'include' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        $('#documentos_subiendo').hide();
+        if (!res.subidos) { alert(res.message); return; }
+        cargarDocumentos().then(function (n) { actualizarIconoFila(movId, n); });
+      })
+      .catch(function (err) {
+        $('#documentos_subiendo').hide();
+        alert('Error de servidor: ' + err.message);
+      });
+  }
+
+  // ===== Reglas de departamento (palabra clave -> departamento) =====
+  function cargarReglasDepto() {
+    $('#reglasDepto_lista').html('<div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span></div>');
+    fetch('/tesoreria/reglas_departamento_cheque', { credentials: 'include' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.success) {
+          $('#reglasDepto_lista').html('<div class="alert alert-danger py-2 mb-0">' + esc(res.message) + '</div>');
+          return;
+        }
+        if (!res.reglas.length) {
+          $('#reglasDepto_lista').html('<div class="text-muted small">Sin reglas capturadas todavía.</div>');
+          return;
+        }
+        var html = '<ul class="list-group">';
+        res.reglas.forEach(function (r) {
+          html += '<li class="list-group-item d-flex justify-content-between align-items-center py-1">'
+            + '<span><strong>' + esc(r.palabra_clave) + '</strong> <i class="fas fa-arrow-right text-muted mx-1"></i> ' + esc(r.departamento) + '</span>'
+            + '<i class="fas fa-trash text-danger regla-depto-eliminar" data-id="' + r.id + '" style="cursor:pointer;" title="Eliminar"></i>'
+            + '</li>';
+        });
+        $('#reglasDepto_lista').html(html + '</ul>');
+      })
+      .catch(function () {
+        $('#reglasDepto_lista').html('<div class="alert alert-danger py-2 mb-0">Error de servidor</div>');
+      });
+  }
+
+  $('#reglasDeptoModal').on('show.bs.modal', cargarReglasDepto);
+
+  $('#formNuevaReglaDepto').on('submit', function (e) {
+    e.preventDefault();
+    var palabra = $('#reglaDepto_palabra').val().trim();
+    var deptoId = $('#reglaDepto_departamento').val();
+    if (!palabra || !deptoId) return;
+
+    fetch('/tesoreria/crear_regla_departamento_cheque', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'palabra_clave=' + encodeURIComponent(palabra) + '&departamento_id=' + encodeURIComponent(deptoId),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.success) { alert(res.message); return; }
+        $('#reglaDepto_palabra').val('');
+        $('#reglaDepto_departamento').val('');
+        cargarReglasDepto();
+      })
+      .catch(function () { alert('Error de servidor al crear la regla'); });
+  });
+
+  $(document).on('click', '.regla-depto-eliminar', function () {
+    var id = $(this).data('id');
+    if (!confirm('¿Eliminar esta regla?')) return;
+    fetch('/tesoreria/eliminar_regla_departamento_cheque', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'id=' + encodeURIComponent(id),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.success) { alert(res.message); return; }
+        cargarReglasDepto();
+      })
+      .catch(function () { alert('Error de servidor al eliminar la regla'); });
+  });
+
+  $('#btnReaplicarReglas').on('click', function () {
+    var $btn = $(this);
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Aplicando...');
+    fetch('/tesoreria/reaplicar_reglas_departamento_cheque', { method: 'POST', credentials: 'include' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        alert(res.message);
+        // Los departamentos que se llenaron no se ven hasta recargar la
+        // tabla: es más simple releer el rango actual que repintar fila por
+        // fila sin saber cuáles cambiaron.
+        if (res.actualizados > 0) buscarMovimientos();
+      })
+      .catch(function () { alert('Error de servidor al reaplicar las reglas'); })
       .finally(function () {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-save"></i> Guardar';
+        $btn.prop('disabled', false).html('<i class="fas fa-rotate"></i> Reaplicar reglas a cargos existentes');
       });
   });
 
@@ -707,7 +1138,7 @@ $(function () {
   }
 
   function hayQueLeer(data) {
-    return !!(data.errores && data.errores.length);
+    return !!((data.errores && data.errores.length) || (data.detalleDuplicados && data.detalleDuplicados.length));
   }
 
   function bloqueNota(tipo, icono, titulo, items) {
@@ -738,6 +1169,11 @@ $(function () {
             Number(data.duplicados).toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
             '</div>';
 
+    // "Ya existían" puede ser un cargo real duplicado por error del banco o
+    // dos cargos legítimos que coinciden en fecha+concepto+importe (ej. un
+    // servicio recurrente el mismo día en dos meses distintos): el detalle
+    // deja al usuario decidir cuál es el caso, en vez de un número pelón.
+    html += bloqueNota('info', 'circle-info', 'Ya existían (mismo concepto, fecha e importe que algo ya guardado)', data.detalleDuplicados);
     html += bloqueNota('error', 'circle-xmark', 'Líneas con problema', data.errores);
 
     html += '<div class="mb-res-estado">' + (hayQueLeer(data)
