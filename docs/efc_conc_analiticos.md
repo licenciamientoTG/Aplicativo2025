@@ -35,11 +35,39 @@ Programar una ejecución diaria con:
 python C:\ruta\Aplicativo2025\cron\efc_conc_analiticos_diario.py
 ```
 
-El proceso toma únicamente adjuntos `.xls` o `.xlsx` de mensajes cuyo asunto
-contiene `ANALITICOS`. La idempotencia se controla mediante SHA-256 del archivo.
+El proceso acepta asuntos que contengan `ANALIT...`, incluyendo `ANALITICOS` y
+reenvíos como `Analitos DG`. Toma sólo Excel cuyo nombre corresponde a `TOTAL
+GAS`; PDFs de Actas, imágenes y Excel de otras razones sociales se ignoran. La
+idempotencia se controla mediante SHA-256 del archivo.
 
 En el servidor instalar una vez las dependencias del script:
 
 ```text
 pip install pyodbc xlrd openpyxl
 ```
+# Carga histórica única
+
+Para recuperar los Analíticos cuya fecha de archivo sea del 31 de julio al 17 de agosto de 2026,
+ejecutar una sola vez desde la carpeta que contiene el archivo `.env`:
+
+```powershell
+& C:/python31210/python.exe .\efc_conc_analiticos_historico.py
+```
+
+El rango es inclusivo y se toma de `TOTAL GAS dd-mm-aaaa.xls`, no de la fecha
+en que llegó el correo. Puede cambiarse si fuera necesario:
+
+```powershell
+& C:/python31210/python.exe .\efc_conc_analiticos_historico.py --from 2026-07-31 --to 2026-08-17
+```
+
+Si se actualiza el lector de Excel o la normalización de estaciones, se puede
+reprocesar únicamente ese rango sin crear importaciones nuevas:
+
+```powershell
+& C:/python31210/python.exe .\efc_conc_analiticos_historico.py --reprocess
+```
+
+El proceso diario no importa únicamente los correos del día: revisa todos los
+mensajes con asunto `ANALITICOS` del buzón configurado, en modo lectura. El hash
+SHA-256 del adjunto evita volver a almacenar un archivo idéntico.

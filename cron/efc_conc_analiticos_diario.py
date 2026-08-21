@@ -16,6 +16,7 @@ import imaplib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import unicodedata
 
@@ -24,7 +25,7 @@ import xlrd
 from openpyxl import load_workbook
 
 
-VERSION = "2.0-python"
+VERSION = "2.1-python"
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 
@@ -53,7 +54,14 @@ def key(value: object) -> str:
 
 
 def digits(value: object) -> str:
-    return "".join(char for char in str(value or "") if char.isdigit()).lstrip("0")
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value)).lstrip("0")
+    text = str(value or "").strip()
+    # xlrd puede convertir 04188 a 4188.0. El .0 es formato de Excel, no
+    # parte del identificador de estación.
+    if re.fullmatch(r"\d+\.0+", text):
+        text = text.split(".", 1)[0]
+    return "".join(char for char in text if char.isdigit()).lstrip("0")
 
 
 def money(value: object) -> float | None:
@@ -84,6 +92,22 @@ def as_date(value: object, datemode: int | None = None) -> date | None:
             except ValueError:
                 pass
     return None
+
+
+def report_date_from_filename(filename: str) -> date | None:
+    """Fecha operativa del Analítico: TOTAL GAS dd-mm-aaaa.xls(x)."""
+    match = re.search(r"(?<!\d)(\d{2})-(\d{2})-(\d{4})(?!\d)", filename)
+    if not match:
+        return None
+    try:
+        return date(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+    except ValueError:
+        return None
+
+
+def is_total_gas_excel(filename: str) -> bool:
+    """Sólo Analíticos Díaz Gas; excluye Actas, Praxedis y otros adjuntos."""
+    return filename.lower().endswith((".xls", ".xlsx")) and "TOTALGAS" in key(filename)
 
 
 def db_connection() -> pyodbc.Connection:
@@ -159,7 +183,9 @@ def catalog(cursor: pyodbc.Cursor) -> tuple[list[tuple], dict[str, int]]:
 
 
 def resolve_station(raw: object, name: object, stations: list[tuple], aliases: dict[str, int]) -> tuple[int | None, str]:
-    candidates = [item for item in (key(raw), key(name)) if item]
+    # El identificador del Excel suele venir como 4179.0 y el catálogo como
+    # E04179. Se comparan primero en su forma numérica normalizada.
+    candidates = [item for item in (digits(raw), key(raw), key(name)) if item]
     for candidate in candidates:
         if candidate in aliases:
             return aliases[candidate], "IDENTIFICADA_ALIAS"
@@ -242,11 +268,11 @@ def record_error(cursor: pyodbc.Cursor, content: bytes, filename: str, hash_valu
         cursor.execute("INSERT dbo.efc_conc_analiticos_importaciones(hash_archivo,mensaje_uid,correo_origen,asunto,fecha_recepcion,nombre_archivo,archivo,version_lector,estado,mensaje_error) VALUES(?,?,?,?,?,?,?,?, 'ERROR',?)", hash_value, metadata.get("uid"), metadata.get("from"), metadata.get("subject"), metadata.get("received"), filename, pyodbc.Binary(content), VERSION, message)
 
 
-def import_attachment(connection: pyodbc.Connection, content: bytes, filename: str, metadata: dict[str, str]) -> dict:
+def import_attachment(connection: pyodbc.Connection, content: bytes, filename: str, metadata: dict[str, str], reprocess: bool = False) -> dict:
     hash_value = hashlib.sha256(content).hexdigest()
     cursor = connection.cursor()
     found = cursor.execute("SELECT id,estado FROM dbo.efc_conc_analiticos_importaciones WHERE hash_archivo=?", hash_value).fetchone()
-    if found and found[1] == "IMPORTADA":
+    if found and found[1] == "IMPORTADA" and not reprocess:
         return {"duplicate": True, "id": int(found[0]), "papeletas": 0, "errors": 0}
     try:
         stations, aliases = catalog(cursor)
@@ -274,7 +300,25 @@ def import_attachment(connection: pyodbc.Connection, content: bytes, filename: s
         raise
 
 
-def sync() -> dict:
+def all_mail_folder(mailbox: imaplib.IMAP4_SSL) -> str | None:
+    """Obtiene la carpeta especial All de Gmail sin asumir idioma o nombre."""
+    status, folders = mailbox.list()
+    if status != "OK":
+        return None
+    for raw in folders or []:
+        line = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+        if "\\All" not in line:
+            continue
+        match = re.search(r'"([^\"]+)"\s*$', line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def sync(start_date: date | None = None, end_date: date | None = None, include_archived: bool = False, reprocess: bool = False) -> dict:
+    """Importa adjuntos ANALITICOS; el rango, si existe, usa la fecha del archivo."""
+    if start_date and end_date and start_date > end_date:
+        raise RuntimeError("La fecha inicial no puede ser posterior a la fecha final.")
     host = os.environ.get("EFC_CONC_ANALITICOS_IMAP_HOST", "imap.gmail.com")
     port = int(os.environ.get("EFC_CONC_ANALITICOS_IMAP_PORT", "993"))
     folder = os.environ.get("EFC_CONC_ANALITICOS_IMAP_FOLDER", "INBOX")
@@ -285,8 +329,12 @@ def sync() -> dict:
     with db_connection() as connection, imaplib.IMAP4_SSL(host, port) as mailbox:
         ensure_schema(connection.cursor()); connection.commit()
         mailbox.login(user, password)
+        if include_archived:
+            folder = all_mail_folder(mailbox) or folder
         if mailbox.select(folder, readonly=True)[0] != "OK": raise RuntimeError("No fue posible abrir el buzón de Analíticos.")
-        status, data = mailbox.search(None, "SUBJECT", "ANALITICOS")
+        # Acepta asunto directo "ANALITICOS" y reenvíos como "Analitos DG".
+        # El filtro definitivo se hace también sobre el asunto ya decodificado.
+        status, data = mailbox.search(None, "OR", "SUBJECT", "ANALITICOS", "SUBJECT", "ANALITOS")
         if status != "OK": raise RuntimeError("No fue posible buscar correos de Analíticos.")
         for sequence in data[0].split():
             status, payload = mailbox.fetch(sequence, "(UID RFC822)")
@@ -294,21 +342,26 @@ def sync() -> dict:
             header, raw = payload[0]
             uid = header.decode(errors="ignore").split("UID ", 1)[-1].split(")", 1)[0].strip()
             message = email.message_from_bytes(raw); subject = decode(message.get("Subject"))
-            if "ANALITICOS" not in subject.upper(): continue
+            if "ANALIT" not in key(subject): continue
             totals["messages"] += 1
-            received = parsedate_to_datetime(message.get("Date")).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S") if message.get("Date") else None
+            received_at = parsedate_to_datetime(message.get("Date")).replace(tzinfo=None) if message.get("Date") else None
+            received = received_at.strftime("%Y-%m-%d %H:%M:%S") if received_at else None
             metadata = {"uid": uid, "from": decode(message.get("From")), "subject": subject, "received": received}
             for part in message.walk():
                 filename = decode(part.get_filename())
-                if not filename or not filename.lower().endswith((".xls", ".xlsx")): continue
+                if not filename or not is_total_gas_excel(filename): continue
+                report_date = report_date_from_filename(filename)
+                if start_date and (report_date is None or report_date < start_date): continue
+                if end_date and (report_date is None or report_date > end_date): continue
                 content = part.get_payload(decode=True) or b""
                 if not content: totals["errors"] += 1; continue
                 totals["attachments"] += 1
                 try:
-                    result = import_attachment(connection, content, filename, metadata)
+                    result = import_attachment(connection, content, filename, metadata, reprocess=reprocess)
                     totals["duplicates" if result["duplicate"] else "imported"] += 1
                 except Exception as exc:
                     connection.rollback(); totals["errors"] += 1; print(f"Adjunto {filename}: {exc}", file=sys.stderr)
+    totals["folder"] = folder
     return totals
 
 

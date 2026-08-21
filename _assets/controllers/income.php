@@ -6267,6 +6267,24 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    /** Descarga el adjunto original sin reescribir ni regenerar el Excel. */
+    public function efc_conc_analiticos_archivo(): void {
+        try {
+            $file=$this->efcAnaliticos->originalFile((int)($_GET['id']??0));
+            while (ob_get_level() > 0) { ob_end_clean(); }
+            $name=preg_replace('/[^A-Za-z0-9._ -]/', '_', (string)$file['nombre_archivo']);
+            header('Content-Type: '.($file['mime_type'] ?: 'application/octet-stream'));
+            header('Content-Length: '.strlen($file['archivo']));
+            header('Content-Disposition: attachment; filename="'.$name.'"');
+            header('X-Content-Type-Options: nosniff');
+            echo $file['archivo'];
+        } catch (Throwable $e) {
+            http_response_code(404);
+            echo 'Archivo no disponible.';
+        }
+        exit;
+    }
+
     /**
      * Depósitos de efectivo Banorte para la prueba de conciliación Díaz Gas.
      * Sólo consulta movimientos ya importados; no modifica Tesorería ni grupos V3.
