@@ -6267,6 +6267,24 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    public function efc_conc_analiticos_bandeja(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->workspace((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    public function efc_conc_analiticos_vincular(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try{$this->efcAnaliticos->link(json_decode(file_get_contents('php://input'),true)?:[],(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    public function efc_conc_analiticos_desvincular(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try{$data=json_decode(file_get_contents('php://input'),true)?:[];$this->efcAnaliticos->unlink((int)($data['id']??0));echo json_encode(['status'=>'success']);}
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
     /** Descarga el adjunto original sin reescribir ni regenerar el Excel. */
     public function efc_conc_analiticos_archivo(): void {
         try {

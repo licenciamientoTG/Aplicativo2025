@@ -149,8 +149,11 @@ class Tesoreria
         'AFIRME' => [
             'etiqueta' => 'Afirme',
             'color'    => '#009D29',   // verde del logo
-            'ext'      => ['xls', 'txt', 'tsv', 'csv'],
-            'espera'   => 'el export de movimientos de Afirme',
+            // El portal sólo acepta el export CSV actual. Los formatos
+            // antiguos (.xls/.txt/.tsv) usan referencias distintas y pueden
+            // duplicar movimientos ya cargados desde el CSV.
+            'ext'      => ['csv'],
+            'espera'   => 'el archivo CSV de movimientos de Afirme',
             'parser'   => 'parse_afirme_tsv',
             'entrada'  => 'contenido',
         ],
