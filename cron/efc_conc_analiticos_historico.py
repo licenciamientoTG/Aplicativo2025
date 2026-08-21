@@ -2,7 +2,7 @@
 
 Importa únicamente archivos TOTAL GAS con fecha entre 31/07/2026 y 17/08/2026,
 inclusive. La fecha es la del nombre del Excel, no la de recepción del correo.
-Comparte el lector y la idempotencia SHA-256 del proceso diario.
+Comparte el lector, la idempotencia SHA-256 y la deduplicación por REM NUM del proceso diario.
 No modifica correos ni tablas fuente.
 """
 from __future__ import annotations

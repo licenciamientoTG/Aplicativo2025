@@ -25,7 +25,7 @@ import xlrd
 from openpyxl import load_workbook
 
 
-VERSION = "2.1-python"
+VERSION = "2.2-python"
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 
@@ -74,6 +74,17 @@ def money(value: object) -> float | None:
         return round(float(text), 2)
     except ValueError:
         return None
+
+
+def remittance_key(value: object) -> str | None:
+    """Identidad de papeleta: REM NUM es numérico, pero Excel suele agregar .0."""
+    if value is None or str(value).strip() == "":
+        return None
+    text = str(int(value)) if isinstance(value, float) and value.is_integer() else str(value).strip()
+    match = re.fullmatch(r"0*(\d+)(?:\.0+)?", text)
+    if not match:
+        return None
+    return match.group(1).lstrip("0") or "0"
 
 
 def as_date(value: object, datemode: int | None = None) -> date | None:
@@ -144,6 +155,7 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
                 estacion_nombre_original NVARCHAR(250) NULL, estacion_id INT NULL,
                 estado_estacion VARCHAR(30) NOT NULL, cuenta_mn_original NVARCHAR(100) NULL,
                 cuenta_mn_normalizada VARCHAR(50) NULL, remesa_numero NVARCHAR(100) NULL,
+                remesa_clave VARCHAR(100) NULL,
                 dice_contener_mn DECIMAL(18,2) NULL, real_mn DECIMAL(18,2) NULL,
                 diferencia_mn DECIMAL(18,2) NULL, dice_contener_usd DECIMAL(18,2) NULL,
                 real_usd DECIMAL(18,2) NULL, diferencia_usd DECIMAL(18,2) NULL,
@@ -164,6 +176,11 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
                 CONSTRAINT UQ_efc_conc_analiticos_alias UNIQUE(alias_normalizado))""",
         """IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_efc_conc_analiticos_estacion_fecha')
             CREATE INDEX IX_efc_conc_analiticos_estacion_fecha ON dbo.efc_conc_analiticos_papeletas(estacion_id,fecha_reportada)""",
+        """IF COL_LENGTH('dbo.efc_conc_analiticos_papeletas','remesa_clave') IS NULL
+            ALTER TABLE dbo.efc_conc_analiticos_papeletas ADD remesa_clave VARCHAR(100) NULL""",
+        """IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_remesa_clave')
+            AND NOT EXISTS(SELECT remesa_clave FROM dbo.efc_conc_analiticos_papeletas WHERE remesa_clave IS NOT NULL GROUP BY remesa_clave HAVING COUNT(*) > 1)
+            CREATE UNIQUE INDEX UX_efc_conc_analiticos_remesa_clave ON dbo.efc_conc_analiticos_papeletas(remesa_clave) WHERE remesa_clave IS NOT NULL""",
     ]
     for statement in statements:
         cursor.execute(statement)
@@ -254,8 +271,13 @@ def parse_workbook(content: bytes, filename: str, stations: list[tuple], aliases
             continue
         station_id, station_status = resolve_station(value("station"), value("station_name"), stations, aliases)
         account = str(value("account") or "").strip() or None
-        output.append((source_row, paper_date.isoformat(), str(value("date") or "") or None, str(value("time") or "") or None, str(value("station") or "") or None, str(value("station_name") or "") or None, station_id, station_status, account, "".join(char for char in account or "" if char.isdigit()) or None, str(value("remittance") or "") or None, declared_mn, real_mn, money(value("difference_mn")), declared_usd, real_usd, money(value("difference_usd")), raw_json))
-    if not output:
+        remittance_original = str(value("remittance") or "").strip() or None
+        remittance = remittance_key(value("remittance"))
+        if not remittance:
+            errors.append((source_row, "REMESA_NO_IDENTIFICADA", "REM NUM es obligatorio y debe ser numérico para importar una papeleta.", raw_json))
+            continue
+        output.append((source_row, paper_date.isoformat(), str(value("date") or "") or None, str(value("time") or "") or None, str(value("station") or "") or None, str(value("station_name") or "") or None, station_id, station_status, account, "".join(char for char in account or "" if char.isdigit()) or None, remittance_original, remittance, declared_mn, real_mn, money(value("difference_mn")), declared_usd, real_usd, money(value("difference_usd")), raw_json))
+    if not output and not errors:
         raise RuntimeError("PLANILLA no contiene papeletas con importes MN o USD.")
     return output, errors
 
@@ -268,33 +290,70 @@ def record_error(cursor: pyodbc.Cursor, content: bytes, filename: str, hash_valu
         cursor.execute("INSERT dbo.efc_conc_analiticos_importaciones(hash_archivo,mensaje_uid,correo_origen,asunto,fecha_recepcion,nombre_archivo,archivo,version_lector,estado,mensaje_error) VALUES(?,?,?,?,?,?,?,?, 'ERROR',?)", hash_value, metadata.get("uid"), metadata.get("from"), metadata.get("subject"), metadata.get("received"), filename, pyodbc.Binary(content), VERSION, message)
 
 
+def remove_import_papers(cursor: pyodbc.Cursor, import_id: int) -> None:
+    """Reproceso controlado: libera primero los vínculos de la propia importación."""
+    cursor.execute("IF OBJECT_ID('dbo.efc_conc_analiticos_vinculos','U') IS NOT NULL DELETE V FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id WHERE P.importacion_id=?", import_id)
+    cursor.execute("DELETE FROM dbo.efc_conc_analiticos_errores WHERE importacion_id=?", import_id)
+    cursor.execute("DELETE FROM dbo.efc_conc_analiticos_papeletas WHERE importacion_id=?", import_id)
+
+
+def partition_new_papers(cursor: pyodbc.Cursor, papers: list[tuple]) -> tuple[list[tuple], list[tuple]]:
+    """Separa por REM NUM: una papeleta sólo puede existir una vez en TG."""
+    keys = {paper[11] for paper in papers}
+    key_list = list(keys)
+    existing: set[str] = set()
+    for chunk_start in range(0, len(key_list), 1000):
+        chunk = key_list[chunk_start:chunk_start + 1000]
+        placeholders = ",".join("?" for _ in chunk)
+        existing.update(str(row[0]) for row in cursor.execute(f"SELECT remesa_clave FROM dbo.efc_conc_analiticos_papeletas WHERE remesa_clave IN ({placeholders})", *chunk))
+    new_papers, duplicate_errors, seen = [], [], set()
+    for paper in papers:
+        source_row, remittance = paper[0], paper[11]
+        if remittance in seen:
+            duplicate_errors.append((source_row, "REMESA_DUPLICADA", f"REM NUM {remittance} se repite dentro del mismo archivo y se omitió.", paper[-1]))
+        elif remittance in existing:
+            duplicate_errors.append((source_row, "REMESA_DUPLICADA", f"REM NUM {remittance} ya existe en Analíticos y se omitió.", paper[-1]))
+        else:
+            new_papers.append(paper)
+        seen.add(remittance)
+    return new_papers, duplicate_errors
+
+
 def import_attachment(connection: pyodbc.Connection, content: bytes, filename: str, metadata: dict[str, str], reprocess: bool = False) -> dict:
     hash_value = hashlib.sha256(content).hexdigest()
     cursor = connection.cursor()
     found = cursor.execute("SELECT id,estado FROM dbo.efc_conc_analiticos_importaciones WHERE hash_archivo=?", hash_value).fetchone()
     if found and found[1] == "IMPORTADA" and not reprocess:
-        return {"duplicate": True, "id": int(found[0]), "papeletas": 0, "errors": 0}
+        return {"duplicate": True, "id": int(found[0]), "papeletas": 0, "errors": 0, "duplicate_papers": 0}
     try:
         stations, aliases = catalog(cursor)
         papers, errors = parse_workbook(content, filename, stations, aliases)
     except Exception as exc:
         record_error(cursor, content, filename, hash_value, metadata, str(exc)); connection.commit(); raise
     try:
-        if found:
+        if found and (reprocess or found[1] != "IMPORTADA"):
             import_id = int(found[0])
-            cursor.execute("DELETE FROM dbo.efc_conc_analiticos_errores WHERE importacion_id=?", import_id)
-            cursor.execute("DELETE FROM dbo.efc_conc_analiticos_papeletas WHERE importacion_id=?", import_id)
+            remove_import_papers(cursor, import_id)
+        else:
+            import_id = None
+        new_papers, duplicate_errors = partition_new_papers(cursor, papers)
+        source_errors = len(errors)
+        errors.extend(duplicate_errors)
+        if not new_papers and import_id is None and source_errors == 0:
+            connection.rollback()
+            return {"duplicate": True, "id": None, "papeletas": 0, "errors": 0, "duplicate_papers": len(duplicate_errors)}
+        if import_id is not None:
             cursor.execute("UPDATE dbo.efc_conc_analiticos_importaciones SET mensaje_uid=?,correo_origen=?,asunto=?,fecha_recepcion=?,nombre_archivo=?,archivo=?,version_lector=?,estado='PROCESANDO',total_papeletas=0,total_errores=0,mensaje_error=NULL,actualizado_en=GETDATE() WHERE id=?", metadata.get("uid"), metadata.get("from"), metadata.get("subject"), metadata.get("received"), filename, pyodbc.Binary(content), VERSION, import_id)
         else:
             import_id = int(cursor.execute("INSERT dbo.efc_conc_analiticos_importaciones(hash_archivo,mensaje_uid,correo_origen,asunto,fecha_recepcion,nombre_archivo,archivo,version_lector,estado) OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,?, 'PROCESANDO')", hash_value, metadata.get("uid"), metadata.get("from"), metadata.get("subject"), metadata.get("received"), filename, pyodbc.Binary(content), VERSION).fetchone()[0])
         cursor.fast_executemany = True
-        if papers:
-            cursor.executemany("INSERT dbo.efc_conc_analiticos_papeletas(importacion_id,hoja,fila_origen,fecha_reportada,fecha_original,hora_original,estacion_original,estacion_nombre_original,estacion_id,estado_estacion,cuenta_mn_original,cuenta_mn_normalizada,remesa_numero,dice_contener_mn,real_mn,diferencia_mn,dice_contener_usd,real_usd,diferencia_usd,datos_originales) VALUES(?, 'PLANILLA',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [(import_id, *paper) for paper in papers])
+        if new_papers:
+            cursor.executemany("INSERT dbo.efc_conc_analiticos_papeletas(importacion_id,hoja,fila_origen,fecha_reportada,fecha_original,hora_original,estacion_original,estacion_nombre_original,estacion_id,estado_estacion,cuenta_mn_original,cuenta_mn_normalizada,remesa_numero,remesa_clave,dice_contener_mn,real_mn,diferencia_mn,dice_contener_usd,real_usd,diferencia_usd,datos_originales) VALUES(?, 'PLANILLA',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [(import_id, *paper) for paper in new_papers])
         if errors:
             cursor.executemany("INSERT dbo.efc_conc_analiticos_errores(importacion_id,hoja,fila_origen,tipo,detalle,datos_originales) VALUES(?, 'PLANILLA',?,?,?,?)", [(import_id, *error) for error in errors])
-        cursor.execute("UPDATE dbo.efc_conc_analiticos_importaciones SET estado='IMPORTADA',total_papeletas=?,total_errores=?,actualizado_en=GETDATE() WHERE id=?", len(papers), len(errors), import_id)
+        cursor.execute("UPDATE dbo.efc_conc_analiticos_importaciones SET estado='IMPORTADA',total_papeletas=?,total_errores=?,actualizado_en=GETDATE() WHERE id=?", len(new_papers), len(errors), import_id)
         connection.commit()
-        return {"duplicate": False, "id": import_id, "papeletas": len(papers), "errors": len(errors)}
+        return {"duplicate": False, "id": import_id, "papeletas": len(new_papers), "errors": len(errors), "duplicate_papers": len(duplicate_errors)}
     except Exception:
         connection.rollback()
         raise
@@ -325,7 +384,7 @@ def sync(start_date: date | None = None, end_date: date | None = None, include_a
     user, password = os.environ.get("EFC_CONC_ANALITICOS_MAIL_USER", "").strip(), os.environ.get("EFC_CONC_ANALITICOS_MAIL_PASSWORD", "")
     if not user or not password:
         raise RuntimeError("Faltan EFC_CONC_ANALITICOS_MAIL_USER y EFC_CONC_ANALITICOS_MAIL_PASSWORD.")
-    totals = {"messages": 0, "attachments": 0, "imported": 0, "duplicates": 0, "errors": 0}
+    totals = {"messages": 0, "attachments": 0, "imported": 0, "duplicates": 0, "duplicate_papers": 0, "errors": 0}
     with db_connection() as connection, imaplib.IMAP4_SSL(host, port) as mailbox:
         ensure_schema(connection.cursor()); connection.commit()
         mailbox.login(user, password)
@@ -359,6 +418,7 @@ def sync(start_date: date | None = None, end_date: date | None = None, include_a
                 try:
                     result = import_attachment(connection, content, filename, metadata, reprocess=reprocess)
                     totals["duplicates" if result["duplicate"] else "imported"] += 1
+                    totals["duplicate_papers"] += int(result.get("duplicate_papers", 0))
                 except Exception as exc:
                     connection.rollback(); totals["errors"] += 1; print(f"Adjunto {filename}: {exc}", file=sys.stderr)
     totals["folder"] = folder
