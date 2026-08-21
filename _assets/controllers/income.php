@@ -6260,6 +6260,13 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    public function efc_conc_analiticos_periodo(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->period((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        catch (Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
+    }
+
     /**
      * Depósitos de efectivo Banorte para la prueba de conciliación Díaz Gas.
      * Sólo consulta movimientos ya importados; no modifica Tesorería ni grupos V3.
