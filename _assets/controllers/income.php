@@ -2807,7 +2807,17 @@ public function anomalies_client_tickets()
             exit;
         }
 
-        $bankType = $_POST['bank_type'] ?? 'OTROS';
+        $bankType = strtoupper(trim($_POST['bank_type'] ?? 'OTROS'));
+        $originalName = $_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? 'archivo.tmp');
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+        // Afirme es un reporte de transacciones: su CSV sólo se procesa en la
+        // rama que inserta banco_afirme. Nunca se envía al flujo de Tesorería.
+        if ($bankType === 'AFIRME' && $extension !== 'csv') {
+            echo json_encode(['status' => 'error', 'message' => 'Para Afirme sólo se permite el archivo CSV de transacciones']);
+            exit;
+        }
+
         $filePath = '';
         $isTempFile = false;
         
@@ -2821,7 +2831,6 @@ public function anomalies_client_tickets()
         }
 
         // Nombre de archivo seguro
-        $originalName = $_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? 'archivo.tmp');
         $safeName = date('His') . '_' . basename($originalName);
         $targetFile = $targetDir . $safeName;
         
@@ -2851,8 +2860,6 @@ public function anomalies_client_tickets()
             echo json_encode(['status' => 'error', 'message' => "Error al recibir el archivo (Code: $errCode)."]);
             exit;
         }
-
-        $extension = strtolower(pathinfo($_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? $filePath), PATHINFO_EXTENSION));
 
         $server = "192.168.0.6";
         $db = "TG";

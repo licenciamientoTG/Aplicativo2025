@@ -797,6 +797,16 @@ class Tesoreria
             json_output(['success' => false, 'message' => 'Banco no reconocido']);
             return;
         }
+        // El CSV de Afirme se usa para consultar transacciones; nunca debe
+        // persistirse como movimiento bancario desde esta carga manual.
+        // Esta validación del servidor protege incluso solicitudes directas.
+        if ($banco === 'AFIRME') {
+            json_output([
+                'success' => false,
+                'message' => 'La carga manual de Afirme está deshabilitada: el CSV sólo se usa para consultar transacciones y no se guarda en movimientos bancarios',
+            ]);
+            return;
+        }
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['archivo']['tmp_name'])) {
             json_output(['success' => false, 'message' => 'No se recibió ningún archivo']);
             return;

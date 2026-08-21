@@ -334,6 +334,8 @@
         $('#reportFile').val('');
         if (bank === 'BANORTE') {
             $('#reportFile').attr('accept', '.xls, .xlsx');
+        } else if (bank === 'AFIRME') {
+            $('#reportFile').attr('accept', '.csv');
         } else {
             $('#reportFile').attr('accept', '.csv, .xlsx, .xls');
         }
@@ -353,6 +355,10 @@
         const fileName = (file.name || '').toLowerCase();
         if (bankType === 'BANORTE' && !(fileName.endsWith('.xls') || fileName.endsWith('.xlsx'))) {
             alert("Para BANORTE solo se permiten archivos .xls o .xlsx. El formato .csv no es compatible con la deduplicación.");
+            return;
+        }
+        if (bankType === 'AFIRME' && !fileName.endsWith('.csv')) {
+            alert("Para Afirme sólo se permite el CSV de transacciones. Se guardará únicamente en banco_afirme.");
             return;
         }
 
@@ -382,7 +388,8 @@
                     } catch(e) { console.error(e); }
 
                     if(data.status === 'success') {
-                        alert(`Éxito: ${data.inserted} registros nuevos insertados. ${data.skipped} duplicados omitidos.`);
+                        const destino = bankType === 'AFIRME' ? ' en Transacciones Afirme' : '';
+                        alert(`Éxito: ${data.inserted} registros nuevos insertados${destino}. ${data.skipped} duplicados omitidos.`);
                         $('#modalUpload').modal('hide');
                     } else {
                         alert("Error: " + (data.message || "Error desconocido"));
