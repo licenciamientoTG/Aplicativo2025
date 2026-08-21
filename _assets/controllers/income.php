@@ -9,6 +9,7 @@ use OpenSpout\Writer\XLSX\Writer as SpoutXlsxWriter;
 
 require_once('./_assets/classes/code128.php');
 require_once('./_assets/models/EfcConciliacionModel.php');
+require_once('./_assets/models/EfcAnaliticosModel.php');
 
 class Income{
     public $twig;
@@ -24,6 +25,7 @@ class Income{
     public DocumentosModel $documentosModel;
     Public FacturasModel $FacturasModel;
     public EfcConciliacionModel $efcConciliacion;
+    public EfcAnaliticosModel $efcAnaliticos;
 
     /**
      * @param $twig
@@ -40,6 +42,7 @@ class Income{
         $this->clientesModel    = new ClientesModel;
         $this->FacturasModel    = new FacturasModel;
         $this->efcConciliacion  = new EfcConciliacionModel;
+        $this->efcAnaliticos    = new EfcAnaliticosModel;
         $this->twig             = $twig;
         $this->route            = 'views/income/';
 
@@ -6242,6 +6245,19 @@ public function stamped_invoices_detail(): void
         ob_clean(); header('Content-Type: application/json');
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->reverseReclassification((int)($data['reclasificacion_id']??0),(string)($data['modo']??''),(string)($data['concepto']??''),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
         catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); } exit;
+    }
+
+    /** Evidencia REGIO: sólo lectura, no altera la conciliación. */
+    public function efc_conc_analiticos_evidencia(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $station = (int)($_GET['estacion_id'] ?? 0);
+            $date = (string)($_GET['fecha'] ?? '');
+            $cg = isset($_GET['importe_cg']) && $_GET['importe_cg'] !== '' ? (float)$_GET['importe_cg'] : null;
+            $bank = isset($_GET['importe_banco']) && $_GET['importe_banco'] !== '' ? (float)$_GET['importe_banco'] : null;
+            echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->evidence($station,$date,$cg,$bank)]);
+        } catch (Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
     }
 
     /**
