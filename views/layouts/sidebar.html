@@ -650,6 +650,11 @@
           <li class="sidebar-item">
             <a class="sidebar-link" href="/accounting/renegociacion">Renegociación Proveedores</a>
           </li>
+          {% if authorized(90) %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/accounting/movimientos_bancos">Movimientos Bancos</a>
+          </li>
+          {% endif %}
         </ul>
       </li>
       {% endif %}

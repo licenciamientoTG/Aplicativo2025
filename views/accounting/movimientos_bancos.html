@@ -1,0 +1,584 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Movimientos bancos{% endblock %}
+{% block menutitle %}Contabilidad — Movimientos bancos{% endblock %}
+
+{% block mycss %}
+<style>
+  /* Mismo look que Tesorería > Movimientos bancos (views/tesoreria/movimientos_bancos.html),
+     recortado a lo que aplica aquí: sin subida ni saldo por grupo. */
+  .mb-movs thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
+  .mb-movs tbody tr td { font-size: .8rem; vertical-align: middle; color: #334155; }
+  .mb-movs thead tr.filter th {
+    background-color: #e2e8f0 !important;
+    padding: 3px 6px !important;
+  }
+  .mb-movs thead tr.filter th input {
+    font-size: 0.7rem;
+    padding: 2px 5px;
+    height: 22px;
+    border-radius: 3px;
+    border: 1px solid #cbd5e1;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  div.dt-button-collection { z-index: 9999 !important; }
+
+  .mb-monto { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mb-abono { color: #009559; font-weight: 600; }
+  .mb-cargo { color: #dc3545; font-weight: 600; }
+  .mb-cuenta { font-family: monospace; white-space: nowrap; }
+
+  .mb-tabla-wrap { border: 2px solid #cbd5e1; border-radius: .5rem; background: #fff; overflow: hidden; }
+  .mb-tabla-wrap .mb-top {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .5rem .75rem; background: #fff; border-bottom: 2px solid #cbd5e1;
+  }
+  .mb-tabla-wrap .dataTables_filter input {
+    border: 1px solid #cbd5e1; border-radius: .375rem;
+    padding: .25rem .5rem; margin-left: .5rem;
+  }
+  .mb-tabla-wrap .mb-bottom {
+    display: flex; justify-content: flex-end; padding: .4rem .75rem;
+    background: #f8fafc; border-top: 2px solid #cbd5e1;
+    color: #475569; font-size: .75rem;
+  }
+  .mb-scroll { overflow: auto; max-height: 66vh; }
+  .mb-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
+  .mb-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
+  .mb-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 2px solid #f1f5f9; }
+  .mb-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  .mb-movs { border-collapse: separate; border-spacing: 0; }
+  .mb-movs thead th { position: sticky; top: 0; z-index: 30; }
+  .mb-movs thead tr.filter th { z-index: 30; }
+  .mb-movs th, .mb-movs td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
+  .mb-movs tr > :last-child { border-right: none; }
+
+  .mb-movs td.mb-desc-wrap {
+    white-space: normal; max-width: 320px; word-break: break-word;
+  }
+
+  .mb-tabs .nav-link {
+    color: #64748b; font-weight: 600; font-size: .85rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  .mb-tabs .nav-link .mb-punto {
+    width: .55rem; height: .55rem; border-radius: 50%;
+    background: var(--mb-banco, #cbd5e1); flex: none;
+    opacity: .45; transition: opacity .15s;
+  }
+  .mb-tabs .nav-link:hover .mb-punto { opacity: .8; }
+  .mb-tabs .nav-link.active { color: var(--mb-banco, #334155); }
+  .mb-tabs .nav-link.active .mb-punto { opacity: 1; }
+  .mb-tabs .nav-link.active { border-bottom: 2px solid var(--mb-banco, transparent); }
+
+  #mbLoader {
+    display: none; position: fixed; inset: 0; z-index: 10500;
+    background: rgba(248, 250, 252, .75); backdrop-filter: blur(1px);
+    align-items: center; justify-content: center; flex-direction: column; gap: .75rem;
+  }
+  #mbLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
+  #mbLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
+
+  {% for cod, b in bancos %}
+  .mb-tabs .nav-link[data-bs-target="#tab{{ cod }}"] { --mb-banco: {{ b.color }}; }
+  {% endfor %}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div id="mbLoader">
+  <div class="spinner-border"></div>
+  <span>Cargando movimientos...</span>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    {# Los filtros no recargan la página: el submit lo intercepta el JS y pide
+       los movimientos por POST a /accounting/movimientos_bancos_table. #}
+    <form class="row align-items-end g-2" id="filtrosForm">
+      <div class="col-auto">
+        <label for="desde">Desde:</label>
+        <input type="date" class="form-control" name="desde" id="desde" value="{{ filtros.desde }}" required>
+      </div>
+      <div class="col-auto">
+        <label for="hasta">Hasta:</label>
+        <input type="date" class="form-control" name="hasta" id="hasta" value="{{ filtros.hasta }}" required>
+      </div>
+      <div class="col-auto">
+        <label for="cuenta">Cuenta:</label>
+        <select class="selectpicker" data-live-search="true" data-width="260px" name="cuenta" id="cuenta">
+          <option value="">Todas</option>
+          {% for c in cuentas %}
+          <option value="{{ c.cuenta }}" data-banco="{{ c.banco }}" {{ filtros.cuenta == c.cuenta ? 'selected' : '' }}>
+            {{ c.cuenta }} ({{ c.banco|lower|capitalize }}){{ c.descripcion ? ' — ' ~ c.descripcion : '' }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label for="descripcion">Descripción:</label>
+        <select class="selectpicker" data-live-search="true" data-width="260px" name="descripcion" id="descripcion">
+          <option value="">Todas</option>
+          {% for d in descripciones %}
+          <option value="{{ d.descripcion }}" {{ filtros.descripcion == d.descripcion ? 'selected' : '' }}>
+            {{ d.descripcion }} ({{ d.n_movimientos }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+      </div>
+      <div class="col-auto">
+        {# href se arma en JS con los filtros actuales antes de cada clic
+           (mismo patrón que btnExportarGrupos en Tesorería). Si hay
+           Descripción elegida, exporta todas sus cuentas; si no, todas las
+           cuentas del filtro/rango actual — siempre una hoja por cuenta. #}
+        <a class="btn btn-success" id="btnExportarExcel" href="#" title="Descargar en Excel, una hoja por cuenta">
+          <i class="fas fa-file-excel"></i> Exportar Excel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Estado vacío: se muestra hasta que el usuario presiona Buscar. #}
+<div class="card border-0 shadow-sm" id="mbVacio">
+  <div class="card-body text-center py-5">
+    <i class="fas fa-search fa-2x mb-3" style="color:#cbd5e1;"></i>
+    <h6 style="color:#334155;">Elige el rango de fechas y presiona <strong>Buscar</strong></h6>
+    <small class="text-muted">Los movimientos no se cargan al entrar para no consultar rangos que no pediste.</small>
+  </div>
+</div>
+
+<div id="mbResultado" style="display:none;">
+
+<ul class="nav nav-tabs mb-tabs mb-2">
+  {% for cod, b in bancos %}
+  <li class="nav-item">
+    <button class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
+            data-bs-target="#tab{{ cod }}" type="button">
+      <span class="mb-punto"></span>{{ b.etiqueta }} (<span data-tabcount="{{ cod }}">0</span>)
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="tab-content">
+  {% for cod, b in bancos %}
+  <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab{{ cod }}">
+    <div class="mb-tabla-wrap">
+      <table id="tabla{{ cod }}" data-banco="{{ cod }}" data-etiqueta="{{ b.etiqueta }}"
+             class="table table-hover table-sm w-100 dataTable mb-0 mb-movs">
+        <thead>
+          {% if cod == 'BANORTE' %}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Cuenta</th>
+            <th>Fecha de Operación</th>
+            <th>Fecha</th>
+            <th>Referencia</th>
+            <th>Descripción</th>
+            <th>Cod. Transac</th>
+            <th>Sucursal</th>
+            <th class="mb-monto">Depósitos</th>
+            <th class="mb-monto">Retiros</th>
+            <th>Movimiento</th>
+            <th>Descripción Detallada</th>
+          </tr>
+          {% elseif cod == 'BANKAOOL' %}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Cuenta</th>
+            <th>Fecha</th>
+            <th>Descripción</th>
+            <th>Referencia</th>
+            <th class="mb-monto">Movimiento</th>
+            <th>Concepto</th>
+            <th>Contraparte</th>
+          </tr>
+          {% elseif cod == 'INBURSA' %}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Cuenta</th>
+            <th>Fecha</th>
+            <th>Referencia</th>
+            <th>Ref. Externa</th>
+            <th>Referencia Leyenda</th>
+            <th>Ref. Numérica</th>
+            <th>Movimiento</th>
+            <th class="mb-monto">Cargo</th>
+            <th class="mb-monto">Abono</th>
+            <th>Ordenante</th>
+            <th>Clave de Rastreo</th>
+          </tr>
+          {% elseif cod == 'AFIRME' %}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Concepto</th>
+            <th>Fecha</th>
+            <th>Referencia</th>
+            <th class="mb-monto">Cargo</th>
+            <th class="mb-monto">Abono</th>
+            <th>Cuenta</th>
+            <th>Código</th>
+          </tr>
+          {% else %}
+          <tr>
+            <th class="no-export">Id</th>
+            <th>Cuenta</th>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Sucursal</th>
+            <th>Descripción</th>
+            <th class="mb-monto">Importe Cargo</th>
+            <th class="mb-monto">Importe Abono</th>
+            <th>Referencia</th>
+            <th>Concepto</th>
+            <th>Descripción Larga</th>
+            <th>Contraparte</th>
+          </tr>
+          {% endif %}
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+$(function () {
+  // ===== Tablas por banco: mismo patrón que Tesorería > Movimientos bancos,
+  // sin la columna Saldo (este reporte no importa archivos, así que no hay
+  // cadena de saldo corrido que mostrar). =====
+
+  var COLUMNS_GENERICO = [
+    { data: 'id' },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'hora', defaultContent: '' },
+    { data: 'sucursal', defaultContent: '' },
+    { data: 'descripcion', className: 'mb-desc-wrap', defaultContent: '' },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    { data: 'referencia', defaultContent: '' },
+    {
+      data: 'concepto', defaultContent: '',
+      createdCell: function (td, d, row) {
+        if (row.clave_rastreo) $(td).attr('title', 'Rastreo: ' + row.clave_rastreo);
+      },
+    },
+    { data: 'descripcion_larga', className: 'mb-desc-wrap', defaultContent: '' },
+    {
+      data: 'nombre_contraparte', defaultContent: '',
+      render: function (d, type, row) {
+        if (type !== 'display') return d || '';
+        var html = esc(d || '');
+        if (row.banco_contraparte) {
+          html += '<small class="text-muted d-block">' +
+                  esc(row.banco_contraparte) + ' ' + esc(row.cuenta_contraparte || '') + '</small>';
+        }
+        return html;
+      },
+    },
+  ];
+  var COLUMNDEFS_GENERICO = [{ targets: [1, 11], visible: false }];   // Cuenta y Contraparte ocultas por default
+
+  var COLUMNS_BANORTE = [
+    { data: 'id' },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    {
+      data: 'fecha_operacion', defaultContent: '',
+      render: function (d) { return d ? fmtFecha(d) : ''; },
+    },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'referencia', defaultContent: '' },
+    { data: 'descripcion', defaultContent: '' },
+    { data: 'clave_trans', defaultContent: '' },
+    { data: 'sucursal', defaultContent: '' },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    { data: 'secuencia', defaultContent: '' },
+    { data: 'descripcion_larga', defaultContent: '' },
+  ];
+
+  var COLUMNS_BANKAOOL = [
+    { data: 'id' },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'fecha_hora', defaultContent: '' },
+    { data: 'descripcion', defaultContent: '' },
+    { data: 'referencia', defaultContent: '' },
+    {
+      data: 'movimiento', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { $(td).addClass(d < 0 ? 'mb-cargo' : 'mb-abono'); },
+    },
+    { data: 'concepto', defaultContent: '' },
+    {
+      data: 'nombre_contraparte', defaultContent: '',
+      render: function (d, type, row) {
+        if (type !== 'display') return d || '';
+        var html = esc(d || '');
+        if (row.banco_contraparte) {
+          html += '<small class="text-muted d-block">' +
+                  esc(row.banco_contraparte) + ' ' + esc(row.cuenta_contraparte || '') + '</small>';
+        }
+        return html;
+      },
+    },
+  ];
+
+  var COLUMNS_INBURSA = [
+    { data: 'id' },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'descripcion_larga', defaultContent: '' },
+    { data: 'clave_trans', defaultContent: '' },
+    { data: 'concepto', defaultContent: '' },
+    { data: 'referencia', defaultContent: '' },
+    { data: 'descripcion', defaultContent: '' },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    { data: 'nombre_contraparte', defaultContent: '' },
+    { data: 'clave_rastreo', defaultContent: '' },
+  ];
+
+  var COLUMNS_AFIRME = [
+    { data: 'id' },
+    { data: 'descripcion', className: 'mb-desc-wrap', defaultContent: '' },
+    { data: 'fecha', render: function (d) { return fmtFecha(d); } },
+    { data: 'referencia', defaultContent: '' },
+    {
+      data: 'cargo', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-cargo'); },
+    },
+    {
+      data: 'abono', className: 'mb-monto', defaultContent: '',
+      render: function (d) { return fmtMonto(d || 0); },
+      createdCell: function (td, d) { if (d !== null && d !== '') $(td).addClass('mb-abono'); },
+    },
+    { data: 'cuenta', className: 'mb-cuenta', defaultContent: '' },
+    { data: 'clave_trans', defaultContent: '' },
+  ];
+
+  function initMovsTable(sel, excelTitle, emptyMsg, cod) {
+    var esBanorte = cod === 'BANORTE';
+    var esBankaool = cod === 'BANKAOOL';
+    var esInbursa = cod === 'INBURSA';
+    var esAfirme = cod === 'AFIRME';
+    var api = $(sel).DataTable({
+      responsive: true,
+      paging: false,
+      ordering: false,
+      dom: '<"mb-top"Bf>rt<"mb-bottom"i>',
+      language: {
+        info: 'Mostrando _TOTAL_ movimientos',
+        infoFiltered: '(filtrados de _MAX_)',
+        infoEmpty: 'Sin movimientos',
+        emptyTable: emptyMsg,
+      },
+      buttons: [
+        {
+          extend: 'excel',
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          className: 'btn btn-sm btn-success',
+          title: excelTitle,
+          exportOptions: { columns: ':visible:not(.no-export)' },
+        },
+        {
+          extend: 'colvis',
+          text: '<i class="fas fa-columns"></i> Columnas',
+          className: 'btn btn-sm btn-outline-secondary',
+        },
+      ],
+      columnDefs: (esBanorte || esInbursa) ? [{ targets: [1], visible: false }]
+                : (esBankaool || esAfirme) ? [] : COLUMNDEFS_GENERICO,
+      data: [],
+      deferRender: true,
+      columns: esBanorte ? COLUMNS_BANORTE
+             : esBankaool ? COLUMNS_BANKAOOL
+             : esInbursa ? COLUMNS_INBURSA
+             : esAfirme ? COLUMNS_AFIRME
+             : COLUMNS_GENERICO,
+      initComplete: function () {
+        var api = this.api();
+
+        $(sel).wrap('<div class="mb-scroll"></div>');
+
+        function buildFilterRow() {
+          $(sel + ' thead tr.filter').remove();
+          var filterRow = $('<tr class="filter"></tr>');
+          $(sel + ' thead tr:first th').each(function () {
+            var title = $(this).text().trim();
+            filterRow.append(
+              '<th><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>'
+            );
+          });
+          $(sel + ' thead').append(filterRow);
+
+          $(sel + ' thead tr.filter th input').on('keyup change', function () {
+            var visIdx = $(this).parent().index();
+            api.column(visIdx + ':visible').search(this.value).draw();
+          });
+
+          var altura = $(sel + ' thead tr:first th:visible').first().outerHeight() || 33;
+          $(sel + ' thead tr.filter th').css('top', altura + 'px');
+        }
+
+        buildFilterRow();
+
+        api.on('column-visibility.dt', function () {
+          api.columns().search('');
+          buildFilterRow();
+          api.draw();
+        });
+      },
+    });
+    return api;
+  }
+
+  function fmtMonto(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtFecha(iso) {
+    var p = String(iso).substring(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var BANCOS = {{ bancos|json_encode|raw }};
+
+  var tablas = {};
+  Object.keys(BANCOS).forEach(function (cod) {
+    tablas[cod] = initMovsTable('#tabla' + cod, 'Movimientos ' + BANCOS[cod].etiqueta,
+      'Sin movimientos de ' + BANCOS[cod].etiqueta + ' en el rango.', cod);
+  });
+
+  $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+  });
+
+  function mostrarLoader() { document.getElementById('mbLoader').style.display = 'flex'; }
+  function ocultarLoader() { document.getElementById('mbLoader').style.display = 'none'; }
+
+  function bancoDelTab() {
+    var banco = ($('#cuenta option:selected').attr('data-banco') || '').toUpperCase();
+    return BANCOS[banco] ? banco : Object.keys(BANCOS)[0];
+  }
+
+  function abrirTab(cod) {
+    var btn = document.querySelector('button[data-bs-target="#tab' + cod + '"]');
+    if (!btn || btn.classList.contains('active')) return;
+    if (window.bootstrap && window.bootstrap.Tab) {
+      window.bootstrap.Tab.getOrCreateInstance(btn).show();
+    } else {
+      $(btn).tab('show');
+    }
+  }
+
+  var buscando = false;
+  function buscarMovimientos() {
+    if (buscando) return;
+    buscando = true;
+    mostrarLoader();
+
+    $.ajax({
+      url: '/accounting/movimientos_bancos_table',
+      method: 'POST',
+      dataType: 'json',
+      timeout: 600000,
+      data: {
+        desde:       $('#desde').val(),
+        hasta:       $('#hasta').val(),
+        cuenta:      $('#cuenta').val(),
+        descripcion: $('#descripcion').val(),
+      },
+    }).done(function (r) {
+      if (!r || !r.success) {
+        alertify.error((r && r.message) || 'Error al consultar los movimientos');
+        return;
+      }
+      $('#mbVacio').hide();
+      $('#mbResultado').show();
+
+      Object.keys(BANCOS).forEach(function (cod) {
+        var filas = r.movimientos[cod] || [];
+        tablas[cod].clear().rows.add(filas).draw();
+        $('[data-tabcount="' + cod + '"]').text(filas.length);
+      });
+      abrirTab(bancoDelTab());
+
+      $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    }).fail(function (xhr, estado) {
+      alertify.error(estado === 'timeout'
+        ? 'La consulta tardó demasiado. Reduce el rango de fechas.'
+        : 'Error de comunicación al consultar los movimientos');
+    }).always(function () {
+      buscando = false;
+      ocultarLoader();
+    });
+  }
+
+  document.getElementById('filtrosForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    buscarMovimientos();
+  });
+
+  // ===== Exportar Excel: mismo filtro Desde/Hasta/Cuenta/Descripción que la
+  // búsqueda en pantalla, resuelto justo antes de cada clic (no en submit,
+  // así sirve sin haber presionado Buscar primero). =====
+  function actualizarUrlExportar() {
+    var params = new URLSearchParams({
+      desde:       $('#desde').val() || '',
+      hasta:       $('#hasta').val() || '',
+      cuenta:      $('#cuenta').val() || '',
+      descripcion: $('#descripcion').val() || '',
+    });
+    $('#btnExportarExcel').attr('href', '/accounting/exportar_movimientos_bancos?' + params.toString());
+  }
+  $('#btnExportarExcel').on('click', actualizarUrlExportar);
+  actualizarUrlExportar();
+
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) ocultarLoader();
+  });
+});
+</script>
+{% endblock %}

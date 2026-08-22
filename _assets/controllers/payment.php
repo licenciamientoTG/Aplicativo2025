@@ -2796,6 +2796,207 @@ class Payment
     }
 
 
+    // ══════════════════════════════════════════════════════════════════
+    //  CORREO DE PAGO — aviso diario de pagos emitidos
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * 🚧 Mientras el flujo esté en pruebas, el correo de pago va SOLO a este buzón.
+     * Al liberar: sustituir por el catálogo de destinatarios
+     * ($this->PaymentNotificationRecipientsModel->get_active_emails('correo_pago')).
+     */
+    private const CORREO_PAGO_TEST_EMAIL = 'alejandro.martinez@totalgas.com';
+
+    /**
+     * Devuelve el HTML del modal "Correo de pago" (vista parcial sin layout).
+     */
+    public function correo_pago_modal()
+    {
+        echo $this->twig->render($this->route . 'modals/correo_pago.html', [
+            'fecha_default' => date('Y-m-d'),
+        ]);
+    }
+
+    /**
+     * Genera la vista previa del correo de pagos emitidos en una fecha.
+     * No envía nada.
+     */
+    public function correo_pago_preview()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede generar el correo de pagos.']);
+                return;
+            }
+
+            $fecha = $this->_validar_fecha_correo_pago($_POST['fecha'] ?? null);
+            if ($fecha === null) {
+                json_output(['success' => false, 'message' => 'Fecha inválida. Usa el formato AAAA-MM-DD.']);
+                return;
+            }
+
+            $pagos = $this->paymentTransactionsModel->get_pagos_del_dia($fecha);
+
+            if (empty($pagos)) {
+                json_output([
+                    'success' => false,
+                    'message' => 'No se encontraron pagos con fecha de recibo del ' . date('d/m/Y', strtotime($fecha)) . '.'
+                ]);
+                return;
+            }
+
+            $total_general = array_sum(array_map(fn($p) => (float)$p['monto'], $pagos));
+
+            json_output([
+                'success'       => true,
+                'html'          => $this->generar_html_correo_pago($pagos, $fecha, $total_general),
+                'total_filas'   => count($pagos),
+                'total_general' => $total_general,
+                'destinatarios' => [self::CORREO_PAGO_TEST_EMAIL],
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en correo_pago_preview: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Envía el correo de pagos emitidos. El HTML se regenera aquí a partir de la
+     * fecha: nunca se confía en el markup que mande el navegador.
+     */
+    public function correo_pago_send()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede enviar el correo de pagos.']);
+                return;
+            }
+
+            $fecha = $this->_validar_fecha_correo_pago($_POST['fecha'] ?? null);
+            if ($fecha === null) {
+                json_output(['success' => false, 'message' => 'Fecha inválida. Usa el formato AAAA-MM-DD.']);
+                return;
+            }
+
+            $pagos = $this->paymentTransactionsModel->get_pagos_del_dia($fecha);
+            if (empty($pagos)) {
+                json_output([
+                    'success' => false,
+                    'message' => 'No hay pagos con fecha de recibo del ' . date('d/m/Y', strtotime($fecha)) . '. No se envió nada.'
+                ]);
+                return;
+            }
+
+            $emails        = [self::CORREO_PAGO_TEST_EMAIL];
+            $total_general = array_sum(array_map(fn($p) => (float)$p['monto'], $pagos));
+            $subject       = 'Pago de combustible - ' . date('d/m/Y', strtotime($fecha));
+            $body          = $this->generar_html_correo_pago($pagos, $fecha, $total_general);
+
+            $mailError = null;
+            $ok = send_mail_with_fallback($subject, $body, $emails, 'totalgasdesarrollo@gmail.com', false, false, $mailError);
+
+            if ($ok) {
+                error_log('correo_pago_send: enviado a ' . implode(', ', $emails) . ' con ' . count($pagos) . ' pago(s) del ' . $fecha);
+                json_output([
+                    'success'       => true,
+                    'message'       => 'Correo enviado con ' . count($pagos) . ' pago(s) del ' . date('d/m/Y', strtotime($fecha)) . '. [MODO PRUEBAS]',
+                    'destinatarios' => $emails,
+                ]);
+            } else {
+                error_log('correo_pago_send: FALLÓ el envío. Motivo: ' . ($mailError ?? 'desconocido'));
+                json_output([
+                    'success'     => false,
+                    'mail_failed' => true,
+                    'message'     => 'No se pudo enviar el correo.' . "\n\nMotivo: " . $this->_describir_error_correo($mailError),
+                ]);
+            }
+        } catch (Exception $e) {
+            error_log('Error en correo_pago_send: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Valida que la fecha recibida sea una fecha real en formato AAAA-MM-DD.
+     */
+    private function _validar_fecha_correo_pago(?string $fecha): ?string
+    {
+        $fecha = trim((string)$fecha);
+        $d = DateTime::createFromFormat('Y-m-d', $fecha);
+        return ($d && $d->format('Y-m-d') === $fecha) ? $fecha : null;
+    }
+
+    /**
+     * HTML del correo "PAGO DE COMBUSTIBLE".
+     * Estilos inline y maquetado con <table> para que Outlook lo respete.
+     */
+    private function generar_html_correo_pago(array $pagos, string $fecha, float $total_general): string
+    {
+        $azul  = '#1F3864';
+        $cyan  = '#7FFFFF';
+        $borde = '1px solid #9aa5b1';
+
+        $th  = 'style="padding:6px 8px;border:' . $borde . ';background:' . $azul . ';color:#ffffff;font-size:12px;font-weight:bold;text-align:center;"';
+        $td  = 'style="padding:5px 8px;border:' . $borde . ';font-size:12px;color:#1e293b;"';
+        $tdc = 'style="padding:5px 8px;border:' . $borde . ';font-size:12px;color:#1e293b;text-align:center;"';
+        $tdm = 'style="padding:5px 8px;border:' . $borde . ';font-size:12px;color:#1e293b;text-align:right;background:' . $cyan . ';font-weight:bold;"';
+
+        $filas = '';
+        foreach ($pagos as $p) {
+            $fechaSol = !empty($p['request_date']) ? date('d/m/Y', strtotime($p['request_date'])) : '-';
+            $filas .= '
+                        <tr>
+                            <td ' . $tdc . '>' . htmlspecialchars($fechaSol) . '</td>
+                            <td ' . $tdc . '>' . htmlspecialchars((string)$p['folio_interno']) . '</td>
+                            <td ' . $td . '>' . htmlspecialchars((string)($p['proveedor'] ?? '-')) . '</td>
+                            <td ' . $tdm . '>' . number_format((float)$p['monto'], 2) . '</td>
+                            <td ' . $td . '>' . htmlspecialchars((string)($p['empresa'] ?? '-')) . '</td>
+                            <td ' . $tdc . '>' . htmlspecialchars((string)($p['referencia'] ?? '')) . '</td>
+                            <td ' . $tdc . '>&#9744;</td>
+                            <td ' . $tdc . '>' . htmlspecialchars((string)($p['comentario'] ?? '')) . '</td>
+                        </tr>';
+        }
+
+        return '
+        <div style="font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+            <p style="font-size:13px;margin:0 0 4px;">Buenas tardes</p>
+            <p style="font-size:13px;margin:0 0 16px;">Comparto pagos emitidos el día de hoy, saludos</p>
+
+            <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th colspan="8" style="padding:8px;border:' . $borde . ';background:' . $azul . ';color:#ffffff;font-size:18px;font-weight:bold;text-align:center;letter-spacing:.04em;">PAGO DE COMBUSTIBLE</th>
+                    </tr>
+                    <tr>
+                        <th colspan="8" style="padding:4px;border:' . $borde . ';background:' . $azul . ';color:#ffffff;font-size:12px;font-weight:bold;text-align:center;">' . date('d/m/Y', strtotime($fecha)) . '</th>
+                    </tr>
+                    <tr>
+                        <th ' . $th . '>Fecha de<br>solicitud</th>
+                        <th ' . $th . '>Folio Interno</th>
+                        <th ' . $th . '>Proveedor</th>
+                        <th ' . $th . '>Monto</th>
+                        <th ' . $th . '>Empresa</th>
+                        <th ' . $th . '>Referencia</th>
+                        <th ' . $th . '>Referencia</th>
+                        <th ' . $th . '>Comentario</th>
+                    </tr>
+                </thead>
+                <tbody>' . $filas . '
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3" style="border:none;"></td>
+                        <td style="padding:6px 8px;border:' . $borde . ';background:' . $azul . ';color:#ffffff;font-size:13px;font-weight:bold;text-align:right;">' . number_format($total_general, 2) . '</td>
+                        <td colspan="4" style="border:none;"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>';
+    }
+
+
     private function enviar_notificacion_nuevo_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
     {
         try {

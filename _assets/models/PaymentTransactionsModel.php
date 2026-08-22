@@ -566,6 +566,39 @@ class PaymentTransactionsModel extends Model
     }
 
     /**
+     * Pagos ejecutados en una fecha (fecha del recibo = payment_date), agrupados
+     * por requisición + empresa + referencia bancaria, para el correo
+     * "Pago de combustible".
+     *
+     * Cada renglón = una transferencia real. Una misma requisición aparece en
+     * varios renglones si ese día se liquidó en más de una transferencia
+     * (referencias distintas), tal como se captura en el Excel de tesorería.
+     */
+    public function get_pagos_del_dia($fecha) : array
+    {
+        $query = "
+            SELECT
+                MIN(pr.request_date)                     AS request_date,
+                pr.id                                    AS folio_interno,
+                prov.den                                 AS proveedor,
+                SUM(pt.payment_amount)                   AS monto,
+                emp.den                                  AS empresa,
+                pt.payment_reference                     AS referencia,
+                MAX(CAST(pr.comment AS VARCHAR(MAX)))    AS comentario
+            FROM  [TG].[dbo].[payment_transactions]          pt
+            INNER JOIN [TG].[dbo].[payment_requests]         pr   ON pt.payment_request_id = pr.id
+            LEFT  JOIN [SG12].[dbo].[Proveedores]            prov ON pr.provider_cod       = prov.cod
+            LEFT  JOIN [SG12].[dbo].[Empresas]               emp  ON pr.emp_cod            = emp.cod
+            WHERE CAST(pt.payment_date AS DATE) = ?
+              AND pt.status <> ?
+            GROUP BY pr.id, prov.den, emp.den, pt.payment_reference
+            ORDER BY prov.den ASC, MIN(pr.request_date) ASC, pr.id ASC
+        ";
+
+        return $this->sql->select($query, [$fecha, self::STATUS_REJECTED]) ?: [];
+    }
+
+    /**
      * Elimina una transacción (soft delete cambiando a REJECTED)
      */
     public function delete_transaction($id) : bool {

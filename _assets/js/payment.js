@@ -7400,3 +7400,188 @@ function confirmarPagoAnticipo() {
 }
 
 
+/* ══════════════════════════════════════════════════════════════════
+ *  CORREO DE PAGO — aviso diario de pagos emitidos
+ * ══════════════════════════════════════════════════════════════════ */
+
+// HTML del correo actualmente previsualizado (para el botón Copiar).
+var correoPagoHtml = "";
+
+/**
+ * Abre el modal "Correo de pago" y carga su contenido desde el servidor.
+ */
+async function abrirModalCorreoPago() {
+  correoPagoHtml = "";
+  $("#modalCorreoPago").modal("show");
+  $("#modalCorreoPagoContent").html(
+    `<div class="modal-body text-center py-5">
+       <i class="fas fa-spinner fa-spin fa-3x text-secondary"></i>
+       <p class="mt-3">Cargando...</p>
+     </div>`
+  );
+
+  try {
+    const response = await fetch("/payment/correo_pago_modal", { method: "POST" });
+    if (!response.ok) throw new Error("Error al cargar el modal");
+
+    const content = await response.text();
+    $("#modalCorreoPagoContent").html(content);
+  } catch (error) {
+    console.error("Error:", error);
+    $("#modalCorreoPagoContent").html(
+      `<div class="modal-body">
+         <div class="alert alert-danger mb-0">
+           <i class="fas fa-exclamation-circle"></i>
+           No se pudo cargar el formulario. Intente nuevamente.
+         </div>
+       </div>`
+    );
+  }
+}
+
+/**
+ * Pide al servidor la vista previa del correo para la fecha seleccionada.
+ */
+async function generarCorreoPago() {
+  const fecha = $("#cp_fecha").val();
+  if (!fecha) {
+    Swal.fire({ icon: "warning", title: "Falta la fecha", text: "Selecciona la fecha del recibo." });
+    return;
+  }
+
+  correoPagoHtml = "";
+  $("#cp_acciones").hide();
+  $("#cp_preview_wrap").hide();
+  $("#cp_estado")
+    .show()
+    .html('<i class="fas fa-spinner fa-spin fa-2x mb-2 d-block"></i> Buscando pagos...');
+
+  try {
+    const body = new URLSearchParams({ fecha: fecha });
+    const response = await fetch("/payment/correo_pago_preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      $("#cp_estado").html(
+        `<i class="fas fa-inbox fa-2x mb-2 d-block" style="color:#cbd5e1;"></i>${escapeHtmlCorreoPago(data.message || "Sin resultados.")}`
+      );
+      return;
+    }
+
+    correoPagoHtml = data.html;
+    $("#cp_preview").html(data.html);
+    $("#cp_resumen").text(
+      data.total_filas + " pago(s) · Total $" +
+        Number(data.total_general).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    );
+    $("#cp_estado").hide();
+    $("#cp_preview_wrap").show();
+    $("#cp_acciones").css("display", "flex");
+  } catch (error) {
+    console.error("Error:", error);
+    $("#cp_estado").html(
+      '<i class="fas fa-exclamation-triangle fa-2x mb-2 d-block text-danger"></i> Error de conexión al generar la vista previa.'
+    );
+  }
+}
+
+/**
+ * Copia el correo al portapapeles conservando el formato (text/html),
+ * para pegarlo tal cual en Outlook o Gmail.
+ */
+async function copiarCorreoPago() {
+  if (!correoPagoHtml) return;
+
+  const $btn = $("#cp_btn_copiar");
+  const original = $btn.html();
+
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([correoPagoHtml], { type: "text/html" }),
+          "text/plain": new Blob([$("#cp_preview").text().trim()], { type: "text/plain" }),
+        }),
+      ]);
+    } else {
+      // Respaldo para navegadores sin ClipboardItem: selecciona y copia el nodo.
+      const range = document.createRange();
+      range.selectNodeContents(document.getElementById("cp_preview"));
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand("copy");
+      sel.removeAllRanges();
+    }
+
+    $btn.html('<i class="fas fa-check"></i> Copiado');
+    setTimeout(() => $btn.html(original), 1800);
+  } catch (error) {
+    console.error("Error al copiar:", error);
+    Swal.fire({
+      icon: "error",
+      title: "No se pudo copiar",
+      text: "Selecciona la vista previa manualmente y cópiala con Ctrl+C.",
+    });
+  }
+}
+
+/**
+ * Envía el correo. El servidor regenera el HTML a partir de la fecha.
+ */
+async function enviarCorreoPago() {
+  const fecha = $("#cp_fecha").val();
+  if (!fecha || !correoPagoHtml) return;
+
+  const confirm = await Swal.fire({
+    icon: "question",
+    title: "¿Enviar el correo?",
+    html:
+      "Se enviará el aviso de pagos del <strong>" +
+      escapeHtmlCorreoPago(fecha) +
+      "</strong>.<br><small>Modo pruebas: llegará solo a alejandro.martinez@totalgas.com</small>",
+    showCancelButton: true,
+    confirmButtonText: "Sí, enviar",
+    cancelButtonText: "Cancelar",
+    confirmButtonColor: "#16a34a",
+  });
+  if (!confirm.isConfirmed) return;
+
+  const $btn = $("#cp_btn_enviar");
+  const original = $btn.html();
+  $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Enviando...');
+
+  try {
+    const body = new URLSearchParams({ fecha: fecha });
+    const response = await fetch("/payment/correo_pago_send", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      Swal.fire({ icon: "success", title: "Correo enviado", text: data.message });
+    } else {
+      Swal.fire({ icon: "error", title: "No se envió", text: data.message || "Error desconocido." });
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    Swal.fire({ icon: "error", title: "Error de conexión", text: "No se pudo contactar al servidor." });
+  } finally {
+    $btn.prop("disabled", false).html(original);
+  }
+}
+
+/** Escapa texto para insertarlo como HTML en los mensajes del modal. */
+function escapeHtmlCorreoPago(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}

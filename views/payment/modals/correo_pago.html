@@ -1,0 +1,63 @@
+{# Modal: Correo de pago — aviso diario de pagos emitidos #}
+<div class="modal-body">
+
+    <!-- Barra de controles -->
+    <div class="d-flex align-items-end gap-2 flex-wrap mb-3">
+        <div>
+            <label class="form-label fw-bold mb-1" style="font-size:.8rem;">
+                Fecha del recibo <span class="text-danger">*</span>
+            </label>
+            <input type="date" class="form-control form-control-sm" id="cp_fecha"
+                   value="{{ fecha_default }}" style="width:auto;">
+        </div>
+        <button type="button" class="btn btn-sm text-white d-flex align-items-center gap-1"
+                style="background:#0891b2;border-radius:.4rem;font-size:.8rem;padding:.35rem .8rem;"
+                onclick="generarCorreoPago()">
+            <i class="fas fa-search" style="font-size:.72rem;"></i> Generar
+        </button>
+
+        <div class="ms-auto d-flex align-items-center gap-2" id="cp_acciones" style="display:none !important;">
+            <button type="button" class="btn btn-sm d-flex align-items-center gap-1"
+                    style="background:#e2e8f0;color:#334155;border-radius:.4rem;font-size:.8rem;padding:.35rem .8rem;"
+                    onclick="copiarCorreoPago()" id="cp_btn_copiar"
+                    title="Copia el correo con formato para pegarlo en Outlook o Gmail">
+                <i class="fas fa-copy" style="font-size:.72rem;"></i> Copiar
+            </button>
+            <button type="button" class="btn btn-sm text-white d-flex align-items-center gap-1"
+                    style="background:#16a34a;border-radius:.4rem;font-size:.8rem;padding:.35rem .8rem;"
+                    onclick="enviarCorreoPago()" id="cp_btn_enviar">
+                <i class="fas fa-paper-plane" style="font-size:.72rem;"></i> Enviar
+            </button>
+        </div>
+    </div>
+
+    <!-- Aviso de modo pruebas -->
+    <div class="d-flex align-items-start gap-2 mb-3 p-2 rounded border"
+         style="border-color:#fcd34d !important;background:#fffbeb;">
+        <i class="fas fa-flask mt-1" style="color:#d97706;font-size:.85rem;flex-shrink:0;"></i>
+        <small style="color:#92400e;font-size:.75rem;">
+            <strong>Modo pruebas:</strong> el envío llega únicamente a
+            <strong>alejandro.martinez@totalgas.com</strong>. También puedes usar
+            <em>Copiar</em> y pegar el correo directamente en Outlook o Gmail.
+        </small>
+    </div>
+
+    <!-- Resultado / vista previa -->
+    <div id="cp_estado" class="text-center py-5" style="color:#94a3b8;font-size:.85rem;">
+        <i class="fas fa-envelope-open-text fa-2x mb-2 d-block" style="color:#cbd5e1;"></i>
+        Elige una fecha y presiona <strong>Generar</strong> para ver el correo.
+    </div>
+
+    <div id="cp_preview_wrap" style="display:none;">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <span style="font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">
+                Vista previa del correo
+            </span>
+            <span id="cp_resumen" style="font-size:.75rem;color:#64748b;"></span>
+        </div>
+        <div id="cp_preview"
+             style="border:1px solid #e2e8f0;border-radius:.5rem;padding:1rem;background:#fff;max-height:60vh;overflow:auto;">
+        </div>
+    </div>
+
+</div>

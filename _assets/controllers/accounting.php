@@ -39,6 +39,43 @@ class Accounting{
     public RenegociacionModel $RenegociacionModel;
     public RenegContactosModel $RenegContactosModel;
     public RenegEmailLogModel $RenegEmailLogModel;
+    public MovimientosBancariosModel $movsModel;
+
+    /**
+     * Permiso del reporte de movimientos bancos en Contabilidad. Propio y
+     * separado del 80 de Tesorería: es una vista de solo lectura para
+     * Contabilidad, sin subir archivos ni ver saldos por grupo.
+     */
+    private const PERM_MOVIMIENTOS_BANCOS = 90;
+
+    /**
+     * Bancos que tienen tab y tabla propios en el reporte de movimientos
+     * bancos de Contabilidad. Copia reducida (sin parser/extensión de subida,
+     * que no aplica aquí) del registro BANCOS de Tesoreria::class — ese
+     * registro es privado y this es una vista de solo lectura, así que no
+     * conviene exponerlo ni depender de la clase Tesoreria desde aquí.
+     * Agregar un banco nuevo a Tesorería implica agregarlo aquí también si se
+     * quiere ver en este reporte.
+     */
+    private const BANCOS = [
+        'SANTANDER' => ['etiqueta' => 'Santander', 'color' => '#EA1D25'],
+        'BANORTE'   => ['etiqueta' => 'Banorte',   'color' => '#EF2945'],
+        'AFIRME'    => ['etiqueta' => 'Afirme',    'color' => '#009D29'],
+        'INBURSA'   => ['etiqueta' => 'Inbursa',   'color' => '#10284A'],
+        'BANKAOOL'  => ['etiqueta' => 'Bankaool',  'color' => '#0F766E'],
+        'BBVA'      => ['etiqueta' => 'BBVA',      'color' => '#004481'],
+        'VANTAGE'   => ['etiqueta' => 'Vantage',   'color' => '#7E22CE'],
+        'BANREGIO'  => ['etiqueta' => 'Banregio',  'color' => '#EA580C'],
+        'MIFEL'     => ['etiqueta' => 'Mifel',     'color' => '#124679'],
+    ];
+
+    /** Normaliza el banco de un movimiento a una llave de self::BANCOS. */
+    private static function banco_de($valor): string
+    {
+        $b = strtoupper(trim((string)$valor));
+        return isset(self::BANCOS[$b]) ? $b : 'SANTANDER';
+    }
+
     /**
      * @param $twig
      */
@@ -59,6 +96,271 @@ class Accounting{
         $this->RenegociacionModel     = new RenegociacionModel();
         $this->RenegContactosModel    = new RenegContactosModel();
         $this->RenegEmailLogModel     = new RenegEmailLogModel();
+        $this->movsModel              = new MovimientosBancariosModel();
+    }
+
+    /**
+     * Reporte "Movimientos bancos" de Contabilidad: vista de solo lectura de
+     * TG.dbo.movimientos_bancarios, sin subir archivos ni saldo por grupo
+     * (eso vive en Tesoreria::movimientos_bancos). Filtra por Cuenta o por
+     * Descripción (razón social del catálogo) por separado.
+     */
+    public function movimientos_bancos(): void {
+        if (!authorized(self::PERM_MOVIMIENTOS_BANCOS)) {
+            (new Errors())->get404();
+            return;
+        }
+        echo $this->twig->render($this->route . 'movimientos_bancos.html', [
+            'filtros'       => $this->filtros_movimientos_bancos($_GET),
+            'cuentas'       => $this->movsModel->get_cuentas(),
+            'descripciones' => $this->movsModel->get_cuentas_con_movimientos(),
+            'bancos'        => self::BANCOS,
+        ]);
+    }
+
+    /** POST AJAX: movimientos del rango, partidos por banco (sin saldo). */
+    public function movimientos_bancos_table(): void {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_MOVIMIENTOS_BANCOS)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+
+        $filtros = $this->filtros_movimientos_bancos($_POST);
+
+        // Filtrar por Descripción resuelve a la lista de cuentas de esa
+        // razón social y se pasa como cuentasPermitidas; filtrar por Cuenta
+        // exacta usa el filtro 'cuenta' normal del modelo. Ambos filtros son
+        // independientes: si vienen los dos, gana la intersección natural
+        // (cuenta exacta ya acota a una sola cuenta).
+        $cuentasPermitidas = null;
+        if (!empty($filtros['descripcion'])) {
+            $cuentasPermitidas = $this->movsModel->get_cuentas_por_descripcion($filtros['descripcion']);
+        }
+
+        try {
+            $movimientos = $this->movsModel->get_movimientos($filtros, $cuentasPermitidas);
+        } catch (Exception $e) {
+            error_log('movimientos_bancos_table: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al consultar los movimientos']);
+            return;
+        }
+
+        $porTabla = array_fill_keys(array_keys(self::BANCOS), []);
+        foreach ($movimientos as $m) {
+            $banco = self::banco_de($m['banco']);
+            if ($banco === 'BANKAOOL') {
+                $m['fecha_hora'] = trim($m['fecha'] . ' ' . ($m['hora'] ?? ''));
+                $m['movimiento'] = $m['cargo'] !== null ? -(float)$m['cargo'] : (float)($m['abono'] ?? 0);
+            }
+            $porTabla[$banco][] = $m;
+        }
+
+        json_output([
+            'success'     => true,
+            'filtros'     => $filtros,
+            'movimientos' => $porTabla,
+        ]);
+    }
+
+    /** Normaliza y valida los filtros: fechas, cuenta y descripción. */
+    private function filtros_movimientos_bancos(array $src): array {
+        $fmt   = '/^\d{4}-\d{2}-\d{2}$/';
+        $desde = $src['desde'] ?? '';
+        $hasta = $src['hasta'] ?? '';
+        if (!preg_match($fmt, $desde)) $desde = date('Y-m-d', strtotime('-7 days'));
+        if (!preg_match($fmt, $hasta)) $hasta = date('Y-m-d');
+        if ($desde > $hasta) $desde = $hasta;
+
+        return [
+            'desde'       => $desde,
+            'hasta'       => $hasta,
+            'cuenta'      => trim($src['cuenta'] ?? ''),
+            'descripcion' => trim($src['descripcion'] ?? ''),
+        ];
+    }
+
+    /**
+     * GET: descarga en .xlsx los movimientos del rango/filtro actual, una
+     * hoja por cuenta (cada cuenta pertenece a un solo banco en la práctica,
+     * así que la hoja usa el set de columnas de ESE banco, igual que su tab
+     * en pantalla). Mismos filtros que movimientos_bancos_table(): Desde,
+     * Hasta, Cuenta o Descripción.
+     */
+    public function exportar_movimientos_bancos(): void {
+        if (!authorized(self::PERM_MOVIMIENTOS_BANCOS)) {
+            (new Errors())->get404();
+            return;
+        }
+
+        $filtros = $this->filtros_movimientos_bancos($_GET);
+
+        $cuentasPermitidas = null;
+        if (!empty($filtros['descripcion'])) {
+            $cuentasPermitidas = $this->movsModel->get_cuentas_por_descripcion($filtros['descripcion']);
+        }
+
+        $movimientos = $this->movsModel->get_movimientos($filtros, $cuentasPermitidas);
+
+        $porCuenta = [];
+        foreach ($movimientos as $m) {
+            $porCuenta[$m['cuenta']][] = $m;
+        }
+        ksort($porCuenta);
+
+        $libro  = $this->libro_movimientos_bancos($porCuenta);
+        $nombre = 'movimientos_bancos_' . $filtros['desde'] . '_' . $filtros['hasta'] . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $nombre . '"');
+        header('Cache-Control: max-age=0');
+        (new Xlsx($libro))->save('php://output');
+        exit;
+    }
+
+    /**
+     * Arma el libro de exportar_movimientos_bancos(): una hoja por cuenta,
+     * nombrada con el número de cuenta. Separado del endpoint para poder
+     * generarlo sin los headers + exit de por medio.
+     *
+     * @param array<string, array> $porCuenta cuenta => [movimientos...]
+     */
+    private function libro_movimientos_bancos(array $porCuenta): Spreadsheet {
+        $libro = new Spreadsheet();
+        // La hoja por default de PhpSpreadsheet se reutiliza para la primera
+        // cuenta; si no hay ninguna, se deja en blanco con un aviso.
+        $libro->removeSheetByIndex(0);
+
+        if (!$porCuenta) {
+            $hoja = $libro->createSheet();
+            $hoja->setTitle('Sin movimientos');
+            $hoja->setCellValue('A1', 'No hay movimientos para el filtro seleccionado.');
+            return $libro;
+        }
+
+        foreach ($porCuenta as $cuenta => $movs) {
+            $banco = self::banco_de($movs[0]['banco'] ?? '');
+            $hoja  = $libro->createSheet();
+            // Nombre de hoja: máx. 31 chars y sin los caracteres que Excel
+            // prohíbe en títulos ( \ / ? * [ ] : ); una CLABE (18 dígitos) o
+            // un número de cuenta corto caben siempre sin truncarse.
+            $titulo = substr(preg_replace('/[\\\\\/\?\*\[\]\:]/', '-', (string)$cuenta), 0, 31);
+            $hoja->setTitle($titulo !== '' ? $titulo : 'Cuenta');
+
+            $this->llenar_hoja_movimientos($hoja, $banco, $movs);
+        }
+
+        $libro->setActiveSheetIndex(0);
+        return $libro;
+    }
+
+    /** Encabezados por banco, mismas columnas (y orden) que su tab en pantalla. */
+    private function encabezados_movimientos_banco(string $banco): array {
+        switch ($banco) {
+            case 'BANORTE':
+                return ['Cuenta', 'Fecha de Operación', 'Fecha', 'Referencia', 'Descripción',
+                        'Cod. Transac', 'Sucursal', 'Depósitos', 'Retiros', 'Descripción Detallada'];
+            case 'BANKAOOL':
+                return ['Cuenta', 'Fecha', 'Hora', 'Descripción', 'Referencia', 'Cargo', 'Abono',
+                        'Concepto', 'Contraparte'];
+            case 'INBURSA':
+                return ['Cuenta', 'Fecha', 'Referencia', 'Ref. Externa', 'Referencia Leyenda',
+                        'Ref. Numérica', 'Movimiento', 'Cargo', 'Abono', 'Ordenante', 'Clave de Rastreo'];
+            case 'AFIRME':
+                return ['Concepto', 'Fecha', 'Referencia', 'Cargo', 'Abono', 'Cuenta', 'Código'];
+            default:
+                return ['Cuenta', 'Fecha', 'Hora', 'Sucursal', 'Descripción', 'Importe Cargo',
+                        'Importe Abono', 'Referencia', 'Concepto', 'Descripción Larga', 'Contraparte'];
+        }
+    }
+
+    /** Una fila por movimiento, en el mismo orden que encabezados_movimientos_banco(). */
+    private function fila_movimiento_banco(string $banco, array $m): array {
+        switch ($banco) {
+            case 'BANORTE':
+                return [$m['cuenta'], $m['fecha_operacion'] ?? '', $m['fecha'], $m['referencia'] ?? '',
+                        $m['descripcion'] ?? '', $m['clave_trans'] ?? '', $m['sucursal'] ?? '',
+                        $m['abono'], $m['cargo'], $m['descripcion_larga'] ?? ''];
+            case 'BANKAOOL':
+                return [$m['cuenta'], $m['fecha'], $m['hora'] ?? '', $m['descripcion'] ?? '',
+                        $m['referencia'] ?? '', $m['cargo'], $m['abono'], $m['concepto'] ?? '',
+                        $m['nombre_contraparte'] ?? ''];
+            case 'INBURSA':
+                return [$m['cuenta'], $m['fecha'], $m['descripcion_larga'] ?? '', $m['clave_trans'] ?? '',
+                        $m['concepto'] ?? '', $m['referencia'] ?? '', $m['descripcion'] ?? '',
+                        $m['cargo'], $m['abono'], $m['nombre_contraparte'] ?? '', $m['clave_rastreo'] ?? ''];
+            case 'AFIRME':
+                return [$m['descripcion'] ?? '', $m['fecha'], $m['referencia'] ?? '', $m['cargo'],
+                        $m['abono'], $m['cuenta'], $m['clave_trans'] ?? ''];
+            default:
+                return [$m['cuenta'], $m['fecha'], $m['hora'] ?? '', $m['sucursal'] ?? '',
+                        $m['descripcion'] ?? '', $m['cargo'], $m['abono'], $m['referencia'] ?? '',
+                        $m['concepto'] ?? '', $m['descripcion_larga'] ?? '', $m['nombre_contraparte'] ?? ''];
+        }
+    }
+
+    /** Columnas de cargo/abono (1-based) por banco, para formato de moneda. */
+    private function columnas_monto_banco(string $banco): array {
+        switch ($banco) {
+            case 'BANORTE':  return [8, 9];    // Depósitos, Retiros
+            case 'BANKAOOL': return [6, 7];    // Cargo, Abono
+            case 'INBURSA':  return [8, 9];    // Cargo, Abono
+            case 'AFIRME':   return [4, 5];    // Cargo, Abono
+            default:         return [6, 7];    // Importe Cargo, Importe Abono
+        }
+    }
+
+    /**
+     * Evita que PhpSpreadsheet interprete un valor de celda como fórmula.
+     * Banorte guarda la "Descripción Detallada" de los SPEI enviados tal
+     * cual vino del banco, que empieza literalmente con
+     * "=REFERENCIA CTA/CLABE: ..." (ver contraparte_banorte() en
+     * MovimientosBancariosModel). Sin este escape, setAutoSize() fuerza a
+     * PhpSpreadsheet a calcular esa "fórmula" para medir el ancho de columna
+     * y truena con Formula Error, dejando el .xlsx corrupto (el error de PHP
+     * se manda al stream que ya traía los headers de descarga puestos).
+     * El apóstrofe inicial es la convención de Excel para forzar texto
+     * literal; se antepone a cualquier valor que empiece con = + - @, los
+     * prefijos que Excel reconoce como inicio de fórmula.
+     */
+    private function escapar_formula($valor) {
+        if (is_string($valor) && $valor !== '' && strpbrk($valor[0], '=+-@') !== false) {
+            return "'" . $valor;
+        }
+        return $valor;
+    }
+
+    /** Llena una hoja con el encabezado y las filas de una cuenta/banco. */
+    private function llenar_hoja_movimientos($hoja, string $banco, array $movs): void {
+        $encabezados   = $this->encabezados_movimientos_banco($banco);
+        $ultimaColumna = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($encabezados));
+
+        $hoja->fromArray($encabezados, null, 'A1');
+        $hoja->getStyle('A1:' . $ultimaColumna . '1')->getFont()->setBold(true);
+        $hoja->getStyle('A1:' . $ultimaColumna . '1')->getFill()
+             ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('E2E8F0');
+
+        $fila = 2;
+        foreach ($movs as $m) {
+            $valores = array_map([$this, 'escapar_formula'], $this->fila_movimiento_banco($banco, $m));
+            $hoja->fromArray($valores, null, 'A' . $fila);
+            $fila++;
+        }
+
+        foreach ($this->columnas_monto_banco($banco) as $col) {
+            $letra = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+            $hoja->getStyle($letra . '2:' . $letra . ($fila - 1))->getNumberFormat()->setFormatCode('#,##0.00');
+        }
+
+        foreach (range(1, count($encabezados)) as $col) {
+            $letra = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+            $hoja->getColumnDimension($letra)->setAutoSize(true);
+        }
+        $hoja->freezePane('A2');
     }
 
     /**

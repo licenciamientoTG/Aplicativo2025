@@ -333,6 +333,9 @@
                 <button type="button" onclick="abrirModalComprobantes()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Subir comprobantes de pago y conciliarlos automáticamente">
                     <i class="fas fa-file-upload" style="font-size:.75rem;"></i> Subir Comprobantes
                 </button>
+                <button type="button" onclick="abrirModalCorreoPago()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#1f3864;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Generar y enviar el correo de pagos emitidos en una fecha">
+                    <i class="fas fa-envelope" style="font-size:.75rem;"></i> Correo de Pago
+                </button>
             </div>
             {% endif %}
         </div>
@@ -452,6 +455,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div id="modalCrearArchivoContabilidadContent">
+                    <!-- Contenido cargado dinámicamente -->
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Modal Correo de Pago -->
+    {% if authorized(68) %}
+    <div class="modal fade" id="modalCorreoPago" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header text-white" style="background:#1f3864;">
+                    <h5 class="modal-title">
+                        <i class="fas fa-envelope"></i> Correo de Pago
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div id="modalCorreoPagoContent">
                     <!-- Contenido cargado dinámicamente -->
                 </div>
             </div>

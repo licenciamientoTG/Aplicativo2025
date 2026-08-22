@@ -1981,4 +1981,39 @@ class MovimientosBancariosModel extends Model
                   ORDER BY m.banco, m.cuenta;';
         return $this->sql->select($query) ?: [];
     }
+
+    /**
+     * Relación cuentas bancarias <-> movimientos: solo las descripciones
+     * (razón social/cuenta del catálogo) que tienen al menos un movimiento,
+     * con el conteo. Alimenta el filtro "Descripción" del reporte de
+     * Contabilidad (/accounting/movimientos_bancos), que consulta por
+     * descripción en vez de por cuenta exacta.
+     *
+     * Las cuentas sin match en el catálogo (Descripcion NULL) se agrupan
+     * bajo su propio número de cuenta, para no perderlas del filtro.
+     */
+    public function get_cuentas_con_movimientos(): array
+    {
+        $query = "SELECT COALESCE(c.Descripcion, m.cuenta) AS descripcion,
+                         COUNT(*) AS n_movimientos
+                  FROM [TG].[dbo].[movimientos_bancarios] m
+                  LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c ON c.CuentaLocal = m.cuenta
+                  GROUP BY COALESCE(c.Descripcion, m.cuenta)
+                  ORDER BY descripcion;";
+        return $this->sql->select($query) ?: [];
+    }
+
+    /**
+     * Cuentas (CuentaLocal) que corresponden a una Descripcion del catálogo,
+     * para resolver el filtro "Descripción" a la lista de cuentas que hay
+     * que consultar en movimientos_bancarios.
+     */
+    public function get_cuentas_por_descripcion(string $descripcion): array
+    {
+        $query = "SELECT DISTINCT m.cuenta
+                  FROM [TG].[dbo].[movimientos_bancarios] m
+                  LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c ON c.CuentaLocal = m.cuenta
+                  WHERE COALESCE(c.Descripcion, m.cuenta) = ?;";
+        return array_column($this->sql->select($query, [$descripcion]) ?: [], 'cuenta');
+    }
 }
