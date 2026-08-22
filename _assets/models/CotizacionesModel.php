@@ -14,6 +14,13 @@ class CotizacionesModel extends Model{
     public $lognew;
 
     /**
+     * Estaciones que no vinieron en la última respuesta de get_exchange_rates()
+     * (caídas, o la llamada a ApiER falló por completo). Cada elemento trae
+     * ['no_station' => ..., 'station_name' => ...]. La llena get_exchange_rates().
+     */
+    public array $disconnectedStations = [];
+
+    /**
      * @param $codgas
      * @return float|false
      * @throws Exception
@@ -103,7 +110,11 @@ class CotizacionesModel extends Model{
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['estaciones' => $payload]));
-        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        // 20s se cortaba antes de que ApiER terminara de fallar las estaciones caídas
+        // (OPENQUERY tarda en reportar el error, no es instantáneo), tirando el reporte
+        // completo en vez de solo excluir esas estaciones. Confirmado con pruebas manuales:
+        // el lote de 34 estaciones tomó >30s en un caso.
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -112,14 +123,22 @@ class CotizacionesModel extends Model{
 
         if ($response === false || $httpCode !== 200) {
             error_log("get_exchange_rates: fallo al llamar a ApiER (HTTP {$httpCode}) {$curlError}");
+            $this->disconnectedStations = array_map(fn($p) => ['no_station' => $p['no_station'], 'station_name' => $p['station_name']], $payload);
             return [];
         }
 
         $rows = json_decode($response, true);
         if (!is_array($rows)) {
             error_log("get_exchange_rates: respuesta de ApiER no es un array válido: {$response}");
+            $this->disconnectedStations = array_map(fn($p) => ['no_station' => $p['no_station'], 'station_name' => $p['station_name']], $payload);
             return [];
         }
+
+        $returnedCodgas = array_column($rows, 'codgas');
+        $this->disconnectedStations = array_values(array_map(
+            fn($p) => ['no_station' => $p['no_station'], 'station_name' => $p['station_name']],
+            array_filter($payload, fn($p) => !in_array($p['codgas'], $returnedCodgas))
+        ));
 
         return $rows;
     }

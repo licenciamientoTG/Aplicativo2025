@@ -149,8 +149,11 @@ class Tesoreria
         'AFIRME' => [
             'etiqueta' => 'Afirme',
             'color'    => '#009D29',   // verde del logo
-            'ext'      => ['xls', 'txt', 'tsv', 'csv'],
-            'espera'   => 'el export de movimientos de Afirme',
+            // El portal sólo acepta el export CSV actual. Los formatos
+            // antiguos (.xls/.txt/.tsv) usan referencias distintas y pueden
+            // duplicar movimientos ya cargados desde el CSV.
+            'ext'      => ['csv'],
+            'espera'   => 'el archivo CSV de movimientos de Afirme',
             'parser'   => 'parse_afirme_tsv',
             'entrada'  => 'contenido',
         ],
@@ -792,6 +795,16 @@ class Tesoreria
         $cfg   = self::BANCOS[$banco] ?? null;
         if ($cfg === null) {
             json_output(['success' => false, 'message' => 'Banco no reconocido']);
+            return;
+        }
+        // El CSV de Afirme se usa para consultar transacciones; nunca debe
+        // persistirse como movimiento bancario desde esta carga manual.
+        // Esta validación del servidor protege incluso solicitudes directas.
+        if ($banco === 'AFIRME') {
+            json_output([
+                'success' => false,
+                'message' => 'La carga manual de Afirme está deshabilitada: el CSV sólo se usa para consultar transacciones y no se guarda en movimientos bancarios',
+            ]);
             return;
         }
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['archivo']['tmp_name'])) {

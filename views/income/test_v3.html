@@ -68,7 +68,6 @@
 
     /* SPLIT */
     .split-container { display:flex;gap:16px;padding:0 10px 20px;height:calc(100vh - 230px); }
-    .split-container.preconciliacion-bloqueada { pointer-events:none;opacity:.72; }
     .panel-split { flex:1;background:#fff;border-radius:12px;border:1px solid var(--border-color);display:flex;flex-direction:column;overflow:hidden;position:relative; }
     .panel-header { color:white;padding:10px 15px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid rgba(0,0,0,.1); }
     .panel-content { flex:1;overflow-y:auto;padding:0; }
@@ -205,7 +204,6 @@
     /* BARRA FLOTANTE */
     .action-bar { position:fixed;bottom:28px;left:50%;transform:translate(-50%,150%);background:#2c3e50;color:white;padding:12px 28px;border-radius:50px;box-shadow:0 10px 30px rgba(0,0,0,.4);display:flex;align-items:center;gap:18px;z-index:1000;transition:transform .3s cubic-bezier(.175,.885,.32,1.275); }
     .action-bar.visible { transform:translate(-50%,0); }
-    .preconciliacion-bar { background:#8f172d;max-width:calc(100vw - 32px); }
 
     /* DATE WIDGET */
     .date-widget-trigger { cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:bold; }
@@ -552,18 +550,6 @@
     <button class="btn btn-sm btn-outline-light rounded-circle border-0 ml-2" onclick="limpiarSeleccion()">
         <i class="fas fa-times"></i>
     </button>
-</div>
-
-<!-- BARRA FLOTANTE: APROBACIÓN DE PRECONCILIACIONES BANORTE -->
-<div class="action-bar preconciliacion-bar" id="preconciliacionBanorteBar">
-    <div class="text-white-50 border-right pr-3 mr-1">
-        <div class="small text-uppercase"><i class="fas fa-exclamation-circle mr-1"></i> Preconciliaciones Banorte</div>
-        <div><strong id="preconciliaciones-banorte-count">0</strong> coincidencias por aprobar <span class="mx-1">·</span> <span class="font-numeric text-white" id="preconciliaciones-banorte-total">$0.00</span></div>
-    </div>
-    <button class="btn btn-light text-danger rounded-pill font-weight-bold shadow" id="btn-aprobar-preconciliaciones-banorte" onclick="aprobarPreconciliacionesBanorte()">
-        <i class="fas fa-check-double mr-2"></i>APROBAR TODAS
-    </button>
-    <button class="btn btn-outline-light rounded-pill font-weight-bold" onclick="descartarPreconciliacionesBanorte()"><i class="fas fa-times mr-2"></i>NO PRECONCILIAR</button>
 </div>
 
 <div id="pickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
@@ -1160,7 +1146,7 @@ let transitosCG = { enTransito: {}, fakes: [] };
 // fakes:      Array de registros fake del día destino
 let diferidosCG = { enDiferido: {}, fakes: [] };
 let preconciliacionesBanorte = [];
-let preconciliacionesBanorteDescartadasPara = '';
+let preconciliacionBanorteEnCurso = false;
 
 // Persistencia de grupos abiertos/cerrados (sobrevive a actualizarTodo)
 let openGroupsCG  = new Set();
@@ -1386,7 +1372,7 @@ function actualizarTodo() {
         renderCG();
         renderTes();
         actualizarResumenSuperior();
-        mostrarPreconciliacionesBanorte();
+        aprobarPreconciliacionesBanorte();
         if (!$('#rango-panel').hasClass('d-none')) calcularRango();
         // La conciliación puede haber resuelto una alerta; esta lectura sólo
         // consulta la caché TG y actualiza el botón sin bloquear la vista.
@@ -2820,46 +2806,36 @@ function obtenerPreconciliacionesBanorte() {
     }, []);
 }
 
-function mostrarPreconciliacionesBanorte() {
-    const clave = currentRule ? `${$('#estacionSelect').val()}|${currentRule.entidad_id}|${currentRule.afiliacion}|${widgetState.year}-${widgetState.month}` : '';
-    const hayPendientes = preconciliacionesBanorte.length && preconciliacionesBanorteDescartadasPara !== clave;
-    if (!hayPendientes) {
-        $('#preconciliacionBanorteBar').removeClass('visible');
-        $('#conciliacionWorkspace').removeClass('preconciliacion-bloqueada');
-        return;
-    }
-    $('#preconciliaciones-banorte-count').text(preconciliacionesBanorte.length);
-    $('#preconciliaciones-banorte-total').text(fmt.format(preconciliacionesBanorte.reduce((total, item) => total + item.total, 0)));
-    $('#preconciliacionBanorteBar').addClass('visible');
-    $('#conciliacionWorkspace').addClass('preconciliacion-bloqueada');
-}
-
-function descartarPreconciliacionesBanorte() {
-    preconciliacionesBanorteDescartadasPara = currentRule ? `${$('#estacionSelect').val()}|${currentRule.entidad_id}|${currentRule.afiliacion}|${widgetState.year}-${widgetState.month}` : '';
-    $('#preconciliacionBanorteBar').removeClass('visible');
-    $('#conciliacionWorkspace').removeClass('preconciliacion-bloqueada');
-    preconciliacionesBanorte = [];
-    renderCG();
-    renderTes();
-}
-
 async function aprobarPreconciliacionesBanorte() {
-    if (!preconciliacionesBanorte.length) return;
-    const $btn = $('#btn-aprobar-preconciliaciones-banorte').prop('disabled', true);
+    if (!preconciliacionesBanorte.length || preconciliacionBanorteEnCurso) return;
+    preconciliacionBanorteEnCurso = true;
+    const coincidencias = [...preconciliacionesBanorte];
     body_loading(true);
     try {
         const resultados = [];
-        for (const item of preconciliacionesBanorte) {
+        for (const item of coincidencias) {
             const respuesta = await fetch(URLS_V3.guardar, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(crearPayloadConciliacion(item.left_rows, item.tes_rows)) }).then(r => r.json());
             resultados.push(respuesta);
         }
-        $('#preconciliacionBanorteBar').removeClass('visible');
-        $('#conciliacionWorkspace').removeClass('preconciliacion-bloqueada');
         const fallidos = resultados.filter(r => r.status !== 'success');
-        if (fallidos.length) alert(`Se aprobaron ${resultados.length - fallidos.length} de ${resultados.length} preconciliaciones. ${fallidos[0].message || 'Revisa las restantes.'}`);
+        const aprobadas = resultados.length - fallidos.length;
+        if (aprobadas) {
+            toastr.success(
+                `Se conciliaron automáticamente ${aprobadas} coincidencia${aprobadas === 1 ? '' : 's'} de Banorte.`,
+                'Conciliación automática',
+                { timeOut: 5000, progressBar: true }
+            );
+        }
+        if (fallidos.length) {
+            toastr.error(fallidos[0].message || 'No fue posible conciliar todas las coincidencias automáticamente.', 'Conciliación automática');
+        }
         actualizarTodo();
-    } catch (e) { alert('No fue posible aprobar las preconciliaciones.'); }
-    finally { $btn.prop('disabled', false); body_loading(false); }
+    } catch (e) {
+        toastr.error('No fue posible completar la conciliación automática.', 'Conciliación automática');
+    } finally {
+        preconciliacionBanorteEnCurso = false;
+        body_loading(false);
+    }
 }
 
 function recalcTotals() {

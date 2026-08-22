@@ -1343,6 +1343,23 @@ let datatable_exchange_rate = $('#datatable_exchange_rate').DataTable({
     ajax: {
         url: '/administration/datatable_exchange_rate',
         type: 'POST',
+        dataSrc: function (json) {
+            if (json.disconnected && json.disconnected.length > 0) {
+                var lista = json.disconnected.map(function (e) {
+                    return '<li>' + e.station_name + ' (' + e.no_station + ')</li>';
+                }).join('');
+                alertify.myAlert(
+                    `<div class="container text-center text-warning">
+                        <h4 class="mt-2 text-warning">Estaciones sin conexión</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No se pudo obtener el tipo de cambio de las siguientes estaciones (posiblemente sin conexión):</p>
+                        <ul class="text-start">${lista}</ul>
+                    </div>`
+                );
+            }
+            return json.data;
+        },
         error: function() {
             $('#datatable_exchange_rate').waitMe('hide');
             alertify.myAlert(

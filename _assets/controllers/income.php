@@ -9,6 +9,7 @@ use OpenSpout\Writer\XLSX\Writer as SpoutXlsxWriter;
 
 require_once('./_assets/classes/code128.php');
 require_once('./_assets/models/EfcConciliacionModel.php');
+require_once('./_assets/models/EfcAnaliticosModel.php');
 
 class Income{
     public $twig;
@@ -24,6 +25,7 @@ class Income{
     public DocumentosModel $documentosModel;
     Public FacturasModel $FacturasModel;
     public EfcConciliacionModel $efcConciliacion;
+    public EfcAnaliticosModel $efcAnaliticos;
 
     /**
      * @param $twig
@@ -40,6 +42,7 @@ class Income{
         $this->clientesModel    = new ClientesModel;
         $this->FacturasModel    = new FacturasModel;
         $this->efcConciliacion  = new EfcConciliacionModel;
+        $this->efcAnaliticos    = new EfcAnaliticosModel;
         $this->twig             = $twig;
         $this->route            = 'views/income/';
 
@@ -2804,7 +2807,17 @@ public function anomalies_client_tickets()
             exit;
         }
 
-        $bankType = $_POST['bank_type'] ?? 'OTROS';
+        $bankType = strtoupper(trim($_POST['bank_type'] ?? 'OTROS'));
+        $originalName = $_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? 'archivo.tmp');
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+        // Afirme es un reporte de transacciones: su CSV sólo se procesa en la
+        // rama que inserta banco_afirme. Nunca se envía al flujo de Tesorería.
+        if ($bankType === 'AFIRME' && $extension !== 'csv') {
+            echo json_encode(['status' => 'error', 'message' => 'Para Afirme sólo se permite el archivo CSV de transacciones']);
+            exit;
+        }
+
         $filePath = '';
         $isTempFile = false;
         
@@ -2818,7 +2831,6 @@ public function anomalies_client_tickets()
         }
 
         // Nombre de archivo seguro
-        $originalName = $_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? 'archivo.tmp');
         $safeName = date('His') . '_' . basename($originalName);
         $targetFile = $targetDir . $safeName;
         
@@ -2848,8 +2860,6 @@ public function anomalies_client_tickets()
             echo json_encode(['status' => 'error', 'message' => "Error al recibir el archivo (Code: $errCode)."]);
             exit;
         }
-
-        $extension = strtolower(pathinfo($_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? $filePath), PATHINFO_EXTENSION));
 
         $server = "192.168.0.6";
         $db = "TG";
@@ -6227,6 +6237,77 @@ public function stamped_invoices_detail(): void
     public function efc_conc_undo(): void {
         ob_clean(); header('Content-Type: application/json');
         try{$data=json_decode(file_get_contents('php://input'),true)?:[];$this->efcConciliacion->undo((int)($data['grupo_id']??0),(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
+    }
+    public function efc_conc_reclasificaciones(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); if(!$station||$year<2020||$month<1||$month>12) throw new RuntimeException('Periodo o estacion invalidos.'); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->activeReclassifications($station,$year,$month)]); }
+        catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); } exit;
+    }
+    public function efc_conc_reclasificar(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $id=$this->efcConciliacion->reclassify($data,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','id'=>$id]); }
+        catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); } exit;
+    }
+    public function efc_conc_revertir_reclasificacion(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->reverseReclassification((int)($data['reclasificacion_id']??0),(string)($data['modo']??''),(string)($data['concepto']??''),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
+        catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); } exit;
+    }
+
+    /** Evidencia REGIO: sólo lectura, no altera la conciliación. */
+    public function efc_conc_analiticos_evidencia(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $station = (int)($_GET['estacion_id'] ?? 0);
+            $date = (string)($_GET['fecha'] ?? '');
+            $cg = isset($_GET['importe_cg']) && $_GET['importe_cg'] !== '' ? (float)$_GET['importe_cg'] : null;
+            $bank = isset($_GET['importe_banco']) && $_GET['importe_banco'] !== '' ? (float)$_GET['importe_banco'] : null;
+            echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->evidence($station,$date,$cg,$bank)]);
+        } catch (Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
+    }
+
+    public function efc_conc_analiticos_periodo(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->period((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        catch (Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
+    }
+
+    public function efc_conc_analiticos_bandeja(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->workspace((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    public function efc_conc_analiticos_vincular(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try{$this->efcAnaliticos->link(json_decode(file_get_contents('php://input'),true)?:[],(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    public function efc_conc_analiticos_desvincular(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try{$data=json_decode(file_get_contents('php://input'),true)?:[];$this->efcAnaliticos->unlink((int)($data['id']??0));echo json_encode(['status'=>'success']);}
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    /** Descarga el adjunto original sin reescribir ni regenerar el Excel. */
+    public function efc_conc_analiticos_archivo(): void {
+        try {
+            $file=$this->efcAnaliticos->originalFile((int)($_GET['id']??0));
+            while (ob_get_level() > 0) { ob_end_clean(); }
+            $name=preg_replace('/[^A-Za-z0-9._ -]/', '_', (string)$file['nombre_archivo']);
+            header('Content-Type: '.($file['mime_type'] ?: 'application/octet-stream'));
+            header('Content-Length: '.strlen($file['archivo']));
+            header('Content-Disposition: attachment; filename="'.$name.'"');
+            header('X-Content-Type-Options: nosniff');
+            echo $file['archivo'];
+        } catch (Throwable $e) {
+            http_response_code(404);
+            echo 'Archivo no disponible.';
+        }
+        exit;
     }
 
     /**

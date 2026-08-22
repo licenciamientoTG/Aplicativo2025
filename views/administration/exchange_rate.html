@@ -9,7 +9,8 @@
         <div class="row">
             <div class="col">
                 <label for="from">Fecha</label>
-                <input type="date" class="form-control" name="from" id="from" value="{{ now|date('Y-m-d') }}" min="{{ now|date('Y-m-d') }}">
+                <input type="date" class="form-control" name="from" id="from" value="{{ now|date('Y-m-d') }}"
+                    min="{{ now|date('Y-m-d') }}">
             </div>
             <div class="col">
                 <label for="hour">Hora</label>
@@ -31,13 +32,19 @@
         <div class="card-actions float-end">
             <div class="dropdown position-relative">
                 <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
-                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="19" cy="12" r="1"></circle>
+                        <circle cx="5" cy="12" r="1"></circle>
                     </svg>
                 </a>
                 <div class="dropdown-menu dropdown-menu-end">
-                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
-                    <a class="dropdown-item" href="/administration/get_binnacle" id="binnacle" target="_blank"><i data-feather="file-text"></i> Ver bitácora</a>
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a
+                        Excel</a>
+                    <a class="dropdown-item" href="/administration/get_binnacle" id="binnacle" target="_blank"><i
+                            data-feather="file-text"></i> Ver bitácora</a>
                 </div>
             </div>
         </div>
@@ -48,30 +55,30 @@
 
         <table id="datatable_exchange_rate" class="table table-striped table-sm w-100">
             <thead>
-            <tr>
-                <th class="w-5"><input type="checkbox" id="checkAll" title="Seleccionar todos"></th>
-                <th>DESCRIPCIÓN</th>
-                <th>NO. ESTACIÓN</th>
-                <th>ESTACIÓN</th>
-                <th>FECHA</th>
-                <th>HORA</th>
-                <th>CAMBIO</th>
-                <th class="w-10">ACCIONES</th>
-            </tr>
+                <tr>
+                    <th class="w-5"><input type="checkbox" id="checkAll" title="Seleccionar todos"></th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>NO. ESTACIÓN</th>
+                    <th>ESTACIÓN</th>
+                    <th>FECHA</th>
+                    <th>HORA</th>
+                    <th>CAMBIO</th>
+                    <th class="w-10">ACCIONES</th>
+                </tr>
             </thead>
             <tbody>
             </tbody>
             <tfoot>
-            <tr>
-                <th><input type="checkbox" id="checkAllFoot" title="Seleccionar todos"></th>
-                <th>DESCRIPCIÓN</th>
-                <th>NO. ESTACIÓN</th>
-                <th>ESTACIÓN</th>
-                <th>FECHA</th>
-                <th>HORA</th>
-                <th>CAMBIO</th>
-                <th>ACCIONES</th>
-            </tr>
+                <tr>
+                    <th><input type="checkbox" id="checkAllFoot" title="Seleccionar todos"></th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>NO. ESTACIÓN</th>
+                    <th>ESTACIÓN</th>
+                    <th>FECHA</th>
+                    <th>HORA</th>
+                    <th>CAMBIO</th>
+                    <th>ACCIONES</th>
+                </tr>
             </tfoot>
         </table>
     </div>
@@ -83,7 +90,7 @@
 {% block myjs %}
 <script src="{{ js_v('administration.js') }}"></script>
 <script>
-    $(document).ready(function() {
+    $(document).ready(function () {
         function isValidDate(dateString) {
             var regex = /^\d{4}-\d{2}-\d{2}$/;
             if (!dateString.match(regex)) return false;
@@ -102,7 +109,7 @@
         }
 
         // Seleccionar / deseleccionar todos los checkboxes de la tabla
-        $(document).on('change', '#checkAll, #checkAllFoot', function() {
+        $(document).on('change', '#checkAll, #checkAllFoot', function () {
             var checked = $(this).prop('checked');
             $('input[name="check"]').prop('checked', checked);
             // Mantener ambos checkboxes sincronizados
@@ -110,13 +117,13 @@
         });
 
         // Si se desmarca alguno individualmente, desmarcar el "seleccionar todos"
-        $(document).on('change', 'input[name="check"]', function() {
+        $(document).on('change', 'input[name="check"]', function () {
             var total = $('input[name="check"]').length;
             var checked = $('input[name="check"]:checked').length;
             $('#checkAll, #checkAllFoot').prop('checked', total === checked);
         });
 
-        $('#submitButton').click(function() {
+        $('#submitButton').click(function () {
 
             // Vamos a validar los campos antes de enviar la información
             var from = $('#from').val();
@@ -148,7 +155,7 @@
 
             var selectedRows = [];
             var cambios = [];
-            $('input[name="check"]:checked').each(function() {
+            $('input[name="check"]:checked').each(function () {
                 selectedRows.push($(this).val());
                 var cambioText = $(this).closest('tr').find('td:eq(6)').text();
                 // Remover el signo de dólar y otros caracteres no numéricos
@@ -168,8 +175,8 @@
                 var margen_superior_valor = promedio + (promedio * 0.05);
 
                 if (cot < margen_inferior_valor || cot > margen_superior_valor) {
-                    alertify.confirm('Confirme', '<p class="text-center">El tipo de cambio ingresado ($' + cot + ') supera el margen inferior/superior($'+margen_inferior_valor+'/$'+margen_superior_valor+') de +/-5%. </p><p class="text-center">¿Esta segur@ de realizar este movimiento?</p>',
-                        function(){
+                    alertify.confirm('Confirme', '<p class="text-center">El tipo de cambio ingresado ($' + cot + ') supera el margen inferior/superior($' + margen_inferior_valor + '/$' + margen_superior_valor + ') de +/-5%. </p><p class="text-center">¿Esta segur@ de realizar este movimiento?</p>',
+                        function () {
                             $.ajax({
                                 type: "POST",
                                 url: "/administration/exchange_rate_process",
@@ -180,11 +187,11 @@
                                     cot: cot
                                 },
                                 // Vamos a agregar la clase .loading antes de enviar
-                                beforeSend: function() {
+                                beforeSend: function () {
                                     $('.wrapper').addClass('loading');
                                     $('#submitButton').prop('disabled', true);
                                 },
-                                success: function(response) {
+                                success: function (response) {
                                     // Manejar la respuesta del servidor aquí
                                     alertify.myAlert(
                                         `<div class="container text-center text-success">
@@ -200,13 +207,13 @@
                                     }, 2000);
                                     $('#submitButton').prop('disabled', false);
                                 },
-                                error: function(xhr, status, error) {
+                                error: function (xhr, status, error) {
                                     // Manejar cualquier error aquí
                                     console.error('Error:', error);
                                 }
                             });
                         },
-                        function(){
+                        function () {
                             toastr.info('Operación cancelada', '¡Atención!', { timeOut: 3000 });
                             return;
                         }
@@ -222,10 +229,10 @@
                             cot: cot
                         },
                         // Vamos a agregar la clase .loading antes de enviar
-                        beforeSend: function() {
+                        beforeSend: function () {
                             $('.wrapper').addClass('loading');
                         },
-                        success: function(response) {
+                        success: function (response) {
                             // Manejar la respuesta del servidor aquí
                             alertify.myAlert(
                                 `<div class="container text-center text-success">
@@ -241,7 +248,7 @@
                             }, 2000);
 
                         },
-                        error: function(xhr, status, error) {
+                        error: function (xhr, status, error) {
                             // Manejar cualquier error aquí
                             console.error('Error:', error);
                         }
