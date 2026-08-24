@@ -1161,22 +1161,47 @@ function normalizarRef(ref) {
     return String(ref ?? '').trim();
 }
 
+// Las conciliaciones antiguas de Tesorería se guardaron como
+// "YYYY-MM-DD_AFILIACION". AMEX antes podía conservar ceros iniciales y la
+// nueva fuente los normaliza; ambas formas representan el mismo depósito.
+function normalizarRefLegacyTes(ref) {
+    const valor = normalizarRef(ref);
+    const match = valor.match(/^(\d{4}-\d{2}-\d{2})_(.+)$/);
+    if (!match) return valor;
+    const afiliacion = match[2].trim();
+    const sinCeros = afiliacion.replace(/^0+/, '') || afiliacion;
+    return `${match[1]}_${sinCeros}`;
+}
+
+function refsTesEquivalentes(a, b) {
+    return normalizarRef(a) === normalizarRef(b)
+        || normalizarRefLegacyTes(a) === normalizarRefLegacyTes(b);
+}
+
 function hasConciliada(origen, ref) {
     const refNorm = normalizarRef(ref);
-    return !!(refNorm && conciliadasSet[origen] && conciliadasSet[origen].has(refNorm));
+    if (!refNorm || !conciliadasSet[origen]) return false;
+    return conciliadasSet[origen].has(refNorm)
+        || (origen === 'TES' && conciliadasSet[origen].has(normalizarRefLegacyTes(refNorm)));
 }
 
 function getHistorialDetalle(origen, ref) {
     const refNorm = normalizarRef(ref);
     if (!refNorm) return null;
-    return historial.find(h => h.origen === origen && normalizarRef(h.ref) === refNorm) || null;
+    return historial.find(h => h.origen === origen && (
+        normalizarRef(h.ref) === refNorm
+        || (origen === 'TES' && refsTesEquivalentes(h.ref, refNorm))
+    )) || null;
 }
 
 function getHistorialDetalles(origen, refs) {
     const refsNorm = [...new Set((refs || []).map(normalizarRef).filter(Boolean))];
     if (!refsNorm.length) return [];
     const refsSet = new Set(refsNorm);
-    return historial.filter(h => h.origen === origen && refsSet.has(normalizarRef(h.ref)));
+    return historial.filter(h => h.origen === origen && (
+        refsSet.has(normalizarRef(h.ref))
+        || (origen === 'TES' && refsNorm.some(ref => refsTesEquivalentes(h.ref, ref)))
+    ));
 }
 
 function isConciliatedCGRef(ref) {
@@ -1508,6 +1533,7 @@ async function fetchTesoreria(eid, year, month) {
                 byFecha[fecha].componentes[ref] = {
                     ref,
                     monto: 0,
+                    afiliacion: afil,
                     descripcion: m.Descripcion || m.Estacion || afil || ''
                 };
             }
@@ -1575,7 +1601,10 @@ async function fetchConciliadas(estid, eid, afil, year, month) {
     const gruposConDiff = {};
     historial.forEach(d => {
         if (d.origen === 'CG')       conciliadasSet.CG.add(normalizarRef(d.ref));
-        if (d.origen === 'TES')      conciliadasSet.TES.add(normalizarRef(d.ref));
+        if (d.origen === 'TES') {
+            conciliadasSet.TES.add(normalizarRef(d.ref));
+            conciliadasSet.TES.add(normalizarRefLegacyTes(d.ref));
+        }
         if (d.origen === 'TRANSITO') conciliadasSet.TRANSITO.add(normalizarRef(d.ref));
         if (d.origen === 'DIFERIDO') conciliadasSet.DIFERIDO.add(normalizarRef(d.ref));
         gruposConDiff[d.grupo_id] = d.diferencia;
@@ -1591,11 +1620,17 @@ function integrarTesoreriaHistorica() {
     tesData.forEach(item => {
         [item.id_origen, ...(item.all_refs || [])].forEach(ref => {
             ref = normalizarRef(ref);
-            if (ref) refsVisibles.add(ref);
+            if (ref) {
+                refsVisibles.add(ref);
+                refsVisibles.add(normalizarRefLegacyTes(ref));
+            }
         });
         (item.components || []).forEach(comp => {
             const ref = normalizarRef(comp.ref);
-            if (ref) refsVisibles.add(ref);
+            if (ref) {
+                refsVisibles.add(ref);
+                refsVisibles.add(normalizarRefLegacyTes(ref));
+            }
         });
     });
 
@@ -1603,7 +1638,7 @@ function integrarTesoreriaHistorica() {
         .filter(item => item.origen === 'TES')
         .forEach(item => {
             const ref = normalizarRef(item.ref);
-            if (!ref || refsVisibles.has(ref)) return;
+            if (!ref || refsVisibles.has(ref) || refsVisibles.has(normalizarRefLegacyTes(ref))) return;
             // Si ya se sincronizó a cero, no debe resucitar como una fila
             // histórica; el detalle queda sólo como trazabilidad en el grupo.
             if (Math.abs(parseFloat(item.monto) || 0) < 0.01) return;
@@ -2188,14 +2223,14 @@ function getAmexComision(item) {
     return { comision: totalCom, iva: totalIva, bruto: totalBruto };
 }
 
-function getAmexComisionByRef(ref, fechaFallback = '') {
+function getAmexComisionByRef(ref, fechaFallback = '', afiliacion = '') {
     if (!isAmex) return null;
     const refNorm = normalizarRef(ref);
     if (!refNorm) return null;
     const parts = refNorm.split('_');
-    if (parts.length < 2) return null;
-    const fecha = fechaFallback || parts[0];
-    const afil  = parts.slice(1).join('_');
+    const fecha = fechaFallback || (parts.length >= 2 ? parts[0] : '');
+    const afil  = afiliacion || (parts.length >= 2 ? parts.slice(1).join('_') : '');
+    if (!fecha || !afil) return null;
     const normalAfil = afil.replace(/^0+/, '') || afil;
     const key = `${fecha}_${normalAfil}`;
     return amexComisiones[key] || null;
@@ -2207,7 +2242,7 @@ function getAmexComisionByRef(ref, fechaFallback = '') {
 function montoConciliacionTesComponente(comp, fecha) {
     let monto = parseFloat(comp.monto || 0);
     if (isAmex) {
-        const comision = getAmexComisionByRef(comp.ref, fecha);
+        const comision = getAmexComisionByRef(comp.ref, fecha, comp.afiliacion || '');
         if (comision) monto += parseFloat(comision.comision || 0) + parseFloat(comision.iva || 0);
     }
     return monto;
@@ -2281,7 +2316,7 @@ function renderTes() {
                         }
                         return;
                     }
-                    const amexComp = getAmexComisionByRef(comp.ref, fecha);
+                    const amexComp = getAmexComisionByRef(comp.ref, fecha, comp.afiliacion || '');
                     const montoActualComp = parseFloat(comp.monto || 0)
                         + ((isAmex && amexComp) ? (parseFloat(amexComp.comision || 0) + parseFloat(amexComp.iva || 0)) : 0);
                     if (Math.abs((parseFloat(hComp.monto) || 0) - montoActualComp) > 0.01) {
