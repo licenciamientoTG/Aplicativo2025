@@ -95,6 +95,7 @@
   function comparableMatchAmount(match,turn,field){return comparablePaperAmount(match.paper,turn.currency,field,turn.currency==='USD'&&match.exchangeRate?match.exchangeRate:exchangeRate())}
   function comparablePaperLabel(paper,turn,rate=exchangeRate()){const amount=paperAmount(paper,turn.currency,'real');return turn.currency==='USD'?`USD $${amount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · ${fmt(comparablePaperAmount(paper,turn.currency,'real',rate))}`:fmt(amount)}
   function turnAmountLabel(turn){return turn.currency==='USD'?`${fmt(turn.amount)} MXN`:fmt(turn.amount)}
+  function closestPaperByDate(candidates,turn){if(candidates.length<2)return candidates[0]||null;const ordered=[...candidates].sort((a,b)=>Math.abs(days(turn.date,a.date))-Math.abs(days(turn.date,b.date)));return Math.abs(days(turn.date,ordered[0].date))<Math.abs(days(turn.date,ordered[1].date))?ordered[0]:null}
   /* Regla anterior, conservada temporalmente como referencia del cambio de prioridad.
   function analyticMatches(){const turns=sales(state.rawCg,state.reclasses).filter(x=>x.currency==='MN'||x.currency==='USD'),papers=[...state.analytics],linked=new Map(),used=new Set();state.analyticsLinks.forEach(link=>{const paper=papers.find(x=>x.id===Number(link.papeleta_id));if(paper){linked.set(`${link.fecha_cg}|${link.turno}|${link.concepto}`,{paper,criterion:link.criterio,linkId:Number(link.id)});used.add(paper.id)}});turns.forEach(turn=>{const key=cgKey(turn);if(linked.has(key))return;const real=papers.filter(p=>!used.has(p.id)&&paperAmount(p,turn.currency,'real')>0&&Math.abs(paperAmount(p,turn.currency,'real')-turn.amount)<=TOLERANCE);let match=null;if(real.length===1)match={paper:real[0],criterion:'REAL ±$20'};else if(!real.length){const declared=papers.filter(p=>!used.has(p.id)&&paperAmount(p,turn.currency,'declared')>0&&Math.abs(paperAmount(p,turn.currency,'declared')-turn.amount)<.005);if(declared.length===1)match={paper:declared[0],criterion:'DICE CONTENER exacto'}}if(match){linked.set(key,match);used.add(match.paper.id)}});return {turns,papers,linked,used}}
   */
@@ -105,9 +106,9 @@
     turns.forEach(turn=>{
       const key=cgKey(turn);if(linked.has(key))return;
       const available=papers.filter(p=>!used.has(p.id)),real=available.filter(p=>comparablePaperAmount(p,turn.currency,'real')>0&&Math.abs(comparablePaperAmount(p,turn.currency,'real')-turn.amount)<=analyticTolerance(turn.currency)),declared=available.filter(p=>comparablePaperAmount(p,turn.currency,'declared')>0&&Math.abs(comparablePaperAmount(p,turn.currency,'declared')-turn.amount)<.005);
-      let match=null;
-      if(real.length===1)match={paper:real[0],criterion:'REAL ±$20'};
-      else if(declared.length===1)match={paper:declared[0],criterion:'DICE CONTENER exacto'};
+      const realPaper=closestPaperByDate(real,turn),declaredPaper=closestPaperByDate(declared,turn);let match=null;
+      if(realPaper)match={paper:realPaper,criterion:real.length>1?'REAL · fecha más cercana':`REAL ±$${analyticTolerance(turn.currency)}`};
+      else if(declaredPaper)match={paper:declaredPaper,criterion:declared.length>1?'DICE CONTENER · fecha más cercana':'DICE CONTENER exacto'};
       if(match){linked.set(key,match);used.add(match.paper.id)};
     });
     return {turns,papers,linked,used};
