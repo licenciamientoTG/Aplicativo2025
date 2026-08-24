@@ -360,17 +360,10 @@
       {% if authorized(81) %}
       <div class="col-auto ms-auto d-flex gap-2">
         {% for cod, b in bancos %}
-        {% if cod == 'AFIRME' %}
-        <button type="button" class="btn btn-sm btn-outline-secondary" disabled
-                title="Afirme se consulta desde Transacciones; este módulo no guarda su CSV">
-          <i class="fas fa-ban"></i> Subir {{ b.etiqueta }}
-        </button>
-        {% else %}
         <button type="button" class="btn btn-sm btn-outline-primary btn-upload-banco" data-banco="{{ cod }}"
                 data-bs-toggle="modal" data-bs-target="#uploadModal">
           <i class="fas fa-file-upload"></i> Subir {{ b.etiqueta }}
         </button>
-        {% endif %}
         {% endfor %}
       </div>
       {% endif %}
