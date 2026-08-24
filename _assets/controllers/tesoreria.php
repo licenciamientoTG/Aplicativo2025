@@ -56,6 +56,7 @@ class Tesoreria
         '0601500741',           // Banorte, Diaz Gas SA de CV (MXN)
         '072164006015007416',   // Banorte, DG 0741 DLLS (USD)
         '0185322470',           // Banorte, Diaz Gas SA de CV
+        '65510224098',   // Santander, TSAcuenta nuev 
     ];
 
     /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
