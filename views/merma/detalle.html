@@ -507,6 +507,13 @@ $(document).ready(function () {
     const FAM_CODPRD = {maxima: 1, super: 2, diesel: 3}; // codprd base por familia, para ligar la evidencia
     const PUEDE_CORREGIR = {{ authorized(83) ? 'true' : 'false' }}; // permiso 83: Corregir físico y compras (Merma)
 
+    // Evidencia obligatoria por fila del modal de corrección: llave "codprd-nrotur-codtan"
+    // -> File[] elegidos, esperando confirmar "Guardar cambios". Se sube junto con la
+    // corrección (no antes, no como paso aparte) para que ambas cosas queden ligadas
+    // en un solo flujo — ver corregir_fisico_lote() más abajo.
+    let fisicoEvidenciaPorFila = {};
+    function fisicoRowKey(codprd, nrotur, codtan) { return codprd + '-' + nrotur + '-' + codtan; }
+
     $(document).on('click', '.fis-editable', function (e) {
         e.stopPropagation();
         const fecha = $(this).data('fecha');
@@ -517,16 +524,17 @@ $(document).ready(function () {
         $('#fisicoModal').data('fecha', fecha);
         $('#fisico_rows').html('<div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span> Consultando estación...</div>');
         $('#btnGuardarFisico').prop('disabled', true).show();
+        fisicoEvidenciaPorFila = {}; // reinicia adjuntos pendientes del modal anterior
         new bootstrap.Modal(document.getElementById('fisicoModal')).show();
         $.post('/merma/cortes_fisicos', { codgas: CODGAS, fecha: fecha, familia: fam, turno: turno }, function (res) {
             if (!res.success) { $('#fisico_rows').html('<div class="alert alert-danger">' + res.message + '</div>'); $('#btnGuardarFisico').hide(); return; }
             if (!res.cortes.length) { $('#fisico_rows').html('<div class="alert alert-warning">La estación no tiene cortes para este día.</div>'); $('#btnGuardarFisico').hide(); return; }
             const hayRetro = res.cortes.some(c => c.recomendado_retro !== null && c.recomendado_retro !== undefined);
-            let html = '<p class="text-muted small mb-2">Captura solo los tanques que quieras corregir; deja vacíos los demás — no se tocan. Un valor igual al actual tampoco se envía.</p>'
+            let html = '<p class="text-muted small mb-2">Captura solo los tanques que quieras corregir; deja vacíos los demás — no se tocan. Un valor igual al actual tampoco se envía. Toda fila con valor nuevo requiere adjuntar evidencia (foto/PDF) que la justifique.</p>'
                 + '<table class="table table-sm align-middle mb-0"><thead><tr>'
                 + '<th>Producto</th><th>Turno</th><th>Tanque</th><th>Valor actual (lts)</th>'
                 + '<th>Sugerido</th>' + (hayRetro ? '<th title="Calculado desde el turno siguiente (ya válido), repartido por tanque">Sugerido por tanque</th>' : '')
-                + '<th style="width:170px">Nuevo valor</th><th></th></tr></thead><tbody>';
+                + '<th style="width:170px">Nuevo valor</th><th style="width:150px">Evidencia</th><th></th></tr></thead><tbody>';
             res.cortes.forEach(function (c, idx) {
                 const corrupto = c.can !== null && (Number(c.can) < res.min || Number(c.can) > res.max);
                 const sugerido = (c.recomendado !== null && c.recomendado !== undefined) ? Number(c.recomendado) : null;
@@ -549,6 +557,12 @@ $(document).ready(function () {
                     + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm fisico-nuevo"'
                     + ' data-can="' + Number(c.can) + '" data-codprd="' + c.codprd + '" data-nrotur="' + c.nrotur + '" data-codtan="' + c.codtan + '"'
                     + (corrupto && precarga !== null ? ' value="' + precarga + '"' : '') + '></td>'
+                    + '<td class="fisico-evidencia-cell" data-codprd="' + c.codprd + '" data-nrotur="' + c.nrotur + '" data-codtan="' + c.codtan + '">'
+                    + '<input type="file" class="d-none fisico-evidencia-input" accept="application/pdf,image/jpeg,image/png" multiple>'
+                    + '<button type="button" class="btn btn-sm btn-merma-neutro fisico-evidencia-btn" title="Adjuntar evidencia de este cambio">'
+                    + '<i class="fas fa-paperclip"></i> Adjuntar</button>'
+                    + '<div class="fisico-evidencia-lista small mt-1"></div>'
+                    + '</td>'
                     + '<td>'
                     + (hist.length ? '<button type="button" class="btn btn-sm btn-link p-0 fisico-hist-toggle" data-target="#' + rowId + '" title="Ver últimos días"><i class="fas fa-chevron-down"></i></button>' : '')
                     + '</td>'
@@ -559,7 +573,7 @@ $(document).ready(function () {
                     // Todos los cortes del historial comparten los mismos tanques
                     // (misma llave codprd-turno), así que se listan desde el primero.
                     const tanquesHist = Object.keys(hist[0].tanques || {}).sort((a, b) => a - b);
-                    html += '<tr id="' + rowId + '" class="d-none"><td colspan="' + (hayRetro ? 8 : 7) + '" class="p-0">'
+                    html += '<tr id="' + rowId + '" class="d-none"><td colspan="' + (hayRetro ? 9 : 8) + '" class="p-0">'
                         + '<table class="table table-sm table-borderless mb-0 bg-light"><tbody>'
                         + '<tr><td class="text-muted small" style="width:120px"></td>'
                         + hist.map(h => '<td class="text-muted small">' + h.fecha + '</td>').join('')
@@ -578,10 +592,80 @@ $(document).ready(function () {
             });
             $('#fisico_rows').html(html + '</tbody></table>');
             $('#btnGuardarFisico').prop('disabled', false).show();
+            actualizarEstadoGuardarFisico();
         }, 'json').fail(() => { $('#fisico_rows').html('<div class="alert alert-danger">Error de servidor</div>'); $('#btnGuardarFisico').hide(); });
     });
 
+    // ---- Evidencia obligatoria por fila (dentro del modal de corrección) ---
+    // Cada fila con "Nuevo valor" capturado necesita 1+ archivo adjunto en su
+    // propia celda de Evidencia antes de poder guardar; se sube junto con la
+    // corrección al confirmar, no antes por separado.
+    function fisicoRenderEvidenciaFila($celda) {
+        const key = fisicoRowKey($celda.data('codprd'), $celda.data('nrotur'), $celda.data('codtan'));
+        const files = fisicoEvidenciaPorFila[key] || [];
+        const $lista = $celda.find('.fisico-evidencia-lista');
+        if (!files.length) { $lista.html(''); return; }
+        let html = '';
+        files.forEach(function (f, i) {
+            html += '<div class="d-flex align-items-center justify-content-between">'
+                + '<span class="text-truncate" style="max-width:110px;" title="' + escHtml(f.name) + '">'
+                + '<i class="fas ' + (f.name.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf' : 'fa-file-image') + '"></i> '
+                + escHtml(f.name) + '</span>'
+                + '<i class="fas fa-times text-danger fisico-evidencia-quitar" data-i="' + i + '" style="cursor:pointer;" title="Quitar"></i>'
+                + '</div>';
+        });
+        $lista.html(html);
+    }
+
+    // Habilita "Guardar cambios" solo si toda fila con valor nuevo distinto
+    // del actual ya tiene evidencia adjunta pendiente de subir.
+    function actualizarEstadoGuardarFisico() {
+        let faltantes = 0;
+        $('#fisico_rows .fisico-nuevo').each(function () {
+            const $input = $(this);
+            const valor  = $input.val();
+            const $celda = $input.closest('tr').find('.fisico-evidencia-cell');
+            if (valor === '' || valor === null || isNaN(valor)) { $celda.removeClass('border border-danger'); return; }
+            const can = Number($input.data('can'));
+            if (Math.abs(Number(valor) - can) < 0.005) { $celda.removeClass('border border-danger'); return; }
+            const key = fisicoRowKey($input.data('codprd'), $input.data('nrotur'), $input.data('codtan'));
+            const tieneEvidencia = (fisicoEvidenciaPorFila[key] || []).length > 0;
+            $celda.toggleClass('border border-danger', !tieneEvidencia);
+            if (!tieneEvidencia) faltantes++;
+        });
+        $('#btnGuardarFisico').prop('disabled', faltantes > 0)
+            .attr('title', faltantes > 0 ? 'Adjunta evidencia en las filas marcadas en rojo antes de guardar' : '');
+    }
+
+    $(document).on('input', '.fisico-nuevo', actualizarEstadoGuardarFisico);
+
+    $(document).on('click', '.fisico-evidencia-btn', function () {
+        $(this).closest('.fisico-evidencia-cell').find('.fisico-evidencia-input').click();
+    });
+
+    $(document).on('change', '.fisico-evidencia-input', function () {
+        if (!this.files || !this.files.length) return;
+        const $celda = $(this).closest('.fisico-evidencia-cell');
+        const key = fisicoRowKey($celda.data('codprd'), $celda.data('nrotur'), $celda.data('codtan'));
+        if (!fisicoEvidenciaPorFila[key]) fisicoEvidenciaPorFila[key] = [];
+        Array.from(this.files).forEach(f => fisicoEvidenciaPorFila[key].push(f));
+        $(this).val('');
+        fisicoRenderEvidenciaFila($celda);
+        actualizarEstadoGuardarFisico();
+    });
+
+    $(document).on('click', '.fisico-evidencia-quitar', function () {
+        const $celda = $(this).closest('.fisico-evidencia-cell');
+        const key = fisicoRowKey($celda.data('codprd'), $celda.data('nrotur'), $celda.data('codtan'));
+        (fisicoEvidenciaPorFila[key] || []).splice($(this).data('i'), 1);
+        fisicoRenderEvidenciaFila($celda);
+        actualizarEstadoGuardarFisico();
+    });
+
     // Guardado en lote: solo filas con valor capturado Y distinto del actual.
+    // Sube primero la evidencia de cada fila (ya validada como obligatoria) y
+    // solo si todas las subidas requeridas salen bien continúa con la
+    // corrección — si alguna evidencia falla, no se escribe nada en StockReal.
     $(document).on('click', '#btnGuardarFisico', function () {
         const $btn   = $(this);
         const fecha  = $('#fisicoModal').data('fecha');
@@ -611,16 +695,48 @@ $(document).ready(function () {
             return;
         }
 
+        // Evidencia obligatoria: ninguna fila a corregir debe quedar sin adjunto.
+        const sinEvidencia = filas.filter(f => !(fisicoEvidenciaPorFila[fisicoRowKey(f.codprd, f.nrotur, f.codtan)] || []).length);
+        if (sinEvidencia.length) {
+            mermaToast('Adjunta evidencia en todas las filas a corregir (' + sinEvidencia.length + ' sin evidencia).', 'warning');
+            actualizarEstadoGuardarFisico();
+            return;
+        }
+
         if (!confirm('¿Corregir ' + filas.length + ' corte(s) en la estación?\nSe escribirán en StockReal y el día se resincronizará una vez al final.')) return;
 
-        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Guardando...');
-        $.post('/merma/corregir_fisico_lote', {
-            codgas: CODGAS, fecha: fecha, filas: JSON.stringify(filas),
-        }, function (res) {
-            if (res.success) { mermaToastReload(res.message, 'success'); }
-            else { mermaToast(res.message, 'danger'); $btn.prop('disabled', false).html('Guardar cambios'); }
-        }, 'json').fail(function () {
-            mermaToast('Error de servidor', 'danger');
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Subiendo evidencia...');
+
+        const subidasEvidencia = filas.map(function (f) {
+            const fd = new FormData();
+            fd.append('codgas', CODGAS);
+            fd.append('fecha', fecha);
+            fd.append('codprd', f.codprd);
+            fd.append('turno', f.nrotur);
+            fisicoEvidenciaPorFila[fisicoRowKey(f.codprd, f.nrotur, f.codtan)].forEach(file => fd.append('evidencia[]', file));
+            return fetch('/merma/subir_evidencia_fisico', { method: 'POST', body: fd }).then(r => r.json());
+        });
+
+        Promise.all(subidasEvidencia).then(function (resultados) {
+            const fallidas = resultados.filter(r => !r.success);
+            if (fallidas.length) {
+                mermaToast('No se pudo subir la evidencia de ' + fallidas.length + ' fila(s); la corrección no se aplicó.', 'danger');
+                $btn.prop('disabled', false).html('Guardar cambios');
+                return;
+            }
+
+            $btn.html('<span class="spinner-border spinner-border-sm"></span> Guardando...');
+            $.post('/merma/corregir_fisico_lote', {
+                codgas: CODGAS, fecha: fecha, filas: JSON.stringify(filas),
+            }, function (res) {
+                if (res.success) { mermaToastReload(res.message, 'success'); }
+                else { mermaToast(res.message, 'danger'); $btn.prop('disabled', false).html('Guardar cambios'); }
+            }, 'json').fail(function () {
+                mermaToast('Error de servidor', 'danger');
+                $btn.prop('disabled', false).html('Guardar cambios');
+            });
+        }).catch(function (err) {
+            mermaToast('Error subiendo evidencia: ' + err.message, 'danger');
             $btn.prop('disabled', false).html('Guardar cambios');
         });
     });

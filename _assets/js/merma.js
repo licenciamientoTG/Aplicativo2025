@@ -33,6 +33,55 @@ $(document).ready(function () {
         if ($wrap.length) {
             $wrap.prepend($wrap.find('.top'));
         }
+
+        // ---- Zoom de tabla (botones achicar/agrandar junto a la campanita) --
+        // transform: scale() (no font-size) para que "achicar" reduzca la
+        // tabla completa a la vista (sin scroll), no solo el texto.
+        var ZOOM_NIVELES = [0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2];
+        var zoomGuardado = parseFloat(localStorage.getItem('merma_tabla_zoom'));
+        var zoomIdx = ZOOM_NIVELES.indexOf(zoomGuardado);
+        if (zoomIdx === -1) zoomIdx = ZOOM_NIVELES.indexOf(1);
+
+        $wrap.css('transform-origin', 'top left');
+        // Altura real (sin escalar) medida una sola vez, antes de tocar
+        // transform: si se mide después de aplicar scale(), ya viene
+        // reducida y el cálculo de margen de compensación queda mal.
+        var altoOriginal = $wrap.get(0).getBoundingClientRect().height;
+
+        function aplicarZoom() {
+            var val = ZOOM_NIVELES[zoomIdx];
+            $wrap.css('transform', 'scale(' + val + ')');
+            // Compensa el hueco/recorte que deja el scale() ajustando el
+            // margen inferior a lo que realmente ocupa la tabla escalada.
+            $wrap.css('margin-bottom', (altoOriginal * (val - 1)) + 'px');
+            $('#btn_tabla_zoom_out').prop('disabled', zoomIdx === 0);
+            $('#btn_tabla_zoom_in').prop('disabled', zoomIdx === ZOOM_NIVELES.length - 1);
+            localStorage.setItem('merma_tabla_zoom', val);
+        }
+
+        $(document).on('click', '#btn_tabla_zoom_out', function () {
+            if (zoomIdx > 0) { zoomIdx--; aplicarZoom(); }
+        });
+        $(document).on('click', '#btn_tabla_zoom_in', function () {
+            if (zoomIdx < ZOOM_NIVELES.length - 1) { zoomIdx++; aplicarZoom(); }
+        });
+
+        // Botones inyectados en la navbar, a un lado de la campanita de
+        // notificaciones (#alertsDropdown vive en views/layouts/navbar.html,
+        // compartida por toda la app — no se toca el archivo, solo se
+        // insertan estos <li> cuando la tabla de merma está presente).
+        var $navBell = $('#alertsDropdown').closest('li.nav-item');
+        if ($navBell.length && !$('#btn_tabla_zoom_out').length) {
+            $navBell.before(
+                '<li class="nav-item d-flex align-items-center">' +
+                '<button type="button" class="btn btn-merma-neutro btn-sm me-1" id="btn_tabla_zoom_out" title="Achicar tabla">' +
+                '<i class="fas fa-search-minus"></i></button>' +
+                '<button type="button" class="btn btn-merma-neutro btn-sm me-2" id="btn_tabla_zoom_in" title="Agrandar tabla">' +
+                '<i class="fas fa-search-plus"></i></button>' +
+                '</li>'
+            );
+        }
+        aplicarZoom();
     }
 
     // ---- Captura inline: merma s/d y comentarios --------------------------

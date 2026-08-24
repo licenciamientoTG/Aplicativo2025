@@ -213,6 +213,13 @@
 .merma-tabla .sep-r { border-right-width: 2px; }
 .merma-tabla tr > :last-child { border-right: none; }
 
+/* ---- Zoom de tabla (analisis.html): botones +/- junto a la campanita ---
+   El zoom real se aplica por JS con transform: scale() sobre
+   .merma-tabla-wrap (ver merma.js) para poder "achicar" y ver la tabla
+   completa sin scroll. transition solo para que el cambio de escala se
+   sienta suave. */
+.merma-tabla-wrap { transition: transform .15s ease-out, margin-bottom .15s ease-out; }
+
 /* Encabezados sticky (dos niveles) */
 .merma-tabla thead th { position: sticky; z-index: 30; }
 .merma-tabla thead tr:first-child th {
