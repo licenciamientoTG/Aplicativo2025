@@ -6282,6 +6282,13 @@ public function stamped_invoices_detail(): void
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 
+    /** Tipo de cambio histórico, por inicio de turno; sólo lectura de SG12. */
+    public function efc_conc_tipo_cambio_turnos(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->exchangeRatesForTurns((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
     /** Papeletas REGIO para corrección trazable de fecha. */
     public function efc_conc_analiticos_papeletas(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');

@@ -127,16 +127,38 @@ class EfcAnaliticosModel {
     }
 
     public function link(array $data, int $userId): void {
-        $station=(int)($data['station_id']??0); $paper=(int)($data['paper_id']??0); $date=(string)($data['date']??''); $turn=(string)($data['turn']??''); $concept=(string)($data['currency']??''); $amount=(float)($data['amount']??0); $criterion=(string)($data['criterion']??'MANUAL'); $exchangeRate=isset($data['exchange_rate']) ? (float)$data['exchange_rate'] : null;
+        $station=(int)($data['station_id']??0); $paper=(int)($data['paper_id']??0); $date=(string)($data['date']??''); $turn=(string)($data['turn']??''); $concept=(string)($data['currency']??''); $amount=(float)($data['amount']??0); $criterion=(string)($data['criterion']??'MANUAL');
         if(!$station||!$paper||!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)||$turn===''||!in_array($concept,['MN','USD'],true)||$amount<=0) throw new RuntimeException('Datos de vínculo inválidos.');
-        if($concept==='USD' && (!$exchangeRate || $exchangeRate<=0)) throw new RuntimeException('Capture un tipo de cambio válido para asociar dólares.');
         $this->db->beginTransaction();
         try {
             $check=$this->db->prepare("SELECT id FROM dbo.efc_conc_analiticos_papeletas WHERE id=? AND estacion_id=?"); $check->execute([$paper,$station]); if(!$check->fetch()) throw new RuntimeException('La papeleta no pertenece a la estación seleccionada.');
+            // El TC enviado por el navegador no es una fuente válida: siempre se
+            // vuelve a resolver contra Cotizaciones para conservar trazabilidad.
+            $exchangeRate=$concept==='USD' ? $this->exchangeRateForTurn($station,$date,$turn) : null;
+            if($concept==='USD' && ($exchangeRate===null || $exchangeRate<=0)) throw new RuntimeException('No existe tipo de cambio histórico para este turno.');
             $this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET activo=0,actualizado_en=GETDATE() WHERE activo=1 AND (papeleta_id=? OR (estacion_id=? AND fecha_cg=? AND turno=? AND concepto=?))")->execute([$paper,$station,$date,$turn,$concept]);
             $this->db->prepare("INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id) VALUES(?,?,?,?,?,?,?,?,?)")->execute([$station,$paper,$date,$turn,$concept,$amount,$criterion,$concept==='USD'?$exchangeRate:null,$userId?:null]);
             $this->db->commit();
         } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
+    }
+
+    /** TC vigente al inicio de cada turno del periodo. Sólo lectura a SG12. */
+    public function exchangeRatesForTurns(int $stationId, int $year, int $month): array {
+        if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Estación o periodo inválidos.');
+        $station=$this->db->prepare("SELECT 1 FROM TG.dbo.Estaciones WHERE Codigo=? AND RFC='DGA930823KD3'");
+        $station->execute([$stationId]);
+        if (!$station->fetchColumn()) throw new RuntimeException('Estación Díaz Gas inválida.');
+        $rates=$this->scheduledExchangeRates($stationId);
+        $last=(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('last day of this month');
+        $current=new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)); $out=[];
+        while ($current <= $last) {
+            foreach ([1,2,3,4] as $turn) {
+                $found=$this->rateAt($rates,$this->turnStart($current,$turn));
+                $out[]=['date'=>$current->format('Y-m-d'),'turn'=>$turn,'rate'=>$found['rate']??null,'scheduled_at'=>$found['scheduled_at']??null];
+            }
+            $current=$current->modify('+1 day');
+        }
+        return $out;
     }
 
     public function unlink(int $linkId): void { $stmt=$this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET activo=0,actualizado_en=GETDATE() WHERE id=? AND activo=1"); $stmt->execute([$linkId]); }
@@ -153,4 +175,45 @@ class EfcAnaliticosModel {
     private function dateValue($value): string { return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : substr((string)$value,0,10); }
     private function dateTimeValue($value): string { return $value instanceof DateTimeInterface ? $value->format('Y-m-d H:i') : substr((string)$value,0,16); }
     private function normaliseRemittance($value): string { $text=trim((string)$value); return preg_replace('/\.0+$/','',$text) ?: $text; }
+
+    private function exchangeRateForTurn(int $stationId, string $date, string $turn): ?float {
+        $number=$this->turnNumber($turn);
+        if ($number===null) throw new RuntimeException('Turno inválido para tipo de cambio.');
+        $at=$this->turnStart(new DateTimeImmutable($date),$number);
+        $rate=$this->rateAt($this->scheduledExchangeRates($stationId),$at);
+        return $rate['rate']??null;
+    }
+
+    /** Lee el historial completo de una estación, sin escribir ni alterar SG12. */
+    private function scheduledExchangeRates(int $stationId): array {
+        $stmt=$this->db->prepare("SELECT fch,hra,ctz,logfch FROM SG12.dbo.Cotizaciones WHERE codgas=? AND codmda=2 ORDER BY fch,hra,logfch");
+        $stmt->execute([$stationId]); $out=[];
+        $base=new DateTimeImmutable('1900-01-01');
+        while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $hour=(int)$row['hra']; $hours=intdiv($hour,100); $minutes=$hour%100;
+            if($hours>23 || $minutes>59 || (float)$row['ctz']<=0) continue;
+            $at=$base->modify('+'.((int)$row['fch']-1).' days')->setTime($hours,$minutes);
+            $out[]=['at'=>$at,'rate'=>(float)$row['ctz'],'scheduled_at'=>$at->format('Y-m-d H:i')];
+        }
+        return $out;
+    }
+
+    private function rateAt(array $rates, DateTimeImmutable $at): ?array {
+        $selected=null;
+        foreach($rates as $rate) { if($rate['at']<=$at) $selected=$rate; else break; }
+        return $selected;
+    }
+
+    private function turnNumber(string $turn): ?int {
+        preg_match('/\d+/', $turn, $match); $value=$match[0]??'';
+        if(in_array($value,['1','2','3','4'],true)) return (int)$value;
+        if(in_array($value,['11','21','31','41'],true)) return (int)$value[0];
+        return null;
+    }
+
+    private function turnStart(DateTimeImmutable $date, int $turn): DateTimeImmutable {
+        $time=[1=>[0,0],2=>[6,0],3=>[14,0],4=>[22,0]][$turn]??null;
+        if($time===null) throw new RuntimeException('Turno inválido para tipo de cambio.');
+        return $date->setTime($time[0],$time[1]);
+    }
 }
