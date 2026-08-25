@@ -149,7 +149,7 @@ body { background:#f1f5f9; }
       <!-- Estación -->
       <div class="controls-group flex-grow-1" style="min-width:180px;">
         <label class="mb-0 small font-weight-bold text-muted text-nowrap">ESTACIÓN</label>
-        <select id="estacionSelect" class="form-control custom-select-pill flex-grow-1" onchange="aplicarFiltros()">
+        <select id="estacionSelect" class="form-control custom-select-pill flex-grow-1" onchange="alCambiarEstacion()">
           <option value="">-- Estación --</option>
         </select>
       </div>
@@ -158,11 +158,7 @@ body { background:#f1f5f9; }
       <div class="controls-group">
         <span class="small font-weight-bold text-muted" style="white-space:nowrap;">BANCO</span>
         <select id="f-banco" class="form-control custom-select-pill" style="min-width:160px;" onchange="setBanco(this.value)">
-          <option value="">Todos</option>
-          <option value="Santander">Santander</option>
-          <option value="Banamex">Banamex</option>
-          <option value="American Express">American Express</option>
-          <option value="Banorte">Banorte</option>
+          <option value="">-- Banco --</option>
         </select>
       </div>
 
@@ -435,6 +431,37 @@ function filtrarEstaciones() {
         const rs  = RS_MAPPING[rfc] || 'FORANEAS';
         if (rs === currentRS) $s.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
     });
+    limpiarBancos();
+}
+function limpiarBancos() {
+    currentBanco = '';
+    $('#f-banco').empty().append('<option value="">-- Banco --</option>');
+}
+function alCambiarEstacion() {
+    limpiarBancos();
+    aplicarFiltros();
+
+    const estacionId = $('#estacionSelect').val();
+    if (!estacionId) return;
+
+    $.getJSON('/income/get_conciliacion_config', { estacion_id: estacionId }, function(res) {
+        if (res.status !== 'success') return;
+
+        const bancos = new Map();
+        (res.data || []).forEach(regla => {
+            if (!bancos.has(regla.entidad_id)) {
+                bancos.set(regla.entidad_id, regla.nombre_banco || `Banco ${regla.entidad_id}`);
+            }
+        });
+
+        const orden = [4, 1, 3, 13]; // Banorte, Santander, AMEX, Afirme
+        [...bancos.entries()]
+            .sort((a, b) => {
+                const ia = orden.indexOf(Number(a[0])), ib = orden.indexOf(Number(b[0]));
+                return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+            })
+            .forEach(([, nombre]) => $('#f-banco').append(`<option value="${nombre}">${nombre}</option>`));
+    });
 }
 
 // ── FILTROS ──────────────────────────────────────────────────────────────────
@@ -453,11 +480,9 @@ function buildQS(f) {
 }
 function limpiarFiltros() {
     currentRS = 'DIAZ GAS';
-    currentBanco = '';
     $('[name="rs_type"]').prop('checked', false);
     $('[name="rs_type"]:eq(0)').prop('checked', true)
         .closest('label').addClass('active').siblings('label').removeClass('active');
-    $('#f-banco').val('');
     widgetState.month = '';
     updateDisplayDate();
     renderWidgetYear();
