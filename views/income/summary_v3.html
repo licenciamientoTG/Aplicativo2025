@@ -299,6 +299,7 @@ body { background:#f1f5f9; }
     </div>
   </div>
 
+  {# Reporte de tránsitos deshabilitado temporalmente.
   <div id="tab-transitos">
     <!-- Aging summary -->
     <div class="row mb-3" id="aging-summary"></div>
@@ -327,6 +328,7 @@ body { background:#f1f5f9; }
       </div>
     </div>
   </div>
+  #}
 
 </div><!-- /container -->
 
@@ -470,7 +472,7 @@ function aplicarFiltros() {
     if (f.estacion_id) labels.push($('#estacionSelect option:selected').text());
     $('#filtros-activos').text(labels.length ? '▸ ' + labels.join(' / ') : '');
     cargarDatos(f);
-    cargarTransitos(f);
+    // Reporte de tránsitos deshabilitado temporalmente.
 }
 
 // ── CARGA DE DATOS ────────────────────────────────────────────────────────────
