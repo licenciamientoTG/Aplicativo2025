@@ -6222,6 +6222,10 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation_movements.html');
     }
 
+    public function cash_reconciliation_papers(): void {
+        echo $this->twig->render($this->route . 'cash_reconciliation_papers.html');
+    }
+
     public function efc_conc_correction(): void {
         ob_clean(); header('Content-Type: application/json');
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $id=(int)($data['movimiento_bancario_id']??0); if(!$id) throw new RuntimeException('Movimiento inválido.'); $station=isset($data['estacion_id'])?(int)$data['estacion_id']:null; $this->efcConciliacion->correction($id,$station,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
@@ -6276,6 +6280,26 @@ public function stamped_invoices_detail(): void
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
         try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->workspace((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    /** Papeletas REGIO para corrección trazable de fecha. */
+    public function efc_conc_analiticos_papeletas(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->papersForManagement((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    /** Corrige/restaura la fecha efectiva, sin tocar el Excel ni la papeleta fuente. */
+    public function efc_conc_analiticos_corregir_fecha(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true)?:[];
+            $ids=$data['papeleta_ids']??[];
+            if(!is_array($ids)) $ids=[$ids];
+            $restore=(bool)($data['restaurar']??false);
+            $count=$this->efcAnaliticos->correctDates($ids,$restore?null:((string)($data['fecha']??'')),(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','count'=>$count]);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 
     public function efc_conc_analiticos_vincular(): void {
