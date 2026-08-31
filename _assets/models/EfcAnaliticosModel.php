@@ -128,7 +128,7 @@ class EfcAnaliticosModel {
 
     public function link(array $data, int $userId): void {
         $station=(int)($data['station_id']??0); $paper=(int)($data['paper_id']??0); $date=(string)($data['date']??''); $turn=(string)($data['turn']??''); $concept=(string)($data['currency']??''); $amount=(float)($data['amount']??0); $criterion=(string)($data['criterion']??'MANUAL');
-        if(!$station||!$paper||!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)||$turn===''||!in_array($concept,['MN','USD'],true)||$amount<=0) throw new RuntimeException('Datos de vínculo inválidos.');
+        if(!$station||!$paper||!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)||$turn===''||!in_array($concept,['MN','MORRALLA','USD'],true)||$amount<=0) throw new RuntimeException('Datos de vínculo inválidos.');
         $this->db->beginTransaction();
         try {
             $check=$this->db->prepare("SELECT id FROM dbo.efc_conc_analiticos_papeletas WHERE id=? AND estacion_id=?"); $check->execute([$paper,$station]); if(!$check->fetch()) throw new RuntimeException('La papeleta no pertenece a la estación seleccionada.');
