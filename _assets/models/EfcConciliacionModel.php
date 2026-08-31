@@ -61,6 +61,43 @@ class EfcConciliacionModel {
         return array_values($out);
     }
 
+    /**
+     * Conciliaciones ya aprobadas del periodo. Se usan para reservar sus
+     * partidas fuente antes de volver a proponer excepciones en la pantalla.
+     */
+    public function activeGroups(int $stationId, int $year, int $month): array {
+        if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        $stmt=$this->db->prepare("SELECT G.id,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
+            P.origen,P.clave_externa,P.movimiento_bancario_id,P.fecha_operacion,P.turno,P.concepto,P.importe,P.referencia,
+            M.descripcion,M.descripcion_larga,M.sucursal
+            FROM dbo.efc_conc_grupos G
+            JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id AND P.activo=1
+            LEFT JOIN TG.dbo.movimientos_bancarios M ON M.id=P.movimiento_bancario_id
+            WHERE G.estacion_id=? AND YEAR(G.fecha_operativa)=? AND MONTH(G.fecha_operativa)=? AND G.estado='ACTIVA' AND G.tipo<>'RECLASIFICADA'
+            ORDER BY G.id,P.id");
+        $stmt->execute([$stationId,$year,$month]); $groups=[];
+        while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $id=(int)$row['id'];
+            if(!isset($groups[$id])) $groups[$id]=[
+                'id'=>$id,'type'=>(string)$row['tipo'],'cg_total'=>(float)$row['total_controlgas'],
+                'bank_total'=>(float)$row['total_banorte'],'difference'=>(float)$row['diferencia'],
+                'cg'=>[],'bank'=>[]
+            ];
+            $item=[
+                'id'=>(string)$row['clave_externa'],'date'=>$this->dateValue($row['fecha_operacion']),
+                'turn'=>$row['turno']!==null?(string)$row['turno']:null,'currency'=>$row['concepto']!==null?(string)$row['concepto']:null,
+                'amount'=>(float)$row['importe'],'selected'=>true
+            ];
+            if($row['origen']==='CG') $groups[$id]['cg'][]=$item;
+            else $groups[$id]['bank'][]=$item+[
+                'reference'=>(string)($row['referencia']??''),'referenceFull'=>(string)($row['referencia']??''),
+                'description'=>(string)($row['descripcion']?:'DEPOSITO EN EFECTIVO'),'detail'=>(string)($row['descripcion_larga']??''),
+                'branch'=>(string)($row['sucursal']??'')
+            ];
+        }
+        return array_values($groups);
+    }
+
     public function reclassify(array $data, int $userId): int {
         $station=(int)($data['station_id']??0); $date=(string)($data['date']??''); $turn=trim((string)($data['turn']??''));
         $original=round((float)($data['original_amount']??0),2); $mn=round((float)($data['mn_amount']??0),2); $morralla=round((float)($data['morralla_amount']??0),2);
