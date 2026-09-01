@@ -22,7 +22,7 @@ class MovimientosTanModel extends Model{
                     D.nro AS nrodoc_documentos,
                     D.can VolumenFacturado,D.pre,D.mto,D.mtoiva,D.mtoiie,DC.txtref,
                     DC.logfch,DC.satdat,DC.codopr ProveedorId,
-	                P.nropcc ProveedorCRE
+	                P.nropcc ProveedorCRE, P.rfc ProveedorRfc, P.den ProveedorNombre
                 FROM " . $params['database'] . ".[MovimientosTan] M
                     LEFT JOIN " . $params['database'] . ".[Tanques] T ON M.codtan = T.cod AND M.codgas = T.codgas
                     LEFT JOIN " . $params['database'] . ".[Documentos] D ON M.nrodoc = D.nro AND M.codgas = D.codgas AND D.tip = 1 AND D.nroitm = 1
