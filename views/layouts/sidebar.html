@@ -174,6 +174,15 @@
         </a>
       </li>
 
+      {% if authorized(91) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/supply/petrotal_reconciliation">
+          <i data-feather="link"></i>
+          <span class="align-middle">Conciliación Petrotal</span>
+        </a>
+      </li>
+      {% endif %}
+
       {% endif %}
 
       {% if authorized(7) %} {# Ver módulo de Administración #}
