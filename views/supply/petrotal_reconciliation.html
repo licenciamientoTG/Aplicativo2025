@@ -21,7 +21,7 @@
                     </div>
                     <div class="col-md-2">
                         <label for="fecha_desde" class="form-label">Desde:</label>
-                        <input type="date" class="form-control" id="fecha_desde" value="{{ now | date('Y-m-d', '-7 days') }}">
+                        <input type="date" class="form-control" id="fecha_desde" value="{{ 'now'|date_modify('-7 days')|date('Y-m-d') }}">
                     </div>
                     <div class="col-md-2">
                         <label for="fecha_hasta" class="form-label">Hasta:</label>

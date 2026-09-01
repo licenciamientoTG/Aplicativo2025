@@ -149,6 +149,9 @@ async function confirmarAsignaciones(pares) {
         });
         const result = await response.json();
         if (result.success) {
+            if (result.omitidos > 0) {
+                alertify.myAlert(`<div class="text-center"><p>${result.confirmados} confirmada(s). ${result.omitidos} se omitieron por ya estar asignadas o tener datos incompletos.</p></div>`);
+            }
             datatables_conciliacion.ajax.reload(null, false);
         } else {
             alertify.myAlert(`<div class="text-danger text-center"><p>${result.message}</p></div>`);

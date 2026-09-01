@@ -42,13 +42,22 @@ class PetrotalReconciliationModel extends Model {
     // fallback a Folio, ambos normalizados. No asume 1 factura por RFC:
     // trae todas las del emisor y compara en PHP porque el volumen por
     // proveedor/estación es bajo (decenas, no miles, por rango consultado).
-    function buscar_factura_proveedor(string $folioRef, string $remisionRef, string $emisorRfc): ?array {
+    function buscar_factura_proveedor(string $folioRef, string $remisionRef, string $emisorRfc, string $fechaDesde, string $fechaHasta): ?array {
         $remNorm = $this->normalizar_remision($remisionRef);
         $folioNorm = $this->normalizar_folio($folioRef);
 
+        $desdeAmpliado = date('Y-m-d', strtotime($fechaDesde . ' -15 days'));
+        $hastaAmpliado = date('Y-m-d', strtotime($fechaHasta . ' +15 days'));
+
         $query = "SELECT Id, Folio, Remision, EmisorNombre, EmisorRfc, Fecha, Total
-                   FROM TG.dbo.FacturasRecibidas WHERE EmisorRfc = :emisorRfc";
-        $rows = $this->sql->select($query, ['emisorRfc' => $emisorRfc]);
+                   FROM TG.dbo.FacturasRecibidas
+                   WHERE EmisorRfc = :emisorRfc
+                     AND Fecha BETWEEN :desde AND :hasta";
+        $rows = $this->sql->select($query, [
+            'emisorRfc' => $emisorRfc,
+            'desde' => $desdeAmpliado,
+            'hasta' => $hastaAmpliado,
+        ]);
 
         foreach ($rows as $row) {
             if ($row['Remision'] && $this->normalizar_remision($row['Remision']) === $remNorm) {
@@ -56,7 +65,7 @@ class PetrotalReconciliationModel extends Model {
             }
         }
         foreach ($rows as $row) {
-            if ($this->normalizar_folio($row['Folio']) === $folioNorm) {
+            if ($row['Folio'] && $this->normalizar_folio($row['Folio']) === $folioNorm) {
                 return ['factura' => $row, 'confianza' => 'exacta_folio'];
             }
         }
@@ -94,10 +103,15 @@ class PetrotalReconciliationModel extends Model {
         return $filtradas ?: $facturasPetrotal;
     }
 
-    function ya_asignada(int $facturaId): ?array {
+    function ya_asignada(int $facturaProveedorId, int $facturaPetrotalId): ?array {
         $query = "SELECT Id FROM TG.dbo.FacturasMovimientosTanques
-                   WHERE (FacturaProveedorId = :id1 OR FacturaPetrotalId = :id2) AND Activo = 1";
-        $r = $this->sql->select($query, ['id1' => $facturaId, 'id2' => $facturaId]);
+                   WHERE FacturaProveedorId = :facturaProveedorId
+                     AND FacturaPetrotalId = :facturaPetrotalId
+                     AND Activo = 1";
+        $r = $this->sql->select($query, [
+            'facturaProveedorId' => $facturaProveedorId,
+            'facturaPetrotalId' => $facturaPetrotalId,
+        ]);
         return $r[0] ?? null;
     }
 

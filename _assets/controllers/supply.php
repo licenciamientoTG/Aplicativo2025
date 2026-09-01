@@ -2466,9 +2466,9 @@ class Supply
             return;
         }
 
-        $codgas = (int)($_POST['codgas'] ?? 0);
-        $fechaDesde = $_POST['fecha_desde'] ?? date('Y-m-d');
-        $fechaHasta = $_POST['fecha_hasta'] ?? date('Y-m-d');
+        $codgas = (int)($_REQUEST['codgas'] ?? 0);
+        $fechaDesde = $_REQUEST['fecha_desde'] ?? date('Y-m-d');
+        $fechaHasta = $_REQUEST['fecha_hasta'] ?? date('Y-m-d');
 
         if (!$codgas) {
             json_output(['data' => [], 'error' => 'Selecciona una estación']);
@@ -2494,7 +2494,7 @@ class Supply
                 if (!$ref || empty($r['ProveedorRfc'])) continue;
 
                 $matchProveedor = $this->petrotalReconciliationModel->buscar_factura_proveedor(
-                    $ref['folio'], $ref['remision'], $r['ProveedorRfc']
+                    $ref['folio'], $ref['remision'], $r['ProveedorRfc'], $fechaDesde, $fechaHasta
                 );
 
                 $facturasPetrotalCandidatas = $this->petrotalReconciliationModel->buscar_facturas_petrotal(
@@ -2505,8 +2505,10 @@ class Supply
                 );
 
                 $asignacionExistente = null;
-                if ($matchProveedor) {
-                    $asignacionExistente = $this->petrotalReconciliationModel->ya_asignada($matchProveedor['factura']['Id']);
+                if ($matchProveedor && count($facturasPetrotal) === 1) {
+                    $asignacionExistente = $this->petrotalReconciliationModel->ya_asignada(
+                        $matchProveedor['factura']['Id'], $facturasPetrotal[0]['Id']
+                    );
                 }
 
                 $filas[] = [
@@ -2560,8 +2562,7 @@ class Supply
                 continue;
             }
 
-            if ($this->petrotalReconciliationModel->ya_asignada($facturaProveedorId)
-                || $this->petrotalReconciliationModel->ya_asignada($facturaPetrotalId)) {
+            if ($this->petrotalReconciliationModel->ya_asignada($facturaProveedorId, $facturaPetrotalId)) {
                 $omitidos[] = $par;
                 continue;
             }
