@@ -56,6 +56,8 @@ class Tesoreria
         '0601500741',           // Banorte, Diaz Gas SA de CV (MXN)
         '072164006015007416',   // Banorte, DG 0741 DLLS (USD)
         '0185322470',           // Banorte, Diaz Gas SA de CV
+        '65510224098',   // Santander, TSAcuenta nuev 
+        '0102925486' //bbva, custodia
     ];
 
     /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
@@ -795,16 +797,6 @@ class Tesoreria
         $cfg   = self::BANCOS[$banco] ?? null;
         if ($cfg === null) {
             json_output(['success' => false, 'message' => 'Banco no reconocido']);
-            return;
-        }
-        // El CSV de Afirme se usa para consultar transacciones; nunca debe
-        // persistirse como movimiento bancario desde esta carga manual.
-        // Esta validación del servidor protege incluso solicitudes directas.
-        if ($banco === 'AFIRME') {
-            json_output([
-                'success' => false,
-                'message' => 'La carga manual de Afirme está deshabilitada: el CSV sólo se usa para consultar transacciones y no se guarda en movimientos bancarios',
-            ]);
             return;
         }
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['archivo']['tmp_name'])) {
