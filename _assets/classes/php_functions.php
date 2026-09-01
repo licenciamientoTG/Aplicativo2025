@@ -114,24 +114,25 @@ function json_modal($title, $html) {
     exit();
 }
 
+// Envío de correo a través del SMTP Relay de Google Workspace (smtp-relay.gmail.com).
+// El relay autoriza por IP, no por credenciales, así que aquí no hay usuario ni
+// contraseña: solo EHLO + STARTTLS + envío. Esto sustituye a las tres cuentas de
+// Gmail con contraseña de aplicación que se usaban antes y que topaban con el
+// límite de 500 correos diarios por cuenta.
 function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
 
     $errorOut = null;
     $mail = new PHPMailer(true);
 
     try {
-        // --- SMTP Gmail ---
+        // --- SMTP Relay (sin autenticación, autorizado por IP) ---
         $mail->isSMTP();
-        // En producción apaga el debug:
-        $mail->SMTPDebug = SMTP::DEBUG_OFF;               // antes: DEBUG_SERVER
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        // TLS (587) o SMTPS (465). Con Gmail cualquiera; dejo SMTPS:
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;   // antes: 'ssl' (string)
-        $mail->Port       = 465;
-
-        $mail->Username   = 'no-reply@totalgas.com';
-        $mail->Password   = 'sysdhepknmlkigbs';
+        // En producción apaga el debug. Para diagnosticar el relay: SMTP::DEBUG_SERVER.
+        $mail->SMTPDebug  = SMTP::DEBUG_OFF;
+        $mail->Host       = MAIL_HOST;
+        $mail->Port       = MAIL_PORT;
+        $mail->SMTPAuth   = false;                          // el relay no pide credenciales
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;  // 587 con STARTTLS
 
         // --- Codificación y HTML ---
         $mail->CharSet  = 'UTF-8';        // CLAVE: todo en UTF-8
@@ -142,8 +143,19 @@ function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $
         $mail->setLanguage('es');
 
         // --- Remitente ---
-        // ¡Quita la conversión a ISO-8859-1!
-        $mail->setFrom($setFrom, 'TotalGas | Sistema de Gestión de correos');
+        // El relay solo acepta remitentes del dominio de la organización. Varios
+        // llamadores todavía pasan direcciones @gmail.com, que el relay rechazaría
+        // con "Mail relay denied", así que esas se reescriben a la cuenta oficial y
+        // la original se conserva como Reply-To para no perder a quién responder.
+        $from = trim((string)$setFrom);
+        if ($from === '' || !str_ends_with(strtolower($from), '@' . MAIL_ALLOWED_DOMAIN)) {
+            $mail->setFrom(MAIL_FROM, MAIL_FROM_NAME);
+            if ($from !== '' && filter_var($from, FILTER_VALIDATE_EMAIL)) {
+                $mail->addReplyTo($from);
+            }
+        } else {
+            $mail->setFrom($from, MAIL_FROM_NAME);
+        }
 
         // --- Destinatarios ---
         // No agregues dos veces el primero; sólo recorre el arreglo
@@ -179,136 +191,23 @@ function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $
     }
 }
 
+// Antes existían tres implementaciones (send_mail/send_mail2/send_mail3), una por
+// cada cuenta de Gmail, encadenadas para sortear el límite de 500 correos diarios.
+// Con el SMTP Relay ese límite desaparece y la cadena ya no tiene sentido: las tres
+// se conservan solo como alias para no romper los llamadores existentes.
 function send_mail2($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
-
-    $errorOut = null;
-    $mail = new PHPMailer(true);
-
-    try {
-        // --- SMTP Gmail ---
-        $mail->isSMTP();
-        // En producción apaga el debug:
-        $mail->SMTPDebug = SMTP::DEBUG_OFF;               // antes: DEBUG_SERVER
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        // TLS (587) o SMTPS (465). Con Gmail cualquiera; dejo SMTPS:
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;   // antes: 'ssl' (string)
-        $mail->Port       = 465;
-
-        $mail->Username   = 'totalgasdesarrollo@gmail.com';
-        $mail->Password   = 'bdppgxrwzhmyfrmf';
-
-        // --- Codificación y HTML ---
-        $mail->CharSet  = 'UTF-8';        // CLAVE: todo en UTF-8
-        $mail->Encoding = 'base64';       // o 'quoted-printable'
-        $mail->isHTML(true);
-
-        // Mensajes de PHPMailer en español (opcional, para errores)
-        $mail->setLanguage('es');
-
-        // --- Remitente ---
-        // ¡Quita la conversión a ISO-8859-1!
-        $mail->setFrom($setFrom, 'TotalGas | Sistema de Gestión de correos');
-
-        // --- Destinatarios ---
-        // No agregues dos veces el primero; sólo recorre el arreglo
-        foreach ((array)$recipients as $to) {
-            if ($to) { $mail->addAddress(trim($to)); }
-        }
-
-        // --- Asunto y cuerpo (UTF-8) ---
-        $mail->Subject = (string)$subject;           // Puede llevar acentos y ñ
-        $mail->Body    = (string)$body;              // HTML permitido
-        $mail->AltBody = strip_tags((string)$body);  // texto plano de respaldo
-
-        // --- Adjuntos ---
-        if ($attachment1) { $mail->addAttachment($attachment1); }
-        if ($attachment2) { $mail->addAttachment($attachment2); }
-
-        // (Opcional) Asegura el contexto interno a UTF-8
-        if (function_exists('mb_internal_encoding')) {
-            mb_internal_encoding('UTF-8');
-        }
-
-        $sent = $mail->send();
-        if (!$sent) {
-            $errorOut = $mail->ErrorInfo ?: 'PHPMailer devolvió false sin detalle.';
-        }
-        return $sent;
-
-    } catch (Exception $e) {
-        $errorOut = $mail->ErrorInfo ?: $e->getMessage();
-        error_log("Mailer Error (send_mail2): {$errorOut}");
-        return false;
-    }
+    return send_mail($subject, $body, $recipients, $setFrom, $attachment1, $attachment2, $errorOut);
 }
 
-// Cuenta de emergencia (alejandro.martinez@totalgas.com) mientras se resuelven los límites
-// de no-reply@totalgas.com y totalgasdesarrollo@gmail.com. Usar solo como último fallback.
 function send_mail3($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
-
-    $errorOut = null;
-    $mail = new PHPMailer(true);
-
-    try {
-        $mail->isSMTP();
-        $mail->SMTPDebug = SMTP::DEBUG_OFF;
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $mail->Port       = 465;
-
-        $mail->Username   = 'alejandro.martinez@totalgas.com';
-        $mail->Password   = 'mnnndwnmfbxxdxcf';
-
-        $mail->CharSet  = 'UTF-8';
-        $mail->Encoding = 'base64';
-        $mail->isHTML(true);
-
-        $mail->setLanguage('es');
-
-        $mail->setFrom($setFrom, 'TotalGas | Sistema de Gestión de correos');
-
-        foreach ((array)$recipients as $to) {
-            if ($to) { $mail->addAddress(trim($to)); }
-        }
-
-        $mail->Subject = (string)$subject;
-        $mail->Body    = (string)$body;
-        $mail->AltBody = strip_tags((string)$body);
-
-        if ($attachment1) { $mail->addAttachment($attachment1); }
-        if ($attachment2) { $mail->addAttachment($attachment2); }
-
-        if (function_exists('mb_internal_encoding')) {
-            mb_internal_encoding('UTF-8');
-        }
-
-        $sent = $mail->send();
-        if (!$sent) {
-            $errorOut = $mail->ErrorInfo ?: 'PHPMailer devolvió false sin detalle.';
-        }
-        return $sent;
-
-    } catch (Exception $e) {
-        $errorOut = $mail->ErrorInfo ?: $e->getMessage();
-        error_log("Mailer Error (send_mail3): {$errorOut}");
-        return false;
-    }
+    return send_mail($subject, $body, $recipients, $setFrom, $attachment1, $attachment2, $errorOut);
 }
 
-// Envía intentando send_mail() y, si falla (p.ej. límite diario de Gmail excedido),
-// hace fallback a send_mail2() y luego a send_mail3() (cuenta de emergencia
-// alejandro.martinez@totalgas.com). Úsese en lugar de llamar send_mail()/send_mail2()
-// directamente en cualquier flujo nuevo o existente que envíe correo desde el aplicativo.
+// Alias histórico. Ya no hay cadena de respaldo que ejecutar: reintentar el mismo
+// relay con otro remitente no cambiaría el resultado, así que un fallo aquí es un
+// fallo real (red, IP no autorizada o remitente rechazado) y debe verse en el log.
 function send_mail_with_fallback($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
-    $ok = send_mail($subject, $body, $recipients, $setFrom, $attachment1, $attachment2, $errorOut);
-    if ($ok) { return true; }
-
-    $ok = send_mail2($subject, $body, $recipients, $setFrom, $attachment1, $attachment2, $errorOut);
-    if ($ok) { return true; }
-
-    return send_mail3($subject, $body, $recipients, 'alejandro.martinez@totalgas.com', $attachment1, $attachment2, $errorOut);
+    return send_mail($subject, $body, $recipients, $setFrom, $attachment1, $attachment2, $errorOut);
 }
 
 function dateToInt($date) {

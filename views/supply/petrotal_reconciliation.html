@@ -1,0 +1,78 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Conciliación Petrotal{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Conciliación Petrotal{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Filtros</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="codgas_conciliacion" class="form-label">Estación:</label>
+                        <select class="selectpicker form-control" data-live-search="true" data-size="10" data-width="100%" data-container="body" id="codgas_conciliacion">
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="fecha_desde" class="form-label">Desde:</label>
+                        <input type="date" class="form-control" id="fecha_desde" value="{{ 'now'|date_modify('-7 days')|date('Y-m-d') }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="fecha_hasta" class="form-label">Hasta:</label>
+                        <input type="date" class="form-control" id="fecha_hasta" value="{{ now | date('Y-m-d') }}">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary w-100" id="btnBuscarConciliacion">
+                            <i data-feather="search"></i> Buscar
+                        </button>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="button" class="btn btn-success w-100" id="btnConfirmarLote" disabled>
+                            <i data-feather="check-square"></i> Confirmar seleccionadas
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Recepciones</h5>
+            </div>
+            <div class="card-body h-100 table-responsive">
+                <table id="datatables_conciliacion" class="table table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="checkAllExactas"></th>
+                            <th>FECHA</th>
+                            <th>PRODUCTO</th>
+                            <th>LITROS</th>
+                            <th>FACTURA PROVEEDOR</th>
+                            <th>FACTURA(S) PETROTAL</th>
+                            <th>CONFIANZA</th>
+                            <th>ESTADO</th>
+                            <th>ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="9" class="text-center text-muted">Selecciona una estación y un rango, luego presiona Buscar</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="/_assets/js/petrotal_reconciliation.js"></script>
+{% endblock %}

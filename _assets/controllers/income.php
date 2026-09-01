@@ -6236,6 +6236,11 @@ public function stamped_invoices_detail(): void
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $type=(string)($data['type']??'MANUAL'); $id=$this->efcConciliacion->saveGroup(['station_id'=>(int)$data['station_id'],'type'=>$type,'cg_total'=>(float)$data['cg_total'],'bank_total'=>(float)$data['bank_total'],'difference'=>(float)$data['difference']],$data['cg']??[],$data['bank']??[],(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','id'=>$id]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
+    public function efc_conc_grupos_activos(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->activeGroups($station,$year,$month)]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
     public function efc_conc_undo(): void {
         ob_clean(); header('Content-Type: application/json');
         try{$data=json_decode(file_get_contents('php://input'),true)?:[];$this->efcConciliacion->undo((int)($data['grupo_id']??0),(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;

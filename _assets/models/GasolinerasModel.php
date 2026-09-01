@@ -128,6 +128,17 @@ class GasolinerasModel extends Model{
         return ($actives) ?: false ;
     }
 
+    /**
+     * @param int $codgas
+     * @return array|false
+     * @throws Exception
+     */
+    public function get_by_codgas(int $codgas) : array|false {
+        $query = 'SELECT Codigo, Nombre, Estacion, iva, Servidor, BaseDatos, PermisoCRE FROM [TG].[dbo].[Estaciones] WHERE Codigo = ?;';
+        $rs = $this->sql->select($query, [$codgas]);
+        return ($rs) ? $rs[0] : false;
+    }
+
     function get_fuel_prices() : array|false {
         return ($this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_precios_combustibles]')) ?: false ;
     }
