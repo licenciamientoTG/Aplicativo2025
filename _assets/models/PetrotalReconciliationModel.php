@@ -13,7 +13,7 @@ class PetrotalReconciliationModel extends Model {
     // Quita ceros de relleno tras el prefijo alfabético ("FE-041741" -> "FE-41741").
     private function normalizar_folio(string $f): string {
         $f = trim($f);
-        if (preg_match('/^([A-Za-z]*-?)0*(\d+)$/', $f, $m)) {
+        if (preg_match('/^([A-Za-z]+-?)0*(\d+)$/', $f, $m)) {
             return $m[1] . $m[2];
         }
         return $f;
