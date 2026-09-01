@@ -40,6 +40,18 @@ if (!is_dir(ROOT . 'logs')) {
 ini_set('log_errors', '1');
 ini_set('error_log', ROOT . 'logs' . DS . 'php_errors.log');
 
+// --- Correo saliente: SMTP Relay de Google Workspace ---
+// El relay autoriza por IP (la IP pública de la oficina/servidor está dada de alta
+// en la consola de administración de Google), por eso NO lleva usuario ni contraseña.
+// A cambio, solo acepta remitentes del dominio de la organización: cualquier
+// dirección fuera de MAIL_ALLOWED_DOMAIN es reescrita por send_mail() a MAIL_FROM
+// y conservada como Reply-To.
+define('MAIL_HOST',           'smtp-relay.gmail.com');
+define('MAIL_PORT',           587);                  // STARTTLS
+define('MAIL_FROM',           'no-reply@totalgas.com');
+define('MAIL_FROM_NAME',      'TotalGas | Sistema de Gestión de correos');
+define('MAIL_ALLOWED_DOMAIN', 'totalgas.com');
+
 // Controlador por defecto / Metodo por defecto / Controlador de error por defecto
 define('CRON_SECRET', 'TG_CRON_2024');
 define('DEFAULT_CONTROLLER', 'home');
