@@ -54,6 +54,7 @@ class Supply
     public FacturasMovimientosTanquesModel $facturasMovimientosTanquesModel;
     public CrePlacesModel $crePlacesModel;
     public CrePricesModel $crePricesModel;
+    public PetrotalReconciliationModel $petrotalReconciliationModel;
     /**
      * @param $twig
      */
@@ -84,6 +85,7 @@ class Supply
         $this->facturasMovimientosTanquesModel                   = new FacturasMovimientosTanquesModel();
         $this->crePlacesModel                                    = new CrePlacesModel();
         $this->crePricesModel                                    = new CrePricesModel();
+        $this->petrotalReconciliationModel                       = new PetrotalReconciliationModel;
     }
 
     /**
@@ -2445,5 +2447,157 @@ class Supply
     //             $referencia
     //         );
 
+    public function petrotal_reconciliation()
+    {
+        if (!authorized(91)) {
+            echo "No autorizado";
+            return;
+        }
+        $stations = $this->gasolinerasModel->get_active_stations();
+        echo $this->twig->render($this->route . 'petrotal_reconciliation.html', compact('stations'));
+    }
+
+    public function datatables_petrotal_reconciliation()
+    {
+        header('Content-Type: application/json');
+
+        if (!authorized(91)) {
+            json_output(['data' => [], 'error' => 'No autorizado']);
+            return;
+        }
+
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $fechaDesde = $_POST['fecha_desde'] ?? date('Y-m-d');
+        $fechaHasta = $_POST['fecha_hasta'] ?? date('Y-m-d');
+
+        if (!$codgas) {
+            json_output(['data' => [], 'error' => 'Selecciona una estación']);
+            return;
+        }
+
+        $estacion = $this->gasolinerasModel->get_by_codgas($codgas);
+        if (!$estacion || empty($estacion['PermisoCRE'])) {
+            json_output(['data' => [], 'error' => 'Estación sin permiso CRE configurado']);
+            return;
+        }
+
+        $filas = [];
+        $fecha = strtotime($fechaDesde);
+        $fin = strtotime($fechaHasta);
+
+        while ($fecha <= $fin) {
+            $fechaStr = date('Y-m-d', $fecha);
+            $recepciones = $this->movimientosTanModel->sp_obtener_recepciones_combustible($fechaStr, $codgas, 0);
+
+            foreach ($recepciones as $r) {
+                $ref = $this->petrotalReconciliationModel->parse_txtref($r['txtref'] ?? null);
+                if (!$ref || empty($r['ProveedorRfc'])) continue;
+
+                $matchProveedor = $this->petrotalReconciliationModel->buscar_factura_proveedor(
+                    $ref['folio'], $ref['remision'], $r['ProveedorRfc']
+                );
+
+                $facturasPetrotalCandidatas = $this->petrotalReconciliationModel->buscar_facturas_petrotal(
+                    $estacion['PermisoCRE'], $fechaDesde, $fechaHasta
+                );
+                $facturasPetrotal = $this->petrotalReconciliationModel->filtrar_por_producto(
+                    $facturasPetrotalCandidatas, $r['den'] ?? ''
+                );
+
+                $asignacionExistente = null;
+                if ($matchProveedor) {
+                    $asignacionExistente = $this->petrotalReconciliationModel->ya_asignada($matchProveedor['factura']['Id']);
+                }
+
+                $filas[] = [
+                    'nrotrn' => (int)$r['nrotrn'],
+                    'codgas' => $codgas,
+                    'fecha' => $fechaStr,
+                    'producto' => $r['den'] ?? '',
+                    'litros' => $r['VolumenRecibido'] ?? 0,
+                    'factura_proveedor' => $matchProveedor['factura'] ?? null,
+                    'confianza' => $matchProveedor['confianza'] ?? null,
+                    'facturas_petrotal' => $facturasPetrotal,
+                    'ya_asignada' => $asignacionExistente !== null,
+                    'asignacion_id' => $asignacionExistente['Id'] ?? null,
+                ];
+            }
+            $fecha = strtotime('+1 day', $fecha);
+        }
+
+        json_output(['data' => $filas]);
+    }
+
+    public function confirmar_asignacion_petrotal()
+    {
+        header('Content-Type: application/json');
+
+        if (!authorized(91)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+
+        $body = json_decode(file_get_contents('php://input'), true);
+        $pares = $body['pares'] ?? [];
+
+        if (!is_array($pares) || empty($pares)) {
+            json_output(['success' => false, 'message' => 'Sin pares para confirmar']);
+            return;
+        }
+
+        $usuario = $_SESSION['tg_user']['Nombre'] ?? $_SESSION['tg_user']['Usuario'] ?? 'desconocido';
+        $confirmados = [];
+        $omitidos = [];
+
+        foreach ($pares as $par) {
+            $facturaProveedorId = (int)($par['factura_proveedor_id'] ?? 0);
+            $facturaPetrotalId = (int)($par['factura_petrotal_id'] ?? 0);
+            $nrotrn = (int)($par['nrotrn'] ?? 0);
+            $codgas = (int)($par['codgas'] ?? 0);
+
+            if (!$facturaProveedorId || !$facturaPetrotalId || !$nrotrn || !$codgas) {
+                $omitidos[] = $par;
+                continue;
+            }
+
+            if ($this->petrotalReconciliationModel->ya_asignada($facturaProveedorId)
+                || $this->petrotalReconciliationModel->ya_asignada($facturaPetrotalId)) {
+                $omitidos[] = $par;
+                continue;
+            }
+
+            $this->petrotalReconciliationModel->confirmar_asignacion(
+                $nrotrn, $codgas, $facturaProveedorId, $facturaPetrotalId, $usuario
+            );
+            $confirmados[] = $par;
+        }
+
+        json_output([
+            'success' => true,
+            'confirmados' => count($confirmados),
+            'omitidos' => count($omitidos),
+        ]);
+    }
+
+    public function deshacer_asignacion_petrotal()
+    {
+        header('Content-Type: application/json');
+
+        if (!authorized(91)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) {
+            json_output(['success' => false, 'message' => 'Falta el id']);
+            return;
+        }
+
+        $usuario = $_SESSION['tg_user']['Nombre'] ?? $_SESSION['tg_user']['Usuario'] ?? 'desconocido';
+        $this->petrotalReconciliationModel->deshacer_asignacion($id, $usuario);
+
+        json_output(['success' => true]);
+    }
 
 }
