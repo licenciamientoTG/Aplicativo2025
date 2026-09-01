@@ -241,6 +241,7 @@
   .mb-res-head i { font-size: 1.1rem; }
   .mb-res-head b { display: block; font-size: .9rem; color: #334155; line-height: 1.2; }
   .mb-res-head span { font-size: .72rem; color: #64748b; }
+  .mb-res-formato { display: block; margin-top: .1rem; }
   .mb-res--ok    .mb-res-head { background: #f6fefb; } .mb-res--ok    .mb-res-head i { color: #009559; }
   .mb-res--warn  .mb-res-head { background: #fffbeb; } .mb-res--warn  .mb-res-head i { color: #b45309; }
   .mb-res--error .mb-res-head { background: #fffafb; } .mb-res--error .mb-res-head i { color: #dc3545; }
@@ -446,6 +447,51 @@
     <div class="card-body p-2" id="gruposCollapseBody">
       <div class="text-center text-muted py-3">
         <span class="spinner-border spinner-border-sm"></span> Cargando saldos...
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if authorized(81) %}
+{# "¿Faltan movimientos de Santander?": diagnóstico bajo demanda por rango de
+   fechas. No se ejecuta solo (a diferencia del panel de arriba): recorrer
+   todas las cuentas de Santander en un rango es una consulta más pesada que
+   el saldo final, y es una herramienta de revisión puntual, no algo que
+   interese en cada visita al módulo. #}
+<div class="card mb-3">
+  <div class="card-header p-0 bg-white">
+    <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
+            type="button" data-bs-toggle="collapse" data-bs-target="#huecosCollapse">
+      <span style="color:#334155;">
+        <i class="fas fa-triangle-exclamation me-2 text-warning"></i>
+        <strong>¿Faltan movimientos de Santander?</strong>
+        <small class="text-muted">cadena de saldos por cuenta</small>
+      </span>
+      <i class="fas fa-chevron-down mb-chevron"></i>
+    </button>
+  </div>
+  <div class="collapse" id="huecosCollapse">
+    <div class="card-body p-2">
+      <form class="row align-items-end g-2 mb-2" id="huecosForm">
+        <div class="col-auto">
+          <label for="huecosDesde">Desde:</label>
+          <input type="date" class="form-control" id="huecosDesde" value="{{ filtros.desde }}" required>
+        </div>
+        <div class="col-auto">
+          <label for="huecosHasta">Hasta:</label>
+          <input type="date" class="form-control" id="huecosHasta" value="{{ filtros.hasta }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">
+            <i class="fas fa-magnifying-glass"></i> Revisar
+          </button>
+        </div>
+      </form>
+      <div id="huecosResultado">
+        <div class="text-center text-muted py-3">
+          Elige un rango y presiona Revisar.
+        </div>
       </div>
     </div>
   </div>
@@ -1287,6 +1333,70 @@ $(function () {
   cargarSaldos();
   $('#hasta').on('change', cargarSaldos);
 
+  /**
+   * "¿Faltan movimientos de Santander?": pide huecos_santander() para el
+   * rango del mini-form y pinta, por cuenta con roturas, la fecha/hora del
+   * movimiento donde se detectó el salto y el importe probable del
+   * faltante. Sin roturas en el rango, mensaje de éxito.
+   */
+  var huecosForm = document.getElementById('huecosForm');
+  if (huecosForm) {
+    huecosForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+
+      var desde = $('#huecosDesde').val();
+      var hasta = $('#huecosHasta').val();
+      var body  = document.getElementById('huecosResultado');
+      body.innerHTML = '<div class="text-center text-muted py-3">' +
+                       '<span class="spinner-border spinner-border-sm"></span> Revisando movimientos...</div>';
+
+      fetch('/tesoreria/santander_huecos?desde=' + encodeURIComponent(desde) +
+            '&hasta=' + encodeURIComponent(hasta))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.success) {
+            body.innerHTML = '<div class="alert alert-danger mb-0">' +
+                             esc(data.message || 'Error al revisar los movimientos') + '</div>';
+            return;
+          }
+
+          var cuentas = data.cuentas || [];
+          if (!cuentas.length) {
+            body.innerHTML = '<div class="alert alert-success mb-0">' +
+                             '<i class="fas fa-circle-check"></i> Sin huecos detectados del ' +
+                             fmtFecha(data.desde) + ' al ' + fmtFecha(data.hasta) + '.</div>';
+            return;
+          }
+
+          var html = '<div class="alert alert-warning mb-2">' +
+                     '<i class="fas fa-triangle-exclamation"></i> ' + cuentas.length +
+                     ' cuenta' + (cuentas.length === 1 ? '' : 's') +
+                     ' con posibles movimientos faltantes del ' + fmtFecha(data.desde) +
+                     ' al ' + fmtFecha(data.hasta) + '.</div>';
+
+          cuentas.forEach(function (c) {
+            html += '<div class="mb-2"><strong>' + esc(c.cuenta) + '</strong>' +
+                    (c.descripcion ? ' &middot; ' + esc(c.descripcion) : '') +
+                    ' <span class="text-muted">(' + c.roturas.length +
+                    (c.roturas.length === 1 ? ' rotura' : ' roturas') + ')</span>' +
+                    '<table class="table table-sm table-hover mb-0 mt-1"><tbody>';
+            c.roturas.forEach(function (r) {
+              html += '<tr><td class="text-muted" style="white-space:nowrap;">' +
+                      fmtFecha(r.fecha) + ' ' + esc(r.hora || '') + '</td>' +
+                      '<td>' + esc(r.descripcion) + '</td>' +
+                      '<td class="mb-monto text-end">$' + fmtMonto(Math.abs(r.diferencia)) + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+          });
+
+          body.innerHTML = html;
+        })
+        .catch(function () {
+          body.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al revisar los movimientos</div>';
+        });
+    });
+  }
+
   // ===== Upload de archivos de banco (modal y endpoint compartidos) =====
   var bancoActual = Object.keys(BANCOS)[0];
 
@@ -1422,7 +1532,12 @@ $(function () {
     html += '<div class="mb-res-head">' +
             '<i class="fas fa-' + (tono === 'ok' ? 'circle-check' : 'circle-exclamation') + '"></i>' +
             '<div><b>Importación completada</b>' +
-            '<span>' + esc(etiqueta) + (nombre ? ' · ' + esc(nombre) : '') + '</span></div></div>';
+            '<span>' + esc(etiqueta) + (nombre ? ' · ' + esc(nombre) : '') + '</span>' +
+            // Solo bancos con más de un formato posible (hoy Santander) mandan
+            // "formato": sin él no se sabía cuál de los layouts detectó,
+            // información que antes solo se podía inferir de la extensión.
+            (data.formato ? '<span class="mb-res-formato">Detectado como: ' + esc(data.formato) + '</span>' : '') +
+            '</div></div>';
 
     // Las dos cifras que se leen primero
     html += '<div class="mb-res-nums">' +

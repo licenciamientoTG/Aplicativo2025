@@ -8,7 +8,23 @@
  * Spec:   docs/superpowers/specs/2026-07-22-tesoreria-movimientos-bancos-design.md
  *
  * Un parser por banco, todos estáticos para poder probarlos por CLI:
- *   SANTANDER  TXT de ancho fijo (630 chars/línea) de Enlace Santander
+ *   SANTANDER  TXT de ancho fijo (630 chars/línea) de Enlace Santander: el
+ *              diario, el que se sube todos los días
+ *   SANTANDER  CSV de "Consulta de movimientos > Chequeras", otra pantalla
+ *   (Chequeras) del mismo portal para bajar un periodo ya cerrado.
+ *   SANTANDER  CSV de "Movimientos SPEI detallados", tercera pantalla del
+ *   (SPEI)     mismo portal: mismos movimientos que Chequeras (misma
+ *              descripción carácter por carácter, confirmado contra BD
+ *              real) pero con la contraparte completa en columnas propias.
+ *              Los tres traen los MISMOS movimientos cuando se traslapan;
+ *              se guardan igual, con banco SANTANDER, y la dedup cruzada la
+ *              hace la llave natural de llave_natural() (folio de cada
+ *              export no es comparable con los otros, se usa cuenta+fecha+
+ *              hora+importes+saldo corrido) más la huella (Chequeras y SPEI
+ *              comparten el mismo esquema de huella por tener la misma
+ *              descripción). upload_movimientos() prueba los tres parsers en
+ *              orden hasta que uno reconoce el archivo, sin que el usuario
+ *              tenga que elegir cuál de los tres está subiendo.
  *   AFIRME     ".xls" que en realidad es texto separado por tabs
  *   INBURSA    .xlsx real (Estado de Cuenta Individual), un archivo por cuenta
  *   BBVA       ".xls" que en realidad es SpreadsheetML 2003, un archivo por
@@ -113,7 +129,310 @@ class MovimientosBancariosModel extends Model
             ];
         }
 
-        return ['movimientos' => $movimientos, 'errores' => $errores];
+        // Aviso no bloqueante: la cadena de saldos delata movimientos que el
+        // banco omitió del export, sin depender de comparar contra nada más
+        // (ver santander_huecos() en el controlador para revisar un rango
+        // completo). No detiene la importación: solo se suma a los avisos
+        // del modal de resultado.
+        $rotas = self::roturas_cadena_saldos($movimientos);
+        if ($rotas) {
+            $errores[] = 'La cadena de saldos no cierra en ' . count($rotas) . ' de '
+                       . (count($movimientos) - 1) . ' movimientos: probablemente faltan movimientos en el archivo';
+        }
+
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => ['cuadra' => $movimientos ? !$rotas : null],
+        ];
+    }
+
+    /**
+     * Parsea el CSV de "Consulta de movimientos > Chequeras" de Santander
+     * (distinto del TXT diario de Enlace: mismo banco, otra pantalla del
+     * portal, para descargar un periodo ya cerrado en vez del día a día).
+     *
+     * Cabecera de 8 líneas antes de los datos:
+     *   1 Usuario · 2 Último acceso · 3-4 título de la consulta ·
+     *   5 Contrato: NNN RAZÓN SOCIAL · 6 Cuenta: NNN,Total de cargos: ... ·
+     *   7 Periodo de: DD/MM/AAAA al DD/MM/AAAA,Total de abonos: ... ·
+     *   8 encabezado de columnas
+     * Columnas (línea 8): Fecha,Hora,Sucursal,Descripcion,Importe Cargo,
+     * Importe Abono,Saldo,Referencia,Concepto,Descripcion Larga.
+     *
+     * Particularidades:
+     *  - Fecha/Sucursal vienen entre apóstrofos y la fecha en DDMMAAAA
+     *    (formato Excel-como-texto), a diferencia del MMDDAAAA del TXT.
+     *  - Referencia y Concepto NO son comparables con los del TXT diario: son
+     *    folios de sistemas distintos para el mismo movimiento (confirmado
+     *    contra BD real, ningún substring calza). Por eso NO entran a la
+     *    huella ni a la llave natural — ver llave_natural().
+     *  - La cuenta no viene por fila: se toma de la línea 6 ("Cuenta: NNN,...").
+     *
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_santander_chequeras_csv(string $contenido): array
+    {
+        if (!mb_check_encoding($contenido, 'UTF-8')) {
+            $contenido = mb_convert_encoding($contenido, 'UTF-8', 'Windows-1252');
+        }
+        $contenido = preg_replace('/^\xEF\xBB\xBF/', '', $contenido);
+        $lineas = preg_split('/\r\n|\r|\n/', $contenido);
+
+        if (count($lineas) < 9 || stripos($lineas[2] ?? '', 'Consulta de movimientos') === false) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout de Consulta de movimientos > Chequeras de Santander'], 'info' => []];
+        }
+
+        $cuenta = '';
+        if (preg_match('/Cuenta:\s*(\d+)/u', $lineas[5] ?? '', $mc)) $cuenta = $mc[1];
+
+        $enc = str_getcsv($lineas[7] ?? '');
+        $enc = array_map(fn($x) => self::limpia(mb_strtoupper((string)$x)), $enc);
+        if (($enc[0] ?? '') !== 'FECHA' || !in_array('IMPORTE CARGO', $enc, true)
+            || !in_array('IMPORTE ABONO', $enc, true) || !in_array('REFERENCIA', $enc, true)) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout de Consulta de movimientos > Chequeras de Santander'], 'info' => []];
+        }
+
+        $fh = fopen('php://memory', 'r+');
+        fwrite($fh, implode("\n", array_slice($lineas, 8)));
+        rewind($fh);
+        $filas = [];
+        while (($c = fgetcsv($fh, 0, ',')) !== false) $filas[] = $c;
+        fclose($fh);
+
+        $movimientos = [];
+        $errores     = [];
+        $importe = function ($v) {
+            $v = str_replace(['$', ',', ' '], '', trim((string)$v));
+            return ($v === '' || $v === '-') ? 0.0 : (float)$v;
+        };
+
+        foreach ($filas as $n => $c) {
+            $linea = $n + 9;
+            if (count($c) < 8) continue;
+
+            $fechaRaw = trim(self::limpia((string)$c[0]), "'");
+            if ($fechaRaw === '') continue;
+
+            if (!preg_match('#^(\d{2})(\d{2})(\d{4})$#', $fechaRaw, $mf)
+                || !checkdate((int)$mf[2], (int)$mf[1], (int)$mf[3])) {
+                $errores[] = "Línea $linea: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $fecha = "$mf[3]-$mf[2]-$mf[1]";
+
+            $hora  = self::limpia((string)($c[1] ?? ''));
+            $desc  = self::limpia((string)($c[3] ?? ''));
+            $cargo = $importe($c[4] ?? 0);
+            $abono = $importe($c[5] ?? 0);
+            $saldo = $importe($c[6] ?? 0);
+            if ($cargo == 0.0 && $abono == 0.0) {
+                $errores[] = "Línea $linea: movimiento sin cargo ni abono ($desc)";
+                continue;
+            }
+
+            // Referencia/Concepto de este export no son el mismo folio que el
+            // TXT diario (ver docblock): se guardan igual como texto libre,
+            // pero no entran a huella/llave_natural.
+            $movimientos[] = [
+                'banco'              => 'SANTANDER',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => $hora !== '' ? $hora : null,
+                'sucursal'           => mb_substr(trim(self::limpia((string)($c[2] ?? '')), "'"), 0, 10) ?: null,
+                'descripcion'        => mb_substr($desc, 0, 150),
+                'cargo'              => $cargo > 0 ? $cargo : null,
+                'abono'              => $abono > 0 ? $abono : null,
+                'saldo'              => $saldo,
+                'referencia'         => mb_substr(self::limpia((string)($c[7] ?? '')), 0, 40),
+                'concepto'           => mb_substr(self::limpia((string)($c[8] ?? '')), 0, 120) ?: null,
+                'descripcion_larga'  => mb_substr(self::limpia((string)($c[9] ?? '')), 0, 400) ?: null,
+                'huella'             => sha1('SANTANDER_CSV|' . implode('|', [
+                    $cuenta, $fecha, $hora, $desc,
+                    sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
+                ])),
+            ];
+        }
+
+        // Aviso no bloqueante, mismo criterio que parse_santander_txt: la
+        // cadena de saldos delata movimientos que el banco omitió del
+        // export. Así se detectó el caso real que motivó este parser: 4
+        // "DEPOSITO SALVO BUEN COBRO" ausentes del TXT diario rompían la
+        // cadena por exactamente su importe.
+        $rotas = self::roturas_cadena_saldos($movimientos);
+        if ($rotas) {
+            $errores[] = 'La cadena de saldos no cierra en ' . count($rotas) . ' de '
+                       . (count($movimientos) - 1) . ' movimientos: probablemente faltan movimientos en el archivo';
+        }
+
+        $fechas = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => $cuenta,
+                'saldo_inicial' => $movimientos
+                    ? $movimientos[0]['saldo'] - ($movimientos[0]['abono'] ?? 0) + ($movimientos[0]['cargo'] ?? 0)
+                    : null,
+                'saldo_final'   => $movimientos ? end($movimientos)['saldo'] : null,
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => $movimientos ? !$rotas : null,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+            ],
+        ];
+    }
+
+    /**
+     * Parsea el CSV "Movimientos SPEI detallados" de Santander: tercera
+     * pantalla del portal con los MISMOS movimientos que el TXT diario y el
+     * CSV de Chequeras (mismas fechas/horas/saldos, confirmado contra BD
+     * real), pero con la contraparte completa desglosada en columnas propias
+     * en vez de embebida en el concepto.
+     *
+     * Sin cabecera previa (el encabezado de columnas es la línea 1), 21
+     * columnas:
+     *   Cuenta · Fecha · Hora · Sucursal · Descripcion · Cargo/Abono (+/-) ·
+     *   Importe · Saldo · Referencia · Concepto · Banco Participante ·
+     *   Clabe Beneficiario · Nombre Beneficiario · Cta Ordenante ·
+     *   Nombre Ordenante · Codigo Devolucion · Causa Devolucion ·
+     *   RFC Beneficiario · RFC Ordenante · Clave de Rastreo ·
+     *   Descripcion Larga
+     *
+     * Particularidades:
+     *  - Cuenta/Fecha/Sucursal vienen entre apóstrofos (Excel-como-texto,
+     *    igual que Chequeras) y la fecha en DDMMAAAA.
+     *  - Cargo/Abono es una columna de signo aparte ('+'/'-') en vez de dos
+     *    columnas de importe: el importe siempre viene positivo.
+     *  - Mismo caso que Chequeras: Referencia/Concepto no son comparables
+     *    con los del TXT diario, así que no entran a huella ni a llave
+     *    natural — ver llave_natural(). La contraparte (banco/cuenta/nombre/
+     *    RFC) y la clave de rastreo sí se guardan: información que Chequeras
+     *    no trae.
+     *  - Cargo puede ser beneficiario o RFC beneficiario según el signo: en
+     *    un abono la contraparte es quien envía (columna "Nombre Ordenante"
+     *    trae la razón social propia, no la contraparte real — se usa
+     *    Nombre/RFC Ordenante solo en abono, Beneficiario solo en cargo).
+     *
+     * @return array ['movimientos' => array[], 'errores' => string[], 'info' => array]
+     */
+    public static function parse_santander_spei_csv(string $contenido): array
+    {
+        if (!mb_check_encoding($contenido, 'UTF-8')) {
+            $contenido = mb_convert_encoding($contenido, 'UTF-8', 'Windows-1252');
+        }
+        $contenido = preg_replace('/^\xEF\xBB\xBF/', '', $contenido);
+
+        $fh = fopen('php://memory', 'r+');
+        fwrite($fh, $contenido);
+        rewind($fh);
+        $filas = [];
+        while (($c = fgetcsv($fh, 0, ',')) !== false) $filas[] = $c;
+        fclose($fh);
+
+        $enc = array_map(fn($x) => self::limpia(mb_strtoupper(ltrim((string)$x, "'"))), $filas[0] ?? []);
+        if (($enc[0] ?? '') !== 'CUENTA' || !in_array('CARGO/ABONO', $enc, true)
+            || !in_array('IMPORTE', $enc, true) || !in_array('CLAVE DE RASTREO', $enc, true)) {
+            return ['movimientos' => [], 'errores' =>
+                ['El archivo no tiene el layout de Movimientos SPEI detallados de Santander'], 'info' => []];
+        }
+
+        $movimientos = [];
+        $errores     = [];
+        $dato    = fn($v) => trim(self::limpia((string)$v), "'");
+        $importe = function ($v) {
+            $v = str_replace(['$', ',', ' '], '', trim((string)$v));
+            return ($v === '' || $v === '-') ? 0.0 : (float)$v;
+        };
+
+        foreach (array_slice($filas, 1) as $n => $c) {
+            $linea = $n + 2;
+            if (count($c) < 8) continue;
+
+            $cuenta   = $dato($c[0] ?? '');
+            $fechaRaw = $dato($c[1] ?? '');
+            if ($cuenta === '' && $fechaRaw === '') continue;
+
+            if (!preg_match('#^(\d{2})(\d{2})(\d{4})$#', $fechaRaw, $mf)
+                || !checkdate((int)$mf[2], (int)$mf[1], (int)$mf[3])) {
+                $errores[] = "Línea $linea: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $fecha = "$mf[3]-$mf[2]-$mf[1]";
+
+            $hora   = self::limpia((string)($c[2] ?? ''));
+            $desc   = self::limpia((string)($c[4] ?? ''));
+            $signo  = trim((string)($c[5] ?? ''));
+            $monto  = $importe($c[6] ?? 0);
+            $saldo  = $importe($c[7] ?? 0);
+            if (!in_array($signo, ['+', '-'], true) || $monto == 0.0) {
+                $errores[] = "Línea $linea: movimiento sin cargo ni abono ($desc)";
+                continue;
+            }
+            $cargo = $signo === '-' ? $monto : null;
+            $abono = $signo === '+' ? $monto : null;
+
+            $movimientos[] = [
+                'banco'              => 'SANTANDER',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => $hora !== '' ? $hora : null,
+                'sucursal'           => mb_substr($dato($c[3] ?? ''), 0, 10) ?: null,
+                'descripcion'        => mb_substr($desc, 0, 150),
+                'cargo'              => $cargo,
+                'abono'              => $abono,
+                'saldo'              => $saldo,
+                'referencia'         => mb_substr(self::limpia((string)($c[8] ?? '')), 0, 40),
+                'concepto'           => mb_substr(self::limpia((string)($c[9] ?? '')), 0, 120) ?: null,
+                'banco_contraparte'  => mb_substr(self::limpia((string)($c[10] ?? '')), 0, 60) ?: null,
+                'cuenta_contraparte' => mb_substr($dato($c[11] ?? ''), 0, 30) ?: null,
+                // Beneficiario en un cargo (salió de la cuenta), Ordenante en
+                // un abono (llegó a la cuenta) — el otro lado del par es la
+                // cuenta propia, no la contraparte.
+                'nombre_contraparte' => mb_substr(self::limpia((string)($cargo !== null ? ($c[12] ?? '') : ($c[14] ?? ''))), 0, 60) ?: null,
+                'rfc_contraparte'    => mb_substr(self::limpia((string)($cargo !== null ? ($c[17] ?? '') : ($c[18] ?? ''))), 0, 15) ?: null,
+                'clave_rastreo'      => mb_substr($dato($c[19] ?? ''), 0, 40) ?: null,
+                'descripcion_larga'  => mb_substr(self::limpia((string)($c[20] ?? '')), 0, 400) ?: null,
+                // Misma huella que Chequeras (SANTANDER_CSV): son la misma
+                // fuente lógica (Consulta de movimientos de Santander) en dos
+                // layouts; comparten prefijo para que un mismo movimiento
+                // exportado por cualquiera de los dos produzca la misma
+                // huella y no se dupliquen entre sí, además de la llave
+                // natural que ya los cruza contra el TXT.
+                'huella'             => sha1('SANTANDER_CSV|' . implode('|', [
+                    $cuenta, $fecha, $hora, $desc,
+                    sprintf('%.2f', $cargo ?? 0), sprintf('%.2f', $abono ?? 0), sprintf('%.2f', $saldo),
+                ])),
+            ];
+        }
+
+        $rotas = self::roturas_cadena_saldos($movimientos);
+        if ($rotas) {
+            $errores[] = 'La cadena de saldos no cierra en ' . count($rotas) . ' de '
+                       . (count($movimientos) - 1) . ' movimientos: probablemente faltan movimientos en el archivo';
+        }
+
+        $cuentas = array_unique(array_column($movimientos, 'cuenta'));
+        $fechas  = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => implode(', ', $cuentas),
+                'saldo_inicial' => $movimientos
+                    ? $movimientos[0]['saldo'] - ($movimientos[0]['abono'] ?? 0) + ($movimientos[0]['cargo'] ?? 0)
+                    : null,
+                'saldo_final'   => $movimientos ? end($movimientos)['saldo'] : null,
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => $movimientos ? !$rotas : null,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+            ],
+        ];
     }
 
     /**
@@ -128,6 +447,11 @@ class MovimientosBancariosModel extends Model
      * ordenados por cuenta+secuencia para que el id de BD conserve ese orden.
      * La huella NO incluye la secuencia: se renumera desde 1 en cada export,
      * y con ella dos exports traslapados duplicarían movimientos.
+     * Tampoco incluye la referencia: Afirme la reporta en '0' en el export
+     * del día y la corrige a su valor real (folio TPV) en exports
+     * posteriores del mismo movimiento — incluirla generó 25 duplicados
+     * reales en BD (limpiados 2026-09-01) porque el dedup por huella no
+     * detectaba que era el mismo movimiento.
      *
      * @return array ['movimientos' => array[], 'errores' => string[]]
      */
@@ -186,8 +510,11 @@ class MovimientosBancariosModel extends Model
                 continue;
             }
 
+            // Sobre el concepto truncado a 150 (lo que de verdad se guarda en
+            // "descripcion"): usar el crudo aquí desalinearía la huella del
+            // registro con la de BD para los SPEI, que superan ese límite.
             $huella = sha1('AFIRME|' . implode('|', [
-                $cuenta, $fecha, $concepto, $referencia, $codigo,
+                $cuenta, $fecha, mb_substr($concepto, 0, 150), $codigo,
                 sprintf('%.2f', $cargo), sprintf('%.2f', $abono), sprintf('%.2f', $saldo),
             ]));
 
@@ -1759,6 +2086,36 @@ class MovimientosBancariosModel extends Model
         return trim(preg_replace('/\s+/', ' ', $v));
     }
 
+    /**
+     * Roturas en la cadena de saldos de una lista de movimientos ya
+     * ordenada cronológicamente: cuenta cuántas veces saldo_anterior +
+     * abono - cargo no llega al saldo del siguiente movimiento. Cada rotura
+     * es indicio de un movimiento que el export omitió entre ambos —así se
+     * detectaron los 4 "DEPOSITO SALVO BUEN COBRO" que motivaron este
+     * chequeo (ver santander_huecos() en el controlador).
+     *
+     * @param array[] $movimientos con 'saldo', 'cargo', 'abono'
+     * @return array[] una entrada por rotura: ['anterior' => movimiento,
+     *   'actual' => movimiento, 'diferencia' => float]
+     */
+    private static function roturas_cadena_saldos(array $movimientos): array
+    {
+        $roturas = [];
+        for ($i = 1; $i < count($movimientos); $i++) {
+            $delta = ($movimientos[$i]['abono'] ?? 0) - ($movimientos[$i]['cargo'] ?? 0);
+            $esperado = $movimientos[$i - 1]['saldo'] + $delta;
+            $diferencia = $movimientos[$i]['saldo'] - $esperado;
+            if (abs($diferencia) > 0.011) {
+                $roturas[] = [
+                    'anterior'   => $movimientos[$i - 1],
+                    'actual'     => $movimientos[$i],
+                    'diferencia' => $diferencia,
+                ];
+            }
+        }
+        return $roturas;
+    }
+
     /** Extrae un campo de ancho fijo, recortado y normalizado a UTF-8. */
     private static function campo(string $linea, int $ini, int $len): string
     {
@@ -1771,38 +2128,76 @@ class MovimientosBancariosModel extends Model
 
     /**
      * Segunda llave de dedup, para los bancos que publican el MISMO movimiento
-     * en dos archivos distintos. Hoy solo Banorte: el CSV de Cuentas de Cheques
-     * y el TXT de interconexión traen los mismos movimientos, pero el TXT
-     * escribe la descripción sin puntuación y no trae saldo, así que la huella
-     * (que incluye ambos) no los reconoce como el mismo.
+     * en dos archivos con formatos distintos, donde la huella (que se calcula
+     * distinto en cada parser) nunca coincide entre ellos:
      *
-     * Lo único idéntico entre los dos archivos es cuenta + fecha + folio del
-     * banco + importes, y el folio es único por cuenta: eso es la llave.
+     *  - BANORTE: el CSV de Cuentas de Cheques y el TXT de interconexión.
+     *    El TXT escribe la descripción sin puntuación y no trae saldo, así
+     *    que la huella no los reconoce como el mismo movimiento. Lo único
+     *    idéntico entre ambos es cuenta + fecha + folio del banco + importes,
+     *    y el folio es único por cuenta: esa es la llave.
+     *
+     *  - SANTANDER: el TXT diario de Enlace y los CSV de "Consulta de
+     *    movimientos > Chequeras" y "Movimientos SPEI detallados" (otras dos
+     *    pantallas del mismo portal, para periodos ya cerrados). Aquí NO hay
+     *    folio comparable: la Referencia de cada export es un folio de
+     *    sistema distinto para el mismo movimiento (confirmado contra BD
+     *    real: ningún substring calza entre ellos). La llave es cuenta +
+     *    fecha + HORA (solo HH, sin minutos) + importes + saldo corrido.
+     *
+     *    Los minutos se descartan a propósito: un mismo movimiento puede
+     *    venir con la hora desfasada un minuto entre dos exports (caso real
+     *    2026-09-01, cuenta 65505528588: 12:44 en un CSV vs 12:45 en el TXT
+     *    para el mismo cargo/saldo — se habría duplicado sin este ajuste).
+     *    cuenta+fecha+cargo+abono+saldo corrido, SIN hora, casi siempre basta
+     *    (verificado: solo 2 colisiones en 17,055 movimientos reales de
+     *    Santander, ambas de movimientos legítimamente distintos que
+     *    coinciden en importe/saldo por casualidad), así que se necesita algo
+     *    de hora para separarlos — pero el minuto exacto no es confiable
+     *    entre exports. HH es el punto medio: separa esas 2 colisiones (verificado
+     *    0 colisiones con este criterio) y absorbe el desfase de minuto.
      *
      * Devuelve null —y entonces solo manda la huella, como siempre— cuando el
-     * movimiento no es de Banorte o no trae folio. Es deliberado: en los bancos
-     * cuya secuencia se renumera en cada export (Afirme) o que no la traen, dos
-     * movimientos legítimamente iguales del mismo día se perderían.
+     * banco no es ninguno de los dos anteriores, o le falta el dato que arma
+     * su llave (folio en Banorte, hora/saldo en Santander). Es deliberado: en
+     * los bancos cuya secuencia se renumera en cada export (Afirme) o que no
+     * la traen, dos movimientos legítimamente iguales del mismo día se
+     * perderían si se les aplicara esta lógica.
      */
     private static function llave_natural(
-        ?string $banco, ?string $cuenta, ?string $fecha, $secuencia, $cargo, $abono
+        ?string $banco, ?string $cuenta, ?string $fecha, $secuencia, $cargo, $abono,
+        ?string $hora = null, $saldo = null
     ): ?string {
-        if (strtoupper(trim((string)$banco)) !== 'BANORTE') return null;
-        if ($secuencia === null || $secuencia === '' || !is_numeric($secuencia)) return null;
-        return implode('|', [
-            trim((string)$cuenta),
-            substr((string)$fecha, 0, 10),
-            (int)$secuencia,
-            sprintf('%.2f', (float)$cargo),
-            sprintf('%.2f', (float)$abono),
-        ]);
+        $banco = strtoupper(trim((string)$banco));
+
+        if ($banco === 'BANORTE') {
+            if ($secuencia === null || $secuencia === '' || !is_numeric($secuencia)) return null;
+            return implode('|', [
+                'BANORTE', trim((string)$cuenta), substr((string)$fecha, 0, 10),
+                (int)$secuencia,
+                sprintf('%.2f', (float)$cargo),
+                sprintf('%.2f', (float)$abono),
+            ]);
+        }
+
+        if ($banco === 'SANTANDER') {
+            if ($hora === null || $hora === '' || $saldo === null || $saldo === '') return null;
+            return implode('|', [
+                'SANTANDER', trim((string)$cuenta), substr((string)$fecha, 0, 10), substr(trim($hora), 0, 2),
+                sprintf('%.2f', (float)$cargo),
+                sprintf('%.2f', (float)$abono),
+                sprintf('%.2f', (float)$saldo),
+            ]);
+        }
+
+        return null;
     }
 
     /**
      * Inserta los movimientos parseados saltando los que ya existen (huella
-     * UNIQUE, más la llave natural de llave_natural() para los bancos que
-     * publican el mismo movimiento en dos archivos). Todo o nada: un error de
-     * BD hace rollback.
+     * UNIQUE, más la llave natural de llave_natural() para Banorte y
+     * Santander, que publican el mismo movimiento en dos formatos de
+     * archivo distintos). Todo o nada: un error de BD hace rollback.
      *
      * @return array ['insertados' => int, 'duplicados' => int]
      */
@@ -1813,7 +2208,7 @@ class MovimientosBancariosModel extends Model
         $fechas = array_column($movimientos, 'fecha');
         $existentes = $this->sql->select(
             'SELECT huella, banco, cuenta, CONVERT(varchar(10), fecha, 23) AS fecha,
-                    secuencia, cargo, abono
+                    secuencia, cargo, abono, hora, saldo
              FROM [TG].[dbo].[movimientos_bancarios] WHERE fecha BETWEEN ? AND ?;',
             [min($fechas), max($fechas)]
         ) ?: [];
@@ -1824,16 +2219,20 @@ class MovimientosBancariosModel extends Model
         $llaves = [];
         foreach ($existentes as $e) {
             $l = self::llave_natural($e['banco'], $e['cuenta'], $e['fecha'],
-                                     $e['secuencia'], $e['cargo'], $e['abono']);
+                                     $e['secuencia'], $e['cargo'], $e['abono'], $e['hora'], $e['saldo']);
             if ($l !== null) $llaves[$l] = true;
         }
 
         $insertados = $duplicados = 0;
+        // cuenta+fecha de Santander tocadas en este insert: al terminar se
+        // renumera orden_dia solo para esas (ver recalcula_orden_dia_santander).
+        $diasSantander = [];
         $this->sql->beginTransaction();
         try {
             foreach ($movimientos as $m) {
                 $llave = self::llave_natural($m['banco'], $m['cuenta'], $m['fecha'],
-                                             $m['secuencia'] ?? null, $m['cargo'] ?? 0, $m['abono'] ?? 0);
+                                             $m['secuencia'] ?? null, $m['cargo'] ?? 0, $m['abono'] ?? 0,
+                                             $m['hora'] ?? null, $m['saldo'] ?? null);
                 if (isset($vistas[$m['huella']]) || ($llave !== null && isset($llaves[$llave]))) {
                     $duplicados++;
                     continue;
@@ -1850,15 +2249,21 @@ class MovimientosBancariosModel extends Model
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
                     [
                         $m['banco'], $m['cuenta'], $m['fecha'], $m['fecha_operacion'] ?? null,
-                        $m['hora'], $m['sucursal'],
-                        $m['clave_trans'], $m['descripcion'], $m['cargo'], $m['abono'],
-                        $m['saldo'], $m['referencia'], $m['concepto'], $m['banco_contraparte'],
-                        $m['cuenta_contraparte'], $m['nombre_contraparte'], $m['rfc_contraparte'],
-                        $m['clave_rastreo'], $m['descripcion_larga'], $m['huella'],
+                        $m['hora'], $m['sucursal'] ?? null,
+                        $m['clave_trans'] ?? null, $m['descripcion'], $m['cargo'], $m['abono'],
+                        $m['saldo'], $m['referencia'] ?? null, $m['concepto'] ?? null, $m['banco_contraparte'] ?? null,
+                        $m['cuenta_contraparte'] ?? null, $m['nombre_contraparte'] ?? null, $m['rfc_contraparte'] ?? null,
+                        $m['clave_rastreo'] ?? null, $m['descripcion_larga'] ?? null, $m['huella'],
                         $m['secuencia'] ?? null, $archivo, $usuario,
                     ]
                 );
                 $insertados++;
+                if (strtoupper(trim((string)$m['banco'])) === 'SANTANDER') {
+                    $diasSantander[$m['cuenta'] . '|' . $m['fecha']] = [$m['cuenta'], $m['fecha']];
+                }
+            }
+            foreach ($diasSantander as [$cuenta, $fecha]) {
+                self::recalcula_orden_dia_santander($this->sql, $cuenta, $fecha);
             }
             $this->sql->commit();
         } catch (Exception $e) {
@@ -1866,6 +2271,37 @@ class MovimientosBancariosModel extends Model
             throw $e;
         }
         return ['insertados' => $insertados, 'duplicados' => $duplicados];
+    }
+
+    /**
+     * Renumera orden_dia para una cuenta+fecha de Santander después de
+     * insertar movimientos nuevos ahí: los ordena por hora (con el TXT antes
+     * que el CSV en empate — el TXT es la fuente diaria de siempre, el CSV
+     * solo rellena huecos —, y el id como desempate final) y les asigna
+     * 1..n en ese orden.
+     *
+     * Solo Santander: es el único banco con dos formatos de archivo que
+     * pueden traer el mismo día en momentos distintos (ver llave_natural());
+     * el resto sigue ordenando por id como siempre. Misma lógica que el
+     * backfill de docs/sql/backfill_orden_dia_santander.sql, aplicada aquí
+     * solo al día que acaba de cambiar en vez de a toda la tabla.
+     */
+    private static function recalcula_orden_dia_santander($db, string $cuenta, string $fecha): void
+    {
+        $db->update(
+            "UPDATE m SET orden_dia = d.rn
+             FROM [TG].[dbo].[movimientos_bancarios] m
+             JOIN (
+                 SELECT id, ROW_NUMBER() OVER (ORDER BY
+                     hora,
+                     CASE WHEN archivo_origen LIKE '%.csv' THEN 1 ELSE 0 END,
+                     id
+                 ) AS rn
+                 FROM [TG].[dbo].[movimientos_bancarios]
+                 WHERE banco = 'SANTANDER' AND cuenta = ? AND fecha = ?
+             ) d ON d.id = m.id;",
+            [$cuenta, $fecha]
+        );
     }
 
     /**
@@ -1907,6 +2343,13 @@ class MovimientosBancariosModel extends Model
         // los aplica después; verificado 2026-07-23 contra el TXT del 20/07 —
         // 0 roturas de cadena de saldo en orden de archivo vs 11 por hora).
         //
+        // ISNULL(orden_dia, id): en Santander el id deja de ser ese orden
+        // real cuando dos archivos de origen distinto traen el mismo día en
+        // momentos distintos (el TXT diario y el CSV de Consulta de
+        // movimientos > Chequeras) — ver orden_dia en tesoreria_schema.sql y
+        // recalcula_orden_dia_santander(). El resto de bancos no tiene
+        // orden_dia (NULL) y sigue ordenando por id exactamente como antes.
+        //
         // Se proyectan solo las columnas que la tabla muestra: el resultado
         // viaja como JSON al DataTable y un SELECT * arrastraba huella,
         // archivo_origen y created_* sin que nadie los use.
@@ -1915,7 +2358,7 @@ class MovimientosBancariosModel extends Model
                          descripcion_larga, nombre_contraparte, banco_contraparte,
                          cuenta_contraparte, clave_trans, secuencia
                   FROM [TG].[dbo].[movimientos_bancarios]
-                  $where ORDER BY fecha, id;";
+                  $where ORDER BY fecha, ISNULL(orden_dia, id), id;";
         return $this->sql->select($query, $params) ?: [];
     }
 
@@ -1980,6 +2423,75 @@ class MovimientosBancariosModel extends Model
                   LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c ON c.CuentaLocal = m.cuenta
                   ORDER BY m.banco, m.cuenta;';
         return $this->sql->select($query) ?: [];
+    }
+
+    /**
+     * Diagnóstico "¿faltan movimientos de Santander en este rango?": recorre
+     * cada cuenta de Santander con movimientos en el rango y busca roturas
+     * en su cadena de saldos (mismo chequeo que se hace al parsear un
+     * archivo nuevo, aplicado aquí a lo que ya está en BD). Una rotura no
+     * prueba que falte un movimiento —el banco puede corregir un saldo por
+     * otra razón—, pero en la práctica es la señal más confiable sin tener
+     * el archivo del banco a la mano.
+     *
+     * $cuentasPermitidas restringe a esas cuentas (mismo criterio que
+     * get_cuentas), para que un perfil acotado no vea cuentas fuera de lo
+     * que ya le corresponde en la tabla de movimientos.
+     *
+     * @return array[] una entrada por cuenta con roturas: ['cuenta' => ...,
+     *   'descripcion' => ..., 'roturas' => array de
+     *   ['fecha' => ..., 'hora' => ..., 'descripcion' => ..., 'diferencia' => float]]
+     *   Cuentas sin roturas no aparecen en el resultado.
+     */
+    public function huecos_santander(string $desde, string $hasta, ?array $cuentasPermitidas = null): array
+    {
+        if ($cuentasPermitidas !== null && !$cuentasPermitidas) return [];
+
+        $where  = "WHERE m.banco = 'SANTANDER' AND m.fecha BETWEEN ? AND ?";
+        $params = [$desde, $hasta];
+        if ($cuentasPermitidas !== null) {
+            $ph      = implode(',', array_fill(0, count($cuentasPermitidas), '?'));
+            $where  .= " AND m.cuenta IN ($ph)";
+            array_push($params, ...$cuentasPermitidas);
+        }
+
+        // Mismo orden que get_movimientos(): fecha + orden_dia (o id si no
+        // hay orden_dia), que es el orden real de aplicación al saldo.
+        $query = "SELECT m.cuenta, m.fecha, m.hora, m.descripcion, m.cargo, m.abono, m.saldo,
+                         c.Descripcion AS descripcion_cuenta
+                  FROM [TG].[dbo].[movimientos_bancarios] m
+                  LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c ON c.CuentaLocal = m.cuenta
+                  $where ORDER BY m.cuenta, m.fecha, ISNULL(m.orden_dia, m.id), m.id;";
+        $filas = $this->sql->select($query, $params) ?: [];
+
+        $porCuenta = [];
+        foreach ($filas as $f) {
+            $porCuenta[$f['cuenta']]['descripcion'] ??= trim((string)($f['descripcion_cuenta'] ?? ''));
+            $porCuenta[$f['cuenta']]['movimientos'][] = $f;
+        }
+
+        $resultado = [];
+        foreach ($porCuenta as $cuenta => $datos) {
+            $roturas = self::roturas_cadena_saldos($datos['movimientos']);
+            if (!$roturas) continue;
+
+            $resultado[] = [
+                'cuenta'      => $cuenta,
+                'descripcion' => $datos['descripcion'],
+                'roturas'     => array_map(fn($r) => [
+                    'fecha'       => substr((string)$r['actual']['fecha'], 0, 10),
+                    'hora'        => $r['actual']['hora'],
+                    'descripcion' => trim((string)$r['actual']['descripcion']),
+                    'diferencia'  => round($r['diferencia'], 2),
+                ], $roturas),
+            ];
+        }
+
+        // Más roturas primero: las cuentas que probablemente más necesitan
+        // revisión van arriba.
+        usort($resultado, fn($a, $b) => count($b['roturas']) <=> count($a['roturas']));
+
+        return $resultado;
     }
 
     /**

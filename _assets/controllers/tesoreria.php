@@ -115,12 +115,19 @@ class Tesoreria
      * y de los dos rojos (Santander y Banorte).
      */
     private const BANCOS = [
+        // Tres formatos, mismo botón: el TXT diario de Enlace (el que se
+        // sube todos los días) y dos pantallas del portal para bajar un
+        // periodo ya cerrado (p.ej. al detectar movimientos faltantes) —
+        // "Consulta de movimientos > Chequeras" y "Movimientos SPEI
+        // detallados", mismos movimientos en layouts de CSV distintos.
+        // 'parser' queda sin valor porque cuál de los tres es se decide por
+        // el contenido del archivo, no por su extensión — ver
+        // SANTANDER_PARSERS y upload_movimientos().
         'SANTANDER' => [
             'etiqueta' => 'Santander',
             'color'    => '#EA1D25',   // rojo Santander, oficial desde 2018
-            'ext'      => ['txt'],
-            'espera'   => 'el TXT de Enlace Santander',
-            'parser'   => 'parse_santander_txt',
+            'ext'      => ['txt', 'csv'],
+            'espera'   => 'el TXT de Enlace Santander o alguno de los CSV de Consulta de movimientos',
             'entrada'  => 'contenido',
         ],
         // "BANORTE" y no "BANORTE_CHEQUES": se simplificó el 2026-08-05, hasta
@@ -246,6 +253,23 @@ class Tesoreria
      * archivo (cada layout de tarjeta trae su propio formato de encabezado).
      */
     private const AMEX_PDF_PARSERS = ['parse_amex_credito_pdf', 'parse_amex_gold_credito_pdf'];
+
+    /**
+     * Parsers de Santander a probar en orden hasta que uno reconozca el
+     * archivo: el TXT diario primero, por ser el que se sube casi siempre;
+     * los otros dos son pantallas del portal para bajar un periodo ya
+     * cerrado (mismos movimientos, dos layouts de CSV distintos).
+     *
+     * parser => etiqueta legible: el modal de resultado (upload_movimientos)
+     * usa la etiqueta para decirle al usuario cuál de los tres detectó, ya
+     * que la extensión (.txt/.csv) no alcanza para distinguir Chequeras de
+     * SPEI detallado (ambos .csv).
+     */
+    private const SANTANDER_PARSERS = [
+        'parse_santander_txt'          => 'TXT diario de Enlace',
+        'parse_santander_chequeras_csv' => 'CSV de Consulta de movimientos > Chequeras',
+        'parse_santander_spei_csv'      => 'CSV de Movimientos SPEI detallados',
+    ];
 
     /**
      * Normaliza el banco de un movimiento a una de las llaves de BANCOS.
@@ -489,6 +513,49 @@ class Tesoreria
             // contrato plano anterior, por si otro consumidor lo usa
             'saldos'   => $saldos,
             'total'    => $total,
+        ]);
+    }
+
+    /**
+     * GET AJAX: cuentas de Santander cuya cadena de saldos no cierra en el
+     * rango pedido —indicio de movimientos que el banco omitió del TXT
+     * diario. Alimenta el card "¿Faltan movimientos de Santander?" de la
+     * vista: mismo diagnóstico que ya hacen los parsers al importar un
+     * archivo nuevo (ver roturas_cadena_saldos() en el modelo), aplicado
+     * aquí a un rango arbitrario de lo que ya hay en BD.
+     *
+     * Mismo permiso que subir movimientos (81): es una herramienta de
+     * revisión para quien carga los archivos, no parte de la consulta que
+     * ve cualquiera con acceso de solo lectura al módulo.
+     */
+    public function santander_huecos(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_SUBIR_MOV)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+
+        $fmt   = '/^\d{4}-\d{2}-\d{2}$/';
+        $desde = $_GET['desde'] ?? '';
+        $hasta = $_GET['hasta'] ?? '';
+        if (!preg_match($fmt, $desde)) $desde = date('Y-m-d', strtotime('-30 days'));
+        if (!preg_match($fmt, $hasta)) $hasta = date('Y-m-d');
+        if ($desde > $hasta) $desde = $hasta;
+
+        try {
+            $cuentas = $this->movsModel->huecos_santander($desde, $hasta, $this->cuentas_permitidas());
+        } catch (Exception $e) {
+            error_log('santander_huecos: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al revisar los movimientos']);
+            return;
+        }
+
+        json_output([
+            'success' => true,
+            'desde'   => $desde,
+            'hasta'   => $hasta,
+            'cuentas' => $cuentas,
         ]);
     }
 
@@ -848,7 +915,28 @@ class Tesoreria
             $args[] = $cuenta;
         }
 
-        $parseo = MovimientosBancariosModel::{$cfg['parser']}(...$args);
+        // Etiqueta del formato reconocido, para que el modal le diga al
+        // usuario qué detectó (no todos los bancos tienen más de un
+        // formato: queda null salvo Santander).
+        $formato = null;
+        if (isset($cfg['parser'])) {
+            $parseo = MovimientosBancariosModel::{$cfg['parser']}(...$args);
+        } else {
+            // Santander: no se le pide al usuario decir cuál de los tres
+            // formatos es (mismo patrón que los PDF de Amex en
+            // upload_movimientos_cheques()). Se prueban en orden hasta que
+            // uno reconozca el archivo; si ninguno lo hace, se reportan los
+            // errores del último intento.
+            $parseo = ['movimientos' => [], 'errores' => []];
+            foreach (self::SANTANDER_PARSERS as $parser => $etiqueta) {
+                $intento = MovimientosBancariosModel::$parser(...$args);
+                $parseo  = $intento;
+                if (!empty($intento['movimientos'])) {
+                    $formato = $etiqueta;
+                    break;
+                }
+            }
+        }
         if (empty($parseo['movimientos'])) {
             json_output([
                 'success' => false,
@@ -884,13 +972,29 @@ class Tesoreria
                       . ' sin confirmar por el banco: si cambia su importe al confirmarse, se importará de nuevo';
         }
 
+        // La cadena de saldos rota (parse_santander_txt/chequeras/spei) es
+        // informativa, no un error de línea: no debe pintar el modal de rojo
+        // cuando el import en sí salió bien. Se separa de $errores aquí y no
+        // en el parser porque el resto de bancos SÍ trata su propia cadena
+        // rota como señal seria (su dedup depende más de ella) — ver
+        // roturas_cadena_saldos() y el docblock de cada parser.
+        $errores = [];
+        foreach ($parseo['errores'] as $e) {
+            if (str_contains($e, 'probablemente faltan movimientos en el archivo')) {
+                $avisos[] = $e;
+            } else {
+                $errores[] = $e;
+            }
+        }
+
         $fechas = array_column($parseo['movimientos'], 'fecha');
         json_output([
             'success'    => true,
             'banco'      => $banco,
+            'formato'    => $formato,
             'insertados' => $res['insertados'],
             'duplicados' => $res['duplicados'],
-            'errores'    => array_slice($parseo['errores'], 0, 20),
+            'errores'    => array_slice($errores, 0, 20),
             'avisos'     => $avisos,
             'info'       => $parseo['info'] ?? null,
             'fecha_min'  => min($fechas),

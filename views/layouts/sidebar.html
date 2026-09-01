@@ -160,6 +160,15 @@
         </ul>
       </li>
 
+      {% if authorized(84) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/station_portal/mis_recepciones">
+          <i data-feather="truck"></i>
+          <span class="align-middle">Recepciones</span>
+        </a>
+      </li>
+      {% endif %}
+
       <li class="sidebar-item">
         <a class="sidebar-link" href="/supply/purchase_analysis">
           <i data-feather="bar-chart-2"></i>

@@ -58,3 +58,21 @@ BEGIN
 ALTER TABLE dbo.movimientos_bancarios ADD fecha_operacion DATE NULL;
 END
 GO
+
+-- Posición del movimiento dentro de su día (banco, cuenta, fecha), aparte
+-- del id. El id solo refleja el orden de aplicación real cuando TODOS los
+-- movimientos de un día vienen del mismo archivo/import: si dos archivos de
+-- origen distinto traen movimientos del mismo día (p.ej. Santander: el TXT
+-- diario y el CSV de Consulta de movimientos > Chequeras para un periodo ya
+-- cerrado), el que se importó después queda con id más alto sin importar su
+-- hora real, y ORDER BY fecha, id ya no reconstruye la cadena de saldos.
+--
+-- Por ahora solo se llena y se usa para SANTANDER (ver
+-- MovimientosBancariosModel::recalcula_orden_dia_santander()); el resto de
+-- bancos sigue ordenando por id como siempre. NULL para todos hasta correr
+-- el backfill (docs/sql/backfill_orden_dia_santander.sql).
+IF COL_LENGTH('dbo.movimientos_bancarios', 'orden_dia') IS NULL
+BEGIN
+ALTER TABLE dbo.movimientos_bancarios ADD orden_dia INT NULL;
+END
+GO
