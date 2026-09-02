@@ -23,6 +23,9 @@ class Tesoreria
     private const PERM_MOV_CHEQUES          = 88;   // Ver Movimientos Bancos Cheques (tarjetas de crédito)
     // Mismo patrón que PERM_MOVIMIENTOS_CREDITO pero con CUENTAS_PERFIL_INGRESOS.
     private const PERM_MOVIMIENTOS_INGRESOS = 89;   // Ver Movimientos Bancos - Ingresos
+    // Mismo patrón, con CUENTAS_PERFIL_ALIANZA: las 22 cuentas del grupo
+    // Alianza Comercial (Gasomex + Clara + Jarudo) del panel de saldos.
+    private const PERM_MOVIMIENTOS_ALIANZA  = 92;   // Ver Movimientos Bancos - Alianza Comercial
     private const MAX_TXT_BYTES     = 10 * 1024 * 1024;
 
     /**
@@ -56,8 +59,44 @@ class Tesoreria
         '0601500741',           // Banorte, Diaz Gas SA de CV (MXN)
         '072164006015007416',   // Banorte, DG 0741 DLLS (USD)
         '0185322470',           // Banorte, Diaz Gas SA de CV
-        '65510224098',   // Santander, TSAcuenta nuev 
+        '65510224098',   // Santander, TSAcuenta nuev
         '0102925486' //bbva, custodia
+    ];
+
+    /**
+     * Cuentas visibles para el perfil "Alianza Comercial" (permiso 92), por
+     * CuentaLocal exacta del catálogo (TG.dbo.CatalogosCuentasBancarias).
+     * Confirmadas 2026-09-02 contra movimientos_bancarios/get_saldos_finales:
+     * son las 22 cuentas con saldo del grupo ALIANZA COMERCIAL del panel de
+     * saldos por grupo — Distribuidora Gasomex (10), Servicio El Jarudo (6)
+     * y Distribuidora Clara (6).
+     */
+    private const CUENTAS_PERFIL_ALIANZA = [
+        // Distribuidora Gasomex SA de CV (10)
+        '036420500416619210',   // Inbursa
+        '177129372',            // Afirme
+        '177129399',            // Afirme
+        '65504998214',          // Santander, principal
+        '65507674547',          // Santander
+        '65507674638',          // Santander
+        '65507674669',          // Santander
+        '65507674777',          // Santander
+        '65508985231',          // Santander
+        '82500973678',          // Santander, USD
+        // Servicio El Jarudo SA de CV (6)
+        '036420500416642355',   // Inbursa
+        '177122211',            // Afirme
+        '65505339719',          // Santander
+        '65507678504',          // Santander
+        '65508985413',          // Santander
+        '82500974409',          // Santander, USD
+        // Distribuidora Clara SA de CV (6)
+        '036420500416675461',   // Inbursa
+        '177126713',            // Afirme
+        '65505528588',          // Santander
+        '65507678492',          // Santander
+        '65508985029',          // Santander
+        '82500974412',          // Santander, USD
     ];
 
     /** Grupo de saldos para cuentas que no están en CatalogosCuentasBancarias. */
@@ -335,7 +374,7 @@ class Tesoreria
     public function movimientos_bancos(): void
     {
         if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
-            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS)) {
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)) {
             (new Errors())->get404();
             return;
         }
@@ -363,6 +402,7 @@ class Tesoreria
         if (authorized(self::PERM_MOVIMIENTOS)) return null;
         if (authorized(self::PERM_MOVIMIENTOS_CREDITO)) return self::CUENTAS_PERFIL_CREDITO;
         if (authorized(self::PERM_MOVIMIENTOS_INGRESOS)) return self::CUENTAS_PERFIL_INGRESOS;
+        if (authorized(self::PERM_MOVIMIENTOS_ALIANZA)) return self::CUENTAS_PERFIL_ALIANZA;
         return [];
     }
 
@@ -406,7 +446,7 @@ class Tesoreria
     {
         header('Content-Type: application/json');
         if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
-            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS)) {
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
