@@ -263,18 +263,18 @@ class Accounting{
         switch ($banco) {
             case 'BANORTE':
                 return ['Cuenta', 'Fecha de Operación', 'Fecha', 'Referencia', 'Descripción',
-                        'Cod. Transac', 'Sucursal', 'Depósitos', 'Retiros', 'Descripción Detallada'];
+                        'Cod. Transac', 'Sucursal', 'Depósitos', 'Retiros', 'Saldo', 'Descripción Detallada'];
             case 'BANKAOOL':
-                return ['Cuenta', 'Fecha', 'Hora', 'Descripción', 'Referencia', 'Cargo', 'Abono',
+                return ['Cuenta', 'Fecha', 'Hora', 'Descripción', 'Referencia', 'Cargo', 'Abono', 'Saldo',
                         'Concepto', 'Contraparte'];
             case 'INBURSA':
                 return ['Cuenta', 'Fecha', 'Referencia', 'Ref. Externa', 'Referencia Leyenda',
-                        'Ref. Numérica', 'Movimiento', 'Cargo', 'Abono', 'Ordenante', 'Clave de Rastreo'];
+                        'Ref. Numérica', 'Movimiento', 'Cargo', 'Abono', 'Saldo', 'Ordenante', 'Clave de Rastreo'];
             case 'AFIRME':
-                return ['Concepto', 'Fecha', 'Referencia', 'Cargo', 'Abono', 'Cuenta', 'Código'];
+                return ['Concepto', 'Fecha', 'Referencia', 'Cargo', 'Abono', 'Saldo', 'Cuenta', 'Código'];
             default:
                 return ['Cuenta', 'Fecha', 'Hora', 'Sucursal', 'Descripción', 'Importe Cargo',
-                        'Importe Abono', 'Referencia', 'Concepto', 'Descripción Larga', 'Contraparte'];
+                        'Importe Abono', 'Saldo', 'Referencia', 'Concepto', 'Descripción Larga', 'Contraparte'];
         }
     }
 
@@ -284,33 +284,35 @@ class Accounting{
             case 'BANORTE':
                 return [$m['cuenta'], $m['fecha_operacion'] ?? '', $m['fecha'], $m['referencia'] ?? '',
                         $m['descripcion'] ?? '', $m['clave_trans'] ?? '', $m['sucursal'] ?? '',
-                        $m['abono'], $m['cargo'], $m['descripcion_larga'] ?? ''];
+                        $m['abono'], $m['cargo'], $m['saldo'] ?? null, $m['descripcion_larga'] ?? ''];
             case 'BANKAOOL':
                 return [$m['cuenta'], $m['fecha'], $m['hora'] ?? '', $m['descripcion'] ?? '',
-                        $m['referencia'] ?? '', $m['cargo'], $m['abono'], $m['concepto'] ?? '',
-                        $m['nombre_contraparte'] ?? ''];
+                        $m['referencia'] ?? '', $m['cargo'], $m['abono'], $m['saldo'] ?? null,
+                        $m['concepto'] ?? '', $m['nombre_contraparte'] ?? ''];
             case 'INBURSA':
                 return [$m['cuenta'], $m['fecha'], $m['descripcion_larga'] ?? '', $m['clave_trans'] ?? '',
                         $m['concepto'] ?? '', $m['referencia'] ?? '', $m['descripcion'] ?? '',
-                        $m['cargo'], $m['abono'], $m['nombre_contraparte'] ?? '', $m['clave_rastreo'] ?? ''];
+                        $m['cargo'], $m['abono'], $m['saldo'] ?? null, $m['nombre_contraparte'] ?? '',
+                        $m['clave_rastreo'] ?? ''];
             case 'AFIRME':
                 return [$m['descripcion'] ?? '', $m['fecha'], $m['referencia'] ?? '', $m['cargo'],
-                        $m['abono'], $m['cuenta'], $m['clave_trans'] ?? ''];
+                        $m['abono'], $m['saldo'] ?? null, $m['cuenta'], $m['clave_trans'] ?? ''];
             default:
                 return [$m['cuenta'], $m['fecha'], $m['hora'] ?? '', $m['sucursal'] ?? '',
-                        $m['descripcion'] ?? '', $m['cargo'], $m['abono'], $m['referencia'] ?? '',
-                        $m['concepto'] ?? '', $m['descripcion_larga'] ?? '', $m['nombre_contraparte'] ?? ''];
+                        $m['descripcion'] ?? '', $m['cargo'], $m['abono'], $m['saldo'] ?? null,
+                        $m['referencia'] ?? '', $m['concepto'] ?? '', $m['descripcion_larga'] ?? '',
+                        $m['nombre_contraparte'] ?? ''];
         }
     }
 
-    /** Columnas de cargo/abono (1-based) por banco, para formato de moneda. */
+    /** Columnas de cargo/abono/saldo (1-based) por banco, para formato de moneda. */
     private function columnas_monto_banco(string $banco): array {
         switch ($banco) {
-            case 'BANORTE':  return [8, 9];    // Depósitos, Retiros
-            case 'BANKAOOL': return [6, 7];    // Cargo, Abono
-            case 'INBURSA':  return [8, 9];    // Cargo, Abono
-            case 'AFIRME':   return [4, 5];    // Cargo, Abono
-            default:         return [6, 7];    // Importe Cargo, Importe Abono
+            case 'BANORTE':  return [8, 9, 10];   // Depósitos, Retiros, Saldo
+            case 'BANKAOOL': return [6, 7, 8];    // Cargo, Abono, Saldo
+            case 'INBURSA':  return [8, 9, 10];   // Cargo, Abono, Saldo
+            case 'AFIRME':   return [4, 5, 6];    // Cargo, Abono, Saldo
+            default:         return [6, 7, 8];    // Importe Cargo, Importe Abono, Saldo
         }
     }
 
