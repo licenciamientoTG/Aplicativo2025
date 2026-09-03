@@ -6,7 +6,7 @@ class EfcConciliacionModel {
     private const TOLERANCE = 20.00;
     private const COMPANY_ACCOUNTS = [
         'DIAZ GAS' => ['0185322470', '369'],
-        'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', 'C7533', '2627', '5247', '7604', '0031'],
+        'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', '7533', '2627', '5247', '7604', '0031'],
         'GASOMEX'   => ['8504', '4409', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4457'],
     ];
     /* La razón social fiscal no identifica por sí sola la operación. Gasomex
@@ -23,7 +23,7 @@ class EfcConciliacionModel {
         'DIAZ GAS' => ['369' => ['PARRAL']],
         'FORANEAS' => [
             '3281'=>['VILLA AHUMADA'], '8837'=>['DELICIAS'], '8520'=>['PLUTARCO'],
-            '7291'=>['PICACHOS'], '2570'=>['PICACHOS'], 'C7533'=>['VENTANAS'],
+            '7291'=>['PICACHOS'], '2570'=>['PICACHOS'], '7533'=>['VENTANAS'],
             '2627'=>['VENTANAS'], '5247'=>['CASTANO'], '7604'=>['GABRIELA MISTRAL'],
             '0031'=>['PUERTECITO','SAN RAFAEL','COLOSIO','JESUS MARIA'],
         ],
