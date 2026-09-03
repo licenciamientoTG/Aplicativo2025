@@ -3,6 +3,20 @@
 class EfcConciliacionModel {
     private PDO $db;
     private const TOLERANCE = 20.00;
+    private const COMPANY_ACCOUNTS = [
+        'DIAZ GAS' => ['0185322470', '369'],
+        'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', 'C7533', '2627', '5247', '7604', '0031'],
+        'GASOMEX'   => ['8504', '4409', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4457'],
+    ];
+
+    public static function normalizeCompany(?string $company): string {
+        $company = strtoupper(trim((string)$company));
+        return array_key_exists($company, self::COMPANY_ACCOUNTS) ? $company : 'DIAZ GAS';
+    }
+
+    public static function accountSuffixes(string $company): array {
+        return self::COMPANY_ACCOUNTS[self::normalizeCompany($company)];
+    }
 
     public function __construct() {
         $this->db = new PDO('sqlsrv:Server=192.168.0.6;Database=TG;TrustServerCertificate=yes', 'cguser', 'sahei1712');
@@ -28,8 +42,8 @@ class EfcConciliacionModel {
         $this->db->beginTransaction();
         try {
             if ($stationId) {
-                $check = $this->db->prepare("SELECT 1 FROM TG.dbo.Estaciones WHERE Codigo=? AND RFC='DGA930823KD3'"); $check->execute([$stationId]);
-                if (!$check->fetchColumn()) throw new RuntimeException('Estacion Diaz Gas invalida.');
+                $check = $this->db->prepare("SELECT 1 FROM TG.dbo.Estaciones WHERE Codigo=? AND Codigo<>0"); $check->execute([$stationId]);
+                if (!$check->fetchColumn()) throw new RuntimeException('Estacion invalida.');
                 $update = $this->db->prepare("UPDATE dbo.efc_conc_correcciones_banco SET estacion_id=?, actualizado_por=?, actualizado_en=GETDATE() WHERE movimiento_bancario_id=?");
                 $update->execute([$stationId, $userId, $movementId]);
                 if ($update->rowCount() === 0) $this->db->prepare("INSERT dbo.efc_conc_correcciones_banco(movimiento_bancario_id,estacion_id,creado_por) VALUES(?,?,?)")->execute([$movementId, $stationId, $userId]);
@@ -154,18 +168,32 @@ class EfcConciliacionModel {
 
     private function validateDeposit(int $id,int $station,string $cutDate,float $allocated): array {
         if ($this->bankIsActive($id)) throw new RuntimeException('Uno de los depositos ya esta conciliado.');
-        $stmt=$this->db->prepare("SELECT id,fecha,abono,referencia,descripcion_larga,descripcion,concepto FROM TG.dbo.movimientos_bancarios WHERE id=? AND banco='BANORTE' AND REPLACE(REPLACE(ISNULL(cuenta,''),'-',''),' ','')='0185322470' AND abono>0 AND UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'"); $stmt->execute([$id]); $row=$stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) throw new RuntimeException('Deposito Banorte invalido.');
+        $company=$this->companyForStation($station);
+        $suffixes=self::accountSuffixes($company);
+        $accountWhere=implode(' OR ',array_fill(0,count($suffixes),"RIGHT(UPPER(REPLACE(REPLACE(ISNULL(cuenta,''),'-',''),' ','')),LEN(?))=?"));
+        $stmt=$this->db->prepare("SELECT id,fecha,abono,referencia,descripcion_larga,descripcion,concepto FROM TG.dbo.movimientos_bancarios WHERE id=? AND abono>0 AND UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' AND ($accountWhere)");
+        $params=[$id]; foreach($suffixes as $suffix) { $params[]=$suffix; $params[]=$suffix; } $stmt->execute($params); $row=$stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) throw new RuntimeException('Deposito invalido para la empresa de la estacion.');
         $date=$this->dateValue($row['fecha']); $days=(int)((strtotime($date)-strtotime($cutDate))/86400);
         if ($days<0 || $days>7) throw new RuntimeException('El deposito debe estar entre la fecha del corte y siete dias posteriores.');
         if (abs((float)$row['abono']-$allocated)>self::TOLERANCE) throw new RuntimeException('La diferencia de una partida supera $20.');
-        if ($this->bankStation((int)$row['id'],$row)!==$station) throw new RuntimeException('El deposito no pertenece a la estacion efectiva del corte.');
+        if ($this->bankStation((int)$row['id'],$row,$company)!==$station) throw new RuntimeException('El deposito no pertenece a la estacion efectiva del corte.');
         return ['id'=>'mb_'.(int)$row['id'],'date'=>$date,'amount'=>(float)$row['abono'],'reference'=>(string)$row['referencia']];
     }
 
-    private function bankStation(int $id,array $movement): ?int {
+    private function companyForStation(int $station): string {
+        $query=$this->db->prepare("SELECT RFC FROM TG.dbo.Estaciones WHERE Codigo=?"); $query->execute([$station]);
+        $rfc=(string)($query->fetchColumn()?:'');
+        if($rfc==='DGA930823KD3') return 'DIAZ GAS';
+        if($rfc==='DGM880621FU5') return 'GASOMEX';
+        return 'FORANEAS';
+    }
+
+    private function bankStation(int $id,array $movement,?string $company=null): ?int {
         $correct=$this->db->prepare("SELECT estacion_id FROM dbo.efc_conc_correcciones_banco WHERE movimiento_bancario_id=?"); $correct->execute([$id]); $station=$correct->fetchColumn(); if ($station) return (int)$station;
-        $catalog=$this->db->query("SELECT Codigo,Estacion FROM TG.dbo.Estaciones WHERE RFC='DGA930823KD3'")->fetchAll(PDO::FETCH_ASSOC); $map=[];
+        $company=self::normalizeCompany($company??'DIAZ GAS');
+        $where=$company==='DIAZ GAS' ? "RFC='DGA930823KD3'" : ($company==='GASOMEX' ? "RFC='DGM880621FU5'" : "ISNULL(RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')");
+        $catalog=$this->db->query("SELECT Codigo,Estacion FROM TG.dbo.Estaciones WHERE $where AND Codigo<>0")->fetchAll(PDO::FETCH_ASSOC); $map=[];
         foreach($catalog as $item) { $code=ltrim(preg_replace('/\D+/','',(string)$item['Estacion']),'0'); if($code!=='') $map[$code]=(int)$item['Codigo']; }
         $text=implode(' ',[(string)($movement['descripcion_larga']??''),(string)($movement['descripcion']??''),(string)($movement['concepto']??''),(string)($movement['referencia']??'')]); preg_match_all('/\d+/',$text,$matches); $found=[];
         foreach($matches[0] as $raw) { $code=ltrim($raw,'0'); if(isset($map[$code])) $found[$map[$code]]=true; }

@@ -3743,14 +3743,28 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            // INNER JOIN con Tesoreria_afil para traer SOLO las estaciones que tienen configuración/afiliación
-            // RFC se toma de Estaciones (fuente autoritativa), no de Tesoreria_afil (puede variar por entidad)
+            // RFC se toma de Estaciones (fuente autoritativa), no de Tesoreria_afil.
+            // El filtro se mantiene opcional para no romper los consumidores
+            // históricos de este catálogo.
+            $empresa = strtoupper(trim((string)($_GET['empresa'] ?? '')));
+            $empresaWhere = '';
+            if ($empresa === 'DIAZ GAS') $empresaWhere = " AND T1.RFC = 'DGA930823KD3'";
+            elseif ($empresa === 'GASOMEX') $empresaWhere = " AND T1.RFC = 'DGM880621FU5'";
+            elseif ($empresa === 'FORANEAS') $empresaWhere = " AND ISNULL(T1.RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')";
+            // Para la conciliación por empresa se requiere el catálogo completo,
+            // incluso si la estación todavía no existe en Tesoreria_afil.
+            $from = $empresa === ''
+                ? "FROM Estaciones T1 INNER JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id"
+                : "FROM Estaciones T1";
             $sql = "SELECT DISTINCT
                         T1.Codigo,
                         T1.Nombre,
-                        ISNULL(T1.RFC, 'FORANEAS') as RFC
-                    FROM Estaciones T1
-                    INNER JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id
+                        ISNULL(T1.RFC, 'FORANEAS') as RFC,
+                        CASE WHEN T1.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
+                             WHEN T1.RFC = 'DGM880621FU5' THEN 'GASOMEX'
+                             ELSE 'FORANEAS' END AS Empresa
+                    $from
+                    WHERE T1.Codigo <> 0 $empresaWhere
                     ORDER BY T1.Nombre";
 
             $stmt = $conn->query($sql);
@@ -3769,11 +3783,12 @@ public function anomalies_client_tickets()
             $foundColosio = false;
             foreach($result as $r) { if($r['Codigo'] == 333) $foundColosio = true; }
 
-            if(!$foundColosio) {
+            if(!$foundColosio && ($empresa === '' || $empresa === 'FORANEAS')) {
                 $result[] = [
                     'Codigo' => 333,
                     'Nombre' => 'COLOSIO',
-                    'RFC'    => 'FORANEAS'
+                    'RFC'    => 'FORANEAS',
+                    'Empresa'=> 'FORANEAS'
                 ];
                 // Reordenar alfabéticamente
                 usort($result, function($a, $b) { return strcmp($a['Nombre'], $b['Nombre']); });
@@ -6465,7 +6480,7 @@ public function stamped_invoices_detail(): void
     }
 
     /**
-     * Depósitos de efectivo Banorte para la prueba de conciliación Díaz Gas.
+     * Depósitos de efectivo configurados para Conciliación de efectivo.
      * Sólo consulta movimientos ya importados; no modifica Tesorería ni grupos V3.
      */
     public function get_cash_banorte_deposits(): void {
@@ -6476,6 +6491,7 @@ public function stamped_invoices_detail(): void
         $month      = (int)($_GET['month'] ?? date('m'));
         $estacionId = (int)($_GET['estacion_id'] ?? 0);
         $todasEstaciones = ($_GET['all'] ?? '') === '1';
+        $empresa = EfcConciliacionModel::normalizeCompany($_GET['empresa'] ?? 'DIAZ GAS');
         if ($year < 2020 || $month < 1 || $month > 12 || (!$todasEstaciones && !$estacionId)) {
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
             exit;
@@ -6489,13 +6505,16 @@ public function stamped_invoices_detail(): void
         try {
             $conn = $this->v3_conn();
 
-            // Estaciones.Estacion conserva el identificador operativo que Banorte
-            // escribe en la descripción detallada (por ejemplo E04188 → 4188).
+            // Estaciones.Estacion conserva el identificador operativo que los
+            // bancos escriben en la descripción detallada (por ejemplo E04188 → 4188).
+            $empresaWhere = $empresa === 'DIAZ GAS' ? "E.RFC = 'DGA930823KD3'"
+                : ($empresa === 'GASOMEX' ? "E.RFC = 'DGM880621FU5'"
+                : "ISNULL(E.RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')");
             $stmtEstaciones = $conn->query(
                 "SELECT DISTINCT E.Codigo, E.Nombre,
                         E.Estacion AS codigo_banco
                  FROM [TG].[dbo].[Estaciones] E
-                 WHERE E.RFC = 'DGA930823KD3'"
+                 WHERE E.Codigo<>0 AND $empresaWhere"
             );
             $catalogo = [];
             while ($est = $stmtEstaciones->fetch(PDO::FETCH_ASSOC)) {
@@ -6508,20 +6527,23 @@ public function stamped_invoices_detail(): void
                 }
             }
             $correcciones = [];
-            $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id WHERE E.RFC='DGA930823KD3'");
+            $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id");
             while ($correccion = $stmtCorrecciones->fetch(PDO::FETCH_ASSOC)) $correcciones[(int)$correccion['movimiento_bancario_id']] = ['station_id'=>(int)$correccion['estacion_id'],'station'=>trim($correccion['Nombre'])];
 
+            $suffixes = EfcConciliacionModel::accountSuffixes($empresa);
+            $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT id, fecha, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
+                "SELECT id, fecha, banco, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
                  FROM [TG].[dbo].[movimientos_bancarios]
-                 WHERE banco = 'BANORTE'
-                   AND REPLACE(REPLACE(ISNULL(cuenta,''), '-', ''), ' ', '') = '0185322470'
-                   AND abono > 0
+                 WHERE abono > 0
                    AND YEAR(fecha) = ? AND MONTH(fecha) = ?
                    AND UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                   AND ($accountWhere)
                  ORDER BY fecha, id"
             );
-            $stmt->execute([$year, $month]);
+            $params = [$year, $month];
+            foreach ($suffixes as $suffix) { $params[] = $suffix; $params[] = $suffix; }
+            $stmt->execute($params);
 
             $movimientos = [];
             while ($mov = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -6553,6 +6575,7 @@ public function stamped_invoices_detail(): void
                 $movimientos[] = [
                     'id'                => 'mb_' . (int)$mov['id'],
                     'fecha'             => $fecha,
+                    'banco'             => trim((string)$mov['banco']),
                     'cuenta'            => $mov['cuenta'],
                     'referencia'        => trim((string)$mov['referencia']),
                     'sucursal'          => trim((string)$mov['sucursal']),
@@ -6569,9 +6592,9 @@ public function stamped_invoices_detail(): void
                     'station_normalized'=> $codigos,
                 ];
             }
-            echo json_encode(['status' => 'success', 'data' => $movimientos]);
+            echo json_encode(['status' => 'success', 'empresa' => $empresa, 'data' => $movimientos]);
         } catch (PDOException $e) {
-            echo json_encode(['status' => 'error', 'message' => 'Error consultando depósitos Banorte: ' . $e->getMessage()]);
+            echo json_encode(['status' => 'error', 'message' => 'Error consultando depósitos bancarios: ' . $e->getMessage()]);
         }
         exit;
     }
