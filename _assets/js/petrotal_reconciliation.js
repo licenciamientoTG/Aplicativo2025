@@ -120,7 +120,6 @@ function construirConfigDataTableRecepciones() {
             url: '/supply/datatables_recepciones_proveedor',
             data: function (d) {
                 d.proveedor_rfc = $('#proveedor_rfc_recepciones').val();
-                d.codgas = $('#codgas_recepciones').val();
                 d.fecha_desde = $('#fecha_desde_recepciones').val();
                 d.fecha_hasta = $('#fecha_hasta_recepciones').val();
             },
@@ -261,36 +260,9 @@ $('#btnBuscarConciliacion').on('click', function () {
     }
 });
 
-// El select de estación trae TODAS las opciones de todos los proveedores
-// precargadas (cada <option> con data-proveedor), no vía AJAX — son pocas
-// estaciones en total. Al cambiar el proveedor de esta pestaña, se
-// muestran/ocultan opciones vía la API de bootstrap-select (hide/show +
-// refresh). Ningún filtro llega preseleccionado: el usuario siempre elige
-// proveedor y estación a mano, así que aquí solo se habilitan las opciones
-// que corresponden y se resetea la estación al placeholder — nunca se
-// autoselecciona una estación real.
-function filtrarEstacionesPorProveedor() {
-    const proveedorRfc = $('#proveedor_rfc_recepciones').selectpicker('val');
-    const $select = $('#codgas_recepciones');
-
-    $select.find('option[value]:not([value=""])').each(function () {
-        $(this).prop('disabled', $(this).data('proveedor') !== proveedorRfc);
-    });
-
-    $select.selectpicker('val', '');
-    $select.selectpicker('refresh');
-}
-
-$('#proveedor_rfc_recepciones').on('change', filtrarEstacionesPorProveedor);
-$(function () { filtrarEstacionesPorProveedor(); });
-
 function rangoRecepcionesEsValido() {
     if (!$('#proveedor_rfc_recepciones').val()) {
         alertify.myAlert('<div class="text-danger text-center"><p>Selecciona un proveedor.</p></div>');
-        return false;
-    }
-    if (!$('#codgas_recepciones').val()) {
-        alertify.myAlert('<div class="text-danger text-center"><p>Selecciona una estación.</p></div>');
         return false;
     }
     const desde = $('#fecha_desde_recepciones').val();

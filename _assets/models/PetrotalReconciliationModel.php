@@ -457,6 +457,27 @@ class PetrotalReconciliationModel extends Model {
         return $filas;
     }
 
+    // Igual que sugerir_recepciones_por_volumen pero para TODAS las
+    // estaciones mapeadas del proveedor a la vez (2026-09-05: filtro de
+    // estación quitado de la vista a pedido del usuario, solo queda
+    // Proveedor). Cada fila trae 'estacion' para que la vista sepa a cuál
+    // pertenece. Una consulta OPENQUERY por estación — aceptable porque son
+    // pocas estaciones por proveedor (18 para Tesoro) y es una búsqueda
+    // manual bajo demanda, no un polling automático.
+    function sugerir_recepciones_todas_estaciones(string $proveedorRfc, string $fechaDesde, string $fechaHasta): array {
+        $estaciones = $this->estaciones_con_codigo_externo($proveedorRfc);
+        $filas = [];
+        foreach ($estaciones as $estacion) {
+            $codgas = (int)$estacion['Codigo'];
+            $sugerencias = $this->sugerir_recepciones_por_volumen($codgas, $proveedorRfc, $fechaDesde, $fechaHasta);
+            foreach ($sugerencias as $s) {
+                $s['estacion'] = $estacion;
+                $filas[] = $s;
+            }
+        }
+        return $filas;
+    }
+
     // Facturas del proveedor real ya identificadas para una estación (vía
     // EstacionesCodigosExternos), sin exigir ReceptorNombre='PETROTAL' —
     // a diferencia de buscar_facturas_proveedor_hacia_petrotal, aquí se

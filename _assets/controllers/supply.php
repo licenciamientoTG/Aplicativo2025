@@ -2455,16 +2455,7 @@ class Supply
         }
         $proveedores = $this->petrotalReconciliationModel->proveedores_hacia_petrotal();
 
-        // Estaciones ya mapeadas por proveedor, precargadas de una vez (no
-        // vía AJAX): son pocos proveedores y pocas estaciones cada uno, así
-        // que se manda todo junto y el JS filtra en el cliente al cambiar
-        // el selector de proveedor de la pestaña "Confirmar recepción".
-        $estacionesPorProveedor = [];
-        foreach ($proveedores as $p) {
-            $estacionesPorProveedor[$p['EmisorRfc']] = $this->petrotalReconciliationModel->estaciones_con_codigo_externo($p['EmisorRfc']);
-        }
-
-        echo $this->twig->render($this->route . 'petrotal_reconciliation.html', compact('proveedores', 'estacionesPorProveedor'));
+        echo $this->twig->render($this->route . 'petrotal_reconciliation.html', compact('proveedores'));
     }
 
     // Punto de partida: facturas de la compra ORIGINAL (proveedor real ->
@@ -2561,24 +2552,26 @@ class Supply
             return;
         }
 
-        $codgas = (int)($_REQUEST['codgas'] ?? 0);
         $proveedorRfc = trim($_REQUEST['proveedor_rfc'] ?? '');
         $fechaDesde = $_REQUEST['fecha_desde'] ?? date('Y-m-d');
         $fechaHasta = $_REQUEST['fecha_hasta'] ?? date('Y-m-d');
 
-        if (!$codgas || !$proveedorRfc) {
-            json_output(['data' => [], 'error' => 'Selecciona proveedor y estación']);
+        if (!$proveedorRfc) {
+            json_output(['data' => [], 'error' => 'Selecciona un proveedor']);
             return;
         }
 
-        $estacion = $this->gasolinerasModel->get_by_codgas($codgas);
-        $sugerencias = $this->petrotalReconciliationModel->sugerir_recepciones_por_volumen(
-            $codgas, $proveedorRfc, $fechaDesde, $fechaHasta
+        // Sin filtro de estación (2026-09-05, a pedido del usuario): se
+        // consultan TODAS las estaciones mapeadas para este proveedor de
+        // una vez, cada sugerencia ya trae su propia 'estacion'.
+        $sugerencias = $this->petrotalReconciliationModel->sugerir_recepciones_todas_estaciones(
+            $proveedorRfc, $fechaDesde, $fechaHasta
         );
 
         $filas = [];
         foreach ($sugerencias as $s) {
             $r = $s['recepcion'];
+            $codgas = (int)$s['estacion']['Codigo'];
             $asignacionExistente = null;
             if ($s['factura_proveedor']) {
                 $asignacionExistente = $this->petrotalReconciliationModel->ya_asignada(
@@ -2595,7 +2588,7 @@ class Supply
 
             $filas[] = [
                 'codgas' => $codgas,
-                'estacion_nombre' => $estacion['Nombre'] ?? ('Estación ' . $codgas),
+                'estacion_nombre' => $s['estacion']['Nombre'] ?? ('Estación ' . $codgas),
                 'nrotrn' => (int)$r['nrotrn'],
                 'fecha' => $r['fecha'],
                 'producto' => $r['Producto'],
