@@ -153,7 +153,15 @@ function construirConfigDataTable() {
                 render: function (row) {
                     let html = `<button type="button" class="btn btn-sm btn-primary btn-subir-remision" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}" data-fecha="${row.fecha}">Subir</button> `;
                     if (row.total_remisiones > 0) {
-                        html += `<button type="button" class="btn btn-sm btn-secondary btn-ver-remisiones" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}">Ver</button>`;
+                        html += `<button type="button" class="btn btn-sm btn-secondary btn-ver-remisiones" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}">Ver</button> `;
+                    }
+                    // Solo aparece cuando Abastos ya confirmó, en Conciliación
+                    // Petrotal, qué factura del proveedor corresponde a esta
+                    // recepción (TG.dbo.FacturasMovimientosTanques, TipoOperacion=1).
+                    if (row.factura_id) {
+                        const base = `/station_portal/descargar_factura_recepcion/${row.nrotrn}`;
+                        html += `<a class="btn btn-sm btn-outline-success" href="${base}/pdf?codgas=${row.codgas}" title="${row.factura_proveedor || ''} · ${row.factura_folio || ''}">PDF</a> `;
+                        html += `<a class="btn btn-sm btn-outline-success" href="${base}/xml?codgas=${row.codgas}" title="${row.factura_proveedor || ''} · ${row.factura_folio || ''}">XML</a>`;
                     }
                     return html;
                 }

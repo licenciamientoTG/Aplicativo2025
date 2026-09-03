@@ -6,6 +6,7 @@ class station_portal
     public MovimientosTanModel $movimientosTanModel;
     public RecepcionRemisionesModel $recepcionRemisionesModel;
     public GasolinerasModel $gasolinerasModel;
+    public PetrotalReconciliationModel $petrotalReconciliationModel;
 
     const PERM_VER              = 84; // "Ver Mis Recepciones (portal estaciones)"
     const PERM_TODAS_ESTACIONES = 85; // "Mis Recepciones: ver todas las estaciones"
@@ -18,6 +19,7 @@ class station_portal
         $this->movimientosTanModel = new MovimientosTanModel();
         $this->recepcionRemisionesModel = new RecepcionRemisionesModel();
         $this->gasolinerasModel = new GasolinerasModel();
+        $this->petrotalReconciliationModel = new PetrotalReconciliationModel();
     }
 
     /**
@@ -253,19 +255,27 @@ class station_portal
         // la consulta a TG por cada fila con la misma estación+fecha (relevante
         // sobre todo en "TODAS", donde hay muchas combinaciones distintas).
         $counts = [];
+        // Asignaciones directas (recepción<->factura del proveedor, sin
+        // Petrotal) cacheadas por [codgas] — una sola consulta por estación
+        // distinta en el resultado, nunca por fila.
+        $asignacionesPorCodgas = [];
         foreach ($recepciones as $r) {
             $codgasFila = (int)$r['codgas'];
             $fchtrnFila = (int)$r['fchtrn'];
             if (!isset($counts[$codgasFila][$fchtrnFila])) {
                 $counts[$codgasFila][$fchtrnFila] = $this->recepcionRemisionesModel->get_counts_by_day($codgasFila, $fchtrnFila);
             }
+            if (!isset($asignacionesPorCodgas[$codgasFila])) {
+                $asignacionesPorCodgas[$codgasFila] = $this->petrotalReconciliationModel->asignaciones_directas_por_estacion($codgasFila);
+            }
         }
 
-        $data = array_map(function ($r) use ($counts) {
+        $data = array_map(function ($r) use ($counts, $asignacionesPorCodgas) {
             $codgasFila = (int)$r['codgas'];
             $nrotrn = (int)$r['nrotrn'];
             $fchtrn = (int)$r['fchtrn'];
             $totalRemisiones = $counts[$codgasFila][$fchtrn][$nrotrn] ?? 0;
+            $asignacion = $asignacionesPorCodgas[$codgasFila][$nrotrn] ?? null;
 
             return [
                 'nrotrn'           => $nrotrn,
@@ -279,6 +289,9 @@ class station_portal
                 'documento'        => $r['documento'],
                 'referencia'       => $r['referencia'],
                 'total_remisiones' => $totalRemisiones,
+                'factura_id'       => $asignacion['FacturaId'] ?? null,
+                'factura_folio'    => $asignacion['Folio'] ?? null,
+                'factura_proveedor' => $asignacion['EmisorNombre'] ?? null,
             ];
         }, $recepciones);
 
@@ -551,6 +564,73 @@ class station_portal
         header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
         header('Content-Length: ' . filesize($fullPath));
         readfile($fullPath);
+        exit;
+    }
+
+    // Descarga el PDF o XML de la factura del proveedor real ligada a una
+    // recepción (TG.dbo.FacturasMovimientosTanques, TipoOperacion=1) — solo
+    // existe el botón en el frontend cuando esa liga ya fue confirmada desde
+    // /supply/petrotal_reconciliation. No recibe el FacturaId directo del
+    // cliente: recibe (codgas, nrotrn) y resuelve la factura del lado del
+    // servidor, para que un usuario no pueda pedir cualquier FacturaId
+    // manipulando la URL — solo puede descargar lo que está ligado a una
+    // recepción de SU estación (o cualquiera, con permiso de todas).
+    public function descargar_factura_recepcion($nrotrn = null, $tipo = null): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            http_response_code(403);
+            echo "Acceso denegado";
+            exit;
+        }
+
+        $codgas = (int)($_GET['codgas'] ?? 0);
+        $nrotrn = (int)$nrotrn;
+        $tipo = strtolower((string)$tipo);
+
+        if (!$codgas || !$nrotrn || !in_array($tipo, ['pdf', 'xml'], true)) {
+            http_response_code(400);
+            echo "Parámetros inválidos";
+            exit;
+        }
+
+        if (!authorized(self::PERM_TODAS_ESTACIONES)) {
+            $codgasEfectivo = $this->resolveCodgas();
+            if ($codgasEfectivo === null || $codgas !== $codgasEfectivo) {
+                http_response_code(403);
+                echo "Acceso denegado";
+                exit;
+            }
+        }
+
+        $asignaciones = $this->petrotalReconciliationModel->asignaciones_directas_por_estacion($codgas);
+        $asignacion = $asignaciones[$nrotrn] ?? null;
+        if (!$asignacion) {
+            http_response_code(404);
+            echo "Esta recepción no tiene factura confirmada";
+            exit;
+        }
+
+        $rutaArchivo = $tipo === 'pdf' ? ($asignacion['RutaArchivo'] ?? '') : ($asignacion['RutaXml'] ?? '');
+        $nombreArchivo = $tipo === 'pdf' ? ($asignacion['NombreArchivo'] ?? '') : ($asignacion['NombreXml'] ?? '');
+
+        if (empty($rutaArchivo) || !file_exists($rutaArchivo)) {
+            http_response_code(404);
+            echo "Archivo no encontrado en el servidor";
+            exit;
+        }
+
+        $contentType = $tipo === 'pdf' ? 'application/pdf' : 'application/xml';
+        $nombreArchivo = $nombreArchivo ?: basename($rutaArchivo);
+
+        header('Content-Type: ' . $contentType);
+        header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
+        header('Content-Length: ' . filesize($rutaArchivo));
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Pragma: public');
+
+        ob_clean();
+        flush();
+        readfile($rutaArchivo);
         exit;
     }
 }

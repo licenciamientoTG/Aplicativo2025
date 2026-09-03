@@ -313,6 +313,27 @@ class PetrotalReconciliationModel extends Model {
         }
     }
 
+    // Asignaciones directas (TipoOperacion=1, recepción<->factura del
+    // proveedor real sin Petrotal) de una estación, indexadas por nrotrn —
+    // para Mis Recepciones: una sola consulta por lote en vez de una por
+    // fila. Incluye los datos de archivo necesarios para los botones de
+    // descarga (RutaArchivo/RutaXml de FacturasRecibidas).
+    function asignaciones_directas_por_estacion(int $codgas): array {
+        $query = "
+            SELECT fmt.nrotrn, fmt.Id AS AsignacionId, fr.Id AS FacturaId, fr.Folio, fr.EmisorNombre,
+                   fr.RutaArchivo, fr.NombreArchivo, fr.RutaXml, fr.NombreXml
+            FROM TG.dbo.FacturasMovimientosTanques fmt
+            JOIN TG.dbo.FacturasRecibidas fr ON fr.Id = fmt.FacturaProveedorId
+            WHERE fmt.codgas = :codgas AND fmt.TipoOperacion = 1 AND fmt.Activo = 1
+        ";
+        $rows = $this->sql->select($query, ['codgas' => $codgas]);
+        $porNrotrn = [];
+        foreach ($rows as $r) {
+            $porNrotrn[(int)$r['nrotrn']] = $r;
+        }
+        return $porNrotrn;
+    }
+
     // $facturaPetrotalId null: caso "recepción directa" (proveedor real
     // ligado a una recepción, sin Petrotal de por medio — TipoOperacion=1),
     // se busca por FacturaProveedorId con FacturaPetrotalId IS NULL.
