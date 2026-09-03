@@ -25,7 +25,7 @@ import xlrd
 from openpyxl import load_workbook
 
 
-VERSION = "2.2-python"
+VERSION = "2.3-python"
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 
@@ -117,7 +117,7 @@ def report_date_from_filename(filename: str) -> date | None:
 
 
 def is_total_gas_excel(filename: str) -> bool:
-    """Sólo Analíticos Díaz Gas; excluye Actas, Praxedis y otros adjuntos."""
+    """Analíticos REGIO de TotalGas; excluye Actas y adjuntos ajenos."""
     return filename.lower().endswith((".xls", ".xlsx")) and "TOTALGAS" in key(filename)
 
 
@@ -194,7 +194,9 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
 
 
 def catalog(cursor: pyodbc.Cursor) -> tuple[list[tuple], dict[str, int]]:
-    stations = cursor.execute("SELECT Codigo,Nombre,Estacion FROM TG.dbo.Estaciones WHERE RFC='DGA930823KD3'").fetchall()
+    # REGIO reúne papeletas de todas las empresas. El catálogo no debe limitar
+    # la asignación a Díaz Gas: la empresa se resuelve desde la estación.
+    stations = cursor.execute("SELECT Codigo,Nombre,Estacion FROM TG.dbo.Estaciones WHERE Codigo<>0").fetchall()
     aliases = {row[0]: int(row[1]) for row in cursor.execute("SELECT alias_normalizado,estacion_id FROM dbo.efc_conc_analiticos_alias_estacion WHERE activo=1")}
     return stations, aliases
 
@@ -425,11 +427,57 @@ def sync(start_date: date | None = None, end_date: date | None = None, include_a
     return totals
 
 
+def reassign_unidentified_stations() -> dict:
+    """Corrige sólo papeletas sin estación a partir de sus campos fuente.
+
+    No vuelve a leer correo, no modifica el Excel almacenado ni borra vínculos.
+    Sirve al ampliar el catálogo de estaciones después de importaciones previas.
+    """
+    connection = db_connection()
+    try:
+        cursor = connection.cursor()
+        ensure_schema(cursor)
+        stations, aliases = catalog(cursor)
+        rows = cursor.execute(
+            "SELECT id,estacion_original,estacion_nombre_original "
+            "FROM dbo.efc_conc_analiticos_papeletas WHERE estacion_id IS NULL"
+        ).fetchall()
+        updates: list[tuple[int, str, int]] = []
+        unresolved = 0
+        for row in rows:
+            station_id, status = resolve_station(row[1], row[2], stations, aliases)
+            if station_id is None:
+                unresolved += 1
+                continue
+            updates.append((station_id, status, int(row[0])))
+        if updates:
+            cursor.fast_executemany = True
+            cursor.executemany(
+                "UPDATE dbo.efc_conc_analiticos_papeletas "
+                "SET estacion_id=?,estado_estacion=? WHERE id=? AND estacion_id IS NULL",
+                updates,
+            )
+        connection.commit()
+        return {"reviewed": len(rows), "assigned": len(updates), "unresolved": unresolved}
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def main() -> int:
-    argparse.ArgumentParser(description="Importa Analíticos REGIO a TG.").parse_args()
+    parser = argparse.ArgumentParser(description="Importa Analíticos REGIO a TG.")
+    parser.add_argument(
+        "--reassign-stations",
+        action="store_true",
+        help="Reasigna papeletas sin estación usando el catálogo TG, sin leer correo ni borrar vínculos.",
+    )
+    args = parser.parse_args()
     load_env_file()
     try:
-        print(json.dumps(sync(), ensure_ascii=False)); return 0
+        result = reassign_unidentified_stations() if args.reassign_stations else sync()
+        print(json.dumps(result, ensure_ascii=False)); return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr); return 1
 

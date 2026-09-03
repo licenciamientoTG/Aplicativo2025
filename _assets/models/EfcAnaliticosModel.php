@@ -145,9 +145,9 @@ class EfcAnaliticosModel {
     /** TC vigente al inicio de cada turno del periodo. Sólo lectura a SG12. */
     public function exchangeRatesForTurns(int $stationId, int $year, int $month): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Estación o periodo inválidos.');
-        $station=$this->db->prepare("SELECT 1 FROM TG.dbo.Estaciones WHERE Codigo=? AND RFC='DGA930823KD3'");
+        $station=$this->db->prepare("SELECT 1 FROM TG.dbo.Estaciones WHERE Codigo=? AND Codigo<>0");
         $station->execute([$stationId]);
-        if (!$station->fetchColumn()) throw new RuntimeException('Estación Díaz Gas inválida.');
+        if (!$station->fetchColumn()) throw new RuntimeException('Estación inválida.');
         $rates=$this->scheduledExchangeRates($stationId);
         $last=(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('last day of this month');
         $current=new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)); $out=[];
