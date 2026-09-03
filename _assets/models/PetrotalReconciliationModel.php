@@ -126,7 +126,7 @@ class PetrotalReconciliationModel extends Model {
     function resolver_estacion_por_codigo_externo(string $proveedorRfc, string $codigoExterno): ?array {
         if (!$codigoExterno) return null;
         $query = "
-            SELECT e.Codigo, e.Estacion, e.PermisoCRE, e.RFC, e.Servidor, e.BaseDatos
+            SELECT e.Codigo, e.Estacion, e.Nombre, e.PermisoCRE, e.RFC, e.Servidor, e.BaseDatos
             FROM TG.dbo.EstacionesCodigosExternos ece
             JOIN TG.dbo.Estaciones e ON e.Codigo = ece.codgas
             WHERE ece.proveedor_rfc = :proveedorRfc AND ece.codigo_externo = :codigoExterno AND ece.activo = 1

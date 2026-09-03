@@ -47,6 +47,13 @@ function construirConfigDataTable() {
                 }
             },
             {
+                data: 'estacion',
+                render: function (data) {
+                    if (!data) return '<span class="text-muted">—</span>';
+                    return data.Nombre || '<span class="text-muted">—</span>';
+                }
+            },
+            {
                 data: 'factura_petrotal',
                 render: function (data) {
                     if (!data) return '<span class="text-muted">—</span>';
