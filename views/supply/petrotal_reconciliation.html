@@ -47,27 +47,63 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0">Recepciones</h5>
+                <ul class="nav nav-tabs card-header-tabs" id="tabsConciliacion" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-btn-recepciones" data-bs-toggle="tab" data-bs-target="#tab-recepciones" type="button" role="tab">Recepciones</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-btn-sin-recepcion" data-bs-toggle="tab" data-bs-target="#tab-sin-recepcion" type="button" role="tab">Sin recepción ControlGas</button>
+                    </li>
+                </ul>
             </div>
-            <div class="card-body h-100 table-responsive">
-                <table id="datatables_conciliacion" class="table table-sm w-100">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" id="checkAllExactas"></th>
-                            <th>FECHA</th>
-                            <th>PRODUCTO</th>
-                            <th>LITROS</th>
-                            <th>FACTURA PROVEEDOR</th>
-                            <th>FACTURA(S) PETROTAL</th>
-                            <th>CONFIANZA</th>
-                            <th>ESTADO</th>
-                            <th>ACCIONES</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr><td colspan="9" class="text-center text-muted">Selecciona una estación y un rango, luego presiona Buscar</td></tr>
-                    </tbody>
-                </table>
+            <div class="card-body">
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="tab-recepciones" role="tabpanel">
+                        <div class="table-responsive">
+                            <table id="datatables_conciliacion" class="table table-sm w-100">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="checkAllExactas"></th>
+                                        <th>FECHA</th>
+                                        <th>PRODUCTO</th>
+                                        <th>LITROS</th>
+                                        <th>FACTURA PROVEEDOR</th>
+                                        <th>FACTURA(S) PETROTAL</th>
+                                        <th>CONFIANZA</th>
+                                        <th>ESTADO</th>
+                                        <th>ACCIONES</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="9" class="text-center text-muted">Selecciona una estación y un rango, luego presiona Buscar</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="tab-sin-recepcion" role="tabpanel">
+                        <p class="text-muted small mb-3">
+                            Estaciones que compran vía Petrotal pero no capturan la recepción física en ControlGas (ej. Praxedis).
+                            El match se sugiere por litros (no por monto — Petrotal agrega margen al precio) dentro de un rango de fechas amplio.
+                        </p>
+                        <div class="table-responsive">
+                            <table id="datatables_sin_recepcion" class="table table-sm w-100">
+                                <thead>
+                                    <tr>
+                                        <th>FECHA</th>
+                                        <th>FACTURA PROVEEDOR</th>
+                                        <th>LITROS</th>
+                                        <th>FACTURA(S) PETROTAL CANDIDATA(S)</th>
+                                        <th>ESTADO</th>
+                                        <th>ACCIONES</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="6" class="text-center text-muted">Selecciona una estación y un rango, luego presiona Buscar</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
