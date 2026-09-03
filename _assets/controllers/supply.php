@@ -2453,10 +2453,17 @@ class Supply
             echo "No autorizado";
             return;
         }
-        $stations = $this->gasolinerasModel->get_active_stations();
-        echo $this->twig->render($this->route . 'petrotal_reconciliation.html', compact('stations'));
+        $proveedores = $this->petrotalReconciliationModel->proveedores_hacia_petrotal();
+        echo $this->twig->render($this->route . 'petrotal_reconciliation.html', compact('proveedores'));
     }
 
+    // Punto de partida: facturas de la compra ORIGINAL (proveedor real ->
+    // Petrotal, ej. Tesoro), una fila por factura, con la mejor sugerencia
+    // de a qué estación y factura de Petrotal corresponde. Se muestran
+    // TODAS las facturas del proveedor filtrado en el rango, tengan o no
+    // sugerencia resuelta — el estado "sin estación identificada" es
+    // informativo (proveedor cuyo código externo aún no está mapeado en
+    // EstacionesCodigosExternos), no oculta la fila.
     public function datatables_petrotal_reconciliation()
     {
         header('Content-Type: application/json');
@@ -2466,126 +2473,40 @@ class Supply
             return;
         }
 
-        $codgas = (int)($_REQUEST['codgas'] ?? 0);
+        $proveedorRfc = trim($_REQUEST['proveedor_rfc'] ?? '');
         $fechaDesde = $_REQUEST['fecha_desde'] ?? date('Y-m-d');
         $fechaHasta = $_REQUEST['fecha_hasta'] ?? date('Y-m-d');
 
-        if (!$codgas) {
-            json_output(['data' => [], 'error' => 'Selecciona una estación']);
+        if (!$proveedorRfc) {
+            json_output(['data' => [], 'error' => 'Selecciona un proveedor']);
             return;
         }
 
-        $estacion = $this->gasolinerasModel->get_by_codgas($codgas);
-        if (!$estacion || empty($estacion['PermisoCRE'])) {
-            json_output(['data' => [], 'error' => 'Estación sin permiso CRE configurado']);
-            return;
-        }
-
-        $filas = [];
-        $fecha = strtotime($fechaDesde);
-        $fin = strtotime($fechaHasta);
-
-        while ($fecha <= $fin) {
-            $fechaStr = date('Y-m-d', $fecha);
-            $recepciones = $this->movimientosTanModel->sp_obtener_recepciones_combustible($fechaStr, $codgas, 0);
-
-            foreach ($recepciones as $r) {
-                $ref = $this->petrotalReconciliationModel->parse_txtref($r['txtref'] ?? null);
-                if (!$ref || empty($r['ProveedorRfc'])) continue;
-
-                $matchProveedor = $this->petrotalReconciliationModel->buscar_factura_proveedor(
-                    $ref['folio'], $ref['remision'], $r['ProveedorRfc'], $fechaDesde, $fechaHasta
-                );
-
-                $facturasPetrotalCandidatas = $this->petrotalReconciliationModel->buscar_facturas_petrotal(
-                    $estacion['PermisoCRE'], $fechaDesde, $fechaHasta
-                );
-                $facturasPetrotal = $this->petrotalReconciliationModel->filtrar_por_producto(
-                    $facturasPetrotalCandidatas, $r['den'] ?? ''
-                );
-
-                $asignacionExistente = null;
-                if ($matchProveedor && count($facturasPetrotal) === 1) {
-                    $asignacionExistente = $this->petrotalReconciliationModel->ya_asignada(
-                        $matchProveedor['factura']['Id'], $facturasPetrotal[0]['Id']
-                    );
-                }
-
-                $filas[] = [
-                    'nrotrn' => (int)$r['nrotrn'],
-                    'codgas' => $codgas,
-                    'fecha' => $fechaStr,
-                    'producto' => $r['den'] ?? '',
-                    'litros' => $r['VolumenRecibido'] ?? 0,
-                    'factura_proveedor' => $matchProveedor['factura'] ?? null,
-                    'confianza' => $matchProveedor['confianza'] ?? null,
-                    'facturas_petrotal' => $facturasPetrotal,
-                    'ya_asignada' => $asignacionExistente !== null,
-                    'asignacion_id' => $asignacionExistente['Id'] ?? null,
-                ];
-            }
-            $fecha = strtotime('+1 day', $fecha);
-        }
-
-        json_output(['data' => $filas]);
-    }
-
-    // Pestaña "Sin recepción ControlGas": estaciones que compran vía
-    // Petrotal pero no capturan la recepción física en ControlGas (ej.
-    // Praxedis), así que no hay txtref/nrotrn que journalizar. La unidad es
-    // la factura del proveedor real (Tesoro), identificada por su código
-    // externo (PresentacionTesoro) vía TG.dbo.EstacionesCodigosExternos, y
-    // el match con Petrotal es por litros (no monto) dentro de una ventana
-    // de fecha amplia — ver PetrotalReconciliationModel::buscar_facturas_petrotal_por_litros.
-    public function datatables_petrotal_sin_recepcion()
-    {
-        header('Content-Type: application/json');
-
-        if (!authorized(91)) {
-            json_output(['data' => [], 'error' => 'No autorizado']);
-            return;
-        }
-
-        $codgas = (int)($_REQUEST['codgas'] ?? 0);
-        $fechaDesde = $_REQUEST['fecha_desde'] ?? date('Y-m-d');
-        $fechaHasta = $_REQUEST['fecha_hasta'] ?? date('Y-m-d');
-
-        if (!$codgas) {
-            json_output(['data' => [], 'error' => 'Selecciona una estación']);
-            return;
-        }
-
-        $estacion = $this->gasolinerasModel->get_by_codgas($codgas);
-        if (!$estacion || empty($estacion['PermisoCRE'])) {
-            json_output(['data' => [], 'error' => 'Estación sin permiso CRE configurado']);
-            return;
-        }
-
-        // Único proveedor con código externo mapeado hoy es Tesoro; el
-        // diseño (tabla EstacionesCodigosExternos genérica por RFC) ya
-        // admite agregar otros sin tocar este método.
-        $facturasProveedor = $this->petrotalReconciliationModel->buscar_facturas_proveedor_por_codigo_externo(
-            $codgas, PetrotalReconciliationModel::TESORO_RFC, $fechaDesde, $fechaHasta
+        $facturas = $this->petrotalReconciliationModel->buscar_facturas_proveedor_hacia_petrotal(
+            $fechaDesde, $fechaHasta, $proveedorRfc
         );
 
         $filas = [];
-        foreach ($facturasProveedor as $fp) {
-            $litros = (float)($fp['Litros'] ?? 0);
-            $candidatas = $this->petrotalReconciliationModel->buscar_facturas_petrotal_por_litros(
-                $estacion['PermisoCRE'], $litros, $fp['Fecha']
-            );
+        foreach ($facturas as $f) {
+            $sugerencia = $this->petrotalReconciliationModel->sugerir_factura_petrotal($f, $proveedorRfc);
 
+            $enControlGas = null;
             $asignacionExistente = null;
-            if (count($candidatas) >= 1) {
+            if ($sugerencia['estacion'] && $sugerencia['factura_petrotal']) {
+                $enControlGas = $this->petrotalReconciliationModel->esta_en_controlgas(
+                    (int)$sugerencia['estacion']['Codigo'], $sugerencia['factura_petrotal']['UUID']
+                );
                 $asignacionExistente = $this->petrotalReconciliationModel->ya_asignada(
-                    $fp['Id'], $candidatas[0]['Id']
+                    $f['Id'], $sugerencia['factura_petrotal']['Id']
                 );
             }
 
             $filas[] = [
-                'codgas' => $codgas,
-                'factura_proveedor' => $fp,
-                'facturas_petrotal' => $candidatas,
+                'factura_proveedor' => $f,
+                'estacion' => $sugerencia['estacion'],
+                'factura_petrotal' => $sugerencia['factura_petrotal'],
+                'confianza' => $sugerencia['confianza'],
+                'en_controlgas' => $enControlGas,
                 'ya_asignada' => $asignacionExistente !== null,
                 'asignacion_id' => $asignacionExistente['Id'] ?? null,
             ];
@@ -2619,14 +2540,8 @@ class Supply
             $facturaProveedorId = (int)($par['factura_proveedor_id'] ?? 0);
             $facturaPetrotalId = (int)($par['factura_petrotal_id'] ?? 0);
             $codgas = (int)($par['codgas'] ?? 0);
-            // Flujo "sin recepción" (ej. Praxedis): no hay nrotrn real porque
-            // no hay recepción capturada en ControlGas que journalizar. El
-            // flag explícito evita que un nrotrn=0 accidental (dato faltante
-            // del flujo normal) se cuele como si fuera este caso.
-            $sinRecepcion = !empty($par['sin_recepcion']);
-            $nrotrn = $sinRecepcion ? 0 : (int)($par['nrotrn'] ?? 0);
 
-            if (!$facturaProveedorId || !$facturaPetrotalId || !$codgas || (!$sinRecepcion && !$nrotrn)) {
+            if (!$facturaProveedorId || !$facturaPetrotalId || !$codgas) {
                 $omitidos[] = $par;
                 continue;
             }
@@ -2636,8 +2551,13 @@ class Supply
                 continue;
             }
 
+            // El nuevo diseño parte siempre de la factura del proveedor
+            // real (nunca de una recepción de ControlGas), así que nunca
+            // hay un nrotrn real que journalizar — se usa 0 de forma
+            // consistente (FacturasMovimientosTanques.nrotrn es NOT NULL
+            // pero no exige que exista la recepción referenciada).
             $this->petrotalReconciliationModel->confirmar_asignacion(
-                $nrotrn, $codgas, $facturaProveedorId, $facturaPetrotalId, $usuario
+                0, $codgas, $facturaProveedorId, $facturaPetrotalId, $usuario
             );
             $confirmados[] = $par;
         }
