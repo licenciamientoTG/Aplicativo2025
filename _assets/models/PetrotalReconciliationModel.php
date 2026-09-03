@@ -102,20 +102,42 @@ class PetrotalReconciliationModel extends Model {
     // 'H/19873/COM/2017', confirmado 2026-09-03) — la estación se resuelve
     // aparte vía EstacionesCodigosExternos en sugerir_factura_petrotal().
     function buscar_facturas_proveedor_hacia_petrotal(string $fechaDesde, string $fechaHasta, string $proveedorRfc): array {
+        // Suma Cantidad por factura (GROUP BY): 932 de 4878 facturas de
+        // Tesoro (19%, confirmado 2026-09-04) traen más de un concepto —
+        // tomar una sola fila del JOIN subestimaba los litros hasta a la
+        // mitad y arruinaba el match por volumen. MAX(Descripcion) es solo
+        // para mostrar (nunca se compara texto contra el nombre de tanque).
         $query = "
             SELECT fr.Id, fr.Folio, fr.Remision, fr.UUID, fr.Total, fr.Fecha, fr.EmisorNombre, fr.EmisorRfc,
-                   fr.PresentacionTesoro, fc.Descripcion AS Producto, fc.Cantidad AS Litros
+                   fr.PresentacionTesoro, MAX(fc.Descripcion) AS Producto, SUM(fc.Cantidad) AS Litros
             FROM TG.dbo.FacturasRecibidas fr
             LEFT JOIN TG.dbo.FacturasRecibidasConceptos fc ON fc.FacturaId = fr.Id
             WHERE fr.ReceptorNombre = 'PETROTAL'
               AND fr.EmisorRfc = :proveedorRfc
               AND fr.Fecha BETWEEN :fechaDesde AND :fechaHasta
+            GROUP BY fr.Id, fr.Folio, fr.Remision, fr.UUID, fr.Total, fr.Fecha, fr.EmisorNombre, fr.EmisorRfc, fr.PresentacionTesoro
         ";
         return $this->sql->select($query, [
             'proveedorRfc' => $proveedorRfc,
             'fechaDesde' => $fechaDesde,
             'fechaHasta' => $fechaHasta,
         ]);
+    }
+
+    // Estaciones con al menos un código externo mapeado para $proveedorRfc
+    // (ej. las estaciones de Tesoro ya identificadas en
+    // EstacionesCodigosExternos) — llena el selector de la pestaña
+    // "Confirmar recepción ↔ factura", que solo tiene sentido para
+    // estaciones ya resueltas.
+    function estaciones_con_codigo_externo(string $proveedorRfc): array {
+        $query = "
+            SELECT DISTINCT e.Codigo, e.Estacion, e.Nombre
+            FROM TG.dbo.EstacionesCodigosExternos ece
+            JOIN TG.dbo.Estaciones e ON e.Codigo = ece.codgas
+            WHERE ece.proveedor_rfc = :proveedorRfc AND ece.activo = 1
+            ORDER BY e.Nombre
+        ";
+        return $this->sql->select($query, ['proveedorRfc' => $proveedorRfc]);
     }
 
     // Resuelve la fila de TG.dbo.Estaciones para un (proveedor, código
@@ -291,7 +313,172 @@ class PetrotalReconciliationModel extends Model {
         }
     }
 
-    function ya_asignada(int $facturaProveedorId, int $facturaPetrotalId): ?array {
+    // $facturaPetrotalId null: caso "recepción directa" (proveedor real
+    // ligado a una recepción, sin Petrotal de por medio — TipoOperacion=1),
+    // se busca por FacturaProveedorId con FacturaPetrotalId IS NULL.
+    // Recepciones (tiptrn=3) de una estación en un rango de fechas, con su
+    // volumen/producto/txtref — para la sugerencia recepción<->factura del
+    // proveedor real. A diferencia de sp_obtener_recepciones_combustible
+    // (usado en Mis Recepciones) no trae Tanques/Documentos, solo lo que
+    // hace falta para sugerir: volumen, producto y si ya tiene txtref.
+    function recepciones_con_volumen(int $codgas, string $fechaDesde, string $fechaHasta): array {
+        if (!isset($this->linked_server[$codgas]) || !isset($this->short_databases[$codgas])) return [];
+        $serverIp = $this->linked_server[$codgas];
+        $database = $this->short_databases[$codgas];
+        $fchtrnDesde = dateToInt($fechaDesde);
+        $fchtrnHasta = dateToInt($fechaHasta);
+
+        $query = "
+            SELECT * FROM OPENQUERY(" . $serverIp . ", '
+                SELECT
+                    M.nrotrn, M.fchtrn,
+                    CONVERT(DATE, DATEADD(DAY, -1, M.fchtrn)) AS fecha,
+                    M.volrec AS VolumenRecibido, T.den AS Producto, DC.txtref
+                FROM " . $database . ".[MovimientosTan] M
+                    LEFT JOIN " . $database . ".[Tanques] T ON M.codtan = T.cod AND M.codgas = T.codgas
+                    LEFT JOIN " . $database . ".[Documentos] D ON M.nrodoc = D.nro AND M.codgas = D.codgas AND D.tip = 1 AND D.nroitm = 1
+                    LEFT JOIN " . $database . ".[DocumentosC] DC ON M.nrodoc = DC.nro AND M.codgas = DC.codgas AND DC.tip = 1
+                WHERE M.nroitm NOT IN (0,1,3,4) AND M.tiptrn = 3
+                  AND M.fchtrn BETWEEN " . $fchtrnDesde . " AND " . $fchtrnHasta . "
+                  AND M.codgas = " . $codgas . "
+                ORDER BY M.nrotrn DESC
+            ');
+        ";
+        return $this->sql->select($query);
+    }
+
+    // Sugerencia por lote: dada una estación con código externo mapeado
+    // para $proveedorRfc, empareja cada recepción SIN txtref (o cuyo
+    // txtref no matchea ninguna factura conocida) con la factura del
+    // proveedor más cercana en LITROS dentro del rango — el mismo criterio
+    // ya validado para Petrotal (fecha puede variar varios días, litros es
+    // la llave confiable). No consume facturas ya usadas por otra recepción
+    // en la misma corrida (evita sugerir la misma factura dos veces).
+    function sugerir_recepciones_por_volumen(int $codgas, string $proveedorRfc, string $fechaDesde, string $fechaHasta): array {
+        $recepciones = $this->recepciones_con_volumen($codgas, $fechaDesde, $fechaHasta);
+        $facturas = $this->buscar_facturas_proveedor_por_codigo_externo_directo($codgas, $proveedorRfc, $fechaDesde, $fechaHasta);
+
+        $facturasDisponibles = $facturas;
+        $filas = [];
+
+        foreach ($recepciones as $r) {
+            $volumen = (float)($r['VolumenRecibido'] ?? 0);
+            $ref = $this->parse_txtref($r['txtref'] ?? null);
+            // Un txtref con folio "PET..." es de Petrotal, no del proveedor
+            // real — nunca intentar el match exacto contra facturas de
+            // Tesoro/otro proveedor en ese caso, aunque la Remision
+            // coincida por casualidad de formato (bug real encontrado
+            // 2026-09-04: remisión de Petrotal '451302188' coincidió con
+            // una factura de Tesoro no relacionada, dando un falso "exacto"
+            // con diferencia de litros de 27937 vs 14467).
+            if ($ref && preg_match('/^PET/i', $ref['folio'])) {
+                $ref = null;
+            }
+
+            $facturaExacta = null;
+            if ($ref) {
+                foreach ($facturasDisponibles as $f) {
+                    $remNorm = $ref['remision'] ? $this->normalizar_remision($ref['remision']) : '';
+                    $folioNorm = $ref['folio'] ? $this->normalizar_folio($ref['folio']) : '';
+                    if (($f['Remision'] && $remNorm && $this->normalizar_remision($f['Remision']) === $remNorm) ||
+                        ($f['Folio'] && $folioNorm && $this->normalizar_folio($f['Folio']) === $folioNorm)) {
+                        $facturaExacta = $f;
+                        break;
+                    }
+                }
+            }
+
+            // Defensa en profundidad: aunque el texto de la remisión
+            // coincida, un match "exacto" cuya diferencia de litros es
+            // absurda (>20%) probablemente es una coincidencia de formato,
+            // no la misma entrega — se degrada a litros en vez de confiar
+            // ciegamente en el texto.
+            if ($facturaExacta) {
+                $litrosFactura = (float)($facturaExacta['Litros'] ?? 0);
+                $diferenciaRelativa = $volumen > 0 ? abs($litrosFactura - $volumen) / $volumen : 1.0;
+                if ($diferenciaRelativa > 0.20) {
+                    $facturaExacta = null;
+                }
+            }
+
+            if ($facturaExacta) {
+                $filas[] = [
+                    'recepcion' => $r,
+                    'factura_proveedor' => $facturaExacta,
+                    'confianza' => 'exacta_remision',
+                ];
+                $facturasDisponibles = array_values(array_filter($facturasDisponibles, fn($f) => $f['Id'] !== $facturaExacta['Id']));
+                continue;
+            }
+
+            if (!$facturasDisponibles) {
+                $filas[] = ['recepcion' => $r, 'factura_proveedor' => null, 'confianza' => null];
+                continue;
+            }
+
+            $candidatas = $facturasDisponibles;
+            usort($candidatas, function ($a, $b) use ($volumen) {
+                $diffA = abs((float)($a['Litros'] ?? 0) - $volumen);
+                $diffB = abs((float)($b['Litros'] ?? 0) - $volumen);
+                return $diffA <=> $diffB;
+            });
+
+            $mejor = $candidatas[0];
+            $diferencia = abs((float)($mejor['Litros'] ?? 0) - $volumen);
+            $filas[] = [
+                'recepcion' => $r,
+                'factura_proveedor' => $mejor,
+                'confianza' => $diferencia <= 1.0 ? 'exacta_litros' : 'aproximada_litros',
+            ];
+            $facturasDisponibles = array_values(array_filter($facturasDisponibles, fn($f) => $f['Id'] !== $mejor['Id']));
+        }
+
+        return $filas;
+    }
+
+    // Facturas del proveedor real ya identificadas para una estación (vía
+    // EstacionesCodigosExternos), sin exigir ReceptorNombre='PETROTAL' —
+    // a diferencia de buscar_facturas_proveedor_hacia_petrotal, aquí se
+    // busca la factura del proveedor tal cual la recibió TotalGas
+    // (compra directa a esa estación), que es lo relevante para Mis
+    // Recepciones.
+    function buscar_facturas_proveedor_por_codigo_externo_directo(int $codgas, string $proveedorRfc, string $fechaDesde, string $fechaHasta): array {
+        // SUM(Cantidad)/GROUP BY: mismo motivo que en
+        // buscar_facturas_proveedor_hacia_petrotal (19% de las facturas de
+        // Tesoro traen más de un concepto).
+        $query = "
+            SELECT fr.Id, fr.Folio, fr.Remision, fr.UUID, fr.EmisorNombre, fr.EmisorRfc, fr.Fecha, fr.Total,
+                   fr.RutaArchivo, fr.NombreArchivo, fr.RutaXml, fr.NombreXml,
+                   MAX(fc.Descripcion) AS Producto, SUM(fc.Cantidad) AS Litros
+            FROM TG.dbo.FacturasRecibidas fr
+            JOIN TG.dbo.EstacionesCodigosExternos ece
+                ON ece.proveedor_rfc = fr.EmisorRfc
+               AND ece.codigo_externo = fr.PresentacionTesoro
+               AND ece.activo = 1
+            LEFT JOIN TG.dbo.FacturasRecibidasConceptos fc ON fc.FacturaId = fr.Id
+            WHERE ece.codgas = :codgas
+              AND fr.EmisorRfc = :proveedorRfc
+              AND fr.Fecha BETWEEN :fechaDesde AND :fechaHasta
+            GROUP BY fr.Id, fr.Folio, fr.Remision, fr.UUID, fr.EmisorNombre, fr.EmisorRfc, fr.Fecha, fr.Total,
+                     fr.RutaArchivo, fr.NombreArchivo, fr.RutaXml, fr.NombreXml
+        ";
+        return $this->sql->select($query, [
+            'codgas' => $codgas,
+            'proveedorRfc' => $proveedorRfc,
+            'fechaDesde' => $fechaDesde,
+            'fechaHasta' => $fechaHasta,
+        ]);
+    }
+
+    function ya_asignada(int $facturaProveedorId, ?int $facturaPetrotalId): ?array {
+        if ($facturaPetrotalId === null) {
+            $query = "SELECT Id FROM TG.dbo.FacturasMovimientosTanques
+                       WHERE FacturaProveedorId = :facturaProveedorId
+                         AND FacturaPetrotalId IS NULL
+                         AND Activo = 1";
+            $r = $this->sql->select($query, ['facturaProveedorId' => $facturaProveedorId]);
+            return $r[0] ?? null;
+        }
         $query = "SELECT Id FROM TG.dbo.FacturasMovimientosTanques
                    WHERE FacturaProveedorId = :facturaProveedorId
                      AND FacturaPetrotalId = :facturaPetrotalId
@@ -303,15 +490,24 @@ class PetrotalReconciliationModel extends Model {
         return $r[0] ?? null;
     }
 
-    function confirmar_asignacion(int $nrotrn, int $codgas, int $facturaProveedorId, int $facturaPetrotalId, string $usuario): void {
+    // $facturaPetrotalId null + $tipoOperacion=1: recepción ligada
+    // directamente a la factura del proveedor real, sin Petrotal de por
+    // medio (habilita la descarga del PDF/XML desde Mis Recepciones).
+    // $tipoOperacion=2 (default, caso Petrotal) exige $facturaPetrotalId.
+    function confirmar_asignacion(int $nrotrn, int $codgas, int $facturaProveedorId, ?int $facturaPetrotalId, string $usuario, int $tipoOperacion = 2): void {
+        $esPetrotal = $tipoOperacion === 2 ? 1 : 0;
         $query = "
             INSERT INTO TG.dbo.FacturasMovimientosTanques
                 (nrotrn, codgas, TipoOperacion, FacturaProveedorId, FacturaPetrotalId,
                  FechaAsignacion, UsuarioAsignacion, Activo, Petrotal)
-            VALUES (:nrotrn, :codgas, 2, :facturaProveedorId, :facturaPetrotalId,
-                    GETDATE(), :usuario, 1, 1)
+            VALUES (:nrotrn, :codgas, :tipoOperacion, :facturaProveedorId, :facturaPetrotalId,
+                    GETDATE(), :usuario, 1, :esPetrotal)
         ";
-        $this->sql->insert($query, compact('nrotrn', 'codgas', 'facturaProveedorId', 'facturaPetrotalId', 'usuario'));
+        $this->sql->insert($query, [
+            'nrotrn' => $nrotrn, 'codgas' => $codgas, 'tipoOperacion' => $tipoOperacion,
+            'facturaProveedorId' => $facturaProveedorId, 'facturaPetrotalId' => $facturaPetrotalId,
+            'usuario' => $usuario, 'esPetrotal' => $esPetrotal,
+        ]);
     }
 
     function deshacer_asignacion(int $id, string $usuario): void {

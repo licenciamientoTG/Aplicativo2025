@@ -2515,6 +2515,81 @@ class Supply
         json_output(['data' => $filas]);
     }
 
+    // Estaciones ya identificadas para el proveedor filtrado — llena el
+    // selector de la pestaña "Confirmar recepción ↔ factura".
+    public function estaciones_por_proveedor()
+    {
+        header('Content-Type: application/json');
+
+        if (!authorized(91)) {
+            json_output(['data' => [], 'error' => 'No autorizado']);
+            return;
+        }
+
+        $proveedorRfc = trim($_REQUEST['proveedor_rfc'] ?? '');
+        if (!$proveedorRfc) {
+            json_output(['data' => []]);
+            return;
+        }
+
+        $estaciones = $this->petrotalReconciliationModel->estaciones_con_codigo_externo($proveedorRfc);
+        json_output(['data' => $estaciones]);
+    }
+
+    // Pestaña "Confirmar recepción ↔ factura": para una estación puntual,
+    // sugiere qué factura del proveedor corresponde a cada recepción física
+    // en ControlGas (por volumen, dentro del rango de fechas — ver
+    // PetrotalReconciliationModel::sugerir_recepciones_por_volumen). Al
+    // confirmar (TipoOperacion=1, sin Petrotal de por medio), la relación
+    // habilita la descarga del PDF/XML desde Mis Recepciones.
+    public function datatables_recepciones_proveedor()
+    {
+        header('Content-Type: application/json');
+
+        if (!authorized(91)) {
+            json_output(['data' => [], 'error' => 'No autorizado']);
+            return;
+        }
+
+        $codgas = (int)($_REQUEST['codgas'] ?? 0);
+        $proveedorRfc = trim($_REQUEST['proveedor_rfc'] ?? '');
+        $fechaDesde = $_REQUEST['fecha_desde'] ?? date('Y-m-d');
+        $fechaHasta = $_REQUEST['fecha_hasta'] ?? date('Y-m-d');
+
+        if (!$codgas || !$proveedorRfc) {
+            json_output(['data' => [], 'error' => 'Selecciona proveedor y estación']);
+            return;
+        }
+
+        $sugerencias = $this->petrotalReconciliationModel->sugerir_recepciones_por_volumen(
+            $codgas, $proveedorRfc, $fechaDesde, $fechaHasta
+        );
+
+        $filas = [];
+        foreach ($sugerencias as $s) {
+            $r = $s['recepcion'];
+            $asignacionExistente = null;
+            if ($s['factura_proveedor']) {
+                $asignacionExistente = $this->petrotalReconciliationModel->ya_asignada(
+                    $s['factura_proveedor']['Id'], null
+                );
+            }
+            $filas[] = [
+                'codgas' => $codgas,
+                'nrotrn' => (int)$r['nrotrn'],
+                'fecha' => $r['fecha'],
+                'producto' => $r['Producto'],
+                'volumen' => $r['VolumenRecibido'],
+                'factura_proveedor' => $s['factura_proveedor'],
+                'confianza' => $s['confianza'],
+                'ya_asignada' => $asignacionExistente !== null,
+                'asignacion_id' => $asignacionExistente['Id'] ?? null,
+            ];
+        }
+
+        json_output(['data' => $filas]);
+    }
+
     public function confirmar_asignacion_petrotal()
     {
         header('Content-Type: application/json');
@@ -2538,10 +2613,20 @@ class Supply
 
         foreach ($pares as $par) {
             $facturaProveedorId = (int)($par['factura_proveedor_id'] ?? 0);
-            $facturaPetrotalId = (int)($par['factura_petrotal_id'] ?? 0);
             $codgas = (int)($par['codgas'] ?? 0);
+            // Dos formas de par, distinguidas por si trae factura_petrotal_id:
+            // - Con Petrotal (TipoOperacion=2): compra->Petrotal->estación,
+            //   nunca hay nrotrn real (no parte de una recepción de ControlGas).
+            // - Recepción directa (TipoOperacion=1): recepción real de
+            //   ControlGas ligada a la factura del proveedor, sin Petrotal
+            //   de por medio — exige nrotrn real, la habilita la descarga
+            //   de PDF/XML desde Mis Recepciones.
+            $tienePetrotal = isset($par['factura_petrotal_id']) && $par['factura_petrotal_id'] !== null && $par['factura_petrotal_id'] !== '';
+            $facturaPetrotalId = $tienePetrotal ? (int)$par['factura_petrotal_id'] : null;
+            $tipoOperacion = $tienePetrotal ? 2 : 1;
+            $nrotrn = $tienePetrotal ? 0 : (int)($par['nrotrn'] ?? 0);
 
-            if (!$facturaProveedorId || !$facturaPetrotalId || !$codgas) {
+            if (!$facturaProveedorId || !$codgas || ($tienePetrotal && !$facturaPetrotalId) || (!$tienePetrotal && !$nrotrn)) {
                 $omitidos[] = $par;
                 continue;
             }
@@ -2551,13 +2636,8 @@ class Supply
                 continue;
             }
 
-            // El nuevo diseño parte siempre de la factura del proveedor
-            // real (nunca de una recepción de ControlGas), así que nunca
-            // hay un nrotrn real que journalizar — se usa 0 de forma
-            // consistente (FacturasMovimientosTanques.nrotrn es NOT NULL
-            // pero no exige que exista la recepción referenciada).
             $this->petrotalReconciliationModel->confirmar_asignacion(
-                0, $codgas, $facturaProveedorId, $facturaPetrotalId, $usuario
+                $nrotrn, $codgas, $facturaProveedorId, $facturaPetrotalId, $usuario, $tipoOperacion
             );
             $confirmados[] = $par;
         }
