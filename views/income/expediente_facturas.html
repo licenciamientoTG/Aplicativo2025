@@ -1,0 +1,110 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Expediente de facturas{% endblock %}
+{% block mycss %}
+<style>
+    /* Con 48 columnas el scroll horizontal vive dentro de la tabla, nunca en la página. */
+    #expediente_facturas_table_wrapper .dataTables_scrollBody { max-height: 65vh; }
+    /* Las columnas "lista" (folios, vehículos, cuentas) traen cadenas muy largas:
+       se acotan para que un renglón no empuje la tabla a varias pantallas. */
+    #expediente_facturas_table td.cell-list {
+        max-width: 320px;
+        white-space: normal;
+        word-break: break-word;
+    }
+</style>
+{% endblock %}
+{% block menutitle %}Expediente de facturas{% endblock %}
+{% block content %}
+
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="expediente_facturas-tab" data-bs-toggle="tab"
+            data-bs-target="#expediente_facturas" type="button" role="tab"
+            aria-controls="expediente_facturas" aria-selected="true">Expediente de facturas</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane active" id="expediente_facturas" role="tabpanel" aria-labelledby="expediente_facturas-tab">
+
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="codgas" class="col-form-label col-form-label-sm">Estación: <span class="text-danger">*</span></label>
+                        <select class="selectpicker form-control" data-live-search="true" data-size="10"
+                            name="codgas" id="codgas" title="Seleccionar estación...">
+                            {% for station in stations %}
+                            <option value="{{ station.Codigo }}">{{ station.Codigo }} - {{ station.Nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="codopr" class="col-form-label col-form-label-sm">Cliente: <span class="text-danger">*</span></label>
+                        <select class="selectpicker form-control" data-live-search="true" data-size="10"
+                            name="codopr" id="codopr" title="Seleccionar cliente...">
+                            {% for c in clientes %}
+                            <option value="{{ c.cod }}" data-subtext="{{ c.tipo }}">{{ c.cod }} - {{ c.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="col-form-label-sm" for="from">Desde: <small class="text-muted">(opcional)</small></label>
+                        <input type="date" class="form-control form-control-sm" name="from" id="from">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="col-form-label-sm" for="until">Hasta: <small class="text-muted">(opcional)</small></label>
+                        <input type="date" class="form-control form-control-sm" name="until" id="until">
+                    </div>
+                    <div class="col-md-1 d-grid">
+                        <button id="search_expediente_facturas" class="btn btn-sm btn-primary" style="margin-top: 25px;">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <small class="text-muted">
+                            Si dejas el rango de fechas vacío se consulta todo el histórico del cliente en esa estación.
+                            Usa el botón <strong>Columnas</strong> para ocultar las que no necesites: el Excel exporta solo las visibles.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Facturas</h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="expediente_facturas_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            {% for c in columns %}
+                            <th>{{ c.label }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script>
+    /* Misma definición de columnas que usa el controlador (Income::EXPEDIENTE_COLUMNS),
+       para que encabezados y datos no se puedan desfasar. */
+    window.EXPEDIENTE_COLS = {{ columns|json_encode|raw }};
+</script>
+<script src="{{ js_v('income.js') }}"></script>
+<script>
+    $('#search_expediente_facturas').on('click', function () {
+        expediente_facturas_table();
+    });
+</script>
+{% endblock %}

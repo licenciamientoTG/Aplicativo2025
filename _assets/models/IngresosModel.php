@@ -131,6 +131,40 @@ class IngresosModel extends Model{
         return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_ingresos_por_estacion]', $params) ?: false;
     }
 
+    /**
+     * Expediente completo de facturas de una estación y un cliente: datos
+     * fiscales, despachos que originaron la factura, aplicaciones y movimientos
+     * contables, todo en un renglón por factura.
+     *
+     * Se usa executeStoredProcedureNamed() y no executeStoredProcedure() porque
+     * este último bindea por POSICIÓN y descarta las llaves del array: con
+     * @fchDesde/@fchHasta opcionales, cualquier cambio de orden en la firma del
+     * SP cruzaría los valores en silencio. Tampoco sirve select(): exige que la
+     * consulta contenga la palabra "select" y si no hace die() con texto plano.
+     *
+     * Si el SP resultara tener otros nombres de parámetro, este arreglo es lo
+     * único que hay que ajustar.
+     *
+     * @param int      $codgas   Código de estación.
+     * @param int      $codopr   Código de cliente (Clientes.cod).
+     * @param int|null $fchDesde Fecha serial ControlGas (dateToInt) o null = sin límite inferior.
+     * @param int|null $fchHasta Fecha serial ControlGas (dateToInt) o null = sin límite superior.
+     * @throws Exception
+     */
+    function sp_expediente_facturas($codgas, $codopr, $fchDesde = null, $fchHasta = null) : array|false {
+        ini_set('memory_limit', '512M');
+
+        $params = [
+            'codgas'   => $codgas,
+            'codopr'   => $codopr,
+            'fchDesde' => $fchDesde,
+            'fchHasta' => $fchHasta,
+        ];
+
+        return $this->sql->executeStoredProcedureNamed(
+            '[TG].[dbo].[sp_expediente_facturas_por_estación_y_cliente]', $params) ?: false;
+    }
+
     function get_dolar_sales_table($from, $until) : array|false {
         $query = "
         SELECT

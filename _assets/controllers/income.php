@@ -28,6 +28,70 @@ class Income{
     public EfcAnaliticosModel $efcAnaliticos;
 
     /**
+     * Columnas que devuelve [TG].[dbo].[sp_expediente_facturas_por_estación_y_cliente],
+     * en el orden exacto del SP. Es la ÚNICA definición: la plantilla arma el
+     * <thead> recorriéndola y el JS arma su array `columns` desde el mismo JSON,
+     * así que agregar una columna al SP es agregar un renglón aquí y nada más.
+     *
+     * 'key' debe coincidir letra por letra con el nombre que emite el SP.
+     * 'type' solo controla el formato en pantalla:
+     *   text (default) | int | date | dec2 | dec3 | money
+     *
+     * Ojo: las columnas "lista" (FoliosDespacho, MontosContables, etc.) son
+     * cadenas separadas por comas — SIEMPRE text, nunca numérico.
+     */
+    private const EXPEDIENTE_COLUMNS = [
+        ['key' => 'NumeroFactura',     'label' => 'Núm. Factura',        'type' => 'int'],
+        ['key' => 'tip',               'label' => 'Tip',                 'type' => 'int'],
+        ['key' => 'codgas',            'label' => 'Codgas',              'type' => 'int'],
+        ['key' => 'FechaDoc',          'label' => 'Fecha Doc',           'type' => 'date'],
+        ['key' => 'FechaVto',          'label' => 'Fecha Vto',           'type' => 'date'],
+        ['key' => 'FchControlGas',     'label' => 'Fch ControlGas',      'type' => 'int'],
+        ['key' => 'tipopr',            'label' => 'Tipopr',              'type' => 'int'],
+        ['key' => 'codopr',            'label' => 'Codopr',              'type' => 'int'],
+        ['key' => 'codmda',            'label' => 'Codmda',              'type' => 'int'],
+        ['key' => 'subope',            'label' => 'Subope',              'type' => 'int'],
+        ['key' => 'flgcon',            'label' => 'Flgcon',              'type' => 'int'],
+        ['key' => 'nrotur',            'label' => 'Nrotur',              'type' => 'int'],
+        ['key' => 'nroref',            'label' => 'Nroref',              'type' => 'int'],
+        ['key' => 'tipref',            'label' => 'Tipref',              'type' => 'int'],
+        ['key' => 'txtref',            'label' => 'Texto Referencia',    'type' => 'text'],
+        ['key' => 'codemp',            'label' => 'Codemp',              'type' => 'int'],
+        ['key' => 'satext',            'label' => 'SAT Ext',             'type' => 'text'],
+        ['key' => 'satnro',            'label' => 'SAT Nro',             'type' => 'text'],
+        ['key' => 'satser',            'label' => 'SAT Serie',           'type' => 'text'],
+        ['key' => 'UUID',              'label' => 'UUID',                'type' => 'text'],
+        ['key' => 'satdat',            'label' => 'SAT Dat',             'type' => 'text'],
+        ['key' => 'satmdp',            'label' => 'Método Pago',         'type' => 'text'],
+        ['key' => 'satnpa',            'label' => 'SAT Npa',             'type' => 'text'],
+        ['key' => 'satuso',            'label' => 'Uso CFDI',            'type' => 'text'],
+        ['key' => 'TotalLineas',       'label' => 'Total Líneas',        'type' => 'int'],
+        ['key' => 'NroCta',            'label' => 'Nro Cta',             'type' => 'text'],
+        ['key' => 'CodigosProducto',   'label' => 'Códigos Producto',    'type' => 'text'],
+        ['key' => 'VolumenTotal',      'label' => 'Volumen Total',       'type' => 'dec3'],
+        ['key' => 'MontoTotalDet',     'label' => 'Monto Total Det',     'type' => 'money'],
+        ['key' => 'MontoIVA',          'label' => 'Monto IVA',           'type' => 'money'],
+        ['key' => 'MontoIIE',          'label' => 'Monto IIE',           'type' => 'money'],
+        ['key' => 'MontoIIG',          'label' => 'Monto IIG',           'type' => 'money'],
+        ['key' => 'CantDespachos',     'label' => 'Cant. Despachos',     'type' => 'int'],
+        ['key' => 'VolumenDespachado', 'label' => 'Volumen Despachado',  'type' => 'dec3'],
+        ['key' => 'MontoDespachado',   'label' => 'Monto Despachado',    'type' => 'money'],
+        ['key' => 'FoliosDespacho',    'label' => 'Folios Despacho',     'type' => 'text'],
+        ['key' => 'FechasDespacho',    'label' => 'Fechas Despacho',     'type' => 'text'],
+        ['key' => 'Vehiculos',         'label' => 'Vehículos',           'type' => 'text'],
+        ['key' => 'CantAplicaciones',  'label' => 'Cant. Aplicaciones',  'type' => 'int'],
+        ['key' => 'MontoAplicado',     'label' => 'Monto Aplicado',      'type' => 'money'],
+        ['key' => 'TiposAplicacion',   'label' => 'Tipos Aplicación',    'type' => 'text'],
+        ['key' => 'GasesAplicacion',   'label' => 'Gases Aplicación',    'type' => 'text'],
+        ['key' => 'AddEndasPositivas', 'label' => 'Addendas Positivas',  'type' => 'text'],
+        ['key' => 'AddEndasNegativas', 'label' => 'Addendas Negativas',  'type' => 'text'],
+        ['key' => 'CantMovContables',  'label' => 'Cant. Mov. Contables','type' => 'int'],
+        ['key' => 'CuentasContables',  'label' => 'Cuentas Contables',   'type' => 'text'],
+        ['key' => 'MontosContables',   'label' => 'Montos Contables',    'type' => 'text'],
+        ['key' => 'TiposMovimiento',   'label' => 'Tipos Movimiento',    'type' => 'text'],
+    ];
+
+    /**
      * @param $twig
      */
     public function __construct($twig) {
@@ -2046,6 +2110,62 @@ public function anomalies_client_tickets()
         $dispatches = $this->despachosModel->control_dispatches2(dateToInt($from), dateToInt($until), $codgas,$uuid,$tipo_cliente,$billed);
         echo $this->twig->render($this->route . 'modals/dispaches_modal.html', compact('dispatches'));
 
+    }
+
+    /**
+     * Herramienta "Expediente de facturas": arma la pantalla de filtros
+     * (estación + cliente + rango opcional). El resultado lo sirve
+     * expediente_facturas_table() vía AJAX.
+     */
+    function expediente_facturas() : void {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            // 0,4,20 es la exclusión de siempre (matriz, Malecón, Plutarco);
+            // 40 (Praxedis) y 199 (Colosio) no aplican para este reporte.
+            $stations = $this->estacionesModel->get_stations('0,4,20,40,199') ?: [];
+            $clientes = $this->clientesModel->get_credit_debit_clients_list();
+            $columns  = self::EXPEDIENTE_COLUMNS;
+
+            echo $this->twig->render($this->route . 'expediente_facturas.html',
+                compact('stations', 'clientes', 'columns'));
+        }
+    }
+
+    /**
+     * Endpoint del DataTable de "Expediente de facturas".
+     *
+     * Los renglones del SP se devuelven SIN transformar: sus nombres de columna
+     * ya coinciden con las 'key' de self::EXPEDIENTE_COLUMNS, que es lo que el
+     * front usa para armar la tabla.
+     */
+    function expediente_facturas_table() : void {
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
+
+        $codgas = isset($_POST['codgas']) ? (int)$_POST['codgas'] : 0;
+        $codopr = isset($_POST['codopr']) ? (int)$_POST['codopr'] : 0;
+        $from   = trim($_POST['from']  ?? '');
+        $until  = trim($_POST['until'] ?? '');
+
+        if ($codgas <= 0 || $codopr <= 0) {
+            json_output(['data' => [], 'error' => 'Debe seleccionar estación y cliente.']);
+            return;
+        }
+
+        // El rango es opcional: si viene vacío se manda NULL para que el SP
+        // devuelva todo el histórico del cliente en esa estación.
+        $fchDesde = $from  !== '' ? dateToInt($from)  : null;
+        $fchHasta = $until !== '' ? dateToInt($until) : null;
+
+        try {
+            $data = $this->ingresosModel->sp_expediente_facturas($codgas, $codopr, $fchDesde, $fchHasta) ?: [];
+        } catch (Exception $e) {
+            // El detalle real queda en el log del handler; al navegador solo el aviso.
+            http_response_code(500);
+            json_output(['data' => [], 'error' => 'No se pudo obtener el expediente de facturas.']);
+            return;
+        }
+
+        json_output(['data' => $data]);
     }
 
     function checking_tickets() :void {

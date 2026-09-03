@@ -2763,3 +2763,133 @@ function edo_debit_drill(drill, codcli, cliente) {
 }
 
 // cargarGraficaDesdeController();
+
+/* =====================================================================
+   Expediente de facturas  (/income/expediente_facturas)
+   ---------------------------------------------------------------------
+   Patrón A de este archivo: función invocada por el botón, que destruye
+   y reconstruye la tabla. NO declarar la DataTable a nivel superior:
+   income.js se carga en todas las páginas de Ingresos y esos bloques
+   correrían aunque la tabla no exista en el DOM.
+
+   Las columnas NO se listan aquí: vienen de window.EXPEDIENTE_COLS, que
+   la plantilla emite desde Income::EXPEDIENTE_COLUMNS (una sola fuente
+   de verdad para PHP, Twig y JS).
+   ===================================================================== */
+async function expediente_facturas_table() {
+    var codgas = $('#codgas').val();
+    var codopr = $('#codopr').val();
+    var from   = $('#from').val();
+    var until  = $('#until').val();
+
+    if (!codgas || !codopr) {
+        alertify.myAlert(
+            `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">Faltan datos</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Selecciona la estación y el cliente antes de consultar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    if (from && until && from > until) {
+        alertify.myAlert(
+            `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">Rango inválido</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">La fecha "Desde" no puede ser posterior a la fecha "Hasta".</p>
+            </div>`
+        );
+        return;
+    }
+
+    if ($.fn.DataTable.isDataTable('#expediente_facturas_table')) {
+        $('#expediente_facturas_table').DataTable().destroy();
+    }
+
+    var cols = (window.EXPEDIENTE_COLS || []).map(function (c) {
+        // defaultContent: el SP devuelve NULL en varias columnas (satext,
+        // satnro, Vehiculos...). Sin esto DataTables lanza warning y pinta
+        // "undefined" en la celda.
+        var col = { data: c.key, defaultContent: '' };
+
+        if (c.type === 'money') {
+            col.render = $.fn.dataTable.render.number(',', '.', 2, '$');
+            col.className = 'text-end text-nowrap';
+        } else if (c.type === 'dec3') {
+            col.render = $.fn.dataTable.render.number(',', '.', 3, '');
+            col.className = 'text-end text-nowrap';
+        } else if (c.type === 'dec2') {
+            col.render = $.fn.dataTable.render.number(',', '.', 2, '');
+            col.className = 'text-end text-nowrap';
+        } else if (c.type === 'int' || c.type === 'date') {
+            col.className = 'text-center text-nowrap';
+        } else {
+            // Columnas de texto: varias son listas separadas por comas y muy
+            // largas, se dejan envolver en lugar de estirar la tabla.
+            col.className = 'cell-list';
+        }
+        return col;
+    });
+
+    $('#expediente_facturas_table').DataTable({
+        columns: cols,
+        order: [[0, 'asc']],
+        scrollX: true,
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 50,
+        deferRender: true,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel',
+                title: 'Expediente de facturas',
+                // Respeta lo que el usuario dejó visible con colvis: con 48
+                // columnas, exportarlas todas produce un Excel ilegible.
+                exportOptions: { columns: ':visible' }
+            },
+            {
+                extend: 'colvis',
+                className: 'btn btn-secondary',
+                text: ' Columnas'
+            }
+        ],
+        ajax: {
+            method: 'POST',
+            url: '/income/expediente_facturas_table',
+            data: {
+                'codgas': codgas,
+                'codopr': codopr,
+                'from': from,
+                'until': until
+            },
+            timeout: 600000,
+            beforeSend: function () {
+                $('.table-responsive').addClass('loading');
+            },
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No se pudo obtener el expediente de facturas. Intentelo nuevamente.</p>
+                    </div>`
+                );
+            }
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // scrollX calcula anchos antes de que la pestaña termine de pintar;
+            // este ajuste alinea encabezados con el cuerpo.
+            this.api().columns.adjust();
+        }
+    });
+}

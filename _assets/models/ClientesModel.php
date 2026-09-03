@@ -241,6 +241,20 @@ class ClientesModel extends Model{
         return $this->sql->select($query) ?: [];
     }
 
+    /**
+     * Crédito y débito en una sola lista, cada renglón etiquetado con su tipo.
+     * Para pantallas con un único <select> de cliente (ej. Expediente de
+     * facturas) donde el tipo es informativo y no un filtro previo.
+     */
+    function get_credit_debit_clients_list() : array {
+        $query = "SELECT cod, den,
+                         CASE tipval WHEN 3 THEN N'Crédito' ELSE N'Débito' END AS tipo
+                  FROM [SG12].[dbo].[Clientes]
+                  WHERE tipval IN (3,4) AND codest = 0
+                  ORDER BY den;";
+        return $this->sql->select($query) ?: [];
+    }
+
     /* ===================================================================== */
     /* Clientes de contado (/operations/clientes_contado)                    */
     /* No se replican a SG12, se leen y editan directamente en la estación   */

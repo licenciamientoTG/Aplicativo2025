@@ -292,6 +292,63 @@ class MySqlPdoHandler{
 	}
 
 	/**
+	 * Igual que executeStoredProcedure() pero con parámetros NOMBRADOS.
+	 *
+	 * executeStoredProcedure() arma "EXEC sp ?,?,?" y bindea por posición, así
+	 * que las llaves del array se descartan y el orden tiene que coincidir
+	 * exactamente con la firma del SP. Cuando el SP tiene parámetros opcionales
+	 * eso es frágil: basta que alguien reordene la firma para que los valores
+	 * se crucen en silencio. Este método genera "EXEC sp @a = ?, @b = ?", de
+	 * modo que el orden deja de importar.
+	 *
+	 * Tampoco sirve pasar un EXEC por select(): ese método exige que la consulta
+	 * contenga la palabra "select" y, si no, hace die() con un mensaje de texto
+	 * plano (rompe cualquier endpoint que responda JSON).
+	 *
+	 * Los NULL se bindean como PDO::PARAM_NULL explícito: con el tipo por
+	 * defecto (PARAM_STR) el driver manda cadena vacía en lugar de NULL, y un
+	 * parámetro opcional dejaría de comportarse como "sin filtro".
+	 *
+	 * @param string $procedureName Nombre calificado, ej. '[TG].[dbo].[sp_x]'.
+	 * @param array  $params        Asociativo nombre => valor. El '@' es opcional.
+	 * @return array
+	 * @throws Exception
+	 */
+	function executeStoredProcedureNamed($procedureName, $params = array()) : array {
+		$records = array();
+		if (!empty($this->_connection) && !empty($procedureName)) {
+			$assignments = array();
+			foreach (array_keys($params) as $name) {
+				$assignments[] = '@' . ltrim((string)$name, '@') . ' = ?';
+			}
+			$query = "EXEC $procedureName " . implode(', ', $assignments);
+			try {
+				$stmt = $this->_connection->prepare($query);
+				$i = 1;
+				foreach ($this->normalizeFloatParams(array_values($params)) as $param) {
+					if ($param === null) {
+						$stmt->bindValue($i++, null, PDO::PARAM_NULL);
+					} else {
+						$stmt->bindValue($i++, $param);
+					}
+				}
+
+				$stmt->execute();
+
+				$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+				$stmt->closeCursor();
+
+			} catch(Exception $e) {
+				$this->logQueryError($e, $query ?? $procedureName, $params);
+				throw new Exception("Error en la base de datos", 1);
+			}
+		}
+
+		return $records;
+	}
+
+	/**
 	 * NOTE: This function allows for flexibility. Only use this function, if you know what you are doing.
 	 * Return: Bool or 2D array
 	 */
