@@ -119,10 +119,10 @@ function construirConfigDataTableRecepciones() {
         ajax: {
             url: '/supply/datatables_recepciones_proveedor',
             data: function (d) {
-                d.proveedor_rfc = $('#proveedor_rfc').val();
+                d.proveedor_rfc = $('#proveedor_rfc_recepciones').val();
                 d.codgas = $('#codgas_recepciones').val();
-                d.fecha_desde = $('#fecha_desde').val();
-                d.fecha_hasta = $('#fecha_hasta').val();
+                d.fecha_desde = $('#fecha_desde_recepciones').val();
+                d.fecha_hasta = $('#fecha_hasta_recepciones').val();
             },
             beforeSend: function () {
                 $('#datatables_recepciones_proveedor').closest('.table-responsive').addClass('loading');
@@ -253,34 +253,51 @@ $('#btnBuscarConciliacion').on('click', function () {
     }
 });
 
-// El selector de estación de la segunda tabla depende del proveedor elegido
-// arriba — se recarga cada vez que el proveedor cambia.
-$('#proveedor_rfc').on('change', function () {
-    const proveedorRfc = $(this).val();
+// El select de estación trae TODAS las opciones de todos los proveedores
+// precargadas (cada <option> con data-proveedor), no vía AJAX — son pocas
+// estaciones en total. Al cambiar el proveedor de esta pestaña, se
+// muestran/ocultan opciones vía la API de bootstrap-select (hide/show +
+// refresh), y se selecciona la primera visible automáticamente.
+function filtrarEstacionesPorProveedor() {
+    const proveedorRfc = $('#proveedor_rfc_recepciones').val();
     const $select = $('#codgas_recepciones');
-    $select.html('');
-    if (!proveedorRfc) {
-        $select.selectpicker('refresh');
-        return;
+    let primerVisible = null;
+
+    $select.find('option').each(function () {
+        const coincide = $(this).data('proveedor') === proveedorRfc;
+        $(this).prop('disabled', !coincide);
+        if (coincide && primerVisible === null) primerVisible = $(this).val();
+    });
+
+    $select.selectpicker('refresh');
+    if (primerVisible !== null) {
+        $select.selectpicker('val', primerVisible);
     }
-    $.get('/supply/estaciones_por_proveedor', { proveedor_rfc: proveedorRfc }, function (result) {
-        (result.data || []).forEach(function (e) {
-            $select.append(`<option value="${e.Codigo}">${e.Nombre || e.Estacion}</option>`);
-        });
-        $select.selectpicker('refresh');
-    }, 'json');
-});
+}
+
+$('#proveedor_rfc_recepciones').on('change', filtrarEstacionesPorProveedor);
+$(function () { filtrarEstacionesPorProveedor(); });
 
 function rangoRecepcionesEsValido() {
-    if (!$('#proveedor_rfc').val()) {
-        alertify.myAlert('<div class="text-danger text-center"><p>Selecciona un proveedor arriba.</p></div>');
+    if (!$('#proveedor_rfc_recepciones').val()) {
+        alertify.myAlert('<div class="text-danger text-center"><p>Selecciona un proveedor.</p></div>');
         return false;
     }
     if (!$('#codgas_recepciones').val()) {
         alertify.myAlert('<div class="text-danger text-center"><p>Selecciona una estación.</p></div>');
         return false;
     }
-    return rangoEsValido();
+    const desde = $('#fecha_desde_recepciones').val();
+    const hasta = $('#fecha_hasta_recepciones').val();
+    if (!desde || !hasta) {
+        alertify.myAlert('<div class="text-danger text-center"><p>Selecciona ambas fechas.</p></div>');
+        return false;
+    }
+    if (desde > hasta) {
+        alertify.myAlert('<div class="text-danger text-center"><p>La fecha "Desde" no puede ser posterior a "Hasta".</p></div>');
+        return false;
+    }
+    return true;
 }
 
 $('#btnBuscarRecepciones').on('click', function () {

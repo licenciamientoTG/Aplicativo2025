@@ -2454,7 +2454,17 @@ class Supply
             return;
         }
         $proveedores = $this->petrotalReconciliationModel->proveedores_hacia_petrotal();
-        echo $this->twig->render($this->route . 'petrotal_reconciliation.html', compact('proveedores'));
+
+        // Estaciones ya mapeadas por proveedor, precargadas de una vez (no
+        // vía AJAX): son pocos proveedores y pocas estaciones cada uno, así
+        // que se manda todo junto y el JS filtra en el cliente al cambiar
+        // el selector de proveedor de la pestaña "Confirmar recepción".
+        $estacionesPorProveedor = [];
+        foreach ($proveedores as $p) {
+            $estacionesPorProveedor[$p['EmisorRfc']] = $this->petrotalReconciliationModel->estaciones_con_codigo_externo($p['EmisorRfc']);
+        }
+
+        echo $this->twig->render($this->route . 'petrotal_reconciliation.html', compact('proveedores', 'estacionesPorProveedor'));
     }
 
     // Punto de partida: facturas de la compra ORIGINAL (proveedor real ->
