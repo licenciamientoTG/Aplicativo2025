@@ -26,6 +26,11 @@ class Tesoreria
     // Mismo patrón, con CUENTAS_PERFIL_ALIANZA: las 22 cuentas del grupo
     // Alianza Comercial (Gasomex + Clara + Jarudo) del panel de saldos.
     private const PERM_MOVIMIENTOS_ALIANZA  = 92;   // Ver Movimientos Bancos - Alianza Comercial
+    // Columna Comentarios de la tabla: oculta por default, solo visible y
+    // editable (icono de lápiz, mismo patrón que arqueo/concentrado) para
+    // quien tenga este permiso. No amplía qué cuentas se ven, solo si se
+    // puede comentar las que ya se ven.
+    private const PERM_COMENTARIOS  = 93;   // Editar Comentarios Movimientos Bancos
     private const MAX_TXT_BYTES     = 10 * 1024 * 1024;
 
     /**
@@ -389,6 +394,7 @@ class Tesoreria
             'bancos'           => self::BANCOS,
             'bancosTabla'      => self::bancos_con_tabla(),
             'cuentasSugeridas' => $this->cuentas_sugeridas(),
+            'puedeComentar'    => authorized(self::PERM_COMENTARIOS),
         ]);
     }
 
@@ -485,6 +491,56 @@ class Tesoreria
             'success'     => true,
             'filtros'     => $filtros,
             'movimientos' => $porTabla,
+        ]);
+    }
+
+    /**
+     * POST AJAX: guarda el comentario libre de un movimiento (edición inline
+     * con lápiz en la tabla). Requiere permiso 93 y que la cuenta del
+     * movimiento esté dentro de lo que el perfil del usuario puede ver —
+     * misma restricción que movimientos_table(), para que un perfil acotado
+     * (Crédito/Ingresos/Alianza) no pueda comentar cuentas fuera de su
+     * alcance aunque conozca el id. La cuenta se vuelve a exigir en el
+     * UPDATE (ver update_comentario) por si el payload la falsea.
+     */
+    public function guardar_comentario_movimiento(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_COMENTARIOS)) {
+            json_output(['success' => false, 'message' => 'Sin permiso para editar comentarios']);
+            return;
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+
+        $id     = (int)($_POST['id'] ?? 0);
+        $cuenta = trim($_POST['cuenta'] ?? '');
+        $comentario = trim(mb_substr((string)($_POST['comentario'] ?? ''), 0, 300));
+        if ($id <= 0 || $cuenta === '') {
+            json_output(['success' => false, 'message' => 'Movimiento inválido']);
+            return;
+        }
+
+        $cuentasPermitidas = $this->cuentas_permitidas();
+        if ($cuentasPermitidas !== null && !in_array($cuenta, $cuentasPermitidas, true)) {
+            json_output(['success' => false, 'message' => 'Sin permiso para esa cuenta']);
+            return;
+        }
+
+        try {
+            $ok = $this->movsModel->update_comentario($id, $cuenta, $comentario);
+        } catch (Exception $e) {
+            error_log('guardar_comentario_movimiento: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al guardar el comentario']);
+            return;
+        }
+
+        json_output([
+            'success'    => $ok,
+            'message'    => $ok ? 'Comentario guardado' : 'No se encontró el movimiento',
+            'comentario' => $comentario,
         ]);
     }
 

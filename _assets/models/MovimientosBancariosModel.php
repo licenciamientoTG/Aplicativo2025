@@ -2356,10 +2356,24 @@ class MovimientosBancariosModel extends Model
         $query = "SELECT id, banco, cuenta, fecha, fecha_operacion, hora, sucursal, descripcion,
                          cargo, abono, saldo, referencia, concepto, clave_rastreo,
                          descripcion_larga, nombre_contraparte, banco_contraparte,
-                         cuenta_contraparte, clave_trans, secuencia
+                         cuenta_contraparte, clave_trans, secuencia, comentario
                   FROM [TG].[dbo].[movimientos_bancarios]
                   $where ORDER BY fecha, ISNULL(orden_dia, id), id;";
         return $this->sql->select($query, $params) ?: [];
+    }
+
+    /**
+     * Guarda el comentario libre de un movimiento (edición inline con lápiz
+     * en la tabla, permiso 93). $cuenta se pasa para que el controlador
+     * pueda validarla contra cuentas_permitidas() antes de llamar aquí, pero
+     * el UPDATE la vuelve a filtrar por id+cuenta para no depender solo de
+     * esa validación previa.
+     */
+    public function update_comentario(int $id, string $cuenta, string $comentario): bool
+    {
+        $query = 'UPDATE [TG].[dbo].[movimientos_bancarios] SET comentario = ? WHERE id = ? AND cuenta = ?;';
+        $afectadas = $this->sql->updateSafe($query, [$comentario !== '' ? $comentario : null, $id, $cuenta]);
+        return $afectadas !== false && $afectadas > 0;
     }
 
     /**
