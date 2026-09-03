@@ -256,9 +256,20 @@ class EfcConciliacionModel {
             $wanted=$normalizeName($wanted);
             foreach($catalog as $item) if(str_contains($normalizeName($item['Nombre']),$wanted)) $accountStations[(int)$item['Codigo']]=true;
         }
+        // Una cuenta compartida puede traer el nombre de la estación en el
+        // detalle bancario. Se usa esa identificación explícita antes de
+        // descartar el movimiento como ambiguo.
+        $text=implode(' ',[(string)($movement['descripcion_larga']??''),(string)($movement['descripcion']??''),(string)($movement['concepto']??''),(string)($movement['referencia']??'')]);
+        $normalizedText=$normalizeName($text); $textStations=[];
+        foreach($catalog as $item) {
+            $name=trim($normalizeName($item['Nombre']));
+            $name=preg_replace('/^\d+\s+/', '', $name);
+            if($name!=='' && str_contains($normalizedText,$name)) $textStations[(int)$item['Codigo']]=true;
+        }
+        if(count($textStations)===1) return (int)array_key_first($textStations);
         if(count($accountStations)===1) return (int)array_key_first($accountStations);
         foreach($catalog as $item) { $code=ltrim(preg_replace('/\D+/','',(string)$item['Estacion']),'0'); if($code!=='') $map[$code]=(int)$item['Codigo']; }
-        $text=implode(' ',[(string)($movement['descripcion_larga']??''),(string)($movement['descripcion']??''),(string)($movement['concepto']??''),(string)($movement['referencia']??'')]); preg_match_all('/\d+/',$text,$matches); $found=[];
+        preg_match_all('/\d+/',$text,$matches); $found=[];
         foreach($matches[0] as $raw) { $code=ltrim($raw,'0'); if(isset($map[$code])) $found[$map[$code]]=true; }
         return count($found)===1 ? (int)array_key_first($found) : null;
     }

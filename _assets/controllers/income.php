@@ -6597,9 +6597,27 @@ public function stamped_invoices_detail(): void
                     }
                 }
                 $estacionPorCuenta = count($candidatasCuenta) === 1 ? reset($candidatasCuenta) : null;
-                $estacionOriginal = $estacionPorReferencia ?? $estacionPorCuenta;
+                // Varias cuentas son compartidas, pero Banorte sí incluye a veces
+                // el nombre de la estación en su leyenda (ej. PUERTECITO o
+                // JESUSMARIA). Esa pista explícita es más precisa que la cuenta.
+                $textoNormalizado = $normalizarNombre($texto);
+                $candidatasTexto = [];
+                foreach ($catalogoPorNombre as $estacionCatalogo) {
+                    $nombreEstacion = trim((string)$estacionCatalogo['normalized']);
+                    // El catálogo suele anteponer el número comercial ("35
+                    // Puertecito"), que no viene en la leyenda del banco.
+                    $nombreSinPrefijo = preg_replace('/^\d+\s+/', '', $nombreEstacion);
+                    if ($nombreSinPrefijo !== '' && str_contains($textoNormalizado, $nombreSinPrefijo)) {
+                        $candidatasTexto[$estacionCatalogo['station_id']] = [
+                            'station_id' => $estacionCatalogo['station_id'],
+                            'station' => $estacionCatalogo['station'],
+                        ];
+                    }
+                }
+                $estacionPorTexto = count($candidatasTexto) === 1 ? reset($candidatasTexto) : null;
+                $estacionOriginal = $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta;
                 $estatus = $estacionOriginal ? 'IDENTIFICADA'
-                    : (count($codigos) > 1 || count($candidatasCuenta) > 1 ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
+                    : (count($codigos) > 1 || count($candidatasTexto) > 1 || count($candidatasCuenta) > 1 ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
                 $corregida = isset($correcciones[(int)$mov['id']]);
                 $estacion = $correcciones[(int)$mov['id']] ?? $estacionOriginal;
                 // Una corrección válida identifica la estación para fines de
