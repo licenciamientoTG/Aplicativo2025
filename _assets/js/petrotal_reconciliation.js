@@ -210,6 +210,22 @@ function construirConfigDataTableRecepciones() {
     };
 }
 
+// Corrige el ancho de columnas de la tabla activa: DataTables calcula mal
+// el ancho si se inicializa dentro de un tab-pane oculto (display:none).
+// Con "Buscar" ya no se inicializa nunca oculta (el usuario debe estar
+// parado en la pestaña para hacer clic), pero al VOLVER a una pestaña
+// después de haber estado en la otra, Bootstrap no dispara ningún resize
+// nativo — sin este ajuste las columnas quedan angostas hasta la primera
+// interacción manual del usuario.
+$('#tabsConciliacion button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+    if (e.target.id === 'tab-btn-facturas-petrotal' && datatables_conciliacion) {
+        datatables_conciliacion.columns.adjust();
+    }
+    if (e.target.id === 'tab-btn-recepciones' && datatables_recepciones_proveedor) {
+        datatables_recepciones_proveedor.columns.adjust();
+    }
+});
+
 function rangoEsValido() {
     if (!$('#proveedor_rfc').val()) {
         alertify.myAlert('<div class="text-danger text-center"><p>Selecciona un proveedor.</p></div>');
