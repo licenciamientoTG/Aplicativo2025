@@ -149,9 +149,17 @@ function construirConfigDataTableRecepciones() {
                         data-factura-proveedor="${row.factura_proveedor.Id}">`;
                 }
             },
+            { data: 'estacion_nombre' },
             { data: 'fecha' },
             { data: 'producto' },
             { data: 'volumen', render: $.fn.dataTable.render.number(',', '.', 2) },
+            {
+                data: null,
+                render: function (row) {
+                    if (!row.en_controlgas) return '<span class="badge bg-light text-dark border">No</span>';
+                    return `<span class="badge bg-success">Sí</span>${row.documento_controlgas ? `<br><small class="text-muted">${row.documento_controlgas}</small>` : ''}`;
+                }
+            },
             {
                 data: 'factura_proveedor',
                 render: function (data) {

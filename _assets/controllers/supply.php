@@ -2571,6 +2571,7 @@ class Supply
             return;
         }
 
+        $estacion = $this->gasolinerasModel->get_by_codgas($codgas);
         $sugerencias = $this->petrotalReconciliationModel->sugerir_recepciones_por_volumen(
             $codgas, $proveedorRfc, $fechaDesde, $fechaHasta
         );
@@ -2584,12 +2585,23 @@ class Supply
                     $s['factura_proveedor']['Id'], null
                 );
             }
+
+            // "Ya en ControlGas" = la estación ya capturó un documento con
+            // remisión/folio para ESTA recepción (txtref no vacío). Cuando
+            // es así, confirmar aquí es solo formalizar en TG lo que la
+            // estación ya subió — no es informativo nada más, le dice al
+            // usuario que el match es casi trámite.
+            $ref = $this->petrotalReconciliationModel->parse_txtref($r['txtref'] ?? null);
+
             $filas[] = [
                 'codgas' => $codgas,
+                'estacion_nombre' => $estacion['Nombre'] ?? ('Estación ' . $codgas),
                 'nrotrn' => (int)$r['nrotrn'],
                 'fecha' => $r['fecha'],
                 'producto' => $r['Producto'],
                 'volumen' => $r['VolumenRecibido'],
+                'en_controlgas' => $ref !== null,
+                'documento_controlgas' => $ref ? trim(($ref['folio'] ?: '') . ' / ' . ($ref['remision'] ?: '')) : null,
                 'factura_proveedor' => $s['factura_proveedor'],
                 'confianza' => $s['confianza'],
                 'ya_asignada' => $asignacionExistente !== null,
