@@ -28,6 +28,70 @@ class Income{
     public EfcAnaliticosModel $efcAnaliticos;
 
     /**
+     * Columnas que devuelve [TG].[dbo].[sp_expediente_facturas_por_estación_y_cliente],
+     * en el orden exacto del SP. Es la ÚNICA definición: la plantilla arma el
+     * <thead> recorriéndola y el JS arma su array `columns` desde el mismo JSON,
+     * así que agregar una columna al SP es agregar un renglón aquí y nada más.
+     *
+     * 'key' debe coincidir letra por letra con el nombre que emite el SP.
+     * 'type' solo controla el formato en pantalla:
+     *   text (default) | int | date | dec2 | dec3 | money
+     *
+     * Ojo: las columnas "lista" (FoliosDespacho, MontosContables, etc.) son
+     * cadenas separadas por comas — SIEMPRE text, nunca numérico.
+     */
+    private const EXPEDIENTE_COLUMNS = [
+        ['key' => 'NumeroFactura',     'label' => 'Núm. Factura',        'type' => 'int'],
+        ['key' => 'tip',               'label' => 'Tip',                 'type' => 'int'],
+        ['key' => 'codgas',            'label' => 'Codgas',              'type' => 'int'],
+        ['key' => 'FechaDoc',          'label' => 'Fecha Doc',           'type' => 'date'],
+        ['key' => 'FechaVto',          'label' => 'Fecha Vto',           'type' => 'date'],
+        ['key' => 'FchControlGas',     'label' => 'Fch ControlGas',      'type' => 'int'],
+        ['key' => 'tipopr',            'label' => 'Tipopr',              'type' => 'int'],
+        ['key' => 'codopr',            'label' => 'Codopr',              'type' => 'int'],
+        ['key' => 'codmda',            'label' => 'Codmda',              'type' => 'int'],
+        ['key' => 'subope',            'label' => 'Subope',              'type' => 'int'],
+        ['key' => 'flgcon',            'label' => 'Flgcon',              'type' => 'int'],
+        ['key' => 'nrotur',            'label' => 'Nrotur',              'type' => 'int'],
+        ['key' => 'nroref',            'label' => 'Nroref',              'type' => 'int'],
+        ['key' => 'tipref',            'label' => 'Tipref',              'type' => 'int'],
+        ['key' => 'txtref',            'label' => 'Texto Referencia',    'type' => 'text'],
+        ['key' => 'codemp',            'label' => 'Codemp',              'type' => 'int'],
+        ['key' => 'satext',            'label' => 'SAT Ext',             'type' => 'text'],
+        ['key' => 'satnro',            'label' => 'SAT Nro',             'type' => 'text'],
+        ['key' => 'satser',            'label' => 'SAT Serie',           'type' => 'text'],
+        ['key' => 'UUID',              'label' => 'UUID',                'type' => 'text'],
+        ['key' => 'satdat',            'label' => 'SAT Dat',             'type' => 'text'],
+        ['key' => 'satmdp',            'label' => 'Método Pago',         'type' => 'text'],
+        ['key' => 'satnpa',            'label' => 'SAT Npa',             'type' => 'text'],
+        ['key' => 'satuso',            'label' => 'Uso CFDI',            'type' => 'text'],
+        ['key' => 'TotalLineas',       'label' => 'Total Líneas',        'type' => 'int'],
+        ['key' => 'NroCta',            'label' => 'Nro Cta',             'type' => 'text'],
+        ['key' => 'CodigosProducto',   'label' => 'Códigos Producto',    'type' => 'text'],
+        ['key' => 'VolumenTotal',      'label' => 'Volumen Total',       'type' => 'dec3'],
+        ['key' => 'MontoTotalDet',     'label' => 'Monto Total Det',     'type' => 'money'],
+        ['key' => 'MontoIVA',          'label' => 'Monto IVA',           'type' => 'money'],
+        ['key' => 'MontoIIE',          'label' => 'Monto IIE',           'type' => 'money'],
+        ['key' => 'MontoIIG',          'label' => 'Monto IIG',           'type' => 'money'],
+        ['key' => 'CantDespachos',     'label' => 'Cant. Despachos',     'type' => 'int'],
+        ['key' => 'VolumenDespachado', 'label' => 'Volumen Despachado',  'type' => 'dec3'],
+        ['key' => 'MontoDespachado',   'label' => 'Monto Despachado',    'type' => 'money'],
+        ['key' => 'FoliosDespacho',    'label' => 'Folios Despacho',     'type' => 'text'],
+        ['key' => 'FechasDespacho',    'label' => 'Fechas Despacho',     'type' => 'text'],
+        ['key' => 'Vehiculos',         'label' => 'Vehículos',           'type' => 'text'],
+        ['key' => 'CantAplicaciones',  'label' => 'Cant. Aplicaciones',  'type' => 'int'],
+        ['key' => 'MontoAplicado',     'label' => 'Monto Aplicado',      'type' => 'money'],
+        ['key' => 'TiposAplicacion',   'label' => 'Tipos Aplicación',    'type' => 'text'],
+        ['key' => 'GasesAplicacion',   'label' => 'Gases Aplicación',    'type' => 'text'],
+        ['key' => 'AddEndasPositivas', 'label' => 'Addendas Positivas',  'type' => 'text'],
+        ['key' => 'AddEndasNegativas', 'label' => 'Addendas Negativas',  'type' => 'text'],
+        ['key' => 'CantMovContables',  'label' => 'Cant. Mov. Contables','type' => 'int'],
+        ['key' => 'CuentasContables',  'label' => 'Cuentas Contables',   'type' => 'text'],
+        ['key' => 'MontosContables',   'label' => 'Montos Contables',    'type' => 'text'],
+        ['key' => 'TiposMovimiento',   'label' => 'Tipos Movimiento',    'type' => 'text'],
+    ];
+
+    /**
      * @param $twig
      */
     public function __construct($twig) {
@@ -2048,6 +2112,62 @@ public function anomalies_client_tickets()
 
     }
 
+    /**
+     * Herramienta "Expediente de facturas": arma la pantalla de filtros
+     * (estación + cliente + rango opcional). El resultado lo sirve
+     * expediente_facturas_table() vía AJAX.
+     */
+    function expediente_facturas() : void {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            // 0,4,20 es la exclusión de siempre (matriz, Malecón, Plutarco);
+            // 40 (Praxedis) y 199 (Colosio) no aplican para este reporte.
+            $stations = $this->estacionesModel->get_stations('0,4,20,40,199') ?: [];
+            $clientes = $this->clientesModel->get_credit_debit_clients_list();
+            $columns  = self::EXPEDIENTE_COLUMNS;
+
+            echo $this->twig->render($this->route . 'expediente_facturas.html',
+                compact('stations', 'clientes', 'columns'));
+        }
+    }
+
+    /**
+     * Endpoint del DataTable de "Expediente de facturas".
+     *
+     * Los renglones del SP se devuelven SIN transformar: sus nombres de columna
+     * ya coinciden con las 'key' de self::EXPEDIENTE_COLUMNS, que es lo que el
+     * front usa para armar la tabla.
+     */
+    function expediente_facturas_table() : void {
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
+
+        $codgas = isset($_POST['codgas']) ? (int)$_POST['codgas'] : 0;
+        $codopr = isset($_POST['codopr']) ? (int)$_POST['codopr'] : 0;
+        $from   = trim($_POST['from']  ?? '');
+        $until  = trim($_POST['until'] ?? '');
+
+        if ($codgas <= 0 || $codopr <= 0) {
+            json_output(['data' => [], 'error' => 'Debe seleccionar estación y cliente.']);
+            return;
+        }
+
+        // El rango es opcional: si viene vacío se manda NULL para que el SP
+        // devuelva todo el histórico del cliente en esa estación.
+        $fchDesde = $from  !== '' ? dateToInt($from)  : null;
+        $fchHasta = $until !== '' ? dateToInt($until) : null;
+
+        try {
+            $data = $this->ingresosModel->sp_expediente_facturas($codgas, $codopr, $fchDesde, $fchHasta) ?: [];
+        } catch (Exception $e) {
+            // El detalle real queda en el log del handler; al navegador solo el aviso.
+            http_response_code(500);
+            json_output(['data' => [], 'error' => 'No se pudo obtener el expediente de facturas.']);
+            return;
+        }
+
+        json_output(['data' => $data]);
+    }
+
     function checking_tickets() :void {
         // Vamos a comprobar si $_GET['from'] y $_GET['codgas'] están definidos
         if (isset($_GET['from'])) {
@@ -3623,14 +3743,28 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            // INNER JOIN con Tesoreria_afil para traer SOLO las estaciones que tienen configuración/afiliación
-            // RFC se toma de Estaciones (fuente autoritativa), no de Tesoreria_afil (puede variar por entidad)
+            // RFC se toma de Estaciones (fuente autoritativa), no de Tesoreria_afil.
+            // El filtro se mantiene opcional para no romper los consumidores
+            // históricos de este catálogo.
+            $empresa = strtoupper(trim((string)($_GET['empresa'] ?? '')));
+            $empresaWhere = '';
+            if ($empresa === 'DIAZ GAS') $empresaWhere = " AND T1.RFC = 'DGA930823KD3'";
+            elseif ($empresa === 'GASOMEX') $empresaWhere = " AND T1.RFC = 'DGM880621FU5'";
+            elseif ($empresa === 'FORANEAS') $empresaWhere = " AND ISNULL(T1.RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')";
+            // Para la conciliación por empresa se requiere el catálogo completo,
+            // incluso si la estación todavía no existe en Tesoreria_afil.
+            $from = $empresa === ''
+                ? "FROM Estaciones T1 INNER JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id"
+                : "FROM Estaciones T1";
             $sql = "SELECT DISTINCT
                         T1.Codigo,
                         T1.Nombre,
-                        ISNULL(T1.RFC, 'FORANEAS') as RFC
-                    FROM Estaciones T1
-                    INNER JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id
+                        ISNULL(T1.RFC, 'FORANEAS') as RFC,
+                        CASE WHEN T1.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
+                             WHEN T1.RFC = 'DGM880621FU5' THEN 'GASOMEX'
+                             ELSE 'FORANEAS' END AS Empresa
+                    $from
+                    WHERE T1.Codigo <> 0 $empresaWhere
                     ORDER BY T1.Nombre";
 
             $stmt = $conn->query($sql);
@@ -3649,11 +3783,12 @@ public function anomalies_client_tickets()
             $foundColosio = false;
             foreach($result as $r) { if($r['Codigo'] == 333) $foundColosio = true; }
 
-            if(!$foundColosio) {
+            if(!$foundColosio && ($empresa === '' || $empresa === 'FORANEAS')) {
                 $result[] = [
                     'Codigo' => 333,
                     'Nombre' => 'COLOSIO',
-                    'RFC'    => 'FORANEAS'
+                    'RFC'    => 'FORANEAS',
+                    'Empresa'=> 'FORANEAS'
                 ];
                 // Reordenar alfabéticamente
                 usort($result, function($a, $b) { return strcmp($a['Nombre'], $b['Nombre']); });
@@ -6345,7 +6480,7 @@ public function stamped_invoices_detail(): void
     }
 
     /**
-     * Depósitos de efectivo Banorte para la prueba de conciliación Díaz Gas.
+     * Depósitos de efectivo configurados para Conciliación de efectivo.
      * Sólo consulta movimientos ya importados; no modifica Tesorería ni grupos V3.
      */
     public function get_cash_banorte_deposits(): void {
@@ -6356,6 +6491,7 @@ public function stamped_invoices_detail(): void
         $month      = (int)($_GET['month'] ?? date('m'));
         $estacionId = (int)($_GET['estacion_id'] ?? 0);
         $todasEstaciones = ($_GET['all'] ?? '') === '1';
+        $empresa = EfcConciliacionModel::normalizeCompany($_GET['empresa'] ?? 'DIAZ GAS');
         if ($year < 2020 || $month < 1 || $month > 12 || (!$todasEstaciones && !$estacionId)) {
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
             exit;
@@ -6365,19 +6501,28 @@ public function stamped_invoices_detail(): void
             $digitos = preg_replace('/\D+/', '', (string)$valor);
             return ltrim($digitos, '0') ?: '0';
         };
+        $normalizarNombre = static function ($valor): string {
+            $nombre = strtoupper((string)$valor);
+            $nombre = strtr($nombre, ['Á'=>'A', 'É'=>'E', 'Í'=>'I', 'Ó'=>'O', 'Ú'=>'U', 'Ü'=>'U', 'Ñ'=>'N']);
+            return preg_replace('/[^A-Z0-9]+/', ' ', trim($nombre));
+        };
 
         try {
             $conn = $this->v3_conn();
 
-            // Estaciones.Estacion conserva el identificador operativo que Banorte
-            // escribe en la descripción detallada (por ejemplo E04188 → 4188).
+            // Estaciones.Estacion conserva el identificador operativo que los
+            // bancos escriben en la descripción detallada (por ejemplo E04188 → 4188).
+            $empresaWhere = $empresa === 'DIAZ GAS' ? "E.RFC = 'DGA930823KD3'"
+                : ($empresa === 'GASOMEX' ? "E.RFC = 'DGM880621FU5'"
+                : "ISNULL(E.RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')");
             $stmtEstaciones = $conn->query(
                 "SELECT DISTINCT E.Codigo, E.Nombre,
                         E.Estacion AS codigo_banco
                  FROM [TG].[dbo].[Estaciones] E
-                 WHERE E.RFC = 'DGA930823KD3'"
+                 WHERE E.Codigo<>0 AND $empresaWhere"
             );
             $catalogo = [];
+            $catalogoPorNombre = [];
             while ($est = $stmtEstaciones->fetch(PDO::FETCH_ASSOC)) {
                 $codigo = $normalizarCodigo($est['codigo_banco']);
                 if ($codigo !== '0') {
@@ -6386,22 +6531,38 @@ public function stamped_invoices_detail(): void
                         'station'    => trim((string)$est['Nombre']),
                     ];
                 }
+                $catalogoPorNombre[] = [
+                    'station_id' => (int)$est['Codigo'],
+                    'station' => trim((string)$est['Nombre']),
+                    'normalized' => $normalizarNombre($est['Nombre']),
+                ];
             }
             $correcciones = [];
-            $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id WHERE E.RFC='DGA930823KD3'");
+            $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id");
             while ($correccion = $stmtCorrecciones->fetch(PDO::FETCH_ASSOC)) $correcciones[(int)$correccion['movimiento_bancario_id']] = ['station_id'=>(int)$correccion['estacion_id'],'station'=>trim($correccion['Nombre'])];
 
+            $suffixes = EfcConciliacionModel::accountSuffixes($empresa);
+            $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT id, fecha, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
+                "SELECT id, fecha, banco, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
                  FROM [TG].[dbo].[movimientos_bancarios]
-                 WHERE banco = 'BANORTE'
-                   AND REPLACE(REPLACE(ISNULL(cuenta,''), '-', ''), ' ', '') = '0185322470'
-                   AND abono > 0
+                 WHERE abono > 0
                    AND YEAR(fecha) = ? AND MONTH(fecha) = ?
-                   AND UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                   -- Banorte, Bankaool y Santander no nombran el mismo movimiento
+                   -- de efectivo igual. Sólo se admiten las descripciones operativas
+                   -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
+                   AND (
+                       UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EFECTIVO%'
+                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEP EN EFECTIV%'
+                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO VTAS%'
+                   )
+                   AND ($accountWhere)
                  ORDER BY fecha, id"
             );
-            $stmt->execute([$year, $month]);
+            $params = [$year, $month];
+            foreach ($suffixes as $suffix) { $params[] = $suffix; $params[] = $suffix; }
+            $stmt->execute($params);
 
             $movimientos = [];
             while ($mov = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -6417,9 +6578,28 @@ public function stamped_invoices_detail(): void
                 }
 
                 $codigos = array_keys($codigos);
-                $estatus = count($codigos) === 1 ? 'IDENTIFICADA'
-                    : (count($codigos) === 0 ? 'ESTACION_NO_IDENTIFICADA' : 'ESTACION_AMBIGUA');
-                $estacionOriginal = count($codigos) === 1 ? $catalogo[$codigos[0]] : null;
+                $estacionPorReferencia = count($codigos) === 1 ? $catalogo[$codigos[0]] : null;
+
+                // Santander/Bankaool normalmente no ponen el código operativo
+                // de la estación en la leyenda. La cuenta configurada identifica
+                // de forma directa las que son exclusivas; las compartidas siguen
+                // requiriendo código/revisión, nunca se asignan al azar.
+                $candidatasCuenta = [];
+                foreach (EfcConciliacionModel::accountStationNames($empresa, $mov['cuenta'] ?? '') as $nombreCuenta) {
+                    $buscado = $normalizarNombre($nombreCuenta);
+                    foreach ($catalogoPorNombre as $estacionCatalogo) {
+                        if (str_contains($estacionCatalogo['normalized'], $buscado)) {
+                            $candidatasCuenta[$estacionCatalogo['station_id']] = [
+                                'station_id' => $estacionCatalogo['station_id'],
+                                'station' => $estacionCatalogo['station'],
+                            ];
+                        }
+                    }
+                }
+                $estacionPorCuenta = count($candidatasCuenta) === 1 ? reset($candidatasCuenta) : null;
+                $estacionOriginal = $estacionPorReferencia ?? $estacionPorCuenta;
+                $estatus = $estacionOriginal ? 'IDENTIFICADA'
+                    : (count($codigos) > 1 || count($candidatasCuenta) > 1 ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
                 $corregida = isset($correcciones[(int)$mov['id']]);
                 $estacion = $correcciones[(int)$mov['id']] ?? $estacionOriginal;
                 // Una corrección válida identifica la estación para fines de
@@ -6433,6 +6613,7 @@ public function stamped_invoices_detail(): void
                 $movimientos[] = [
                     'id'                => 'mb_' . (int)$mov['id'],
                     'fecha'             => $fecha,
+                    'banco'             => trim((string)$mov['banco']),
                     'cuenta'            => $mov['cuenta'],
                     'referencia'        => trim((string)$mov['referencia']),
                     'sucursal'          => trim((string)$mov['sucursal']),
@@ -6449,9 +6630,9 @@ public function stamped_invoices_detail(): void
                     'station_normalized'=> $codigos,
                 ];
             }
-            echo json_encode(['status' => 'success', 'data' => $movimientos]);
+            echo json_encode(['status' => 'success', 'empresa' => $empresa, 'data' => $movimientos]);
         } catch (PDOException $e) {
-            echo json_encode(['status' => 'error', 'message' => 'Error consultando depósitos Banorte: ' . $e->getMessage()]);
+            echo json_encode(['status' => 'error', 'message' => 'Error consultando depósitos bancarios: ' . $e->getMessage()]);
         }
         exit;
     }
