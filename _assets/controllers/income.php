@@ -6501,6 +6501,11 @@ public function stamped_invoices_detail(): void
             $digitos = preg_replace('/\D+/', '', (string)$valor);
             return ltrim($digitos, '0') ?: '0';
         };
+        $normalizarNombre = static function ($valor): string {
+            $nombre = strtoupper((string)$valor);
+            $nombre = strtr($nombre, ['Á'=>'A', 'É'=>'E', 'Í'=>'I', 'Ó'=>'O', 'Ú'=>'U', 'Ü'=>'U', 'Ñ'=>'N']);
+            return preg_replace('/[^A-Z0-9]+/', ' ', trim($nombre));
+        };
 
         try {
             $conn = $this->v3_conn();
@@ -6517,6 +6522,7 @@ public function stamped_invoices_detail(): void
                  WHERE E.Codigo<>0 AND $empresaWhere"
             );
             $catalogo = [];
+            $catalogoPorNombre = [];
             while ($est = $stmtEstaciones->fetch(PDO::FETCH_ASSOC)) {
                 $codigo = $normalizarCodigo($est['codigo_banco']);
                 if ($codigo !== '0') {
@@ -6525,6 +6531,11 @@ public function stamped_invoices_detail(): void
                         'station'    => trim((string)$est['Nombre']),
                     ];
                 }
+                $catalogoPorNombre[] = [
+                    'station_id' => (int)$est['Codigo'],
+                    'station' => trim((string)$est['Nombre']),
+                    'normalized' => $normalizarNombre($est['Nombre']),
+                ];
             }
             $correcciones = [];
             $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id");
@@ -6537,7 +6548,15 @@ public function stamped_invoices_detail(): void
                  FROM [TG].[dbo].[movimientos_bancarios]
                  WHERE abono > 0
                    AND YEAR(fecha) = ? AND MONTH(fecha) = ?
-                   AND UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                   -- Banorte, Bankaool y Santander no nombran el mismo movimiento
+                   -- de efectivo igual. Sólo se admiten las descripciones operativas
+                   -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
+                   AND (
+                       UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EFECTIVO%'
+                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEP EN EFECTIV%'
+                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO VTAS%'
+                   )
                    AND ($accountWhere)
                  ORDER BY fecha, id"
             );
@@ -6559,9 +6578,28 @@ public function stamped_invoices_detail(): void
                 }
 
                 $codigos = array_keys($codigos);
-                $estatus = count($codigos) === 1 ? 'IDENTIFICADA'
-                    : (count($codigos) === 0 ? 'ESTACION_NO_IDENTIFICADA' : 'ESTACION_AMBIGUA');
-                $estacionOriginal = count($codigos) === 1 ? $catalogo[$codigos[0]] : null;
+                $estacionPorReferencia = count($codigos) === 1 ? $catalogo[$codigos[0]] : null;
+
+                // Santander/Bankaool normalmente no ponen el código operativo
+                // de la estación en la leyenda. La cuenta configurada identifica
+                // de forma directa las que son exclusivas; las compartidas siguen
+                // requiriendo código/revisión, nunca se asignan al azar.
+                $candidatasCuenta = [];
+                foreach (EfcConciliacionModel::accountStationNames($empresa, $mov['cuenta'] ?? '') as $nombreCuenta) {
+                    $buscado = $normalizarNombre($nombreCuenta);
+                    foreach ($catalogoPorNombre as $estacionCatalogo) {
+                        if (str_contains($estacionCatalogo['normalized'], $buscado)) {
+                            $candidatasCuenta[$estacionCatalogo['station_id']] = [
+                                'station_id' => $estacionCatalogo['station_id'],
+                                'station' => $estacionCatalogo['station'],
+                            ];
+                        }
+                    }
+                }
+                $estacionPorCuenta = count($candidatasCuenta) === 1 ? reset($candidatasCuenta) : null;
+                $estacionOriginal = $estacionPorReferencia ?? $estacionPorCuenta;
+                $estatus = $estacionOriginal ? 'IDENTIFICADA'
+                    : (count($codigos) > 1 || count($candidatasCuenta) > 1 ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
                 $corregida = isset($correcciones[(int)$mov['id']]);
                 $estacion = $correcciones[(int)$mov['id']] ?? $estacionOriginal;
                 // Una corrección válida identifica la estación para fines de

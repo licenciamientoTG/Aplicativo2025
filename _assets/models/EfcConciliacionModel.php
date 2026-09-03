@@ -8,6 +8,23 @@ class EfcConciliacionModel {
         'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', 'C7533', '2627', '5247', '7604', '0031'],
         'GASOMEX'   => ['8504', '4409', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4457'],
     ];
+    /* Cuenta → estación operativa. Algunas cuentas atienden más de una
+       estación: en esos casos se conserva la validación por referencia. */
+    private const COMPANY_ACCOUNT_STATIONS = [
+        'DIAZ GAS' => ['369' => ['PARRAL']],
+        'FORANEAS' => [
+            '3281'=>['VILLA AHUMADA'], '8837'=>['DELICIAS'], '8520'=>['PLUTARCO'],
+            '7291'=>['PICACHOS'], '2570'=>['PICACHOS'], 'C7533'=>['VENTANAS'],
+            '2627'=>['VENTANAS'], '5247'=>['CASTANO'], '7604'=>['GABRIELA MISTRAL'],
+            '0031'=>['PUERTECITO','SAN RAFAEL','COLOSIO','JESUS MARIA'],
+        ],
+        'GASOMEX' => [
+            '8504'=>['JARUDO'], '4409'=>['JARUDO'], '4547'=>['EJERCITO'],
+            '8214'=>['EJERCITO','FUENTES'], '8492'=>['FUENTES','CLARA'],
+            '4412'=>['CLARA'], '4777'=>['CLARA','SOLIS'], '4669'=>['SOLIS','SANTIAGO'],
+            '3678'=>['SANTIAGO','SATELITE'], '4457'=>['SATELITE'],
+        ],
+    ];
 
     public static function normalizeCompany(?string $company): string {
         $company = strtoupper(trim((string)$company));
@@ -16,6 +33,15 @@ class EfcConciliacionModel {
 
     public static function accountSuffixes(string $company): array {
         return self::COMPANY_ACCOUNTS[self::normalizeCompany($company)];
+    }
+
+    public static function accountStationNames(string $company, ?string $account): array {
+        $company = self::normalizeCompany($company);
+        $account = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)$account));
+        foreach (self::COMPANY_ACCOUNT_STATIONS[$company] ?? [] as $suffix => $names) {
+            if (str_ends_with($account, strtoupper($suffix))) return $names;
+        }
+        return [];
     }
 
     public function __construct() {
@@ -171,7 +197,7 @@ class EfcConciliacionModel {
         $company=$this->companyForStation($station);
         $suffixes=self::accountSuffixes($company);
         $accountWhere=implode(' OR ',array_fill(0,count($suffixes),"RIGHT(UPPER(REPLACE(REPLACE(ISNULL(cuenta,''),'-',''),' ','')),LEN(?))=?"));
-        $stmt=$this->db->prepare("SELECT id,fecha,abono,referencia,descripcion_larga,descripcion,concepto FROM TG.dbo.movimientos_bancarios WHERE id=? AND abono>0 AND UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' AND ($accountWhere)");
+        $stmt=$this->db->prepare("SELECT id,fecha,abono,cuenta,referencia,descripcion_larga,descripcion,concepto FROM TG.dbo.movimientos_bancarios WHERE id=? AND abono>0 AND (UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EFECTIVO%' OR UPPER(ISNULL(descripcion,'')) LIKE '%DEP EN EFECTIV%' OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO VTAS%') AND ($accountWhere)");
         $params=[$id]; foreach($suffixes as $suffix) { $params[]=$suffix; $params[]=$suffix; } $stmt->execute($params); $row=$stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) throw new RuntimeException('Deposito invalido para la empresa de la estacion.');
         $date=$this->dateValue($row['fecha']); $days=(int)((strtotime($date)-strtotime($cutDate))/86400);
@@ -193,7 +219,14 @@ class EfcConciliacionModel {
         $correct=$this->db->prepare("SELECT estacion_id FROM dbo.efc_conc_correcciones_banco WHERE movimiento_bancario_id=?"); $correct->execute([$id]); $station=$correct->fetchColumn(); if ($station) return (int)$station;
         $company=self::normalizeCompany($company??'DIAZ GAS');
         $where=$company==='DIAZ GAS' ? "RFC='DGA930823KD3'" : ($company==='GASOMEX' ? "RFC='DGM880621FU5'" : "ISNULL(RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')");
-        $catalog=$this->db->query("SELECT Codigo,Estacion FROM TG.dbo.Estaciones WHERE $where AND Codigo<>0")->fetchAll(PDO::FETCH_ASSOC); $map=[];
+        $catalog=$this->db->query("SELECT Codigo,Estacion,Nombre FROM TG.dbo.Estaciones WHERE $where AND Codigo<>0")->fetchAll(PDO::FETCH_ASSOC); $map=[];
+        $normalizeName=static function($value): string { $value=strtoupper((string)$value); $value=strtr($value,['Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U','Ñ'=>'N']); return preg_replace('/[^A-Z0-9]+/',' ',trim($value)); };
+        $accountStations=[];
+        foreach(self::accountStationNames($company,(string)($movement['cuenta']??'')) as $wanted) {
+            $wanted=$normalizeName($wanted);
+            foreach($catalog as $item) if(str_contains($normalizeName($item['Nombre']),$wanted)) $accountStations[(int)$item['Codigo']]=true;
+        }
+        if(count($accountStations)===1) return (int)array_key_first($accountStations);
         foreach($catalog as $item) { $code=ltrim(preg_replace('/\D+/','',(string)$item['Estacion']),'0'); if($code!=='') $map[$code]=(int)$item['Codigo']; }
         $text=implode(' ',[(string)($movement['descripcion_larga']??''),(string)($movement['descripcion']??''),(string)($movement['concepto']??''),(string)($movement['referencia']??'')]); preg_match_all('/\d+/',$text,$matches); $found=[];
         foreach($matches[0] as $raw) { $code=ltrim($raw,'0'); if(isset($map[$code])) $found[$map[$code]]=true; }
