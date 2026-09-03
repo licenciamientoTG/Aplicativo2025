@@ -265,22 +265,20 @@ $('#btnBuscarConciliacion').on('click', function () {
 // precargadas (cada <option> con data-proveedor), no vía AJAX — son pocas
 // estaciones en total. Al cambiar el proveedor de esta pestaña, se
 // muestran/ocultan opciones vía la API de bootstrap-select (hide/show +
-// refresh), y se selecciona la primera visible automáticamente.
+// refresh). Ningún filtro llega preseleccionado: el usuario siempre elige
+// proveedor y estación a mano, así que aquí solo se habilitan las opciones
+// que corresponden y se resetea la estación al placeholder — nunca se
+// autoselecciona una estación real.
 function filtrarEstacionesPorProveedor() {
-    const proveedorRfc = $('#proveedor_rfc_recepciones').val();
+    const proveedorRfc = $('#proveedor_rfc_recepciones').selectpicker('val');
     const $select = $('#codgas_recepciones');
-    let primerVisible = null;
 
-    $select.find('option').each(function () {
-        const coincide = $(this).data('proveedor') === proveedorRfc;
-        $(this).prop('disabled', !coincide);
-        if (coincide && primerVisible === null) primerVisible = $(this).val();
+    $select.find('option[value]:not([value=""])').each(function () {
+        $(this).prop('disabled', $(this).data('proveedor') !== proveedorRfc);
     });
 
+    $select.selectpicker('val', '');
     $select.selectpicker('refresh');
-    if (primerVisible !== null) {
-        $select.selectpicker('val', primerVisible);
-    }
 }
 
 $('#proveedor_rfc_recepciones').on('change', filtrarEstacionesPorProveedor);

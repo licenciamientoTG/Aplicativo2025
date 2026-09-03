@@ -9,20 +9,21 @@
             <div class="card-header">
                 <ul class="nav nav-tabs card-header-tabs" id="tabsConciliacion" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="tab-btn-facturas-petrotal" data-bs-toggle="tab" data-bs-target="#tab-facturas-petrotal" type="button" role="tab">Facturas hacia Petrotal</button>
+                        <button class="nav-link" id="tab-btn-facturas-petrotal" data-bs-toggle="tab" data-bs-target="#tab-facturas-petrotal" type="button" role="tab">Facturas hacia Petrotal</button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="tab-btn-recepciones" data-bs-toggle="tab" data-bs-target="#tab-recepciones" type="button" role="tab">Confirmar recepción ↔ factura</button>
+                        <button class="nav-link active" id="tab-btn-recepciones" data-bs-toggle="tab" data-bs-target="#tab-recepciones" type="button" role="tab">Confirmar recepción ↔ factura</button>
                     </li>
                 </ul>
             </div>
             <div class="card-body">
                 <div class="tab-content">
-                    <div class="tab-pane fade show active" id="tab-facturas-petrotal" role="tabpanel">
+                    <div class="tab-pane fade" id="tab-facturas-petrotal" role="tabpanel">
                         <div class="row mb-3">
                             <div class="col-md-4">
                                 <label for="proveedor_rfc" class="form-label">Proveedor:</label>
                                 <select class="selectpicker form-control" data-live-search="true" data-size="10" data-width="100%" data-container="body" id="proveedor_rfc">
+                                    <option value="" selected>Selecciona un proveedor…</option>
                                     {% for p in proveedores %}
                                     <option value="{{ p.EmisorRfc }}">{{ p.EmisorNombre|trim }} ({{ p.n }})</option>
                                     {% endfor %}
@@ -68,11 +69,12 @@
                             </table>
                         </div>
                     </div>
-                    <div class="tab-pane fade" id="tab-recepciones" role="tabpanel">
+                    <div class="tab-pane fade show active" id="tab-recepciones" role="tabpanel">
                         <div class="row mb-3">
                             <div class="col-md-3">
                                 <label for="proveedor_rfc_recepciones" class="form-label">Proveedor:</label>
                                 <select class="selectpicker form-control" data-live-search="true" data-size="10" data-width="100%" data-container="body" id="proveedor_rfc_recepciones">
+                                    <option value="" selected>Selecciona un proveedor…</option>
                                     {% for p in proveedores %}
                                     <option value="{{ p.EmisorRfc }}">{{ p.EmisorNombre|trim }} ({{ p.n }})</option>
                                     {% endfor %}
@@ -81,6 +83,7 @@
                             <div class="col-md-3">
                                 <label for="codgas_recepciones" class="form-label">Estación:</label>
                                 <select class="selectpicker form-control" data-live-search="true" data-size="10" data-width="100%" data-container="body" id="codgas_recepciones">
+                                    <option value="" data-proveedor="" selected>Selecciona una estación…</option>
                                     {% for rfc, estaciones in estacionesPorProveedor %}
                                     {% for e in estaciones %}
                                     <option value="{{ e.Codigo }}" data-proveedor="{{ rfc }}">{{ e.Nombre }}</option>
