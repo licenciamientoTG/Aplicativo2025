@@ -5,6 +5,10 @@ class PetrotalReconciliationModel extends Model {
     // sesión de diseño (2026-09-01). No varía por estación ni por producto.
     const PETROTAL_RFC = 'PET180213L66';
 
+    // RFC de Tesoro, único proveedor con código externo mapeado hoy en
+    // TG.dbo.EstacionesCodigosExternos (columna PresentacionTesoro).
+    const TESORO_RFC = 'TMS1611162N5';
+
     // Quita el prefijo "RP-" (visto en Premiergas) que txtref no trae.
     private function normalizar_remision(string $r): string {
         return preg_replace('/^RP-/i', '', trim($r));
@@ -101,6 +105,56 @@ class PetrotalReconciliationModel extends Model {
             return $this->normalizar_producto($f['Producto'] ?? '') === $prodNorm;
         }));
         return $filtradas ?: $facturasPetrotal;
+    }
+
+    // Facturas del proveedor real (ej. Tesoro) para una estación que NO
+    // captura su recepción en ControlGas (ej. Praxedis): resuelve la
+    // estación vía EstacionesCodigosExternos usando el código propio del
+    // proveedor (ej. PresentacionTesoro) en vez de una recepción de
+    // MovimientosTan, que ahí no existe.
+    function buscar_facturas_proveedor_por_codigo_externo(int $codgas, string $proveedorRfc, string $fechaDesde, string $fechaHasta): array {
+        $query = "
+            SELECT fr.Id, fr.Folio, fr.Remision, fr.EmisorNombre, fr.EmisorRfc, fr.Fecha, fr.Total,
+                   fc.Descripcion AS Producto, fc.Cantidad AS Litros
+            FROM TG.dbo.FacturasRecibidas fr
+            JOIN TG.dbo.EstacionesCodigosExternos ece
+                ON ece.proveedor_rfc = fr.EmisorRfc
+               AND ece.codigo_externo = fr.PresentacionTesoro
+               AND ece.activo = 1
+            LEFT JOIN TG.dbo.FacturasRecibidasConceptos fc ON fc.FacturaId = fr.Id
+            WHERE ece.codgas = :codgas
+              AND fr.EmisorRfc = :proveedorRfc
+              AND fr.Fecha BETWEEN :fechaDesde AND :fechaHasta
+        ";
+        return $this->sql->select($query, [
+            'codgas' => $codgas,
+            'proveedorRfc' => $proveedorRfc,
+            'fechaDesde' => $fechaDesde,
+            'fechaHasta' => $fechaHasta,
+        ]);
+    }
+
+    // Candidatas de Petrotal para una factura del proveedor real sin
+    // recepción de origen: mismo criterio de estación (Destino/PermisoCRE)
+    // que buscar_facturas_petrotal, pero ordenadas por cercanía de LITROS
+    // (no monto — Petrotal agrega margen al precio, así que el monto nunca
+    // coincide exacto aunque sea la misma entrega; los litros sí, salvo
+    // mermas menores). Confirmado con datos reales de Praxedis:
+    // 29404.99 L Tesoro == 29404.99 L Petrotal, 3 días de diferencia en
+    // fecha de factura.
+    function buscar_facturas_petrotal_por_litros(string $permisoCRE, float $litrosReferencia, string $fechaCentral, int $ventanaDias = 10): array {
+        $desde = date('Y-m-d', strtotime($fechaCentral . " -{$ventanaDias} days"));
+        $hasta = date('Y-m-d', strtotime($fechaCentral . " +{$ventanaDias} days"));
+
+        $candidatas = $this->buscar_facturas_petrotal($permisoCRE, $desde, $hasta);
+
+        usort($candidatas, function ($a, $b) use ($litrosReferencia) {
+            $diffA = abs((float)($a['Litros'] ?? 0) - $litrosReferencia);
+            $diffB = abs((float)($b['Litros'] ?? 0) - $litrosReferencia);
+            return $diffA <=> $diffB;
+        });
+
+        return $candidatas;
     }
 
     function ya_asignada(int $facturaProveedorId, int $facturaPetrotalId): ?array {

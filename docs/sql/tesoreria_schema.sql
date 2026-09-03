@@ -76,3 +76,13 @@ BEGIN
 ALTER TABLE dbo.movimientos_bancarios ADD orden_dia INT NULL;
 END
 GO
+
+-- Comentario libre por movimiento, capturado a mano desde la tabla (edición
+-- inline con lápiz, mismo patrón que el concentrado de arqueo). Solo lo
+-- edita quien tenga el permiso 93; el resto lo ve de solo lectura si tiene
+-- acceso a la tabla. NULL hasta que alguien lo capture.
+IF COL_LENGTH('dbo.movimientos_bancarios', 'comentario') IS NULL
+BEGIN
+ALTER TABLE dbo.movimientos_bancarios ADD comentario NVARCHAR(300) NULL;
+END
+GO

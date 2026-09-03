@@ -64,6 +64,22 @@
     white-space: normal; max-width: 320px; word-break: break-word;
   }
 
+  /* Comentarios: mismo patrón de celda editable que arqueo/concentrado.html
+     (icono de lápiz que convierte la celda en input). Ancho acotado con
+     salto de línea porque es texto libre (hasta 300 caracteres). */
+  .mb-movs td.mb-comentario {
+    white-space: normal; max-width: 220px; word-break: break-word;
+  }
+  .mb-icono-editar { color: #adb5bd; cursor: pointer; margin-left: .35rem; font-size: .85em; }
+  .mb-icono-editar:hover { color: #1C4587; }
+  .mb-comentario.editando { white-space: normal; }
+  .mb-comentario .input-inline-comentario {
+    display: inline-block; width: 100%; min-width: 160px;
+    font-size: .85em; padding: .15rem .3rem;
+  }
+  .mb-icono-guardar { color: #198754; cursor: pointer; margin-left: .35rem; }
+  .mb-icono-cancelar { color: #dc3545; cursor: pointer; margin-left: .25rem; }
+
   /* Tabs por banco (una tabla independiente por banco: su export a Excel
      alimenta el Drive de tesorería, no se mezclan).
 
@@ -575,6 +591,7 @@
             <th class="mb-monto">Saldo</th>
             <th>Movimiento</th>
             <th>Descripción Detallada</th>
+            {% if puedeComentar %}<th class="no-export mb-comentario">Comentarios</th>{% endif %}
           </tr>
           {% elseif cod == 'BANKAOOL' %}
           {# Fecha+hora en una sola columna y cargo/abono combinados en
@@ -591,6 +608,7 @@
             <th class="mb-monto">Saldo</th>
             <th>Concepto</th>
             <th>Contraparte</th>
+            {% if puedeComentar %}<th class="no-export mb-comentario">Comentarios</th>{% endif %}
           </tr>
           {% elseif cod == 'INBURSA' %}
           {# Calca el orden de columnas del Estado de Cuenta Individual de
@@ -611,6 +629,7 @@
             <th class="mb-monto">Saldo</th>
             <th>Ordenante</th>
             <th>Clave de Rastreo</th>
+            {% if puedeComentar %}<th class="no-export mb-comentario">Comentarios</th>{% endif %}
           </tr>
           {% elseif cod == 'AFIRME' %}
           {# Calca el orden de columnas del export de Afirme (Concepto, Fecha,
@@ -627,6 +646,7 @@
             <th class="mb-monto">Saldo</th>
             <th>Cuenta</th>
             <th>Código</th>
+            {% if puedeComentar %}<th class="no-export mb-comentario">Comentarios</th>{% endif %}
           </tr>
           {% else %}
           <tr>
@@ -643,6 +663,7 @@
             <th>Concepto</th>
             <th>Concepto</th>
             <th>Contraparte</th>
+            {% if puedeComentar %}<th class="no-export mb-comentario">Comentarios</th>{% endif %}
           </tr>
           {% endif %}
         </thead>
@@ -717,6 +738,34 @@
 <script>
 $(function () {
   // ===== Tablas por banco: mismo patrón que payment_list_table =====
+
+  var PUEDE_COMENTAR = {{ puedeComentar ? 'true' : 'false' }};
+
+  // Columna Comentarios: se agrega al final de cada layout solo si el
+  // permiso 93 la habilitó en el <thead> (ver movimientos_bancos()). Edición
+  // inline con lápiz, mismo patrón que arqueo/concentrado.html — clic en el
+  // lápiz convierte la celda en <input>, Enter/✓ guarda por AJAX y recarga
+  // solo esa celda (sin refrescar la tabla completa: perdería el rango
+  // buscado y el scroll).
+  var COLUMN_COMENTARIO = {
+    data: 'comentario', className: 'mb-comentario', defaultContent: '',
+    render: function (d, type, row) {
+      if (type !== 'display') return d || '';
+      var texto = escMovs(d || '');
+      var html = '<span class="mb-comentario-valor">' + texto + '</span>';
+      if (PUEDE_COMENTAR) {
+        html += '<i class="fas fa-pencil-alt mb-icono-editar" title="Editar" data-id="' + row.id + '" data-cuenta="' + escMovs(row.cuenta || '') + '"></i>';
+      }
+      return html;
+    },
+  };
+  function conComentario(cols) {
+    return PUEDE_COMENTAR ? cols.concat([COLUMN_COMENTARIO]) : cols;
+  }
+
+  function escMovs(s) {
+    return $('<div>').text(s == null ? '' : s).html();
+  }
 
   // Columnas genéricas: mismo layout para todos los bancos salvo los que
   // tienen su propio set más abajo (hoy solo Banorte).
@@ -935,11 +984,13 @@ $(function () {
       // vacía para no consultar nada al entrar al módulo.
       data: [],
       deferRender: true,
-      columns: esBanorte ? COLUMNS_BANORTE
-             : esBankaool ? COLUMNS_BANKAOOL
-             : esInbursa ? COLUMNS_INBURSA
-             : esAfirme ? COLUMNS_AFIRME
-             : COLUMNS_GENERICO,
+      columns: conComentario(
+        esBanorte ? COLUMNS_BANORTE
+        : esBankaool ? COLUMNS_BANKAOOL
+        : esInbursa ? COLUMNS_INBURSA
+        : esAfirme ? COLUMNS_AFIRME
+        : COLUMNS_GENERICO
+      ),
       initComplete: function () {
         var api = this.api();
 
@@ -983,6 +1034,66 @@ $(function () {
     });
     return api;
   }
+
+  // ---- Edición inline de Comentarios (icono de lápiz, permiso 93) ----
+  // Delegado en document porque hay 5 tablas (una por banco) creadas antes
+  // de tener filas: el <tbody> se repuebla en cada búsqueda y un bind directo
+  // se perdería. Mismo patrón que arqueo/concentrado.html (celda ⇄ input).
+  function cancelarComentario($td) {
+    $td.html($td.data('html-original'));
+    $td.removeClass('editando');
+  }
+
+  function guardarComentario($td) {
+    var id = $td.data('id');
+    var cuenta = $td.data('cuenta');
+    var nuevo = $td.find('.input-inline-comentario').val() || '';
+
+    $td.find('.mb-icono-guardar').removeClass('fa-check').addClass('fa-spinner fa-spin');
+    fetch('/tesoreria/guardar_comentario_movimiento', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+      body: 'id=' + encodeURIComponent(id) + '&cuenta=' + encodeURIComponent(cuenta) + '&comentario=' + encodeURIComponent(nuevo)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.success) {
+          $td.removeClass('editando');
+          $td.html(
+            '<span class="mb-comentario-valor">' + escMovs(d.comentario || '') + '</span>' +
+            '<i class="fas fa-pencil-alt mb-icono-editar" title="Editar" data-id="' + id + '" data-cuenta="' + escMovs(cuenta) + '"></i>'
+          );
+        } else {
+          alert(d.message || 'No se pudo guardar el comentario.');
+          cancelarComentario($td);
+        }
+      })
+      .catch(function () { alert('Error de red al guardar el comentario.'); cancelarComentario($td); });
+  }
+
+  $(document)
+    .on('click', '.mb-movs .mb-icono-editar', function () {
+      var $icono = $(this);
+      var $td = $icono.closest('td');
+      if ($td.hasClass('editando')) return;
+      var valorActual = $td.find('.mb-comentario-valor').text();
+      $td.data('html-original', $td.html());
+      $td.data('id', $icono.data('id'));
+      $td.data('cuenta', $icono.data('cuenta'));
+      $td.addClass('editando');
+      $td.html(
+        '<input type="text" maxlength="300" class="form-control input-inline-comentario" value="' + escMovs(valorActual) + '">' +
+        '<i class="fas fa-check mb-icono-guardar" title="Guardar"></i>' +
+        '<i class="fas fa-times mb-icono-cancelar" title="Cancelar"></i>'
+      );
+      $td.find('.input-inline-comentario').trigger('focus').trigger('select');
+    })
+    .on('click', '.mb-movs .mb-icono-guardar', function () { guardarComentario($(this).closest('td')); })
+    .on('click', '.mb-movs .mb-icono-cancelar', function () { cancelarComentario($(this).closest('td')); })
+    .on('keydown', '.mb-movs .input-inline-comentario', function (e) {
+      if (e.key === 'Enter')  { e.preventDefault(); guardarComentario($(this).closest('td')); }
+      if (e.key === 'Escape') { cancelarComentario($(this).closest('td')); }
+    });
 
   function fmtMonto(n) {
     return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
