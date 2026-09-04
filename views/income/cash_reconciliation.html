@@ -51,7 +51,7 @@
 <script>
 (() => {
   'use strict';
-  const API='http://201.174.170.236:99/api/Depositos/GetDepositosEstacion',STATIONS='/income/get_estaciones_catalogo',BANK='/income/get_cash_banorte_deposits',SAVE='/income/efc_conc_save',ACTIVE_GROUPS='/income/efc_conc_grupos_activos',RECLASS_LIST='/income/efc_conc_reclasificaciones',RECLASS_SAVE='/income/efc_conc_reclasificar',RECLASS_REVERSE='/income/efc_conc_revertir_reclasificacion',ANALYTICS_WORK='/income/efc_conc_analiticos_bandeja',ANALYTICS_RATES='/income/efc_conc_tipo_cambio_turnos',ANALYTICS_LINK='/income/efc_conc_analiticos_vincular',ANALYTICS_UNLINK='/income/efc_conc_analiticos_desvincular',TOLERANCE=20,
+  const API='http://201.174.170.236:99/api/Depositos/GetDepositosEstacion',STATIONS='/income/get_estaciones_catalogo',BANK='/income/get_cash_banorte_deposits',SAVE='/income/efc_conc_save',ACTIVE_GROUPS='/income/efc_conc_grupos_activos',RECLASS_LIST='/income/efc_conc_reclasificaciones',RECLASS_SAVE='/income/efc_conc_reclasificar',RECLASS_REVERSE='/income/efc_conc_revertir_reclasificacion',ANALYTICS_WORK='/income/efc_conc_analiticos_bandeja',ANALYTICS_RATES='/income/efc_conc_tipo_cambio_turnos',ANALYTICS_LINK='/income/efc_conc_analiticos_vincular',ANALYTICS_UNLINK='/income/efc_conc_analiticos_desvincular',TOLERANCE=20,CLOSE_MATCH_TOLERANCE=1,
     // Temporalmente desactivado: se conserva la lógica para reevaluarla después.
     RECLASSIFICATION_SUGGESTION_ENABLED=false;
   const $=id=>document.getElementById(id),money=new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}),integer=new Intl.NumberFormat('es-MX');
@@ -72,7 +72,13 @@
     const cg=sales(rawCg,reclasses),bank=banks(rawBank),cases=[],active=activeGroups.map(group=>({...group,id:`p-${group.id}`,groupId:group.id,status:group.type==='DIFERENCIA'?'CONCILIADA_DIFERENCIA':group.type==='AUTOMATICA'?'CONCILIADO_AUTOMATICO':'CONCILIADO_MANUAL'})),activeCg=new Set(active.flatMap(group=>group.cg.map(item=>item.id))),activeBank=new Set(active.flatMap(group=>group.bank.map(item=>item.id))),auto=[...active],used=new Set(activeBank),cash=cg.filter(x=>(x.currency==='MN'||x.currency==='MORRALLA')&&!activeCg.has(x.id)),candidates=new Map(),inWindow=turn=>bank.filter(deposit=>deposit.stationStatus==='IDENTIFICADA'&&days(turn.date,deposit.date)>=0&&days(turn.date,deposit.date)<=7);
     cash.filter(turn=>turn.virtual&&turn.groupId&&turn.bankId).forEach(turn=>{const deposit=bank.find(item=>item.id===turn.bankId);if(deposit){used.add(deposit.id);auto.push({id:`r-${turn.id}`,status:'RECLASIFICADA',cg:[turn],bank:[deposit],reclassificationId:turn.reclassificationId,groupId:turn.groupId})}});
     cash.forEach(turn=>candidates.set(turn.id,inWindow(turn).filter(deposit=>Math.abs(deposit.amount-turn.amount)<=TOLERANCE)));
-    cash.forEach(turn=>{const possible=candidates.get(turn.id)||[],unique=possible.filter(deposit=>cash.filter(other=>(candidates.get(other.id)||[]).some(x=>x.id===deposit.id)).length===1&&!used.has(deposit.id));if(unique.length===1){used.add(unique[0].id);auto.push({id:`a-${turn.id}`,status:'CONCILIADO_AUTOMATICO',cg:[turn],bank:[unique[0]]})}});
+    cash.forEach(turn=>{const possible=candidates.get(turn.id)||[],unique=possible.filter(deposit=>cash.filter(other=>(candidates.get(other.id)||[]).some(x=>x.id===deposit.id)).length===1&&!used.has(deposit.id));
+      // Si hay varios candidatos, un depósito con diferencia de centavos
+      // (<$1) es suficientemente inequívoco para aprobarlo automáticamente.
+      const close=unique.filter(deposit=>Math.abs(deposit.amount-turn.amount)<CLOSE_MATCH_TOLERANCE);
+      const selected=close.length===1?close[0]:(unique.length===1?unique[0]:null);
+      if(selected){used.add(selected.id);auto.push({id:`a-${turn.id}`,status:'CONCILIADO_AUTOMATICO',cg:[turn],bank:[selected]})}
+    });
     const unresolved=()=>cash.filter(turn=>!auto.some(row=>row.cg[0].id===turn.id)),pairCandidates=new Map(),reclassHandled=new Set();
     unresolved().forEach(turn=>{const eligible=inWindow(turn).filter(deposit=>!used.has(deposit.id)),pairs=[];for(let i=0;i<eligible.length;i+=1)for(let j=i+1;j<eligible.length;j+=1)if(Math.abs(eligible[i].amount+eligible[j].amount-turn.amount)<=TOLERANCE)pairs.push([eligible[i],eligible[j]]);pairCandidates.set(turn.id,pairs)});
     // Temporalmente desactivado: no mostrar la sugerencia de desglose MN + Morralla.
