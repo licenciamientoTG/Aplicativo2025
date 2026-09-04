@@ -84,6 +84,7 @@ class MermaDiariaModel extends Model
                 [$codgas, $desde, $hasta]
             );
             $insertadas = 0;
+            $vistos = []; // "fecha-codprd-turno" => true, para rellenar los que ApiER no trajo
             foreach ($filas as $f) {
                 // Turnos fuera de 11/21/41 no deben existir (el SP normaliza), se ignoran por seguridad
                 if (!in_array((int)$f['Turno'], [11, 21, 41])) continue;
@@ -99,7 +100,9 @@ class MermaDiariaModel extends Model
                     ]
                 );
                 $insertadas++;
+                $vistos[$f['Fecha'] . '-' . (int)$f['CodProducto'] . '-' . (int)$f['Turno']] = true;
             }
+            $this->rellenar_turnos_faltantes($codgas, $estacion, $filas, $vistos);
             $this->sql->commit();
         } catch (Exception $e) {
             $this->sql->rollBack();
@@ -111,6 +114,49 @@ class MermaDiariaModel extends Model
         $this->aplicar_exclusiones($codgas, $desde, $hasta);
         $this->recalc_contable($codgas);
         return $insertadas;
+    }
+
+    /**
+     * ApiER a veces no trae los 3 turnos (11/21/41) de un producto en un día
+     * donde el resto de turnos sí llegaron con datos — StockReal se saltó ese
+     * corte (caso Villa Ahumada 18-ago: turno 21 de diésel desaparecido). Sin
+     * esa fila, recalc_contable() (LAG) salta el turno entero y arrastra sus
+     * compras/ventas al turno siguiente, generando una "diferencia" de miles
+     * de litros que no es merma real.
+     *
+     * Se inserta el hueco con ventas=0, compras=0 e inv_fisico=NULL — igual
+     * que resuelve el libro amarillo a mano: sin corte físico propio, el
+     * turno de relleno no encadena su propio dato, y recalc_contable (ajuste
+     * abajo) repite el físico del turno anterior para no romper la cadena.
+     * Un producto que de verdad no vende en ningún turno del día (ej. súper
+     * en una estación solo-máxima) nunca aparece en $filas para ninguno de
+     * sus 3 turnos y por tanto no genera huecos aquí.
+     */
+    private function rellenar_turnos_faltantes(int $codgas, string $estacion, array $filas, array $vistos): void
+    {
+        // Fecha+producto que sí reportaron AL MENOS un turno: solo esos
+        // productos/día participan del relleno (un producto ausente los 3
+        // turnos simplemente no se vende ese día en esa estación).
+        $productosPorFecha = []; // "fecha-codprd" => ['producto' => nombre]
+        foreach ($filas as $f) {
+            if (!in_array((int)$f['Turno'], [11, 21, 41])) continue;
+            $clave = $f['Fecha'] . '-' . (int)$f['CodProducto'];
+            $productosPorFecha[$clave] = ['fecha' => $f['Fecha'], 'codprd' => (int)$f['CodProducto'], 'producto' => $f['Producto']];
+        }
+
+        foreach ($productosPorFecha as $clave => $info) {
+            foreach ([11, 21, 41] as $turno) {
+                $key = $info['fecha'] . '-' . $info['codprd'] . '-' . $turno;
+                if (isset($vistos[$key])) continue;
+                $this->sql->insert(
+                    'INSERT INTO [TG].[dbo].[merma_diaria]
+                     (fecha, codgas, estacion, codprd, producto, turno, ventas_reales,
+                      inv_fisico, compras, inv_inicial, inv_contable, diferencia, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 0, NULL, NULL, NULL, GETDATE());',
+                    [$info['fecha'], $codgas, $estacion, $info['codprd'], $info['producto'], $turno]
+                );
+            }
+        }
     }
 
     /**
@@ -166,6 +212,15 @@ class MermaDiariaModel extends Model
      * Las lecturas físicas fuera del rango plausible (INV_FISICO_MIN/MAX)
      * se tratan como "sin corte": el valor crudo queda en inv_fisico para
      * poder verlo/corregirlo, pero no entra al cálculo ni se encadena.
+     *
+     * Turno de relleno (rellenar_turnos_faltantes: el turno no llegó de
+     * ApiER, ventas=0/compras=0/fisico=NULL): igual que resuelve el libro
+     * amarillo a mano, se le asigna como físico "efectivo" el físico previo
+     * repetido (fis_ok = fis_prev), para que ese turno no rompa el LAG y el
+     * turno siguiente encadene desde el dato real más reciente en vez de
+     * saltarse el hueco y arrastrar compras/ventas de dos turnos juntas. Su
+     * propia diferencia sale ~0 (no representa merma real, es solo relleno).
+     *
      * Con codgas = 0 recalcula todas las estaciones (backfill).
      */
     public function recalc_contable(int $codgas = 0): void
@@ -174,27 +229,53 @@ class MermaDiariaModel extends Model
         $params = $codgas > 0 ? [$codgas] : [];
         $min    = self::INV_FISICO_MIN;
         $max    = self::INV_FISICO_MAX;
+        // fis_ok: físico "efectivo" de cada fila — el propio si es plausible,
+        // si no (relleno o corrupto) el fis_ok de la fila anterior repetido.
+        // LAG normal no sirve para huecos consecutivos (un relleno seguido de
+        // otro relleno seguiría dando NULL), así que se arrastra con MAX(...)
+        // OVER una partición por "grupo de fisico plausible más reciente"
+        // (tantas veces como filas tenga la racha de huecos desde el último
+        // corte real): grp = ventana acumulada de fisico NO nulo hasta la
+        // fila, y el fis_ok de todo el grupo es el MAX del primer valor real
+        // que abrió ese grupo.
         $query = "WITH b AS (
-                      SELECT id,
+                      SELECT id, codgas, codprd, fecha, turno,
                              CASE WHEN inv_fisico BETWEEN $min AND $max
-                                  THEN inv_fisico END AS fis_ok,
-                             LAG(CASE WHEN inv_fisico BETWEEN $min AND $max
-                                      THEN inv_fisico END) OVER (
+                                  THEN inv_fisico END AS fis_real
+                      FROM [TG].[dbo].[merma_diaria] $where
+                  ),
+                  g AS (
+                      SELECT id,
+                             COUNT(fis_real) OVER (
+                                 PARTITION BY codgas, codprd
+                                 ORDER BY fecha, turno
+                                 ROWS UNBOUNDED PRECEDING) AS grp
+                      FROM b
+                  ),
+                  c AS (
+                      SELECT b.id, b.codgas, b.codprd, b.fecha, b.turno, b.fis_real,
+                             MAX(b.fis_real) OVER (
+                                 PARTITION BY b.codgas, b.codprd, g.grp) AS fis_ok
+                      FROM b JOIN g ON g.id = b.id
+                  ),
+                  d AS (
+                      SELECT id, fis_ok,
+                             LAG(fis_ok) OVER (
                                  PARTITION BY codgas, codprd
                                  ORDER BY fecha, turno) AS fis_prev
-                      FROM [TG].[dbo].[merma_diaria] $where
+                      FROM c
                   )
                   UPDATE m SET
-                      inv_inicial  = b.fis_prev,
+                      inv_inicial  = d.fis_prev,
                       inv_contable = CASE WHEN m.ventas_reales IS NULL THEN NULL ELSE
-                                     ROUND(b.fis_prev - ISNULL(m.ventas_reales, 0)
+                                     ROUND(d.fis_prev - ISNULL(m.ventas_reales, 0)
                                           + ISNULL(m.compras, 0), 2) END,
                       diferencia   = CASE WHEN m.ventas_reales IS NULL THEN NULL ELSE
-                                     ROUND(b.fis_ok - (b.fis_prev
+                                     ROUND(d.fis_ok - (d.fis_prev
                                           - ISNULL(m.ventas_reales, 0)
                                           + ISNULL(m.compras, 0)), 2) END
                   FROM [TG].[dbo].[merma_diaria] m
-                  JOIN b ON b.id = m.id;";
+                  JOIN d ON d.id = m.id;";
         $this->sql->update($query, $params);
     }
 
