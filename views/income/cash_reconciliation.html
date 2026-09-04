@@ -23,12 +23,12 @@
   /* Acciones flotantes, siguiendo la barra de acciones de test_v3. */
   .cash-recon .actions{align-items:center;background:#20364a;border:0;border-radius:999px;bottom:.7rem;box-shadow:0 10px 26px rgba(25,52,75,.28);display:flex;gap:.45rem;justify-content:center;margin:.9rem auto 0;max-width:100%;padding:.55rem .7rem;position:sticky;width:max-content;z-index:3}.cash-recon .actions .btn{border-radius:999px;font-size:.72rem;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.16);white-space:nowrap}.cash-recon .actions .btn:disabled{box-shadow:none;cursor:not-allowed;opacity:.42}
   @media(max-width:575px){.cash-recon .actions{border-radius:.9rem;flex-wrap:wrap;width:100%}.cash-recon .actions .btn{flex:1 1 auto}}
-  .cash-recon .analytics-cg-real{background:#edf7fe;border:1px solid #c8e3f7;border-radius:999px;color:#176da9;display:inline-block;font-size:.61rem;font-weight:700;margin-top:.3rem;padding:.2rem .42rem}
+  .cash-recon .analytics-cg-real{background:#edf7fe;border:1px solid #c8e3f7;border-radius:999px;color:#176da9;display:inline-block;font-size:.61rem;font-weight:700;margin-top:.3rem;padding:.2rem .42rem}.cash-movements-modal .modal-content{border:0;border-radius:.85rem;height:92vh;overflow:hidden}.cash-movements-modal .modal-header{background:#20364a;color:#fff;padding:.8rem 1rem}.cash-movements-modal .modal-title{font-size:.95rem;font-weight:700}.cash-movements-modal .close{color:#fff;opacity:.9;text-shadow:none}.cash-movements-modal .modal-body{background:#f5f8fb;overflow:hidden}.cash-movements-modal iframe{border:0;height:100%;width:100%}
 </style>
 
 <section class="cash-recon" aria-label="Conciliaci&oacute;n de efectivo">
   <div class="surface recon-head">
-    <div class="title-row"><h1><i class="fas fa-hand-holding-usd text-primary mr-2"></i>Conciliaci&oacute;n de efectivo &middot; <span id="company-title">D&iacute;az Gas</span></h1><div><button id="analytics-mode" type="button" class="btn btn-outline-info movement-link mr-1"><i class="fas fa-columns mr-1"></i>Modo anal&iacute;ticos</button><a class="btn btn-outline-primary movement-link mr-1" href="/income/cash_reconciliation_movements"><i class="fas fa-university mr-1"></i>Movimientos</a><a class="btn btn-outline-primary movement-link" href="/income/cash_reconciliation_papers"><i class="fas fa-file-alt mr-1"></i>Papeletas</a></div></div>
+    <div class="title-row"><h1><i class="fas fa-hand-holding-usd text-primary mr-2"></i>Conciliaci&oacute;n de efectivo &middot; <span id="company-title">D&iacute;az Gas</span></h1><div><button id="analytics-mode" type="button" class="btn btn-outline-info movement-link mr-1"><i class="fas fa-columns mr-1"></i>Modo anal&iacute;ticos</button><a id="movements-modal-trigger" class="btn btn-outline-primary movement-link mr-1" href="/income/cash_reconciliation_movements"><i class="fas fa-university mr-1"></i>Movimientos</a><a class="btn btn-outline-primary movement-link" href="/income/cash_reconciliation_papers"><i class="fas fa-file-alt mr-1"></i>Papeletas</a></div></div>
     <p id="company-subtitle" class="subtitle">Revisa solamente las diferencias entre ControlGas y los dep&oacute;sitos bancarios configurados.</p>
     <div class="filters">
       <div><label for="cash-company">Empresa</label><select id="cash-company" class="form-control"><option value="DIAZ GAS">D&iacute;az Gas</option><option value="FORANEAS">For&aacute;neas</option><option value="GASOMEX">Gasomex</option></select></div>
@@ -47,6 +47,13 @@
     <div class="modal-header border-0"><h5 id="cash-analytics-title" class="modal-title font-weight-bold"><i class="fas fa-link mr-2"></i>Turnos y papeletas REGIO</h5><span class="analytics-tc-note"><i class="fas fa-history mr-1"></i>TC histórico por turno</span><input id="analytics-exchange-rate" type="hidden" aria-hidden="true"><button type="button" class="btn btn-link text-white p-0" data-dismiss="modal" aria-label="Cerrar" style="font-size:1.5rem;text-decoration:none">&times;</button></div>
     <div class="modal-body p-3"><div class="analytics-match"><section><div class="analytics-column-head cg"><span><i class="fas fa-cash-register mr-2"></i>Turnos ControlGas</span><span id="analytics-cg-total" class="badge badge-light text-dark">0</span></div><div id="analytics-turns" class="analytics-column-body"></div></section><aside><div class="analytics-column-head regio"><span><i class="fas fa-file-invoice-dollar mr-2"></i>Papeletas sin turno</span><span id="analytics-regio-total" class="badge badge-light text-dark">0</span></div><div id="analytics-papers" class="analytics-column-body"></div></aside></div><div id="analytics-paper-detail" hidden aria-hidden="true"></div></div>
     <div class="modal-footer"><small class="text-muted mr-auto">Primero Dice contener (tolerancia ±$1); después Real (MN ±$20 · Dólares ±$8). Los dólares REGIO se convierten con el TC histórico vigente al inicio del turno. La papeleta puede ser del día anterior, misma fecha o posterior al turno.</small><button type="button" class="btn btn-sm btn-outline-secondary" data-dismiss="modal">Cerrar</button></div>
+  </div></div>
+</div>
+
+<div class="modal fade cash-movements-modal" id="cash-movements-modal" tabindex="-1" role="dialog" aria-labelledby="cash-movements-title" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered" role="document"><div class="modal-content">
+    <div class="modal-header"><h5 id="cash-movements-title" class="modal-title"><i class="fas fa-university mr-2"></i>Movimientos de efectivo</h5><button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button></div>
+    <div class="modal-body p-0"><iframe id="cash-movements-frame" title="Movimientos de efectivo" loading="lazy"></iframe></div>
   </div></div>
 </div>
 {% endblock %}
@@ -204,5 +211,14 @@
       if(trigger){const attached=trigger.closest('.attached-paper');if(!attached)return;const detail=document.createElement('div');detail.className='attached-paper-detail';detail.appendChild(holder.firstElementChild);trigger.textContent='Ocultar detalle';attached.appendChild(detail)}
     }).observe(holder,{childList:true});
   })();
+</script>
+<script>
+(() => {
+  const trigger=document.getElementById('movements-modal-trigger'), frame=document.getElementById('cash-movements-frame'), modal=document.getElementById('cash-movements-modal');
+  if(!trigger||!frame||!modal)return;
+  trigger.addEventListener('click',event=>{event.preventDefault();const station=document.getElementById('cash-station'),periodLabel=document.getElementById('period-label'),period=periodLabel?.textContent||'';const monthMatch=period.match(/(Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\s+(\d{4})/),months=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],month=monthMatch?String(months.indexOf(monthMatch[1])+1).padStart(2,'0'):String(new Date().getMonth()+1).padStart(2,'0'),year=monthMatch?monthMatch[2]:String(new Date().getFullYear());frame.src=`/income/cash_reconciliation_movements?year=${year}&month=${month}&estacion_id=${encodeURIComponent(station?.value||'')}`;window.jQuery('#cash-movements-modal').modal('show')});
+  frame.addEventListener('load',()=>{const period=frame.contentDocument?.getElementById('movement-period'),station=frame.contentDocument?.getElementById('movement-station'),button=frame.contentDocument?.getElementById('movement-search-button');if(!period||!station||!button)return;const params=new URL(frame.src,location.href).searchParams;period.value=`${params.get('year')||new Date().getFullYear()}-${String(params.get('month')||new Date().getMonth()+1).padStart(2,'0')}`;let tries=0;const apply=()=>{if(params.get('estacion_id')&&station.querySelector(`option[value="${CSS.escape(params.get('estacion_id'))}"]`))station.value=params.get('estacion_id');if(station.options.length>1||tries++>20){button.click();return}setTimeout(apply,100)};apply()});
+  modal.addEventListener('hidden.bs.modal',()=>{frame.src='about:blank'});
+})();
 </script>
 {% endblock %}
