@@ -44,6 +44,11 @@ class EfcConciliacionModel {
         return self::COMPANY_ACCOUNTS[self::normalizeCompany($company)];
     }
 
+    /** Todas las cuentas conocidas; la cuenta no define la empresa del depósito. */
+    public static function allAccountSuffixes(): array {
+        return array_values(array_unique(array_merge(...array_values(self::COMPANY_ACCOUNTS))));
+    }
+
     public static function stationIds(string $company): array {
         return self::COMPANY_STATIONS[self::normalizeCompany($company)];
     }
@@ -68,6 +73,17 @@ class EfcConciliacionModel {
             if (str_ends_with($account, strtoupper($suffix))) return $names;
         }
         return [];
+    }
+
+    public static function accountStationNamesAll(?string $account): array {
+        $account = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)$account));
+        $names = [];
+        foreach (self::COMPANY_ACCOUNT_STATIONS as $maps) {
+            foreach ($maps as $suffix => $stations) {
+                if (str_ends_with($account, strtoupper($suffix))) $names = array_merge($names, $stations);
+            }
+        }
+        return array_values(array_unique($names));
     }
 
     public function __construct() {
@@ -221,7 +237,9 @@ class EfcConciliacionModel {
     private function validateDeposit(int $id,int $station,string $cutDate,float $allocated): array {
         if ($this->bankIsActive($id)) throw new RuntimeException('Uno de los depositos ya esta conciliado.');
         $company=$this->companyForStation($station);
-        $suffixes=self::accountSuffixes($company);
+        // Un movimiento puede haberse depositado en la cuenta de otra empresa;
+        // la estación se valida por referencia/detalle, no por la cuenta.
+        $suffixes=self::allAccountSuffixes();
         $accountWhere=implode(' OR ',array_fill(0,count($suffixes),"RIGHT(UPPER(REPLACE(REPLACE(ISNULL(cuenta,''),'-',''),' ','')),LEN(?))=?"));
         $stmt=$this->db->prepare("SELECT id,fecha,abono,cuenta,referencia,descripcion_larga,descripcion,concepto FROM TG.dbo.movimientos_bancarios WHERE id=? AND abono>0 AND (UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EFECTIVO%' OR UPPER(ISNULL(descripcion,'')) LIKE '%DEP EN EFECTIV%' OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO VTAS%') AND ($accountWhere)");
         $params=[$id]; foreach($suffixes as $suffix) { $params[]=$suffix; $params[]=$suffix; } $stmt->execute($params); $row=$stmt->fetch(PDO::FETCH_ASSOC);
