@@ -284,6 +284,11 @@
 /* Diferencia >= 9,000 lts: icono de alerta con tooltip (antes badge "DIFERENCIA") */
 .dif-alerta { margin-left: .3rem; color: #b91c1c; font-size: .7rem; }
 
+/* Lista "Dentro de norma" del dashboard (analisis.html): puede tener hasta
+   ~35 estaciones, a diferencia de "Peores 5" que siempre son 5 filas fijas
+   — con scroll interno no estira el card ni empuja el resto de la página. */
+.dash-norma-scroll { max-height: 220px; overflow-y: auto; }
+
 /* ---- Reporte de ventas consolidado (/merma/ventas) --------------------- */
 /* Densidad compacta: .vc-tabla tiene ~40 columnas (una por estación), muchas
    más que analisis.html/detalle.html. El padding/font-size grande de la base

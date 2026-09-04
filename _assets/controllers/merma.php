@@ -136,6 +136,9 @@ class Merma
         usort($peores, fn($a, $b) => $b['pct'] <=> $a['pct']);
         $peores = array_slice($peores, 0, 5);
 
+        $enNorma = array_filter($conNormaEvaluable, fn($f) => $f['pct'] <= $mermaNorma);
+        usort($enNorma, fn($a, $b) => $a['pct'] <=> $b['pct']);
+
         // El modal de sync propone el mismo rango que se está viendo
         $syncDesde = $desde;
         $syncHasta = $hasta;
@@ -146,7 +149,7 @@ class Merma
         echo $this->twig->render($this->route . 'analisis.html',
             compact('anio', 'mes', 'desde', 'hasta', 'maxHasta', 'filas', 'totales',
                     'syncDesde', 'syncHasta', 'ultimoSync',
-                    'enNormaCount', 'evaluablesCount', 'peores', 'mermaNorma'));
+                    'enNormaCount', 'evaluablesCount', 'peores', 'enNorma', 'mermaNorma'));
     }
 
     /** Detalle día × turno de una estación (equivalente a la hoja del Excel). */
@@ -273,9 +276,11 @@ class Merma
             $codgas, (int)substr($desde, 0, 4), (int)substr($desde, 5, 2));
 
         $maxHasta = $ayerStr;
+        $puedeCorregir = authorized(self::PERM_CORREGIR);
         echo $this->twig->render($this->route . 'detalle.html',
             compact('estacion', 'anio', 'mes', 'desde', 'hasta', 'maxHasta',
-                    'filas', 'dias', 'resumen', 'invInicial', 'compras', 'ventas'));
+                    'filas', 'dias', 'resumen', 'invInicial', 'compras', 'ventas',
+                    'puedeCorregir'));
     }
 
     /**
