@@ -47,6 +47,58 @@
     </div>
 </div>
 
+<div class="card mb-3">
+    <div class="card-header p-0">
+        <button class="btn btn-link w-100 text-start text-decoration-none d-flex justify-content-between align-items-center py-2 px-3"
+                type="button" data-bs-toggle="collapse" data-bs-target="#dashNormaMerma">
+            <span><i class="fas fa-gauge-high"></i> Dashboard de norma de merma (límite {{ mermaNorma|number_format(1) }}%)</span>
+            <i class="fas fa-chevron-down"></i>
+        </button>
+    </div>
+    <div class="collapse" id="dashNormaMerma">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="p-3 h-100 text-center" style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:.5rem;">
+                        <div class="small text-uppercase fw-bold" style="color:#047857;">Dentro de norma</div>
+                        <div class="fs-2 fw-bold" style="color:#065f46;">{{ enNormaCount }} / {{ evaluablesCount }}</div>
+                        <div class="small text-muted">estaciones con merma ≤ {{ mermaNorma|number_format(1) }}%</div>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <div class="fw-bold small text-uppercase mb-2" style="color:#991b1b;">
+                        <i class="fas fa-triangle-exclamation"></i> Peores 5 en merma
+                    </div>
+                    {% if peores|length == 0 %}
+                    <p class="text-muted small mb-0">Sin datos suficientes en el rango seleccionado.</p>
+                    {% else %}
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Estación</th>
+                                <th class="text-end">% Merma</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for f in peores %}
+                            <tr>
+                                <td>
+                                    <a href="/merma/detalle/{{ f.codgas }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
+                                </td>
+                                <td class="text-end {{ f.pct > mermaNorma ? 'pct-neg' : '' }}">
+                                    {{ f.pct|number_format(2) }}%
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="merma-tabla-wrap wrap-fit mx-auto mb-3">
     <div class="merma-scroll">
         <table class="merma-tabla" id="merma_table">
