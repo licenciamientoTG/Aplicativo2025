@@ -272,7 +272,8 @@
       "Bash(wc -l '/c/Users/manue/OneDrive/Desktop/conciliacion susana/RIDIAZ_20260817.TXT')",
       "Bash(echo \"--- tipos de registro ---\")",
       "Bash(cut -c1-2 '/c/Users/manue/OneDrive/Desktop/conciliacion susana/RIDIAZ_20260817.TXT')",
-      "Bash(command -v sqlcmd)"
+      "Bash(command -v sqlcmd)",
+      "Bash(/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/170/Tools/Binn/sqlcmd *)"
     ],
     "deny": [],
     "ask": []

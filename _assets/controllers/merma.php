@@ -126,6 +126,16 @@ class Merma
             $totales['sd_diesel'] += (float)($fila['sd_diesel'] ?? 0);
         }
 
+        // Dashboard de norma: 0.5% es el límite permitido de merma
+        $mermaNorma = 0.5;
+        $conNormaEvaluable = array_filter($filas, fn($f) => $f['pct'] !== null);
+        $enNormaCount    = count(array_filter($conNormaEvaluable, fn($f) => $f['pct'] <= $mermaNorma));
+        $evaluablesCount = count($conNormaEvaluable);
+
+        $peores = $conNormaEvaluable;
+        usort($peores, fn($a, $b) => $b['pct'] <=> $a['pct']);
+        $peores = array_slice($peores, 0, 5);
+
         // El modal de sync propone el mismo rango que se está viendo
         $syncDesde = $desde;
         $syncHasta = $hasta;
@@ -135,7 +145,8 @@ class Merma
 
         echo $this->twig->render($this->route . 'analisis.html',
             compact('anio', 'mes', 'desde', 'hasta', 'maxHasta', 'filas', 'totales',
-                    'syncDesde', 'syncHasta', 'ultimoSync'));
+                    'syncDesde', 'syncHasta', 'ultimoSync',
+                    'enNormaCount', 'evaluablesCount', 'peores', 'mermaNorma'));
     }
 
     /** Detalle día × turno de una estación (equivalente a la hoja del Excel). */
@@ -845,6 +856,40 @@ class Merma
     /* Evidencia de corrección de corte físico                              */
     /* ===================================================================== */
 
+    /**
+     * Codprd reales de la familia a la que pertenece $codprd (incluido él
+     * mismo si no está en ninguna familia conocida). El modal genérico de
+     * evidencia sube/consulta con el codprd base (1/2/3, ver FAM_CODPRD en
+     * detalle.html) mientras que el modal de corrección en lote usa el
+     * codprd real de la estación (179/180/181/192/193...) — sin resolver por
+     * familia, "ver evidencia" nunca encontraba lo subido por corrección.
+     */
+    private function codprdsFamilia(int $codprd): array
+    {
+        foreach (MermaDiariaModel::FAMILIAS as $codes) {
+            if (in_array($codprd, $codes, true)) return $codes;
+        }
+        return [$codprd];
+    }
+
+    /**
+     * nrotur crudos que colapsan al turno normalizado del snapshot (misma
+     * regla de decenas que ApiER: nrotur/10 → 1→11, 2→21, cualquier otro
+     * (3 o 4) →41). El modal de corrección en lote guarda con el nrotur
+     * crudo de la estación (10/20/30/31/40) mientras que la tabla de detalle
+     * solo conoce el turno normalizado (11/21/41) — sin resolver esto,
+     * "ver evidencia" no encontraba lo subido en turno 31/40 al buscar 41.
+     */
+    private function turnosCrudos(int $turno): array
+    {
+        return match ($turno) {
+            11 => [10, 11],
+            21 => [20, 21],
+            41 => [30, 31, 40, 41],
+            default => [$turno],
+        };
+    }
+
     /** Lista la evidencia (imagen/PDF) ya subida para una celda fecha+producto+turno. */
     public function evidencia_fisico(): void
     {
@@ -861,7 +906,8 @@ class Merma
             json_output(['success' => false, 'message' => 'Parámetros inválidos']);
             return;
         }
-        $archivos = $this->evidenciaModel->get_by_celda($codgas, $fecha, $codprd, $turno);
+        $archivos = $this->evidenciaModel->get_by_celda(
+            $codgas, $fecha, $this->codprdsFamilia($codprd), $this->turnosCrudos($turno));
         json_output(['success' => true, 'archivos' => $archivos]);
     }
 

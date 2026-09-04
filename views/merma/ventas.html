@@ -123,10 +123,24 @@
                 </table>
             </div>
         </div>
-        <p class="text-muted small">
+        <p class="text-muted small mb-1">
             {{ p.dias_con_datos }} de {{ p.dias_del_mes }} días con datos.
             La proyección mensual extrapola el total a los {{ p.dias_del_mes }} días del mes.
         </p>
+        <details class="vc-leyenda">
+            <summary>¿Qué significa cada fila del resumen?</summary>
+            <dl class="vc-leyenda-grid">
+                <div><dt>TOTAL</dt><dd>Suma de litros despachados en el mes, por estación y general.</dd></div>
+                <div><dt>% MIX</dt><dd>Participación de cada estación sobre el total del grupo (suman 100%).</dd></div>
+                <div><dt>PROY. MENSUAL</dt><dd>Estimado a fin de mes: TOTAL ÷ días con datos × días del mes.</dd></div>
+                <div><dt>PRESUPUESTO</dt><dd>Meta de litros cargada en incentives_presupuestoventa para el mes.</dd></div>
+                <div><dt>DIFERENCIA</dt><dd>PROY. MENSUAL − PRESUPUESTO, en litros.</dd></div>
+                <div><dt>% PRESUPUESTO</dt><dd>PROY. MENSUAL como porcentaje del PRESUPUESTO.</dd></div>
+                <div><dt>VS SEMANA PREVIA</dt><dd>Variación % del total vs. la misma cantidad de días de la semana anterior.</dd></div>
+                <div><dt>% M.A.</dt><dd>Variación % vs. el mes anterior (mismos días transcurridos).</dd></div>
+                <div><dt>% A.A.</dt><dd>Variación % vs. el mismo mes del año anterior.</dd></div>
+            </dl>
+        </details>
     </div>
     {% endfor %}
     <div class="tab-pane fade" id="tab-historico" role="tabpanel">

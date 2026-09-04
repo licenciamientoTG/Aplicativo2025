@@ -12,15 +12,28 @@ class MermaFisicoEvidenciaModel extends Model
     const MAX_SIZE     = 10 * 1024 * 1024; // 10 MB
     const ALLOWED_EXT  = ['pdf', 'jpg', 'jpeg', 'png'];
 
-    public function get_by_celda(int $codgas, string $fecha, int $codprd, int $turno): array
+    /**
+     * $codprds: todos los codprd reales de la familia (ej. maxima = 1,179,192)
+     * — el modal genérico sube/consulta con el codprd base (1/2/3) mientras
+     * que el de corrección en lote usa el codprd real de la estación
+     * (179/180/...); sin resolver por familia nunca hacían match y el modal
+     * de evidencia se veía vacío aunque sí había archivos subidos.
+     * $turnos: todos los nrotur crudos que colapsan al turno normalizado del
+     * snapshot (ej. 41 = 30,31,40,41) — mismo problema que codprd pero con
+     * el turno.
+     */
+    public function get_by_celda(int $codgas, string $fecha, array $codprds, array $turnos): array
     {
+        if (!$codprds || !$turnos) return [];
+        $phProd  = implode(',', array_fill(0, count($codprds), '?'));
+        $phTurno = implode(',', array_fill(0, count($turnos), '?'));
         return $this->sql->select(
-            'SELECT e.*, u.Nombre AS usuario_nombre
+            "SELECT e.*, u.Nombre AS usuario_nombre
              FROM [TG].[dbo].[merma_fisico_evidencia] e
              LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = e.created_by
-             WHERE e.codgas = ? AND e.fecha = ? AND e.codprd = ? AND e.turno = ? AND e.is_deleted = 0
-             ORDER BY e.created_at ASC;',
-            [$codgas, $fecha, $codprd, $turno]
+             WHERE e.codgas = ? AND e.fecha = ? AND e.codprd IN ($phProd) AND e.turno IN ($phTurno) AND e.is_deleted = 0
+             ORDER BY e.created_at ASC;",
+            [$codgas, $fecha, ...$codprds, ...$turnos]
         ) ?: [];
     }
 
