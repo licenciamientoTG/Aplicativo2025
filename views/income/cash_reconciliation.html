@@ -75,7 +75,8 @@
     cash.forEach(turn=>{const possible=candidates.get(turn.id)||[],unique=possible.filter(deposit=>cash.filter(other=>(candidates.get(other.id)||[]).some(x=>x.id===deposit.id)).length===1&&!used.has(deposit.id));
       // Si hay varios candidatos, un depósito con diferencia de centavos
       // (<$1) es suficientemente inequívoco para aprobarlo automáticamente.
-      const close=unique.filter(deposit=>Math.abs(deposit.amount-turn.amount)<CLOSE_MATCH_TOLERANCE);
+      const close=(possible.filter(deposit=>!used.has(deposit.id)&&Math.abs(deposit.amount-turn.amount)<CLOSE_MATCH_TOLERANCE))
+        .filter(deposit=>cash.filter(other=>Math.abs(deposit.amount-other.amount)<CLOSE_MATCH_TOLERANCE&&(candidates.get(other.id)||[]).some(x=>x.id===deposit.id)).length===1);
       const selected=close.length===1?close[0]:(unique.length===1?unique[0]:null);
       if(selected){used.add(selected.id);auto.push({id:`a-${turn.id}`,status:'CONCILIADO_AUTOMATICO',cg:[turn],bank:[selected]})}
     });
