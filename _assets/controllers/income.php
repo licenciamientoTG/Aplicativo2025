@@ -9067,6 +9067,20 @@ public function stamped_invoices_detail(): void
                 exit;
             }
 
+            // Cancelar un diferido cambia el importe efectivo del corte de
+            // origen. Si ese corte (o el diferido en destino) ya forma parte
+            // de una conciliación, no se debe alterar el movimiento por
+            // separado: dejaría al grupo conciliado con un importe distinto
+            // al que se guardó. Primero se debe deshacer dicha conciliación;
+            // el cliente puede entonces cancelar el diferido de forma segura.
+            if (!empty($d['conciliacion_id_orig']) || !empty($d['conciliacion_id_dest'])) {
+                echo json_encode([
+                    'status' => 'error',
+                    'message' => 'Este diferido ya afecta una conciliación. Primero deshaz la conciliación relacionada y después cancela el diferido.'
+                ]);
+                exit;
+            }
+
             $mes = (string)$d['mes'];
             $cm  = $conn->prepare("
                 SELECT id FROM Conciliacion_V3_CierreMes

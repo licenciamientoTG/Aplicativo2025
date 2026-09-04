@@ -2112,7 +2112,13 @@ function renderCG() {
             const grpRef      = `diferido_grp_${fecha}`;
             const totalGrp    = fakesDelDia.reduce((s, f) => s + f.monto_diferido, 0);
             const allIds      = fakesDelDia.map(f => f.id);
-            const pendingIds  = fakesDelDia.filter(f => f.estado === 'PENDIENTE').map(f => f.id);
+            const pendingFakes = fakesDelDia.filter(f => f.estado === 'PENDIENTE');
+            const pendingIds  = pendingFakes.map(f => f.id);
+            // Cancelar modifica el corte origen. Si éste o el destino ya se
+            // concilió, el diferido queda protegido hasta deshacer el grupo.
+            const hayDiferidoProtegido = pendingFakes.some(f =>
+                f.conciliacion_id_orig || f.conciliacion_id_dest
+            );
             // Determinar estado del grupo
             const hRecs       = historial.filter(h => h.ref === grpRef && h.origen === 'DIFERIDO');
             const todosConc   = fakesDelDia.every(f => f.estado === 'CONCILIADO');
@@ -2135,15 +2141,18 @@ function renderCG() {
             const moverBtn = (!todosConc && pendingIds.length && !mesCerrado)
                 ? `<button class="btn-mover-diferido" onclick="event.stopPropagation();abrirModalMoverDiferidoGrupo(${JSON.stringify(pendingIds).replace(/"/g,'&quot;')},'${escHtml(origenLabel)}','${escHtml(fecha)}')" title="Mover todos a otro día"><i class="fas fa-arrows-alt-h"></i></button>`
                 : '';
-            const cancelDifBtn = (!todosConc && pendingIds.length && !mesCerrado)
+            const cancelDifBtn = (!todosConc && pendingIds.length && !mesCerrado && !hayDiferidoProtegido)
                 ? `<button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoGrupo(${JSON.stringify(pendingIds).replace(/"/g,'&quot;')})" title="Cancelar diferidos"><i class="fas fa-times"></i></button>`
+                : '';
+            const diferidoProtegidoHint = (!todosConc && hayDiferidoProtegido)
+                ? '<span class="ml-1 text-warning" title="Primero deshaz la conciliación relacionada para modificar este diferido"><i class="fas fa-lock"></i></span>'
                 : '';
             itemsHtml += `<div class="row-item ${statusClass} ${esSel?'active':''}" data-grp-ref="${escHtml(grpRef)}" ${clickAttr}>
                 <div class="row-left">
                     <span class="row-line1"><span class="diferido-badge">DIFERIDO</span>Diferido de día${fakesDelDia.length > 1 ? ` (${fakesDelDia.length})` : ''}</span>
                     <span class="row-line2">Origen: ${origenLabel}</span>
                 </div>
-                <div class="row-right" style="pointer-events:auto;">${dTag}${unlinkB}${moverBtn}${cancelDifBtn}<span class="font-numeric">${fmt.format(totalGrp)}</span></div>
+                <div class="row-right" style="pointer-events:auto;">${dTag}${unlinkB}${moverBtn}${cancelDifBtn}${diferidoProtegidoHint}<span class="font-numeric">${fmt.format(totalGrp)}</span></div>
             </div>`;
         }
 
@@ -3001,6 +3010,11 @@ async function sincronizarDiaCG(fecha, items) {
 
         const failed = results.filter(r => r.status !== 'success');
         if (failed.length) {
+            if (failed.some(f => f.message === 'Detalle no encontrado.')) {
+                alert('La conciliación cambió mientras se mostraba esta pantalla. Se recargará la información antes de volver a intentar.');
+                actualizarTodo();
+                return;
+            }
             alert('No se pudieron sincronizar todos los montos.\n' + failed.map(f => f.message || 'Error desconocido').join('\n'));
             return;
         }
@@ -4033,9 +4047,16 @@ async function cancelarDiferidoGrupo(ids) {
     if (!confirm(`¿Cancelar ${ids.length} diferido(s)? Los montos volverán a estar disponibles en sus días de origen.`)) return;
     body_loading(true);
     try {
-        await Promise.all(ids.map(id =>
-            fetch(URLS_V3.cancelar_diferido, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) })
+        const results = await Promise.all(ids.map(id =>
+            fetch(URLS_V3.cancelar_diferido, {
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id })
+            }).then(r => r.json())
         ));
+        const failed = results.find(r => r.status !== 'success');
+        if (failed) {
+            alert('No se pudo cancelar el diferido: ' + (failed.message || 'Error desconocido'));
+            return;
+        }
         actualizarTodo();
     } catch(e) { alert('Error de conexión.'); }
     finally { body_loading(false); }
