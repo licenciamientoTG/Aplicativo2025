@@ -65,7 +65,38 @@
                         <div class="small text-muted">estaciones con merma ≤ {{ mermaNorma|number_format(1) }}%</div>
                     </div>
                 </div>
-                <div class="col-md-8">
+                <div class="col-md-4">
+                    <div class="fw-bold small text-uppercase mb-2" style="color:#047857;">
+                        <i class="fas fa-circle-check"></i> Estaciones dentro de norma
+                    </div>
+                    {% if enNorma|length == 0 %}
+                    <p class="text-muted small mb-0">Ninguna estación dentro de norma en el rango seleccionado.</p>
+                    {% else %}
+                    <div class="dash-norma-scroll">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Estación</th>
+                                    <th class="text-end">% Merma</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for f in enNorma %}
+                                <tr>
+                                    <td>
+                                        <a href="/merma/detalle/{{ f.codgas }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
+                                    </td>
+                                    <td class="text-end pct-pos">
+                                        {{ f.pct|number_format(2) }}%
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
                     <div class="fw-bold small text-uppercase mb-2" style="color:#991b1b;">
                         <i class="fas fa-triangle-exclamation"></i> Peores 5 en merma
                     </div>

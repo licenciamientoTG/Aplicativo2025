@@ -897,7 +897,7 @@ $(document).ready(function () {
                     + escHtml(a.original_filename) + '</a>'
                     + '<span>'
                     + '<small class="text-muted me-2">' + escHtml(a.usuario_nombre || ('Usuario #' + a.created_by)) + ' — ' + escHtml(String(a.created_at).substring(0, 16)) + '</small>'
-                    + '<i class="fas fa-trash text-danger evidencia-eliminar" data-id="' + a.id + '" style="cursor:pointer;" title="Eliminar"></i>'
+                    + (MERMA_CTX.puedeCorregir ? '<i class="fas fa-trash text-danger evidencia-eliminar" data-id="' + a.id + '" style="cursor:pointer;" title="Eliminar"></i>' : '')
                     + '</span>'
                     + '</li>';
             });
@@ -1021,7 +1021,7 @@ $(document).ready(function () {
 });
 </script>
 {% if estacion.Codigo == 40 %}
-<script>const MERMA_CTX = { anio: {{ anio }}, mes: {{ mes }} };</script>
+<script>const MERMA_CTX = { anio: {{ anio }}, mes: {{ mes }}, puedeCorregir: {{ puedeCorregir ? 'true' : 'false' }} };</script>
 <script src="{{ js_v('merma.js') }}"></script>
 {% endif %}
 {% endblock %}
