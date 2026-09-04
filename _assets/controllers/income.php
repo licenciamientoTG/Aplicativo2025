@@ -3748,9 +3748,9 @@ public function anomalies_client_tickets()
             // históricos de este catálogo.
             $empresa = strtoupper(trim((string)($_GET['empresa'] ?? '')));
             $empresaWhere = '';
-            if ($empresa === 'DIAZ GAS') $empresaWhere = " AND T1.RFC = 'DGA930823KD3'";
-            elseif ($empresa === 'GASOMEX') $empresaWhere = " AND T1.RFC = 'DGM880621FU5'";
-            elseif ($empresa === 'FORANEAS') $empresaWhere = " AND ISNULL(T1.RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')";
+            if (in_array($empresa, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) {
+                $empresaWhere = ' AND ' . EfcConciliacionModel::stationSqlCondition($empresa, 'T1');
+            }
             // Para la conciliación por empresa se requiere el catálogo completo,
             // incluso si la estación todavía no existe en Tesoreria_afil.
             $from = $empresa === ''
@@ -3776,12 +3776,15 @@ public function anomalies_client_tickets()
                     $rfc = 'FORANEAS';
                 }
                 $row['RFC'] = $rfc;
+                if ($empresa !== '') $row['Empresa'] = $empresa;
                 $result[] = $row;
             }
 
             // INYECCIÓN MANUAL COLOSIO (Si no viene de BD)
             $foundColosio = false;
-            foreach($result as $r) { if($r['Codigo'] == 333) $foundColosio = true; }
+            foreach($result as $r) {
+                if ((int)$r['Codigo'] === 333 || strtoupper(trim((string)$r['Nombre'])) === 'COLOSIO') $foundColosio = true;
+            }
 
             if(!$foundColosio && ($empresa === '' || $empresa === 'FORANEAS')) {
                 $result[] = [
@@ -6502,9 +6505,8 @@ public function stamped_invoices_detail(): void
             return ltrim($digitos, '0') ?: '0';
         };
         $normalizarNombre = static function ($valor): string {
-            $nombre = strtoupper((string)$valor);
-            $nombre = strtr($nombre, ['Á'=>'A', 'É'=>'E', 'Í'=>'I', 'Ó'=>'O', 'Ú'=>'U', 'Ü'=>'U', 'Ñ'=>'N']);
-            return preg_replace('/[^A-Z0-9]+/', ' ', trim($nombre));
+            $nombre = strtr((string)$valor, ['á'=>'a', 'é'=>'e', 'í'=>'i', 'ó'=>'o', 'ú'=>'u', 'ü'=>'u', 'ñ'=>'n', 'Á'=>'A', 'É'=>'E', 'Í'=>'I', 'Ó'=>'O', 'Ú'=>'U', 'Ü'=>'U', 'Ñ'=>'N']);
+            return preg_replace('/[^A-Z0-9]+/', ' ', trim(strtoupper($nombre)));
         };
 
         try {
@@ -6512,9 +6514,7 @@ public function stamped_invoices_detail(): void
 
             // Estaciones.Estacion conserva el identificador operativo que los
             // bancos escriben en la descripción detallada (por ejemplo E04188 → 4188).
-            $empresaWhere = $empresa === 'DIAZ GAS' ? "E.RFC = 'DGA930823KD3'"
-                : ($empresa === 'GASOMEX' ? "E.RFC = 'DGM880621FU5'"
-                : "ISNULL(E.RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')");
+            $empresaWhere = EfcConciliacionModel::stationSqlCondition($empresa, 'E');
             $stmtEstaciones = $conn->query(
                 "SELECT DISTINCT E.Codigo, E.Nombre,
                         E.Estacion AS codigo_banco
@@ -6597,9 +6597,27 @@ public function stamped_invoices_detail(): void
                     }
                 }
                 $estacionPorCuenta = count($candidatasCuenta) === 1 ? reset($candidatasCuenta) : null;
-                $estacionOriginal = $estacionPorReferencia ?? $estacionPorCuenta;
+                // Varias cuentas son compartidas, pero Banorte sí incluye a veces
+                // el nombre de la estación en su leyenda (ej. PUERTECITO o
+                // JESUSMARIA). Esa pista explícita es más precisa que la cuenta.
+                $textoNormalizado = $normalizarNombre($texto);
+                $candidatasTexto = [];
+                foreach ($catalogoPorNombre as $estacionCatalogo) {
+                    $nombreEstacion = trim((string)$estacionCatalogo['normalized']);
+                    // El catálogo suele anteponer el número comercial ("35
+                    // Puertecito"), que no viene en la leyenda del banco.
+                    $nombreSinPrefijo = preg_replace('/^\d+\s+/', '', $nombreEstacion);
+                    if ($nombreSinPrefijo !== '' && str_contains($textoNormalizado, $nombreSinPrefijo)) {
+                        $candidatasTexto[$estacionCatalogo['station_id']] = [
+                            'station_id' => $estacionCatalogo['station_id'],
+                            'station' => $estacionCatalogo['station'],
+                        ];
+                    }
+                }
+                $estacionPorTexto = count($candidatasTexto) === 1 ? reset($candidatasTexto) : null;
+                $estacionOriginal = $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta;
                 $estatus = $estacionOriginal ? 'IDENTIFICADA'
-                    : (count($codigos) > 1 || count($candidatasCuenta) > 1 ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
+                    : (count($codigos) > 1 || count($candidatasTexto) > 1 || count($candidatasCuenta) > 1 ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
                 $corregida = isset($correcciones[(int)$mov['id']]);
                 $estacion = $correcciones[(int)$mov['id']] ?? $estacionOriginal;
                 // Una corrección válida identifica la estación para fines de

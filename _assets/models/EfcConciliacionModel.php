@@ -2,11 +2,20 @@
 
 class EfcConciliacionModel {
     private PDO $db;
+    private array $bankStationCatalogCache = [];
     private const TOLERANCE = 20.00;
     private const COMPANY_ACCOUNTS = [
         'DIAZ GAS' => ['0185322470', '369'],
-        'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', 'C7533', '2627', '5247', '7604', '0031'],
+        'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', '7533', '2627', '5247', '7604', '0031'],
         'GASOMEX'   => ['8504', '4409', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4457'],
+    ];
+    /* La razón social fiscal no identifica por sí sola la operación. Gasomex
+       tiene estaciones con RFC propio; este es el catálogo operativo usado por
+       conciliación y sus cuentas bancarias. */
+    private const COMPANY_STATIONS = [
+        'DIAZ GAS' => [2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33],
+        'FORANEAS' => [19,21,31,32,34,35,36,37,38,39,199],
+        'GASOMEX' => [23,24,25,26,27,28,29],
     ];
     /* Cuenta → estación operativa. Algunas cuentas atienden más de una
        estación: en esos casos se conserva la validación por referencia. */
@@ -14,7 +23,7 @@ class EfcConciliacionModel {
         'DIAZ GAS' => ['369' => ['PARRAL']],
         'FORANEAS' => [
             '3281'=>['VILLA AHUMADA'], '8837'=>['DELICIAS'], '8520'=>['PLUTARCO'],
-            '7291'=>['PICACHOS'], '2570'=>['PICACHOS'], 'C7533'=>['VENTANAS'],
+            '7291'=>['PICACHOS'], '2570'=>['PICACHOS'], '7533'=>['VENTANAS'],
             '2627'=>['VENTANAS'], '5247'=>['CASTANO'], '7604'=>['GABRIELA MISTRAL'],
             '0031'=>['PUERTECITO','SAN RAFAEL','COLOSIO','JESUS MARIA'],
         ],
@@ -33,6 +42,23 @@ class EfcConciliacionModel {
 
     public static function accountSuffixes(string $company): array {
         return self::COMPANY_ACCOUNTS[self::normalizeCompany($company)];
+    }
+
+    public static function stationIds(string $company): array {
+        return self::COMPANY_STATIONS[self::normalizeCompany($company)];
+    }
+
+    public static function stationCompany(int $stationId): ?string {
+        foreach (self::COMPANY_STATIONS as $company => $stationIds) {
+            if (in_array($stationId, $stationIds, true)) return $company;
+        }
+        return null;
+    }
+
+    public static function stationSqlCondition(string $company, string $alias = 'E'): string {
+        $stationIds = implode(',', self::stationIds($company));
+        $column = $alias === '' ? 'Codigo' : "$alias.Codigo";
+        return "$column IN ($stationIds)";
     }
 
     public static function accountStationNames(string $company, ?string $account): array {
@@ -208,27 +234,42 @@ class EfcConciliacionModel {
     }
 
     private function companyForStation(int $station): string {
-        $query=$this->db->prepare("SELECT RFC FROM TG.dbo.Estaciones WHERE Codigo=?"); $query->execute([$station]);
-        $rfc=(string)($query->fetchColumn()?:'');
-        if($rfc==='DGA930823KD3') return 'DIAZ GAS';
-        if($rfc==='DGM880621FU5') return 'GASOMEX';
-        return 'FORANEAS';
+        $company=self::stationCompany($station);
+        if ($company!==null) return $company;
+        throw new RuntimeException('La estación no pertenece al catálogo operativo de conciliación.');
     }
 
     private function bankStation(int $id,array $movement,?string $company=null): ?int {
         $correct=$this->db->prepare("SELECT estacion_id FROM dbo.efc_conc_correcciones_banco WHERE movimiento_bancario_id=?"); $correct->execute([$id]); $station=$correct->fetchColumn(); if ($station) return (int)$station;
         $company=self::normalizeCompany($company??'DIAZ GAS');
-        $where=$company==='DIAZ GAS' ? "RFC='DGA930823KD3'" : ($company==='GASOMEX' ? "RFC='DGM880621FU5'" : "ISNULL(RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')");
-        $catalog=$this->db->query("SELECT Codigo,Estacion,Nombre FROM TG.dbo.Estaciones WHERE $where AND Codigo<>0")->fetchAll(PDO::FETCH_ASSOC); $map=[];
-        $normalizeName=static function($value): string { $value=strtoupper((string)$value); $value=strtr($value,['Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U','Ñ'=>'N']); return preg_replace('/[^A-Z0-9]+/',' ',trim($value)); };
+        if (!isset($this->bankStationCatalogCache[$company])) {
+            $where=self::stationSqlCondition($company, '');
+            $this->bankStationCatalogCache[$company]=$this->db->query("SELECT Codigo,Estacion,Nombre FROM TG.dbo.Estaciones WHERE $where AND Codigo<>0")->fetchAll(PDO::FETCH_ASSOC);
+        }
+        $catalog=$this->bankStationCatalogCache[$company]; $map=[];
+        $normalizeName=static function($value): string {
+            $value=strtr((string)$value,['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n','Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U','Ñ'=>'N']);
+            return preg_replace('/[^A-Z0-9]+/',' ',trim(strtoupper($value)));
+        };
         $accountStations=[];
         foreach(self::accountStationNames($company,(string)($movement['cuenta']??'')) as $wanted) {
             $wanted=$normalizeName($wanted);
             foreach($catalog as $item) if(str_contains($normalizeName($item['Nombre']),$wanted)) $accountStations[(int)$item['Codigo']]=true;
         }
+        // Una cuenta compartida puede traer el nombre de la estación en el
+        // detalle bancario. Se usa esa identificación explícita antes de
+        // descartar el movimiento como ambiguo.
+        $text=implode(' ',[(string)($movement['descripcion_larga']??''),(string)($movement['descripcion']??''),(string)($movement['concepto']??''),(string)($movement['referencia']??'')]);
+        $normalizedText=$normalizeName($text); $textStations=[];
+        foreach($catalog as $item) {
+            $name=trim($normalizeName($item['Nombre']));
+            $name=preg_replace('/^\d+\s+/', '', $name);
+            if($name!=='' && str_contains($normalizedText,$name)) $textStations[(int)$item['Codigo']]=true;
+        }
+        if(count($textStations)===1) return (int)array_key_first($textStations);
         if(count($accountStations)===1) return (int)array_key_first($accountStations);
         foreach($catalog as $item) { $code=ltrim(preg_replace('/\D+/','',(string)$item['Estacion']),'0'); if($code!=='') $map[$code]=(int)$item['Codigo']; }
-        $text=implode(' ',[(string)($movement['descripcion_larga']??''),(string)($movement['descripcion']??''),(string)($movement['concepto']??''),(string)($movement['referencia']??'')]); preg_match_all('/\d+/',$text,$matches); $found=[];
+        preg_match_all('/\d+/',$text,$matches); $found=[];
         foreach($matches[0] as $raw) { $code=ltrim($raw,'0'); if(isset($map[$code])) $found[$map[$code]]=true; }
         return count($found)===1 ? (int)array_key_first($found) : null;
     }
