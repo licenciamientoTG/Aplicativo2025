@@ -3747,15 +3747,16 @@ public function anomalies_client_tickets()
             // El filtro se mantiene opcional para no romper los consumidores
             // históricos de este catálogo.
             $empresa = strtoupper(trim((string)($_GET['empresa'] ?? '')));
+            $catalogoCompleto = ($_GET['all'] ?? '') === '1';
             $empresaWhere = '';
             if (in_array($empresa, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) {
                 $empresaWhere = ' AND ' . EfcConciliacionModel::stationSqlCondition($empresa, 'T1');
             }
             // Para la conciliación por empresa se requiere el catálogo completo,
             // incluso si la estación todavía no existe en Tesoreria_afil.
-            $from = $empresa === ''
+            $from = $catalogoCompleto ? "FROM Estaciones T1" : ($empresa === ''
                 ? "FROM Estaciones T1 INNER JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id"
-                : "FROM Estaciones T1";
+                : "FROM Estaciones T1");
             $sql = "SELECT DISTINCT
                         T1.Codigo,
                         T1.Nombre,
@@ -6514,16 +6515,16 @@ public function stamped_invoices_detail(): void
 
             // Estaciones.Estacion conserva el identificador operativo que los
             // bancos escriben en la descripción detallada (por ejemplo E04188 → 4188).
-            $empresaWhere = EfcConciliacionModel::stationSqlCondition($empresa, 'E');
             $stmtEstaciones = $conn->query(
                 "SELECT DISTINCT E.Codigo, E.Nombre,
                         E.Estacion AS codigo_banco
                  FROM [TG].[dbo].[Estaciones] E
-                 WHERE E.Codigo<>0 AND $empresaWhere"
+                 WHERE E.Codigo<>0"
             );
             $catalogo = [];
             $catalogoPorNombre = [];
             while ($est = $stmtEstaciones->fetch(PDO::FETCH_ASSOC)) {
+                if (strcasecmp(trim((string)$est['Nombre']), 'NO FUNCIONA') === 0) continue;
                 $codigo = $normalizarCodigo($est['codigo_banco']);
                 if ($codigo !== '0') {
                     $catalogo[$codigo] = [
@@ -6541,7 +6542,10 @@ public function stamped_invoices_detail(): void
             $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id");
             while ($correccion = $stmtCorrecciones->fetch(PDO::FETCH_ASSOC)) $correcciones[(int)$correccion['movimiento_bancario_id']] = ['station_id'=>(int)$correccion['estacion_id'],'station'=>trim($correccion['Nombre'])];
 
-            $suffixes = EfcConciliacionModel::accountSuffixes($empresa);
+            // La empresa seleccionada sólo filtra el resultado final; no
+            // restringe las cuentas, porque el banco puede recibir un depósito
+            // de otra empresa en una cuenta distinta.
+            $suffixes = EfcConciliacionModel::allAccountSuffixes();
             $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
                 "SELECT id, fecha, banco, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
@@ -6585,7 +6589,7 @@ public function stamped_invoices_detail(): void
                 // de forma directa las que son exclusivas; las compartidas siguen
                 // requiriendo código/revisión, nunca se asignan al azar.
                 $candidatasCuenta = [];
-                foreach (EfcConciliacionModel::accountStationNames($empresa, $mov['cuenta'] ?? '') as $nombreCuenta) {
+                foreach (EfcConciliacionModel::accountStationNamesAll($mov['cuenta'] ?? '') as $nombreCuenta) {
                     $buscado = $normalizarNombre($nombreCuenta);
                     foreach ($catalogoPorNombre as $estacionCatalogo) {
                         if (str_contains($estacionCatalogo['normalized'], $buscado)) {
