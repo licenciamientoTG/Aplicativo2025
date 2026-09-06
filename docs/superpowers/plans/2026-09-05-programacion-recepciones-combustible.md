@@ -20,6 +20,7 @@
 - Follow the existing DataTables/AJAX conventions from `petrotal_reconciliation.js` for loading/error states (`.loading` class toggling, `alertify.myAlert` for errors) — but this feature does NOT use DataTables (day view is small, plain grouped tables per spec), so only the loading/error UI conventions carry over, not the DataTable initialization itself.
 - Never modify existing methods in `_assets/controllers/supply.php` — only append new methods at the end of the class, same as the Petrotal reconciliation plan did.
 - This project has no environment variable or config file for DB credentials beyond what's already wired into `MySqlPdoHandler` — verification scripts in this plan connect exactly as shown in Task 1's example, copied from a pattern already proven to work in this session.
+- **`SG12` is read-only. Never write to it — no `INSERT`, `UPDATE`, `DELETE`, `CREATE`, or `ALTER` against any `SG12.*` object, in any task, for any reason.** All new tables and all writes in this plan target `TG` only. `SG12.dbo.Proveedores` is only ever read (for display names via joins) — confirmed 2026-09-06 by the user after a plan draft mistakenly proposed inserting a new supplier row there; corrected before execution (AEMSA already existed under a different legal name, no insert was ever needed — see Task 1).
 
 ---
 
@@ -37,21 +38,24 @@
 | `views/layouts/sidebar.html` (modify) | Add sidebar entry under Abastos guarded by `authorized(95)`. |
 | Scratchpad: one-time import script (not committed to the app, lives in the scratchpad dir) | Reads `Programa Julio 2026.xlsx`, maps to the tables above, inserts test data. |
 
-SQL to run directly against `TG` (new tables + permission row + AEMSA supplier) is a one-time setup step, not an app file — captured as Task 1.
+SQL to run directly against `TG` (new tables + permission row) is a one-time setup step, not an app file — captured as Task 1.
 
 ---
 
-## Task 1: Create tables, permission row, and the AEMSA supplier
+## Task 1: Create tables and permission row
 
 **Files:**
-- None (direct SQL against `TG`, run via `php -r` using `MySqlPdoHandler` — proven to work against the real DB in this session)
+- None (direct SQL against `TG` only, run via `php -r` using `MySqlPdoHandler` — proven to work against the real DB in this session)
 
 **Interfaces:**
-- Produces: `TG.dbo.fuel_reception_schedule`, `TG.dbo.fuel_terminals`, `TG.dbo.fuel_carriers` tables exist; permission id `95` exists in `TG.dbo.tg_permissions`; `TG.dbo.Proveedores` has a row for AEMSA with a resolvable name via `SG12.dbo.Proveedores`.
+- Produces: `TG.dbo.fuel_reception_schedule`, `TG.dbo.fuel_terminals`, `TG.dbo.fuel_carriers` tables exist; permission id `95` exists in `TG.dbo.tg_permissions`.
+- AEMSA does NOT need to be created — confirmed 2026-09-06 against the real DB: it already exists in `SG12.dbo.Proveedores` under the legal name "ALTOS ENERGETICOS MEXICANOS" (`cod=96`, RFC `AEM160511LMA`), linked at `TG.dbo.Proveedores.id=163` (`activo=1`). **`SG12` is read-only — never write to it, for any reason, in this or any other task.** Use supplier_id `163` for AEMSA everywhere in this plan (Task 7's import script).
 
 - [ ] **Step 1: Create `fuel_terminals`**
 
 Run via `php -r` (adjust working directory to the repo root first):
+
+Note: use `getConnection()->exec(...)` for DDL, NOT `$sql->insert(...)` — confirmed 2026-09-06 by running this exact step: `MySqlPdoHandler::insert()` (`_assets/classes/common/MySqlPdoHandler.class.php:214`) requires the query string to contain the literal word "insert" and rejects anything else with "query mal formado", so `CREATE TABLE` always fails through that method.
 
 ```php
 <?php
@@ -59,15 +63,16 @@ require "vendor/autoload.php";
 require "_assets/classes/common/MySqlPdoHandler.class.php";
 $sql = MySqlPdoHandler::getInstance();
 $sql->connect("SG12");
-$sql->insert("
+$pdo = $sql->getConnection();
+$pdo->exec("
     CREATE TABLE TG.dbo.fuel_terminals (
         id INT IDENTITY(1,1) PRIMARY KEY,
         nombre VARCHAR(100) NOT NULL,
         supplier_id INT NULL,
         activo BIT NOT NULL DEFAULT 1
     );
-", []);
-echo \"fuel_terminals created\\n\";
+");
+echo "fuel_terminals created\n";
 ```
 
 - [ ] **Step 2: Create `fuel_carriers`**
@@ -78,14 +83,15 @@ require "vendor/autoload.php";
 require "_assets/classes/common/MySqlPdoHandler.class.php";
 $sql = MySqlPdoHandler::getInstance();
 $sql->connect("SG12");
-$sql->insert("
+$pdo = $sql->getConnection();
+$pdo->exec("
     CREATE TABLE TG.dbo.fuel_carriers (
         id INT IDENTITY(1,1) PRIMARY KEY,
         nombre VARCHAR(100) NOT NULL,
         activo BIT NOT NULL DEFAULT 1
     );
-", []);
-echo \"fuel_carriers created\\n\";
+");
+echo "fuel_carriers created\n";
 ```
 
 - [ ] **Step 3: Create `fuel_reception_schedule`**
@@ -96,7 +102,8 @@ require "vendor/autoload.php";
 require "_assets/classes/common/MySqlPdoHandler.class.php";
 $sql = MySqlPdoHandler::getInstance();
 $sql->connect("SG12");
-$sql->insert("
+$pdo = $sql->getConnection();
+$pdo->exec("
     CREATE TABLE TG.dbo.fuel_reception_schedule (
         id INT IDENTITY(1,1) PRIMARY KEY,
         fecha DATE NOT NULL,
@@ -116,8 +123,8 @@ $sql->insert("
         updated_by INT NULL,
         updated_at DATETIME NULL
     );
-", []);
-echo \"fuel_reception_schedule created\\n\";
+");
+echo "fuel_reception_schedule created\n";
 ```
 
 - [ ] **Step 4: Verify all three tables exist with the expected columns**
@@ -134,9 +141,11 @@ foreach (["fuel_terminals", "fuel_carriers", "fuel_reception_schedule"] as $t) {
 }
 ```
 
-Expected: `fuel_terminals: 4 columns`, `fuel_carriers: 3 columns`, `fuel_reception_schedule: 16 columns`.
+Expected: `fuel_terminals: 4 columns`, `fuel_carriers: 3 columns`, `fuel_reception_schedule: 17 columns` (id, fecha, hora, supplier_id, terminal_id, station_code, product, mezcla, litros, carrier_id, referencia, notas, estatus, created_by, created_at, updated_by, updated_at).
 
 - [ ] **Step 5: Create the permission row**
+
+Note: `tg_permissions.id` is an IDENTITY column — a plain parameterized `INSERT` with an explicit `id` value fails with "Cannot insert explicit value for identity column ... when IDENTITY_INSERT is set to OFF" (confirmed 2026-09-06 by running this exact step). Toggle `IDENTITY_INSERT` around the insert via `getConnection()`, not `$sql->insert(...)`.
 
 ```php
 <?php
@@ -144,52 +153,21 @@ require "vendor/autoload.php";
 require "_assets/classes/common/MySqlPdoHandler.class.php";
 $sql = MySqlPdoHandler::getInstance();
 $sql->connect("SG12");
-$sql->insert("
+$pdo = $sql->getConnection();
+$pdo->exec("SET IDENTITY_INSERT TG.dbo.tg_permissions ON");
+$stmt = $pdo->prepare("
     INSERT INTO TG.dbo.tg_permissions (id, action, department, description, status, updated_at, created_at)
-    VALUES (95, 'read', 'Abastos', 'Ver Programación de Recepciones', 1, GETDATE(), GETDATE());
-", []);
+    VALUES (?, ?, ?, ?, ?, GETDATE(), GETDATE())
+");
+$stmt->execute([95, "read", "Abastos", "Ver Programacion de Recepciones", 1]);
+$pdo->exec("SET IDENTITY_INSERT TG.dbo.tg_permissions OFF");
 $rows = $sql->select("SELECT id, department, description, status FROM TG.dbo.tg_permissions WHERE id = 95", []);
 print_r($rows);
 ```
 
 Expected: one row, `id=95`, `department='Abastos'`, `status=1`. Do not assign this permission to any user yet — that is a manual step the user does later once the feature is verified.
 
-- [ ] **Step 6: Add AEMSA to `SG12.dbo.Proveedores` and `TG.dbo.Proveedores`**
-
-```php
-<?php
-require "vendor/autoload.php";
-require "_assets/classes/common/MySqlPdoHandler.class.php";
-$sql = MySqlPdoHandler::getInstance();
-$sql->connect("SG12");
-
-// SG12.dbo.Proveedores.cod is manually assigned elsewhere in this codebase
-// (not identity) -- get the next free cod.
-$maxCod = $sql->select("SELECT MAX(cod) AS maxcod FROM SG12.dbo.Proveedores", []);
-$nextCod = (int)$maxCod[0]['maxcod'] + 1;
-
-$sql->insert("
-    INSERT INTO SG12.dbo.Proveedores (cod, den, rfc)
-    VALUES (?, 'AEMSA', '')
-", [$nextCod]);
-
-$sql->insert("
-    INSERT INTO TG.dbo.Proveedores (id_control_gas, activo, fecha_alta)
-    VALUES (?, 1, GETDATE())
-", [$nextCod]);
-
-$rows = $sql->select("
-    SELECT t1.id, t1.id_control_gas, t2.den, t2.rfc
-    FROM TG.dbo.Proveedores t1
-    LEFT JOIN SG12.dbo.Proveedores t2 ON t1.id_control_gas = t2.cod
-    WHERE t2.den = 'AEMSA'
-", []);
-print_r($rows);
-```
-
-Expected: one row printed with a new `id` and `den='AEMSA'`. **Write down the printed `id` value** — it's needed as the AEMSA `supplier_id` in Task 7 (import script).
-
-If the exact RFC for AEMSA becomes known later, update the `rfc` column directly — not required for this feature to function since matching for the new schedule feature is by `supplier_id`, not RFC.
+**No Step 6.** AEMSA already exists — confirmed 2026-09-06 against the real DB (`TG.dbo.Proveedores.id=163`, `id_control_gas=96`, `SG12.dbo.Proveedores.den='ALTOS ENERGETICOS MEXICANOS'`). Do not insert into `SG12` for any reason — it is read-only.
 
 No commit for this task (it's a DB change, not a code change).
 
@@ -1179,7 +1157,7 @@ const SUPPLIER_IDS = [
     'MGC' => 139,       // MGC México
     'ENEREY' => 150,    // Enerey Latinoamérica
     'PETROTAL' => 122,  // Petrotal
-    'AEMSA' => null,    // TODO: replace with the id printed by Task 1 Step 6
+    'AEMSA' => 163,     // ALTOS ENERGETICOS MEXICANOS, confirmed 2026-09-06 against the real DB
     'ESSA FUEL' => 151, // Essa Fuel Advisors
     'LOBO' => 143,      // Petrolíferos Lobo
 ];
@@ -1381,7 +1359,7 @@ foreach ($omitidos as $o) echo "  - $o\n";
 
 - [ ] **Step 3: Run the import against the real database**
 
-Run: `php import_programa_julio_2026.php` (from wherever it was saved) after replacing the `CREATED_BY` and `AEMSA` placeholders with the real ids confirmed in Task 1 Step 6 and Task 7 Step 1.
+Run: `php import_programa_julio_2026.php` (from wherever it was saved) after replacing the `CREATED_BY` placeholder with the real id confirmed in Task 7 Step 1 (the `AEMSA` constant is already `163`, confirmed 2026-09-06 — no replacement needed there).
 
 Expected: `Insertados: N` where N is a large majority of the ~600+ data rows across 31 sheets (exact count varies by how many blocks are recognized on the first pass), plus a printed list of omitted rows for manual review.
 

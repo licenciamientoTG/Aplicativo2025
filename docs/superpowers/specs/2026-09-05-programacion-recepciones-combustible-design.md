@@ -66,7 +66,7 @@ Nota: `fuel_carriers` es un catálogo operativo nuevo, distinto de `creCarriers`
 
 ### Proveedores
 
-Se usa `TG.dbo.Proveedores` existente (`supplier_id` = `TG.dbo.Proveedores.id`; el nombre se resuelve vía `id_control_gas` → `SG12.dbo.Proveedores.den`, igual que `ProveedoresModel::get_by_id()`). Verificado contra la base real (2026-09-05): ya existen Premier Gas (id 138), Tesoro México Supply & Marketing (id 123), MGC México (id 139), Enerey Latinoamérica (id 150), Petrotal (id 122), Essa Fuel Advisors (id 151), Petrolíferos Lobo (id 143). **AEMSA no existe** en `SG12.dbo.Proveedores` ni en `TG.dbo.Proveedores` — se da de alta como parte del setup inicial (ver plan de implementación); no hay flujo en el aplicativo para altas de proveedor, se hace por SQL directo.
+Se usa `TG.dbo.Proveedores` existente (`supplier_id` = `TG.dbo.Proveedores.id`; el nombre se resuelve vía `id_control_gas` → `SG12.dbo.Proveedores.den`, igual que `ProveedoresModel::get_by_id()`). Verificado contra la base real (2026-09-05/06): ya existen Premier Gas (id 138), Tesoro México Supply & Marketing (id 123), MGC México (id 139), Enerey Latinoamérica (id 150), Petrotal (id 122), Essa Fuel Advisors (id 151), Petrolíferos Lobo (id 143). **AEMSA ya existe también** — en `SG12.dbo.Proveedores` está registrado con la razón social "ALTOS ENERGETICOS MEXICANOS" (`cod=96`, RFC `AEM160511LMA`), enlazado en `TG.dbo.Proveedores.id=163`. **`SG12` es de solo lectura — nunca se inserta ahí.** No hace falta ningún alta de proveedor para esta feature.
 
 ## Pantallas
 
