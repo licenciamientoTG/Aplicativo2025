@@ -192,6 +192,15 @@
       </li>
       {% endif %}
 
+      {% if authorized(95) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/supply/scheduling">
+          <i data-feather="calendar"></i>
+          <span class="align-middle">Programación de Recepciones</span>
+        </a>
+      </li>
+      {% endif %}
+
       {% endif %}
 
       {% if authorized(7) %} {# Ver módulo de Administración #}
