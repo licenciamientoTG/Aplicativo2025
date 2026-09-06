@@ -205,10 +205,15 @@ class FuelTerminalsModel extends Model {
         return $rows[0] ?? null;
     }
 
+    // NOTE: do NOT use "INSERT ... OUTPUT INSERTED.id" with $this->sql->select() —
+    // confirmed 2026-09-06 by running this exact query: select() (MySqlPdoHandler.class.php:119)
+    // requires the query to contain the literal word "select" (via stristr), which
+    // "OUTPUT INSERTED.id" does not, so it's rejected as "query mal formado".
+    // $sql->insert() already returns the new id via PDO::lastInsertId() (confirmed
+    // working) — use that instead.
     function add(string $nombre, ?int $supplierId): int {
-        $query = "INSERT INTO TG.dbo.fuel_terminals (nombre, supplier_id, activo) OUTPUT INSERTED.id VALUES (?, ?, 1)";
-        $rows = $this->sql->select($query, [$nombre, $supplierId]);
-        return (int)$rows[0]['id'];
+        $query = "INSERT INTO TG.dbo.fuel_terminals (nombre, supplier_id, activo) VALUES (?, ?, 1)";
+        return (int)$this->sql->insert($query, [$nombre, $supplierId]);
     }
 }
 ```
@@ -230,10 +235,10 @@ class FuelCarriersModel extends Model {
         return $rows[0] ?? null;
     }
 
+    // See the note on FuelTerminalsModel::add() above -- same reasoning.
     function add(string $nombre): int {
-        $query = "INSERT INTO TG.dbo.fuel_carriers (nombre, activo) OUTPUT INSERTED.id VALUES (?, 1)";
-        $rows = $this->sql->select($query, [$nombre]);
-        return (int)$rows[0]['id'];
+        $query = "INSERT INTO TG.dbo.fuel_carriers (nombre, activo) VALUES (?, 1)";
+        return (int)$this->sql->insert($query, [$nombre]);
     }
 }
 ```
@@ -252,7 +257,6 @@ Expected: `No syntax errors detected` for both.
 ```php
 <?php
 require "vendor/autoload.php";
-require "_assets/classes/Model.php";  // adjust path if Model.php isn't autoloaded elsewhere
 require "_assets/classes/common/MySqlPdoHandler.class.php";
 require "_assets/models/Model.php";
 require "_assets/models/FuelTerminalsModel.php";
@@ -350,21 +354,23 @@ class FuelReceptionScheduleModel extends Model {
         return $this->sql->select($query, []) ?: [];
     }
 
+    // NOTE: do NOT use "INSERT ... OUTPUT INSERTED.id" with $this->sql->select() --
+    // confirmed 2026-09-06 against the real DB: select() requires the literal word
+    // "select" in the query text and rejects this as "query mal formado". Use
+    // $sql->insert(), which already returns the new id via PDO::lastInsertId().
     function add(array $data, int $userId): int {
         $query = "
             INSERT INTO TG.dbo.fuel_reception_schedule
                 (fecha, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
                  carrier_id, referencia, notas, estatus, created_by, created_at)
-            OUTPUT INSERTED.id
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Programado', ?, GETDATE())
         ";
-        $rows = $this->sql->select($query, [
+        return (int)$this->sql->insert($query, [
             $data['fecha'], $data['hora'] ?: null, $data['supplier_id'], $data['terminal_id'],
             $data['station_code'], $data['product'], $data['mezcla'] ?: null, $data['litros'],
             $data['carrier_id'] ?: null, $data['referencia'] ?: null, $data['notas'] ?: null,
             $userId,
         ]);
-        return (int)$rows[0]['id'];
     }
 
     function update(int $id, array $data, int $userId): void {
