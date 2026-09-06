@@ -417,9 +417,11 @@ require "_assets/models/FuelReceptionScheduleModel.php";
 $model = new FuelReceptionScheduleModel();
 
 // 123 = Tesoro (TG.dbo.Proveedores.id, confirmed 2026-09-05), 10 = Misiones station code.
-// Replace $terminalId/$carrierId with the ids printed by Task 2 Step 4.
-$terminalId = 1; // adjust
-$carrierId = 1;  // adjust
+// terminalId=2 ("Diaz Gas") and carrierId=1 ("Carretera") are the REAL ids
+// Task 2 created against the live DB (confirmed 2026-09-06, commit 339db9cc)
+// -- do not use 1/1 as a guess, these are the actual rows now in TG.dbo.fuel_terminals/fuel_carriers.
+$terminalId = 2;
+$carrierId = 1;
 
 $id = $model->add([
     'fecha' => '2026-09-10', 'hora' => '11:00', 'supplier_id' => 123, 'terminal_id' => $terminalId,
