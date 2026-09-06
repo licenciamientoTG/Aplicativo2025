@@ -70,6 +70,13 @@ function cargarDia(fecha) {
         });
 }
 
+function formatearFechaLocal(fecha) {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+}
+
 function abrirModal(id, fecha) {
     $.post('/supply/scheduling_modal', { id: id || '', fecha: fecha })
         .done(function (resp) {
@@ -102,13 +109,13 @@ $(document).ready(function () {
     $('#btnDiaAnterior').on('click', function () {
         const fecha = new Date(fechaInput.val() + 'T00:00:00');
         fecha.setDate(fecha.getDate() - 1);
-        fechaInput.val(fecha.toISOString().slice(0, 10)).trigger('change');
+        fechaInput.val(formatearFechaLocal(fecha)).trigger('change');
     });
 
     $('#btnDiaSiguiente').on('click', function () {
         const fecha = new Date(fechaInput.val() + 'T00:00:00');
         fecha.setDate(fecha.getDate() + 1);
-        fechaInput.val(fecha.toISOString().slice(0, 10)).trigger('change');
+        fechaInput.val(formatearFechaLocal(fecha)).trigger('change');
     });
 
     $('#btnAgregarRecepcion').on('click', function () {
@@ -155,6 +162,9 @@ $(document).ready(function () {
             .done(function (resp) {
                 if (!resp.success) return;
                 $('#terminal_id').append(`<option value="${resp.id}" selected>${resp.nombre}</option>`);
+            })
+            .fail(function () {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo crear la terminal.</p></div>');
             });
     });
 
@@ -165,6 +175,9 @@ $(document).ready(function () {
             .done(function (resp) {
                 if (!resp.success) return;
                 $('#carrier_id').append(`<option value="${resp.id}" selected>${resp.nombre}</option>`);
+            })
+            .fail(function () {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo crear el transportista.</p></div>');
             });
     });
 });
