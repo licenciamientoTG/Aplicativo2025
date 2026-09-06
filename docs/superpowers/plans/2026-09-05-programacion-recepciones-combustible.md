@@ -1202,6 +1202,7 @@ const STATION_CODES = [
     'anapra' => 17,
     'travel center' => 33,
     'hnos escobar' => 30,
+    'gabriela mistral' => 39, // confirmed 2026-09-06: appears in the real spreadsheet, missed in the original 37-station mapping table
 ];
 
 function normalizarEstacion(string $texto): ?string {
@@ -1298,7 +1299,15 @@ foreach ($spreadsheet->getSheetNames() as $nombreHoja) {
                 $litros = trim((string)$sheet->getCell(Coordinate::stringFromColumnIndex($col + 1) . $dataRow)->getValue());
                 $productoTexto = trim((string)$sheet->getCell(Coordinate::stringFromColumnIndex($col + 2) . $dataRow)->getValue());
                 $estacionTexto = trim((string)$sheet->getCell(Coordinate::stringFromColumnIndex($col + 3) . $dataRow)->getValue());
-                $horaTexto = trim((string)$sheet->getCell(Coordinate::stringFromColumnIndex($col + 4) . $dataRow)->getValue());
+                // getFormattedValue(), no getValue(): Excel guarda la hora como serial
+                // numérico (ej. 0.5833333333333334 para "2:00 PM"); getValue() devuelve
+                // ese float crudo, que rebasa hora VARCHAR(10) y rompe el INSERT (bug
+                // real encontrado 2026-09-06 corriendo el import: 427 de 1152 filas
+                // fallaban de forma determinística por esto -- no era timeout de
+                // conexión ni concurrencia, ambos descartados antes de encontrar la
+                // causa real comparando el valor crudo de la celda contra su formato).
+                $horaTexto = trim((string)$sheet->getCell(Coordinate::stringFromColumnIndex($col + 4) . $dataRow)->getFormattedValue());
+                if (strlen($horaTexto) > 10) $horaTexto = substr($horaTexto, 0, 10);
                 $transpTexto = trim((string)$sheet->getCell(Coordinate::stringFromColumnIndex($col + 5) . $dataRow)->getValue());
 
                 if (!is_numeric($litros) || $productoTexto === '' || $estacionTexto === '') {
@@ -1330,20 +1339,25 @@ foreach ($spreadsheet->getSheetNames() as $nombreHoja) {
 
                 $carrierId = resolverTransportista($carriersModel, $carrierCache, $transpTexto);
 
-                $scheduleModel->add([
-                    'fecha' => $fechaObj->format('Y-m-d'),
-                    'hora' => $horaTexto ?: null,
-                    'supplier_id' => $supplierId,
-                    'terminal_id' => $terminalId,
-                    'station_code' => $stationCode,
-                    'product' => $producto,
-                    'mezcla' => $mezcla,
-                    'litros' => (int)$litros,
-                    'carrier_id' => $carrierId,
-                    'referencia' => null,
-                    'notas' => null,
-                ], CREATED_BY);
-                $insertados++;
+                try {
+                    $scheduleModel->add([
+                        'fecha' => $fechaObj->format('Y-m-d'),
+                        'hora' => $horaTexto ?: null,
+                        'supplier_id' => $supplierId,
+                        'terminal_id' => $terminalId,
+                        'station_code' => $stationCode,
+                        'product' => $producto,
+                        'mezcla' => $mezcla,
+                        'litros' => (int)$litros,
+                        'carrier_id' => $carrierId,
+                        'referencia' => null,
+                        'notas' => null,
+                    ], CREATED_BY);
+                    $insertados++;
+                } catch (Exception $e) {
+                    // No dejar morir todo el script por una fila -- loguear y seguir.
+                    $omitidos[] = "$nombreHoja!$colLetter$dataRow: ERROR AL INSERTAR - " . $e->getMessage();
+                }
             }
         }
     }
