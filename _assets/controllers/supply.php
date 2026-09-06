@@ -55,6 +55,9 @@ class Supply
     public CrePlacesModel $crePlacesModel;
     public CrePricesModel $crePricesModel;
     public PetrotalReconciliationModel $petrotalReconciliationModel;
+    public FuelReceptionScheduleModel $fuelReceptionScheduleModel;
+    public FuelTerminalsModel $fuelTerminalsModel;
+    public FuelCarriersModel $fuelCarriersModel;
     /**
      * @param $twig
      */
@@ -86,6 +89,9 @@ class Supply
         $this->crePlacesModel                                    = new CrePlacesModel();
         $this->crePricesModel                                    = new CrePricesModel();
         $this->petrotalReconciliationModel                       = new PetrotalReconciliationModel;
+        $this->fuelReceptionScheduleModel = new FuelReceptionScheduleModel();
+        $this->fuelTerminalsModel = new FuelTerminalsModel();
+        $this->fuelCarriersModel = new FuelCarriersModel();
     }
 
     /**
@@ -2683,6 +2689,141 @@ class Supply
         $this->petrotalReconciliationModel->deshacer_asignacion($id, $usuario);
 
         json_output(['success' => true]);
+    }
+
+    // Vista por día de la programación de recepciones de combustible —
+    // reemplaza el Excel manual de Drive. $fecha llega como segmento de
+    // URL opcional (/supply/scheduling/2026-09-10); sin fecha, hoy.
+    public function scheduling($fecha = null)
+    {
+        if (!authorized(95)) {
+            echo "No autorizado";
+            return;
+        }
+        $fecha = $fecha ?: date('Y-m-d');
+        $proveedores = $this->fuelReceptionScheduleModel->get_proveedores();
+        $estaciones = $this->estacionesModel->get_select_stations();
+        $terminales = $this->fuelTerminalsModel->get_all();
+        $transportistas = $this->fuelCarriersModel->get_all();
+
+        echo $this->twig->render($this->route . 'scheduling.html', compact(
+            'fecha', 'proveedores', 'estaciones', 'terminales', 'transportistas'
+        ));
+    }
+
+    public function scheduling_day_data()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['data' => [], 'error' => 'No autorizado']);
+            return;
+        }
+        $fecha = $_REQUEST['fecha'] ?? date('Y-m-d');
+        $filas = $this->fuelReceptionScheduleModel->get_day($fecha);
+        json_output(['data' => $filas]);
+    }
+
+    public function scheduling_add()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $id = $this->fuelReceptionScheduleModel->add($_POST, $userId);
+        json_output(['success' => true, 'id' => $id]);
+    }
+
+    public function scheduling_update()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $id = (int)($_POST['id'] ?? 0);
+        $this->fuelReceptionScheduleModel->update($id, $_POST, $userId);
+        json_output(['success' => true]);
+    }
+
+    public function scheduling_cancel()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $id = (int)($_POST['id'] ?? 0);
+        $this->fuelReceptionScheduleModel->cancel($id, $userId);
+        json_output(['success' => true]);
+    }
+
+    // Carga el modal de captura/edición. Sin $id: formulario vacío para
+    // "Agregar recepción". Con $id: precarga la fila (patrón idéntico a
+    // frmCapturaCompra()).
+    public function scheduling_modal()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        $fecha = $_POST['fecha'] ?? date('Y-m-d');
+        $registro = $id ? $this->fuelReceptionScheduleModel->get_one($id) : null;
+
+        $proveedores = $this->fuelReceptionScheduleModel->get_proveedores();
+        $estaciones = $this->estacionesModel->get_select_stations();
+        $terminales = $this->fuelTerminalsModel->get_all();
+        $transportistas = $this->fuelCarriersModel->get_all();
+
+        $html = $this->twig->render($this->route . 'modals/frmProgramacionRecepcion.html', compact(
+            'registro', 'fecha', 'proveedores', 'estaciones', 'terminales', 'transportistas'
+        ));
+        json_output(['success' => true, 'html' => $html]);
+    }
+
+    public function scheduling_add_terminal()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $nombre = trim($_POST['nombre'] ?? '');
+        if ($nombre === '') {
+            json_output(['success' => false, 'message' => 'Nombre requerido']);
+            return;
+        }
+        if ($existing = $this->fuelTerminalsModel->find_by_name($nombre)) {
+            json_output(['success' => true, 'id' => $existing['id'], 'nombre' => $existing['nombre']]);
+            return;
+        }
+        $id = $this->fuelTerminalsModel->add($nombre, null);
+        json_output(['success' => true, 'id' => $id, 'nombre' => $nombre]);
+    }
+
+    public function scheduling_add_carrier()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $nombre = trim($_POST['nombre'] ?? '');
+        if ($nombre === '') {
+            json_output(['success' => false, 'message' => 'Nombre requerido']);
+            return;
+        }
+        if ($existing = $this->fuelCarriersModel->find_by_name($nombre)) {
+            json_output(['success' => true, 'id' => $existing['id'], 'nombre' => $existing['nombre']]);
+            return;
+        }
+        $id = $this->fuelCarriersModel->add($nombre);
+        json_output(['success' => true, 'id' => $id, 'nombre' => $nombre]);
     }
 
 }
