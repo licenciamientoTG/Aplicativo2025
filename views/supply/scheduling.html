@@ -1,0 +1,65 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Programación de Recepciones{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Programación de Recepciones{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-outline-secondary" id="btnDiaAnterior">
+                            <i data-feather="chevron-left"></i>
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <input type="date" class="form-control" id="fecha_programacion" value="{{ fecha }}">
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-outline-secondary" id="btnDiaSiguiente">
+                            <i data-feather="chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="col-auto ms-auto">
+                        <span class="text-muted">Total programado del día: <strong id="totalLitrosDia">0</strong> L</span>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-primary" id="btnAgregarRecepcion">
+                            <i data-feather="plus"></i> Agregar recepción
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="contenedorGrupos">
+                    <p class="text-muted text-center">Cargando…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalProgramacion" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Recepción programada</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="frmProgramacion">
+                <div id="modalProgramacionContent"></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script>
+    window.SCHEDULING_PROVEEDORES = {{ proveedores|json_encode|raw }};
+    window.SCHEDULING_ESTACIONES = {{ estaciones|json_encode|raw }};
+    window.SCHEDULING_TERMINALES = {{ terminales|json_encode|raw }};
+    window.SCHEDULING_TRANSPORTISTAS = {{ transportistas|json_encode|raw }};
+</script>
+<script src="/_assets/js/scheduling.js"></script>
+{% endblock %}

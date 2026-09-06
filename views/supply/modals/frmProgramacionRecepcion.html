@@ -1,0 +1,114 @@
+<input type="hidden" id="id" name="id" value="{{ registro.id|default('') }}">
+<div class="modal-body">
+    <div class="row">
+        <div class="col-12 col-md-4">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="fecha">Fecha:</label>
+                <input type="date" class="form-control" id="fecha" name="fecha" value="{{ registro.fecha|default(fecha) }}" required>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="hora">Hora:</label>
+                <input type="time" class="form-control" id="hora" name="hora" value="{{ registro.hora|default('') }}">
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="litros">Litros:</label>
+                <input type="number" min="1" step="1" class="form-control" id="litros" name="litros" value="{{ registro.litros|default('') }}" required>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12 col-md-6">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="supplier_id">Proveedor:</label>
+                <select class="selectpicker form-control" data-live-search="true" data-width="100%" id="supplier_id" name="supplier_id" required>
+                    <option value="">Seleccione un proveedor…</option>
+                    {% for p in proveedores %}
+                    <option value="{{ p.id }}" {{ registro.supplier_id == p.id ? 'selected' : '' }}>{{ p.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="col-12 col-md-6">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="terminal_id">Terminal / base de carga:</label>
+                <div class="input-group">
+                    <select class="form-control" id="terminal_id" name="terminal_id" required>
+                        <option value="">Seleccione una terminal…</option>
+                        {% for t in terminales %}
+                        <option value="{{ t.id }}" {{ registro.terminal_id == t.id ? 'selected' : '' }}>{{ t.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="btn btn-outline-secondary" id="btnNuevaTerminal">+ Nueva</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12 col-md-6">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="product">Producto:</label>
+                <select class="form-control" id="product" name="product" required>
+                    <option value="Regular" {{ registro.product == 'Regular' ? 'selected' : '' }}>Regular</option>
+                    <option value="Premium" {{ registro.product == 'Premium' ? 'selected' : '' }}>Premium</option>
+                    <option value="Diesel" {{ registro.product == 'Diesel' ? 'selected' : '' }}>Diesel</option>
+                    <option value="Mixta" {{ registro.product == 'Mixta' ? 'selected' : '' }}>Mixta</option>
+                </select>
+            </div>
+        </div>
+        <div class="col-12 col-md-6" id="mezcla_wrapper" style="{{ registro.product == 'Mixta' ? '' : 'display:none;' }}">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="mezcla">Mezcla:</label>
+                <input type="text" class="form-control" id="mezcla" name="mezcla" placeholder="Ej. 21/11" value="{{ registro.mezcla|default('') }}">
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12 col-md-6">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="station_code">Estación:</label>
+                <select class="selectpicker form-control" data-live-search="true" data-width="100%" id="station_code" name="station_code" required>
+                    <option value="">Seleccione una estación…</option>
+                    {% for e in estaciones %}
+                    <option value="{{ e.Codigo }}" {{ registro.station_code == e.Codigo ? 'selected' : '' }}>{{ e.Nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="col-12 col-md-6">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="carrier_id">Transportista:</label>
+                <div class="input-group">
+                    <select class="form-control" id="carrier_id" name="carrier_id">
+                        <option value="">Seleccione un transportista…</option>
+                        {% for c in transportistas %}
+                        <option value="{{ c.id }}" {{ registro.carrier_id == c.id ? 'selected' : '' }}>{{ c.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="btn btn-outline-secondary" id="btnNuevoTransportista">+ Nuevo</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12 col-md-6">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="referencia">Referencia (folio/embarque/guía):</label>
+                <input type="text" class="form-control" id="referencia" name="referencia" value="{{ registro.referencia|default('') }}">
+            </div>
+        </div>
+        <div class="col-12 col-md-6">
+            <div class="mb-3">
+                <label class="col-form-label col-form-label-sm" for="notas">Notas:</label>
+                <input type="text" class="form-control" id="notas" name="notas" value="{{ registro.notas|default('') }}">
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-footer">
+    <button type="submit" class="btn btn-primary" id="btnGuardarProgramacion">Guardar</button>
+    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+</div>
