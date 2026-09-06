@@ -55,11 +55,5 @@
 </div>
 {% endblock %}
 {% block myjs %}
-<script>
-    window.SCHEDULING_PROVEEDORES = {{ proveedores|json_encode|raw }};
-    window.SCHEDULING_ESTACIONES = {{ estaciones|json_encode|raw }};
-    window.SCHEDULING_TERMINALES = {{ terminales|json_encode|raw }};
-    window.SCHEDULING_TRANSPORTISTAS = {{ transportistas|json_encode|raw }};
-</script>
 <script src="/_assets/js/scheduling.js"></script>
 {% endblock %}

@@ -68,7 +68,7 @@ class FuelReceptionScheduleModel extends Model {
             SET fecha = ?, hora = ?, supplier_id = ?, terminal_id = ?, station_code = ?,
                 product = ?, mezcla = ?, litros = ?, carrier_id = ?, referencia = ?, notas = ?,
                 estatus = 'Modificado', updated_by = ?, updated_at = GETDATE()
-            WHERE id = ?
+            WHERE id = ? AND estatus <> 'Cancelado'
         ";
         $this->sql->update($query, [
             $data['fecha'], $data['hora'] ?: null, $data['supplier_id'], $data['terminal_id'],

@@ -2701,14 +2701,8 @@ class Supply
             return;
         }
         $fecha = $fecha ?: date('Y-m-d');
-        $proveedores = $this->fuelReceptionScheduleModel->get_proveedores();
-        $estaciones = $this->estacionesModel->get_select_stations();
-        $terminales = $this->fuelTerminalsModel->get_all();
-        $transportistas = $this->fuelCarriersModel->get_all();
 
-        echo $this->twig->render($this->route . 'scheduling.html', compact(
-            'fecha', 'proveedores', 'estaciones', 'terminales', 'transportistas'
-        ));
+        echo $this->twig->render($this->route . 'scheduling.html', compact('fecha'));
     }
 
     public function scheduling_day_data()
@@ -2730,8 +2724,36 @@ class Supply
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
+
+        $camposRequeridos = ['fecha', 'supplier_id', 'terminal_id', 'station_code', 'product', 'litros'];
+        foreach ($camposRequeridos as $campo) {
+            if (empty($_POST[$campo])) {
+                json_output(['success' => false, 'message' => 'Faltan campos requeridos']);
+                return;
+            }
+        }
+
+        $supplierId = (int)$_POST['supplier_id'];
+        $terminalId = (int)$_POST['terminal_id'];
+        $stationCode = (int)$_POST['station_code'];
+        $litros = (int)$_POST['litros'];
+        if ($supplierId <= 0 || $terminalId <= 0 || $stationCode <= 0 || $litros <= 0) {
+            json_output(['success' => false, 'message' => 'Faltan campos requeridos']);
+            return;
+        }
+
+        if (!in_array($_POST['product'], ['Regular', 'Premium', 'Diesel', 'Mixta'], true)) {
+            json_output(['success' => false, 'message' => 'Faltan campos requeridos']);
+            return;
+        }
+
         $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
-        $id = $this->fuelReceptionScheduleModel->add($_POST, $userId);
+        try {
+            $id = $this->fuelReceptionScheduleModel->add($_POST, $userId);
+        } catch (Exception $e) {
+            json_output(['success' => false, 'message' => 'No se pudo guardar']);
+            return;
+        }
         json_output(['success' => true, 'id' => $id]);
     }
 
@@ -2742,9 +2764,42 @@ class Supply
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+
         $id = (int)($_POST['id'] ?? 0);
-        $this->fuelReceptionScheduleModel->update($id, $_POST, $userId);
+        if ($id <= 0) {
+            json_output(['success' => false, 'message' => 'Faltan campos requeridos']);
+            return;
+        }
+
+        $camposRequeridos = ['fecha', 'supplier_id', 'terminal_id', 'station_code', 'product', 'litros'];
+        foreach ($camposRequeridos as $campo) {
+            if (empty($_POST[$campo])) {
+                json_output(['success' => false, 'message' => 'Faltan campos requeridos']);
+                return;
+            }
+        }
+
+        $supplierId = (int)$_POST['supplier_id'];
+        $terminalId = (int)$_POST['terminal_id'];
+        $stationCode = (int)$_POST['station_code'];
+        $litros = (int)$_POST['litros'];
+        if ($supplierId <= 0 || $terminalId <= 0 || $stationCode <= 0 || $litros <= 0) {
+            json_output(['success' => false, 'message' => 'Faltan campos requeridos']);
+            return;
+        }
+
+        if (!in_array($_POST['product'], ['Regular', 'Premium', 'Diesel', 'Mixta'], true)) {
+            json_output(['success' => false, 'message' => 'Faltan campos requeridos']);
+            return;
+        }
+
+        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        try {
+            $this->fuelReceptionScheduleModel->update($id, $_POST, $userId);
+        } catch (Exception $e) {
+            json_output(['success' => false, 'message' => 'No se pudo guardar']);
+            return;
+        }
         json_output(['success' => true]);
     }
 

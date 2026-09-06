@@ -1,13 +1,19 @@
+function esc(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                    .replace(/"/g,'&quot;');
+}
+
 function formatearFilaGrupo(fila) {
     return `
         <tr data-id="${fila.id}">
-            <td>${fila.hora || '<span class="text-muted">—</span>'}</td>
-            <td>${fila.product}${fila.mezcla ? ' (' + fila.mezcla + ')' : ''}</td>
+            <td>${esc(fila.hora) || '<span class="text-muted">—</span>'}</td>
+            <td>${esc(fila.product)}${fila.mezcla ? ' (' + esc(fila.mezcla) + ')' : ''}</td>
             <td>${Number(fila.litros).toLocaleString('es-MX')}</td>
-            <td>${fila.station_nombre || '<span class="text-muted">—</span>'}</td>
-            <td>${fila.carrier_nombre || '<span class="text-muted">—</span>'}</td>
-            <td>${fila.referencia || ''}</td>
-            <td>${fila.notas || ''}</td>
+            <td>${esc(fila.station_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td>${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td>${esc(fila.referencia) || ''}</td>
+            <td>${esc(fila.notas) || ''}</td>
             <td>
                 <button type="button" class="btn btn-sm btn-outline-primary btn-editar-recepcion" data-id="${fila.id}">Editar</button>
                 <button type="button" class="btn btn-sm btn-outline-danger btn-cancelar-recepcion" data-id="${fila.id}">Cancelar</button>
@@ -30,7 +36,7 @@ function renderGrupos(filas) {
     const grupos = {};
     filas.forEach(function (fila) {
         totalLitros += Number(fila.litros) || 0;
-        const clave = (fila.supplier_nombre || 'Sin proveedor') + ' — ' + (fila.terminal_nombre || 'Sin terminal');
+        const clave = esc(fila.supplier_nombre || 'Sin proveedor') + ' — ' + esc(fila.terminal_nombre || 'Sin terminal');
         if (!grupos[clave]) grupos[clave] = [];
         grupos[clave].push(fila);
     });
@@ -87,7 +93,9 @@ function abrirModal(id, fecha) {
             $('#modalProgramacionContent').html(resp.html);
             $('.selectpicker').selectpicker();
             $('#product').on('change', function () {
-                $('#mezcla_wrapper').toggle($(this).val() === 'Mixta');
+                const esMixta = $(this).val() === 'Mixta';
+                $('#mezcla_wrapper').toggle(esMixta);
+                if (!esMixta) $('#mezcla').val('');
             });
             const modal = new bootstrap.Modal(document.getElementById('modalProgramacion'));
             modal.show();
