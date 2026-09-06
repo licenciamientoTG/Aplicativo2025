@@ -66,7 +66,7 @@ Nota: `fuel_carriers` es un catálogo operativo nuevo, distinto de `creCarriers`
 
 ### Proveedores
 
-Se usa `TG.dbo.Proveedores` existente. Antes de implementar, verificar cuáles de estos ya están dados de alta como proveedor: Premier Gas, Tesoro México Supply and Marketing, MGC, Enerey, Petrotal, AEMSA, Essa Fuel, Lobo/Gasomex. Los que falten se dan de alta como proveedor normal (permite a futuro enlazar con facturas/pagos si se desea).
+Se usa `TG.dbo.Proveedores` existente (`supplier_id` = `TG.dbo.Proveedores.id`; el nombre se resuelve vía `id_control_gas` → `SG12.dbo.Proveedores.den`, igual que `ProveedoresModel::get_by_id()`). Verificado contra la base real (2026-09-05): ya existen Premier Gas (id 138), Tesoro México Supply & Marketing (id 123), MGC México (id 139), Enerey Latinoamérica (id 150), Petrotal (id 122), Essa Fuel Advisors (id 151), Petrolíferos Lobo (id 143). **AEMSA no existe** en `SG12.dbo.Proveedores` ni en `TG.dbo.Proveedores` — se da de alta como parte del setup inicial (ver plan de implementación); no hay flujo en el aplicativo para altas de proveedor, se hace por SQL directo.
 
 ## Pantallas
 
@@ -98,16 +98,17 @@ Guardado vía AJAX (`add`/`update` en el controlador), sin recargar página; ref
   - `scheduling_add_terminal()` / `scheduling_add_carrier()` — alta rápida de catálogo
 - Nueva vista `views/supply/scheduling.html` + el modal.
 - Nuevo JS `_assets/js/supply.js` (agregar funciones, no archivo nuevo, seguir convención existente) o archivo dedicado `_assets/js/scheduling.js` si el bloque crece mucho — a decidir en el plan.
-- Nuevo permiso (ID a definir, siguiendo el patrón de permisos existente en `$_SESSION['tg_user']['permissions']`) para controlar quién accede a `/supply/scheduling`.
+- Nuevo permiso **id 95** en `TG.dbo.tg_permissions` (siguiente libre, confirmado contra la base real 2026-09-05: máximo actual es 94), verificado con `authorized(95)` en el controlador y el sidebar.
 
 ## Import de julio 2026 (carga de prueba, una sola vez)
 
 Script PHP standalone (no parte del flujo de la app) que:
 1. Lee `Programa Julio 2026.xlsx` con PhpSpreadsheet (ya es dependencia del proyecto).
 2. Por cada una de las 31 hojas, recorre los bloques de proveedor/terminal (detectados por las celdas de encabezado tipo "PROVEEDOR (Terminal)" seguidas de la fila de columnas `FECHA|LITROS|PRODUCTO|...`).
-3. Normaliza producto a Regular/Premium/Diesel/Mixta (+ mezcla), separa "código estación" y "nombre" del texto libre de la columna ESTACION (ej. "6410 misiones" → station_code=6410, se valida contra `TG.dbo.Estaciones`), resuelve/crea terminal y transportista por nombre, resuelve proveedor por nombre (con mapeo manual para variantes como "TESORO MÉXICO SUPPLY AND MARKETING" → proveedor "Tesoro").
+3. Normaliza producto a Regular/Premium/Diesel/Mixta (+ mezcla), resuelve estación con una **tabla de mapeo fija embebida en el script** (texto libre de la columna ESTACION → `Estaciones.Codigo`, confirmada manualmente contra el catálogo real — ver tabla completa en el plan de implementación; el número que acompaña al nombre en el Excel, ej. "6410" en "6410 misiones", NO es `Estaciones.Codigo`, es un identificador interno de ControlGas, por eso no se puede resolver solo con regex), resuelve/crea terminal y transportista por nombre, resuelve proveedor por nombre contra `TG.dbo.Proveedores`/`SG12.dbo.Proveedores.den` (mapeo fijo: Premier Gas→138, Tesoro→123, MGC→139, Enerey→150, Petrotal→122, Essa Fuel→151, Lobo→143, AEMSA→dado de alta en el setup inicial).
 4. Inserta en `fuel_reception_schedule` con `estatus = 'Programado'`.
-5. Registra en consola/log filas que no pudo mapear (estación no encontrada, proveedor ambiguo) para revisión manual — no se descartan silenciosamente.
+5. Filas con celda de estación ambigua (dos códigos separados por "/", ej. "1148 / 1159") se excluyen del import y se listan en el log — confirmado con el usuario que son errores de captura del Excel original, no un caso a resolver automáticamente.
+6. Registra en consola/log cualquier otra fila que no pudo mapear (estación no encontrada, proveedor ambiguo) para revisión manual — no se descartan silenciosamente.
 
 Este script se ejecuta una vez, manualmente, contra la base, y no se integra a ninguna pantalla ni cron.
 
