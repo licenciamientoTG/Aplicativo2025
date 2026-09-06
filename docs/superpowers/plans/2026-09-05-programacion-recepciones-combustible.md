@@ -1121,20 +1121,11 @@ EOF
 
 **Interfaces:**
 - Consumes: `FuelReceptionScheduleModel::add()` (Task 3), `FuelTerminalsModel::find_by_name()/add()` (Task 2), `FuelCarriersModel::find_by_name()/add()` (Task 2), the station mapping table and supplier id mapping confirmed in this session (below).
-- Produces: rows in `TG.dbo.fuel_reception_schedule` for July 2026, `created_by` set to a fixed "import" user id (use `1`, or the actual `alejandro.martinez` user id if known — ask the user which `tg_user` id to attribute the import to, if it matters for audit; otherwise `1` is fine since these are clearly marked `estatus='Programado'` test data). No changes to files inside `AplicativoPhp/` — this script lives only in the scratchpad directory and is run manually via `php import_programa_julio_2026.php`, never wired into the app.
+- Produces: rows in `TG.dbo.fuel_reception_schedule` for July 2026, `created_by = 6296` (confirmed 2026-09-06 against the real DB: `TG.dbo.Usuario.Id` for `Usuario = 'alejandro.martinez'`, `Nombre = 'Manuel Alejandro Martinez Velez'`, `Correo = 'alejandro.martinez@totalgas.com'` — the login table is `TG.dbo.Usuario`, NOT `tg_users`; confirmed by reading `sp_usuario_login`'s definition, which selects from `dbo.Usuario u`). No changes to files inside `AplicativoPhp/` — this script lives only in the scratchpad directory and is run manually via `php import_programa_julio_2026.php`, never wired into the app.
 
-- [ ] **Step 1: Confirm the exact `created_by` user id to use**
+- [ ] **Step 1: `created_by` is already confirmed — no lookup needed**
 
-Before writing the script, run:
-```php
-<?php
-require "vendor/autoload.php";
-require "_assets/classes/common/MySqlPdoHandler.class.php";
-$sql = MySqlPdoHandler::getInstance();
-$sql->connect("SG12");
-print_r($sql->select("SELECT id, usuario FROM TG.dbo.tg_users WHERE usuario LIKE ?", ["%alejandro%"]));
-```
-(adjust the table/column names if `tg_users` isn't the exact name — check `_assets/includes/validate.inc.php` for the real login table/columns first if this query errors). Use the returned id as `$CREATED_BY` in the script below. If the query errors because the table/column names differ, read `_assets/includes/validate.inc.php` to find the correct user table before proceeding — do not guess.
+`CREATED_BY = 6296` is already the real, verified id (see Interfaces above). Do not re-derive it or query `tg_users` (that table does not exist in this schema — confirmed 2026-09-06). Skip straight to Step 2.
 
 - [ ] **Step 2: Write the import script in the scratchpad directory**
 
@@ -1156,7 +1147,7 @@ require '_assets/models/FuelCarriersModel.php';
 
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
-const CREATED_BY = 1; // TODO: replace with the id confirmed in Task 7 Step 1
+const CREATED_BY = 6296; // alejandro.martinez, TG.dbo.Usuario.Id, confirmed 2026-09-06 against the real DB
 
 // Confirmed 2026-09-05 against TG.dbo.Proveedores / SG12.dbo.Proveedores.
 const SUPPLIER_IDS = [
@@ -1367,7 +1358,7 @@ foreach ($omitidos as $o) echo "  - $o\n";
 
 - [ ] **Step 3: Run the import against the real database**
 
-Run: `php import_programa_julio_2026.php` (from wherever it was saved) after replacing the `CREATED_BY` placeholder with the real id confirmed in Task 7 Step 1 (the `AEMSA` constant is already `163`, confirmed 2026-09-06 — no replacement needed there).
+Run: `php import_programa_julio_2026.php` (from wherever it was saved). Both `CREATED_BY = 6296` and `SUPPLIER_IDS['AEMSA'] = 163` are already the real confirmed values — no placeholder replacement needed before running.
 
 Expected: `Insertados: N` where N is a large majority of the ~600+ data rows across 31 sheets (exact count varies by how many blocks are recognized on the first pass), plus a printed list of omitted rows for manual review.
 
