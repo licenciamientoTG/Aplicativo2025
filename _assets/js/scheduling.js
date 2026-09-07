@@ -359,7 +359,7 @@ function renderPorEstacion(filas) {
     const contenedor = $('#contenedorGrupos');
     contenedor.empty();
 
-    const ocultarVacias = $('#chkOcultarVacias').is(':checked');
+    const ocultarVacias = $('#btnOcultarVacias').hasClass('active');
     const grupos = {};
     ESTACIONES.forEach(function (e) {
         grupos[e.Nombre] = { filas: [], total: 0 };
@@ -475,12 +475,16 @@ $(document).ready(function () {
         agrupacionActiva = $(this).data('agrupacion');
         $('#tabsAgrupacion button').removeClass('active');
         $(this).addClass('active');
-        $('#wrapperOcultarVacias').toggle(agrupacionActiva === 'estacion');
+        $('#btnOcultarVacias').toggle(agrupacionActiva === 'estacion');
         $('#btnOcultarVaciosTerminal').toggle(agrupacionActiva === 'terminal');
         renderizarTodo();
     });
 
-    $('#chkOcultarVacias').on('change', function () {
+    $('#btnOcultarVacias').on('click', function () {
+        const activo = $(this).toggleClass('active').hasClass('active');
+        $(this).attr('title', activo ? 'Mostrar estaciones sin recepción programada' : 'Ocultar estaciones sin recepción programada');
+        $(this).find('i').attr('data-feather', activo ? 'eye-off' : 'eye');
+        if (window.feather) feather.replace();
         renderizarTodo();
     });
 
