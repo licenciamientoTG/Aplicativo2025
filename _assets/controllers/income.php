@@ -37,8 +37,14 @@ class Income{
      * 'type' solo controla el formato en pantalla:
      *   text (default) | int | date | dec2 | dec3 | money
      *
-     * Ojo: las columnas "lista" (FoliosDespacho, MontosContables, etc.) son
+     * Ojo: las columnas "lista" (CodigosProducto, MontosContables, etc.) son
      * cadenas separadas por comas — SIEMPRE text, nunca numérico.
+     *
+     * El SP devuelve un renglón por DESPACHO, no por factura: las columnas
+     * de factura (UUID, MontoTotalDet, CantMovContables...) se repiten en
+     * cada renglón del mismo NumeroFactura. Por eso el orden por omisión es
+     * NumeroFactura + FolioDespacho, para que los despachos de una factura
+     * queden juntos.
      */
     private const EXPEDIENTE_COLUMNS = [
         ['key' => 'NumeroFactura',     'label' => 'Núm. Factura',        'type' => 'int'],
@@ -73,12 +79,15 @@ class Income{
         ['key' => 'MontoIVA',          'label' => 'Monto IVA',           'type' => 'money'],
         ['key' => 'MontoIIE',          'label' => 'Monto IIE',           'type' => 'money'],
         ['key' => 'MontoIIG',          'label' => 'Monto IIG',           'type' => 'money'],
-        ['key' => 'CantDespachos',     'label' => 'Cant. Despachos',     'type' => 'int'],
+        ['key' => 'FolioDespacho',     'label' => 'Folio Despacho',      'type' => 'int'],
+        ['key' => 'FechaDespacho',     'label' => 'Fecha Despacho',      'type' => 'date'],
         ['key' => 'VolumenDespachado', 'label' => 'Volumen Despachado',  'type' => 'dec3'],
         ['key' => 'MontoDespachado',   'label' => 'Monto Despachado',    'type' => 'money'],
-        ['key' => 'FoliosDespacho',    'label' => 'Folios Despacho',     'type' => 'text'],
-        ['key' => 'FechasDespacho',    'label' => 'Fechas Despacho',     'type' => 'text'],
-        ['key' => 'Vehiculos',         'label' => 'Vehículos',           'type' => 'text'],
+        ['key' => 'CodigoVehiculo',    'label' => 'Cód. Vehículo',       'type' => 'int'],
+        ['key' => 'CodigoClienteVehiculo', 'label' => 'Cód. Cliente Veh.', 'type' => 'int'],
+        ['key' => 'TarjetaVehiculo',   'label' => 'Tarjeta',             'type' => 'text'],
+        ['key' => 'PlacaVehiculo',     'label' => 'Placa',               'type' => 'text'],
+        ['key' => 'OdometroVehiculo',  'label' => 'Odómetro',            'type' => 'int'],
         ['key' => 'CantAplicaciones',  'label' => 'Cant. Aplicaciones',  'type' => 'int'],
         ['key' => 'MontoAplicado',     'label' => 'Monto Aplicado',      'type' => 'money'],
         ['key' => 'TiposAplicacion',   'label' => 'Tipos Aplicación',    'type' => 'text'],
