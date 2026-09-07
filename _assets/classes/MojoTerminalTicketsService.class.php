@@ -5,7 +5,25 @@ class MojoTerminalTicketsService {
     private const VALERAS_FORM = 84607;
     private const SYSTEM_QUEUE = 53551;
     private string $key;
-    public function __construct() { $this->key=(string)getenv('MOJO_ACCESS_KEY'); if ($this->key==='') throw new RuntimeException('La integración de Mojo no está configurada.'); }
+    public function __construct() {
+        $this->key = $this->loadApiKey();
+        if ($this->key === '') throw new RuntimeException('La integración de Mojo no está configurada.');
+    }
+    private function loadApiKey(): string {
+        $key = trim((string)getenv('MOJO_API_KEY'));
+        if ($key !== '') return $key;
+
+        // El proyecto no usa un cargador de .env; se lee únicamente esta clave
+        // desde la raíz de la aplicación sin registrarla ni exponerla al navegador.
+        $envFile = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '.env';
+        if (!is_readable($envFile)) return '';
+        foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+            if (preg_match('/^\s*MOJO_API_KEY\s*=\s*(.*?)\s*$/', $line, $matches)) {
+                return trim($matches[1], " \t\n\r\0\x0B\"'");
+            }
+        }
+        return '';
+    }
     private function request(string $method, string $path, ?array $payload=null): array {
         $url=self::BASE_URL.$path.(str_contains($path,'?')?'&':'?').'access_key='.rawurlencode($this->key);
         $ch=curl_init($url); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_CUSTOMREQUEST=>$method,CURLOPT_TIMEOUT=>30,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_HTTPHEADER=>['Content-Type: application/json']]);

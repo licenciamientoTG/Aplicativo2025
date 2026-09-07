@@ -9,6 +9,20 @@ class TerminalInventoryModel extends Model {
     public function inventoryExists(int $stationId, string $weekStart): bool {
         return (bool)$this->sql->select('SELECT 1 FROM [TG].[dbo].[inv_ter_inventarios] WHERE estacion_id=? AND semana_inicio=?', [$stationId, $weekStart]);
     }
+    public function getSettings(): array {
+        $rows = $this->sql->select('SELECT TOP (1) dia_cierre_semana, actualizado_por, actualizado_en FROM [TG].[dbo].[inv_ter_configuracion] WHERE id=1');
+        return $rows[0] ?? ['dia_cierre_semana' => 7, 'actualizado_por' => null, 'actualizado_en' => null];
+    }
+    public function saveClosingDay(int $day, int $userId): void {
+        $this->sql->update('UPDATE [TG].[dbo].[inv_ter_configuracion] SET dia_cierre_semana=?, actualizado_por=?, actualizado_en=SYSDATETIME() WHERE id=1', [$day, $userId]);
+    }
+    public function stationsInventoryStatus(string $weekStart): array {
+        return $this->sql->select("SELECT e.Codigo, e.Nombre, i.id AS inventario_id, i.fecha_registro, i.usuario_correo
+            FROM [TG].[dbo].[Estaciones] e
+            LEFT JOIN [TG].[dbo].[inv_ter_inventarios] i ON i.estacion_id=e.Codigo AND i.semana_inicio=?
+            WHERE e.Codigo NOT IN (0,4,20)
+            ORDER BY CASE WHEN i.id IS NULL THEN 0 ELSE 1 END, e.Codigo", [$weekStart]);
+    }
     public function activeIncidents(int $stationId): array {
         return $this->sql->select("SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE estacion_id=? AND fecha_cierre_mojo IS NULL", [$stationId]);
     }

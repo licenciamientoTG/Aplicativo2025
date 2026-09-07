@@ -74,6 +74,21 @@ CREATE TABLE dbo.inv_ter_incidencia_estados (
 );
 GO
 
+IF OBJECT_ID('dbo.inv_ter_configuracion', 'U') IS NULL
+CREATE TABLE dbo.inv_ter_configuracion (
+    id TINYINT NOT NULL CONSTRAINT PK_inv_ter_configuracion PRIMARY KEY,
+    dia_cierre_semana TINYINT NOT NULL,
+    actualizado_por INT NULL,
+    actualizado_en DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_configuracion_actualizado DEFAULT SYSDATETIME(),
+    CONSTRAINT CK_inv_ter_configuracion_id CHECK (id = 1),
+    CONSTRAINT CK_inv_ter_configuracion_dia CHECK (dia_cierre_semana BETWEEN 1 AND 7)
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.inv_ter_configuracion WHERE id = 1)
+INSERT INTO dbo.inv_ter_configuracion (id, dia_cierre_semana) VALUES (1, 7);
+GO
+
 IF NOT EXISTS (SELECT 1 FROM dbo.tg_permissions WHERE department = 'Operaciones' AND description = 'Inventario terminales - Captura propia')
 INSERT INTO dbo.tg_permissions ([action], department, description, [status], updated_at, created_at)
 VALUES ('read', 'Operaciones', 'Inventario terminales - Captura propia', 1, GETDATE(), GETDATE());
