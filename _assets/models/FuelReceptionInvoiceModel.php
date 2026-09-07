@@ -1,4 +1,6 @@
 <?php
+require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/common/AttachmentsPath.php';
+
 class FuelReceptionInvoiceModel extends Model {
 
     // Mapeo completo de atributos CFDI 3.3/4.0 a columnas de
