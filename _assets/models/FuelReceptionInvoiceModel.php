@@ -218,20 +218,26 @@ class FuelReceptionInvoiceModel extends Model {
     /**
      * Mueve PDF y XML (ya subidos a una ruta temporal de PHP) a la carpeta
      * compartida de attachments, con el mismo nombre base (UUID en
-     * mayúsculas sin guiones, igual convención que usa el flujo automático
-     * de correos) y solo cambiando la extensión.
+     * mayúsculas con guión bajo en vez de guión, igual convención que usa
+     * el flujo automático de correos) y solo cambiando la extensión.
+     * El PDF se guarda en procesadas/ y el XML en procesadasXml/ (carpetas
+     * distintas, igual que el flujo automático).
      */
     public function guardarArchivos(string $proveedorCarpeta, string $uuid, string $tmpPdfPath, string $tmpXmlPath): array {
-        $dir = AttachmentsPath::procesadasDir($proveedorCarpeta);
-        if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
+        $dirPdf = AttachmentsPath::procesadasDir($proveedorCarpeta);
+        if (!is_dir($dirPdf)) {
+            mkdir($dirPdf, 0755, true);
+        }
+        $dirXml = AttachmentsPath::procesadasXmlDir($proveedorCarpeta);
+        if (!is_dir($dirXml)) {
+            mkdir($dirXml, 0755, true);
         }
 
-        $nombreBase = strtoupper(str_replace('-', '', $uuid));
+        $nombreBase = strtoupper(str_replace('-', '_', $uuid));
         $nombrePdf = $nombreBase . '.pdf';
         $nombreXml = $nombreBase . '.xml';
-        $rutaPdf = $dir . '\\' . $nombrePdf;
-        $rutaXml = $dir . '\\' . $nombreXml;
+        $rutaPdf = $dirPdf . '\\' . $nombrePdf;
+        $rutaXml = $dirXml . '\\' . $nombreXml;
 
         if (!move_uploaded_file($tmpPdfPath, $rutaPdf)) {
             throw new Exception('No se pudo guardar el PDF en la carpeta de facturas');
@@ -266,8 +272,31 @@ class FuelReceptionInvoiceModel extends Model {
     }
 
     public function desvincular(int $scheduleId): void {
+        // MySqlPdoHandler::update() exige que el texto de la query contenga
+        // la palabra "update" (ver stristr en su implementación) -- con un
+        // DELETE, ese chequeo falla silenciosamente y la fila nunca se
+        // borra. Hallado durante la verificación de este mismo fix wave
+        // (una fila de prueba quedó residual tras llamar a desvincular()).
         $query = "DELETE FROM TG.dbo.fuel_reception_invoices WHERE schedule_id = ?";
-        $this->sql->update($query, [$scheduleId]);
+        $this->sql->delete($query, [$scheduleId]);
+    }
+
+    /**
+     * Mapeo schedule_id -> invoice_id de TODOS los vínculos existentes,
+     * sin filtrar por fecha (la tabla fuel_reception_invoices es pequeña,
+     * un filtro por fecha requeriría JOIN con fuel_reception_schedule
+     * innecesariamente para este caso de uso). Usado por
+     * scheduling_day_data() para evitar N llamadas individuales
+     * (medido: 496ms para 53 filas vs 17ms con este enfoque).
+     */
+    public function obtenerVinculosPorScheduleId(): array {
+        $query = "SELECT schedule_id, invoice_id FROM TG.dbo.fuel_reception_invoices";
+        $rows = $this->sql->select($query, []);
+        $mapa = [];
+        foreach ($rows as $row) {
+            $mapa[(int)$row['schedule_id']] = (int)$row['invoice_id'];
+        }
+        return $mapa;
     }
 
     public function obtenerFacturaDeRecepcion(int $scheduleId): ?array {

@@ -10,4 +10,8 @@ class AttachmentsPath {
     public static function procesadasDir(string $proveedorCarpeta): string {
         return self::BASE . '\\' . $proveedorCarpeta . '\\procesadas';
     }
+
+    public static function procesadasXmlDir(string $proveedorCarpeta): string {
+        return self::BASE . '\\' . $proveedorCarpeta . '\\procesadasXml';
+    }
 }

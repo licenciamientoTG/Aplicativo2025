@@ -2722,9 +2722,9 @@ class Supply
         $fecha = $_REQUEST['fecha'] ?? date('Y-m-d', strtotime('+1 day'));
         $filas = $this->fuelReceptionScheduleModel->get_day($fecha);
 
+        $vinculos = $this->fuelReceptionInvoiceModel->obtenerVinculosPorScheduleId();
         foreach ($filas as &$fila) {
-            $factura = $this->fuelReceptionInvoiceModel->obtenerFacturaDeRecepcion((int)$fila['id']);
-            $fila['invoice_id'] = $factura['Id'] ?? null;
+            $fila['invoice_id'] = $vinculos[(int)$fila['id']] ?? null;
         }
         unset($fila);
 
@@ -2950,7 +2950,7 @@ class Supply
             $advertenciaRfc = 'El RFC del emisor de la factura no coincide con el proveedor de esta recepción. Se guardó de todas formas.';
         }
 
-        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
         $existente = $this->fuelReceptionInvoiceModel->buscarPorUuid($parseado['factura']['UUID']);
 
         if ($existente) {
@@ -3026,17 +3026,45 @@ class Supply
         $factura = $rows[0] ?? null;
         $ruta = $tipo === 'pdf' ? ($factura['RutaArchivo'] ?? null) : ($factura['RutaXml'] ?? null);
 
-        if (!$factura || !$ruta || !is_file($ruta)) {
+        if (!$factura || !$ruta) {
             http_response_code(404);
             echo 'Archivo no encontrado';
             return;
         }
 
+        // Normaliza separadores (Windows)
+        $ruta = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $ruta);
+        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
+
+        // El importador guardaba rutas absolutas (C:\...), pero algunas facturas
+        // llegan con ruta relativa (attachments\...\...). Si no es absoluta (no
+        // empieza con letra de unidad tipo "C:\"), se antepone la carpeta base
+        // donde el importador escribe los adjuntos.
+        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
+            $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
+        }
+
+        // Seguridad: restringir a un directorio base permitido
+        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
+        $real = realpath($ruta);
+
+        if ($real === false || strpos($real, $baseAllowed) !== 0) {
+            http_response_code(403);
+            echo 'Acceso al archivo denegado.';
+            return;
+        }
+
+        if (!file_exists($real) || !is_readable($real)) {
+            http_response_code(404);
+            echo 'Archivo no encontrado o no legible.';
+            return;
+        }
+
         $mime = $tipo === 'pdf' ? 'application/pdf' : 'text/xml';
         header('Content-Type: ' . $mime);
-        header('Content-Disposition: inline; filename="' . basename($ruta) . '"');
-        header('Content-Length: ' . filesize($ruta));
-        readfile($ruta);
+        header('Content-Disposition: inline; filename="' . basename($real) . '"');
+        header('Content-Length: ' . filesize($real));
+        readfile($real);
     }
 
     public function scheduling_add_terminal()
