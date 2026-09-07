@@ -78,6 +78,7 @@ IF OBJECT_ID('dbo.inv_ter_configuracion', 'U') IS NULL
 CREATE TABLE dbo.inv_ter_configuracion (
     id TINYINT NOT NULL CONSTRAINT PK_inv_ter_configuracion PRIMARY KEY,
     dia_cierre_semana TINYINT NOT NULL,
+    valeras_habilitadas VARCHAR(200) NOT NULL CONSTRAINT DF_inv_ter_configuracion_valeras DEFAULT 'ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox',
     actualizado_por INT NULL,
     actualizado_en DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_configuracion_actualizado DEFAULT SYSDATETIME(),
     CONSTRAINT CK_inv_ter_configuracion_id CHECK (id = 1),
@@ -85,8 +86,13 @@ CREATE TABLE dbo.inv_ter_configuracion (
 );
 GO
 
+IF COL_LENGTH('dbo.inv_ter_configuracion', 'valeras_habilitadas') IS NULL
+ALTER TABLE dbo.inv_ter_configuracion ADD valeras_habilitadas VARCHAR(200) NOT NULL
+    CONSTRAINT DF_inv_ter_configuracion_valeras DEFAULT 'ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox';
+GO
+
 IF NOT EXISTS (SELECT 1 FROM dbo.inv_ter_configuracion WHERE id = 1)
-INSERT INTO dbo.inv_ter_configuracion (id, dia_cierre_semana) VALUES (1, 7);
+INSERT INTO dbo.inv_ter_configuracion (id, dia_cierre_semana, valeras_habilitadas) VALUES (1, 7, 'ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox');
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.tg_permissions WHERE department = 'Operaciones' AND description = 'Inventario terminales - Captura propia')

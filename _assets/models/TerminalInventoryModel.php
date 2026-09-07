@@ -21,11 +21,16 @@ class TerminalInventoryModel extends Model {
         return (bool)$this->sql->select('SELECT 1 FROM [TG].[dbo].[inv_ter_inventarios] WHERE estacion_id=? AND semana_inicio=?', [$stationId, $weekStart]);
     }
     public function getSettings(): array {
-        $rows = $this->sql->select('SELECT TOP (1) dia_cierre_semana, actualizado_por, actualizado_en FROM [TG].[dbo].[inv_ter_configuracion] WHERE id=1');
-        return $rows[0] ?? ['dia_cierre_semana' => 7, 'actualizado_por' => null, 'actualizado_en' => null];
+        $rows = $this->sql->select('SELECT TOP (1) dia_cierre_semana, valeras_habilitadas, actualizado_por, actualizado_en FROM [TG].[dbo].[inv_ter_configuracion] WHERE id=1');
+        return $rows[0] ?? ['dia_cierre_semana' => 7, 'valeras_habilitadas' => 'ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox', 'actualizado_por' => null, 'actualizado_en' => null];
     }
-    public function saveClosingDay(int $day, int $userId): void {
-        $this->sql->update('UPDATE [TG].[dbo].[inv_ter_configuracion] SET dia_cierre_semana=?, actualizado_por=?, actualizado_en=SYSDATETIME() WHERE id=1', [$day, $userId]);
+    public function saveSettings(int $day, array $enabledValeras, int $userId): void {
+        $this->sql->update('UPDATE [TG].[dbo].[inv_ter_configuracion] SET dia_cierre_semana=?, valeras_habilitadas=?, actualizado_por=?, actualizado_en=SYSDATETIME() WHERE id=1', [$day, implode(',', $enabledValeras), $userId]);
+    }
+    public function activeIncidentTypes(array $types): array {
+        if (!$types) return [];
+        $marks=implode(',',array_fill(0,count($types),'?'));
+        return $this->sql->select("SELECT DISTINCT tipo_terminal FROM [TG].[dbo].[inv_ter_incidencias] WHERE fecha_cierre_mojo IS NULL AND tipo_terminal IN ($marks)",array_values($types));
     }
     public function stationsInventoryStatus(string $weekStart): array {
         return $this->sql->select("SELECT e.Codigo, e.Nombre, i.id AS inventario_id, i.fecha_registro, i.usuario_correo

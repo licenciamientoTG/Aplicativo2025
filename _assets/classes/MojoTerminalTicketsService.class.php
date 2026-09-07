@@ -41,8 +41,37 @@ class MojoTerminalTicketsService {
         else $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_solicitante'=>$email,'custom_field_problema'=>'Terminal Urovo'];
         return $this->request('POST','/v2/tickets',$payload);
     }
+    private function normalizeTerminal(string $value): string {
+        $value=trim(mb_strtolower($value,'UTF-8'));
+        $value=strtr($value,['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n']);
+        return preg_replace('/[^a-z0-9]/','',$value) ?? '';
+    }
+    private function ticketField(array $ticket, array $keys): string {
+        foreach ($keys as $key) if (isset($ticket[$key]) && !is_array($ticket[$key])) return trim((string)$ticket[$key]);
+        foreach (($ticket['custom_fields'] ?? []) as $field) {
+            if (!is_array($field)) continue;
+            $name=$this->normalizeTerminal((string)($field['slug'] ?? $field['name'] ?? $field['label'] ?? ''));
+            foreach ($keys as $key) if ($name===$this->normalizeTerminal($key)) {
+                $value=$field['value'] ?? $field['display_value'] ?? '';
+                if (is_array($value)) $value=$value['name'] ?? $value['value'] ?? '';
+                return trim((string)$value);
+            }
+        }
+        return '';
+    }
+    public function incidentDataFromTicket(array $ticket, string $type): array {
+        return [
+            'type_terminal'=>$this->ticketField($ticket,['custom_field_tipo_de_terminal','tipo_de_terminal','Tipo de terminal']),
+            'provider_folio'=>$this->ticketField($ticket,['custom_field_folio_de_reporte_del_proveedor','folio_de_reporte_del_proveedor','Folio de reporte al proveedor']),
+            'provider_date'=>$this->ticketField($ticket,['custom_field_fecha_de_reporte_a_proveedor','fecha_de_reporte_a_proveedor','Fecha de reporte al proveedor']),
+            'description'=>trim((string)($ticket['description'] ?? $ticket['title'] ?? '')),
+        ];
+    }
     public function validateForType(array $ticket, string $type): bool {
         $form=(int)($ticket['ticket_form_id'] ?? 0); if (!$this->isOpen($ticket)) return false;
-        return $type==='urovo' ? $form===self::SYSTEM_FORM && (($ticket['custom_field_problema'] ?? '')==='Terminal Urovo') : $form===self::VALERAS_FORM;
+        if ($type==='urovo') return $form===self::SYSTEM_FORM && $this->normalizeTerminal($this->ticketField($ticket,['custom_field_problema','problema','Problema']))==='terminalurovo';
+        if ($form!==self::VALERAS_FORM) return false;
+        $typeInTicket=$this->incidentDataFromTicket($ticket,$type)['type_terminal'];
+        return $this->normalizeTerminal($typeInTicket)===$this->normalizeTerminal($type);
     }
 }

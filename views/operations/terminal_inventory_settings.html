@@ -4,13 +4,19 @@
 {% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
 {% block content %}
 <div class="terminal-page-header mb-3"><p class="text-muted mb-0">Parámetros semanales del inventario de terminales.</p></div>
-<div class="row"><div class="col-lg-7"><div class="card terminal-card"><div class="card-body p-4">
+<div class="row"><div class="col-lg-8"><div class="card terminal-card"><div class="card-body p-4">
   <h5 class="card-title">Cierre de semana</h5>
   <p class="text-muted">El día seleccionado será el último día del periodo de siete días. Cada estación solo podrá registrar un inventario por periodo.</p>
   <form id="terminalSettingsForm" class="row g-3 align-items-end">
     <div class="col-md-7"><label for="closingDay" class="form-label">Último día de la semana</label><select id="closingDay" name="closing_day" class="form-select">{% for number,name in weekDays %}<option value="{{ number }}" {{ settings.dia_cierre_semana == number ? 'selected' : '' }}>{{ name }}</option>{% endfor %}</select></div>
     <div class="col-md-5"><button type="submit" id="saveTerminalSettings" class="btn btn-primary w-100"><i data-feather="save"></i> Guardar configuración</button></div>
   </form>
+  <hr class="my-4">
+  <h5 class="card-title">Valeras disponibles</h5>
+  <p class="text-muted">Selecciona las valeras que deben aparecer en el conteo semanal. Urovo siempre permanece disponible.</p>
+  <div class="row g-2">
+    {% for code, valera in valeras %}<div class="col-md-6"><label class="terminal-setting-option"><input class="form-check-input" type="checkbox" name="valeras[]" value="{{ code }}" form="terminalSettingsForm" {{ code in enabledValeras ? 'checked' : '' }}><span class="terminal-brand terminal-brand-{{ code }}">{{ valera.logo }}</span><span>{{ valera.label }}</span></label></div>{% endfor %}
+  </div>
   <div class="alert alert-primary small mt-4 mb-0"><i data-feather="info"></i> El valor inicial es <strong>domingo</strong>, que mantiene el periodo de lunes a domingo. El cambio aplicará al siguiente periodo mostrado en el módulo.</div>
 </div></div></div></div>
 {% endblock %}
