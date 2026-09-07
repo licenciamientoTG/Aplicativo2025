@@ -2,9 +2,20 @@
 class TerminalInventoryModel extends Model {
     public const CAPTURE_PERMISSION = 'Inventario terminales - Captura propia';
     public const REPORT_PERMISSION = 'Inventario terminales - Reporte global';
+    public const CAPTURE_PERMISSION_ID = 96;
+    public const REPORT_PERMISSION_ID = 97;
 
     public function hasPermission(int $userId, string $description): bool {
-        return (bool)$this->sql->select('SELECT 1 FROM [TG].[dbo].[tg_permissions_users] pu INNER JOIN [TG].[dbo].[tg_permissions] p ON p.id=pu.permission_id WHERE pu.user_id=? AND p.status=1 AND p.description=?', [$userId, $description]);
+        // Los permisos ya se cargan en la sesión al iniciar sesión. Consultar la
+        // base desde cada función Twig convertía el render del sidebar en varias
+        // consultas remotas por petición.
+        $permissionId = match ($description) {
+            self::CAPTURE_PERMISSION => self::CAPTURE_PERMISSION_ID,
+            self::REPORT_PERMISSION => self::REPORT_PERMISSION_ID,
+            default => 0,
+        };
+        $permissions = explode(',', (string)($_SESSION['tg_user']['permissions'] ?? ''));
+        return $permissionId > 0 && in_array((string)$permissionId, $permissions, true);
     }
     public function inventoryExists(int $stationId, string $weekStart): bool {
         return (bool)$this->sql->select('SELECT 1 FROM [TG].[dbo].[inv_ter_inventarios] WHERE estacion_id=? AND semana_inicio=?', [$stationId, $weekStart]);

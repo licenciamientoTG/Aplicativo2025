@@ -688,32 +688,31 @@
         </a>
       </li>
       {% endif %}
-      {% if terminal_inventory_access() %}
+      {% if terminal_inventory_access() or terminal_inventory_report_access() %}
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/operations/terminal_inventory">
+        <a data-bs-target="#terminal_inventory_menu" data-bs-toggle="collapse" class="sidebar-link collapsed"
+          aria-expanded="false">
           <i data-feather="monitor"></i>
           <span class="align-middle">Inventario terminales</span>
         </a>
-      </li>
-      {% endif %}
-      {% if terminal_inventory_report_access() %}
-      <li class="sidebar-item">
-        <a class="sidebar-link" href="/operations/terminal_report">
-          <i data-feather="bar-chart-2"></i>
-          <span class="align-middle">Reporte de terminales</span>
-        </a>
-      </li>
-      <li class="sidebar-item">
-        <a class="sidebar-link" href="/operations/terminal_inventory_status">
-          <i data-feather="check-square"></i>
-          <span class="align-middle">Cumplimiento inventarios</span>
-        </a>
-      </li>
-      <li class="sidebar-item">
-        <a class="sidebar-link" href="/operations/terminal_inventory_settings">
-          <i data-feather="settings"></i>
-          <span class="align-middle">Configuración inventario</span>
-        </a>
+        <ul id="terminal_inventory_menu" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% if terminal_inventory_access() %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/terminal_inventory">Registrar inventario</a>
+          </li>
+          {% endif %}
+          {% if terminal_inventory_report_access() %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/terminal_report">Reporte de terminales</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/terminal_inventory_status">Cumplimiento inventarios</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/terminal_inventory_settings">Configuración inventario</a>
+          </li>
+          {% endif %}
+        </ul>
       </li>
       {% endif %}
       {% if authorized(37) %}

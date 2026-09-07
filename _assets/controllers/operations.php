@@ -3179,7 +3179,7 @@ class Operations{
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para capturar inventarios de terminales.'; return; }
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
-        $this->syncTerminalIncidents($stationId,'captura'); [$weekStart,$weekEnd]=$this->terminalWeek();
+        [$weekStart,$weekEnd]=$this->terminalWeek();
         $active=$this->terminalInventoryModel->activeIncidents($stationId);
         echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'weekStart'=>$weekStart,'weekEnd'=>$weekEnd,'types'=>$this->terminalTypes(),'activeIncidents'=>$active,'alreadySaved'=>$this->terminalInventoryModel->inventoryExists($stationId,$weekStart),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)]);
     }
@@ -3208,6 +3208,10 @@ class Operations{
         if ($this->terminalInventoryModel->inventoryExists($stationId,$weekStart)) { $this->terminalJsonError('Ya existe un inventario guardado para esta semana.'); return; }
         $types=$this->terminalTypes(); $details=[]; $damaged=[];
         foreach ($types as $code=>$info) { $row=$payload['details'][$code] ?? []; $working=filter_var($row['working'] ?? null,FILTER_VALIDATE_INT); $broken=filter_var($row['damaged'] ?? null,FILTER_VALIDATE_INT); if ($working===false || $broken===false || $working<0 || $broken<0) { $this->terminalJsonError('Las cantidades deben ser números enteros no negativos.'); return; } $details[]=['type'=>$code,'working'=>$working,'damaged'=>$broken]; $damaged[$code]=$broken; }
+        // La consulta a Mojo se ejecuta al guardar, no al abrir la vista. Así la
+        // captura sigue validando los tickets antes de persistir, sin bloquear
+        // la navegación mientras Mojo responde.
+        $this->syncTerminalIncidents($stationId,'guardado');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $incidentIds=[]; $activeByType=[];
         foreach ($active as $incident) { $activeByType[$incident['tipo_terminal']][]=$incident; $incidentIds[]=(int)$incident['id']; }
         foreach ($damaged as $type=>$quantity) if ($quantity<count($activeByType[$type] ?? [])) { $this->terminalJsonError('La cantidad dañada de '.$types[$type]['label'].' no puede ser menor que sus incidencias abiertas.'); return; }
@@ -3225,7 +3229,6 @@ class Operations{
     }
     public function terminal_report(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte global.'; return; }
-        foreach (($this->estacionesModel->get_select_stations() ?: []) as $station) $this->syncTerminalIncidents((int)$station['Codigo'],'reporte');
         $type=$_GET['type'] ?? ''; $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]); foreach ($rows as &$row) $row['dias_habiles']=$this->terminalBusinessDays((string)$row['fecha_apertura_mojo']); unset($row); $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo']))); echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'openCount'=>$openCount,'types'=>$this->terminalTypes(),'selectedType'=>$type]);
     }
     public function terminal_inventory_status(): void {
