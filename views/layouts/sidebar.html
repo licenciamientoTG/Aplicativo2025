@@ -664,7 +664,7 @@
 
       {% endif %}
 
-      {% if authorized(19) %}
+      {% if authorized(19) or terminal_inventory_access() or terminal_inventory_report_access() %}
       <li class="sidebar-header">OPERACIONES</li>
       {% if authorized(21) %}
       <li class="sidebar-item">
