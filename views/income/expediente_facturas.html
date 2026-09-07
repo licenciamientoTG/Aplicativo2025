@@ -2,9 +2,11 @@
 {% block title %}Expediente de facturas{% endblock %}
 {% block mycss %}
 <style>
-    /* Con 48 columnas el scroll horizontal vive dentro de la tabla, nunca en la página. */
-    #expediente_facturas_table_wrapper .dataTables_scrollBody { max-height: 65vh; }
-    /* Las columnas "lista" (folios, vehículos, cuentas) traen cadenas muy largas:
+    /* Con 51 columnas el scroll horizontal vive dentro de la tabla, nunca en la página.
+       El vertical no se acota: el cuerpo crece a su altura natural y se recorre
+       con el scroll de la página. */
+    #expediente_facturas_table_wrapper .dataTables_scrollBody { max-height: none; }
+    /* Las columnas "lista" (productos, cuentas, montos contables) traen cadenas muy largas:
        se acotan para que un renglón no empuje la tabla a varias pantallas. */
     #expediente_facturas_table td.cell-list {
         max-width: 320px;

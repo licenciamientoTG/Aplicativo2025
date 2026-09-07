@@ -134,7 +134,8 @@ class IngresosModel extends Model{
     /**
      * Expediente completo de facturas de una estación y un cliente: datos
      * fiscales, despachos que originaron la factura, aplicaciones y movimientos
-     * contables, todo en un renglón por factura.
+     * contables. Devuelve un renglón por DESPACHO: los datos de factura se
+     * repiten en cada renglón que comparte NumeroFactura.
      *
      * Se usa executeStoredProcedureNamed() y no executeStoredProcedure() porque
      * este último bindea por POSICIÓN y descarta las llaves del array: con
