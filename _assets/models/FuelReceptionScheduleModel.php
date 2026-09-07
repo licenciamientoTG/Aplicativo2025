@@ -32,15 +32,24 @@ class FuelReceptionScheduleModel extends Model {
     // selects SG12.dbo.Proveedores.* (PK `cod`) and never exposes
     // TG.dbo.Proveedores.id, which is what this feature's supplier_id
     // foreign key actually points to (confirmed 2026-09-05 against real data).
+    // Solo los proveedores que realmente participan en el programa mensual
+    // de recepciones de combustible (confirmados contra los Excel de julio
+    // y septiembre 2026: Premier Gas, Tesoro, MGC, Enerey, Petrotal, AEMSA,
+    // Essa Fuel) -- TG.dbo.Proveedores trae 85 proveedores activos en total
+    // (el catálogo general de la empresa), la inmensa mayoría irrelevante
+    // para este formulario.
+    const IDS_PROVEEDORES_COMBUSTIBLE = [138, 123, 139, 150, 122, 163, 151];
+
     function get_proveedores(): array {
+        $placeholders = implode(',', array_fill(0, count(self::IDS_PROVEEDORES_COMBUSTIBLE), '?'));
         $query = "
             SELECT t1.id, t2.den AS nombre
             FROM TG.dbo.Proveedores t1
             JOIN SG12.dbo.Proveedores t2 ON t2.cod = t1.id_control_gas
-            WHERE t1.activo = 1
+            WHERE t1.activo = 1 AND t1.id IN ($placeholders)
             ORDER BY t2.den
         ";
-        return $this->sql->select($query, []) ?: [];
+        return $this->sql->select($query, self::IDS_PROVEEDORES_COMBUSTIBLE) ?: [];
     }
 
     // NOTE: do NOT use "INSERT ... OUTPUT INSERTED.id" with $this->sql->select() --

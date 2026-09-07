@@ -263,7 +263,8 @@ class Accounting{
         switch ($banco) {
             case 'BANORTE':
                 return ['Cuenta', 'Fecha de Operación', 'Fecha', 'Referencia', 'Descripción',
-                        'Cod. Transac', 'Sucursal', 'Depósitos', 'Retiros', 'Saldo', 'Descripción Detallada'];
+                        'Cod. Transac', 'Sucursal', 'Depósitos', 'Retiros', 'Saldo', 'Secuencia',
+                        'Descripción Detallada'];
             case 'BANKAOOL':
                 return ['Cuenta', 'Fecha', 'Hora', 'Descripción', 'Referencia', 'Cargo', 'Abono', 'Saldo',
                         'Concepto', 'Contraparte'];
@@ -284,7 +285,8 @@ class Accounting{
             case 'BANORTE':
                 return [$m['cuenta'], $m['fecha_operacion'] ?? '', $m['fecha'], $m['referencia'] ?? '',
                         $m['descripcion'] ?? '', $m['clave_trans'] ?? '', $m['sucursal'] ?? '',
-                        $m['abono'], $m['cargo'], $m['saldo'] ?? null, $m['descripcion_larga'] ?? ''];
+                        $m['abono'], $m['cargo'], $m['saldo'] ?? null, $m['secuencia'] ?? '',
+                        $m['descripcion_larga'] ?? ''];
             case 'BANKAOOL':
                 return [$m['cuenta'], $m['fecha'], $m['hora'] ?? '', $m['descripcion'] ?? '',
                         $m['referencia'] ?? '', $m['cargo'], $m['abono'], $m['saldo'] ?? null,

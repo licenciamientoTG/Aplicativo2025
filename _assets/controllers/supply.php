@@ -2700,9 +2700,12 @@ class Supply
             echo "No autorizado";
             return;
         }
-        $fecha = $fecha ?: date('Y-m-d');
+        // Abastos siempre programa con un día de anticipación -- si no viene
+        // fecha explícita en la URL, se abre en "mañana", no en "hoy".
+        $fecha = $fecha ?: date('Y-m-d', strtotime('+1 day'));
+        $estaciones = $this->estacionesModel->get_select_stations();
 
-        echo $this->twig->render($this->route . 'scheduling.html', compact('fecha'));
+        echo $this->twig->render($this->route . 'scheduling.html', compact('fecha', 'estaciones'));
     }
 
     public function scheduling_day_data()
@@ -2712,7 +2715,7 @@ class Supply
             json_output(['data' => [], 'error' => 'No autorizado']);
             return;
         }
-        $fecha = $_REQUEST['fecha'] ?? date('Y-m-d');
+        $fecha = $_REQUEST['fecha'] ?? date('Y-m-d', strtotime('+1 day'));
         $filas = $this->fuelReceptionScheduleModel->get_day($fecha);
         json_output(['data' => $filas]);
     }

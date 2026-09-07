@@ -25,7 +25,9 @@
             <div class="mb-3">
                 <label class="col-form-label col-form-label-sm" for="supplier_id">Proveedor:</label>
                 <select class="selectpicker form-control" data-live-search="true" data-width="100%" id="supplier_id" name="supplier_id" required>
-                    <option value="">Seleccione un proveedor…</option>
+                    {% if not registro.supplier_id %}
+                    <option value="" selected disabled>Seleccione un proveedor…</option>
+                    {% endif %}
                     {% for p in proveedores %}
                     <option value="{{ p.id }}" {{ registro.supplier_id == p.id ? 'selected' : '' }}>{{ p.nombre }}</option>
                     {% endfor %}
@@ -36,7 +38,7 @@
             <div class="mb-3">
                 <label class="col-form-label col-form-label-sm" for="terminal_id">Terminal / base de carga:</label>
                 <div class="input-group">
-                    <select class="form-control" id="terminal_id" name="terminal_id" required>
+                    <select class="selectpicker form-control" data-live-search="true" data-width="100%" id="terminal_id" name="terminal_id" required>
                         <option value="">Seleccione una terminal…</option>
                         {% for t in terminales %}
                         <option value="{{ t.id }}" {{ registro.terminal_id == t.id ? 'selected' : '' }}>{{ t.nombre }}</option>
@@ -82,7 +84,7 @@
             <div class="mb-3">
                 <label class="col-form-label col-form-label-sm" for="carrier_id">Transportista:</label>
                 <div class="input-group">
-                    <select class="form-control" id="carrier_id" name="carrier_id">
+                    <select class="selectpicker form-control" data-live-search="true" data-width="100%" id="carrier_id" name="carrier_id">
                         <option value="">Seleccione un transportista…</option>
                         {% for c in transportistas %}
                         <option value="{{ c.id }}" {{ registro.carrier_id == c.id ? 'selected' : '' }}>{{ c.nombre }}</option>
