@@ -146,7 +146,7 @@
   // conserva prioridad sobre la coincidencia por importe real.
   function analyticMatches(){
     const turns=sales(state.rawCg,state.reclasses),papers=[...state.analytics],linked=new Map(),used=new Set();
-    state.analyticsLinks.forEach(link=>{const paper=papers.find(x=>x.id===Number(link.papeleta_id));if(paper){const key=`${date(link.fecha_cg)}|${turnNumber(link.turno)||String(link.turno)}|${String(link.concepto||'').trim().toUpperCase()}`;linked.set(key,{paper,criterion:link.criterio,linkId:Number(link.id),exchangeRate:num(link.exchange_rate)||num(link.tipo_cambio_usd)});used.add(paper.id)}});
+    state.analyticsLinks.forEach(link=>{const key=`${date(link.fecha_cg)}|${turnNumber(link.turno)||String(link.turno)}|${String(link.concepto||'').trim().toUpperCase()}`;if(link.blocked){linked.set(key,{blocked:true});return}const paper=papers.find(x=>x.id===Number(link.papeleta_id));if(paper){linked.set(key,{paper,criterion:link.criterio,linkId:Number(link.id),exchangeRate:num(link.exchange_rate)||num(link.tipo_cambio_usd)});used.add(paper.id)}});
     matchAnalyticsPass(turns,papers,linked,used,(paper,turn)=>(turn.currency==='MN'||turn.currency==='MORRALLA'||turn.currency==='USD')&&(turn.currency!=='USD'||Boolean(effectiveRateInfo(turn)))&&comparablePaperAmount(paper,turn,'declared')>0&&Math.abs(comparablePaperAmount(paper,turn,'declared')-turn.amount)<=1,()=> 'DICE ±$1 · fecha cercana');
     matchAnalyticsPass(turns,papers,linked,used,(paper,turn)=>(turn.currency==='MN'||turn.currency==='MORRALLA'||turn.currency==='USD')&&(turn.currency!=='USD'||Boolean(effectiveRateInfo(turn)))&&comparablePaperAmount(paper,turn,'real')>0&&Math.abs(comparablePaperAmount(paper,turn,'real')-turn.amount)<=analyticTolerance(turn.currency),turn=>`REAL ±$${analyticTolerance(turn.currency)} · fecha cercana`);
     return {turns,papers,linked,used};
@@ -160,7 +160,7 @@
   function analyticDifferenceTag(turn,match){const difference=comparableMatchAmount(match,turn,'real')-turn.amount;if(Math.abs(difference)<.005)return '<span class="analytics-metric ok"><i class="fas fa-check"></i>OK</span>';const value=Math.abs(difference),prefix=turn.currency==='USD'?'Dólares ':'MN ';return `<span class="analytics-metric diff ${difference>0?'positive':'negative'}">${prefix}${difference>0?'+':'-'}${fmt(value)}</span>`}
   function analyticsGroupTags(items,linked){
     const totals={MN:{cg:0,real:0,matches:0},MORRALLA:{cg:0,real:0,matches:0},USD:{cg:0,real:0,matches:0}};
-    items.forEach(turn=>{const match=linked.get(cgKey(turn));if(!match)return;const total=totals[turn.currency];total.cg+=turn.amount;total.real+=comparableMatchAmount(match,turn,'real');total.matches+=1});
+    items.forEach(turn=>{const match=linked.get(cgKey(turn));if(!match?.paper)return;const total=totals[turn.currency];total.cg+=turn.amount;total.real+=comparableMatchAmount(match,turn,'real');total.matches+=1});
     const matched=totals.MN.matches+totals.MORRALLA.matches+totals.USD.matches,coverage=`<span class="analytics-metric coverage"><i class="fas fa-link"></i>${matched}/${items.length}</span>`;
     if(!matched)return `${coverage}<span class="analytics-metric neutral">Sin real</span>`;
     const differences=Object.entries(totals).filter(([,total])=>total.matches>0).map(([currency,total])=>({currency,value:total.real-total.cg}));
