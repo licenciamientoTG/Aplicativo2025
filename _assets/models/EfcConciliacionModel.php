@@ -9,6 +9,11 @@ class EfcConciliacionModel {
         'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', '7533', '2627', '5247', '7604', '0031'],
         'GASOMEX'   => ['8504', '4409', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4457'],
     ];
+    private const COMPANY_ACCOUNT_CURRENCIES = [
+        'DIAZ GAS' => [],
+        'FORANEAS' => ['2570'=>'USD', '2627'=>'USD'],
+        'GASOMEX' => ['4409'=>'USD', '8214'=>'USD', '8492'=>'USD', '4412'=>'USD', '3678'=>'USD'],
+    ];
     /* La razón social fiscal no identifica por sí sola la operación. Gasomex
        tiene estaciones con RFC propio; este es el catálogo operativo usado por
        conciliación y sus cuentas bancarias. */
@@ -84,6 +89,16 @@ class EfcConciliacionModel {
             }
         }
         return array_values(array_unique($names));
+    }
+
+    public static function accountCurrency(?string $account): string {
+        $account = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)$account));
+        foreach (self::COMPANY_ACCOUNT_CURRENCIES as $maps) {
+            foreach ($maps as $suffix => $currency) {
+                if (str_ends_with($account, strtoupper($suffix))) return $currency;
+            }
+        }
+        return 'MN';
     }
 
     public function __construct() {
