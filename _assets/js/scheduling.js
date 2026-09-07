@@ -7,6 +7,7 @@ function esc(v) {
 let ultimasFilas = [];
 let agrupacionActiva = 'terminal';
 let colsActivas = 3;
+let proveedorFiltroActivo = null;
 const ESTACIONES = window.SCHEDULING_ESTACIONES || [];
 
 // Las 16 combinaciones Proveedor→Terminal reales del programa mensual
@@ -46,7 +47,7 @@ function ocultaTransportista(nombreProveedor) {
 // Premier Gas nunca captura referencia ni notas en el Excel -- se ocultan
 // esas columnas solo en sus tarjetas por el mismo motivo que Transportista
 // arriba: siempre van a decir "—".
-const PROVEEDORES_SIN_REFERENCIA_NOTAS = ['PREMIER'];
+const PROVEEDORES_SIN_REFERENCIA_NOTAS = ['PREMIER', 'TESORO'];
 
 function ocultaReferenciaNotas(nombreProveedor) {
     const nombre = (nombreProveedor || '').toUpperCase();
@@ -80,6 +81,20 @@ function colorProveedor(nombreProveedor) {
     }
     return COLOR_PROVEEDOR_DEFAULT;
 }
+
+// Los 7 proveedores reales del programa mensual de combustible (mismos IDs
+// que FuelReceptionScheduleModel::IDS_PROVEEDORES_COMBUSTIBLE) -- botones
+// fijos en vez de un selector, así el filtro siempre muestra las mismas 7
+// opciones sin depender de qué haya programado ese día en particular.
+const PROVEEDORES_FILTRO = [
+    { id: 138, nombreCorto: 'Premier Gas' },
+    { id: 151, nombreCorto: 'Essa Fuel' },
+    { id: 123, nombreCorto: 'Tesoro' },
+    { id: 122, nombreCorto: 'Petrotal' },
+    { id: 139, nombreCorto: 'MGC' },
+    { id: 150, nombreCorto: 'Enerey' },
+    { id: 163, nombreCorto: 'AEMSA' },
+];
 
 // Producto: Regular/Premium/Diesel/Mixta son categorías paralelas, no
 // estados de éxito/error -- un punto de color + texto evita el efecto
@@ -135,6 +150,74 @@ function formatearFilaTerminal(fila, mostrarTransportista, mostrarReferenciaNota
     `;
 }
 
+const ESTACIONES_INLINE = window.SCHEDULING_ESTACIONES || [];
+const TRANSPORTISTAS_INLINE = window.SCHEDULING_TRANSPORTISTAS || [];
+const TERMINALES_INLINE = window.SCHEDULING_TERMINALES || [];
+
+// fuel_terminals no liga cada terminal a un proveedor (supplier_id viene
+// vacío en las 8 filas reales, confirmado 2026-09-08) -- una terminal como
+// "Diaz Gas" es compartida por varios proveedores, así que el match es
+// solo por nombre. Necesario para resolver terminal_id en tarjetas que
+// todavía no tienen ninguna recepción real ese día (ahí
+// GRUPOS_PROVEEDOR_TERMINAL solo trae el nombre, nunca el id).
+function resolverTerminalId(terminalNombre) {
+    const match = TERMINALES_INLINE.find(function (t) { return t.nombre === terminalNombre; });
+    return match ? match.id : null;
+}
+
+// Fila de captura rápida ("como Excel"): inputs directo en la tabla de la
+// tarjeta, con proveedor/terminal ya fijos por el grupo. Se llena toda la
+// fila y se guarda con un solo clic en ✓ -- el guardado automático por
+// blur se probó y se descartó: el backend exige el registro completo en
+// cada request, así que cualquier evento duplicado (change+blur casi
+// simultáneos, típico de bootstrap-select) mandaba dos scheduling_add en
+// paralelo y dejaba duplicados reales en BD (visto 2026-09-08, 6 copias).
+function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarReferenciaNotas) {
+    const opcionesEstacion = ESTACIONES_INLINE.map(function (e) {
+        return `<option value="${e.Codigo}">${esc(e.Nombre)}</option>`;
+    }).join('');
+    const opcionesTransportista = TRANSPORTISTAS_INLINE.map(function (t) {
+        return `<option value="${t.id}">${esc(t.nombre)}</option>`;
+    }).join('');
+
+    const celdaTransportista = mostrarTransportista
+        ? `<td><select class="form-select form-select-sm campo-rapido" data-campo="carrier_id"><option value="">—</option>${opcionesTransportista}</select></td>`
+        : '';
+    const celdasReferenciaNotas = mostrarReferenciaNotas
+        ? `<td><input type="text" class="form-control form-control-sm campo-rapido" data-campo="referencia"></td>` +
+          `<td><input type="text" class="form-control form-control-sm campo-rapido" data-campo="notas"></td>`
+        : '';
+
+    return `
+        <tr class="fila-rapida" data-supplier-id="${supplierId}" data-terminal-id="${terminalId || ''}" data-registro-id="">
+            <td><input type="time" class="form-control form-control-sm campo-rapido" data-campo="hora"></td>
+            <td>
+                <select class="form-select form-select-sm campo-rapido" data-campo="product">
+                    <option value="Regular">Regular</option>
+                    <option value="Premium">Premium</option>
+                    <option value="Diesel">Diesel</option>
+                    <option value="Mixta">Mixta</option>
+                </select>
+            </td>
+            <td><input type="number" min="1" step="1" class="form-control form-control-sm campo-rapido" data-campo="litros" placeholder="Litros"></td>
+            <td>
+                <select class="selectpicker campo-rapido" data-campo="station_code" data-live-search="true" data-width="180px" data-size="8" data-container="body">
+                    <option value="">Seleccione…</option>
+                    ${opcionesEstacion}
+                </select>
+            </td>
+            ${celdaTransportista}
+            ${celdasReferenciaNotas}
+            <td>
+                <div class="d-flex gap-1 justify-content-center">
+                    <button type="button" class="btn btn-outline-success btn-guardar-fila-rapida btn-accion-icono" title="Guardar"><i data-feather="check"></i></button>
+                    <button type="button" class="btn btn-outline-danger btn-cancelar-fila-rapida btn-accion-icono" title="Cancelar"><i data-feather="x"></i></button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
 function formatearFilaEstacion(fila) {
     return `
         <tr data-id="${fila.id}">
@@ -149,7 +232,7 @@ function formatearFilaEstacion(fila) {
     `;
 }
 
-function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, pesoRelativo) {
+function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, pesoRelativo, botonAgregar) {
     // El grosor del borde escala con el volumen del grupo relativo al mayor
     // del día (3px..9px) -- una tarjeta con más litros programados destaca
     // sin necesitar leer el número del badge.
@@ -159,7 +242,7 @@ function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, peso
         <div class="${colClass()} mb-4">
             <div class="card h-100"${estiloBorde}>
                 <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">${titulo}</h6>
+                    <h6 class="mb-0 d-flex align-items-center gap-2">${titulo}${botonAgregar || ''}</h6>
                     <span class="badge bg-white text-dark border">${subtotal.toLocaleString('es-MX')} L</span>
                 </div>
                 <div class="table-responsive">
@@ -176,42 +259,21 @@ function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, peso
 }
 
 function filasFiltradas() {
-    const proveedorId = $('#filtroProveedor').val();
-    if (!proveedorId) return ultimasFilas;
-    return ultimasFilas.filter(function (f) { return String(f.supplier_id) === String(proveedorId); });
+    if (!proveedorFiltroActivo) return ultimasFilas;
+    return ultimasFilas.filter(function (f) { return String(f.supplier_id) === String(proveedorFiltroActivo); });
 }
 
-function actualizarFiltroProveedor() {
-    const select = $('#filtroProveedor');
-    const seleccionActual = select.val();
-
-    const proveedores = {};
-    ultimasFilas.forEach(function (f) {
-        if (f.supplier_id) proveedores[f.supplier_id] = f.supplier_nombre || ('Proveedor ' + f.supplier_id);
+function renderBotonesProveedor() {
+    const contenedor = $('#filtroProveedorBotones');
+    contenedor.empty();
+    PROVEEDORES_FILTRO.forEach(function (p) {
+        const activo = String(proveedorFiltroActivo) === String(p.id);
+        const color = colorProveedor(p.nombreCorto);
+        const estilo = activo ? ` style="background-color:${color};border-color:${color};"` : ` style="border-color:${color};color:${color};"`;
+        contenedor.append(
+            `<button type="button" class="btn btn-sm btn-filtro-proveedor${activo ? ' active' : ''}" data-supplier-id="${p.id}"${estilo}>${esc(p.nombreCorto)}</button>`
+        );
     });
-
-    const ids = Object.keys(proveedores).sort(function (a, b) {
-        return proveedores[a].localeCompare(proveedores[b]);
-    });
-
-    // bootstrap-select deja residuos en su menú desplegable si solo se
-    // reconstruyen las <option> y se llama refresh() -- destruir e
-    // inicializar de nuevo es lo único que limpia el widget por completo.
-    select.selectpicker('destroy');
-
-    select.empty();
-    select.append('<option value="">Todos</option>');
-    ids.forEach(function (id) {
-        select.append(`<option value="${id}">${esc(proveedores[id])}</option>`);
-    });
-
-    if (ids.indexOf(seleccionActual) !== -1) {
-        select.val(seleccionActual);
-    } else {
-        select.val('');
-    }
-
-    select.selectpicker({ liveSearch: true, width: '220px' });
 }
 
 function renderPorTerminal(filas) {
@@ -223,7 +285,7 @@ function renderPorTerminal(filas) {
     // Arranca de las 16 combinaciones reales del programa (siempre visibles,
     // aunque no tengan filas ese día) y les asigna las filas que apliquen.
     const grupos = GRUPOS_PROVEEDOR_TERMINAL.map(function (g) {
-        return { supplierId: g.supplierId, supplierNombre: g.supplierNombre, terminalNombre: g.terminalNombre, filas: [], total: 0 };
+        return { supplierId: g.supplierId, supplierNombre: g.supplierNombre, terminalNombre: g.terminalNombre, terminalId: null, filas: [], total: 0 };
     });
 
     filas.forEach(function (fila) {
@@ -233,17 +295,23 @@ function renderPorTerminal(filas) {
         if (!grupo) {
             // Combinación no prevista en el catálogo fijo (proveedor/terminal
             // nuevo aún no confirmado) -- se agrega igual para no perder el dato.
-            grupo = { supplierId: fila.supplier_id, supplierNombre: fila.supplier_nombre, terminalNombre: fila.terminal_nombre || 'Sin terminal', filas: [], total: 0 };
+            grupo = { supplierId: fila.supplier_id, supplierNombre: fila.supplier_nombre, terminalNombre: fila.terminal_nombre || 'Sin terminal', terminalId: null, filas: [], total: 0 };
             grupos.push(grupo);
         }
+        // El catálogo fijo solo trae el nombre de la terminal, no su id --
+        // se toma de la primera fila real del grupo para poder precargar
+        // el botón "+" con ambos selects resueltos.
+        if (!grupo.terminalId && fila.terminal_id) grupo.terminalId = fila.terminal_id;
         grupo.filas.push(fila);
         grupo.total += Number(fila.litros) || 0;
     });
 
-    const proveedorFiltro = $('#filtroProveedor').val();
     const gruposVisibles = grupos.filter(function (g) {
-        if (proveedorFiltro && String(g.supplierId) !== String(proveedorFiltro)) return false;
-        if (ocultarVacios && g.filas.length === 0) return false;
+        if (proveedorFiltroActivo && String(g.supplierId) !== String(proveedorFiltroActivo)) return false;
+        // Con un proveedor filtrado por botón, sus tarjetas siempre se ven
+        // aunque no tengan nada programado ese día -- "ocultar vacíos" solo
+        // aplica quitando ruido de otros proveedores, no al que se pidió ver.
+        if (!proveedorFiltroActivo && ocultarVacios && g.filas.length === 0) return false;
         return true;
     });
 
@@ -272,7 +340,18 @@ function renderPorTerminal(filas) {
             const titulo = esc(grupo.supplierNombre) + ' — ' + esc(grupo.terminalNombre);
             const color = colorProveedor(grupo.supplierNombre);
             const peso = maxTotal > 0 ? grupo.total / maxTotal : 0;
-            contenedor.append(tarjetaGrupo(titulo, grupo.total, filasHtml, encabezados, color, peso));
+            // Grupos sin ninguna recepción real ese día no tienen terminalId
+            // (solo se conoce el nombre vía GRUPOS_PROVEEDOR_TERMINAL) --
+            // se resuelve contra el catálogo de terminales antes de armar
+            // los botones que lo necesitan para guardar.
+            const terminalId = grupo.terminalId || resolverTerminalId(grupo.terminalNombre);
+            const botonAgregar = grupo.supplierId
+                ? `<button type="button" class="btn btn-sm btn-outline-success btn-accion-icono btn-agregar-en-grupo" data-supplier-id="${grupo.supplierId}" data-terminal-id="${terminalId || ''}" title="Agregar recepción en ${esc(grupo.supplierNombre)} — ${esc(grupo.terminalNombre)}"><i data-feather="plus"></i></button>`
+                : '';
+            const botonFilaRapida = grupo.supplierId
+                ? `<button type="button" class="btn btn-sm btn-outline-secondary btn-accion-icono btn-fila-rapida" data-supplier-id="${grupo.supplierId}" data-terminal-id="${terminalId || ''}" data-mostrar-transportista="${mostrarTransportista ? '1' : '0'}" data-mostrar-referencia-notas="${mostrarReferenciaNotas ? '1' : '0'}" title="Capturar renglón rápido (como Excel)"><i data-feather="list"></i></button>`
+                : '';
+            contenedor.append(tarjetaGrupo(titulo, grupo.total, filasHtml, encabezados, color, peso, botonAgregar + botonFilaRapida));
         });
 }
 
@@ -334,7 +413,6 @@ function cargarDia(fecha) {
     $.get('/supply/scheduling_day_data', { fecha: fecha })
         .done(function (resp) {
             ultimasFilas = resp.data || [];
-            actualizarFiltroProveedor();
             renderizarTodo();
         })
         .fail(function () {
@@ -349,8 +427,9 @@ function formatearFechaLocal(fecha) {
     return `${anio}-${mes}-${dia}`;
 }
 
-function abrirModal(id, fecha) {
-    $.post('/supply/scheduling_modal', { id: id || '', fecha: fecha })
+function abrirModal(id, fecha, precarga) {
+    const datos = Object.assign({ id: id || '', fecha: fecha }, precarga || {});
+    $.post('/supply/scheduling_modal', datos)
         .done(function (resp) {
             if (!resp.success) {
                 alertify.myAlert('<div class="text-danger text-center"><p>No se pudo abrir el formulario.</p></div>');
@@ -385,6 +464,7 @@ $(document).ready(function () {
 
     $('.selectpicker').selectpicker();
 
+    renderBotonesProveedor();
     cargarDia(fechaInput.val());
 
     fechaInput.on('change', function () {
@@ -412,7 +492,10 @@ $(document).ready(function () {
         renderizarTodo();
     });
 
-    $('#filtroProveedor').on('change', function () {
+    $(document).on('click', '.btn-filtro-proveedor', function () {
+        const id = $(this).data('supplier-id');
+        proveedorFiltroActivo = (String(proveedorFiltroActivo) === String(id)) ? null : id;
+        renderBotonesProveedor();
         renderizarTodo();
     });
 
@@ -441,6 +524,110 @@ $(document).ready(function () {
 
     $(document).on('click', '.btn-editar-recepcion', function () {
         abrirModal($(this).data('id'), fechaInput.val());
+    });
+
+    $(document).on('click', '.btn-agregar-en-grupo', function () {
+        abrirModal(null, fechaInput.val(), {
+            supplier_id: $(this).data('supplier-id') || '',
+            terminal_id: $(this).data('terminal-id') || '',
+        });
+    });
+
+    $(document).on('click', '.btn-fila-rapida', function () {
+        const boton = $(this);
+        const tbody = boton.closest('.card').find('tbody');
+        // La tarjeta puede seguir mostrando el placeholder "Sin recepciones
+        // programadas hoy" -- se limpia antes de insertar la fila editable.
+        tbody.find('td.text-muted.text-center').closest('tr').remove();
+        tbody.append(filaRapidaHtml(
+            boton.data('supplier-id'),
+            boton.data('terminal-id'),
+            boton.data('mostrar-transportista') === '1' || boton.data('mostrar-transportista') === 1,
+            boton.data('mostrar-referencia-notas') === '1' || boton.data('mostrar-referencia-notas') === 1
+        ));
+        const filaNueva = tbody.find('tr.fila-rapida:last');
+        filaNueva.data('mostrar-transportista', boton.data('mostrar-transportista') === '1' || boton.data('mostrar-transportista') === 1);
+        filaNueva.data('mostrar-referencia-notas', boton.data('mostrar-referencia-notas') === '1' || boton.data('mostrar-referencia-notas') === 1);
+        filaNueva.find('select.selectpicker').selectpicker();
+        if (window.feather) feather.replace();
+        filaNueva.find('input[data-campo="hora"]').trigger('focus');
+    });
+
+    $(document).on('click', '.btn-cancelar-fila-rapida', function () {
+        const fila = $(this).closest('tr.fila-rapida');
+        const tbody = fila.closest('tbody');
+        fila.remove();
+        if (!tbody.find('tr').length) {
+            const colspan = tbody.closest('table').find('thead th').length || 1;
+            tbody.html('<tr><td colspan="' + colspan + '" class="text-muted text-center">Sin recepciones programadas hoy.</td></tr>');
+        }
+    });
+
+    $(document).on('click', '.btn-guardar-fila-rapida', function () {
+        const boton = $(this);
+        const fila = boton.closest('tr.fila-rapida');
+        if (fila.data('guardando')) return;
+
+        const litros = parseInt(fila.find('[data-campo="litros"]').val(), 10) || 0;
+        const stationCode = fila.find('[data-campo="station_code"]').val();
+        if (litros <= 0 || !stationCode) {
+            alertify.myAlert('<div class="text-danger text-center"><p>Captura al menos Litros y Estación.</p></div>');
+            return;
+        }
+
+        const datos = {
+            fecha: fechaInput.val(),
+            supplier_id: fila.data('supplier-id'),
+            terminal_id: fila.data('terminal-id'),
+            station_code: stationCode,
+            product: fila.find('[data-campo="product"]').val() || 'Regular',
+            litros: litros,
+            hora: fila.find('[data-campo="hora"]').val() || '',
+            carrier_id: fila.find('[data-campo="carrier_id"]').val() || '',
+            referencia: fila.find('[data-campo="referencia"]').val() || '',
+            notas: fila.find('[data-campo="notas"]').val() || '',
+        };
+
+        fila.data('guardando', true);
+        boton.prop('disabled', true);
+
+        $.post('/supply/scheduling_add', datos)
+            .done(function (resp) {
+                if (!resp.success) {
+                    alertify.myAlert('<div class="text-danger text-center"><p>No se pudo guardar.</p></div>');
+                    return;
+                }
+                // La fila editable se reemplaza por la fila normal ya
+                // formateada (con sus botones Editar/Cancelar) -- sin
+                // reconstruir toda la tarjeta, para no perder el lugar si
+                // el usuario sigue capturando otro renglón después.
+                const filaGuardada = Object.assign({}, datos, {
+                    id: resp.id,
+                    carrier_nombre: TRANSPORTISTAS_INLINE.find(function (t) { return String(t.id) === String(datos.carrier_id); })?.nombre || null,
+                    station_nombre: ESTACIONES_INLINE.find(function (e) { return String(e.Codigo) === String(datos.station_code); })?.Nombre || null,
+                });
+                fila.replaceWith(formatearFilaTerminal(filaGuardada, fila.data('mostrar-transportista'), fila.data('mostrar-referencia-notas')));
+                if (window.feather) feather.replace();
+
+                $.get('/supply/scheduling_day_data', { fecha: fechaInput.val() }).done(function (dayResp) {
+                    ultimasFilas = dayResp.data || [];
+                    actualizarTotalDia(filasFiltradas());
+                });
+            })
+            .fail(function () {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo guardar.</p></div>');
+            })
+            .always(function () {
+                fila.data('guardando', false);
+                boton.prop('disabled', false);
+            });
+    });
+
+    // Filas rápidas sin guardar son estado de edición efímero -- al cambiar
+    // de día se descartan igual que se descartaría un formulario a medio
+    // llenar.
+    fechaInput.on('change', function () {
+        $('tr.fila-rapida').remove();
     });
 
     $(document).on('click', '.btn-cancelar-recepcion', function () {

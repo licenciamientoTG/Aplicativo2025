@@ -2704,8 +2704,10 @@ class Supply
         // fecha explícita en la URL, se abre en "mañana", no en "hoy".
         $fecha = $fecha ?: date('Y-m-d', strtotime('+1 day'));
         $estaciones = $this->estacionesModel->get_select_stations();
+        $transportistas = $this->fuelCarriersModel->get_all();
+        $terminales = $this->fuelTerminalsModel->get_all();
 
-        echo $this->twig->render($this->route . 'scheduling.html', compact('fecha', 'estaciones'));
+        echo $this->twig->render($this->route . 'scheduling.html', compact('fecha', 'estaciones', 'transportistas', 'terminales'));
     }
 
     public function scheduling_day_data()
@@ -2832,6 +2834,15 @@ class Supply
         $id = (int)($_POST['id'] ?? 0);
         $fecha = $_POST['fecha'] ?? date('Y-m-d');
         $registro = $id ? $this->fuelReceptionScheduleModel->get_one($id) : null;
+
+        // Captura rápida desde el botón "+" de una tarjeta agrupada por
+        // Terminal: precarga proveedor/terminal sin ser una edición real.
+        if (!$registro && (!empty($_POST['supplier_id']) || !empty($_POST['terminal_id']))) {
+            $registro = [
+                'supplier_id' => !empty($_POST['supplier_id']) ? (int)$_POST['supplier_id'] : null,
+                'terminal_id' => !empty($_POST['terminal_id']) ? (int)$_POST['terminal_id'] : null,
+            ];
+        }
 
         $proveedores = $this->fuelReceptionScheduleModel->get_proveedores();
         $estaciones = $this->estacionesModel->get_select_stations();
