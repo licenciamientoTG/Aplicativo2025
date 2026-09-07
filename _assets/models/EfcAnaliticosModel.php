@@ -53,12 +53,16 @@ class EfcAnaliticosModel {
     /** Papeletas disponibles sin imponer fecha; la fecha sólo es trazabilidad. */
     public function workspace(int $stationId, int $year, int $month): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Estación o periodo inválidos.');
-        $papers=$this->db->prepare("SELECT P.id,P.importacion_id,P.fecha_reportada AS fecha_original,C.fecha_efectiva,P.hora_original,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,I.nombre_archivo FROM dbo.efc_conc_analiticos_papeletas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1 WHERE P.estacion_id=? AND I.estado='IMPORTADA' ORDER BY P.id DESC");
-        $papers->execute([$stationId]); $items=[];
+        $papers=$this->db->prepare("SELECT P.id,P.importacion_id,P.fecha_reportada AS fecha_original,C.fecha_efectiva,P.hora_original,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,I.nombre_archivo FROM dbo.efc_conc_analiticos_papeletas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1 WHERE P.estacion_id=? AND I.estado='IMPORTADA' AND COALESCE(C.fecha_efectiva,P.fecha_reportada)>=DATEFROMPARTS(?, ?, 1) AND COALESCE(C.fecha_efectiva,P.fecha_reportada)<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1))) ORDER BY P.id DESC");
+        $papers->execute([$stationId,$year,$month,$year,$month]); $items=[];
         while($row=$papers->fetch(PDO::FETCH_ASSOC)) $items[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),'original_date'=>$this->dateValue($row['fecha_original']),'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,'time'=>$row['hora_original'],'remittance'=>$row['remesa_numero'],'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'file'=>$row['nombre_archivo']];
         $links=$this->db->prepare("SELECT id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd AS exchange_rate FROM dbo.efc_conc_analiticos_vinculos WHERE estacion_id=? AND YEAR(fecha_cg)=? AND MONTH(fecha_cg)=? AND activo=1");
         $links->execute([$stationId,$year,$month]);
-        return ['papers'=>$items,'links'=>$links->fetchAll(PDO::FETCH_ASSOC)];
+        $blocked=$this->db->prepare("SELECT V.fecha_cg,V.turno,V.concepto FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND YEAR(V.fecha_cg)=? AND MONTH(V.fecha_cg)=? AND V.activo=0 AND V.bloqueado_auto=1 AND NOT EXISTS (SELECT 1 FROM dbo.efc_conc_analiticos_vinculos A WHERE A.activo=1 AND A.estacion_id=V.estacion_id AND A.fecha_cg=V.fecha_cg AND A.turno=V.turno AND A.concepto=V.concepto)");
+        $blocked->execute([$stationId,$year,$month]);
+        $linkRows=$links->fetchAll(PDO::FETCH_ASSOC);
+        foreach($blocked->fetchAll(PDO::FETCH_ASSOC) as $row) {$row['blocked']=1; $linkRows[]=$row;}
+        return ['papers'=>$items,'links'=>$linkRows];
     }
 
     /**
@@ -137,7 +141,7 @@ class EfcAnaliticosModel {
             $exchangeRate=$concept==='USD' ? $this->exchangeRateForTurn($station,$date,$turn) : null;
             if($concept==='USD' && ($exchangeRate===null || $exchangeRate<=0)) throw new RuntimeException('No existe tipo de cambio histórico para este turno.');
             $this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET activo=0,actualizado_en=GETDATE() WHERE activo=1 AND (papeleta_id=? OR (estacion_id=? AND fecha_cg=? AND turno=? AND concepto=?))")->execute([$paper,$station,$date,$turn,$concept]);
-            $this->db->prepare("INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id) VALUES(?,?,?,?,?,?,?,?,?)")->execute([$station,$paper,$date,$turn,$concept,$amount,$criterion,$concept==='USD'?$exchangeRate:null,$userId?:null]);
+            $this->db->prepare("INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id,bloqueado_auto) VALUES(?,?,?,?,?,?,?,?,?,0)")->execute([$station,$paper,$date,$turn,$concept,$amount,$criterion,$concept==='USD'?$exchangeRate:null,$userId?:null]);
             $this->db->commit();
         } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
     }
@@ -161,11 +165,27 @@ class EfcAnaliticosModel {
         return $out;
     }
 
-    public function unlink(int $linkId): void { $stmt=$this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET activo=0,actualizado_en=GETDATE() WHERE id=? AND activo=1"); $stmt->execute([$linkId]); }
+    public function unlink(int $linkId): void { $stmt=$this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET activo=0,bloqueado_auto=1,actualizado_en=GETDATE() WHERE id=? AND activo=1"); $stmt->execute([$linkId]); }
+
+    public function swapLinks(int $firstId, int $secondId, int $userId): void {
+        if ($firstId < 1 || $secondId < 1 || $firstId === $secondId) throw new RuntimeException('Seleccione dos vínculos distintos.');
+        $this->db->beginTransaction();
+        try {
+            $q=$this->db->prepare("SELECT id,estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd FROM dbo.efc_conc_analiticos_vinculos WITH (UPDLOCK,HOLDLOCK) WHERE id IN (?,?) AND activo=1");
+            $q->execute([$firstId,$secondId]); $rows=$q->fetchAll(PDO::FETCH_ASSOC);
+            if (count($rows)!==2 || (int)$rows[0]['estacion_id']!==(int)$rows[1]['estacion_id']) throw new RuntimeException('Los vínculos no son intercambiables.');
+            $this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET activo=0,actualizado_en=GETDATE() WHERE id IN (?,?)")->execute([$firstId,$secondId]);
+            $insert=$this->db->prepare("INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id) VALUES(?,?,?,?,?,?,?,?,?)");
+            $insert->execute([(int)$rows[0]['estacion_id'],(int)$rows[1]['papeleta_id'],$rows[0]['fecha_cg'],$rows[0]['turno'],$rows[0]['concepto'],$rows[0]['importe_cg'],'INTERCAMBIO',$rows[0]['tipo_cambio_usd'],$userId?:null]);
+            $insert->execute([(int)$rows[1]['estacion_id'],(int)$rows[0]['papeleta_id'],$rows[1]['fecha_cg'],$rows[1]['turno'],$rows[1]['concepto'],$rows[1]['importe_cg'],'INTERCAMBIO',$rows[1]['tipo_cambio_usd'],$userId?:null]);
+            $this->db->commit();
+        } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
+    }
 
     private function ensureLinksSchema(): void {
         $this->db->exec("IF OBJECT_ID('dbo.efc_conc_analiticos_vinculos','U') IS NULL CREATE TABLE dbo.efc_conc_analiticos_vinculos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, papeleta_id INT NOT NULL, fecha_cg DATE NOT NULL, turno NVARCHAR(40) NOT NULL, concepto VARCHAR(10) NOT NULL, importe_cg DECIMAL(18,2) NOT NULL, criterio VARCHAR(20) NOT NULL, tipo_cambio_usd DECIMAL(18,6) NULL, usuario_id INT NULL, activo BIT NOT NULL DEFAULT 1, creado_en DATETIME NOT NULL DEFAULT GETDATE(), actualizado_en DATETIME NULL, CONSTRAINT FK_efc_conc_analiticos_vinculos_papeleta FOREIGN KEY(papeleta_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id))");
         $this->db->exec("IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','tipo_cambio_usd') IS NULL ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD tipo_cambio_usd DECIMAL(18,6) NULL");
+        $this->db->exec("IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','bloqueado_auto') IS NULL ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD bloqueado_auto BIT NOT NULL CONSTRAINT DF_efc_conc_analiticos_vinculos_bloqueado DEFAULT 0");
         $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_vinculos_papeleta_activa') CREATE UNIQUE INDEX UX_efc_conc_analiticos_vinculos_papeleta_activa ON dbo.efc_conc_analiticos_vinculos(papeleta_id) WHERE activo=1");
         $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_vinculos_turno_activo') CREATE UNIQUE INDEX UX_efc_conc_analiticos_vinculos_turno_activo ON dbo.efc_conc_analiticos_vinculos(estacion_id,fecha_cg,turno,concepto) WHERE activo=1");
         $this->db->exec("IF OBJECT_ID('dbo.efc_conc_analiticos_correcciones_fecha','U') IS NULL CREATE TABLE dbo.efc_conc_analiticos_correcciones_fecha (id INT IDENTITY PRIMARY KEY,papeleta_id INT NOT NULL,fecha_original DATE NOT NULL,fecha_efectiva DATE NOT NULL,usuario_id INT NULL,activo BIT NOT NULL DEFAULT 1,creado_en DATETIME NOT NULL DEFAULT GETDATE(),actualizado_en DATETIME NULL,actualizado_por INT NULL,CONSTRAINT FK_efc_conc_analiticos_correcciones_fecha_papeleta FOREIGN KEY(papeleta_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id))");

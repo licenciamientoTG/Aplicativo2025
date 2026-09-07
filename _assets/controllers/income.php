@@ -6465,6 +6465,12 @@ public function stamped_invoices_detail(): void
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 
+    public function efc_conc_analiticos_intercambiar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try{$data=json_decode(file_get_contents('php://input'),true)?:[];$this->efcAnaliticos->swapLinks((int)($data['first_id']??0),(int)($data['second_id']??0),(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
     /** Descarga el adjunto original sin reescribir ni regenerar el Excel. */
     public function efc_conc_analiticos_archivo(): void {
         try {
