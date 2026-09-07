@@ -215,6 +215,8 @@ $('#btnBuscarRecepciones').on('click', function () {
         datatables_mis_recepciones.ajax.reload();
     }
 
+    cargarRecepcionesProgramadas();
+
     // El resumen "Sin documento" solo se recalcula si ya estaba abierto
     // (nunca se dispara solo). Si está cerrado, cargarResumenSinDocumento()
     // se llamará solo cuando el usuario lo abra (evento shown.bs.collapse).
@@ -222,6 +224,79 @@ $('#btnBuscarRecepciones').on('click', function () {
         cargarResumenSinDocumento();
     }
 });
+
+function escProgramadas(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+}
+
+// Tarjeta "Recepciones programadas": lo que Abastos ya capturó en
+// /supply/scheduling para la misma estación y rango que se está
+// consultando aquí -- solo tiene sentido con una estación concreta
+// seleccionada, "(TODAS)" (codgas=0) o sin estación resuelta la oculta.
+function cargarRecepcionesProgramadas() {
+    const $row = $('#rowRecepcionesProgramadas');
+    const $body = $('#recepcionesProgramadasBody');
+
+    const params = {
+        fecha_desde: $('#fecha_desde').val(),
+        fecha_hasta: $('#fecha_hasta').val(),
+    };
+    const codgasSelect = $('#codgas_recepciones');
+    if (codgasSelect.length) {
+        params.codgas = codgasSelect.val();
+    }
+    if (codgasSelect.length && (!params.codgas || params.codgas === '0')) {
+        $row.hide();
+        return;
+    }
+
+    $body.html('<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>Cargando…</div>');
+    $row.show();
+
+    $.get('/station_portal/recepciones_programadas', params)
+        .done(function (resp) {
+            const filas = resp.data || [];
+            if (!filas.length) {
+                $body.html('<p class="text-muted mb-0">Sin recepciones programadas en este rango.</p>');
+                return;
+            }
+
+            let html = `
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Hora</th>
+                            <th>Proveedor</th>
+                            <th>Terminal</th>
+                            <th>Producto</th>
+                            <th>Litros</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            filas.forEach(function (f) {
+                const producto = escProgramadas(f.product) + (f.mezcla ? ' (' + escProgramadas(f.mezcla) + ')' : '');
+                html += `
+                    <tr>
+                        <td>${escProgramadas(f.fecha)}</td>
+                        <td>${escProgramadas(f.hora) || '<span class="text-muted">—</span>'}</td>
+                        <td>${escProgramadas(f.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
+                        <td>${escProgramadas(f.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
+                        <td>${producto}</td>
+                        <td>${Number(f.litros).toLocaleString('es-MX')}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            $body.html(html);
+        })
+        .fail(function () {
+            $body.html('<p class="text-danger mb-0">No se pudo cargar la programación.</p>');
+        });
+}
 
 // --- Resumen "Sin documento" (solo visible con permiso de todas las
 // estaciones, card colapsado por defecto en la vista) ---

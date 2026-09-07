@@ -7,6 +7,7 @@ class station_portal
     public RecepcionRemisionesModel $recepcionRemisionesModel;
     public GasolinerasModel $gasolinerasModel;
     public PetrotalReconciliationModel $petrotalReconciliationModel;
+    public FuelReceptionScheduleModel $fuelReceptionScheduleModel;
 
     const PERM_VER              = 84; // "Ver Mis Recepciones (portal estaciones)"
     const PERM_TODAS_ESTACIONES = 85; // "Mis Recepciones: ver todas las estaciones"
@@ -20,6 +21,7 @@ class station_portal
         $this->recepcionRemisionesModel = new RecepcionRemisionesModel();
         $this->gasolinerasModel = new GasolinerasModel();
         $this->petrotalReconciliationModel = new PetrotalReconciliationModel();
+        $this->fuelReceptionScheduleModel = new FuelReceptionScheduleModel();
     }
 
     /**
@@ -205,6 +207,34 @@ class station_portal
         $stations = $this->gasolinerasModel->get_active_stations() ?: [];
         $codgas = array_map(fn($s) => (int)$s['cod'], $stations);
         return array_values(array_filter($codgas, fn($c) => $c > 0));
+    }
+
+    /**
+     * Recepciones que Abastos ya programó (TG.dbo.fuel_reception_schedule)
+     * para la estación y rango que el usuario está consultando en Mis
+     * Recepciones -- tarjeta informativa, no reemplaza la tabla principal
+     * (que trae las recepciones YA recibidas, vía ApiER/ControlGas).
+     * Solo tiene sentido para una estación concreta: con "(TODAS)" (codgas=0)
+     * o sin estación resuelta todavía, se responde vacío sin error.
+     */
+    public function recepciones_programadas(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            json_output(['data' => [], 'error' => 'No autorizado']);
+            return;
+        }
+
+        $codgas = $this->resolveCodgas();
+        if (!$codgas) {
+            json_output(['data' => []]);
+            return;
+        }
+
+        $fechaDesde = $_REQUEST['fecha_desde'] ?? date('Y-m-d');
+        $fechaHasta = $_REQUEST['fecha_hasta'] ?? date('Y-m-d');
+
+        $filas = $this->fuelReceptionScheduleModel->get_by_station_range($codgas, $fechaDesde, $fechaHasta);
+        json_output(['data' => $filas]);
     }
 
     public function datatables_recepciones(): void

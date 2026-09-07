@@ -22,6 +22,29 @@ class FuelReceptionScheduleModel extends Model {
         return $this->sql->select($query, [$fecha]) ?: [];
     }
 
+    // Usado por el portal de estaciones (Mis Recepciones) para mostrar lo
+    // que Abastos ya programó en el mismo rango de fechas que el usuario
+    // está consultando -- una sola estación por llamada, a diferencia de
+    // get_day() que trae todas las estaciones de un día.
+    function get_by_station_range(int $stationCode, string $fechaDesde, string $fechaHasta): array {
+        $query = "
+            SELECT
+                s.id, s.fecha, s.hora, s.supplier_id, p2.den AS supplier_nombre,
+                s.terminal_id, t.nombre AS terminal_nombre,
+                s.station_code, s.product, s.mezcla, s.litros,
+                s.carrier_id, c.nombre AS carrier_nombre,
+                s.referencia, s.notas, s.estatus
+            FROM TG.dbo.fuel_reception_schedule s
+            LEFT JOIN TG.dbo.Proveedores p1 ON p1.id = s.supplier_id
+            LEFT JOIN SG12.dbo.Proveedores p2 ON p2.cod = p1.id_control_gas
+            LEFT JOIN TG.dbo.fuel_terminals t ON t.id = s.terminal_id
+            LEFT JOIN TG.dbo.fuel_carriers c ON c.id = s.carrier_id
+            WHERE s.station_code = ? AND s.fecha BETWEEN ? AND ? AND s.estatus <> 'Cancelado'
+            ORDER BY s.fecha, s.hora
+        ";
+        return $this->sql->select($query, [$stationCode, $fechaDesde, $fechaHasta]) ?: [];
+    }
+
     function get_one(int $id): ?array {
         $query = "SELECT * FROM TG.dbo.fuel_reception_schedule WHERE id = ?";
         $rows = $this->sql->select($query, [$id]);
