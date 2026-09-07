@@ -6648,7 +6648,6 @@ public function stamped_invoices_detail(): void
                     'descripcion'       => trim((string)$mov['descripcion']),
                     'descripcion_larga' => trim((string)$mov['descripcion_larga']),
                     'importe'           => (float)$mov['abono'],
-                    'currency'          => EfcConciliacionModel::accountCurrency($mov['cuenta'] ?? ''),
                     'station_id'        => $estacion['station_id'] ?? null,
                     'station'           => $estacion['station'] ?? null,
                     'station_status'    => $estatus,
