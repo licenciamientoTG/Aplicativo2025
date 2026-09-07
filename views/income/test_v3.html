@@ -560,7 +560,16 @@
     <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
         <div class="modal-content border-0 shadow-lg" style="height:90vh;border-radius:15px;overflow:hidden;">
             <div class="modal-header bg-dark text-white border-0 py-3">
-                <h5 class="modal-title font-weight-bold text-light"><i class="fas fa-columns mr-2"></i> Modo Transacciones — CG vs Banco por día</h5>
+                <div class="d-flex align-items-center flex-nowrap pr-3 text-nowrap">
+                    <h5 class="modal-title font-weight-bold text-white mb-0 mr-3"><i class="fas fa-columns mr-2"></i> Modo Transacciones — CG vs Banco por día</h5>
+                    <div class="h5 mb-0 text-white" aria-label="Contexto de la conciliación">
+                        <span class="font-weight-bold">Estación:</span> <span id="mtx-context-estacion">—</span>
+                        <span class="mx-2">•</span>
+                        <span class="font-weight-bold">Banco:</span> <span id="mtx-context-banco">—</span>
+                        <span class="mx-2">•</span>
+                        <span class="font-weight-bold">Afiliación:</span> <span id="mtx-context-afiliacion">—</span>
+                    </div>
+                </div>
                 <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalModoTransacciones').modal('hide')" style="font-size:1.5rem;opacity:.8;text-decoration:none;">&times;</button>
             </div>
             <div class="modal-body bg-light p-3" style="overflow:hidden;">
@@ -3696,6 +3705,10 @@ async function confirmarCrearTransito() {
 
 function abrirModoTransacciones() {
     if (!currentRule) { alert('Primero selecciona una estación y banco.'); return; }
+
+    $('#mtx-context-estacion').text($('#estacionSelect option:selected').text() || '—');
+    $('#mtx-context-banco').text(currentRule.nombre_banco || $('#bancoSelect option:selected').text() || '—');
+    $('#mtx-context-afiliacion').text(currentRule.afiliacion || '—');
 
     const $contCG = $('#mtx-panel-cg').empty();
     const $contTX = $('#mtx-panel-tx').empty();
