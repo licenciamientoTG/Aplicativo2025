@@ -15,6 +15,25 @@
         border-color: var(--bs-success);
         color: #fff;
     }
+    /* Botones de filtro por proveedor: outline con el mismo color que ya
+       usa la tarjeta de ese proveedor (borde izquierdo) -- al activarse se
+       rellenan con ese mismo color, así el filtro se reconoce por color
+       sin tener que leer el nombre completo. */
+    .btn-filtro-proveedor {
+        font-size: 0.8125rem;
+        padding: 0.3rem 0.6rem;
+        border-width: 1px;
+    }
+    .btn-filtro-proveedor.active {
+        color: #fff;
+    }
+    /* El borde por defecto de Bootstrap (rgba(0,0,0,.125)) es demasiado
+       sutil para distinguir dónde termina una tarjeta de la siguiente,
+       sobre todo abajo donde no hay header de color que marque el límite. */
+    #contenedorGrupos .card {
+        border-color: rgba(0, 0, 0, 0.2);
+        border-bottom-width: 2px;
+    }
     /* Densidad fija de tabla: prioriza ver más filas por tarjeta sin scroll
        sobre el tamaño de fuente por defecto de Bootstrap. */
     #contenedorGrupos .table {
@@ -118,12 +137,7 @@
                                 Ocultar estaciones sin recepción programada
                             </label>
                         </div>
-                        <div class="d-flex align-items-center gap-2">
-                            <label class="text-muted mb-0 small" for="filtroProveedor">Proveedor:</label>
-                            <select class="selectpicker form-control" data-live-search="true" data-width="220px" id="filtroProveedor">
-                                <option value="">Todos</option>
-                            </select>
-                        </div>
+                        <div id="filtroProveedorBotones" class="d-flex align-items-center gap-1 flex-wrap"></div>
                         <div class="d-flex align-items-center gap-2">
                             <label class="text-muted mb-0 small">Columnas:</label>
                             <div class="btn-group btn-group-sm" role="group">
@@ -161,6 +175,8 @@
 {% block myjs %}
 <script>
     window.SCHEDULING_ESTACIONES = {{ estaciones|json_encode|raw }};
+    window.SCHEDULING_TRANSPORTISTAS = {{ transportistas|json_encode|raw }};
+    window.SCHEDULING_TERMINALES = {{ terminales|json_encode|raw }};
 </script>
 <script src="/_assets/js/scheduling.js"></script>
 {% endblock %}

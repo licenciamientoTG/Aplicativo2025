@@ -65,8 +65,8 @@ class FuelReceptionScheduleModel extends Model {
         ";
         return (int)$this->sql->insert($query, [
             $data['fecha'], $data['hora'] ?: null, $data['supplier_id'], $data['terminal_id'],
-            $data['station_code'], $data['product'], $data['mezcla'] ?: null, $data['litros'],
-            $data['carrier_id'] ?: null, $data['referencia'] ?: null, $data['notas'] ?: null,
+            $data['station_code'], $data['product'], $data['mezcla'] ?? null, $data['litros'],
+            $data['carrier_id'] ?: null, $data['referencia'] ?? null, $data['notas'] ?? null,
             $userId,
         ]);
     }
@@ -81,8 +81,8 @@ class FuelReceptionScheduleModel extends Model {
         ";
         $this->sql->update($query, [
             $data['fecha'], $data['hora'] ?: null, $data['supplier_id'], $data['terminal_id'],
-            $data['station_code'], $data['product'], $data['mezcla'] ?: null, $data['litros'],
-            $data['carrier_id'] ?: null, $data['referencia'] ?: null, $data['notas'] ?: null,
+            $data['station_code'], $data['product'], $data['mezcla'] ?? null, $data['litros'],
+            $data['carrier_id'] ?: null, $data['referencia'] ?? null, $data['notas'] ?? null,
             $userId, $id,
         ]);
     }
