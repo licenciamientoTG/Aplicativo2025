@@ -335,9 +335,10 @@ class Merma
 
     /**
      * Pestaña HISTÓRICO de /merma/ventas: acumulado mensual por estación
-     * sobre un rango de años. Devuelve SOLO el HTML de la tabla — la pestaña
-     * lo pide por AJAX para que sus controles no colisionen con el selector
-     * de mes que gobierna las cinco pestañas diarias.
+     * sobre un rango de años, filtrado a una zona. Devuelve SOLO el HTML de
+     * la tabla — la pestaña lo pide por AJAX para que sus controles no
+     * colisionen con el selector de mes que gobierna las cinco pestañas
+     * diarias.
      */
     public function ventas_historico(): void
     {
@@ -345,21 +346,21 @@ class Merma
             (new Errors())->get404();
             return;
         }
-        [$desde, $hasta, $prod] = $this->periodoHistorico();
+        [$desde, $hasta, $prod, $zona] = $this->periodoHistorico();
 
-        ['estaciones' => $estaciones, 'hist' => $hist] = $this->armarHistorico($desde, $hasta, $prod);
+        ['estaciones' => $estaciones, 'hist' => $hist] = $this->armarHistorico($desde, $hasta, $prod, $zona);
 
         echo $this->twig->render($this->route . 'ventas_historico.html',
             compact('estaciones', 'hist', 'desde', 'hasta', 'prod'));
     }
 
     /**
-     * Valida desde/hasta/prod de la pestaña histórica. Mismo criterio que
-     * ventas(): piso duro en 2020 para que un parámetro manipulado no pida un
-     * rango absurdo, aunque el piso del SELECTOR sea el primer año que exista
-     * en la tabla (get_anio_min_historico), que es más alto.
+     * Valida desde/hasta/prod/zona de la pestaña histórica. Mismo criterio
+     * que ventas(): piso duro en 2020 para que un parámetro manipulado no
+     * pida un rango absurdo, aunque el piso del SELECTOR sea el primer año
+     * que exista en la tabla (get_anio_min_historico), que es más alto.
      *
-     * @return array{0:int,1:int,2:string}
+     * @return array{0:int,1:int,2:string,3:string}
      */
     private function periodoHistorico(): array
     {
@@ -373,31 +374,43 @@ class Merma
         $prod = (string) ($_GET['prod'] ?? 'total');
         if (!isset(VentasConsolidado::PESTANAS[$prod])) $prod = 'total';
 
-        return [$desde, $hasta, $prod];
+        $zona = (string) ($_GET['zona'] ?? 'marca_prots');
+        if (!isset(VentasConsolidado::ZONAS[$zona])) $zona = 'marca_prots';
+
+        return [$desde, $hasta, $prod, $zona];
     }
 
     /**
-     * Junta modelo + calculadora para la pestaña HISTÓRICO. Lo comparten la
-     * vista (ventas_historico) y la exportación (ventas_excel) para que la
-     * tabla y su leyenda de cobertura no se puedan desincronizar entre
-     * pantalla y .xlsx.
+     * Junta modelo + calculadora para la pestaña HISTÓRICO, filtrado a una
+     * zona. Lo comparten la vista (ventas_historico) y la exportación
+     * (ventas_excel) para que la tabla y su leyenda de cobertura no se
+     * puedan desincronizar entre pantalla y .xlsx.
      *
      * @return array{estaciones: array, hist: array}
      */
-    private function armarHistorico(int $desde, int $hasta, string $prod): array
+    private function armarHistorico(int $desde, int $hasta, string $prod, string $zona): array
     {
         $estaciones = array_map(
-            fn($e) => ['Codigo' => (int) $e['Codigo'], 'Nombre' => $e['Nombre']],
+            fn($e) => [
+                'Codigo'    => (int) $e['Codigo'],
+                'Nombre'    => $e['Nombre'],
+                'ZonaConso' => isset($e['ZonaConso']) ? (int) $e['ZonaConso'] : null,
+            ],
             $this->mermaModel->get_estaciones_ordenadas()
         );
+        $estacionesZona = array_values(array_filter(
+            $estaciones,
+            fn($e) => VentasConsolidado::clasificarZona($e['ZonaConso']) === $zona
+        ));
+
         $hist = VentasConsolidado::construirHistorico($prod, [
-            'estaciones' => $estaciones,
+            'estaciones' => $estacionesZona,
             'historico'  => $this->mermaModel->get_historico_mensual($desde, $hasta),
             'desde'      => $desde,
             'hasta'      => $hasta,
         ]);
 
-        return ['estaciones' => $estaciones, 'hist' => $hist];
+        return ['estaciones' => $estacionesZona, 'hist' => $hist];
     }
 
     /**
