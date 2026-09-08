@@ -105,6 +105,25 @@ class Income{
     ];
 
     /**
+     * Catálogo de combustibles para el TXT posicional de vales.
+     *
+     * 'codprd' son los mismos códigos que MermaDiariaModel::FAMILIAS (cada
+     * familia trae varios porque las estaciones no usan el mismo código).
+     * 'digito' es lo que el receptor del archivo espera en la posición 10:
+     * 1 = magna, 3 = diesel, según la documentación del propio TXT.
+     * 'nombre' se escribe tal cual en las últimas 20 posiciones.
+     *
+     * OJO: el nombre de DIESEL es provisional; el archivo de ejemplo solo
+     * documentaba MAGNA. PREMIUM tampoco venía documentado (ni su dígito ni
+     * su nombre) — se dejó el 2 por simetría con codprd.
+     */
+    private const EXPEDIENTE_TXT_PRODUCTOS = [
+        'magna'   => ['codprd' => [1, 179, 192], 'digito' => '1', 'nombre' => 'MAGNA V.A.'],
+        'diesel'  => ['codprd' => [3, 181],      'digito' => '3', 'nombre' => 'DIESEL V.A.'],
+        'premium' => ['codprd' => [2, 180, 193], 'digito' => '2', 'nombre' => 'PREMIUM V.A.'],
+    ];
+
+    /**
      * @param $twig
      */
     public function __construct($twig) {
@@ -2137,9 +2156,13 @@ public function anomalies_client_tickets()
             $stations = $this->estacionesModel->get_stations('0,4,20,40,199') ?: [];
             $clientes = $this->clientesModel->get_credit_debit_clients_list();
             $columns  = self::EXPEDIENTE_COLUMNS;
+            // El TXT se arma en el navegador (ver income.js): el SP tarda
+            // minutos, así que se exporta con los renglones que ya trajo el
+            // ajax en lugar de volver a consultarlo.
+            $txtProductos = self::EXPEDIENTE_TXT_PRODUCTOS;
 
             echo $this->twig->render($this->route . 'expediente_facturas.html',
-                compact('stations', 'clientes', 'columns'));
+                compact('stations', 'clientes', 'columns', 'txtProductos'));
         }
     }
 
