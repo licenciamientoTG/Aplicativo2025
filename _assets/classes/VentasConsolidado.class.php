@@ -24,6 +24,34 @@ class VentasConsolidado
         'diesel'   => ['label' => 'DIESEL',                'familias' => ['diesel']],
     ];
 
+    /**
+     * Las tres zonas de venta, cada una con su propio libro Excel real
+     * (VETS X EST X MARCA Y PROTS / TSA AGS / ZONA3). Se clasifican por
+     * TG.dbo.Estaciones.ZonaConso -- 'marca_prots' es todo lo que NO cae en
+     * las otras dos (incluye NULL, que Twig/PHP tratan igual que 0 al
+     * filtrar), así que su lista de zonaconso solo necesita el valor 0 --
+     * ver clasificarZona() para cómo se resuelve NULL.
+     */
+    public const ZONAS = [
+        'marca_prots' => ['label' => 'MARCA Y PROTS', 'zonaconso' => [0, 1]],
+        'tsa_ags'     => ['label' => 'TSA AGS',        'zonaconso' => [2]],
+        'zona3'       => ['label' => 'ZONA 3',         'zonaconso' => [3]],
+    ];
+
+    /**
+     * Resuelve a qué zona pertenece una estación según su ZonaConso. NULL
+     * (estación sin zona asignada en BD) se trata igual que 0 -- cae en
+     * marca_prots por ser el grupo "todo lo demás", no un caso de error.
+     */
+    public static function clasificarZona(?int $zonaConso): string
+    {
+        $valor = $zonaConso ?? 0;
+        foreach (self::ZONAS as $clave => $info) {
+            if (in_array($valor, $info['zonaconso'], true)) return $clave;
+        }
+        return 'marca_prots';
+    }
+
     /** Días de la semana en español, indexados por date('w'). */
     private const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
