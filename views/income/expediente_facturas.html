@@ -68,7 +68,10 @@
                     <div class="col-12">
                         <small class="text-muted">
                             Si dejas el rango de fechas vacío se consulta todo el histórico del cliente en esa estación.
-                            Usa el botón <strong>Columnas</strong> para ocultar las que no necesites: el Excel exporta solo las visibles.
+                            La tabla arranca con las columnas de uso diario; usa el botón <strong>Columnas</strong>
+                            para agregar cualquiera de las demás. El Excel exporta solo las visibles.
+                            El botón <strong>TXT</strong> genera el archivo posicional de vales (69 caracteres
+                            por renglón) con los despachos de la consulta, sin importar qué columnas estén visibles.
                         </small>
                     </div>
                 </div>
@@ -102,6 +105,10 @@
     /* Misma definición de columnas que usa el controlador (Income::EXPEDIENTE_COLUMNS),
        para que encabezados y datos no se puedan desfasar. */
     window.EXPEDIENTE_COLS = {{ columns|json_encode|raw }};
+    /* Catálogo de combustibles del TXT de vales (Income::EXPEDIENTE_TXT_PRODUCTOS).
+       El dígito de la posición 10 y el nombre de las últimas 20 se editan en el
+       controlador, no aquí ni en income.js. */
+    window.EXPEDIENTE_TXT_PRODUCTOS = {{ txtProductos|json_encode|raw }};
 </script>
 <script src="{{ js_v('income.js') }}"></script>
 <script>

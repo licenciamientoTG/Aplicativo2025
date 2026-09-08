@@ -2814,7 +2814,10 @@ async function expediente_facturas_table() {
         // defaultContent: el SP devuelve NULL en varias columnas (satext,
         // satnro, MontoAplicado...). Sin esto DataTables lanza warning y pinta
         // "undefined" en la celda.
-        var col = { data: c.key, defaultContent: '' };
+        // visible: solo arrancan prendidas las que el PHP marca con 'show'.
+        // El resto se agrega desde el botón "Columnas" sin recargar nada,
+        // porque DataTables ya recibió los 51 campos en el mismo ajax.
+        var col = { data: c.key, defaultContent: '', visible: c.show === true };
 
         if (c.type === 'money') {
             col.render = $.fn.dataTable.render.number(',', '.', 2, '$');
@@ -2870,6 +2873,14 @@ async function expediente_facturas_table() {
                 extend: 'colvis',
                 className: 'btn btn-secondary',
                 text: ' Columnas'
+            },
+            {
+                className: 'btn btn-info',
+                text: ' TXT',
+                titleAttr: 'Archivo posicional de vales (69 caracteres por renglon)',
+                action: function (e, dt, node, config) {
+                    expediente_facturas_txt(dt);
+                }
             }
         ],
         ajax: {
@@ -2904,4 +2915,231 @@ async function expediente_facturas_table() {
             this.api().columns.adjust();
         }
     });
+}
+
+/* =====================================================================
+   Expediente de facturas -> TXT posicional de vales
+   ---------------------------------------------------------------------
+   Archivo de ancho fijo, SIN separadores: cada campo ocupa un numero exacto
+   de caracteres y se rellena con espacios (numeros a la derecha, textos a la
+   izquierda). Renglon de 69 caracteres, terminador CRLF:
+
+     pos 1-9    (9)  Unidad ............ digitos, ceros a la izquierda
+     pos 10     (1)  Combustible ....... 1 = magna, 3 = diesel
+     pos 11-17  (7)  Monto ............. derecha, 2 decimales
+     pos 18     (1)  ESPACIO ........... separador fijo, SIEMPRE en blanco
+     pos 19-23  (5)  Litros ............ derecha, 2 decimales
+     pos 24-29  (6)  Vale .............. digitos, ceros a la izquierda
+     pos 30-35  (6)  Kilometraje ....... digitos, ceros a la izquierda
+     pos 36-43  (8)  Fecha ............. ddmmaaaa
+     pos 44     (1)  ESPACIO ........... separador fijo, SIEMPRE en blanco
+     pos 45-49  (5)  Precio unitario ... derecha, 2 decimales
+     pos 50-69 (20)  Producto .......... izquierda, relleno con espacios
+
+   Los dos ESPACIO son separadores y no se invaden nunca: por eso Litros y
+   Precio miden 5 y no 6. Como "120.00" son 6 caracteres, un valor de 100 o mas
+   se escribe con 1 decimal ("120.0") en lugar de comerse el separador; ver
+   expediente_txt_dec().
+
+   Se arma en el navegador con los renglones que ya trajo el ajax: el SP tarda
+   minutos y volver a llamarlo solo para exportar no tiene sentido.
+   ===================================================================== */
+
+/* Deja solo digitos, toma los ultimos `largo` y rellena con ceros.
+   ControlGas guarda unidades de 10 digitos que empiezan con 8 y el receptor
+   del TXT las quiere en 9: por eso se recorta por la izquierda. */
+function expediente_txt_num(valor, largo) {
+    var digitos = String(valor === null || valor === undefined ? '' : valor).replace(/\D/g, '');
+    return digitos.slice(-largo).padStart(largo, '0');
+}
+
+/* FechaDespacho puede llegar como texto (aaaa-mm-dd o dd/mm/aaaa) o como el
+   entero de ControlGas (dias desde 1900-01-01, el mismo que dateToInt() en PHP),
+   asi que se aceptan las tres formas y siempre sale ddmmaaaa. */
+function expediente_txt_fecha(valor) {
+    if (valor === null || valor === undefined || valor === '') return '00000000';
+    var s = String(valor).trim();
+
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[3] + m[2] + m[1];
+
+    m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+    if (m) return m[1].padStart(2, '0') + m[2].padStart(2, '0') + m[3];
+
+    if (/^\d+$/.test(s)) {
+        var d = new Date(Date.UTC(1900, 0, 1));
+        d.setUTCDate(d.getUTCDate() + (parseInt(s, 10) - 1));
+        return String(d.getUTCDate()).padStart(2, '0')
+             + String(d.getUTCMonth() + 1).padStart(2, '0')
+             + String(d.getUTCFullYear());
+    }
+    return '00000000';
+}
+
+/* Combustible del renglon.
+
+   El SP no trae el codprd del despacho, solo CodigosProducto de la FACTURA
+   (lista separada por comas). Ese campo no llega igual en todas las estaciones:
+   unas mandan el numero (179, 181...) y otras el nombre ("Diesel Automotriz"),
+   asi que se intenta primero por codigo y luego por nombre contra el catalogo
+   de Income::EXPEDIENTE_TXT_PRODUCTOS.
+
+   Cuando la factura trae varios productos distintos se usa el primero y el
+   renglon se cuenta como dudoso; cuando no se reconoce nada se devuelve el
+   valor crudo para poder mostrarlo en el aviso final. */
+function expediente_txt_producto(row) {
+    var mapa = window.EXPEDIENTE_TXT_PRODUCTOS || {};
+    var crudo = row.CodigosProducto === null || row.CodigosProducto === undefined ? '' : row.CodigosProducto;
+    var codigos = String(crudo)
+        .split(',')
+        .map(function (c) { return c.trim(); })
+        .filter(function (c) { return c !== ''; });
+
+    var distintos = codigos.filter(function (c, i) { return codigos.indexOf(c) === i; });
+    var token = codigos[0] || '';
+    // Sin acentos y en mayusculas: el nombre del producto llega escrito de
+    // varias formas segun la estacion.
+    var texto = token.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    for (var familia in mapa) {
+        if (!Object.prototype.hasOwnProperty.call(mapa, familia)) continue;
+        var f = mapa[familia];
+
+        var porCodigo = /^\d+$/.test(token) && f.codprd.indexOf(parseInt(token, 10)) >= 0;
+        var porNombre = !porCodigo && (f.texto || []).some(function (t) { return texto.indexOf(t) >= 0; });
+
+        if (porCodigo || porNombre) {
+            return {
+                digito: f.digito,
+                nombre: f.nombre,
+                dudoso: distintos.length > 1,
+                desconocido: false,
+                crudo: token
+            };
+        }
+    }
+    // Sin producto o fuera del catalogo: el renglon sale con el combustible en
+    // blanco para que salte a la vista en el archivo, y el valor crudo se
+    // reporta al final para saber que hay que agregar al catalogo.
+    return { digito: ' ', nombre: '', dudoso: false, desconocido: true, crudo: token };
+}
+
+/* Numero alineado a la derecha en `largo` posiciones.
+
+   Con 2 decimales no siempre cabe: Litros mide 5 y "120.00" son 6 caracteres.
+   Como el ESPACIO de la izquierda es un separador fijo que no se puede invadir,
+   en ese caso se baja a 1 decimal ("120.0"), que es la precision real con la
+   que se reportan los litros de todos modos. Si ni asi cabe, se devuelve el
+   valor completo y expediente_facturas_txt() cuenta el renglon como fuera de
+   rango en vez de entregar un archivo mal alineado en silencio. */
+function expediente_txt_dec(valor, largo) {
+    var n = Number(valor) || 0;
+    var txt = n.toFixed(2);
+    if (txt.length > largo) txt = n.toFixed(1);
+    return txt.padStart(largo);
+}
+
+function expediente_txt_linea(row, prod) {
+    var litros = Number(row.VolumenDespachado) || 0;
+    var monto  = Number(row.MontoDespachado) || 0;
+    // El precio se deduce del volumen SIN redondear: en el ejemplo del cliente
+    // 952.79 / 40.287 = 23.65, mientras que dividirlo entre los litros ya
+    // redondeados (40.30) daria 23.64.
+    var precio = litros ? monto / litros : 0;
+    // Los litros se reportan a 1 decimal aunque se escriban con 2 (40.287 -> 40.30).
+    var litrosRedondeados = Math.round(litros * 10) / 10;
+
+    return expediente_txt_num(row.PlacaVehiculo, 9)
+         + prod.digito
+         + expediente_txt_dec(monto, 7)
+         + ' '
+         + expediente_txt_dec(litrosRedondeados, 5)
+         + expediente_txt_num(row.FolioDespacho, 6)
+         + expediente_txt_num(row.OdometroVehiculo, 6)
+         + expediente_txt_fecha(row.FechaDespacho)
+         + ' '
+         + expediente_txt_dec(precio, 5)
+         + prod.nombre.padEnd(20);
+}
+
+function expediente_facturas_txt(dt) {
+    // search: 'applied' respeta el buscador de la tabla; el orden es el que el
+    // usuario tenga puesto en pantalla.
+    var filas = dt.rows({ search: 'applied' }).data().toArray();
+
+    var lineas = [];
+    var sinDespacho = 0, dudosos = 0, desconocidos = 0, largoRaro = 0;
+    // Valores de CodigosProducto que no estan en el catalogo, para mostrarlos
+    // en el aviso: sin esto la unica pista es la posicion 10 en blanco.
+    var noReconocidos = [];
+
+    filas.forEach(function (row) {
+        // Una factura sin despachos ocupa un renglon del SP con los campos del
+        // despacho vacios: no es un vale y no va en el archivo.
+        var folio  = expediente_txt_num(row.FolioDespacho, 6);
+        var litros = Number(row.VolumenDespachado) || 0;
+        if (folio === '000000' && litros === 0) { sinDespacho++; return; }
+
+        var prod = expediente_txt_producto(row);
+        if (prod.dudoso) dudosos++;
+        if (prod.desconocido) {
+            desconocidos++;
+            var etiqueta = prod.crudo === '' ? '(vacio)' : prod.crudo;
+            if (noReconocidos.indexOf(etiqueta) < 0) noReconocidos.push(etiqueta);
+        }
+
+        var linea = expediente_txt_linea(row, prod);
+        // Red de seguridad: expediente_txt_dec() ya baja a 1 decimal lo que no
+        // cabe, pero un valor absurdo (monto de 7 enteros, litros de 5)
+        // recorreria el resto del renglon. Se cuenta y se avisa, en vez de
+        // cortarlo en silencio y entregar un archivo que el receptor lee mal.
+        if (linea.length !== 69) largoRaro++;
+        lineas.push(linea);
+    });
+
+    if (!lineas.length) {
+        alertify.myAlert(
+            `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">Sin despachos</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">La consulta actual no tiene renglones con despacho para exportar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    var contenido = lineas.join('\r\n') + '\r\n';
+    var nombre = 'vales_' + ($('#codgas').val() || '0') + '_' + ($('#codopr').val() || '0')
+               + ($('#from').val()  ? '_' + $('#from').val()  : '')
+               + ($('#until').val() ? '_' + $('#until').val() : '') + '.txt';
+
+    var blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+
+    var avisos = [];
+    if (sinDespacho)  avisos.push(sinDespacho + ' renglon(es) sin despacho que no se exportaron.');
+    if (desconocidos) avisos.push(desconocidos + ' renglon(es) sin combustible identificable (posicion 10 en blanco). Codigos de producto no reconocidos: '
+                                  + noReconocidos.slice(0, 5).join(' | ')
+                                  + (noReconocidos.length > 5 ? ' ...y ' + (noReconocidos.length - 5) + ' mas' : ''));
+    if (dudosos)      avisos.push(dudosos + ' renglon(es) de facturas con varios productos: se uso el primero.');
+    if (largoRaro)    avisos.push(largoRaro + ' renglon(es) no miden 69 caracteres (monto o litros fuera de rango).');
+
+    if (avisos.length) {
+        alertify.myAlert(
+            `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">Archivo generado con avisos</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Se exportaron ${lineas.length} vale(s).</p>
+                <ul>${avisos.map(function (a) { return '<li>' + a + '</li>'; }).join('')}</ul>
+            </div>`
+        );
+    }
 }

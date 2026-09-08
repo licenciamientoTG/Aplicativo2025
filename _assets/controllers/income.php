@@ -35,7 +35,11 @@ class Income{
      *
      * 'key' debe coincidir letra por letra con el nombre que emite el SP.
      * 'type' solo controla el formato en pantalla:
-     *   text (default) | int | date | dec2 | dec3 | money
+     *   text (default) | int | dec2 | dec3 | money | date
+     * 'show' => true marca las columnas visibles al abrir la pantalla. Las
+     * demás siguen ahí: el usuario las prende desde el botón "Columnas"
+     * (colvis) y el Excel exporta lo que quede visible. Sin 'show' una
+     * columna nace oculta, que es lo correcto para las 51 del SP.
      *
      * Ojo: las columnas "lista" (CodigosProducto, MontosContables, etc.) son
      * cadenas separadas por comas — SIEMPRE text, nunca numérico.
@@ -47,7 +51,7 @@ class Income{
      * queden juntos.
      */
     private const EXPEDIENTE_COLUMNS = [
-        ['key' => 'NumeroFactura',     'label' => 'Núm. Factura',        'type' => 'int'],
+        ['key' => 'NumeroFactura',     'label' => 'Núm. Factura',        'type' => 'int', 'show' => true],
         ['key' => 'tip',               'label' => 'Tip',                 'type' => 'int'],
         ['key' => 'codgas',            'label' => 'Codgas',              'type' => 'int'],
         ['key' => 'FechaDoc',          'label' => 'Fecha Doc',           'type' => 'date'],
@@ -73,21 +77,21 @@ class Income{
         ['key' => 'satuso',            'label' => 'Uso CFDI',            'type' => 'text'],
         ['key' => 'TotalLineas',       'label' => 'Total Líneas',        'type' => 'int'],
         ['key' => 'NroCta',            'label' => 'Nro Cta',             'type' => 'text'],
-        ['key' => 'CodigosProducto',   'label' => 'Códigos Producto',    'type' => 'text'],
+        ['key' => 'CodigosProducto',    'label' => 'Códigos Producto',    'type' => 'text', 'show' => true],
         ['key' => 'VolumenTotal',      'label' => 'Volumen Total',       'type' => 'dec3'],
         ['key' => 'MontoTotalDet',     'label' => 'Monto Total Det',     'type' => 'money'],
         ['key' => 'MontoIVA',          'label' => 'Monto IVA',           'type' => 'money'],
         ['key' => 'MontoIIE',          'label' => 'Monto IIE',           'type' => 'money'],
         ['key' => 'MontoIIG',          'label' => 'Monto IIG',           'type' => 'money'],
-        ['key' => 'FolioDespacho',     'label' => 'Folio Despacho',      'type' => 'int'],
-        ['key' => 'FechaDespacho',     'label' => 'Fecha Despacho',      'type' => 'date'],
-        ['key' => 'VolumenDespachado', 'label' => 'Volumen Despachado',  'type' => 'dec3'],
-        ['key' => 'MontoDespachado',   'label' => 'Monto Despachado',    'type' => 'money'],
+        ['key' => 'FolioDespacho',     'label' => 'Folio Despacho',      'type' => 'int', 'show' => true],
+        ['key' => 'FechaDespacho',     'label' => 'Fecha Despacho',      'type' => 'date', 'show' => true],
+        ['key' => 'VolumenDespachado', 'label' => 'Volumen Despachado',  'type' => 'dec3', 'show' => true],
+        ['key' => 'MontoDespachado',   'label' => 'Monto Despachado',    'type' => 'money', 'show' => true],
         ['key' => 'CodigoVehiculo',    'label' => 'Cód. Vehículo',       'type' => 'int'],
         ['key' => 'CodigoClienteVehiculo', 'label' => 'Cód. Cliente Veh.', 'type' => 'int'],
         ['key' => 'TarjetaVehiculo',   'label' => 'Tarjeta',             'type' => 'text'],
-        ['key' => 'PlacaVehiculo',     'label' => 'Placa',               'type' => 'text'],
-        ['key' => 'OdometroVehiculo',  'label' => 'Odómetro',            'type' => 'int'],
+        ['key' => 'PlacaVehiculo',     'label' => 'Placa',               'type' => 'text', 'show' => true],
+        ['key' => 'OdometroVehiculo',  'label' => 'Odómetro',            'type' => 'int', 'show' => true],
         ['key' => 'CantAplicaciones',  'label' => 'Cant. Aplicaciones',  'type' => 'int'],
         ['key' => 'MontoAplicado',     'label' => 'Monto Aplicado',      'type' => 'money'],
         ['key' => 'TiposAplicacion',   'label' => 'Tipos Aplicación',    'type' => 'text'],
@@ -98,6 +102,29 @@ class Income{
         ['key' => 'CuentasContables',  'label' => 'Cuentas Contables',   'type' => 'text'],
         ['key' => 'MontosContables',   'label' => 'Montos Contables',    'type' => 'text'],
         ['key' => 'TiposMovimiento',   'label' => 'Tipos Movimiento',    'type' => 'text'],
+    ];
+
+    /**
+     * Catálogo de combustibles para el TXT posicional de vales.
+     *
+     * 'codprd' son los mismos códigos que MermaDiariaModel::FAMILIAS (cada
+     * familia trae varios porque las estaciones no usan el mismo código).
+     * 'texto' se compara contra el nombre del producto (sin acentos y en
+     * mayúsculas, por coincidencia parcial) porque CodigosProducto no siempre
+     * trae el número: en varias estaciones llega como "Diesel Automotriz" o
+     * "T-Maxima Regular".
+     * 'digito' es lo que el receptor del archivo espera en la posición 10:
+     * 1 = magna, 3 = diesel, según la documentación del propio TXT.
+     * 'nombre' se escribe tal cual en las últimas 20 posiciones.
+     *
+     * OJO: el nombre de DIESEL es provisional; el archivo de ejemplo solo
+     * documentaba MAGNA. PREMIUM tampoco venía documentado (ni su dígito ni
+     * su nombre) — se dejó el 2 por simetría con codprd.
+     */
+    private const EXPEDIENTE_TXT_PRODUCTOS = [
+        'magna'   => ['codprd' => [1, 179, 192], 'texto' => ['MAGNA', 'MAXIMA', 'REGULAR'], 'digito' => '1', 'nombre' => 'MAGNA V.A.'],
+        'diesel'  => ['codprd' => [3, 181],      'texto' => ['DIESEL'],                      'digito' => '3', 'nombre' => 'DIESEL V.A.'],
+        'premium' => ['codprd' => [2, 180, 193], 'texto' => ['PREMIUM', 'SUPER'],            'digito' => '2', 'nombre' => 'PREMIUM V.A.'],
     ];
 
     /**
@@ -2133,9 +2160,13 @@ public function anomalies_client_tickets()
             $stations = $this->estacionesModel->get_stations('0,4,20,40,199') ?: [];
             $clientes = $this->clientesModel->get_credit_debit_clients_list();
             $columns  = self::EXPEDIENTE_COLUMNS;
+            // El TXT se arma en el navegador (ver income.js): el SP tarda
+            // minutos, así que se exporta con los renglones que ya trajo el
+            // ajax en lugar de volver a consultarlo.
+            $txtProductos = self::EXPEDIENTE_TXT_PRODUCTOS;
 
             echo $this->twig->render($this->route . 'expediente_facturas.html',
-                compact('stations', 'clientes', 'columns'));
+                compact('stations', 'clientes', 'columns', 'txtProductos'));
         }
     }
 
