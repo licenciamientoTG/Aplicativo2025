@@ -430,8 +430,12 @@ class Merma
         if ($mes < 1 || $mes > 12)        $mes  = (int) date('n', $ayer);
         if ($anio < 2020 || $anio > 2100) $anio = (int) date('Y', $ayer);
 
-        $reporte    = $this->armarReporte($anio, $mes);
-        $estaciones = $reporte['estaciones'];
+        $zonaClave = (string) ($_GET['zona'] ?? 'marca_prots');
+        if (!isset(VentasConsolidado::ZONAS[$zonaClave])) $zonaClave = 'marca_prots';
+
+        $reporte     = $this->armarReporte($anio, $mes);
+        $zonaReporte = $reporte['zonas'][$zonaClave];
+        $estaciones  = $zonaReporte['estaciones'];
 
         $filasResumen = [
             'total'     => 'TOTAL',
@@ -447,7 +451,7 @@ class Merma
         $spreadsheet = new Spreadsheet();
         $spreadsheet->removeSheetByIndex(0);
 
-        foreach ($reporte['pestanas'] as $p) {
+        foreach ($zonaReporte['pestanas'] as $p) {
             $sheet = $spreadsheet->createSheet();
             // El título de hoja de Excel tolera 31 caracteres; los labels caben.
             $sheet->setTitle($p['label']);
@@ -510,8 +514,8 @@ class Merma
         // Sexta hoja: el histórico mensual, con el mismo rango y producto que
         // la pestaña tenga seleccionados (o los valores por defecto si el
         // usuario nunca la abrió).
-        [$hDesde, $hHasta, $hProd] = $this->periodoHistorico();
-        ['estaciones' => $estacionesHist, 'hist' => $hist] = $this->armarHistorico($hDesde, $hHasta, $hProd);
+        [$hDesde, $hHasta, $hProd, $hZona] = $this->periodoHistorico();
+        ['estaciones' => $estacionesHist, 'hist' => $hist] = $this->armarHistorico($hDesde, $hHasta, $hProd, $hZona);
 
         $hoja = $spreadsheet->createSheet();
         $hoja->setTitle('HISTÓRICO');
@@ -562,7 +566,7 @@ class Merma
 
         $spreadsheet->setActiveSheetIndex(0);
 
-        $archivo = sprintf('ventas_consolidado_%04d_%02d.xlsx', $anio, $mes);
+        $archivo = sprintf('ventas_%s_%04d_%02d.xlsx', $zonaClave, $anio, $mes);
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header("Content-Disposition: attachment;filename=\"{$archivo}\"");
         header('Cache-Control: max-age=0');
