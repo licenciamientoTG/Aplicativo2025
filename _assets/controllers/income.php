@@ -109,6 +109,10 @@ class Income{
      *
      * 'codprd' son los mismos códigos que MermaDiariaModel::FAMILIAS (cada
      * familia trae varios porque las estaciones no usan el mismo código).
+     * 'texto' se compara contra el nombre del producto (sin acentos y en
+     * mayúsculas, por coincidencia parcial) porque CodigosProducto no siempre
+     * trae el número: en varias estaciones llega como "Diesel Automotriz" o
+     * "T-Maxima Regular".
      * 'digito' es lo que el receptor del archivo espera en la posición 10:
      * 1 = magna, 3 = diesel, según la documentación del propio TXT.
      * 'nombre' se escribe tal cual en las últimas 20 posiciones.
@@ -118,9 +122,9 @@ class Income{
      * su nombre) — se dejó el 2 por simetría con codprd.
      */
     private const EXPEDIENTE_TXT_PRODUCTOS = [
-        'magna'   => ['codprd' => [1, 179, 192], 'digito' => '1', 'nombre' => 'MAGNA V.A.'],
-        'diesel'  => ['codprd' => [3, 181],      'digito' => '3', 'nombre' => 'DIESEL V.A.'],
-        'premium' => ['codprd' => [2, 180, 193], 'digito' => '2', 'nombre' => 'PREMIUM V.A.'],
+        'magna'   => ['codprd' => [1, 179, 192], 'texto' => ['MAGNA', 'MAXIMA', 'REGULAR'], 'digito' => '1', 'nombre' => 'MAGNA V.A.'],
+        'diesel'  => ['codprd' => [3, 181],      'texto' => ['DIESEL'],                      'digito' => '3', 'nombre' => 'DIESEL V.A.'],
+        'premium' => ['codprd' => [2, 180, 193], 'texto' => ['PREMIUM', 'SUPER'],            'digito' => '2', 'nombre' => 'PREMIUM V.A.'],
     ];
 
     /**

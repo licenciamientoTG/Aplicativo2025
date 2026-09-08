@@ -2974,10 +2974,17 @@ function expediente_txt_fecha(valor) {
     return '00000000';
 }
 
-/* Combustible del renglon. El SP no trae el codprd del despacho, solo
-   CodigosProducto de la FACTURA (lista separada por comas): cuando la factura
-   trae un solo producto el dato es exacto; cuando trae varios se usa el primero
-   y el renglon se cuenta como dudoso para avisarlo al final. */
+/* Combustible del renglon.
+
+   El SP no trae el codprd del despacho, solo CodigosProducto de la FACTURA
+   (lista separada por comas). Ese campo no llega igual en todas las estaciones:
+   unas mandan el numero (179, 181...) y otras el nombre ("Diesel Automotriz"),
+   asi que se intenta primero por codigo y luego por nombre contra el catalogo
+   de Income::EXPEDIENTE_TXT_PRODUCTOS.
+
+   Cuando la factura trae varios productos distintos se usa el primero y el
+   renglon se cuenta como dudoso; cuando no se reconoce nada se devuelve el
+   valor crudo para poder mostrarlo en el aviso final. */
 function expediente_txt_producto(row) {
     var mapa = window.EXPEDIENTE_TXT_PRODUCTOS || {};
     var crudo = row.CodigosProducto === null || row.CodigosProducto === undefined ? '' : row.CodigosProducto;
@@ -2987,21 +2994,32 @@ function expediente_txt_producto(row) {
         .filter(function (c) { return c !== ''; });
 
     var distintos = codigos.filter(function (c, i) { return codigos.indexOf(c) === i; });
+    var token = codigos[0] || '';
+    // Sin acentos y en mayusculas: el nombre del producto llega escrito de
+    // varias formas segun la estacion.
+    var texto = token.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     for (var familia in mapa) {
         if (!Object.prototype.hasOwnProperty.call(mapa, familia)) continue;
-        if (mapa[familia].codprd.indexOf(parseInt(codigos[0], 10)) >= 0) {
+        var f = mapa[familia];
+
+        var porCodigo = /^\d+$/.test(token) && f.codprd.indexOf(parseInt(token, 10)) >= 0;
+        var porNombre = !porCodigo && (f.texto || []).some(function (t) { return texto.indexOf(t) >= 0; });
+
+        if (porCodigo || porNombre) {
             return {
-                digito: mapa[familia].digito,
-                nombre: mapa[familia].nombre,
+                digito: f.digito,
+                nombre: f.nombre,
                 dudoso: distintos.length > 1,
-                desconocido: false
+                desconocido: false,
+                crudo: token
             };
         }
     }
-    // Sin codigo o codigo fuera del catalogo: el renglon sale con el combustible
-    // en blanco para que salte a la vista en el archivo.
-    return { digito: ' ', nombre: '', dudoso: false, desconocido: true };
+    // Sin producto o fuera del catalogo: el renglon sale con el combustible en
+    // blanco para que salte a la vista en el archivo, y el valor crudo se
+    // reporta al final para saber que hay que agregar al catalogo.
+    return { digito: ' ', nombre: '', dudoso: false, desconocido: true, crudo: token };
 }
 
 function expediente_txt_linea(row, prod) {
@@ -3032,6 +3050,9 @@ function expediente_facturas_txt(dt) {
 
     var lineas = [];
     var sinDespacho = 0, dudosos = 0, desconocidos = 0, largoRaro = 0;
+    // Valores de CodigosProducto que no estan en el catalogo, para mostrarlos
+    // en el aviso: sin esto la unica pista es la posicion 10 en blanco.
+    var noReconocidos = [];
 
     filas.forEach(function (row) {
         // Una factura sin despachos ocupa un renglon del SP con los campos del
@@ -3042,7 +3063,11 @@ function expediente_facturas_txt(dt) {
 
         var prod = expediente_txt_producto(row);
         if (prod.dudoso) dudosos++;
-        if (prod.desconocido) desconocidos++;
+        if (prod.desconocido) {
+            desconocidos++;
+            var etiqueta = prod.crudo === '' ? '(vacio)' : prod.crudo;
+            if (noReconocidos.indexOf(etiqueta) < 0) noReconocidos.push(etiqueta);
+        }
 
         var linea = expediente_txt_linea(row, prod);
         // Un monto de 5 enteros (>= 10000.00) no cabe en las 7 posiciones y
@@ -3080,7 +3105,9 @@ function expediente_facturas_txt(dt) {
 
     var avisos = [];
     if (sinDespacho)  avisos.push(sinDespacho + ' renglon(es) sin despacho que no se exportaron.');
-    if (desconocidos) avisos.push(desconocidos + ' renglon(es) sin combustible identificable (posicion 10 en blanco).');
+    if (desconocidos) avisos.push(desconocidos + ' renglon(es) sin combustible identificable (posicion 10 en blanco). Codigos de producto no reconocidos: '
+                                  + noReconocidos.slice(0, 5).join(' | ')
+                                  + (noReconocidos.length > 5 ? ' ...y ' + (noReconocidos.length - 5) + ' mas' : ''));
     if (dudosos)      avisos.push(dudosos + ' renglon(es) de facturas con varios productos: se uso el primero.');
     if (largoRaro)    avisos.push(largoRaro + ' renglon(es) no miden 69 caracteres (monto o litros fuera de rango).');
 
