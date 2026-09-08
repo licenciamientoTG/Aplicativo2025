@@ -460,6 +460,11 @@ class MovimientosBancariosModel extends Model
         if (!mb_check_encoding($contenido, 'UTF-8')) {
             $contenido = mb_convert_encoding($contenido, 'UTF-8', 'Windows-1252');
         }
+        // Algunos exports de Afirme traen BOM UTF-8 al inicio (\xEF\xBB\xBF):
+        // sin quitarlo, la primera línea empieza con esos 3 bytes invisibles
+        // y el check de cabecera de abajo (que exige que la línea EMPIECE con
+        // "Concepto,Fecha") falla aunque el resto del archivo esté bien.
+        $contenido = preg_replace('/^\xEF\xBB\xBF/', '', $contenido);
 
         $movimientos = [];
         $errores     = [];
@@ -855,21 +860,42 @@ class MovimientosBancariosModel extends Model
     }
 
     /**
-     * Parsea el export de movimientos de Bankaool (.xlsx real, una hoja,
-     * encabezados en la fila 1 y datos desde la 2):
-     *
-     *   Fecha · Descripción · Referencia · Monto · Saldo · Clave Rastreo ·
-     *   Comprobante Electrónico
-     *
-     * Tres particularidades:
-     *
-     *  - NO trae el número de cuenta en ningún lado (ni cabecera, ni renglón,
-     *    ni nombre de archivo), así que se recibe por parámetro: el modal de
-     *    subida lo pide cuando el banco es Bankaool.
-     *  - Un solo campo Monto con signo (negativo = cargo, positivo = abono),
-     *    en vez de dos columnas.
-     *  - La fecha es un serial de Excel CON HORA, así que a diferencia de
-     *    Afirme, Inbursa y BBVA aquí sí se llena la columna hora.
+     * Tipos de operación del layout nuevo de Bankaool (ver
+     * parse_bankaool_xlsx_v2) que representan un CARGO. Todo lo que no
+     * empate cae como abono, salvo que no empate con nada reconocido de la
+     * lista de abonos tampoco — ver BANKAOOL_V2_ABONOS.
+     */
+    private const BANKAOOL_V2_CARGOS = [
+        'CARGO POR SPEI', 'COMISION POR SPEI', 'COMISION MANEJO BANCA ELECTR', 'IVA',
+        'RETIRO', 'PAGO', 'TRASPASO ENVIADO', 'DOMICILIACION',
+    ];
+
+    /** Tipos de operación del layout nuevo que representan un ABONO. */
+    private const BANKAOOL_V2_ABONOS = [
+        'DEPOSITO', 'ABONO POR', 'ABONO SPEI', 'TRASPASO RECIBIDO',
+    ];
+
+    /**
+     * Clasifica el "Tipo de operación" del layout nuevo de Bankaool como
+     * cargo o abono. A diferencia del layout viejo (un solo Monto con
+     * signo), aquí el Monto siempre viene positivo y el signo hay que
+     * inferirlo del tipo de operación — no hay otra señal en el archivo.
+     * Un tipo no reconocido devuelve null: se reporta como error de fila en
+     * vez de adivinar mal en silencio.
+     */
+    private static function bankaool_v2_signo(string $tipo): ?bool
+    {
+        $t = mb_strtoupper($tipo);
+        foreach (self::BANKAOOL_V2_CARGOS as $clave) if (mb_strpos($t, $clave) !== false) return true;
+        foreach (self::BANKAOOL_V2_ABONOS as $clave) if (mb_strpos($t, $clave) !== false) return false;
+        return null;
+    }
+
+    /**
+     * Parsea el export de movimientos de Bankaool. Bankaool tiene dos
+     * layouts en circulación (mismo banco, mismo botón de subida — ver
+     * BANCOS en el controlador): se detecta cuál es por sus encabezados y se
+     * despacha al parser correspondiente.
      *
      * @param string $ruta   Ruta al .xlsx
      * @param string $cuenta Cuenta a la que pertenece el archivo
@@ -892,14 +918,39 @@ class MovimientosBancariosModel extends Model
                 ['No se pudo leer el archivo como .xlsx: ' . $e->getMessage()], 'info' => []];
         }
 
-        if (strcasecmp(self::celda($hoja, 'A1'), 'Fecha') !== 0
-            || stripos(self::celda($hoja, 'B1'), 'Descrip') !== 0
-            || strcasecmp(self::celda($hoja, 'D1'), 'Monto') !== 0
-            || strcasecmp(self::celda($hoja, 'E1'), 'Saldo') !== 0) {
-            return ['movimientos' => [], 'errores' =>
-                ['El archivo no tiene el layout del export de movimientos de Bankaool'], 'info' => []];
-        }
+        $esV1 = strcasecmp(self::celda($hoja, 'A1'), 'Fecha') === 0
+            && stripos(self::celda($hoja, 'B1'), 'Descrip') === 0
+            && strcasecmp(self::celda($hoja, 'D1'), 'Monto') === 0
+            && strcasecmp(self::celda($hoja, 'E1'), 'Saldo') === 0;
+        if ($esV1) return self::parse_bankaool_xlsx_v1($hoja, $cuenta);
 
+        $esV2 = stripos(self::celda($hoja, 'A1'), 'Fecha') === 0
+            && stripos(self::celda($hoja, 'B1'), 'Hora') === 0
+            && stripos(self::celda($hoja, 'C1'), 'Tipo') === 0
+            && strcasecmp(self::celda($hoja, 'F1'), 'Monto') === 0;
+        if ($esV2) return self::parse_bankaool_xlsx_v2($hoja, $cuenta);
+
+        return ['movimientos' => [], 'errores' =>
+            ['El archivo no tiene el layout del export de movimientos de Bankaool'], 'info' => []];
+    }
+
+    /**
+     * Layout original de Bankaool, encabezados en la fila 1:
+     *
+     *   Fecha · Descripción · Referencia · Monto · Saldo · Clave Rastreo
+     *
+     * Tres particularidades:
+     *
+     *  - NO trae el número de cuenta en ningún lado (ni cabecera, ni renglón,
+     *    ni nombre de archivo), así que se recibe por parámetro: el modal de
+     *    subida lo pide cuando el banco es Bankaool.
+     *  - Un solo campo Monto con signo (negativo = cargo, positivo = abono),
+     *    en vez de dos columnas.
+     *  - La fecha es un serial de Excel CON HORA, así que a diferencia de
+     *    Afirme, Inbursa y BBVA aquí sí se llena la columna hora.
+     */
+    private static function parse_bankaool_xlsx_v1($hoja, string $cuenta): array
+    {
         $movimientos = [];
         $errores     = [];
 
@@ -979,6 +1030,114 @@ class MovimientosBancariosModel extends Model
                 'cargos'        => array_sum(array_column($movimientos, 'cargo')),
                 'abonos'        => array_sum(array_column($movimientos, 'abono')),
                 'cuadra'        => $movimientos ? ($rotas === 0) : null,
+                'desde'         => $fechas ? min($fechas) : null,
+                'hasta'         => $fechas ? max($fechas) : null,
+            ],
+        ];
+    }
+
+    /**
+     * Layout nuevo de Bankaool (visto por primera vez 2026-09-08), encabezados
+     * en la fila 1:
+     *
+     *   Fecha movimiento · Hora movimiento · Tipo de operación ·
+     *   Nombre del tercero · Concepto · Monto · Referencia · Clave Rastreo
+     *
+     * Diferencias contra el layout viejo (v1):
+     *
+     *  - Fecha y hora vienen separadas y como TEXTO ("07 sep. 2026",
+     *    "16:33 h"), no como serial de Excel.
+     *  - Monto siempre viene positivo: el signo se infiere del "Tipo de
+     *    operación" (ver bankaool_v2_signo) porque el archivo no lo trae de
+     *    otra forma.
+     *  - No trae columna Saldo: no hay cadena de saldos que verificar, así
+     *    que 'cuadra' queda null (no aplica) en vez de true/false.
+     */
+    private static function parse_bankaool_xlsx_v2($hoja, string $cuenta): array
+    {
+        $meses = [
+            'ene' => 1, 'feb' => 2, 'mar' => 3, 'abr' => 4, 'may' => 5, 'jun' => 6,
+            'jul' => 7, 'ago' => 8, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dic' => 12,
+        ];
+
+        $movimientos = [];
+        $errores     = [];
+
+        for ($f = 2; $f <= $hoja->getHighestRow(); $f++) {
+            $fechaRaw = self::limpia(self::celda($hoja, "A$f"));
+            $tipo     = self::limpia(self::celda($hoja, "C$f"));
+            if ($fechaRaw === '' && $tipo === '') continue;
+
+            if (!preg_match('/^(\d{1,2})\s+([a-záéíóú]{3})\.?\s+(\d{4})$/ui', $fechaRaw, $mf) || !isset($meses[mb_strtolower($mf[2])])) {
+                $errores[] = "Fila $f: fecha inválida ($fechaRaw)";
+                continue;
+            }
+            $horaRaw = self::limpia(self::celda($hoja, "B$f"));
+            $hora    = preg_match('/^(\d{1,2}):(\d{2})/', $horaRaw, $mh) ? sprintf('%02d:%02d', $mh[1], $mh[2]) : '00:00';
+            $fecha   = sprintf('%04d-%02d-%02d', $mf[3], $meses[mb_strtolower($mf[2])], $mf[1]);
+
+            $monto = self::monto($hoja, "F$f");
+            if ($monto == 0.0) {
+                $errores[] = "Fila $f: movimiento en cero ($tipo)";
+                continue;
+            }
+
+            $esCargo = self::bankaool_v2_signo($tipo);
+            if ($esCargo === null) {
+                $errores[] = "Fila $f: tipo de operación no reconocido ($tipo), no se pudo determinar cargo o abono";
+                continue;
+            }
+
+            $descripcion = self::limpia(self::celda($hoja, "D$f"));
+            $concepto    = self::limpia(self::celda($hoja, "E$f"));
+
+            // La descripción trae la contraparte en los SPEI, igual que v1.
+            $cuentaContra = preg_match('/Cuenta:\s*(\d{10,18})/', $descripcion, $mc) ? $mc[1] : '';
+            $nombreContra = preg_match('/^\w+ POR SPEI\s*-\s*(.+?)\s*-\s*\S+$/u', $descripcion, $mn)
+                          ? trim($mn[1]) : '';
+
+            $referencia   = self::limpia(self::celda($hoja, "G$f"));
+            $claveRastreo = self::limpia(self::celda($hoja, "H$f"));
+
+            $movimientos[] = [
+                'banco'              => 'BANKAOOL',
+                'cuenta'             => $cuenta,
+                'fecha'              => $fecha,
+                'hora'               => $hora,
+                'sucursal'           => null,
+                'clave_trans'        => null,
+                'descripcion'        => mb_substr($descripcion, 0, 150),
+                'cargo'              => $esCargo ? $monto : null,
+                'abono'              => $esCargo ? null : $monto,
+                'saldo'              => null,   // este layout no trae saldo
+                'referencia'         => mb_substr($referencia, 0, 20),
+                'concepto'           => mb_substr($concepto, 0, 150) ?: null,
+                'banco_contraparte'  => '',
+                'cuenta_contraparte' => mb_substr($cuentaContra, 0, 30),
+                'nombre_contraparte' => mb_substr($nombreContra, 0, 60),
+                'rfc_contraparte'    => null,
+                'clave_rastreo'      => $claveRastreo ?: null,
+                'descripcion_larga'  => null,
+                'huella'             => sha1('BANKAOOL|' . implode('|', [
+                    $cuenta, $fecha, $hora, $tipo, $descripcion, $referencia,
+                    sprintf('%.2f', $monto),
+                ])),
+            ];
+        }
+
+        $fechas = array_column($movimientos, 'fecha');
+        return [
+            'movimientos' => $movimientos,
+            'errores'     => $errores,
+            'info'        => [
+                'cuenta'        => $cuenta,
+                'razon_social'  => '',
+                'moneda'        => '',
+                'saldo_inicial' => null,
+                'saldo_final'   => null,   // este layout no trae saldo
+                'cargos'        => array_sum(array_column($movimientos, 'cargo')),
+                'abonos'        => array_sum(array_column($movimientos, 'abono')),
+                'cuadra'        => null,   // no hay saldo con qué verificar la cadena
                 'desde'         => $fechas ? min($fechas) : null,
                 'hasta'         => $fechas ? max($fechas) : null,
             ],
