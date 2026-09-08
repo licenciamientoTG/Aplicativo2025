@@ -60,6 +60,41 @@ class TerminalInventoryModel extends Model {
             $this->sql->commit(); return $id;
         } catch (Throwable $e) { $this->sql->rollBack(); throw $e; }
     }
+    /**
+     * Persiste el inventario y sus incidencias nuevas como una sola unidad.
+     * Si cualquier ticket no se puede registrar, el inventario y ninguna de
+     * sus incidencias se conservan parcialmente.
+     */
+    public function saveInventoryWithIncidents(array $header, array $details, array $activeIncidentIds, array $newIncidents): int {
+        $this->sql->beginTransaction();
+        try {
+            $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,semana_inicio,semana_fin,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?)', $header);
+            $created = $this->sql->select('SELECT CAST(SCOPE_IDENTITY() AS INT) AS id');
+            $inventoryId = (int)($created[0]['id'] ?? 0);
+            if (!$inventoryId) throw new RuntimeException('No fue posible crear el inventario.');
+
+            foreach ($details as $detail) {
+                $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventario_detalles] (inventario_id,tipo_terminal,funcionando,danadas) VALUES (?,?,?,?)', [$inventoryId,$detail['type'],$detail['working'],$detail['damaged']]);
+            }
+
+            $incidentIds = $activeIncidentIds;
+            foreach ($newIncidents as $incident) {
+                $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias] (estacion_id,tipo_terminal,ticket_mojo_id,estado_mojo,fecha_apertura_mojo,folio_proveedor,fecha_reporte_proveedor,descripcion,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?,?,?,?,?)', $incident);
+                $createdIncident = $this->sql->select('SELECT CAST(SCOPE_IDENTITY() AS INT) AS id');
+                $incidentId = (int)($createdIncident[0]['id'] ?? 0);
+                if (!$incidentId) throw new RuntimeException('No fue posible crear una incidencia.');
+                $incidentIds[] = $incidentId;
+            }
+            foreach ($incidentIds as $incidentId) {
+                $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias_inventario] (inventario_id,incidencia_id) VALUES (?,?)', [$inventoryId,$incidentId]);
+            }
+            $this->sql->commit();
+            return $inventoryId;
+        } catch (Throwable $e) {
+            $this->sql->rollBack();
+            throw $e;
+        }
+    }
     public function createIncident(array $data): int {
         $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias] (estacion_id,tipo_terminal,ticket_mojo_id,estado_mojo,fecha_apertura_mojo,folio_proveedor,fecha_reporte_proveedor,descripcion,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?,?,?,?,?)', $data);
         $created=$this->sql->select('SELECT CAST(SCOPE_IDENTITY() AS INT) AS id');

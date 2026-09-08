@@ -3240,17 +3240,21 @@ class Operations{
         foreach ($damaged as $type=>$quantity) if ($quantity<count($activeByType[$type] ?? [])) { $this->terminalJsonError('La cantidad dañada de '.$types[$type]['label'].' no puede ser menor que sus incidencias abiertas.'); return; }
         $new=$payload['new_incidents'] ?? [];
         foreach ($damaged as $type=>$quantity) if ($quantity !== count($activeByType[$type] ?? []) + count(array_filter($new, fn($i)=>($i['type'] ?? '')===$type))) { $this->terminalJsonError('Cada terminal dañada debe tener una incidencia vinculada.'); return; }
+        $submittedTickets=[]; $newIncidentRows=[];
         foreach ($new as $item) {
             $type=(string)($item['type'] ?? ''); $ticketId=(int)($item['ticket_id'] ?? 0); $source=(string)($item['source'] ?? 'create'); $description=trim((string)($item['description'] ?? ''));
             if (!isset($types[$type]) || !$ticketId || $this->terminalInventoryModel->ticketUsed($ticketId)) { $this->terminalJsonError('Existe una incidencia nueva inválida.'); return; }
+            if (isset($submittedTickets[$ticketId])) { $this->terminalJsonError('El ticket Mojo #'.$ticketId.' ya fue agregado a otra incidencia de este inventario.'); return; }
+            $submittedTickets[$ticketId]=true;
             try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type,$types[$type]['mojo'])) { $this->terminalJsonError('Un ticket no está abierto o su tipo de terminal no corresponde a la incidencia.'); return; }
             } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); return; }
             $providerFolio=trim((string)($item['provider_folio'] ?? '')); $providerDate=$item['provider_date'] ?? null;
             if ($source==='existing') { $ticketData=$service->incidentDataFromTicket($ticket,$type); $description=mb_substr($ticketData['description'],0,250); if ($type!=='urovo') { $providerFolio=$ticketData['provider_folio']; $providerDate=substr($ticketData['provider_date'],0,10) ?: null; } }
             if ($description==='' || ($type!=='urovo' && (!$providerFolio || !$providerDate))) { $this->terminalJsonError($type==='urovo' ? 'El ticket no contiene una descripción utilizable.' : 'El ticket de valera debe incluir folio, fecha de reporte y descripción.'); return; }
-            $date=$ticket['created_on'] ?? date('c'); $incidentIds[]=$this->terminalInventoryModel->createIncident([$stationId,$type,$ticketId,(string)($ticket['status'] ?? 'open'),date('Y-m-d H:i:s',strtotime($date)),$providerFolio ?: null,$providerDate,$description,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo']]);
+            $date=$ticket['created_on'] ?? date('c');
+            $newIncidentRows[]=[$stationId,$type,$ticketId,(string)($ticket['status'] ?? 'open'),date('Y-m-d H:i:s',strtotime($date)),$providerFolio ?: null,$providerDate,$description,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo']];
         }
-        try { $id=$this->terminalInventoryModel->saveInventory([$stationId,$station['Nombre'],$weekStart,$weekEnd,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo']],$details,$incidentIds); json_output(['success'=>true,'inventory_id'=>$id]); } catch (Throwable $e) { error_log('Inventario terminales no guardado; incidencias a conciliar: '.implode(',',$incidentIds)); $this->terminalJsonError('No fue posible guardar el inventario.',500); }
+        try { $id=$this->terminalInventoryModel->saveInventoryWithIncidents([$stationId,$station['Nombre'],$weekStart,$weekEnd,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo']],$details,$incidentIds,$newIncidentRows); json_output(['success'=>true,'inventory_id'=>$id]); } catch (Throwable $e) { error_log('Inventario terminales no guardado: '.$e->getMessage()); $this->terminalJsonError('No fue posible guardar el inventario.',500); }
     }
     public function terminal_report(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte global.'; return; }
