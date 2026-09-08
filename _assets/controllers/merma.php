@@ -558,8 +558,9 @@ class Merma
     }
 
     /**
-     * Junta modelo + presupuesto + calculadora. Lo comparten la vista y la
-     * exportación a Excel para que no se puedan desincronizar.
+     * Junta modelo + presupuesto + calculadora, UNA VEZ POR ZONA. Lo
+     * comparten la vista y la exportación a Excel para que no se puedan
+     * desincronizar.
      */
     private function armarReporte(int $anio, int $mes): array
     {
@@ -567,7 +568,12 @@ class Merma
         // arma VentasConsolidado son enteros. Se castea una sola vez aquí para
         // que la vista y el exportador indexen sin sorpresas.
         $estaciones = array_map(
-            fn($e) => ['Codigo' => (int) $e['Codigo'], 'Nombre' => $e['Nombre'], 'cveest' => $e['cveest'] ?? null],
+            fn($e) => [
+                'Codigo'    => (int) $e['Codigo'],
+                'Nombre'    => $e['Nombre'],
+                'cveest'    => $e['cveest'] ?? null,
+                'ZonaConso' => isset($e['ZonaConso']) ? (int) $e['ZonaConso'] : null,
+            ],
             $this->mermaModel->get_estaciones_ordenadas()
         );
         $ventas = $this->mermaModel->get_ventas_mes($anio, $mes);
@@ -580,8 +586,7 @@ class Merma
         // ya resuelto e indexado por estación y familia en el modelo.
         $presupuesto = (new IncentivesPresupuestoModel())->getPresupuesto($mes, $anio);
 
-        $ctx = [
-            'estaciones'    => $estaciones,
+        $ctxBase = [
             'ventas'        => $ventas,
             'presupuesto'   => $presupuesto,
             'mes_anterior'  => $this->mermaModel->get_ventas_totales_mes($anioAnt, $mesAnt),
@@ -590,16 +595,33 @@ class Merma
             'mes'           => $mes,
         ];
 
-        $pestanas = [];
-        foreach (array_keys(VentasConsolidado::PESTANAS) as $clave) {
-            $pestanas[$clave] = VentasConsolidado::construir($clave, $ctx);
+        $zonas = [];
+        foreach (VentasConsolidado::ZONAS as $zonaClave => $zonaInfo) {
+            $estacionesZona = array_values(array_filter(
+                $estaciones,
+                fn($e) => VentasConsolidado::clasificarZona($e['ZonaConso']) === $zonaClave
+            ));
+
+            $ctxZona = $ctxBase;
+            $ctxZona['estaciones'] = $estacionesZona;
+
+            $pestanas = [];
+            foreach (array_keys(VentasConsolidado::PESTANAS) as $clave) {
+                $pestanas[$clave] = VentasConsolidado::construir($clave, $ctxZona);
+            }
+
+            $zonas[$zonaClave] = [
+                'label'           => $zonaInfo['label'],
+                'estaciones'      => $estacionesZona,
+                'pestanas'        => $pestanas,
+                'sin_presupuesto' => $presupuesto === [],
+            ];
         }
 
         return [
             'anio'            => $anio,
             'mes'             => $mes,
-            'estaciones'      => $estaciones,
-            'pestanas'        => $pestanas,
+            'zonas'           => $zonas,
             'sin_presupuesto' => $presupuesto === [],
         ];
     }
