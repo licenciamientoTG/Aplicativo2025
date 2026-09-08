@@ -2927,17 +2927,19 @@ async function expediente_facturas_table() {
      pos 1-9    (9)  Unidad ............ digitos, ceros a la izquierda
      pos 10     (1)  Combustible ....... 1 = magna, 3 = diesel
      pos 11-17  (7)  Monto ............. derecha, 2 decimales
-     pos 18-23  (6)  Litros ............ derecha, 2 decimales
+     pos 18     (1)  ESPACIO ........... separador fijo, SIEMPRE en blanco
+     pos 19-23  (5)  Litros ............ derecha, 2 decimales
      pos 24-29  (6)  Vale .............. digitos, ceros a la izquierda
      pos 30-35  (6)  Kilometraje ....... digitos, ceros a la izquierda
      pos 36-43  (8)  Fecha ............. ddmmaaaa
-     pos 44-49  (6)  Precio unitario ... derecha, 2 decimales
+     pos 44     (1)  ESPACIO ........... separador fijo, SIEMPRE en blanco
+     pos 45-49  (5)  Precio unitario ... derecha, 2 decimales
      pos 50-69 (20)  Producto .......... izquierda, relleno con espacios
 
-   El ejemplo del cliente documentaba las posiciones 18 y 44 como "ESPACIO".
-   Aqui son la posicion de las centenas de Litros y de Precio: con los valores
-   del ejemplo salen en blanco igual (byte por byte el mismo archivo), pero una
-   unidad que cargue 100+ litros ya no desalinea el renglon.
+   Los dos ESPACIO son separadores y no se invaden nunca: por eso Litros y
+   Precio miden 5 y no 6. Como "120.00" son 6 caracteres, un valor de 100 o mas
+   se escribe con 1 decimal ("120.0") en lugar de comerse el separador; ver
+   expediente_txt_dec().
 
    Se arma en el navegador con los renglones que ya trajo el ajax: el SP tarda
    minutos y volver a llamarlo solo para exportar no tiene sentido.
@@ -3022,6 +3024,21 @@ function expediente_txt_producto(row) {
     return { digito: ' ', nombre: '', dudoso: false, desconocido: true, crudo: token };
 }
 
+/* Numero alineado a la derecha en `largo` posiciones.
+
+   Con 2 decimales no siempre cabe: Litros mide 5 y "120.00" son 6 caracteres.
+   Como el ESPACIO de la izquierda es un separador fijo que no se puede invadir,
+   en ese caso se baja a 1 decimal ("120.0"), que es la precision real con la
+   que se reportan los litros de todos modos. Si ni asi cabe, se devuelve el
+   valor completo y expediente_facturas_txt() cuenta el renglon como fuera de
+   rango en vez de entregar un archivo mal alineado en silencio. */
+function expediente_txt_dec(valor, largo) {
+    var n = Number(valor) || 0;
+    var txt = n.toFixed(2);
+    if (txt.length > largo) txt = n.toFixed(1);
+    return txt.padStart(largo);
+}
+
 function expediente_txt_linea(row, prod) {
     var litros = Number(row.VolumenDespachado) || 0;
     var monto  = Number(row.MontoDespachado) || 0;
@@ -3030,16 +3047,18 @@ function expediente_txt_linea(row, prod) {
     // redondeados (40.30) daria 23.64.
     var precio = litros ? monto / litros : 0;
     // Los litros se reportan a 1 decimal aunque se escriban con 2 (40.287 -> 40.30).
-    var litrosTxt = (Math.round(litros * 10) / 10).toFixed(2);
+    var litrosRedondeados = Math.round(litros * 10) / 10;
 
     return expediente_txt_num(row.PlacaVehiculo, 9)
          + prod.digito
-         + monto.toFixed(2).padStart(7)
-         + litrosTxt.padStart(6)
+         + expediente_txt_dec(monto, 7)
+         + ' '
+         + expediente_txt_dec(litrosRedondeados, 5)
          + expediente_txt_num(row.FolioDespacho, 6)
          + expediente_txt_num(row.OdometroVehiculo, 6)
          + expediente_txt_fecha(row.FechaDespacho)
-         + precio.toFixed(2).padStart(6)
+         + ' '
+         + expediente_txt_dec(precio, 5)
          + prod.nombre.padEnd(20);
 }
 
@@ -3070,8 +3089,9 @@ function expediente_facturas_txt(dt) {
         }
 
         var linea = expediente_txt_linea(row, prod);
-        // Un monto de 5 enteros (>= 10000.00) no cabe en las 7 posiciones y
-        // recorreria el resto del renglon: se cuenta y se avisa, en vez de
+        // Red de seguridad: expediente_txt_dec() ya baja a 1 decimal lo que no
+        // cabe, pero un valor absurdo (monto de 7 enteros, litros de 5)
+        // recorreria el resto del renglon. Se cuenta y se avisa, en vez de
         // cortarlo en silencio y entregar un archivo que el receptor lee mal.
         if (linea.length !== 69) largoRaro++;
         lineas.push(linea);
