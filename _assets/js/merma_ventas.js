@@ -1,56 +1,82 @@
 /**
- * Pestaña HISTÓRICO de /merma/ventas.
- *
- * Se carga por AJAX en vez de venir en el render inicial para que sus
- * selectores de año y producto no colisionen con el selector de mes que
- * gobierna las cinco pestañas diarias: si vivieran en el mismo formulario,
- * cambiarlos recargaría la página y arrastraría al otro control.
+ * Pestaña HISTÓRICO de /merma/ventas, repetida una vez por cada tab de
+ * zona (marca_prots/tsa_ags/zona3). Se carga por AJAX en vez de venir en
+ * el render inicial para que sus selectores de año y producto no
+ * colisionen con el selector de mes que gobierna las cinco pestañas
+ * diarias: si vivieran en el mismo formulario, cambiarlos recargaría la
+ * página y arrastraría al otro control.
  */
 $(function () {
-    var cargado = false;
+    var cargadas = {};   // zonaClave -> bool, para no recargar el histórico de una zona ya vista
+    var zonaActiva = $('.merma-tabs-zona .nav-link.active').data('zona') || 'marca_prots';
 
-    // El enlace de exportación arrastra el rango y producto del histórico,
-    // para que la hoja HISTÓRICO del .xlsx refleje lo que está en pantalla.
+    function controlesDe(zonaClave) {
+        return {
+            desde: $('#hist_desde-' + zonaClave),
+            hasta: $('#hist_hasta-' + zonaClave),
+            prod:  $('#hist_prod-' + zonaClave),
+            contenido: $('#hist_contenido-' + zonaClave)
+        };
+    }
+
+    // El enlace de exportación arrastra el rango, producto y zona activa,
+    // para que la hoja HISTÓRICO del .xlsx (y el resto del libro) reflejen
+    // lo que está en pantalla.
     function sincronizarEnlaceExportar() {
         var $a = $('#btn_exportar');
         if (!$a.length) return;
+        var c = controlesDe(zonaActiva);
         var url = new URL($a.attr('href'), window.location.origin);
-        url.searchParams.set('desde', $('#hist_desde').val());
-        url.searchParams.set('hasta', $('#hist_hasta').val());
-        url.searchParams.set('prod',  $('#hist_prod').val());
+        url.searchParams.set('desde', c.desde.val());
+        url.searchParams.set('hasta', c.hasta.val());
+        url.searchParams.set('prod',  c.prod.val());
+        url.searchParams.set('zona',  zonaActiva);
         $a.attr('href', url.pathname + url.search);
     }
 
-    function cargarHistorico() {
+    function cargarHistorico(zonaClave) {
+        var c = controlesDe(zonaClave);
         var params = {
-            desde: $('#hist_desde').val(),
-            hasta: $('#hist_hasta').val(),
-            prod:  $('#hist_prod').val()
+            desde: c.desde.val(),
+            hasta: c.hasta.val(),
+            prod:  c.prod.val(),
+            zona:  zonaClave
         };
-        $('#hist_contenido').html('<p class="text-muted small">Cargando histórico…</p>');
+        c.contenido.html('<p class="text-muted small">Cargando histórico…</p>');
         $.get('/merma/ventas_historico', params)
             .done(function (html) {
-                $('#hist_contenido').html(html);
-                cargado = true;
+                c.contenido.html(html);
+                cargadas[zonaClave] = true;
             })
             .fail(function () {
-                $('#hist_contenido').html(
+                c.contenido.html(
                     '<div class="alert alert-danger py-2">No se pudo cargar el histórico. ' +
                     'Vuelve a intentarlo o revisa la conexión.</div>'
                 );
             });
-        // Misma lectura de los controles que armó "params": la tabla y el
-        // enlace de exportación nunca pueden divergir entre sí.
-        sincronizarEnlaceExportar();
+        if (zonaClave === zonaActiva) sincronizarEnlaceExportar();
     }
 
-    // Primera vez que se abre la pestaña
-    $('#tab-historico-link').on('shown.bs.tab', function () {
-        if (!cargado) cargarHistorico();
+    // Primera vez que se abre la pestaña HISTÓRICO de cada zona
+    $('[id^="tab-historico-link-"]').on('shown.bs.tab', function () {
+        var zonaClave = this.id.replace('tab-historico-link-', '');
+        if (!cargadas[zonaClave]) cargarHistorico(zonaClave);
     });
 
-    // Cualquier cambio de control recarga la tabla y re-sincroniza el enlace
-    $('#hist_desde, #hist_hasta, #hist_prod').on('change', cargarHistorico);
+    // Cambiar de tab de ZONA actualiza cuál es la zona activa (para el
+    // enlace de exportación) y sincroniza el enlace con los controles de
+    // esa zona, ya estén cargados o con los valores por defecto del render.
+    $('.merma-tabs-zona .nav-link').on('shown.bs.tab', function () {
+        zonaActiva = $(this).data('zona');
+        sincronizarEnlaceExportar();
+    });
+
+    // Cualquier cambio de control de histórico recarga SU tabla y
+    // re-sincroniza el enlace si es la zona actualmente activa.
+    $('.hist-control').on('change', function () {
+        var zonaClave = this.id.replace(/^hist_(desde|hasta|prod)-/, '');
+        cargarHistorico(zonaClave);
+    });
 
     // El navegador restaura el valor de los <select> en un F5 o un
     // atrás/adelante SIN disparar "change" (a diferencia de un cambio hecho
