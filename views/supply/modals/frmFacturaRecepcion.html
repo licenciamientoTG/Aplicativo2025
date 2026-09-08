@@ -1,0 +1,17 @@
+<input type="hidden" id="factura_schedule_id" value="{{ scheduleId }}">
+<div class="modal-body">
+    <p class="text-muted">Sube el PDF y el XML del CFDI de esta recepción. Se validará el XML y, si es válido, la factura quedará registrada en el sistema de pagos.</p>
+    <div class="mb-3">
+        <label class="col-form-label col-form-label-sm" for="factura_pdf">Archivo PDF:</label>
+        <input type="file" class="form-control" id="factura_pdf" accept="application/pdf" required>
+    </div>
+    <div class="mb-3">
+        <label class="col-form-label col-form-label-sm" for="factura_xml">Archivo XML:</label>
+        <input type="file" class="form-control" id="factura_xml" accept=".xml,text/xml" required>
+    </div>
+    <div id="facturaMensajeError" class="alert alert-danger" style="display:none;"></div>
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-primary" id="btnSubirFactura">Subir y vincular</button>
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+</div>

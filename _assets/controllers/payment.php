@@ -1,11 +1,11 @@
 <?php
 require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/code128.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/common/AttachmentsPath.php';
 
 class Payment
 {
     private const PDF_IMPORT_API_URL = 'http://192.168.0.109:82/api/importar_factura_pdf/';
     private const ALLOWED_PROVIDERS = ['lobo', 'mcg', 'tesoro', 'aemsa', 'enerey', 'essafuel', 'premiergas', 'petrotal'];
-    private const BASE_ATTACHMENTS_PATH = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\attachments';
 
     /** provider_cod (TG/SG12.dbo.Proveedores) de MGC MEXICO S.A. DE C.V. */
     private const PROVIDER_COD_MGC = 72;
@@ -5604,7 +5604,7 @@ class Payment
         $uuid = $apiData['uuid'] ?? '';
 
         // 2. Construir la ruta del directorio: Base + Proveedor + "procesadas"
-        $rutaDir = self::BASE_ATTACHMENTS_PATH . '\\' . $proveedor . '\\procesadas';
+        $rutaDir = AttachmentsPath::BASE . '\\' . $proveedor . '\\procesadas';
         // 3. Generar el nombre del archivo final (UUID en mayúsculas y sin guiones medios)
         $nombreArchivo = strtoupper(str_replace('-', '_', $uuid)) . '.pdf';
 
