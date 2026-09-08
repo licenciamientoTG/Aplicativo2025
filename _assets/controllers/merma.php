@@ -335,9 +335,10 @@ class Merma
 
     /**
      * Pestaña HISTÓRICO de /merma/ventas: acumulado mensual por estación
-     * sobre un rango de años. Devuelve SOLO el HTML de la tabla — la pestaña
-     * lo pide por AJAX para que sus controles no colisionen con el selector
-     * de mes que gobierna las cinco pestañas diarias.
+     * sobre un rango de años, filtrado a una zona. Devuelve SOLO el HTML de
+     * la tabla — la pestaña lo pide por AJAX para que sus controles no
+     * colisionen con el selector de mes que gobierna las cinco pestañas
+     * diarias.
      */
     public function ventas_historico(): void
     {
@@ -345,21 +346,21 @@ class Merma
             (new Errors())->get404();
             return;
         }
-        [$desde, $hasta, $prod] = $this->periodoHistorico();
+        [$desde, $hasta, $prod, $zona] = $this->periodoHistorico();
 
-        ['estaciones' => $estaciones, 'hist' => $hist] = $this->armarHistorico($desde, $hasta, $prod);
+        ['estaciones' => $estaciones, 'hist' => $hist] = $this->armarHistorico($desde, $hasta, $prod, $zona);
 
         echo $this->twig->render($this->route . 'ventas_historico.html',
             compact('estaciones', 'hist', 'desde', 'hasta', 'prod'));
     }
 
     /**
-     * Valida desde/hasta/prod de la pestaña histórica. Mismo criterio que
-     * ventas(): piso duro en 2020 para que un parámetro manipulado no pida un
-     * rango absurdo, aunque el piso del SELECTOR sea el primer año que exista
-     * en la tabla (get_anio_min_historico), que es más alto.
+     * Valida desde/hasta/prod/zona de la pestaña histórica. Mismo criterio
+     * que ventas(): piso duro en 2020 para que un parámetro manipulado no
+     * pida un rango absurdo, aunque el piso del SELECTOR sea el primer año
+     * que exista en la tabla (get_anio_min_historico), que es más alto.
      *
-     * @return array{0:int,1:int,2:string}
+     * @return array{0:int,1:int,2:string,3:string}
      */
     private function periodoHistorico(): array
     {
@@ -373,31 +374,43 @@ class Merma
         $prod = (string) ($_GET['prod'] ?? 'total');
         if (!isset(VentasConsolidado::PESTANAS[$prod])) $prod = 'total';
 
-        return [$desde, $hasta, $prod];
+        $zona = (string) ($_GET['zona'] ?? 'marca_prots');
+        if (!isset(VentasConsolidado::ZONAS[$zona])) $zona = 'marca_prots';
+
+        return [$desde, $hasta, $prod, $zona];
     }
 
     /**
-     * Junta modelo + calculadora para la pestaña HISTÓRICO. Lo comparten la
-     * vista (ventas_historico) y la exportación (ventas_excel) para que la
-     * tabla y su leyenda de cobertura no se puedan desincronizar entre
-     * pantalla y .xlsx.
+     * Junta modelo + calculadora para la pestaña HISTÓRICO, filtrado a una
+     * zona. Lo comparten la vista (ventas_historico) y la exportación
+     * (ventas_excel) para que la tabla y su leyenda de cobertura no se
+     * puedan desincronizar entre pantalla y .xlsx.
      *
      * @return array{estaciones: array, hist: array}
      */
-    private function armarHistorico(int $desde, int $hasta, string $prod): array
+    private function armarHistorico(int $desde, int $hasta, string $prod, string $zona): array
     {
         $estaciones = array_map(
-            fn($e) => ['Codigo' => (int) $e['Codigo'], 'Nombre' => $e['Nombre']],
+            fn($e) => [
+                'Codigo'    => (int) $e['Codigo'],
+                'Nombre'    => $e['Nombre'],
+                'ZonaConso' => isset($e['ZonaConso']) ? (int) $e['ZonaConso'] : null,
+            ],
             $this->mermaModel->get_estaciones_ordenadas()
         );
+        $estacionesZona = array_values(array_filter(
+            $estaciones,
+            fn($e) => VentasConsolidado::clasificarZona($e['ZonaConso']) === $zona
+        ));
+
         $hist = VentasConsolidado::construirHistorico($prod, [
-            'estaciones' => $estaciones,
+            'estaciones' => $estacionesZona,
             'historico'  => $this->mermaModel->get_historico_mensual($desde, $hasta),
             'desde'      => $desde,
             'hasta'      => $hasta,
         ]);
 
-        return ['estaciones' => $estaciones, 'hist' => $hist];
+        return ['estaciones' => $estacionesZona, 'hist' => $hist];
     }
 
     /**
@@ -417,8 +430,12 @@ class Merma
         if ($mes < 1 || $mes > 12)        $mes  = (int) date('n', $ayer);
         if ($anio < 2020 || $anio > 2100) $anio = (int) date('Y', $ayer);
 
-        $reporte    = $this->armarReporte($anio, $mes);
-        $estaciones = $reporte['estaciones'];
+        $zonaClave = (string) ($_GET['zona'] ?? 'marca_prots');
+        if (!isset(VentasConsolidado::ZONAS[$zonaClave])) $zonaClave = 'marca_prots';
+
+        $reporte     = $this->armarReporte($anio, $mes);
+        $zonaReporte = $reporte['zonas'][$zonaClave];
+        $estaciones  = $zonaReporte['estaciones'];
 
         $filasResumen = [
             'total'     => 'TOTAL',
@@ -434,7 +451,7 @@ class Merma
         $spreadsheet = new Spreadsheet();
         $spreadsheet->removeSheetByIndex(0);
 
-        foreach ($reporte['pestanas'] as $p) {
+        foreach ($zonaReporte['pestanas'] as $p) {
             $sheet = $spreadsheet->createSheet();
             // El título de hoja de Excel tolera 31 caracteres; los labels caben.
             $sheet->setTitle($p['label']);
@@ -497,8 +514,8 @@ class Merma
         // Sexta hoja: el histórico mensual, con el mismo rango y producto que
         // la pestaña tenga seleccionados (o los valores por defecto si el
         // usuario nunca la abrió).
-        [$hDesde, $hHasta, $hProd] = $this->periodoHistorico();
-        ['estaciones' => $estacionesHist, 'hist' => $hist] = $this->armarHistorico($hDesde, $hHasta, $hProd);
+        [$hDesde, $hHasta, $hProd, $hZona] = $this->periodoHistorico();
+        ['estaciones' => $estacionesHist, 'hist' => $hist] = $this->armarHistorico($hDesde, $hHasta, $hProd, $hZona);
 
         $hoja = $spreadsheet->createSheet();
         $hoja->setTitle('HISTÓRICO');
@@ -549,7 +566,7 @@ class Merma
 
         $spreadsheet->setActiveSheetIndex(0);
 
-        $archivo = sprintf('ventas_consolidado_%04d_%02d.xlsx', $anio, $mes);
+        $archivo = sprintf('ventas_%s_%04d_%02d.xlsx', $zonaClave, $anio, $mes);
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header("Content-Disposition: attachment;filename=\"{$archivo}\"");
         header('Cache-Control: max-age=0');
@@ -558,8 +575,9 @@ class Merma
     }
 
     /**
-     * Junta modelo + presupuesto + calculadora. Lo comparten la vista y la
-     * exportación a Excel para que no se puedan desincronizar.
+     * Junta modelo + presupuesto + calculadora, UNA VEZ POR ZONA. Lo
+     * comparten la vista y la exportación a Excel para que no se puedan
+     * desincronizar.
      */
     private function armarReporte(int $anio, int $mes): array
     {
@@ -567,7 +585,12 @@ class Merma
         // arma VentasConsolidado son enteros. Se castea una sola vez aquí para
         // que la vista y el exportador indexen sin sorpresas.
         $estaciones = array_map(
-            fn($e) => ['Codigo' => (int) $e['Codigo'], 'Nombre' => $e['Nombre'], 'cveest' => $e['cveest'] ?? null],
+            fn($e) => [
+                'Codigo'    => (int) $e['Codigo'],
+                'Nombre'    => $e['Nombre'],
+                'cveest'    => $e['cveest'] ?? null,
+                'ZonaConso' => isset($e['ZonaConso']) ? (int) $e['ZonaConso'] : null,
+            ],
             $this->mermaModel->get_estaciones_ordenadas()
         );
         $ventas = $this->mermaModel->get_ventas_mes($anio, $mes);
@@ -580,8 +603,7 @@ class Merma
         // ya resuelto e indexado por estación y familia en el modelo.
         $presupuesto = (new IncentivesPresupuestoModel())->getPresupuesto($mes, $anio);
 
-        $ctx = [
-            'estaciones'    => $estaciones,
+        $ctxBase = [
             'ventas'        => $ventas,
             'presupuesto'   => $presupuesto,
             'mes_anterior'  => $this->mermaModel->get_ventas_totales_mes($anioAnt, $mesAnt),
@@ -590,16 +612,33 @@ class Merma
             'mes'           => $mes,
         ];
 
-        $pestanas = [];
-        foreach (array_keys(VentasConsolidado::PESTANAS) as $clave) {
-            $pestanas[$clave] = VentasConsolidado::construir($clave, $ctx);
+        $zonas = [];
+        foreach (VentasConsolidado::ZONAS as $zonaClave => $zonaInfo) {
+            $estacionesZona = array_values(array_filter(
+                $estaciones,
+                fn($e) => VentasConsolidado::clasificarZona($e['ZonaConso']) === $zonaClave
+            ));
+
+            $ctxZona = $ctxBase;
+            $ctxZona['estaciones'] = $estacionesZona;
+
+            $pestanas = [];
+            foreach (array_keys(VentasConsolidado::PESTANAS) as $clave) {
+                $pestanas[$clave] = VentasConsolidado::construir($clave, $ctxZona);
+            }
+
+            $zonas[$zonaClave] = [
+                'label'           => $zonaInfo['label'],
+                'estaciones'      => $estacionesZona,
+                'pestanas'        => $pestanas,
+                'sin_presupuesto' => $presupuesto === [],
+            ];
         }
 
         return [
             'anio'            => $anio,
             'mes'             => $mes,
-            'estaciones'      => $estaciones,
-            'pestanas'        => $pestanas,
+            'zonas'           => $zonas,
             'sin_presupuesto' => $presupuesto === [],
         ];
     }

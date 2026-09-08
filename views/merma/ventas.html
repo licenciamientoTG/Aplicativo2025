@@ -31,7 +31,7 @@
                 <button type="submit" class="btn btn-merma-neutro">Buscar</button>
             </div>
             <div class="col-auto ms-auto">
-                <a href="/merma/ventas_excel?anio={{ anio }}&mes={{ mes }}&desde={{ histDesde }}&hasta={{ histHasta }}&prod=total"
+                <a href="/merma/ventas_excel?anio={{ anio }}&mes={{ mes }}&desde={{ histDesde }}&hasta={{ histHasta }}&prod=total&zona=marca_prots"
                    id="btn_exportar" class="btn btn-merma-sync">
                     <i class="fas fa-file-excel"></i> Exportar a Excel
                 </a>
@@ -48,136 +48,152 @@
 </div>
 {% endif %}
 
-<ul class="nav nav-tabs merma-tabs" role="tablist">
-    {% for clave, p in pestanas %}
+<ul class="nav nav-tabs merma-tabs-zona" role="tablist">
+    {% for zonaClave, zona in zonas %}
     <li class="nav-item">
         <a class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
-           href="#tab-{{ clave }}" role="tab">{{ p.label }}</a>
+           href="#tab-zona-{{ zonaClave }}" role="tab" data-zona="{{ zonaClave }}">{{ zona.label }}</a>
     </li>
     {% endfor %}
-    <li class="nav-item">
-        <a class="nav-link" data-bs-toggle="tab" href="#tab-historico" role="tab"
-           id="tab-historico-link">HISTÓRICO</a>
-    </li>
 </ul>
 
 <div class="tab-content">
-    {% for clave, p in pestanas %}
-    <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab-{{ clave }}" role="tabpanel">
-        <div class="merma-tabla-wrap mb-3">
-            <div class="merma-scroll">
-                <table class="merma-tabla vc-tabla">
-                    <thead>
-                        <tr>
-                            <th class="col-fecha">DÍA</th>
-                            {% for e in estaciones %}
-                            <th>{{ e.Nombre }}</th>
-                            {% endfor %}
-                            <th class="th-grupo">TOTAL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for d in p.dias %}
-                        <tr>
-                            <td class="col-fecha">{{ d.dia }}-{{ d.nombre|capitalize }}</td>
-                            {% for e in estaciones %}
-                            {% set v = d.celdas[e.Codigo] %}
-                            <td>{{ v is null ? '—' : v|number_format(0, '.', ',') }}</td>
-                            {% endfor %}
-                            <td class="col-total">{{ d.total is null ? '—' : d.total|number_format(0, '.', ',') }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                    <tfoot>
-                        {% for r in [
-                            {'k': 'total',     'l': 'TOTAL',            't': 'lts'},
-                            {'k': 'mix',       'l': '% MIX',            't': 'pct_plano'},
-                            {'k': 'proy',      'l': 'PROY. MENSUAL',    't': 'lts'},
-                            {'k': 'ppto',      'l': 'PRESUPUESTO',      't': 'lts'},
-                            {'k': 'dif',       'l': 'DIFERENCIA',       't': 'lts_signo'},
-                            {'k': 'pct_ppto',  'l': '% PRESUPUESTO',    't': 'pct'},
-                            {'k': 'vs_semana', 'l': 'VS SEMANA PREVIA', 't': 'pct'},
-                            {'k': 'ma',        'l': '% M.A.',           't': 'pct'},
-                            {'k': 'aa',        'l': '% A.A.',           't': 'pct'}
-                        ] %}
-                        {% set fila = p.resumen[r.k] %}
-                        <tr class="vc-resumen vc-resumen-{{ r.k }}">
-                            <td class="col-fecha">{{ r.l }}</td>
-                            {% for e in estaciones %}
-                            {% set v = fila.celdas[e.Codigo] %}
-                            <td class="{{ v is null or r.t == 'lts' or r.t == 'pct_plano' ? '' : (v < 0 ? 'pct-neg' : 'pct-pos') }}">
-                                {% if v is null %}—
-                                {% elseif r.t starts with 'pct' %}{{ v|number_format(2) }}%
-                                {% else %}{{ v|number_format(0, '.', ',') }}{% endif %}
-                            </td>
-                            {% endfor %}
-                            {% set vt = fila.total %}
-                            <td class="col-total {{ vt is null or r.t == 'lts' or r.t == 'pct_plano' ? '' : (vt < 0 ? 'pct-neg' : 'pct-pos') }}">
-                                {% if vt is null %}—
-                                {% elseif r.t starts with 'pct' %}{{ vt|number_format(2) }}%
-                                {% else %}{{ vt|number_format(0, '.', ',') }}{% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tfoot>
-                </table>
+    {% for zonaClave, zona in zonas %}
+    <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab-zona-{{ zonaClave }}" role="tabpanel">
+
+        <ul class="nav nav-tabs merma-tabs" role="tablist">
+            {% for clave, p in zona.pestanas %}
+            <li class="nav-item">
+                <a class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
+                   href="#tab-{{ zonaClave }}-{{ clave }}" role="tab">{{ p.label }}</a>
+            </li>
+            {% endfor %}
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#tab-{{ zonaClave }}-historico" role="tab"
+                   id="tab-historico-link-{{ zonaClave }}">HISTÓRICO</a>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            {% for clave, p in zona.pestanas %}
+            <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab-{{ zonaClave }}-{{ clave }}" role="tabpanel">
+                <div class="merma-tabla-wrap mb-3">
+                    <div class="merma-scroll">
+                        <table class="merma-tabla vc-tabla">
+                            <thead>
+                                <tr>
+                                    <th class="col-fecha">DÍA</th>
+                                    {% for e in zona.estaciones %}
+                                    <th>{{ e.Nombre }}</th>
+                                    {% endfor %}
+                                    <th class="th-grupo">TOTAL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for d in p.dias %}
+                                <tr>
+                                    <td class="col-fecha">{{ d.dia }}-{{ d.nombre|capitalize }}</td>
+                                    {% for e in zona.estaciones %}
+                                    {% set v = d.celdas[e.Codigo] %}
+                                    <td>{{ v is null ? '—' : v|number_format(0, '.', ',') }}</td>
+                                    {% endfor %}
+                                    <td class="col-total">{{ d.total is null ? '—' : d.total|number_format(0, '.', ',') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                {% for r in [
+                                    {'k': 'total',     'l': 'TOTAL',            't': 'lts'},
+                                    {'k': 'mix',       'l': '% MIX',            't': 'pct_plano'},
+                                    {'k': 'proy',      'l': 'PROY. MENSUAL',    't': 'lts'},
+                                    {'k': 'ppto',      'l': 'PRESUPUESTO',      't': 'lts'},
+                                    {'k': 'dif',       'l': 'DIFERENCIA',       't': 'lts_signo'},
+                                    {'k': 'pct_ppto',  'l': '% PRESUPUESTO',    't': 'pct'},
+                                    {'k': 'vs_semana', 'l': 'VS SEMANA PREVIA', 't': 'pct'},
+                                    {'k': 'ma',        'l': '% M.A.',           't': 'pct'},
+                                    {'k': 'aa',        'l': '% A.A.',           't': 'pct'}
+                                ] %}
+                                {% set fila = p.resumen[r.k] %}
+                                <tr class="vc-resumen vc-resumen-{{ r.k }}">
+                                    <td class="col-fecha">{{ r.l }}</td>
+                                    {% for e in zona.estaciones %}
+                                    {% set v = fila.celdas[e.Codigo] %}
+                                    <td class="{{ v is null or r.t == 'lts' or r.t == 'pct_plano' ? '' : (v < 0 ? 'pct-neg' : 'pct-pos') }}">
+                                        {% if v is null %}—
+                                        {% elseif r.t starts with 'pct' %}{{ v|number_format(2) }}%
+                                        {% else %}{{ v|number_format(0, '.', ',') }}{% endif %}
+                                    </td>
+                                    {% endfor %}
+                                    {% set vt = fila.total %}
+                                    <td class="col-total {{ vt is null or r.t == 'lts' or r.t == 'pct_plano' ? '' : (vt < 0 ? 'pct-neg' : 'pct-pos') }}">
+                                        {% if vt is null %}—
+                                        {% elseif r.t starts with 'pct' %}{{ vt|number_format(2) }}%
+                                        {% else %}{{ vt|number_format(0, '.', ',') }}{% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <p class="text-muted small mb-1">
+                    {{ p.dias_con_datos }} de {{ p.dias_del_mes }} días con datos.
+                    La proyección mensual extrapola el total a los {{ p.dias_del_mes }} días del mes.
+                </p>
+                <details class="vc-leyenda">
+                    <summary>¿Qué significa cada fila del resumen?</summary>
+                    <dl class="vc-leyenda-grid">
+                        <div><dt>TOTAL</dt><dd>Suma de litros despachados en el mes, por estación y general.</dd></div>
+                        <div><dt>% MIX</dt><dd>Participación de cada estación sobre el total del grupo (suman 100%).</dd></div>
+                        <div><dt>PROY. MENSUAL</dt><dd>Estimado a fin de mes: TOTAL ÷ días con datos × días del mes.</dd></div>
+                        <div><dt>PRESUPUESTO</dt><dd>Meta de litros cargada en incentives_presupuestoventa para el mes.</dd></div>
+                        <div><dt>DIFERENCIA</dt><dd>PROY. MENSUAL − PRESUPUESTO, en litros.</dd></div>
+                        <div><dt>% PRESUPUESTO</dt><dd>PROY. MENSUAL como porcentaje del PRESUPUESTO.</dd></div>
+                        <div><dt>VS SEMANA PREVIA</dt><dd>Variación % del total vs. la misma cantidad de días de la semana anterior.</dd></div>
+                        <div><dt>% M.A.</dt><dd>Variación % vs. el mes anterior (mismos días transcurridos).</dd></div>
+                        <div><dt>% A.A.</dt><dd>Variación % vs. el mismo mes del año anterior.</dd></div>
+                    </dl>
+                </details>
             </div>
-        </div>
-        <p class="text-muted small mb-1">
-            {{ p.dias_con_datos }} de {{ p.dias_del_mes }} días con datos.
-            La proyección mensual extrapola el total a los {{ p.dias_del_mes }} días del mes.
-        </p>
-        <details class="vc-leyenda">
-            <summary>¿Qué significa cada fila del resumen?</summary>
-            <dl class="vc-leyenda-grid">
-                <div><dt>TOTAL</dt><dd>Suma de litros despachados en el mes, por estación y general.</dd></div>
-                <div><dt>% MIX</dt><dd>Participación de cada estación sobre el total del grupo (suman 100%).</dd></div>
-                <div><dt>PROY. MENSUAL</dt><dd>Estimado a fin de mes: TOTAL ÷ días con datos × días del mes.</dd></div>
-                <div><dt>PRESUPUESTO</dt><dd>Meta de litros cargada en incentives_presupuestoventa para el mes.</dd></div>
-                <div><dt>DIFERENCIA</dt><dd>PROY. MENSUAL − PRESUPUESTO, en litros.</dd></div>
-                <div><dt>% PRESUPUESTO</dt><dd>PROY. MENSUAL como porcentaje del PRESUPUESTO.</dd></div>
-                <div><dt>VS SEMANA PREVIA</dt><dd>Variación % del total vs. la misma cantidad de días de la semana anterior.</dd></div>
-                <div><dt>% M.A.</dt><dd>Variación % vs. el mes anterior (mismos días transcurridos).</dd></div>
-                <div><dt>% A.A.</dt><dd>Variación % vs. el mismo mes del año anterior.</dd></div>
-            </dl>
-        </details>
-    </div>
-    {% endfor %}
-    <div class="tab-pane fade" id="tab-historico" role="tabpanel">
-        <div class="card mb-2">
-            <div class="card-body py-2">
-                <div class="row align-items-end g-2">
-                    <div class="col-auto">
-                        <label for="hist_desde">Año desde:</label>
-                        <select class="form-control" id="hist_desde">
-                            {% for a in histAnios %}
-                            <option value="{{ a }}" {{ a == histDesde ? 'selected' : '' }}>{{ a }}</option>
-                            {% endfor %}
-                        </select>
+            {% endfor %}
+            <div class="tab-pane fade" id="tab-{{ zonaClave }}-historico" role="tabpanel">
+                <div class="card mb-2">
+                    <div class="card-body py-2">
+                        <div class="row align-items-end g-2">
+                            <div class="col-auto">
+                                <label for="hist_desde-{{ zonaClave }}">Año desde:</label>
+                                <select class="form-control hist-control" id="hist_desde-{{ zonaClave }}">
+                                    {% for a in histAnios %}
+                                    <option value="{{ a }}" {{ a == histDesde ? 'selected' : '' }}>{{ a }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <label for="hist_hasta-{{ zonaClave }}">Año hasta:</label>
+                                <select class="form-control hist-control" id="hist_hasta-{{ zonaClave }}">
+                                    {% for a in histAnios %}
+                                    <option value="{{ a }}" {{ a == histHasta ? 'selected' : '' }}>{{ a }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <label for="hist_prod-{{ zonaClave }}">Producto:</label>
+                                <select class="form-control hist-control" id="hist_prod-{{ zonaClave }}">
+                                    {% for clave, p in histProds %}
+                                    <option value="{{ clave }}" {{ clave == 'total' ? 'selected' : '' }}>{{ p.label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-auto">
-                        <label for="hist_hasta">Año hasta:</label>
-                        <select class="form-control" id="hist_hasta">
-                            {% for a in histAnios %}
-                            <option value="{{ a }}" {{ a == histHasta ? 'selected' : '' }}>{{ a }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-auto">
-                        <label for="hist_prod">Producto:</label>
-                        <select class="form-control" id="hist_prod">
-                            {% for clave, p in histProds %}
-                            <option value="{{ clave }}" {{ clave == 'total' ? 'selected' : '' }}>{{ p.label }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
+                </div>
+                <div id="hist_contenido-{{ zonaClave }}" class="hist-contenido">
+                    <p class="text-muted small">Cargando histórico…</p>
                 </div>
             </div>
         </div>
-        <div id="hist_contenido">
-            <p class="text-muted small">Cargando histórico…</p>
-        </div>
     </div>
+    {% endfor %}
 </div>
 
 {% endblock %}
