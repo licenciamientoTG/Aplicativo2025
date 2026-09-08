@@ -20,6 +20,7 @@ Thumbs.db
 # Environment and config files
 .env
 .env.local
+.env.example
 
 # Log files
 *.log

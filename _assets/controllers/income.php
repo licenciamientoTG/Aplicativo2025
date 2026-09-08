@@ -35,13 +35,23 @@ class Income{
      *
      * 'key' debe coincidir letra por letra con el nombre que emite el SP.
      * 'type' solo controla el formato en pantalla:
-     *   text (default) | int | date | dec2 | dec3 | money
+     *   text (default) | int | dec2 | dec3 | money | date
+     * 'show' => true marca las columnas visibles al abrir la pantalla. Las
+     * demás siguen ahí: el usuario las prende desde el botón "Columnas"
+     * (colvis) y el Excel exporta lo que quede visible. Sin 'show' una
+     * columna nace oculta, que es lo correcto para las 51 del SP.
      *
-     * Ojo: las columnas "lista" (FoliosDespacho, MontosContables, etc.) son
+     * Ojo: las columnas "lista" (CodigosProducto, MontosContables, etc.) son
      * cadenas separadas por comas — SIEMPRE text, nunca numérico.
+     *
+     * El SP devuelve un renglón por DESPACHO, no por factura: las columnas
+     * de factura (UUID, MontoTotalDet, CantMovContables...) se repiten en
+     * cada renglón del mismo NumeroFactura. Por eso el orden por omisión es
+     * NumeroFactura + FolioDespacho, para que los despachos de una factura
+     * queden juntos.
      */
     private const EXPEDIENTE_COLUMNS = [
-        ['key' => 'NumeroFactura',     'label' => 'Núm. Factura',        'type' => 'int'],
+        ['key' => 'NumeroFactura',     'label' => 'Núm. Factura',        'type' => 'int', 'show' => true],
         ['key' => 'tip',               'label' => 'Tip',                 'type' => 'int'],
         ['key' => 'codgas',            'label' => 'Codgas',              'type' => 'int'],
         ['key' => 'FechaDoc',          'label' => 'Fecha Doc',           'type' => 'date'],
@@ -67,18 +77,21 @@ class Income{
         ['key' => 'satuso',            'label' => 'Uso CFDI',            'type' => 'text'],
         ['key' => 'TotalLineas',       'label' => 'Total Líneas',        'type' => 'int'],
         ['key' => 'NroCta',            'label' => 'Nro Cta',             'type' => 'text'],
-        ['key' => 'CodigosProducto',   'label' => 'Códigos Producto',    'type' => 'text'],
+        ['key' => 'CodigosProducto',    'label' => 'Códigos Producto',    'type' => 'text', 'show' => true],
         ['key' => 'VolumenTotal',      'label' => 'Volumen Total',       'type' => 'dec3'],
         ['key' => 'MontoTotalDet',     'label' => 'Monto Total Det',     'type' => 'money'],
         ['key' => 'MontoIVA',          'label' => 'Monto IVA',           'type' => 'money'],
         ['key' => 'MontoIIE',          'label' => 'Monto IIE',           'type' => 'money'],
         ['key' => 'MontoIIG',          'label' => 'Monto IIG',           'type' => 'money'],
-        ['key' => 'CantDespachos',     'label' => 'Cant. Despachos',     'type' => 'int'],
-        ['key' => 'VolumenDespachado', 'label' => 'Volumen Despachado',  'type' => 'dec3'],
-        ['key' => 'MontoDespachado',   'label' => 'Monto Despachado',    'type' => 'money'],
-        ['key' => 'FoliosDespacho',    'label' => 'Folios Despacho',     'type' => 'text'],
-        ['key' => 'FechasDespacho',    'label' => 'Fechas Despacho',     'type' => 'text'],
-        ['key' => 'Vehiculos',         'label' => 'Vehículos',           'type' => 'text'],
+        ['key' => 'FolioDespacho',     'label' => 'Folio Despacho',      'type' => 'int', 'show' => true],
+        ['key' => 'FechaDespacho',     'label' => 'Fecha Despacho',      'type' => 'date', 'show' => true],
+        ['key' => 'VolumenDespachado', 'label' => 'Volumen Despachado',  'type' => 'dec3', 'show' => true],
+        ['key' => 'MontoDespachado',   'label' => 'Monto Despachado',    'type' => 'money', 'show' => true],
+        ['key' => 'CodigoVehiculo',    'label' => 'Cód. Vehículo',       'type' => 'int'],
+        ['key' => 'CodigoClienteVehiculo', 'label' => 'Cód. Cliente Veh.', 'type' => 'int'],
+        ['key' => 'TarjetaVehiculo',   'label' => 'Tarjeta',             'type' => 'text'],
+        ['key' => 'PlacaVehiculo',     'label' => 'Placa',               'type' => 'text', 'show' => true],
+        ['key' => 'OdometroVehiculo',  'label' => 'Odómetro',            'type' => 'int', 'show' => true],
         ['key' => 'CantAplicaciones',  'label' => 'Cant. Aplicaciones',  'type' => 'int'],
         ['key' => 'MontoAplicado',     'label' => 'Monto Aplicado',      'type' => 'money'],
         ['key' => 'TiposAplicacion',   'label' => 'Tipos Aplicación',    'type' => 'text'],

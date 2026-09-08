@@ -1,0 +1,22 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones - Cumplimiento de inventarios{% endblock %}
+{% block menutitle %}Cumplimiento de inventarios{% endblock %}
+{% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
+{% block content %}
+<div class="terminal-page-header d-flex justify-content-between flex-wrap gap-3 mb-3">
+  <div><p class="text-muted mb-1">Seguimiento de captura por estación</p><span class="badge bg-light text-primary border">Semana del {{ weekStart }} al {{ weekEnd }}</span></div>
+  <a class="btn btn-outline-primary" href="/operations/terminal_report"><i data-feather="bar-chart-2"></i> Ver reporte de incidencias</a>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="card terminal-stat terminal-stat-success"><div class="card-body"><small>Inventarios registrados</small><strong>{{ completed|length }}</strong><span>de {{ stations|length }} estaciones</span></div></div></div>
+  <div class="col-md-4"><div class="card terminal-stat terminal-stat-pending"><div class="card-body"><small>Pendientes de registrar</small><strong>{{ pending|length }}</strong><span>estaciones</span></div></div></div>
+  <div class="col-md-4"><div class="card terminal-stat"><div class="card-body"><small>Avance semanal</small><strong>{{ completionRate }}%</strong><span>captura completada</span></div></div></div>
+</div>
+<div class="card terminal-card"><div class="card-body">
+  <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="card-title mb-0">Estaciones</h5></div>
+  <div class="table-responsive"><table id="terminalStatusTable" class="table table-hover align-middle mb-0"><thead><tr><th>Estación</th><th>Estado</th><th>Registrado por</th><th>Fecha de captura</th></tr></thead><tbody>
+  {% for station in stations %}<tr><td><strong>#{{ station.Codigo }}</strong> · {{ station.Nombre }}</td><td>{% if station.inventario_id %}<span class="badge bg-success">Registrado</span>{% else %}<span class="badge bg-warning text-dark">Pendiente</span>{% endif %}</td><td>{{ station.usuario_correo ?: '—' }}</td><td>{{ station.fecha_registro ? station.fecha_registro|date('d/m/Y H:i') : '—' }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted py-4">No hay estaciones disponibles.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div></div>
+{% endblock %}
+{% block myjs %}<script>$(function(){ $('#terminalStatusTable').DataTable({pageLength:25,order:[[1,'asc']],language:{url:'//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json'}}); });</script>{% endblock %}

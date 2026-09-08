@@ -167,6 +167,21 @@ $twig->addFunction($strpad);
 $twig->addFunction($authorized);
 $twig->addFunction($foradmin);
 $twig->addFunction($for_sistemas);
+
+// Permisos específicos del inventario de terminales. Se resuelven por nombre
+// para que el módulo no dependa de IDs fijos en una base compartida.
+$terminal_inventory_access = new \Twig\TwigFunction('terminal_inventory_access', function () {
+    if (empty($_SESSION['tg_user']['Id']) || !class_exists('TerminalInventoryModel')) return false;
+    $model = new TerminalInventoryModel();
+    $userId = (int)$_SESSION['tg_user']['Id'];
+    return $model->hasPermission($userId, TerminalInventoryModel::CAPTURE_PERMISSION);
+});
+$twig->addFunction($terminal_inventory_access);
+$terminal_inventory_report_access = new \Twig\TwigFunction('terminal_inventory_report_access', function () {
+    if (empty($_SESSION['tg_user']['Id']) || !class_exists('TerminalInventoryModel')) return false;
+    return (new TerminalInventoryModel())->hasPermission((int)$_SESSION['tg_user']['Id'], TerminalInventoryModel::REPORT_PERMISSION);
+});
+$twig->addFunction($terminal_inventory_report_access);
 $twig->addFunction($getFlashMessage);
 $twig->addFunction($get_week_days);
 $twig->addFunction($text_to_int);

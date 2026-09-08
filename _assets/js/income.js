@@ -2812,9 +2812,12 @@ async function expediente_facturas_table() {
 
     var cols = (window.EXPEDIENTE_COLS || []).map(function (c) {
         // defaultContent: el SP devuelve NULL en varias columnas (satext,
-        // satnro, Vehiculos...). Sin esto DataTables lanza warning y pinta
+        // satnro, MontoAplicado...). Sin esto DataTables lanza warning y pinta
         // "undefined" en la celda.
-        var col = { data: c.key, defaultContent: '' };
+        // visible: solo arrancan prendidas las que el PHP marca con 'show'.
+        // El resto se agrega desde el botón "Columnas" sin recargar nada,
+        // porque DataTables ya recibió los 51 campos en el mismo ajax.
+        var col = { data: c.key, defaultContent: '', visible: c.show === true };
 
         if (c.type === 'money') {
             col.render = $.fn.dataTable.render.number(',', '.', 2, '$');
@@ -2835,9 +2838,21 @@ async function expediente_facturas_table() {
         return col;
     });
 
+    // El SP devuelve un renglón por DESPACHO, así que se ordena por factura y,
+    // dentro de ella, por folio de despacho, para que los despachos de una misma
+    // factura queden juntos. Los índices se resuelven contra EXPEDIENTE_COLS en
+    // lugar de escribirse a mano: reordenar columnas en el PHP no rompe esto.
+    var order = ['NumeroFactura', 'FolioDespacho'].map(function (key) {
+        return cols.findIndex(function (c) { return c.data === key; });
+    }).filter(function (i) { return i >= 0; }).map(function (i) { return [i, 'asc']; });
+
+    if (!order.length) {
+        order = [[0, 'asc']];
+    }
+
     $('#expediente_facturas_table').DataTable({
         columns: cols,
-        order: [[0, 'asc']],
+        order: order,
         scrollX: true,
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
@@ -2850,7 +2865,7 @@ async function expediente_facturas_table() {
                 className: 'btn btn-success',
                 text: ' Excel',
                 title: 'Expediente de facturas',
-                // Respeta lo que el usuario dejó visible con colvis: con 48
+                // Respeta lo que el usuario dejó visible con colvis: con 51
                 // columnas, exportarlas todas produce un Excel ilegible.
                 exportOptions: { columns: ':visible' }
             },
