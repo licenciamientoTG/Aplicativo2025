@@ -3062,13 +3062,42 @@ function expediente_txt_linea(row, prod) {
          + prod.nombre.padEnd(20);
 }
 
+/* Dispara la descarga de un Blob con el nombre dado. */
+function expediente_txt_descargar(blob, nombre) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+}
+
+/* Nombre de archivo a partir del numero de factura: es el identificador con el
+   que el receptor los procesa, asi que se deja tal cual quitando solo lo que no
+   puede ir en un nombre de archivo. */
+function expediente_txt_nombre_factura(valor) {
+    var limpio = String(valor === null || valor === undefined ? '' : valor)
+        .trim()
+        .replace(/[^A-Za-z0-9_-]/g, '');
+    return limpio === '' ? 'SIN_FACTURA' : limpio;
+}
+
+/* Un archivo TXT por factura, con sus despachos.
+
+   Cuando hay varias facturas se entregan dentro de un ZIP: el navegador bloquea
+   las descargas multiples automaticas, y aqui una consulta de un mes son
+   decenas de facturas. Con una sola factura se descarga el .txt directo. */
 function expediente_facturas_txt(dt) {
     // search: 'applied' respeta el buscador de la tabla; el orden es el que el
     // usuario tenga puesto en pantalla.
     var filas = dt.rows({ search: 'applied' }).data().toArray();
 
-    var lineas = [];
-    var sinDespacho = 0, dudosos = 0, desconocidos = 0, largoRaro = 0;
+    var porFactura = {};   // numero de factura -> renglones del archivo
+    var facturas = [];     // mismo orden en que aparecen en pantalla
+
+    var totalVales = 0;
+    var sinDespacho = 0, dudosos = 0, desconocidos = 0, largoRaro = 0, sinFactura = 0;
     // Valores de CodigosProducto que no estan en el catalogo, para mostrarlos
     // en el aviso: sin esto la unica pista es la posicion 10 en blanco.
     var noReconocidos = [];
@@ -3094,10 +3123,18 @@ function expediente_facturas_txt(dt) {
         // recorreria el resto del renglon. Se cuenta y se avisa, en vez de
         // cortarlo en silencio y entregar un archivo que el receptor lee mal.
         if (linea.length !== 69) largoRaro++;
-        lineas.push(linea);
+
+        var factura = expediente_txt_nombre_factura(row.NumeroFactura);
+        if (factura === 'SIN_FACTURA') sinFactura++;
+        if (!porFactura[factura]) {
+            porFactura[factura] = [];
+            facturas.push(factura);
+        }
+        porFactura[factura].push(linea);
+        totalVales++;
     });
 
-    if (!lineas.length) {
+    if (!facturas.length) {
         alertify.myAlert(
             `<div class="container text-center text-warning">
                 <h4 class="mt-2 text-warning">Sin despachos</h4>
@@ -3109,37 +3146,67 @@ function expediente_facturas_txt(dt) {
         return;
     }
 
-    var contenido = lineas.join('\r\n') + '\r\n';
-    var nombre = 'vales_' + ($('#codgas').val() || '0') + '_' + ($('#codopr').val() || '0')
-               + ($('#from').val()  ? '_' + $('#from').val()  : '')
-               + ($('#until').val() ? '_' + $('#until').val() : '') + '.txt';
+    var mostrarAvisos = function () {
+        var avisos = [];
+        if (sinDespacho)  avisos.push(sinDespacho + ' renglon(es) sin despacho que no se exportaron.');
+        if (sinFactura)   avisos.push(sinFactura + ' despacho(s) sin numero de factura: quedaron en SIN_FACTURA.txt.');
+        if (desconocidos) avisos.push(desconocidos + ' renglon(es) sin combustible identificable (posicion 10 en blanco). Codigos de producto no reconocidos: '
+                                      + noReconocidos.slice(0, 5).join(' | ')
+                                      + (noReconocidos.length > 5 ? ' ...y ' + (noReconocidos.length - 5) + ' mas' : ''));
+        if (dudosos)      avisos.push(dudosos + ' renglon(es) de facturas con varios productos: se uso el primero.');
+        if (largoRaro)    avisos.push(largoRaro + ' renglon(es) no miden 69 caracteres (monto o litros fuera de rango).');
+        if (!avisos.length) return;
 
-    var blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = nombre;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-
-    var avisos = [];
-    if (sinDespacho)  avisos.push(sinDespacho + ' renglon(es) sin despacho que no se exportaron.');
-    if (desconocidos) avisos.push(desconocidos + ' renglon(es) sin combustible identificable (posicion 10 en blanco). Codigos de producto no reconocidos: '
-                                  + noReconocidos.slice(0, 5).join(' | ')
-                                  + (noReconocidos.length > 5 ? ' ...y ' + (noReconocidos.length - 5) + ' mas' : ''));
-    if (dudosos)      avisos.push(dudosos + ' renglon(es) de facturas con varios productos: se uso el primero.');
-    if (largoRaro)    avisos.push(largoRaro + ' renglon(es) no miden 69 caracteres (monto o litros fuera de rango).');
-
-    if (avisos.length) {
         alertify.myAlert(
             `<div class="container text-center text-warning">
                 <h4 class="mt-2 text-warning">Archivo generado con avisos</h4>
             </div>
             <div class="text-dark">
-                <p class="text-center">Se exportaron ${lineas.length} vale(s).</p>
+                <p class="text-center">${facturas.length} archivo(s) con ${totalVales} vale(s) en total.</p>
                 <ul>${avisos.map(function (a) { return '<li>' + a + '</li>'; }).join('')}</ul>
             </div>`
         );
+    };
+
+    var contenido = function (factura) {
+        return porFactura[factura].join('\r\n') + '\r\n';
+    };
+
+    // Una sola factura: no tiene caso empaquetarla.
+    if (facturas.length === 1) {
+        expediente_txt_descargar(
+            new Blob([contenido(facturas[0])], { type: 'text/plain;charset=utf-8' }),
+            facturas[0] + '.txt'
+        );
+        mostrarAvisos();
+        return;
     }
+
+    if (typeof JSZip === 'undefined') {
+        // base.html carga jszip en todas las paginas (lo necesita el boton de
+        // Excel); si falta, avisar es mejor que soltar 30 descargas seguidas.
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">Falta JSZip</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No se pudo armar el ZIP con los ${facturas.length} archivos. Recarga la pagina e intentalo de nuevo.</p>
+            </div>`
+        );
+        return;
+    }
+
+    var zip = new JSZip();
+    facturas.forEach(function (factura) {
+        zip.file(factura + '.txt', contenido(factura));
+    });
+
+    var nombreZip = 'vales_' + ($('#codgas').val() || '0') + '_' + ($('#codopr').val() || '0')
+                  + ($('#from').val()  ? '_' + $('#from').val()  : '')
+                  + ($('#until').val() ? '_' + $('#until').val() : '') + '.zip';
+
+    zip.generateAsync({ type: 'blob' }).then(function (blob) {
+        expediente_txt_descargar(blob, nombreZip);
+        mostrarAvisos();
+    });
 }
