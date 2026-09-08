@@ -32,6 +32,7 @@ class Operations{
     public ClientesModel $clientesModel;
     public TerminalInventoryModel $terminalInventoryModel;
     private ?array $terminalSettingsCache = null;
+    private ?array $terminalValerasCache = null;
 
 
     /**
@@ -3159,7 +3160,14 @@ class Operations{
         return false;
     }
     private function terminalTypeCatalog(): array {
-        return ['urovo'=>['label'=>'Urovo','logo'=>'UROVO','mojo'=>''], 'ticketcard'=>['label'=>'Ticket Card','logo'=>'TicketCard','mojo'=>'Ticketcard'], 'efecticard'=>['label'=>'EfectiCard','logo'=>'EfectiCard','mojo'=>'Efecticard'], 'inburgas'=>['label'=>'Inburgas','logo'=>'INBURSA','mojo'=>'Inburgas'], 'sodexo'=>['label'=>'Sodexo','logo'=>'sodexo','mojo'=>'Sodexo'], 'ultragas'=>['label'=>'Ultragas','logo'=>'ULTRAGAS','mojo'=>'Ultragas'], 'mobil'=>['label'=>'Mobil','logo'=>'Mobil','mojo'=>'Mobil'], 'eox'=>['label'=>'EOX','logo'=>'EOX','mojo'=>'EOX']];
+        $types=['urovo'=>['label'=>'Urovo','logo'=>'UROVO','mojo'=>'']];
+        $brands=['ticketcard'=>'TicketCard','efecticard'=>'EfectiCard','inburgas'=>'INBURSA','sodexo'=>'sodexo','ultragas'=>'ULTRAGAS','mobil'=>'Mobil','eox'=>'EOX'];
+        if ($this->terminalValerasCache===null) $this->terminalValerasCache=$this->terminalInventoryModel->valeraCatalog();
+        foreach ($this->terminalValerasCache as $valera) {
+            $code=(string)$valera['codigo'];
+            $types[$code]=['label'=>(string)$valera['nombre'],'logo'=>$brands[$code] ?? mb_strtoupper(mb_substr((string)$valera['nombre'],0,10)),'mojo'=>(string)$valera['valor_mojo']];
+        }
+        return $types;
     }
     private function terminalValeraTypes(): array { $types=$this->terminalTypeCatalog(); unset($types['urovo']); return $types; }
     private function terminalTypes(): array {
@@ -3174,6 +3182,11 @@ class Operations{
         if ($start>$end) return 0; $days=0;
         for ($date=$start; $date<$end; $date=$date->modify('+1 day')) if ((int)$date->format('N')<=5) $days++;
         return $days;
+    }
+    private function terminalValeraCode(string $value): string {
+        $value=mb_strtolower(trim($value),'UTF-8');
+        $value=strtr($value,['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n']);
+        return substr((string)preg_replace('/[^a-z0-9]+/','',$value),0,20);
     }
     private function syncTerminalIncidents(int $stationId, string $origin): void {
         try {
@@ -3198,7 +3211,7 @@ class Operations{
         $ticketId=(int)($_POST['ticket_id'] ?? 0); $type=(string)($_POST['type'] ?? '');
         if (!$ticketId || !isset($this->terminalTypes()[$type])) { $this->terminalJsonError('Ticket o tipo de terminal inválido.'); return; }
         if ($this->terminalInventoryModel->ticketUsed($ticketId)) { $this->terminalJsonError('Este ticket ya está vinculado a otra incidencia.'); return; }
-        try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type)) { $this->terminalJsonError('El ticket debe estar abierto y el tipo de terminal debe coincidir con la incidencia.'); return; } $ticketData=$service->incidentDataFromTicket($ticket,$type); if ($type!=='urovo' && (!$ticketData['provider_folio'] || !$ticketData['provider_date'] || !$ticketData['description'])) { $this->terminalJsonError('El ticket de valera debe incluir folio, fecha de reporte y descripción.'); return; } json_output(['success'=>true,'ticket'=>$ticket,'incident_data'=>$ticketData]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
+        try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type,$this->terminalTypes()[$type]['mojo'])) { $this->terminalJsonError('El ticket debe estar abierto y el tipo de terminal debe coincidir con la incidencia.'); return; } $ticketData=$service->incidentDataFromTicket($ticket,$type); if ($type!=='urovo' && (!$ticketData['provider_folio'] || !$ticketData['provider_date'] || !$ticketData['description'])) { $this->terminalJsonError('El ticket de valera debe incluir folio, fecha de reporte y descripción.'); return; } json_output(['success'=>true,'ticket'=>$ticket,'incident_data'=>$ticketData]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
     }
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
@@ -3230,7 +3243,7 @@ class Operations{
         foreach ($new as $item) {
             $type=(string)($item['type'] ?? ''); $ticketId=(int)($item['ticket_id'] ?? 0); $source=(string)($item['source'] ?? 'create'); $description=trim((string)($item['description'] ?? ''));
             if (!isset($types[$type]) || !$ticketId || $this->terminalInventoryModel->ticketUsed($ticketId)) { $this->terminalJsonError('Existe una incidencia nueva inválida.'); return; }
-            try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type)) { $this->terminalJsonError('Un ticket no está abierto o su tipo de terminal no corresponde a la incidencia.'); return; }
+            try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type,$types[$type]['mojo'])) { $this->terminalJsonError('Un ticket no está abierto o su tipo de terminal no corresponde a la incidencia.'); return; }
             } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); return; }
             $providerFolio=trim((string)($item['provider_folio'] ?? '')); $providerDate=$item['provider_date'] ?? null;
             if ($source==='existing') { $ticketData=$service->incidentDataFromTicket($ticket,$type); $description=mb_substr($ticketData['description'],0,250); if ($type!=='urovo') { $providerFolio=$ticketData['provider_folio']; $providerDate=substr($ticketData['provider_date'],0,10) ?: null; } }
@@ -3266,5 +3279,18 @@ class Operations{
         $settings=$this->terminalSettings();
         $enabled=array_filter(array_map('trim',explode(',',(string)($settings['valeras_habilitadas'] ?? ''))));
         echo $this->twig->render($this->route.'terminal_inventory_settings.html',['settings'=>$settings,'weekDays'=>[1=>'Lunes',2=>'Martes',3=>'Miércoles',4=>'Jueves',5=>'Viernes',6=>'Sábado',7=>'Domingo'],'valeras'=>$this->terminalValeraTypes(),'enabledValeras'=>$enabled]);
+    }
+    public function terminal_valera_create(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $name=trim((string)($_POST['name'] ?? '')); $mojoValue=trim((string)($_POST['mojo_value'] ?? '')); $code=$this->terminalValeraCode($name);
+        if ($code==='' || mb_strlen($name)>100 || mb_strlen($mojoValue)>100) { $this->terminalJsonError('Capture un nombre válido y un valor de Mojo de máximo 100 caracteres.'); return; }
+        if (isset($this->terminalValeraTypes()[$code])) { $this->terminalJsonError('Ya existe una valera con ese nombre.'); return; }
+        if ($mojoValue==='') $mojoValue=$name;
+        try {
+            $this->terminalInventoryModel->addValera($code,$name,$mojoValue,(int)$_SESSION['tg_user']['Id']);
+            $settings=$this->terminalSettings(); $enabled=array_filter(array_map('trim',explode(',',(string)$settings['valeras_habilitadas']))); $enabled[]=$code;
+            $this->terminalInventoryModel->saveSettings((int)$settings['dia_cierre_semana'],array_values(array_unique($enabled)),(int)$_SESSION['tg_user']['Id']);
+            json_output(['success'=>true,'code'=>$code]);
+        } catch (Throwable $e) { error_log('No se pudo crear la valera: '.$e->getMessage()); $this->terminalJsonError('No fue posible crear la valera.',500); }
     }
 }

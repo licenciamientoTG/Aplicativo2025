@@ -27,6 +27,12 @@ class TerminalInventoryModel extends Model {
     public function saveSettings(int $day, array $enabledValeras, int $userId): void {
         $this->sql->update('UPDATE [TG].[dbo].[inv_ter_configuracion] SET dia_cierre_semana=?, valeras_habilitadas=?, actualizado_por=?, actualizado_en=SYSDATETIME() WHERE id=1', [$day, implode(',', $enabledValeras), $userId]);
     }
+    public function valeraCatalog(): array {
+        return $this->sql->select('SELECT codigo, nombre, valor_mojo FROM [TG].[dbo].[inv_ter_valeras] WHERE activo=1 ORDER BY nombre');
+    }
+    public function addValera(string $code, string $name, string $mojoValue, int $userId): void {
+        $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_valeras] (codigo,nombre,valor_mojo,creado_por) VALUES (?,?,?,?)', [$code,$name,$mojoValue,$userId]);
+    }
     public function activeIncidentTypes(array $types): array {
         if (!$types) return [];
         $marks=implode(',',array_fill(0,count($types),'?'));

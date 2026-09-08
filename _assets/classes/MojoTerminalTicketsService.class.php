@@ -67,11 +67,11 @@ class MojoTerminalTicketsService {
             'description'=>trim((string)($ticket['description'] ?? $ticket['title'] ?? '')),
         ];
     }
-    public function validateForType(array $ticket, string $type): bool {
+    public function validateForType(array $ticket, string $type, ?string $mojoType=null): bool {
         $form=(int)($ticket['ticket_form_id'] ?? 0); if (!$this->isOpen($ticket)) return false;
         if ($type==='urovo') return $form===self::SYSTEM_FORM && $this->normalizeTerminal($this->ticketField($ticket,['custom_field_problema','problema','Problema']))==='terminalurovo';
         if ($form!==self::VALERAS_FORM) return false;
         $typeInTicket=$this->incidentDataFromTicket($ticket,$type)['type_terminal'];
-        return $this->normalizeTerminal($typeInTicket)===$this->normalizeTerminal($type);
+        return $this->normalizeTerminal($typeInTicket)===$this->normalizeTerminal($mojoType ?: $type);
     }
 }

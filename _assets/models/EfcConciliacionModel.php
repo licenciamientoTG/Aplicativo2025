@@ -103,6 +103,48 @@ class EfcConciliacionModel {
         $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_partida_cg_activa') CREATE UNIQUE INDEX UX_efc_conc_partida_cg_activa ON dbo.efc_conc_partidas(clave_externa) WHERE origen='CG' AND activo=1");
         $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_partida_banco_activa') CREATE UNIQUE INDEX UX_efc_conc_partida_banco_activa ON dbo.efc_conc_partidas(movimiento_bancario_id) WHERE origen='BANCO' AND activo=1 AND movimiento_bancario_id IS NOT NULL");
         $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_reclasificacion_activa') CREATE UNIQUE INDEX UX_efc_conc_reclasificacion_activa ON dbo.efc_conc_reclasificaciones_cg(clave_original) WHERE estado='ACTIVA'");
+        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_transitos','U') IS NULL CREATE TABLE dbo.efc_conc_transitos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, clave_externa VARCHAR(180) NOT NULL, fecha_origen DATE NOT NULL, mes_origen CHAR(7) NOT NULL, mes_destino CHAR(7) NOT NULL, turno VARCHAR(20) NOT NULL, concepto VARCHAR(20) NOT NULL, importe DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE', descripcion VARCHAR(300) NULL, creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)");
+        $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_transito_activo') CREATE UNIQUE INDEX UX_efc_conc_transito_activo ON dbo.efc_conc_transitos(estacion_id,clave_externa) WHERE estado='PENDIENTE'");
+    }
+
+    public function activeTransits(int $stationId, int $year, int $month): array {
+        if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        $origin = sprintf('%04d-%02d', $year, $month);
+        $next = (new DateTimeImmutable($origin . '-01'))->modify('+1 month')->format('Y-m');
+        $stmt = $this->db->prepare("SELECT id,estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion FROM dbo.efc_conc_transitos WHERE estacion_id=? AND estado='PENDIENTE' AND (mes_origen=? OR mes_destino=?) ORDER BY fecha_origen,turno,concepto,id");
+        $stmt->execute([$stationId, $origin, $origin]);
+        $outgoing=[]; $incoming=[];
+        while ($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $item=['id'=>(int)$row['id'],'station_id'=>(int)$row['estacion_id'],'source_key'=>(string)$row['clave_externa'],'date'=>$this->dateValue($row['fecha_origen']),'origin_month'=>(string)$row['mes_origen'],'destination_month'=>(string)$row['mes_destino'],'turn'=>(string)$row['turno'],'currency'=>(string)$row['concepto'],'amount'=>(float)$row['importe'],'status'=>(string)$row['estado'],'description'=>(string)($row['descripcion']??'')];
+            if ($row['mes_origen']===$origin) $outgoing[]=$item;
+            if ($row['mes_destino']===$origin) $incoming[]=$item;
+        }
+        return ['origin'=>$outgoing,'incoming'=>$incoming,'next_month'=>$next];
+    }
+
+    public function createTransits(int $stationId, array $turns, int $userId): array {
+        if (!$stationId || !$turns) throw new RuntimeException('Seleccione al menos un turno.');
+        $this->db->beginTransaction();
+        try {
+            $created=[];
+            foreach ($turns as $turn) {
+                $key=trim((string)($turn['id']??$turn['source_key']??'')); $date=trim((string)($turn['date']??'')); $turnNo=trim((string)($turn['turn']??'')); $concept=trim(strtoupper((string)($turn['currency']??''))); $amount=(float)($turn['amount']??0);
+                if (!$key || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || $turnNo==='' || !in_array($concept,['MN','MORRALLA','USD'],true) || $amount<=0) throw new RuntimeException('Datos de turno inválidos.');
+                $origin=substr($date,0,7); $destination=(new DateTimeImmutable($date))->modify('+1 month')->format('Y-m');
+                $check=$this->db->prepare("SELECT TOP 1 id FROM dbo.efc_conc_transitos WHERE estacion_id=? AND clave_externa=? AND estado='PENDIENTE'"); $check->execute([$stationId,$key]); if($check->fetchColumn()) throw new RuntimeException('Uno de los turnos ya tiene un tránsito activo.');
+                $group=$this->db->prepare("SELECT TOP 1 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa=? AND P.activo=1 AND G.estado='ACTIVA'"); $group->execute([$key]); if($group->fetchColumn()) throw new RuntimeException('No se puede enviar a tránsito un turno ya conciliado.');
+                $ins=$this->db->prepare("INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,descripcion,creado_por) OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,?,?,?)");
+                $ins->execute([$stationId,$key,$date,$origin,$destination,$turnNo,$concept,$amount,(string)($turn['description']??''),$userId]); $created[]=(int)$ins->fetchColumn();
+            }
+            $this->db->commit(); return $created;
+        } catch(Throwable $e) { $this->db->rollBack(); throw $e; }
+    }
+
+    public function cancelTransit(int $id, int $userId): void {
+        if (!$id) throw new RuntimeException('Tránsito inválido.');
+        $stmt=$this->db->prepare("SELECT * FROM dbo.efc_conc_transitos WHERE id=? AND estado='PENDIENTE'"); $stmt->execute([$id]); $transit=$stmt->fetch(PDO::FETCH_ASSOC); if(!$transit) throw new RuntimeException('El tránsito no existe o ya fue cancelado.');
+        $linked=$this->db->prepare("SELECT TOP 1 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa IN (?,?) AND P.activo=1 AND G.estado='ACTIVA'"); $linked->execute([$transit['clave_externa'],'TR:'.$id]); if($linked->fetchColumn()) throw new RuntimeException('No se puede deshacer: el turno ya fue conciliado.');
+        $upd=$this->db->prepare("UPDATE dbo.efc_conc_transitos SET estado='CANCELADO',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='PENDIENTE'"); $upd->execute([$userId,$id]);
     }
 
     public function correction(int $movementId, ?int $stationId, int $userId): void {

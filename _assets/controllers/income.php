@@ -6393,6 +6393,21 @@ public function stamped_invoices_detail(): void
         ob_clean(); header('Content-Type: application/json');
         try{$data=json_decode(file_get_contents('php://input'),true)?:[];$this->efcConciliacion->undo((int)($data['grupo_id']??0),(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
     }
+    public function efc_conc_transitos(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=$this->efcConciliacion->activeTransits((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0)); echo json_encode(['status'=>'success','data'=>$data]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+    public function efc_conc_transito_crear(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $ids=$this->efcConciliacion->createTransits((int)($data['station_id']??0),is_array($data['turns']??null)?$data['turns']:[],(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','ids'=>$ids]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+    public function efc_conc_transito_cancelar(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->cancelTransit((int)($data['id']??0),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
     public function efc_conc_reclasificaciones(): void {
         ob_clean(); header('Content-Type: application/json');
         try { $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); if(!$station||$year<2020||$month<1||$month>12) throw new RuntimeException('Periodo o estacion invalidos.'); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->activeReclassifications($station,$year,$month)]); }
