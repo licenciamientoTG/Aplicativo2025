@@ -52,9 +52,8 @@ class TerminalInventoryModel extends Model {
     public function saveInventory(array $header, array $details, array $incidentIds): int {
         $this->sql->beginTransaction();
         try {
-            $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,semana_inicio,semana_fin,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?)', $header);
-            $created = $this->sql->select('SELECT CAST(SCOPE_IDENTITY() AS INT) AS id');
-            $id = (int)($created[0]['id'] ?? 0); if (!$id) throw new RuntimeException('No fue posible crear el inventario.');
+            $id = (int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,semana_inicio,semana_fin,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?)', $header);
+            if (!$id) throw new RuntimeException('No fue posible crear el inventario.');
             foreach ($details as $detail) $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventario_detalles] (inventario_id,tipo_terminal,funcionando,danadas) VALUES (?,?,?,?)', [$id,$detail['type'],$detail['working'],$detail['damaged']]);
             foreach ($incidentIds as $incidentId) $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias_inventario] (inventario_id,incidencia_id) VALUES (?,?)', [$id,$incidentId]);
             $this->sql->commit(); return $id;
@@ -68,9 +67,7 @@ class TerminalInventoryModel extends Model {
     public function saveInventoryWithIncidents(array $header, array $details, array $activeIncidentIds, array $newIncidents): int {
         $this->sql->beginTransaction();
         try {
-            $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,semana_inicio,semana_fin,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?)', $header);
-            $created = $this->sql->select('SELECT CAST(SCOPE_IDENTITY() AS INT) AS id');
-            $inventoryId = (int)($created[0]['id'] ?? 0);
+            $inventoryId = (int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,semana_inicio,semana_fin,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?)', $header);
             if (!$inventoryId) throw new RuntimeException('No fue posible crear el inventario.');
 
             foreach ($details as $detail) {
@@ -79,9 +76,7 @@ class TerminalInventoryModel extends Model {
 
             $incidentIds = $activeIncidentIds;
             foreach ($newIncidents as $incident) {
-                $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias] (estacion_id,tipo_terminal,ticket_mojo_id,estado_mojo,fecha_apertura_mojo,folio_proveedor,fecha_reporte_proveedor,descripcion,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?,?,?,?,?)', $incident);
-                $createdIncident = $this->sql->select('SELECT CAST(SCOPE_IDENTITY() AS INT) AS id');
-                $incidentId = (int)($createdIncident[0]['id'] ?? 0);
+                $incidentId = (int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias] (estacion_id,tipo_terminal,ticket_mojo_id,estado_mojo,fecha_apertura_mojo,folio_proveedor,fecha_reporte_proveedor,descripcion,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?,?,?,?,?)', $incident);
                 if (!$incidentId) throw new RuntimeException('No fue posible crear una incidencia.');
                 $incidentIds[] = $incidentId;
             }
@@ -96,9 +91,8 @@ class TerminalInventoryModel extends Model {
         }
     }
     public function createIncident(array $data): int {
-        $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias] (estacion_id,tipo_terminal,ticket_mojo_id,estado_mojo,fecha_apertura_mojo,folio_proveedor,fecha_reporte_proveedor,descripcion,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?,?,?,?,?)', $data);
-        $created=$this->sql->select('SELECT CAST(SCOPE_IDENTITY() AS INT) AS id');
-        $id=(int)($created[0]['id'] ?? 0); if (!$id) throw new RuntimeException('No fue posible crear la incidencia.'); return $id;
+        $id=(int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias] (estacion_id,tipo_terminal,ticket_mojo_id,estado_mojo,fecha_apertura_mojo,folio_proveedor,fecha_reporte_proveedor,descripcion,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?,?,?,?,?)', $data);
+        if (!$id) throw new RuntimeException('No fue posible crear la incidencia.'); return $id;
     }
     public function updateTicketState(int $id, string $old, string $new, ?string $closedAt, string $origin): void {
         if ($old === $new) return;
