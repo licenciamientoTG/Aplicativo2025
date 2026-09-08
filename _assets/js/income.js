@@ -2814,7 +2814,10 @@ async function expediente_facturas_table() {
         // defaultContent: el SP devuelve NULL en varias columnas (satext,
         // satnro, MontoAplicado...). Sin esto DataTables lanza warning y pinta
         // "undefined" en la celda.
-        var col = { data: c.key, defaultContent: '' };
+        // visible: solo arrancan prendidas las que el PHP marca con 'show'.
+        // El resto se agrega desde el botón "Columnas" sin recargar nada,
+        // porque DataTables ya recibió los 51 campos en el mismo ajax.
+        var col = { data: c.key, defaultContent: '', visible: c.show === true };
 
         if (c.type === 'money') {
             col.render = $.fn.dataTable.render.number(',', '.', 2, '$');
