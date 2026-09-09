@@ -104,12 +104,21 @@ class TerminalInventoryModel extends Model {
         if (!empty($filters['type'])) { $where .= ' AND i.tipo_terminal=?'; $params[]=$filters['type']; }
         return $this->sql->select("SELECT i.*, s.Nombre AS estacion_nombre, DATEDIFF(DAY,i.fecha_apertura_mojo,GETDATE()) AS dias_naturales FROM [TG].[dbo].[inv_ter_incidencias] i LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id WHERE $where ORDER BY i.fecha_registro DESC", $params);
     }
-    public function inventoryOverview(): array {
-        return $this->sql->select("SELECT i.id AS inventario_id,i.estacion_id,i.estacion_nombre,i.semana_inicio,i.semana_fin,i.fecha_registro,i.usuario_correo,
+    public function inventoryList(): array {
+        return $this->sql->select("SELECT i.id,i.estacion_nombre,i.semana_inicio,i.semana_fin,i.fecha_registro,i.usuario_correo,
+                COALESCE(inc.incidencias,0) AS incidencias,COALESCE(det.danadas,0) AS danadas
+            FROM [TG].[dbo].[inv_ter_inventarios] i
+            OUTER APPLY (SELECT COUNT(*) AS incidencias FROM [TG].[dbo].[inv_ter_incidencias_inventario] ii WHERE ii.inventario_id=i.id) inc
+            OUTER APPLY (SELECT SUM(d.danadas) AS danadas FROM [TG].[dbo].[inv_ter_inventario_detalles] d WHERE d.inventario_id=i.id) det
+            ORDER BY i.fecha_registro DESC,i.id DESC");
+    }
+    public function inventoryOverview(int $inventoryId): array {
+        return $this->sql->select("SELECT i.id AS inventario_id,i.estacion_id,i.estacion_nombre,i.fecha_registro,i.usuario_correo,
                 d.tipo_terminal,d.funcionando,d.danadas
             FROM [TG].[dbo].[inv_ter_inventarios] i
             INNER JOIN [TG].[dbo].[inv_ter_inventario_detalles] d ON d.inventario_id=i.id
-            ORDER BY i.semana_inicio DESC,i.estacion_nombre,d.tipo_terminal");
+            WHERE i.id=?
+            ORDER BY d.tipo_terminal", [$inventoryId]);
     }
     public function inventoryIncidents(int $inventoryId, string $type): array {
         return $this->sql->select("SELECT i.id,i.ticket_mojo_id,i.estado_mojo,i.fecha_apertura_mojo,i.fecha_cierre_mojo,i.folio_proveedor,i.descripcion

@@ -3260,17 +3260,23 @@ class Operations{
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte global.'; return; }
         $type=$_GET['type'] ?? ''; $types=$this->terminalTypes(); $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]);
         foreach ($rows as &$row) $row['dias_habiles']=$this->terminalBusinessDays((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); unset($row);
-        $overview=[];
-        foreach ($this->terminalInventoryModel->inventoryOverview() as $detail) {
-            $inventoryId=(int)$detail['inventario_id'];
-            if (!isset($overview[$inventoryId])) {
-                $overview[$inventoryId]=['id'=>$inventoryId,'station'=>$detail['estacion_nombre'],'week_start'=>$detail['semana_inicio'],'week_end'=>$detail['semana_fin'],'captured_at'=>$detail['fecha_registro'],'captured_by'=>$detail['usuario_correo'],'details'=>[]];
-                foreach ($types as $code=>$_) $overview[$inventoryId]['details'][$code]=['working'=>0,'damaged'=>0];
+        $inventoryList=$this->terminalInventoryModel->inventoryList();
+        $selectedInventoryId=(int)($_GET['inventory_id'] ?? 0); $overview=[];
+        foreach ($selectedInventoryId ? $this->terminalInventoryModel->inventoryOverview($selectedInventoryId) : [] as $detail) {
+            $stationId=(int)$detail['estacion_id'];
+            if (!isset($overview[$stationId])) {
+                $overview[$stationId]=['id'=>$detail['inventario_id'] ? (int)$detail['inventario_id'] : null,'station'=>$detail['estacion_nombre'],'captured_at'=>$detail['fecha_registro'],'captured_by'=>$detail['usuario_correo'],'working_total'=>0,'damaged_total'=>0,'details'=>[]];
+                foreach ($types as $code=>$_) $overview[$stationId]['details'][$code]=['working'=>0,'damaged'=>0];
             }
-            if (isset($types[$detail['tipo_terminal']])) $overview[$inventoryId]['details'][$detail['tipo_terminal']]=['working'=>(int)$detail['funcionando'],'damaged'=>(int)$detail['danadas']];
+            if (isset($types[$detail['tipo_terminal']])) {
+                $working=(int)$detail['funcionando']; $damaged=(int)$detail['danadas'];
+                $overview[$stationId]['details'][$detail['tipo_terminal']]=['working'=>$working,'damaged'=>$damaged];
+                $overview[$stationId]['working_total']+=$working; $overview[$stationId]['damaged_total']+=$damaged;
+            }
         }
         $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo'])));
-        echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'overview'=>array_values($overview),'openCount'=>$openCount,'types'=>$types,'selectedType'=>$type]);
+        $selectedTab=($_GET['tab'] ?? '') === 'incidents' || ($type!=='' && !$selectedInventoryId) ? 'incidents' : 'inventories';
+        echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'inventoryList'=>$inventoryList,'overview'=>array_values($overview),'selectedInventoryId'=>$selectedInventoryId,'selectedTab'=>$selectedTab,'openCount'=>$openCount,'types'=>$types,'selectedType'=>$type]);
     }
     public function terminal_inventory_incidents(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
