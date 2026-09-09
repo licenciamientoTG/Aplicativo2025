@@ -162,16 +162,47 @@ $(function () {
         renderCalendar(); renderRows();
     }
     setupGroupBrowser();
+    const $inventoryRows = $('.terminal-date-row');
+    if ($inventoryRows.length && $.fn.DataTable && $('#terminalInventoryExportTable').length === 0) {
+        const $exportTable = $('<table id="terminalInventoryExportTable" class="terminal-export-source"><thead><tr><th>Fecha de inventario</th><th>Estaciones</th><th>Total terminales</th><th>Funcionando</th><th>Dañadas</th></tr></thead><tbody></tbody></table>');
+        $inventoryRows.each(function () {
+            const cells = $(this).children('td').map(function () { return $('<div>').html($(this).html()).text().replace(/\s+/g, ' ').trim(); }).get();
+            $exportTable.find('tbody').append($('<tr>').append(cells.map(value => $('<td>').text(value))));
+        });
+        $('body').append($exportTable);
+        const inventoryExportTable = $exportTable.DataTable({
+            paging: false,
+            searching: false,
+            info: false,
+            dom: 'B',
+            buttons: [
+                { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Resumen de inventarios de terminales' },
+                { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm', title: 'Resumen de inventarios de terminales', orientation: 'landscape', pageSize: 'LEGAL' }
+            ]
+        });
+        inventoryExportTable.buttons().container().appendTo('#terminalInventoryExportActions');
+    }
     if ($('#terminalReportTable').length) {
         const filterLabels = ['Estación', 'Terminal', 'Ticket', 'Folio', 'Apertura', 'Días', 'Estado', 'Cierre'];
         const filterRow = '<tr class="terminal-column-filters">' + filterLabels.map(label => '<th><input type="search" placeholder="' + label + '" aria-label="Filtrar por ' + label + '"></th>').join('') + '</tr>';
         $('#terminalReportTable thead tr:first').after(filterRow);
+        const exportOptions = {
+            columns: ':visible',
+            modifier: { search: 'applied' },
+            format: {
+                header: (data, column) => $('#terminalReportTable thead tr:first th').eq(column).text().trim()
+            }
+        };
         const incidenceTable = $('#terminalReportTable').DataTable({
         pageLength: 25,
         searching: true,
         orderCellsTop: true,
         columnDefs: [{ targets: 5, type: 'num' }],
-        dom: '<"terminal-dt-toolbar"l>t<"terminal-dt-footer"ip>',
+        dom: '<"terminal-dt-toolbar"B l>t<"terminal-dt-footer"ip>',
+        buttons: [
+            { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Reporte de incidencias de terminales', exportOptions: exportOptions },
+            { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm', title: 'Reporte de incidencias de terminales', orientation: 'landscape', pageSize: 'LEGAL', exportOptions: exportOptions }
+        ],
         language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' }
         });
         $('#terminalReportTable thead tr.terminal-column-filters th').each(function (index) {

@@ -6449,6 +6449,41 @@ public function stamped_invoices_detail(): void
     public function efc_conc_cierre_reabrir(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->reopenPeriod((int)($d['station_id']??0),(int)($d['year']??0),(int)($d['month']??0),strtoupper((string)($d['concept']??'')),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_detalle(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryDetail((int)($_GET['estacion_id']??0),isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_agrupado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryGrouped(isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_export_resumen(): void {
+        $this->efcConcExportExcel('resumen');
+    }
+    public function efc_conc_export_diferencias(): void {
+        $this->efcConcExportExcel('diferencias');
+    }
+    private function efcConcExportExcel(string $tipo): void {
+        ob_clean();
+        try {
+            $year=(int)($_GET['year']??date('Y')); $month=(int)($_GET['month']??date('m'));
+            $station=(int)($_GET['estacion_id']??0); $concept=$_GET['concepto']??null;
+            $book=new \PhpOffice\PhpSpreadsheet\Spreadsheet(); $sheet=$book->getActiveSheet();
+            if($tipo==='resumen'){
+                $rows=$this->efcConciliacion->summaryGrouped($year,$month,$station,$concept);
+                $sheet->setTitle('Resumen general');
+                $headers=['Mes','Estación','Concepto','ControlGas','Banco','REGIO real','Diferencia','Tránsito','Operaciones','Estado','Fecha cierre'];
+                $sheet->fromArray($headers,null,'A1');
+                foreach($rows as $i=>$r){$n=$i+2;$sheet->fromArray([$r['mes'],$r['estacion_id'],$r['concepto'],$r['total_controlgas'],$r['total_banco'],$r['total_regio_real'],$r['total_diferencia'],$r['total_transito'],$r['operaciones'],$r['estado'],$r['cerrado_en']],null,'A'.$n);}
+                $last='K'; $name='Resumen_General_Efectivo_'.$year.'_'.$month.'.xlsx';
+            }else{
+                $rows=$this->efcConciliacion->summaryDetail($station,$year,$month,$concept); $rows=array_values(array_filter($rows,static fn($r)=>(float)($r['diferencia']??0)!=0.0));
+                $sheet->setTitle('Diferencias');
+                $headers=['Fecha','Estación','Turno','Concepto','Estado','ControlGas','Depósito','Referencia','Diferencia','REGIO declarado','REGIO real','REGIO USD','USD en MXN'];
+                $sheet->fromArray($headers,null,'A1');
+                foreach($rows as $i=>$r){$n=$i+2;$sheet->fromArray([$r['fecha'],$r['estacion_nombre']??$r['estacion_id'],$r['turno'],$r['concepto'],$r['estado']??$r['tipo'],$r['total_controlgas'],$r['total_banorte'],$r['referencia'],$r['diferencia'],$r['regio_declarado'],$r['regio_real'],$r['regio_usd'],$r['regio_usd_mxn']],null,'A'.$n);}
+                $last='M'; $name='Detalle_Diferencias_Efectivo_'.$year.'_'.$month.'.xlsx';
+            }
+            $sheet->getStyle('A1:'.$last.'1')->getFont()->setBold(true);
+            foreach(range('A',$last) as $col){$sheet->getColumnDimension($col)->setAutoSize(true);}
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="'.$name.'"'); header('Cache-Control: max-age=0');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save('php://output');
+        } catch(Throwable $e) { http_response_code(500); echo 'Error generando Excel: '.$e->getMessage(); }
+        exit;
+    }
     public function efc_conc_reclasificaciones(): void {
         ob_clean(); header('Content-Type: application/json');
         try { $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); if(!$station||$year<2020||$month<1||$month>12) throw new RuntimeException('Periodo o estacion invalidos.'); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->activeReclassifications($station,$year,$month)]); }
