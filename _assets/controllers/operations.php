@@ -3177,8 +3177,8 @@ class Operations{
         foreach ($enabled as $type) if (isset($catalog[$type]) && $type!=='urovo') $types[$type]=$catalog[$type];
         return $types;
     }
-    private function terminalBusinessDays(string $from): int {
-        try { $start=(new DateTimeImmutable($from))->setTime(0,0); $end=(new DateTimeImmutable('today'))->setTime(0,0); } catch (Throwable $e) { return 0; }
+    private function terminalBusinessDays(string $from, ?string $until=null): int {
+        try { $start=(new DateTimeImmutable($from))->setTime(0,0); $end=(new DateTimeImmutable($until ?: 'today'))->setTime(0,0); } catch (Throwable $e) { return 0; }
         if ($start>$end) return 0; $days=0;
         for ($date=$start; $date<$end; $date=$date->modify('+1 day')) if ((int)$date->format('N')<=5) $days++;
         return $days;
@@ -3258,7 +3258,27 @@ class Operations{
     }
     public function terminal_report(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte global.'; return; }
-        $type=$_GET['type'] ?? ''; $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]); foreach ($rows as &$row) $row['dias_habiles']=$this->terminalBusinessDays((string)$row['fecha_apertura_mojo']); unset($row); $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo']))); echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'openCount'=>$openCount,'types'=>$this->terminalTypes(),'selectedType'=>$type]);
+        $type=$_GET['type'] ?? ''; $types=$this->terminalTypes(); $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]);
+        foreach ($rows as &$row) $row['dias_habiles']=$this->terminalBusinessDays((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); unset($row);
+        $overview=[];
+        foreach ($this->terminalInventoryModel->inventoryOverview() as $detail) {
+            $inventoryId=(int)$detail['inventario_id'];
+            if (!isset($overview[$inventoryId])) {
+                $overview[$inventoryId]=['id'=>$inventoryId,'station'=>$detail['estacion_nombre'],'week_start'=>$detail['semana_inicio'],'week_end'=>$detail['semana_fin'],'captured_at'=>$detail['fecha_registro'],'captured_by'=>$detail['usuario_correo'],'details'=>[]];
+                foreach ($types as $code=>$_) $overview[$inventoryId]['details'][$code]=['working'=>0,'damaged'=>0];
+            }
+            if (isset($types[$detail['tipo_terminal']])) $overview[$inventoryId]['details'][$detail['tipo_terminal']]=['working'=>(int)$detail['funcionando'],'damaged'=>(int)$detail['danadas']];
+        }
+        $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo'])));
+        echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'overview'=>array_values($overview),'openCount'=>$openCount,'types'=>$types,'selectedType'=>$type]);
+    }
+    public function terminal_inventory_incidents(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $inventoryId=(int)($_GET['inventory_id'] ?? 0); $type=(string)($_GET['type'] ?? ''); $types=$this->terminalTypeCatalog();
+        if (!$inventoryId || !isset($types[$type])) { $this->terminalJsonError('Inventario o tipo de terminal inválido.'); return; }
+        $rows=$this->terminalInventoryModel->inventoryIncidents($inventoryId,$type);
+        foreach ($rows as &$row) $row['dias_habiles']=$this->terminalBusinessDays((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); unset($row);
+        json_output(['success'=>true,'incidents'=>$rows]);
     }
     public function terminal_inventory_status(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el cumplimiento de inventarios.'; return; }

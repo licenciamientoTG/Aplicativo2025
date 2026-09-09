@@ -104,4 +104,18 @@ class TerminalInventoryModel extends Model {
         if (!empty($filters['type'])) { $where .= ' AND i.tipo_terminal=?'; $params[]=$filters['type']; }
         return $this->sql->select("SELECT i.*, s.Nombre AS estacion_nombre, DATEDIFF(DAY,i.fecha_apertura_mojo,GETDATE()) AS dias_naturales FROM [TG].[dbo].[inv_ter_incidencias] i LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id WHERE $where ORDER BY i.fecha_registro DESC", $params);
     }
+    public function inventoryOverview(): array {
+        return $this->sql->select("SELECT i.id AS inventario_id,i.estacion_id,i.estacion_nombre,i.semana_inicio,i.semana_fin,i.fecha_registro,i.usuario_correo,
+                d.tipo_terminal,d.funcionando,d.danadas
+            FROM [TG].[dbo].[inv_ter_inventarios] i
+            INNER JOIN [TG].[dbo].[inv_ter_inventario_detalles] d ON d.inventario_id=i.id
+            ORDER BY i.semana_inicio DESC,i.estacion_nombre,d.tipo_terminal");
+    }
+    public function inventoryIncidents(int $inventoryId, string $type): array {
+        return $this->sql->select("SELECT i.id,i.ticket_mojo_id,i.estado_mojo,i.fecha_apertura_mojo,i.fecha_cierre_mojo,i.folio_proveedor,i.descripcion
+            FROM [TG].[dbo].[inv_ter_incidencias_inventario] ii
+            INNER JOIN [TG].[dbo].[inv_ter_incidencias] i ON i.id=ii.incidencia_id
+            WHERE ii.inventario_id=? AND i.tipo_terminal=?
+            ORDER BY i.fecha_apertura_mojo DESC", [$inventoryId,$type]);
+    }
 }
