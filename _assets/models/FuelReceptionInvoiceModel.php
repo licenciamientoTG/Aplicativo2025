@@ -113,6 +113,54 @@ class FuelReceptionInvoiceModel extends Model {
             $conceptos[] = $conceptoData;
         }
 
+        $factura['Destino'] = null;
+        $factura['Remision'] = null;
+        $factura['PresentacionTesoro'] = null;
+
+        // Tesoro manda estos 3 datos (folio de comprobante de carga, permiso/
+        // remisión y folio de presentación) únicamente dentro de su Addenda
+        // propietaria -- cfdi:Comprobante no los trae. El pipeline de correos
+        // (CorreoFactruras.py, fuera de este repo) ya los captura para las
+        // facturas que llegan por ahí; este parser del modal de subida manual
+        // no los leía en absoluto -- hallado 2026-09-09 al subir una factura
+        // de Tesoro/Diaz Gas y notar Destino/Remision/PresentacionTesoro NULL
+        // pese a que el PDF sí los mostraba.
+        $addenda = $xml->children($cfdiNs)->Addenda ?? null;
+        if ($addenda !== null) {
+            // AddendaEmisor/TesoroAddenda/Comprobantes/ComprobanteTesoro no
+            // tienen namespace propio (a diferencia de cfdi:Addenda, que sí
+            // lo tiene) -- acceder con -> hereda el namespace cfdi: del nodo
+            // padre y no encuentra nada; children() sin argumento navega en
+            // el namespace vacío por defecto, que es donde realmente viven.
+            $comprobanteTesoro = $addenda->children()->AddendaEmisor->children()->TesoroAddenda
+                ->children()->Comprobantes->children()->ComprobanteTesoro ?? null;
+            if ($comprobanteTesoro !== null) {
+                $ct = $comprobanteTesoro->attributes();
+                $factura['Destino'] = (string)($ct['ComprobanteCarga'] ?? $ct['NumeroDocumento'] ?? '') ?: null;
+                $factura['PresentacionTesoro'] = (string)($ct['Presentacion'] ?? '') ?: null;
+            }
+        }
+
+        // La "remisión" es el número de permiso HYP (ej. "H/19873/COM/2017"),
+        // igual convención que usa el pipeline de correos para Petrotal --
+        // se toma del primer concepto que traiga el complemento
+        // cfdi:ComplementoConcepto > hidrocarburospetroliferos:HidroYPetro.
+        $hypNs = $namespaces['hidrocarburospetroliferos'] ?? null;
+        if ($factura['Remision'] === null && $hypNs !== null && !empty($nodosConceptos)) {
+            foreach ($nodosConceptos as $concepto) {
+                $complementoConcepto = $concepto->children($cfdiNs)->ComplementoConcepto ?? null;
+                $hyp = $complementoConcepto !== null ? ($complementoConcepto->children($hypNs)->HidroYPetro ?? null) : null;
+                if ($hyp !== null) {
+                    $hypAttrs = $hyp->attributes();
+                    $numeroPermiso = (string)($hypAttrs['NumeroPermiso'] ?? '');
+                    if ($numeroPermiso !== '') {
+                        $factura['Remision'] = $numeroPermiso;
+                        break;
+                    }
+                }
+            }
+        }
+
         return ['factura' => $factura, 'conceptos' => $conceptos];
     }
 
@@ -175,8 +223,9 @@ class FuelReceptionInvoiceModel extends Model {
                      Certificado, NoCertificado, Sello, EmisorNombre, EmisorRfc,
                      EmisorRegimenFiscal, ReceptorNombre, ReceptorRfc, ReceptorRegimenFiscal,
                      DomicilioFiscalReceptor, UsoCFDI, FechaTimbrado, RfcProvCertif, UUID,
-                     NoCertificadoSAT, TotalImpuestosTrasladados, TotalImpuestosRetenidos)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     NoCertificadoSAT, TotalImpuestosTrasladados, TotalImpuestosRetenidos,
+                     Destino, Remision, PresentacionTesoro)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ";
             $invoiceId = (int)$this->sql->insert($query, [
                 $factura['Folio'], $factura['Serie'], $factura['Fecha'], $factura['FormaPago'],
@@ -189,6 +238,7 @@ class FuelReceptionInvoiceModel extends Model {
                 $factura['DomicilioFiscalReceptor'], $factura['UsoCFDI'], $factura['FechaTimbrado'],
                 $factura['RfcProvCertif'], $factura['UUID'], $factura['NoCertificadoSAT'],
                 $factura['TotalImpuestosTrasladados'], $factura['TotalImpuestosRetenidos'],
+                $factura['Destino'], $factura['Remision'], $factura['PresentacionTesoro'],
             ]);
 
             $queryConcepto = "

@@ -77,6 +77,16 @@
         <div class="tab-content">
             {% for clave, p in zona.pestanas %}
             <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab-{{ zonaClave }}-{{ clave }}" role="tabpanel">
+                {% set pctPptoTotal = p.resumen.pct_ppto.total %}
+                <p class="vc-avance mb-2">
+                    <strong>{{ p.label }}</strong> —
+                    Avance vs. presupuesto:
+                    {% if pctPptoTotal is null %}
+                    <span class="text-muted">—</span>
+                    {% else %}
+                    <strong class="{{ pctPptoTotal < 0 ? 'pct-neg' : 'pct-pos' }}">{{ (100 + pctPptoTotal)|number_format(1) }}%</strong>
+                    {% endif %}
+                </p>
                 <div class="merma-tabla-wrap mb-3">
                     <div class="merma-scroll">
                         <table class="merma-tabla vc-tabla">

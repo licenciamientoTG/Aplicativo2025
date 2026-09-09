@@ -1953,7 +1953,15 @@ async function clients_debit_table(){
             {'data': 'status', className:'text-nowrap text-center'},
             {'data': 'dom'},
             {'data': 'rfc'},
-
+            {
+                'data': 'cod', orderable: false, searchable: false, className: 'text-nowrap text-center',
+                render: function (cod, type, row) {
+                    if (type !== 'display') return cod;
+                    return '<button type="button" class="btn btn-sm btn-outline-primary btn-client-vehicles" ' +
+                           'data-codcli="' + cod + '" data-cliente="' + $('<div>').text(row.den).html() + '" ' +
+                           'title="Ver vehículos y saldo"><i class="fas fa-car"></i></button>';
+                }
+            },
 
         ],
         deferRender: true,
@@ -1969,6 +1977,195 @@ async function clients_debit_table(){
         footerCallback: function (row, data, start, end, display) {
 
         }
+    });
+}
+
+async function vehicles_debit_table(){
+    var codcli = $('#cliente_vehicles_debit').val();
+    if (codcli === null || codcli === undefined || codcli === '') return;
+
+    if ($.fn.DataTable.isDataTable('#vehicles_debit_table')) {
+        $('#vehicles_debit_table').DataTable().destroy();
+        $('#vehicles_debit_table thead .filter').remove();
+    }
+
+    $('#vehicles_debit_table thead').prepend($('#vehicles_debit_table thead tr').clone().addClass('filter'));
+    $('#vehicles_debit_table thead tr.filter th').each(function (index) {
+        if (index < 4) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#vehicles_debit_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#vehicles_debit_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+
+    $('#vehicles_debit_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '400px',
+        scrollCollapse: true,
+        paging: false,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'codcli': codcli
+            },
+            url: '/income/client_vehicles_balance',
+            timeout: 600000,
+            error: function() {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            {'data': 'codcli'},
+            {'data': 'cliente'},
+            {'data': 'tar'},
+            {'data': 'den'},
+            {'data': 'debsdo', render: $.fn.dataTable.render.number( ',', '.', 2, '$'), className:'text-nowrap text-end'},
+            {
+                'data': 'debglo', className: 'text-nowrap text-center',
+                render: function (v) {
+                    return (parseInt(v, 10) === 1) ? 'Sí' : 'No';
+                }
+            },
+            {'data': 'saldo_global', render: $.fn.dataTable.render.number( ',', '.', 2, '$'), className:'text-nowrap text-end'},
+            {
+                'data': 'ultima_carga', className: 'text-nowrap',
+                render: function (v) {
+                    return v || '<span class="text-danger">Nunca</span>';
+                }
+            },
+            {
+                'data': 'ultimo_consumo', className: 'text-nowrap',
+                render: function (v) {
+                    return v || '<span class="text-danger">Nunca</span>';
+                }
+            },
+        ],
+        deferRender: true,
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+        },
+        footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+            var total = api.column(4, { search: 'applied' }).data().reduce(function (a, b) {
+                return (parseFloat(a) || 0) + (parseFloat(b) || 0);
+            }, 0);
+            $(api.column(4).footer()).html(
+                $.fn.dataTable.render.number(',', '.', 2, '$').display(total)
+            );
+        }
+    });
+}
+
+function debit_dashboard_table(){
+    var money = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    ['dashboard_saldo_global_negativo_table', 'dashboard_vehiculos_negativos_table', 'dashboard_ultima_carga_table'].forEach(function (id) {
+        if ($.fn.DataTable.isDataTable('#' + id)) {
+            $('#' + id).DataTable().destroy();
+        }
+    });
+
+    $('.table-responsive').addClass('loading');
+
+    $.post('/income/debit_dashboard_table', {}, function (json) {
+        $('.table-responsive').removeClass('loading');
+
+        var sg = (json && json.saldo_global_negativo) || [];
+        $('#count_saldo_global_negativo').text(sg.length);
+        $('#dashboard_saldo_global_negativo_table').DataTable({
+            data: sg,
+            destroy: true,
+            order: [[2, 'asc']],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+            columns: [
+                { data: 'CodCliente' },
+                { data: 'Cliente' },
+                { data: 'SaldoGlobal', className: 'text-nowrap text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+            ]
+        });
+
+        var vn = (json && json.vehiculos_negativos) || [];
+        $('#count_vehiculos_negativos').text(vn.length);
+        $('#dashboard_vehiculos_negativos_table').DataTable({
+            data: vn,
+            destroy: true,
+            order: [[4, 'asc']],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+            columns: [
+                { data: 'CodCliente' },
+                { data: 'Cliente' },
+                { data: 'Tarjeta' },
+                { data: 'Vehiculo' },
+                { data: 'SaldoVehiculo', className: 'text-nowrap text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+            ]
+        });
+
+        var uc = (json && json.ultima_carga) || [];
+        $('#dashboard_ultima_carga_table').DataTable({
+            data: uc,
+            destroy: true,
+            order: [[4, 'desc']],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            scrollY: '400px',
+            scrollCollapse: true,
+            paging: false,
+            buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+            columns: [
+                { data: 'CodCliente' },
+                { data: 'Cliente' },
+                { data: 'SaldoGlobal', className: 'text-nowrap text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                { data: 'UltimaCarga', render: function (v) { return v || '<span class="text-danger">Nunca</span>'; } },
+                {
+                    data: 'DiasSinCargar', className: 'text-nowrap text-end',
+                    render: function (v) {
+                        if (v === null || v === undefined) return '<span class="text-danger">—</span>';
+                        var cls = v > 90 ? 'text-danger fw-bold' : (v > 30 ? 'text-warning' : '');
+                        return '<span class="' + cls + '">' + v + '</span>';
+                    }
+                },
+            ]
+        });
+    }, 'json').fail(function () {
+        $('.table-responsive').removeClass('loading');
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No se pudo generar el dashboard. Intentelo nuevamente.</p>
+            </div>`
+        );
     });
 }
 
@@ -2577,6 +2774,43 @@ $(document).on('click', '#edo_debit_summary_table .edo-drill', function (e) {
     var row = $('#edo_debit_summary_table').DataTable().row($(this).closest('tr')).data();
     if (row) edo_debit_drill($(this).data('drill'), row.CodCliente, row.Cliente);
 });
+
+// Modal de vehículos/tarjetas y su saldo asignado, para un cliente débito
+$(document).on('click', '.btn-client-vehicles', function (e) {
+    e.preventDefault();
+    client_vehicles_modal($(this).data('codcli'), $(this).data('cliente'));
+});
+
+function client_vehicles_modal(codcli, cliente) {
+    var money = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    var headers = ['Tarjeta', 'Vehículo', 'Saldo'];
+
+    $('#modal_edo_drill_title').html('Vehículos y saldo — ' + cliente);
+    $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
+    $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+    $('#modal_edo_drill_table tfoot').empty();
+    $('#modal_edo_drill').modal('show');
+
+    $.post('/income/client_vehicles_balance', { codcli: codcli }, function (json) {
+        var rows = (json && json.data) || [];
+        if (!rows.length) {
+            $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Sin vehículos registrados.</td></tr>');
+            return;
+        }
+        $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
+            return '<tr><td>' + (r.tar || '') + '</td><td>' + (r.den || '') + '</td>' +
+                   '<td class="text-end">' + money(r.debsdo) + '</td></tr>';
+        }).join(''));
+        var total = rows.reduce(function (a, r) { return a + (parseFloat(r.debsdo) || 0); }, 0);
+        $('#modal_edo_drill_table tfoot').html(
+            '<tr><th colspan="2" class="text-end">Total</th><th class="text-end">' + money(total) + '</th></tr>'
+        );
+    }, 'json').fail(function () {
+        $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
+    });
+}
 
 // Modal de consumos (despachos) compartido: débito tipval=4 / crédito tipval=3
 function edo_consumos_modal(codcli, cliente, from, until, tipval) {

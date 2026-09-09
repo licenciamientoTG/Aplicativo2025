@@ -978,4 +978,57 @@ public function get_initial_balance_debit(int $from, int $codcli) : array|false 
     return ($rs = $this->sql->select($query, [$codcli, $from, $codcli, $from, $codcli])) ? $rs[0] : false;
 }
 
+/** Clientes débito activos con saldo global (bolsa compartida) en negativo. */
+public function get_debit_negative_global_balance() : array|false {
+    $query = "
+        SELECT C.cod AS CodCliente, C.den AS Cliente, C.debsdo AS SaldoGlobal
+        FROM [SG12].dbo.Clientes C
+        WHERE C.tipval = 4 AND C.codest = 0 AND C.debglo = 1 AND C.debsdo < 0
+        ORDER BY C.debsdo ASC";
+    return $this->sql->select($query) ?: false;
+}
+
+/** Vehículos con saldo individual en negativo, de clientes débito SIN bolsa global. */
+public function get_debit_negative_vehicle_balance() : array|false {
+    $query = "
+        SELECT C.cod AS CodCliente, C.den AS Cliente, V.tar AS Tarjeta, V.den AS Vehiculo, V.debsdo AS SaldoVehiculo
+        FROM [SG12].dbo.ClientesVehiculos V WITH (NOLOCK)
+        JOIN [SG12].dbo.Clientes C ON C.cod = V.codcli
+        WHERE C.tipval = 4 AND C.codest = 0 AND ISNULL(C.debglo, 0) = 0 AND V.debsdo < 0
+        ORDER BY V.debsdo ASC";
+    return $this->sql->select($query) ?: false;
+}
+
+/** Última factura de anticipo (carga) de cada cliente débito activo. NULL si nunca ha cargado. */
+public function get_debit_last_topup() : array|false {
+    $query = "
+        ;WITH Ult AS (
+            SELECT t2.codopr, MAX(t1.fch) AS UltimaFch
+            FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
+            JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
+              ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+            WHERE t2.mtoiva > 0
+              AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
+              AND t2.mto > 100
+              AND t2.codopr <> 0
+              AND ISNULL(t1.flgcon, 0) <> 141
+            GROUP BY t2.codopr
+        )
+        SELECT
+            C.cod AS CodCliente,
+            C.den AS Cliente,
+            C.debsdo AS SaldoGlobal,
+            CASE WHEN U.UltimaFch IS NOT NULL
+                 THEN CONVERT(varchar(10), DATEADD(DAY, U.UltimaFch - 1, '19000101'), 23)
+                 ELSE NULL END AS UltimaCarga,
+            CASE WHEN U.UltimaFch IS NOT NULL
+                 THEN DATEDIFF(DAY, DATEADD(DAY, U.UltimaFch - 1, '19000101'), CAST(GETDATE() AS date))
+                 ELSE NULL END AS DiasSinCargar
+        FROM [SG12].dbo.Clientes C
+        LEFT JOIN Ult U ON U.codopr = C.cod
+        WHERE C.tipval = 4 AND C.codest = 0
+        ORDER BY UltimaCarga ASC";
+    return $this->sql->select($query) ?: false;
+}
+
 }

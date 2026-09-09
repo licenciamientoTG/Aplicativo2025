@@ -470,43 +470,88 @@
 {% endif %}
 
 {% if authorized(81) %}
-{# "¿Faltan movimientos de Santander?": diagnóstico bajo demanda por rango de
-   fechas. No se ejecuta solo (a diferencia del panel de arriba): recorrer
-   todas las cuentas de Santander en un rango es una consulta más pesada que
-   el saldo final, y es una herramienta de revisión puntual, no algo que
-   interese en cada visita al módulo. #}
-<div class="card mb-3">
-  <div class="card-header p-0 bg-white">
-    <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
-            type="button" data-bs-toggle="collapse" data-bs-target="#huecosCollapse">
-      <span style="color:#334155;">
-        <i class="fas fa-triangle-exclamation me-2 text-warning"></i>
-        <strong>¿Faltan movimientos de Santander?</strong>
-        <small class="text-muted">cadena de saldos por cuenta</small>
-      </span>
-      <i class="fas fa-chevron-down mb-chevron"></i>
-    </button>
+{# "¿Faltan movimientos de Santander/Afirme?": diagnóstico bajo demanda por
+   rango de fechas, un card por banco (col-6 cada uno). No se ejecutan solos
+   (a diferencia del panel de arriba): recorrer todas las cuentas de un banco
+   en un rango es una consulta más pesada que el saldo final, y es una
+   herramienta de revisión puntual, no algo que interese en cada visita al
+   módulo. Mismo endpoint/JS parametrizado por banco — ver HUECOS_ENDPOINT
+   más abajo. #}
+<div class="row">
+  <div class="col-6">
+    <div class="card mb-3">
+      <div class="card-header p-0 bg-white">
+        <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
+                type="button" data-bs-toggle="collapse" data-bs-target="#huecosCollapse-santander">
+          <span style="color:#334155;">
+            <i class="fas fa-triangle-exclamation me-2 text-warning"></i>
+            <strong>¿Faltan movimientos de Santander?</strong>
+            <small class="text-muted">cadena de saldos por cuenta</small>
+          </span>
+          <i class="fas fa-chevron-down mb-chevron"></i>
+        </button>
+      </div>
+      <div class="collapse" id="huecosCollapse-santander">
+        <div class="card-body p-2">
+          <form class="row align-items-end g-2 mb-2" data-huecos-form="santander">
+            <div class="col-auto">
+              <label for="huecosDesde-santander">Desde:</label>
+              <input type="date" class="form-control" id="huecosDesde-santander" value="{{ filtros.desde }}" required>
+            </div>
+            <div class="col-auto">
+              <label for="huecosHasta-santander">Hasta:</label>
+              <input type="date" class="form-control" id="huecosHasta-santander" value="{{ filtros.hasta }}" required>
+            </div>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-warning">
+                <i class="fas fa-magnifying-glass"></i> Revisar
+              </button>
+            </div>
+          </form>
+          <div data-huecos-resultado="santander">
+            <div class="text-center text-muted py-3">
+              Elige un rango y presiona Revisar.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="collapse" id="huecosCollapse">
-    <div class="card-body p-2">
-      <form class="row align-items-end g-2 mb-2" id="huecosForm">
-        <div class="col-auto">
-          <label for="huecosDesde">Desde:</label>
-          <input type="date" class="form-control" id="huecosDesde" value="{{ filtros.desde }}" required>
-        </div>
-        <div class="col-auto">
-          <label for="huecosHasta">Hasta:</label>
-          <input type="date" class="form-control" id="huecosHasta" value="{{ filtros.hasta }}" required>
-        </div>
-        <div class="col-auto">
-          <button type="submit" class="btn btn-warning">
-            <i class="fas fa-magnifying-glass"></i> Revisar
-          </button>
-        </div>
-      </form>
-      <div id="huecosResultado">
-        <div class="text-center text-muted py-3">
-          Elige un rango y presiona Revisar.
+  <div class="col-6">
+    <div class="card mb-3">
+      <div class="card-header p-0 bg-white">
+        <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
+                type="button" data-bs-toggle="collapse" data-bs-target="#huecosCollapse-afirme">
+          <span style="color:#334155;">
+            <i class="fas fa-triangle-exclamation me-2 text-warning"></i>
+            <strong>¿Faltan movimientos de Afirme?</strong>
+            <small class="text-muted">cadena de saldos por cuenta</small>
+          </span>
+          <i class="fas fa-chevron-down mb-chevron"></i>
+        </button>
+      </div>
+      <div class="collapse" id="huecosCollapse-afirme">
+        <div class="card-body p-2">
+          <form class="row align-items-end g-2 mb-2" data-huecos-form="afirme">
+            <div class="col-auto">
+              <label for="huecosDesde-afirme">Desde:</label>
+              <input type="date" class="form-control" id="huecosDesde-afirme" value="{{ filtros.desde }}" required>
+            </div>
+            <div class="col-auto">
+              <label for="huecosHasta-afirme">Hasta:</label>
+              <input type="date" class="form-control" id="huecosHasta-afirme" value="{{ filtros.hasta }}" required>
+            </div>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-warning">
+                <i class="fas fa-magnifying-glass"></i> Revisar
+              </button>
+            </div>
+          </form>
+          <div data-huecos-resultado="afirme">
+            <div class="text-center text-muted py-3">
+              Elige un rango y presiona Revisar.
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1445,23 +1490,28 @@ $(function () {
   $('#hasta').on('change', cargarSaldos);
 
   /**
-   * "¿Faltan movimientos de Santander?": pide huecos_santander() para el
-   * rango del mini-form y pinta, por cuenta con roturas, la fecha/hora del
-   * movimiento donde se detectó el salto y el importe probable del
-   * faltante. Sin roturas en el rango, mensaje de éxito.
+   * "¿Faltan movimientos de Santander/Afirme?": pide huecos_<banco>() para
+   * el rango del mini-form y pinta, por cuenta con roturas, la fecha/hora
+   * del movimiento donde se detectó el salto y el importe probable del
+   * faltante. Sin roturas en el rango, mensaje de éxito. Un solo handler
+   * parametrizado por banco (endpoint + form + resultado se resuelven por
+   * data-huecos-form="<banco>"), en vez de duplicar el bloque por card.
    */
-  var huecosForm = document.getElementById('huecosForm');
-  if (huecosForm) {
+  var HUECOS_ENDPOINT = { santander: '/tesoreria/santander_huecos', afirme: '/tesoreria/afirme_huecos' };
+
+  document.querySelectorAll('[data-huecos-form]').forEach(function (huecosForm) {
+    var banco = huecosForm.getAttribute('data-huecos-form');
+    var body  = document.querySelector('[data-huecos-resultado="' + banco + '"]');
+
     huecosForm.addEventListener('submit', function (ev) {
       ev.preventDefault();
 
-      var desde = $('#huecosDesde').val();
-      var hasta = $('#huecosHasta').val();
-      var body  = document.getElementById('huecosResultado');
+      var desde = $('#huecosDesde-' + banco).val();
+      var hasta = $('#huecosHasta-' + banco).val();
       body.innerHTML = '<div class="text-center text-muted py-3">' +
                        '<span class="spinner-border spinner-border-sm"></span> Revisando movimientos...</div>';
 
-      fetch('/tesoreria/santander_huecos?desde=' + encodeURIComponent(desde) +
+      fetch(HUECOS_ENDPOINT[banco] + '?desde=' + encodeURIComponent(desde) +
             '&hasta=' + encodeURIComponent(hasta))
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -1479,33 +1529,95 @@ $(function () {
             return;
           }
 
-          var html = '<div class="alert alert-warning mb-2">' +
-                     '<i class="fas fa-triangle-exclamation"></i> ' + cuentas.length +
-                     ' cuenta' + (cuentas.length === 1 ? '' : 's') +
-                     ' con posibles movimientos faltantes del ' + fmtFecha(data.desde) +
-                     ' al ' + fmtFecha(data.hasta) + '.</div>';
+          // corregible (solo Afirme, ver huecos_afirme): TODAS las fechas
+          // rotas de esa cuenta dejaron de estarlo al reordenar por
+          // secuencia — es el archivo importado antes del fix de
+          // recalcula_orden_dia_afirme, no un movimiento faltante de
+          // verdad. Se separan en dos bloques para no alarmar igual por
+          // algo que se corrige con un clic.
+          var corregibles = cuentas.filter(function (c) { return c.corregible; });
+          var reales       = cuentas.filter(function (c) { return !c.corregible; });
 
-          cuentas.forEach(function (c) {
-            html += '<div class="mb-2"><strong>' + esc(c.cuenta) + '</strong>' +
-                    (c.descripcion ? ' &middot; ' + esc(c.descripcion) : '') +
-                    ' <span class="text-muted">(' + c.roturas.length +
-                    (c.roturas.length === 1 ? ' rotura' : ' roturas') + ')</span>' +
-                    '<table class="table table-sm table-hover mb-0 mt-1"><tbody>';
-            c.roturas.forEach(function (r) {
-              html += '<tr><td class="text-muted" style="white-space:nowrap;">' +
-                      fmtFecha(r.fecha) + ' ' + esc(r.hora || '') + '</td>' +
-                      '<td>' + esc(r.descripcion) + '</td>' +
-                      '<td class="mb-monto text-end">$' + fmtMonto(Math.abs(r.diferencia)) + '</td></tr>';
-            });
-            html += '</tbody></table></div>';
-          });
+          var html = '';
+          if (reales.length) {
+            html += '<div class="alert alert-warning mb-2">' +
+                    '<i class="fas fa-triangle-exclamation"></i> ' + reales.length +
+                    ' cuenta' + (reales.length === 1 ? '' : 's') +
+                    ' con posibles movimientos faltantes del ' + fmtFecha(data.desde) +
+                    ' al ' + fmtFecha(data.hasta) + '.</div>';
+            reales.forEach(function (c) { html += pintaCuentaHueco(c); });
+          }
+          if (corregibles.length) {
+            html += '<div class="alert alert-info mb-2">' +
+                    '<i class="fas fa-wrench"></i> ' + corregibles.length +
+                    ' cuenta' + (corregibles.length === 1 ? '' : 's') +
+                    ' con la cadena de saldos desordenada por el orden de importación ' +
+                    '(no parece faltar ningún movimiento): se corrige con un clic.</div>';
+            corregibles.forEach(function (c) { html += pintaCuentaHueco(c, banco === 'afirme'); });
+          }
+          if (!html) {
+            html = '<div class="alert alert-success mb-0">' +
+                   '<i class="fas fa-circle-check"></i> Sin huecos detectados del ' +
+                   fmtFecha(data.desde) + ' al ' + fmtFecha(data.hasta) + '.</div>';
+          }
 
           body.innerHTML = html;
+
+          body.querySelectorAll('[data-corregir-orden]').forEach(function (boton) {
+            boton.addEventListener('click', function () {
+              boton.disabled = true;
+              boton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Corrigiendo...';
+              var fechas = JSON.parse(boton.getAttribute('data-fechas'));
+              var fd = new FormData();
+              fd.append('cuenta', boton.getAttribute('data-cuenta'));
+              fechas.forEach(function (f) { fd.append('fechas[]', f); });
+
+              fetch('/tesoreria/corregir_orden_afirme', { method: 'POST', body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                  if (!res.success) {
+                    alert(res.message || 'No se pudo corregir el orden');
+                    boton.disabled = false;
+                    boton.innerHTML = 'Corregir orden';
+                    return;
+                  }
+                  huecosForm.dispatchEvent(new Event('submit'));
+                })
+                .catch(function () {
+                  alert('Error de conexión al corregir el orden');
+                  boton.disabled = false;
+                  boton.innerHTML = 'Corregir orden';
+                });
+            });
+          });
         })
         .catch(function () {
           body.innerHTML = '<div class="alert alert-danger mb-0">Error de conexión al revisar los movimientos</div>';
         });
     });
+  });
+
+  /** Tabla de roturas de una cuenta para el card de huecos; botón "Corregir orden" si aplica. */
+  function pintaCuentaHueco(c, conBotonCorregir) {
+    var fechas = c.roturas.map(function (r) { return r.fecha; });
+    var html = '<div class="mb-2"><strong>' + esc(c.cuenta) + '</strong>' +
+               (c.descripcion ? ' &middot; ' + esc(c.descripcion) : '') +
+               ' <span class="text-muted">(' + c.roturas.length +
+               (c.roturas.length === 1 ? ' rotura' : ' roturas') + ')</span>';
+    if (conBotonCorregir) {
+      html += ' <button type="button" class="btn btn-sm btn-outline-primary py-0" ' +
+              'data-corregir-orden data-cuenta="' + esc(c.cuenta) + '" ' +
+              'data-fechas=\'' + JSON.stringify(fechas).replace(/'/g, '&#39;') + '\'>Corregir orden</button>';
+    }
+    html += '<table class="table table-sm table-hover mb-0 mt-1"><tbody>';
+    c.roturas.forEach(function (r) {
+      html += '<tr><td class="text-muted" style="white-space:nowrap;">' +
+              fmtFecha(r.fecha) + ' ' + esc(r.hora || '') + '</td>' +
+              '<td>' + esc(r.descripcion) + '</td>' +
+              '<td class="mb-monto text-end">$' + fmtMonto(Math.abs(r.diferencia)) + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
   }
 
   // ===== Upload de archivos de banco (modal y endpoint compartidos) =====

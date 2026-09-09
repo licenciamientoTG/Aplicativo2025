@@ -22,6 +22,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button">Débito</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#vehicles_debit" type="button">Vehículos Débito</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
     </li>
     <li class="nav-item" role="presentation">
@@ -68,20 +71,148 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <thead>
                         <tr>
                             <th>Código</th><th>Nombre</th><th>Saldo</th>
-                            <th>Estatus</th><th>Domicilio</th><th>RFC</th>
+                            <th>Estatus</th><th>Domicilio</th><th>RFC</th><th>Vehículos</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
                             <th>Código</th><th>Nombre</th><th>Saldo</th>
-                            <th>Estatus</th><th>Domicilio</th><th>RFC</th>
+                            <th>Estatus</th><th>Domicilio</th><th>RFC</th><th>Vehículos</th>
                         </tr>
                     </tfoot>
                 </table>
             </div>
         </div>
     </div> 
+
+    {# ── TAB: VEHÍCULOS DÉBITO ── #}
+    <div class="tab-pane" id="vehicles_debit" role="tabpanel">
+
+        <ul class="nav nav-tabs" id="subTabVehiclesDebit" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#vehicles_debit_consulta" type="button">Consulta por Cliente</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#vehicles_debit_dashboard" type="button">Dashboard</button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+
+            {# ── SUB-TAB: CONSULTA POR CLIENTE ── #}
+            <div class="tab-pane active" id="vehicles_debit_consulta" role="tabpanel">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row g-2 mb-2">
+                            <div class="col-12 col-md-4">
+                                <label class="col-form-label-sm">Cliente</label>
+                                <select class="selectpicker" id="cliente_vehicles_debit" data-live-search="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
+                                    <option value="0">— Todos los clientes activos —</option>
+                                    {% for c in clientes_debit %}
+                                    <option value="{{ c.cod }}">{{ c.den }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-auto">
+                                <button id="btn_vehicles_debit" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-search"></i> Consultar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h5 class="card-title">Vehículos y Saldo — Cliente Débito</h5></div>
+                    <div class="card-body table-responsive">
+                        <table id="vehicles_debit_table" class="table table-hover table-sm w-100">
+                            <thead>
+                                <tr>
+                                    <th>Código</th><th>Cliente</th><th>Tarjeta</th><th>Vehículo</th><th>Saldo</th>
+                                    <th>Saldo Global</th><th>Saldo Global</th><th>Última Carga</th><th>Último Consumo</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                            <tfoot>
+                                <tr>
+                                    <th></th><th></th><th></th><th class="text-end">Total</th><th></th>
+                                    <th></th><th></th><th></th><th></th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {# ── SUB-TAB: DASHBOARD ── #}
+            <div class="tab-pane" id="vehicles_debit_dashboard" role="tabpanel">
+                <div class="row mb-2 mt-2">
+                    <div class="col-auto">
+                        <button id="btn_dashboard_debit" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Generar Dashboard
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title text-danger">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Saldo Global en negativo <span class="badge bg-danger" id="count_saldo_global_negativo">0</span>
+                        </h5>
+                        <small class="text-muted">Clientes con bolsa compartida (Saldo Global) cuyo saldo es menor a $0.</small>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table id="dashboard_saldo_global_negativo_table" class="table table-hover table-sm w-100">
+                            <thead>
+                                <tr><th>Código</th><th>Cliente</th><th>Saldo Global</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title text-danger">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Vehículos en negativo (sin bolsa global) <span class="badge bg-danger" id="count_vehiculos_negativos">0</span>
+                        </h5>
+                        <small class="text-muted">Clientes sin Saldo Global cuyo(s) vehículo(s)/tarjeta(s) tienen saldo individual menor a $0.</small>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table id="dashboard_vehiculos_negativos_table" class="table table-hover table-sm w-100">
+                            <thead>
+                                <tr><th>Código</th><th>Cliente</th><th>Tarjeta</th><th>Vehículo</th><th>Saldo</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title">
+                            <i class="fas fa-clock"></i>
+                            Última carga por cliente
+                        </h5>
+                        <small class="text-muted">Última factura de anticipo registrada por cliente (ordenado por más antiguo / sin cargar primero).</small>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table id="dashboard_ultima_carga_table" class="table table-hover table-sm w-100">
+                            <thead>
+                                <tr><th>Código</th><th>Cliente</th><th>Saldo Global</th><th>Última Carga</th><th>Días sin Cargar</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
 
     {# ── TAB 2: CRÉDITO ── #}
     <div class="tab-pane" id="credit_clients" role="tabpanel">
@@ -628,6 +759,16 @@ $('#seach_clients_debit').on('click', function () {
 // ── Crédito list ──
 $('#seach_clients_credit').on('click', function () {
     clients_credit_table();
+});
+
+// ── Vehículos Débito ──
+$('#btn_vehicles_debit').on('click', function () {
+    vehicles_debit_table();
+});
+
+// ── Dashboard Débito ──
+$('#btn_dashboard_debit').on('click', function () {
+    debit_dashboard_table();
 });
 
 // ── Consumos Débito ──

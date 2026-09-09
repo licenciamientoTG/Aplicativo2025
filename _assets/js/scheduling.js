@@ -248,7 +248,7 @@ function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, peso
                     <span class="badge bg-white text-dark border">${subtotal.toLocaleString('es-MX')} L</span>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm mb-0">
+                    <table class="table table-sm table-hover mb-0">
                         <thead>
                             <tr>${encabezados.map(function (h) { return '<th>' + h + '</th>'; }).join('')}</tr>
                         </thead>

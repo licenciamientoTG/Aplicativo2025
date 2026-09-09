@@ -243,6 +243,80 @@ class ClientesVehiculosModel extends Model{
         return ($rs=$this->sql->select($query, [$codcli, $nroveh])) ? $rs[0] : false ;
     }
 
+    /**
+     * @param $codcli
+     * @return array|false
+     * @throws Exception
+     */
+    public function getVehiclesBalanceByClient($codcli) : array|false {
+        $ultimaCargaCte = "
+            ;WITH Ult AS (
+                SELECT t2.codopr, MAX(t1.fch) AS UltimaFch
+                FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
+                JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
+                  ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+                WHERE t2.mtoiva > 0
+                  AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
+                  AND t2.mto > 100
+                  AND t2.codopr <> 0
+                  AND ISNULL(t1.flgcon, 0) <> 141
+                GROUP BY t2.codopr
+            ),
+            Con AS (
+                SELECT d.codcli, MAX(d.fchtrn) AS UltimoConsumoFch
+                FROM [SG12].dbo.Despachos d WITH (NOLOCK)
+                WHERE d.codcli > 0
+                GROUP BY d.codcli
+            )
+        ";
+
+        if ($codcli > 0) {
+            $query = $ultimaCargaCte . 'SELECT
+                            t1.cod AS codcli,
+                            t2.tar,
+                            t2.den,
+                            t2.debsdo,
+                            t1.den AS cliente,
+                            t1.debglo,
+                            t1.debsdo AS saldo_global,
+                            CASE WHEN U.UltimaFch IS NOT NULL
+                                 THEN CONVERT(varchar(10), DATEADD(DAY, U.UltimaFch - 1, \'19000101\'), 23)
+                                 ELSE NULL END AS ultima_carga,
+                            CASE WHEN Co.UltimoConsumoFch IS NOT NULL
+                                 THEN CONVERT(varchar(10), CAST(Co.UltimoConsumoFch AS datetime) - 1, 23)
+                                 ELSE NULL END AS ultimo_consumo
+                        FROM [SG12].[dbo].[Clientes] t1
+                            LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t2 ON t1.cod = t2.codcli
+                            LEFT JOIN Ult U ON U.codopr = t1.cod
+                            LEFT JOIN Con Co ON Co.codcli = t1.cod
+                        WHERE t1.cod = ?;';
+            return ($this->sql->select($query, [$codcli])) ?: false ;
+        }
+
+        // codcli = 0 -> todos los clientes débito activos
+        $query = $ultimaCargaCte . 'SELECT
+                        t1.cod AS codcli,
+                        t2.tar,
+                        t2.den,
+                        t2.debsdo,
+                        t1.den AS cliente,
+                        t1.debglo,
+                        t1.debsdo AS saldo_global,
+                        CASE WHEN U.UltimaFch IS NOT NULL
+                             THEN CONVERT(varchar(10), DATEADD(DAY, U.UltimaFch - 1, \'19000101\'), 23)
+                             ELSE NULL END AS ultima_carga,
+                        CASE WHEN Co.UltimoConsumoFch IS NOT NULL
+                             THEN CONVERT(varchar(10), CAST(Co.UltimoConsumoFch AS datetime) - 1, 23)
+                             ELSE NULL END AS ultimo_consumo
+                    FROM [SG12].[dbo].[Clientes] t1
+                        LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t2 ON t1.cod = t2.codcli
+                        LEFT JOIN Ult U ON U.codopr = t1.cod
+                        LEFT JOIN Con Co ON Co.codcli = t1.cod
+                    WHERE t1.tipval = 4 AND t1.codest = 0
+                    ORDER BY t1.den;';
+        return ($this->sql->select($query)) ?: false ;
+    }
+
     function getFolio() : int {
         $query = "INSERT INTO [TG].[dbo].[folios_docs] ([user_id],[created_at]) VALUES (?,GETDATE());";
         return $this->sql->insert($query, [1]);

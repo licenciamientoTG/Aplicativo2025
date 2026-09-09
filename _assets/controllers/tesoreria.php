@@ -626,6 +626,27 @@ class Tesoreria
      */
     public function santander_huecos(): void
     {
+        $this->huecos_de_banco('huecos_santander', 'santander_huecos');
+    }
+
+    /**
+     * GET AJAX: mismo diagnóstico que santander_huecos() pero para Afirme.
+     * Alimenta el card "¿Faltan movimientos de Afirme?", que va junto al de
+     * Santander (col-6 cada uno: son los dos bancos que se suben seguido y
+     * cuya cadena de saldos depende del orden de llegada del archivo, no
+     * solo de la fecha — ver huecos_afirme() en el modelo).
+     */
+    public function afirme_huecos(): void
+    {
+        $this->huecos_de_banco('huecos_afirme', 'afirme_huecos');
+    }
+
+    /**
+     * Implementación común de santander_huecos()/afirme_huecos(): valida el
+     * rango de fechas del mini-form y delega al método del modelo indicado.
+     */
+    private function huecos_de_banco(string $metodoModelo, string $logTag): void
+    {
         header('Content-Type: application/json');
         if (!authorized(self::PERM_SUBIR_MOV)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
@@ -640,9 +661,9 @@ class Tesoreria
         if ($desde > $hasta) $desde = $hasta;
 
         try {
-            $cuentas = $this->movsModel->huecos_santander($desde, $hasta, $this->cuentas_permitidas());
+            $cuentas = $this->movsModel->$metodoModelo($desde, $hasta, $this->cuentas_permitidas());
         } catch (Exception $e) {
-            error_log('santander_huecos: ' . $e->getMessage());
+            error_log("$logTag: " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error al revisar los movimientos']);
             return;
         }
@@ -652,6 +673,57 @@ class Tesoreria
             'desde'   => $desde,
             'hasta'   => $hasta,
             'cuentas' => $cuentas,
+        ]);
+    }
+
+    /**
+     * POST AJAX: corrige orden_dia de una cuenta de Afirme para las fechas
+     * indicadas (botón "Corregir" del card "¿Faltan movimientos de Afirme?",
+     * solo visible cuando huecos_afirme() marcó la rotura como
+     * 'corregible' => true, es decir, causada por el orden de import y no
+     * por un movimiento realmente faltante — ver
+     * MovimientosBancariosModel::corregir_orden_afirme()).
+     *
+     * Mismo permiso que subir movimientos (81): es la misma herramienta de
+     * revisión que el card, no algo que un perfil de solo lectura deba
+     * poder disparar.
+     */
+    public function corregir_orden_afirme(): void
+    {
+        header('Content-Type: application/json');
+        if (!authorized(self::PERM_SUBIR_MOV)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+
+        $cuenta = trim($_POST['cuenta'] ?? '');
+        $fechas = array_filter((array)($_POST['fechas'] ?? []));
+        if ($cuenta === '' || !$fechas) {
+            json_output(['success' => false, 'message' => 'Falta la cuenta o las fechas a corregir']);
+            return;
+        }
+
+        $cuentasPermitidas = $this->cuentas_permitidas();
+        if ($cuentasPermitidas !== null && !in_array($cuenta, $cuentasPermitidas, true)) {
+            json_output(['success' => false, 'message' => 'Sin permiso para esa cuenta']);
+            return;
+        }
+
+        try {
+            $n = $this->movsModel->corregir_orden_afirme($cuenta, $fechas);
+        } catch (Exception $e) {
+            error_log('corregir_orden_afirme: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al corregir el orden']);
+            return;
+        }
+
+        json_output([
+            'success' => true,
+            'message' => "$n fecha" . ($n === 1 ? '' : 's') . ' corregida' . ($n === 1 ? '' : 's'),
         ]);
     }
 
