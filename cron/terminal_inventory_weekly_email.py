@@ -125,30 +125,33 @@ def recipients(name: str) -> list[str]:
     return [address.strip() for address in os.environ.get(name, "daniel.ramirez@totalgas.com").split(",") if address.strip()]
 
 
-def render_html(rows: Iterable[dict[str, object]], sent_at: datetime) -> str:
+def render_html(rows: Iterable[dict[str, object]], sent_at: datetime, category: str) -> str:
     body = []
-    for row in rows:
+    for index, row in enumerate(rows):
         ticket = str(row["ticket_mojo_id"])
         opened = parse_datetime(row["fecha_apertura_mojo"]).strftime("%d/%m/%Y %H:%M")
+        state = str(row.get("estado_mojo") or "—")
+        background = "#ffffff" if index % 2 == 0 else "#f4f8fc"
         body.append(
-            "<tr>"
-            f'<td><a href="{escape(MOJO_TICKET_URL.format(ticket), quote=True)}">#{escape(ticket)}</a></td>'
-            f"<td>{escape(str(row.get('tipo_terminal') or '—'))}</td>"
-            f"<td>{escape(str(row.get('estacion_nombre') or '—'))}</td>"
-            f"<td>{escape(str(row.get('descripcion') or '—'))}</td>"
-            f"<td>{opened}</td>"
-            f"<td style=\"text-align:center\">{float(row['dias_habiles']):.2f}</td>"
-            f"<td>{escape(str(row.get('estado_mojo') or '—'))}</td>"
+            f'<tr style="background:{background};border-bottom:1px solid #dbe7f2">'
+            f'<td style="padding:11px 10px"><a style="color:#125ca8;font-weight:700;text-decoration:none" href="{escape(MOJO_TICKET_URL.format(ticket), quote=True)}">#{escape(ticket)}</a></td>'
+            f'<td style="padding:11px 10px;color:#304a61;font-weight:700">{escape(str(row.get("tipo_terminal") or "—"))}</td>'
+            f'<td style="padding:11px 10px;color:#52616f">{escape(str(row.get("estacion_nombre") or "—"))}</td>'
+            f'<td style="padding:11px 10px;color:#52616f;max-width:280px">{escape(str(row.get("descripcion") or "—"))}</td>'
+            f'<td style="padding:11px 10px;color:#52616f;white-space:nowrap">{opened}</td>'
+            f'<td style="padding:11px 10px;text-align:center;color:#125ca8;font-weight:800;white-space:nowrap">{float(row["dias_habiles"]):.2f}</td>'
+            f'<td style="padding:11px 10px;white-space:nowrap"><span style="display:inline-block;background:#eaf3fb;color:#125ca8;padding:4px 9px;border-radius:12px;font-weight:700;font-size:12px">{escape(state)}</span></td>'
             "</tr>"
         )
     sent = sent_at.strftime("%d/%m/%Y %H:%M")
-    return f"""<!doctype html><html lang="es"><body style="font-family:Arial,sans-serif;color:#304a61">
-<h2>Incidencias de terminales abiertas</h2>
-<p>Reporte enviado el {sent}. Ordenado de mayor a menor por jornadas hábiles (08:00–18:00, lunes a viernes).</p>
-<table border="0" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px">
-<thead><tr style="background:#edf3f7;text-align:left"><th>Ticket Mojo</th><th>Tipo de terminal</th><th>Estación</th><th>Descripción</th><th>Apertura</th><th>Jornadas hábiles</th><th>Estado</th></tr></thead>
-<tbody>{''.join(body)}</tbody></table>
-</body></html>"""
+    return f"""<!doctype html><html lang="es"><body style="margin:0;padding:18px;background:#f4f8fc;font-family:Arial,sans-serif;color:#304a61">
+<div style="max-width:1180px;margin:0 auto;border:1px solid #dbe7f2;border-radius:10px;overflow:hidden;background:#ffffff">
+<div style="padding:22px 24px;background:#125ca8;color:#ffffff"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.82">TotalGas · Operaciones</div><h2 style="margin:7px 0 0;font-size:22px;font-weight:700">Incidencias abiertas — {escape(category)}</h2></div>
+<div style="padding:16px 24px 12px;background:#f4f8fc;color:#52616f;font-size:13px">Reporte enviado el <strong style="color:#304a61">{sent}</strong>. Ordenado de mayor a menor por jornadas hábiles (08:00–18:00, lunes a viernes).</div>
+<div style="padding:0 14px 16px;overflow-x:auto"><table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px;min-width:850px">
+<thead><tr style="background:#e5f0fa;color:#174a78;text-align:left"><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Ticket Mojo</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Tipo de terminal</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Estación</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Descripción</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Apertura</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase;text-align:center">Jornadas hábiles</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Estado</th></tr></thead>
+<tbody>{''.join(body) or '<tr><td colspan="7" style="padding:16px;text-align:center;color:#687887">No hay incidencias abiertas.</td></tr>'}</tbody></table>
+</div></div><p style="max-width:1180px;margin:12px auto;color:#8a98a5;font-size:11px">Mensaje generado automáticamente por el módulo de Inventario de terminales.</p></body></html>"""
 
 
 def render_text(rows: Iterable[dict[str, object]], sent_at: datetime) -> str:
@@ -163,16 +166,16 @@ def render_text(rows: Iterable[dict[str, object]], sent_at: datetime) -> str:
     return "\n".join(lines)
 
 
-def send_email(to: list[str], rows: list[dict[str, object]], sent_at: datetime, dry_run: bool) -> None:
+def send_email(to: list[str], rows: list[dict[str, object]], sent_at: datetime, category: str, dry_run: bool) -> None:
     if not to:
         raise RuntimeError("La lista de destinatarios está vacía")
-    subject = f"Incidencias de terminales abiertas — {sent_at:%d/%m/%Y}"
+    subject = f"Incidencias abiertas de {category} — {sent_at:%d/%m/%Y}"
     message = EmailMessage()
     message["From"] = env_first("SMTP_FROM", "EMAIL_FROM", default="no-reply@totalgas.com")
     message["To"] = ", ".join(to)
     message["Subject"] = subject
     message.set_content(render_text(rows, sent_at))
-    message.add_alternative(render_html(rows, sent_at), subtype="html")
+    message.add_alternative(render_html(rows, sent_at, category), subtype="html")
     if dry_run:
         print(f"DRY-RUN: {subject} -> {message['To']} ({len(rows)} incidencias)")
         return
@@ -198,9 +201,11 @@ def main() -> int:
             print("No hay incidencias abiertas; no se envía correo.")
             return 0
         sent_at = datetime.now()
-        send_email(recipients("TERMINAL_EMAIL_TO_1"), rows, sent_at, args.dry_run)
-        send_email(recipients("TERMINAL_EMAIL_TO_2"), rows, sent_at, args.dry_run)
-        print(f"Se enviaron dos reportes con {len(rows)} incidencias abiertas.")
+        urovo_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() == "urovo"]
+        valera_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() != "urovo"]
+        send_email(recipients("TERMINAL_EMAIL_TO_1"), urovo_rows, sent_at, "Urovo", args.dry_run)
+        send_email(recipients("TERMINAL_EMAIL_TO_2"), valera_rows, sent_at, "valeras", args.dry_run)
+        print(f"Se enviaron dos reportes: {len(urovo_rows)} Urovo y {len(valera_rows)} valeras.")
         return 0
     except Exception as exc:  # el programador del servidor verá un código distinto de cero
         print(f"ERROR: {exc}", file=sys.stderr)
