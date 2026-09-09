@@ -125,12 +125,30 @@ def recipients(name: str) -> list[str]:
     return [address.strip() for address in os.environ.get(name, "daniel.ramirez@totalgas.com").split(",") if address.strip()]
 
 
+def spanish_status(value: object) -> str:
+    """Traduce estados estándar de Mojo sin alterar estados personalizados."""
+    original = str(value or "—").strip()
+    normalized = original.lower().replace("_", "-").replace(" ", "-")
+    translations = {
+        "open": "Abierto", "opened": "Abierto", "abierto": "Abierto",
+        "closed": "Cerrado", "close": "Cerrado", "closed-status": "Cerrado", "cerrado": "Cerrado",
+        "new": "Nuevo", "nuevo": "Nuevo",
+        "pending": "Pendiente", "pendiente": "Pendiente",
+        "on-hold": "En espera", "onhold": "En espera", "en-espera": "En espera",
+        "solved": "Resuelto", "resolved": "Resuelto", "resuelto": "Resuelto",
+        "reopened": "Reabierto", "re-opened": "Reabierto", "reabierto": "Reabierto",
+        "waiting-customer": "Esperando al cliente", "waiting-for-customer": "Esperando al cliente",
+        "waiting-provider": "Esperando al proveedor", "waiting-for-provider": "Esperando al proveedor",
+    }
+    return translations.get(normalized, original)
+
+
 def render_html(rows: Iterable[dict[str, object]], sent_at: datetime, category: str) -> str:
     body = []
     for index, row in enumerate(rows):
         ticket = str(row["ticket_mojo_id"])
         opened = parse_datetime(row["fecha_apertura_mojo"]).strftime("%d/%m/%Y %H:%M")
-        state = str(row.get("estado_mojo") or "—")
+        state = spanish_status(row.get("estado_mojo"))
         background = "#ffffff" if index % 2 == 0 else "#f4f8fc"
         body.append(
             f'<tr style="background:{background};border-bottom:1px solid #dbe7f2">'
@@ -160,7 +178,7 @@ def render_text(rows: Iterable[dict[str, object]], sent_at: datetime) -> str:
         lines.append(
             f"#{row['ticket_mojo_id']} | {row.get('tipo_terminal', '—')} | "
             f"{row.get('estacion_nombre', '—')} | {row.get('descripcion', '—')} | "
-            f"{row['dias_habiles']:.2f} jornadas | {row.get('estado_mojo', '—')} | "
+            f"{row['dias_habiles']:.2f} jornadas | {spanish_status(row.get('estado_mojo'))} | "
             f"{MOJO_TICKET_URL.format(row['ticket_mojo_id'])}"
         )
     return "\n".join(lines)
