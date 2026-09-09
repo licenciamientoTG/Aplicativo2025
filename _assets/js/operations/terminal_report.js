@@ -12,7 +12,7 @@ $(function () {
         return '<span class="terminal-brand terminal-brand-' + escapeHtml(type) + '" title="' + escapeHtml(info.label) + '" aria-label="' + escapeHtml(info.label) + '">' + escapeHtml(info.logo) + '</span>';
     };
     const setExpanded = (row, child, expanded) => {
-        $(child).toggleClass('d-none', !expanded);
+        $(child).toggleClass('d-none', !expanded).toggle(expanded);
         $(row).toggleClass('is-expanded', expanded).attr('aria-expanded', String(expanded));
         $(row).find('.terminal-tree-toggle').html('<i data-feather="' + (expanded ? 'chevron-down' : 'chevron-right') + '"></i>');
         if (window.feather) feather.replace();
