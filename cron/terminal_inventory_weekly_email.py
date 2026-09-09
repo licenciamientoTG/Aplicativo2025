@@ -32,7 +32,7 @@ import pyodbc
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
-MOJO_TICKET_URL = "https://totalgas.mojohelpdesk.com/ma/#/tickets/search?query_string={}&page=1"
+MOJO_TICKET_URL = "https://totalgas.mojohelpdesk.com/mc/tickets/{}"
 
 
 def load_env_file() -> None:

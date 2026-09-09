@@ -1,6 +1,6 @@
 $(function () {
     const catalog = window.terminalInventoryTypeCatalog || {};
-    const mojoUrl = id => 'https://totalgas.mojohelpdesk.com/ma/#/tickets/search?query_string=' + encodeURIComponent(id) + '&page=1';
+    const mojoUrl = id => 'https://totalgas.mojohelpdesk.com/mc/tickets/' + encodeURIComponent(id);
     const escapeHtml = value => $('<div>').text(value == null ? '' : value).html();
     const formatDate = value => {
         if (!value) return '—';
