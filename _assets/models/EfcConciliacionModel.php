@@ -124,7 +124,33 @@ class EfcConciliacionModel {
     public function reopenPeriod(int $stationId,int $year,int $month,string $concept,int $userId): void { $mes=sprintf('%04d-%02d',$year,$month); $q=$this->db->prepare("UPDATE dbo.efc_conc_cierres SET estado='ABIERTO',reabierto_por=?,reabierto_en=GETDATE() WHERE estacion_id=? AND mes=? AND concepto=? AND estado='CERRADO'"); $q->execute([$userId,$stationId,$mes,$concept]); if(!$q->rowCount()) throw new RuntimeException('No existe un cierre activo para reabrir.'); }
 
     public function summaryDetail(int $stationId, ?int $year=null, ?int $month=null, ?string $concept=null): array {
-        $where=['G.estacion_id=?','G.estado=\'ACTIVA\'']; $params=[$stationId]; if($year){$where[]='YEAR(G.fecha_operativa)=?';$params[]=$year;} if($month){$where[]='MONTH(G.fecha_operativa)=?';$params[]=$month;} if($concept&&in_array($concept,['MN','MORRALLA','USD'],true)){$where[]='G.concepto=?';$params[]=$concept;} $sql="SELECT G.id,CONVERT(VARCHAR(10),G.fecha_operativa,23) fecha,G.estacion_id,E.Nombre estacion_nombre,G.turno,G.concepto,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,P.origen,P.clave_externa,P.importe,P.movimiento_bancario_id,P.referencia,M.descripcion_larga,ISNULL(V.real_mn,0) regio_declarado,ISNULL(V.real_mn,0) regio_real,ISNULL(V.real_usd,0) regio_usd,ISNULL(V.real_usd*ISNULL(V.tipo_cambio_usd,0),0) regio_usd_mxn FROM dbo.efc_conc_grupos G JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id AND P.activo=1 LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=G.estacion_id LEFT JOIN TG.dbo.movimientos_bancarios M ON M.id=P.movimiento_bancario_id OUTER APPLY (SELECT TOP 1 Pa.real_mn,Pa.real_usd,V.tipo_cambio_usd FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_analiticos_papeletas Pa ON Pa.id=V.papeleta_id WHERE V.estacion_id=G.estacion_id AND V.fecha_cg=G.fecha_operativa AND V.turno=G.turno AND V.concepto=G.concepto AND V.activo=1) V WHERE ".implode(' AND ',$where)." ORDER BY G.fecha_operativa,G.turno,G.id,P.origen"; $q=$this->db->prepare($sql);$q->execute($params);return $q->fetchAll(PDO::FETCH_ASSOC);
+        // Un grupo tiene una partida CG y otra BANCO. Agrupamos por grupo para
+        // que el detalle muestre una sola fila por conciliación.
+        $where=["G.estado='ACTIVA'"];
+        $params=[];
+        if($stationId>0){$where[]='G.estacion_id=?';$params[]=$stationId;}
+        if($year){$where[]='YEAR(G.fecha_operativa)=?';$params[]=$year;}
+        if($month){$where[]='MONTH(G.fecha_operativa)=?';$params[]=$month;}
+        if($concept&&in_array($concept,['MN','MORRALLA','USD'],true)){$where[]='G.concepto=?';$params[]=$concept;}
+        $sql="SELECT G.id,CONVERT(VARCHAR(10),G.fecha_operativa,23) fecha,G.estacion_id,E.Nombre estacion_nombre,G.turno,G.concepto,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
+                MAX(CASE WHEN P.origen='BANCO' THEN P.referencia END) referencia,
+                MAX(CASE WHEN P.origen='BANCO' THEN P.movimiento_bancario_id END) movimiento_bancario_id,
+                MAX(CASE WHEN P.origen='BANCO' THEN M.descripcion_larga END) descripcion_larga,
+                ISNULL(V.real_mn,0) regio_declarado,ISNULL(V.real_mn,0) regio_real,ISNULL(V.real_usd,0) regio_usd,
+                ISNULL(V.real_usd*ISNULL(V.tipo_cambio_usd,0),0) regio_usd_mxn
+            FROM dbo.efc_conc_grupos G
+            LEFT JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id AND P.activo=1
+            LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=G.estacion_id
+            LEFT JOIN TG.dbo.movimientos_bancarios M ON M.id=P.movimiento_bancario_id
+            OUTER APPLY (SELECT TOP 1 Pa.real_mn,Pa.real_usd,V.tipo_cambio_usd
+                FROM dbo.efc_conc_analiticos_vinculos V
+                JOIN dbo.efc_conc_analiticos_papeletas Pa ON Pa.id=V.papeleta_id
+                WHERE V.estacion_id=G.estacion_id AND V.fecha_cg=G.fecha_operativa AND V.turno=G.turno
+                  AND V.concepto=G.concepto AND V.activo=1) V
+            WHERE ".implode(' AND ',$where)."
+            GROUP BY G.id,G.fecha_operativa,G.estacion_id,E.Nombre,G.turno,G.concepto,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,V.real_mn,V.real_usd,V.tipo_cambio_usd
+            ORDER BY G.fecha_operativa,G.turno,G.id";
+        $q=$this->db->prepare($sql);$q->execute($params);return $q->fetchAll(PDO::FETCH_ASSOC);
     }
 
     public function summaryGrouped(?int $year=null, ?int $month=null, ?int $stationId=null, ?string $concept=null): array { $where=[];$params=[];if($year){$where[]='C.mes LIKE ?';$params[]=sprintf('%04d-%02d',$year,$month?:1).'%';}if($month&&$year){$where=['C.mes=?'];$params=[sprintf('%04d-%02d',$year,$month)];}if($stationId){$where[]='C.estacion_id=?';$params[]=$stationId;}if($concept&&in_array($concept,['MN','MORRALLA','USD'],true)){$where[]='C.concepto=?';$params[]=$concept;} $sql="SELECT C.estacion_id,C.mes,C.concepto,C.total_controlgas,C.total_banco,C.total_regio_declarado,C.total_regio_real,C.total_diferencia,C.total_transito,C.operaciones,C.pendientes,C.estado,C.cerrado_en FROM dbo.efc_conc_cierres C".($where?' WHERE '.implode(' AND ',$where):'')." ORDER BY C.mes DESC,C.estacion_id,C.concepto";$q=$this->db->prepare($sql);$q->execute($params);$rows=$q->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$r){foreach(['estacion_id','operaciones','pendientes'] as $k)$r[$k]=(int)$r[$k];foreach(['total_controlgas','total_banco','total_regio_declarado','total_regio_real','total_diferencia','total_transito'] as $k)$r[$k]=(float)$r[$k];}return $rows; }
