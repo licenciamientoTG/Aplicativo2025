@@ -162,5 +162,11 @@ $(function () {
         renderCalendar(); renderRows();
     }
     setupGroupBrowser();
-    if ($('#terminalReportTable').length) $('#terminalReportTable').DataTable({ pageLength: 25, language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' } });
+    if ($('#terminalReportTable').length) $('#terminalReportTable').DataTable({
+        pageLength: 25,
+        searching: true,
+        columnDefs: [{ targets: 5, type: 'num' }],
+        dom: '<"terminal-dt-toolbar"lf>t<"terminal-dt-footer"ip>',
+        language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json', search: 'Buscar:', searchPlaceholder: 'Estación, terminal, ticket…' }
+    });
 });
