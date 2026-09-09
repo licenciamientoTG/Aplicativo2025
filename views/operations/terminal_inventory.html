@@ -3,13 +3,15 @@
 {% block menutitle %}Inventario de terminales{% endblock %}
 {% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
 {% block content %}
-<div id="terminalInventoryApp" data-week="{{ weekStart }}" data-types='{{ types|json_encode|e("html_attr") }}' data-active='{{ activeIncidents|json_encode|e("html_attr") }}'>
+<div id="terminalInventoryApp" data-inventory-date="{{ inventoryDate }}" data-types='{{ types|json_encode|e("html_attr") }}' data-active='{{ activeIncidents|json_encode|e("html_attr") }}'>
   <div class="terminal-page-header d-flex justify-content-between flex-wrap gap-3 mb-3">
-    <div><p class="text-muted mb-1">Captura semanal · {{ station.Nombre }} <span class="text-muted">(#{{ station.Codigo }})</span></p><span class="badge bg-light text-primary border">Semana del {{ weekStart }} al {{ weekEnd }}</span></div>
+    <div><p class="text-muted mb-1">Captura de inventario · {{ station.Nombre }} <span class="text-muted">(#{{ station.Codigo }})</span></p><span class="badge bg-light text-primary border">{{ inventoryDate|date('d/m/Y') }}</span></div>
     {% if canReport %}<div class="d-flex gap-2"><a class="btn btn-outline-primary" href="/operations/terminal_inventory_status"><i data-feather="check-square"></i> Cumplimiento</a><a class="btn btn-outline-primary" href="/operations/terminal_report"><i data-feather="bar-chart-2"></i> Ver reporte</a></div>{% endif %}
   </div>
-  {% if alreadySaved %}
-    <div class="alert alert-info">El inventario de esta semana ya fue guardado y no puede modificarse.</div>
+  {% if not captureAllowed %}
+    <div class="alert alert-warning mb-0"><i data-feather="calendar"></i> La captura solo está disponible el día configurado. Próxima fecha permitida: <strong>{{ nextInventoryDate|date('d/m/Y') }}</strong>.</div>
+  {% elseif alreadySaved %}
+    <div class="alert alert-info mb-0">El inventario del {{ inventoryDate|date('d/m/Y') }} ya fue guardado y no puede modificarse.</div>
   {% else %}
   <form id="terminalInventoryForm" novalidate>
     <div class="row g-3"><div class="col-lg-8"><div class="card terminal-card h-100"><div class="card-body">

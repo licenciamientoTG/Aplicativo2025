@@ -17,15 +17,15 @@ class TerminalInventoryModel extends Model {
         $permissions = explode(',', (string)($_SESSION['tg_user']['permissions'] ?? ''));
         return $permissionId > 0 && in_array((string)$permissionId, $permissions, true);
     }
-    public function inventoryExists(int $stationId, string $weekStart): bool {
-        return (bool)$this->sql->select('SELECT 1 FROM [TG].[dbo].[inv_ter_inventarios] WHERE estacion_id=? AND semana_inicio=?', [$stationId, $weekStart]);
+    public function inventoryExists(int $stationId, string $inventoryDate): bool {
+        return (bool)$this->sql->select('SELECT 1 FROM [TG].[dbo].[inv_ter_inventarios] WHERE estacion_id=? AND fecha_inventario=?', [$stationId, $inventoryDate]);
     }
     public function getSettings(): array {
-        $rows = $this->sql->select('SELECT TOP (1) dia_cierre_semana, valeras_habilitadas, actualizado_por, actualizado_en FROM [TG].[dbo].[inv_ter_configuracion] WHERE id=1');
-        return $rows[0] ?? ['dia_cierre_semana' => 7, 'valeras_habilitadas' => 'ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox', 'actualizado_por' => null, 'actualizado_en' => null];
+        $rows = $this->sql->select('SELECT TOP (1) dia_inventario_semana, valeras_habilitadas, actualizado_por, actualizado_en FROM [TG].[dbo].[inv_ter_configuracion] WHERE id=1');
+        return $rows[0] ?? ['dia_inventario_semana' => 7, 'valeras_habilitadas' => 'ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox', 'actualizado_por' => null, 'actualizado_en' => null];
     }
     public function saveSettings(int $day, array $enabledValeras, int $userId): void {
-        $this->sql->update('UPDATE [TG].[dbo].[inv_ter_configuracion] SET dia_cierre_semana=?, valeras_habilitadas=?, actualizado_por=?, actualizado_en=SYSDATETIME() WHERE id=1', [$day, implode(',', $enabledValeras), $userId]);
+        $this->sql->update('UPDATE [TG].[dbo].[inv_ter_configuracion] SET dia_inventario_semana=?, valeras_habilitadas=?, actualizado_por=?, actualizado_en=SYSDATETIME() WHERE id=1', [$day, implode(',', $enabledValeras), $userId]);
     }
     public function valeraCatalog(): array {
         return $this->sql->select('SELECT codigo, nombre, valor_mojo FROM [TG].[dbo].[inv_ter_valeras] WHERE activo=1 ORDER BY nombre');
@@ -38,12 +38,16 @@ class TerminalInventoryModel extends Model {
         $marks=implode(',',array_fill(0,count($types),'?'));
         return $this->sql->select("SELECT DISTINCT tipo_terminal FROM [TG].[dbo].[inv_ter_incidencias] WHERE fecha_cierre_mojo IS NULL AND tipo_terminal IN ($marks)",array_values($types));
     }
-    public function stationsInventoryStatus(string $weekStart): array {
+    public function stationsInventoryStatus(string $inventoryDate): array {
         return $this->sql->select("SELECT e.Codigo, e.Nombre, i.id AS inventario_id, i.fecha_registro, i.usuario_correo
             FROM [TG].[dbo].[Estaciones] e
-            LEFT JOIN [TG].[dbo].[inv_ter_inventarios] i ON i.estacion_id=e.Codigo AND i.semana_inicio=?
-            WHERE e.Codigo NOT IN (0,4,20)
-            ORDER BY CASE WHEN i.id IS NULL THEN 0 ELSE 1 END, e.Codigo", [$weekStart]);
+            LEFT JOIN [TG].[dbo].[inv_ter_inventarios] i ON i.estacion_id=e.Codigo AND i.fecha_inventario=?
+            WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
+            ORDER BY CASE WHEN i.id IS NULL THEN 0 ELSE 1 END, e.Codigo", [$inventoryDate]);
+    }
+    public function activeStation(int $stationId): array|false {
+        $rows=$this->sql->select('SELECT Codigo,Nombre FROM [TG].[dbo].[Estaciones] WHERE Codigo=? AND activa=1 AND Codigo NOT IN (0,4,20)', [$stationId]);
+        return $rows[0] ?? false;
     }
     public function activeIncidents(int $stationId): array {
         return $this->sql->select("SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE estacion_id=? AND fecha_cierre_mojo IS NULL", [$stationId]);
@@ -52,7 +56,7 @@ class TerminalInventoryModel extends Model {
     public function saveInventory(array $header, array $details, array $incidentIds): int {
         $this->sql->beginTransaction();
         try {
-            $id = (int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,semana_inicio,semana_fin,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?)', $header);
+            $id = (int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,fecha_inventario,usuario_id,usuario_correo) VALUES (?,?,?,?,?)', $header);
             if (!$id) throw new RuntimeException('No fue posible crear el inventario.');
             foreach ($details as $detail) $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventario_detalles] (inventario_id,tipo_terminal,funcionando,danadas) VALUES (?,?,?,?)', [$id,$detail['type'],$detail['working'],$detail['damaged']]);
             foreach ($incidentIds as $incidentId) $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias_inventario] (inventario_id,incidencia_id) VALUES (?,?)', [$id,$incidentId]);
@@ -67,7 +71,7 @@ class TerminalInventoryModel extends Model {
     public function saveInventoryWithIncidents(array $header, array $details, array $activeIncidentIds, array $newIncidents): int {
         $this->sql->beginTransaction();
         try {
-            $inventoryId = (int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,semana_inicio,semana_fin,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?)', $header);
+            $inventoryId = (int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_inventarios] (estacion_id,estacion_nombre,fecha_inventario,usuario_id,usuario_correo) VALUES (?,?,?,?,?)', $header);
             if (!$inventoryId) throw new RuntimeException('No fue posible crear el inventario.');
 
             foreach ($details as $detail) {
@@ -104,15 +108,24 @@ class TerminalInventoryModel extends Model {
         if (!empty($filters['type'])) { $where .= ' AND i.tipo_terminal=?'; $params[]=$filters['type']; }
         return $this->sql->select("SELECT i.*, s.Nombre AS estacion_nombre, DATEDIFF(DAY,i.fecha_apertura_mojo,GETDATE()) AS dias_naturales FROM [TG].[dbo].[inv_ter_incidencias] i LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id WHERE $where ORDER BY i.fecha_registro DESC", $params);
     }
-    public function inventoryList(): array {
-        return $this->sql->select("SELECT i.id,i.estacion_nombre,i.semana_inicio,i.semana_fin,i.fecha_registro,i.usuario_correo,
-                COALESCE(inc.incidencias,0) AS incidencias,COALESCE(det.danadas,0) AS danadas
+    public function inventoryDateGroups(): array {
+        return $this->sql->select("SELECT i.fecha_inventario,COUNT(DISTINCT i.estacion_id) AS estaciones_capturadas,
+                COALESCE(SUM(d.funcionando),0) AS funcionando,COALESCE(SUM(d.danadas),0) AS danadas
             FROM [TG].[dbo].[inv_ter_inventarios] i
-            OUTER APPLY (SELECT COUNT(*) AS incidencias FROM [TG].[dbo].[inv_ter_incidencias_inventario] ii WHERE ii.inventario_id=i.id) inc
-            OUTER APPLY (SELECT SUM(d.danadas) AS danadas FROM [TG].[dbo].[inv_ter_inventario_detalles] d WHERE d.inventario_id=i.id) det
-            ORDER BY i.fecha_registro DESC,i.id DESC");
+            INNER JOIN [TG].[dbo].[inv_ter_inventario_detalles] d ON d.inventario_id=i.id
+            GROUP BY i.fecha_inventario
+            ORDER BY i.fecha_inventario DESC");
     }
-    public function inventoryOverview(int $inventoryId): array {
+    public function inventoryGroupStations(string $inventoryDate): array {
+        return $this->sql->select("SELECT e.Codigo,e.Nombre,i.id AS inventario_id,i.fecha_registro,i.usuario_correo,
+                COALESCE(det.funcionando,0) AS funcionando,COALESCE(det.danadas,0) AS danadas
+            FROM [TG].[dbo].[Estaciones] e
+            LEFT JOIN [TG].[dbo].[inv_ter_inventarios] i ON i.estacion_id=e.Codigo AND i.fecha_inventario=?
+            OUTER APPLY (SELECT SUM(d.funcionando) AS funcionando,SUM(d.danadas) AS danadas FROM [TG].[dbo].[inv_ter_inventario_detalles] d WHERE d.inventario_id=i.id) det
+            WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
+            ORDER BY e.Codigo", [$inventoryDate]);
+    }
+    public function inventoryTypes(int $inventoryId): array {
         return $this->sql->select("SELECT i.id AS inventario_id,i.estacion_id,i.estacion_nombre,i.fecha_registro,i.usuario_correo,
                 d.tipo_terminal,d.funcionando,d.danadas
             FROM [TG].[dbo].[inv_ter_inventarios] i
@@ -121,7 +134,7 @@ class TerminalInventoryModel extends Model {
             ORDER BY d.tipo_terminal", [$inventoryId]);
     }
     public function inventoryIncidents(int $inventoryId, string $type): array {
-        return $this->sql->select("SELECT i.id,i.ticket_mojo_id,i.estado_mojo,i.fecha_apertura_mojo,i.fecha_cierre_mojo,i.folio_proveedor,i.descripcion
+        return $this->sql->select("SELECT i.id,i.estacion_id,i.ticket_mojo_id,i.estado_mojo,i.fecha_apertura_mojo,i.fecha_cierre_mojo,i.folio_proveedor,i.descripcion
             FROM [TG].[dbo].[inv_ter_incidencias_inventario] ii
             INNER JOIN [TG].[dbo].[inv_ter_incidencias] i ON i.id=ii.incidencia_id
             WHERE ii.inventario_id=? AND i.tipo_terminal=?
