@@ -3174,11 +3174,20 @@ class Operations{
         foreach ($enabled as $type) if (isset($catalog[$type]) && $type!=='urovo') $types[$type]=$catalog[$type];
         return $types;
     }
-    private function terminalBusinessDays(string $from, ?string $until=null): int {
-        try { $start=(new DateTimeImmutable($from))->setTime(0,0); $end=(new DateTimeImmutable($until ?: 'today'))->setTime(0,0); } catch (Throwable $e) { return 0; }
-        if ($start>$end) return 0; $days=0;
-        for ($date=$start; $date<$end; $date=$date->modify('+1 day')) if ((int)$date->format('N')<=5) $days++;
-        return $days;
+    private function terminalBusinessDays(string $from, ?string $until=null): float {
+        try { $start=new DateTimeImmutable($from); $end=new DateTimeImmutable($until ?: 'now'); } catch (Throwable $e) { return 0; }
+        if ($start >= $end) return 0;
+        $seconds=0;
+        for ($day=$start->setTime(0,0); $day <= $end->setTime(0,0); $day=$day->modify('+1 day')) {
+            if ((int)$day->format('N') > 5) continue;
+            $windowStart=$day->setTime(8,0);
+            $windowEnd=$day->setTime(18,0);
+            $segmentStart=$start > $windowStart ? $start : $windowStart;
+            $segmentEnd=$end < $windowEnd ? $end : $windowEnd;
+            if ($segmentEnd > $segmentStart) $seconds += $segmentEnd->getTimestamp() - $segmentStart->getTimestamp();
+        }
+        // Una jornada hábil equivale a 10 horas (08:00–18:00).
+        return round($seconds / 36000, 2);
     }
     private function terminalValeraCode(string $value): string {
         $value=mb_strtolower(trim($value),'UTF-8');

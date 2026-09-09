@@ -9,7 +9,7 @@ $(function () {
     };
     const brand = type => {
         const info = catalog[type] || { label: type, logo: String(type).toUpperCase() };
-        return '<span class="terminal-brand terminal-brand-' + escapeHtml(type) + '">' + escapeHtml(info.logo) + '</span><strong>' + escapeHtml(info.label) + '</strong>';
+        return '<span class="terminal-brand terminal-brand-' + escapeHtml(type) + '" title="' + escapeHtml(info.label) + '" aria-label="' + escapeHtml(info.label) + '">' + escapeHtml(info.logo) + '</span>';
     };
     const setExpanded = (row, child, expanded) => {
         $(child).toggleClass('d-none', !expanded);
@@ -27,7 +27,7 @@ $(function () {
 
     function incidentTable(incidents) {
         if (!incidents.length) return '<div class="terminal-incidents-empty"><i data-feather="check-circle"></i> Sin incidencias vinculadas a este tipo en este inventario.</div>';
-        let html = '<div class="table-responsive"><table class="table table-sm terminal-incident-table mb-0"><thead><tr><th>Ticket Mojo</th><th>Descripción</th><th>Apertura</th><th>Días hábiles</th><th>Estado</th><th>Cierre</th></tr></thead><tbody>';
+        let html = '<div class="table-responsive"><table class="table table-sm terminal-incident-table mb-0"><thead><tr><th>Ticket Mojo</th><th>Descripción</th><th>Apertura</th><th>Jornadas hábiles<br><small>08:00–18:00</small></th><th>Estado</th><th>Cierre</th></tr></thead><tbody>';
         incidents.forEach(incident => {
             const closed = !!incident.fecha_cierre_mojo;
             html += '<tr><td><a target="_blank" rel="noopener" href="' + mojoUrl(incident.ticket_mojo_id) + '">#' + escapeHtml(incident.ticket_mojo_id) + '</a></td>' +
@@ -100,5 +100,67 @@ $(function () {
             })
             .fail(xhr => $(child).find('td').html(errorBlock(xhr.responseJSON?.message || 'No fue posible consultar las incidencias.')));
     }));
+    function setupGroupBrowser() {
+        const $rows = $('.terminal-date-row');
+        if (!$rows.length) return;
+        const dates = $rows.map(function () { return String($(this).data('date')); }).get().sort();
+        const dateSet = new Set(dates);
+        let page = 1;
+        const pageSize = 10;
+        const $pagination = $('<div class="terminal-report-pagination" aria-label="Paginación de fechas"></div>');
+        $('.terminal-tree-wrap').after($pagination);
+        const $count = $('<div class="terminal-report-result-count"></div>').insertBefore($pagination);
+        const $search = $('#terminalGroupSearch');
+        const $date = $('#terminalGroupDate');
+        const $calendar = $('#terminalInventoryCalendar');
+        let calendarMonth = new Date((dates[dates.length - 1] || new Date().toISOString().slice(0, 10)) + 'T12:00:00');
+        calendarMonth.setDate(1);
+        const monthName = date => date.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+        function renderCalendar() {
+            const year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
+            const firstDay = new Date(year, month, 1).getDay();
+            const offset = (firstDay + 6) % 7;
+            const lastDay = new Date(year, month + 1, 0).getDate();
+            let html = '<div class="terminal-calendar-header"><button type="button" class="btn btn-sm btn-light calendar-prev" aria-label="Mes anterior"><i data-feather="chevron-left"></i></button><strong>' + monthName(calendarMonth) + '</strong><button type="button" class="btn btn-sm btn-light calendar-next" aria-label="Mes siguiente"><i data-feather="chevron-right"></i></button></div><div class="terminal-calendar-weekdays"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div><div class="terminal-calendar-days">';
+            for (let i = 0; i < offset; i++) html += '<span class="terminal-calendar-empty"></span>';
+            for (let day = 1; day <= lastDay; day++) {
+                const key = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+                html += '<button type="button" class="terminal-calendar-day ' + (dateSet.has(key) ? 'has-inventory' : '') + '" data-date="' + key + '" ' + (dateSet.has(key) ? '' : 'disabled') + '>' + day + '</button>';
+            }
+            $calendar.html(html + '</div>');
+            if (window.feather) feather.replace();
+        }
+        function renderPagination(totalPages) {
+            if (totalPages < 2) { $pagination.empty(); return; }
+            let html = '<button type="button" class="btn btn-sm btn-light report-page-prev" ' + (page === 1 ? 'disabled' : '') + '>Anterior</button><span>Página ' + page + ' de ' + totalPages + '</span><button type="button" class="btn btn-sm btn-light report-page-next" ' + (page === totalPages ? 'disabled' : '') + '>Siguiente</button>';
+            $pagination.html(html);
+        }
+        function renderRows() {
+            const query = ($search.val() || '').toString().trim().toLowerCase();
+            const filtered = $rows.filter(function () {
+                const rowDate = String($(this).data('date'));
+                return !query || rowDate.includes(query) || $(this).find('td:first').text().toLowerCase().includes(query);
+            });
+            const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+            page = Math.min(page, totalPages);
+            $rows.each(function () {
+                $(this).removeClass('is-expanded').attr('aria-expanded', 'false').hide();
+                $(this).next('.terminal-tree-child').addClass('d-none').hide();
+            });
+            filtered.slice((page - 1) * pageSize, page * pageSize).each(function () { $(this).show(); });
+            $count.text(filtered.length + ' fecha' + (filtered.length === 1 ? '' : 's') + ' con inventario');
+            renderPagination(totalPages);
+        }
+        $search.on('input', function () { page = 1; renderRows(); });
+        $date.on('change', function () { $search.val(this.value); page = 1; renderRows(); if (this.value) { calendarMonth = new Date(this.value + 'T12:00:00'); calendarMonth.setDate(1); renderCalendar(); } });
+        $('#clearTerminalGroupSearch').on('click', function () { $search.val(''); $date.val(''); page = 1; renderRows(); });
+        $pagination.on('click', '.report-page-prev', function () { if (page > 1) { page--; renderRows(); } });
+        $pagination.on('click', '.report-page-next', function () { const total = Math.ceil($rows.filter(function () { return !$search.val() || String($(this).data('date')).includes($search.val()); }).length / pageSize); if (page < total) { page++; renderRows(); } });
+        $calendar.on('click', '.calendar-prev', function () { calendarMonth.setMonth(calendarMonth.getMonth() - 1); renderCalendar(); });
+        $calendar.on('click', '.calendar-next', function () { calendarMonth.setMonth(calendarMonth.getMonth() + 1); renderCalendar(); });
+        $calendar.on('click', '.terminal-calendar-day.has-inventory', function () { $date.val($(this).data('date')).trigger('change'); });
+        renderCalendar(); renderRows();
+    }
+    setupGroupBrowser();
     if ($('#terminalReportTable').length) $('#terminalReportTable').DataTable({ pageLength: 25, language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' } });
 });
