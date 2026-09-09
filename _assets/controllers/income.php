@@ -6397,6 +6397,10 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation.html');
     }
 
+    public function cash_reconciliation_summary(): void {
+        echo $this->twig->render($this->route . 'cash_reconciliation_summary.html');
+    }
+
     public function cash_reconciliation_movements(): void {
         echo $this->twig->render($this->route . 'cash_reconciliation_movements.html');
     }
@@ -6439,6 +6443,12 @@ public function stamped_invoices_detail(): void
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->cancelTransit((int)($data['id']??0),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
+    public function efc_conc_cierre_estado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->closureState((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),strtoupper((string)($_GET['concepto']??'')))]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_cierre_previsualizar(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; $pending=(int)($d['pending']??0); if($pending>0) throw new RuntimeException('No se puede cerrar: existen operaciones pendientes.'); echo json_encode(['status'=>'success','data'=>['pending'=>$pending]]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_cierre_cerrar(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->closePeriod($d,(int)($_SESSION['tg_user']['Id']??0))]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_cierre_reabrir(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->reopenPeriod((int)($d['station_id']??0),(int)($d['year']??0),(int)($d['month']??0),strtoupper((string)($d['concept']??'')),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_resumen_detalle(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryDetail((int)($_GET['estacion_id']??0),isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_resumen_agrupado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryGrouped(isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_reclasificaciones(): void {
         ob_clean(); header('Content-Type: application/json');
         try { $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); if(!$station||$year<2020||$month<1||$month>12) throw new RuntimeException('Periodo o estacion invalidos.'); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->activeReclassifications($station,$year,$month)]); }
