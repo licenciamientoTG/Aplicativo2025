@@ -111,6 +111,8 @@ $(function () {
         $('.terminal-tree-wrap').after($pagination);
         const $count = $('<div class="terminal-report-result-count"></div>').insertBefore($pagination);
         const $calendar = $('#terminalInventoryCalendar');
+        const $calendarToggle = $('#terminalCalendarToggle');
+        const $calendarLabel = $('#terminalCalendarLabel');
         let selectedDate = '';
         let calendarMonth = new Date((dates[dates.length - 1] || new Date().toISOString().slice(0, 10)) + 'T12:00:00');
         calendarMonth.setDate(1);
@@ -153,8 +155,10 @@ $(function () {
         $pagination.on('click', '.report-page-next', function () { const total = Math.ceil($rows.filter(function () { return !selectedDate || String($(this).data('date')) === selectedDate; }).length / pageSize); if (page < total) { page++; renderRows(); } });
         $calendar.on('click', '.calendar-prev', function () { calendarMonth.setMonth(calendarMonth.getMonth() - 1); renderCalendar(); });
         $calendar.on('click', '.calendar-next', function () { calendarMonth.setMonth(calendarMonth.getMonth() + 1); renderCalendar(); });
-        $calendar.on('click', '.terminal-calendar-day.has-inventory', function () { selectedDate = String($(this).data('date')); page = 1; renderRows(); renderCalendar(); });
-        $calendar.on('click', '.terminal-calendar-clear', function () { selectedDate = ''; page = 1; renderRows(); renderCalendar(); });
+        $calendar.on('click', '.terminal-calendar-day.has-inventory', function () { selectedDate = String($(this).data('date')); page = 1; renderRows(); renderCalendar(); $calendarLabel.text(new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })); $calendar.addClass('d-none'); $calendarToggle.attr('aria-expanded', 'false'); });
+        $calendar.on('click', '.terminal-calendar-clear', function () { selectedDate = ''; page = 1; renderRows(); renderCalendar(); $calendarLabel.text('Todas las fechas'); $calendar.addClass('d-none'); $calendarToggle.attr('aria-expanded', 'false'); });
+        $calendarToggle.on('click', function (event) { event.stopPropagation(); const open = $calendar.hasClass('d-none'); $calendar.toggleClass('d-none', !open); $(this).attr('aria-expanded', String(open)); });
+        $(document).on('click', function (event) { if (!$(event.target).closest('.terminal-date-picker').length) { $calendar.addClass('d-none'); $calendarToggle.attr('aria-expanded', 'false'); } });
         renderCalendar(); renderRows();
     }
     setupGroupBrowser();
