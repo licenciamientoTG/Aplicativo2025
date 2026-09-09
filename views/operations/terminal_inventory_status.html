@@ -4,13 +4,13 @@
 {% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
 {% block content %}
 <div class="terminal-page-header d-flex justify-content-between flex-wrap gap-3 mb-3">
-  <div><p class="text-muted mb-1">Seguimiento de captura por estación</p><span class="badge bg-light text-primary border">Semana del {{ weekStart }} al {{ weekEnd }}</span></div>
+  <div><p class="text-muted mb-1">Seguimiento de captura por estación</p><span class="badge bg-light text-primary border">Inventario del {{ inventoryDate|date('d/m/Y') }}</span></div>
   <a class="btn btn-outline-primary" href="/operations/terminal_report"><i data-feather="bar-chart-2"></i> Ver reporte de incidencias</a>
 </div>
 <div class="row g-3 mb-3">
   <div class="col-md-4"><div class="card terminal-stat terminal-stat-success"><div class="card-body"><small>Inventarios registrados</small><strong>{{ completed|length }}</strong><span>de {{ stations|length }} estaciones</span></div></div></div>
   <div class="col-md-4"><div class="card terminal-stat terminal-stat-pending"><div class="card-body"><small>Pendientes de registrar</small><strong>{{ pending|length }}</strong><span>estaciones</span></div></div></div>
-  <div class="col-md-4"><div class="card terminal-stat"><div class="card-body"><small>Avance semanal</small><strong>{{ completionRate }}%</strong><span>captura completada</span></div></div></div>
+  <div class="col-md-4"><div class="card terminal-stat"><div class="card-body"><small>Avance de captura</small><strong>{{ completionRate }}%</strong><span>captura completada</span></div></div></div>
 </div>
 <div class="card terminal-card"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="card-title mb-0">Estaciones</h5></div>

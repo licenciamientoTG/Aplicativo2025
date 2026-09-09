@@ -4,6 +4,19 @@ class MojoTerminalTicketsService {
     private const SYSTEM_FORM = 51598;
     private const VALERAS_FORM = 84607;
     private const SYSTEM_QUEUE = 53551;
+    // Valores vigentes del campo desplegable "Estacion" del formulario 84607.
+    // El título conserva el nombre del catálogo TG (incluido su número), pero
+    // Mojo sólo muestra un valor si el enviado coincide literalmente con una
+    // de estas opciones. COLOSIO queda fuera de forma intencional.
+    private const VALERAS_STATION_OPTIONS = [
+        'Gemela Grande', 'Aguascalientes', 'Malecón', 'Lerdo', 'Lopez Mateos',
+        'Gemela Chica', 'Municipio Libre', 'Aztecas', 'Misiones', 'Puerto de palos',
+        'Miguel de la madrid', 'Permuta', 'Electrolux', 'Aeronáutica', 'Custodia',
+        'Anapra', 'Parral', 'Delicias', 'Plutarco', 'Tecnologico', 'Ejercito Nacional',
+        'Satelite', 'Las fuentes', 'Clara', 'Solis', 'Santiago Troncoso', 'Jarudo',
+        'Hermanos Escobar', 'Villa Ahumada', 'El castaño', 'Travel Center', 'Picachos',
+        'Ventanas', 'San Rafael', 'Puertecito', 'Jesus mMaria', 'Gabriela Mistral', 'Praxedis',
+    ];
     private string $key;
     public function __construct() {
         $this->key = $this->loadApiKey();
@@ -37,7 +50,7 @@ class MojoTerminalTicketsService {
     public function create(array $incident, string $email, string $stationName): array {
         $valeras=$incident['type']!=='urovo';
         $payload=['title'=>'Terminal '.$incident['label'].' - '.$stationName,'description'=>$incident['description'],'ticket_queue_id'=>self::SYSTEM_QUEUE,'priority_id'=>30,'user'=>['email'=>$email]];
-        if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$stationName,'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
+        if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$this->valeraStationOption($stationName),'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
         else $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_solicitante'=>$email,'custom_field_problema'=>'Terminal Urovo'];
         return $this->request('POST','/v2/tickets',$payload);
     }
@@ -45,6 +58,19 @@ class MojoTerminalTicketsService {
         $value=trim(mb_strtolower($value,'UTF-8'));
         $value=strtr($value,['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n']);
         return preg_replace('/[^a-z0-9]/','',$value) ?? '';
+    }
+    private function valeraStationOption(string $stationName): string {
+        $withoutNumber = preg_replace('/^\s*\d+\s*[-–]?\s*/u', '', trim($stationName)) ?? '';
+        $normalized = $this->normalizeTerminal($withoutNumber);
+
+        // El propio catálogo de Mojo contiene la errata "Jesus mMaria".
+        // Se conserva ese valor como destino para que el select lo acepte.
+        $aliases = ['jesusmaria' => 'jesusmmaria'];
+        $normalized = $aliases[$normalized] ?? $normalized;
+        foreach (self::VALERAS_STATION_OPTIONS as $option) {
+            if ($this->normalizeTerminal($option) === $normalized) return $option;
+        }
+        throw new RuntimeException('La estación "'.$stationName.'" no tiene una opción equivalente en el formulario de terminales de valeras de Mojo.');
     }
     private function ticketField(array $ticket, array $keys): string {
         foreach ($keys as $key) if (isset($ticket[$key]) && !is_array($ticket[$key])) return trim((string)$ticket[$key]);
@@ -67,11 +93,11 @@ class MojoTerminalTicketsService {
             'description'=>trim((string)($ticket['description'] ?? $ticket['title'] ?? '')),
         ];
     }
-    public function validateForType(array $ticket, string $type): bool {
+    public function validateForType(array $ticket, string $type, ?string $mojoType=null): bool {
         $form=(int)($ticket['ticket_form_id'] ?? 0); if (!$this->isOpen($ticket)) return false;
         if ($type==='urovo') return $form===self::SYSTEM_FORM && $this->normalizeTerminal($this->ticketField($ticket,['custom_field_problema','problema','Problema']))==='terminalurovo';
         if ($form!==self::VALERAS_FORM) return false;
         $typeInTicket=$this->incidentDataFromTicket($ticket,$type)['type_terminal'];
-        return $this->normalizeTerminal($typeInTicket)===$this->normalizeTerminal($type);
+        return $this->normalizeTerminal($typeInTicket)===$this->normalizeTerminal($mojoType ?: $type);
     }
 }
