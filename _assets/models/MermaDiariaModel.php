@@ -954,7 +954,7 @@ class MermaDiariaModel extends Model
      */
     public function get_estaciones_ordenadas(): array
     {
-        $query = 'SELECT e.Codigo, e.Nombre, g.cveest
+        $query = 'SELECT e.Codigo, e.Nombre, e.ZonaConso, g.cveest
                   FROM [TG].[dbo].[Estaciones] e
                   LEFT JOIN [SG12].[dbo].[Gasolineras] g ON g.cod = e.Codigo
                   WHERE e.Codigo NOT IN (0, 4, 20)

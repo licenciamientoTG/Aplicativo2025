@@ -410,6 +410,35 @@ public function balance_age()
         json_output(array("data" => $data));
     }
 
+    public function client_vehicles_balance() : void {
+        $data = [];
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        if ($vehicles = $this->vehiclesModel->getVehiclesBalanceByClient($codcli)) {
+            foreach ($vehicles as $v) {
+                $data[] = [
+                    'codcli'       => $v['codcli'],
+                    'tar'          => $v['tar'],
+                    'den'          => $v['den'],
+                    'debsdo'       => $v['debsdo'],
+                    'cliente'      => $v['cliente'],
+                    'debglo'       => $v['debglo'],
+                    'saldo_global'   => $v['saldo_global'],
+                    'ultima_carga'   => $v['ultima_carga'],
+                    'ultimo_consumo' => $v['ultimo_consumo'],
+                ];
+            }
+        }
+        json_output(["data" => $data]);
+    }
+
+    public function debit_dashboard_table() : void {
+        json_output([
+            'saldo_global_negativo' => $this->clientesModel->get_debit_negative_global_balance() ?: [],
+            'vehiculos_negativos'   => $this->clientesModel->get_debit_negative_vehicle_balance() ?: [],
+            'ultima_carga'          => $this->clientesModel->get_debit_last_topup() ?: [],
+        ]);
+    }
+
     public function clients_credit_table() : void {
         $data = [];
         if ($clients = $this->clientesModel->get_clients_credit($_POST['status'] ?? 0)) {

@@ -121,10 +121,12 @@ function colClass() {
     return 'col-12';
 }
 
-function botonesAccion(id) {
+function botonesAccion(id, invoiceId) {
+    const colorFactura = invoiceId ? 'btn-outline-success' : 'btn-outline-secondary';
     return `
         <div class="d-flex gap-1 justify-content-center">
             <button type="button" class="btn btn-outline-success btn-editar-recepcion btn-accion-icono" data-id="${id}" title="Editar"><i data-feather="edit-3"></i></button>
+            <button type="button" class="btn ${colorFactura} btn-factura-recepcion btn-accion-icono" data-id="${id}" title="${invoiceId ? 'Ver factura' : 'Subir factura'}"><i data-feather="paperclip"></i></button>
             <button type="button" class="btn btn-outline-danger btn-cancelar-recepcion btn-accion-icono" data-id="${id}" title="Cancelar"><i data-feather="trash-2"></i></button>
         </div>
     `;
@@ -145,7 +147,7 @@ function formatearFilaTerminal(fila, mostrarTransportista, mostrarReferenciaNota
             <td>${esc(fila.station_nombre) || '<span class="text-muted">—</span>'}</td>
             ${celdaTransportista}
             ${celdasReferenciaNotas}
-            <td>${botonesAccion(fila.id)}</td>
+            <td>${botonesAccion(fila.id, fila.invoice_id)}</td>
         </tr>
     `;
 }
@@ -227,7 +229,7 @@ function formatearFilaEstacion(fila) {
             <td>${esc(fila.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
             <td>${esc(fila.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
             <td>${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>
-            <td>${botonesAccion(fila.id)}</td>
+            <td>${botonesAccion(fila.id, fila.invoice_id)}</td>
         </tr>
     `;
 }
@@ -246,7 +248,7 @@ function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, peso
                     <span class="badge bg-white text-dark border">${subtotal.toLocaleString('es-MX')} L</span>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm mb-0">
+                    <table class="table table-sm table-hover mb-0">
                         <thead>
                             <tr>${encabezados.map(function (h) { return '<th>' + h + '</th>'; }).join('')}</tr>
                         </thead>
@@ -450,6 +452,22 @@ function abrirModal(id, fecha, precarga) {
         });
 }
 
+function abrirModalFactura(scheduleId) {
+    $.post('/supply/scheduling_invoice_modal', { schedule_id: scheduleId })
+        .done(function (resp) {
+            if (!resp.success) {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo abrir el formulario de factura.</p></div>');
+                return;
+            }
+            $('#modalFacturaContent').html(resp.html);
+            const modal = new bootstrap.Modal(document.getElementById('modalFactura'));
+            modal.show();
+        })
+        .fail(function () {
+            alertify.myAlert('<div class="text-danger text-center"><p>No se pudo abrir el formulario de factura.</p></div>');
+        });
+}
+
 $(document).ready(function () {
     const fechaInput = $('#fecha_programacion');
 
@@ -528,6 +546,74 @@ $(document).ready(function () {
 
     $(document).on('click', '.btn-editar-recepcion', function () {
         abrirModal($(this).data('id'), fechaInput.val());
+    });
+
+    $(document).on('click', '.btn-factura-recepcion', function () {
+        abrirModalFactura($(this).data('id'));
+    });
+
+    $(document).on('click', '#btnSubirFactura', function () {
+        const boton = $(this);
+        const scheduleId = $('#factura_schedule_id').val();
+        const pdfFile = $('#factura_pdf')[0].files[0];
+        const xmlFile = $('#factura_xml')[0].files[0];
+        const errorBox = $('#facturaMensajeError');
+
+        errorBox.hide().text('');
+
+        if (!pdfFile || !xmlFile) {
+            errorBox.text('Selecciona ambos archivos (PDF y XML).').show();
+            return;
+        }
+
+        const datos = new FormData();
+        datos.append('schedule_id', scheduleId);
+        datos.append('pdf', pdfFile);
+        datos.append('xml', xmlFile);
+
+        boton.prop('disabled', true);
+
+        $.ajax({
+            url: '/supply/scheduling_upload_invoice',
+            method: 'POST',
+            data: datos,
+            processData: false,
+            contentType: false,
+        })
+            .done(function (resp) {
+                if (!resp.success) {
+                    errorBox.text(resp.message || 'No se pudo guardar la factura.').show();
+                    return;
+                }
+                bootstrap.Modal.getInstance(document.getElementById('modalFactura')).hide();
+                if (resp.advertencia_rfc) {
+                    alertify.myAlert('<div class="text-warning text-center"><p>' + esc(resp.advertencia_rfc) + '</p></div>');
+                }
+                cargarDia($('#fecha_programacion').val());
+            })
+            .fail(function () {
+                errorBox.text('No se pudo guardar la factura.').show();
+            })
+            .always(function () {
+                boton.prop('disabled', false);
+            });
+    });
+
+    $(document).on('click', '#btnReemplazarFactura', function () {
+        const scheduleId = $('#factura_schedule_id').val();
+        if (!confirm('¿Quitar la factura vinculada a esta recepción? La factura seguirá existiendo en el sistema, solo se quita el vínculo.')) return;
+        $.post('/supply/scheduling_invoice_unlink', { schedule_id: scheduleId })
+            .done(function (resp) {
+                if (!resp.success) {
+                    alertify.myAlert('<div class="text-danger text-center"><p>No se pudo quitar el vínculo.</p></div>');
+                    return;
+                }
+                abrirModalFactura(scheduleId);
+                cargarDia($('#fecha_programacion').val());
+            })
+            .fail(function () {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo quitar el vínculo.</p></div>');
+            });
     });
 
     $(document).on('click', '.btn-agregar-en-grupo', function () {

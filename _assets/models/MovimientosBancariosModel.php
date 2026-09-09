@@ -555,10 +555,61 @@ class MovimientosBancariosModel extends Model
             $errores[] = 'Archivo vacío o sin cabecera de Afirme';
         }
 
-        // El id de BD debe conservar el orden de aplicación al saldo
-        usort($movimientos, fn($a, $b) => [$a['cuenta'], $a['secuencia']] <=> [$b['cuenta'], $b['secuencia']]);
+        // Normalmente secuencia ascendente = orden cronológico ascendente
+        // (fila con secuencia menor es la más vieja), pero el export de
+        // 2026-09-08 llegó con la secuencia invertida (secuencia 0 era el
+        // movimiento más reciente, no el más antiguo) sin avisar del cambio
+        // de layout. Se detecta por cuenta probando cuál de los dos órdenes
+        // hace que la cadena de saldos cierre mejor — ver
+        // orden_secuencia_afirme().
+        $porCuenta = [];
+        foreach ($movimientos as $m) $porCuenta[$m['cuenta']][] = $m;
+
+        $movimientos = [];
+        foreach ($porCuenta as $lista) {
+            $movimientos = array_merge($movimientos, self::orden_secuencia_afirme($lista));
+        }
 
         return ['movimientos' => $movimientos, 'errores' => $errores];
+    }
+
+    /**
+     * Ordena los movimientos de UNA cuenta de Afirme por secuencia. La
+     * secuencia NO es un consecutivo global que cruza días como decía el
+     * docblock original de parse_afirme_tsv: se reinicia periódicamente
+     * (visto en la cuenta 11621009097 — cada archivo, e incluso cada día
+     * dentro de un mismo archivo, puede volver a empezar en 0/1). Ordenar
+     * toda la cuenta junta por secuencia global mezcla movimientos de fechas
+     * distintas que casualmente comparten número de secuencia.
+     *
+     * Se ordena entonces por fecha (que sí es confiable) y, DENTRO de cada
+     * fecha, por secuencia en la dirección (ascendente o descendente) que
+     * haga que la cadena de saldos de ese día tenga menos roturas. Con 2 o
+     * menos movimientos en el día no hay suficiente cadena para decidir: se
+     * deja ascendente.
+     *
+     * @param array[] $lista movimientos de una sola cuenta, cualquier orden
+     * @return array[] la misma lista, por fecha asc y secuencia en la dirección ganadora dentro de cada fecha
+     */
+    private static function orden_secuencia_afirme(array $lista): array
+    {
+        $porFecha = [];
+        foreach ($lista as $m) $porFecha[$m['fecha']][] = $m;
+        ksort($porFecha);
+
+        $resultado = [];
+        foreach ($porFecha as $dia) {
+            $asc = $dia;
+            usort($asc, fn($a, $b) => $a['secuencia'] <=> $b['secuencia']);
+            if (count($asc) > 2) {
+                $desc      = array_reverse($asc);
+                $rotasAsc  = count(self::roturas_cadena_saldos($asc));
+                $rotasDesc = count(self::roturas_cadena_saldos($desc));
+                if ($rotasDesc < $rotasAsc) $asc = $desc;
+            }
+            $resultado = array_merge($resultado, $asc);
+        }
+        return $resultado;
     }
 
     /**
@@ -2383,9 +2434,11 @@ class MovimientosBancariosModel extends Model
         }
 
         $insertados = $duplicados = 0;
-        // cuenta+fecha de Santander tocadas en este insert: al terminar se
-        // renumera orden_dia solo para esas (ver recalcula_orden_dia_santander).
+        // cuenta+fecha de Santander/Afirme tocadas en este insert: al terminar
+        // se renumera orden_dia solo para esas (ver
+        // recalcula_orden_dia_santander / recalcula_orden_dia_afirme).
         $diasSantander = [];
+        $diasAfirme    = [];
         $this->sql->beginTransaction();
         try {
             foreach ($movimientos as $m) {
@@ -2417,12 +2470,18 @@ class MovimientosBancariosModel extends Model
                     ]
                 );
                 $insertados++;
-                if (strtoupper(trim((string)$m['banco'])) === 'SANTANDER') {
+                $banco = strtoupper(trim((string)$m['banco']));
+                if ($banco === 'SANTANDER') {
                     $diasSantander[$m['cuenta'] . '|' . $m['fecha']] = [$m['cuenta'], $m['fecha']];
+                } elseif ($banco === 'AFIRME') {
+                    $diasAfirme[$m['cuenta'] . '|' . $m['fecha']] = [$m['cuenta'], $m['fecha']];
                 }
             }
             foreach ($diasSantander as [$cuenta, $fecha]) {
                 self::recalcula_orden_dia_santander($this->sql, $cuenta, $fecha);
+            }
+            foreach ($diasAfirme as [$cuenta, $fecha]) {
+                self::recalcula_orden_dia_afirme($this->sql, $cuenta, $fecha);
             }
             $this->sql->commit();
         } catch (Exception $e) {
@@ -2461,6 +2520,68 @@ class MovimientosBancariosModel extends Model
              ) d ON d.id = m.id;",
             [$cuenta, $fecha]
         );
+    }
+
+    /**
+     * Renumera orden_dia para una cuenta+fecha de Afirme después de insertar
+     * movimientos nuevos ahí: normalmente el id de inserción ya coincide con
+     * el orden cronológico (secuencia ascendente = orden de aplicación al
+     * saldo, ver parse_afirme_tsv), pero el export puede llegar con la
+     * secuencia invertida sin avisar (visto por primera vez 2026-09-08 —
+     * ver orden_secuencia_afirme). Mismo criterio aquí: se prueban ambas
+     * direcciones de secuencia sobre lo que ya quedó en BD ese día y se usa
+     * la que tenga menos roturas en la cadena de saldos.
+     */
+    private static function recalcula_orden_dia_afirme($db, string $cuenta, string $fecha): void
+    {
+        $filas = $db->select(
+            "SELECT id, secuencia, cargo, abono, saldo
+             FROM [TG].[dbo].[movimientos_bancarios]
+             WHERE banco = 'AFIRME' AND cuenta = ? AND fecha = ? AND secuencia IS NOT NULL
+             ORDER BY id;",
+            [$cuenta, $fecha]
+        ) ?: [];
+        if (count($filas) < 2) return;
+
+        foreach ($filas as &$f) {
+            $f['cargo'] = $f['cargo'] !== null ? (float)$f['cargo'] : null;
+            $f['abono'] = $f['abono'] !== null ? (float)$f['abono'] : null;
+            $f['saldo'] = (float)$f['saldo'];
+        }
+        unset($f);
+
+        $ordenado = self::orden_secuencia_afirme($filas);
+
+        $rn = 1;
+        foreach ($ordenado as $f) {
+            $db->update(
+                'UPDATE [TG].[dbo].[movimientos_bancarios] SET orden_dia = ? WHERE id = ?;',
+                [$rn, $f['id']]
+            );
+            $rn++;
+        }
+    }
+
+    /**
+     * Aplica recalcula_orden_dia_afirme() a las fechas indicadas de una
+     * cuenta. Expone bajo demanda, desde el botón "Corregir" del card
+     * "¿Faltan movimientos de Afirme?" (ver huecos_afirme), el mismo
+     * recálculo que insert_bulk ya hace automáticamente para las cuentas
+     * tocadas por un import — para las que quedaron mal alineadas por
+     * haberse importado antes de que ese fix existiera.
+     *
+     * @param string[] $fechas 'Y-m-d'
+     * @return int cuántas fechas se recalcularon
+     */
+    public function corregir_orden_afirme(string $cuenta, array $fechas): int
+    {
+        $n = 0;
+        foreach (array_unique($fechas) as $fecha) {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) continue;
+            self::recalcula_orden_dia_afirme($this->sql, $cuenta, $fecha);
+            $n++;
+        }
+        return $n;
     }
 
     /**
@@ -2618,10 +2739,75 @@ class MovimientosBancariosModel extends Model
      */
     public function huecos_santander(string $desde, string $hasta, ?array $cuentasPermitidas = null): array
     {
+        return $this->huecos_por_banco('SANTANDER', $desde, $hasta, $cuentasPermitidas);
+    }
+
+    /**
+     * Mismo diagnóstico que huecos_santander() pero para Afirme, con un paso
+     * extra: cada cuenta+fecha con roturas se vuelve a probar con el orden
+     * alternativo de secuencia (ver orden_secuencia_afirme) antes de
+     * reportarla. Si ese reorden elimina las roturas, el día quedó así
+     * porque se importó antes del fix de recalcula_orden_dia_afirme (o algo
+     * más lo desalineó) — es "orden de import", no un movimiento faltante,
+     * y se marca 'corregible' => true para que la vista ofrezca corregirlo
+     * con un clic en vez de alarmar como si faltara un archivo del banco.
+     * Las roturas que persisten en ambos órdenes si son la señal real de
+     * posible movimiento faltante (o, como en la cuenta 11621009097, una
+     * colisión de secuencia entre dos exports distintos del mismo día).
+     */
+    public function huecos_afirme(string $desde, string $hasta, ?array $cuentasPermitidas = null): array
+    {
+        $resultado = $this->huecos_por_banco('AFIRME', $desde, $hasta, $cuentasPermitidas);
+        foreach ($resultado as &$cuenta) {
+            $cuenta['corregible'] = $this->afirme_rotura_es_de_orden($cuenta['cuenta'], $cuenta['roturas']);
+        }
+        unset($cuenta);
+        return $resultado;
+    }
+
+    /**
+     * true si TODAS las fechas con rotura de esta cuenta dejan de tener
+     * rotura al reordenar su secuencia con orden_secuencia_afirme (o sea:
+     * un recalcula_orden_dia_afirme() las arreglaría). Si alguna fecha sigue
+     * rota en ambos órdenes, no es solo un problema de orden y se reporta
+     * como posible movimiento faltante de verdad.
+     */
+    private function afirme_rotura_es_de_orden(string $cuenta, array $roturas): bool
+    {
+        $fechas = array_unique(array_column($roturas, 'fecha'));
+        foreach ($fechas as $fecha) {
+            $filas = $this->sql->select(
+                'SELECT secuencia, cargo, abono, saldo
+                 FROM [TG].[dbo].[movimientos_bancarios]
+                 WHERE banco = \'AFIRME\' AND cuenta = ? AND fecha = ? AND secuencia IS NOT NULL',
+                [$cuenta, $fecha]
+            ) ?: [];
+            if (count($filas) < 2) return false;
+
+            foreach ($filas as &$f) {
+                $f['cargo'] = $f['cargo'] !== null ? (float)$f['cargo'] : null;
+                $f['abono'] = $f['abono'] !== null ? (float)$f['abono'] : null;
+                $f['saldo'] = (float)$f['saldo'];
+            }
+            unset($f);
+
+            if (self::roturas_cadena_saldos(self::orden_secuencia_afirme($filas))) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Implementación común de huecos_santander()/huecos_afirme(): recorre
+     * cada cuenta del banco con movimientos en el rango, en el orden real de
+     * aplicación al saldo (fecha + orden_dia, o id si no hay orden_dia), y
+     * reporta las que tienen roturas en su cadena de saldos.
+     */
+    private function huecos_por_banco(string $banco, string $desde, string $hasta, ?array $cuentasPermitidas = null): array
+    {
         if ($cuentasPermitidas !== null && !$cuentasPermitidas) return [];
 
-        $where  = "WHERE m.banco = 'SANTANDER' AND m.fecha BETWEEN ? AND ?";
-        $params = [$desde, $hasta];
+        $where  = 'WHERE m.banco = ? AND m.fecha BETWEEN ? AND ?';
+        $params = [$banco, $desde, $hasta];
         if ($cuentasPermitidas !== null) {
             $ph      = implode(',', array_fill(0, count($cuentasPermitidas), '?'));
             $where  .= " AND m.cuenta IN ($ph)";

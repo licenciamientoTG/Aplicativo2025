@@ -1,0 +1,22 @@
+<input type="hidden" id="factura_schedule_id" value="{{ scheduleId }}">
+<div class="modal-body">
+    <div class="row mb-2">
+        <div class="col-6"><strong>Folio:</strong> {{ factura.Folio|default('—') }}</div>
+        <div class="col-6"><strong>Fecha:</strong> {{ factura.Fecha|date('Y-m-d') }}</div>
+    </div>
+    <div class="row mb-2">
+        <div class="col-12"><strong>Emisor:</strong> {{ factura.EmisorNombre }} ({{ factura.EmisorRfc }})</div>
+    </div>
+    <div class="row mb-2">
+        <div class="col-6"><strong>Total:</strong> ${{ factura.Total|number_format(2) }}</div>
+        <div class="col-6"><strong>UUID:</strong> <small>{{ factura.UUID }}</small></div>
+    </div>
+    <div class="d-flex gap-2 mt-3">
+        <a href="/supply/scheduling_invoice_file?invoice_id={{ factura.Id }}&tipo=pdf" target="_blank" class="btn btn-outline-secondary btn-sm">Ver PDF</a>
+        <a href="/supply/scheduling_invoice_file?invoice_id={{ factura.Id }}&tipo=xml" target="_blank" class="btn btn-outline-secondary btn-sm">Ver XML</a>
+    </div>
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-outline-danger" id="btnReemplazarFactura">Reemplazar factura</button>
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+</div>

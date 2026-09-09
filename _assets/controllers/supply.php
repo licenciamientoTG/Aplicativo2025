@@ -56,6 +56,7 @@ class Supply
     public CrePricesModel $crePricesModel;
     public PetrotalReconciliationModel $petrotalReconciliationModel;
     public FuelReceptionScheduleModel $fuelReceptionScheduleModel;
+    public FuelReceptionInvoiceModel $fuelReceptionInvoiceModel;
     public FuelTerminalsModel $fuelTerminalsModel;
     public FuelCarriersModel $fuelCarriersModel;
     /**
@@ -90,6 +91,7 @@ class Supply
         $this->crePricesModel                                    = new CrePricesModel();
         $this->petrotalReconciliationModel                       = new PetrotalReconciliationModel;
         $this->fuelReceptionScheduleModel = new FuelReceptionScheduleModel();
+        $this->fuelReceptionInvoiceModel = new FuelReceptionInvoiceModel();
         $this->fuelTerminalsModel = new FuelTerminalsModel();
         $this->fuelCarriersModel = new FuelCarriersModel();
     }
@@ -2719,6 +2721,13 @@ class Supply
         }
         $fecha = $_REQUEST['fecha'] ?? date('Y-m-d', strtotime('+1 day'));
         $filas = $this->fuelReceptionScheduleModel->get_day($fecha);
+
+        $vinculos = $this->fuelReceptionInvoiceModel->obtenerVinculosPorScheduleId();
+        foreach ($filas as &$fila) {
+            $fila['invoice_id'] = $vinculos[(int)$fila['id']] ?? null;
+        }
+        unset($fila);
+
         json_output(['data' => $filas]);
     }
 
@@ -2853,6 +2862,209 @@ class Supply
             'registro', 'fecha', 'proveedores', 'estaciones', 'terminales', 'transportistas'
         ));
         json_output(['success' => true, 'html' => $html]);
+    }
+
+    public function scheduling_invoice_modal()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+
+        $scheduleId = (int)($_POST['schedule_id'] ?? 0);
+        if ($scheduleId <= 0) {
+            json_output(['success' => false, 'message' => 'Falta el id de la recepción']);
+            return;
+        }
+
+        $factura = $this->fuelReceptionInvoiceModel->obtenerFacturaDeRecepcion($scheduleId);
+
+        if ($factura) {
+            $html = $this->twig->render($this->route . 'modals/verFacturaRecepcion.html', [
+                'scheduleId' => $scheduleId,
+                'factura' => $factura,
+            ]);
+        } else {
+            $html = $this->twig->render($this->route . 'modals/frmFacturaRecepcion.html', [
+                'scheduleId' => $scheduleId,
+            ]);
+        }
+
+        json_output(['success' => true, 'html' => $html]);
+    }
+
+    public function scheduling_upload_invoice()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+
+        $scheduleId = (int)($_POST['schedule_id'] ?? 0);
+        if ($scheduleId <= 0) {
+            json_output(['success' => false, 'message' => 'Falta el id de la recepción']);
+            return;
+        }
+
+        $recepcion = $this->fuelReceptionScheduleModel->get_one($scheduleId);
+        if (!$recepcion) {
+            json_output(['success' => false, 'message' => 'La recepción no existe']);
+            return;
+        }
+
+        if (!isset($_FILES['pdf']) || $_FILES['pdf']['error'] !== UPLOAD_ERR_OK) {
+            json_output(['success' => false, 'message' => 'Falta el archivo PDF']);
+            return;
+        }
+        if (!isset($_FILES['xml']) || $_FILES['xml']['error'] !== UPLOAD_ERR_OK) {
+            json_output(['success' => false, 'message' => 'Falta el archivo XML']);
+            return;
+        }
+
+        $maxSize = 10 * 1024 * 1024;
+        if ($_FILES['pdf']['size'] > $maxSize || $_FILES['xml']['size'] > $maxSize) {
+            json_output(['success' => false, 'message' => 'Cada archivo debe pesar máximo 10MB']);
+            return;
+        }
+        if (mime_content_type($_FILES['pdf']['tmp_name']) !== 'application/pdf') {
+            json_output(['success' => false, 'message' => 'El primer archivo debe ser un PDF válido']);
+            return;
+        }
+        if (pathinfo($_FILES['xml']['name'], PATHINFO_EXTENSION) !== 'xml') {
+            json_output(['success' => false, 'message' => 'El segundo archivo debe ser un XML']);
+            return;
+        }
+
+        try {
+            $parseado = $this->fuelReceptionInvoiceModel->parseCfdiXml($_FILES['xml']['tmp_name']);
+        } catch (Exception $e) {
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+            return;
+        }
+
+        $advertenciaRfc = null;
+        $proveedorPorRfc = $this->fuelReceptionInvoiceModel->resolverProveedorPorRfc($parseado['factura']['EmisorRfc'] ?? '');
+        if (!$proveedorPorRfc || (int)$proveedorPorRfc['id'] !== (int)$recepcion['supplier_id']) {
+            $advertenciaRfc = 'El RFC del emisor de la factura no coincide con el proveedor de esta recepción. Se guardó de todas formas.';
+        }
+
+        $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        $existente = $this->fuelReceptionInvoiceModel->buscarPorUuid($parseado['factura']['UUID']);
+
+        if ($existente) {
+            $invoiceId = (int)$existente['Id'];
+            $yaExistia = true;
+        } else {
+            $carpeta = $this->fuelReceptionInvoiceModel->carpetaDeProveedor((int)$recepcion['supplier_id']);
+            if (!$carpeta) {
+                json_output(['success' => false, 'message' => 'No se reconoce el proveedor de esta recepción para archivar la factura']);
+                return;
+            }
+
+            try {
+                $invoiceId = $this->fuelReceptionInvoiceModel->insertarFactura($parseado['factura'], $parseado['conceptos']);
+                $rutas = $this->fuelReceptionInvoiceModel->guardarArchivos(
+                    $carpeta, $parseado['factura']['UUID'], $_FILES['pdf']['tmp_name'], $_FILES['xml']['tmp_name']
+                );
+                $this->fuelReceptionInvoiceModel->actualizarArchivos($invoiceId, $rutas);
+            } catch (Exception $e) {
+                json_output(['success' => false, 'message' => 'No se pudo guardar la factura: ' . $e->getMessage()]);
+                return;
+            }
+            $yaExistia = false;
+        }
+
+        $this->fuelReceptionInvoiceModel->vincular($scheduleId, $invoiceId, $userId);
+
+        json_output([
+            'success' => true,
+            'invoice_id' => $invoiceId,
+            'ya_existia' => $yaExistia,
+            'advertencia_rfc' => $advertenciaRfc,
+        ]);
+    }
+
+    public function scheduling_invoice_unlink()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $scheduleId = (int)($_POST['schedule_id'] ?? 0);
+        if ($scheduleId <= 0) {
+            json_output(['success' => false, 'message' => 'Falta el id de la recepción']);
+            return;
+        }
+        $this->fuelReceptionInvoiceModel->desvincular($scheduleId);
+        json_output(['success' => true]);
+    }
+
+    public function scheduling_invoice_file()
+    {
+        if (!authorized(95)) {
+            http_response_code(403);
+            echo 'No autorizado';
+            return;
+        }
+
+        $invoiceId = (int)($_GET['invoice_id'] ?? 0);
+        $tipo = $_GET['tipo'] ?? '';
+        if ($invoiceId <= 0 || !in_array($tipo, ['pdf', 'xml'], true)) {
+            http_response_code(400);
+            echo 'Parámetros inválidos';
+            return;
+        }
+
+        $db = MySqlPdoHandler::getInstance();
+        $rows = $db->select(
+            'SELECT RutaArchivo, RutaXml FROM TG.dbo.FacturasRecibidas WHERE Id = ?',
+            [$invoiceId]
+        );
+        $factura = $rows[0] ?? null;
+        $ruta = $tipo === 'pdf' ? ($factura['RutaArchivo'] ?? null) : ($factura['RutaXml'] ?? null);
+
+        if (!$factura || !$ruta) {
+            http_response_code(404);
+            echo 'Archivo no encontrado';
+            return;
+        }
+
+        // Normaliza separadores (Windows)
+        $ruta = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $ruta);
+        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
+
+        // El importador guardaba rutas absolutas (C:\...), pero algunas facturas
+        // llegan con ruta relativa (attachments\...\...). Si no es absoluta (no
+        // empieza con letra de unidad tipo "C:\"), se antepone la carpeta base
+        // donde el importador escribe los adjuntos.
+        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
+            $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
+        }
+
+        // Seguridad: restringir a un directorio base permitido
+        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
+        $real = realpath($ruta);
+
+        if ($real === false || strpos($real, $baseAllowed) !== 0) {
+            http_response_code(403);
+            echo 'Acceso al archivo denegado.';
+            return;
+        }
+
+        if (!file_exists($real) || !is_readable($real)) {
+            http_response_code(404);
+            echo 'Archivo no encontrado o no legible.';
+            return;
+        }
+
+        $mime = $tipo === 'pdf' ? 'application/pdf' : 'text/xml';
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . basename($real) . '"');
+        header('Content-Length: ' . filesize($real));
+        readfile($real);
     }
 
     public function scheduling_add_terminal()
