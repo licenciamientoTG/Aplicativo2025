@@ -110,9 +110,8 @@ $(function () {
         const $pagination = $('<div class="terminal-report-pagination" aria-label="Paginación de fechas"></div>');
         $('.terminal-tree-wrap').after($pagination);
         const $count = $('<div class="terminal-report-result-count"></div>').insertBefore($pagination);
-        const $search = $('#terminalGroupSearch');
-        const $date = $('#terminalGroupDate');
         const $calendar = $('#terminalInventoryCalendar');
+        let selectedDate = '';
         let calendarMonth = new Date((dates[dates.length - 1] || new Date().toISOString().slice(0, 10)) + 'T12:00:00');
         calendarMonth.setDate(1);
         const monthName = date => date.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
@@ -125,9 +124,9 @@ $(function () {
             for (let i = 0; i < offset; i++) html += '<span class="terminal-calendar-empty"></span>';
             for (let day = 1; day <= lastDay; day++) {
                 const key = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-                html += '<button type="button" class="terminal-calendar-day ' + (dateSet.has(key) ? 'has-inventory' : '') + '" data-date="' + key + '" ' + (dateSet.has(key) ? '' : 'disabled') + '>' + day + '</button>';
+                html += '<button type="button" class="terminal-calendar-day ' + (dateSet.has(key) ? 'has-inventory' : '') + (selectedDate === key ? ' is-selected' : '') + '" data-date="' + key + '" ' + (dateSet.has(key) ? '' : 'disabled') + '>' + day + '</button>';
             }
-            $calendar.html(html + '</div>');
+            $calendar.html(html + '</div><button type="button" class="terminal-calendar-clear">Mostrar todas las fechas</button>');
             if (window.feather) feather.replace();
         }
         function renderPagination(totalPages) {
@@ -136,10 +135,9 @@ $(function () {
             $pagination.html(html);
         }
         function renderRows() {
-            const query = ($search.val() || '').toString().trim().toLowerCase();
             const filtered = $rows.filter(function () {
                 const rowDate = String($(this).data('date'));
-                return !query || rowDate.includes(query) || $(this).find('td:first').text().toLowerCase().includes(query);
+                return !selectedDate || rowDate === selectedDate;
             });
             const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
             page = Math.min(page, totalPages);
@@ -151,14 +149,12 @@ $(function () {
             $count.text(filtered.length + ' fecha' + (filtered.length === 1 ? '' : 's') + ' con inventario');
             renderPagination(totalPages);
         }
-        $search.on('input', function () { page = 1; renderRows(); });
-        $date.on('change', function () { $search.val(this.value); page = 1; renderRows(); if (this.value) { calendarMonth = new Date(this.value + 'T12:00:00'); calendarMonth.setDate(1); renderCalendar(); } });
-        $('#clearTerminalGroupSearch').on('click', function () { $search.val(''); $date.val(''); page = 1; renderRows(); });
         $pagination.on('click', '.report-page-prev', function () { if (page > 1) { page--; renderRows(); } });
-        $pagination.on('click', '.report-page-next', function () { const total = Math.ceil($rows.filter(function () { return !$search.val() || String($(this).data('date')).includes($search.val()); }).length / pageSize); if (page < total) { page++; renderRows(); } });
+        $pagination.on('click', '.report-page-next', function () { const total = Math.ceil($rows.filter(function () { return !selectedDate || String($(this).data('date')) === selectedDate; }).length / pageSize); if (page < total) { page++; renderRows(); } });
         $calendar.on('click', '.calendar-prev', function () { calendarMonth.setMonth(calendarMonth.getMonth() - 1); renderCalendar(); });
         $calendar.on('click', '.calendar-next', function () { calendarMonth.setMonth(calendarMonth.getMonth() + 1); renderCalendar(); });
-        $calendar.on('click', '.terminal-calendar-day.has-inventory', function () { $date.val($(this).data('date')).trigger('change'); });
+        $calendar.on('click', '.terminal-calendar-day.has-inventory', function () { selectedDate = String($(this).data('date')); page = 1; renderRows(); renderCalendar(); });
+        $calendar.on('click', '.terminal-calendar-clear', function () { selectedDate = ''; page = 1; renderRows(); renderCalendar(); });
         renderCalendar(); renderRows();
     }
     setupGroupBrowser();

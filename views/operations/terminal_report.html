@@ -20,11 +20,7 @@
   <div class="tab-content">
     <div class="tab-pane fade {{ selectedTab == 'inventories' ? 'show active' : '' }}" id="inventories-panel" role="tabpanel">
       <div class="terminal-tree-hint mb-3"><i data-feather="info"></i><span>Expande una fecha, después una estación y por último un tipo de terminal para consultar los tickets vinculados.</span></div>
-      <div class="terminal-report-controls mb-3">
-        <div class="terminal-report-search"><label for="terminalGroupSearch">Buscar fecha</label><div class="input-group"><span class="input-group-text"><i data-feather="search"></i></span><input id="terminalGroupSearch" class="form-control" type="search" placeholder="Escribe una fecha…"><button id="clearTerminalGroupSearch" class="btn btn-light" type="button">Limpiar</button></div></div>
-        <div class="terminal-report-date-filter"><label for="terminalGroupDate">Ir a fecha</label><input id="terminalGroupDate" class="form-control" type="date"></div>
-        <div id="terminalInventoryCalendar" class="terminal-inventory-calendar" aria-label="Calendario de inventarios"></div>
-      </div>
+      <div class="terminal-report-controls mb-3"><div id="terminalInventoryCalendar" class="terminal-inventory-calendar" aria-label="Calendario de inventarios"></div></div>
       <div class="table-responsive terminal-tree-wrap"><table class="table terminal-tree-table mb-0"><thead><tr><th>Fecha de inventario</th><th class="text-center">Estaciones</th><th class="text-center">Total terminales</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th></tr></thead><tbody id="terminalReportGroups">
       {% for group in groups %}
         <tr class="terminal-date-row is-expandable" data-date="{{ group.fecha_inventario|date('Y-m-d') }}" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span><strong>{{ group.fecha_inventario|date('d/m/Y') }}</strong></td><td class="text-center"><span class="terminal-summary-value">{{ group.estaciones_capturadas }}/38</span></td><td class="text-center"><span class="terminal-summary-value">{{ group.funcionando + group.danadas }}</span></td><td class="text-center"><span class="terminal-summary-value">{{ group.funcionando }}</span></td><td class="text-center"><span class="terminal-summary-value {{ group.danadas ? 'is-damaged' : '' }}">{{ group.danadas }}</span></td></tr>
