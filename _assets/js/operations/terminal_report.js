@@ -162,11 +162,22 @@ $(function () {
         renderCalendar(); renderRows();
     }
     setupGroupBrowser();
-    if ($('#terminalReportTable').length) $('#terminalReportTable').DataTable({
+    if ($('#terminalReportTable').length) {
+        const filterLabels = ['Estación', 'Terminal', 'Ticket', 'Folio', 'Apertura', 'Días', 'Estado', 'Cierre'];
+        const filterRow = '<tr class="terminal-column-filters">' + filterLabels.map(label => '<th><input type="search" placeholder="' + label + '" aria-label="Filtrar por ' + label + '"></th>').join('') + '</tr>';
+        $('#terminalReportTable thead tr:first').after(filterRow);
+        const incidenceTable = $('#terminalReportTable').DataTable({
         pageLength: 25,
         searching: true,
+        orderCellsTop: true,
         columnDefs: [{ targets: 5, type: 'num' }],
-        dom: '<"terminal-dt-toolbar"lf>t<"terminal-dt-footer"ip>',
-        language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json', search: 'Buscar:', searchPlaceholder: 'Estación, terminal, ticket…' }
-    });
+        dom: '<"terminal-dt-toolbar"l>t<"terminal-dt-footer"ip>',
+        language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' }
+        });
+        $('#terminalReportTable thead tr.terminal-column-filters th').each(function (index) {
+            $('input', this).on('keyup change clear', function () {
+                if (incidenceTable.column(index).search() !== this.value) incidenceTable.column(index).search(this.value).draw();
+            });
+        });
+    }
 });
