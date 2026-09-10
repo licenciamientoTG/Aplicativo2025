@@ -176,7 +176,7 @@ class EfcConciliacionModel {
         try {
             $created=[];
             foreach ($turns as $turn) {
-                $key=trim((string)($turn['id']??$turn['source_key']??'')); $date=trim((string)($turn['date']??'')); $turnNo=trim((string)($turn['turn']??'')); $concept=trim(strtoupper((string)($turn['currency']??''))); $amount=(float)($turn['amount']??0);
+                $key=trim((string)($turn['source_key']??$turn['id']??'')); $date=trim((string)($turn['date']??'')); $turnNo=trim((string)($turn['turn']??'')); $concept=trim(strtoupper((string)($turn['currency']??''))); $amount=(float)($turn['amount']??0);
                 if (!$key || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || $turnNo==='' || !in_array($concept,['MN','MORRALLA','USD'],true) || $amount<=0) throw new RuntimeException('Datos de turno inválidos.');
                 $origin=substr($date,0,7); $destination=(new DateTimeImmutable($date))->modify('+1 month')->format('Y-m'); $this->assertOpen($stationId,$date,$concept);
                 $check=$this->db->prepare("SELECT TOP 1 id FROM dbo.efc_conc_transitos WHERE estacion_id=? AND clave_externa=? AND estado='PENDIENTE'"); $check->execute([$stationId,$key]); if($check->fetchColumn()) throw new RuntimeException('Uno de los turnos ya tiene un tránsito activo.');
