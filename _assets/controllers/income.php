@@ -6469,7 +6469,12 @@ public function stamped_invoices_detail(): void
     }
     public function efc_conc_transito_cancelar(): void {
         ob_clean(); header('Content-Type: application/json');
-        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->cancelTransit((int)($data['id']??0),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $reconciliations=$this->efcConciliacion->cancelTransit((int)($data['id']??0),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','reconciliations'=>$reconciliations]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+    public function efc_conc_transitos_cancelar_mes(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $result=$this->efcConciliacion->cancelTransitsForMonth((int)($data['station_id']??0),(int)($data['year']??0),(int)($data['month']??0),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','data'=>$result]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
     public function efc_conc_cierre_estado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->closureState((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),strtoupper((string)($_GET['concepto']??'')))]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }

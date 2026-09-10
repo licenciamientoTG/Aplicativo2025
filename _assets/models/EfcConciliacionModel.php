@@ -160,10 +160,12 @@ class EfcConciliacionModel {
         $origin = sprintf('%04d-%02d', $year, $month);
         $next = (new DateTimeImmutable($origin . '-01'))->modify('+1 month')->format('Y-m');
         $stmt = $this->db->prepare("SELECT id,estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion FROM dbo.efc_conc_transitos WHERE estacion_id=? AND estado='PENDIENTE' AND (mes_origen=? OR mes_destino=?) ORDER BY fecha_origen,turno,concepto,id");
-        $stmt->execute([$stationId, $origin, $origin]);
+        $stmt->execute([$stationId, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
         $outgoing=[]; $incoming=[];
-        while ($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($rows as $row) {
             $item=['id'=>(int)$row['id'],'station_id'=>(int)$row['estacion_id'],'source_key'=>(string)$row['clave_externa'],'date'=>$this->dateValue($row['fecha_origen']),'origin_month'=>(string)$row['mes_origen'],'destination_month'=>(string)$row['mes_destino'],'turn'=>(string)$row['turno'],'currency'=>(string)$row['concepto'],'amount'=>(float)$row['importe'],'status'=>(string)$row['estado'],'description'=>(string)($row['descripcion']??'')];
+            $item['reconciliation_ids']=$this->transitGroupIds($item['id'],$item['source_key']);
+            $item['is_reconciled']=count($item['reconciliation_ids'])>0;
             if ($row['mes_origen']===$origin) $outgoing[]=$item;
             if ($row['mes_destino']===$origin) $incoming[]=$item;
         }
@@ -188,11 +190,33 @@ class EfcConciliacionModel {
         } catch(Throwable $e) { $this->db->rollBack(); throw $e; }
     }
 
-    public function cancelTransit(int $id, int $userId): void {
+    public function cancelTransit(int $id, int $userId): int {
         if (!$id) throw new RuntimeException('Tránsito inválido.');
         $stmt=$this->db->prepare("SELECT * FROM dbo.efc_conc_transitos WHERE id=? AND estado='PENDIENTE'"); $stmt->execute([$id]); $transit=$stmt->fetch(PDO::FETCH_ASSOC); if(!$transit) throw new RuntimeException('El tránsito no existe o ya fue cancelado.');
-        $linked=$this->db->prepare("SELECT TOP 1 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa IN (?,?) AND P.activo=1 AND G.estado='ACTIVA'"); $linked->execute([$transit['clave_externa'],'TR:'.$id]); if($linked->fetchColumn()) throw new RuntimeException('No se puede deshacer: el turno ya fue conciliado.');
-        $upd=$this->db->prepare("UPDATE dbo.efc_conc_transitos SET estado='CANCELADO',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='PENDIENTE'"); $upd->execute([$userId,$id]);
+        $this->db->beginTransaction();
+        try {
+            $groups=$this->transitGroupIds($id,(string)$transit['clave_externa']);
+            foreach($groups as $groupId)$this->cancelGroup($groupId,$userId);
+            $upd=$this->db->prepare("UPDATE dbo.efc_conc_transitos SET estado='CANCELADO',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='PENDIENTE'"); $upd->execute([$userId,$id]);
+            $this->db->commit(); return count($groups);
+        } catch(Throwable $e) { $this->db->rollBack(); throw $e; }
+    }
+
+    public function cancelTransitsForMonth(int $stationId, int $year, int $month, int $userId): array {
+        if (!$stationId || $year<2020 || $month<1 || $month>12) throw new RuntimeException('Periodo o estación inválidos.');
+        $origin=sprintf('%04d-%02d',$year,$month);
+        $stmt=$this->db->prepare("SELECT id,clave_externa FROM dbo.efc_conc_transitos WHERE estacion_id=? AND mes_origen=? AND estado='PENDIENTE' ORDER BY id");
+        $stmt->execute([$stationId,$origin]); $transits=$stmt->fetchAll(PDO::FETCH_ASSOC);
+        if(!$transits) throw new RuntimeException('No hay tránsitos pendientes que deshacer en este mes.');
+        $this->db->beginTransaction();
+        try {
+            $groups=[];
+            foreach($transits as $transit) foreach($this->transitGroupIds((int)$transit['id'],(string)$transit['clave_externa']) as $groupId)$groups[$groupId]=true;
+            foreach(array_keys($groups) as $groupId)$this->cancelGroup((int)$groupId,$userId);
+            $upd=$this->db->prepare("UPDATE dbo.efc_conc_transitos SET estado='CANCELADO',cancelado_por=?,cancelado_en=GETDATE() WHERE estacion_id=? AND mes_origen=? AND estado='PENDIENTE'");
+            $upd->execute([$userId,$stationId,$origin]);
+            $this->db->commit(); return ['transits'=>$upd->rowCount(),'reconciliations'=>count($groups)];
+        } catch(Throwable $e) { $this->db->rollBack(); throw $e; }
     }
 
     public function correction(int $movementId, ?int $stationId, int $userId): void {
@@ -383,6 +407,7 @@ class EfcConciliacionModel {
     }
 
     private function bankIsActive(int $movementId): bool { $active=$this->db->prepare("SELECT TOP 1 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.movimiento_bancario_id=? AND P.activo=1 AND G.estado='ACTIVA'"); $active->execute([$movementId]); return (bool)$active->fetchColumn(); }
+    private function transitGroupIds(int $transitId,string $sourceKey): array { $q=$this->db->prepare("SELECT DISTINCT G.id FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa IN (?,?) AND P.activo=1 AND G.estado='ACTIVA'"); $q->execute([$sourceKey,'TR:'.$transitId]); return array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN)); }
     private function cancelGroup(int $groupId,int $userId): void { $this->db->prepare("UPDATE dbo.efc_conc_grupos SET estado='CANCELADA',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='ACTIVA'")->execute([$userId,$groupId]); $this->db->prepare("UPDATE dbo.efc_conc_partidas SET activo=0 WHERE grupo_id=?")->execute([$groupId]); $this->log($groupId,null,'DESHACER',null,$userId); }
     private function dateValue($value): string { return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : substr((string)$value,0,10); }
     private function sourceKey(int $station,string $date,string $turn): string { return 'CG:'.$station.':'.$date.':'.$turn.':MN'; }
