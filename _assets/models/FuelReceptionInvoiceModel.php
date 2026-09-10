@@ -136,17 +136,23 @@ class FuelReceptionInvoiceModel extends Model {
                 ->children()->Comprobantes->children()->ComprobanteTesoro ?? null;
             if ($comprobanteTesoro !== null) {
                 $ct = $comprobanteTesoro->attributes();
-                $factura['Destino'] = (string)($ct['ComprobanteCarga'] ?? $ct['NumeroDocumento'] ?? '') ?: null;
+                // Convención confirmada contra facturas reales ya guardadas por
+                // el pipeline de correos (ej. FacturasRecibidas.Id=72219):
+                // Remision = número de comprobante de carga (numérico, ej.
+                // "451303984"); Destino = número de permiso HYP (texto, ej.
+                // "H/19873/COM/2017") -- al revés de lo que sugieren los
+                // nombres de columna a primera vista.
+                $factura['Remision'] = (string)($ct['ComprobanteCarga'] ?? $ct['NumeroDocumento'] ?? '') ?: null;
                 $factura['PresentacionTesoro'] = (string)($ct['Presentacion'] ?? '') ?: null;
             }
         }
 
-        // La "remisión" es el número de permiso HYP (ej. "H/19873/COM/2017"),
-        // igual convención que usa el pipeline de correos para Petrotal --
-        // se toma del primer concepto que traiga el complemento
+        // Destino = número de permiso HYP (ej. "H/19873/COM/2017"), igual
+        // convención que usa el pipeline de correos para Petrotal -- se toma
+        // del primer concepto que traiga el complemento
         // cfdi:ComplementoConcepto > hidrocarburospetroliferos:HidroYPetro.
         $hypNs = $namespaces['hidrocarburospetroliferos'] ?? null;
-        if ($factura['Remision'] === null && $hypNs !== null && !empty($nodosConceptos)) {
+        if ($factura['Destino'] === null && $hypNs !== null && !empty($nodosConceptos)) {
             foreach ($nodosConceptos as $concepto) {
                 $complementoConcepto = $concepto->children($cfdiNs)->ComplementoConcepto ?? null;
                 $hyp = $complementoConcepto !== null ? ($complementoConcepto->children($hypNs)->HidroYPetro ?? null) : null;
@@ -154,7 +160,7 @@ class FuelReceptionInvoiceModel extends Model {
                     $hypAttrs = $hyp->attributes();
                     $numeroPermiso = (string)($hypAttrs['NumeroPermiso'] ?? '');
                     if ($numeroPermiso !== '') {
-                        $factura['Remision'] = $numeroPermiso;
+                        $factura['Destino'] = $numeroPermiso;
                         break;
                     }
                 }

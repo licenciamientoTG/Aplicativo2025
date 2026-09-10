@@ -918,7 +918,7 @@ class MovimientosBancariosModel extends Model
      */
     private const BANKAOOL_V2_CARGOS = [
         'CARGO POR SPEI', 'COMISION POR SPEI', 'COMISION MANEJO BANCA ELECTR', 'IVA',
-        'RETIRO', 'PAGO', 'TRASPASO ENVIADO', 'DOMICILIACION',
+        'RETIRO', 'PAGO', 'TRASPASO ENVIADO', 'DOMICILIACION', 'PENALIZACION',
     ];
 
     /** Tipos de operación del layout nuevo que representan un ABONO. */
