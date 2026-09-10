@@ -172,7 +172,7 @@ class EfcConciliacionModel {
 
     public function createTransits(int $stationId, array $turns, int $userId): array {
         if (!$stationId || !$turns) throw new RuntimeException('Seleccione al menos un turno.');
-        $this->assertOpen($station,$date,'MN'); $this->db->beginTransaction();
+        $this->db->beginTransaction();
         try {
             $created=[];
             foreach ($turns as $turn) {
