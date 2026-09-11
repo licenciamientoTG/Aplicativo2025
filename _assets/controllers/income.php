@@ -6595,6 +6595,21 @@ public function stamped_invoices_detail(): void
         } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 
+    /** Corrige/restaura la estación efectiva sin alterar el Excel importado. */
+    public function efc_conc_analiticos_corregir_estacion(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true)?:[];
+            $ids=$data['papeleta_ids']??[];
+            if(!is_array($ids)) $ids=[$ids];
+            $restore=(bool)($data['restaurar']??false);
+            $stationId=$restore?null:(int)($data['estacion_id']??0);
+            if (!$restore && $stationId<1) throw new RuntimeException('Seleccione una estación.');
+            $count=$this->efcAnaliticos->correctStations($ids,$stationId,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','count'=>$count]);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
     public function efc_conc_analiticos_vincular(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
         try{$this->efcAnaliticos->link(json_decode(file_get_contents('php://input'),true)?:[],(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']);}
