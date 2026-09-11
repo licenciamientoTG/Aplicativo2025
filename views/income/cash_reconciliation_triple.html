@@ -41,5 +41,40 @@ $('tr-company').onchange=stations;$('tr-search').onclick=consult;$('tr-concept')
   title.append(link('/income/cash_reconciliation_movements',{label:'Movimientos',query:true}));
   title.append(link('/income/cash_reconciliation_papers',{label:'Papeletas',query:true}));
   title.append(link('/income/cash_reconciliation_summary',{label:'Cerrar conciliación',query:false}));
+  const transit=[...title.querySelectorAll('a')].find(a=>a.textContent==='Tránsitos');
+  if(transit){
+    transit.href='#';
+    transit.addEventListener('click',async event=>{
+      event.preventDefault();
+      const station=document.getElementById('tr-station')?.value,monthValue=document.getElementById('tr-month')?.value||'';
+      if(!station){alert('Seleccione una estación antes de consultar los tránsitos.');return}
+      const [year,month]=monthValue.split('-').map(Number);
+      let modal=document.getElementById('tr-transit-modal');
+      if(!modal){modal=document.createElement('div');modal.id='tr-transit-modal';modal.style.cssText='position:fixed;inset:0;background:#10283b99;z-index:2200;display:flex;align-items:center;justify-content:center;padding:1rem';document.body.appendChild(modal)}
+      modal.innerHTML='<div style="background:#fff;border-radius:1rem;max-width:680px;width:100%;max-height:82vh;overflow:hidden;box-shadow:0 20px 50px #10283b66"><div style="background:#203b52;color:#fff;padding:1rem;display:flex;justify-content:space-between"><strong><i class="fas fa-route mr-1"></i>Tránsitos de efectivo</strong><button type="button" data-transit-close style="background:transparent;border:0;color:#fff;font-size:1.3rem">&times;</button></div><div data-transit-body style="padding:1rem;overflow:auto;max-height:62vh">Cargando...</div><div style="border-top:1px solid #e2e9f0;padding:.75rem;text-align:right"><button class="btn btn-outline-secondary btn-sm" data-transit-close>Cerrar</button></div></div>';
+      modal.style.display='flex';
+      const body=modal.querySelector('[data-transit-body]');
+      modal.querySelectorAll('[data-transit-close]').forEach(x=>x.onclick=()=>modal.remove());
+      try{
+        const response=await fetch(`/income/efc_conc_transitos?estacion_id=${encodeURIComponent(station)}&year=${year}&month=${month}`),json=await response.json();
+        if(!response.ok||json.status!=='success')throw Error(json.message||'No fue posible consultar tránsitos.');
+        const items=Array.isArray(json.data)?json.data:[];
+        const selected=document.querySelector('#tr-board [data-row][data-side="cg"].active');
+        const create=selected?'<button class="btn btn-sm btn-outline-warning mb-3" data-transit-create><i class="fas fa-route mr-1"></i>Enviar turno seleccionado a tránsito</button>':'';
+        body.innerHTML=create+(items.length?items.map(t=>`<article style="border:1px solid #dfe8ef;border-radius:.65rem;padding:.7rem;margin-bottom:.5rem"><div style="display:flex;justify-content:space-between"><strong>${esc(t.fecha_original||t.fecha||'')} · Turno ${esc(t.turno||'')}</strong><strong>${fmt(t.importe||t.monto||0)}</strong></div><small style="color:#60798d">${esc(t.concepto||'')} · destino ${esc(t.mes_destino||'')}</small><button class="btn btn-sm btn-outline-danger mt-2" data-transit-cancel="${esc(t.id)}">Deshacer tránsito</button></article>`).join(''):'<div style="padding:1rem;text-align:center;color:#60798d">No hay tránsitos activos en este periodo.</div>');
+        body.querySelector('[data-transit-create]')?.addEventListener('click',async()=>{const text=selected.querySelector('.name')?.textContent||'',m=text.match(/Turno\s+([^·]+)·\s*(.+)$/),money=selected.querySelector('.money')?.textContent||'',amount=Number(money.replace(/[$,\s]/g,''));if(!m||!amount){alert('No se pudo identificar el turno seleccionado.');return}const id=selected.dataset.row,parts=id.match(/^cg-\d+-(\d{4}-\d{2}-\d{2})-(.*)-(MN|MORRALLA|USD)$/);if(!parts){alert('Clave de turno inválida.');return}const r=await fetch('/income/efc_conc_transito_crear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({station_id:Number(station),turns:[{source_key:id,date:parts[1],turn:parts[2],currency:parts[3],amount}]})}),j=await r.json();if(!r.ok||j.status!=='success'){alert(j.message||'No fue posible crear el tránsito.');return}modal.remove();await consult()});
+        body.querySelectorAll('[data-transit-cancel]').forEach(btn=>btn.onclick=async()=>{if(!confirm('¿Deshacer este tránsito?'))return;const r=await fetch('/income/efc_conc_transito_cancelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:Number(btn.dataset.transitCancel)})}),j=await r.json();if(!r.ok||j.status!=='success'){alert(j.message||'No fue posible deshacer el tránsito.');return}modal.remove();await consult();transit.click()});
+      }catch(error){body.textContent=error.message||'No fue posible consultar tránsitos.'}
+    });
+  }
+  const embedded=[...title.querySelectorAll('a')].filter(a=>a.textContent!=='Tránsitos');
+  embedded.forEach(a=>a.addEventListener('click',event=>{
+    event.preventDefault();
+    const u=new URL(a.href,location.origin),m=month();
+    if(m){u.searchParams.set('year',m.slice(0,4));u.searchParams.set('month',m.slice(5,7))}
+    if(station())u.searchParams.set('estacion_id',station());
+    u.searchParams.set('empresa',company());
+    const modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:#10283bcc;z-index:2200;padding:3vh 3vw';modal.innerHTML=`<div style="height:94vh;background:#fff;border-radius:1rem;overflow:hidden;box-shadow:0 20px 60px #10283b66;position:relative"><button type="button" data-embedded-close style="position:absolute;right:.7rem;top:.45rem;z-index:2;border:0;border-radius:50%;background:#203b52;color:#fff;width:32px;height:32px;font-size:1.2rem">&times;</button><iframe title="${esc(a.textContent)}" src="${esc(u.pathname+u.search)}" style="border:0;width:100%;height:100%"></iframe></div>`;document.body.appendChild(modal);modal.querySelector('[data-embedded-close]').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()};
+  }));
 })();
 </script>{% endblock %}
