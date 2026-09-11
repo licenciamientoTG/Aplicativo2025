@@ -30,6 +30,7 @@ $('tr-company').onchange=stations;$('tr-search').onclick=consult;$('tr-concept')
 </script>
 <script>
 (()=>{
+  const esc=value=>String(value??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[x]));
   const title=document.querySelector('.triple .title>div:last-child');
   if(!title)return;
   const month=()=>document.getElementById('tr-month')?.value||'';
