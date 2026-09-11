@@ -69,7 +69,25 @@ $('tr-company').onchange=stations;$('tr-search').onclick=consult;$('tr-concept')
       }catch(error){body.textContent=error.message||'No fue posible consultar tránsitos.'}
     });
   }
+  const openAnalyticsModal=()=>{
+    const currentStation=station(),monthValue=month(),[year,monthNumber]=monthValue.split('-');
+    if(!currentStation){alert('Seleccione una estación antes de abrir el modo analíticos.');return}
+    document.getElementById('tr-analytics-modal')?.remove();
+    const modal=document.createElement('div');modal.id='tr-analytics-modal';modal.style.cssText='position:fixed;inset:0;background:#10283bcc;z-index:2300;padding:3vh 4vw';
+    const params=new URLSearchParams({embed:'1',mode:'analytics',empresa:company(),station_id:currentStation,year,month:monthNumber});
+    modal.innerHTML=`<div style="height:100%;overflow:hidden;border-radius:.85rem;box-shadow:0 20px 60px #10283b66;background:#f5f8fb"><iframe title="Turnos y papeletas REGIO" src="/income/cash_reconciliation?${params}" style="width:100%;height:100%;border:0"></iframe></div>`;
+    document.body.appendChild(modal);
+    const frame=modal.querySelector('iframe');
+    frame.addEventListener('load',()=>{
+      const doc=frame.contentDocument;
+      if(!doc)return;
+      const style=doc.createElement('style');style.textContent='.sidebar,.navbar,.wrapper> .main>footer,.main>footer,.main>.content>.container-fluid>h1,.cash-recon>.recon-head{display:none!important}.wrapper,.main,.content,.main>.content>.container-fluid{margin:0!important;max-width:none!important;padding:0!important;width:100%!important}.cash-recon{margin:0!important}.cash-recon>.surface{display:none!important}';doc.head.appendChild(style);
+      frame.contentWindow.jQuery?.('#cash-analytics-modal').on('hidden.bs.modal',()=>modal.remove());
+    });
+    modal.addEventListener('click',event=>{if(event.target===modal)modal.remove()});
+  };
   const nativePanel=async label=>{
+    if(label==='Modo analíticos'){openAnalyticsModal();return}
     const station=document.getElementById('tr-station')?.value,monthValue=document.getElementById('tr-month')?.value||'', [year,month]=monthValue.split('-').map(Number), concept=document.getElementById('tr-concept')?.value||'';
     let panel=document.getElementById('tr-native-panel');if(panel)panel.remove();panel=document.createElement('div');panel.id='tr-native-panel';panel.style.cssText='position:fixed;inset:0;background:#10283bcc;z-index:2300;padding:6vh 8vw';panel.innerHTML=`<div style="background:#fff;border-radius:1rem;max-height:88vh;height:100%;overflow:auto;box-shadow:0 20px 60px #10283b66"><div style="background:#203b52;color:#fff;padding:1rem;display:flex;justify-content:space-between"><strong>${esc(label)}</strong><button data-panel-close style="border:0;background:transparent;color:#fff;font-size:1.3rem">&times;</button></div><div data-panel-content style="padding:1rem">Cargando...</div></div>`;document.body.appendChild(panel);panel.querySelector('[data-panel-close]').onclick=()=>panel.remove();
     const p=`year=${year}&month=${month}&estacion_id=${encodeURIComponent(station||'')}&concepto=${encodeURIComponent(concept)}`;let url=label==='Resumen'?`/income/efc_conc_resumen_detalle?${p}`:label==='Movimientos'?`/income/get_cash_banorte_deposits?${p}`:label.toLowerCase().startsWith('cerrar')?`/income/efc_conc_cierre_estado?${p}`:`/income/efc_conc_analiticos_bandeja?${p}`;
