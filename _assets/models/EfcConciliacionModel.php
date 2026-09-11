@@ -281,7 +281,8 @@ class EfcConciliacionModel {
     public function activeGroups(int $stationId, int $year, int $month): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
         $stmt=$this->db->prepare("SELECT G.id,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
-            P.origen,P.clave_externa,P.movimiento_bancario_id,P.fecha_operacion,P.turno,P.concepto,P.importe,P.referencia,
+            P.origen,P.clave_externa,P.movimiento_bancario_id,P.fecha_operacion,P.turno,P.concepto,P.importe,
+            COALESCE(NULLIF(P.referencia,''),M.referencia) AS referencia,
             M.descripcion,M.descripcion_larga,M.sucursal
             FROM dbo.efc_conc_grupos G
             JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id AND P.activo=1
