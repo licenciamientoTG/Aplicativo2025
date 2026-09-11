@@ -1,7 +1,8 @@
 """Importación diaria de Analíticos REGIO, completamente en Python.
 
 Lee IMAP en modo sólo lectura, analiza PLANILLA y escribe únicamente tablas
-TG.dbo.efc_conc_*. No usa PHP, SG12 ni movimientos_bancarios.
+TG.dbo.efc_conc_*. No usa PHP ni movimientos_bancarios; consulta el historial
+de tipo de cambio de SG12 exclusivamente para reproducir las reglas USD.
 """
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ import xlrd
 from openpyxl import load_workbook
 
 
-VERSION = "2.3-python"
+VERSION = "2.4-python"
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 
@@ -336,6 +337,22 @@ def partition_new_papers(cursor: pyodbc.Cursor, papers: list[tuple]) -> tuple[li
     return new_papers, duplicate_errors
 
 
+def turn_number(value: object) -> int | None:
+    match = re.search(r"\d+", str(value or ""))
+    raw = match.group(0) if match else ""
+    if raw in {"1", "2", "3", "4"}:
+        return int(raw)
+    if raw in {"11", "21", "31", "41"}:
+        return int(raw[0])
+    return None
+
+
+def turn_start(turn_date: date, turn: object) -> datetime | None:
+    number = turn_number(turn)
+    hour = {1: (0, 0), 2: (6, 0), 3: (14, 0), 4: (22, 0)}.get(number)
+    return datetime.combine(turn_date, datetime.min.time()).replace(hour=hour[0], minute=hour[1]) if hour else None
+
+
 def controlgas_turns(station_id: int, start: date, end: date) -> list[dict]:
     """Lee turnos sin modificar ControlGas; el fallo de red no bloquea la importación."""
     payload = json.dumps({"Datos": {"FechaInicial": start.strftime("%Y%m%d"), "FechaFinal": end.strftime("%Y%m%d"), "Gasolinera": station_id}}).encode("utf-8")
@@ -352,53 +369,113 @@ def controlgas_turns(station_id: int, start: date, end: date) -> list[dict]:
             continue
         turn_date = date(int(match.group(3)), int(match.group(2)), int(match.group(1)))
         turn = str(item.get("Turno") or "").strip()
-        for concept, amount in (("MN", money(item.get("MN"))), ("MORRALLA", money(item.get("Morralla")))):
+        for concept, amount in (
+            ("MN", money(item.get("MN"))),
+            ("MORRALLA", money(item.get("Morralla"))),
+            ("USD", (money(item.get("Dolares")) or 0) + (money(item.get("Dolares2")) or 0)),
+        ):
             if turn and amount and amount > 0:
                 out.append({"date": turn_date, "turn": turn, "concept": concept, "amount": float(amount)})
     return out
 
 
+def historical_rates(cursor: pyodbc.Cursor, station_id: int) -> list[tuple[datetime, float]]:
+    """Misma fuente y corte de turno que EfcAnaliticosModel en PHP; sólo lectura."""
+    base = date(1900, 1, 1)
+    rates: list[tuple[datetime, float]] = []
+    for serial_day, raw_hour, raw_rate in cursor.execute(
+        "SELECT fch,hra,ctz FROM SG12.dbo.Cotizaciones WHERE codgas=? AND codmda=2 ORDER BY fch,hra,logfch",
+        station_id,
+    ):
+        hour = int(raw_hour)
+        hours, minutes = divmod(hour, 100)
+        rate = float(raw_rate or 0)
+        if hours > 23 or minutes > 59 or rate <= 0:
+            continue
+        rates.append((datetime.combine(base + timedelta(days=int(serial_day) - 1), datetime.min.time()).replace(hour=hours, minute=minutes), rate))
+    return rates
+
+
+def rate_for_turn(rates: list[tuple[datetime, float]], turn: dict) -> float | None:
+    at = turn_start(turn["date"], turn["turn"])
+    if not at:
+        return None
+    selected: float | None = None
+    for effective_at, rate in rates:
+        if effective_at > at:
+            break
+        selected = rate
+    return selected
+
+
+def closest_paper(candidates: list[dict], turn: dict) -> tuple[dict, int] | None:
+    """Replica paperDateGap/closestPaperByDate de cash_reconciliation.html."""
+    dated = [(paper, abs((paper["date"] - turn["date"]).days)) for paper in candidates if (paper["date"] - turn["date"]).days >= -1]
+    dated.sort(key=lambda item: (item[1], item[0]["id"]))
+    if not dated or (len(dated) > 1 and dated[0][1] == dated[1][1]):
+        return None
+    return dated[0]
+
+
 def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
-    """Vincula solo coincidencias inequívocas; lo ambiguo queda disponible para revisión manual."""
-    rows = cursor.execute("""SELECT id,estacion_id,fecha_reportada,dice_contener_mn,real_mn
-                             FROM dbo.efc_conc_analiticos_papeletas
-                             WHERE importacion_id=? AND estacion_id IS NOT NULL AND fecha_reportada IS NOT NULL""", import_id).fetchall()
-    by_station: dict[int, list] = {}
-    for row in rows:
-        by_station.setdefault(int(row[1]), []).append(row)
+    """Persiste las mismas dos pasadas automáticas de la vista, dentro de la importación."""
+    paper_rows = cursor.execute("""SELECT id,estacion_id,fecha_reportada,dice_contener_mn,real_mn,dice_contener_usd,real_usd
+                                   FROM dbo.efc_conc_analiticos_papeletas
+                                   WHERE importacion_id=? AND estacion_id IS NOT NULL AND fecha_reportada IS NOT NULL""", import_id).fetchall()
+    by_station: dict[int, list[dict]] = {}
+    for row in paper_rows:
+        paper_date = row[2].date() if isinstance(row[2], datetime) else row[2]
+        by_station.setdefault(int(row[1]), []).append({"id": int(row[0]), "date": paper_date, "declared_mn": money(row[3]) or 0, "real_mn": money(row[4]) or 0, "declared_usd": money(row[5]) or 0, "real_usd": money(row[6]) or 0})
     linked = 0
     for station_id, papers in by_station.items():
-        start = min(row[2] for row in papers) - timedelta(days=1)
-        end = max(row[2] for row in papers) + timedelta(days=7)
-        try:
-            candidates = controlgas_turns(station_id, start, end)
-        except Exception as exc:
-            print(f"Auto vínculo REGIO estación {station_id}: {exc}", file=sys.stderr)
-            continue
+        first = min(paper["date"] for paper in papers).replace(day=1)
+        last_base = max(paper["date"] for paper in papers)
+        last = (last_base.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        turns = controlgas_turns(station_id, first, last)
+        rates = historical_rates(cursor, station_id) if any(turn["concept"] == "USD" for turn in turns) else []
+        active_papers = {int(row[0]) for row in cursor.execute("SELECT papeleta_id FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND estacion_id=?", station_id)}
+        active_turns = {(station_id, row[0], str(turn_number(row[1]) or row[1]), str(row[2])) for row in cursor.execute("SELECT fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND estacion_id=?", station_id)}
+        blocked_turns = {(station_id, row[0], str(turn_number(row[1]) or row[1]), str(row[2])) for row in cursor.execute("SELECT fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WHERE activo=0 AND bloqueado_auto=1 AND estacion_id=?", station_id)}
+        available = [paper for paper in papers if paper["id"] not in active_papers]
+        used_papers: set[int] = set()
         used_turns: set[tuple] = set()
-        for paper_id, _, paper_date, declared, real in papers:
-            selected = None
-            for amount, tolerance, criterion in ((money(declared), 1.0, "AUTO_DICE_±1"), (money(real), 20.0, "AUTO_REAL_±20")):
-                if not amount or amount <= 0 or selected:
-                    continue
-                matches = [turn for turn in candidates if (turn["date"], turn["turn"], turn["concept"]) not in used_turns and (paper_date - timedelta(days=1)) <= turn["date"] <= (paper_date + timedelta(days=7)) and abs(turn["amount"] - float(amount)) <= tolerance]
-                if len(matches) == 1:
-                    selected = (matches[0], criterion)
-            if not selected:
-                continue
-            turn, criterion = selected
-            blocked = cursor.execute("""SELECT 1 FROM dbo.efc_conc_analiticos_vinculos
-                                      WHERE estacion_id=? AND fecha_cg=? AND turno=? AND concepto=? AND activo=0 AND bloqueado_auto=1""", station_id, turn["date"], turn["turn"], turn["concept"]).fetchone()
-            if blocked:
-                continue
-            exists = cursor.execute("""SELECT 1 FROM dbo.efc_conc_analiticos_vinculos
-                                     WHERE activo=1 AND (papeleta_id=? OR (estacion_id=? AND fecha_cg=? AND turno=? AND concepto=?))""", paper_id, station_id, turn["date"], turn["turn"], turn["concept"]).fetchone()
-            if exists:
-                continue
-            cursor.execute("""INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id,bloqueado_auto)
-                              VALUES(?,?,?,?,?,?,?,?,?,0)""", station_id, paper_id, turn["date"], turn["turn"], turn["concept"], turn["amount"], criterion, None, None)
-            used_turns.add((turn["date"], turn["turn"], turn["concept"]))
-            linked += 1
+
+        def turn_key(turn: dict) -> tuple:
+            return (station_id, turn["date"], str(turn_number(turn["turn"]) or turn["turn"]), turn["concept"])
+
+        def comparable(paper: dict, turn: dict, field: str) -> float:
+            suffix = "usd" if turn["concept"] == "USD" else "mn"
+            value = float(paper[f"{field}_{suffix}"] or 0)
+            if turn["concept"] == "USD":
+                rate = rate_for_turn(rates, turn)
+                return value * rate if rate else 0
+            return value
+
+        def match_pass(field: str, tolerance: float, criterion: str) -> None:
+            nonlocal linked
+            pending = [turn for turn in turns if turn_key(turn) not in active_turns and turn_key(turn) not in blocked_turns and turn_key(turn) not in used_turns]
+            while pending:
+                proposals: list[tuple[int, dict, dict, float | None]] = []
+                for turn in pending:
+                    effective_tolerance = 8.0 if field == "real" and turn["concept"] == "USD" else tolerance
+                    candidates = [paper for paper in available if paper["id"] not in used_papers and comparable(paper, turn, field) > 0 and abs(comparable(paper, turn, field) - turn["amount"]) <= effective_tolerance]
+                    selected = closest_paper(candidates, turn)
+                    if selected:
+                        paper, gap = selected
+                        proposals.append((gap, turn, paper, rate_for_turn(rates, turn) if turn["concept"] == "USD" else None))
+                if not proposals:
+                    return
+                gap, turn, paper, rate = min(proposals, key=lambda item: (item[0], item[1]["date"], str(item[1]["turn"]), item[2]["id"]))
+                applied_criterion = "AUTO_REAL_±8" if field == "real" and turn["concept"] == "USD" else criterion
+                cursor.execute("""INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id,bloqueado_auto)
+                                  VALUES(?,?,?,?,?,?,?,?,?,0)""", station_id, paper["id"], turn["date"], turn["turn"], turn["concept"], turn["amount"], applied_criterion, rate, None)
+                used_papers.add(paper["id"])
+                used_turns.add(turn_key(turn))
+                linked += 1
+                pending = [item for item in pending if turn_key(item) != turn_key(turn)]
+
+        match_pass("declared", 1.0, "AUTO_DICE_±1")
+        match_pass("real", 20.0, "AUTO_REAL_±20")
     return linked
 
 

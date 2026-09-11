@@ -40,6 +40,14 @@ reenvíos como `Analitos DG`. Toma sólo Excel cuyo nombre corresponde a `TOTAL
 GAS`; PDFs de Actas, imágenes y Excel de otras razones sociales se ignoran. La
 idempotencia se controla mediante SHA-256 del archivo.
 
+Al terminar una importación, el script guarda de forma persistente los vínculos
+automáticos entre papeletas y turnos en `efc_conc_analiticos_vinculos`. Aplica
+primero **Dice contener ±$1** y después **Real ±$20** (o **±$8** para USD con
+el tipo de cambio histórico del inicio del turno). Sólo enlaza coincidencias
+inequívocas y respeta tanto vínculos manuales existentes como una papeleta que
+se haya desasociado manualmente. La vista ya no crea vínculos automáticos al
+consultarla.
+
 En el servidor instalar una vez las dependencias del script:
 
 ```text
