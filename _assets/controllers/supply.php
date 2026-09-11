@@ -2953,7 +2953,18 @@ class Supply
         $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
         $existente = $this->fuelReceptionInvoiceModel->buscarPorUuid($parseado['factura']['UUID']);
 
-        if ($existente) {
+        // El UUID ya existe en BD, pero su PDF (y/o XML) archivado ya no está
+        // en disco -- se borró a mano, se perdió el archivo, etc. En vez de
+        // vincular a un registro "fantasma" sin re-guardar lo que el usuario
+        // acaba de subir, se trata como si faltara el archivo: se re-guarda
+        // en la misma fila existente (mismo Id, sin duplicar el UUID), igual
+        // patrón que main.py::archivo_falta_en_disco() en el pipeline de
+        // correos (hallado 2026-09-10 al revisar el mismo hueco ahí).
+        $archivoFalta = $existente && (
+            !$existente['RutaArchivo'] || !file_exists($existente['RutaArchivo'])
+        );
+
+        if ($existente && !$archivoFalta) {
             $invoiceId = (int)$existente['Id'];
             $yaExistia = true;
         } else {
@@ -2964,7 +2975,11 @@ class Supply
             }
 
             try {
-                $invoiceId = $this->fuelReceptionInvoiceModel->insertarFactura($parseado['factura'], $parseado['conceptos']);
+                if ($existente) {
+                    $invoiceId = (int)$existente['Id'];
+                } else {
+                    $invoiceId = $this->fuelReceptionInvoiceModel->insertarFactura($parseado['factura'], $parseado['conceptos']);
+                }
                 $rutas = $this->fuelReceptionInvoiceModel->guardarArchivos(
                     $carpeta, $parseado['factura']['UUID'], $_FILES['pdf']['tmp_name'], $_FILES['xml']['tmp_name']
                 );
@@ -2973,7 +2988,7 @@ class Supply
                 json_output(['success' => false, 'message' => 'No se pudo guardar la factura: ' . $e->getMessage()]);
                 return;
             }
-            $yaExistia = false;
+            $yaExistia = (bool)$existente;
         }
 
         $this->fuelReceptionInvoiceModel->vincular($scheduleId, $invoiceId, $userId);

@@ -30,6 +30,8 @@
 		.auth-step-icon { width: 2.1rem; height: 2.1rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.85rem; }
 		@keyframes fadeIn { from { opacity:0; transform:scale(.8); } to { opacity:1; transform:scale(1); } }
 		#tablaFacturasIncluidas .fa-check-circle { animation: fadeIn .5s ease-in; }
+		.apply-note-invoice-row:hover { background-color: #f1f5f9; }
+		.apply-note-invoice-row.selected { background-color: #e7f0fa; border-left: 3px solid #3d6b9e; }
 	</style>
 
 	{% set total_facturas = invoices|length %}
@@ -1061,47 +1063,81 @@
 
 	<!-- Modal: Aplicar Nota de Crédito/Cargo -->
 	<div class="modal fade" id="applyNoteModal" tabindex="-1" aria-hidden="true">
-		<div class="modal-dialog modal-dialog-centered modal-lg">
+		<div class="modal-dialog modal-dialog-centered modal-xl">
 			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title" id="applyNoteModalTitle"><i class="fas fa-link"></i> Aplicar Nota al Pago</h5>
+				<div class="modal-header" style="border-bottom:1px solid #e2e8f0;">
+					<h5 class="modal-title" id="applyNoteModalTitle" style="font-size:1rem;"><i class="fas fa-link" style="color:#3d6b9e;"></i> Aplicar Nota al Pago</h5>
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
-				<div class="modal-body">
-					<!-- Notas ya aplicadas a esta factura -->
-					<div id="applyNoteExistingWrap" class="mb-3" style="display:none;">
-						<label class="d-block mb-1"><small class="text-muted">Notas ya aplicadas a esta factura</small></label>
-						<div id="applyNoteExistingList" class="d-flex flex-column gap-1"></div>
-					</div>
+				<div class="modal-body pb-0">
+					<!-- Alerta inline: los errores deben verse dentro del modal, no solo como toast que puede quedar oculto detrás -->
+					<div id="applyNoteAlert" class="alert alert-danger py-2 px-3 mb-3" style="display:none; font-size:.82rem;"></div>
 				</div>
 				<form id="applyNoteForm" onsubmit="return false;">
-					<div class="modal-body pt-0">
+					<div class="modal-body pt-0 pb-2">
 						<input type="hidden" id="applyNotePaymentId" name="payment_request_id" value="{{ payment.id }}">
-						<!-- Selector de factura (obligatorio: la aplicación debe quedar ligada a una factura) -->
-						<div class="form-group">
-							<label>Factura <small class="text-danger">(obligatoria)</small></label>
-							<select id="applyNoteInvoiceSelect" name="invoice_id" class="form-control" required>
-								<option value="">Seleccione una factura...</option>
-								{% for inv in invoices %}
-									<option value="{{ inv.id }}">{{ inv.folio }} — {{ inv.invoice_number }}</option>
-								{% endfor %}
-							</select>
-						</div>
-						<!-- Lista de notas disponibles con checkbox + monto -->
-						<div class="form-group">
-							<label class="d-flex justify-content-between align-items-center">
-								<span>Notas de Crédito / Cargo a aplicar *</span>
-								<small class="text-muted" id="applyNoteSelectedHint"></small>
-							</label>
-							<div id="applyNoteCheckList" class="border rounded p-2"
-								style="max-height:260px; overflow-y:auto;">
-								<span class="text-muted small">Cargando notas disponibles...</span>
+						<input type="hidden" id="applyNoteInvoiceId" name="invoice_id" value="">
+						<div class="row g-3">
+
+							<!-- Columna izquierda 30%: lista de facturas buscable -->
+							<div class="col-4">
+								<label class="mb-1" style="font-size:.82rem;">Factura <small class="text-danger">(obligatoria)</small></label>
+								<input type="text" id="applyNoteInvoiceSearch" class="form-control form-control-sm mb-2"
+									placeholder="Buscar por folio o número...">
+								<div class="border rounded" style="max-height:340px; overflow-y:auto;">
+									<div id="applyNoteInvoiceList" style="font-size:.82rem;">
+										{% for inv in invoices %}
+											<div class="apply-note-invoice-row d-flex flex-column px-2 py-1 border-bottom"
+												data-invoice-id="{{ inv.id }}"
+												data-search="{{ (inv.folio ~ ' ' ~ inv.invoice_number)|lower }}"
+												style="cursor:pointer;">
+												<strong>{{ inv.folio }}</strong>
+												<span class="text-muted" style="font-size:.75rem;">{{ inv.invoice_number }}</span>
+											</div>
+										{% endfor %}
+									</div>
+									<div id="applyNoteInvoiceEmpty" class="text-center text-muted small py-3" style="display:none;">Sin coincidencias</div>
+								</div>
+
+								<!-- Notas ya aplicadas a la factura seleccionada -->
+								<div id="applyNoteExistingWrap" class="mt-3" style="display:none;">
+									<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#94a3b8;letter-spacing:.06em;">Notas ya aplicadas</p>
+									<div id="applyNoteExistingList" class="d-flex flex-column gap-1"></div>
+								</div>
 							</div>
+
+							<!-- Columna derecha 70%: lista de notas buscable -->
+							<div class="col-8">
+								<label class="d-flex justify-content-between align-items-center mb-1" style="font-size:.82rem;">
+									<span>Notas de Crédito / Cargo a aplicar <small class="text-danger">*</small></span>
+									<small class="text-muted" id="applyNoteSelectedHint"></small>
+								</label>
+								<input type="text" id="applyNoteSearch" class="form-control form-control-sm mb-2"
+									placeholder="Buscar por número de nota...">
+								<div class="table-responsive border rounded" style="max-height:300px; overflow-y:auto;">
+									<table class="table table-sm table-hover mb-0" id="applyNoteTable">
+										<thead class="table-light" style="font-size:.75rem; position:sticky; top:0; z-index:1;">
+											<tr>
+												<th width="32"></th>
+												<th>Tipo</th>
+												<th># Nota</th>
+												<th>Fecha</th>
+												<th class="text-end">Saldo</th>
+												<th class="text-end" style="width:130px;">Monto a aplicar</th>
+											</tr>
+										</thead>
+										<tbody id="applyNoteCheckList" style="font-size:.82rem;">
+											<tr><td colspan="6" class="text-center text-muted py-3">Cargando notas disponibles...</td></tr>
+										</tbody>
+									</table>
+								</div>
+							</div>
+
 						</div>
 					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="fas fa-times"></i> Cerrar</button>
-						<button type="submit" class="btn btn-primary"><i class="fas fa-link"></i> Aplicar</button>
+					<div class="modal-footer" style="border-top:1px solid #e2e8f0;">
+						<button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal"><i class="fas fa-times"></i> Cancelar</button>
+						<button type="submit" class="btn btn-sm" id="applyNoteSubmitBtn" style="background:#3d6b9e;color:#fff;"><i class="fas fa-link"></i> Aplicar</button>
 					</div>
 				</form>
 			</div>

@@ -5824,22 +5824,14 @@ async function addNoteModal(id) {
 
 
 function openApplyCreditNoteModal(invoiceId, invoiceFolio) {
+  showApplyNoteAlert(null);
   const providerEl = document.getElementById("paymentProviderId");
   const providerId = providerEl ? providerEl.value : "";
   const paymentId  = document.getElementById("paymentId").value;
 
-  const invoiceSelect = document.getElementById("applyNoteInvoiceSelect");
-  invoiceSelect.value = invoiceId || "";
-
-  if (invoiceId && !invoiceFolio) {
-    const opt = invoiceSelect.options[invoiceSelect.selectedIndex];
-    invoiceFolio = opt ? opt.text : "";
-  }
-
-  const title = document.getElementById("applyNoteModalTitle");
-  title.innerHTML = invoiceId
-    ? `<i class="fas fa-link"></i> Aplicar Nota a Factura ${invoiceFolio || ""}`
-    : `<i class="fas fa-link"></i> Aplicar Nota al Pago`;
+  document.getElementById("applyNoteInvoiceSearch").value = "";
+  filterApplyNoteInvoiceList("");
+  selectApplyNoteInvoice(invoiceId || "");
 
   fetch("/payment/getProviderNotes", {
     method: "POST",
@@ -5851,8 +5843,9 @@ function openApplyCreditNoteModal(invoiceId, invoiceFolio) {
     .then((data) => {
       if (!data.success) throw new Error(data.message);
       renderApplyNoteModalNotes(data.notes);
+      document.getElementById("applyNoteSearch").value = "";
       document.getElementById("applyNotePaymentId").value = paymentId;
-      return invoiceId ? loadInvoiceNoteApplications(invoiceId) : renderApplyNoteExistingList([]);
+      return loadInvoiceNoteApplications(invoiceId || "");
     })
     .then(() => {
       $("#applyNoteModal").modal("show");
@@ -5863,7 +5856,82 @@ function openApplyCreditNoteModal(invoiceId, invoiceFolio) {
 }
 
 
+// Marca la factura elegida (click en la lista, o preselección al abrir el modal
+// desde el botón de una fila) y actualiza el input oculto + título + resaltado
+function selectApplyNoteInvoice(invoiceId) {
+  document.getElementById("applyNoteInvoiceId").value = invoiceId || "";
+
+  document.querySelectorAll("#applyNoteInvoiceList .apply-note-invoice-row").forEach((row) => {
+    row.classList.toggle("selected", invoiceId && row.getAttribute("data-invoice-id") === String(invoiceId));
+  });
+
+  const selectedRow = invoiceId
+    ? document.querySelector(`#applyNoteInvoiceList .apply-note-invoice-row[data-invoice-id="${invoiceId}"]`)
+    : null;
+  const invoiceFolio = selectedRow ? selectedRow.querySelector("strong").textContent : "";
+
+  const title = document.getElementById("applyNoteModalTitle");
+  title.innerHTML = invoiceId
+    ? `<i class="fas fa-link"></i> Aplicar Nota a Factura ${invoiceFolio}`
+    : `<i class="fas fa-link"></i> Aplicar Nota al Pago`;
+}
+
+
+function filterApplyNoteInvoiceList(term) {
+  const needle = (term || "").toLowerCase().trim();
+  let visibleCount = 0;
+  document.querySelectorAll("#applyNoteInvoiceList .apply-note-invoice-row").forEach((row) => {
+    const match = !needle || row.getAttribute("data-search").includes(needle);
+    row.style.display = match ? "" : "none";
+    if (match) visibleCount++;
+  });
+  document.getElementById("applyNoteInvoiceEmpty").style.display = visibleCount === 0 ? "" : "none";
+}
+
+
+function filterApplyNoteList(term) {
+  const needle = (term || "").toLowerCase().trim();
+  document.querySelectorAll("#applyNoteCheckList .apply-note-row").forEach((row) => {
+    const match = !needle || row.getAttribute("data-search").includes(needle);
+    row.style.display = match ? "" : "none";
+  });
+}
+
+
+document.addEventListener("DOMContentLoaded", function () {
+  // Click en una factura de la lista: la selecciona y refresca sus notas ya aplicadas
+  const invoiceList = document.getElementById("applyNoteInvoiceList");
+  if (invoiceList) {
+    invoiceList.addEventListener("click", function (e) {
+      const row = e.target.closest(".apply-note-invoice-row");
+      if (!row) return;
+      const invoiceId = row.getAttribute("data-invoice-id");
+      selectApplyNoteInvoice(invoiceId);
+      loadInvoiceNoteApplications(invoiceId);
+    });
+  }
+
+  const invoiceSearch = document.getElementById("applyNoteInvoiceSearch");
+  if (invoiceSearch) {
+    invoiceSearch.addEventListener("input", function () {
+      filterApplyNoteInvoiceList(invoiceSearch.value);
+    });
+  }
+
+  const noteSearch = document.getElementById("applyNoteSearch");
+  if (noteSearch) {
+    noteSearch.addEventListener("input", function () {
+      filterApplyNoteList(noteSearch.value);
+    });
+  }
+});
+
+
 function loadInvoiceNoteApplications(invoiceId) {
+  if (!invoiceId) {
+    renderApplyNoteExistingList([]);
+    return Promise.resolve();
+  }
   return fetch("/payment/getInvoiceNoteApplications", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -5889,12 +5957,13 @@ function renderApplyNoteExistingList(applications) {
   list.innerHTML = applications
     .map((app) => {
       const sign  = app.note_type === "CREDIT" ? "-" : "+";
-      const badge = app.note_type === "CREDIT" ? "bg-success" : "bg-secondary";
+      const color = app.note_type === "CREDIT" ? "#3a7d60" : "#b05c3a";
+      const badge = app.note_type === "CREDIT" ? "background:#d1fae5;color:#0a3622;" : "background:#ffe8d9;color:#7a3c15;";
       const amount = parseFloat(app.applied_amount).toFixed(2);
-      return `<div class="d-flex justify-content-between align-items-center border rounded px-2 py-1" style="font-size:.82rem;">
-        <span><span class="badge ${badge} me-1">${app.note_type === "CREDIT" ? "Crédito" : "Cargo"}</span>${app.note_number || "S/N"}</span>
+      return `<div class="d-flex justify-content-between align-items-center border rounded px-2 py-1" style="font-size:.82rem;background:#f8fafc;">
+        <span><span class="badge me-1" style="${badge}font-weight:600;">${app.note_type === "CREDIT" ? "Crédito" : "Cargo"}</span>${app.note_number || "S/N"}</span>
         <span>
-          <strong>${sign} $${amount}</strong>
+          <strong style="color:${color};">${sign} $${amount}</strong>
           <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="removeApplication(${app.id}, true)" title="Quitar"><i class="fas fa-unlink"></i></button>
         </span>
       </div>`;
@@ -5907,26 +5976,28 @@ function renderApplyNoteModalNotes(notes) {
   const list = document.getElementById("applyNoteCheckList");
   if (!notes || notes.length === 0) {
     list.innerHTML =
-      '<span class="text-muted small">Sin notas disponibles para este proveedor</span>';
+      '<tr><td colspan="6" class="text-center text-muted small py-3">Sin notas disponibles para este proveedor</td></tr>';
     updateApplyNoteSelectedHint();
     return;
   }
   list.innerHTML = notes
     .map((n) => {
       const type    = n.note_type === "CREDIT" ? "Crédito" : "Cargo";
-      const badge   = n.note_type === "CREDIT" ? "bg-success" : "bg-secondary";
+      const badge   = n.note_type === "CREDIT" ? "background:#d1fae5;color:#0a3622;" : "background:#ffe8d9;color:#7a3c15;";
       const balance = parseFloat(n.available_balance).toFixed(2);
-      const date    = n.note_date ? n.note_date.substring(0, 10) : "";
-      return `<div class="d-flex align-items-center gap-2 py-1 border-bottom apply-note-row" data-note-id="${n.id}" data-balance="${balance}" data-type="${n.note_type}">
-        <input type="checkbox" class="form-check-input mt-0 apply-note-check" onchange="onApplyNoteCheckToggle(this)">
-        <div class="flex-grow-1" style="font-size:.82rem; line-height:1.15;">
-          <span class="badge ${badge} me-1">${type}</span>${n.note_number || "S/N"}
-          <span class="text-muted"> · ${date} · Saldo: $${balance}</span>
-        </div>
-        <input type="number" class="form-control form-control-sm apply-note-amount" style="width:110px;"
-          step="0.01" min="0.01" max="${balance}" placeholder="Monto" disabled
-          oninput="updateApplyNoteSelectedHint()">
-      </div>`;
+      const date    = n.note_date ? n.note_date.substring(0, 10).split("-").reverse().join("/") : "—";
+      return `<tr class="apply-note-row" data-note-id="${n.id}" data-balance="${balance}" data-type="${n.note_type}" data-search="${(n.note_number || "").toLowerCase()}">
+        <td class="text-center"><input type="checkbox" class="form-check-input mt-0 apply-note-check" onchange="onApplyNoteCheckToggle(this)"></td>
+        <td><span class="badge" style="${badge}font-weight:600;">${type}</span></td>
+        <td>${n.note_number || "S/N"}</td>
+        <td class="text-muted">${date}</td>
+        <td class="text-end">$${balance}</td>
+        <td class="text-end">
+          <input type="number" class="form-control form-control-sm apply-note-amount" style="width:110px;display:inline-block;"
+            step="0.01" min="0.01" max="${balance}" placeholder="0.00" disabled
+            oninput="updateApplyNoteSelectedHint()">
+        </td>
+      </tr>`;
     })
     .join("");
   updateApplyNoteSelectedHint();
@@ -5963,10 +6034,26 @@ function updateApplyNoteSelectedHint() {
 }
 
 
+// Muestra/oculta la alerta inline del modal (visible aun con el modal tapando el resto de la página)
+function showApplyNoteAlert(message) {
+  const alertBox = document.getElementById("applyNoteAlert");
+  if (!alertBox) return;
+  if (!message) {
+    alertBox.style.display = "none";
+    alertBox.textContent = "";
+    return;
+  }
+  alertBox.textContent = message;
+  alertBox.style.display = "";
+}
+
+
 // Itera las notas marcadas y las aplica una por una vía /payment/applyCreditNote
 async function applySelectedNotes() {
+  showApplyNoteAlert(null);
+
   const paymentId = document.getElementById("applyNotePaymentId").value;
-  const invoiceId = document.getElementById("applyNoteInvoiceSelect").value;
+  const invoiceId = document.getElementById("applyNoteInvoiceId").value;
   const rows = Array.from(
     document.querySelectorAll("#applyNoteCheckList .apply-note-row")
   ).filter((row) => row.querySelector(".apply-note-check").checked);
@@ -5974,12 +6061,12 @@ async function applySelectedNotes() {
   // La nota SIEMPRE debe quedar ligada a una factura: aplicaciones sin
   // factura quedan invisibles para el cálculo de saldos por factura
   if (!invoiceId) {
-    alertify.error("Seleccione la factura a la que se aplicará la nota");
+    showApplyNoteAlert("Seleccione la factura a la que se aplicará la nota");
     return;
   }
 
   if (rows.length === 0) {
-    alertify.error("Seleccione al menos una nota");
+    showApplyNoteAlert("Seleccione al menos una nota");
     return;
   }
 
@@ -5988,17 +6075,21 @@ async function applySelectedNotes() {
     const amount  = parseFloat(row.querySelector(".apply-note-amount").value || 0);
     const balance = parseFloat(row.getAttribute("data-balance") || 0);
     if (amount <= 0) {
-      alertify.error("Hay notas marcadas sin monto válido");
+      showApplyNoteAlert("Hay notas marcadas sin monto válido");
       return;
     }
     if (amount > balance + 0.001) {
-      alertify.error(`Un monto excede el saldo disponible ($${balance.toFixed(2)})`);
+      showApplyNoteAlert(`Un monto excede el saldo disponible ($${balance.toFixed(2)})`);
       return;
     }
   }
 
-  const submitBtn = document.querySelector('#applyNoteForm button[type="submit"]');
-  if (submitBtn) submitBtn.disabled = true;
+  const submitBtn = document.getElementById("applyNoteSubmitBtn");
+  const submitBtnOriginalHtml = submitBtn ? submitBtn.innerHTML : "";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Aplicando...';
+  }
 
   let okCount = 0;
   const errors = [];
@@ -6031,7 +6122,10 @@ async function applySelectedNotes() {
     }
   }
 
-  if (submitBtn) submitBtn.disabled = false;
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = submitBtnOriginalHtml;
+  }
 
   if (okCount > 0) {
     applyNotePageDirty = true;
@@ -6040,7 +6134,7 @@ async function applySelectedNotes() {
     openApplyCreditNoteModal(invoiceId || null, null);
   }
   if (errors.length > 0) {
-    alertify.error(errors.join(" | "));
+    showApplyNoteAlert(errors.join(" | "));
   }
 }
 
@@ -6244,7 +6338,7 @@ function removeApplication(appId, fromModal) {
           return;
         }
         if (fromModal) {
-          const invoiceId = document.getElementById("applyNoteInvoiceSelect").value;
+          const invoiceId = document.getElementById("applyNoteInvoiceId").value;
           Swal.fire({ icon: "success", title: "Quitada", timer: 1200, showConfirmButton: false });
           applyNotePageDirty = true;
           // Recarga notas disponibles (saldo liberado) y lista de aplicadas a la factura
