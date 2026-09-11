@@ -108,6 +108,7 @@ class EfcConciliacionModel {
         $this->db->exec("UPDATE dbo.efc_conc_transitos SET mes_destino=CONVERT(CHAR(7),DATEADD(MONTH,1,CONVERT(DATE,mes_origen+'-01')),23) WHERE estado='PENDIENTE' AND mes_destino<>CONVERT(CHAR(7),DATEADD(MONTH,1,CONVERT(DATE,mes_origen+'-01')),23)");
         $this->db->exec("UPDATE P SET fecha_operacion=T.fecha_origen FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_transitos T ON P.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id) WHERE P.origen='CG' AND P.fecha_operacion<>T.fecha_origen");
         $this->db->exec("IF OBJECT_ID('dbo.efc_conc_cierres','U') IS NULL CREATE TABLE dbo.efc_conc_cierres (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_diferencia DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre UNIQUE(estacion_id,mes,concepto))");
+        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_cierres_etapas','U') IS NULL CREATE TABLE dbo.efc_conc_cierres_etapas (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, etapa VARCHAR(10) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_regio DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre_etapa UNIQUE(estacion_id,mes,concepto,etapa))");
     }
 
     public function closureState(int $stationId, int $year, int $month, string $concept): ?array {
@@ -125,6 +126,17 @@ class EfcConciliacionModel {
 
     public function reopenPeriod(int $stationId,int $year,int $month,string $concept,int $userId): void { $mes=sprintf('%04d-%02d',$year,$month); $q=$this->db->prepare("UPDATE dbo.efc_conc_cierres SET estado='ABIERTO',reabierto_por=?,reabierto_en=GETDATE() WHERE estacion_id=? AND mes=? AND concepto=? AND estado='CERRADO'"); $q->execute([$userId,$stationId,$mes,$concept]); if(!$q->rowCount()) throw new RuntimeException('No existe un cierre activo para reabrir.'); }
 
+    public function stageClosure(int $stationId,int $year,int $month,string $concept,string $stage): ?array {
+        $stage=strtoupper($stage); if(!$stationId||$year<2020||$month<1||$month>12||!in_array($concept,['MN','MORRALLA','USD'],true)||!in_array($stage,['REGIO','BANCO'],true)) throw new RuntimeException('Parámetros de cierre inválidos.');
+        $q=$this->db->prepare("SELECT TOP 1 * FROM dbo.efc_conc_cierres_etapas WHERE estacion_id=? AND mes=? AND concepto=? AND etapa=?");$q->execute([$stationId,sprintf('%04d-%02d',$year,$month),$concept,$stage]);return $q->fetch(PDO::FETCH_ASSOC)?:null;
+    }
+    public function closeStage(array $data,int $userId): array {
+        $station=(int)($data['station_id']??0);$year=(int)($data['year']??0);$month=(int)($data['month']??0);$concept=strtoupper((string)($data['concept']??''));$stage=strtoupper((string)($data['stage']??''));$pending=(int)($data['pending']??0);if($pending>0)throw new RuntimeException('No se puede cerrar: existen operaciones pendientes en esta etapa.');if($this->stageClosure($station,$year,$month,$concept,$stage))throw new RuntimeException('La etapa ya tiene un cierre registrado.');
+        $detail=$this->summaryDetail($station,$year,$month,$concept);$cg=$regioDeclared=$regioReal=$bank=$diffRegio=$diffBank=0.0;foreach($detail as $row){$cg+=(float)$row['total_controlgas'];$regioDeclared+=(float)$row['regio_declarado'];$regioReal+=(float)$row['regio_real']+(float)$row['regio_usd_mxn'];$bank+=(float)$row['total_banorte'];$diffRegio+=((float)$row['regio_real']+(float)$row['regio_usd_mxn'])-(float)$row['total_controlgas'];$diffBank+=(float)$row['total_banorte']-((float)$row['regio_real']+(float)$row['regio_usd_mxn']);}$mes=sprintf('%04d-%02d',$year,$month);$tr=$this->db->prepare("SELECT ISNULL(SUM(importe),0) FROM dbo.efc_conc_transitos WHERE estacion_id=? AND mes_origen=? AND concepto=? AND estado='PENDIENTE'");$tr->execute([$station,$mes,$concept]);$trans=(float)$tr->fetchColumn();
+        $q=$this->db->prepare("INSERT dbo.efc_conc_cierres_etapas(estacion_id,mes,concepto,etapa,total_controlgas,total_regio_declarado,total_regio_real,total_banco,diferencia_regio,diferencia_banco,total_transito,operaciones,pendientes,estado,cerrado_por,cerrado_en,nota) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'CERRADO',?,GETDATE(),?)");$q->execute([$station,$mes,$concept,$stage,$cg,$regioDeclared,$regioReal,$bank,$diffRegio,$diffBank,$trans,count($detail),0,$userId,trim((string)($data['note']??''))]);return $this->stageClosure($station,$year,$month,$concept,$stage)??[];
+    }
+    public function reopenStage(int $stationId,int $year,int $month,string $concept,string $stage,int $userId): void {$q=$this->db->prepare("UPDATE dbo.efc_conc_cierres_etapas SET estado='ABIERTO',reabierto_por=?,reabierto_en=GETDATE() WHERE estacion_id=? AND mes=? AND concepto=? AND etapa=? AND estado='CERRADO'");$q->execute([$userId,$station,sprintf('%04d-%02d',$year,$month),$concept,strtoupper($stage)]);if(!$q->rowCount())throw new RuntimeException('No existe un cierre activo para reabrir.');}
+
     public function summaryDetail(int $stationId, ?int $year=null, ?int $month=null, ?string $concept=null): array {
         // Un grupo tiene una partida CG y otra BANCO. Agrupamos por grupo para
         // que el detalle muestre una sola fila por conciliación.
@@ -138,19 +150,19 @@ class EfcConciliacionModel {
                 MAX(CASE WHEN P.origen='BANCO' THEN P.referencia END) referencia,
                 MAX(CASE WHEN P.origen='BANCO' THEN P.movimiento_bancario_id END) movimiento_bancario_id,
                 MAX(CASE WHEN P.origen='BANCO' THEN M.descripcion_larga END) descripcion_larga,
-                ISNULL(V.real_mn,0) regio_declarado,ISNULL(V.real_mn,0) regio_real,ISNULL(V.real_usd,0) regio_usd,
+                ISNULL(V.declarado_mn,0) regio_declarado,ISNULL(V.real_mn,0) regio_real,ISNULL(V.real_usd,0) regio_usd,
                 ISNULL(V.real_usd*ISNULL(V.tipo_cambio_usd,0),0) regio_usd_mxn
             FROM dbo.efc_conc_grupos G
             LEFT JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id AND P.activo=1
             LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=G.estacion_id
             LEFT JOIN TG.dbo.movimientos_bancarios M ON M.id=P.movimiento_bancario_id
-            OUTER APPLY (SELECT TOP 1 Pa.real_mn,Pa.real_usd,V.tipo_cambio_usd
+            OUTER APPLY (SELECT TOP 1 Pa.dice_contener_mn declarado_mn,Pa.real_mn,Pa.real_usd,V.tipo_cambio_usd
                 FROM dbo.efc_conc_analiticos_vinculos V
                 JOIN dbo.efc_conc_analiticos_papeletas Pa ON Pa.id=V.papeleta_id
                 WHERE V.estacion_id=G.estacion_id AND V.fecha_cg=G.fecha_operativa AND V.turno=G.turno
                   AND V.concepto=G.concepto AND V.activo=1) V
             WHERE ".implode(' AND ',$where)."
-            GROUP BY G.id,G.fecha_operativa,G.estacion_id,E.Nombre,G.turno,G.concepto,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,V.real_mn,V.real_usd,V.tipo_cambio_usd
+            GROUP BY G.id,G.fecha_operativa,G.estacion_id,E.Nombre,G.turno,G.concepto,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,V.declarado_mn,V.real_mn,V.real_usd,V.tipo_cambio_usd
             ORDER BY G.fecha_operativa,G.turno,G.id";
         $q=$this->db->prepare($sql);$q->execute($params);return $q->fetchAll(PDO::FETCH_ASSOC);
     }

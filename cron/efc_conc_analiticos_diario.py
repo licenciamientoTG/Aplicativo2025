@@ -6,7 +6,7 @@ TG.dbo.efc_conc_*. No usa PHP, SG12 ni movimientos_bancarios.
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import email
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import sys
 import unicodedata
+from urllib.request import Request, urlopen
 
 import pyodbc
 import xlrd
@@ -181,6 +182,20 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
         """IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_remesa_clave')
             AND NOT EXISTS(SELECT remesa_clave FROM dbo.efc_conc_analiticos_papeletas WHERE remesa_clave IS NOT NULL GROUP BY remesa_clave HAVING COUNT(*) > 1)
             CREATE UNIQUE INDEX UX_efc_conc_analiticos_remesa_clave ON dbo.efc_conc_analiticos_papeletas(remesa_clave) WHERE remesa_clave IS NOT NULL""",
+        """IF OBJECT_ID('dbo.efc_conc_analiticos_vinculos','U') IS NULL
+            CREATE TABLE dbo.efc_conc_analiticos_vinculos (
+                id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, papeleta_id INT NOT NULL,
+                fecha_cg DATE NOT NULL, turno NVARCHAR(40) NOT NULL, concepto VARCHAR(10) NOT NULL,
+                importe_cg DECIMAL(18,2) NOT NULL, criterio VARCHAR(40) NOT NULL,
+                tipo_cambio_usd DECIMAL(18,6) NULL, usuario_id INT NULL, activo BIT NOT NULL DEFAULT 1,
+                creado_en DATETIME NOT NULL DEFAULT GETDATE(), actualizado_en DATETIME NULL,
+                bloqueado_auto BIT NOT NULL DEFAULT 0)""",
+        """IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','bloqueado_auto') IS NULL
+            ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD bloqueado_auto BIT NOT NULL DEFAULT 0""",
+        """IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_vinculos_papeleta_activa')
+            CREATE UNIQUE INDEX UX_efc_conc_analiticos_vinculos_papeleta_activa ON dbo.efc_conc_analiticos_vinculos(papeleta_id) WHERE activo=1""",
+        """IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_vinculos_turno_activo')
+            CREATE UNIQUE INDEX UX_efc_conc_analiticos_vinculos_turno_activo ON dbo.efc_conc_analiticos_vinculos(estacion_id,fecha_cg,turno,concepto) WHERE activo=1""",
     ]
     for statement in statements:
         cursor.execute(statement)
@@ -321,6 +336,72 @@ def partition_new_papers(cursor: pyodbc.Cursor, papers: list[tuple]) -> tuple[li
     return new_papers, duplicate_errors
 
 
+def controlgas_turns(station_id: int, start: date, end: date) -> list[dict]:
+    """Lee turnos sin modificar ControlGas; el fallo de red no bloquea la importación."""
+    payload = json.dumps({"Datos": {"FechaInicial": start.strftime("%Y%m%d"), "FechaFinal": end.strftime("%Y%m%d"), "Gasolinera": station_id}}).encode("utf-8")
+    request = Request("http://201.174.170.236:99/api/Depositos/GetDepositosEstacion", data=payload, headers={"Content-Type": "application/json", "Accept": "application/json"})
+    with urlopen(request, timeout=25) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    if not data.get("exito") and data.get("codigo") != 0:
+        raise RuntimeError(data.get("mensaje") or "ControlGas no respondió")
+    out: list[dict] = []
+    for item in data.get("respuesta") or []:
+        raw_date = str(item.get("Fecha") or "")
+        match = re.match(r"(\d{2})/(\d{2})/(\d{4})", raw_date)
+        if not match:
+            continue
+        turn_date = date(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+        turn = str(item.get("Turno") or "").strip()
+        for concept, amount in (("MN", money(item.get("MN"))), ("MORRALLA", money(item.get("Morralla")))):
+            if turn and amount and amount > 0:
+                out.append({"date": turn_date, "turn": turn, "concept": concept, "amount": float(amount)})
+    return out
+
+
+def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
+    """Vincula solo coincidencias inequívocas; lo ambiguo queda disponible para revisión manual."""
+    rows = cursor.execute("""SELECT id,estacion_id,fecha_reportada,dice_contener_mn,real_mn
+                             FROM dbo.efc_conc_analiticos_papeletas
+                             WHERE importacion_id=? AND estacion_id IS NOT NULL AND fecha_reportada IS NOT NULL""", import_id).fetchall()
+    by_station: dict[int, list] = {}
+    for row in rows:
+        by_station.setdefault(int(row[1]), []).append(row)
+    linked = 0
+    for station_id, papers in by_station.items():
+        start = min(row[2] for row in papers) - timedelta(days=1)
+        end = max(row[2] for row in papers) + timedelta(days=7)
+        try:
+            candidates = controlgas_turns(station_id, start, end)
+        except Exception as exc:
+            print(f"Auto vínculo REGIO estación {station_id}: {exc}", file=sys.stderr)
+            continue
+        used_turns: set[tuple] = set()
+        for paper_id, _, paper_date, declared, real in papers:
+            selected = None
+            for amount, tolerance, criterion in ((money(declared), 1.0, "AUTO_DICE_±1"), (money(real), 20.0, "AUTO_REAL_±20")):
+                if not amount or amount <= 0 or selected:
+                    continue
+                matches = [turn for turn in candidates if (turn["date"], turn["turn"], turn["concept"]) not in used_turns and (paper_date - timedelta(days=1)) <= turn["date"] <= (paper_date + timedelta(days=7)) and abs(turn["amount"] - float(amount)) <= tolerance]
+                if len(matches) == 1:
+                    selected = (matches[0], criterion)
+            if not selected:
+                continue
+            turn, criterion = selected
+            blocked = cursor.execute("""SELECT 1 FROM dbo.efc_conc_analiticos_vinculos
+                                      WHERE estacion_id=? AND fecha_cg=? AND turno=? AND concepto=? AND activo=0 AND bloqueado_auto=1""", station_id, turn["date"], turn["turn"], turn["concept"]).fetchone()
+            if blocked:
+                continue
+            exists = cursor.execute("""SELECT 1 FROM dbo.efc_conc_analiticos_vinculos
+                                     WHERE activo=1 AND (papeleta_id=? OR (estacion_id=? AND fecha_cg=? AND turno=? AND concepto=?))""", paper_id, station_id, turn["date"], turn["turn"], turn["concept"]).fetchone()
+            if exists:
+                continue
+            cursor.execute("""INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id,bloqueado_auto)
+                              VALUES(?,?,?,?,?,?,?,?,?,0)""", station_id, paper_id, turn["date"], turn["turn"], turn["concept"], turn["amount"], criterion, None, None)
+            used_turns.add((turn["date"], turn["turn"], turn["concept"]))
+            linked += 1
+    return linked
+
+
 def import_attachment(connection: pyodbc.Connection, content: bytes, filename: str, metadata: dict[str, str], reprocess: bool = False) -> dict:
     hash_value = hashlib.sha256(content).hexdigest()
     cursor = connection.cursor()
@@ -354,8 +435,9 @@ def import_attachment(connection: pyodbc.Connection, content: bytes, filename: s
         if errors:
             cursor.executemany("INSERT dbo.efc_conc_analiticos_errores(importacion_id,hoja,fila_origen,tipo,detalle,datos_originales) VALUES(?, 'PLANILLA',?,?,?,?)", [(import_id, *error) for error in errors])
         cursor.execute("UPDATE dbo.efc_conc_analiticos_importaciones SET estado='IMPORTADA',total_papeletas=?,total_errores=?,actualizado_en=GETDATE() WHERE id=?", len(new_papers), len(errors), import_id)
+        auto_links = auto_link_import(cursor, import_id) if new_papers else 0
         connection.commit()
-        return {"duplicate": False, "id": import_id, "papeletas": len(new_papers), "errors": len(errors), "duplicate_papers": len(duplicate_errors)}
+        return {"duplicate": False, "id": import_id, "papeletas": len(new_papers), "errors": len(errors), "duplicate_papers": len(duplicate_errors), "auto_links": auto_links}
     except Exception:
         connection.rollback()
         raise

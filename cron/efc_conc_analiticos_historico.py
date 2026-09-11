@@ -6,7 +6,6 @@ Comparte el lector, la idempotencia SHA-256 y la deduplicación por REM NUM del 
 No modifica correos ni tablas fuente.
 """
 from __future__ import annotations
-
 import argparse
 from datetime import datetime
 import json
