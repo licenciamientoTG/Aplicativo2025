@@ -240,10 +240,21 @@ class EfcConciliacionModel {
         // Los pendientes se muestran en origen y destino. Un tránsito ya
         // conciliado sólo se expone en su mes destino: así el tablero conserva
         // la evidencia sin ocultar el corte original en su mes de origen.
+        // Legacy data can contain the same transit key in both PENDIENTE and
+        // CONCILIADO rows. Expose one canonical row, preferring CONCILIADO,
+        // without deleting or changing either persisted record.
         $stmt = $this->db->prepare("SELECT id,estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion
-            FROM dbo.efc_conc_transitos
-            WHERE estacion_id=?
-              AND ((estado='PENDIENTE' AND (mes_origen=? OR mes_destino=?)) OR (estado='CONCILIADO' AND mes_destino=?))
+            FROM (
+                SELECT T.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY T.estacion_id,T.clave_externa
+                        ORDER BY CASE WHEN T.estado='CONCILIADO' THEN 0 ELSE 1 END,T.id DESC
+                    ) AS transit_rank
+                FROM dbo.efc_conc_transitos T
+                WHERE T.estacion_id=?
+                  AND ((T.estado='PENDIENTE' AND (T.mes_origen=? OR T.mes_destino=?)) OR (T.estado='CONCILIADO' AND T.mes_destino=?))
+            ) AS ranked
+            WHERE transit_rank=1
             ORDER BY fecha_origen,turno,concepto,id");
         $stmt->execute([$stationId, $origin, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
         $outgoing=[]; $incoming=[];
