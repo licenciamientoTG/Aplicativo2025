@@ -233,6 +233,7 @@ def resolve_station(raw: object, name: object, stations: list[tuple], aliases: d
 
 
 def map_headers(values: list[object]) -> dict[str, int]:
+    """Reconoce encabezados por nombre y, en la plantilla REGIO, por posición."""
     headers: dict[str, int] = {}
     differences = 0
     for index, value in enumerate(values):
@@ -250,6 +251,30 @@ def map_headers(values: list[object]) -> dict[str, int]:
         elif header == "DIFERENCIA":
             differences += 1
             headers["difference_mn" if differences == 1 else "difference_usd"] = index
+
+    # Algunos archivos REGIO dejan sin título la columna del código de estación
+    # (y ocasionalmente otras columnas). Cuando existe el ancla inequívoca del
+    # nombre de estación, su disposición fija permite recuperar esas columnas
+    # sin sustituir los encabezados que sí fueron identificados por nombre.
+    station_name_index = headers.get("station_name")
+    if station_name_index is not None:
+        offsets = {
+            "date": -2,
+            "station": -1,
+            "time": 1,
+            "account": 2,
+            "remittance": 3,
+            "declared_mn": 4,
+            "real_mn": 5,
+            "difference_mn": 6,
+            "declared_usd": 7,
+            "real_usd": 8,
+            "difference_usd": 9,
+        }
+        for field, offset in offsets.items():
+            index = station_name_index + offset
+            if field not in headers and 0 <= index < len(values):
+                headers[field] = index
     return headers
 
 
@@ -428,8 +453,10 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
         by_station.setdefault(int(row[1]), []).append({"id": int(row[0]), "date": paper_date, "declared_mn": money(row[3]) or 0, "real_mn": money(row[4]) or 0, "declared_usd": money(row[5]) or 0, "real_usd": money(row[6]) or 0})
     linked = 0
     for station_id, papers in by_station.items():
-        # REGIO puede reportar la papeleta al día siguiente del turno ControlGas.
-        first = min(paper["date"] for paper in papers) - timedelta(days=1)
+        # REGIO puede reportar la papeleta hasta tres días después del turno
+        # ControlGas; se consulta ese margen también al cruzar de mes.
+        first_paper_date = min(paper["date"] for paper in papers)
+        first = first_paper_date - timedelta(days=3)
         last_base = max(paper["date"] for paper in papers)
         last = (last_base.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
         turns = controlgas_turns(station_id, first, last)
