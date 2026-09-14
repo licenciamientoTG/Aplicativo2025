@@ -428,7 +428,8 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
         by_station.setdefault(int(row[1]), []).append({"id": int(row[0]), "date": paper_date, "declared_mn": money(row[3]) or 0, "real_mn": money(row[4]) or 0, "declared_usd": money(row[5]) or 0, "real_usd": money(row[6]) or 0})
     linked = 0
     for station_id, papers in by_station.items():
-        first = min(paper["date"] for paper in papers).replace(day=1)
+        # REGIO puede reportar la papeleta al día siguiente del turno ControlGas.
+        first = min(paper["date"] for paper in papers) - timedelta(days=1)
         last_base = max(paper["date"] for paper in papers)
         last = (last_base.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
         turns = controlgas_turns(station_id, first, last)
@@ -469,6 +470,14 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
                 applied_criterion = "AUTO_REAL_±8" if field == "real" and turn["concept"] == "USD" else criterion
                 cursor.execute("""INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id,bloqueado_auto)
                                   VALUES(?,?,?,?,?,?,?,?,?,0)""", station_id, paper["id"], turn["date"], turn["turn"], turn["concept"], turn["amount"], applied_criterion, rate, None)
+                paper_amount = comparable(paper, turn, field)
+                print(
+                    f"AUTO-LINK station_id={station_id} cg_date={turn['date']} turn={turn['turn']} "
+                    f"concept={turn['concept']} cg_amount={turn['amount']:.2f} paper_id={paper['id']} "
+                    f"paper_date={paper['date']} paper_amount={paper_amount:.2f} "
+                    f"difference={paper_amount - turn['amount']:.2f} date_gap_days={gap} "
+                    f"criterion={applied_criterion}"
+                )
                 used_papers.add(paper["id"])
                 used_turns.add(turn_key(turn))
                 linked += 1
@@ -627,15 +636,21 @@ def reassign_unidentified_stations() -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Importa Analíticos REGIO a TG.")
-    parser.add_argument(
+    operation_group = parser.add_mutually_exclusive_group()
+    operation_group.add_argument(
         "--reassign-stations",
         action="store_true",
         help="Reasigna papeletas sin estación usando el catálogo TG, sin leer correo ni borrar vínculos.",
     )
+    operation_group.add_argument(
+        "--reprocess",
+        action="store_true",
+        help="Reemplaza y reimporta adjuntos ya registrados, y reevalúa los vínculos automáticos.",
+    )
     args = parser.parse_args()
     load_env_file()
     try:
-        result = reassign_unidentified_stations() if args.reassign_stations else sync()
+        result = reassign_unidentified_stations() if args.reassign_stations else sync(reprocess=args.reprocess)
         print(json.dumps(result, ensure_ascii=False)); return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr); return 1
