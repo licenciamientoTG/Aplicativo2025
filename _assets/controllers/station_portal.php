@@ -657,25 +657,47 @@ class station_portal
             exit;
         }
 
-        $rutaArchivo = $archivo['ruta'];
-        if (!file_exists($rutaArchivo)) {
+        // Normaliza separadores (Windows)
+        $rutaArchivo = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $archivo['ruta']);
+        $rutaArchivo = str_replace('\\\\', DIRECTORY_SEPARATOR, $rutaArchivo);
+
+        // El importador del pipeline de correos guarda RutaArchivo relativa
+        // (attachments\...\procesadas\...) para las facturas que descarga
+        // solo, resuelta desde SU propio directorio de trabajo en el
+        // servidor -- no el de IIS/AplicativoPhp. Si no es absoluta, se
+        // antepone esa carpeta base, mismo patrón que
+        // supply::scheduling_invoice_file (ver también payment.php).
+        if (!preg_match('/^[A-Za-z]:\\\\/', $rutaArchivo)) {
+            $rutaArchivo = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($rutaArchivo, '\\');
+        }
+
+        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
+        $real = realpath($rutaArchivo);
+
+        if ($real === false || $baseAllowed === false || strpos($real, $baseAllowed) !== 0) {
+            http_response_code(403);
+            echo "Acceso al archivo denegado.";
+            exit;
+        }
+
+        if (!file_exists($real) || !is_readable($real)) {
             http_response_code(404);
             echo "Archivo no encontrado en el servidor";
             exit;
         }
 
         $contentType = $tipo === 'pdf' ? 'application/pdf' : 'application/xml';
-        $nombreArchivo = $archivo['nombre'] ?: basename($rutaArchivo);
+        $nombreArchivo = $archivo['nombre'] ?: basename($real);
 
         header('Content-Type: ' . $contentType);
         header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
-        header('Content-Length: ' . filesize($rutaArchivo));
+        header('Content-Length: ' . filesize($real));
         header('Cache-Control: no-cache, must-revalidate');
         header('Pragma: public');
 
         ob_clean();
         flush();
-        readfile($rutaArchivo);
+        readfile($real);
         exit;
     }
 
