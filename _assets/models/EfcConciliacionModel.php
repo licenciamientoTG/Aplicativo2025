@@ -161,8 +161,11 @@ class EfcConciliacionModel {
             OUTER APPLY (SELECT TOP 1 Pa.dice_contener_mn declarado_mn,Pa.real_mn,Pa.real_usd,V.tipo_cambio_usd
                 FROM dbo.efc_conc_analiticos_vinculos V
                 JOIN dbo.efc_conc_analiticos_papeletas Pa ON Pa.id=V.papeleta_id
-                WHERE V.estacion_id=G.estacion_id AND V.fecha_cg=G.fecha_operativa AND V.turno=G.turno
-                  AND V.concepto=G.concepto AND V.activo=1) V
+                WHERE V.estacion_id=G.estacion_id AND V.turno=G.turno AND V.concepto=G.concepto AND V.activo=1
+                  AND (V.fecha_cg=G.fecha_operativa OR EXISTS(
+                    SELECT 1 FROM dbo.efc_conc_partidas TC
+                    WHERE TC.grupo_id=G.id AND TC.origen='CG' AND TC.activo=1 AND TC.fecha_operacion=V.fecha_cg
+                  ))) V
             WHERE ".implode(' AND ',$where)."
             GROUP BY G.id,G.fecha_operativa,G.estacion_id,E.Nombre,G.turno,G.concepto,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,V.declarado_mn,V.real_mn,V.real_usd,V.tipo_cambio_usd
             ORDER BY G.fecha_operativa,G.turno,G.id";
