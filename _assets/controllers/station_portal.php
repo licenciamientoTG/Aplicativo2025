@@ -70,21 +70,30 @@ class station_portal
         $todasEstaciones = authorized(self::PERM_TODAS_ESTACIONES);
         $codgas = $this->resolveCodgas();
 
-        // "Sin acceso en absoluto" = no tiene permiso de todas las estaciones
-        // Y no hay codgas resuelto (sin IdEstacion de sesión). Ese es el único
-        // caso que niega la vista. Si tiene permiso 85 pero aún no hay codgas
-        // (no eligió estación todavía), sí se renderiza la vista, con tabla vacía.
-        if ($codgas === null && !$todasEstaciones) {
-            setFlashMessage('danger', 'Tu usuario no tiene una estación asignada.');
-            header('Location: /home/index');
-            exit;
-        }
+        // Sin permiso de todas las estaciones y sin IdEstacion en sesión: el
+        // usuario sí puede entrar a la vista (antes se le redirigía a home),
+        // pero no hay ninguna estación que mostrarle -- se renderiza con un
+        // aviso fijo explicando por qué, en vez de datos vacíos sin
+        // contexto. sinEstacionAsignada controla ese aviso en la vista.
+        $sinEstacionAsignada = ($codgas === null && !$todasEstaciones);
 
         $showStationSelect = $todasEstaciones;
         $stations = $showStationSelect ? $this->gasolinerasModel->get_active_stations() : [];
         $canDelete = authorized(self::PERM_ELIMINAR);
 
-        echo $this->twig->render($this->route . 'mis_recepciones.html', compact('stations', 'showStationSelect', 'canDelete'));
+        // Nombre de la estación fija del usuario, para mostrarlo en la barra
+        // de filtros cuando no hay selector (sin permiso 85) -- así queda
+        // claro qué estación está viendo sin tener que adivinar por los
+        // datos. null si aún no se resolvió codgas (sinEstacionAsignada).
+        $estacionFija = null;
+        if (!$showStationSelect && $codgas !== null) {
+            $rows = $this->gasolinerasModel->get_station_by_code($codgas);
+            $estacionFija = $rows ? ($rows[0]['abr'] ?? $rows[0]['den'] ?? null) : null;
+        }
+
+        echo $this->twig->render($this->route . 'mis_recepciones.html', compact(
+            'stations', 'showStationSelect', 'canDelete', 'sinEstacionAsignada', 'estacionFija'
+        ));
     }
 
     /**

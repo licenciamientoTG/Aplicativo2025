@@ -3,6 +3,16 @@
 {% block mycss %}{% endblock %}
 {% block menutitle %}Mis Recepciones{% endblock %}
 {% block content %}
+{% if sinEstacionAsignada %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+            <i data-feather="alert-triangle" class="flex-shrink-0"></i>
+            <div>Tu usuario no tiene una estación asignada, así que no hay recepciones que mostrar. Contacta a un administrador para que te asigne una estación.</div>
+        </div>
+    </div>
+</div>
+{% endif %}
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -27,6 +37,14 @@
                             <option value="{{ station.cod }}">{{ station.abr }}</option>
                             {% endfor %}
                         </select>
+                    </div>
+                    {% elseif estacionFija %}
+                    <div class="col-md-3">
+                        <label class="form-label d-block">Estación:</label>
+                        <span class="badge bg-primary-subtle text-primary-emphasis fs-6 py-2 px-3">
+                            <i data-feather="map-pin" style="width:14px;height:14px;" class="align-text-bottom"></i>
+                            {{ estacionFija }}
+                        </span>
                     </div>
                     {% endif %}
                     <div class="col-md-2 d-flex align-items-end">
