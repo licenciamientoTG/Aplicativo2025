@@ -463,6 +463,7 @@ function abrirModalFactura(scheduleId) {
                 return;
             }
             $('#modalFacturaContent').html(resp.html);
+            if (window.feather) feather.replace();
             const modal = new bootstrap.Modal(document.getElementById('modalFactura'));
             modal.show();
         })

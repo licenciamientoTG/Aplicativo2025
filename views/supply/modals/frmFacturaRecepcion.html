@@ -1,15 +1,35 @@
 <input type="hidden" id="factura_schedule_id" value="{{ scheduleId }}">
 <div class="modal-body">
     {% if sugerencias %}
-    <p class="text-muted mb-2">Se encontraron facturas ya importadas que podrían corresponder a esta recepción:</p>
-    <div class="list-group mb-3">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <i data-feather="search" class="text-success" style="width:18px;height:18px;"></i>
+        <p class="text-muted mb-0">
+            Se {{ sugerencias|length > 1 ? 'encontraron ' ~ sugerencias|length ~ ' facturas' : 'encontró 1 factura' }}
+            ya importada{{ sugerencias|length > 1 ? 's' : '' }} que podría{{ sugerencias|length > 1 ? 'n' : '' }} corresponder a esta recepción:
+        </p>
+    </div>
+    <div class="d-flex flex-column gap-2 mb-3">
         {% for f in sugerencias %}
-        <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-                <div><strong>Folio:</strong> {{ f.Folio|default('—') }} &nbsp; <strong>Fecha:</strong> {{ f.Fecha|date('Y-m-d') }}</div>
-                <div class="text-muted small">{{ f.EmisorNombre }} &middot; ${{ f.Total|number_format(2) }} &middot; UUID: {{ f.UUID }}</div>
+        <div class="border rounded-3 p-3 sugerencia-factura">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <div class="mb-1">
+                        <span class="fs-5 fw-bold text-body">Folio {{ f.Folio|default('—') }}</span>
+                        <span class="badge bg-success-subtle text-success-emphasis ms-2">${{ f.Total|number_format(2) }}</span>
+                    </div>
+                    <div class="text-muted small">
+                        <i data-feather="calendar" style="width:13px;height:13px;" class="align-text-bottom"></i>
+                        {{ f.Fecha|date('d/m/Y') }}
+                        &nbsp;&middot;&nbsp;
+                        <i data-feather="truck" style="width:13px;height:13px;" class="align-text-bottom"></i>
+                        {{ f.EmisorNombre }}
+                    </div>
+                    <div class="text-muted small font-monospace mt-1" style="font-size:0.7rem;" title="UUID del CFDI">{{ f.UUID }}</div>
+                </div>
+                <button type="button" class="btn btn-success btn-sm flex-shrink-0 btn-vincular-sugerida" data-invoice-id="{{ f.Id }}">
+                    <i data-feather="link" style="width:14px;height:14px;" class="align-text-bottom"></i> Vincular esta
+                </button>
             </div>
-            <button type="button" class="btn btn-primary btn-sm btn-vincular-sugerida" data-invoice-id="{{ f.Id }}">Vincular esta</button>
         </div>
         {% endfor %}
     </div>

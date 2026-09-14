@@ -84,6 +84,17 @@
             padding-top: 0;
         }
     }
+
+    /* Cards de facturas sugeridas en el modal "Factura de la recepción" --
+       leve resalte al pasar el mouse para reforzar que cada una es una
+       opción seleccionable, no solo texto informativo. */
+    .sugerencia-factura {
+        transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .sugerencia-factura:hover {
+        border-color: var(--bs-success) !important;
+        box-shadow: 0 0 0 1px var(--bs-success);
+    }
 </style>
 {% endblock %}
 {% block menutitle %}Programación de Recepciones{% endblock %}
