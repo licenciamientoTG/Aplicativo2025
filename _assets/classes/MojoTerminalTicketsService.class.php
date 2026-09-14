@@ -4,6 +4,9 @@ class MojoTerminalTicketsService {
     private const SYSTEM_FORM = 51598;
     private const VALERAS_FORM = 84607;
     private const SYSTEM_QUEUE = 53551;
+    // Campo de texto exclusivo del formulario UROVO. Ajustar sólo si Mojo
+    // cambia el slug del campo, sin exponer esa configuración al cliente.
+    private const UROVO_SERIAL_FIELD = 'custom_field_numero_de_serie_urovo';
     // Valores vigentes del campo desplegable "Estacion" del formulario 84607.
     // El título conserva el nombre del catálogo TG (incluido su número), pero
     // Mojo sólo muestra un valor si el enviado coincide literalmente con una
@@ -51,7 +54,7 @@ class MojoTerminalTicketsService {
         $valeras=$incident['type']!=='urovo';
         $payload=['title'=>'Terminal '.$incident['label'].' - '.$stationName,'description'=>$incident['description'],'ticket_queue_id'=>self::SYSTEM_QUEUE,'priority_id'=>30,'user'=>['email'=>$email]];
         if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$this->valeraStationOption($stationName),'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
-        else $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_solicitante'=>$email,'custom_field_problema'=>'Terminal Urovo'];
+        else $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_solicitante'=>$email,'custom_field_problema'=>'Terminal Urovo',self::UROVO_SERIAL_FIELD=>(string)($incident['serial_urovo'] ?? $incident['urovo_serial'] ?? '')];
         return $this->request('POST','/v2/tickets',$payload);
     }
     private function normalizeTerminal(string $value): string {
@@ -91,7 +94,22 @@ class MojoTerminalTicketsService {
             'provider_folio'=>$this->ticketField($ticket,['custom_field_folio_de_reporte_del_proveedor','folio_de_reporte_del_proveedor','Folio de reporte al proveedor']),
             'provider_date'=>$this->ticketField($ticket,['custom_field_fecha_de_reporte_a_proveedor','fecha_de_reporte_a_proveedor','Fecha de reporte al proveedor']),
             'description'=>trim((string)($ticket['description'] ?? $ticket['title'] ?? '')),
+            'serial_urovo'=>$type==='urovo' ? $this->ticketField($ticket,[self::UROVO_SERIAL_FIELD,'numero_de_serie_urovo','Número de serie UROVO','Numero de serie UROVO']) : '',
         ];
+    }
+    public function closedByFromTicket(array $ticket): ?string {
+        foreach (['solved_by','closed_by','resolved_by','solved_by_user','closed_by_user','resolver'] as $key) {
+            if (!array_key_exists($key,$ticket)) continue;
+            $actor=$ticket[$key];
+            if (is_array($actor)) {
+                foreach (['name','full_name','email','display_name','username'] as $field) {
+                    if (!empty($actor[$field]) && !is_array($actor[$field])) return mb_substr(trim((string)$actor[$field]),0,150);
+                }
+                continue;
+            }
+            if (is_scalar($actor) && trim((string)$actor)!=='') return mb_substr(trim((string)$actor),0,150);
+        }
+        return null;
     }
     public function validateForType(array $ticket, string $type, ?string $mojoType=null): bool {
         $form=(int)($ticket['ticket_form_id'] ?? 0); if (!$this->isOpen($ticket)) return false;

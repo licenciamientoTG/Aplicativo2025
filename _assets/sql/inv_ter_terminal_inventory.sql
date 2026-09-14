@@ -67,9 +67,32 @@ CREATE TABLE dbo.inv_ter_incidencias (
     descripcion VARCHAR(250) NOT NULL,
     usuario_id INT NOT NULL,
     usuario_correo VARCHAR(160) NOT NULL,
+    serial_urovo VARCHAR(100) NULL,
+    cerrado_por_mojo VARCHAR(160) NULL,
+    confirmado_resuelto_por INT NULL,
+    confirmado_resuelto_correo VARCHAR(160) NULL,
+    fecha_confirmacion_resolucion DATETIME2 NULL,
+    resolucion_confirmada BIT NULL,
+    nota_confirmacion_resolucion VARCHAR(500) NULL,
     fecha_registro DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_incidencias_fecha DEFAULT SYSDATETIME(),
     CONSTRAINT UQ_inv_ter_incidencias_ticket UNIQUE (ticket_mojo_id)
 );
+
+/* Datos complementarios; los tickets históricos conservan estos valores en NULL. */
+IF COL_LENGTH('dbo.inv_ter_incidencias', 'serial_urovo') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD serial_urovo VARCHAR(100) NULL');
+IF COL_LENGTH('dbo.inv_ter_incidencias', 'cerrado_por_mojo') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD cerrado_por_mojo VARCHAR(160) NULL');
+IF COL_LENGTH('dbo.inv_ter_incidencias', 'confirmado_resuelto_por') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD confirmado_resuelto_por INT NULL');
+IF COL_LENGTH('dbo.inv_ter_incidencias', 'confirmado_resuelto_correo') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD confirmado_resuelto_correo VARCHAR(160) NULL');
+IF COL_LENGTH('dbo.inv_ter_incidencias', 'fecha_confirmacion_resolucion') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD fecha_confirmacion_resolucion DATETIME2 NULL');
+IF COL_LENGTH('dbo.inv_ter_incidencias', 'resolucion_confirmada') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD resolucion_confirmada BIT NULL');
+IF COL_LENGTH('dbo.inv_ter_incidencias', 'nota_confirmacion_resolucion') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD nota_confirmacion_resolucion VARCHAR(500) NULL');
 
 IF OBJECT_ID('dbo.inv_ter_incidencias_inventario', 'U') IS NULL
 CREATE TABLE dbo.inv_ter_incidencias_inventario (
@@ -123,6 +146,25 @@ EXEC(N'ALTER TABLE dbo.inv_ter_configuracion ADD CONSTRAINT CK_inv_ter_configura
 
 IF COL_LENGTH('dbo.inv_ter_configuracion', 'valeras_habilitadas') IS NULL
 EXEC(N'ALTER TABLE dbo.inv_ter_configuracion ADD valeras_habilitadas VARCHAR(200) NOT NULL CONSTRAINT DF_inv_ter_configuracion_valeras DEFAULT ''ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox''');
+
+/* Meta de terminales por estación; una fila por estación permite configurarla independientemente. */
+IF OBJECT_ID('dbo.inv_ter_configuracion_estacion', 'U') IS NULL
+EXEC(N'CREATE TABLE dbo.inv_ter_configuracion_estacion (
+    estacion_id INT NOT NULL CONSTRAINT PK_inv_ter_configuracion_estacion PRIMARY KEY,
+    terminales_esperadas INT NULL,
+    actualizado_por INT NULL,
+    actualizado_en DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_config_estacion_actualizado DEFAULT SYSDATETIME(),
+    CONSTRAINT CK_inv_ter_config_estacion_terminales CHECK (terminales_esperadas >= 0)
+)');
+
+IF COL_LENGTH('dbo.inv_ter_configuracion_estacion', 'terminales_esperadas') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD terminales_esperadas INT NULL');
+IF COL_LENGTH('dbo.inv_ter_configuracion_estacion', 'actualizado_por') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD actualizado_por INT NULL');
+IF COL_LENGTH('dbo.inv_ter_configuracion_estacion', 'actualizado_en') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD actualizado_en DATETIME2 NULL');
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion_estacion') AND name='CK_inv_ter_config_estacion_terminales')
+EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD CONSTRAINT CK_inv_ter_config_estacion_terminales CHECK (terminales_esperadas >= 0)');
 
 EXEC(N'IF NOT EXISTS (SELECT 1 FROM dbo.inv_ter_configuracion WHERE id=1)
       INSERT INTO dbo.inv_ter_configuracion (id,dia_inventario_semana,valeras_habilitadas)
