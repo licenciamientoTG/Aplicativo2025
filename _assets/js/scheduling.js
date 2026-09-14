@@ -5,10 +5,39 @@ function esc(v) {
 }
 
 let ultimasFilas = [];
-let agrupacionActiva = 'terminal';
-let colsActivas = 3;
-let proveedorFiltroActivo = null;
 const ESTACIONES = window.SCHEDULING_ESTACIONES || [];
+
+// Preferencias de filtro/vista persistidas por usuario en localStorage --
+// mismo storage (por navegador, no por cuenta) que ya usa la vista para
+// el estado del sidebar. Si el navegador bloquea localStorage (modo
+// privado, cuota llena) se degrada a los defaults de siempre sin romper
+// la vista.
+const SCHEDULING_PREFS_KEY = 'scheduling_prefs';
+
+function cargarPreferenciasScheduling() {
+    try {
+        const raw = localStorage.getItem(SCHEDULING_PREFS_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function guardarPreferenciasScheduling(parciales) {
+    try {
+        const actuales = cargarPreferenciasScheduling();
+        localStorage.setItem(SCHEDULING_PREFS_KEY, JSON.stringify(Object.assign(actuales, parciales)));
+    } catch (e) {
+        // localStorage no disponible -- la preferencia simplemente no persiste.
+    }
+}
+
+const prefsGuardadas = cargarPreferenciasScheduling();
+let agrupacionActiva = prefsGuardadas.agrupacion || 'terminal';
+let colsActivas = prefsGuardadas.cols || 3;
+let proveedorFiltroActivo = prefsGuardadas.proveedorFiltro || null;
+let ocultarVaciasEstacion = prefsGuardadas.ocultarVaciasEstacion || false;
+let ocultarVaciosTerminal = prefsGuardadas.ocultarVaciosTerminal || false;
 
 // Las 16 combinaciones Proveedor→Terminal reales del programa mensual
 // (confirmadas contra los Excel de julio y septiembre 2026 -- mismo
@@ -486,6 +515,31 @@ $(document).ready(function () {
 
     $('.selectpicker').selectpicker();
 
+    // Restaura en el DOM las preferencias de filtro/vista leídas de
+    // localStorage antes del primer render (agrupación, columnas, ambos
+    // toggles de "ocultar vacíos") -- proveedorFiltroActivo no necesita
+    // restauración de DOM aquí porque renderBotonesProveedor() ya lo lee
+    // directo de la variable al pintar los botones.
+    if (agrupacionActiva === 'estacion') {
+        $('#tabsAgrupacion button').removeClass('active');
+        $('#tab-btn-estacion').addClass('active');
+    }
+    $('#btnOcultarVacias').toggle(agrupacionActiva === 'estacion');
+    $('#btnOcultarVaciosTerminal').toggle(agrupacionActiva === 'terminal');
+    if (ocultarVaciasEstacion) {
+        $('#btnOcultarVacias').addClass('active')
+            .attr('title', 'Mostrar estaciones sin recepción programada')
+            .find('i').attr('data-feather', 'eye-off');
+    }
+    if (ocultarVaciosTerminal) {
+        $('#btnOcultarVaciosTerminal').addClass('active')
+            .attr('title', 'Mostrar grupos sin recepción programada')
+            .find('i').attr('data-feather', 'eye-off');
+    }
+    $('.btn-cols').removeClass('active');
+    $('.btn-cols[data-cols="' + colsActivas + '"]').addClass('active');
+    if (window.feather) feather.replace();
+
     renderBotonesProveedor();
     cargarDia(fechaInput.val());
 
@@ -499,6 +553,7 @@ $(document).ready(function () {
         $(this).addClass('active');
         $('#btnOcultarVacias').toggle(agrupacionActiva === 'estacion');
         $('#btnOcultarVaciosTerminal').toggle(agrupacionActiva === 'terminal');
+        guardarPreferenciasScheduling({ agrupacion: agrupacionActiva });
         renderizarTodo();
     });
 
@@ -507,6 +562,8 @@ $(document).ready(function () {
         $(this).attr('title', activo ? 'Mostrar estaciones sin recepción programada' : 'Ocultar estaciones sin recepción programada');
         $(this).find('i').attr('data-feather', activo ? 'eye-off' : 'eye');
         if (window.feather) feather.replace();
+        ocultarVaciasEstacion = activo;
+        guardarPreferenciasScheduling({ ocultarVaciasEstacion: activo });
         renderizarTodo();
     });
 
@@ -515,12 +572,15 @@ $(document).ready(function () {
         $(this).attr('title', activo ? 'Mostrar grupos sin recepción programada' : 'Ocultar grupos sin recepción programada');
         $(this).find('i').attr('data-feather', activo ? 'eye-off' : 'eye');
         if (window.feather) feather.replace();
+        ocultarVaciosTerminal = activo;
+        guardarPreferenciasScheduling({ ocultarVaciosTerminal: activo });
         renderizarTodo();
     });
 
     $(document).on('click', '.btn-filtro-proveedor', function () {
         const id = $(this).data('supplier-id');
         proveedorFiltroActivo = (String(proveedorFiltroActivo) === String(id)) ? null : id;
+        guardarPreferenciasScheduling({ proveedorFiltro: proveedorFiltroActivo });
         renderBotonesProveedor();
         renderizarTodo();
     });
@@ -529,6 +589,7 @@ $(document).ready(function () {
         colsActivas = parseInt($(this).data('cols'), 10);
         $('.btn-cols').removeClass('active');
         $(this).addClass('active');
+        guardarPreferenciasScheduling({ cols: colsActivas });
         renderizarTodo();
     });
 
