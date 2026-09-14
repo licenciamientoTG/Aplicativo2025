@@ -224,7 +224,7 @@ class EfcConciliacionModel {
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>round($regio,2),
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
                     'faltante'=>round($amount-$regio,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
-                    'papeleta_id'=>(int)$link['papeleta_id'], 'remesa'=>(string)($link['remesa_numero'] ?? ''), 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''),
+                    'papeleta_id'=>(int)$link['papeleta_id'], 'remesa'=>$this->normaliseRemittance($link['remesa_numero'] ?? ''), 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''),
                     'grupo_id'=>$group['id'] ?? null,
                 ];
             }
@@ -553,6 +553,7 @@ class EfcConciliacionModel {
     private function transitGroupIds(int $transitId,string $sourceKey): array { $q=$this->db->prepare("SELECT DISTINCT G.id FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa IN (?,?) AND P.activo=1 AND G.estado='ACTIVA'"); $q->execute([$sourceKey,'TR:'.$transitId]); return array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN)); }
     private function cancelGroup(int $groupId,int $userId): void { $this->db->prepare("UPDATE dbo.efc_conc_grupos SET estado='CANCELADA',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='ACTIVA'")->execute([$userId,$groupId]); $this->db->prepare("UPDATE dbo.efc_conc_partidas SET activo=0 WHERE grupo_id=?")->execute([$groupId]); $this->log($groupId,null,'DESHACER',null,$userId); }
     private function reportTurnKey(string $date, string $turn, string $concept): string { preg_match('/\d+/', $turn, $match); return $date.'|'.($match[0] ?? trim($turn)).'|'.strtoupper(trim($concept)); }
+    private function normaliseRemittance($value): string { $text=(string)$value; return preg_match('/^\d+\.0$/',$text) ? substr($text,0,-2) : $text; }
     private function reportDate($value): ?string {
         $value=trim((string)$value);
         if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})/', $value, $match)) return $match[3].'-'.$match[2].'-'.$match[1];

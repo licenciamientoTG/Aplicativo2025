@@ -433,24 +433,73 @@ def rate_for_turn(rates: list[tuple[datetime, float]], turn: dict) -> float | No
     return selected
 
 
-def closest_paper(candidates: list[dict], turn: dict) -> tuple[dict, int] | None:
-    """Replica paperDateGap/closestPaperByDate de cash_reconciliation.html."""
+def closest_papers(candidates: list[dict], turn: dict) -> list[tuple[dict, int]]:
+    """Devuelve todas las papeletas que empatan en la menor brecha elegible."""
     dated = [(paper, abs((paper["date"] - turn["date"]).days)) for paper in candidates if (paper["date"] - turn["date"]).days >= -1]
     dated.sort(key=lambda item: (item[1], item[0]["id"]))
-    if not dated or (len(dated) > 1 and dated[0][1] == dated[1][1]):
+    if not dated:
+        return []
+    return [item for item in dated if item[1] == dated[0][1]]
+
+
+def closest_paper(candidates: list[dict], turn: dict) -> tuple[dict, int] | None:
+    """Replica paperDateGap/closestPaperByDate de cash_reconciliation.html."""
+    closest = closest_papers(candidates, turn)
+    if len(closest) != 1:
         return None
-    return dated[0]
+    return closest[0]
+
+
+def remittance_sort_key(paper: dict) -> tuple[int, int, int]:
+    """Orden estable de remesa; sólo elimina el sufijo Excel terminal '.0'."""
+    raw = str(paper.get("remittance") or "").strip()
+    if raw.endswith(".0"):
+        raw = raw[:-2]
+    if raw.isdigit():
+        return (0, int(raw), paper["id"])
+    return (1, 0, paper["id"])
+
+
+def turn_sequence_sort_key(turn: dict) -> tuple[date, int, int, str]:
+    """Orden cronológico y reproducible para resolver empates de secuencia."""
+    number = turn_number(turn["turn"])
+    return (turn["date"], 0 if number is not None else 1, number or 0, str(turn["turn"]))
+
+
+def sequential_tie_groups(tied: list[tuple[dict, list[tuple[dict, int]]]]) -> list[tuple[list[dict], list[dict], int]]:
+    """Agrupa únicamente empates homogéneos sin candidatos que crucen otro grupo."""
+    grouped: dict[tuple, list[tuple[dict, list[tuple[dict, int]]]]] = {}
+    paper_groups: dict[int, set[tuple]] = {}
+    for turn, closest in tied:
+        if len(closest) < 2:
+            continue
+        gap = closest[0][1]
+        paper_ids = tuple(paper["id"] for paper, _ in closest)
+        group_key = (turn["concept"], turn["amount"], gap, paper_ids)
+        grouped.setdefault(group_key, []).append((turn, closest))
+        for paper_id in paper_ids:
+            paper_groups.setdefault(paper_id, set()).add(group_key)
+
+    groups: list[tuple[list[dict], list[dict], int]] = []
+    for group_key, members in grouped.items():
+        turns = [turn for turn, _ in members]
+        paper_ids = group_key[3]
+        if len(turns) < 2 or len(turns) != len(paper_ids) or any(len(paper_groups[paper_id]) != 1 for paper_id in paper_ids):
+            continue
+        papers = [paper for paper, _ in members[0][1]]
+        groups.append((sorted(turns, key=turn_sequence_sort_key), sorted(papers, key=remittance_sort_key), group_key[2]))
+    return sorted(groups, key=lambda group: turn_sequence_sort_key(group[0][0]))
 
 
 def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
     """Persiste las mismas dos pasadas automáticas de la vista, dentro de la importación."""
-    paper_rows = cursor.execute("""SELECT id,estacion_id,fecha_reportada,dice_contener_mn,real_mn,dice_contener_usd,real_usd
+    paper_rows = cursor.execute("""SELECT id,estacion_id,fecha_reportada,remesa_numero,dice_contener_mn,real_mn,dice_contener_usd,real_usd
                                    FROM dbo.efc_conc_analiticos_papeletas
                                    WHERE importacion_id=? AND estacion_id IS NOT NULL AND fecha_reportada IS NOT NULL""", import_id).fetchall()
     by_station: dict[int, list[dict]] = {}
     for row in paper_rows:
         paper_date = row[2].date() if isinstance(row[2], datetime) else row[2]
-        by_station.setdefault(int(row[1]), []).append({"id": int(row[0]), "date": paper_date, "declared_mn": money(row[3]) or 0, "real_mn": money(row[4]) or 0, "declared_usd": money(row[5]) or 0, "real_usd": money(row[6]) or 0})
+        by_station.setdefault(int(row[1]), []).append({"id": int(row[0]), "date": paper_date, "remittance": row[3], "declared_mn": money(row[4]) or 0, "real_mn": money(row[5]) or 0, "declared_usd": money(row[6]) or 0, "real_usd": money(row[7]) or 0})
     linked = 0
     for station_id, papers in by_station.items():
         # REGIO puede reportar la papeleta hasta tres días después del turno
@@ -482,19 +531,13 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
         def match_pass(field: str, tolerance: float, criterion: str) -> None:
             nonlocal linked
             pending = [turn for turn in turns if turn_key(turn) not in active_turns and turn_key(turn) not in blocked_turns and turn_key(turn) not in used_turns]
-            while pending:
-                proposals: list[tuple[int, dict, dict, float | None]] = []
-                for turn in pending:
-                    effective_tolerance = 8.0 if field == "real" and turn["concept"] == "USD" else tolerance
-                    candidates = [paper for paper in available if paper["id"] not in used_papers and comparable(paper, turn, field) > 0 and abs(comparable(paper, turn, field) - turn["amount"]) <= effective_tolerance]
-                    selected = closest_paper(candidates, turn)
-                    if selected:
-                        paper, gap = selected
-                        proposals.append((gap, turn, paper, rate_for_turn(rates, turn) if turn["concept"] == "USD" else None))
-                if not proposals:
-                    return
-                gap, turn, paper, rate = min(proposals, key=lambda item: (item[0], item[1]["date"], str(item[1]["turn"]), item[2]["id"]))
+
+            def apply_match(turn: dict, paper: dict, gap: int, sequential: bool = False) -> None:
+                nonlocal linked
+                rate = rate_for_turn(rates, turn) if turn["concept"] == "USD" else None
                 applied_criterion = "AUTO_REAL_±8" if field == "real" and turn["concept"] == "USD" else criterion
+                if sequential:
+                    applied_criterion += "_SECUENCIA_REMESA"
                 cursor.execute("""INSERT dbo.efc_conc_analiticos_vinculos(estacion_id,papeleta_id,fecha_cg,turno,concepto,importe_cg,criterio,tipo_cambio_usd,usuario_id,bloqueado_auto)
                                   VALUES(?,?,?,?,?,?,?,?,?,0)""", station_id, paper["id"], turn["date"], turn["turn"], turn["concept"], turn["amount"], applied_criterion, rate, None)
                 paper_amount = comparable(paper, turn, field)
@@ -508,7 +551,34 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
                 used_papers.add(paper["id"])
                 used_turns.add(turn_key(turn))
                 linked += 1
-                pending = [item for item in pending if turn_key(item) != turn_key(turn)]
+
+            while pending:
+                proposals: list[tuple[int, dict, dict]] = []
+                tied: list[tuple[dict, list[tuple[dict, int]]]] = []
+                for turn in pending:
+                    effective_tolerance = 8.0 if field == "real" and turn["concept"] == "USD" else tolerance
+                    candidates = [paper for paper in available if paper["id"] not in used_papers and comparable(paper, turn, field) > 0 and abs(comparable(paper, turn, field) - turn["amount"]) <= effective_tolerance]
+                    selected = closest_paper(candidates, turn)
+                    if selected:
+                        paper, gap = selected
+                        proposals.append((gap, turn, paper))
+                    else:
+                        closest = closest_papers(candidates, turn)
+                        if len(closest) > 1:
+                            tied.append((turn, closest))
+                if proposals:
+                    gap, turn, paper = min(proposals, key=lambda item: (item[0], item[1]["date"], str(item[1]["turn"]), item[2]["id"]))
+                    apply_match(turn, paper, gap)
+                    pending = [item for item in pending if turn_key(item) != turn_key(turn)]
+                    continue
+                groups = sequential_tie_groups(tied)
+                if not groups:
+                    return
+                group_turns, group_papers, gap = groups[0]
+                for turn, paper in zip(group_turns, group_papers):
+                    apply_match(turn, paper, gap, sequential=True)
+                group_keys = {turn_key(turn) for turn in group_turns}
+                pending = [item for item in pending if turn_key(item) not in group_keys]
 
         match_pass("declared", 1.0, "AUTO_DICE_±1")
         match_pass("real", 20.0, "AUTO_REAL_±20")
