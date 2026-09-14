@@ -692,12 +692,21 @@ class station_portal
         $debugInfo['era_relativa'] = $eraRelativa ? 'si' : 'no';
         $debugInfo['ruta_con_base'] = $rutaArchivo;
 
-        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
+        // No depender de realpath() sobre la carpeta base: en este servidor
+        // se observó (2026-09-14) que realpath() del archivo completo
+        // resuelve bien mientras realpath() de la carpeta padre por sí sola
+        // devuelve false -- permisos NTFS granulares en Windows pueden
+        // permitir "Traverse Folder" sin "List Folder Contents", y stat()
+        // sobre la carpeta en sí falla aunque el archivo dentro sí sea
+        // legible. En vez de eso, se valida por prefijo de string sobre la
+        // ruta ya realpath()-eada del archivo (que si depende de que el
+        // archivo exista, no de que la carpeta sea listable).
+        $baseAllowedPrefix = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\';
         $real = realpath($rutaArchivo);
-        $debugInfo['base_allowed_realpath'] = $baseAllowed === false ? '(realpath falló, la carpeta base no existe o no es accesible)' : $baseAllowed;
         $debugInfo['ruta_realpath'] = $real === false ? '(realpath falló, el archivo no existe o la ruta es inválida)' : $real;
+        $debugInfo['base_prefix_check'] = $baseAllowedPrefix;
 
-        if ($real === false || $baseAllowed === false || strpos($real, $baseAllowed) !== 0) {
+        if ($real === false || stripos($real, $baseAllowedPrefix) !== 0) {
             if ($debug) {
                 header('Content-Type: text/plain; charset=utf-8');
                 echo "DEBUG descargar_factura_programada -- BLOQUEADO por validación de ruta base\n";
