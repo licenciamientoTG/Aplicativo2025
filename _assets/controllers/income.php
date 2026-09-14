@@ -6430,6 +6430,11 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation_summary.html');
     }
 
+    /** Consola unificada: ControlGas, evidencia REGIO y depósitos bancarios. */
+    public function cash_reconciliation_triple(): void {
+        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html');
+    }
+
     public function cash_reconciliation_movements(): void {
         echo $this->twig->render($this->route . 'cash_reconciliation_movements.html');
     }
@@ -6445,7 +6450,7 @@ public function stamped_invoices_detail(): void
     }
     public function efc_conc_save(): void {
         ob_clean(); header('Content-Type: application/json');
-        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $type=(string)($data['type']??'MANUAL'); $id=$this->efcConciliacion->saveGroup(['station_id'=>(int)$data['station_id'],'type'=>$type,'cg_total'=>(float)$data['cg_total'],'bank_total'=>(float)$data['bank_total'],'difference'=>(float)$data['difference']],$data['cg']??[],$data['bank']??[],(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','id'=>$id]); }
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $money=static fn($value)=>round((float)str_replace([',','$',' '],'',(string)$value),2); $cg=$data['cg']??[]; $bank=$data['bank']??[]; foreach($cg as &$item)$item['amount']=$money($item['amount']??0); unset($item); foreach($bank as &$item){$item['amount']=$money($item['amount']??0); $item['id']='mb_'.(int)preg_replace('/\D/','',(string)($item['id']??''));} unset($item); $type=(string)($data['type']??'MANUAL'); $id=$this->efcConciliacion->saveGroup(['station_id'=>(int)$data['station_id'],'type'=>$type,'cg_total'=>$money($data['cg_total']??0),'bank_total'=>$money($data['bank_total']??0),'difference'=>$money($data['difference']??0)],$cg,$bank,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','id'=>$id]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
     public function efc_conc_grupos_activos(): void {
@@ -6481,6 +6486,9 @@ public function stamped_invoices_detail(): void
     public function efc_conc_cierre_previsualizar(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; $pending=(int)($d['pending']??0); if($pending>0) throw new RuntimeException('No se puede cerrar: existen operaciones pendientes.'); echo json_encode(['status'=>'success','data'=>['pending'=>$pending]]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_cierre_cerrar(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->closePeriod($d,(int)($_SESSION['tg_user']['Id']??0))]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_cierre_reabrir(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->reopenPeriod((int)($d['station_id']??0),(int)($d['year']??0),(int)($d['month']??0),strtoupper((string)($d['concept']??'')),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_cierre_etapa_estado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->stageClosure((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),strtoupper((string)($_GET['concepto']??'')),strtoupper((string)($_GET['etapa']??'')))]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_cierre_etapa_cerrar(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->closeStage($d,(int)($_SESSION['tg_user']['Id']??0))]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+    public function efc_conc_cierre_etapa_reabrir(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->reopenStage((int)($d['station_id']??0),(int)($d['year']??0),(int)($d['month']??0),strtoupper((string)($d['concept']??'')),strtoupper((string)($d['stage']??'')),(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_detalle(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryDetail((int)($_GET['estacion_id']??0),isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_agrupado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryGrouped(isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_export_resumen(): void {
@@ -6583,6 +6591,21 @@ public function stamped_invoices_detail(): void
             if(!is_array($ids)) $ids=[$ids];
             $restore=(bool)($data['restaurar']??false);
             $count=$this->efcAnaliticos->correctDates($ids,$restore?null:((string)($data['fecha']??'')),(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','count'=>$count]);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    /** Corrige/restaura la estación efectiva sin alterar el Excel importado. */
+    public function efc_conc_analiticos_corregir_estacion(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true)?:[];
+            $ids=$data['papeleta_ids']??[];
+            if(!is_array($ids)) $ids=[$ids];
+            $restore=(bool)($data['restaurar']??false);
+            $stationId=$restore?null:(int)($data['estacion_id']??0);
+            if (!$restore && $stationId<1) throw new RuntimeException('Seleccione una estación.');
+            $count=$this->efcAnaliticos->correctStations($ids,$stationId,(int)($_SESSION['tg_user']['Id']??0));
             echo json_encode(['status'=>'success','count'=>$count]);
         } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
