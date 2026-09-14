@@ -3834,7 +3834,9 @@ public function anomalies_client_tickets()
                              WHEN T1.RFC = 'DGM880621FU5' THEN 'GASOMEX'
                              ELSE 'FORANEAS' END AS Empresa
                     $from
-                    WHERE T1.Codigo <> 0 $empresaWhere
+                    WHERE T1.Codigo <> 0
+                    AND T1.Nombre <> N'01 Malecón'
+                    $empresaWhere
                     ORDER BY T1.Nombre";
 
             $stmt = $conn->query($sql);
