@@ -175,13 +175,20 @@ class EfcConciliacionModel {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
         $origin = sprintf('%04d-%02d', $year, $month);
         $next = (new DateTimeImmutable($origin . '-01'))->modify('+1 month')->format('Y-m');
-        $stmt = $this->db->prepare("SELECT id,estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion FROM dbo.efc_conc_transitos WHERE estacion_id=? AND estado='PENDIENTE' AND (mes_origen=? OR mes_destino=?) ORDER BY fecha_origen,turno,concepto,id");
-        $stmt->execute([$stationId, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Los pendientes se muestran en origen y destino. Un tránsito ya
+        // conciliado sólo se expone en su mes destino: así el tablero conserva
+        // la evidencia sin ocultar el corte original en su mes de origen.
+        $stmt = $this->db->prepare("SELECT id,estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion
+            FROM dbo.efc_conc_transitos
+            WHERE estacion_id=?
+              AND ((estado='PENDIENTE' AND (mes_origen=? OR mes_destino=?)) OR (estado='CONCILIADO' AND mes_destino=?))
+            ORDER BY fecha_origen,turno,concepto,id");
+        $stmt->execute([$stationId, $origin, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
         $outgoing=[]; $incoming=[];
         foreach ($rows as $row) {
             $item=['id'=>(int)$row['id'],'station_id'=>(int)$row['estacion_id'],'source_key'=>(string)$row['clave_externa'],'date'=>$this->dateValue($row['fecha_origen']),'origin_month'=>(string)$row['mes_origen'],'destination_month'=>(string)$row['mes_destino'],'turn'=>(string)$row['turno'],'currency'=>(string)$row['concepto'],'amount'=>(float)$row['importe'],'status'=>(string)$row['estado'],'description'=>(string)($row['descripcion']??'')];
             $item['reconciliation_ids']=$this->transitGroupIds($item['id'],$item['source_key']);
-            $item['is_reconciled']=count($item['reconciliation_ids'])>0;
+            $item['is_reconciled']=$row['estado']==='CONCILIADO'||count($item['reconciliation_ids'])>0;
             if ($row['mes_origen']===$origin) $outgoing[]=$item;
             if ($row['mes_destino']===$origin) $incoming[]=$item;
         }
@@ -258,8 +265,45 @@ class EfcConciliacionModel {
         if (count($cg)!==1 || count($bank)<1 || count($bank)>2) throw new RuntimeException('La conciliacion requiere un turno y uno o dos depositos.');
         $operationDate=$this->transitOperationDate($cg[0]);
         $this->assertOpen((int)$group['station_id'],$operationDate,(string)$cg[0]['currency']); $this->db->beginTransaction();
-        try { $id=$this->createGroup($group,$cg[0],$bank,$userId,$operationDate); $this->db->commit(); return $id; }
+        try {
+            $id=$this->createGroup($group,$cg[0],$bank,$userId,$operationDate);
+            $this->markTransitReconciled($cg[0],$id,$userId);
+            $this->db->commit(); return $id;
+        }
         catch(Throwable $e) { $this->db->rollBack(); throw $e; }
+    }
+
+    /**
+     * Corrige grupos creados antes de que un tránsito usara el primer día del
+     * mes destino como fecha operativa. Sólo toca grupos completos y activos:
+     * no altera ni el corte original ni la fecha real del depósito.
+     */
+    public function repairHistoricalTransitReconciliations(?int $stationId=null, ?int $userId=null): array {
+        $where=$stationId ? ' AND G.estacion_id=?' : '';
+        $query=$this->db->prepare("SELECT DISTINCT G.id grupo_id,T.id transito_id,T.mes_destino
+            FROM dbo.efc_conc_grupos G
+            JOIN dbo.efc_conc_partidas C ON C.grupo_id=G.id AND C.origen='CG' AND C.activo=1
+            JOIN dbo.efc_conc_transitos T ON T.estacion_id=G.estacion_id AND T.estado='PENDIENTE'
+                AND (C.clave_externa=T.clave_externa OR C.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id))
+            WHERE G.estado='ACTIVA'
+              AND EXISTS(SELECT 1 FROM dbo.efc_conc_partidas B WHERE B.grupo_id=G.id AND B.origen='BANCO' AND B.activo=1){$where}");
+        $query->execute($stationId?[$stationId]:[]); $rows=$query->fetchAll(PDO::FETCH_ASSOC);
+        if(!$rows) return ['groups'=>0,'transits'=>0];
+
+        $this->db->beginTransaction();
+        try {
+            $move=$this->db->prepare("UPDATE dbo.efc_conc_grupos SET fecha_operativa=CONVERT(DATE,?+'-01') WHERE id=? AND estado='ACTIVA' AND fecha_operativa<>CONVERT(DATE,?+'-01')");
+            $complete=$this->db->prepare("UPDATE dbo.efc_conc_transitos SET estado='CONCILIADO' WHERE id=? AND estado='PENDIENTE'");
+            $groups=0; $transits=0;
+            foreach($rows as $row) {
+                $move->execute([(string)$row['mes_destino'],(int)$row['grupo_id'],(string)$row['mes_destino']]);
+                $groups+=$move->rowCount();
+                $complete->execute([(int)$row['transito_id']]);
+                $transits+=$complete->rowCount();
+                $this->log((int)$row['grupo_id'],null,'REPARAR_TRANSITO_MES_DESTINO',json_encode(['transito_id'=>(int)$row['transito_id'],'mes_destino'=>(string)$row['mes_destino']]),$userId);
+            }
+            $this->db->commit(); return ['groups'=>$groups,'transits'=>$transits];
+        } catch(Throwable $e) { $this->db->rollBack(); throw $e; }
     }
 
     public function activeReclassifications(int $stationId, int $year, int $month): array {
@@ -287,9 +331,20 @@ class EfcConciliacionModel {
             FROM dbo.efc_conc_grupos G
             JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id AND P.activo=1
             LEFT JOIN TG.dbo.movimientos_bancarios M ON M.id=P.movimiento_bancario_id
-            WHERE G.estacion_id=? AND YEAR(G.fecha_operativa)=? AND MONTH(G.fecha_operativa)=? AND G.estado='ACTIVA' AND G.tipo<>'RECLASIFICADA'
+            WHERE G.estacion_id=? AND G.estado='ACTIVA' AND G.tipo<>'RECLASIFICADA'
+              AND (
+                (YEAR(G.fecha_operativa)=? AND MONTH(G.fecha_operativa)=?)
+                OR EXISTS(
+                    SELECT 1
+                    FROM dbo.efc_conc_partidas TC
+                    JOIN dbo.efc_conc_transitos T ON T.estacion_id=G.estacion_id
+                        AND (TC.clave_externa=T.clave_externa OR TC.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id))
+                    WHERE TC.grupo_id=G.id AND TC.origen='CG' AND TC.activo=1
+                      AND T.mes_destino=?
+                )
+              )
             ORDER BY G.id,P.id");
-        $stmt->execute([$stationId,$year,$month]); $groups=[];
+        $stmt->execute([$stationId,$year,$month,sprintf('%04d-%02d',$year,$month)]); $groups=[];
         while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
             $id=(int)$row['id'];
             if(!isset($groups[$id])) $groups[$id]=[
@@ -427,9 +482,15 @@ class EfcConciliacionModel {
 
     private function bankIsActive(int $movementId): bool { $active=$this->db->prepare("SELECT TOP 1 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.movimiento_bancario_id=? AND P.activo=1 AND G.estado='ACTIVA'"); $active->execute([$movementId]); return (bool)$active->fetchColumn(); }
     private function transitOperationDate(array $cg): string { if(preg_match('/^TR:(\d+)$/',(string)($cg['id']??''),$match)){ $q=$this->db->prepare("SELECT mes_destino FROM dbo.efc_conc_transitos WHERE id=? AND estado='PENDIENTE'"); $q->execute([(int)$match[1]]); $month=$q->fetchColumn(); if(preg_match('/^\d{4}-\d{2}$/',(string)$month)) return $month.'-01'; } return (string)$cg['date']; }
+    private function markTransitReconciled(array $cg,int $groupId,int $userId): void {
+        if(!preg_match('/^TR:(\d+)$/',(string)($cg['id']??''),$match)) return;
+        $q=$this->db->prepare("UPDATE dbo.efc_conc_transitos SET estado='CONCILIADO' WHERE id=? AND estado='PENDIENTE'");
+        $q->execute([(int)$match[1]]);
+        if($q->rowCount()) $this->log($groupId,null,'TRANSITO_CONCILIADO',json_encode(['transito_id'=>(int)$match[1]]),$userId);
+    }
     private function transitGroupIds(int $transitId,string $sourceKey): array { $q=$this->db->prepare("SELECT DISTINCT G.id FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa IN (?,?) AND P.activo=1 AND G.estado='ACTIVA'"); $q->execute([$sourceKey,'TR:'.$transitId]); return array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN)); }
     private function cancelGroup(int $groupId,int $userId): void { $this->db->prepare("UPDATE dbo.efc_conc_grupos SET estado='CANCELADA',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='ACTIVA'")->execute([$userId,$groupId]); $this->db->prepare("UPDATE dbo.efc_conc_partidas SET activo=0 WHERE grupo_id=?")->execute([$groupId]); $this->log($groupId,null,'DESHACER',null,$userId); }
     private function dateValue($value): string { return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : substr((string)$value,0,10); }
     private function sourceKey(int $station,string $date,string $turn): string { return 'CG:'.$station.':'.$date.':'.$turn.':MN'; }
-    private function log(?int $groupId,?int $movementId,string $action,?string $detail,int $userId): void { $this->db->prepare("INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle,usuario_id) VALUES(?,?,?,?,?)")->execute([$groupId,$movementId,$action,$detail,$userId]); }
+    private function log(?int $groupId,?int $movementId,string $action,?string $detail,?int $userId): void { $this->db->prepare("INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle,usuario_id) VALUES(?,?,?,?,?)")->execute([$groupId,$movementId,$action,$detail,$userId]); }
 }
