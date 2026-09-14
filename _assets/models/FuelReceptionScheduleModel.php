@@ -33,12 +33,15 @@ class FuelReceptionScheduleModel extends Model {
                 s.terminal_id, t.nombre AS terminal_nombre,
                 s.station_code, s.product, s.mezcla, s.litros,
                 s.carrier_id, c.nombre AS carrier_nombre,
-                s.referencia, s.notas, s.estatus
+                s.referencia, s.notas, s.estatus,
+                f.Id AS invoice_id, f.Folio AS invoice_folio, f.EmisorNombre AS invoice_proveedor
             FROM TG.dbo.fuel_reception_schedule s
             LEFT JOIN TG.dbo.Proveedores p1 ON p1.id = s.supplier_id
             LEFT JOIN SG12.dbo.Proveedores p2 ON p2.cod = p1.id_control_gas
             LEFT JOIN TG.dbo.fuel_terminals t ON t.id = s.terminal_id
             LEFT JOIN TG.dbo.fuel_carriers c ON c.id = s.carrier_id
+            LEFT JOIN TG.dbo.fuel_reception_invoices fri ON fri.schedule_id = s.id
+            LEFT JOIN TG.dbo.FacturasRecibidas f ON f.Id = fri.invoice_id
             WHERE s.station_code = ? AND s.fecha BETWEEN ? AND ? AND s.estatus <> 'Cancelado'
             ORDER BY s.fecha, s.hora
         ";
@@ -48,6 +51,28 @@ class FuelReceptionScheduleModel extends Model {
     function get_one(int $id): ?array {
         $query = "SELECT * FROM TG.dbo.fuel_reception_schedule WHERE id = ?";
         $rows = $this->sql->select($query, [$id]);
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * Resuelve la ruta de archivo (PDF o XML) de la factura vinculada a
+     * una recepción programada, validando que esa recepción sea de la
+     * estación indicada — usado por station_portal::descargar_factura_programada
+     * para no confiar en un invoice_id que el cliente pudiera mandar directo
+     * (solo recibe schedule_id + station_code de sesión, igual patrón que
+     * station_portal::descargar_factura_recepcion para el flujo Petrotal).
+     */
+    function get_invoice_file_path(int $scheduleId, int $stationCode, string $tipo): ?array {
+        $columna = $tipo === 'pdf' ? 'f.RutaArchivo' : 'f.RutaXml';
+        $nombreColumna = $tipo === 'pdf' ? 'f.NombreArchivo' : 'f.NombreXml';
+        $query = "
+            SELECT $columna AS ruta, $nombreColumna AS nombre
+            FROM TG.dbo.fuel_reception_schedule s
+            JOIN TG.dbo.fuel_reception_invoices fri ON fri.schedule_id = s.id
+            JOIN TG.dbo.FacturasRecibidas f ON f.Id = fri.invoice_id
+            WHERE s.id = ? AND s.station_code = ?
+        ";
+        $rows = $this->sql->select($query, [$scheduleId, $stationCode]);
         return $rows[0] ?? null;
     }
 

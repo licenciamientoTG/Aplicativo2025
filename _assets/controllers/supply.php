@@ -2886,12 +2886,40 @@ class Supply
                 'factura' => $factura,
             ]);
         } else {
+            $sugerencias = $this->fuelReceptionInvoiceModel->sugerirFacturas($scheduleId);
             $html = $this->twig->render($this->route . 'modals/frmFacturaRecepcion.html', [
                 'scheduleId' => $scheduleId,
+                'sugerencias' => $sugerencias,
             ]);
         }
 
         json_output(['success' => true, 'html' => $html]);
+    }
+
+    public function scheduling_invoice_vincular_sugerida()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+
+        $scheduleId = (int)($_POST['schedule_id'] ?? 0);
+        $invoiceId = (int)($_POST['invoice_id'] ?? 0);
+        if ($scheduleId <= 0 || $invoiceId <= 0) {
+            json_output(['success' => false, 'message' => 'Faltan datos']);
+            return;
+        }
+
+        $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        try {
+            $this->fuelReceptionInvoiceModel->vincular($scheduleId, $invoiceId, $userId);
+        } catch (Exception $e) {
+            json_output(['success' => false, 'message' => 'No se pudo vincular']);
+            return;
+        }
+
+        json_output(['success' => true, 'invoice_id' => $invoiceId]);
     }
 
     public function scheduling_upload_invoice()

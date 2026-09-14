@@ -605,6 +605,80 @@ class station_portal
     // servidor, para que un usuario no pueda pedir cualquier FacturaId
     // manipulando la URL — solo puede descargar lo que está ligado a una
     // recepción de SU estación (o cualquiera, con permiso de todas).
+    // Descarga el PDF o XML de la factura vinculada a una recepción
+    // PROGRAMADA (TG.dbo.fuel_reception_invoices, ligado por schedule_id),
+    // distinto de descargar_factura_recepcion (que usa FacturasMovimientosTanques
+    // / nrotrn, del flujo de Petrotal reconciliation). Igual patrón de
+    // seguridad: no recibe station_code del cliente para autorizar, resuelve
+    // el archivo y valida en una sola consulta que la recepción sea de la
+    // estación efectiva del usuario (o cualquiera, con permiso de todas).
+    public function descargar_factura_programada($scheduleId = null, $tipo = null): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            http_response_code(403);
+            echo "Acceso denegado";
+            exit;
+        }
+
+        $scheduleId = (int)$scheduleId;
+        $tipo = strtolower((string)$tipo);
+        if (!$scheduleId || !in_array($tipo, ['pdf', 'xml'], true)) {
+            http_response_code(400);
+            echo "Parámetros inválidos";
+            exit;
+        }
+
+        $codgas = $this->resolveCodgas();
+        if ($codgas === null) {
+            http_response_code(403);
+            echo "Acceso denegado";
+            exit;
+        }
+
+        if (!authorized(self::PERM_TODAS_ESTACIONES)) {
+            $archivo = $this->fuelReceptionScheduleModel->get_invoice_file_path($scheduleId, $codgas, $tipo);
+        } else {
+            // Con permiso de todas las estaciones, el codgas efectivo puede
+            // venir de la sesión aunque el usuario esté viendo "(TODAS)" en
+            // el selector -- se necesita el station_code real de la
+            // recepción, no el filtro activo, así que se resuelve primero.
+            $recepcion = $this->fuelReceptionScheduleModel->get_one($scheduleId);
+            if (!$recepcion) {
+                http_response_code(404);
+                echo "Recepción no encontrada";
+                exit;
+            }
+            $archivo = $this->fuelReceptionScheduleModel->get_invoice_file_path($scheduleId, (int)$recepcion['station_code'], $tipo);
+        }
+
+        if (!$archivo || empty($archivo['ruta'])) {
+            http_response_code(404);
+            echo "Esta recepción no tiene factura vinculada";
+            exit;
+        }
+
+        $rutaArchivo = $archivo['ruta'];
+        if (!file_exists($rutaArchivo)) {
+            http_response_code(404);
+            echo "Archivo no encontrado en el servidor";
+            exit;
+        }
+
+        $contentType = $tipo === 'pdf' ? 'application/pdf' : 'application/xml';
+        $nombreArchivo = $archivo['nombre'] ?: basename($rutaArchivo);
+
+        header('Content-Type: ' . $contentType);
+        header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
+        header('Content-Length: ' . filesize($rutaArchivo));
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Pragma: public');
+
+        ob_clean();
+        flush();
+        readfile($rutaArchivo);
+        exit;
+    }
+
     public function descargar_factura_recepcion($nrotrn = null, $tipo = null): void
     {
         if (!authorized(self::PERM_VER)) {

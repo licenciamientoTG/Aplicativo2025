@@ -273,12 +273,22 @@ function cargarRecepcionesProgramadas() {
                             <th>Terminal</th>
                             <th>Producto</th>
                             <th>Litros</th>
+                            <th>Documento</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
             filas.forEach(function (f) {
                 const producto = escProgramadas(f.product) + (f.mezcla ? ' (' + escProgramadas(f.mezcla) + ')' : '');
+                let celdaDocumento = '<span class="text-muted">—</span>';
+                if (f.invoice_id) {
+                    const base = `/station_portal/descargar_factura_programada/${f.id}`;
+                    const titulo = `${escProgramadas(f.invoice_proveedor) || ''} · ${escProgramadas(f.invoice_folio) || ''}`;
+                    celdaDocumento = `
+                        <a class="btn btn-sm btn-outline-success" href="${base}/pdf" title="${titulo}">PDF</a>
+                        <a class="btn btn-sm btn-outline-success" href="${base}/xml" title="${titulo}">XML</a>
+                    `;
+                }
                 html += `
                     <tr>
                         <td>${escProgramadas(f.fecha)}</td>
@@ -287,6 +297,7 @@ function cargarRecepcionesProgramadas() {
                         <td>${escProgramadas(f.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
                         <td>${producto}</td>
                         <td>${Number(f.litros).toLocaleString('es-MX')}</td>
+                        <td>${celdaDocumento}</td>
                     </tr>
                 `;
             });

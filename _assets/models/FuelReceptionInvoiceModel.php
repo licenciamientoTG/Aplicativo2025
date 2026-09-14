@@ -194,6 +194,55 @@ class FuelReceptionInvoiceModel extends Model {
     }
 
     /**
+     * Facturas ya importadas (por el pipeline de correos o carga manual)
+     * que podrían corresponder a una recepción programada, para ofrecer
+     * "vincular" en vez de forzar subir PDF/XML de nuevo. Match por
+     * EmisorRfc (mismo proveedor de la recepción) + EstacionCodgas
+     * (resuelto vía TG.dbo.EstacionesCodigosExternos al importar, ver
+     * resolver_estacion.py en el pipeline de correos) + Fecha del CFDI
+     * dentro de ±1 día de la fecha programada. Excluye facturas que ya
+     * están vinculadas a OTRA recepción (fuel_reception_invoices) -- cada
+     * factura solo debe poder vincularse a una recepción a la vez.
+     */
+    public function sugerirFacturas(int $scheduleId): array {
+        $recepcion = $this->sql->select(
+            "SELECT fecha, supplier_id, station_code FROM TG.dbo.fuel_reception_schedule WHERE id = ?",
+            [$scheduleId]
+        );
+        $recepcion = $recepcion[0] ?? null;
+        if (!$recepcion) {
+            return [];
+        }
+
+        $proveedor = $this->sql->select("
+            SELECT t2.rfc
+            FROM TG.dbo.Proveedores t1
+            JOIN SG12.dbo.Proveedores t2 ON t2.cod = t1.id_control_gas
+            WHERE t1.id = ?
+        ", [(int)$recepcion['supplier_id']]);
+        $rfc = $proveedor[0]['rfc'] ?? null;
+        if (!$rfc) {
+            return [];
+        }
+
+        $query = "
+            SELECT f.Id, f.Folio, f.Fecha, f.Total, f.EmisorNombre, f.UUID
+            FROM TG.dbo.FacturasRecibidas f
+            WHERE f.EmisorRfc = ?
+              AND f.EstacionCodgas = ?
+              AND f.Fecha >= DATEADD(day, -1, ?)
+              AND f.Fecha < DATEADD(day, 2, ?)
+              AND NOT EXISTS (
+                  SELECT 1 FROM TG.dbo.fuel_reception_invoices fri WHERE fri.invoice_id = f.Id
+              )
+            ORDER BY f.Fecha DESC
+        ";
+        return $this->sql->select($query, [
+            $rfc, (int)$recepcion['station_code'], $recepcion['fecha'], $recepcion['fecha'],
+        ]) ?: [];
+    }
+
+    /**
      * Mapeo fijo id de TG.dbo.Proveedores -> nombre de carpeta de
      * attachments (mismos 7 proveedores de combustible que
      * FuelReceptionScheduleModel::IDS_PROVEEDORES_COMBUSTIBLE, mismos

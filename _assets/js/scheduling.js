@@ -122,7 +122,10 @@ function colClass() {
 }
 
 function botonesAccion(id, invoiceId) {
-    const colorFactura = invoiceId ? 'btn-outline-success' : 'btn-outline-secondary';
+    // Relleno sólido (no solo outline) cuando ya hay factura vinculada --
+    // el outline verde pasaba desapercibido en la fila, mucho más visible
+    // como botón sólido de un vistazo (2026-09-14).
+    const colorFactura = invoiceId ? 'btn-success' : 'btn-outline-secondary';
     return `
         <div class="d-flex gap-1 justify-content-center">
             <button type="button" class="btn btn-outline-success btn-editar-recepcion btn-accion-icono" data-id="${id}" title="Editar"><i data-feather="edit-3"></i></button>
@@ -595,6 +598,31 @@ $(document).ready(function () {
                 errorBox.text('No se pudo guardar la factura.').show();
             })
             .always(function () {
+                boton.prop('disabled', false);
+            });
+    });
+
+    $(document).on('click', '.btn-vincular-sugerida', function () {
+        const boton = $(this);
+        const scheduleId = $('#factura_schedule_id').val();
+        const invoiceId = boton.data('invoice-id');
+        const errorBox = $('#facturaMensajeError');
+
+        errorBox.hide().text('');
+        boton.prop('disabled', true);
+
+        $.post('/supply/scheduling_invoice_vincular_sugerida', { schedule_id: scheduleId, invoice_id: invoiceId })
+            .done(function (resp) {
+                if (!resp.success) {
+                    errorBox.text(resp.message || 'No se pudo vincular la factura.').show();
+                    boton.prop('disabled', false);
+                    return;
+                }
+                bootstrap.Modal.getInstance(document.getElementById('modalFactura')).hide();
+                cargarDia($('#fecha_programacion').val());
+            })
+            .fail(function () {
+                errorBox.text('No se pudo vincular la factura.').show();
                 boton.prop('disabled', false);
             });
     });

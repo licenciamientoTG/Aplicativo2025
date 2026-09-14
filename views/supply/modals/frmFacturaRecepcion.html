@@ -1,6 +1,23 @@
 <input type="hidden" id="factura_schedule_id" value="{{ scheduleId }}">
 <div class="modal-body">
+    {% if sugerencias %}
+    <p class="text-muted mb-2">Se encontraron facturas ya importadas que podrían corresponder a esta recepción:</p>
+    <div class="list-group mb-3">
+        {% for f in sugerencias %}
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <div><strong>Folio:</strong> {{ f.Folio|default('—') }} &nbsp; <strong>Fecha:</strong> {{ f.Fecha|date('Y-m-d') }}</div>
+                <div class="text-muted small">{{ f.EmisorNombre }} &middot; ${{ f.Total|number_format(2) }} &middot; UUID: {{ f.UUID }}</div>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm btn-vincular-sugerida" data-invoice-id="{{ f.Id }}">Vincular esta</button>
+        </div>
+        {% endfor %}
+    </div>
+    <hr class="my-3">
+    <p class="text-muted mb-2">Si ninguna aplica, sube el PDF y el XML del CFDI directamente:</p>
+    {% else %}
     <p class="text-muted">Sube el PDF y el XML del CFDI de esta recepción. Se validará el XML y, si es válido, la factura quedará registrada en el sistema de pagos.</p>
+    {% endif %}
     <div class="mb-3">
         <label class="col-form-label col-form-label-sm" for="factura_pdf">Archivo PDF:</label>
         <input type="file" class="form-control" id="factura_pdf" accept="application/pdf" required>
