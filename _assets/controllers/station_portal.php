@@ -651,15 +651,33 @@ class station_portal
             $archivo = $this->fuelReceptionScheduleModel->get_invoice_file_path($scheduleId, (int)$recepcion['station_code'], $tipo);
         }
 
+        // Modo debug temporal (2026-09-14): solo para diagnosticar por qué
+        // falla la descarga en producción sin depender de logs del servidor.
+        // Requiere el mismo permiso que el resto del endpoint -- no expone
+        // nada a quien no pueda ya ver esta recepción. Quitar cuando se
+        // confirme resuelto el bug de rutas.
+        $debug = isset($_GET['debug']);
+        $debugInfo = [];
+
         if (!$archivo || empty($archivo['ruta'])) {
+            if ($debug) {
+                header('Content-Type: text/plain; charset=utf-8');
+                echo "DEBUG descargar_factura_programada\n";
+                echo "scheduleId=$scheduleId tipo=$tipo codgas=$codgas\n";
+                echo "get_invoice_file_path() no encontró vínculo o RutaArchivo/RutaXml vacío.\n";
+                echo "\$archivo = " . var_export($archivo, true) . "\n";
+                exit;
+            }
             http_response_code(404);
             echo "Esta recepción no tiene factura vinculada";
             exit;
         }
+        $debugInfo['ruta_bd'] = $archivo['ruta'];
 
         // Normaliza separadores (Windows)
         $rutaArchivo = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $archivo['ruta']);
         $rutaArchivo = str_replace('\\\\', DIRECTORY_SEPARATOR, $rutaArchivo);
+        $debugInfo['ruta_normalizada'] = $rutaArchivo;
 
         // El importador del pipeline de correos guarda RutaArchivo relativa
         // (attachments\...\procesadas\...) para las facturas que descarga
@@ -667,20 +685,39 @@ class station_portal
         // servidor -- no el de IIS/AplicativoPhp. Si no es absoluta, se
         // antepone esa carpeta base, mismo patrón que
         // supply::scheduling_invoice_file (ver también payment.php).
-        if (!preg_match('/^[A-Za-z]:\\\\/', $rutaArchivo)) {
+        $eraRelativa = !preg_match('/^[A-Za-z]:\\\\/', $rutaArchivo);
+        if ($eraRelativa) {
             $rutaArchivo = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($rutaArchivo, '\\');
         }
+        $debugInfo['era_relativa'] = $eraRelativa ? 'si' : 'no';
+        $debugInfo['ruta_con_base'] = $rutaArchivo;
 
         $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
         $real = realpath($rutaArchivo);
+        $debugInfo['base_allowed_realpath'] = $baseAllowed === false ? '(realpath falló, la carpeta base no existe o no es accesible)' : $baseAllowed;
+        $debugInfo['ruta_realpath'] = $real === false ? '(realpath falló, el archivo no existe o la ruta es inválida)' : $real;
 
         if ($real === false || $baseAllowed === false || strpos($real, $baseAllowed) !== 0) {
+            if ($debug) {
+                header('Content-Type: text/plain; charset=utf-8');
+                echo "DEBUG descargar_factura_programada -- BLOQUEADO por validación de ruta base\n";
+                foreach ($debugInfo as $k => $v) echo "$k = $v\n";
+                exit;
+            }
             http_response_code(403);
             echo "Acceso al archivo denegado.";
             exit;
         }
 
         if (!file_exists($real) || !is_readable($real)) {
+            if ($debug) {
+                header('Content-Type: text/plain; charset=utf-8');
+                echo "DEBUG descargar_factura_programada -- archivo no encontrado/legible en el paso final\n";
+                foreach ($debugInfo as $k => $v) echo "$k = $v\n";
+                echo "file_exists = " . (file_exists($real) ? 'si' : 'no') . "\n";
+                echo "is_readable = " . (is_readable($real) ? 'si' : 'no') . "\n";
+                exit;
+            }
             http_response_code(404);
             echo "Archivo no encontrado en el servidor";
             exit;
