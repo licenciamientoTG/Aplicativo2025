@@ -12,6 +12,7 @@
 <style>
   .cash-report .table-actions{align-items:center;display:flex;flex-wrap:wrap;gap:.45rem}
   .cash-report .table-actions .count{margin-right:.2rem}
+  .cash-report .missing-total{background:#fff5dc;border:1px solid #f0d796;border-radius:999px;color:#80580c;font-size:.72rem;font-weight:800;padding:.35rem .6rem;white-space:nowrap}
   .cash-report .filters{grid-template-columns:160px minmax(210px,1fr) 150px 165px 190px 130px}
   .cash-report table.dataTable tbody tr.day-band-0 td{background:#f7fbff}
   .cash-report table.dataTable tbody tr.day-band-1 td{background:#fff}
@@ -26,7 +27,7 @@
     <div class="hero"><div><h1><i class="fas fa-exclamation-triangle text-warning mr-1"></i>Faltantes de efectivo</h1><p class="subtitle">Turnos con ControlGas y papeleta REGIO asociada cuya diferencia supera el umbral de revisión.</p></div><span id="report-criterion" class="criterion">Criterio: ControlGas − REGIO real &gt; $10.00</span></div>
     <div class="filters"><div><label for="report-company">Empresa</label><select id="report-company" class="form-control"><option value="DIAZ GAS">Díaz Gas</option><option value="FORANEAS">Foráneas</option><option value="GASOMEX">Gasomex</option></select></div><div><label for="report-station">Estación</label><select id="report-station" class="form-control" disabled><option value="">Selecciona una empresa</option></select></div><div><label for="report-period">Periodo</label><input id="report-period" type="month" class="form-control"></div><div><label for="report-concept">Concepto</label><select id="report-concept" class="form-control"><option value="">Todos</option><option value="MN">Moneda nacional</option><option value="MORRALLA">Morralla</option><option value="USD">Dólares</option></select></div><div><label for="report-mode">Mostrar</label><select id="report-mode" class="form-control"><option value="threshold">Faltantes mayores a $10</option><option value="all">Mostrar todos</option></select></div><button id="report-query" type="button" class="btn btn-primary query"><i class="fas fa-search mr-1"></i>Consultar</button></div>
   </div>
-  <div class="surface table-card"><div class="table-head"><h2>Turnos faltantes</h2><div class="table-actions"><span id="report-count" class="count">Sin consulta</span><button id="report-show-all" type="button" class="btn btn-outline-primary btn-sm"><i class="fas fa-list mr-1"></i>Mostrar todos</button><button id="report-export" type="button" class="btn btn-outline-success btn-sm" disabled><i class="fas fa-file-excel mr-1"></i>Exportar Excel</button></div></div><div id="report-state" class="state"><i class="fas fa-filter"></i>Selecciona los filtros y consulta el reporte.</div><table id="report-table" class="table table-sm table-hover w-100 d-none"><thead><tr><th>Fecha</th><th>Empresa</th><th>Estación</th><th>Turno</th><th>Concepto</th><th>ControlGas</th><th>REGIO real</th><th>Faltante</th><th>Papeleta / remesa</th></tr></thead><tfoot><tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th></tr></tfoot></table></div>
+  <div class="surface table-card"><div class="table-head"><h2>Turnos faltantes</h2><div class="table-actions"><span id="report-count" class="count">Sin consulta</span><span id="report-total" class="missing-total">Total faltante: $0.00</span><button id="report-show-all" type="button" class="btn btn-outline-primary btn-sm"><i class="fas fa-list mr-1"></i>Mostrar todos</button><button id="report-export" type="button" class="btn btn-outline-success btn-sm" disabled><i class="fas fa-file-excel mr-1"></i>Exportar Excel</button></div></div><div id="report-state" class="state"><i class="fas fa-filter"></i>Selecciona los filtros y consulta el reporte.</div><table id="report-table" class="table table-sm table-hover w-100 d-none"><thead><tr><th>Fecha</th><th>Empresa</th><th>Estación</th><th>Turno</th><th>Concepto</th><th>ControlGas</th><th>REGIO real</th><th>Faltante</th><th>Papeleta / remesa</th></tr></thead><tfoot><tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th></tr></tfoot></table></div>
 </section>
 {% endblock %}
 
@@ -61,6 +62,14 @@
     const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');
     link.href=url;link.download=`faltantes_${document.getElementById('report-period').value||'reporte'}.csv`;link.click();URL.revokeObjectURL(url);
   });
+})();
+</script>
+<script>
+(() => {
+  const table=window.jQuery('#report-table');
+  if(!table.length)return;
+  const updateTotal=()=>{if(!window.jQuery.fn.DataTable.isDataTable(table))return;const values=table.DataTable().rows().data().toArray();const total=values.reduce((sum,row)=>{const raw=String(row[7]??'').replace(/[^0-9,.-]/g,'').replace(/,/g,'');return sum+(Number(raw)||0)},0);const target=document.getElementById('report-total');if(target)target.textContent=`Total faltante: ${total>0?'+':''}${new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(total)}`};
+  table.on('draw.dt',updateTotal);setTimeout(updateTotal,0);
 })();
 </script>
 {% endblock %}
