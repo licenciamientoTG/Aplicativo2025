@@ -216,7 +216,13 @@ BEGIN
     DECLARE @invTerPk SYSNAME;
     SELECT @invTerPk=kc.name FROM sys.key_constraints kc WHERE kc.parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion_estacion') AND kc.[type]='PK';
     IF @invTerPk IS NOT NULL
-        EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion DROP CONSTRAINT ' + QUOTENAME(@invTerPk));
+    BEGIN
+        /* Guardar el SQL dinámico en una variable evita un error de sintaxis en
+           algunos clientes SQL al combinar EXEC con QUOTENAME directamente. */
+        DECLARE @invTerDropPkSql NVARCHAR(MAX);
+        SET @invTerDropPkSql = N'ALTER TABLE dbo.inv_ter_configuracion_estacion DROP CONSTRAINT ' + QUOTENAME(@invTerPk) + N';';
+        EXEC sp_executesql @invTerDropPkSql;
+    END;
     ALTER TABLE dbo.inv_ter_configuracion_estacion ADD CONSTRAINT PK_inv_ter_configuracion_estacion_tipo PRIMARY KEY (estacion_id, tipo_terminal);
 END;
 
