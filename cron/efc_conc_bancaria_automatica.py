@@ -20,7 +20,8 @@ from urllib.request import Request, urlopen
 
 import pyodbc
 
-ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent
 TOLERANCE = 1.00  # Misma tolerancia usada por runBankFixed en la consola.
 COMPANY_STATIONS = {
     2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22,
@@ -34,9 +35,24 @@ ACCOUNT_SUFFIXES = (
 )
 
 
+def log(message: str) -> None:
+    """Emite progreso inmediatamente, sin incluir secretos de configuración."""
+    print(f"[efc-conc] {message}", flush=True)
+
+
+def error_text(exc: Exception) -> str:
+    """Evita que un mensaje de error accidentalmente exponga credenciales."""
+    return re.sub(r"(?i)(password|pwd)\s*=\s*[^;\s]+", r"\1=[redacted]", str(exc))
+
+
 def load_env_file() -> None:
-    path = ROOT / ".env"
-    if not path.is_file():
+    """Carga .env junto al script, desde la carpeta actual o desde la raíz."""
+    paths = (Path(SCRIPT_DIR) / ".env", Path.cwd() / ".env", Path(ROOT) / ".env")
+    for candidate in paths:
+        path = Path(candidate)
+        if path.is_file():
+            break
+    else:
         return
     for line in path.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
@@ -156,11 +172,14 @@ def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
     return next(iter(matches)) if len(matches) == 1 else None
 
 
-def matching_bank_rows(cursor: pyodbc.Cursor, cut: date) -> list[tuple]:
+def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = None) -> list[tuple]:
     # Corrections take precedence. Bank account must still belong to the
     # controlled account universe, matching validateDeposit's account gate.
     account_where = " OR ".join("RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''),'-',''),' ','')),LEN(?))=?" for _ in ACCOUNT_SUFFIXES)
-    params = [cut, cut, *[value for suffix in ACCOUNT_SUFFIXES for value in (suffix, suffix)]]
+    # A single run covers every possible cut window: first of month through
+    # today+7 (the query's exclusive upper bound is therefore today+8).
+    end_base = first if last is None else last
+    params = [first, end_base, *[value for suffix in ACCOUNT_SUFFIXES for value in (suffix, suffix)]]
     return cursor.execute("""SELECT M.id,CONVERT(CHAR(10),M.fecha,23),M.abono,COALESCE(M.referencia,''),
       COALESCE(M.descripcion_larga,M.descripcion,''),C.estacion_id FROM TG.dbo.movimientos_bancarios M
       LEFT JOIN dbo.efc_conc_correcciones_banco C ON C.movimiento_bancario_id=M.id
@@ -169,27 +188,74 @@ def matching_bank_rows(cursor: pyodbc.Cursor, cut: date) -> list[tuple]:
         AND (""" + account_where + ")", *params).fetchall()
 
 
+def index_bank_rows(rows: list[tuple], stations: list[tuple]) -> dict[int, dict[date, list[tuple]]]:
+    """Classify each eligible movement once and index it by station and date."""
+    indexed: dict[int, dict[date, list[tuple]]] = {}
+    for bank in rows:
+        station_id = resolved_bank_station(bank, stations)
+        if station_id is None:
+            continue
+        bank_date = as_date(bank[1])
+        indexed.setdefault(station_id, {}).setdefault(bank_date, []).append(bank)
+    return indexed
+
+
+def candidate_bank_rows(
+    indexed: dict[int, dict[date, list[tuple]]], station_id: int, cut: date, used: set[int], target: float
+) -> list[tuple]:
+    """Return the same unique-candidate pool as the old per-cut query."""
+    candidates: list[tuple] = []
+    station_rows = indexed.get(station_id, {})
+    for offset in range(8):
+        for bank in station_rows.get(cut + timedelta(days=offset), ()):
+            if int(bank[0]) not in used and abs(amount(bank[2]) - target) <= TOLERANCE:
+                candidates.append(bank)
+    return candidates
+
+
 def run() -> int:
+    log("Inicio de ejecución; cargando configuración.")
     load_env_file()
-    conn = connect(); cursor = conn.cursor()
+    log(
+        "Configuración lista: "
+        f"DB={os.environ.get('EFC_CONC_DB_HOST', '<no configurada>')}/"
+        f"{os.environ.get('EFC_CONC_DB_NAME', '<no configurada>')}, "
+        f"ControlGas={'configurado' if os.environ.get('EFC_CONC_CONTROLGAS_URL') else 'predeterminado'}, "
+        f"timeout={os.environ.get('EFC_CONC_CONTROLGAS_TIMEOUT', '30')}s."
+    )
+    try:
+        conn = connect(); cursor = conn.cursor()
+    except Exception as exc:
+        log(f"Error DB al conectar ({type(exc).__name__}): {error_text(exc)}")
+        raise
     run_id = None
     try:
         ensure_schema(cursor); conn.commit()
+        log("Esquema listo.")
         if not acquire_lock(cursor):
-            conn.rollback(); print("Otra ejecución automática sigue activa."); return 0
+            conn.rollback(); log("Otra ejecución automática mantiene el applock; no se procesa nada."); return 0
+        log("Applock adquirido.")
         run_id = cursor.execute("INSERT dbo.efc_conc_ejecuciones_automaticas(estado) OUTPUT inserted.id VALUES('EJECUTANDO')").fetchone()[0]; conn.commit()
-        today = date.today(); first = (today.replace(day=1) - timedelta(days=1)).replace(day=1); last = today
+        today = date.today(); first = today.replace(day=1); last = today
         allowed = ",".join(str(value) for value in sorted(COMPANY_STATIONS))
         stations = cursor.execute(f"SELECT Codigo,Nombre,Estacion FROM TG.dbo.Estaciones WHERE Codigo IN ({allowed}) AND Nombre<>'NO FUNCIONA'").fetchall()
+        log(f"Ejecución {run_id}: ventana {first.isoformat()} a {last.isoformat()}; {len(stations)} estaciones.")
+        used = {int(row[0]) for row in cursor.execute("SELECT P.movimiento_bancario_id FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA'").fetchall()}
+        bank_rows = matching_bank_rows(cursor, first, last)
+        bank_index = index_bank_rows(bank_rows, stations)
+        indexed_count = sum(len(rows) for by_date in bank_index.values() for rows in by_date.values())
+        log(f"Movimientos bancarios elegibles: {len(bank_rows)}; clasificados: {indexed_count}; usados: {len(used)}.")
         matched = skipped = errors = 0; details: list[str] = []
-        for station_id, name, code in stations:
+        for station_number, (station_id, name, code) in enumerate(stations, 1):
+            log(f"Estación {station_number}/{len(stations)} inicia: {station_id} {name}.")
             try:
-                used = {row[0] for row in cursor.execute("SELECT P.movimiento_bancario_id FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA'").fetchall()}
                 links = {(str(row[0]), turn_key(row[1]), str(row[2])): amount(row[3]) for row in cursor.execute("""SELECT CONVERT(CHAR(10),V.fecha_cg,23),V.turno,V.concepto,
                     CASE WHEN V.concepto='USD' THEN ISNULL(P.real_usd,0)*ISNULL(V.tipo_cambio_usd,0) ELSE ISNULL(P.real_mn,0) END
                     FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
                     WHERE V.estacion_id=? AND V.activo=1""", station_id).fetchall()}
-                for row in fetch_controlgas(int(station_id), first, last):
+                controlgas_rows = fetch_controlgas(int(station_id), first, last)
+                log(f"Estación {station_id}: ControlGas devolvió {len(controlgas_rows)} registros.")
+                for row in controlgas_rows:
                     cut = as_date(row.get("Fecha")); turn = str(row.get("Turno", "")).strip()
                     if not turn: continue
                     for concept, raw in (("MN", row.get("MN")), ("MORRALLA", row.get("Morralla"))):
@@ -203,21 +269,29 @@ def run() -> int:
                         target = cg if "PARRAL" in str(name).upper() else links[link_key]
                         if target <= 0:
                             skipped += 1; continue
-                        candidates = [b for b in matching_bank_rows(cursor, cut) if int(b[0]) not in used and resolved_bank_station(b, stations) == int(station_id) and abs(amount(b[2]) - target) <= TOLERANCE]
+                        candidates = candidate_bank_rows(bank_index, int(station_id), cut, used, target)
                         if len(candidates) != 1:
                             skipped += 1; continue
                         bank = candidates[0]
                         try:
                             cursor.execute("EXEC dbo.usp_efc_conc_guardar_automatica ?,?,?,?,?,?,?,?,?,?", station_id, cut, turn, concept, cg, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
                             conn.commit(); used.add(int(bank[0])); matched += 1
+                            log(f"Conciliada: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, banco={bank[0]}.")
                         except pyodbc.Error as exc:
-                            conn.rollback(); errors += 1; details.append(f"{station_id}/{cut}/{turn}/{concept}: {exc}")
+                            conn.rollback(); errors += 1
+                            log(f"Error DB conciliando estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}: {error_text(exc)}")
+                            details.append(f"{station_id}/{cut}/{turn}/{concept}: {exc}")
             except Exception as exc:
-                conn.rollback(); errors += 1; details.append(f"estación {station_id}: {exc}")
+                conn.rollback(); errors += 1
+                category = "API" if not isinstance(exc, pyodbc.Error) else "DB"
+                log(f"Error {category} en estación {station_id} ({type(exc).__name__}): {error_text(exc)}")
+                details.append(f"estación {station_id}: {exc}")
+            log(f"Estación {station_id} completa; acumulado: {matched} conciliadas, {skipped} omitidas, {errors} errores.")
         cursor.execute("UPDATE dbo.efc_conc_ejecuciones_automaticas SET estado=?,fin_en=SYSDATETIME(),conciliadas=?,omitidas=?,errores=?,detalle=? WHERE id=?", "PARCIAL" if errors else "COMPLETADA", matched, skipped, errors, "\n".join(details[-100:]), run_id)
-        conn.commit(); print(f"Ejecución {run_id}: {matched} conciliadas, {skipped} omitidas, {errors} errores."); return 0
+        conn.commit(); log(f"Ejecución {run_id} finalizada: {matched} conciliadas, {skipped} omitidas, {errors} errores."); return 0
     except Exception as exc:
         conn.rollback()
+        log(f"Error DB/fatal en ejecución {run_id or '<sin id>'} ({type(exc).__name__}): {error_text(exc)}")
         if run_id is not None:
             try:
                 cursor.execute("UPDATE dbo.efc_conc_ejecuciones_automaticas SET estado='ERROR',fin_en=SYSDATETIME(),errores=errores+1,detalle=? WHERE id=?", str(exc), run_id)

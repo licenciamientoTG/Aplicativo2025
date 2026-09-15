@@ -1,8 +1,8 @@
 # Conciliación bancaria automática
 
-Ejecutar `python cron/efc_conc_bancaria_automatica.py` cada 10 minutos con el mismo `.env` del proyecto. Requiere las variables `EFC_CONC_DB_*` ya documentadas en `.env.example`; opcionalmente `EFC_CONC_CONTROLGAS_URL` y `EFC_CONC_CONTROLGAS_TIMEOUT`.
+Ejecutar `python cron/efc_conc_bancaria_automatica.py` cada 10 minutos. El script busca `.env`, en este orden: junto al script, en la carpeta configurada como **Iniciar en**, y en la raíz del proyecto. Requiere las variables `EFC_CONC_DB_*` ya documentadas en `.env.example`; opcionalmente `EFC_CONC_CONTROLGAS_URL` y `EFC_CONC_CONTROLGAS_TIMEOUT`.
 
-El proceso toma un `sp_getapplock`, consulta el mes actual y el inmediato anterior, y registra cada ejecución en `dbo.efc_conc_ejecuciones_automaticas`. La última ejecución terminada (también si acaba en `ERROR`) se expone a Twig como `lastAutomaticRun`, con `finalizada_en` y `estado`.
+El proceso toma un `sp_getapplock`, consulta únicamente el mes actual (desde su primer día hasta hoy), y registra cada ejecución en `dbo.efc_conc_ejecuciones_automaticas`. La última ejecución terminada (también si acaba en `ERROR`) se expone a Twig como `lastAutomaticRun`, con `finalizada_en` y `estado`.
 
 En el Programador de tareas de Windows, crear una tarea con repetición cada 10 minutos y configurar:
 
