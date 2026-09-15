@@ -95,6 +95,17 @@
         border-color: var(--bs-success) !important;
         box-shadow: 0 0 0 1px var(--bs-success);
     }
+
+    /* Feedback visual del botón "Actualizar" -- confirma que la acción
+       registró el clic, sobre todo en cargas muy rápidas donde el
+       contenido cambiaría sin dar tiempo a notarlo. */
+    .spin-icono {
+        animation: spin-icono-anim .6s linear infinite;
+    }
+    @keyframes spin-icono-anim {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
 </style>
 {% endblock %}
 {% block menutitle %}Programación de Recepciones{% endblock %}
@@ -119,6 +130,16 @@
                     </div>
                     <div class="col-auto ms-auto">
                         <span class="text-muted">Total programado del día: <strong id="totalLitrosDia">0</strong> L</span>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-outline-secondary" id="btnActualizar" title="Actualizar sin salir de este día">
+                            <i data-feather="refresh-cw"></i>
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-outline-secondary" id="btnExportarExcel" title="Exportar a Excel lo que se está viendo (respeta filtros activos)">
+                            <i data-feather="download"></i> Exportar
+                        </button>
                     </div>
                     <div class="col-auto">
                         <button type="button" class="btn btn-primary" id="btnAgregarRecepcion">

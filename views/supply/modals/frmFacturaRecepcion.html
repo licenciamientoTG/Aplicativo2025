@@ -24,6 +24,14 @@
                         <i data-feather="truck" style="width:13px;height:13px;" class="align-text-bottom"></i>
                         {{ f.EmisorNombre }}
                     </div>
+                    {% if f.Productos %}
+                    <div class="mt-1">
+                        <i data-feather="droplet" style="width:13px;height:13px;" class="align-text-bottom text-muted"></i>
+                        {% for producto in f.Productos|split(' + ') %}
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ producto }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                     <div class="text-muted small font-monospace mt-1" style="font-size:0.7rem;" title="UUID del CFDI">{{ f.UUID }}</div>
                 </div>
                 <button type="button" class="btn btn-success btn-sm flex-shrink-0 btn-vincular-sugerida" data-invoice-id="{{ f.Id }}">
