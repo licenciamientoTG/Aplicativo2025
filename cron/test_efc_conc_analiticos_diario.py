@@ -42,6 +42,40 @@ class SequentialRemittanceTieTests(unittest.TestCase):
         self.assertEqual([low, high], papers)
         self.assertEqual(0, gap)
 
+    def test_different_date_gaps_pair_known_turns_by_remittance_sequence(self) -> None:
+        paper_date = date(2026, 9, 9)
+        turno_4 = {"date": date(2026, 9, 8), "turn": "Turno 4", "concept": "USD", "amount": 31.0}
+        turno_1 = {"date": paper_date, "turn": "Turno 1", "concept": "USD", "amount": 31.0}
+        low = paper(7, "10238785", paper_date)
+        high = paper(8, "10238787", paper_date)
+
+        groups = sequential_tie_groups([
+            (turno_1, [(high, 0), (low, 0)]),
+            (turno_4, [(high, 1), (low, 1)]),
+        ])
+
+        self.assertEqual(1, len(groups))
+        turns, papers, _diagnostic_gap = groups[0]
+        self.assertEqual([turno_4, turno_1], turns)
+        self.assertEqual([low, high], papers)
+
+    def test_twenty_day_gap_still_uses_chronological_sequence(self) -> None:
+        paper_date = date(2026, 10, 1)
+        early = turn(date(2026, 9, 11), "Turno 2")
+        later = turn(date(2026, 9, 29), "Turno 1")
+        low = paper(7, "10238785", paper_date)
+        high = paper(8, "10238787", paper_date)
+
+        groups = sequential_tie_groups([
+            (later, [(high, 2), (low, 2)]),
+            (early, [(high, 20), (low, 20)]),
+        ])
+
+        self.assertEqual(1, len(groups))
+        turns, papers, _diagnostic_gap = groups[0]
+        self.assertEqual([early, later], turns)
+        self.assertEqual([low, high], papers)
+
     def test_single_turn_with_two_equally_close_papers_stays_ambiguous(self) -> None:
         same_day = date(2026, 9, 14)
         current_turn = turn(same_day, "Turno 1")

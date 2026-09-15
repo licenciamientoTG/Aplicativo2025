@@ -467,15 +467,18 @@ def turn_sequence_sort_key(turn: dict) -> tuple[date, int, int, str]:
 
 
 def sequential_tie_groups(tied: list[tuple[dict, list[tuple[dict, int]]]]) -> list[tuple[list[dict], list[dict], int]]:
-    """Agrupa únicamente empates homogéneos sin candidatos que crucen otro grupo."""
+    """Agrupa empates homogéneos por candidatos, sin cruzar otros grupos.
+
+    La brecha de fecha se conserva sólo como diagnóstico: no identifica el
+    grupo porque los turnos se ordenan cronológicamente aun con brechas distintas.
+    """
     grouped: dict[tuple, list[tuple[dict, list[tuple[dict, int]]]]] = {}
     paper_groups: dict[int, set[tuple]] = {}
     for turn, closest in tied:
         if len(closest) < 2:
             continue
-        gap = closest[0][1]
         paper_ids = tuple(paper["id"] for paper, _ in closest)
-        group_key = (turn["concept"], turn["amount"], gap, paper_ids)
+        group_key = (turn["concept"], turn["amount"], paper_ids)
         grouped.setdefault(group_key, []).append((turn, closest))
         for paper_id in paper_ids:
             paper_groups.setdefault(paper_id, set()).add(group_key)
@@ -483,11 +486,12 @@ def sequential_tie_groups(tied: list[tuple[dict, list[tuple[dict, int]]]]) -> li
     groups: list[tuple[list[dict], list[dict], int]] = []
     for group_key, members in grouped.items():
         turns = [turn for turn, _ in members]
-        paper_ids = group_key[3]
+        paper_ids = group_key[2]
         if len(turns) < 2 or len(turns) != len(paper_ids) or any(len(paper_groups[paper_id]) != 1 for paper_id in paper_ids):
             continue
         papers = [paper for paper, _ in members[0][1]]
-        groups.append((sorted(turns, key=turn_sequence_sort_key), sorted(papers, key=remittance_sort_key), group_key[2]))
+        diagnostic_gap = members[0][1][0][1]
+        groups.append((sorted(turns, key=turn_sequence_sort_key), sorted(papers, key=remittance_sort_key), diagnostic_gap))
     return sorted(groups, key=lambda group: turn_sequence_sort_key(group[0][0]))
 
 
@@ -574,8 +578,9 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
                 groups = sequential_tie_groups(tied)
                 if not groups:
                     return
-                group_turns, group_papers, gap = groups[0]
+                group_turns, group_papers, _diagnostic_gap = groups[0]
                 for turn, paper in zip(group_turns, group_papers):
+                    gap = abs((paper["date"] - turn["date"]).days)
                     apply_match(turn, paper, gap, sequential=True)
                 group_keys = {turn_key(turn) for turn in group_turns}
                 pending = [item for item in pending if turn_key(item) not in group_keys]
