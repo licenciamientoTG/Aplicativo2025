@@ -70,6 +70,27 @@ $('tr-run-bank').onclick=runBankFixed;$('tr-open-faltantes').onclick=()=>openRep
 
 <script>
 (()=>{
+  const station=document.getElementById('tr-station'),concept=document.getElementById('tr-concept');
+  if(!station||!concept)return;
+  const syncParralConcept=()=>{
+    const selected=station.options[station.selectedIndex],isParral=/\bPARRAL\b/i.test(selected?.textContent||'');
+    const usd=concept.querySelector('option[value="USD"]');
+    if(!usd)return;
+    usd.hidden=isParral;
+    usd.disabled=isParral;
+    usd.style.display=isParral?'none':'';
+    if(isParral&&concept.value==='USD'){
+      concept.value='MN';
+      concept.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+  };
+  station.addEventListener('change',syncParralConcept);
+  document.addEventListener('tripleCashReconciliationStationsUpdated',syncParralConcept);
+  syncParralConcept();
+})();
+</script>
+<script>
+(()=>{
   const byId=id=>document.getElementById(id),esc=value=>String(value??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[x])),num=value=>Number(value||0),fmt=value=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(num(value));
   const ctx=()=>{const [year,month]=byId('tr-month').value.split('-').map(Number);return {year,month,station:byId('tr-station').value,concept:byId('tr-concept').value}},requireStation=()=>{if(ctx().station)return true;alert('Seleccione una estación antes de continuar.');return false},api=()=>window.tripleCashReconciliation;
   const turnKey=turn=>`${turn.date}|${turn.turn}|${turn.concept}`,selectedTurn=()=>api().state.rows.find(row=>row.id===api().state.selected),eligibleForTransit=turn=>Boolean(turn&&turn.status!=='CONCILIADA COMPLETA'&&!turn.group&&!turn.transit),transitPayload=turn=>({source_key:turn.id,date:turn.date,turn:turn.turn,currency:turn.concept,amount:turn.cg}),post=async(url,payload)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),j=await r.json();if(!r.ok||j.status!=='success')throw Error(j.message||'No fue posible completar la operación.');return j};

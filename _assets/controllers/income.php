@@ -6515,7 +6515,8 @@ public function stamped_invoices_detail(): void
             if ($year < 2020 || $month < 1 || $month > 12 || !in_array($station, EfcConciliacionModel::stationIds($company), true)) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
             if ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true)) throw new RuntimeException('Concepto inválido.');
             $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$this->efcConcReportControlGas($station,$year,$month));
-            if ($report === 'faltantes') $rows=array_values(array_filter($rows, static fn(array $row): bool => (float)$row['faltante'] > 10.00));
+            $mostrarTodos=filter_var($_GET['mostrar_todos'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            if ($report === 'faltantes' && !$mostrarTodos) $rows=array_values(array_filter($rows, static fn(array $row): bool => (float)$row['faltante'] > 10.00));
             else $rows=array_values(array_filter($rows, static fn(array $row): bool => $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             echo json_encode(['status'=>'success','data'=>$rows]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
