@@ -38,24 +38,42 @@ class TerminalInventoryModel extends Model {
         $marks=implode(',',array_fill(0,count($types),'?'));
         return $this->sql->select("SELECT DISTINCT tipo_terminal FROM [TG].[dbo].[inv_ter_incidencias] WHERE fecha_cierre_mojo IS NULL AND tipo_terminal IN ($marks)",array_values($types));
     }
-    public function stationsInventoryStatus(string $inventoryDate): array {
+    private function expectedTotalsSubquery(array $types): array {
+        $types=array_values(array_unique($types));
+        if (!$types) return ['SELECT estacion_id,0 AS terminales_esperadas FROM [TG].[dbo].[inv_ter_configuracion_estacion] WHERE 1=0',[]];
+        $marks=implode(',',array_fill(0,count($types),'?'));
+        return ["SELECT estacion_id,SUM(terminales_esperadas) AS terminales_esperadas FROM [TG].[dbo].[inv_ter_configuracion_estacion] WHERE tipo_terminal IN ($marks) GROUP BY estacion_id",$types];
+    }
+    public function stationsInventoryStatus(string $inventoryDate, array $types): array {
+        [$totalsSql,$typeParams]=$this->expectedTotalsSubquery($types);
         return $this->sql->select("SELECT e.Codigo, e.Nombre, i.id AS inventario_id, i.fecha_registro, i.usuario_correo,
                 COALESCE(c.terminales_esperadas,0) AS terminales_esperadas
             FROM [TG].[dbo].[Estaciones] e
             LEFT JOIN [TG].[dbo].[inv_ter_inventarios] i ON i.estacion_id=e.Codigo AND i.fecha_inventario=?
-            LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=e.Codigo
+            LEFT JOIN ($totalsSql) c ON c.estacion_id=e.Codigo
             WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
-            ORDER BY CASE WHEN i.id IS NULL THEN 0 ELSE 1 END, e.Codigo", [$inventoryDate]);
+            ORDER BY CASE WHEN i.id IS NULL THEN 0 ELSE 1 END, e.Codigo", array_merge([$inventoryDate],$typeParams));
     }
     public function stationExpectedConfigurations(): array {
-        return $this->sql->select("SELECT e.Codigo AS id,e.Nombre AS name,COALESCE(c.terminales_esperadas,0) AS terminales_esperadas
+        $rows=$this->sql->select("SELECT e.Codigo AS station_id,e.Nombre AS name,c.tipo_terminal,c.terminales_esperadas
             FROM [TG].[dbo].[Estaciones] e
             LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=e.Codigo
             WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
-            ORDER BY e.Codigo");
+            ORDER BY e.Codigo,c.tipo_terminal");
+        $stations=[];
+        foreach ($rows as $row) {
+            $stationId=(int)$row['station_id'];
+            if (!isset($stations[$stationId])) $stations[$stationId]=['id'=>$stationId,'station_id'=>$stationId,'name'=>(string)$row['name'],'type_targets'=>[],'targets'=>[]];
+            if ($row['tipo_terminal'] !== null) {
+                $type=(string)$row['tipo_terminal']; $expected=max(0,(int)$row['terminales_esperadas']);
+                $stations[$stationId]['type_targets'][$type]=$expected;
+                $stations[$stationId]['targets'][]=['station_id'=>$stationId,'tipo_terminal'=>$type,'terminales_esperadas'=>$expected];
+            }
+        }
+        return array_values($stations);
     }
     public function saveStationExpectedCount(int $stationId, int $expectedCount, int $userId): void {
-        $this->saveStationExpectedCounts([['station_id'=>$stationId,'terminales_esperadas'=>$expectedCount]],$userId);
+        $this->saveStationExpectedCounts([['station_id'=>$stationId,'tipo_terminal'=>'urovo','terminales_esperadas'=>$expectedCount]],$userId);
     }
     public function saveStationExpectedCounts(array $targets, int $userId): void {
         $this->sql->beginTransaction();
@@ -74,22 +92,30 @@ class TerminalInventoryModel extends Model {
     }
     private function saveStationExpectedCountsInTransaction(array $targets, int $userId): void {
         foreach ($targets as $target) {
-            $stationId=(int)$target['station_id']; $expectedCount=(int)$target['terminales_esperadas'];
-            $existing=$this->sql->select('SELECT 1 FROM [TG].[dbo].[inv_ter_configuracion_estacion] WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=?', [$stationId]);
+            $stationId=(int)$target['station_id']; $type=(string)$target['tipo_terminal']; $expectedCount=(int)$target['terminales_esperadas'];
+            $existing=$this->sql->select('SELECT 1 FROM [TG].[dbo].[inv_ter_configuracion_estacion] WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND tipo_terminal=?', [$stationId,$type]);
             if ($existing) {
-                $this->sql->update('UPDATE [TG].[dbo].[inv_ter_configuracion_estacion] SET terminales_esperadas=?, actualizado_por=?, actualizado_en=SYSDATETIME() WHERE estacion_id=?', [$expectedCount,$userId,$stationId]);
+                $this->sql->update('UPDATE [TG].[dbo].[inv_ter_configuracion_estacion] SET terminales_esperadas=?, actualizado_por=?, actualizado_en=SYSDATETIME() WHERE estacion_id=? AND tipo_terminal=?', [$expectedCount,$userId,$stationId,$type]);
             } else {
-                $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_configuracion_estacion] (estacion_id,terminales_esperadas,actualizado_por,actualizado_en) VALUES (?,?,?,SYSDATETIME())', [$stationId,$expectedCount,$userId]);
+                $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_configuracion_estacion] (estacion_id,tipo_terminal,terminales_esperadas,actualizado_por,actualizado_en) VALUES (?,?,?,?,SYSDATETIME())', [$stationId,$type,$expectedCount,$userId]);
             }
         }
     }
-    public function stationExpectedCount(int $stationId): int {
-        $rows=$this->sql->select('SELECT terminales_esperadas FROM [TG].[dbo].[inv_ter_configuracion_estacion] WHERE estacion_id=?', [$stationId]);
-        return max(0,(int)($rows[0]['terminales_esperadas'] ?? 0));
+    public function stationExpectedCounts(int $stationId, array $types): array {
+        $types=array_values(array_unique($types));
+        if (!$types) return [];
+        $marks=implode(',',array_fill(0,count($types),'?'));
+        $rows=$this->sql->select("SELECT tipo_terminal,terminales_esperadas FROM [TG].[dbo].[inv_ter_configuracion_estacion] WHERE estacion_id=? AND tipo_terminal IN ($marks)", array_merge([$stationId],$types));
+        $counts=[];
+        foreach ($rows as $row) $counts[(string)$row['tipo_terminal']]=max(0,(int)$row['terminales_esperadas']);
+        return $counts;
     }
     public function activeStation(int $stationId): array|false {
         $rows=$this->sql->select('SELECT Codigo,Nombre FROM [TG].[dbo].[Estaciones] WHERE Codigo=? AND activa=1 AND Codigo NOT IN (0,4,20)', [$stationId]);
         return $rows[0] ?? false;
+    }
+    public function activeStationIds(): array {
+        return array_map(fn($row)=>(int)$row['Codigo'],$this->sql->select('SELECT Codigo FROM [TG].[dbo].[Estaciones] WHERE activa=1 AND Codigo NOT IN (0,4,20)'));
     }
     public function activeIncidents(int $stationId): array {
         return $this->sql->select("SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE estacion_id=? AND fecha_cierre_mojo IS NULL", [$stationId]);
@@ -170,7 +196,7 @@ class TerminalInventoryModel extends Model {
                 DATEDIFF(DAY,i.fecha_apertura_mojo,GETDATE()) AS dias_naturales
             FROM [TG].[dbo].[inv_ter_incidencias] i
             LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id
-            LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=i.estacion_id
+            LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=i.estacion_id AND c.tipo_terminal=i.tipo_terminal
             WHERE $where ORDER BY i.fecha_registro DESC", $params);
     }
     public function inventoryDateGroups(): array {
@@ -181,16 +207,17 @@ class TerminalInventoryModel extends Model {
             GROUP BY i.fecha_inventario
             ORDER BY i.fecha_inventario DESC");
     }
-    public function inventoryGroupStations(string $inventoryDate): array {
+    public function inventoryGroupStations(string $inventoryDate, array $types): array {
+        [$totalsSql,$typeParams]=$this->expectedTotalsSubquery($types);
         return $this->sql->select("SELECT e.Codigo,e.Nombre,i.id AS inventario_id,i.fecha_registro,i.usuario_correo,
                 COALESCE(c.terminales_esperadas,0) AS terminales_esperadas,
                 COALESCE(det.funcionando,0) AS funcionando,COALESCE(det.danadas,0) AS danadas
             FROM [TG].[dbo].[Estaciones] e
             LEFT JOIN [TG].[dbo].[inv_ter_inventarios] i ON i.estacion_id=e.Codigo AND i.fecha_inventario=?
-            LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=e.Codigo
+            LEFT JOIN ($totalsSql) c ON c.estacion_id=e.Codigo
             OUTER APPLY (SELECT SUM(d.funcionando) AS funcionando,SUM(d.danadas) AS danadas FROM [TG].[dbo].[inv_ter_inventario_detalles] d WHERE d.inventario_id=i.id) det
             WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
-            ORDER BY e.Codigo", [$inventoryDate]);
+            ORDER BY e.Codigo", array_merge([$inventoryDate],$typeParams));
     }
     public function inventoryTypes(int $inventoryId): array {
         return $this->sql->select("SELECT i.id AS inventario_id,i.estacion_id,i.estacion_nombre,i.fecha_registro,i.usuario_correo,
@@ -198,7 +225,7 @@ class TerminalInventoryModel extends Model {
                 d.tipo_terminal,d.funcionando,d.danadas
             FROM [TG].[dbo].[inv_ter_inventarios] i
             INNER JOIN [TG].[dbo].[inv_ter_inventario_detalles] d ON d.inventario_id=i.id
-            LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=i.estacion_id
+            LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=i.estacion_id AND c.tipo_terminal=d.tipo_terminal
             WHERE i.id=?
             ORDER BY d.tipo_terminal", [$inventoryId]);
     }

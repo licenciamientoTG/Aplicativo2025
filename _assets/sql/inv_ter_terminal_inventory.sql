@@ -147,14 +147,31 @@ EXEC(N'ALTER TABLE dbo.inv_ter_configuracion ADD CONSTRAINT CK_inv_ter_configura
 IF COL_LENGTH('dbo.inv_ter_configuracion', 'valeras_habilitadas') IS NULL
 EXEC(N'ALTER TABLE dbo.inv_ter_configuracion ADD valeras_habilitadas VARCHAR(200) NOT NULL CONSTRAINT DF_inv_ter_configuracion_valeras DEFAULT ''ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox''');
 
-/* Meta de terminales por estación; una fila por estación permite configurarla independientemente. */
+/* Meta por estación y tipo. Los totales históricos no se asignan a un tipo sin evidencia. */
+IF OBJECT_ID('dbo.inv_ter_configuracion_estacion', 'U') IS NOT NULL
+   AND COL_LENGTH('dbo.inv_ter_configuracion_estacion', 'tipo_terminal') IS NULL
+BEGIN
+    /*
+       La tabla anterior sólo tenía un total por estación. Se conserva íntegra
+       como respaldo y la matriz nueva inicia sin metas: Operaciones debe
+       configurarlas por tipo. Esto evita interpretar el total histórico como
+       una cantidad de UROVO (u otro tipo) sin una asignación explícita.
+    */
+    IF OBJECT_ID('dbo.inv_ter_configuracion_estacion_legacy', 'U') IS NOT NULL
+        THROW 50002, 'Existe inv_ter_configuracion_estacion_legacy; no se puede preservar automáticamente otra configuración antigua.', 1;
+
+    EXEC sys.sp_rename N'dbo.inv_ter_configuracion_estacion', N'inv_ter_configuracion_estacion_legacy';
+END;
+
 IF OBJECT_ID('dbo.inv_ter_configuracion_estacion', 'U') IS NULL
 EXEC(N'CREATE TABLE dbo.inv_ter_configuracion_estacion (
-    estacion_id INT NOT NULL CONSTRAINT PK_inv_ter_configuracion_estacion PRIMARY KEY,
+    estacion_id INT NOT NULL,
+    tipo_terminal VARCHAR(20) NOT NULL,
     terminales_esperadas INT NULL,
     actualizado_por INT NULL,
-    actualizado_en DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_config_estacion_actualizado DEFAULT SYSDATETIME(),
-    CONSTRAINT CK_inv_ter_config_estacion_terminales CHECK (terminales_esperadas >= 0)
+    actualizado_en DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_config_estacion_actualizado_tipo DEFAULT SYSDATETIME(),
+    CONSTRAINT PK_inv_ter_configuracion_estacion_tipo PRIMARY KEY (estacion_id, tipo_terminal),
+    CONSTRAINT CK_inv_ter_config_estacion_terminales_tipo CHECK (terminales_esperadas >= 0)
 )');
 
 IF COL_LENGTH('dbo.inv_ter_configuracion_estacion', 'terminales_esperadas') IS NULL
@@ -163,8 +180,45 @@ IF COL_LENGTH('dbo.inv_ter_configuracion_estacion', 'actualizado_por') IS NULL
 EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD actualizado_por INT NULL');
 IF COL_LENGTH('dbo.inv_ter_configuracion_estacion', 'actualizado_en') IS NULL
 EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD actualizado_en DATETIME2 NULL');
-IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion_estacion') AND name='CK_inv_ter_config_estacion_terminales')
-EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD CONSTRAINT CK_inv_ter_config_estacion_terminales CHECK (terminales_esperadas >= 0)');
+
+/* Una instalación que ya agregó tipo_terminal debe tenerlo completamente definido. */
+IF COL_LENGTH('dbo.inv_ter_configuracion_estacion', 'tipo_terminal') IS NULL
+    THROW 50003, 'No fue posible crear tipo_terminal en inv_ter_configuracion_estacion.', 1;
+
+EXEC(N'IF EXISTS (SELECT 1 FROM dbo.inv_ter_configuracion_estacion WHERE tipo_terminal IS NULL OR LTRIM(RTRIM(tipo_terminal))='''')
+      THROW 50004, ''Existen metas sin tipo_terminal; corríjalas antes de exigir la matriz por tipo.'', 1;');
+EXEC(N'IF EXISTS (SELECT 1 FROM dbo.inv_ter_configuracion_estacion WHERE DATALENGTH(tipo_terminal) > 20)
+      THROW 50005, ''Existen tipos de terminal de más de 20 caracteres; corríjalos antes de continuar.'', 1;');
+EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ALTER COLUMN tipo_terminal VARCHAR(20) NOT NULL');
+
+EXEC(N'UPDATE dbo.inv_ter_configuracion_estacion
+      SET actualizado_en = SYSDATETIME()
+      WHERE actualizado_en IS NULL');
+EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ALTER COLUMN actualizado_en DATETIME2 NOT NULL');
+
+IF NOT EXISTS (SELECT 1 FROM sys.default_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion_estacion') AND parent_column_id=COLUMNPROPERTY(OBJECT_ID('dbo.inv_ter_configuracion_estacion'), 'actualizado_en', 'ColumnId'))
+EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD CONSTRAINT DF_inv_ter_config_estacion_actualizado_tipo DEFAULT SYSDATETIME() FOR actualizado_en');
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion_estacion') AND name='CK_inv_ter_config_estacion_terminales_tipo')
+EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion ADD CONSTRAINT CK_inv_ter_config_estacion_terminales_tipo CHECK (terminales_esperadas >= 0)');
+
+/* Sustituye una PK anterior de estacion_id por la PK compuesta requerida. */
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.key_constraints kc
+    WHERE kc.parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion_estacion')
+      AND kc.[type]='PK'
+      AND 2=(SELECT COUNT(*) FROM sys.index_columns ic WHERE ic.object_id=kc.parent_object_id AND ic.index_id=kc.unique_index_id AND ic.key_ordinal > 0)
+      AND EXISTS (SELECT 1 FROM sys.index_columns ic JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id WHERE ic.object_id=kc.parent_object_id AND ic.index_id=kc.unique_index_id AND ic.key_ordinal=1 AND c.name='estacion_id')
+      AND EXISTS (SELECT 1 FROM sys.index_columns ic JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id WHERE ic.object_id=kc.parent_object_id AND ic.index_id=kc.unique_index_id AND ic.key_ordinal=2 AND c.name='tipo_terminal')
+)
+BEGIN
+    DECLARE @invTerPk SYSNAME;
+    SELECT @invTerPk=kc.name FROM sys.key_constraints kc WHERE kc.parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion_estacion') AND kc.[type]='PK';
+    IF @invTerPk IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.inv_ter_configuracion_estacion DROP CONSTRAINT ' + QUOTENAME(@invTerPk));
+    ALTER TABLE dbo.inv_ter_configuracion_estacion ADD CONSTRAINT PK_inv_ter_configuracion_estacion_tipo PRIMARY KEY (estacion_id, tipo_terminal);
+END;
 
 EXEC(N'IF NOT EXISTS (SELECT 1 FROM dbo.inv_ter_configuracion WHERE id=1)
       INSERT INTO dbo.inv_ter_configuracion (id,dia_inventario_semana,valeras_habilitadas)

@@ -3174,6 +3174,24 @@ class Operations{
         foreach ($enabled as $type) if (isset($catalog[$type]) && $type!=='urovo') $types[$type]=$catalog[$type];
         return $types;
     }
+    private function terminalExpectedTargets(array $targets, array $allowedTypes, bool $requireCompleteMatrix=false): array {
+        $validated=[]; $seen=[];
+        foreach ($targets as $target) {
+            if (!is_array($target)) throw new InvalidArgumentException('Las metas por estación no son válidas.');
+            $stationId=filter_var($target['station_id'] ?? null,FILTER_VALIDATE_INT);
+            $type=trim((string)($target['tipo_terminal'] ?? $target['type'] ?? ''));
+            $expected=filter_var($target['terminales_esperadas'] ?? $target['expected_count'] ?? null,FILTER_VALIDATE_INT);
+            $key=$stationId.'|'.$type;
+            if (!$stationId || $stationId<1 || !isset($allowedTypes[$type]) || $expected===false || $expected<0 || $expected>500 || isset($seen[$key]) || !$this->terminalInventoryModel->activeStation((int)$stationId)) throw new InvalidArgumentException('Estación, tipo o cantidad esperada inválida.');
+            $seen[$key]=true;
+            $validated[]=['station_id'=>(int)$stationId,'tipo_terminal'=>$type,'terminales_esperadas'=>(int)$expected];
+        }
+        if ($requireCompleteMatrix) {
+            $stationIds=$this->terminalInventoryModel->activeStationIds();
+            if (count($validated)!==count($stationIds)*count($allowedTypes)) throw new InvalidArgumentException('Capture una meta para cada estación y tipo de terminal habilitado.');
+        }
+        return $validated;
+    }
     private function terminalBusinessDays(string $from, ?string $until=null): float {
         try { $start=new DateTimeImmutable($from); $end=new DateTimeImmutable($until ?: 'now'); } catch (Throwable $e) { return 0; }
         if ($start >= $end) return 0;
@@ -3209,9 +3227,8 @@ class Operations{
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
         $schedule=$this->terminalInventorySchedule();
-        $active=$this->terminalInventoryModel->activeIncidents($stationId);
-        $expectedTotal=$this->terminalInventoryModel->stationExpectedCount($stationId);
-        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'inventoryDate'=>$schedule['inventoryDate'],'nextInventoryDate'=>$schedule['nextDate'],'captureAllowed'=>$schedule['allowed'],'types'=>$this->terminalTypes(),'activeIncidents'=>$active,'expectedCounts'=>['total'=>$expectedTotal],'pendingConfirmations'=>$this->terminalInventoryModel->pendingResolutionConfirmations($stationId),'alreadySaved'=>$this->terminalInventoryModel->inventoryExists($stationId,$schedule['inventoryDate']),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)]);
+        $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
+        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'inventoryDate'=>$schedule['inventoryDate'],'nextInventoryDate'=>$schedule['nextDate'],'captureAllowed'=>$schedule['allowed'],'types'=>$types,'activeIncidents'=>$active,'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'pendingConfirmations'=>$this->terminalInventoryModel->pendingResolutionConfirmations($stationId),'alreadySaved'=>$this->terminalInventoryModel->inventoryExists($stationId,$schedule['inventoryDate']),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)]);
     }
     public function terminal_ticket_validate(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
@@ -3299,15 +3316,10 @@ class Operations{
         $rawTargets=$_POST['station_targets'] ?? null;
         $targets=$rawTargets===null ? null : (is_string($rawTargets) ? json_decode($rawTargets,true) : $rawTargets);
         if ($rawTargets!==null && !is_array($targets)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
-        if ($targets===null) $targets=[['station_id'=>$_POST['station_id'] ?? null,'terminales_esperadas'=>$_POST['terminales_esperadas'] ?? $_POST['expected_count'] ?? null]];
+        if ($targets===null) $targets=[['station_id'=>$_POST['station_id'] ?? null,'tipo_terminal'=>$_POST['tipo_terminal'] ?? $_POST['type'] ?? null,'terminales_esperadas'=>$_POST['terminales_esperadas'] ?? $_POST['expected_count'] ?? null]];
         if (!$targets) { $this->terminalJsonError('Capture al menos una meta por estación.'); return; }
-        $validated=[]; $seen=[];
-        foreach ($targets as $target) {
-            if (!is_array($target)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
-            $stationId=filter_var($target['station_id'] ?? null,FILTER_VALIDATE_INT); $expected=filter_var($target['terminales_esperadas'] ?? $target['expected_count'] ?? null,FILTER_VALIDATE_INT);
-            if (!$stationId || $stationId<1 || $expected===false || $expected<0 || $expected>500 || isset($seen[$stationId]) || !$this->terminalInventoryModel->activeStation((int)$stationId)) { $this->terminalJsonError('Estación o cantidad esperada inválida.'); return; }
-            $seen[$stationId]=true; $validated[]=['station_id'=>(int)$stationId,'terminales_esperadas'=>(int)$expected];
-        }
+        try { $validated=$this->terminalExpectedTargets($targets,$this->terminalTypes()); }
+        catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage()); return; }
         try { $this->terminalInventoryModel->saveStationExpectedCounts($validated,(int)$_SESSION['tg_user']['Id']); json_output(['success'=>true]); }
         catch (Throwable $e) { error_log('No se pudo guardar la configuración por estación: '.$e->getMessage()); $this->terminalJsonError('No fue posible guardar la configuración.',500); }
     }
@@ -3333,7 +3345,7 @@ class Operations{
         $date=(string)($_GET['date'] ?? '');
         $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
         if (!$parsed || $parsed->format('Y-m-d')!==$date) { $this->terminalJsonError('La fecha de inventario no es válida.'); return; }
-        try { json_output(['success'=>true,'stations'=>$this->terminalInventoryModel->inventoryGroupStations($date)]); }
+        try { json_output(['success'=>true,'stations'=>$this->terminalInventoryModel->inventoryGroupStations($date,array_keys($this->terminalTypes()))]); }
         catch (Throwable $e) { error_log('No se pudo consultar el grupo de inventarios: '.$e->getMessage()); $this->terminalJsonError('No fue posible consultar las estaciones del inventario.',500); }
     }
     public function terminal_inventory_types(): void {
@@ -3365,7 +3377,7 @@ class Operations{
     public function terminal_inventory_status(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el cumplimiento de inventarios.'; return; }
         $schedule=$this->terminalInventorySchedule(); $inventoryDate=$schedule['nextDate'];
-        $stations=$this->terminalInventoryModel->stationsInventoryStatus($inventoryDate);
+        $stations=$this->terminalInventoryModel->stationsInventoryStatus($inventoryDate,array_keys($this->terminalTypes()));
         $completed=array_values(array_filter($stations,fn($station)=>!empty($station['inventario_id'])));
         $pending=array_values(array_filter($stations,fn($station)=>empty($station['inventario_id'])));
         $completionRate=count($stations) ? (int)round(count($completed)/count($stations)*100) : 0;
@@ -3381,13 +3393,9 @@ class Operations{
             $rawTargets=$_POST['station_targets'] ?? null;
             $targets=$rawTargets===null ? [] : (is_string($rawTargets) ? json_decode($rawTargets,true) : $rawTargets);
             if (!is_array($targets)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
-            $validated=[]; $seen=[];
-            foreach ($targets as $target) {
-                if (!is_array($target)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
-                $stationId=filter_var($target['station_id'] ?? null,FILTER_VALIDATE_INT); $expected=filter_var($target['terminales_esperadas'] ?? $target['expected_count'] ?? null,FILTER_VALIDATE_INT);
-                if (!$stationId || $stationId<1 || $expected===false || $expected<0 || $expected>500 || isset($seen[$stationId]) || !$this->terminalInventoryModel->activeStation((int)$stationId)) { $this->terminalJsonError('Estación o cantidad esperada inválida.'); return; }
-                $seen[$stationId]=true; $validated[]=['station_id'=>(int)$stationId,'terminales_esperadas'=>(int)$expected];
-            }
+            $allowedTypes=['urovo'=>true]; foreach ($enabled as $type) $allowedTypes[$type]=true;
+            try { $validated=$this->terminalExpectedTargets($targets,$allowedTypes,true); }
+            catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage()); return; }
             try { $this->terminalInventoryModel->saveSettingsWithStationExpectedCounts($day,$enabled,$validated,(int)$_SESSION['tg_user']['Id']); json_output(['success'=>true]); }
             catch (Throwable $e) { error_log('No se pudo guardar la configuración del inventario de terminales: '.$e->getMessage()); $this->terminalJsonError('No fue posible guardar la configuración. Verifique que se ejecutó la actualización SQL.',500); }
             return;

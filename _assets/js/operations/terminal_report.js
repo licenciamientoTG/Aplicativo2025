@@ -24,6 +24,23 @@ $(function () {
         handler(event.currentTarget);
     };
     const errorBlock = message => '<div class="alert alert-danger m-3">' + escapeHtml(message) + '</div>';
+    const expectedForType = item => {
+        const type = item.tipo_terminal || item.type || item.code;
+        const direct = item.expected_count ?? item.esperadas ?? item.expected;
+        if (direct != null) return Math.max(0, Number(direct) || 0);
+        const maps = [item.expected_counts, item.expectedCounts, item.type_targets, item.targets];
+        for (const map of maps) {
+            if (map && !Array.isArray(map) && map[type] != null) return Math.max(0, Number(map[type]) || 0);
+        }
+        return Math.max(0, Number(item.terminales_esperadas) || 0);
+    };
+    const expectedForStation = station => {
+        const maps = [station.expected_counts, station.expectedCounts, station.type_targets, station.targets];
+        for (const map of maps) {
+            if (map && !Array.isArray(map)) return Object.values(map).reduce((total, value) => total + Math.max(0, Number(value) || 0), 0);
+        }
+        return Math.max(0, Number(station.terminales_esperadas ?? station.expected_count) || 0);
+    };
 
     function incidentTable(incidents) {
         if (!incidents.length) return '<div class="terminal-incidents-empty"><i data-feather="check-circle"></i> Sin incidencias vinculadas a este tipo en este inventario.</div>';
@@ -38,11 +55,11 @@ $(function () {
     }
     function typeRows(types, inventoryId) {
         if (!types.length) return '<div class="terminal-incidents-empty"><i data-feather="info"></i> Este inventario no tiene detalle por terminal.</div>';
-        let html = '<table class="table terminal-type-table mb-0"><thead><tr><th>Tipo de terminal</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Incidencias</th></tr></thead><tbody>';
+        let html = '<table class="table terminal-type-table mb-0"><thead><tr><th>Tipo de terminal</th><th class="text-center">Esperadas</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Incidencias</th></tr></thead><tbody>';
         types.forEach(item => {
-            const damaged = Number(item.danadas || 0);
-            html += '<tr class="terminal-type-row" data-inventory-id="' + Number(inventoryId) + '" data-type="' + escapeHtml(item.tipo_terminal) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span>' + brand(item.tipo_terminal) + '</td><td class="text-center"><span class="terminal-summary-value">' + Number(item.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td><span class="terminal-view-incidents">Ver incidencias <i data-feather="arrow-right"></i></span></td></tr>';
-            html += '<tr class="terminal-incident-child d-none"><td colspan="4"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando incidencias…</div></td></tr>';
+            const damaged = Number(item.danadas || 0), expected = expectedForType(item);
+            html += '<tr class="terminal-type-row" data-inventory-id="' + Number(inventoryId) + '" data-type="' + escapeHtml(item.tipo_terminal) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span>' + brand(item.tipo_terminal) + '</td><td class="text-center"><span class="terminal-expected-count">' + expected + '</span></td><td class="text-center"><span class="terminal-summary-value">' + Number(item.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td><span class="terminal-view-incidents">Ver incidencias <i data-feather="arrow-right"></i></span></td></tr>';
+            html += '<tr class="terminal-incident-child d-none"><td colspan="5"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando incidencias…</div></td></tr>';
         });
         return html + '</tbody></table>';
     }
@@ -52,10 +69,10 @@ $(function () {
             const captured = Number(station.inventario_id || 0) > 0;
             const damaged = Number(station.danadas || 0);
             if (captured) {
-                html += '<tr class="terminal-station-row is-expandable" data-inventory-id="' + Number(station.inventario_id) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + Number(station.terminales_esperadas || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value">' + Number(station.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td>' + formatDate(station.fecha_registro) + '</td><td><span class="terminal-captured-by">' + escapeHtml(station.usuario_correo || '—') + '</span></td></tr>';
+                html += '<tr class="terminal-station-row is-expandable" data-inventory-id="' + Number(station.inventario_id) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + expectedForStation(station) + '</span></td><td class="text-center"><span class="terminal-summary-value">' + Number(station.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td>' + formatDate(station.fecha_registro) + '</td><td><span class="terminal-captured-by">' + escapeHtml(station.usuario_correo || '—') + '</span></td></tr>';
                 html += '<tr class="terminal-tree-child d-none"><td colspan="6"><div class="terminal-tree-child-panel"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando terminales…</div></div></td></tr>';
             } else {
-                html += '<tr class="terminal-station-row is-empty"><td><span class="terminal-tree-toggle"><i data-feather="minus"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + Number(station.terminales_esperadas || 0) + '</span></td><td class="text-center">—</td><td class="text-center">—</td><td><span class="badge bg-light text-muted border">Sin captura</span></td><td>—</td></tr>';
+                html += '<tr class="terminal-station-row is-empty"><td><span class="terminal-tree-toggle"><i data-feather="minus"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + expectedForStation(station) + '</span></td><td class="text-center">—</td><td class="text-center">—</td><td><span class="badge bg-light text-muted border">Sin captura</span></td><td>—</td></tr>';
             }
         });
         return html + '</tbody></table>';
