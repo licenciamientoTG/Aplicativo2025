@@ -6430,7 +6430,10 @@ public function stamped_invoices_detail(): void
 
     /** Consola unificada: ControlGas, evidencia REGIO y depósitos bancarios. */
     public function cash_reconciliation_triple(): void {
-        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html');
+        // La vista decide cómo presentarlo; mantener null cuando el cron aún
+        // no ha completado una ejecución evita inventar una fecha de proceso.
+        $lastAutomaticRun=$this->efcConciliacion->lastAutomaticRun();
+        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun'));
     }
 
     public function cash_reconciliation_faltantes(): void {

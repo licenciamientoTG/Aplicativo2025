@@ -111,6 +111,22 @@ class EfcConciliacionModel {
         $this->db->exec("UPDATE P SET fecha_operacion=T.fecha_origen FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_transitos T ON P.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id) WHERE P.origen='CG' AND P.fecha_operacion<>T.fecha_origen");
         $this->db->exec("IF OBJECT_ID('dbo.efc_conc_cierres','U') IS NULL CREATE TABLE dbo.efc_conc_cierres (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_diferencia DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre UNIQUE(estacion_id,mes,concepto))");
         $this->db->exec("IF OBJECT_ID('dbo.efc_conc_cierres_etapas','U') IS NULL CREATE TABLE dbo.efc_conc_cierres_etapas (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, etapa VARCHAR(10) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_regio DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre_etapa UNIQUE(estacion_id,mes,concepto,etapa))");
+        // The Python scheduler owns writes to this history; creating it here
+        // keeps the page readable before the first scheduled invocation.
+        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_ejecuciones_automaticas','U') IS NULL CREATE TABLE dbo.efc_conc_ejecuciones_automaticas (id BIGINT IDENTITY PRIMARY KEY,inicio_en DATETIME2 NOT NULL DEFAULT SYSDATETIME(),fin_en DATETIME2 NULL,estado VARCHAR(20) NOT NULL,conciliadas INT NOT NULL DEFAULT 0,omitidas INT NOT NULL DEFAULT 0,errores INT NOT NULL DEFAULT 0,detalle NVARCHAR(MAX) NULL)");
+        $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_efc_conc_ejecuciones_estado_fin') CREATE INDEX IX_efc_conc_ejecuciones_estado_fin ON dbo.efc_conc_ejecuciones_automaticas(estado,fin_en DESC)");
+    }
+
+    /** Última ejecución que terminó; nunca expone el detalle técnico a Twig. */
+    public function lastAutomaticRun(): ?array {
+        if(!(bool)$this->db->query("SELECT OBJECT_ID('dbo.efc_conc_ejecuciones_automaticas','U')")->fetchColumn()) return null;
+        // Last update means the latest attempt that ended, including ERROR;
+        // otherwise the UI would misleadingly continue showing an older run.
+        $row=$this->db->query("SELECT TOP 1 id,inicio_en,fin_en AS finalizada_en,estado,conciliadas,omitidas,errores FROM dbo.efc_conc_ejecuciones_automaticas WHERE fin_en IS NOT NULL ORDER BY fin_en DESC,id DESC")->fetch(PDO::FETCH_ASSOC);
+        if(!$row) return null;
+        foreach(['id','conciliadas','omitidas','errores'] as $key) $row[$key]=(int)$row[$key];
+        foreach(['inicio_en','finalizada_en'] as $key) if($row[$key] instanceof DateTimeInterface) $row[$key]=$row[$key]->format('Y-m-d H:i:s');
+        return $row;
     }
 
     public function closureState(int $stationId, int $year, int $month, string $concept): ?array {
