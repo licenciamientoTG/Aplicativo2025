@@ -3834,7 +3834,9 @@ public function anomalies_client_tickets()
                              WHEN T1.RFC = 'DGM880621FU5' THEN 'GASOMEX'
                              ELSE 'FORANEAS' END AS Empresa
                     $from
-                    WHERE T1.Codigo <> 0 $empresaWhere
+                    WHERE T1.Codigo <> 0
+                    AND T1.Nombre <> N'01 Malecón'
+                    $empresaWhere
                     ORDER BY T1.Nombre";
 
             $stmt = $conn->query($sql);
@@ -6426,13 +6428,17 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation.html');
     }
 
-    public function cash_reconciliation_summary(): void {
-        echo $this->twig->render($this->route . 'cash_reconciliation_summary.html');
-    }
-
     /** Consola unificada: ControlGas, evidencia REGIO y depósitos bancarios. */
     public function cash_reconciliation_triple(): void {
         echo $this->twig->render($this->route . 'cash_reconciliation_triple.html');
+    }
+
+    public function cash_reconciliation_faltantes(): void {
+        echo $this->twig->render($this->route . 'cash_reconciliation_faltantes.html');
+    }
+
+    public function cash_reconciliation_diferencias(): void {
+        echo $this->twig->render($this->route . 'cash_reconciliation_diferencias.html');
     }
 
     public function cash_reconciliation_movements(): void {
@@ -6491,6 +6497,50 @@ public function stamped_invoices_detail(): void
     public function efc_conc_cierre_etapa_reabrir(): void { ob_clean(); header('Content-Type: application/json'); try { $d=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcConciliacion->reopenStage((int)($d['station_id']??0),(int)($d['year']??0),(int)($d['month']??0),strtoupper((string)($d['concept']??'')),strtoupper((string)($d['stage']??'')),(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success']); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_detalle(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryDetail((int)($_GET['estacion_id']??0),isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_agrupado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryGrouped(isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
+
+    /**
+     * Reportes operativos de excepción, en una fila por turno ControlGas con
+     * papeleta REGIO asociada. No reutiliza summaryDetail(): ese resumen sólo
+     * conoce grupos de conciliación y omitiría faltantes sin depósito.
+     */
+    public function efc_conc_report(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $report=strtolower(trim((string)($_GET['report'] ?? '')));
+            $company=strtoupper(trim((string)($_GET['empresa'] ?? '')));
+            $station=(int)($_GET['estacion_id'] ?? 0); $year=(int)($_GET['year'] ?? 0); $month=(int)($_GET['month'] ?? 0);
+            $concept=strtoupper(trim((string)($_GET['concepto'] ?? ''))); $concept=$concept === '' ? null : $concept;
+            if (!in_array($report, ['faltantes','diferencias'], true)) throw new RuntimeException('Tipo de reporte inválido.');
+            if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) throw new RuntimeException('Empresa inválida.');
+            if ($year < 2020 || $month < 1 || $month > 12 || !in_array($station, EfcConciliacionModel::stationIds($company), true)) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
+            if ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true)) throw new RuntimeException('Concepto inválido.');
+            $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$this->efcConcReportControlGas($station,$year,$month));
+            if ($report === 'faltantes') $rows=array_values(array_filter($rows, static fn(array $row): bool => (float)$row['faltante'] > 10.00));
+            else $rows=array_values(array_filter($rows, static fn(array $row): bool => $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
+            echo json_encode(['status'=>'success','data'=>$rows]);
+        } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
+    }
+
+    /** Fuente CG usada también por la consola triple; sólo lectura. */
+    private function efcConcReportControlGas(int $station, int $year, int $month): array {
+        $first=sprintf('%04d%02d01',$year,$month); $last=sprintf('%04d%02d%02d',$year,$month,cal_days_in_month(CAL_GREGORIAN,$month,$year));
+        $payload=json_encode(['Datos'=>['FechaInicial'=>$first,'FechaFinal'=>$last,'Gasolinera'=>$station]], JSON_THROW_ON_ERROR);
+        $url='http://201.174.170.236:99/api/Depositos/GetDepositosEstacion';
+        if (function_exists('curl_init')) {
+            $handle=curl_init($url);
+            curl_setopt_array($handle,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$payload,CURLOPT_HTTPHEADER=>['Content-Type: application/json'],CURLOPT_RETURNTRANSFER=>true,CURLOPT_CONNECTTIMEOUT=>5,CURLOPT_TIMEOUT=>20]);
+            $body=curl_exec($handle); $status=(int)curl_getinfo($handle,CURLINFO_RESPONSE_CODE); $error=curl_error($handle); curl_close($handle);
+            if ($body === false || $status < 200 || $status >= 300) throw new RuntimeException('ControlGas no respondió'.($error ? ': '.$error : '.'));
+        } else {
+            $context=stream_context_create(['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\n",'content'=>$payload,'timeout'=>20,'ignore_errors'=>true]]);
+            $body=@file_get_contents($url,false,$context);
+            if ($body === false) throw new RuntimeException('ControlGas no respondió.');
+        }
+        $response=json_decode($body,true);
+        if (!is_array($response) || (!(bool)($response['exito'] ?? false) && (int)($response['codigo'] ?? -1) !== 0)) throw new RuntimeException((string)($response['mensaje'] ?? 'ControlGas devolvió una respuesta inválida.'));
+        return is_array($response['respuesta'] ?? null) ? $response['respuesta'] : [];
+    }
     public function efc_conc_export_resumen(): void {
         $this->efcConcExportExcel('resumen');
     }

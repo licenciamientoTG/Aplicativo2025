@@ -3174,6 +3174,24 @@ class Operations{
         foreach ($enabled as $type) if (isset($catalog[$type]) && $type!=='urovo') $types[$type]=$catalog[$type];
         return $types;
     }
+    private function terminalExpectedTargets(array $targets, array $allowedTypes, bool $requireCompleteMatrix=false): array {
+        $validated=[]; $seen=[];
+        foreach ($targets as $target) {
+            if (!is_array($target)) throw new InvalidArgumentException('Las metas por estación no son válidas.');
+            $stationId=filter_var($target['station_id'] ?? null,FILTER_VALIDATE_INT);
+            $type=trim((string)($target['tipo_terminal'] ?? $target['type'] ?? ''));
+            $expected=filter_var($target['terminales_esperadas'] ?? $target['expected_count'] ?? null,FILTER_VALIDATE_INT);
+            $key=$stationId.'|'.$type;
+            if (!$stationId || $stationId<1 || !isset($allowedTypes[$type]) || $expected===false || $expected<0 || $expected>500 || isset($seen[$key]) || !$this->terminalInventoryModel->activeStation((int)$stationId)) throw new InvalidArgumentException('Estación, tipo o cantidad esperada inválida.');
+            $seen[$key]=true;
+            $validated[]=['station_id'=>(int)$stationId,'tipo_terminal'=>$type,'terminales_esperadas'=>(int)$expected];
+        }
+        if ($requireCompleteMatrix) {
+            $stationIds=$this->terminalInventoryModel->activeStationIds();
+            if (count($validated)!==count($stationIds)*count($allowedTypes)) throw new InvalidArgumentException('Capture una meta para cada estación y tipo de terminal habilitado.');
+        }
+        return $validated;
+    }
     private function terminalBusinessDays(string $from, ?string $until=null): float {
         try { $start=new DateTimeImmutable($from); $end=new DateTimeImmutable($until ?: 'now'); } catch (Throwable $e) { return 0; }
         if ($start >= $end) return 0;
@@ -3199,7 +3217,7 @@ class Operations{
             $service=new MojoTerminalTicketsService();
             foreach ($this->terminalInventoryModel->activeIncidents($stationId) as $incident) {
                 $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
-                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$origin);
+                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),$origin);
             }
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias de terminales: '.$e->getMessage()); }
     }
@@ -3209,8 +3227,8 @@ class Operations{
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
         $schedule=$this->terminalInventorySchedule();
-        $active=$this->terminalInventoryModel->activeIncidents($stationId);
-        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'inventoryDate'=>$schedule['inventoryDate'],'nextInventoryDate'=>$schedule['nextDate'],'captureAllowed'=>$schedule['allowed'],'types'=>$this->terminalTypes(),'activeIncidents'=>$active,'alreadySaved'=>$this->terminalInventoryModel->inventoryExists($stationId,$schedule['inventoryDate']),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)]);
+        $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
+        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'inventoryDate'=>$schedule['inventoryDate'],'nextInventoryDate'=>$schedule['nextDate'],'captureAllowed'=>$schedule['allowed'],'types'=>$types,'activeIncidents'=>$active,'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'pendingConfirmations'=>$this->terminalInventoryModel->pendingResolutionConfirmations($stationId),'alreadySaved'=>$this->terminalInventoryModel->inventoryExists($stationId,$schedule['inventoryDate']),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)]);
     }
     public function terminal_ticket_validate(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
@@ -3222,12 +3240,13 @@ class Operations{
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         if (!$this->terminalInventorySchedule()['allowed']) { $this->terminalJsonError('El inventario solo puede capturarse el día configurado.'); return; }
-        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
         if (!isset($this->terminalTypes()[$type]) || $description==='' || mb_strlen($description)>250 || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción (máximo 250 caracteres) y correo del usuario.'); return; }
+        if ($type==='urovo' && ($urovoSerial==='' || mb_strlen($urovoSerial)>100)) { $this->terminalJsonError('Capture el número de serie UROVO (máximo 100 caracteres).'); return; }
         if ($type!=='urovo' && (!trim($_POST['provider_folio'] ?? '') || !($_POST['provider_date'] ?? ''))) { $this->terminalJsonError('Valeras requiere folio y fecha de reporte al proveedor.'); return; }
         $station=$this->terminalAssignedStation();
         if (!$station) { $this->terminalJsonError('El usuario no tiene una estación válida asignada.'); return; }
-        try { $info=$this->terminalTypes()[$type]; $ticket=(new MojoTerminalTicketsService())->create(['type'=>$type,'label'=>$info['label'],'mojo_type'=>$info['mojo'],'description'=>$description,'provider_folio'=>trim($_POST['provider_folio'] ?? ''),'provider_date'=>$_POST['provider_date'] ?? null],$email,$station['Nombre']); json_output(['success'=>true,'ticket_id'=>$ticket['id'] ?? null,'ticket'=>$ticket]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
+        try { $info=$this->terminalTypes()[$type]; $ticket=(new MojoTerminalTicketsService())->create(['type'=>$type,'label'=>$info['label'],'mojo_type'=>$info['mojo'],'description'=>$description,'provider_folio'=>trim($_POST['provider_folio'] ?? ''),'provider_date'=>$_POST['provider_date'] ?? null,'serial_urovo'=>$urovoSerial],$email,$station['Nombre']); json_output(['success'=>true,'ticket_id'=>$ticket['id'] ?? null,'ticket'=>$ticket]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
     }
     public function terminal_inventory_save(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
@@ -3258,16 +3277,64 @@ class Operations{
             try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type,$types[$type]['mojo'])) { $this->terminalJsonError('Un ticket no está abierto o su tipo de terminal no corresponde a la incidencia.'); return; }
             } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); return; }
             $providerFolio=trim((string)($item['provider_folio'] ?? '')); $providerDate=$item['provider_date'] ?? null;
-            if ($source==='existing') { $ticketData=$service->incidentDataFromTicket($ticket,$type); $description=mb_substr($ticketData['description'],0,250); if ($type!=='urovo') { $providerFolio=$ticketData['provider_folio']; $providerDate=substr($ticketData['provider_date'],0,10) ?: null; } }
+            $ticketData=$service->incidentDataFromTicket($ticket,$type); $stagedSerial=trim((string)($item['serial_urovo'] ?? $item['urovo_serial'] ?? ''));
+            if (mb_strlen($stagedSerial)>100) { $this->terminalJsonError('El número de serie UROVO no puede exceder 100 caracteres.'); return; }
+            $urovoSerial=$type==='urovo' ? mb_substr((string)($ticketData['serial_urovo'] ?: $stagedSerial),0,100) : null;
+            if ($source==='existing') { $description=mb_substr($ticketData['description'],0,250); if ($type!=='urovo') { $providerFolio=$ticketData['provider_folio']; $providerDate=substr($ticketData['provider_date'],0,10) ?: null; } }
+            if ($type==='urovo' && $urovoSerial==='') { $this->terminalJsonError('Cada incidencia UROVO requiere un número de serie.'); return; }
             if ($description==='' || ($type!=='urovo' && (!$providerFolio || !$providerDate))) { $this->terminalJsonError($type==='urovo' ? 'El ticket no contiene una descripción utilizable.' : 'El ticket de valera debe incluir folio, fecha de reporte y descripción.'); return; }
             $date=$ticket['created_on'] ?? date('c');
-            $newIncidentRows[]=[$stationId,$type,$ticketId,(string)($ticket['status'] ?? 'open'),date('Y-m-d H:i:s',strtotime($date)),$providerFolio ?: null,$providerDate,$description,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo']];
+            $newIncidentRows[]=[$stationId,$type,$ticketId,(string)($ticket['status'] ?? 'open'),date('Y-m-d H:i:s',strtotime($date)),$providerFolio ?: null,$providerDate,$description,$urovoSerial,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo']];
         }
         try { $id=$this->terminalInventoryModel->saveInventoryWithIncidents([$stationId,$station['Nombre'],$inventoryDate,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo']],$details,$incidentIds,$newIncidentRows); json_output(['success'=>true,'inventory_id'=>$id]); } catch (Throwable $e) { error_log('Inventario terminales no guardado: '.$e->getMessage()); $this->terminalJsonError('No fue posible guardar el inventario.',500); }
+    }
+    public function terminal_incident_confirm(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $station=$this->terminalAssignedStation(); $incidentId=filter_var($_POST['incident_id'] ?? null,FILTER_VALIDATE_INT); $note=trim((string)($_POST['note'] ?? $_POST['nota_confirmacion'] ?? ''));
+        if (!$station || !$incidentId || $incidentId<1) { $this->terminalJsonError('Incidencia o estación inválida.'); return; }
+        if (mb_strlen($note)>500) { $this->terminalJsonError('La nota de confirmación no puede exceder 500 caracteres.'); return; }
+        try {
+            $incident=$this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)$station['Codigo']);
+            if (!$incident) { $this->terminalJsonError('La incidencia no pertenece a su estación.'); return; }
+            if (empty($incident['fecha_cierre_mojo'])) {
+                $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
+                if ($service->isOpen($ticket)) { $this->terminalJsonError('La incidencia aún no ha sido cerrada en Mojo.'); return; }
+                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),'confirmacion');
+            }
+            $confirmed=$this->terminalInventoryModel->confirmSolvedIncident((int)$incidentId,(int)$station['Codigo'],(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$note==='' ? null : $note);
+            if (!$confirmed) { $this->terminalJsonError('La incidencia debe estar cerrada, pertenecer a su estación y no haber sido confirmada previamente.'); return; }
+            json_output(['success'=>true]);
+        } catch (Throwable $e) { error_log('No se pudo confirmar la resolución de la incidencia: '.$e->getMessage()); $this->terminalJsonError('No fue posible confirmar la resolución.',500); }
+    }
+    public function terminal_station_configuration(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        if ($_SERVER['REQUEST_METHOD']!=='POST') {
+            try { json_output(['success'=>true,'stations'=>$this->terminalInventoryModel->stationExpectedConfigurations()]); }
+            catch (Throwable $e) { error_log('No se pudo consultar la configuración por estación: '.$e->getMessage()); $this->terminalJsonError('No fue posible consultar la configuración.',500); }
+            return;
+        }
+        $rawTargets=$_POST['station_targets'] ?? null;
+        $targets=$rawTargets===null ? null : (is_string($rawTargets) ? json_decode($rawTargets,true) : $rawTargets);
+        if ($rawTargets!==null && !is_array($targets)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
+        if ($targets===null) $targets=[['station_id'=>$_POST['station_id'] ?? null,'tipo_terminal'=>$_POST['tipo_terminal'] ?? $_POST['type'] ?? null,'terminales_esperadas'=>$_POST['terminales_esperadas'] ?? $_POST['expected_count'] ?? null]];
+        if (!$targets) { $this->terminalJsonError('Capture al menos una meta por estación.'); return; }
+        try { $validated=$this->terminalExpectedTargets($targets,$this->terminalTypes()); }
+        catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage()); return; }
+        try { $this->terminalInventoryModel->saveStationExpectedCounts($validated,(int)$_SESSION['tg_user']['Id']); json_output(['success'=>true]); }
+        catch (Throwable $e) { error_log('No se pudo guardar la configuración por estación: '.$e->getMessage()); $this->terminalJsonError('No fue posible guardar la configuración.',500); }
     }
     public function terminal_report(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte global.'; return; }
         $type=$_GET['type'] ?? ''; $types=$this->terminalTypeCatalog(); $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]);
+        try {
+            $service=new MojoTerminalTicketsService();
+            foreach ($rows as $incident) {
+                if (!empty($incident['fecha_cierre_mojo'])) continue;
+                $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
+                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),'reporte_global');
+            }
+            $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]);
+        } catch (Throwable $e) { error_log('No se sincronizaron incidencias al consultar el reporte global: '.$e->getMessage()); }
         foreach ($rows as &$row) $row['dias_habiles']=$this->terminalBusinessDays((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); unset($row);
         $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo'])));
         $selectedTab=($_GET['tab'] ?? '') === 'incidents' || $type!=='' ? 'incidents' : 'inventories';
@@ -3278,7 +3345,7 @@ class Operations{
         $date=(string)($_GET['date'] ?? '');
         $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
         if (!$parsed || $parsed->format('Y-m-d')!==$date) { $this->terminalJsonError('La fecha de inventario no es válida.'); return; }
-        try { json_output(['success'=>true,'stations'=>$this->terminalInventoryModel->inventoryGroupStations($date)]); }
+        try { json_output(['success'=>true,'stations'=>$this->terminalInventoryModel->inventoryGroupStations($date,array_keys($this->terminalTypes()))]); }
         catch (Throwable $e) { error_log('No se pudo consultar el grupo de inventarios: '.$e->getMessage()); $this->terminalJsonError('No fue posible consultar las estaciones del inventario.',500); }
     }
     public function terminal_inventory_types(): void {
@@ -3300,7 +3367,7 @@ class Operations{
             foreach ($rows as $incident) {
                 if (!empty($incident['fecha_cierre_mojo'])) continue;
                 $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
-                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),'reporte');
+                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),'reporte');
             }
             $rows=$this->terminalInventoryModel->inventoryIncidents($inventoryId,$type);
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias al consultar el reporte: '.$e->getMessage()); }
@@ -3310,7 +3377,7 @@ class Operations{
     public function terminal_inventory_status(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el cumplimiento de inventarios.'; return; }
         $schedule=$this->terminalInventorySchedule(); $inventoryDate=$schedule['nextDate'];
-        $stations=$this->terminalInventoryModel->stationsInventoryStatus($inventoryDate);
+        $stations=$this->terminalInventoryModel->stationsInventoryStatus($inventoryDate,array_keys($this->terminalTypes()));
         $completed=array_values(array_filter($stations,fn($station)=>!empty($station['inventario_id'])));
         $pending=array_values(array_filter($stations,fn($station)=>empty($station['inventario_id'])));
         $completionRate=count($stations) ? (int)round(count($completed)/count($stations)*100) : 0;
@@ -3323,13 +3390,19 @@ class Operations{
             if ($day===false || $day<1 || $day>7) { $this->terminalJsonError('Seleccione un día válido para el inventario.'); return; }
             $disabled=array_values(array_diff(array_keys($allValeras),$enabled)); $activeTypes=array_column($this->terminalInventoryModel->activeIncidentTypes($disabled),'tipo_terminal');
             if ($activeTypes) { $labels=array_map(fn($type)=>$allValeras[$type]['label'],$activeTypes); $this->terminalJsonError('No puede ocultar valeras con incidencias abiertas: '.implode(', ',$labels).'.'); return; }
-            try { $this->terminalInventoryModel->saveSettings($day,$enabled,(int)$_SESSION['tg_user']['Id']); json_output(['success'=>true]); }
+            $rawTargets=$_POST['station_targets'] ?? null;
+            $targets=$rawTargets===null ? [] : (is_string($rawTargets) ? json_decode($rawTargets,true) : $rawTargets);
+            if (!is_array($targets)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
+            $allowedTypes=['urovo'=>true]; foreach ($enabled as $type) $allowedTypes[$type]=true;
+            try { $validated=$this->terminalExpectedTargets($targets,$allowedTypes,true); }
+            catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage()); return; }
+            try { $this->terminalInventoryModel->saveSettingsWithStationExpectedCounts($day,$enabled,$validated,(int)$_SESSION['tg_user']['Id']); json_output(['success'=>true]); }
             catch (Throwable $e) { error_log('No se pudo guardar la configuración del inventario de terminales: '.$e->getMessage()); $this->terminalJsonError('No fue posible guardar la configuración. Verifique que se ejecutó la actualización SQL.',500); }
             return;
         }
         $settings=$this->terminalSettings();
         $enabled=array_filter(array_map('trim',explode(',',(string)($settings['valeras_habilitadas'] ?? ''))));
-        echo $this->twig->render($this->route.'terminal_inventory_settings.html',['settings'=>$settings,'inventoryDays'=>[1=>'Lunes',2=>'Martes',3=>'Miércoles',4=>'Jueves',5=>'Viernes',6=>'Sábado',7=>'Domingo'],'valeras'=>$this->terminalValeraTypes(),'enabledValeras'=>$enabled]);
+        echo $this->twig->render($this->route.'terminal_inventory_settings.html',['settings'=>$settings,'inventoryDays'=>[1=>'Lunes',2=>'Martes',3=>'Miércoles',4=>'Jueves',5=>'Viernes',6=>'Sábado',7=>'Domingo'],'valeras'=>$this->terminalValeraTypes(),'enabledValeras'=>$enabled,'stationTargets'=>$this->terminalInventoryModel->stationExpectedConfigurations()]);
     }
     public function terminal_valera_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }

@@ -161,8 +161,11 @@ class EfcConciliacionModel {
             OUTER APPLY (SELECT TOP 1 Pa.dice_contener_mn declarado_mn,Pa.real_mn,Pa.real_usd,V.tipo_cambio_usd
                 FROM dbo.efc_conc_analiticos_vinculos V
                 JOIN dbo.efc_conc_analiticos_papeletas Pa ON Pa.id=V.papeleta_id
-                WHERE V.estacion_id=G.estacion_id AND V.fecha_cg=G.fecha_operativa AND V.turno=G.turno
-                  AND V.concepto=G.concepto AND V.activo=1) V
+                WHERE V.estacion_id=G.estacion_id AND V.turno=G.turno AND V.concepto=G.concepto AND V.activo=1
+                  AND (V.fecha_cg=G.fecha_operativa OR EXISTS(
+                    SELECT 1 FROM dbo.efc_conc_partidas TC
+                    WHERE TC.grupo_id=G.id AND TC.origen='CG' AND TC.activo=1 AND TC.fecha_operacion=V.fecha_cg
+                  ))) V
             WHERE ".implode(' AND ',$where)."
             GROUP BY G.id,G.fecha_operativa,G.estacion_id,E.Nombre,G.turno,G.concepto,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,V.declarado_mn,V.real_mn,V.real_usd,V.tipo_cambio_usd
             ORDER BY G.fecha_operativa,G.turno,G.id";
@@ -171,6 +174,65 @@ class EfcConciliacionModel {
 
     public function summaryGrouped(?int $year=null, ?int $month=null, ?int $stationId=null, ?string $concept=null): array { $where=[];$params=[];if($year){$where[]='C.mes LIKE ?';$params[]=sprintf('%04d-%02d',$year,$month?:1).'%';}if($month&&$year){$where=['C.mes=?'];$params=[sprintf('%04d-%02d',$year,$month)];}if($stationId){$where[]='C.estacion_id=?';$params[]=$stationId;}if($concept&&in_array($concept,['MN','MORRALLA','USD'],true)){$where[]='C.concepto=?';$params[]=$concept;} $sql="SELECT C.estacion_id,C.mes,C.concepto,C.total_controlgas,C.total_banco,C.total_regio_declarado,C.total_regio_real,C.total_diferencia,C.total_transito,C.operaciones,C.pendientes,C.estado,C.cerrado_en FROM dbo.efc_conc_cierres C".($where?' WHERE '.implode(' AND ',$where):'')." ORDER BY C.mes DESC,C.estacion_id,C.concepto";$q=$this->db->prepare($sql);$q->execute($params);$rows=$q->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$r){foreach(['estacion_id','operaciones','pendientes'] as $k)$r[$k]=(int)$r[$k];foreach(['total_controlgas','total_banco','total_regio_declarado','total_regio_real','total_diferencia','total_transito'] as $k)$r[$k]=(float)$r[$k];}return $rows; }
 
+    /**
+     * Filas operativas para los reportes de excepción. Parte de los turnos de
+     * ControlGas (fuente canónica de la consola triple), no de grupos V3: un
+     * vínculo REGIO válido sigue siendo reportable aunque no tenga depósito.
+     */
+    public function reportRows(int $stationId, int $year, int $month, ?string $concept, array $controlGasRows): array {
+        if (!$stationId || $year < 2020 || $month < 1 || $month > 12 || ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true))) throw new RuntimeException('Parámetros de reporte inválidos.');
+        $where = ['V.estacion_id=?', 'V.activo=1', 'YEAR(V.fecha_cg)=?', 'MONTH(V.fecha_cg)=?'];
+        $params = [$stationId, $year, $month];
+        if ($concept !== null) { $where[] = 'V.concepto=?'; $params[] = $concept; }
+        $links = $this->db->prepare("SELECT V.id,V.fecha_cg,V.turno,V.concepto,V.importe_cg,V.tipo_cambio_usd,V.criterio,P.id AS papeleta_id,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.real_usd,E.Nombre AS estacion_nombre
+            FROM dbo.efc_conc_analiticos_vinculos V
+            JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
+            LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1
+            LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=COALESCE(S.estacion_corregida_id,P.estacion_id)
+            WHERE ".implode(' AND ', $where));
+        $links->execute($params); $byTurn=[];
+        while ($link=$links->fetch(PDO::FETCH_ASSOC)) {
+            $key=$this->reportTurnKey($this->dateValue($link['fecha_cg']), (string)$link['turno'], (string)$link['concepto']);
+            $byTurn[$key]=$link;
+        }
+        $groupsByCg=[];
+        foreach ($this->activeGroups($stationId, $year, $month) as $group) foreach ($group['cg'] as $cg) {
+            $groupsByCg[(string)$cg['id']]=$group;
+        }
+        $out=[];
+        foreach ($controlGasRows as $source) {
+            $date=$this->reportDate($source['Fecha'] ?? null); $turn=(string)($source['Turno'] ?? '');
+            if ($date === null || $turn === '') continue;
+            foreach (['MN'=>(float)($source['MN'] ?? 0), 'MORRALLA'=>(float)($source['Morralla'] ?? 0), 'USD'=>(float)($source['Dolares'] ?? 0)+(float)($source['Dolares2'] ?? 0)] as $currency=>$amount) {
+                if ($amount <= 0 || ($concept !== null && $currency !== $concept)) continue;
+                $turnKey=$this->reportTurnKey($date, $turn, $currency);
+                if (!isset($byTurn[$turnKey])) continue;
+                $link=$byTurn[$turnKey];
+                $cgKey='cg-'.$stationId.'-'.$date.'-'.$turn.'-'.$currency;
+                $group=$groupsByCg[$cgKey] ?? null;
+                $bank=0.0; $references=[];
+                foreach (($group['bank'] ?? []) as $deposit) { $bank+=(float)$deposit['amount']; if (($deposit['reference'] ?? '') !== '') $references[]=(string)$deposit['reference']; }
+                $realMn=(float)($link['real_mn'] ?? 0);
+                $usdMxn=(float)($link['real_usd'] ?? 0)*(float)($link['tipo_cambio_usd'] ?? 0);
+                // Misma semántica que makeRows() de la consola triple: para
+                // USD se prefiere el equivalente USD y sólo se usa MN como
+                // respaldo; para los demás conceptos se usa real_mn.
+                $regio=$currency === 'USD' ? ($usdMxn ?: $realMn) : $realMn;
+                $out[]=[
+                    'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? ''), 'turno'=>$turn, 'concepto'=>$currency,
+                    'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
+                    'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>round($regio,2),
+                    'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
+                    'faltante'=>round($amount-$regio,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
+                    'papeleta_id'=>(int)$link['papeleta_id'], 'remesa'=>$this->normaliseRemittance($link['remesa_numero'] ?? ''), 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''),
+                    'grupo_id'=>$group['id'] ?? null,
+                ];
+            }
+        }
+        usort($out, static fn(array $a,array $b): int => [$a['fecha'],$a['turno'],$a['concepto']] <=> [$b['fecha'],$b['turno'],$b['concepto']]);
+        return $out;
+    }
+
     public function activeTransits(int $stationId, int $year, int $month): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
         $origin = sprintf('%04d-%02d', $year, $month);
@@ -178,10 +240,21 @@ class EfcConciliacionModel {
         // Los pendientes se muestran en origen y destino. Un tránsito ya
         // conciliado sólo se expone en su mes destino: así el tablero conserva
         // la evidencia sin ocultar el corte original en su mes de origen.
+        // Legacy data can contain the same transit key in both PENDIENTE and
+        // CONCILIADO rows. Expose one canonical row, preferring CONCILIADO,
+        // without deleting or changing either persisted record.
         $stmt = $this->db->prepare("SELECT id,estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion
-            FROM dbo.efc_conc_transitos
-            WHERE estacion_id=?
-              AND ((estado='PENDIENTE' AND (mes_origen=? OR mes_destino=?)) OR (estado='CONCILIADO' AND mes_destino=?))
+            FROM (
+                SELECT T.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY T.estacion_id,T.clave_externa
+                        ORDER BY CASE WHEN T.estado='CONCILIADO' THEN 0 ELSE 1 END,T.id DESC
+                    ) AS transit_rank
+                FROM dbo.efc_conc_transitos T
+                WHERE T.estacion_id=?
+                  AND ((T.estado='PENDIENTE' AND (T.mes_origen=? OR T.mes_destino=?)) OR (T.estado='CONCILIADO' AND T.mes_destino=?))
+            ) AS ranked
+            WHERE transit_rank=1
             ORDER BY fecha_origen,turno,concepto,id");
         $stmt->execute([$stationId, $origin, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
         $outgoing=[]; $incoming=[];
@@ -490,6 +563,14 @@ class EfcConciliacionModel {
     }
     private function transitGroupIds(int $transitId,string $sourceKey): array { $q=$this->db->prepare("SELECT DISTINCT G.id FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa IN (?,?) AND P.activo=1 AND G.estado='ACTIVA'"); $q->execute([$sourceKey,'TR:'.$transitId]); return array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN)); }
     private function cancelGroup(int $groupId,int $userId): void { $this->db->prepare("UPDATE dbo.efc_conc_grupos SET estado='CANCELADA',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='ACTIVA'")->execute([$userId,$groupId]); $this->db->prepare("UPDATE dbo.efc_conc_partidas SET activo=0 WHERE grupo_id=?")->execute([$groupId]); $this->log($groupId,null,'DESHACER',null,$userId); }
+    private function reportTurnKey(string $date, string $turn, string $concept): string { preg_match('/\d+/', $turn, $match); return $date.'|'.($match[0] ?? trim($turn)).'|'.strtoupper(trim($concept)); }
+    private function normaliseRemittance($value): string { $text=(string)$value; return preg_match('/^\d+\.0$/',$text) ? substr($text,0,-2) : $text; }
+    private function reportDate($value): ?string {
+        $value=trim((string)$value);
+        if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})/', $value, $match)) return $match[3].'-'.$match[2].'-'.$match[1];
+        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value)) return substr($value,0,10);
+        return null;
+    }
     private function dateValue($value): string { return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : substr((string)$value,0,10); }
     private function sourceKey(int $station,string $date,string $turn): string { return 'CG:'.$station.':'.$date.':'.$turn.':MN'; }
     private function log(?int $groupId,?int $movementId,string $action,?string $detail,?int $userId): void { $this->db->prepare("INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle,usuario_id) VALUES(?,?,?,?,?)")->execute([$groupId,$movementId,$action,$detail,$userId]); }

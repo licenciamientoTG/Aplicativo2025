@@ -24,38 +24,55 @@ $(function () {
         handler(event.currentTarget);
     };
     const errorBlock = message => '<div class="alert alert-danger m-3">' + escapeHtml(message) + '</div>';
+    const expectedForType = item => {
+        const type = item.tipo_terminal || item.type || item.code;
+        const direct = item.expected_count ?? item.esperadas ?? item.expected;
+        if (direct != null) return Math.max(0, Number(direct) || 0);
+        const maps = [item.expected_counts, item.expectedCounts, item.type_targets, item.targets];
+        for (const map of maps) {
+            if (map && !Array.isArray(map) && map[type] != null) return Math.max(0, Number(map[type]) || 0);
+        }
+        return Math.max(0, Number(item.terminales_esperadas) || 0);
+    };
+    const expectedForStation = station => {
+        const maps = [station.expected_counts, station.expectedCounts, station.type_targets, station.targets];
+        for (const map of maps) {
+            if (map && !Array.isArray(map)) return Object.values(map).reduce((total, value) => total + Math.max(0, Number(value) || 0), 0);
+        }
+        return Math.max(0, Number(station.terminales_esperadas ?? station.expected_count) || 0);
+    };
 
     function incidentTable(incidents) {
         if (!incidents.length) return '<div class="terminal-incidents-empty"><i data-feather="check-circle"></i> Sin incidencias vinculadas a este tipo en este inventario.</div>';
-        let html = '<div class="table-responsive"><table class="table table-sm terminal-incident-table mb-0"><thead><tr><th>Ticket Mojo</th><th>Descripción</th><th>Apertura</th><th>Jornadas hábiles<br><small>08:00–18:00</small></th><th>Estado</th><th>Cierre</th></tr></thead><tbody>';
+        let html = '<div class="table-responsive"><table class="table table-sm terminal-incident-table mb-0"><thead><tr><th>Ticket Mojo</th><th>Serie UROVO</th><th>Descripción</th><th>Apertura</th><th>Jornadas hábiles<br><small>08:00–18:00</small></th><th>Estado</th><th>Cierre</th><th>Cerrado por Mojo</th><th>Confirmación estación</th></tr></thead><tbody>';
         incidents.forEach(incident => {
             const closed = !!incident.fecha_cierre_mojo;
             html += '<tr><td><a target="_blank" rel="noopener" href="' + mojoUrl(incident.ticket_mojo_id) + '">#' + escapeHtml(incident.ticket_mojo_id) + '</a></td>' +
-                '<td>' + escapeHtml(incident.descripcion || '—') + '</td><td>' + formatDate(incident.fecha_apertura_mojo) + '</td><td>' + escapeHtml(incident.dias_habiles) + '</td>' +
-                '<td><span class="badge ' + (closed ? 'bg-success' : 'bg-warning text-dark') + '">' + (closed ? 'Cerrado' : 'Abierto') + '</span></td><td>' + formatDate(incident.fecha_cierre_mojo) + '</td></tr>';
+                '<td>' + escapeHtml(incident.serie_urovo || incident.serial_urovo || '—') + '</td><td>' + escapeHtml(incident.descripcion || '—') + '</td><td>' + formatDate(incident.fecha_apertura_mojo) + '</td><td>' + escapeHtml(incident.dias_habiles) + '</td>' +
+                '<td><span class="badge ' + (closed ? 'bg-success' : 'bg-warning text-dark') + '">' + (closed ? 'Cerrado' : 'Abierto') + '</span></td><td>' + formatDate(incident.fecha_cierre_mojo) + '</td><td>' + escapeHtml(incident.cerrado_por_mojo_nombre || incident.cerrado_por_mojo || '—') + '</td><td>' + (incident.solucion_confirmada || incident.resolucion_confirmada ? '<span class="badge bg-success">Confirmada</span><small class="d-block text-muted mt-1">' + escapeHtml(incident.solucion_confirmada_por_correo || incident.confirmado_resuelto_correo || '—') + ' · ' + formatDate(incident.solucion_confirmada_en || incident.fecha_confirmacion_resolucion) + '</small>' : (closed ? '<span class="badge bg-warning text-dark">Pendiente de confirmar</span>' : '—')) + (incident.solucion_confirmacion_nota || incident.nota_confirmacion_resolucion ? '<small class="d-block text-muted mt-1">' + escapeHtml(incident.solucion_confirmacion_nota || incident.nota_confirmacion_resolucion) + '</small>' : '') + '</td></tr>';
         });
         return html + '</tbody></table></div>';
     }
     function typeRows(types, inventoryId) {
         if (!types.length) return '<div class="terminal-incidents-empty"><i data-feather="info"></i> Este inventario no tiene detalle por terminal.</div>';
-        let html = '<table class="table terminal-type-table mb-0"><thead><tr><th>Tipo de terminal</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Incidencias</th></tr></thead><tbody>';
+        let html = '<table class="table terminal-type-table mb-0"><thead><tr><th>Tipo de terminal</th><th class="text-center">Esperadas</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Incidencias</th></tr></thead><tbody>';
         types.forEach(item => {
-            const damaged = Number(item.danadas || 0);
-            html += '<tr class="terminal-type-row" data-inventory-id="' + Number(inventoryId) + '" data-type="' + escapeHtml(item.tipo_terminal) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span>' + brand(item.tipo_terminal) + '</td><td class="text-center"><span class="terminal-summary-value">' + Number(item.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td><span class="terminal-view-incidents">Ver incidencias <i data-feather="arrow-right"></i></span></td></tr>';
-            html += '<tr class="terminal-incident-child d-none"><td colspan="4"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando incidencias…</div></td></tr>';
+            const damaged = Number(item.danadas || 0), expected = expectedForType(item);
+            html += '<tr class="terminal-type-row" data-inventory-id="' + Number(inventoryId) + '" data-type="' + escapeHtml(item.tipo_terminal) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span>' + brand(item.tipo_terminal) + '</td><td class="text-center"><span class="terminal-expected-count">' + expected + '</span></td><td class="text-center"><span class="terminal-summary-value">' + Number(item.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td><span class="terminal-view-incidents">Ver incidencias <i data-feather="arrow-right"></i></span></td></tr>';
+            html += '<tr class="terminal-incident-child d-none"><td colspan="5"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando incidencias…</div></td></tr>';
         });
         return html + '</tbody></table>';
     }
     function stationRows(stations) {
-        let html = '<table class="table terminal-station-table mb-0"><thead><tr><th>Estación</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Capturado</th><th>Registrado por</th></tr></thead><tbody>';
+        let html = '<table class="table terminal-station-table mb-0"><thead><tr><th>Estación</th><th class="text-center">Esperadas</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Capturado</th><th>Registrado por</th></tr></thead><tbody>';
         stations.forEach(station => {
             const captured = Number(station.inventario_id || 0) > 0;
             const damaged = Number(station.danadas || 0);
             if (captured) {
-                html += '<tr class="terminal-station-row is-expandable" data-inventory-id="' + Number(station.inventario_id) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + Number(station.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td>' + formatDate(station.fecha_registro) + '</td><td><span class="terminal-captured-by">' + escapeHtml(station.usuario_correo || '—') + '</span></td></tr>';
-                html += '<tr class="terminal-tree-child d-none"><td colspan="5"><div class="terminal-tree-child-panel"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando terminales…</div></div></td></tr>';
+                html += '<tr class="terminal-station-row is-expandable" data-inventory-id="' + Number(station.inventario_id) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + expectedForStation(station) + '</span></td><td class="text-center"><span class="terminal-summary-value">' + Number(station.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td>' + formatDate(station.fecha_registro) + '</td><td><span class="terminal-captured-by">' + escapeHtml(station.usuario_correo || '—') + '</span></td></tr>';
+                html += '<tr class="terminal-tree-child d-none"><td colspan="6"><div class="terminal-tree-child-panel"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando terminales…</div></div></td></tr>';
             } else {
-                html += '<tr class="terminal-station-row is-empty"><td><span class="terminal-tree-toggle"><i data-feather="minus"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center">—</td><td class="text-center">—</td><td><span class="badge bg-light text-muted border">Sin captura</span></td><td>—</td></tr>';
+                html += '<tr class="terminal-station-row is-empty"><td><span class="terminal-tree-toggle"><i data-feather="minus"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + expectedForStation(station) + '</span></td><td class="text-center">—</td><td class="text-center">—</td><td><span class="badge bg-light text-muted border">Sin captura</span></td><td>—</td></tr>';
             }
         });
         return html + '</tbody></table>';
@@ -183,7 +200,7 @@ $(function () {
         inventoryExportTable.buttons().container().appendTo('#terminalInventoryExportActions');
     }
     if ($('#terminalReportTable').length) {
-        const filterLabels = ['Estación', 'Terminal', 'Ticket', 'Folio', 'Apertura', 'Días', 'Estado', 'Cierre'];
+        const filterLabels = ['Estación', 'Terminal', 'Esperadas', 'Serie', 'Ticket', 'Folio', 'Apertura', 'Días', 'Estado', 'Cierre', 'Cerrado por', 'Confirmación'];
         const filterRow = '<tr class="terminal-column-filters">' + filterLabels.map(label => '<th><input type="search" placeholder="' + label + '" aria-label="Filtrar por ' + label + '"></th>').join('') + '</tr>';
         $('#terminalReportTable thead tr:first').after(filterRow);
         const exportOptions = {
@@ -197,7 +214,7 @@ $(function () {
         pageLength: 25,
         searching: true,
         orderCellsTop: true,
-        columnDefs: [{ targets: 5, type: 'num' }],
+        columnDefs: [{ targets: [2, 7], type: 'num' }],
         dom: '<"terminal-dt-toolbar"B l>t<"terminal-dt-footer"ip>',
         buttons: [
             { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Reporte de incidencias de terminales', exportOptions: exportOptions },
