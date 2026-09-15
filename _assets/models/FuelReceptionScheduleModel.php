@@ -143,4 +143,28 @@ class FuelReceptionScheduleModel extends Model {
         ";
         $this->sql->update($query, [$userId, $id]);
     }
+
+    /**
+     * Alterna entre "Recibido" y "Programado" -- toggle reversible desde
+     * la UI (botón de marcar/desmarcar recepción). No toca filas
+     * Canceladas. Devuelve el nuevo estatus, o null si la fila no existe
+     * o está cancelada.
+     */
+    function toggle_recibido(int $id, int $userId): ?string {
+        $rows = $this->sql->select(
+            "SELECT estatus FROM TG.dbo.fuel_reception_schedule WHERE id = ?",
+            [$id]
+        );
+        $actual = $rows[0]['estatus'] ?? null;
+        if ($actual === null || $actual === 'Cancelado') {
+            return null;
+        }
+
+        $nuevo = $actual === 'Recibido' ? 'Programado' : 'Recibido';
+        $this->sql->update(
+            "UPDATE TG.dbo.fuel_reception_schedule SET estatus = ?, updated_by = ?, updated_at = GETDATE() WHERE id = ?",
+            [$nuevo, $userId, $id]
+        );
+        return $nuevo;
+    }
 }

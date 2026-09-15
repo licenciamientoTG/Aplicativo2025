@@ -63,6 +63,13 @@ const GRUPOS_PROVEEDOR_TERMINAL = [
     { supplierId: 139, supplierNombre: 'MGC MEXICO', terminalNombre: 'San Miguel de Allende' },
 ];
 
+// MGC México no captura hora real en su reporte -- captura el turno de
+// embarque (T1/T2/T3). La columna "hora" (varchar(10) en BD, sin validar
+// formato) guarda ese valor tal cual para este proveedor (2026-09-14,
+// confirmado con el usuario e implementado primero vía import manual en
+// tools/import_scheduling_2026-09-14_mcg.php).
+const SUPPLIER_ID_MCG = 139;
+
 // AEMSA nunca captura transportista en el Excel (0% de las filas en julio
 // y septiembre 2026, confirmado) -- se oculta esa columna solo en sus
 // tarjetas para no mostrar una columna que siempre va a decir "—".
@@ -73,14 +80,24 @@ function ocultaTransportista(nombreProveedor) {
     return PROVEEDORES_SIN_TRANSPORTISTA.some(function (p) { return nombre.indexOf(p) !== -1; });
 }
 
-// Premier Gas nunca captura referencia ni notas en el Excel -- se ocultan
-// esas columnas solo en sus tarjetas por el mismo motivo que Transportista
-// arriba: siempre van a decir "—".
+// Premier Gas y Tesoro nunca capturan referencia ni notas en el Excel --
+// se ocultan ambas columnas solo en sus tarjetas por el mismo motivo que
+// Transportista arriba: siempre van a decir "—".
 const PROVEEDORES_SIN_REFERENCIA_NOTAS = ['PREMIER', 'TESORO'];
 
 function ocultaReferenciaNotas(nombreProveedor) {
     const nombre = (nombreProveedor || '').toUpperCase();
     return PROVEEDORES_SIN_REFERENCIA_NOTAS.some(function (p) { return nombre.indexOf(p) !== -1; });
+}
+
+// MGC MEXICO sí usa Referencia (guarda el folio de embarque ahí) pero
+// nunca captura Notas -- a diferencia de arriba, aquí solo se oculta esa
+// columna, Referencia se sigue mostrando (2026-09-14).
+const PROVEEDORES_SIN_NOTAS = ['MGC MEXICO'];
+
+function ocultaNotas(nombreProveedor) {
+    const nombre = (nombreProveedor || '').toUpperCase();
+    return PROVEEDORES_SIN_NOTAS.some(function (p) { return nombre.indexOf(p) !== -1; });
 }
 
 // Colores por proveedor: mismo valor de luminosidad y saturación para
@@ -150,13 +167,20 @@ function colClass() {
     return 'col-12';
 }
 
-function botonesAccion(id, invoiceId) {
+function botonesAccion(id, invoiceId, estatus) {
     // Relleno sólido (no solo outline) cuando ya hay factura vinculada --
     // el outline verde pasaba desapercibido en la fila, mucho más visible
     // como botón sólido de un vistazo (2026-09-14).
     const colorFactura = invoiceId ? 'btn-success' : 'btn-outline-secondary';
+    const recibida = estatus === 'Recibido';
+    const colorRecibido = recibida ? 'btn-success' : 'btn-outline-secondary';
+    // btn-group (en vez de d-flex con gap) para que los 4 botones quepan
+    // sin desbordar la columna -- los bordes se comparten entre botones
+    // contiguos, ahorrando el ancho que gap-1 agrega entre cada uno
+    // (2026-09-15, al agregar el 4º botón de "marcar como recibida").
     return `
-        <div class="d-flex gap-1 justify-content-center">
+        <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn ${colorRecibido} btn-toggle-recibido btn-accion-icono" data-id="${id}" title="${recibida ? 'Marcada como recibida (clic para desmarcar)' : 'Marcar como recibida'}"><i data-feather="check-circle"></i></button>
             <button type="button" class="btn btn-outline-success btn-editar-recepcion btn-accion-icono" data-id="${id}" title="Editar"><i data-feather="edit-3"></i></button>
             <button type="button" class="btn ${colorFactura} btn-factura-recepcion btn-accion-icono" data-id="${id}" title="${invoiceId ? 'Ver factura' : 'Subir factura'}"><i data-feather="paperclip"></i></button>
             <button type="button" class="btn btn-outline-danger btn-cancelar-recepcion btn-accion-icono" data-id="${id}" title="Cancelar"><i data-feather="trash-2"></i></button>
@@ -164,12 +188,15 @@ function botonesAccion(id, invoiceId) {
     `;
 }
 
-function formatearFilaTerminal(fila, mostrarTransportista, mostrarReferenciaNotas) {
+function formatearFilaTerminal(fila, mostrarTransportista, mostrarReferencia, mostrarNotas) {
     const celdaTransportista = mostrarTransportista
         ? `<td>${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>`
         : '';
-    const celdasReferenciaNotas = mostrarReferenciaNotas
-        ? `<td>${esc(fila.referencia) || ''}</td><td>${esc(fila.notas) || ''}</td>`
+    const celdaReferencia = mostrarReferencia
+        ? `<td>${esc(fila.referencia) || ''}</td>`
+        : '';
+    const celdaNotas = mostrarNotas
+        ? `<td>${esc(fila.notas) || ''}</td>`
         : '';
     return `
         <tr data-id="${fila.id}">
@@ -178,8 +205,9 @@ function formatearFilaTerminal(fila, mostrarTransportista, mostrarReferenciaNota
             <td>${Number(fila.litros).toLocaleString('es-MX')}</td>
             <td>${esc(fila.station_nombre) || '<span class="text-muted">—</span>'}</td>
             ${celdaTransportista}
-            ${celdasReferenciaNotas}
-            <td>${botonesAccion(fila.id, fila.invoice_id)}</td>
+            ${celdaReferencia}
+            ${celdaNotas}
+            <td>${botonesAccion(fila.id, fila.invoice_id, fila.estatus)}</td>
         </tr>
     `;
 }
@@ -206,7 +234,7 @@ function resolverTerminalId(terminalNombre) {
 // cada request, así que cualquier evento duplicado (change+blur casi
 // simultáneos, típico de bootstrap-select) mandaba dos scheduling_add en
 // paralelo y dejaba duplicados reales en BD (visto 2026-09-08, 6 copias).
-function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarReferenciaNotas) {
+function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarReferencia, mostrarNotas) {
     const opcionesEstacion = ESTACIONES_INLINE.map(function (e) {
         return `<option value="${e.Codigo}">${esc(e.Nombre)}</option>`;
     }).join('');
@@ -217,14 +245,25 @@ function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarRef
     const celdaTransportista = mostrarTransportista
         ? `<td><select class="form-select form-select-sm campo-rapido" data-campo="carrier_id"><option value="">—</option>${opcionesTransportista}</select></td>`
         : '';
-    const celdasReferenciaNotas = mostrarReferenciaNotas
-        ? `<td><input type="text" class="form-control form-control-sm campo-rapido" data-campo="referencia"></td>` +
-          `<td><input type="text" class="form-control form-control-sm campo-rapido" data-campo="notas"></td>`
+    const celdaReferencia = mostrarReferencia
+        ? `<td><input type="text" class="form-control form-control-sm campo-rapido" data-campo="referencia"></td>`
         : '';
+    const celdaNotas = mostrarNotas
+        ? `<td><input type="text" class="form-control form-control-sm campo-rapido" data-campo="notas"></td>`
+        : '';
+
+    const celdaHora = String(supplierId) === String(SUPPLIER_ID_MCG)
+        ? `<td><select class="form-select form-select-sm campo-rapido" data-campo="hora">
+                <option value="">—</option>
+                <option value="T1">T1</option>
+                <option value="T2">T2</option>
+                <option value="T3">T3</option>
+           </select></td>`
+        : `<td><input type="time" class="form-control form-control-sm campo-rapido" data-campo="hora"></td>`;
 
     return `
         <tr class="fila-rapida" data-supplier-id="${supplierId}" data-terminal-id="${terminalId || ''}" data-registro-id="">
-            <td><input type="time" class="form-control form-control-sm campo-rapido" data-campo="hora"></td>
+            ${celdaHora}
             <td>
                 <select class="form-select form-select-sm campo-rapido" data-campo="product">
                     <option value="Regular">Regular</option>
@@ -241,7 +280,8 @@ function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarRef
                 </select>
             </td>
             ${celdaTransportista}
-            ${celdasReferenciaNotas}
+            ${celdaReferencia}
+            ${celdaNotas}
             <td>
                 <div class="d-flex gap-1 justify-content-center">
                     <button type="button" class="btn btn-outline-success btn-guardar-fila-rapida btn-accion-icono" title="Guardar"><i data-feather="check"></i></button>
@@ -261,7 +301,7 @@ function formatearFilaEstacion(fila) {
             <td>${esc(fila.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
             <td>${esc(fila.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
             <td>${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>
-            <td>${botonesAccion(fila.id, fila.invoice_id)}</td>
+            <td>${botonesAccion(fila.id, fila.invoice_id, fila.estatus)}</td>
         </tr>
     `;
 }
@@ -342,10 +382,12 @@ function renderPorTerminal(filas) {
 
     const gruposVisibles = grupos.filter(function (g) {
         if (proveedorFiltroActivo && String(g.supplierId) !== String(proveedorFiltroActivo)) return false;
-        // Con un proveedor filtrado por botón, sus tarjetas siempre se ven
-        // aunque no tengan nada programado ese día -- "ocultar vacíos" solo
-        // aplica quitando ruido de otros proveedores, no al que se pidió ver.
-        if (!proveedorFiltroActivo && ocultarVacios && g.filas.length === 0) return false;
+        // "Ocultar vacíos" aplica igual con o sin proveedor filtrado: con
+        // proveedor filtrado, solo deja ver las terminales de ESE proveedor
+        // que sí tengan algo capturado ese día (2026-09-14 -- antes las
+        // tarjetas vacías del proveedor filtrado se mostraban siempre,
+        // inconsistente con el resto de la vista).
+        if (ocultarVacios && g.filas.length === 0) return false;
         return true;
     });
 
@@ -362,13 +404,17 @@ function renderPorTerminal(filas) {
         .forEach(function (grupo) {
             const mostrarTransportista = !ocultaTransportista(grupo.supplierNombre);
             const mostrarReferenciaNotas = !ocultaReferenciaNotas(grupo.supplierNombre);
-            const encabezados = ['Hora', 'Producto', 'Litros', 'Estación'];
+            const mostrarReferencia = mostrarReferenciaNotas;
+            const mostrarNotas = mostrarReferenciaNotas && !ocultaNotas(grupo.supplierNombre);
+            const etiquetaHora = String(grupo.supplierId) === String(SUPPLIER_ID_MCG) ? 'Turno' : 'Hora';
+            const encabezados = [etiquetaHora, 'Producto', 'Litros', 'Estación'];
             if (mostrarTransportista) encabezados.push('Transportista');
-            if (mostrarReferenciaNotas) encabezados.push('Referencia', 'Notas');
+            if (mostrarReferencia) encabezados.push('Referencia');
+            if (mostrarNotas) encabezados.push('Notas');
             encabezados.push('Acciones');
 
             const filasHtml = grupo.filas.length
-                ? grupo.filas.map(function (f) { return formatearFilaTerminal(f, mostrarTransportista, mostrarReferenciaNotas); }).join('')
+                ? grupo.filas.map(function (f) { return formatearFilaTerminal(f, mostrarTransportista, mostrarReferencia, mostrarNotas); }).join('')
                 : '<tr><td colspan="' + encabezados.length + '" class="text-muted text-center">Sin recepciones programadas hoy.</td></tr>';
 
             const titulo = esc(grupo.supplierNombre) + ' — ' + esc(grupo.terminalNombre);
@@ -383,7 +429,7 @@ function renderPorTerminal(filas) {
                 ? `<button type="button" class="btn btn-sm btn-outline-success btn-accion-icono btn-agregar-en-grupo" data-supplier-id="${grupo.supplierId}" data-terminal-id="${terminalId || ''}" title="Agregar recepción en ${esc(grupo.supplierNombre)} — ${esc(grupo.terminalNombre)}"><i data-feather="plus"></i></button>`
                 : '';
             const botonFilaRapida = grupo.supplierId
-                ? `<button type="button" class="btn btn-sm btn-outline-secondary btn-accion-icono btn-fila-rapida" data-supplier-id="${grupo.supplierId}" data-terminal-id="${terminalId || ''}" data-mostrar-transportista="${mostrarTransportista ? '1' : '0'}" data-mostrar-referencia-notas="${mostrarReferenciaNotas ? '1' : '0'}" title="Capturar renglón rápido (como Excel)"><i data-feather="list"></i></button>`
+                ? `<button type="button" class="btn btn-sm btn-outline-secondary btn-accion-icono btn-fila-rapida" data-supplier-id="${grupo.supplierId}" data-terminal-id="${terminalId || ''}" data-mostrar-transportista="${mostrarTransportista ? '1' : '0'}" data-mostrar-referencia="${mostrarReferencia ? '1' : '0'}" data-mostrar-notas="${mostrarNotas ? '1' : '0'}" title="Capturar renglón rápido (como Excel)"><i data-feather="list"></i></button>`
                 : '';
             contenedor.append(tarjetaGrupo(titulo, grupo.total, filasHtml, encabezados, color, peso, botonAgregar + botonFilaRapida));
         });
@@ -426,6 +472,59 @@ function renderPorEstacion(filas) {
     });
 }
 
+// Arma las filas a exportar con el mismo criterio que la vista actual --
+// respeta proveedorFiltroActivo (filasFiltradas ya lo aplica) y la
+// agrupación activa (terminal/estación) para etiquetar cada fila con su
+// grupo. "Ocultar vacíos" no aplica aquí: un grupo sin filas no aporta
+// ninguna fila al export de cualquier forma, solo afecta qué tarjetas
+// VACÍAS se muestran en pantalla.
+function filasParaExportar() {
+    const filas = filasFiltradas();
+    if (agrupacionActiva === 'estacion') {
+        return filas.map(function (f) {
+            return Object.assign({}, f, { grupo: f.station_nombre || 'Sin estación' });
+        });
+    }
+    return filas.map(function (f) {
+        const terminalNombre = f.terminal_nombre || 'Sin terminal';
+        return Object.assign({}, f, { grupo: (f.supplier_nombre || '') + ' — ' + terminalNombre });
+    });
+}
+
+function exportarExcel() {
+    const filas = filasParaExportar();
+    if (!filas.length) {
+        alertify.myAlert('<div class="text-center"><p>No hay recepciones programadas que exportar con los filtros actuales.</p></div>');
+        return;
+    }
+
+    // Descarga de archivo generado server-side a partir de datos POST --
+    // no se puede usar $.post/fetch normal para esto (la respuesta es un
+    // binario, no JSON), así que se arma un form oculto y se envía con
+    // submit real del navegador, que sí dispara la descarga.
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/supply/scheduling_export';
+    form.style.display = 'none';
+
+    const campos = {
+        fecha: $('#fecha_programacion').val(),
+        agrupacion: agrupacionActiva,
+        filas: JSON.stringify(filas),
+    };
+    Object.keys(campos).forEach(function (nombre) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = nombre;
+        input.value = campos[nombre];
+        form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+}
+
 function actualizarTotalDia(filas) {
     const total = filas.reduce(function (sum, f) { return sum + (Number(f.litros) || 0); }, 0);
     $('#totalLitrosDia').text(total.toLocaleString('es-MX'));
@@ -461,6 +560,19 @@ function formatearFechaLocal(fecha) {
     return `${anio}-${mes}-${dia}`;
 }
 
+// MCG captura turno (T1/T2/T3) en vez de hora real -- el select #turno no
+// tiene name propio, su valor se copia al input oculto #hora (el campo
+// real que espera el backend) justo antes de enviar el form. Al ABRIR el
+// modal NO se sincroniza desde #hora: un <input type="time"> con un valor
+// no-hora como "T2" es inválido y el navegador lo deja vacío, así que el
+// valor real para edición ya viene precargado en el <select> directo
+// desde Twig (registro.hora == 'T1'/'T2'/'T3'), independiente del input.
+function actualizarVisibilidadHoraTurno() {
+    const esMcg = String($('#supplier_id').val()) === String(SUPPLIER_ID_MCG);
+    $('#hora_wrapper').toggle(!esMcg);
+    $('#turno_wrapper').toggle(esMcg);
+}
+
 function abrirModal(id, fecha, precarga) {
     const datos = Object.assign({ id: id || '', fecha: fecha }, precarga || {});
     $.post('/supply/scheduling_modal', datos)
@@ -476,6 +588,7 @@ function abrirModal(id, fecha, precarga) {
                 $('#mezcla_wrapper').toggle(esMixta);
                 if (!esMixta) $('#mezcla').val('');
             });
+            actualizarVisibilidadHoraTurno();
             const modal = new bootstrap.Modal(document.getElementById('modalProgramacion'));
             modal.show();
         })
@@ -605,6 +718,23 @@ $(document).ready(function () {
         fechaInput.val(formatearFechaLocal(fecha)).trigger('change');
     });
 
+    $('#btnActualizar').on('click', function () {
+        const boton = $(this);
+        boton.prop('disabled', true).find('i').addClass('spin-icono');
+        cargarDia(fechaInput.val());
+        // renderizarTodo() (llamado dentro de cargarDia -> done) es
+        // síncrono, así que para cuando esta línea corre ya terminó -- el
+        // pequeño delay es solo para que el giro del ícono sea perceptible
+        // en cargas muy rápidas, no un indicador real de progreso.
+        setTimeout(function () {
+            boton.prop('disabled', false).find('i').removeClass('spin-icono');
+        }, 400);
+    });
+
+    $('#btnExportarExcel').on('click', function () {
+        exportarExcel();
+    });
+
     $('#btnAgregarRecepcion').on('click', function () {
         abrirModal(null, fechaInput.val());
     });
@@ -723,7 +853,8 @@ $(document).ready(function () {
             boton.data('supplier-id'),
             boton.data('terminal-id'),
             boton.data('mostrar-transportista') === '1' || boton.data('mostrar-transportista') === 1,
-            boton.data('mostrar-referencia-notas') === '1' || boton.data('mostrar-referencia-notas') === 1
+            boton.data('mostrar-referencia') === '1' || boton.data('mostrar-referencia') === 1,
+            boton.data('mostrar-notas') === '1' || boton.data('mostrar-notas') === 1
         ));
         const filaNueva = tbody.find('tr.fila-rapida:last');
         filaNueva.data('mostrar-transportista', boton.data('mostrar-transportista') === '1' || boton.data('mostrar-transportista') === 1);
@@ -820,8 +951,40 @@ $(document).ready(function () {
             });
     });
 
+    $(document).on('click', '.btn-toggle-recibido', function () {
+        const boton = $(this);
+        const id = boton.data('id');
+        boton.prop('disabled', true);
+        $.post('/supply/scheduling_toggle_recibido', { id: id })
+            .done(function (resp) {
+                if (!resp.success) {
+                    alertify.myAlert('<div class="text-danger text-center"><p>' + esc(resp.message || 'No se pudo actualizar.') + '</p></div>');
+                    boton.prop('disabled', false);
+                    return;
+                }
+                cargarDia(fechaInput.val());
+            })
+            .fail(function () {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo actualizar.</p></div>');
+                boton.prop('disabled', false);
+            });
+    });
+
+    $(document).on('change', '#supplier_id', function () {
+        // Al cambiar de proveedor explícitamente (no al abrir el modal),
+        // sí se limpia el campo que se oculta -- si venía de MCG con
+        // "T2" y el usuario cambia a otro proveedor, no debe arrastrar
+        // ese valor no-hora al campo de hora real, y viceversa.
+        $('#hora').val('');
+        $('#turno').val('');
+        actualizarVisibilidadHoraTurno();
+    });
+
     $(document).on('submit', '#frmProgramacion', function (e) {
         e.preventDefault();
+        if (String($('#supplier_id').val()) === String(SUPPLIER_ID_MCG)) {
+            $('#hora').val($('#turno').val());
+        }
         const datos = $(this).serialize();
         const id = $('#id').val();
         const url = id ? '/supply/scheduling_update' : '/supply/scheduling_add';

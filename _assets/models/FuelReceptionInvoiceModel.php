@@ -226,7 +226,16 @@ class FuelReceptionInvoiceModel extends Model {
         }
 
         $query = "
-            SELECT f.Id, f.Folio, f.Fecha, f.Total, f.EmisorNombre, f.UUID
+            SELECT f.Id, f.Folio, f.Fecha, f.Total, f.EmisorNombre, f.UUID,
+                   (
+                       SELECT STRING_AGG(CONCAT(c.Descripcion, ' (', FORMAT(c.Litros, 'N0'), ' L)'), ' + ')
+                       FROM (
+                           SELECT Descripcion, SUM(Cantidad) AS Litros
+                           FROM TG.dbo.FacturasRecibidasConceptos
+                           WHERE FacturaId = f.Id AND Descripcion IS NOT NULL AND Descripcion <> ''
+                           GROUP BY Descripcion
+                       ) c
+                   ) AS Productos
             FROM TG.dbo.FacturasRecibidas f
             WHERE f.EmisorRfc = ?
               AND f.EstacionCodgas = ?

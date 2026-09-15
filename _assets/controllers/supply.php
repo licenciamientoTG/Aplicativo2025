@@ -2712,6 +2712,74 @@ class Supply
         echo $this->twig->render($this->route . 'scheduling.html', compact('fecha', 'estaciones', 'transportistas', 'terminales'));
     }
 
+    /**
+     * Exporta a Excel exactamente lo que el usuario está viendo en
+     * /supply/scheduling (respeta filtros de proveedor y "ocultar
+     * vacíos") -- el JS ya tiene toda la lógica de agrupación/filtro
+     * (renderPorTerminal/renderPorEstacion), así que arma las filas ya
+     * agrupadas y las manda aquí en vez de duplicar esa lógica en PHP.
+     * Este endpoint solo construye el .xlsx a partir de filas resueltas.
+     */
+    public function scheduling_export()
+    {
+        if (!authorized(95)) {
+            http_response_code(403);
+            echo 'No autorizado';
+            return;
+        }
+
+        $fecha = $_POST['fecha'] ?? date('Y-m-d');
+        $agrupacion = $_POST['agrupacion'] ?? 'terminal';
+        $filasJson = $_POST['filas'] ?? '[]';
+        $filas = json_decode($filasJson, true);
+        if (!is_array($filas)) {
+            http_response_code(400);
+            echo 'Datos inválidos';
+            return;
+        }
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Programación');
+
+        $nombreGrupo = $agrupacion === 'estacion' ? 'Estación' : 'Grupo (Proveedor — Terminal)';
+        $encabezados = [$nombreGrupo, 'Hora', 'Producto', 'Mezcla', 'Litros', 'Estación', 'Proveedor', 'Terminal', 'Transportista', 'Referencia', 'Notas'];
+        $sheet->fromArray($encabezados, null, 'A1');
+        $sheet->getStyle('A1:' . chr(64 + count($encabezados)) . '1')->getFont()->setBold(true);
+
+        $row = 2;
+        foreach ($filas as $f) {
+            $sheet->fromArray([
+                $f['grupo'] ?? '',
+                $f['hora'] ?? '',
+                $f['product'] ?? '',
+                $f['mezcla'] ?? '',
+                (float)($f['litros'] ?? 0),
+                $f['station_nombre'] ?? '',
+                $f['supplier_nombre'] ?? '',
+                $f['terminal_nombre'] ?? '',
+                $f['carrier_nombre'] ?? '',
+                $f['referencia'] ?? '',
+                $f['notas'] ?? '',
+            ], null, "A{$row}");
+            $row++;
+        }
+        foreach (range('A', chr(64 + count($encabezados))) as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $sufijoAgrupacion = $agrupacion === 'estacion' ? 'por_estacion' : 'por_terminal';
+        $archivo = "programacion_recepciones_{$sufijoAgrupacion}_{$fecha}.xlsx";
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment;filename=\"{$archivo}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
     public function scheduling_day_data()
     {
         header('Content-Type: application/json');
@@ -2828,6 +2896,27 @@ class Supply
         $id = (int)($_POST['id'] ?? 0);
         $this->fuelReceptionScheduleModel->cancel($id, $userId);
         json_output(['success' => true]);
+    }
+
+    public function scheduling_toggle_recibido()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            json_output(['success' => false, 'message' => 'Falta el id de la recepción']);
+            return;
+        }
+        $nuevoEstatus = $this->fuelReceptionScheduleModel->toggle_recibido($id, $userId);
+        if ($nuevoEstatus === null) {
+            json_output(['success' => false, 'message' => 'Recepción no encontrada o cancelada']);
+            return;
+        }
+        json_output(['success' => true, 'estatus' => $nuevoEstatus]);
     }
 
     // Carga el modal de captura/edición. Sin $id: formulario vacío para

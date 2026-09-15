@@ -8,9 +8,18 @@
             </div>
         </div>
         <div class="col-12 col-md-4">
-            <div class="mb-3">
+            <div class="mb-3" id="hora_wrapper">
                 <label class="col-form-label col-form-label-sm" for="hora">Hora:</label>
                 <input type="time" class="form-control" id="hora" name="hora" value="{{ registro.hora|default('') }}">
+            </div>
+            <div class="mb-3" id="turno_wrapper" style="display:none;">
+                <label class="col-form-label col-form-label-sm" for="turno">Turno:</label>
+                <select class="form-control" id="turno">
+                    <option value="">—</option>
+                    <option value="T1" {{ registro.hora == 'T1' ? 'selected' : '' }}>T1</option>
+                    <option value="T2" {{ registro.hora == 'T2' ? 'selected' : '' }}>T2</option>
+                    <option value="T3" {{ registro.hora == 'T3' ? 'selected' : '' }}>T3</option>
+                </select>
             </div>
         </div>
         <div class="col-12 col-md-4">
