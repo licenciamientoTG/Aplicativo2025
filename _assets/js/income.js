@@ -2061,9 +2061,23 @@ async function vehicles_debit_table(){
                 }
             },
             {
+                'data': null, className: 'text-nowrap',
+                render: function (row) {
+                    if (!row.ultima_carga_serie || !row.ultima_carga_folio) return '';
+                    return row.ultima_carga_serie + ' ' + row.ultima_carga_folio;
+                }
+            },
+            {
                 'data': 'ultimo_consumo', className: 'text-nowrap',
                 render: function (v) {
                     return v || '<span class="text-danger">Nunca</span>';
+                }
+            },
+            {
+                'data': null, className: 'text-nowrap',
+                render: function (row) {
+                    if (!row.ultimo_consumo_serie || !row.ultimo_consumo_folio) return '';
+                    return row.ultimo_consumo_serie + ' ' + row.ultimo_consumo_folio;
                 }
             },
         ],
@@ -2088,7 +2102,7 @@ function debit_dashboard_table(){
         return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
-    ['dashboard_saldo_global_negativo_table', 'dashboard_vehiculos_negativos_table', 'dashboard_ultima_carga_table'].forEach(function (id) {
+    ['dashboard_saldo_global_negativo_table', 'dashboard_vehiculos_negativos_table', 'dashboard_ultima_carga_table', 'dashboard_factura_global_mal_ligada_table'].forEach(function (id) {
         if ($.fn.DataTable.isDataTable('#' + id)) {
             $('#' + id).DataTable().destroy();
         }
@@ -2154,6 +2168,35 @@ function debit_dashboard_table(){
                         return '<span class="' + cls + '">' + v + '</span>';
                     }
                 },
+            ]
+        });
+
+        var fg = (json && json.factura_global_mal_ligada) || [];
+        $('#count_factura_global_mal_ligada').text(new Set(fg.map(function (r) { return r.codcli; })).size);
+        $('#dashboard_factura_global_mal_ligada_table').DataTable({
+            data: fg,
+            destroy: true,
+            order: [[6, 'desc']],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            scrollY: '400px',
+            scrollCollapse: true,
+            paging: false,
+            buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+            columns: [
+                { data: 'codcli' },
+                { data: 'cliente' },
+                { data: 'nrotrn' },
+                { data: 'nrofac' },
+                {
+                    data: 'tipo_error', className: 'text-nowrap',
+                    render: function (v) {
+                        return v === 'Factura Global'
+                            ? '<span class="badge bg-danger">Factura Global</span>'
+                            : '<span class="badge bg-warning text-dark">Otro cliente</span>';
+                    }
+                },
+                { data: 'ligado_a_cliente', render: function (v) { return v || '<span class="text-muted">—</span>'; } },
+                { data: 'fecha_despacho' },
             ]
         });
     }, 'json').fail(function () {
