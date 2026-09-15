@@ -122,8 +122,25 @@ class EfcConciliacionModel {
 
     public function closePeriod(array $data, int $userId): array {
         $station=(int)($data['station_id']??0); $year=(int)($data['year']??0); $month=(int)($data['month']??0); $concept=strtoupper(trim((string)($data['concept']??''))); $pending=(int)($data['pending']??0); if(!$station||$year<2020||$month<1||$month>12||!in_array($concept,['MN','MORRALLA','USD'],true)) throw new RuntimeException('Parámetros de cierre inválidos.'); if($pending>0) throw new RuntimeException('No se puede cerrar: existen operaciones pendientes.'); $mes=sprintf('%04d-%02d',$year,$month); if(($this->closureState($station,$year,$month,$concept)['estado']??'')==='CERRADO') throw new RuntimeException('La conciliación ya está cerrada.');
-        $q=$this->db->prepare("SELECT ISNULL(SUM(CASE WHEN P.origen='CG' THEN P.importe ELSE 0 END),0) cg,ISNULL(SUM(CASE WHEN P.origen='BANCO' THEN P.importe ELSE 0 END),0) banco,COUNT(DISTINCT G.id) operaciones,ISNULL(SUM(G.diferencia),0) diferencia FROM dbo.efc_conc_grupos G JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id AND P.activo=1 WHERE G.estacion_id=? AND G.estado='ACTIVA' AND G.concepto=? AND YEAR(G.fecha_operativa)=? AND MONTH(G.fecha_operativa)=?"); $q->execute([$station,$concept,$year,$month]); $r=$q->fetch(PDO::FETCH_ASSOC)?:[]; $trans=$this->db->prepare("SELECT ISNULL(SUM(importe),0) FROM dbo.efc_conc_transitos WHERE estacion_id=? AND mes_origen=? AND concepto=? AND estado='PENDIENTE'"); $trans->execute([$station,$mes,$concept]); $totalTransit=(float)$trans->fetchColumn();
-        $ins=$this->db->prepare("INSERT dbo.efc_conc_cierres(estacion_id,mes,concepto,total_controlgas,total_banco,total_diferencia,total_transito,operaciones,pendientes,estado,cerrado_por,cerrado_en) VALUES(?,?,?,?,?,?,?,?,?,'CERRADO',?,GETDATE())"); $ins->execute([$station,$mes,$concept,(float)($r['cg']??0),(float)($r['banco']??0),(float)($r['diferencia']??0),$totalTransit,(int)($r['operaciones']??0),0,$userId]); return $this->closureState($station,$year,$month,$concept)??[];
+        if($concept==='USD'&&!$this->isParralStation($station)) $r=$this->usdRegioClosureTotals($station,$year,$month);
+        else { $q=$this->db->prepare("SELECT ISNULL(SUM(CASE WHEN P.origen='CG' THEN P.importe ELSE 0 END),0) cg,ISNULL(SUM(CASE WHEN P.origen='BANCO' THEN P.importe ELSE 0 END),0) banco,0 regio,COUNT(DISTINCT G.id) operaciones,ISNULL(SUM(G.diferencia),0) diferencia FROM dbo.efc_conc_grupos G JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id AND P.activo=1 WHERE G.estacion_id=? AND G.estado='ACTIVA' AND G.concepto=? AND YEAR(G.fecha_operativa)=? AND MONTH(G.fecha_operativa)=?"); $q->execute([$station,$concept,$year,$month]); $r=$q->fetch(PDO::FETCH_ASSOC)?:[]; }
+        $trans=$this->db->prepare("SELECT ISNULL(SUM(importe),0) FROM dbo.efc_conc_transitos WHERE estacion_id=? AND mes_origen=? AND concepto=? AND estado='PENDIENTE'"); $trans->execute([$station,$mes,$concept]); $totalTransit=(float)$trans->fetchColumn();
+        $ins=$this->db->prepare("INSERT dbo.efc_conc_cierres(estacion_id,mes,concepto,total_controlgas,total_banco,total_regio_real,total_diferencia,total_transito,operaciones,pendientes,estado,cerrado_por,cerrado_en) VALUES(?,?,?,?,?,?,?,?,?,?,'CERRADO',?,GETDATE())"); $ins->execute([$station,$mes,$concept,(float)($r['cg']??0),(float)($r['banco']??0),(float)($r['regio']??0),(float)($r['diferencia']??0),$totalTransit,(int)($r['operaciones']??0),0,$userId]); return $this->closureState($station,$year,$month,$concept)??[];
+    }
+
+    private function usdRegioClosureTotals(int $stationId, int $year, int $month): array {
+        $mes=sprintf('%04d-%02d',$year,$month);
+        $q=$this->db->prepare("SELECT ISNULL(SUM(V.importe_cg),0) cg,ISNULL(SUM(CASE WHEN ISNULL(P.real_usd,0)>0 AND ISNULL(V.tipo_cambio_usd,0)>0 THEN P.real_usd*V.tipo_cambio_usd ELSE ISNULL(P.real_mn,0) END),0) regio,COUNT(*) operaciones FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id WHERE V.estacion_id=? AND V.activo=1 AND V.concepto='USD' AND ((YEAR(V.fecha_cg)=? AND MONTH(V.fecha_cg)=?) OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO')))");
+        $q->execute([$stationId,$year,$month,$mes]); $r=$q->fetch(PDO::FETCH_ASSOC)?:[];
+        $cg=(float)($r['cg']??0); $regio=(float)($r['regio']??0);
+        return ['cg'=>$cg,'banco'=>0.0,'regio'=>$regio,'operaciones'=>(int)($r['operaciones']??0),'diferencia'=>$regio-$cg];
+    }
+
+    private function isParralStation(int $stationId): bool {
+        if($stationId===4) return true;
+        $q=$this->db->prepare("SELECT Nombre FROM TG.dbo.Estaciones WHERE Codigo=?");
+        $q->execute([$stationId]);
+        return stripos((string)$q->fetchColumn(),'PARRAL')!==false;
     }
 
     public function reopenPeriod(int $stationId,int $year,int $month,string $concept,int $userId): void { $mes=sprintf('%04d-%02d',$year,$month); $q=$this->db->prepare("UPDATE dbo.efc_conc_cierres SET estado='ABIERTO',reabierto_por=?,reabierto_en=GETDATE() WHERE estacion_id=? AND mes=? AND concepto=? AND estado='CERRADO'"); $q->execute([$userId,$stationId,$mes,$concept]); if(!$q->rowCount()) throw new RuntimeException('No existe un cierre activo para reabrir.'); }
