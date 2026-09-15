@@ -6519,8 +6519,13 @@ public function stamped_invoices_detail(): void
             if ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true)) throw new RuntimeException('Concepto inválido.');
             $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$this->efcConcReportControlGas($station,$year,$month));
             $mostrarTodos=filter_var($_GET['mostrar_todos'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            if ($report === 'faltantes' && !$mostrarTodos) $rows=array_values(array_filter($rows, static fn(array $row): bool => (float)$row['faltante'] > 10.00));
-            else $rows=array_values(array_filter($rows, static fn(array $row): bool => $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
+            if ($report === 'faltantes') {
+                // El modo normal conserva el umbral; “Mostrar todos” incluye
+                // cualquier diferencia positiva o negativa distinta de cero.
+                $rows=array_values(array_filter($rows, static fn(array $row): bool => $mostrarTodos ? abs((float)$row['faltante']) > 0.004 : (float)$row['faltante'] > 10.00));
+            } else {
+                $rows=array_values(array_filter($rows, static fn(array $row): bool => $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
+            }
             echo json_encode(['status'=>'success','data'=>$rows]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
