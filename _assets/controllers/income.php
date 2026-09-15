@@ -6515,9 +6515,15 @@ public function stamped_invoices_detail(): void
             $concept=strtoupper(trim((string)($_GET['concepto'] ?? ''))); $concept=$concept === '' ? null : $concept;
             if (!in_array($report, ['faltantes','diferencias'], true)) throw new RuntimeException('Tipo de reporte inválido.');
             if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) throw new RuntimeException('Empresa inválida.');
-            if ($year < 2020 || $month < 1 || $month > 12 || !in_array($station, EfcConciliacionModel::stationIds($company), true)) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
+            $companyStations=EfcConciliacionModel::stationIds($company);
+            if ($year < 2020 || $month < 1 || $month > 12 || ($station && !in_array($station, $companyStations, true))) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
             if ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true)) throw new RuntimeException('Concepto inválido.');
-            $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$this->efcConcReportControlGas($station,$year,$month));
+            // estacion_id=0 significa todas las estaciones de la empresa.
+            $reportStations=$station ? [$station] : $companyStations;
+            $rows=[];
+            foreach($reportStations as $reportStation){
+                $rows=array_merge($rows,$this->efcConciliacion->reportRows($reportStation,$year,$month,$concept,$this->efcConcReportControlGas($reportStation,$year,$month)));
+            }
             $mostrarTodos=filter_var($_GET['mostrar_todos'] ?? false, FILTER_VALIDATE_BOOLEAN);
             if ($report === 'faltantes') {
                 // El modo normal conserva el umbral; “Mostrar todos” incluye
