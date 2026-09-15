@@ -138,7 +138,6 @@ class EfcConciliacionModel {
     }
 
     private function isParralStation(int $stationId): bool {
-        if($stationId===4) return true;
         $q=$this->db->prepare("SELECT Nombre FROM TG.dbo.Estaciones WHERE Codigo=?");
         $q->execute([$stationId]);
         return stripos((string)$q->fetchColumn(),'PARRAL')!==false;
