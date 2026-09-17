@@ -7,7 +7,7 @@ class EfcConciliacionModel {
     private const COMPANY_ACCOUNTS = [
         'DIAZ GAS' => ['0185322470', '369'],
         'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', '7533', '2627', '5247', '7604', '0031'],
-        'GASOMEX'   => ['8504', '4409', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4457'],
+        'GASOMEX'   => ['4409', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4638'],
     ];
     /* La razón social fiscal no identifica por sí sola la operación. Gasomex
        tiene estaciones con RFC propio; este es el catálogo operativo usado por
@@ -28,10 +28,9 @@ class EfcConciliacionModel {
             '0031'=>['PUERTECITO','SAN RAFAEL','COLOSIO','JESUS MARIA'],
         ],
         'GASOMEX' => [
-            '8504'=>['JARUDO'], '4409'=>['JARUDO'], '4547'=>['EJERCITO'],
-            '8214'=>['EJERCITO','FUENTES'], '8492'=>['FUENTES','CLARA'],
-            '4412'=>['CLARA'], '4777'=>['CLARA','SOLIS'], '4669'=>['SOLIS','SANTIAGO'],
-            '3678'=>['SANTIAGO','SATELITE'], '4457'=>['SATELITE'],
+            '4409'=>['JARUDO'], '4547'=>['EJERCITO'], '8214'=>['EJERCITO'],
+            '8492'=>['FUENTES','CLARA'], '4412'=>['CLARA'], '4777'=>['SOLIS'],
+            '4669'=>['SANTIAGO'], '3678'=>['SANTIAGO'], '4638'=>['SATELITE'],
         ],
     ];
 
@@ -368,12 +367,20 @@ class EfcConciliacionModel {
     }
 
     public function saveGroup(array $group, array $cg, array $bank, int $userId): int {
-        if (count($cg)!==1 || count($bank)<1 || count($bank)>2) throw new RuntimeException('La conciliacion requiere un turno y uno o dos depositos.');
-        $operationDate=$this->transitOperationDate($cg[0]);
+        $company=$this->companyForStation((int)($group['station_id']??0));
+        if (count($cg)<1 || count($bank)<1) throw new RuntimeException('La conciliacion requiere al menos un turno y un deposito.');
+        if ($company!=='GASOMEX' && (count($cg)!==1 || count($bank)>2)) throw new RuntimeException('La conciliacion requiere un turno y uno o dos depositos.');
+        if ($company==='GASOMEX') {
+            $cgTotal=round(array_sum(array_map(fn(array $item): float => (float)($item['amount']??0), $cg)),2);
+            $bankTotal=round(array_sum(array_map(fn(array $item): float => (float)($item['amount']??0), $bank)),2);
+            if (abs($bankTotal-$cgTotal)>=1.00) throw new RuntimeException('La combinacion GASOMEX debe coincidir con el deposito con una tolerancia menor a $1.00.');
+            $group['cg_total']=$cgTotal; $group['bank_total']=$bankTotal; $group['difference']=round($bankTotal-$cgTotal,2);
+        }
+        $operationDate=min(array_map(fn(array $item): string => $this->transitOperationDate($item), $cg));
         $this->assertOpen((int)$group['station_id'],$operationDate,(string)$cg[0]['currency']); $this->db->beginTransaction();
         try {
-            $id=$this->createGroup($group,$cg[0],$bank,$userId,$operationDate);
-            $this->markTransitReconciled($cg[0],$id,$userId);
+            $id=$this->createGroup($group,$cg,$bank,$userId,$operationDate);
+            foreach ($cg as $item) $this->markTransitReconciled($item,$id,$userId);
             $this->db->commit(); return $id;
         }
         catch(Throwable $e) { $this->db->rollBack(); throw $e; }
@@ -519,11 +526,14 @@ class EfcConciliacionModel {
     public function undo(int $groupId,int $userId): void { $q=$this->db->prepare("SELECT estacion_id,fecha_operativa,concepto FROM dbo.efc_conc_grupos WHERE id=? AND estado='ACTIVA'");$q->execute([$groupId]);$g=$q->fetch(PDO::FETCH_ASSOC);if(!$g)throw new RuntimeException('La conciliación no existe o ya fue deshecha.');$this->assertOpen((int)$g['estacion_id'],$this->dateValue($g['fecha_operativa']),(string)$g['concepto']);$this->db->beginTransaction(); try { $this->cancelGroup($groupId,$userId); $this->db->commit(); } catch(Throwable $e) { $this->db->rollBack(); throw $e; } }
 
     private function createGroup(array $group, array $cg, array $bank, int $userId, ?string $operationDate=null): int {
-        $operationDate=$operationDate??$cg['date'];
+        if (isset($cg['id'])) $cg=[$cg];
+        $cg=array_values($cg);
+        $first=$cg[0];
+        $operationDate=$operationDate??$first['date'];
         $q=$this->db->prepare("INSERT dbo.efc_conc_grupos(estacion_id,fecha_operativa,turno,concepto,tipo,total_controlgas,total_banorte,diferencia,creado_por) OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,?,?)");
-        $q->execute([$group['station_id'],$operationDate,$cg['turn'],$cg['currency'],$group['type'],$group['cg_total'],$group['bank_total'],$group['difference'],$userId]); $id=(int)$q->fetchColumn();
+        $q->execute([$group['station_id'],$operationDate,count($cg)>1?'VARIOS':$first['turn'],$first['currency'],$group['type'],$group['cg_total'],$group['bank_total'],$group['difference'],$userId]); $id=(int)$q->fetchColumn();
         $part=$this->db->prepare("INSERT dbo.efc_conc_partidas(grupo_id,origen,clave_externa,movimiento_bancario_id,fecha_operacion,turno,concepto,importe,referencia,estacion_id) VALUES(?,?,?,?,?,?,?,?,?,?)");
-        $part->execute([$id,'CG',$cg['id'],null,$cg['date'],$cg['turn'],$cg['currency'],$cg['amount'],null,$group['station_id']]);
+        foreach ($cg as $item) $part->execute([$id,'CG',$item['id'],null,$item['date'],$item['turn'],$item['currency'],$item['amount'],null,$group['station_id']]);
         foreach($bank as $item) $part->execute([$id,'BANCO',$item['id'],(int)preg_replace('/\D/','',$item['id']),$item['date'],null,null,$item['amount'],$item['reference']??null,$group['station_id']]);
         $this->log($id,null,'CONCILIACION_'.$group['type'],null,$userId); return $id;
     }

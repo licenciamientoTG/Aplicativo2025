@@ -16,7 +16,7 @@ if "openpyxl" not in sys.modules:
     openpyxl.load_workbook = None
     sys.modules["openpyxl"] = openpyxl
 
-from efc_conc_analiticos_diario import closest_paper, remittance_sort_key, sequential_tie_groups
+from efc_conc_analiticos_diario import closest_paper, is_total_gas_excel, remittance_sort_key, sequential_tie_groups
 
 
 def turn(turn_date: date, label: str, amount: float = 100.0) -> dict:
@@ -28,6 +28,13 @@ def paper(identifier: int, remittance: object, paper_date: date) -> dict:
 
 
 class SequentialRemittanceTieTests(unittest.TestCase):
+    def test_accepts_diaz_gas_and_gasomex_analytic_filenames(self) -> None:
+        self.assertTrue(is_total_gas_excel("TOTAL GAS 16-09-2026.xls"))
+        self.assertTrue(is_total_gas_excel("GASOMEX 16-09-2026.xls"))
+        self.assertTrue(is_total_gas_excel("ANALITICOS GASOMEX 16-09-2026.xlsx"))
+        self.assertFalse(is_total_gas_excel("ACTA DIFERENCIA GASOMEX 16-09-2026.pdf"))
+        self.assertFalse(is_total_gas_excel("reporte_16-09-2026.xls"))
+
     def test_pairs_turns_by_turn_order_then_numeric_remittance(self) -> None:
         same_day = date(2026, 9, 14)
         first, second = turn(same_day, "Turno 1"), turn(same_day, "Turno 2")
