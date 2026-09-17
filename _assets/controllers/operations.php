@@ -3395,7 +3395,10 @@ class Operations{
             $targets=$rawTargets===null ? [] : (is_string($rawTargets) ? json_decode($rawTargets,true) : $rawTargets);
             if (!is_array($targets)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
             $allowedTypes=['urovo'=>true]; foreach ($enabled as $type) $allowedTypes[$type]=true;
-            try { $validated=$this->terminalExpectedTargets($targets,$allowedTypes,true); }
+            // Las metas nuevas (por ejemplo Verifone) pueden no existir todavía
+            // en instalaciones con configuración previa. No bloquear el guardado
+            // completo por esas filas; la consulta las interpreta como 0.
+            try { $validated=$this->terminalExpectedTargets($targets,$allowedTypes,false); }
             catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage()); return; }
             try { $this->terminalInventoryModel->saveSettingsWithStationExpectedCounts($day,$enabled,$validated,(int)$_SESSION['tg_user']['Id']); json_output(['success'=>true]); }
             catch (Throwable $e) { error_log('No se pudo guardar la configuración del inventario de terminales: '.$e->getMessage()); $this->terminalJsonError('No fue posible guardar la configuración. Verifique que se ejecutó la actualización SQL.',500); }
