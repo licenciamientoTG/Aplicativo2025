@@ -227,4 +227,45 @@ class Petrotal {
         setFlashMessage($guardado ? 'success' : 'error', $guardado ? 'FIEL guardada correctamente.' : 'Error al guardar la configuración en base de datos.');
         redirect('/petrotal/configuracion_fiel');
     }
+
+    public function historial() {
+        if (!authorized(98)) {
+            echo "No autorizado";
+            return;
+        }
+        $envios = $this->petrotalObligacionModel->listar_envios();
+        echo $this->twig->render($this->route . 'historial.html', compact('envios'));
+    }
+
+    public function descargar_json($id = null) {
+        if (!authorized(98)) {
+            echo "No autorizado";
+            return;
+        }
+        $envio = $this->petrotalObligacionModel->obtener_envio((int) $id);
+        if (!$envio || empty($envio['RutaJson']) || !file_exists($envio['RutaJson'])) {
+            http_response_code(404);
+            echo "Archivo no encontrado";
+            return;
+        }
+        header('Content-Type: application/json');
+        header('Content-Disposition: attachment; filename="' . basename($envio['RutaJson']) . '"');
+        readfile($envio['RutaJson']);
+    }
+
+    public function descargar_acuse($id = null) {
+        if (!authorized(98)) {
+            echo "No autorizado";
+            return;
+        }
+        $envio = $this->petrotalObligacionModel->obtener_envio((int) $id);
+        if (!$envio || empty($envio['RutaAcuse']) || !file_exists($envio['RutaAcuse'])) {
+            http_response_code(404);
+            echo "Acuse no encontrado";
+            return;
+        }
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . basename($envio['RutaAcuse']) . '"');
+        readfile($envio['RutaAcuse']);
+    }
 }
