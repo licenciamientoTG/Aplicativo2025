@@ -81,13 +81,14 @@ def parse_datetime(value: object) -> datetime:
     return datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
 
 
-def business_hours(from_value: object, until: datetime) -> float:
-    """Horas laborables 08:00-18:00, lunes a viernes, convertidas a jornadas."""
+def business_time(from_value: object, until: datetime) -> dict[str, float]:
+    """Cuenta días y horas laborables dentro de 08:00-18:00, lunes a viernes."""
     start = parse_datetime(from_value)
     if start >= until:
-        return 0.0
+        return {"dias_laborales": 0, "horas_laborales": 0.0}
     cursor = start.date()
     end_date = until.date()
+    working_days = 0
     total_hours = 0.0
     while cursor <= end_date:
         if cursor.weekday() < 5:
@@ -96,17 +97,21 @@ def business_hours(from_value: object, until: datetime) -> float:
             left = max(start, window_start)
             right = min(until, window_end)
             if right > left:
+                working_days += 1
                 total_hours += (right - left).total_seconds() / 3600
         cursor += timedelta(days=1)
-    return round(total_hours / 10, 2)
+    return {"dias_laborales": working_days, "horas_laborales": round(total_hours, 2)}
 
 
 def fetch_open_incidents(connection: pyodbc.Connection) -> list[dict[str, object]]:
     query = """
         SELECT i.ticket_mojo_id, i.tipo_terminal, i.descripcion,
-               i.fecha_apertura_mojo, i.estado_mojo, s.Nombre AS estacion_nombre
+               i.fecha_apertura_mojo, i.estado_mojo, s.Nombre AS estacion_nombre,
+               NULLIF(LTRIM(RTRIM(COALESCE(u.first_name, '') + CASE WHEN COALESCE(u.last_name, '') = '' THEN '' ELSE ' ' + u.last_name END)), '') AS responsable
         FROM TG.dbo.inv_ter_incidencias AS i
         LEFT JOIN TG.dbo.Estaciones AS s ON s.Codigo = i.estacion_id
+        LEFT JOIN TG.dbo.mojo_tickets AS t ON t.id_mojo = i.ticket_mojo_id
+        LEFT JOIN TG.dbo.mojo_users AS u ON u.id_mojo = t.assigned_to_id
         WHERE i.fecha_cierre_mojo IS NULL
         ORDER BY i.fecha_apertura_mojo ASC, i.id ASC
     """
@@ -116,9 +121,53 @@ def fetch_open_incidents(connection: pyodbc.Connection) -> list[dict[str, object
         columns = [column[0] for column in cursor.description]
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
     for row in rows:
-        row["dias_habiles"] = business_hours(row["fecha_apertura_mojo"], now)
-    rows.sort(key=lambda row: (-float(row["dias_habiles"]), parse_datetime(row["fecha_apertura_mojo"])))
+        duration = business_time(row["fecha_apertura_mojo"], now)
+        row.update(duration)
+        row["dias_habiles"] = duration["dias_laborales"]
+    rows.sort(key=lambda row: (-int(row["dias_laborales"]), -float(row["horas_laborales"]), parse_datetime(row["fecha_apertura_mojo"])))
     return rows
+
+
+def fetch_inventory_summary(connection: pyodbc.Connection) -> list[dict[str, object]]:
+    """Obtiene el último inventario de UROVO por estación y su responsable."""
+    query = """
+        WITH latest_inventory AS (
+            SELECT i.id, i.estacion_id,
+                   ROW_NUMBER() OVER (PARTITION BY i.estacion_id ORDER BY i.fecha_inventario DESC, i.id DESC) AS rn
+            FROM TG.dbo.inv_ter_inventarios AS i
+        ), urovo_detail AS (
+            SELECT d.inventario_id, d.funcionando, d.danadas
+            FROM TG.dbo.inv_ter_inventario_detalles AS d
+            WHERE d.tipo_terminal = 'urovo'
+        )
+        SELECT s.Codigo AS estacion_codigo, s.Nombre AS estacion_nombre,
+               COALESCE(c.terminales_esperadas, 0) AS stock,
+               COALESCE(d.danadas, 0) AS danadas,
+               COALESCE(d.funcionando, 0) AS funcionando,
+               COALESCE(opened.open_count, 0) AS open_count,
+               COALESCE(opened.responsable, 'Sin asignar') AS responsable
+        FROM TG.dbo.Estaciones AS s
+        LEFT JOIN latest_inventory AS li ON li.estacion_id = s.Codigo AND li.rn = 1
+        LEFT JOIN urovo_detail AS d ON d.inventario_id = li.id
+        LEFT JOIN TG.dbo.inv_ter_configuracion_estacion AS c
+               ON c.estacion_id = s.Codigo AND c.tipo_terminal = 'urovo'
+        OUTER APPLY (
+            SELECT COUNT(*) AS open_count,
+                   NULLIF(MAX(LTRIM(RTRIM(COALESCE(u.first_name, '') + CASE WHEN COALESCE(u.last_name, '') = '' THEN '' ELSE ' ' + u.last_name END))), '') AS responsable
+            FROM TG.dbo.inv_ter_incidencias AS inc
+            LEFT JOIN TG.dbo.mojo_tickets AS t ON t.id_mojo = inc.ticket_mojo_id
+            LEFT JOIN TG.dbo.mojo_users AS u ON u.id_mojo = t.assigned_to_id
+            WHERE inc.estacion_id = s.Codigo
+              AND inc.tipo_terminal = 'urovo'
+              AND inc.fecha_cierre_mojo IS NULL
+        ) AS opened
+        WHERE s.activa = 1 AND s.Codigo NOT IN (0, 4, 20)
+        ORDER BY s.Codigo
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(query)
+        columns = [column[0] for column in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
 def recipients(name: str) -> list[str]:
@@ -157,7 +206,7 @@ def render_html(rows: Iterable[dict[str, object]], sent_at: datetime, category: 
             f'<td style="padding:11px 10px;color:#52616f">{escape(str(row.get("estacion_nombre") or "—"))}</td>'
             f'<td style="padding:11px 10px;color:#52616f;max-width:280px">{escape(str(row.get("descripcion") or "—"))}</td>'
             f'<td style="padding:11px 10px;color:#52616f;white-space:nowrap">{opened}</td>'
-            f'<td style="padding:11px 10px;text-align:center;color:#125ca8;font-weight:800;white-space:nowrap">{float(row["dias_habiles"]):.2f}</td>'
+            f'<td style="padding:11px 10px;text-align:center;color:#125ca8;font-weight:800;white-space:nowrap">{int(row["dias_laborales"])} días / {float(row["horas_laborales"]):.2f} h</td>'
             f'<td style="padding:11px 10px;white-space:nowrap"><span style="display:inline-block;background:#eaf3fb;color:#125ca8;padding:4px 9px;border-radius:12px;font-weight:700;font-size:12px">{escape(state)}</span></td>'
             "</tr>"
         )
@@ -165,9 +214,9 @@ def render_html(rows: Iterable[dict[str, object]], sent_at: datetime, category: 
     return f"""<!doctype html><html lang="es"><body style="margin:0;padding:18px;background:#f4f8fc;font-family:Arial,sans-serif;color:#304a61">
 <div style="max-width:1180px;margin:0 auto;border:1px solid #dbe7f2;border-radius:10px;overflow:hidden;background:#ffffff">
 <div style="padding:22px 24px;background:#125ca8;color:#ffffff"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.82">TotalGas · Operaciones</div><h2 style="margin:7px 0 0;font-size:22px;font-weight:700">Incidencias abiertas — {escape(category)}</h2></div>
-<div style="padding:16px 24px 12px;background:#f4f8fc;color:#52616f;font-size:13px">Reporte enviado el <strong style="color:#304a61">{sent}</strong>. Ordenado de mayor a menor por jornadas hábiles (08:00–18:00, lunes a viernes).</div>
+<div style="padding:16px 24px 12px;background:#f4f8fc;color:#52616f;font-size:13px">Reporte enviado el <strong style="color:#304a61">{sent}</strong>. Ordenado de mayor a menor por días laborales y horas laborales (08:00–18:00, lunes a viernes).</div>
 <div style="padding:0 14px 16px;overflow-x:auto"><table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px;min-width:850px">
-<thead><tr style="background:#e5f0fa;color:#174a78;text-align:left"><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Ticket Mojo</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Tipo de terminal</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Estación</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Descripción</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Apertura</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase;text-align:center">Jornadas hábiles</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Estado</th></tr></thead>
+<thead><tr style="background:#e5f0fa;color:#174a78;text-align:left"><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Ticket Mojo</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Tipo de terminal</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Estación</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Descripción</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Apertura</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase;text-align:center">Días laborales / Horas</th><th style="padding:11px 10px;font-size:11px;text-transform:uppercase">Estado</th></tr></thead>
 <tbody>{''.join(body) or '<tr><td colspan="7" style="padding:16px;text-align:center;color:#687887">No hay incidencias abiertas.</td></tr>'}</tbody></table>
 </div></div><p style="max-width:1180px;margin:12px auto;color:#8a98a5;font-size:11px">Mensaje generado automáticamente por el módulo de Inventario de terminales.</p></body></html>"""
 
@@ -178,10 +227,70 @@ def render_text(rows: Iterable[dict[str, object]], sent_at: datetime) -> str:
         lines.append(
             f"#{row['ticket_mojo_id']} | {row.get('tipo_terminal', '—')} | "
             f"{row.get('estacion_nombre', '—')} | {row.get('descripcion', '—')} | "
-            f"{row['dias_habiles']:.2f} jornadas | {spanish_status(row.get('estado_mojo'))} | "
+            f"{row['dias_laborales']} días / {row['horas_laborales']:.2f} h | {spanish_status(row.get('estado_mojo'))} | "
             f"{MOJO_TICKET_URL.format(row['ticket_mojo_id'])}"
         )
     return "\n".join(lines)
+
+
+def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, object]], sent_at: datetime) -> str:
+    summary_rows = []
+    total_stock = total_damaged = total_working = total_missing = 0
+    for index, row in enumerate(summary):
+        stock = int(row.get("stock") or 0)
+        damaged = int(row.get("danadas") or 0)
+        working = int(row.get("funcionando") or 0)
+        missing = max(0, damaged - int(row.get("open_count") or 0))
+        coverage = f"{(working / stock * 100):.0f}%" if stock else "—"
+        total_stock += stock; total_damaged += damaged; total_working += working; total_missing += missing
+        background = "#ffffff" if index % 2 == 0 else "#dff3fb"
+        summary_rows.append(
+            f'<tr style="background:{background};border-bottom:1px solid #9bd5e8">'
+            f'<td style="padding:5px 8px;color:#123f66">{escape(str(row.get("estacion_codigo") or ""))} {escape(str(row.get("estacion_nombre") or "—"))}</td>'
+            f'<td style="padding:5px 8px;color:#52616f">{escape(str(row.get("responsable") or "Sin asignar"))}</td><td style="padding:5px 8px;text-align:center">{stock}</td><td style="padding:5px 8px;text-align:center">{damaged}</td>'
+            f'<td style="padding:5px 8px;text-align:center">{working}</td><td style="padding:5px 8px;text-align:center;color:#d71920;font-weight:700">{missing}</td>'
+            f'<td style="padding:5px 8px;text-align:center">{coverage}</td></tr>'
+        )
+    total_coverage = f"{(total_working / total_stock * 100):.0f}%" if total_stock else "—"
+    summary_rows.append(f'<tr style="background:#ffffff;font-weight:700;border-top:2px solid #1583bd"><td style="padding:5px 8px">Total</td><td style="padding:5px 8px"></td><td style="padding:5px 8px;text-align:center">{total_stock}</td><td style="padding:5px 8px;text-align:center">{total_damaged}</td><td style="padding:5px 8px;text-align:center">{total_working}</td><td style="padding:5px 8px;text-align:center;color:#d71920">{total_missing}</td><td style="padding:5px 8px;text-align:center">{total_coverage}</td></tr>')
+
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row.get("responsable") or "Sin asignar"), []).append(row)
+    assigned_rows = []
+    for responsable, assigned_tickets in grouped.items():
+        between_7_14 = sum(1 for row in assigned_tickets if 7 <= int(row["dias_laborales"]) <= 14)
+        over_two_weeks = sum(1 for row in assigned_tickets if int(row["dias_laborales"]) > 14)
+        urgency = over_two_weeks / len(assigned_tickets) * 100 if assigned_tickets else 0
+        assigned_rows.append((urgency, responsable, between_7_14, over_two_weeks))
+    assigned_rows.sort(key=lambda item: (-item[0], item[1].casefold()))
+    assigned_table = []
+    for urgency, responsable, between_7_14, over_two_weeks in assigned_rows:
+        critical = urgency >= 70
+        background = "#fff0f0" if critical else "#fffaf0"
+        color = "#d71920" if critical else "#a56a00"
+        assigned_table.append(f'<tr style="background:{background};color:{color}"><td style="padding:11px 10px">{escape(responsable)}</td><td style="padding:11px 10px;text-align:center">{between_7_14}</td><td style="padding:11px 10px;text-align:center">{over_two_weeks}</td><td style="padding:11px 10px;text-align:center">{urgency:.2f}%</td></tr>')
+    sent = sent_at.strftime("%d/%m/%Y %H:%M")
+    return f'''<!doctype html><html lang="es"><body style="margin:0;padding:18px;background:#ffffff;font-family:Arial,sans-serif;color:#173b59"><div style="max-width:900px;margin:0 auto"><div style="background:#28587c;color:#fff;text-align:center;padding:4px 8px;font-size:19px;font-weight:700">UROVO — Control de Inventario de Terminales</div><p style="font-size:12px;color:#687887">Reporte enviado el {sent}. El stock corresponde a la configuración vigente; funcionando = stock menos dañadas.</p><table style="border-collapse:collapse;width:100%;font-size:12px;border:1px solid #9bd5e8"><thead><tr style="background:#377dc5;color:#fff"><th style="padding:7px 8px;text-align:left">Estación</th><th style="padding:7px 8px;text-align:left">Responsable</th><th style="padding:7px 8px">Stock</th><th style="padding:7px 8px">Dañadas</th><th style="padding:7px 8px">Funcionando</th><th style="padding:7px 8px">Faltante</th><th style="padding:7px 8px">Cobertura</th></tr></thead><tbody>{"".join(summary_rows)}</tbody></table><h2 style="margin:24px 0 8px;color:#28587c;font-size:18px">Estadísticas por Asignado</h2><table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr style="border-bottom:1px solid #d8d8d8"><th style="padding:9px 10px;text-align:left">Asignado a</th><th style="padding:9px 10px">Tickets Sin Atención Entre 7 y 14 Días</th><th style="padding:9px 10px">Tickets Sin Atención Con Mas De Dos Semanas</th><th style="padding:9px 10px">% Urgencia</th></tr></thead><tbody>{"".join(assigned_table) or '<tr><td colspan="4" style="padding:16px;text-align:center">No hay tickets abiertos.</td></tr>'}</tbody></table></div></body></html>'''
+
+
+def send_internal_email(to: list[str], summary: list[dict[str, object]], rows: list[dict[str, object]], sent_at: datetime, dry_run: bool) -> None:
+    if not to:
+        raise RuntimeError("La lista de destinatarios está vacía")
+    subject = f"UROVO — Control de Inventario de Terminales — {sent_at:%d/%m/%Y}"
+    message = EmailMessage()
+    message["From"] = env_first("SMTP_FROM", "EMAIL_FROM", default="no-reply@totalgas.com")
+    message["To"] = ", ".join(to)
+    message["Subject"] = subject
+    message.set_content("Reporte de control de inventario UROVO y tickets abiertos por responsable.")
+    message.add_alternative(render_internal_html(summary, rows, sent_at), subtype="html")
+    if dry_run:
+        print(f"DRY-RUN: {subject} -> {message['To']} ({len(rows)} tickets)")
+        return
+    host = env_first("SMTP_HOST", "EMAIL_SMTP_HOST", default="smtp-relay.gmail.com")
+    port = int(env_first("SMTP_PORT", "EMAIL_SMTP_PORT", default="587"))
+    with smtplib.SMTP(host, port, timeout=30) as smtp:
+        smtp.ehlo(); smtp.starttls(); smtp.ehlo(); smtp.send_message(message)
 
 
 def send_email(to: list[str], rows: list[dict[str, object]], sent_at: datetime, category: str, dry_run: bool) -> None:
@@ -215,15 +324,17 @@ def main() -> int:
     try:
         with db_connection() as connection:
             rows = fetch_open_incidents(connection)
-        if not rows:
-            print("No hay incidencias abiertas; no se envía correo.")
+            summary = fetch_inventory_summary(connection)
+        if not summary and not rows:
+            print("No hay inventario ni incidencias abiertas; no se envía correo.")
             return 0
         sent_at = datetime.now()
         internal_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() in {"urovo", "verifone"}]
         valera_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() not in {"urovo", "verifone"}]
-        send_email(recipients("TERMINAL_EMAIL_TO_1"), internal_rows, sent_at, "Urovo y Verifone", args.dry_run)
-        send_email(recipients("TERMINAL_EMAIL_TO_2"), valera_rows, sent_at, "valeras", args.dry_run)
-        print(f"Se enviaron dos reportes: {len(internal_rows)} Urovo/Verifone y {len(valera_rows)} valeras.")
+        send_internal_email(recipients("TERMINAL_EMAIL_TO_1"), summary, internal_rows, sent_at, args.dry_run)
+        if valera_rows:
+            send_email(recipients("TERMINAL_EMAIL_TO_2"), valera_rows, sent_at, "valeras", args.dry_run)
+        print(f"Se envió el control de inventario: {len(internal_rows)} tickets Urovo/Verifone y {len(valera_rows)} tickets de valeras.")
         return 0
     except Exception as exc:  # el programador del servidor verá un código distinto de cero
         print(f"ERROR: {exc}", file=sys.stderr)

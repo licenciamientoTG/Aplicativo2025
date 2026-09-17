@@ -3192,20 +3192,20 @@ class Operations{
         }
         return $validated;
     }
-    private function terminalBusinessDays(string $from, ?string $until=null): float {
-        try { $start=new DateTimeImmutable($from); $end=new DateTimeImmutable($until ?: 'now'); } catch (Throwable $e) { return 0; }
-        if ($start >= $end) return 0;
+    private function terminalBusinessTime(string $from, ?string $until=null): array {
+        try { $start=new DateTimeImmutable($from); $end=new DateTimeImmutable($until ?: 'now'); } catch (Throwable $e) { return ['dias_laborales'=>0,'horas_laborales'=>0.0]; }
+        if ($start >= $end) return ['dias_laborales'=>0,'horas_laborales'=>0.0];
         $seconds=0;
+        $days=0;
         for ($day=$start->setTime(0,0); $day <= $end->setTime(0,0); $day=$day->modify('+1 day')) {
             if ((int)$day->format('N') > 5) continue;
             $windowStart=$day->setTime(8,0);
             $windowEnd=$day->setTime(18,0);
             $segmentStart=$start > $windowStart ? $start : $windowStart;
             $segmentEnd=$end < $windowEnd ? $end : $windowEnd;
-            if ($segmentEnd > $segmentStart) $seconds += $segmentEnd->getTimestamp() - $segmentStart->getTimestamp();
+            if ($segmentEnd > $segmentStart) { $seconds += $segmentEnd->getTimestamp() - $segmentStart->getTimestamp(); $days++; }
         }
-        // Una jornada hábil equivale a 10 horas (08:00–18:00).
-        return round($seconds / 36000, 2);
+        return ['dias_laborales'=>$days,'horas_laborales'=>round($seconds / 3600, 2)];
     }
     private function terminalValeraCode(string $value): string {
         $value=mb_strtolower(trim($value),'UTF-8');
@@ -3336,7 +3336,7 @@ class Operations{
             }
             $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]);
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias al consultar el reporte global: '.$e->getMessage()); }
-        foreach ($rows as &$row) $row['dias_habiles']=$this->terminalBusinessDays((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); unset($row);
+        foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
         $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo'])));
         $selectedTab=($_GET['tab'] ?? '') === 'incidents' || $type!=='' ? 'incidents' : 'inventories';
         echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'groups'=>$this->terminalInventoryModel->inventoryDateGroups(),'selectedTab'=>$selectedTab,'openCount'=>$openCount,'types'=>$types,'selectedType'=>$type]);
@@ -3372,7 +3372,7 @@ class Operations{
             }
             $rows=$this->terminalInventoryModel->inventoryIncidents($inventoryId,$type);
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias al consultar el reporte: '.$e->getMessage()); }
-        foreach ($rows as &$row) $row['dias_habiles']=$this->terminalBusinessDays((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); unset($row);
+        foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
         json_output(['success'=>true,'incidents'=>$rows]);
     }
     public function terminal_inventory_status(): void {
