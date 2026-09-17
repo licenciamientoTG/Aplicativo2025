@@ -69,7 +69,7 @@ $(function () {
             const captured = Number(station.inventario_id || 0) > 0;
             const damaged = Number(station.danadas || 0);
             if (captured) {
-                html += '<tr class="terminal-station-row is-expandable" data-inventory-id="' + Number(station.inventario_id) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + expectedForStation(station) + '</span></td><td class="text-center"><span class="terminal-summary-value">' + Number(station.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td>' + formatDate(station.fecha_registro) + '</td><td><span class="terminal-captured-by">' + escapeHtml(station.usuario_correo || '—') + '</span></td></tr>';
+                html += '<tr class="terminal-station-row is-expandable" data-station-id="' + escapeHtml(station.Codigo) + '" data-inventory-id="' + Number(station.inventario_id) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + expectedForStation(station) + '</span></td><td class="text-center"><span class="terminal-summary-value">' + Number(station.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td>' + formatDate(station.fecha_registro) + '</td><td><span class="terminal-captured-by">' + escapeHtml(station.usuario_correo || '—') + '</span></td></tr>';
                 html += '<tr class="terminal-tree-child d-none"><td colspan="6"><div class="terminal-tree-child-panel"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando terminales…</div></div></td></tr>';
             } else {
                 html += '<tr class="terminal-station-row is-empty"><td><span class="terminal-tree-toggle"><i data-feather="minus"></i></span><strong>#' + escapeHtml(station.Codigo) + '</strong> · ' + escapeHtml(station.Nombre) + '</td><td class="text-center"><span class="terminal-summary-value">' + expectedForStation(station) + '</span></td><td class="text-center">—</td><td class="text-center">—</td><td><span class="badge bg-light text-muted border">Sin captura</span></td><td>—</td></tr>';
@@ -176,7 +176,34 @@ $(function () {
         $calendar.on('click', '.terminal-calendar-clear', function (event) { event.stopPropagation(); selectedDate = ''; page = 1; renderRows(); renderCalendar(); $calendarLabel.text('Todas las fechas'); $calendar.addClass('d-none'); $calendarToggle.attr('aria-expanded', 'false'); });
         $calendarToggle.on('click', function (event) { event.stopPropagation(); const open = $calendar.hasClass('d-none'); $calendar.toggleClass('d-none', !open); $(this).attr('aria-expanded', String(open)); });
         $(document).on('click', function (event) { if (!$(event.target).closest('.terminal-date-picker').length) { $calendar.addClass('d-none'); $calendarToggle.attr('aria-expanded', 'false'); } });
-        renderCalendar(); renderRows();
+        function openDeepLink() {
+            const params = new URLSearchParams(window.location.search);
+            const focusDate = params.get('date'), focusStation = params.get('station'), focusType = params.get('type');
+            if (!focusDate || !focusStation) return;
+            const dateRow = $rows.filter(function () { return String($(this).data('date')) === focusDate; }).first();
+            if (!dateRow.length) return;
+            selectedDate = focusDate; page = 1; renderRows(); renderCalendar();
+            const dateChild = dateRow.next('.terminal-tree-child')[0];
+            setExpanded(dateRow[0], dateChild, true);
+            $.getJSON('/operations/terminal_inventory_group', { date: focusDate }).done(response => {
+                if (!response.success) return;
+                $(dateChild).data('loaded', true).find('.terminal-date-details').html(stationRows(response.stations || []));
+                const stationRow = $(dateChild).find('.terminal-station-row.is-expandable').filter(function () { return String($(this).data('station-id')) === focusStation; }).first();
+                if (!stationRow.length) return;
+                const stationChild = stationRow.next('.terminal-tree-child')[0];
+                setExpanded(stationRow[0], stationChild, true);
+                $.getJSON('/operations/terminal_inventory_types', { inventory_id: stationRow.data('inventory-id') }).done(typeResponse => {
+                    if (!typeResponse.success) return;
+                    $(stationChild).data('loaded', true).find('.terminal-tree-child-panel').html(typeRows(typeResponse.types || [], stationRow.data('inventory-id')));
+                    if (window.feather) feather.replace();
+                    if (!focusType) return;
+                    const typeRow = $(stationChild).find('.terminal-type-row').filter(function () { return String($(this).data('type')) === focusType; }).first();
+                    if (typeRow.length) typeRow.trigger('click');
+                });
+                if (window.feather) feather.replace();
+            });
+        }
+        renderCalendar(); renderRows(); openDeepLink();
     }
     setupGroupBrowser();
     const $inventoryRows = $('.terminal-date-row');
