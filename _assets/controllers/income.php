@@ -6636,7 +6636,7 @@ public function stamped_invoices_detail(): void
 
     public function efc_conc_analiticos_bandeja(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
-        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->workspace((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->workspace((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),(string)($_GET['empresa']??''))]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 

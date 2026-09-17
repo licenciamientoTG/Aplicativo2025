@@ -31,6 +31,20 @@ VERSION = "2.4-python"
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 
+# GASOMEX conserva códigos operativos propios en el analítico. El catálogo TG
+# identifica esas mismas estaciones con Codigo interno y Estacion P-xxxx.
+# Se mantienen como alias para que las importaciones nuevas y las históricas
+# resueltas posteriormente usen la misma estación de conciliación.
+GASOMEX_STATION_ALIASES = {
+    "9733": 23,    # Ejército Nacional
+    "4457": 24,    # Satélite
+    "1159": 25,    # Las Fuentes
+    "1156": 26,    # Clara
+    "10141": 27,   # Solís
+    "12097": 28,   # Santiago Troncoso
+    "1148": 29,    # Jarudo
+}
+
 
 def load_env_file() -> None:
     """Carga .env junto al script, desde la carpeta actual o desde la raíz."""
@@ -119,8 +133,15 @@ def report_date_from_filename(filename: str) -> date | None:
 
 
 def is_total_gas_excel(filename: str) -> bool:
-    """Analíticos REGIO de TotalGas; excluye Actas y adjuntos ajenos."""
-    return filename.lower().endswith((".xls", ".xlsx")) and "TOTALGAS" in key(filename)
+    """Analíticos de las cadenas soportadas; excluye Actas y adjuntos ajenos.
+
+    REGIO entrega los archivos de Díaz Gas como TOTALGAS y los de la cadena
+    GASOMEX con GASOMEX en el nombre. Ambos usan la misma hoja PLANILLA.
+    """
+    normalized = key(filename)
+    return filename.lower().endswith((".xls", ".xlsx")) and any(
+        marker in normalized for marker in ("TOTALGAS", "GASOMEX")
+    )
 
 
 def db_connection() -> pyodbc.Connection:
@@ -200,6 +221,25 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
     ]
     for statement in statements:
         cursor.execute(statement)
+    for alias, station_id in GASOMEX_STATION_ALIASES.items():
+        exists = cursor.execute(
+            "SELECT 1 FROM dbo.efc_conc_analiticos_alias_estacion WHERE alias_normalizado=?",
+            alias,
+        ).fetchone()
+        if exists:
+            cursor.execute(
+                "UPDATE dbo.efc_conc_analiticos_alias_estacion "
+                "SET estacion_id=?,activo=1,actualizado_en=GETDATE() "
+                "WHERE alias_normalizado=?",
+                station_id,
+                alias,
+            )
+        else:
+            cursor.execute(
+                "INSERT dbo.efc_conc_analiticos_alias_estacion(alias_normalizado,estacion_id) VALUES(?,?)",
+                alias,
+                station_id,
+            )
     row = cursor.execute("SELECT TOP 1 Codigo FROM TG.dbo.Estaciones WHERE RFC='DGA930823KD3' AND UPPER(Nombre) LIKE '%TRAVEL%CENTER%' ORDER BY Codigo").fetchone()
     if row:
         exists = cursor.execute("SELECT 1 FROM dbo.efc_conc_analiticos_alias_estacion WHERE alias_normalizado='KM300'").fetchone()
