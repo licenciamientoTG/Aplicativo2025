@@ -913,6 +913,11 @@ public function get_account_summary_debit(int $from, int $until) : array|false {
             FROM [SG12].dbo.Despachos d WITH (NOLOCK)
             WHERE d.fchtrn BETWEEN ? AND ? AND d.codcli > 0
             GROUP BY d.codcli
+        ),
+        Veh AS (
+            SELECT codcli, CAST(SUM(debsdo) AS decimal(18,2)) AS SaldoVehiculos
+            FROM [SG12].dbo.ClientesVehiculos WITH (NOLOCK)
+            GROUP BY codcli
         )
         SELECT
             C.cod AS CodCliente,
@@ -920,10 +925,12 @@ public function get_account_summary_debit(int $from, int $until) : array|false {
             ISNULL(A.Anticipos,0) AS Anticipos,
             ISNULL(Co.Consumos,0) AS Consumos,
             CAST(ISNULL(A.Anticipos,0) - ISNULL(Co.Consumos,0) AS decimal(18,2)) AS Diferencia,
-            C.debsdo AS SaldoSistema
+            C.debsdo AS SaldoSistema,
+            ISNULL(V.SaldoVehiculos,0) AS SaldoVehiculos
         FROM [SG12].dbo.Clientes C
         LEFT JOIN Ant A  ON A.codopr  = C.cod
         LEFT JOIN Con Co ON Co.codopr = C.cod
+        LEFT JOIN Veh V  ON V.codcli  = C.cod
         WHERE C.tipval = 4 AND C.codest <> -1
           AND (A.codopr IS NOT NULL OR Co.codopr IS NOT NULL)
         ORDER BY C.den";

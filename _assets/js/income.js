@@ -2749,11 +2749,12 @@ async function account_statement_table(tipo) {
     ];
     var columnsSummaryDebit = [
         { data: 'CodCliente' },
-        { data: 'Cliente',      className: 'text-nowrap' },
-        { data: 'Anticipos',    render: drillRender('anticipos'), className: 'text-nowrap text-end' },
-        { data: 'Consumos',     render: drillRender('consumos'),  className: 'text-nowrap text-end' },
-        { data: 'Diferencia',   render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
-        { data: 'SaldoSistema', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'Cliente',        className: 'text-nowrap' },
+        { data: 'Anticipos',      render: drillRender('anticipos'), className: 'text-nowrap text-end' },
+        { data: 'Consumos',       render: drillRender('consumos'),  className: 'text-nowrap text-end' },
+        { data: 'Diferencia',     render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'SaldoSistema',   render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+        { data: 'SaldoVehiculos', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
     ];
 
     var columns;
@@ -2763,7 +2764,7 @@ async function account_statement_table(tipo) {
         columns = tipo === 'debit' ? columnsDebit : columnsCredit;
     }
     // Columnas de dinero a totalizar en el pie (solo modo resumen)
-    var moneyCols = tipo === 'debit' ? [2, 3, 4, 5] : [2, 3, 4, 5, 6, 7, 8, 9, 10];
+    var moneyCols = tipo === 'debit' ? [2, 3, 4, 5, 6] : [2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     $('#' + tableId).DataTable({
         ordering: allMode,      // en detalle, el orden cronológico es lo que da sentido al saldo corrido

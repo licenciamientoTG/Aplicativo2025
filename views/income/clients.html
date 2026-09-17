@@ -629,13 +629,13 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <thead>
                         <tr>
                             <th>Código</th><th>Cliente</th><th>Anticipos</th><th>Consumos</th>
-                            <th>Diferencia</th><th>Saldo Sistema (bolsa)</th>
+                            <th>Diferencia</th><th>Saldo Sistema (bolsa)</th><th>Saldo Vehículos</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th></th><th>Total</th><th></th><th></th><th></th><th></th>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -809,6 +809,15 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                                 estaciones (campo <code>debsdo</code> del catálogo de clientes). Incluye todo su
                                 histórico y ajustes manuales, no solo el periodo consultado — por eso puede no
                                 coincidir con la Diferencia.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Saldo Vehículos</strong></td>
+                            <td>Suma del saldo individual (<code>debsdo</code>) de todos los vehículos/tarjetas
+                                del cliente (tabla <code>ClientesVehiculos</code> de SG12). Si el cliente tiene
+                                bolsa global (<code>debglo</code> = 1) sus vehículos normalmente no cargan saldo
+                                propio y esta columna sale en $0 — el saldo vive en "Saldo Sistema". Si el
+                                cliente NO tiene bolsa global, cada vehículo trae su propio saldo repartido y
+                                esta columna debería acercarse a "Saldo Sistema".</td>
                         </tr>
                     </tbody>
                 </table>
