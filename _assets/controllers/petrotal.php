@@ -167,4 +167,64 @@ class Petrotal {
 
         json_output(['ok' => true, 'folio_acuse' => $folioAcuse]);
     }
+
+    public function configuracion_fiel() {
+        if (!authorized(99)) {
+            echo "No autorizado";
+            return;
+        }
+        $configActual = $this->petrotalFielModel->obtener_config();
+        echo $this->twig->render($this->route . 'configuracion_fiel.html', compact('configActual'));
+    }
+
+    public function guardar_fiel() {
+        if (!authorized(99)) {
+            setFlashMessage('error', 'No autorizado.');
+            redirect('/petrotal/configuracion_fiel');
+            return;
+        }
+
+        $password = $_POST['password'] ?? '';
+        if (!$password) {
+            setFlashMessage('error', 'Falta el password de la llave privada.');
+            redirect('/petrotal/configuracion_fiel');
+            return;
+        }
+
+        $uploadDir = ROOT . '_assets' . DS . 'uploads' . DS . 'petrotal' . DS . 'fiel' . DS;
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $cerOk = isset($_FILES['cerFile']) && $_FILES['cerFile']['error'] === UPLOAD_ERR_OK;
+        $keyOk = isset($_FILES['keyFile']) && $_FILES['keyFile']['error'] === UPLOAD_ERR_OK;
+        if (!$cerOk || !$keyOk) {
+            setFlashMessage('error', 'Faltan los archivos .cer y/o .key.');
+            redirect('/petrotal/configuracion_fiel');
+            return;
+        }
+
+        $extCer = strtolower(pathinfo($_FILES['cerFile']['name'], PATHINFO_EXTENSION));
+        $extKey = strtolower(pathinfo($_FILES['keyFile']['name'], PATHINFO_EXTENSION));
+        if ($extCer !== 'cer' || $extKey !== 'key') {
+            setFlashMessage('error', 'El archivo de certificado debe ser .cer y el de llave .key.');
+            redirect('/petrotal/configuracion_fiel');
+            return;
+        }
+
+        $rutaCer = $uploadDir . 'petrotal.cer';
+        $rutaKey = $uploadDir . 'petrotal.key';
+
+        if (!move_uploaded_file($_FILES['cerFile']['tmp_name'], $rutaCer) || !move_uploaded_file($_FILES['keyFile']['tmp_name'], $rutaKey)) {
+            setFlashMessage('error', 'Error al guardar los archivos subidos.');
+            redirect('/petrotal/configuracion_fiel');
+            return;
+        }
+
+        $usuarioId = $_SESSION['tg_user']['id'] ?? 0;
+        $guardado = $this->petrotalFielModel->guardar_config($rutaCer, $rutaKey, $password, $usuarioId);
+
+        setFlashMessage($guardado ? 'success' : 'error', $guardado ? 'FIEL guardada correctamente.' : 'Error al guardar la configuración en base de datos.');
+        redirect('/petrotal/configuracion_fiel');
+    }
 }
