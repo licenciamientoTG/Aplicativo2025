@@ -92,4 +92,95 @@ class PetrotalObligacionModel extends Model {
             $hasta . ' 23:59:59',
         ]) ?: [];
     }
+
+    // Punto de entrada del modelo: arma el reporte completo del periodo,
+    // clasificando producto y resolviendo contraparte fila por fila. No
+    // excluye silenciosamente nada que no resuelva — todo lo problemático
+    // queda en 'advertencias' para que el controlador decida qué mostrar.
+    public function construir_reporte(string $desde, string $hasta): array {
+        $ventas = [];
+        $compras = [];
+        $advertencias = [];
+
+        $filasVenta = $this->obtener_facturas_venta($desde, $hasta);
+        foreach ($filasVenta as $fila) {
+            $this->procesar_fila($fila, 'cliente', $ventas, $advertencias);
+        }
+
+        $filasCompra = $this->obtener_facturas_compra($desde, $hasta);
+        foreach ($filasCompra as $fila) {
+            $this->procesar_fila($fila, 'proveedor', $compras, $advertencias);
+        }
+
+        return ['ventas' => $ventas, 'compras' => $compras, 'advertencias' => $advertencias];
+    }
+
+    private function procesar_fila(array $fila, string $tipoContraparte, array &$destino, array &$advertencias): void {
+        $clasificacion = $this->clasificar_producto($fila['Descripcion']);
+        if ($clasificacion === null) {
+            $advertencias[] = [
+                'tipo' => 'producto_no_clasificado',
+                'factura_id' => $fila['FacturaId'],
+                'descripcion' => $fila['Descripcion'],
+                'mensaje' => "Factura {$fila['Folio']}: descripción \"{$fila['Descripcion']}\" no se pudo clasificar como Regular/Premium/Diesel.",
+            ];
+            return;
+        }
+
+        $rfc = $fila['ContraparteRfc'];
+        $permisoCre = null;
+        if ($tipoContraparte === 'cliente') {
+            $resolucion = $this->resolver_cliente($rfc);
+            if ($resolucion === null) {
+                $advertencias[] = [
+                    'tipo' => 'sin_permiso',
+                    'contraparte_rfc' => $rfc,
+                    'contraparte_nombre' => $fila['ContraparteNombre'],
+                    'mensaje' => "Cliente {$fila['ContraparteNombre']} ({$rfc}) no tiene NumeroPermisoCRE en XmlCre.",
+                ];
+                return;
+            }
+            if ($resolucion['permiso_cre'] === null) {
+                $advertencias[] = [
+                    'tipo' => 'permiso_ambiguo',
+                    'contraparte_rfc' => $rfc,
+                    'contraparte_nombre' => $fila['ContraparteNombre'],
+                    'candidatos' => $resolucion['candidatos'],
+                    'mensaje' => "Cliente {$fila['ContraparteNombre']} ({$rfc}) tiene más de un permiso CRE, requiere selección manual.",
+                ];
+                return;
+            }
+            $permisoCre = $resolucion['permiso_cre'];
+        } else {
+            $permisoCre = $this->resolver_proveedor($rfc);
+            if ($permisoCre === null) {
+                $advertencias[] = [
+                    'tipo' => 'sin_permiso',
+                    'contraparte_rfc' => $rfc,
+                    'contraparte_nombre' => $fila['ContraparteNombre'],
+                    'mensaje' => "Proveedor {$fila['ContraparteNombre']} ({$rfc}) no tiene nropcc en SG12.Proveedores.",
+                ];
+                return;
+            }
+        }
+
+        $volumenBbl = round(((float) $fila['Cantidad']) / self::LITROS_POR_BARRIL, 2);
+        $total = (float) $fila['Total'];
+        $precio = $volumenBbl > 0 ? round($total / $volumenBbl, 2) : 0.0;
+
+        $destino[] = [
+            'fecha' => substr($fila['Fecha'], 0, 10),
+            'factura_id' => $fila['FacturaId'],
+            'folio' => $fila['Folio'],
+            'producto_id' => $clasificacion['producto_id'],
+            'subproducto_id' => $clasificacion['subproducto_id'],
+            'producto_label' => $clasificacion['label'],
+            'contraparte_rfc' => $rfc,
+            'contraparte_nombre' => $fila['ContraparteNombre'],
+            'permiso_cre' => $permisoCre,
+            'volumen_bbl' => $volumenBbl,
+            'precio' => $precio,
+            'descripcion_original' => $fila['Descripcion'],
+        ];
+    }
 }

@@ -62,4 +62,14 @@ echo "Ventas encontradas: " . count($ventas) . " (esperado > 0)\n";
 echo "Compras encontradas: " . count($compras) . " (esperado > 0)\n";
 if (count($ventas) === 0 || count($compras) === 0) $fallos++;
 
+echo "\n--- construir_reporte (semana 21-27 ago 2026, comparar contra acuse real) ---\n";
+$reporte = $model->construir_reporte('2026-08-21', '2026-08-27');
+echo "Ventas: " . count($reporte['ventas']) . " filas\n";
+echo "Compras: " . count($reporte['compras']) . " filas\n";
+echo "Advertencias: " . count($reporte['advertencias']) . "\n";
+foreach ($reporte['advertencias'] as $a) echo "  [{$a['tipo']}] {$a['mensaje']}\n";
+
+$sumaRegularVentas = array_sum(array_map(fn($v) => $v['producto_label'] === 'Regular' ? $v['volumen_bbl'] : 0, $reporte['ventas']));
+echo "Suma Regular ventas: $sumaRegularVentas (acuse semana 21-27ago declaró 1460.73 bbl)\n";
+
 echo $fallos === 0 ? "\nTodos los casos pasaron.\n" : "\n$fallos caso(s) fallaron.\n";
