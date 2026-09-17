@@ -143,6 +143,7 @@ def fetch_inventory_summary(connection: pyodbc.Connection) -> list[dict[str, obj
             WHERE d.tipo_terminal = 'urovo'
         )
         SELECT s.Codigo AS estacion_codigo, s.Nombre AS estacion_nombre,
+               li.fecha_inventario AS inventario_fecha,
                COALESCE(c.terminales_esperadas, 0) AS stock,
                COALESCE(d.danadas, 0) AS danadas,
                COALESCE(d.funcionando, 0) AS funcionando,
@@ -194,6 +195,7 @@ def fetch_valera_inventory(connection: pyodbc.Connection) -> tuple[list[dict[str
             FROM TG.dbo.inv_ter_inventarios AS i
         )
         SELECT s.Codigo AS estacion_codigo, s.Nombre AS estacion_nombre,
+               li.fecha_inventario AS inventario_fecha,
                v.codigo AS valera_codigo, v.nombre AS valera_nombre,
                COALESCE(c.terminales_esperadas, 0) AS stock,
                COALESCE(d.danadas, 0) AS danadas
@@ -222,8 +224,10 @@ def terminal_report_url() -> str:
     return env_first("TERMINAL_REPORT_URL", default="http://totalgasonline.net:400/operations/terminal_report")
 
 
-def terminal_report_link(type_code: str = "", station_code: object = "") -> str:
-    params = {key: value for key, value in (("tab", "incidents"), ("type", type_code), ("station", station_code)) if str(value).strip()}
+def terminal_report_link(type_code: str = "", station_code: object = "", date_value: object = "") -> str:
+    if date_value:
+        date_value = date_value.strftime("%Y-%m-%d") if hasattr(date_value, "strftime") else str(date_value).split(" ", 1)[0]
+    params = {key: value for key, value in (("tab", "inventories"), ("type", type_code), ("station", station_code), ("date", date_value)) if str(value).strip()}
     base = terminal_report_url()
     return base + (("&" if "?" in base else "?") + urlencode(params) if params else "")
 
@@ -336,7 +340,7 @@ def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str]
             else:
                 coverage_color = "#ffc7ce"
                 coverage_text = "#9c0006"
-            link = escape(terminal_report_link(code, station_data["codigo"]), quote=True)
+            link = escape(terminal_report_link(code, station_data["codigo"], row.get("inventario_fecha")), quote=True)
             values.append(f'<td style="padding:4px 8px;text-align:center"><a href="{link}" style="color:#125ca8;font-weight:700;text-decoration:none">{stock}</a></td><td style="padding:4px 8px;text-align:center">{damaged}</td><td style="padding:4px 8px;text-align:center;background:{coverage_color};color:{coverage_text};font-weight:700">{coverage}</td>')
         station_incidents = incidents_by_station.get(station, [])
         incident_detail = "".join(
@@ -363,7 +367,18 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
         damaged = int(row.get("danadas") or 0)
         working = int(row.get("funcionando") or 0)
         missing = max(0, damaged - int(row.get("open_count") or 0))
-        coverage = f"{(working / stock * 100):.0f}%" if stock else "—"
+        coverage_value = working / stock * 100 if stock else None
+        coverage = f"{coverage_value:.0f}%" if coverage_value is not None else "—"
+        if coverage_value is None:
+            coverage_color, coverage_text = "#f1f3f5", "#687887"
+        elif coverage_value >= 100:
+            coverage_color, coverage_text = "#c6efce", "#006100"
+        elif coverage_value >= 90:
+            coverage_color, coverage_text = "#ffeb9c", "#9c6500"
+        elif coverage_value > 80:
+            coverage_color, coverage_text = "#f4b183", "#7f3f00"
+        else:
+            coverage_color, coverage_text = "#ffc7ce", "#9c0006"
         total_stock += stock; total_damaged += damaged; total_working += working; total_missing += missing
         background = "#ffffff" if index % 2 == 0 else "#dff3fb"
         station = str(row.get("estacion_nombre") or "Sin estación")
@@ -373,13 +388,13 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
             for item in station_incidents
         ) or '<tr><td colspan="5" style="padding:7px;color:#687887">No hay incidencias abiertas.</td></tr>'
         details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Responsable</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
-        station_link = escape(terminal_report_link("", row.get("estacion_codigo")), quote=True)
+        station_link = escape(terminal_report_link("", row.get("estacion_codigo"), row.get("inventario_fecha")), quote=True)
         summary_rows.append(
             f'<tr style="background:{background};border-bottom:1px solid #9bd5e8">'
             f'<td style="padding:5px 8px;color:#123f66"><a href="{station_link}" style="color:#125ca8;font-weight:700;text-decoration:none">{escape(str(row.get("estacion_codigo") or ""))} {escape(station)}</a></td>'
             f'<td style="padding:5px 8px;color:#52616f">{escape(str(row.get("responsable") or "Sin asignar"))}</td><td style="padding:5px 8px;text-align:center">{stock}</td><td style="padding:5px 8px;text-align:center">{damaged}</td>'
             f'<td style="padding:5px 8px;text-align:center">{working}</td><td style="padding:5px 8px;text-align:center;color:#d71920;font-weight:700">{missing}</td>'
-            f'<td style="padding:5px 8px;text-align:center">{coverage}</td></tr>'
+            f'<td style="padding:5px 8px;text-align:center;background:{coverage_color};color:{coverage_text};font-weight:700">{coverage}</td></tr>'
         )
     total_coverage = f"{(total_working / total_stock * 100):.0f}%" if total_stock else "—"
     summary_rows.append(f'<tr style="background:#ffffff;font-weight:700;border-top:2px solid #1583bd"><td style="padding:5px 8px">Total</td><td style="padding:5px 8px"></td><td style="padding:5px 8px;text-align:center">{total_stock}</td><td style="padding:5px 8px;text-align:center">{total_damaged}</td><td style="padding:5px 8px;text-align:center">{total_working}</td><td style="padding:5px 8px;text-align:center;color:#d71920">{total_missing}</td><td style="padding:5px 8px;text-align:center">{total_coverage}</td></tr>')

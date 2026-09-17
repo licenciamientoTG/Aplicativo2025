@@ -3339,8 +3339,10 @@ class Operations{
         if ($station !== '') $rows=array_values(array_filter($rows,fn($row)=>(string)($row['estacion_id'] ?? '') === $station));
         foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
         $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo'])));
-        $selectedTab=($_GET['tab'] ?? '') === 'incidents' || $type!=='' ? 'incidents' : 'inventories';
-        echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'groups'=>$this->terminalInventoryModel->inventoryDateGroups(),'selectedTab'=>$selectedTab,'openCount'=>$openCount,'types'=>$types,'selectedType'=>$type]);
+        $focusDate=(string)($_GET['date'] ?? ''); $focusStation=$station; $focusType=$type;
+        $hasFocus=$focusDate!=='' && $focusStation!=='';
+        $selectedTab=(!$hasFocus && (($_GET['tab'] ?? '') === 'incidents' || $type!=='')) ? 'incidents' : 'inventories';
+        echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'groups'=>$this->terminalInventoryModel->inventoryDateGroups(),'selectedTab'=>$selectedTab,'openCount'=>$openCount,'types'=>$types,'selectedType'=>$type,'focusDate'=>$focusDate,'focusStation'=>$focusStation,'focusType'=>$focusType]);
     }
     public function terminal_inventory_group(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
