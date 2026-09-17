@@ -43,6 +43,22 @@ foreach ($casosCliente as $rfc => $esperado) {
     echo "resolver_cliente('$rfc') => " . json_encode($resultado) . "\n";
 }
 
+echo "\n--- resolver_cliente con desambiguación por Destino ---\n";
+$casosClienteDestino = [
+    ['ECU0602287R6', 'ESTACION PLUTARCO PL/2060/EXP/ES/2015', 'PL/2060/EXP/ES/2015'],
+    ['ECU0602287R6', null, null],
+    ['DGA930823KD3', 'ESTACION TECNOLOGICO PL/9444/EXP/ES/2015', 'PL/9444/EXP/ES/2015'],
+    ['GVA9709154V2', 'algo irrelevante', 'PL/5114/EXP/ES/2015'],
+];
+foreach ($casosClienteDestino as [$rfc, $destino, $esperado]) {
+    $resultado = $model->resolver_cliente($rfc, $destino);
+    $obtenido = $resultado['permiso_cre'] ?? null;
+    $ok = $obtenido === $esperado;
+    $destinoTxt = $destino === null ? 'null' : "'$destino'";
+    echo ($ok ? "OK  " : "FAIL") . " resolver_cliente('$rfc', $destinoTxt) => " . json_encode($resultado) . " (esperado permiso_cre: " . json_encode($esperado) . ")\n";
+    if (!$ok) $fallos++;
+}
+
 $casosProveedor = [
     'TMS1611162N5' => 'H/19873/COM/2017', // Tesoro
     'EFA1903122IA' => 'H/23183/COM/2020', // ESSA

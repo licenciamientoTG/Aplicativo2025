@@ -25,17 +25,33 @@ class PetrotalObligacionModel extends Model {
     // Resuelve el permiso CRE de un cliente vía el catálogo de estaciones de
     // servicio con volumétricos (XmlCre). Un mismo RFC puede tener más de un
     // permiso (ej. Estación Custodia, Díaz Gas con múltiples estaciones) —
-    // en ese caso no se adivina: se listan los candidatos para que el
-    // controlador pida desambiguación en el preview.
-    public function resolver_cliente(string $rfc): ?array {
+    // en ese caso primero se intenta desambiguar por coincidencia del permiso
+    // dentro del texto libre de FacturasRecibidas.Destino (ej. "ESTACION
+    // PLUTARCO PL/2060/EXP/ES/2015"); si no hay match, se listan los
+    // candidatos para que el controlador pida desambiguación en el preview.
+    public function resolver_cliente(string $rfc, ?string $destino = null): ?array {
         $rows = $this->sql->select(
             "SELECT DISTINCT NumeroPermisoCRE FROM TG.dbo.XmlCre WHERE Rfc = ?",
             [$rfc]
         );
         if (!$rows) return null;
         $permisos = array_column($rows, 'NumeroPermisoCRE');
+        $permisoCre = count($permisos) === 1 ? $permisos[0] : null;
+
+        if ($permisoCre === null && $destino !== null) {
+            if (preg_match('/[Pp][Ll]\/\d+\/[Ee][Xx][Pp]\/[Ee][Ss]\/\d+/', $destino, $m)) {
+                $extraido = $m[0];
+                foreach ($permisos as $candidato) {
+                    if (strcasecmp($candidato, $extraido) === 0) {
+                        $permisoCre = $candidato;
+                        break;
+                    }
+                }
+            }
+        }
+
         return [
-            'permiso_cre' => count($permisos) === 1 ? $permisos[0] : null,
+            'permiso_cre' => $permisoCre,
             'candidatos' => $permisos,
         ];
     }
@@ -57,7 +73,7 @@ class PetrotalObligacionModel extends Model {
     // clientes (estaciones de servicio) en el periodo.
     public function obtener_facturas_venta(string $desde, string $hasta): array {
         $query = "
-            SELECT fr.Id AS FacturaId, fr.Fecha, fr.Folio, fr.Total,
+            SELECT fr.Id AS FacturaId, fr.Fecha, fr.Folio, fr.Total, fr.Destino,
                    fr.ReceptorRfc AS ContraparteRfc, fr.ReceptorNombre AS ContraparteNombre,
                    c.Cantidad, c.Descripcion
             FROM TG.dbo.FacturasRecibidas fr
@@ -130,7 +146,7 @@ class PetrotalObligacionModel extends Model {
         $rfc = $fila['ContraparteRfc'];
         $permisoCre = null;
         if ($tipoContraparte === 'cliente') {
-            $resolucion = $this->resolver_cliente($rfc);
+            $resolucion = $this->resolver_cliente($rfc, $fila['Destino'] ?? null);
             if ($resolucion === null) {
                 $advertencias[] = [
                     'tipo' => 'sin_permiso',
