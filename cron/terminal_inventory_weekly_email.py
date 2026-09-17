@@ -26,6 +26,7 @@ from pathlib import Path
 import smtplib
 import sys
 from typing import Iterable
+from urllib.parse import urlencode
 
 import pyodbc
 
@@ -217,6 +218,16 @@ def recipients(name: str) -> list[str]:
     return [address.strip() for address in os.environ.get(name, "daniel.ramirez@totalgas.com").split(",") if address.strip()]
 
 
+def terminal_report_url() -> str:
+    return env_first("TERMINAL_REPORT_URL", default="http://totalgasonline.net:400/operations/terminal_report")
+
+
+def terminal_report_link(type_code: str = "", station_code: object = "") -> str:
+    params = {key: value for key, value in (("tab", "incidents"), ("type", type_code), ("station", station_code)) if str(value).strip()}
+    base = terminal_report_url()
+    return base + (("&" if "?" in base else "?") + urlencode(params) if params else "")
+
+
 def spanish_status(value: object) -> str:
     """Traduce estados estándar de Mojo sin alterar estados personalizados."""
     original = str(value or "—").strip()
@@ -309,7 +320,24 @@ def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str]
             stock = int(row.get("stock") or 0)
             damaged = int(row.get("danadas") or 0)
             coverage = f"{damaged / stock * 100:.0f}%" if stock else "—"
-            values.append(f'<td style="padding:4px 8px;text-align:center">{stock}</td><td style="padding:4px 8px;text-align:center">{damaged}</td><td style="padding:4px 8px;text-align:center">{coverage}</td>')
+            coverage_value = damaged / stock * 100 if stock else None
+            if coverage_value is None:
+                coverage_color = "#f1f3f5"
+                coverage_text = "#687887"
+            elif coverage_value >= 100:
+                coverage_color = "#c6efce"
+                coverage_text = "#006100"
+            elif coverage_value >= 90:
+                coverage_color = "#ffeb9c"
+                coverage_text = "#9c6500"
+            elif coverage_value > 80:
+                coverage_color = "#f4b183"
+                coverage_text = "#7f3f00"
+            else:
+                coverage_color = "#ffc7ce"
+                coverage_text = "#9c0006"
+            link = escape(terminal_report_link(code, station_data["codigo"]), quote=True)
+            values.append(f'<td style="padding:4px 8px;text-align:center"><a href="{link}" style="color:#125ca8;font-weight:700;text-decoration:none">{stock}</a></td><td style="padding:4px 8px;text-align:center">{damaged}</td><td style="padding:4px 8px;text-align:center;background:{coverage_color};color:{coverage_text};font-weight:700">{coverage}</td>')
         station_incidents = incidents_by_station.get(station, [])
         incident_detail = "".join(
             f'<tr><td style="padding:5px 7px">#{escape(str(item.get("ticket_mojo_id") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("tipo_terminal") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("descripcion") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("responsable") or "Sin asignar"))}</td><td style="padding:5px 7px;white-space:nowrap">{int(item.get("dias_laborales") or 0)} días / {float(item.get("horas_laborales") or 0):.2f} h</td></tr>'
@@ -317,10 +345,11 @@ def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str]
         ) or '<tr><td colspan="5" style="padding:7px;color:#687887">No hay incidencias abiertas.</td></tr>'
         details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Responsable</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
         background = "#ffffff" if index % 2 == 0 else "#dff3fb"
-        body.append(f'<tr style="background:{background};border-bottom:1px solid #9bd5e8"><td style="padding:4px 8px;color:#123f66;min-width:190px"><div>{escape(str(station_data["codigo"] or ""))} {escape(station)}</div>{details}</td>{"".join(values)}</tr>')
+        body.append(f'<tr style="background:{background};border-bottom:1px solid #9bd5e8"><td style="padding:4px 8px;color:#123f66;min-width:190px">{escape(str(station_data["codigo"] or ""))} {escape(station)}</td>{"".join(values)}</tr>')
 
     sent = sent_at.strftime("%d/%m/%Y %H:%M")
-    return f'''<!doctype html><html lang="es"><body style="margin:0;padding:6px;background:#fff;font-family:Arial,sans-serif;color:#173b59"><div style="max-width:1800px;margin:0 auto"><div style="background:#28587c;color:#fff;text-align:center;padding:4px 8px;font-size:20px;font-weight:700">Control Valeras</div><p style="font-size:12px;color:#687887">Reporte enviado el {sent}. Haz clic en “Ver incidencias” dentro de cada estación para consultar los tickets abiertos.</p><table style="border-collapse:collapse;width:100%;font-size:12px;border:1px solid #9bd5e8"><thead><tr><th rowspan="2" style="padding:5px 8px;background:#377dc5;color:#fff">Estación</th>{group_headers}</tr><tr>{sub_headers}</tr></thead><tbody>{"".join(body) or '<tr><td colspan="99" style="padding:16px;text-align:center">No hay estaciones disponibles.</td></tr>'}</tbody></table></div></body></html>'''
+    report_link = escape(terminal_report_url(), quote=True)
+    return f'''<!doctype html><html lang="es"><body style="margin:0;padding:6px;background:#fff;font-family:Arial,sans-serif;color:#173b59"><div style="max-width:1800px;margin:0 auto"><div style="background:#28587c;color:#fff;text-align:center;padding:4px 8px;font-size:20px;font-weight:700">Control Valeras</div><p style="font-size:12px;color:#687887">Reporte enviado el {sent}. Para consultar las incidencias y sus detalles, abre el <a href="{report_link}" style="color:#125ca8;font-weight:700">reporte de inventario</a>.</p><table style="border-collapse:collapse;width:100%;font-size:12px;border:1px solid #9bd5e8"><thead><tr><th rowspan="2" style="padding:5px 8px;background:#377dc5;color:#fff">Estación</th>{group_headers}</tr><tr>{sub_headers}</tr></thead><tbody>{"".join(body) or '<tr><td colspan="99" style="padding:16px;text-align:center">No hay estaciones disponibles.</td></tr>'}</tbody></table></div></body></html>'''
 
 
 def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, object]], sent_at: datetime) -> str:
@@ -344,9 +373,10 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
             for item in station_incidents
         ) or '<tr><td colspan="5" style="padding:7px;color:#687887">No hay incidencias abiertas.</td></tr>'
         details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Responsable</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
+        station_link = escape(terminal_report_link("", row.get("estacion_codigo")), quote=True)
         summary_rows.append(
             f'<tr style="background:{background};border-bottom:1px solid #9bd5e8">'
-            f'<td style="padding:5px 8px;color:#123f66"><div>{escape(str(row.get("estacion_codigo") or ""))} {escape(station)}</div>{details}</td>'
+            f'<td style="padding:5px 8px;color:#123f66"><a href="{station_link}" style="color:#125ca8;font-weight:700;text-decoration:none">{escape(str(row.get("estacion_codigo") or ""))} {escape(station)}</a></td>'
             f'<td style="padding:5px 8px;color:#52616f">{escape(str(row.get("responsable") or "Sin asignar"))}</td><td style="padding:5px 8px;text-align:center">{stock}</td><td style="padding:5px 8px;text-align:center">{damaged}</td>'
             f'<td style="padding:5px 8px;text-align:center">{working}</td><td style="padding:5px 8px;text-align:center;color:#d71920;font-weight:700">{missing}</td>'
             f'<td style="padding:5px 8px;text-align:center">{coverage}</td></tr>'
@@ -371,7 +401,8 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
         color = "#d71920" if critical else "#a56a00"
         assigned_table.append(f'<tr style="background:{background};color:{color}"><td style="padding:11px 10px">{escape(responsable)}</td><td style="padding:11px 10px;text-align:center">{between_7_14}</td><td style="padding:11px 10px;text-align:center">{over_two_weeks}</td><td style="padding:11px 10px;text-align:center">{urgency:.2f}%</td></tr>')
     sent = sent_at.strftime("%d/%m/%Y %H:%M")
-    return f'''<!doctype html><html lang="es"><body style="margin:0;padding:18px;background:#ffffff;font-family:Arial,sans-serif;color:#173b59"><div style="max-width:900px;margin:0 auto"><div style="background:#28587c;color:#fff;text-align:center;padding:4px 8px;font-size:19px;font-weight:700">UROVO — Control de Inventario de Terminales</div><p style="font-size:12px;color:#687887">Reporte enviado el {sent}. El stock corresponde a la configuración vigente; funcionando = stock menos dañadas.</p><table style="border-collapse:collapse;width:100%;font-size:12px;border:1px solid #9bd5e8"><thead><tr style="background:#377dc5;color:#fff"><th style="padding:7px 8px;text-align:left">Estación</th><th style="padding:7px 8px;text-align:left">Responsable</th><th style="padding:7px 8px">Stock</th><th style="padding:7px 8px">Dañadas</th><th style="padding:7px 8px">Funcionando</th><th style="padding:7px 8px">Faltante</th><th style="padding:7px 8px">Cobertura</th></tr></thead><tbody>{"".join(summary_rows)}</tbody></table><h2 style="margin:24px 0 8px;color:#28587c;font-size:18px">Estadísticas por Asignado</h2><table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr style="border-bottom:1px solid #d8d8d8"><th style="padding:9px 10px;text-align:left">Asignado a</th><th style="padding:9px 10px">Tickets Sin Atención Entre 7 y 14 Días</th><th style="padding:9px 10px">Tickets Sin Atención Con Mas De Dos Semanas</th><th style="padding:9px 10px">% Urgencia</th></tr></thead><tbody>{"".join(assigned_table) or '<tr><td colspan="4" style="padding:16px;text-align:center">No hay tickets abiertos.</td></tr>'}</tbody></table></div></body></html>'''
+    report_link = escape(terminal_report_url(), quote=True)
+    return f'''<!doctype html><html lang="es"><body style="margin:0;padding:18px;background:#ffffff;font-family:Arial,sans-serif;color:#173b59"><div style="max-width:900px;margin:0 auto"><div style="background:#28587c;color:#fff;text-align:center;padding:4px 8px;font-size:19px;font-weight:700">UROVO — Control de Inventario de Terminales</div><p style="font-size:12px;color:#687887">Reporte enviado el {sent}. El stock corresponde a la configuración vigente; funcionando = stock menos dañadas. Para consultar el detalle de las incidencias, abre el <a href="{report_link}" style="color:#125ca8;font-weight:700">reporte de inventario</a>.</p><table style="border-collapse:collapse;width:100%;font-size:12px;border:1px solid #9bd5e8"><thead><tr style="background:#377dc5;color:#fff"><th style="padding:7px 8px;text-align:left">Estación</th><th style="padding:7px 8px;text-align:left">Responsable</th><th style="padding:7px 8px">Stock</th><th style="padding:7px 8px">Dañadas</th><th style="padding:7px 8px">Funcionando</th><th style="padding:7px 8px">Faltante</th><th style="padding:7px 8px">Cobertura</th></tr></thead><tbody>{"".join(summary_rows)}</tbody></table><h2 style="margin:24px 0 8px;color:#28587c;font-size:18px">Estadísticas por Asignado</h2><table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr style="border-bottom:1px solid #d8d8d8"><th style="padding:9px 10px;text-align:left">Asignado a</th><th style="padding:9px 10px">Tickets Sin Atención Entre 7 y 14 Días</th><th style="padding:9px 10px">Tickets Sin Atención Con Mas De Dos Semanas</th><th style="padding:9px 10px">% Urgencia</th></tr></thead><tbody>{"".join(assigned_table) or '<tr><td colspan="4" style="padding:16px;text-align:center">No hay tickets abiertos.</td></tr>'}</tbody></table></div></body></html>'''
 
 
 def send_internal_email(to: list[str], summary: list[dict[str, object]], rows: list[dict[str, object]], sent_at: datetime, dry_run: bool) -> None:
