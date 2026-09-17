@@ -1,19 +1,20 @@
 // _assets/js/petrotal.js
 $(function () {
   let ultimoReporte = null;
+  const escapeHtml = value => $('<div>').text(value || '').html();
 
-  function renderTabla(selector, filas, esVenta) {
+  function renderTabla(selector, filas) {
     const $tbody = $(selector + ' tbody');
     $tbody.empty();
     filas.forEach(function (f) {
-      const contraparteLabel = esVenta ? f.contraparte_nombre : f.contraparte_nombre;
+      const contraparteLabel = f.contraparte_nombre;
       $tbody.append(
         '<tr>' +
-        '<td>' + f.fecha + '</td>' +
-        '<td>' + f.folio + '</td>' +
-        '<td>' + f.producto_label + '</td>' +
-        '<td>' + contraparteLabel + '</td>' +
-        '<td>' + (f.permiso_cre || '-') + '</td>' +
+        '<td>' + escapeHtml(f.fecha) + '</td>' +
+        '<td>' + escapeHtml(f.folio) + '</td>' +
+        '<td>' + escapeHtml(f.producto_label) + '</td>' +
+        '<td>' + escapeHtml(contraparteLabel) + '</td>' +
+        '<td>' + escapeHtml(f.permiso_cre || '-') + '</td>' +
         '<td>' + f.volumen_bbl.toFixed(2) + '</td>' +
         '<td>' + f.precio.toFixed(2) + '</td>' +
         '</tr>'
@@ -27,7 +28,7 @@ $(function () {
     if (!advertencias.length) return;
 
     const lista = advertencias.map(function (a) {
-      return '<li>' + a.mensaje + '</li>';
+      return '<li>' + escapeHtml(a.mensaje) + '</li>';
     }).join('');
 
     $container.append(
@@ -59,8 +60,8 @@ $(function () {
           return;
         }
         ultimoReporte = respuesta;
-        renderTabla('#tabla_ventas', respuesta.ventas, true);
-        renderTabla('#tabla_compras', respuesta.compras, false);
+        renderTabla('#tabla_ventas', respuesta.ventas);
+        renderTabla('#tabla_compras', respuesta.compras);
         renderAdvertencias(respuesta.advertencias);
 
         const bloqueado = hayAdvertenciasBloqueantes(respuesta.advertencias);

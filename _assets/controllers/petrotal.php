@@ -1,5 +1,8 @@
 <?php
 class Petrotal {
+    // Número de permiso CRE de Petrotal para reporte a la CNE (constante de negocio fija).
+    private const NUMERO_PERMISO_PETROTAL = 'H/22730/COM/2019';
+
     public $twig;
     public $route;
     public PetrotalObligacionModel $petrotalObligacionModel;
@@ -46,6 +49,10 @@ class Petrotal {
             json_output(['error' => 'Selecciona un periodo (desde/hasta)']);
             return;
         }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) {
+            json_output(['error' => 'Formato de fecha inválido']);
+            return;
+        }
 
         $reporte = $this->petrotalObligacionModel->construir_reporte($desde, $hasta);
         $envioExistente = $this->petrotalObligacionModel->buscar_envio_periodo($desde, $hasta);
@@ -71,9 +78,13 @@ class Petrotal {
             json_output(['error' => 'Selecciona un periodo (desde/hasta)']);
             return;
         }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) {
+            json_output(['error' => 'Formato de fecha inválido']);
+            return;
+        }
 
         $reporte = $this->petrotalObligacionModel->construir_reporte($desde, $hasta);
-        $json = PetrotalCneClient::armar_json('H/22730/COM/2019', $desde, $hasta, $reporte['ventas'], $reporte['compras']);
+        $json = PetrotalCneClient::armar_json(self::NUMERO_PERMISO_PETROTAL, $desde, $hasta, $reporte['ventas'], $reporte['compras']);
 
         $envioExistente = $this->petrotalObligacionModel->buscar_envio_periodo($desde, $hasta);
         $usuarioId = $_SESSION['tg_user']['id'] ?? 0;
@@ -86,7 +97,10 @@ class Petrotal {
 
         $nombreArchivo = "{$desde}_{$hasta}_{$envioId}.json";
         $rutaJson = ROOT . '_assets' . DS . 'uploads' . DS . 'petrotal' . DS . 'json' . DS . $nombreArchivo;
-        file_put_contents($rutaJson, $json);
+        if (file_put_contents($rutaJson, $json) === false) {
+            json_output(['error' => 'No se pudo escribir el archivo JSON en el servidor.']);
+            return;
+        }
 
         $this->petrotalObligacionModel->actualizar_envio($envioId, [
             'Estado' => 'borrador',
@@ -126,7 +140,7 @@ class Petrotal {
             $fielConfig['ruta_cer'],
             $fielConfig['ruta_key'],
             $fielConfig['password'],
-            'H/22730/COM/2019'
+            self::NUMERO_PERMISO_PETROTAL
         );
 
         if ($resultado['error_conexion']) {
@@ -152,9 +166,15 @@ class Petrotal {
         $folioAcuse = null;
         $rutaAcuse = null;
         if (!empty($resultado['link_descarga'])) {
-            $folioAcuse = basename(parse_url($resultado['link_descarga'], PHP_URL_PATH));
-            $rutaAcuse = ROOT . '_assets' . DS . 'uploads' . DS . 'petrotal' . DS . 'acuse' . DS . "{$envioId}_{$folioAcuse}.pdf";
-            PetrotalCneClient::descargar_acuse($resultado['link_descarga'], $rutaAcuse);
+            $folioAcuseExtraido = substr(basename(parse_url($resultado['link_descarga'], PHP_URL_PATH)), 0, 50);
+            if ($folioAcuseExtraido !== '') {
+                $folioAcuse = $folioAcuseExtraido;
+                $rutaAcuseIntentada = ROOT . '_assets' . DS . 'uploads' . DS . 'petrotal' . DS . 'acuse' . DS . "{$envioId}_{$folioAcuse}.pdf";
+                $descargado = PetrotalCneClient::descargar_acuse($resultado['link_descarga'], $rutaAcuseIntentada);
+                if ($descargado) {
+                    $rutaAcuse = $rutaAcuseIntentada;
+                }
+            }
         }
 
         $this->petrotalObligacionModel->actualizar_envio($envioId, [
