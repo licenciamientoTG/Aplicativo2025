@@ -21,7 +21,7 @@
   </div>
   <div class="alert alert-primary small mt-4 mb-0"><i data-feather="info"></i> El cambio aplica en su próxima ocurrencia: si seleccionas el día de hoy, queda disponible hoy; en otro caso, se habilita en la siguiente fecha de ese día.</div>
   <hr class="my-4">
-  <div class="terminal-settings-heading"><div><h5 class="card-title mb-1">Meta de terminales por estación y tipo</h5><p class="text-muted mb-0">Define la cantidad esperada de cada tipo activo. El total de estación se calcula con esas cantidades.</p></div></div>
+  <div class="terminal-settings-heading"><div><h5 class="card-title mb-1">Stock de terminales por estación y tipo</h5><p class="text-muted mb-0">Define el stock de cada tipo activo. El total de estación se calcula con esas cantidades.</p></div></div>
   <div class="terminal-matrix-hint mt-3"><i data-feather="move"></i><span>Desplázate horizontalmente para ver todos los tipos. En celular, cada estación se muestra como una tarjeta.</span></div>
   <div id="terminalStationTargets" class="table-responsive terminal-station-targets-wrap mt-2" data-station-targets='{{ stationTargets|default([])|json_encode|e("html_attr") }}' data-valeras='{{ valeras|default({})|json_encode|e("html_attr") }}' data-enabled-valeras='{{ enabledValeras|default([])|json_encode|e("html_attr") }}'>
     <table class="table align-middle mb-0 terminal-station-targets"><thead></thead><tbody></tbody></table>

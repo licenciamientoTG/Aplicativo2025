@@ -3258,8 +3258,8 @@ class Operations{
         $station=$this->terminalAssignedStation();
         if (!$station) { $this->terminalJsonError('El usuario no tiene una estación válida asignada.'); return; }
         if ($this->terminalInventoryModel->inventoryExists($stationId,$inventoryDate)) { $this->terminalJsonError('Ya existe un inventario guardado para esta fecha.'); return; }
-        $types=$this->terminalTypes(); $details=[]; $damaged=[];
-        foreach ($types as $code=>$info) { $row=$payload['details'][$code] ?? []; $working=filter_var($row['working'] ?? null,FILTER_VALIDATE_INT); $broken=filter_var($row['damaged'] ?? null,FILTER_VALIDATE_INT); if ($working===false || $broken===false || $working<0 || $broken<0) { $this->terminalJsonError('Las cantidades deben ser números enteros no negativos.'); return; } $details[]=['type'=>$code,'working'=>$working,'damaged'=>$broken]; $damaged[$code]=$broken; }
+        $types=$this->terminalTypes(); $details=[]; $damaged=[]; $stockCounts=$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types));
+        foreach ($types as $code=>$info) { $row=$payload['details'][$code] ?? []; $broken=filter_var($row['damaged'] ?? null,FILTER_VALIDATE_INT); $stock=max(0,(int)($stockCounts[$code] ?? 0)); if ($broken===false || $broken<0 || $broken>$stock) { $this->terminalJsonError('Las terminales dañadas no pueden superar el stock de '.$info['label'].'.'); return; } $working=$stock-$broken; $details[]=['type'=>$code,'working'=>$working,'damaged'=>$broken]; $damaged[$code]=$broken; }
         // La consulta a Mojo se ejecuta al guardar, no al abrir la vista. Así la
         // captura sigue validando los tickets antes de persistir, sin bloquear
         // la navegación mientras Mojo responde.

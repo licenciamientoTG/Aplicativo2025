@@ -55,7 +55,7 @@ $(function () {
     }
     function typeRows(types, inventoryId) {
         if (!types.length) return '<div class="terminal-incidents-empty"><i data-feather="info"></i> Este inventario no tiene detalle por terminal.</div>';
-        let html = '<table class="table terminal-type-table mb-0"><thead><tr><th>Tipo de terminal</th><th class="text-center">Esperadas</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Incidencias</th></tr></thead><tbody>';
+        let html = '<table class="table terminal-type-table mb-0"><thead><tr><th>Tipo de terminal</th><th class="text-center">Stock</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Incidencias</th></tr></thead><tbody>';
         types.forEach(item => {
             const damaged = Number(item.danadas || 0), expected = expectedForType(item);
             html += '<tr class="terminal-type-row" data-inventory-id="' + Number(inventoryId) + '" data-type="' + escapeHtml(item.tipo_terminal) + '" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span>' + brand(item.tipo_terminal) + '</td><td class="text-center"><span class="terminal-expected-count">' + expected + '</span></td><td class="text-center"><span class="terminal-summary-value">' + Number(item.funcionando || 0) + '</span></td><td class="text-center"><span class="terminal-summary-value ' + (damaged ? 'is-damaged' : '') + '">' + damaged + '</span></td><td><span class="terminal-view-incidents">Ver incidencias <i data-feather="arrow-right"></i></span></td></tr>';
@@ -64,7 +64,7 @@ $(function () {
         return html + '</tbody></table>';
     }
     function stationRows(stations) {
-        let html = '<table class="table terminal-station-table mb-0"><thead><tr><th>Estación</th><th class="text-center">Esperadas</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Capturado</th><th>Registrado por</th></tr></thead><tbody>';
+        let html = '<table class="table terminal-station-table mb-0"><thead><tr><th>Estación</th><th class="text-center">Stock</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Capturado</th><th>Registrado por</th></tr></thead><tbody>';
         stations.forEach(station => {
             const captured = Number(station.inventario_id || 0) > 0;
             const damaged = Number(station.danadas || 0);
@@ -200,7 +200,7 @@ $(function () {
         inventoryExportTable.buttons().container().appendTo('#terminalInventoryExportActions');
     }
     if ($('#terminalReportTable').length) {
-        const filterLabels = ['Estación', 'Terminal', 'Esperadas', 'Serie', 'Ticket', 'Folio', 'Apertura', 'Días', 'Estado', 'Cierre', 'Cerrado por', 'Confirmación'];
+        const filterLabels = ['Estación', 'Terminal', 'Stock', 'Serie', 'Ticket', 'Folio', 'Apertura', 'Días', 'Estado', 'Cierre', 'Cerrado por', 'Confirmación'];
         const filterRow = '<tr class="terminal-column-filters">' + filterLabels.map(label => '<th><input type="search" placeholder="' + label + '" aria-label="Filtrar por ' + label + '"></th>').join('') + '</tr>';
         $('#terminalReportTable thead tr:first').after(filterRow);
         const exportOptions = {
