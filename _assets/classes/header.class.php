@@ -57,6 +57,10 @@ define('CRON_SECRET', 'TG_CRON_2024');
 define('DEFAULT_CONTROLLER', 'home');
 define('DEFAULT_METHOD', 'index');
 define('DEFAULT_ERROR_CONTROLLER', 'error');
+// Clave de cifrado simétrico para secretos guardados en BD (ej. password de
+// la FIEL de Petrotal en PetrotalFielConfig). AES-256-CBC vía openssl_*,
+// nativo de PHP, sin dependencias nuevas.
+define('PETROTAL_FIEL_ENCRYPTION_KEY', 'TG_Petrotal_FIEL_2026_ChangeMe!');
 // Cargamos el archivo autoload.php
 require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
 
