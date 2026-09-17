@@ -33,6 +33,7 @@ import pyodbc
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 MOJO_TICKET_URL = "https://totalgas.mojohelpdesk.com/mc/tickets/{}"
+VALERA_DISPLAY_ORDER = ("ticketcard", "ultragas", "efecticard", "eox", "inburgas", "sodexo", "mobil")
 
 
 def load_env_file() -> None:
@@ -170,6 +171,48 @@ def fetch_inventory_summary(connection: pyodbc.Connection) -> list[dict[str, obj
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
+def fetch_valera_inventory(connection: pyodbc.Connection) -> tuple[list[dict[str, object]], list[str]]:
+    """Obtiene el último stock y las dañadas de cada valera habilitada por estación."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT valeras_habilitadas FROM TG.dbo.inv_ter_configuracion WHERE id=1")
+        settings_row = cursor.fetchone()
+        cursor.execute("SELECT codigo, nombre FROM TG.dbo.inv_ter_valeras WHERE activo=1")
+        catalog = {str(code).strip().lower(): str(name).strip() for code, name in cursor.fetchall()}
+
+    enabled = {code.strip().lower() for code in str(settings_row[0] if settings_row else "").split(",") if code.strip()}
+    codes = [code for code in VALERA_DISPLAY_ORDER if code in enabled and code in catalog]
+    codes.extend(sorted(code for code in enabled if code in catalog and code not in codes))
+    if not codes:
+        return [], []
+
+    marks = ",".join("?" for _ in codes)
+    query = f"""
+        WITH latest_inventory AS (
+            SELECT i.id, i.estacion_id,
+                   ROW_NUMBER() OVER (PARTITION BY i.estacion_id ORDER BY i.fecha_inventario DESC, i.id DESC) AS rn
+            FROM TG.dbo.inv_ter_inventarios AS i
+        )
+        SELECT s.Codigo AS estacion_codigo, s.Nombre AS estacion_nombre,
+               v.codigo AS valera_codigo, v.nombre AS valera_nombre,
+               COALESCE(c.terminales_esperadas, 0) AS stock,
+               COALESCE(d.danadas, 0) AS danadas
+        FROM TG.dbo.Estaciones AS s
+        CROSS JOIN TG.dbo.inv_ter_valeras AS v
+        LEFT JOIN latest_inventory AS li ON li.estacion_id = s.Codigo AND li.rn = 1
+        LEFT JOIN TG.dbo.inv_ter_configuracion_estacion AS c
+               ON c.estacion_id = s.Codigo AND c.tipo_terminal = v.codigo
+        LEFT JOIN TG.dbo.inv_ter_inventario_detalles AS d
+               ON d.inventario_id = li.id AND d.tipo_terminal = v.codigo
+        WHERE s.activa = 1 AND s.Codigo NOT IN (0, 4, 20)
+          AND v.activo = 1 AND v.codigo IN ({marks})
+        ORDER BY s.Codigo, v.codigo
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(query, codes)
+        columns = [column[0] for column in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()], codes
+
+
 def recipients(name: str) -> list[str]:
     return [address.strip() for address in os.environ.get(name, "daniel.ramirez@totalgas.com").split(",") if address.strip()]
 
@@ -233,9 +276,59 @@ def render_text(rows: Iterable[dict[str, object]], sent_at: datetime) -> str:
     return "\n".join(lines)
 
 
+def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str], incidents: list[dict[str, object]], sent_at: datetime) -> str:
+    """Renderiza el control de valeras con columnas agrupadas y detalle desplegable."""
+    labels = {}
+    for row in inventory_rows:
+        labels[str(row["valera_codigo"]).lower()] = str(row.get("valera_nombre") or row["valera_codigo"])
+    incidents_by_station: dict[str, list[dict[str, object]]] = {}
+    for incident in incidents:
+        incidents_by_station.setdefault(str(incident.get("estacion_nombre") or "Sin estación"), []).append(incident)
+
+    station_rows: dict[str, dict[str, object]] = {}
+    for row in inventory_rows:
+        station = str(row.get("estacion_nombre") or "Sin estación")
+        station_rows.setdefault(station, {"codigo": row.get("estacion_codigo"), "types": {}})
+        station_rows[station]["types"][str(row["valera_codigo"]).lower()] = row
+
+    group_headers = "".join(
+        f'<th colspan="3" style="padding:5px 8px;background:#28587c;color:#fff;font-size:20px;text-align:center">{escape(labels.get(code, code))}</th>'
+        for code in codes
+    )
+    sub_headers = "".join(
+        '<th style="padding:5px 8px;background:#377dc5;color:#fff">Stock</th>'
+        '<th style="padding:5px 8px;background:#377dc5;color:#fff">Dañadas</th>'
+        '<th style="padding:5px 8px;background:#377dc5;color:#fff">Cobertura</th>'
+        for _ in codes
+    )
+    body = []
+    for index, (station, station_data) in enumerate(station_rows.items()):
+        values = []
+        for code in codes:
+            row = station_data["types"].get(code, {})
+            stock = int(row.get("stock") or 0)
+            damaged = int(row.get("danadas") or 0)
+            coverage = f"{damaged / stock * 100:.0f}%" if stock else "—"
+            values.append(f'<td style="padding:4px 8px;text-align:center">{stock}</td><td style="padding:4px 8px;text-align:center">{damaged}</td><td style="padding:4px 8px;text-align:center">{coverage}</td>')
+        station_incidents = incidents_by_station.get(station, [])
+        incident_detail = "".join(
+            f'<tr><td style="padding:5px 7px">#{escape(str(item.get("ticket_mojo_id") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("tipo_terminal") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("descripcion") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("responsable") or "Sin asignar"))}</td><td style="padding:5px 7px;white-space:nowrap">{int(item.get("dias_laborales") or 0)} días / {float(item.get("horas_laborales") or 0):.2f} h</td></tr>'
+            for item in station_incidents
+        ) or '<tr><td colspan="5" style="padding:7px;color:#687887">No hay incidencias abiertas.</td></tr>'
+        details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Responsable</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
+        background = "#ffffff" if index % 2 == 0 else "#dff3fb"
+        body.append(f'<tr style="background:{background};border-bottom:1px solid #9bd5e8"><td style="padding:4px 8px;color:#123f66;min-width:190px"><div>{escape(str(station_data["codigo"] or ""))} {escape(station)}</div>{details}</td>{"".join(values)}</tr>')
+
+    sent = sent_at.strftime("%d/%m/%Y %H:%M")
+    return f'''<!doctype html><html lang="es"><body style="margin:0;padding:6px;background:#fff;font-family:Arial,sans-serif;color:#173b59"><div style="max-width:1800px;margin:0 auto"><div style="background:#28587c;color:#fff;text-align:center;padding:4px 8px;font-size:20px;font-weight:700">Control Valeras</div><p style="font-size:12px;color:#687887">Reporte enviado el {sent}. Haz clic en “Ver incidencias” dentro de cada estación para consultar los tickets abiertos.</p><table style="border-collapse:collapse;width:100%;font-size:12px;border:1px solid #9bd5e8"><thead><tr><th rowspan="2" style="padding:5px 8px;background:#377dc5;color:#fff">Estación</th>{group_headers}</tr><tr>{sub_headers}</tr></thead><tbody>{"".join(body) or '<tr><td colspan="99" style="padding:16px;text-align:center">No hay estaciones disponibles.</td></tr>'}</tbody></table></div></body></html>'''
+
+
 def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, object]], sent_at: datetime) -> str:
     summary_rows = []
     total_stock = total_damaged = total_working = total_missing = 0
+    incidents_by_station: dict[str, list[dict[str, object]]] = {}
+    for incident in rows:
+        incidents_by_station.setdefault(str(incident.get("estacion_nombre") or "Sin estación"), []).append(incident)
     for index, row in enumerate(summary):
         stock = int(row.get("stock") or 0)
         damaged = int(row.get("danadas") or 0)
@@ -244,9 +337,16 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
         coverage = f"{(working / stock * 100):.0f}%" if stock else "—"
         total_stock += stock; total_damaged += damaged; total_working += working; total_missing += missing
         background = "#ffffff" if index % 2 == 0 else "#dff3fb"
+        station = str(row.get("estacion_nombre") or "Sin estación")
+        station_incidents = incidents_by_station.get(station, [])
+        incident_detail = "".join(
+            f'<tr><td style="padding:5px 7px">#{escape(str(item.get("ticket_mojo_id") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("tipo_terminal") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("descripcion") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("responsable") or "Sin asignar"))}</td><td style="padding:5px 7px;white-space:nowrap">{int(item.get("dias_laborales") or 0)} días / {float(item.get("horas_laborales") or 0):.2f} h</td></tr>'
+            for item in station_incidents
+        ) or '<tr><td colspan="5" style="padding:7px;color:#687887">No hay incidencias abiertas.</td></tr>'
+        details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Responsable</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
         summary_rows.append(
             f'<tr style="background:{background};border-bottom:1px solid #9bd5e8">'
-            f'<td style="padding:5px 8px;color:#123f66">{escape(str(row.get("estacion_codigo") or ""))} {escape(str(row.get("estacion_nombre") or "—"))}</td>'
+            f'<td style="padding:5px 8px;color:#123f66"><div>{escape(str(row.get("estacion_codigo") or ""))} {escape(station)}</div>{details}</td>'
             f'<td style="padding:5px 8px;color:#52616f">{escape(str(row.get("responsable") or "Sin asignar"))}</td><td style="padding:5px 8px;text-align:center">{stock}</td><td style="padding:5px 8px;text-align:center">{damaged}</td>'
             f'<td style="padding:5px 8px;text-align:center">{working}</td><td style="padding:5px 8px;text-align:center;color:#d71920;font-weight:700">{missing}</td>'
             f'<td style="padding:5px 8px;text-align:center">{coverage}</td></tr>'
@@ -293,7 +393,7 @@ def send_internal_email(to: list[str], summary: list[dict[str, object]], rows: l
         smtp.ehlo(); smtp.starttls(); smtp.ehlo(); smtp.send_message(message)
 
 
-def send_email(to: list[str], rows: list[dict[str, object]], sent_at: datetime, category: str, dry_run: bool) -> None:
+def send_email(to: list[str], rows: list[dict[str, object]], inventory_rows: list[dict[str, object]], valera_codes: list[str], sent_at: datetime, category: str, dry_run: bool) -> None:
     if not to:
         raise RuntimeError("La lista de destinatarios está vacía")
     subject = f"Incidencias abiertas de {category} — {sent_at:%d/%m/%Y}"
@@ -302,7 +402,7 @@ def send_email(to: list[str], rows: list[dict[str, object]], sent_at: datetime, 
     message["To"] = ", ".join(to)
     message["Subject"] = subject
     message.set_content(render_text(rows, sent_at))
-    message.add_alternative(render_html(rows, sent_at, category), subtype="html")
+    message.add_alternative(render_valera_html(inventory_rows, valera_codes, rows, sent_at), subtype="html")
     if dry_run:
         print(f"DRY-RUN: {subject} -> {message['To']} ({len(rows)} incidencias)")
         return
@@ -325,15 +425,16 @@ def main() -> int:
         with db_connection() as connection:
             rows = fetch_open_incidents(connection)
             summary = fetch_inventory_summary(connection)
-        if not summary and not rows:
+            valera_inventory, valera_codes = fetch_valera_inventory(connection)
+        if not summary and not rows and not valera_inventory:
             print("No hay inventario ni incidencias abiertas; no se envía correo.")
             return 0
         sent_at = datetime.now()
         internal_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() in {"urovo", "verifone"}]
         valera_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() not in {"urovo", "verifone"}]
         send_internal_email(recipients("TERMINAL_EMAIL_TO_1"), summary, internal_rows, sent_at, args.dry_run)
-        if valera_rows:
-            send_email(recipients("TERMINAL_EMAIL_TO_2"), valera_rows, sent_at, "valeras", args.dry_run)
+        if valera_inventory:
+            send_email(recipients("TERMINAL_EMAIL_TO_2"), valera_rows, valera_inventory, valera_codes, sent_at, "valeras", args.dry_run)
         print(f"Se envió el control de inventario: {len(internal_rows)} tickets Urovo/Verifone y {len(valera_rows)} tickets de valeras.")
         return 0
     except Exception as exc:  # el programador del servidor verá un código distinto de cero
