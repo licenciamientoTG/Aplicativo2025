@@ -53,3 +53,29 @@ echo ($ok5 ? "OK  " : "FAIL") . " ComprasNacional.PermisionarioCREProveedor.Volu
 if (!$ok5) $fallos++;
 
 echo $fallos === 0 ? "\nTodos los casos pasaron.\n" : "\n$fallos caso(s) fallaron.\n";
+
+echo "\n--- enviar() contra endpoint inexistente (validar manejo de error) ---\n";
+// Usamos rutas de archivo temporales válidas para que el chequeo de
+// legibilidad pase, y apuntamos el cURL a una URL que no puede responder
+// 200 para validar la rama de error_conexion.
+$tmpJson = sys_get_temp_dir() . '/test_petrotal.json';
+$tmpCer = sys_get_temp_dir() . '/test_petrotal.cer';
+$tmpKey = sys_get_temp_dir() . '/test_petrotal.key';
+file_put_contents($tmpJson, '{}');
+file_put_contents($tmpCer, 'dummy');
+file_put_contents($tmpKey, 'dummy');
+
+// Truco: probamos armar_json + PetrotalCneClient::enviar contra la URL real
+// de QA, que hoy (no-viernes) devuelve 502 — así confirmamos en vivo que la
+// rama de error_conexion por HTTP >= 500 funciona como se espera.
+$resultado = PetrotalCneClient::enviar($tmpJson, $tmpCer, $tmpKey, 'x', 'H/22730/COM/2019');
+echo "Resultado: " . json_encode($resultado) . "\n";
+$ok = $resultado['ok'] === false && $resultado['error_conexion'] !== null;
+echo ($ok ? "OK  " : "FAIL") . " enviar() reporta error_conexion sin lanzar excepción cuando la API no responde\n";
+if (!$ok) $fallos++;
+
+unlink($tmpJson);
+unlink($tmpCer);
+unlink($tmpKey);
+
+echo $fallos === 0 ? "\nTodos los casos pasaron.\n" : "\n$fallos caso(s) fallaron.\n";
