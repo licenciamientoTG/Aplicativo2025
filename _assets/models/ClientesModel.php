@@ -937,6 +937,180 @@ public function get_account_summary_debit(int $from, int $until) : array|false {
     return $this->sql->select($query, [$from, $until, $from, $until]) ?: false;
 }
 
+/**
+ * Calcula la foto del día para todos los clientes débito activos y la
+ * compara contra las filas vigentes de TG.dbo.debit_clients_snapshot:
+ * abre una fila nueva solo si cambió saldo_inicial, anticipos_dia,
+ * consumos_dia, saldo_final, saldo_sistema o saldo_vehiculos.
+ * Ver docs/superpowers/specs/2026-09-17-debit-clients-snapshot-design.md
+ */
+public function refresh_debit_snapshot(string $fecha) : array {
+    $t0 = microtime(true);
+    $this->sql->connect('TG');
+
+    $hoy = dateToInt($fecha);
+
+    $query = "
+        DECLARE @Hoy INT = ?;
+
+        ;WITH Ini AS (
+            SELECT t2.codopr, CAST(SUM(t2.mtoori + t2.mtoiva)/100.0 AS decimal(18,2)) AS AnticiposIni
+            FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
+            JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
+              ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+            WHERE t1.fch < @Hoy
+              AND t2.mtoiva > 0
+              AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
+              AND t2.mto > 100
+              AND t2.codopr <> 0
+              AND ISNULL(t1.flgcon, 0) <> 141
+            GROUP BY t2.codopr
+        ),
+        ConIni AS (
+            SELECT d.codcli AS codopr, CAST(SUM(d.mto) AS decimal(18,2)) AS ConsumosIni
+            FROM [SG12].dbo.Despachos d WITH (NOLOCK)
+            WHERE d.fchtrn < @Hoy AND d.codcli > 0
+            GROUP BY d.codcli
+        ),
+        Dia AS (
+            SELECT t2.codopr, CAST(SUM(t2.mtoori + t2.mtoiva)/100.0 AS decimal(18,2)) AS AnticiposDia
+            FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
+            JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
+              ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+            WHERE t1.fch = @Hoy
+              AND t2.mtoiva > 0
+              AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
+              AND t2.mto > 100
+              AND t2.codopr <> 0
+              AND ISNULL(t1.flgcon, 0) <> 141
+            GROUP BY t2.codopr
+        ),
+        ConDia AS (
+            SELECT d.codcli AS codopr, CAST(SUM(d.mto) AS decimal(18,2)) AS ConsumosDia
+            FROM [SG12].dbo.Despachos d WITH (NOLOCK)
+            WHERE d.fchtrn = @Hoy AND d.codcli > 0
+            GROUP BY d.codcli
+        ),
+        Veh AS (
+            SELECT codcli, CAST(SUM(debsdo) AS decimal(18,2)) AS SaldoVehiculos
+            FROM [SG12].dbo.ClientesVehiculos WITH (NOLOCK)
+            GROUP BY codcli
+        )
+        SELECT
+            C.cod AS codcli,
+            C.den AS cliente,
+            CAST(ISNULL(I.AnticiposIni,0) - ISNULL(CI.ConsumosIni,0) AS decimal(18,2)) AS saldo_inicial,
+            ISNULL(D.AnticiposDia,0) AS anticipos_dia,
+            ISNULL(CD.ConsumosDia,0) AS consumos_dia,
+            CAST(ISNULL(I.AnticiposIni,0) - ISNULL(CI.ConsumosIni,0) + ISNULL(D.AnticiposDia,0) - ISNULL(CD.ConsumosDia,0) AS decimal(18,2)) AS saldo_final,
+            CAST(C.debsdo AS decimal(18,2)) AS saldo_sistema,
+            ISNULL(V.SaldoVehiculos,0) AS saldo_vehiculos
+        FROM [SG12].dbo.Clientes C
+        LEFT JOIN Ini I     ON I.codopr  = C.cod
+        LEFT JOIN ConIni CI ON CI.codopr = C.cod
+        LEFT JOIN Dia D     ON D.codopr  = C.cod
+        LEFT JOIN ConDia CD ON CD.codopr = C.cod
+        LEFT JOIN Veh V     ON V.codcli  = C.cod
+        WHERE C.tipval = 4 AND C.codest <> -1
+        ORDER BY C.den";
+
+    $calculado = $this->sql->select($query, [$hoy]) ?: [];
+
+    $vigentes = $this->sql->select(
+        "SELECT id, codcli, fecha_desde, saldo_inicial, anticipos_dia, consumos_dia, saldo_final, saldo_sistema, saldo_vehiculos
+         FROM [TG].dbo.debit_clients_snapshot WHERE fecha_hasta IS NULL"
+    ) ?: [];
+    $vigentesPorCliente = [];
+    foreach ($vigentes as $v) {
+        $vigentesPorCliente[(int)$v['codcli']] = $v;
+    }
+
+    $nuevos = $actualizados = $sinCambio = 0;
+    $ayer = date('Y-m-d', strtotime($fecha . ' -1 day'));
+
+    $this->sql->beginTransaction();
+    try {
+        foreach ($calculado as $row) {
+            $codcli = (int)$row['codcli'];
+            $actual = $vigentesPorCliente[$codcli] ?? null;
+
+            if ($actual === null) {
+                $this->sql->insert(
+                    "INSERT INTO [TG].dbo.debit_clients_snapshot
+                        (codcli, cliente, fecha_desde, fecha_hasta, saldo_inicial, anticipos_dia, consumos_dia, saldo_final, saldo_sistema, saldo_vehiculos)
+                     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)",
+                    [$codcli, $row['cliente'], $fecha,
+                     $row['saldo_inicial'], $row['anticipos_dia'], $row['consumos_dia'],
+                     $row['saldo_final'], $row['saldo_sistema'], $row['saldo_vehiculos']]
+                );
+                $nuevos++;
+                continue;
+            }
+
+            $sinCambios = abs((float)$actual['saldo_inicial']   - (float)$row['saldo_inicial'])   < 0.005
+                       && abs((float)$actual['anticipos_dia']   - (float)$row['anticipos_dia'])   < 0.005
+                       && abs((float)$actual['consumos_dia']    - (float)$row['consumos_dia'])    < 0.005
+                       && abs((float)$actual['saldo_final']     - (float)$row['saldo_final'])     < 0.005
+                       && abs((float)$actual['saldo_sistema']   - (float)$row['saldo_sistema'])   < 0.005
+                       && abs((float)$actual['saldo_vehiculos'] - (float)$row['saldo_vehiculos']) < 0.005;
+
+            if ($sinCambios) {
+                $sinCambio++;
+                continue;
+            }
+
+            // Si la fila vigente ya es de hoy (segunda corrida del mismo día
+            // con datos que cambiaron entre medio), no se puede cerrar +
+            // reabrir: el UNIQUE (codcli, fecha_desde) rechazaría el INSERT
+            // porque ya existe una fila (codcli, hoy). En ese caso se
+            // actualiza la fila de hoy in place en vez de versionarla.
+            if ($actual['fecha_desde'] === $fecha) {
+                $affected = $this->sql->updateSafe(
+                    "UPDATE [TG].dbo.debit_clients_snapshot
+                        SET saldo_inicial = ?, anticipos_dia = ?, consumos_dia = ?, saldo_final = ?, saldo_sistema = ?, saldo_vehiculos = ?, updated_at = GETDATE()
+                     WHERE id = ?",
+                    [$row['saldo_inicial'], $row['anticipos_dia'], $row['consumos_dia'],
+                     $row['saldo_final'], $row['saldo_sistema'], $row['saldo_vehiculos'],
+                     $actual['id']]
+                );
+                if ($affected === false) {
+                    throw new Exception("No se pudo actualizar la fila de hoy del cliente $codcli");
+                }
+                $actualizados++;
+                continue;
+            }
+
+            $affected = $this->sql->updateSafe(
+                "UPDATE [TG].dbo.debit_clients_snapshot SET fecha_hasta = ? WHERE id = ?",
+                [$ayer, $actual['id']]
+            );
+            if ($affected === false) {
+                throw new Exception("No se pudo cerrar la vigencia del cliente $codcli");
+            }
+            $this->sql->insert(
+                "INSERT INTO [TG].dbo.debit_clients_snapshot
+                    (codcli, cliente, fecha_desde, fecha_hasta, saldo_inicial, anticipos_dia, consumos_dia, saldo_final, saldo_sistema, saldo_vehiculos)
+                 VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)",
+                [$codcli, $row['cliente'], $fecha,
+                 $row['saldo_inicial'], $row['anticipos_dia'], $row['consumos_dia'],
+                 $row['saldo_final'], $row['saldo_sistema'], $row['saldo_vehiculos']]
+            );
+            $actualizados++;
+        }
+        $this->sql->commit();
+    } catch (Throwable $e) {
+        $this->sql->rollBack();
+        throw $e;
+    }
+
+    return [
+        'nuevos'       => $nuevos,
+        'actualizados' => $actualizados,
+        'sin_cambio'   => $sinCambio,
+        'duracion_seg' => round(microtime(true) - $t0, 1),
+    ];
+}
+
 /** Facturas de anticipo de un cliente de débito en el periodo (para el drill-down del resumen). */
 public function get_client_anticipos(int $from, int $until, int $codcli) : array|false {
     $query = "
