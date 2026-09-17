@@ -30,10 +30,16 @@ El tab actual **no se modifica** — se agrega un tab nuevo e independiente.
 
 Un nuevo tab "Estado de Cuenta Foto" en `/income/clients` que muestre, de
 forma instantánea, la última foto guardada de Saldo Inicial / Anticipos del
-día / Consumos del día / Saldo Final / Saldo Sistema para todos los clientes
-débito activos. La foto se genera una vez al día por una tarea programada de
-Windows; hoy se genera manualmente una sola vez como backfill inicial con
-histórico completo.
+día / Consumos del día / Saldo Final / Saldo Sistema / Saldo Vehículos para
+todos los clientes débito activos. La foto se genera una vez al día por una
+tarea programada de Windows; hoy se genera manualmente una sola vez como
+backfill inicial con histórico completo.
+
+Nota: "Saldo Vehículos" (suma de `ClientesVehiculos.debsdo` por cliente) se
+agregó el 2026-09-17 al resumen del tab "Edo. Cuenta Débito" existente
+(`get_account_summary_debit`, ver commit del mismo día). El snapshot debe
+capturar ese mismo campo para que la foto no quede incompleta respecto al
+resumen en vivo.
 
 ## Tabla `TG.dbo.debit_clients_snapshot`
 
@@ -53,6 +59,7 @@ CREATE TABLE dbo.debit_clients_snapshot (
     consumos_dia   DECIMAL(18,2)  NOT NULL,   -- consumos (despachos) SOLO del día fecha_desde
     saldo_final    DECIMAL(18,2)  NOT NULL,   -- saldo_inicial + anticipos_dia - consumos_dia
     saldo_sistema  DECIMAL(18,2)  NOT NULL,   -- Clientes.debsdo al momento de generar
+    saldo_vehiculos DECIMAL(18,2) NOT NULL,   -- SUM(ClientesVehiculos.debsdo) del cliente al momento de generar
     updated_at     DATETIME       NOT NULL DEFAULT GETDATE(),
     CONSTRAINT UQ_debit_snapshot_cliente_desde UNIQUE (codcli, fecha_desde)
 );
@@ -72,11 +79,12 @@ en días sin movimiento esos campos son 0 y la fila vigente no cambia.
    - `AnticiposDia` / `ConsumosDia` = mismos filtros pero con `fch = $hoy` / `fchtrn = $hoy`.
    - `SaldoFinal = SaldoInicialHist + AnticiposDia - ConsumosDia`.
    - `SaldoSistema = Clientes.debsdo`.
+   - `SaldoVehiculos = SUM(ClientesVehiculos.debsdo)` agrupado por `codcli` (mismo cálculo agregado a `get_account_summary_debit` el 2026-09-17), `0` si el cliente no tiene vehículos.
    - Universo: `Clientes WHERE tipval = 4 AND codest <> -1` (todos los activos/suspendidos, no solo los que tuvieron movimiento — para que la foto sea completa).
 2. Trae en un solo `SELECT` todas las filas **vigentes** actuales (`fecha_hasta IS NULL`) indexadas por `codcli` en PHP.
 3. Para cada cliente calculado en el paso 1:
    - Sin fila vigente previa → `INSERT` con `fecha_desde = $fecha, fecha_hasta = NULL`.
-   - Con fila vigente y los 5 valores numéricos iguales (redondeo a 2 decimales) → no hacer nada.
+   - Con fila vigente y los 6 valores numéricos iguales (redondeo a 2 decimales: saldo_inicial, anticipos_dia, consumos_dia, saldo_final, saldo_sistema, saldo_vehiculos) → no hacer nada.
    - Con fila vigente y algún valor distinto → `UPDATE` de la vigente (`fecha_hasta = $fecha - 1 día`) + `INSERT` de la nueva vigente.
 4. Todo dentro de `beginTransaction()/commit()`. Si algo falla, `rollBack()`.
 5. Devuelve resumen: `{nuevos, actualizados, sin_cambio, duracion_seg}`.
@@ -125,7 +133,8 @@ Contenido del tab nuevo:
   entre las filas devueltas).
 - DataTable (mismo patrón visual que las demás tablas del tab: filtros por
   columna, export a Excel) con columnas: Código, Cliente, Saldo Inicial,
-  Anticipos (día), Consumos (día), Saldo Final, Saldo Sistema, Fecha Foto.
+  Anticipos (día), Consumos (día), Saldo Final, Saldo Sistema, Saldo
+  Vehículos, Fecha Foto.
 
 `_assets/js/income.js`: función nueva `debit_snapshot_table()` — DataTable
 con `ajax` POST a `/income/debit_snapshot_table`, sin parámetros de fecha o
