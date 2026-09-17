@@ -3157,7 +3157,7 @@ class Operations{
         return $this->terminalInventoryModel->activeStation($stationId);
     }
     private function terminalTypeCatalog(): array {
-        $types=['urovo'=>['label'=>'Urovo','logo'=>'UROVO','mojo'=>'']];
+        $types=['urovo'=>['label'=>'Urovo','logo'=>'UROVO','mojo'=>''],'verifone'=>['label'=>'Verifone','logo'=>'VERIFONE','mojo'=>'']];
         $brands=['ticketcard'=>'TicketCard','efecticard'=>'EfectiCard','inburgas'=>'INBURSA','sodexo'=>'sodexo','ultragas'=>'ULTRAGAS','mobil'=>'Mobil','eox'=>'EOX'];
         if ($this->terminalValerasCache===null) $this->terminalValerasCache=$this->terminalInventoryModel->valeraCatalog();
         foreach ($this->terminalValerasCache as $valera) {
@@ -3166,12 +3166,12 @@ class Operations{
         }
         return $types;
     }
-    private function terminalValeraTypes(): array { $types=$this->terminalTypeCatalog(); unset($types['urovo']); return $types; }
+    private function terminalValeraTypes(): array { $types=$this->terminalTypeCatalog(); unset($types['urovo'],$types['verifone']); return $types; }
     private function terminalTypes(): array {
         $catalog=$this->terminalTypeCatalog();
         $enabled=array_filter(array_map('trim',explode(',',(string)($this->terminalSettings()['valeras_habilitadas'] ?? ''))));
-        $types=['urovo'=>$catalog['urovo']];
-        foreach ($enabled as $type) if (isset($catalog[$type]) && $type!=='urovo') $types[$type]=$catalog[$type];
+        $types=['urovo'=>$catalog['urovo'],'verifone'=>$catalog['verifone']];
+        foreach ($enabled as $type) if (isset($catalog[$type]) && !in_array($type,['urovo','verifone'],true)) $types[$type]=$catalog[$type];
         return $types;
     }
     private function terminalExpectedTargets(array $targets, array $allowedTypes, bool $requireCompleteMatrix=false): array {
@@ -3235,18 +3235,19 @@ class Operations{
         $ticketId=(int)($_POST['ticket_id'] ?? 0); $type=(string)($_POST['type'] ?? '');
         if (!$ticketId || !isset($this->terminalTypes()[$type])) { $this->terminalJsonError('Ticket o tipo de terminal inválido.'); return; }
         if ($this->terminalInventoryModel->ticketUsed($ticketId)) { $this->terminalJsonError('Este ticket ya está vinculado a otra incidencia.'); return; }
-        try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type,$this->terminalTypes()[$type]['mojo'])) { $this->terminalJsonError('El ticket debe estar abierto y el tipo de terminal debe coincidir con la incidencia.'); return; } $ticketData=$service->incidentDataFromTicket($ticket,$type); if ($type!=='urovo' && (!$ticketData['provider_folio'] || !$ticketData['provider_date'] || !$ticketData['description'])) { $this->terminalJsonError('El ticket de valera debe incluir folio, fecha de reporte y descripción.'); return; } json_output(['success'=>true,'ticket'=>$ticket,'incident_data'=>$ticketData]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
+        try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type,$this->terminalTypes()[$type]['mojo'])) { $this->terminalJsonError('El ticket debe estar abierto y el tipo de terminal debe coincidir con la incidencia.'); return; } $ticketData=$service->incidentDataFromTicket($ticket,$type); if (!in_array($type,['urovo','verifone'],true) && (!$ticketData['provider_folio'] || !$ticketData['provider_date'] || !$ticketData['description'])) { $this->terminalJsonError('El ticket de valera debe incluir folio, fecha de reporte y descripción.'); return; } json_output(['success'=>true,'ticket'=>$ticket,'incident_data'=>$ticketData]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
     }
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         if (!$this->terminalInventorySchedule()['allowed']) { $this->terminalJsonError('El inventario solo puede capturarse el día configurado.'); return; }
-        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $problem=trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
         if (!isset($this->terminalTypes()[$type]) || $description==='' || mb_strlen($description)>250 || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción (máximo 250 caracteres) y correo del usuario.'); return; }
         if ($type==='urovo' && ($urovoSerial==='' || mb_strlen($urovoSerial)>100)) { $this->terminalJsonError('Capture el número de serie UROVO (máximo 100 caracteres).'); return; }
-        if ($type!=='urovo' && (!trim($_POST['provider_folio'] ?? '') || !($_POST['provider_date'] ?? ''))) { $this->terminalJsonError('Valeras requiere folio y fecha de reporte al proveedor.'); return; }
+        if ($type==='verifone' && !in_array($problem,MojoTerminalTicketsService::verifoneProblems(),true)) { $this->terminalJsonError('Seleccione un problema válido para Verifone.'); return; }
+        if (!in_array($type,['urovo','verifone'],true) && (!trim($_POST['provider_folio'] ?? '') || !($_POST['provider_date'] ?? ''))) { $this->terminalJsonError('Valeras requiere folio y fecha de reporte al proveedor.'); return; }
         $station=$this->terminalAssignedStation();
         if (!$station) { $this->terminalJsonError('El usuario no tiene una estación válida asignada.'); return; }
-        try { $info=$this->terminalTypes()[$type]; $ticket=(new MojoTerminalTicketsService())->create(['type'=>$type,'label'=>$info['label'],'mojo_type'=>$info['mojo'],'description'=>$description,'provider_folio'=>trim($_POST['provider_folio'] ?? ''),'provider_date'=>$_POST['provider_date'] ?? null,'serial_urovo'=>$urovoSerial],$email,$station['Nombre']); json_output(['success'=>true,'ticket_id'=>$ticket['id'] ?? null,'ticket'=>$ticket]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
+        try { $info=$this->terminalTypes()[$type]; $ticket=(new MojoTerminalTicketsService())->create(['type'=>$type,'label'=>$info['label'],'mojo_type'=>$info['mojo'],'problem'=>$problem,'description'=>$description,'provider_folio'=>trim($_POST['provider_folio'] ?? ''),'provider_date'=>$_POST['provider_date'] ?? null,'serial_urovo'=>$urovoSerial],$email,$station['Nombre']); json_output(['success'=>true,'ticket_id'=>$ticket['id'] ?? null,'ticket'=>$ticket]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
     }
     public function terminal_inventory_save(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
@@ -3393,7 +3394,7 @@ class Operations{
             $rawTargets=$_POST['station_targets'] ?? null;
             $targets=$rawTargets===null ? [] : (is_string($rawTargets) ? json_decode($rawTargets,true) : $rawTargets);
             if (!is_array($targets)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
-            $allowedTypes=['urovo'=>true]; foreach ($enabled as $type) $allowedTypes[$type]=true;
+            $allowedTypes=['urovo'=>true,'verifone'=>true]; foreach ($enabled as $type) $allowedTypes[$type]=true;
             try { $validated=$this->terminalExpectedTargets($targets,$allowedTypes,true); }
             catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage()); return; }
             try { $this->terminalInventoryModel->saveSettingsWithStationExpectedCounts($day,$enabled,$validated,(int)$_SESSION['tg_user']['Id']); json_output(['success'=>true]); }

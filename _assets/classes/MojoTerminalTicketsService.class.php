@@ -7,6 +7,10 @@ class MojoTerminalTicketsService {
     // Campo de texto exclusivo del formulario UROVO. Ajustar sólo si Mojo
     // cambia el slug del campo, sin exponer esa configuración al cliente.
     private const UROVO_SERIAL_FIELD = 'custom_field_numero_de_serie_urovo';
+    private const VERIFONE_PROBLEMS = [
+        'Verifones - Bloqueado (tamper)', 'Verifones - Impresora',
+        'Verifones - Red', 'Verifones - Teclado',
+    ];
     // Valores vigentes del campo desplegable "Estacion" del formulario 84607.
     // El título conserva el nombre del catálogo TG (incluido su número), pero
     // Mojo sólo muestra un valor si el enviado coincide literalmente con una
@@ -50,11 +54,14 @@ class MojoTerminalTicketsService {
     }
     public function getTicket(int $id): array { return $this->request('GET','/v3/tickets/'.$id); }
     public function isOpen(array $ticket): bool { $status=strtolower((string)($ticket['status'] ?? $ticket['status_name'] ?? '')); return !in_array($status,['closed','solved','resolved','cerrado','resuelto'],true) && empty($ticket['solved_on']); }
+    public static function verifoneProblems(): array { return self::VERIFONE_PROBLEMS; }
     public function create(array $incident, string $email, string $stationName): array {
-        $valeras=$incident['type']!=='urovo';
+        $systemTicket=in_array($incident['type'],['urovo','verifone'],true);
+        $valeras=!$systemTicket;
         $payload=['title'=>'Terminal '.$incident['label'].' - '.$stationName,'description'=>$incident['description'],'ticket_queue_id'=>self::SYSTEM_QUEUE,'priority_id'=>30,'user'=>['email'=>$email]];
         if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$this->valeraStationOption($stationName),'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
-        else $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_solicitante'=>$email,'custom_field_problema'=>'Terminal Urovo',self::UROVO_SERIAL_FIELD=>(string)($incident['serial_urovo'] ?? $incident['urovo_serial'] ?? '')];
+        else $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_solicitante'=>$email,'custom_field_problema'=>$incident['problem'] ?? 'Terminal Urovo'];
+        if ($incident['type']==='urovo') $payload[self::UROVO_SERIAL_FIELD]=(string)($incident['serial_urovo'] ?? $incident['urovo_serial'] ?? '');
         return $this->request('POST','/v2/tickets',$payload);
     }
     private function normalizeTerminal(string $value): string {
@@ -94,6 +101,7 @@ class MojoTerminalTicketsService {
             'provider_folio'=>$this->ticketField($ticket,['custom_field_folio_de_reporte_del_proveedor','folio_de_reporte_del_proveedor','Folio de reporte al proveedor']),
             'provider_date'=>$this->ticketField($ticket,['custom_field_fecha_de_reporte_a_proveedor','fecha_de_reporte_a_proveedor','Fecha de reporte al proveedor']),
             'description'=>trim((string)($ticket['description'] ?? $ticket['title'] ?? '')),
+            'problem'=>$this->ticketField($ticket,['custom_field_problema','problema','Problema']),
             'serial_urovo'=>$type==='urovo' ? $this->ticketField($ticket,[self::UROVO_SERIAL_FIELD,'numero_de_serie_urovo','Número de serie UROVO','Numero de serie UROVO']) : '',
         ];
     }
@@ -114,6 +122,7 @@ class MojoTerminalTicketsService {
     public function validateForType(array $ticket, string $type, ?string $mojoType=null): bool {
         $form=(int)($ticket['ticket_form_id'] ?? 0); if (!$this->isOpen($ticket)) return false;
         if ($type==='urovo') return $form===self::SYSTEM_FORM && $this->normalizeTerminal($this->ticketField($ticket,['custom_field_problema','problema','Problema']))==='terminalurovo';
+        if ($type==='verifone') return $form===self::SYSTEM_FORM && in_array($this->ticketField($ticket,['custom_field_problema','problema','Problema']),self::VERIFONE_PROBLEMS,true);
         if ($form!==self::VALERAS_FORM) return false;
         $typeInTicket=$this->incidentDataFromTicket($ticket,$type)['type_terminal'];
         return $this->normalizeTerminal($typeInTicket)===$this->normalizeTerminal($mojoType ?: $type);
