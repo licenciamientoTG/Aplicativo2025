@@ -12,11 +12,10 @@
     <div class="col-md-5"><button type="submit" id="saveTerminalSettings" class="btn btn-primary w-100"><i data-feather="save"></i> Guardar configuración</button></div>
   </form>
   <hr class="my-4">
-  <div class="d-flex justify-content-between align-items-center gap-3 mb-1"><h5 class="card-title mb-0">Terminales internas</h5><span class="badge bg-primary">Siempre disponibles</span></div>
-  <p class="text-muted">Estas terminales no se administran como valeras y siempre aparecen en el inventario.</p>
-  <div class="row g-2 mb-3"><div class="col-md-6"><div class="terminal-setting-option"><span class="terminal-brand terminal-brand-urovo">UROVO</span><span>Urovo</span></div></div><div class="col-md-6"><div class="terminal-setting-option"><span class="terminal-brand terminal-brand-verifone">VERIFONE</span><span>Verifone</span></div></div></div>
+  <div class="d-flex justify-content-between align-items-center gap-3 mb-1"><h5 class="card-title mb-0">Terminales internas</h5><span class="badge bg-primary">Siempre disponible</span></div>
+  <p class="text-muted">UROVO siempre aparece en el inventario. Verifone se puede activar o desactivar en la lista de terminales disponibles.</p>
   <div class="d-flex justify-content-between align-items-center gap-3 mb-1"><h5 class="card-title mb-0">Valeras disponibles</h5><button type="button" id="openAddValera" class="btn btn-sm btn-outline-primary"><i data-feather="plus"></i> Agregar valera</button></div>
-  <p class="text-muted">Selecciona las valeras que deben aparecer en el inventario.</p>
+  <p class="text-muted">Selecciona las terminales que deben aparecer en el inventario.</p>
   <div class="row g-2">
     {% for code, valera in valeras %}<div class="col-md-6"><label class="terminal-setting-option"><input class="form-check-input" type="checkbox" name="valeras[]" value="{{ code }}" form="terminalSettingsForm" {{ code in enabledValeras ? 'checked' : '' }}><span class="terminal-brand terminal-brand-{{ code }}">{{ valera.logo }}</span><span>{{ valera.label }}</span></label></div>{% endfor %}
   </div>
@@ -24,7 +23,7 @@
   <hr class="my-4">
   <div class="terminal-settings-heading"><div><h5 class="card-title mb-1">Meta de terminales por estación y tipo</h5><p class="text-muted mb-0">Define la cantidad esperada de cada tipo activo. El total de estación se calcula con esas cantidades.</p></div></div>
   <div class="terminal-matrix-hint mt-3"><i data-feather="move"></i><span>Desplázate horizontalmente para ver todos los tipos. En celular, cada estación se muestra como una tarjeta.</span></div>
-  <div id="terminalStationTargets" class="table-responsive terminal-station-targets-wrap mt-2" data-station-targets='{{ stationTargets|default([])|json_encode|e("html_attr") }}' data-valeras='{{ valeras|default({})|json_encode|e("html_attr") }}' data-enabled-valeras='{{ enabledValeras|default([])|merge(['verifone'])|json_encode|e("html_attr") }}'>
+  <div id="terminalStationTargets" class="table-responsive terminal-station-targets-wrap mt-2" data-station-targets='{{ stationTargets|default([])|json_encode|e("html_attr") }}' data-valeras='{{ valeras|default({})|json_encode|e("html_attr") }}' data-enabled-valeras='{{ enabledValeras|default([])|json_encode|e("html_attr") }}'>
     <table class="table align-middle mb-0 terminal-station-targets"><thead></thead><tbody></tbody></table>
   </div>
 </div></div></div></div>
