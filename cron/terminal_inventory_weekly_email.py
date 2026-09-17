@@ -219,11 +219,11 @@ def main() -> int:
             print("No hay incidencias abiertas; no se envía correo.")
             return 0
         sent_at = datetime.now()
-        urovo_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() == "urovo"]
-        valera_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() != "urovo"]
-        send_email(recipients("TERMINAL_EMAIL_TO_1"), urovo_rows, sent_at, "Urovo", args.dry_run)
+        internal_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() in {"urovo", "verifone"}]
+        valera_rows = [row for row in rows if str(row.get("tipo_terminal", "")).strip().lower() not in {"urovo", "verifone"}]
+        send_email(recipients("TERMINAL_EMAIL_TO_1"), internal_rows, sent_at, "Urovo y Verifone", args.dry_run)
         send_email(recipients("TERMINAL_EMAIL_TO_2"), valera_rows, sent_at, "valeras", args.dry_run)
-        print(f"Se enviaron dos reportes: {len(urovo_rows)} Urovo y {len(valera_rows)} valeras.")
+        print(f"Se enviaron dos reportes: {len(internal_rows)} Urovo/Verifone y {len(valera_rows)} valeras.")
         return 0
     except Exception as exc:  # el programador del servidor verá un código distinto de cero
         print(f"ERROR: {exc}", file=sys.stderr)
