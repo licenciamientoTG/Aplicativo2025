@@ -13,7 +13,7 @@
   </form>
   <hr class="my-4">
   <div class="d-flex justify-content-between align-items-center gap-3 mb-1"><h5 class="card-title mb-0">Valeras disponibles</h5><button type="button" id="openAddValera" class="btn btn-sm btn-outline-primary"><i data-feather="plus"></i> Agregar valera</button></div>
-  <p class="text-muted">Selecciona las valeras que deben aparecer en el inventario. Urovo siempre permanece disponible.</p>
+  <p class="text-muted">Selecciona las valeras que deben aparecer en el inventario. Urovo y Verifone siempre permanecen disponibles.</p>
   <div class="row g-2">
     {% for code, valera in valeras %}<div class="col-md-6"><label class="terminal-setting-option"><input class="form-check-input" type="checkbox" name="valeras[]" value="{{ code }}" form="terminalSettingsForm" {{ code in enabledValeras ? 'checked' : '' }}><span class="terminal-brand terminal-brand-{{ code }}">{{ valera.logo }}</span><span>{{ valera.label }}</span></label></div>{% endfor %}
   </div>
@@ -21,7 +21,7 @@
   <hr class="my-4">
   <div class="terminal-settings-heading"><div><h5 class="card-title mb-1">Meta de terminales por estación y tipo</h5><p class="text-muted mb-0">Define la cantidad esperada de cada tipo activo. El total de estación se calcula con esas cantidades.</p></div></div>
   <div class="terminal-matrix-hint mt-3"><i data-feather="move"></i><span>Desplázate horizontalmente para ver todos los tipos. En celular, cada estación se muestra como una tarjeta.</span></div>
-  <div id="terminalStationTargets" class="table-responsive terminal-station-targets-wrap mt-2" data-station-targets='{{ stationTargets|default([])|json_encode|e("html_attr") }}' data-valeras='{{ valeras|default({})|json_encode|e("html_attr") }}' data-enabled-valeras='{{ enabledValeras|default([])|json_encode|e("html_attr") }}'>
+  <div id="terminalStationTargets" class="table-responsive terminal-station-targets-wrap mt-2" data-station-targets='{{ stationTargets|default([])|json_encode|e("html_attr") }}' data-valeras='{{ valeras|default({})|json_encode|e("html_attr") }}' data-enabled-valeras='{{ enabledValeras|default([])|merge(['verifone'])|json_encode|e("html_attr") }}'>
     <table class="table align-middle mb-0 terminal-station-targets"><thead></thead><tbody></tbody></table>
   </div>
 </div></div></div></div>
