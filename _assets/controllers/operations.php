@@ -3166,12 +3166,12 @@ class Operations{
         }
         return $types;
     }
-    private function terminalValeraTypes(): array { $types=$this->terminalTypeCatalog(); unset($types['urovo'],$types['verifone']); return $types; }
+    private function terminalValeraTypes(): array { $types=$this->terminalTypeCatalog(); unset($types['urovo']); return $types; }
     private function terminalTypes(): array {
         $catalog=$this->terminalTypeCatalog();
         $enabled=array_filter(array_map('trim',explode(',',(string)($this->terminalSettings()['valeras_habilitadas'] ?? ''))));
-        $types=['urovo'=>$catalog['urovo'],'verifone'=>$catalog['verifone']];
-        foreach ($enabled as $type) if (isset($catalog[$type]) && !in_array($type,['urovo','verifone'],true)) $types[$type]=$catalog[$type];
+        $types=['urovo'=>$catalog['urovo']];
+        foreach ($enabled as $type) if (isset($catalog[$type]) && $type!=='urovo') $types[$type]=$catalog[$type];
         return $types;
     }
     private function terminalExpectedTargets(array $targets, array $allowedTypes, bool $requireCompleteMatrix=false): array {
@@ -3394,7 +3394,7 @@ class Operations{
             $rawTargets=$_POST['station_targets'] ?? null;
             $targets=$rawTargets===null ? [] : (is_string($rawTargets) ? json_decode($rawTargets,true) : $rawTargets);
             if (!is_array($targets)) { $this->terminalJsonError('Las metas por estación no son válidas.'); return; }
-            $allowedTypes=['urovo'=>true,'verifone'=>true]; foreach ($enabled as $type) $allowedTypes[$type]=true;
+            $allowedTypes=['urovo'=>true]; foreach ($enabled as $type) $allowedTypes[$type]=true;
             try { $validated=$this->terminalExpectedTargets($targets,$allowedTypes,true); }
             catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage()); return; }
             try { $this->terminalInventoryModel->saveSettingsWithStationExpectedCounts($day,$enabled,$validated,(int)$_SESSION['tg_user']['Id']); json_output(['success'=>true]); }
