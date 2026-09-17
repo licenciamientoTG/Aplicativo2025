@@ -411,6 +411,8 @@ public function balance_age()
     }
 
     public function client_vehicles_balance() : void {
+        set_time_limit(300);
+        ini_set('max_execution_time', 300);
         $data = [];
         $codcli = (int)($_POST['codcli'] ?? 0);
         if ($vehicles = $this->vehiclesModel->getVehiclesBalanceByClient($codcli)) {
@@ -422,9 +424,13 @@ public function balance_age()
                     'debsdo'       => $v['debsdo'],
                     'cliente'      => $v['cliente'],
                     'debglo'       => $v['debglo'],
-                    'saldo_global'   => $v['saldo_global'],
-                    'ultima_carga'   => $v['ultima_carga'],
-                    'ultimo_consumo' => $v['ultimo_consumo'],
+                    'saldo_global'        => $v['saldo_global'],
+                    'ultima_carga'        => $v['ultima_carga'],
+                    'ultima_carga_serie'  => $v['ultima_carga_serie'],
+                    'ultima_carga_folio'  => $v['ultima_carga_folio'],
+                    'ultimo_consumo'      => $v['ultimo_consumo'],
+                    'ultimo_consumo_serie'=> $v['ultimo_consumo_serie'],
+                    'ultimo_consumo_folio'=> $v['ultimo_consumo_folio'],
                 ];
             }
         }
@@ -436,6 +442,7 @@ public function balance_age()
             'saldo_global_negativo' => $this->clientesModel->get_debit_negative_global_balance() ?: [],
             'vehiculos_negativos'   => $this->clientesModel->get_debit_negative_vehicle_balance() ?: [],
             'ultima_carga'          => $this->clientesModel->get_debit_last_topup() ?: [],
+            'factura_global_mal_ligada' => $this->vehiclesModel->getClientsWithMisroutedGlobalInvoice() ?: [],
         ]);
     }
 

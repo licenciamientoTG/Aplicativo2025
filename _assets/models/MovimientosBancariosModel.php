@@ -943,6 +943,23 @@ class MovimientosBancariosModel extends Model
     }
 
     /**
+     * Huella común a los dos layouts de Bankaool (v1 y v2): solo los campos
+     * que ambos traen IGUALES para el mismo movimiento real. Bankaool
+     * reexporta un movimiento ya reportado con textos y columnas distintas
+     * según el layout usado (v1 describe desde el banco emisor y trae saldo;
+     * v2 describe desde la contraparte y no trae saldo) — descripcion,
+     * concepto y saldo NO entran a la huella por eso; cuenta+fecha+hora+
+     * referencia+monto firmado sí basta (verificado contra los 986
+     * movimientos ya importados: nunca colisiona más de 2 filas, y las 135
+     * colisiones de 2 son siempre el mismo movimiento real en ambos
+     * layouts).
+     */
+    private static function huella_bankaool(string $cuenta, string $fecha, string $hora, string $referencia, float $montoFirmado): string
+    {
+        return sha1('BANKAOOL|' . implode('|', [$cuenta, $fecha, $hora, trim($referencia), sprintf('%.2f', $montoFirmado)]));
+    }
+
+    /**
      * Parsea el export de movimientos de Bankaool. Bankaool tiene dos
      * layouts en circulación (mismo banco, mismo botón de subida — ver
      * BANCOS en el controlador): se detecta cuál es por sus encabezados y se
@@ -1049,10 +1066,17 @@ class MovimientosBancariosModel extends Model
                 'rfc_contraparte'    => null,
                 'clave_rastreo'      => mb_substr(self::limpia(self::celda($hoja, "F$f")), 0, 40) ?: null,
                 'descripcion_larga'  => null,
-                'huella'             => sha1('BANKAOOL|' . implode('|', [
-                    $cuenta, $fechaRaw, $descripcion, self::celda($hoja, "C$f"),
-                    sprintf('%.2f', $monto), sprintf('%.2f', $saldo),
-                ])),
+                // Huella compartida con v2 (ver parse_bankaool_xlsx_v2): solo
+                // cuenta+fecha+hora+referencia+monto con signo, los únicos
+                // campos que ambos layouts traen igual para el mismo
+                // movimiento real. NO incluye descripcion/concepto/saldo:
+                // Bankaool re-exporta el mismo movimiento con textos y
+                // columnas distintas según el layout (v1 describe desde el
+                // banco emisor, v2 desde la contraparte, y solo v1 trae
+                // saldo), así que incluirlos rompía el dedup y duplicaba 135
+                // movimientos al resubir en el otro formato (detectado
+                // 2026-09-15).
+                'huella'             => self::huella_bankaool($cuenta, $momento->format('Y-m-d'), $momento->format('H:i'), self::celda($hoja, "C$f"), $monto),
             ];
         }
 
@@ -1169,10 +1193,11 @@ class MovimientosBancariosModel extends Model
                 'rfc_contraparte'    => null,
                 'clave_rastreo'      => $claveRastreo ?: null,
                 'descripcion_larga'  => null,
-                'huella'             => sha1('BANKAOOL|' . implode('|', [
-                    $cuenta, $fecha, $hora, $tipo, $descripcion, $referencia,
-                    sprintf('%.2f', $monto),
-                ])),
+                // Ver comentario de huella en parse_bankaool_xlsx_v1: misma
+                // fórmula, compartida a propósito para que el mismo
+                // movimiento re-exportado en el otro layout se reconozca
+                // como duplicado.
+                'huella'             => self::huella_bankaool($cuenta, $fecha, $hora, $referencia, $esCargo ? -$monto : $monto),
             ];
         }
 

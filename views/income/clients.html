@@ -125,20 +125,68 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h5 class="card-title">Vehículos y Saldo — Cliente Débito</h5></div>
+                    <div class="card-header">
+                        <h5 class="card-title">
+                            <a href="#vehicles_debit_info" data-bs-toggle="collapse" class="text-decoration-none" aria-expanded="false" aria-controls="vehicles_debit_info">
+                                Vehículos y Saldo — Cliente Débito
+                                <i class="fas fa-info-circle text-muted" title="¿De dónde viene Última Carga / Último Consumo?"></i>
+                            </a>
+                        </h5>
+                        <div class="collapse" id="vehicles_debit_info">
+                            <div class="row g-2 mt-1 mb-1">
+                                <div class="col-md-6">
+                                    <div class="border rounded p-2 h-100" style="border-color:#0095DA55 !important; background:#0095DA0d;">
+                                        <div class="d-flex align-items-center mb-1">
+                                            <i class="fas fa-file-invoice-dollar me-2" style="color:#0095DA;"></i>
+                                            <strong style="color:#0095DA;">Última Carga</strong>
+                                        </div>
+                                        <small class="text-muted">
+                                            Fecha de la <strong>última factura de anticipo</strong> pagada por el cliente
+                                            (tablas <code>DocumentosC</code> / <code>Documentos</code> de SG12). Es dinero
+                                            que el cliente <em>depositó</em> a su bolsa. Misma fuente que el tab
+                                            "Edo. Cuenta Débito → Anticipos".
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="border rounded p-2 h-100" style="border-color:#00955955 !important; background:#0095590d;">
+                                        <div class="d-flex align-items-center mb-1">
+                                            <i class="fas fa-gas-pump me-2" style="color:#009559;"></i>
+                                            <strong style="color:#009559;">Último Consumo</strong>
+                                        </div>
+                                        <small class="text-muted">
+                                            Fecha del último <strong>despacho</strong> (carga de combustible) del cliente
+                                            en cualquier estación (tabla <code>Despachos</code> de SG12). Es lo que el
+                                            cliente <em>gastó</em> de su bolsa. Misma fuente que el tab "Consumos Débito".
+                                            <span class="d-block mt-1">
+                                                <i class="fas fa-shield-alt"></i>
+                                                Solo se considera el despacho más reciente cuya factura
+                                                (<code>nrofac</code>) sea <strong>serie E</strong>
+                                                (1300000000–1399999999). Un despacho con factura de otra serie, o
+                                                sin facturar aún, no se muestra en "Último Consumo" ni en "Factura
+                                                Consumo".
+                                            </span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="card-body table-responsive">
                         <table id="vehicles_debit_table" class="table table-hover table-sm w-100">
                             <thead>
                                 <tr>
                                     <th>Código</th><th>Cliente</th><th>Tarjeta</th><th>Vehículo</th><th>Saldo</th>
-                                    <th>Saldo Global</th><th>Saldo Global</th><th>Última Carga</th><th>Último Consumo</th>
+                                    <th>Saldo Global</th><th>Saldo Global</th>
+                                    <th>Última Carga</th><th>Factura Anticipo</th>
+                                    <th>Último Consumo</th><th>Factura Consumo</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
                             <tfoot>
                                 <tr>
                                     <th></th><th></th><th></th><th class="text-end">Total</th><th></th>
-                                    <th></th><th></th><th></th><th></th>
+                                    <th></th><th></th><th></th><th></th><th></th><th></th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -204,6 +252,35 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <table id="dashboard_ultima_carga_table" class="table table-hover table-sm w-100">
                             <thead>
                                 <tr><th>Código</th><th>Cliente</th><th>Saldo Global</th><th>Última Carga</th><th>Días sin Cargar</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title text-danger">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Despachos ligados por error a otro cliente <span class="badge bg-danger" id="count_factura_global_mal_ligada">0</span>
+                        </h5>
+                        <small class="text-muted">
+                            Despachos de clientes débito cuya factura (<code>nrofac</code>) quedó capturada a nombre de
+                            <strong>otro cliente</strong> — la <strong>Factura Global</strong> (código 21701354) o un tercero
+                            distinto — en vez del propio cliente del despacho. Normalmente es un error de captura del
+                            despachador. <strong>No depende de la serie del folio</strong> (puede ser Z, T, D, E, etc. —
+                            la serie solo indica el rango del número de documento, no a quién pertenece la factura).
+                            Estos despachos se excluyen del cálculo de "Último Consumo" en la pestaña "Consulta por
+                            Cliente" porque no reflejan un consumo de débito facturado correctamente.
+                        </small>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table id="dashboard_factura_global_mal_ligada_table" class="table table-hover table-sm w-100">
+                            <thead>
+                                <tr>
+                                    <th>Código</th><th>Cliente</th><th>Nro. Despacho</th><th>Nro. Factura</th>
+                                    <th>Tipo de Error</th><th>Ligado a</th><th>Fecha Despacho</th>
+                                </tr>
                             </thead>
                             <tbody></tbody>
                         </table>
