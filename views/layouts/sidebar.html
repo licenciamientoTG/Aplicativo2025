@@ -203,6 +203,30 @@
 
       {% endif %}
 
+      {% if authorized(98) %}
+      <li class="sidebar-header">PETROTAL</li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/petrotal/volumetricos">
+          <i data-feather="upload-cloud"></i>
+          <span class="align-middle">Reporte CNE / Volumétricos</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/petrotal/historial">
+          <i data-feather="archive"></i>
+          <span class="align-middle">Historial de envíos</span>
+        </a>
+      </li>
+      {% if authorized(99) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/petrotal/configuracion_fiel">
+          <i data-feather="key"></i>
+          <span class="align-middle">Configuración FIEL</span>
+        </a>
+      </li>
+      {% endif %}
+      {% endif %}
+
       {% if authorized(7) %} {# Ver módulo de Administración #}
       <li class="sidebar-header">ADMINISTRACIÓN</li>
       {% if authorized(8) %}
