@@ -88,4 +88,30 @@ foreach ($reporte['advertencias'] as $a) echo "  [{$a['tipo']}] {$a['mensaje']}\
 $sumaRegularVentas = array_sum(array_map(fn($v) => $v['producto_label'] === 'Regular' ? $v['volumen_bbl'] : 0, $reporte['ventas']));
 echo "Suma Regular ventas: $sumaRegularVentas (acuse semana 21-27ago declaró 1460.73 bbl)\n";
 
+echo "\n--- CRUD PetrotalReportesObligacion ---\n";
+$idPrueba = $model->crear_envio('2099-01-05', '2099-01-11', 1); // periodo ficticio para no chocar con datos reales
+echo "Creado Id=$idPrueba\n";
+
+$envio = $model->buscar_envio_periodo('2099-01-05', '2099-01-11');
+$ok = $envio && $envio['Estado'] === 'borrador';
+echo ($ok ? "OK  " : "FAIL") . " buscar_envio_periodo devuelve Estado=borrador\n";
+if (!$ok) $fallos++;
+
+$actualizado = $model->actualizar_envio($idPrueba, ['Estado' => 'enviado', 'FolioAcuse' => 'TEST123']);
+echo ($actualizado ? "OK  " : "FAIL") . " actualizar_envio retorna true\n";
+if (!$actualizado) $fallos++;
+
+$envioActualizado = $model->obtener_envio($idPrueba);
+$ok2 = $envioActualizado && $envioActualizado['Estado'] === 'enviado' && $envioActualizado['FolioAcuse'] === 'TEST123';
+echo ($ok2 ? "OK  " : "FAIL") . " obtener_envio refleja el cambio\n";
+if (!$ok2) $fallos++;
+
+// Limpieza del registro de prueba
+// Nota: MySqlPdoHandler::update() exige la palabra "update" en la consulta
+// (ver stristr en su implementación), así que un DELETE debe pasar por
+// delete(), no por update() — de lo contrario devuelve false sin ejecutar.
+$eliminado = $model->sql->delete("DELETE FROM TG.dbo.PetrotalReportesObligacion WHERE Id = ?", [$idPrueba]);
+echo ($eliminado ? "OK  " : "FAIL") . " Registro de prueba Id=$idPrueba eliminado.\n";
+if (!$eliminado) $fallos++;
+
 echo $fallos === 0 ? "\nTodos los casos pasaron.\n" : "\n$fallos caso(s) fallaron.\n";

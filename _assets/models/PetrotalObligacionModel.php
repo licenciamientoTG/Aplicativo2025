@@ -199,4 +199,50 @@ class PetrotalObligacionModel extends Model {
             'descripcion_original' => $fila['Descripcion'],
         ];
     }
+
+    // La tabla vive en TG (creada por la migración del Task 1 sin pasar por
+    // Model::connect), pero este modelo conecta a SG12 en su constructor
+    // (Model::__construct) — igual que obtener_facturas_venta/compra, hay
+    // que calificar el nombre con TG.dbo. explícitamente en cada consulta.
+    public function crear_envio(string $desde, string $hasta, int $usuarioId): int {
+        $id = $this->sql->insert(
+            "INSERT INTO TG.dbo.PetrotalReportesObligacion (PeriodoDesde, PeriodoHasta, Estado, UsuarioId) VALUES (?, ?, 'borrador', ?)",
+            [$desde, $hasta, $usuarioId]
+        );
+        return (int) $id;
+    }
+
+    public function actualizar_envio(int $id, array $campos): bool {
+        $columnasPermitidas = ['Estado', 'RutaJson', 'RutaAcuse', 'FolioAcuse', 'RespuestaRaw', 'FechaEnvio'];
+        $sets = [];
+        $params = [];
+        foreach ($campos as $columna => $valor) {
+            if (!in_array($columna, $columnasPermitidas, true)) continue;
+            $sets[] = "{$columna} = ?";
+            $params[] = $valor;
+        }
+        if (!$sets) return false;
+        $sets[] = "UpdatedAt = GETDATE()";
+        $params[] = $id;
+
+        $query = "UPDATE TG.dbo.PetrotalReportesObligacion SET " . implode(', ', $sets) . " WHERE Id = ?";
+        return (bool) $this->sql->update($query, $params);
+    }
+
+    public function buscar_envio_periodo(string $desde, string $hasta): ?array {
+        $rows = $this->sql->select(
+            "SELECT * FROM TG.dbo.PetrotalReportesObligacion WHERE PeriodoDesde = ? AND PeriodoHasta = ?",
+            [$desde, $hasta]
+        );
+        return $rows[0] ?? null;
+    }
+
+    public function listar_envios(): array {
+        return $this->sql->select("SELECT * FROM TG.dbo.PetrotalReportesObligacion ORDER BY PeriodoDesde DESC", []) ?: [];
+    }
+
+    public function obtener_envio(int $id): ?array {
+        $rows = $this->sql->select("SELECT * FROM TG.dbo.PetrotalReportesObligacion WHERE Id = ?", [$id]);
+        return $rows[0] ?? null;
+    }
 }
