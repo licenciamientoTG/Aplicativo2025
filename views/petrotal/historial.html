@@ -1,0 +1,47 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Historial de envíos Petrotal{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Historial de envíos — Reporte CNE Petrotal{% endblock %}
+{% block content %}
+<div class="container-fluid p-0">
+  <h1 class="h3 mb-3">Historial de envíos — Reporte CNE Petrotal</h1>
+
+  <div class="card">
+    <div class="card-body">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Periodo</th>
+            <th>Estado</th>
+            <th>Folio acuse</th>
+            <th>Fecha de envío</th>
+            <th>Archivos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for envio in envios %}
+          <tr>
+            <td>{{ envio.PeriodoDesde }} al {{ envio.PeriodoHasta }}</td>
+            <td>{{ envio.Estado }}</td>
+            <td>{{ envio.FolioAcuse ?? '-' }}</td>
+            <td>{{ envio.FechaEnvio ?? '-' }}</td>
+            <td>
+              {% if envio.RutaJson %}
+              <a href="/petrotal/descargar_json/{{ envio.Id }}" class="btn btn-sm btn-outline-secondary">JSON</a>
+              {% endif %}
+              {% if envio.RutaAcuse %}
+              <a href="/petrotal/descargar_acuse/{{ envio.Id }}" class="btn btn-sm btn-outline-primary">Acuse</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center">Sin envíos registrados.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block myjs %}{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Reporte CNE - Volumétricos Petrotal{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Reporte CNE / Volumétricos Petrotal{% endblock %}
+{% block content %}
+<div class="container-fluid p-0">
+  <h1 class="h3 mb-3">Reporte CNE / Volumétricos Petrotal</h1>
+
+  <div class="card">
+    <div class="card-body">
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+          <label class="form-label">Desde</label>
+          <input type="date" id="periodo_desde" class="form-control" value="{{ desdeSugerido }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label">Hasta</label>
+          <input type="date" id="periodo_hasta" class="form-control" value="{{ hastaSugerido }}">
+        </div>
+        <div class="col-auto">
+          <button type="button" id="btn_preview" class="btn btn-primary">Generar vista previa</button>
+        </div>
+      </div>
+
+      <div id="advertencias_container"></div>
+
+      <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab_ventas">Ventas</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab_compras">Compras</a></li>
+      </ul>
+      <div class="tab-content mt-3">
+        <div class="tab-pane fade show active" id="tab_ventas">
+          <table class="table table-sm" id="tabla_ventas">
+            <thead>
+              <tr><th>Fecha</th><th>Folio</th><th>Producto</th><th>Cliente</th><th>Permiso CRE</th><th>Volumen (bbl)</th><th>Precio</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="tab-pane fade" id="tab_compras">
+          <table class="table table-sm" id="tabla_compras">
+            <thead>
+              <tr><th>Fecha</th><th>Folio</th><th>Producto</th><th>Proveedor</th><th>Permiso COM</th><th>Volumen (bbl)</th><th>Precio</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <button type="button" id="btn_generar_json" class="btn btn-secondary" disabled>Generar JSON</button>
+        <button type="button" id="btn_enviar_cne" class="btn btn-success" disabled>Enviar a CNE</button>
+      </div>
+
+      <pre id="json_preview" class="mt-3 bg-light p-3" style="display:none; max-height: 400px; overflow: auto;"></pre>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block myjs %}
+<script src="{{ JS }}petrotal.js"></script>
+{% endblock %}

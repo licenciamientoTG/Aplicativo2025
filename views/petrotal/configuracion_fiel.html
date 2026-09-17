@@ -1,0 +1,37 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Configuración FIEL Petrotal{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Configuración FIEL Petrotal{% endblock %}
+{% block content %}
+<div class="container-fluid p-0">
+  <h1 class="h3 mb-3">Configuración FIEL Petrotal</h1>
+
+  <div class="card">
+    <div class="card-body">
+      {% if configActual %}
+      <div class="alert alert-info">
+        Ya existe una FIEL configurada (ruta: {{ configActual.ruta_cer }}). Al subir una nueva, se reemplaza.
+      </div>
+      {% endif %}
+
+      <form action="/petrotal/guardar_fiel" method="POST" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label">Archivo .cer</label>
+          <input type="file" name="cerFile" class="form-control" accept=".cer" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Archivo .key</label>
+          <input type="file" name="keyFile" class="form-control" accept=".key" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password de la llave privada</label>
+          <input type="password" name="password" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block myjs %}{% endblock %}
