@@ -196,9 +196,10 @@ $(function () {
                     if (!typeResponse.success) return;
                     $(stationChild).data('loaded', true).find('.terminal-tree-child-panel').html(typeRows(typeResponse.types || [], stationRow.data('inventory-id')));
                     if (window.feather) feather.replace();
-                    if (!focusType) return;
-                    const typeRow = $(stationChild).find('.terminal-type-row').filter(function () { return String($(this).data('type')) === focusType; }).first();
-                    if (typeRow.length) typeRow.trigger('click');
+                    const typeRowsToOpen = focusType
+                        ? $(stationChild).find('.terminal-type-row').filter(function () { return String($(this).data('type')) === focusType; })
+                        : $(stationChild).find('.terminal-type-row');
+                    typeRowsToOpen.each(function () { $(this).trigger('click'); });
                 });
                 if (window.feather) feather.replace();
             });
