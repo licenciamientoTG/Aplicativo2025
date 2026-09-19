@@ -39,6 +39,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_debit" type="button">Edo. Cuenta Débito</button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_debit_foto" type="button">Estado de Cuenta Foto</button>
+    </li>
 </ul>
 
 <div class="tab-content">
@@ -643,6 +646,54 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
     </div>
 
+    {# ── TAB 7: ESTADO DE CUENTA FOTO ── #}
+    <div class="tab-pane" id="edo_debit_foto" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        <button id="btn_debit_snapshot" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Consultar Foto
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <span class="text-muted">
+                            Fecha de la foto: <strong id="debit_snapshot_fecha">—</strong>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">
+                    Estado de Cuenta Foto — Todos los Clientes Débito
+                    <a href="#" class="ms-1" data-bs-toggle="modal" data-bs-target="#modal_info_debit_snapshot" title="¿De dónde viene esta información?">
+                        <i class="fas fa-question-circle"></i>
+                    </a>
+                </h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="debit_snapshot_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Código</th><th>Cliente</th><th>Saldo Inicial</th>
+                            <th>Anticipos (día)</th><th>Consumos (día)</th>
+                            <th>Saldo Final</th><th>Saldo Sistema</th><th>Saldo Vehículos</th>
+                            <th>Fecha Foto</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 {# ── Modal: origen de la información del resumen crédito ── #}
@@ -825,6 +876,64 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <i class="fas fa-info-circle"></i> El total del pie de la tabla suma únicamente los
                     renglones visibles con los filtros aplicados.
                 </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Modal: origen de la información de la foto ── #}
+<div class="modal fade" id="modal_info_debit_snapshot" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-question-circle"></i> ¿De dónde viene esta información?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    Esta tabla es una <strong>foto guardada</strong>, no un cálculo en vivo: se genera una vez
+                    al día por una tarea programada (madrugada) y aquí solo se lee lo ya guardado en
+                    <code>TG.dbo.debit_clients_snapshot</code>. Se creó porque calcular esto en vivo para los
+                    ~4,000 clientes débito activos tarda 30-48 segundos.
+                </p>
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr><th style="width:22%">Columna</th><th>Origen</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Saldo Inicial</strong></td>
+                            <td>Anticipos menos consumos de <strong>todo el histórico</strong> del cliente antes
+                                del día de la foto.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Anticipos (día) / Consumos (día)</strong></td>
+                            <td>Solo del día en que se generó la foto (no acumulado del mes o año), para que la
+                                foto no cambie en días sin movimiento.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Saldo Final</strong></td>
+                            <td>Saldo Inicial + Anticipos (día) − Consumos (día).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Saldo Sistema</strong></td>
+                            <td>Bolsa actual del cliente (<code>debsdo</code>) al momento de generar la foto.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Saldo Vehículos</strong></td>
+                            <td>Suma del saldo individual de sus vehículos/tarjetas (<code>ClientesVehiculos.debsdo</code>)
+                                al momento de generar la foto.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Fecha Foto</strong></td>
+                            <td>Día en que se calculó esta fila. Si un cliente no tuvo ningún cambio desde
+                                entonces, la fecha se mantiene aunque hayan pasado varios días.</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
