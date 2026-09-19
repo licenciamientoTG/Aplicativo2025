@@ -151,3 +151,62 @@ cliente. Se conecta al botón nuevo por su propio `id`, sin tocar
 - No hay selector de fecha de foto en la UI por ahora (siempre la vigente
   más reciente); se puede agregar después si se necesita ver una fecha
   pasada, ya que el esquema de vigencia ya lo soporta a nivel de datos.
+
+## Despliegue
+
+Implementación completa en el worktree `worktree-debit-clients-snapshot`
+(6 tareas funcionales, todas revisadas): tabla, cálculo diario + backfill,
+endpoint de refresh + cron script, endpoint de lectura, tab UI, JS.
+
+**Backfill inicial — ya corrido contra la BD real.** TG y SG12 viven en
+192.168.0.6, la misma base de datos que usa tanto este entorno de
+desarrollo como el servidor de producción — no hay una BD de staging
+separada. El backfill (Task 2) y una corrida posterior del cron real
+(Task 3, dos días después) ya escribieron contra esa base:
+`TG.dbo.debit_clients_snapshot` tiene 4,778 clientes débito con su fila
+vigente al 2026-09-19. Esto significa que **el backfill único que pedía
+Task 7 Step 2 ya está hecho** independientemente de cuándo se suba el
+código PHP al servidor IIS — subir el código no dispara ningún cambio de
+datos, solo lo hace correr `cron/debit_snapshot_diario.php` o el endpoint.
+
+**Pendiente del lado del usuario (no ejecutado por el agente):**
+1. Subir al servidor de producción, siguiendo el flujo manual de deploy
+   habitual: `_assets/models/ClientesModel.php`,
+   `_assets/controllers/income.php`, `views/income/clients.html`,
+   `_assets/js/income.js`, `cron/debit_snapshot_diario.php`,
+   `docs/sql/debit_clients_snapshot_schema.sql` (este último ya se
+   ejecutó contra la BD real en Task 1 — subirlo es solo para que quede
+   versionado junto al resto, no hace falta re-ejecutarlo).
+2. Verificar en el navegador (`/income/clients` → tab "Estado de Cuenta
+   Foto") que el tab nuevo funciona: aparece en la barra de tabs, el botón
+   "Consultar Foto" trae las ~4,778 filas, el pie totaliza, exporta a
+   Excel, y el tab "Edo. Cuenta Débito" original sigue igual que antes.
+3. Configurar la Tarea Programada de Windows para el refresco diario.
+
+### Tarea Programada de Windows — pasos
+
+```
+1. Abrir "Programador de tareas" en el servidor donde vive el sitio (IIS).
+2. Crear tarea básica:
+   - Nombre: TotalGas - Snapshot diario clientes débito
+   - Desencadenador: Diariamente, 06:00 AM
+   - Acción: Iniciar un programa
+     Programa/script: php
+     Agregar argumentos: C:\ruta\real\AplicativoPhp\cron\debit_snapshot_diario.php
+     Iniciar en: C:\ruta\real\AplicativoPhp
+3. En Configuración, marcar "Ejecutar con los privilegios más altos" si el
+   usuario que ejecuta la tarea lo requiere para acceder a la red (la
+   conexión TCP normal a 192.168.0.6, sin linked servers de por medio).
+4. Probar con clic derecho → Ejecutar, y verificar en
+   TG.dbo.debit_clients_snapshot que updated_at se refresca en las filas
+   que cambiaron ese día.
+```
+
+**Nota sobre timezone (hallazgo de Tasks 2/3):** el entorno de desarrollo
+donde se corrieron las pruebas resolvía `date.timezone` de PHP CLI a
+`Europe/Berlin`, no a la zona horaria real de la app. Antes de confiar en
+que la tarea programada calcule bien "hoy" cerca de medianoche, verificar
+en el servidor real con `php -i | grep date.timezone` que coincide con la
+zona horaria esperada. Como la tarea corre a las 06:00 AM (lejos de
+medianoche), un desfase de pocas horas no debería mover el día calculado,
+pero vale la pena confirmarlo una vez desplegado.
