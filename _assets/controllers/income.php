@@ -586,6 +586,44 @@ public function balance_age()
         ]);
     }
 
+    /**
+     * ¿La petición viene del cron con token válido? Mismo patrón que
+     * Merma::isCron() en _assets/controllers/merma.php.
+     */
+    private function isCronDebitSnapshot(): bool
+    {
+        $token = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
+        return defined('CRON_SECRET') && $token === CRON_SECRET;
+    }
+
+    /**
+     * Genera/actualiza la foto del día en TG.dbo.debit_clients_snapshot para
+     * todos los clientes débito activos. Autoriza por cron_token (tarea
+     * programada diaria) o por sesión iniciada (corrida manual desde
+     * navegador/CLI autenticado). POST /income/debit_snapshot_refresh
+     */
+    public function debit_snapshot_refresh(): void
+    {
+        set_time_limit(0);
+        if (!$this->isCronDebitSnapshot() && !isset($_SESSION['tg_user'])) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $fecha = $_POST['fecha'] ?? $_GET['fecha'] ?? date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            json_output(['success' => false, 'message' => 'Fecha inválida']);
+            return;
+        }
+        $resumen = array_merge(['success' => true], $this->clientesModel->refresh_debit_snapshot($fecha));
+        if (PHP_SAPI === 'cli') {
+            // Corrida por Task Scheduler: evita el warning "headers already
+            // sent" de json_output() (ya hubo un echo previo) — mismo criterio
+            // que Merma::sync_diario().
+            echo json_encode($resumen) . PHP_EOL;
+            exit($resumen['success'] ? 0 : 1);
+        }
+        json_output($resumen);
+    }
 
     /**
      * @return void
