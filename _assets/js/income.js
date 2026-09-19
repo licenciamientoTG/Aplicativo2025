@@ -3040,6 +3040,76 @@ function edo_debit_drill(drill, codcli, cliente) {
     });
 }
 
+// ── Estado de Cuenta Foto (snapshot diario, tab aislado) ────────────────────
+
+function debit_snapshot_table() {
+    if ($.fn.DataTable.isDataTable('#debit_snapshot_table')) {
+        $('#debit_snapshot_table').DataTable().destroy();
+        $('#debit_snapshot_table thead .filter').remove();
+    }
+
+    $('#debit_snapshot_table thead').prepend($('#debit_snapshot_table thead tr').clone().addClass('filter'));
+    $('#debit_snapshot_table thead tr.filter th').each(function (index) {
+        var col = $('#debit_snapshot_table thead th').length / 2;
+        if (index < col) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#debit_snapshot_table thead tr.filter th input').on('keyup change', function () {
+        $('#debit_snapshot_table').DataTable()
+            .column($(this).parent().index())
+            .search(this.value).draw();
+    });
+
+    var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
+    var moneyCols = [2, 3, 4, 5, 6, 7];
+
+    $('#debit_snapshot_table').DataTable({
+        ordering: true,
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        ajax: {
+            method: 'POST',
+            url: '/income/debit_snapshot_table',
+            timeout: 60000,
+            dataSrc: function (json) {
+                $('#debit_snapshot_fecha').text(json.fecha_foto || '—');
+                return json.data || [];
+            },
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No se pudo consultar la foto.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        columns: [
+            { data: 'codcli' },
+            { data: 'cliente',        className: 'text-nowrap' },
+            { data: 'saldo_inicial',   render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'anticipos_dia',   render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'consumos_dia',    render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'saldo_final',     render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'saldo_sistema',   render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'saldo_vehiculos', render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'fecha_desde',     className: 'text-center' },
+        ],
+        deferRender: true,
+        initComplete: function () { $('.table-responsive').removeClass('loading'); },
+        footerCallback: function () {
+            var api = this.api();
+            moneyCols.forEach(function (idx) {
+                var total = api.column(idx, { search: 'applied' }).data()
+                    .reduce(function (a, b) { return (parseFloat(a) || 0) + (parseFloat(b) || 0); }, 0);
+                $(api.column(idx).footer()).html('$' + total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            });
+        }
+    });
+}
+
 // cargarGraficaDesdeController();
 
 /* =====================================================================
