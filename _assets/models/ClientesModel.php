@@ -1212,4 +1212,16 @@ public function get_debit_last_topup() : array|false {
     return $this->sql->select($query) ?: false;
 }
 
+/** Foto vigente (más reciente) de todos los clientes débito, para el tab "Estado de Cuenta Foto". */
+public function get_debit_snapshot() : array|false {
+    $this->sql->connect('TG');
+    $query = "
+        SELECT codcli, cliente, fecha_desde, saldo_inicial, anticipos_dia,
+               consumos_dia, saldo_final, saldo_sistema, saldo_vehiculos
+        FROM [TG].dbo.debit_clients_snapshot
+        WHERE fecha_hasta IS NULL
+        ORDER BY cliente";
+    return $this->sql->select($query) ?: false;
+}
+
 }

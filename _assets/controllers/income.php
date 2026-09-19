@@ -626,6 +626,23 @@ public function balance_age()
     }
 
     /**
+     * Lee la foto vigente de clientes débito (sin recalcular). Tab "Estado
+     * de Cuenta Foto" de /income/clients. POST /income/debit_snapshot_table
+     */
+    public function debit_snapshot_table(): void
+    {
+        $rows = $this->clientesModel->get_debit_snapshot() ?: [];
+        $fechaFoto = null;
+        foreach ($rows as $r) {
+            $f = $r['fecha_desde'];
+            if ($fechaFoto === null || $f > $fechaFoto) {
+                $fechaFoto = $f;
+            }
+        }
+        json_output(['data' => $rows, 'fecha_foto' => $fechaFoto]);
+    }
+
+    /**
      * @return void
      * @throws Exception
      */
