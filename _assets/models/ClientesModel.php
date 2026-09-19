@@ -1067,9 +1067,9 @@ public function refresh_debit_snapshot(string $fecha) : array {
             if ($actual['fecha_desde'] === $fecha) {
                 $affected = $this->sql->updateSafe(
                     "UPDATE [TG].dbo.debit_clients_snapshot
-                        SET saldo_inicial = ?, anticipos_dia = ?, consumos_dia = ?, saldo_final = ?, saldo_sistema = ?, saldo_vehiculos = ?, updated_at = GETDATE()
+                        SET cliente = ?, saldo_inicial = ?, anticipos_dia = ?, consumos_dia = ?, saldo_final = ?, saldo_sistema = ?, saldo_vehiculos = ?, updated_at = GETDATE()
                      WHERE id = ?",
-                    [$row['saldo_inicial'], $row['anticipos_dia'], $row['consumos_dia'],
+                    [$row['cliente'], $row['saldo_inicial'], $row['anticipos_dia'], $row['consumos_dia'],
                      $row['saldo_final'], $row['saldo_sistema'], $row['saldo_vehiculos'],
                      $actual['id']]
                 );
@@ -1082,7 +1082,7 @@ public function refresh_debit_snapshot(string $fecha) : array {
 
             $affected = $this->sql->updateSafe(
                 "UPDATE [TG].dbo.debit_clients_snapshot SET fecha_hasta = ? WHERE id = ?",
-                [$ayer, $actual['id']]
+                [max($ayer, $actual['fecha_desde']), $actual['id']]
             );
             if ($affected === false) {
                 throw new Exception("No se pudo cerrar la vigencia del cliente $codcli");

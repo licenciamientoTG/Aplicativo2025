@@ -598,14 +598,16 @@ public function balance_age()
 
     /**
      * Genera/actualiza la foto del día en TG.dbo.debit_clients_snapshot para
-     * todos los clientes débito activos. Autoriza por cron_token (tarea
-     * programada diaria) o por sesión iniciada (corrida manual desde
-     * navegador/CLI autenticado). POST /income/debit_snapshot_refresh
+     * todos los clientes débito activos. Solo ejecutable por CLI (Tarea
+     * Programada) con cron_token válido — nunca por HTTP/sesión, para que
+     * el token nunca viaje en una request ni quede en logs de IIS, y para
+     * que ningún usuario autenticado dispare esta transacción de ~100s
+     * desde el navegador. Ver cron/debit_snapshot_diario.php.
      */
     public function debit_snapshot_refresh(): void
     {
         set_time_limit(0);
-        if (!$this->isCronDebitSnapshot() && !isset($_SESSION['tg_user'])) {
+        if (PHP_SAPI !== 'cli' || !$this->isCronDebitSnapshot()) {
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }

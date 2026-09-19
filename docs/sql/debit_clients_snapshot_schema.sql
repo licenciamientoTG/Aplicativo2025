@@ -21,7 +21,8 @@ CREATE TABLE dbo.debit_clients_snapshot (
     saldo_sistema   DECIMAL(18,2)  NOT NULL,
     saldo_vehiculos DECIMAL(18,2)  NOT NULL,
     updated_at      DATETIME       NOT NULL DEFAULT GETDATE(),
-    CONSTRAINT UQ_debit_snapshot_cliente_desde UNIQUE (codcli, fecha_desde)
+    CONSTRAINT UQ_debit_snapshot_cliente_desde UNIQUE (codcli, fecha_desde),
+    CONSTRAINT CK_debit_snapshot_fecha_orden CHECK (fecha_hasta IS NULL OR fecha_hasta >= fecha_desde)
 );
 CREATE INDEX IX_debit_snapshot_vigente ON dbo.debit_clients_snapshot (codcli, fecha_hasta);
 END
