@@ -2459,7 +2459,20 @@ class MovimientosBancariosModel extends Model
              FROM [TG].[dbo].[movimientos_bancarios] WHERE fecha BETWEEN ? AND ?;',
             [min($fechas), max($fechas)]
         ) ?: [];
-        $vistas = array_fill_keys(array_column($existentes, 'huella'), true);
+        // strtolower(): la columna huella es UNIQUE con collation
+        // case-insensitive (Modern_Spanish_CI_AS — SQL Server no distingue
+        // 'abc' de 'ABC' al comparar ni al aplicar el índice), pero
+        // isset()/array key de PHP SÍ distingue mayúsculas de minúsculas.
+        // Bug encontrado 2026-09-21: las 851 huellas de BANKAOOL en BD están
+        // en MAYÚSCULAS (origen anterior a sha1(), que siempre da
+        // minúsculas), así que ningún movimiento de ese banco se reconocía
+        // como duplicado aquí — el único motivo por el que no se duplicaban
+        // datos es que el INSERT then tronaba contra el índice UNIQUE real
+        // (case-insensitive) y hacía rollback de TODA la importación, sin
+        // guardar ni los movimientos nuevos legítimos. Normalizar a
+        // minúsculas en PHP hace que esta comparación coincida con lo que
+        // SQL Server ya considera "igual".
+        $vistas = array_fill_keys(array_map('strtolower', array_column($existentes, 'huella')), true);
 
         // Llaves naturales de lo ya guardado en el rango, calculadas igual que
         // las de los movimientos entrantes.
@@ -2482,11 +2495,12 @@ class MovimientosBancariosModel extends Model
                 $llave = self::llave_natural($m['banco'], $m['cuenta'], $m['fecha'],
                                              $m['secuencia'] ?? null, $m['cargo'] ?? 0, $m['abono'] ?? 0,
                                              $m['hora'] ?? null, $m['saldo'] ?? null);
-                if (isset($vistas[$m['huella']]) || ($llave !== null && isset($llaves[$llave]))) {
+                $huellaCmp = strtolower($m['huella']);
+                if (isset($vistas[$huellaCmp]) || ($llave !== null && isset($llaves[$llave]))) {
                     $duplicados++;
                     continue;
                 }
-                $vistas[$m['huella']] = true;   // dedup también dentro del mismo archivo
+                $vistas[$huellaCmp] = true;   // dedup también dentro del mismo archivo
                 if ($llave !== null) $llaves[$llave] = true;
                 $this->sql->insert(
                     'INSERT INTO [TG].[dbo].[movimientos_bancarios]

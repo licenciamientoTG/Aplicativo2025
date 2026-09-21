@@ -1793,13 +1793,25 @@ $(function () {
       if (files && files.length) elegirArchivos(files);
     });
 
+  // 10 MB, mismo límite que valida el backend (Tesoreria::MAX_TXT_BYTES) —
+  // se repite aquí solo para mostrarlo, no para validar (eso lo sigue
+  // haciendo el servidor).
+  var MAX_MB = 10;
+
   $('.btn-upload-banco').on('click', function () {
     bancoActual = $(this).data('banco');
     var cfg = BANCOS[bancoActual];
     document.getElementById('uploadTitle').innerHTML =
       '<i class="fas fa-file-upload me-1"></i> Subir movimientos de ' + esc(cfg.etiqueta);
-    document.getElementById('uploadHint').textContent =
-      cfg.espera.charAt(0).toUpperCase() + cfg.espera.slice(1) + ' · .' + cfg.ext.join(' o .');
+    // Formatos aceptados (nombre + extensión), tamaño máximo por archivo y,
+    // desde que el modal soporta cola, que se puede elegir/arrastrar más de
+    // uno a la vez — antes el usuario no tenía forma de saber esto sin
+    // probar a subir varios y ver si funcionaba.
+    document.getElementById('uploadHint').innerHTML =
+      esc(cfg.espera.charAt(0).toUpperCase() + cfg.espera.slice(1)) +
+      ' &middot; formato' + (cfg.ext.length > 1 ? 's' : '') + ' .' + cfg.ext.join(' o .') +
+      ' &middot; máx. ' + MAX_MB + ' MB por archivo' +
+      ' &middot; puedes elegir o arrastrar varios archivos a la vez';
     // La cabecera y el dropzone toman el color del banco: al abrir el modal se
     // ve de inmediato a cuál se está subiendo el archivo.
     $('#uploadModal .modal-content').css('--mb-banco', cfg.color || '#1d4ed8');

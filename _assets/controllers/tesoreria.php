@@ -171,7 +171,8 @@ class Tesoreria
             'etiqueta' => 'Santander',
             'color'    => '#EA1D25',   // rojo Santander, oficial desde 2018
             'ext'      => ['txt', 'csv'],
-            'espera'   => 'el TXT de Enlace Santander o alguno de los CSV de Consulta de movimientos',
+            'espera'   => 'el TXT de Enlace Santander, el CSV de Consulta de movimientos > Chequeras, '
+                        . 'o el CSV de Movimientos SPEI detallados — se detecta solo, no hace falta indicar cuál es',
             'entrada'  => 'contenido',
         ],
         // "BANORTE" y no "BANORTE_CHEQUES": se simplificó el 2026-08-05, hasta
