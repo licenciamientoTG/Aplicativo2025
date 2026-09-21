@@ -2841,9 +2841,9 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         });
         $('#filtro-mounth_estation_table input').on('keyup  change clear', function () {
             mounth_estation_table
-                .column(0).search($('#Empresa4').val().trim())
-                .column(1).search($('#Descripcion4').val().trim())
-                .column(2).search($('#MedioPago4').val().trim())
+                .column(0).search($('#Estacion5').val().trim())
+                .column(1).search($('#Descripcion5').val().trim())
+                .column(2).search($('#MedioPago5').val().trim())
                 .draw();
           });
         $('.mounth_estation_table').on('click', function () {

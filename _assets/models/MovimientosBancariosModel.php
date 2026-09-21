@@ -204,8 +204,17 @@ class MovimientosBancariosModel extends Model
 
         $movimientos = [];
         $errores     = [];
+        // trim("'"): el banco envuelve algunas columnas en comillas simples de
+        // forma inconsistente entre líneas del MISMO archivo — Cuenta/Fecha/
+        // Sucursal siempre, pero Saldo/Importe a veces también (confirmado
+        // 2026-09-21: 36 de 281 filas de un export real traían el saldo como
+        // "'10738466.42"). Sin el trim, (float)"'10738466.42" da 0.0 sin
+        // ningún error/aviso — el cargo/abono de esa línea sigue siendo
+        // válido, así que pasaba la validación y el saldo se perdía en
+        // silencio, rompiendo en cascada la cadena de saldos del resto del
+        // día para todos los movimientos posteriores.
         $importe = function ($v) {
-            $v = str_replace(['$', ',', ' '], '', trim((string)$v));
+            $v = str_replace(['$', ',', ' '], '', trim((string)$v, " \t\n\r\0\x0B'"));
             return ($v === '' || $v === '-') ? 0.0 : (float)$v;
         };
 
@@ -343,8 +352,11 @@ class MovimientosBancariosModel extends Model
         $movimientos = [];
         $errores     = [];
         $dato    = fn($v) => trim(self::limpia((string)$v), "'");
+        // trim("'"): mismo problema que parse_santander_chequeras_csv — el
+        // banco envuelve Saldo en comillas simples de forma inconsistente
+        // entre líneas, y sin quitarlas (float)"'123.45" da 0.0 en silencio.
         $importe = function ($v) {
-            $v = str_replace(['$', ',', ' '], '', trim((string)$v));
+            $v = str_replace(['$', ',', ' '], '', trim((string)$v, " \t\n\r\0\x0B'"));
             return ($v === '' || $v === '-') ? 0.0 : (float)$v;
         };
 
