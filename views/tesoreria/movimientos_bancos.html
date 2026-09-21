@@ -28,6 +28,24 @@
   .mb-cargo { color: #dc3545; font-weight: 600; }
   .mb-cuenta { font-family: monospace; white-space: nowrap; }
 
+  /* Card "¿Faltan movimientos de Santander/Afirme?": fila de rotura
+     clicable + detalle desplegable con la explicación completa del salto. */
+  .mb-hueco-fila:hover { background: #fffbeb; }
+  .mb-hueco-chevron { transition: transform .15s; font-size: .7rem; color: #94a3b8; }
+  .mb-hueco-fila[aria-expanded="true"] .mb-hueco-chevron { transform: rotate(90deg); }
+  .mb-hueco-detalle {
+    padding: .65rem .9rem; background: #fffbeb; border-top: 1px dashed #fde68a;
+    border-bottom: 1px solid #e2e8f0; font-size: .8rem;
+  }
+  .mb-hueco-salto { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: .5rem; }
+  .mb-hueco-salto > div { flex: 1; min-width: 220px; }
+  .mb-hueco-etiqueta {
+    display: inline-block; font-size: .65rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: #b45309; background: #fef3c7; border-radius: .25rem;
+    padding: .05rem .35rem; margin-right: .3rem;
+  }
+  .mb-hueco-nota { color: #475569; line-height: 1.5; border-top: 1px solid #fde68a; padding-top: .5rem; }
+
   /* Contenedor de tabla estilo merma: borde, toolbar fija arriba, scroll
      propio con scrollbar siempre visible y cabeceras sticky */
   .mb-tabla-wrap { border: 2px solid #cbd5e1; border-radius: .5rem; background: #fff; overflow: hidden; }
@@ -240,6 +258,25 @@
   .mb-archivo-sel .nombre { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mb-archivo-sel .peso   { color: #94a3b8; margin-left: auto; white-space: nowrap; }
   .mb-archivo-sel.invalido { border-color: #fca5a5; background: #fffafb; color: #991b1b; }
+
+  /* Cola de varios archivos (2+ elegidos de golpe): una fila por archivo,
+     mismo look que .mb-archivo-sel pero apilable y con estado propio. */
+  .mb-cola { margin-top: .6rem; max-height: 220px; overflow-y: auto; }
+  .mb-cola-item {
+    display: flex; align-items: center; gap: .5rem; margin-bottom: .35rem;
+    padding: .4rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem;
+    background: #f8fafc; font-size: .76rem; color: #334155;
+  }
+  .mb-cola-item .nombre { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mb-cola-item .estado { margin-left: auto; white-space: nowrap; font-size: .72rem; }
+  .mb-cola-item.subiendo { border-color: #93c5fd; background: #eff6ff; }
+  .mb-cola-item.subiendo .estado { color: #1d4ed8; }
+  .mb-cola-item.ok { border-color: #bbf7d0; background: #f6fefb; }
+  .mb-cola-item.ok .estado { color: #009559; }
+  .mb-cola-item.duplicado { border-color: #e2e8f0; background: #f8fafc; }
+  .mb-cola-item.duplicado .estado { color: #94a3b8; }
+  .mb-cola-item.error { border-color: #fca5a5; background: #fffafb; }
+  .mb-cola-item.error .estado { color: #dc3545; }
 
   .mb-btn-importar { background: #009559; color: #fff; }
   .mb-btn-importar:hover:not(:disabled) { background: #007a49; color: #fff; }
@@ -755,14 +792,21 @@
 
           {# El input real va oculto y SIN required: un campo required oculto
              impide que el navegador envíe el formulario. La validación la hace
-             el JS antes de armar el FormData. #}
+             el JS antes de armar el FormData. multiple: se puede soltar/elegir
+             más de un archivo del mismo banco de golpe (p.ej. varios TXT
+             diarios de Santander); se suben uno por uno contra el mismo
+             endpoint, en cola, sin tocar el backend. #}
           <div id="uploadDropzone" class="mb-dropzone">
             <i class="fas fa-cloud-upload-alt"></i>
-            <p>Arrastra el archivo aquí o haz clic para seleccionarlo</p>
+            <p>Arrastra el o los archivos aquí o haz clic para seleccionarlos</p>
             <small id="uploadHint"></small>
           </div>
-          <input type="file" id="archivo_banco" style="display:none;">
+          <input type="file" id="archivo_banco" multiple style="display:none;">
           <div id="uploadArchivoSel" class="mb-archivo-sel" style="display:none;"></div>
+          {# Lista de la cola cuando hay más de un archivo elegido: una fila por
+             archivo con su estado (pendiente/subiendo/ok/error), rellenada por
+             el JS conforme avanza el envío secuencial. #}
+          <div id="uploadCola" class="mb-cola" style="display:none;"></div>
 
           <div id="uploadResultado" class="mt-3" style="display:none"></div>
         </div>
@@ -1545,7 +1589,7 @@ $(function () {
                     ' cuenta' + (reales.length === 1 ? '' : 's') +
                     ' con posibles movimientos faltantes del ' + fmtFecha(data.desde) +
                     ' al ' + fmtFecha(data.hasta) + '.</div>';
-            reales.forEach(function (c) { html += pintaCuentaHueco(c); });
+            reales.forEach(function (c) { html += pintaCuentaHueco(c, false, banco); });
           }
           if (corregibles.length) {
             html += '<div class="alert alert-info mb-2">' +
@@ -1553,7 +1597,7 @@ $(function () {
                     ' cuenta' + (corregibles.length === 1 ? '' : 's') +
                     ' con la cadena de saldos desordenada por el orden de importación ' +
                     '(no parece faltar ningún movimiento): se corrige con un clic.</div>';
-            corregibles.forEach(function (c) { html += pintaCuentaHueco(c, banco === 'afirme'); });
+            corregibles.forEach(function (c) { html += pintaCuentaHueco(c, banco === 'afirme', banco); });
           }
           if (!html) {
             html = '<div class="alert alert-success mb-0">' +
@@ -1597,8 +1641,41 @@ $(function () {
     });
   });
 
-  /** Tabla de roturas de una cuenta para el card de huecos; botón "Corregir orden" si aplica. */
-  function pintaCuentaHueco(c, conBotonCorregir) {
+  /**
+   * Explicación de una rotura para quien va a revisarla contra el portal del
+   * banco: qué dos movimientos no encadenan, en qué rango de horas buscar, y
+   * cuánto falta (con signo: "un abono" o "un cargo" según el sentido de la
+   * diferencia, no solo el monto absoluto). Antes el card solo daba fecha +
+   * descripción + monto de la diferencia, que obligaba a ir a la tabla de
+   * movimientos a reconstruir esto a mano cada vez.
+   */
+  function explicaRotura(r, banco) {
+    var sentido = r.diferencia > 0 ? 'un abono' : 'un cargo';
+    var etiquetaBanco = (BANCOS[(banco || '').toUpperCase()] && BANCOS[(banco || '').toUpperCase()].etiqueta) || 'el banco';
+    return '<div class="mb-hueco-detalle">' +
+      '<div class="mb-hueco-salto">' +
+        '<div><span class="mb-hueco-etiqueta">Antes</span> ' + esc(r.hora_anterior || '') +
+          ' &middot; ' + esc(r.descripcion_anterior || '') +
+          '<br><span class="text-muted">Saldo tras aplicarlo: $' + fmtMonto(r.saldo_anterior) + '</span></div>' +
+        '<div><span class="mb-hueco-etiqueta">Siguiente</span> ' + esc(r.hora || '') +
+          ' &middot; ' + esc(r.descripcion) +
+          ' (' + (r.abono != null ? 'abono $' + fmtMonto(r.abono) : 'cargo $' + fmtMonto(r.cargo)) + ')' +
+          '<br><span class="text-muted">Saldo declarado por el banco: $' + fmtMonto(r.saldo_declarado) + '</span></div>' +
+      '</div>' +
+      '<div class="mb-hueco-nota">' +
+        'Con solo ese movimiento el saldo debería quedar en <b>$' + fmtMonto(r.saldo_esperado) + '</b>, ' +
+        'pero el banco declara <b>$' + fmtMonto(r.saldo_declarado) + '</b>: falta ' + sentido + ' de ' +
+        '<b>$' + fmtMonto(Math.abs(r.diferencia)) + '</b> entre las ' + esc(r.hora_anterior || '') +
+        ' y las ' + esc(r.hora || '') + '.' +
+        '<br>Revisa el estado de cuenta oficial de ' + esc(etiquetaBanco) + ' en ese rango de horas: si hay un ' +
+        'movimiento ahí que no está en esta tabla, descárgalo y súbelo — no se duplicará nada.' +
+      '</div>' +
+    '</div>';
+  }
+
+  /** Tabla de roturas de una cuenta para el card de huecos; botón "Corregir orden" si aplica.
+   *  Cada fila es clic para desplegar la explicación completa (explicaRotura). */
+  function pintaCuentaHueco(c, conBotonCorregir, banco) {
     var fechas = c.roturas.map(function (r) { return r.fecha; });
     var html = '<div class="mb-2"><strong>' + esc(c.cuenta) + '</strong>' +
                (c.descripcion ? ' &middot; ' + esc(c.descripcion) : '') +
@@ -1610,11 +1687,15 @@ $(function () {
               'data-fechas=\'' + JSON.stringify(fechas).replace(/'/g, '&#39;') + '\'>Corregir orden</button>';
     }
     html += '<table class="table table-sm table-hover mb-0 mt-1"><tbody>';
-    c.roturas.forEach(function (r) {
-      html += '<tr><td class="text-muted" style="white-space:nowrap;">' +
+    c.roturas.forEach(function (r, i) {
+      var detalleId = 'hueco-' + c.cuenta + '-' + i;
+      html += '<tr class="mb-hueco-fila" data-bs-toggle="collapse" data-bs-target="#' + detalleId + '" style="cursor:pointer;">' +
+              '<td class="text-muted" style="white-space:nowrap;"><i class="fas fa-chevron-right mb-hueco-chevron me-1"></i>' +
               fmtFecha(r.fecha) + ' ' + esc(r.hora || '') + '</td>' +
               '<td>' + esc(r.descripcion) + '</td>' +
-              '<td class="mb-monto text-end">$' + fmtMonto(Math.abs(r.diferencia)) + '</td></tr>';
+              '<td class="mb-monto text-end">$' + fmtMonto(Math.abs(r.diferencia)) + '</td></tr>' +
+              '<tr class="collapse" id="' + detalleId + '"><td colspan="3" class="p-0 border-0">' +
+              explicaRotura(r, banco) + '</td></tr>';
     });
     html += '</tbody></table></div>';
     return html;
@@ -1631,10 +1712,12 @@ $(function () {
   // Cuentas del catálogo que se sugieren cuando el archivo no trae la suya
   var CUENTAS_SUGERIDAS = {{ cuentasSugeridas|json_encode|raw }};
 
-  // El archivo se guarda aquí y no se lee de inputArchivo.files: lo que se
-  // suelta con drag & drop nunca llega al input. Mismo patrón que el modal de
-  // comprobantes de payment_list.
-  var archivoActual = null;
+  // Los archivos elegidos se guardan aquí y no se leen de inputArchivo.files:
+  // lo que se suelta con drag & drop nunca llega al input. Mismo patrón que
+  // el modal de comprobantes de payment_list, extendido a una cola: puede
+  // haber 1 (comportamiento de siempre) o varios archivos del mismo banco,
+  // que se suben uno por uno contra el mismo endpoint (ver form submit).
+  var archivosCola = [];
 
   // true cuando el banco no tiene ninguna cuenta sugerida y toca el input
   // libre; se fija al armar el modal (no se detecta por visibilidad del
@@ -1648,37 +1731,66 @@ $(function () {
       : (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
-  /** Acepta el archivo si su extensión es de las que espera el banco elegido. */
-  function elegirArchivo(file) {
-    if (!file) return;
+  /**
+   * Valida una lista de archivos (input o drop) contra la extensión que
+   * espera el banco elegido y arma la cola. Con 1 archivo válido se ve igual
+   * que antes (.mb-archivo-sel); con 2+ se muestra la lista .mb-cola en su
+   * lugar. Los inválidos se descartan con aviso, no bloquean a los demás.
+   */
+  function elegirArchivos(files) {
+    if (!files || !files.length) return;
     var cfg = BANCOS[bancoActual];
-    var ext = (file.name.split('.').pop() || '').toLowerCase();
+    var validos = [];
+    var invalidos = [];
 
-    if (cfg.ext.indexOf(ext) === -1) {
-      archivoActual = null;
+    Array.prototype.forEach.call(files, function (file) {
+      var ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (cfg.ext.indexOf(ext) === -1) invalidos.push(file);
+      else validos.push(file);
+    });
+
+    archivosCola = validos;
+    $('#uploadArchivoSel').hide().removeClass('invalido').empty();
+    $('#uploadCola').hide().empty();
+
+    if (invalidos.length) {
       $('#uploadArchivoSel').addClass('invalido').show().html(
         '<i class="fas fa-circle-exclamation"></i>' +
-        '<span class="nombre">' + esc(file.name) + '</span>' +
+        '<span class="nombre">' + invalidos.length + ' archivo' + (invalidos.length === 1 ? '' : 's') +
+          ' descartado' + (invalidos.length === 1 ? '' : 's') + '</span>' +
         '<span class="peso">' + cfg.etiqueta + ' espera .' + cfg.ext.join(' o .') + '</span>');
-      return;
     }
 
-    archivoActual = file;
-    $('#uploadArchivoSel').removeClass('invalido').show().html(
-      '<i class="fas fa-paperclip text-primary"></i>' +
-      '<span class="nombre">' + esc(file.name) + '</span>' +
-      '<span class="peso">' + fmtPeso(file.size) + '</span>');
+    if (validos.length === 1) {
+      var file = validos[0];
+      $('#uploadArchivoSel').show().html(
+        (invalidos.length ? $('#uploadArchivoSel').html() + '<br>' : '') +
+        '<i class="fas fa-paperclip text-primary"></i>' +
+        '<span class="nombre">' + esc(file.name) + '</span>' +
+        '<span class="peso">' + fmtPeso(file.size) + '</span>');
+    } else if (validos.length > 1) {
+      $('#uploadCola').show().html(validos.map(function (file, i) {
+        return '<div class="mb-cola-item" data-idx="' + i + '">' +
+               '<i class="fas fa-paperclip text-primary"></i>' +
+               '<span class="nombre">' + esc(file.name) + '</span>' +
+               '<span class="peso">' + fmtPeso(file.size) + '</span>' +
+               '<span class="estado">Pendiente</span></div>';
+      }).join(''));
+    }
+
     resultado.style.display = 'none';
+    btn.innerHTML = '<i class="fas fa-file-upload"></i> Importar' +
+      (validos.length > 1 ? ' ' + validos.length + ' archivos' : '');
   }
 
   $('#uploadDropzone').on('click', function () { inputArchivo.click(); });
-  $(inputArchivo).on('change', function () { elegirArchivo(this.files[0]); });
+  $(inputArchivo).on('change', function () { elegirArchivos(this.files); });
   $('#uploadDropzone')
     .on('dragover', function (e) { e.preventDefault(); $(this).addClass('arrastrando'); })
     .on('dragleave drop', function (e) { e.preventDefault(); $(this).removeClass('arrastrando'); })
     .on('drop', function (e) {
       var files = e.originalEvent.dataTransfer.files;
-      if (files && files.length) elegirArchivo(files[0]);
+      if (files && files.length) elegirArchivos(files);
     });
 
   $('.btn-upload-banco').on('click', function () {
@@ -1694,9 +1806,11 @@ $(function () {
 
     inputArchivo.setAttribute('accept', '.' + cfg.ext.join(',.'));
     inputArchivo.value = '';
-    archivoActual = null;
+    archivosCola = [];
     $('#uploadArchivoSel').hide().removeClass('invalido').empty();
+    $('#uploadCola').hide().empty();
     resultado.style.display = 'none';
+    btn.innerHTML = '<i class="fas fa-file-upload"></i> Importar';
 
     // El campo de cuenta solo existe para los bancos que no la mandan
     var pide = !!cfg.pide_cuenta;
@@ -1743,12 +1857,12 @@ $(function () {
            '</div></div>';
   }
 
-  function panelExito(data) {
+  function panelExito(data, nombreArchivo) {
     var i     = data.info || {};
     var tono  = (data.errores && data.errores.length) ? 'error'
               : (data.avisos && data.avisos.length)   ? 'warn' : 'ok';
     var etiqueta = (BANCOS[data.banco] && BANCOS[data.banco].etiqueta) || data.banco || '';
-    var nombre   = archivoActual ? archivoActual.name : '';
+    var nombre   = nombreArchivo || '';
 
     var html = '<div class="mb-res mb-res--' + tono + '">';
 
@@ -1821,10 +1935,104 @@ $(function () {
            '</div>';
   }
 
+  /** Sube un solo archivo contra el endpoint de siempre. Usado por la ruta de
+   *  1 archivo y, en fila, por la cola de varios. */
+  function subirArchivo(banco, cuenta, archivo) {
+    var fd = new FormData();
+    fd.append('banco', banco);
+    fd.append('cuenta', cuenta);
+    fd.append('archivo', archivo);
+    return fetch('/tesoreria/upload_movimientos', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); });
+  }
+
+  /** Termina la importación (1 archivo o cola): deja el modal en modo
+   *  "cerrar para recargar", igual que antes. */
+  function marcarImportado() {
+    $('#uploadModal').one('hidden.bs.modal', recargarLimpio);
+    $('#btnUpload').hide();
+    $('#btnCerrarUpload').removeClass('btn-secondary').addClass('btn-success')
+      .html('<i class="fas fa-rotate-right"></i> Entendido, recargar');
+  }
+
+  /**
+   * Sube la cola de 2+ archivos en secuencia (uno espera a que el anterior
+   * termine, nunca en paralelo: mismo endpoint que ya hace transacción propia
+   * por archivo, mandarlos a la vez no aporta y complica el orden de
+   * roturas_cadena_saldos/orden_dia). Actualiza el estado de cada fila y arma
+   * un resumen acumulado al final, mismo panelExito/panelError agregados.
+   */
+  function subirCola(banco, cuenta, archivos) {
+    var filas = $('#uploadCola .mb-cola-item');
+    var totales = { insertados: 0, duplicados: 0 };
+    var avisos = [];
+    var errores = [];
+    var conError = false;
+
+    function marcarFila(i, clase, texto) {
+      filas.eq(i).removeClass('subiendo ok duplicado error').addClass(clase)
+        .find('.estado').text(texto);
+    }
+
+    function siguiente(i) {
+      if (i >= archivos.length) {
+        var tono = conError ? 'error' : (avisos.length ? 'warn' : 'ok');
+        var html = '<div class="mb-res mb-res--' + tono + '">' +
+          '<div class="mb-res-head"><i class="fas fa-' + (tono === 'ok' ? 'circle-check' : 'circle-exclamation') + '"></i>' +
+          '<div><b>Importación de ' + archivos.length + ' archivos completada</b>' +
+          '<span>' + esc(BANCOS[banco].etiqueta) + '</span></div></div>' +
+          '<div class="mb-res-nums">' +
+          '<div><b class="' + (totales.insertados > 0 ? 'n-ok' : 'n-0') + '">' +
+          totales.insertados.toLocaleString('en-US') + '</b><span>importados</span></div>' +
+          '<div><b class="' + (totales.duplicados > 0 ? '' : 'n-0') + '">' +
+          totales.duplicados.toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
+          '</div>' +
+          bloqueNota('warn', 'triangle-exclamation', 'Avisos', avisos) +
+          bloqueNota('error', 'circle-xmark', 'Archivos con error', errores) +
+          '</div>';
+        resultado.innerHTML = html;
+        resultado.style.display = 'block';
+        marcarImportado();
+        return;
+      }
+
+      var archivo = archivos[i];
+      marcarFila(i, 'subiendo', 'Subiendo…');
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando ' +
+        (i + 1) + ' de ' + archivos.length + '...';
+
+      subirArchivo(banco, cuenta, archivo)
+        .then(function (data) {
+          if (!data.success) {
+            conError = true;
+            errores.push(archivo.name + ': ' + (data.message || 'error al importar'));
+            marcarFila(i, 'error', 'Error');
+            siguiente(i + 1);
+            return;
+          }
+          totales.insertados += data.insertados || 0;
+          totales.duplicados += data.duplicados || 0;
+          (data.avisos || []).forEach(function (a) { avisos.push(archivo.name + ': ' + a); });
+          (data.errores || []).forEach(function (e) { avisos.push(archivo.name + ': ' + e); });
+          marcarFila(i, data.insertados > 0 ? 'ok' : 'duplicado',
+            data.insertados > 0 ? (data.insertados + ' nuevos') : 'Ya existía');
+          siguiente(i + 1);
+        })
+        .catch(function () {
+          conError = true;
+          errores.push(archivo.name + ': error de conexión');
+          marcarFila(i, 'error', 'Error de conexión');
+          siguiente(i + 1);
+        });
+    }
+
+    siguiente(0);
+  }
+
   form.addEventListener('submit', function (e) {
     e.preventDefault();
-    if (!archivoActual) {
-      resultado.innerHTML = panelError({ message: 'Elige el archivo que vas a importar' });
+    if (!archivosCola.length) {
+      resultado.innerHTML = panelError({ message: 'Elige el o los archivos que vas a importar' });
       resultado.style.display = 'block';
       return;
     }
@@ -1842,45 +2050,31 @@ $(function () {
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
     resultado.style.display = 'none';
 
-    var fd = new FormData();
-    fd.append('banco', bancoActual);
-    fd.append('cuenta', cuenta);
-    fd.append('archivo', archivoActual);
+    if (archivosCola.length > 1) {
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando 1 de ' + archivosCola.length + '...';
+      subirCola(bancoActual, cuenta, archivosCola);
+      return;
+    }
 
-    var importado = false;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
+    var archivo = archivosCola[0];
 
-    fetch('/tesoreria/upload_movimientos', { method: 'POST', body: fd })
-      .then(function (r) { return r.json(); })
+    subirArchivo(bancoActual, cuenta, archivo)
       .then(function (data) {
-        resultado.innerHTML = data.success ? panelExito(data) : panelError(data);
+        resultado.innerHTML = data.success ? panelExito(data, archivo.name) : panelError(data);
         resultado.style.display = 'block';
-
-        if (!data.success) return;
-
-        importado = true;
-
-        // Se importó algo: la página queda obsoleta, así que se recarga al
-        // cerrar el modal. Va enganchado a hidden.bs.modal y no a un botón en
-        // particular para que cualquier forma de cerrar (el de abajo, la X,
-        // Esc, clic fuera) termine igual y no queden datos viejos en pantalla.
-        $('#uploadModal').one('hidden.bs.modal', recargarLimpio);
-
-        // Ya no hay nada más que importar en este modal: se quita el botón
-        // "Importar" y el de "Cerrar" pasa a ser la única salida, avisando
-        // que al cerrarlo se recarga.
-        $('#btnUpload').hide();
-        $('#btnCerrarUpload').removeClass('btn-secondary').addClass('btn-success')
-          .html('<i class="fas fa-rotate-right"></i> Entendido, recargar');
+        if (!data.success) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-file-upload"></i> Importar';
+          return;
+        }
+        marcarImportado();
       })
       .catch(function () {
         resultado.innerHTML = panelError({ message: 'Error de conexión al importar el archivo' });
         resultado.style.display = 'block';
-      })
-      .finally(function () {
-        if (importado) return;
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-file-upload"></i> Importar';
       });

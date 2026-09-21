@@ -2518,31 +2518,61 @@ class MovimientosBancariosModel extends Model
 
     /**
      * Renumera orden_dia para una cuenta+fecha de Santander después de
-     * insertar movimientos nuevos ahí: los ordena por hora (con el TXT antes
-     * que el CSV en empate — el TXT es la fuente diaria de siempre, el CSV
-     * solo rellena huecos —, y el id como desempate final) y les asigna
-     * 1..n en ese orden.
+     * insertar movimientos nuevos ahí, para que refleje el orden real de
+     * aplicación al saldo (mismo criterio y misma evidencia que ya documenta
+     * get_movimientos(): "verificado 2026-07-23... 0 roturas por orden de
+     * archivo vs 11 por hora" — el id de inserción SÍ es ese orden real
+     * dentro de un mismo archivo, la hora truncada a minutos NO).
      *
-     * Solo Santander: es el único banco con dos formatos de archivo que
-     * pueden traer el mismo día en momentos distintos (ver llave_natural());
-     * el resto sigue ordenando por id como siempre. Misma lógica que el
-     * backfill de docs/sql/backfill_orden_dia_santander.sql, aplicada aquí
-     * solo al día que acaba de cambiar en vez de a toda la tabla.
+     * Por eso el id manda DENTRO de cada archivo_origen. Solo cuando el día
+     * mezcla más de un archivo (TXT + CSV, el único caso real — ver
+     * llave_natural()) se usa la hora para intercalar sus movimientos entre
+     * sí, con el TXT antes que el CSV en empate porque es la fuente diaria
+     * de siempre y el CSV solo rellena huecos.
+     *
+     * Antes esto ordenaba TODO el día por hora, con el id solo como
+     * desempate: bug encontrado 2026-09-21 (análisis de roturas de cadena en
+     * Santander tras importar 16 TXT de agosto/septiembre) — reordenaba días
+     * de un solo archivo que ya cerraban bien por id, rompiendo su cadena de
+     * saldos en cada reimport (87% de las roturas activas en ese momento
+     * eran de este origen, verificado reordenando por id). Un intento previo
+     * de agrupar por archivo completo (MIN(hora) por archivo) regresionaba el
+     * caso puntual de docs/sql/backfill_orden_dia_santander.sql, cuenta
+     * 65505339719: ahí un movimiento del CSV cae, por su hora real, ENTRE dos
+     * movimientos del TXT del mismo día, no antes ni después del bloque
+     * completo. Intercalar por hora real (no por bloque) resuelve ambos
+     * casos sin regresión, verificado contra BD real.
      */
     private static function recalcula_orden_dia_santander($db, string $cuenta, string $fecha): void
     {
+        // n_archivo/n_total (CTE base): "hay más de un archivo_origen ese
+        // día" no se puede evaluar con un CASE dentro del ORDER BY del
+        // ROW_NUMBER() (SQL Server no anida funciones de ventana), así que se
+        // materializa antes. n_archivo < n_total ⇔ ese archivo no es el único
+        // del día. Un CTE tampoco puede ir dentro del subquery de un JOIN
+        // (";WITH" solo es válido al inicio del statement): por eso el
+        // ROW_NUMBER() sale en un segundo CTE (ordenado) encadenado al
+        // primero, y el JOIN referencia ese CTE directo, no un subquery.
         $db->update(
-            "UPDATE m SET orden_dia = d.rn
-             FROM [TG].[dbo].[movimientos_bancarios] m
-             JOIN (
-                 SELECT id, ROW_NUMBER() OVER (ORDER BY
-                     hora,
-                     CASE WHEN archivo_origen LIKE '%.csv' THEN 1 ELSE 0 END,
-                     id
-                 ) AS rn
+            ";WITH base AS (
+                 SELECT id, hora, archivo_origen,
+                        COUNT(*) OVER (PARTITION BY archivo_origen) AS n_archivo,
+                        COUNT(*) OVER () AS n_total
                  FROM [TG].[dbo].[movimientos_bancarios]
                  WHERE banco = 'SANTANDER' AND cuenta = ? AND fecha = ?
-             ) d ON d.id = m.id;",
+             ),
+             ordenado AS (
+                 SELECT id, ROW_NUMBER() OVER (ORDER BY
+                     CASE WHEN n_archivo < n_total THEN hora END,
+                     CASE WHEN n_archivo < n_total
+                          THEN CASE WHEN archivo_origen LIKE '%.csv' THEN 1 ELSE 0 END END,
+                     id
+                 ) AS rn
+                 FROM base
+             )
+             UPDATE m SET orden_dia = d.rn
+             FROM [TG].[dbo].[movimientos_bancarios] m
+             JOIN ordenado d ON d.id = m.id;",
             [$cuenta, $fecha]
         );
     }
@@ -2859,14 +2889,27 @@ class MovimientosBancariosModel extends Model
             $roturas = self::roturas_cadena_saldos($datos['movimientos']);
             if (!$roturas) continue;
 
+            // Detalle completo de ambos lados del salto (no solo el
+            // movimiento donde se detectó la rotura): la vista necesita el
+            // saldo y la hora de ANTES para poder decir "busca en el estado
+            // de cuenta oficial entre esta hora y esta otra", que es la
+            // pregunta real que se hace quien revisa el card.
             $resultado[] = [
                 'cuenta'      => $cuenta,
                 'descripcion' => $datos['descripcion'],
                 'roturas'     => array_map(fn($r) => [
-                    'fecha'       => substr((string)$r['actual']['fecha'], 0, 10),
-                    'hora'        => $r['actual']['hora'],
-                    'descripcion' => trim((string)$r['actual']['descripcion']),
-                    'diferencia'  => round($r['diferencia'], 2),
+                    'fecha'            => substr((string)$r['actual']['fecha'], 0, 10),
+                    'hora'             => $r['actual']['hora'],
+                    'descripcion'      => trim((string)$r['actual']['descripcion']),
+                    'diferencia'       => round($r['diferencia'], 2),
+                    'hora_anterior'    => $r['anterior']['hora'],
+                    'descripcion_anterior' => trim((string)$r['anterior']['descripcion']),
+                    'saldo_anterior'   => round((float)$r['anterior']['saldo'], 2),
+                    'saldo_esperado'   => round((float)$r['anterior']['saldo']
+                                              + ($r['actual']['abono'] ?? 0) - ($r['actual']['cargo'] ?? 0), 2),
+                    'saldo_declarado'  => round((float)$r['actual']['saldo'], 2),
+                    'cargo'            => $r['actual']['cargo'] !== null ? round((float)$r['actual']['cargo'], 2) : null,
+                    'abono'            => $r['actual']['abono'] !== null ? round((float)$r['actual']['abono'], 2) : null,
                 ], $roturas),
             ];
         }
