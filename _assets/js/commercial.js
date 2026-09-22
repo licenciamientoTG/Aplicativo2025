@@ -2745,6 +2745,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             $('#mounth_estation_table tbody').empty(); // Limpia el cuerpo
             $('#mounth_estation_table tfoot').empty(); // Limpia el pie de tabla si lo usas
         }
+        $('#comparativeEstationContainer').empty().addClass('loading');
         var fromDate = document.getElementById('from5').value;
         var untilDate = document.getElementById('until5').value;
         var estation = document.getElementById('estation5').value;
@@ -2785,7 +2786,8 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 error: function() {
                     $('#mounth_estation_table').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
-    
+                    $('#comparativeEstationContainer').removeClass('loading');
+
                     alertify.myAlert(
                         `<div class="container text-center text-danger">
                             <h4 class="mt-2 text-danger">¡Error!</h4>
@@ -2794,7 +2796,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                             <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
                         </div>`
                     );
-    
+
                 },
                 beforeSend: function() {
                     $('.table-responsive').addClass('loading');
@@ -2869,6 +2871,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         var lastYearFrom = subtracYear(fromDate);
         var lastYearUntil = subtracYear(untilDate);
         var dynamicColumns = getMounthCompanyColumns(lastYearFrom, lastYearUntil,'mounth_estation_table');
+        $('#comparativeEstationContainer').addClass('loading');
         try {
             const response = await fetch('/commercial/mounth_estation_table', {
                 method: 'POST',
@@ -2894,6 +2897,8 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             }
         } catch (error) {
             console.error("Error al obtener los datos del año anterior:", error);
+        } finally {
+            $('#comparativeEstationContainer').removeClass('loading');
         }
 
     }
