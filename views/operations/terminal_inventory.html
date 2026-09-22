@@ -21,7 +21,7 @@
         <tr class="{{ code == 'urovo' ? 'terminal-group-start' : '' }}"><td><span class="terminal-brand terminal-brand-{{ code }}">{{ type.logo }}</span><strong>{{ type.label }}</strong>{% if code in ['urovo','verifone'] %}<span class="badge bg-primary ms-2">Interno</span>{% else %}<span class="badge bg-light text-secondary border ms-2">Valera</span>{% endif %}</td>
           <td class="text-center"><span class="terminal-expected-count" data-expected-type="{{ code }}">{{ expectedCounts[code]|default(0) }}</span></td>
           <td class="text-center"><span class="terminal-working" data-working-type="{{ code }}">{{ expectedCounts[code]|default(0) }}</span></td>
-          <td class="text-center"><input class="form-control form-control-sm terminal-count" type="number" min="0" value="" data-type="{{ code }}" data-field="damaged" aria-label="{{ type.label }} dañadas" required></td>
+          <td class="text-center"><input class="form-control form-control-sm terminal-count" type="number" min="0" value="0" data-type="{{ code }}" data-field="damaged" aria-label="{{ type.label }} dañadas" required></td>
           <td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary add-incident" data-type="{{ code }}" disabled><i data-feather="plus"></i> Registrar incidencia</button></td></tr>
       {% endfor %}</tbody></table></div>
     </div></div></div>
