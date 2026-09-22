@@ -802,7 +802,7 @@ class VentasModel extends Model
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
 							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago
                     FROM SG12.dbo.Valores v
@@ -901,7 +901,7 @@ class VentasModel extends Model
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
 							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago
                     FROM SG12.dbo.Valores v
@@ -997,7 +997,7 @@ class VentasModel extends Model
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
 							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago,
                     E.Nombre as Estacion
@@ -1037,6 +1037,95 @@ class VentasModel extends Model
 
         return $this->sql->select($query, []);
     }
+
+    /**
+     * Número de eventos (despachos) y su monto por estación/mes/medio de
+     * pago, para cruzar contra getMounthEstationPayment() (que viene de
+     * Ingresos, ya agregado por isla/turno y sin conteo de transacciones).
+     *
+     * Credito/Debito: clientes con cuenta corriente, vía Clientes.tipval
+     * (3=Credito, 4=Debito) — igual que el resto del aplicativo.
+     * Tarjetas/Valeras/Efectivo: vía MovimientosTar -> Valores.den, mismo
+     * catálogo que usa getMounthEstationPayment() (ver
+     * MovimientosTarModel::get_valeras_report() para el mismo patrón).
+     */
+    function getMounthEstationEventos($from, $until, $estation)
+    {
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
+
+        $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
+        $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
+        $dateFrom->modify('first day of this month');
+        $dateUntil->modify('first day of this month');
+        $months = [];
+        $currentDate = clone $dateFrom;
+
+        while ($currentDate <= $dateUntil) {
+            $year = $currentDate->format('Y');
+            $monthNumber = (int)$currentDate->format('m');
+            $months[] = ['year' => $year, 'month' => $monthNumber, 'key' => $year . '_' . $monthNumber];
+            $currentDate->modify('+1 month');
+        }
+
+        // Columnas condicionales por mes: monto ([2026_9]) y eventos ([EV_2026_9]).
+        // Se evita PIVOT (no admite dos métricas distintas encadenadas sobre
+        // el mismo origen sin perder columnas) a favor de SUM(CASE WHEN...).
+        $montoColumns = implode(",\n                    ", array_map(function ($m) {
+            return "SUM(CASE WHEN DATEPART(YEAR, Fecha) = {$m['year']} AND DATEPART(MONTH, Fecha) = {$m['month']} THEN Monto ELSE 0 END) AS [{$m['key']}]";
+        }, $months));
+        $eventosColumns = implode(",\n                    ", array_map(function ($m) {
+            return "SUM(CASE WHEN DATEPART(YEAR, Fecha) = {$m['year']} AND DATEPART(MONTH, Fecha) = {$m['month']} THEN 1 ELSE 0 END) AS [EV_{$m['key']}]";
+        }, $months));
+
+        $estation_string = '';
+        if ($estation != '0') {
+            $estation_string = "and t1.codgas = '{$estation}' ";
+        }
+
+        $query = "
+                DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
+                DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
+
+                WITH Base AS (
+                    SELECT
+                        E.Nombre AS Estacion,
+                        CONVERT(DATE, CAST(t1.fchtrn AS DATETIME) - 1) AS Fecha,
+                        t1.mto AS Monto,
+                        CASE
+                            WHEN t2.tipval = 3 THEN 'CREDITO'
+                            WHEN t2.tipval = 4 THEN 'DEBITO'
+                            WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias') THEN 'EFECTIVO'
+                            WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
+                            WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
+                            WHEN v.den IS NULL AND t1.tiptrn IN (0, 49) THEN 'EFECTIVO'
+                            ELSE 'OTRO'
+                        END AS MedioPago
+                    FROM SG12.dbo.Despachos t1
+                    LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
+                    LEFT JOIN SG12.dbo.MovimientosTar t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas AND t12.mto != 0
+                    LEFT JOIN SG12.dbo.Valores v ON t12.codbco = v.cod
+                    INNER JOIN TG.dbo.Estaciones E ON t1.codgas = E.Codigo
+                    WHERE t1.fchtrn BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                        AND t1.mto > 0
+                    $estation_string
+                )
+
+                SELECT
+                    Estacion,
+                    MedioPago,
+                    SUM(Monto) AS Total,
+                    COUNT(*) AS TotalEventos,
+                    $montoColumns,
+                    $eventosColumns
+                FROM Base
+                GROUP BY Estacion, MedioPago
+                ORDER BY Estacion, MedioPago;
+            ";
+
+        return $this->sql->select($query, []);
+    }
+
     function getSalesMonthTotal($from, $until, $zona, $turn, $total)
     {
 

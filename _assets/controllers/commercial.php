@@ -239,6 +239,16 @@ class Commercial{
         echo json_encode(array("data" => $data));
     }
 
+    /**
+     * Número de eventos (despachos) + monto por estación/mes/medio de pago,
+     * para complementar mounth_estation_table() (que viene de Ingresos y no
+     * trae conteo de transacciones). Ver VentasModel::getMounthEstationEventos().
+     */
+    function mounth_estation_eventos(){
+        $rows = $this->ventas->getMounthEstationEventos($_POST['fromDate'], $_POST['untilDate'], $_POST['estation']);
+        echo json_encode(array("data" => $rows));
+    }
+
     function sales_type_payment_totals_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
         $rows = $this->ventas->getSalesTypePaymentTotal($_POST['fromDate'], $_POST['untilDate'],$_POST['zona']);
