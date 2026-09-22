@@ -67,86 +67,101 @@ class ResponsablesModel extends Model{
         return (bool)$this->sql->insert($query,$params);
     }
 
+    /**
+     * Actualiza solo la copia central (SG12) y encola la propagación a las
+     * 37 BDs de estación remotas en vez de esperar a que terminen los 37
+     * UPDATEs secuenciales por linked server dentro del mismo request. La
+     * cola la procesa en segundo plano cron/responsables_sync_queue.php
+     * (ver process_sync_queue()).
+     */
     function deactivate($cod, $hab) : bool {
         $query = "
-            DECLARE @cod INT = {$cod};
-            DECLARE @hab INT = {$hab};
-            -- Corporativo
-            UPDATE [SG12].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Gemela Grande
-            UPDATE [192.168.7.101].[SG12_41882020].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Aguascalientes
-            UPDATE [192.168.28.101].[SG12_11007+2020].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Lerdo
-            UPDATE [192.168.2.101].[SG12_114912020].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Lopez Mateos
-            UPDATE [192.168.5.101].[SG12_25262020].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Gemela Chica
-            UPDATE [192.168.6.101].[SG12_4179_20].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Municipio Libre
-            UPDATE [192.168.9.101].[SG12_53172020].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Aztecas
-            UPDATE [192.168.10.101].[SG12_5465].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Misiones
-            UPDATE [192.168.11.101].[SG12_6410].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Puerto de palos
-            UPDATE [192.168.19.101].[SG12_6947_2020].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Miguel de la madrid
-            UPDATE [192.168.13.101].[CG_7167].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Permuta
-            UPDATE [192.168.14.101].[SG12_8244].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Electrolux
-            UPDATE [192.168.15.101].[SG12_9191].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Aeronáutica
-            UPDATE [192.168.16.101].[SG12_92352020].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Custodia
-            UPDATE [192.168.17.101].[SG12_98852020].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Anapra
-            UPDATE [192.168.18.101].[SG12_9893].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Parral
-            UPDATE [192.168.4.101].[sg2172].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Delicias
-            UPDATE [192.168.3.101].[CG_1376].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Plutarco
-            UPDATE [192.168.8.101].[Custodia5170].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Tecnológico
-            UPDATE [192.168.30.101].[CG_1163].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Ejercito
-            UPDATE [192.168.21.101].[CG_9733].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Satelite
-            UPDATE [192.168.22.101].[CG_4457].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Fuentes
-            UPDATE [192.168.23.101].[cg_1159].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Clara
-            UPDATE [192.168.24.101].[CG_1156].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Solis
-            UPDATE [192.168.25.101].[CG_10141].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Santiago Troncoso
-            UPDATE [192.168.26.101].[SG12_12097].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Jarudo
-            UPDATE [192.168.27.101].[CG_1148].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Hermanos
-            UPDATE [192.168.29.101].[CG_23214].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Villa Ahumada
-            UPDATE [192.168.32.101].[CG_1242].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- El castaño
-            UPDATE [192.168.33.101].[CG_19190].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Travel Center
-            UPDATE [192.168.31.101].[CG_24938].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Picachos
-            UPDATE [192.168.34.101].[CG_24499].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Ventanas
-            UPDATE [192.168.35.101].[CG_24500].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- San Rafael
-            UPDATE [192.168.36.101].[CG_14946].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Puertecito
-            UPDATE [192.168.37.101].[CG_15071].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-            -- Jesus Maria
-            UPDATE [192.168.38.101].[CG_15901].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
-             -- Praxedis
-            UPDATE [192.168.40.101].[E10702].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
+            UPDATE [SG12].[dbo].[Responsables] SET [hab] = ? WHERE [cod] = ?;
+            INSERT INTO [TG].[dbo].[responsables_sync_queue] ([cod],[hab]) VALUES (?, ?);
         ";
-        return (bool)$this->sql->update($query,[$cod]);
+        return (bool)$this->sql->update($query, [$hab, $cod, $cod, $hab]);
+    }
+
+    /**
+     * Propaga a las 37 BDs de estación remotas los cambios de estatus de
+     * responsables pendientes en la cola. Pensado para correr desde el cron
+     * (Task Scheduler) vía Operations::sync_responsables_queue(), no desde
+     * una petición de usuario: recorrer 37 linked servers de forma
+     * secuencial puede tardar decenas de segundos.
+     *
+     * Si un mismo responsable quedó con varias filas pendientes (se
+     * activó/desactivó varias veces antes de que corriera el cron), solo se
+     * propaga la más reciente; las anteriores se marcan 'superada' sin
+     * tocar las estaciones. Las filas en 'error' se reintentan en la
+     * siguiente corrida hasta 10 intentos.
+     *
+     * updateSafe() (a diferencia de update()) no aborta el proceso si una
+     * estación falla, así que una estación caída no bloquea la propagación
+     * al resto.
+     *
+     * @return array{procesados:int, ok:int, error:int, detalle:array}
+     */
+    function process_sync_queue() : array {
+        $pendientes = $this->sql->select(
+            "SELECT id, cod, hab FROM [TG].[dbo].[responsables_sync_queue]
+             WHERE estado = 'pendiente' OR (estado = 'error' AND intentos < 10)
+             ORDER BY id ASC"
+        ) ?: [];
+
+        if (!$pendientes) {
+            return ['procesados' => 0, 'ok' => 0, 'error' => 0, 'detalle' => []];
+        }
+
+        // Deduplicar: solo nos interesa el último estado pedido por responsable.
+        $ultimaPorCod = [];
+        foreach ($pendientes as $fila) {
+            $ultimaPorCod[$fila['cod']] = $fila;
+        }
+        foreach ($pendientes as $fila) {
+            if ($fila['id'] != $ultimaPorCod[$fila['cod']]['id']) {
+                $this->sql->update(
+                    "UPDATE [TG].[dbo].[responsables_sync_queue] SET estado = 'superada', fecha_procesado = GETDATE() WHERE id = ?",
+                    [$fila['id']]
+                );
+            }
+        }
+
+        $ok = 0;
+        $error = 0;
+        $detalle = [];
+        foreach ($ultimaPorCod as $fila) {
+            $fallos = [];
+            foreach ($this->databases as $codgas => $db) {
+                if ($codgas == 0) {
+                    continue; // 0 = SG12, ya actualizado de forma sincrona en deactivate()
+                }
+                $resultado = $this->sql->updateSafe(
+                    "UPDATE {$db}.[Responsables] SET [hab] = ? WHERE [cod] = ?",
+                    [$fila['hab'], $fila['cod']]
+                );
+                if ($resultado === false) {
+                    $fallos[] = $codgas;
+                }
+            }
+
+            if (empty($fallos)) {
+                $ok++;
+                $this->sql->update(
+                    "UPDATE [TG].[dbo].[responsables_sync_queue] SET estado = 'ok', fecha_procesado = GETDATE() WHERE id = ?",
+                    [$fila['id']]
+                );
+            } else {
+                $error++;
+                $detalleFila = "cod {$fila['cod']}: estaciones " . implode(', ', $fallos);
+                $detalle[] = $detalleFila;
+                $this->sql->update(
+                    "UPDATE [TG].[dbo].[responsables_sync_queue] SET estado = 'error', intentos = intentos + 1, fecha_procesado = GETDATE(), detalle_error = ? WHERE id = ?",
+                    [$detalleFila, $fila['id']]
+                );
+            }
+        }
+
+        return ['procesados' => count($ultimaPorCod), 'ok' => $ok, 'error' => $error, 'detalle' => $detalle];
     }
 
     function delete($cod) : bool {

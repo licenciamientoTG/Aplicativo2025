@@ -16,7 +16,13 @@ if "openpyxl" not in sys.modules:
     openpyxl.load_workbook = None
     sys.modules["openpyxl"] = openpyxl
 
-from efc_conc_analiticos_diario import closest_paper, is_total_gas_excel, remittance_sort_key, sequential_tie_groups
+from efc_conc_analiticos_diario import (
+    closest_paper,
+    is_total_gas_excel,
+    parse_consolidated_tsv,
+    remittance_sort_key,
+    sequential_tie_groups,
+)
 
 
 def turn(turn_date: date, label: str, amount: float = 100.0) -> dict:
@@ -113,6 +119,23 @@ class SequentialRemittanceTieTests(unittest.TestCase):
         self.assertLess(remittance_sort_key(paper(2, "10243941.0", date.today())), remittance_sort_key(paper(1, "10243944.0", date.today())))
         self.assertLess(remittance_sort_key(paper(1, "sin remesa", date.today())), remittance_sort_key(paper(2, "sin remesa", date.today())))
         self.assertLess(remittance_sort_key(paper(2, "10243941.0", date.today())), remittance_sort_key(paper(1, "10243941.00", date.today())))
+
+    def test_consolidated_file_uses_date_column_and_applies_requested_correction(self) -> None:
+        content = (
+            "Fecha\tCodigo\tEstacion\tHora\tCuenta\tRemesa\tDICE MN\tREAL MN\tDif MN\tDICE USD\tREAL USD\tDif USD\n"
+            "09/09/2026\t12097\tSANTIAGO TRONCOSO\t\t65507674669\t10209599\t$12,550.15\t$12,550.00\t-$0.15\t\t\t\n"
+            "13/09/2026\t12097\tSANTIAGO TRONCOSO\t\t65507674669\t10209599\t$149,912.30\t$149,912.00\t-$0.30\t\t\t\n"
+        ).encode()
+        papers, errors = parse_consolidated_tsv(
+            content,
+            "concentrado.txt",
+            [(28, "Santiago")],
+            {"12097": 28},
+        )
+
+        self.assertEqual([], errors)
+        self.assertEqual(["9569", "10209599"], [item[11] for item in papers])
+        self.assertEqual(12550.15, papers[0][12])
 
 
 if __name__ == "__main__":

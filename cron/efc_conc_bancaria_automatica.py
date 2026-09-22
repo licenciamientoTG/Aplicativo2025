@@ -24,6 +24,8 @@ import pyodbc
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 TOLERANCE = 1.00  # Misma tolerancia usada por runBankFixed en la consola.
+GASOMEX_PRIMARY_DAYS = 2
+GASOMEX_FALLBACK_DAYS = 7
 COMPANY_STATIONS = {
     2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22,
     23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 199,
@@ -230,8 +232,8 @@ def candidate_bank_rows(
     return candidates
 
 
-def unique_gasomex_combination(turns: list[dict], target: float, used: set[str]) -> list[dict] | None:
-    """Find exactly one GASOMEX turn combination within a strict $1 tolerance."""
+def unique_gasomex_combination(turns: list[dict], target: float, used: set[str]) -> tuple[list[dict] | None, int, int, list[list[dict]]]:
+    """Find exactly one GASOMEX combination and return diagnostics for rejects."""
     target_cents = round(target * 100)
     candidates = [item for item in turns if item["key"] not in used and item["date"] <= item["bank_date"]]
     candidates.sort(key=lambda item: abs((item["bank_date"] - item["date"]).days))
@@ -254,7 +256,7 @@ def unique_gasomex_combination(turns: list[dict], target: float, used: set[str])
                 visit(index + 1, next_total, picked + [candidates[index]])
 
     visit(0, 0, [])
-    return solutions[0] if len(solutions) == 1 else None
+    return (solutions[0] if len(solutions) == 1 else None, len(solutions), nodes, solutions[:2])
 
 
 def run() -> int:
@@ -302,21 +304,75 @@ def run() -> int:
                 log(f"Estación {station_id}: ControlGas devolvió {len(controlgas_rows)} registros.")
                 if int(station_id) in GASOMEX_STATIONS:
                     turns: list[dict] = []
+                    no_link = 0
+                    no_amount = 0
+                    active_cg_keys = {
+                        str(row[0]) for row in cursor.execute("""SELECT P.clave_externa
+                            FROM dbo.efc_conc_partidas P
+                            JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id
+                            WHERE P.estacion_id=? AND P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA'""", station_id).fetchall()
+                    }
+                    already_conciliated = 0
                     for row in controlgas_rows:
                         cut = as_date(row.get("Fecha")); turn = str(row.get("Turno", "")).strip()
                         if not turn or cut < controlgas_first: continue
                         for concept, raw in (("MN", row.get("MN")), ("MORRALLA", row.get("Morralla")), ("USD", amount(row.get("Dolares")) + amount(row.get("Dolares2")))):
-                            if amount(raw) <= 0: continue
+                            if amount(raw) <= 0:
+                                no_amount += 1
+                                continue
                             target = links.get((cut.isoformat(), turn_key(turn), concept))
-                            if target and target > 0:
-                                turns.append({"key": f"cg-{station_id}-{cut.isoformat()}-{turn}-{concept}", "date": cut, "turn": turn, "concept": concept, "amount": target})
+                            if not target or target <= 0:
+                                no_link += 1
+                                continue
+                            key = f"cg-{station_id}-{cut.isoformat()}-{turn}-{concept}"
+                            if key in active_cg_keys:
+                                already_conciliated += 1
+                                continue
+                            turns.append({"key": key, "date": cut, "turn": turn, "concept": concept, "amount": target})
                     gas_bank_rows = [bank for bank in bank_rows if int(bank[0]) not in used and gasomex_account_matches(bank, int(station_id))]
+                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos elegibles={len(turns)}, ya conciliados={already_conciliated}, sin vínculo={no_link}, sin importe CG={no_amount}, depósitos por cuenta={len(gas_bank_rows)}.")
                     for bank in sorted(gas_bank_rows, key=lambda item: as_date(item[1])):
                         bank_date = as_date(bank[1])
-                        pool = [dict(item, bank_date=bank_date) for item in turns if item["date"] <= bank_date]
-                        picked = unique_gasomex_combination(pool, amount(bank[2]), set())
-                        if not picked: continue
+                        # Primera pasada: mismo día o hasta dos días anteriores.
+                        window_start = bank_date - timedelta(days=GASOMEX_PRIMARY_DAYS)
+                        pool = [
+                            dict(item, bank_date=bank_date)
+                            for item in turns
+                            if window_start <= item["date"] <= bank_date
+                        ]
+                        picked, solution_count, search_nodes, solution_examples = unique_gasomex_combination(pool, amount(bank[2]), set())
+                        search_window = f"{window_start}..{bank_date}"
+                        search_mode = "2_dias"
+                        # Si la primera pasada no produce una única solución,
+                        # hacemos una segunda búsqueda de diagnóstico hasta siete
+                        # días. Sólo se acepta si también resulta única; así se
+                        # pueden detectar depósitos que cruzan varios días sin
+                        # aprobar una combinación ambigua.
+                        if not picked:
+                            fallback_start = bank_date - timedelta(days=GASOMEX_FALLBACK_DAYS)
+                            fallback_pool = [
+                                dict(item, bank_date=bank_date)
+                                for item in turns
+                                if fallback_start <= item["date"] <= bank_date
+                            ]
+                            fallback_picked, fallback_count, fallback_nodes, fallback_examples = unique_gasomex_combination(fallback_pool, amount(bank[2]), set())
+                            log(f"GASOMEX ampliación: estación={station_id}, banco={bank[0]}, ventana={fallback_start}..{bank_date}, turnos_disponibles={len(fallback_pool)}, soluciones_encontradas={fallback_count}, nodos={fallback_nodes}.")
+                            if fallback_picked:
+                                picked = fallback_picked
+                                solution_count = fallback_count
+                                search_nodes += fallback_nodes
+                                search_window = f"{fallback_start}..{bank_date}"
+                                search_mode = "7_dias"
+                            else:
+                                solution_examples = fallback_examples or solution_examples
+                        if not picked:
+                            log(f"GASOMEX sin combinación: estación={station_id}, banco={bank[0]}, fecha={bank_date}, ventana_inicial={window_start}..{bank_date}, importe={amount(bank[2]):.2f}, turnos_disponibles={len(pool)}, soluciones_encontradas={solution_count}, nodos={search_nodes}.")
+                            for example_number, example in enumerate(solution_examples, 1):
+                                signature = ", ".join(f"{item['date']} T{item['turn']} {item['concept']}={item['amount']:.2f}" for item in example)
+                                log(f"GASOMEX solución alternativa {example_number}: {signature}")
+                            continue
                         cg_total = round(sum(item["amount"] for item in picked), 2)
+                        log(f"GASOMEX candidato: estación={station_id}, banco={bank[0]}, modo={search_mode}, ventana={search_window}, importe_banco={amount(bank[2]):.2f}, importe_cg={cg_total:.2f}, turnos={len(picked)}.")
                         payload = "<turns>" + "".join(
                             f'<turn id="{escape(item["key"])}" date="{item["date"].isoformat()}" turn="{escape(item["turn"])}" currency="MN" amount="{item["amount"]:.2f}" />'
                             for item in picked

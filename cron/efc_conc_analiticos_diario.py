@@ -7,6 +7,7 @@ de tipo de cambio de SG12 exclusivamente para reproducir las reglas USD.
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import date, datetime, timedelta
 import email
 from email.header import decode_header
@@ -214,6 +215,10 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
                 bloqueado_auto BIT NOT NULL DEFAULT 0)""",
         """IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','bloqueado_auto') IS NULL
             ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD bloqueado_auto BIT NOT NULL DEFAULT 0""",
+        """IF OBJECT_ID('dbo.efc_conc_analiticos_vinculos','U') IS NOT NULL
+            AND (COL_LENGTH('dbo.efc_conc_analiticos_vinculos','criterio') IS NULL
+                 OR COL_LENGTH('dbo.efc_conc_analiticos_vinculos','criterio') < 40)
+            ALTER TABLE dbo.efc_conc_analiticos_vinculos ALTER COLUMN criterio VARCHAR(40) NOT NULL""",
         """IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_vinculos_papeleta_activa')
             CREATE UNIQUE INDEX UX_efc_conc_analiticos_vinculos_papeleta_activa ON dbo.efc_conc_analiticos_vinculos(papeleta_id) WHERE activo=1""",
         """IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_vinculos_turno_activo')
@@ -362,6 +367,61 @@ def parse_workbook(content: bytes, filename: str, stations: list[tuple], aliases
         output.append((source_row, paper_date.isoformat(), str(value("date") or "") or None, str(value("time") or "") or None, str(value("station") or "") or None, str(value("station_name") or "") or None, station_id, station_status, account, "".join(char for char in account or "" if char.isdigit()) or None, remittance_original, remittance, declared_mn, real_mn, money(value("difference_mn")), declared_usd, real_usd, money(value("difference_usd")), raw_json))
     if not output and not errors:
         raise RuntimeError("PLANILLA no contiene papeletas con importes MN o USD.")
+    return output, errors
+
+
+def parse_consolidated_tsv(content: bytes, filename: str, stations: list[tuple], aliases: dict[str, int]) -> tuple[list[tuple], list[tuple]]:
+    """Lee el concentrado pegado/exportado: fecha,código,estación,...,importes."""
+    rows = list(csv.reader(content.decode("utf-8-sig", errors="replace").splitlines(), delimiter="\t"))
+    output: list[tuple] = []
+    errors: list[tuple] = []
+    merged: dict[tuple, int] = {}
+    for source_row, row in enumerate(rows, 1):
+        if not row or not as_date(row[0] if row else None):
+            continue
+        values = row + [None] * max(0, 12 - len(row))
+        paper_date = as_date(values[0])
+        station_raw, station_name = values[1], values[2]
+        station_id, station_status = resolve_station(station_raw, station_name, stations, aliases)
+        account, remittance_original = str(values[4] or "").strip() or None, str(values[5] or "").strip() or None
+        remittance = remittance_key(remittance_original)
+        declared_mn, real_mn, difference_mn = money(values[6]), money(values[7]), money(values[8])
+        declared_usd, real_usd, difference_usd = money(values[9]), money(values[10]), money(values[11])
+        if not remittance:
+            errors.append((source_row, "REMESA_NO_IDENTIFICADA", "REM NUM es obligatorio y debe ser numérico.", json.dumps(row, ensure_ascii=False)))
+            continue
+        # Corrección solicitada para el concentrado manual: el remito 10209599
+        # de Santiago fue capturado con un número equivocado y debe conservarse
+        # como 9569. El importe corregido está en DICE CONTENER MN (columna 7).
+        if paper_date == date(2026, 9, 9) and remittance == "10209599" and any(
+            abs(value - 12550.15) < 0.01
+            for value in (declared_mn, real_mn)
+            if value is not None
+        ):
+            remittance_original, remittance = "9569", "9569"
+        if not any(item is not None for item in (declared_mn, real_mn, declared_usd, real_usd)):
+            continue
+        raw_json = json.dumps({"fila_original": row, "correccion_remesa": "10209599→9569" if remittance == "9569" else None}, ensure_ascii=False)
+        paper = (source_row, paper_date.isoformat(), str(values[0] or "") or None, str(values[3] or "") or None, str(station_raw or "") or None, str(station_name or "") or None, station_id, station_status, account, "".join(char for char in account or "" if char.isdigit()) or None, remittance_original, remittance, declared_mn, real_mn, difference_mn, declared_usd, real_usd, difference_usd, raw_json)
+        identity = (paper[1], paper[6], paper[8], paper[11])
+        if identity not in merged:
+            merged[identity] = len(output)
+            output.append(paper)
+            continue
+        index = merged[identity]
+        previous = output[index]
+        conflicts = [field for field in (12, 13, 15, 16) if previous[field] is not None and paper[field] is not None and previous[field] != paper[field]]
+        if conflicts:
+            errors.append((source_row, "REMESA_DUPLICADA", f"REM NUM {remittance} repite un importe distinto en la misma fecha; se conserva la primera fila.", paper[-1]))
+            continue
+        combined = list(previous)
+        for field in (3, 12, 13, 14, 15, 16, 17):
+            if combined[field] is None and paper[field] is not None:
+                combined[field] = paper[field]
+        combined[18] = json.dumps({"filas_originales": [json.loads(previous[18]), json.loads(paper[18])]}, ensure_ascii=False)
+        output[index] = tuple(combined)
+    if not output and not errors:
+        raise RuntimeError("El archivo consolidado no contiene papeletas con importes MN o USD.")
     return output, errors
 
 
@@ -630,7 +690,7 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
     return linked
 
 
-def import_attachment(connection: pyodbc.Connection, content: bytes, filename: str, metadata: dict[str, str], reprocess: bool = False) -> dict:
+def import_attachment(connection: pyodbc.Connection, content: bytes, filename: str, metadata: dict[str, str], reprocess: bool = False, parser=parse_workbook) -> dict:
     hash_value = hashlib.sha256(content).hexdigest()
     cursor = connection.cursor()
     found = cursor.execute("SELECT id,estado FROM dbo.efc_conc_analiticos_importaciones WHERE hash_archivo=?", hash_value).fetchone()
@@ -638,7 +698,7 @@ def import_attachment(connection: pyodbc.Connection, content: bytes, filename: s
         return {"duplicate": True, "id": int(found[0]), "papeletas": 0, "errors": 0, "duplicate_papers": 0}
     try:
         stations, aliases = catalog(cursor)
-        papers, errors = parse_workbook(content, filename, stations, aliases)
+        papers, errors = parser(content, filename, stations, aliases)
     except Exception as exc:
         record_error(cursor, content, filename, hash_value, metadata, str(exc)); connection.commit(); raise
     try:
@@ -737,6 +797,20 @@ def sync(start_date: date | None = None, end_date: date | None = None, include_a
     return totals
 
 
+def import_manual_file(file_path: str) -> dict:
+    """Importa un concentrado tabulado sin consultar IMAP."""
+    path = Path(file_path).expanduser().resolve()
+    if not path.is_file():
+        raise RuntimeError(f"No existe el archivo manual: {path}")
+    content = path.read_bytes()
+    metadata = {"subject": "Carga manual de analíticos GASOMEX septiembre 2026", "from": "CARGA_MANUAL", "received": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    with db_connection() as connection:
+        ensure_schema(connection.cursor()); connection.commit()
+        result = import_attachment(connection, content, path.name, metadata, parser=parse_consolidated_tsv)
+    result["source"] = str(path)
+    return result
+
+
 def reassign_unidentified_stations() -> dict:
     """Corrige sólo papeletas sin estación a partir de sus campos fuente.
 
@@ -789,10 +863,15 @@ def main() -> int:
         action="store_true",
         help="Reemplaza y reimporta adjuntos ya registrados, y reevalúa los vínculos automáticos.",
     )
+    operation_group.add_argument(
+        "--manual-file",
+        metavar="PATH",
+        help="Importa un concentrado tabulado manual de GASOMEX usando la misma ruta de persistencia del correo.",
+    )
     args = parser.parse_args()
     load_env_file()
     try:
-        result = reassign_unidentified_stations() if args.reassign_stations else sync(reprocess=args.reprocess)
+        result = reassign_unidentified_stations() if args.reassign_stations else import_manual_file(args.manual_file) if args.manual_file else sync(reprocess=args.reprocess)
         print(json.dumps(result, ensure_ascii=False)); return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr); return 1
