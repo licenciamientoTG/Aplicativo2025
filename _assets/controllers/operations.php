@@ -2123,6 +2123,33 @@ class Operations{
         }
     }
 
+    /**
+     * ¿La petición viene del cron con token válido? Mismo patrón que
+     * Merma::isCron() en _assets/controllers/merma.php.
+     */
+    private function isCron(): bool {
+        $token = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
+        return defined('CRON_SECRET') && $token === CRON_SECRET;
+    }
+
+    /**
+     * Propaga a las 37 BDs de estación remotas los cambios de estatus de
+     * responsables encolados por deactivate_responsable(). Solo ejecutable
+     * por CLI (Tarea Programada) con cron_token válido — nunca por
+     * HTTP/sesión, porque recorrer 37 linked servers de forma secuencial
+     * puede tardar decenas de segundos y no debe bloquear a ningún usuario
+     * desde el navegador. Ver cron/responsables_sync_queue.php y
+     * ResponsablesModel::process_sync_queue().
+     */
+    function sync_responsables_queue() : void {
+        set_time_limit(0);
+        if (PHP_SAPI !== 'cli' || !$this->isCron()) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        json_output(array_merge(['success' => true], $this->responsablesModel->process_sync_queue()));
+    }
+
     function monitor() :void {
         $from = $_GET['from'] ?? date('Y-m-d');
         echo $this->twig->render($this->route . 'monitor.html', compact('from'));
