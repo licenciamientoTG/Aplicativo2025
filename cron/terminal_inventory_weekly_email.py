@@ -34,7 +34,7 @@ import pyodbc
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 MOJO_TICKET_URL = "https://totalgas.mojohelpdesk.com/mc/tickets/{}"
-VALERA_DISPLAY_ORDER = ("ticketcard", "ultragas", "efecticard", "eox", "inburgas", "sodexo", "mobil")
+VALERA_DISPLAY_ORDER = ("inburgas", "ticketcard", "ultragas", "efecticard", "eox", "sodexo", "mobil")
 
 
 def load_env_file() -> None:

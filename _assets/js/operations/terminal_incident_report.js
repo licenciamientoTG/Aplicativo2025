@@ -15,7 +15,7 @@ $(function () {
     const exportOptions = { columns: ':visible', modifier: { search: 'applied' }, format: { header: (data, column) => table.find('thead tr:first th').eq(column).text().trim() } };
     const dt = table.DataTable({
         pageLength: 25, searching: false, orderCellsTop: false,
-        columnDefs: [{ targets: [7], orderable: false }],
+        columnDefs: [{ targets: [8], orderable: false }],
         dom: '<"terminal-dt-toolbar"B l>t<"terminal-dt-footer"ip>',
         buttons: [
             { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Gestión de incidencias de terminales', exportOptions },
