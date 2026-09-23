@@ -3358,11 +3358,8 @@ class Operations{
             $rows=$this->terminalInventoryModel->incidentReport(compact('month','from','to','asOf','station','type','status','assigned','q') + ['as_of'=>$asOf]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
         foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
-        $stations=[]; $assignees=[];
-        foreach ($this->terminalInventoryModel->activeStationIds() as $id) $stations[(string)$id]=(string)$id;
-        foreach ($rows as $row) { if (!empty($row['estacion_nombre'])) $stations[(string)$row['estacion_id']]=(string)$row['estacion_nombre']; if (!empty($row['asignado_a'])) $assignees[(string)$row['assigned_to_id']]=(string)$row['asignado_a']; }
-        foreach ($stations as $id=>$label) { $stationRow=$this->terminalInventoryModel->activeStation((int)$id); if ($stationRow) $stations[$id]=(string)$stationRow['Nombre']; }
-        asort($stations,SORT_NATURAL|SORT_FLAG_CASE); asort($assignees,SORT_NATURAL|SORT_FLAG_CASE);
+        $stations=[]; foreach ($this->terminalInventoryModel->activeStations() as $stationRow) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
+        $assignees=[]; foreach ($this->terminalInventoryModel->incidentAssignees() as $assignee) $assignees[(string)$assignee['assigned_to_id']]=(string)$assignee['asignado_a'];
         $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo'])));
         echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q],'openCount'=>$openCount]);
     }

@@ -117,6 +117,17 @@ class TerminalInventoryModel extends Model {
     public function activeStationIds(): array {
         return array_map(fn($row)=>(int)$row['Codigo'],$this->sql->select('SELECT Codigo FROM [TG].[dbo].[Estaciones] WHERE activa=1 AND Codigo NOT IN (0,4,20)'));
     }
+    public function activeStations(): array {
+        return $this->sql->select('SELECT Codigo,Nombre FROM [TG].[dbo].[Estaciones] WHERE activa=1 AND Codigo NOT IN (0,4,20) ORDER BY Nombre');
+    }
+    public function incidentAssignees(): array {
+        return $this->sql->select("SELECT DISTINCT COALESCE(t.assigned_to_id,0) AS assigned_to_id,
+                COALESCE(NULLIF(LTRIM(RTRIM(COALESCE(u.first_name,'')+' '+COALESCE(u.middle_name,'')+' '+COALESCE(u.last_name,''))),''),'Sin asignar') AS asignado_a
+            FROM [TG].[dbo].[inv_ter_incidencias] i
+            LEFT JOIN [TG].[dbo].[mojo_tickets] t ON t.id_mojo=i.ticket_mojo_id
+            LEFT JOIN [TG].[dbo].[mojo_users] u ON u.id_mojo=t.assigned_to_id
+            ORDER BY asignado_a");
+    }
     public function activeIncidents(int $stationId): array {
         return $this->sql->select("SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE estacion_id=? AND fecha_cierre_mojo IS NULL", [$stationId]);
     }
