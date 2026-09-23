@@ -1420,13 +1420,11 @@ var responsables_table = $('#responsables_table').DataTable({
     buttons: [
         {
             extend: 'excel',
-            className: 'd-none',
-            filename: 'Reporte de ventas'
+            className: 'd-none responsables_table',
+            filename: 'Reporte de responsables'
         }
     ],
     ajax: {
-        // Enviamos por post
-        data: {'from': $('#responsables_table').data('from'), 'until': $('#responsables_table').data('until')},
         method: 'post',
         url: '/operations/responsables',
         error: function() {
@@ -1471,9 +1469,14 @@ var responsables_table = $('#responsables_table').DataTable({
 
 // Agregar un evento clic de refresh
 $('.refresh_responsables_table').on('click', function () {
-    datatables_permissions_users.clear().draw();
-    datatables_permissions_users.ajax.reload();
-    $('#datatables_permissions_users').waitMe('hide');
+    responsables_table.clear().draw();
+    responsables_table.ajax.reload();
+    $('#responsables_table').waitMe('hide');
+});
+
+$('#exportExcel').on('click', function () {
+    // Disparar el evento clic del botón de exportación de Excel del DataTable
+    $('.responsables_table').trigger('click');
 });
 
 $('#responsableModal').on('show.bs.modal', function (e) {
@@ -1526,41 +1529,47 @@ function deactivate_responsable(cod, hab) {
                 $('.table-responsive').removeClass('loading');
             } else {
                 toastr.error(data.message, '¡Error!', { timeOut: 1000 });
+                $('.table-responsive').removeClass('loading');
             }
         },
         error: function(xhr, textStatus, errorThrown) {
             console.error('AJAX error:', errorThrown);
+            $('.table-responsive').removeClass('loading');
         }
     });
 }
 
 function delete_responsable(cod) {
-    // Vamos a gregar la clase .loading a la tabla de responsables
-    $('.table-responsive').addClass('loading');
+    // Vamos a pedir confirmación antes de eliminar al responsable
+    alertify.confirm('Eliminar responsable', '¿Está seguro de que desea eliminar este responsable?',
+        function() {
+            // Vamos a agregar la clase .loading a la tabla de responsables
+            $('.table-responsive').addClass('loading');
 
-    // Vamos a enviar una paticion ajax por metodo post a la ruta /operations/delete_responsable
-    $.ajax({
-        url: '/operations/delete_responsable/' + cod,
-        method: 'POST',
-        dataType: 'json',
-        success: function(data) {
-            if (data.status == 'success') {
-                toastr.success(data.message, '¡Éxito!', { timeOut: 1000 });
-                // Ahora recargamos la tabla de responsables
-                responsables_table.clear().draw();
-                responsables_table.ajax.reload();
-                $('.table-responsive').removeClass('loading');
-            } else {
-                toastr.error(data.message, '¡Error!', { timeOut: 1000 });
-            }
-        },
-        error: function(xhr, textStatus, errorThrown) {
-            console.error('AJAX error:', errorThrown);
-        },
-        complete: function() {
-            $('.table-responsive').removeClass('loading');
-        }
-    });
+            // Vamos a enviar una paticion ajax por metodo post a la ruta /operations/delete_responsable
+            $.ajax({
+                url: '/operations/delete_responsable/' + cod,
+                method: 'POST',
+                dataType: 'json',
+                success: function(data) {
+                    if (data.status == 'success') {
+                        toastr.success(data.message, '¡Éxito!', { timeOut: 1000 });
+                        // Ahora recargamos la tabla de responsables
+                        responsables_table.clear().draw();
+                        responsables_table.ajax.reload();
+                        $('.table-responsive').removeClass('loading');
+                    } else {
+                        toastr.error(data.message, '¡Error!', { timeOut: 1000 });
+                        $('.table-responsive').removeClass('loading');
+                    }
+                },
+                error: function(xhr, textStatus, errorThrown) {
+                    console.error('AJAX error:', errorThrown);
+                    $('.table-responsive').removeClass('loading');
+                }
+            });
+        }, function() {}
+    );
 }
 
 var monitor_table = $('#monitor_table').DataTable({

@@ -2413,22 +2413,26 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             return acc;
         }, {});
     }
-    function groupAndSumEstation(data) {
+    function groupAndSumEstation(data, eventosRows) {
+        const eventosIndex = indexEventosByEstacionMedio(eventosRows);
         return data.reduce((acc, item) => {
             let Estacion = item.Estacion;
             let paymentMethod = item.MedioPago;
             if (!acc[Estacion]) {// Si el grupo no existe en el acumulador, lo inicializamos con su total general
-                acc[Estacion] = { 
-                    Grupo: Estacion, 
+                acc[Estacion] = {
+                    Grupo: Estacion,
                     TotalSum: 0,  // Total general del grupo
+                    EventosSum: 0, // Total de transacciones del grupo
                     MediosPago: {} // Detalle de medios de pago
                 };
             }
             if (!acc[Estacion].MediosPago[paymentMethod]) {// Si el medio de pago no existe dentro del grupo, lo inicializamos
-                acc[Estacion].MediosPago[paymentMethod] = { 
-                    MedioPago: paymentMethod, 
-                    TotalSum: 0 // Total por medio de pago
+                acc[Estacion].MediosPago[paymentMethod] = {
+                    MedioPago: paymentMethod,
+                    TotalSum: 0, // Total por medio de pago
+                    Eventos: eventosIndex[`${Estacion}|${paymentMethod}`] || 0 // # transacciones por medio de pago
                 };
+                acc[Estacion].EventosSum += acc[Estacion].MediosPago[paymentMethod].Eventos;
             }
             Object.keys(item).forEach(key => {// Recorremos las claves del objeto y sumamos solo las numéricas (excluyendo las especificadas)
                 if (![ "Estacion", "Descripcion", "MedioPago", "Total"].includes(key)) {
@@ -2451,22 +2455,26 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     function buildPaymentTable(mediosPago, totalSum) {
         let table = document.createElement('table');
         table.className = 'table table_card table-sm';
+        let mediosArray = Object.values(mediosPago);
+        let hasEventos = mediosArray.some(med => med.Eventos !== undefined);
         let thead = document.createElement('thead');
         thead.innerHTML = `
             <tr>
                 <th>Medio de Pago</th>
                 <th>Monto</th>
+                ${hasEventos ? '<th>Transacc.</th>' : ''}
                 <th>Porcentaje</th>
             </tr>
         `;
         table.appendChild(thead);
         let tbody = document.createElement('tbody');
-        Object.values(mediosPago).forEach(med => {
+        mediosArray.forEach(med => {
             let tr = document.createElement('tr');
             let porcentaje = (med.TotalSum / totalSum) * 100;
             tr.innerHTML = `
                 <td>${med.MedioPago}</td>
                 <td class="text-end">${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(med.TotalSum)}</td>
+                ${hasEventos ? `<td class="text-end">${(med.Eventos || 0).toLocaleString('es-MX')}</td>` : ''}
                 <td class="text-end">${porcentaje.toFixed(2)}%</td>
             `;
             tbody.appendChild(tr);
@@ -2475,11 +2483,11 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         return table;
     }
     // Función que renderiza las cards comparativas
-    function renderComparativeCards(currentData, previousData, containerId) {
+    function renderComparativeCards(currentData, previousData, containerId, currentEventos, previousEventos) {
         console.log(containerId);
         if(containerId == 'comparativeEstationContainer'){
-            var currentGroups = groupAndSumEstation(currentData);
-            var previousGroups = groupAndSumEstation(previousData);
+            var currentGroups = groupAndSumEstation(currentData, currentEventos);
+            var previousGroups = groupAndSumEstation(previousData, previousEventos);
         }else{
             var currentGroups = groupAndSumCompay(currentData);
             var previousGroups = groupAndSumCompay(previousData);
@@ -2563,7 +2571,8 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             if (currentGroups[group]) {
                 let currentTotalP = document.createElement('p');
                 currentTotalP.className = 'card-text';
-                currentTotalP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(currentTotal)}</strong>`;
+                let eventosTxt = currentGroups[group].EventosSum ? ` &nbsp;|&nbsp; Transacciones: ${currentGroups[group].EventosSum.toLocaleString('es-MX')}` : '';
+                currentTotalP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(currentTotal)}${eventosTxt}</strong>`;
                 currentCardBody.appendChild(currentTotalP);
                 let currentTable = buildPaymentTable(currentGroups[group].MediosPago, currentTotal);
                 currentCardBody.appendChild(currentTable);
@@ -2589,7 +2598,8 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         if (previousGroups[group]) {
             let previousTotalP = document.createElement('p');
             previousTotalP.className = 'card-text';
-            previousTotalP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(previousTotal)}</strong>`;
+            let eventosTxt = previousGroups[group].EventosSum ? ` &nbsp;|&nbsp; Transacciones: ${previousGroups[group].EventosSum.toLocaleString('es-MX')}` : '';
+            previousTotalP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(previousTotal)}${eventosTxt}</strong>`;
             previousCardBody.appendChild(previousTotalP);
             let previousTable = buildPaymentTable(previousGroups[group].MediosPago, previousTotal);
             previousCardBody.appendChild(previousTable);
@@ -2735,6 +2745,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             $('#mounth_estation_table tbody').empty(); // Limpia el cuerpo
             $('#mounth_estation_table tfoot').empty(); // Limpia el pie de tabla si lo usas
         }
+        $('#comparativeEstationContainer').empty().addClass('loading');
         var fromDate = document.getElementById('from5').value;
         var untilDate = document.getElementById('until5').value;
         var estation = document.getElementById('estation5').value;
@@ -2775,7 +2786,8 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 error: function() {
                     $('#mounth_estation_table').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
-    
+                    $('#comparativeEstationContainer').removeClass('loading');
+
                     alertify.myAlert(
                         `<div class="container text-center text-danger">
                             <h4 class="mt-2 text-danger">¡Error!</h4>
@@ -2784,7 +2796,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                             <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
                         </div>`
                     );
-    
+
                 },
                 beforeSend: function() {
                     $('.table-responsive').addClass('loading');
@@ -2859,6 +2871,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         var lastYearFrom = subtracYear(fromDate);
         var lastYearUntil = subtracYear(untilDate);
         var dynamicColumns = getMounthCompanyColumns(lastYearFrom, lastYearUntil,'mounth_estation_table');
+        $('#comparativeEstationContainer').addClass('loading');
         try {
             const response = await fetch('/commercial/mounth_estation_table', {
                 method: 'POST',
@@ -2870,16 +2883,54 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 body: `fromDate=${lastYearFrom}&untilDate=${lastYearUntil}&estation=${estation}&json=1&total=${0}&dinamicColumns=${encodeURIComponent(JSON.stringify(dynamicColumns))}`
             });
             const jsonData = await response.json();
+
+            const [currentEventos, previousEventos] = await Promise.all([
+                fetchMounthEstationEventos(fromDate, untilDate, estation),
+                fetchMounthEstationEventos(lastYearFrom, lastYearUntil, estation),
+            ]);
+
             if (jsonData && jsonData.data) {
 
                 const previousData = jsonData.data;
-                renderComparativeCards(currentData, previousData, 'comparativeEstationContainer');
+                renderComparativeCards(currentData, previousData, 'comparativeEstationContainer', currentEventos, previousEventos);
 
             }
         } catch (error) {
             console.error("Error al obtener los datos del año anterior:", error);
+        } finally {
+            $('#comparativeEstationContainer').removeClass('loading');
         }
-        
+
+    }
+
+    // Trae el # de transacciones por Estacion + MedioPago (VentasModel::getMounthEstationEventos)
+    async function fetchMounthEstationEventos(fromDate, untilDate, estation) {
+        try {
+            const response = await fetch('/commercial/mounth_estation_eventos', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json, text/javascript, */*',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                credentials: 'include',
+                body: `fromDate=${fromDate}&untilDate=${untilDate}&estation=${estation}`
+            });
+            const jsonData = await response.json();
+            return (jsonData && jsonData.data) ? jsonData.data : [];
+        } catch (error) {
+            console.error("Error al obtener el número de transacciones:", error);
+            return [];
+        }
+    }
+
+    // Indexa las filas de eventos por "Estacion|MedioPago" -> TotalEventos
+    function indexEventosByEstacionMedio(eventosRows) {
+        const index = {};
+        (eventosRows || []).forEach(row => {
+            const key = `${row.Estacion}|${row.MedioPago}`;
+            index[key] = (parseInt(row.TotalEventos, 10) || 0);
+        });
+        return index;
     }
 
     async function upload_file_budget() {
