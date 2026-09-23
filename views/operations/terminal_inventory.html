@@ -1,17 +1,17 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Operaciones - Inventario de terminales{% endblock %}
-{% block menutitle %}Inventario de terminales{% endblock %}
+{% block title %}Operaciones - Gestión de incidencias de terminales{% endblock %}
+{% block menutitle %}Gestión de incidencias de terminales{% endblock %}
 {% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
 {% block content %}
 <div id="terminalInventoryApp" data-inventory-date="{{ inventoryDate }}" data-types='{{ types|json_encode|e("html_attr") }}' data-active='{{ activeIncidents|json_encode|e("html_attr") }}' data-expected-counts='{{ expectedCounts|default({})|json_encode|e("html_attr") }}' data-pending-confirmations='{{ pendingConfirmations|default([])|json_encode|e("html_attr") }}'>
   <div class="terminal-page-header d-flex justify-content-between flex-wrap gap-3 mb-3">
-    <div><p class="text-muted mb-1">Captura de inventario · {{ station.Nombre }} <span class="text-muted">(#{{ station.Codigo }})</span></p><span class="badge bg-light text-primary border">{{ inventoryDate|date('d/m/Y') }}</span></div>
+    <div><p class="text-muted mb-1">Registrar incidencias · {{ station.Nombre }} <span class="text-muted">(#{{ station.Codigo }})</span></p><span class="badge bg-light text-primary border">{{ inventoryDate|date('d/m/Y') }}</span></div>
     {% if canReport %}<div class="d-flex gap-2"><a class="btn btn-outline-primary" href="/operations/terminal_inventory_status"><i data-feather="check-square"></i> Cumplimiento</a><a class="btn btn-outline-primary" href="/operations/terminal_report"><i data-feather="bar-chart-2"></i> Ver reporte</a></div>{% endif %}
   </div>
   {% if not captureAllowed %}
     <div class="alert alert-warning mb-0"><i data-feather="calendar"></i> La captura solo está disponible el día configurado. Próxima fecha permitida: <strong>{{ nextInventoryDate|date('d/m/Y') }}</strong>.</div>
   {% elseif alreadySaved %}
-    <div class="alert alert-info mb-0">El inventario del {{ inventoryDate|date('d/m/Y') }} ya fue guardado y no puede modificarse.</div>
+    <div class="alert alert-info mb-0">El registro de incidencias del {{ inventoryDate|date('d/m/Y') }} ya fue guardado y no puede modificarse.</div>
   {% else %}
   <form id="terminalInventoryForm" novalidate>
     <div class="row g-3"><div class="col-lg-8"><div class="card terminal-card h-100"><div class="card-body">
@@ -26,8 +26,8 @@
       {% endfor %}</tbody></table></div>
     </div></div></div>
     <div class="col-lg-4"><div class="card terminal-card h-100"><div class="card-body"><h5 class="card-title">Resumen</h5><div class="terminal-metric"><i data-feather="target"></i><div><strong id="terminalExpectedTotal">0</strong><span>Stock</span></div></div><div class="terminal-metric"><i data-feather="clipboard"></i><div><strong id="terminalCapturedTotal">0</strong><span>Terminales capturadas</span></div></div><div class="terminal-metric"><i data-feather="check-circle"></i><div><strong id="terminalWorkingTotal">0</strong><span>Funcionando</span></div></div><div class="terminal-metric"><i data-feather="alert-triangle"></i><div><strong id="terminalDamagedTotal">0</strong><span>Dañadas</span></div></div><div class="terminal-metric"><i data-feather="link"></i><div><strong id="terminalRequiredTotal">0</strong><span>Incidencias faltantes de vinculación</span></div></div><hr><div class="alert alert-primary small mb-0"><i data-feather="info"></i> Cada terminal dañada requiere un ticket Mojo abierto y único.</div></div></div></div></div>
-    <div class="card terminal-card mt-3"><div class="card-body"><div class="d-flex justify-content-between align-items-center"><div><h5 class="card-title mb-1">Incidencias vinculadas</h5><p class="text-muted small mb-0">Las incidencias abiertas se mantienen en inventarios posteriores hasta el cierre del ticket.</p></div></div><div id="pendingConfirmationList" class="mt-3"></div><div id="incidentList" class="mt-3"></div></div></div>
-    <div class="d-flex justify-content-end mt-3"><button id="saveTerminalInventory" class="btn btn-primary px-4" type="submit"><i data-feather="save"></i> Guardar inventario</button></div>
+    <div class="card terminal-card mt-3"><div class="card-body"><div class="d-flex justify-content-between align-items-center"><div><h5 class="card-title mb-1">Incidencias vinculadas</h5><p class="text-muted small mb-0">Las incidencias abiertas se mantienen en registros posteriores hasta el cierre del ticket.</p></div></div><div id="pendingConfirmationList" class="mt-3"></div><div id="incidentList" class="mt-3"></div></div></div>
+    <div class="d-flex justify-content-end mt-3"><button id="saveTerminalInventory" class="btn btn-primary px-4" type="submit"><i data-feather="save"></i> Guardar registro</button></div>
   </form>{% endif %}
 </div>
 

@@ -1,31 +1,31 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Operaciones - Reporte de terminales{% endblock %}
-{% block menutitle %}Reporte de terminales{% endblock %}
+{% block title %}Operaciones - Reporte de incidencias de terminales{% endblock %}
+{% block menutitle %}Reporte de incidencias de terminales{% endblock %}
 {% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
 {% block content %}
 <div class="terminal-page-header d-flex justify-content-between flex-wrap gap-3 mb-3">
-  <div><p class="text-muted mb-0">Consulta los inventarios por fecha y expande cada nivel para llegar a sus incidencias.</p></div>
-  <div class="d-flex gap-2 flex-wrap"><a class="btn btn-outline-primary" href="/operations/terminal_inventory_status"><i data-feather="check-square"></i> Cumplimiento</a><a class="btn btn-primary" href="/operations/terminal_inventory"><i data-feather="plus"></i> Registrar inventario</a></div>
+  <div><p class="text-muted mb-0">Consulta los registros por fecha y expande cada nivel para llegar a sus incidencias.</p></div>
+  <div class="d-flex gap-2 flex-wrap"><a class="btn btn-outline-primary" href="/operations/terminal_inventory_status"><i data-feather="check-square"></i> Cumplimiento</a><a class="btn btn-primary" href="/operations/terminal_inventory"><i data-feather="plus"></i> Registrar incidencias</a></div>
 </div>
 <div class="row g-3 mb-3">
-  <div class="col-md-4"><div class="card terminal-stat"><div class="card-body"><small>Fechas con inventario</small><strong>{{ groups|length }}</strong></div></div></div>
+  <div class="col-md-4"><div class="card terminal-stat"><div class="card-body"><small>Fechas con registros</small><strong>{{ groups|length }}</strong></div></div></div>
   <div class="col-md-4"><div class="card terminal-stat terminal-stat-pending"><div class="card-body"><small>Incidencias abiertas</small><strong>{{ openCount }}</strong></div></div></div>
   <div class="col-md-4"><div class="card terminal-stat terminal-stat-success"><div class="card-body"><small>Incidencias históricas</small><strong>{{ rows|length }}</strong></div></div></div>
 </div>
 <div class="card terminal-card"><div class="card-body p-3 p-lg-4">
   <ul class="nav nav-tabs terminal-report-tabs mb-3" role="tablist">
-    <li class="nav-item"><button class="nav-link {{ selectedTab == 'inventories' ? 'active' : '' }}" data-bs-toggle="tab" data-bs-target="#inventories-panel" type="button" role="tab"><i data-feather="layers"></i> Inventarios</button></li>
+    <li class="nav-item"><button class="nav-link {{ selectedTab == 'inventories' ? 'active' : '' }}" data-bs-toggle="tab" data-bs-target="#inventories-panel" type="button" role="tab"><i data-feather="layers"></i> Registros</button></li>
     <li class="nav-item"><button class="nav-link {{ selectedTab == 'incidents' ? 'active' : '' }}" data-bs-toggle="tab" data-bs-target="#incidents-panel" type="button" role="tab"><i data-feather="alert-circle"></i> Incidencias</button></li>
   </ul>
   <div class="tab-content">
     <div class="tab-pane fade {{ selectedTab == 'inventories' ? 'show active' : '' }}" id="inventories-panel" role="tabpanel">
       <div class="terminal-tree-hint mb-3"><i data-feather="info"></i><span>Expande una fecha, después una estación y por último un tipo de terminal para consultar los tickets vinculados.</span></div>
-      <div class="terminal-report-controls mb-3"><div class="terminal-date-picker"><button type="button" id="terminalCalendarToggle" class="terminal-calendar-toggle" aria-expanded="false" aria-controls="terminalInventoryCalendar"><i data-feather="calendar"></i><span id="terminalCalendarLabel">Todas las fechas</span><i data-feather="chevron-down"></i></button><div id="terminalInventoryCalendar" class="terminal-inventory-calendar d-none" aria-label="Calendario de inventarios"></div></div><div id="terminalInventoryExportActions" class="terminal-export-actions" aria-label="Exportar inventarios"></div></div>
-      <div class="table-responsive terminal-tree-wrap"><table class="table terminal-tree-table mb-0"><thead><tr><th>Fecha de inventario</th><th class="text-center">Estaciones</th><th class="text-center">Total terminales</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th></tr></thead><tbody id="terminalReportGroups">
+      <div class="terminal-report-controls mb-3"><div class="terminal-date-picker"><button type="button" id="terminalCalendarToggle" class="terminal-calendar-toggle" aria-expanded="false" aria-controls="terminalInventoryCalendar"><i data-feather="calendar"></i><span id="terminalCalendarLabel">Todas las fechas</span><i data-feather="chevron-down"></i></button><div id="terminalInventoryCalendar" class="terminal-inventory-calendar d-none" aria-label="Calendario de registros"></div></div><div id="terminalInventoryExportActions" class="terminal-export-actions" aria-label="Exportar registros"></div></div>
+      <div class="table-responsive terminal-tree-wrap"><table class="table terminal-tree-table mb-0"><thead><tr><th>Fecha de registro</th><th class="text-center">Estaciones</th><th class="text-center">Total terminales</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th></tr></thead><tbody id="terminalReportGroups">
       {% for group in groups %}
         <tr class="terminal-date-row is-expandable" data-date="{{ group.fecha_inventario|date('Y-m-d') }}" tabindex="0" role="button" aria-expanded="false"><td><span class="terminal-tree-toggle"><i data-feather="chevron-right"></i></span><strong>{{ group.fecha_inventario|date('d/m/Y') }}</strong></td><td class="text-center"><span class="terminal-summary-value">{{ group.estaciones_capturadas }}/38</span></td><td class="text-center"><span class="terminal-summary-value">{{ group.funcionando + group.danadas }}</span></td><td class="text-center"><span class="terminal-summary-value">{{ group.funcionando }}</span></td><td class="text-center"><span class="terminal-summary-value {{ group.danadas ? 'is-damaged' : '' }}">{{ group.danadas }}</span></td></tr>
         <tr class="terminal-tree-child d-none"><td colspan="5"><div class="terminal-tree-child-panel terminal-date-details"><div class="terminal-incidents-loading"><span class="spinner-border spinner-border-sm"></span> Cargando estaciones…</div></div></td></tr>
-      {% else %}<tr><td colspan="5" class="text-center text-muted py-5">Aún no hay inventarios registrados.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="5" class="text-center text-muted py-5">Aún no hay registros.</td></tr>{% endfor %}
       </tbody></table></div>
     </div>
     <div class="tab-pane fade {{ selectedTab == 'incidents' ? 'show active' : '' }}" id="incidents-panel" role="tabpanel">

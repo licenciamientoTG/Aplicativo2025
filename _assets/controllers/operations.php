@@ -3344,6 +3344,28 @@ class Operations{
         $selectedTab=(!$hasFocus && (($_GET['tab'] ?? '') === 'incidents' || $type!=='')) ? 'incidents' : 'inventories';
         echo $this->twig->render($this->route.'terminal_report.html',['rows'=>$rows,'groups'=>$this->terminalInventoryModel->inventoryDateGroups(),'selectedTab'=>$selectedTab,'openCount'=>$openCount,'types'=>$types,'selectedType'=>$type,'focusDate'=>$focusDate,'focusStation'=>$focusStation,'focusType'=>$focusType]);
     }
+    public function terminal_incident_report(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte global.'; return; }
+        $month=trim((string)($_GET['month'] ?? '')); $from=trim((string)($_GET['from'] ?? '')); $to=trim((string)($_GET['to'] ?? ''));
+        $asOf=trim((string)($_GET['as_of'] ?? '')); $station=(string)($_GET['station'] ?? ''); $type=trim((string)($_GET['type'] ?? ''));
+        $status=trim((string)($_GET['status'] ?? '')); $assigned=(string)($_GET['assigned'] ?? ''); $q=trim((string)($_GET['q'] ?? ''));
+        if ($month!=='' && !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month)) $month='';
+        foreach (['from','to','as_of'] as $key) { $value=$$key; if ($value!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$value)) $$key=''; }
+        if ($status!=='open' && $status!=='closed') $status='';
+        if ($station!=='' && !preg_match('/^\d+$/',$station)) $station='';
+        if ($assigned!=='' && !preg_match('/^\d+$/',$assigned)) $assigned='';
+        try {
+            $rows=$this->terminalInventoryModel->incidentReport(compact('month','from','to','asOf','station','type','status','assigned','q') + ['as_of'=>$asOf]);
+        } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
+        foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
+        $stations=[]; $assignees=[];
+        foreach ($this->terminalInventoryModel->activeStationIds() as $id) $stations[(string)$id]=(string)$id;
+        foreach ($rows as $row) { if (!empty($row['estacion_nombre'])) $stations[(string)$row['estacion_id']]=(string)$row['estacion_nombre']; if (!empty($row['asignado_a'])) $assignees[(string)$row['assigned_to_id']]=(string)$row['asignado_a']; }
+        foreach ($stations as $id=>$label) { $stationRow=$this->terminalInventoryModel->activeStation((int)$id); if ($stationRow) $stations[$id]=(string)$stationRow['Nombre']; }
+        asort($stations,SORT_NATURAL|SORT_FLAG_CASE); asort($assignees,SORT_NATURAL|SORT_FLAG_CASE);
+        $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo'])));
+        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q],'openCount'=>$openCount]);
+    }
     public function terminal_inventory_group(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $date=(string)($_GET['date'] ?? '');

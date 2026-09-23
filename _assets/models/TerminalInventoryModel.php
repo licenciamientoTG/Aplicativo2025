@@ -199,6 +199,55 @@ class TerminalInventoryModel extends Model {
             LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=i.estacion_id AND c.tipo_terminal=i.tipo_terminal
             WHERE $where ORDER BY i.fecha_registro DESC", $params);
     }
+    /**
+     * Reporte gerencial de incidencias. Los filtros se aplican en SQL para que
+     * los enlaces enviados por correo puedan conservar el corte y la estación.
+     */
+    public function incidentReport(array $filters=[]): array {
+        $where=['1=1']; $params=[];
+        if (!empty($filters['station'])) { $where[]='i.estacion_id=?'; $params[]=(int)$filters['station']; }
+        if (!empty($filters['type'])) { $where[]='i.tipo_terminal=?'; $params[]=(string)$filters['type']; }
+        if (($filters['status'] ?? '')==='open') $where[]='i.fecha_cierre_mojo IS NULL';
+        if (($filters['status'] ?? '')==='closed') $where[]='i.fecha_cierre_mojo IS NOT NULL';
+        if (!empty($filters['assigned'])) { $where[]='COALESCE(t.assigned_to_id,0)=?'; $params[]=(int)$filters['assigned']; }
+        if (!empty($filters['month'])) {
+            $where[]="i.fecha_apertura_mojo >= CAST(? + '-01' AS date) AND i.fecha_apertura_mojo < DATEADD(month,1,CAST(? + '-01' AS date))";
+            $params[]=(string)$filters['month']; $params[]=(string)$filters['month'];
+        }
+        if (!empty($filters['from'])) { $where[]='i.fecha_apertura_mojo >= ?'; $params[]=(string)$filters['from'].' 00:00:00'; }
+        if (!empty($filters['to'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['to']; }
+        if (!empty($filters['as_of'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['as_of']; }
+        if (!empty($filters['q'])) {
+            $where[]="(CONVERT(varchar(30),i.ticket_mojo_id) LIKE ? OR s.Nombre LIKE ? OR i.tipo_terminal LIKE ? OR i.descripcion LIKE ? OR i.folio_proveedor LIKE ? OR i.serial_urovo LIKE ? OR i.estado_mojo LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)";
+            $needle='%'.(string)$filters['q'].'%';
+            for ($n=0;$n<11;$n++) $params[]=$needle;
+        }
+        return $this->sql->select("SELECT i.*,s.Nombre AS estacion_nombre,
+                COALESCE(c.terminales_esperadas,0) AS terminales_esperadas,
+                i.serial_urovo AS serie_urovo,
+                i.cerrado_por_mojo AS cerrado_por_mojo_nombre,
+                i.resolucion_confirmada AS solucion_confirmada,
+                i.confirmado_resuelto_correo AS solucion_confirmada_por_correo,
+                i.fecha_confirmacion_resolucion AS solucion_confirmada_en,
+                i.nota_confirmacion_resolucion AS solucion_confirmacion_nota,
+                COALESCE(t.assigned_to_id,0) AS assigned_to_id,
+                NULLIF(LTRIM(RTRIM(COALESCE(u.first_name,'')+' '+COALESCE(u.middle_name,'')+' '+COALESCE(u.last_name,''))),'') AS asignado_a,
+                t.title AS mojo_title,t.description AS mojo_description,
+                t.created_on AS mojo_created_on,t.solved_on AS mojo_solved_on,
+                st.name AS mojo_status,pr.name AS mojo_priority,
+                q.name AS mojo_queue,tf.name AS mojo_form,
+                DATEDIFF(DAY,i.fecha_apertura_mojo,COALESCE(i.fecha_cierre_mojo,GETDATE())) AS dias_naturales
+            FROM [TG].[dbo].[inv_ter_incidencias] i
+            LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id
+            LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=i.estacion_id AND c.tipo_terminal=i.tipo_terminal
+            LEFT JOIN [TG].[dbo].[mojo_tickets] t ON t.id_mojo=i.ticket_mojo_id
+            LEFT JOIN [TG].[dbo].[mojo_users] u ON u.id_mojo=t.assigned_to_id
+            LEFT JOIN [TG].[dbo].[mojo_ticket_status] st ON st.id_mojo=t.status_id
+            LEFT JOIN [TG].[dbo].[mojo_ticket_priority] pr ON pr.id_mojo=t.priority_id
+            LEFT JOIN [TG].[dbo].[mojo_ticket_queue] q ON q.id_mojo=t.ticket_queue_id
+            LEFT JOIN [TG].[dbo].[mojo_ticket_forms] tf ON tf.id_mojo=t.ticket_form_id
+            WHERE ".implode(' AND ',$where)." ORDER BY i.fecha_apertura_mojo DESC,i.id DESC", $params);
+    }
     public function inventoryDateGroups(): array {
         return $this->sql->select("SELECT i.fecha_inventario,COUNT(DISTINCT i.estacion_id) AS estaciones_capturadas,
                 COALESCE(SUM(d.funcionando),0) AS funcionando,COALESCE(SUM(d.danadas),0) AS danadas
