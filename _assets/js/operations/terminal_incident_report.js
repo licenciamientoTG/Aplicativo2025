@@ -1,4 +1,15 @@
 $(function () {
+    const advanced = $('#advancedIncidentFilters');
+    const toggle = $('#toggleIncidentFilters');
+    if (toggle.length) {
+        toggle.on('click', function () {
+            const expanded = $(this).attr('aria-expanded') === 'true';
+            $(this).attr('aria-expanded', String(!expanded));
+            advanced.toggleClass('d-none', expanded);
+            $(this).find('svg').replaceWith($('<i data-feather="' + (expanded ? 'sliders' : 'chevron-up') + '"></i>'));
+            if (window.feather) feather.replace();
+        });
+    }
     const table = $('#terminalIncidentReportTable');
     if (!table.length || !$.fn.DataTable) return;
     const filterLabels = ['Estación','Tipo','Ticket','Descripción','Folio','Serie','Apertura','Estado','Asignado','Prioridad','Cola','Cierre','Días','Confirmación'];
