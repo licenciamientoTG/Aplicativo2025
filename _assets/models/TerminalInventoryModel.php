@@ -220,7 +220,7 @@ class TerminalInventoryModel extends Model {
         if (!empty($filters['type'])) { $where[]='i.tipo_terminal=?'; $params[]=(string)$filters['type']; }
         if (($filters['status'] ?? '')==='open') $where[]='i.fecha_cierre_mojo IS NULL';
         if (($filters['status'] ?? '')==='closed') $where[]='i.fecha_cierre_mojo IS NOT NULL';
-        if (!empty($filters['assigned'])) { $where[]='COALESCE(t.assigned_to_id,0)=?'; $params[]=(int)$filters['assigned']; }
+        if (array_key_exists('assigned',$filters) && $filters['assigned']!=='') { $where[]='COALESCE(t.assigned_to_id,0)=?'; $params[]=(int)$filters['assigned']; }
         if (!empty($filters['month'])) {
             $where[]="i.fecha_apertura_mojo >= CAST(? + '-01' AS date) AND i.fecha_apertura_mojo < DATEADD(month,1,CAST(? + '-01' AS date))";
             $params[]=(string)$filters['month']; $params[]=(string)$filters['month'];
@@ -229,9 +229,9 @@ class TerminalInventoryModel extends Model {
         if (!empty($filters['to'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['to']; }
         if (!empty($filters['as_of'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['as_of']; }
         if (!empty($filters['q'])) {
-            $where[]="(CONVERT(varchar(30),i.ticket_mojo_id) LIKE ? OR s.Nombre LIKE ? OR i.tipo_terminal LIKE ? OR i.descripcion LIKE ? OR i.folio_proveedor LIKE ? OR i.serial_urovo LIKE ? OR i.estado_mojo LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)";
+            $where[]="(CONVERT(varchar(30),i.ticket_mojo_id) LIKE ? OR s.Nombre LIKE ? OR i.tipo_terminal LIKE ? OR i.descripcion LIKE ? OR i.folio_proveedor LIKE ? OR i.serial_urovo LIKE ? OR i.estado_mojo LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR st.name LIKE ? OR pr.name LIKE ? OR q.name LIKE ? OR tf.name LIKE ? OR co.name LIKE ? OR ur.first_name LIKE ? OR ur.last_name LIKE ?)";
             $needle='%'.(string)$filters['q'].'%';
-            for ($n=0;$n<11;$n++) $params[]=$needle;
+            for ($n=0;$n<18;$n++) $params[]=$needle;
         }
         return $this->sql->select("SELECT i.*,s.Nombre AS estacion_nombre,
                 COALESCE(c.terminales_esperadas,0) AS terminales_esperadas,
@@ -247,12 +247,16 @@ class TerminalInventoryModel extends Model {
                 t.created_on AS mojo_created_on,t.solved_on AS mojo_solved_on,
                 st.name AS mojo_status,pr.name AS mojo_priority,
                 q.name AS mojo_queue,tf.name AS mojo_form,
+                co.name AS mojo_company,
+                NULLIF(LTRIM(RTRIM(COALESCE(ur.first_name,'')+' '+COALESCE(ur.middle_name,'')+' '+COALESCE(ur.last_name,''))),'') AS mojo_solicitante,
                 DATEDIFF(DAY,i.fecha_apertura_mojo,COALESCE(i.fecha_cierre_mojo,GETDATE())) AS dias_naturales
             FROM [TG].[dbo].[inv_ter_incidencias] i
             LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id
             LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=i.estacion_id AND c.tipo_terminal=i.tipo_terminal
             LEFT JOIN [TG].[dbo].[mojo_tickets] t ON t.id_mojo=i.ticket_mojo_id
             LEFT JOIN [TG].[dbo].[mojo_users] u ON u.id_mojo=t.assigned_to_id
+            LEFT JOIN [TG].[dbo].[mojo_users] ur ON ur.id_mojo=t.user_id
+            LEFT JOIN [TG].[dbo].[mojo_companies] co ON co.id_mojo=t.company_id
             LEFT JOIN [TG].[dbo].[mojo_ticket_status] st ON st.id_mojo=t.status_id
             LEFT JOIN [TG].[dbo].[mojo_ticket_priority] pr ON pr.id_mojo=t.priority_id
             LEFT JOIN [TG].[dbo].[mojo_ticket_queue] q ON q.id_mojo=t.ticket_queue_id

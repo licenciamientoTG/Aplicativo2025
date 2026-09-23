@@ -6,7 +6,7 @@
 <div id="terminalInventoryApp" data-inventory-date="{{ inventoryDate }}" data-types='{{ types|json_encode|e("html_attr") }}' data-active='{{ activeIncidents|json_encode|e("html_attr") }}' data-expected-counts='{{ expectedCounts|default({})|json_encode|e("html_attr") }}' data-pending-confirmations='{{ pendingConfirmations|default([])|json_encode|e("html_attr") }}'>
   <div class="terminal-page-header d-flex justify-content-between flex-wrap gap-3 mb-3">
     <div><p class="text-muted mb-1">Registrar incidencias · {{ station.Nombre }} <span class="text-muted">(#{{ station.Codigo }})</span></p><span class="badge bg-light text-primary border">{{ inventoryDate|date('d/m/Y') }}</span></div>
-    {% if canReport %}<div class="d-flex gap-2"><a class="btn btn-outline-primary" href="/operations/terminal_inventory_status"><i data-feather="check-square"></i> Cumplimiento</a><a class="btn btn-outline-primary" href="/operations/terminal_report"><i data-feather="bar-chart-2"></i> Ver reporte</a></div>{% endif %}
+    {% if canReport %}<div class="d-flex gap-2"><a class="btn btn-outline-primary" href="/operations/terminal_inventory_status"><i data-feather="check-square"></i> Cumplimiento</a><a class="btn btn-outline-primary" href="/operations/terminal_incident_report"><i data-feather="bar-chart-2"></i> Ver reporte</a></div>{% endif %}
   </div>
   {% if not captureAllowed %}
     <div class="alert alert-warning mb-0"><i data-feather="calendar"></i> La captura solo está disponible el día configurado. Próxima fecha permitida: <strong>{{ nextInventoryDate|date('d/m/Y') }}</strong>.</div>

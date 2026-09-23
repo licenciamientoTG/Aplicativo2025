@@ -5,7 +5,7 @@
 {% block content %}
 <div class="terminal-page-header d-flex justify-content-between flex-wrap gap-3 mb-3">
   <div><p class="text-muted mb-1">Gestión de incidencias de terminales · Seguimiento por estación</p><span class="badge bg-light text-primary border">Registro del {{ inventoryDate|date('d/m/Y') }}</span></div>
-  <a class="btn btn-outline-primary" href="/operations/terminal_report"><i data-feather="bar-chart-2"></i> Ver reporte de incidencias</a>
+  <a class="btn btn-outline-primary" href="/operations/terminal_incident_report"><i data-feather="bar-chart-2"></i> Ver reporte de incidencias</a>
 </div>
 <div class="row g-3 mb-3">
   <div class="col-md-4"><div class="card terminal-stat terminal-stat-success"><div class="card-body"><small>Registros completados</small><strong>{{ completed|length }}</strong><span>de {{ stations|length }} estaciones</span></div></div></div>

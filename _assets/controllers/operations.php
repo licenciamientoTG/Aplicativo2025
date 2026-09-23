@@ -3386,7 +3386,7 @@ class Operations{
         if ($station!=='' && !preg_match('/^\d+$/',$station)) $station='';
         if ($assigned!=='' && !preg_match('/^\d+$/',$assigned)) $assigned='';
         try {
-            $rows=$this->terminalInventoryModel->incidentReport(compact('month','from','to','asOf','station','type','status','assigned','q') + ['as_of'=>$asOf]);
+            $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
         foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
         $stations=[]; foreach ($this->terminalInventoryModel->activeStations() as $stationRow) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
