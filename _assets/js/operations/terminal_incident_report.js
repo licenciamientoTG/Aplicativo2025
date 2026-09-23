@@ -25,6 +25,7 @@ $(function () {
         ],
         language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' }
     });
+    table.closest('.terminal-report-table-wrap').scrollLeft(0);
     table.find('thead tr.terminal-column-filters th').each(function (index) {
         $('input', this).on('keyup change clear', function () {
             if (dt.column(index).search() !== this.value) dt.column(index).search(this.value).draw();
