@@ -16,6 +16,7 @@
     .billing-dispatches-report .report-table-wrap.loading::before { animation: billing-report-spin .8s linear infinite; border: .22rem solid #dbeaf7; border-right-color: var(--report-blue); border-radius: 50%; content: ''; height: 2rem; left: 50%; position: absolute; top: 5rem; transform: translateX(-50%); width: 2rem; z-index: 3; }
     .billing-dispatches-report .table { font-size: .75rem; white-space: nowrap; }
     .billing-dispatches-report .column-filter { min-width: 6.5rem; }
+    .billing-dispatches-report .billing-dispatches-filter-row th { background: #fff; padding-bottom: .45rem; padding-top: .3rem; }
     .billing-dispatches-report .dt-buttons .btn { margin-right: .4rem; }
     @keyframes billing-report-spin { to { transform: translateX(-50%) rotate(360deg); } }
     @media (max-width: 767.98px) { .billing-dispatches-report .report-actions .btn { width: 100%; } }
@@ -30,7 +31,7 @@
             <div class="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-3">
                 <div>
                     <h5 id="billing-dispatches-title" class="report-heading mb-1">Despachos por facturación</h5>
-                    <p class="report-note mb-0">Consulta los despachos según su <strong>Fecha de facturación</strong>. La columna Fecha conserva la fecha original del despacho.</p>
+                    <p class="report-note mb-0">Consulta por <strong>fecha de facturación</strong> y, si lo necesita, limite adicionalmente por la <strong>fecha original del despacho</strong>.</p>
                 </div>
                 <span class="badge bg-info align-self-lg-start">Consulta paginada</span>
             </div>
@@ -43,6 +44,14 @@
                     <div class="col-12 col-sm-6 col-lg-3">
                         <label for="billing-until" class="form-label">Fecha de facturación hasta</label>
                         <input type="date" id="billing-until" class="form-control" required>
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-dispatch-from" class="form-label">Fecha de despacho desde <small class="text-muted">(opcional)</small></label>
+                        <input type="date" id="billing-dispatch-from" class="form-control">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-dispatch-until" class="form-label">Fecha de despacho hasta <small class="text-muted">(opcional)</small></label>
+                        <input type="date" id="billing-dispatch-until" class="form-control">
                     </div>
                     <div class="col-12 col-sm-6 col-lg-3">
                         <label for="billing-codgas" class="form-label">Estación</label>
@@ -83,12 +92,12 @@
         <div id="billing-dispatches-table-wrap" class="card-body report-table-wrap table-responsive">
             <table id="billing-dispatches-table" class="table table-hover table-striped table-sm w-100" aria-describedby="billing-dispatches-status">
                 <thead><tr>
-                    <th>Fecha</th><th>Hora</th><th>Turno</th><th>Despacho</th><th>Producto</th><th>Estación</th><th>Empresa</th><th>Cliente</th><th>Cantidad</th><th>Importe</th><th>Precio</th><th>Despachador</th><th>Pago</th><th>Factura</th><th>Fecha Factura</th><th>UUID</th><th>Notas</th><th>Rut</th><th>Denominación</th><th>Código</th><th>Tipo</th><th>Tipo Aplicativo</th><th>Vehículo</th><th>Placas</th>
+                    <th>Fecha despacho</th><th>Hora</th><th>Turno</th><th>Despacho</th><th>Producto</th><th>Estación</th><th>Empresa</th><th>Cliente</th><th>Cantidad</th><th>Importe</th><th>Precio</th><th>Despachador</th><th>Pago</th><th>Factura</th><th>Fecha factura</th><th>UUID</th><th>Notas</th><th>Rut</th><th>Denominación</th><th>Código</th><th>Tipo</th><th>Tipo Aplicativo</th><th>Vehículo</th><th>Placas</th>
+                </tr>
+                <tr class="billing-dispatches-filter-row">
+                    <th>Fecha despacho</th><th>Hora</th><th>Turno</th><th>Despacho</th><th>Producto</th><th>Estación</th><th>Empresa</th><th>Cliente</th><th>Cantidad</th><th>Importe</th><th>Precio</th><th>Despachador</th><th>Pago</th><th>Factura</th><th>Fecha factura</th><th>UUID</th><th>Notas</th><th>Rut</th><th>Denominación</th><th>Código</th><th>Tipo</th><th>Tipo Aplicativo</th><th>Vehículo</th><th>Placas</th>
                 </tr></thead>
                 <tbody></tbody>
-                <tfoot><tr>
-                    <th>Fecha</th><th>Hora</th><th>Turno</th><th>Despacho</th><th>Producto</th><th>Estación</th><th>Empresa</th><th>Cliente</th><th>Cantidad</th><th>Importe</th><th>Precio</th><th>Despachador</th><th>Pago</th><th>Factura</th><th>Fecha Factura</th><th>UUID</th><th>Notas</th><th>Rut</th><th>Denominación</th><th>Código</th><th>Tipo</th><th>Tipo Aplicativo</th><th>Vehículo</th><th>Placas</th>
-                </tr></tfoot>
             </table>
         </div>
     </section>

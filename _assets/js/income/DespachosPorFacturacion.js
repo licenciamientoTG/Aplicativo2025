@@ -11,7 +11,7 @@
     var $scopeNote = $('#billing-query-scope');
     var $tableTitle = $('#billing-dispatches-table-title');
     var $exportNote = $('#billing-dispatches-export-note');
-    var footerLabels = $('#billing-dispatches-table tfoot th').map(function () { return $(this).text(); }).get();
+    var filterLabels = $('#billing-dispatches-table thead .billing-dispatches-filter-row th').map(function () { return $(this).text(); }).get();
     var responseMessage = '';
     var columns = [
         'fecha', 'hora_formateada', 'turno', 'despacho', 'producto', 'estacion', 'empresa', 'cliente_fac',
@@ -33,6 +33,7 @@
     function filters() {
         return {
             from: $('#billing-from').val(), until: $('#billing-until').val(), codgas: $('#billing-codgas').val(),
+            dispatch_from: $('#billing-dispatch-from').val(), dispatch_until: $('#billing-dispatch-until').val(),
             uuid: $('#billing-uuid').val(), modo_consulta: $('#billing-query-mode').val()
         };
     }
@@ -112,6 +113,12 @@
         var values = filters();
         if (!values.from || !values.until) { showValidation('Indique ambas fechas de facturación.'); return false; }
         if (values.from > values.until) { showValidation('La fecha inicial no puede ser posterior a la fecha final.'); return false; }
+        if ((values.dispatch_from && !values.dispatch_until) || (!values.dispatch_from && values.dispatch_until)) {
+            showValidation('Indique ambas fechas de despacho o deje las dos vacías.'); return false;
+        }
+        if (values.dispatch_from && values.dispatch_from > values.dispatch_until) {
+            showValidation('La fecha inicial de despacho no puede ser posterior a la fecha final.'); return false;
+        }
         showValidation('');
         return true;
     }
@@ -155,9 +162,9 @@
         }).fail(function (xhr) { setLoading(false, 'No se pudo generar el CSV.'); showExportError(xhr, 'No se pudo generar el archivo CSV. Intente nuevamente.'); });
     }
 
-    function restoreFooter() {
-        $('#billing-dispatches-table tfoot th').each(function (index) {
-            $(this).empty().text(footerLabels[index]);
+    function restoreColumnFilters() {
+        $('#billing-dispatches-table thead .billing-dispatches-filter-row th').each(function (index) {
+            $(this).empty().text(filterLabels[index]);
         });
     }
 
@@ -167,17 +174,20 @@
             table = null;
         }
         $('#billing-dispatches-table').off('xhr.dt.billingDispatches').find('tbody').empty();
-        restoreFooter();
+        restoreColumnFilters();
         clearStationFeedback();
     }
 
     function buildTable() {
-        $('#billing-dispatches-table tfoot th').each(function (index) {
-            var label = $(this).text();
+        var $filterCells = $('#billing-dispatches-table thead .billing-dispatches-filter-row th');
+        $filterCells.each(function (index) {
+            var label = filterLabels[index];
             $(this).html('<input type="search" class="form-control form-control-sm column-filter" aria-label="Filtrar ' + label + '" placeholder="Filtrar">');
             $(this).find('input').on('input', function () {
                 clearTimeout(filterTimer);
-                filterTimer = setTimeout(function () { table.column(index).search($('#billing-dispatches-table tfoot th').eq(index).find('input').val()).draw(); }, 600);
+                filterTimer = setTimeout(function () { table.column(index).search($filterCells.eq(index).find('input').val()).draw(); }, 600);
+            }).on('click keydown', function (event) {
+                event.stopPropagation();
             });
         });
 
@@ -187,7 +197,7 @@
         });
 
         table = $('#billing-dispatches-table').DataTable({
-            pageLength: 100, processing: true, serverSide: true, deferRender: true, scrollX: true,
+            pageLength: 100, processing: true, serverSide: true, deferRender: true, scrollX: true, orderCellsTop: true,
             dom: '<"d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2"Bf>rt<"d-flex flex-wrap gap-2 justify-content-between align-items-center mt-2"lip>',
             order: [[14, 'desc']],
             buttons: [

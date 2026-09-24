@@ -1050,7 +1050,7 @@ class DespachosModel extends Model{
      * consultas paginadas y agregadas sin traer todo el detalle a memoria.
      * $from/$until son enteros (dateToInt) y $where viene de dispatchesWhere().
      */
-    private function dispatchesCTE($from, $until, $where, string $periodMode = 'dispatch') : string {
+    private function dispatchesCTE($from, $until, $where, string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : string {
         $from  = (int) $from;
         $until = (int) $until;
         // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
@@ -1062,6 +1062,9 @@ class DespachosModel extends Model{
         $periodWhere = $periodMode === 'invoice'
             ? "t3.nro IS NOT NULL AND t3.fch BETWEEN $from AND $until"
             : "t1.fchtrn BETWEEN $from AND $until";
+        $dispatchWhere = $dispatchFrom !== null && $dispatchUntil !== null
+            ? ' AND t1.fchtrn BETWEEN ' . (int) $dispatchFrom . ' AND ' . (int) $dispatchUntil
+            : '';
 
         return "WITH CTE AS (
                     SELECT
@@ -1172,7 +1175,7 @@ class DespachosModel extends Model{
                         Where
                         t1.mto != 0 and
                         t1.tiptrn  not in (65,74) and
-                        $periodWhere {$where}
+                        $periodWhere$dispatchWhere {$where}
                         )";
     }
 
@@ -1187,7 +1190,7 @@ class DespachosModel extends Model{
     private function dispatchesPaginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
                                          $start, $length, $orderColKey, $orderDir,
                                          array $columnSearches = [], string $globalSearch = '',
-                                         string $periodMode = 'dispatch') : array {
+                                         string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
         // Whitelist columna -> expresión SQL (sobre las columnas que expone el CTE).
         // Las columnas "coalesce" se buscan/ordenan igual que se muestran.
         $colExpr = [
@@ -1218,7 +1221,7 @@ class DespachosModel extends Model{
         ];
 
         $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode);
+        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
 
         // recordsTotal: total sin búsqueda DataTables (parámetros del reporte ya aplicados en el CTE).
         $totalRow = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1", []);
@@ -1289,10 +1292,11 @@ class DespachosModel extends Model{
      */
     function control_dispatches_by_billing_paginated($from, $until, $codgas, $uuid, $tipo_cliente,
                                                       $start, $length, $orderColKey, $orderDir,
-                                                      array $columnSearches = [], string $globalSearch = '') : array {
+                                                      array $columnSearches = [], string $globalSearch = '',
+                                                      ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
         return $this->dispatchesPaginated(
             $from, $until, $codgas, $uuid, $tipo_cliente, 2,
-            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice'
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice', $dispatchFrom, $dispatchUntil
         );
     }
 
@@ -1307,7 +1311,7 @@ class DespachosModel extends Model{
     private function streamDispatchesAll($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
                                          $orderColKey, $orderDir,
                                          array $columnSearches = [], string $globalSearch = '',
-                                         string $periodMode = 'dispatch') : Generator {
+                                         string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
         $colExpr = [
             'fecha'                   => 'fecha',
             'hora_formateada'         => 'hora_formateada',
@@ -1336,7 +1340,7 @@ class DespachosModel extends Model{
         ];
 
         $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode);
+        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
 
         $searchWhere = '';
         $params = [];
@@ -1384,10 +1388,11 @@ class DespachosModel extends Model{
 
     function stream_dispatches_by_billing_all($from, $until, $codgas, $uuid, $tipo_cliente,
                                                $orderColKey, $orderDir,
-                                               array $columnSearches = [], string $globalSearch = '') : Generator {
+                                               array $columnSearches = [], string $globalSearch = '',
+                                               ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
         return $this->streamDispatchesAll(
             $from, $until, $codgas, $uuid, $tipo_cliente, 2,
-            $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice'
+            $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice', $dispatchFrom, $dispatchUntil
         );
     }
 
@@ -1398,7 +1403,8 @@ class DespachosModel extends Model{
      * se aplica, con parámetros PDO, a la fecha de la factura.
      */
     private function stationBillingSql($uuid, $tipoCliente, $orderColKey, $orderDir,
-                                       array $columnSearches = [], string $globalSearch = '') : array {
+                                       array $columnSearches = [], string $globalSearch = '',
+                                       ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
         $columns = [
             'fecha'=>'fecha', 'hora_formateada'=>'hora_formateada', 'turno'=>'turno', 'despacho'=>'despacho',
             'producto'=>'producto', 'estacion'=>'estacion', 'empresa'=>'empresa', 'cliente_fac'=>'cliente_fac',
@@ -1415,6 +1421,9 @@ class DespachosModel extends Model{
             $map = ['cliente_credito'=>'Cliente Crédito', 'cliente_debito'=>'Cliente Débito', 'monedero'=>'Monedero', 'contado'=>'Contado', 'factura_global'=>'Factura Global'];
             if (isset($map[$tipoCliente])) { $typeWhere = ' AND tipo_cliente = ?'; $typeParams[] = $map[$tipoCliente]; }
         }
+        $dispatchWhere = $dispatchFrom !== null && $dispatchUntil !== null
+            ? ' AND t1.fchtrn BETWEEN ' . (int) $dispatchFrom . ' AND ' . (int) $dispatchUntil
+            : '';
         $cte = "WITH CTE AS (
             SELECT CONVERT(VARCHAR(10), DATEADD(day,-1,t1.fchtrn),23) fecha,
                 CONVERT(VARCHAR(5),CONVERT(TIME,DATEADD(MINUTE,t1.hratrn % 100,DATEADD(HOUR,t1.hratrn / 100,0)))) hora_formateada,
@@ -1448,7 +1457,7 @@ class DespachosModel extends Model{
             LEFT JOIN ClientesVehiculos t11 WITH (NOLOCK) ON t1.codcli=t11.codcli AND t1.nroveh=t11.nroveh
             LEFT JOIN (SELECT nrotrn,SUM(mto) mto,codbco,codgas FROM MovimientosTar WITH (NOLOCK) WHERE tipmov NOT IN (86,97) AND mto!=0 GROUP BY nrotrn,codgas,codbco) t12 ON t1.nrotrn=t12.nrotrn AND t1.codgas=t12.codgas
             LEFT JOIN Valores t13 WITH (NOLOCK) ON t12.codbco=t13.cod
-            WHERE t1.mto != 0 AND t1.tiptrn NOT IN (65,74) AND t3.fch BETWEEN ? AND ? $uuidWhere
+            WHERE t1.mto != 0 AND t1.tiptrn NOT IN (65,74) AND t3.fch BETWEEN ? AND ?$dispatchWhere $uuidWhere
         )";
         $search = '';
         $searchParams = [];
@@ -1493,10 +1502,10 @@ class DespachosModel extends Model{
     }
 
     /** Paginación directa por estación; todas las estaciones se combinan con cursores k-way. */
-    function dispatches_by_billing_stations_paginated($from, $until, array $stations, $uuid, $tipoCliente, $start, $length, $orderColKey, $orderDir, array $columnSearches=[], string $globalSearch='', ?float $deadline=null) : array {
+    function dispatches_by_billing_stations_paginated($from, $until, array $stations, $uuid, $tipoCliente, $start, $length, $orderColKey, $orderDir, array $columnSearches=[], string $globalSearch='', ?int $dispatchFrom = null, ?int $dispatchUntil = null, ?float $deadline=null) : array {
         $start=max(0,(int)$start); $length=min(100,max(1,(int)$length));
         if (count($stations)>1 && $start > 100000) return ['data'=>[],'recordsTotal'=>0,'recordsFiltered'=>0,'stationErrors'=>[],'error'=>'El desplazamiento solicitado es demasiado grande para la consulta por estaciones. Aplique filtros para continuar.'];
-        [$cte,$typeWhere,$typeParams,$search,$searchParams,$order,$direction]=$this->stationBillingSql($uuid,$tipoCliente,$orderColKey,$orderDir,$columnSearches,$globalSearch);
+        [$cte,$typeWhere,$typeParams,$search,$searchParams,$order,$direction]=$this->stationBillingSql($uuid,$tipoCliente,$orderColKey,$orderDir,$columnSearches,$globalSearch,$dispatchFrom,$dispatchUntil);
         $total=0; $filtered=0; $rows=[]; $errors=[]; $successes=0; $availableStations=[];
         $deadline = $deadline ?? (microtime(true) + 285);
         foreach ($stations as $station) {
@@ -1559,8 +1568,8 @@ class DespachosModel extends Model{
     }
 
     /** Exporta estación por estación para no retener el conjunto completo en memoria. */
-    function stream_dispatches_by_billing_stations($from, $until, array $stations, $uuid, $tipoCliente, $orderColKey, $orderDir, array $columnSearches=[], string $globalSearch='') : Generator {
-        [$cte,$typeWhere,$typeParams,$search,$searchParams,$order,$direction]=$this->stationBillingSql($uuid,$tipoCliente,$orderColKey,$orderDir,$columnSearches,$globalSearch);
+    function stream_dispatches_by_billing_stations($from, $until, array $stations, $uuid, $tipoCliente, $orderColKey, $orderDir, array $columnSearches=[], string $globalSearch='', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
+        [$cte,$typeWhere,$typeParams,$search,$searchParams,$order,$direction]=$this->stationBillingSql($uuid,$tipoCliente,$orderColKey,$orderDir,$columnSearches,$globalSearch,$dispatchFrom,$dispatchUntil);
         $ok=0;
         foreach ($stations as $station) {
             try { $pdo=$this->stationPdo($station); $stmt=$pdo->prepare("$cte SELECT * FROM CTE WHERE rn=1 $typeWhere $search ORDER BY $order $direction, despacho ASC"); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams)); $ok++; while($row=$stmt->fetch(PDO::FETCH_ASSOC)) yield $row; $stmt->closeCursor(); $pdo=null; }
