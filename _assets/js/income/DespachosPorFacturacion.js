@@ -108,7 +108,19 @@
     $(function () {
         var range = currentMonthRange();
         $('#billing-from').val(range[0]); $('#billing-until').val(range[1]);
-        buildTable();
-        $form.on('submit', function (event) { event.preventDefault(); if (validRange()) { table.ajax.reload(); } });
+        // No consultar al abrir la pantalla: un periodo de facturación puede
+        // devolver muchos despachos. La primera carga ocurre únicamente cuando
+        // el usuario confirma el rango con el botón Consultar.
+        $form.on('submit', function (event) {
+            event.preventDefault();
+            if (!validRange()) { return; }
+
+            if (table) {
+                table.ajax.reload();
+                return;
+            }
+
+            buildTable();
+        });
     });
 }(jQuery));
