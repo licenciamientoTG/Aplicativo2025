@@ -1050,12 +1050,22 @@ class DespachosModel extends Model{
      * consultas paginadas y agregadas sin traer todo el detalle a memoria.
      * $from/$until son enteros (dateToInt) y $where viene de dispatchesWhere().
      */
-    private function dispatchesCTE($from, $until, $where) : string {
+    private function dispatchesCTE($from, $until, $where, string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : string {
         $from  = (int) $from;
         $until = (int) $until;
         // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
         $mov_from  = $from - 1;
         $mov_until = $until + 1;
+        // El modo factura se usa por el reporte de facturación.  La relación
+        // con DocumentosC es obligatoria y el periodo se aplica a su fecha,
+        // no a la fecha del despacho.
+        $periodWhere = $periodMode === 'invoice'
+            ? "t3.nro IS NOT NULL AND t3.fch BETWEEN $from AND $until"
+            : "t1.fchtrn BETWEEN $from AND $until";
+        $dispatchWhere = $dispatchFrom !== null && $dispatchUntil !== null
+            ? ' AND t1.fchtrn BETWEEN ' . (int) $dispatchFrom . ' AND ' . (int) $dispatchUntil
+            : '';
+
         return "WITH CTE AS (
                     SELECT
                     CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
@@ -1165,7 +1175,7 @@ class DespachosModel extends Model{
                         Where
                         t1.mto != 0 and
                         t1.tiptrn  not in (65,74) and
-                        t1.fchtrn BETWEEN  $from and  $until  {$where}
+                        $periodWhere$dispatchWhere {$where}
                         )";
     }
 
@@ -1177,9 +1187,10 @@ class DespachosModel extends Model{
      * @param array $columnSearches  ['clave_columna' => 'texto', ...]
      * @param string $globalSearch   búsqueda global de DataTables
      */
-    function control_dispatches2_paginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                           $start, $length, $orderColKey, $orderDir,
-                                           array $columnSearches = [], string $globalSearch = '') : array {
+    private function dispatchesPaginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                         $start, $length, $orderColKey, $orderDir,
+                                         array $columnSearches = [], string $globalSearch = '',
+                                         string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
         // Whitelist columna -> expresión SQL (sobre las columnas que expone el CTE).
         // Las columnas "coalesce" se buscan/ordenan igual que se muestran.
         $colExpr = [
@@ -1210,7 +1221,7 @@ class DespachosModel extends Model{
         ];
 
         $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where);
+        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
 
         // recordsTotal: total sin búsqueda DataTables (parámetros del reporte ya aplicados en el CTE).
         $totalRow = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1", []);
@@ -1265,6 +1276,30 @@ class DespachosModel extends Model{
         ];
     }
 
+    function control_dispatches2_paginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                           $start, $length, $orderColKey, $orderDir,
+                                           array $columnSearches = [], string $globalSearch = '') : array {
+        return $this->dispatchesPaginated(
+            $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch
+        );
+    }
+
+    /**
+     * Reporte independiente por fecha de factura. Siempre exige la relación
+     * real con DocumentosC y conserva exactamente las columnas del reporte de
+     * Control Despachos.
+     */
+    function control_dispatches_by_billing_paginated($from, $until, $codgas, $uuid, $tipo_cliente,
+                                                      $start, $length, $orderColKey, $orderDir,
+                                                      array $columnSearches = [], string $globalSearch = '',
+                                                      ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
+        return $this->dispatchesPaginated(
+            $from, $until, $codgas, $uuid, $tipo_cliente, 2,
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice', $dispatchFrom, $dispatchUntil
+        );
+    }
+
     /**
      * Igual que control_dispatches2_paginated pero sin OFFSET/FETCH: recorre
      * TODAS las filas que cumplen los mismos filtros de reporte + búsquedas de
@@ -1273,9 +1308,10 @@ class DespachosModel extends Model{
      * memoria, para que la exportación a Excel pueda escribir en streaming sin
      * límite de registros (ver export_dispatches_excel en el controller).
      */
-    function stream_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                     $orderColKey, $orderDir,
-                                     array $columnSearches = [], string $globalSearch = '') : Generator {
+    private function streamDispatchesAll($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                         $orderColKey, $orderDir,
+                                         array $columnSearches = [], string $globalSearch = '',
+                                         string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
         $colExpr = [
             'fecha'                   => 'fecha',
             'hora_formateada'         => 'hora_formateada',
@@ -1304,7 +1340,7 @@ class DespachosModel extends Model{
         ];
 
         $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where);
+        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
 
         $searchWhere = '';
         $params = [];
@@ -1339,6 +1375,207 @@ class DespachosModel extends Model{
             yield $row;
         }
         $stmt->closeCursor();
+    }
+
+    function stream_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                     $orderColKey, $orderDir,
+                                     array $columnSearches = [], string $globalSearch = '') : Generator {
+        return $this->streamDispatchesAll(
+            $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+            $orderColKey, $orderDir, $columnSearches, $globalSearch
+        );
+    }
+
+    function stream_dispatches_by_billing_all($from, $until, $codgas, $uuid, $tipo_cliente,
+                                               $orderColKey, $orderDir,
+                                               array $columnSearches = [], string $globalSearch = '',
+                                               ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
+        return $this->streamDispatchesAll(
+            $from, $until, $codgas, $uuid, $tipo_cliente, 2,
+            $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice', $dispatchFrom, $dispatchUntil
+        );
+    }
+
+    /*
+     * Consulta local de "Despachos por facturación".  No reutiliza
+     * control_dispatches_est_sql: aquella consulta está deliberadamente basada
+     * en la fecha del despacho.  Aquí DocumentosC es obligatorio y el período
+     * se aplica, con parámetros PDO, a la fecha de la factura.
+     */
+    private function stationBillingSql($uuid, $tipoCliente, $orderColKey, $orderDir,
+                                       array $columnSearches = [], string $globalSearch = '',
+                                       ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
+        $columns = [
+            'fecha'=>'fecha', 'hora_formateada'=>'hora_formateada', 'turno'=>'turno', 'despacho'=>'despacho',
+            'producto'=>'producto', 'estacion'=>'estacion', 'empresa'=>'empresa', 'cliente_fac'=>'cliente_fac',
+            'cantidad'=>'cantidad', 'importe'=>'importe', 'precio'=>'precio', 'despachador'=>'despachador',
+            'tipo_pago'=>'tipo_pago', 'factura'=>'factura', 'FechaFactura'=>'FechaFactura', 'UUID'=>'[UUID]',
+            'txtref'=>'txtref', 'rut'=>'rut', 'denominacion'=>'denominacion', 'codigo_cliente'=>'codigo_cliente',
+            'tipo_cliente'=>'tipo_cliente', 'tipo_cliente_aplicativo'=>'tipo_cliente_aplicativo', 'vehiculo'=>'vehiculo', 'placas'=>'placas'
+        ];
+        $uuidWhere = $uuid == 1 ? ' AND t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53'
+            : ($uuid == 2 ? ' AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)' : '');
+        $typeWhere = '';
+        $typeParams = [];
+        if ($tipoCliente !== 0 && $tipoCliente !== '0') {
+            $map = ['cliente_credito'=>'Cliente Crédito', 'cliente_debito'=>'Cliente Débito', 'monedero'=>'Monedero', 'contado'=>'Contado', 'factura_global'=>'Factura Global'];
+            if (isset($map[$tipoCliente])) { $typeWhere = ' AND tipo_cliente = ?'; $typeParams[] = $map[$tipoCliente]; }
+        }
+        $dispatchWhere = $dispatchFrom !== null && $dispatchUntil !== null
+            ? ' AND t1.fchtrn BETWEEN ' . (int) $dispatchFrom . ' AND ' . (int) $dispatchUntil
+            : '';
+        $cte = "WITH CTE AS (
+            SELECT CONVERT(VARCHAR(10), DATEADD(day,-1,t1.fchtrn),23) fecha,
+                CONVERT(VARCHAR(5),CONVERT(TIME,DATEADD(MINUTE,t1.hratrn % 100,DATEADD(HOUR,t1.hratrn / 100,0)))) hora_formateada,
+                SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)),1,1) turno, t1.nrotrn despacho, t8.den producto,
+                t6.abr estacion, t7.den empresa, ISNULL(t5.den,t2.den) cliente_fac, t1.can cantidad, t1.mto importe, t1.pre precio,
+                CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END despachador,
+                CASE WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z '+SUBSTRING(CAST(t3.nro AS VARCHAR(10)),4,10)
+                     WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T '+SUBSTRING(CAST(t3.nro AS VARCHAR(10)),4,10)
+                     WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K '+SUBSTRING(CAST(t3.nro AS VARCHAR(10)),4,10)
+                     WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C '+SUBSTRING(CAST(t3.nro AS VARCHAR(10)),4,10)
+                     ELSE CAST(t3.nro AS VARCHAR(10)) END factura,
+                CONVERT(DATE,DATEADD(DAY,-1,t3.fch)) FechaFactura,
+                ISNULL(CASE WHEN t1.satuid IS NOT NULL THEN t1.satuid ELSE t3.satuid END,'.') [UUID], t3.txtref, t1.rut, t13.den denominacion,
+                CASE WHEN t1.codcli < 0 THEN '' ELSE CAST(t1.codcli AS VARCHAR(20)) END codigo_cliente,
+                CASE WHEN t10.codval=28 THEN 'Cliente Crédito' WHEN t10.codval=127 THEN 'Cliente Débito'
+                     WHEN t1.tiptrn=53 AND t1.gasfac != 2 THEN 'Monedero' WHEN t3.codopr=21701354 THEN 'Factura Global'
+                     WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'Contado' ELSE 'N/A' END tipo_cliente,
+                CASE WHEN t13.den IN (' Tarjeta EfectiCard',' SMARTBT - EFECTIVALE',' Tarjeta TicketCar',' Vale Efectivale','Ultra Gas',' Tarjeta Inburgas',' Vale Edenred',' Tarjetas Sodexo (Pluxee)','Mobil FleetPro',' SMARTBT - SODEXO WIZEO',' Vale Sodexo') THEN 'Monedero'
+                     WHEN t1.tiptrn=53 AND t1.gasfac != 2 THEN 'Monedero' WHEN t10.codval=28 THEN 'Cliente Crédito' WHEN t10.codval=127 THEN 'Cliente Débito'
+                     WHEN t3.codopr=21701354 THEN 'Factura Global' WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'Contado' ELSE 'N/A' END tipo_cliente_aplicativo,
+                t11.nroveh vehiculo, t11.plc placas,
+                COALESCE(CASE WHEN t3.tipref=4 AND t1.logmsk IN (2,3) THEN 'Tarjeta Credito' WHEN t3.tipref=28 AND t1.logmsk IN (2,3) THEN 'Tarjeta Debito' WHEN t3.tipref=1 AND t1.logmsk IN (2,3) THEN 'Efectivo' END,
+                         CASE WHEN t1.tiptrn=51 AND t1.gasfac != 2 THEN 'Tarjeta Credito' WHEN t1.tiptrn=52 AND t1.gasfac != 2 THEN 'Tarjeta Debito' WHEN t1.tiptrn=53 AND t1.gasfac != 2 THEN 'Efectivale' WHEN t1.tiptrn=0 THEN 'Efectivo' END) tipo_pago,
+                ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn,t1.hratrn) rn
+            FROM Despachos t1 WITH (NOLOCK)
+            INNER JOIN DocumentosC t3 ON t1.nrofac=t3.nro AND t1.codgas=t3.codgas
+            LEFT JOIN Clientes t2 WITH (NOLOCK) ON t1.codcli=t2.cod LEFT JOIN Clientes t5 WITH (NOLOCK) ON t3.codopr=t5.cod
+            LEFT JOIN Gasolineras t6 WITH (NOLOCK) ON t1.codgas=t6.cod LEFT JOIN Empresas t7 WITH (NOLOCK) ON t6.codemp=t7.cod
+            LEFT JOIN Productos t8 WITH (NOLOCK) ON t1.codprd=t8.cod LEFT JOIN Responsables t9 WITH (NOLOCK) ON t1.codres=t9.cod
+            LEFT JOIN ClientesValores t10 WITH (NOLOCK) ON t1.codcli=t10.codcli AND t10.codest!=-1 AND t10.codval IN (127,28)
+            LEFT JOIN ClientesVehiculos t11 WITH (NOLOCK) ON t1.codcli=t11.codcli AND t1.nroveh=t11.nroveh
+            LEFT JOIN (SELECT nrotrn,SUM(mto) mto,codbco,codgas FROM MovimientosTar WITH (NOLOCK) WHERE tipmov NOT IN (86,97) AND mto!=0 GROUP BY nrotrn,codgas,codbco) t12 ON t1.nrotrn=t12.nrotrn AND t1.codgas=t12.codgas
+            LEFT JOIN Valores t13 WITH (NOLOCK) ON t12.codbco=t13.cod
+            WHERE t1.mto != 0 AND t1.tiptrn NOT IN (65,74) AND t3.fch BETWEEN ? AND ?$dispatchWhere $uuidWhere
+        )";
+        $search = '';
+        $searchParams = [];
+        foreach ($columnSearches as $key=>$value) if ($value !== '' && isset($columns[$key])) { $search .= ' AND CAST('.$columns[$key].' AS NVARCHAR(MAX)) LIKE ?'; $searchParams[]='%'.$value.'%'; }
+        if ($globalSearch !== '') { $parts=[]; foreach ($columns as $column) { $parts[]='CAST('.$column.' AS NVARCHAR(MAX)) LIKE ?'; $searchParams[]='%'.$globalSearch.'%'; } $search .= ' AND ('.implode(' OR ',$parts).')'; }
+        $order = $columns[$orderColKey] ?? 'fecha';
+        return [$cte, $typeWhere, $typeParams, $search, $searchParams, $order, strtolower($orderDir)==='desc' ? 'DESC' : 'ASC'];
+    }
+
+    private function stationPdo(array $station, ?float $deadline=null) : PDO {
+        // Un servidor fuera de línea no debe consumir el tiempo de toda la
+        // consulta consolidada. El límite de consulta, cuando sqlsrv lo
+        // soporta, también permite aislar una estación lenta.
+        // No iniciar el login (hasta 3 s) sin espacio para una consulta mínima
+        // y el cierre de la respuesta.
+        if ($deadline !== null && ($deadline - microtime(true)) <= 7) {
+            throw new RuntimeException('Station query deadline reached');
+        }
+        $dsn = "sqlsrv:Server={$station['servidor']};Database={$station['base_datos']};TrustServerCertificate=yes;LoginTimeout=3";
+        $pdo = new PDO($dsn, $station['usuario'], $station['contra']);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->stationQueryTimeout($pdo, $deadline);
+        $pdo->exec('SET NOCOUNT ON');
+        return $pdo;
+    }
+
+    /** Ajusta cada operación directa al margen que queda antes del deadline. */
+    private function stationQueryTimeout(PDO $pdo, ?float $deadline) : void {
+        if ($deadline === null) {
+            if (defined('PDO::SQLSRV_ATTR_QUERY_TIMEOUT')) {
+                $pdo->setAttribute(constant('PDO::SQLSRV_ATTR_QUERY_TIMEOUT'), 30);
+            }
+            return;
+        }
+        // Tres segundos quedan reservados para cerrar cursores y serializar la
+        // respuesta. No se inicia trabajo remoto si ya no cabe en ese margen.
+        $remaining = (int) floor($deadline - microtime(true));
+        if ($remaining <= 4) throw new RuntimeException('Station query deadline reached');
+        if (defined('PDO::SQLSRV_ATTR_QUERY_TIMEOUT')) {
+            $pdo->setAttribute(constant('PDO::SQLSRV_ATTR_QUERY_TIMEOUT'), min(30, max(1, $remaining - 3)));
+        }
+    }
+
+    /** Paginación directa por estación; todas las estaciones se combinan con cursores k-way. */
+    function dispatches_by_billing_stations_paginated($from, $until, array $stations, $uuid, $tipoCliente, $start, $length, $orderColKey, $orderDir, array $columnSearches=[], string $globalSearch='', ?int $dispatchFrom = null, ?int $dispatchUntil = null, ?float $deadline=null) : array {
+        $start=max(0,(int)$start); $length=min(100,max(1,(int)$length));
+        if (count($stations)>1 && $start > 100000) return ['data'=>[],'recordsTotal'=>0,'recordsFiltered'=>0,'stationErrors'=>[],'error'=>'El desplazamiento solicitado es demasiado grande para la consulta por estaciones. Aplique filtros para continuar.'];
+        [$cte,$typeWhere,$typeParams,$search,$searchParams,$order,$direction]=$this->stationBillingSql($uuid,$tipoCliente,$orderColKey,$orderDir,$columnSearches,$globalSearch,$dispatchFrom,$dispatchUntil);
+        $total=0; $filtered=0; $rows=[]; $errors=[]; $successes=0; $availableStations=[];
+        $deadline = $deadline ?? (microtime(true) + 285);
+        foreach ($stations as $station) {
+            if (count($stations)>1 && microtime(true) >= $deadline) { $errors[]=$station['estacion_nombre'] ?? 'Estación'; continue; }
+            try {
+                $pdo=$this->stationPdo($station, count($stations)>1 ? $deadline : null);
+                $this->stationQueryTimeout($pdo, count($stations)>1 ? $deadline : null); $stmt=$pdo->prepare("$cte SELECT COUNT(*) c FROM CTE WHERE rn=1 $typeWhere"); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams)); $total+=(int)$stmt->fetchColumn(); $stmt->closeCursor();
+                $filteredQuery="$cte SELECT COUNT(*) c FROM CTE WHERE rn=1 $typeWhere $search"; $this->stationQueryTimeout($pdo, count($stations)>1 ? $deadline : null); $stmt=$pdo->prepare($filteredQuery); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams)); $filtered+=(int)$stmt->fetchColumn(); $stmt->closeCursor();
+                $pdo=null; $successes++; $availableStations[]=$station;
+            } catch (Throwable $e) { error_log('dispatches_by_billing_station failed station '.(int)($station['codigo']??0)); $errors[]=$station['estacion_nombre'] ?? 'Estación'; }
+        }
+        if ($successes===0) return ['data'=>[],'recordsTotal'=>0,'recordsFiltered'=>0,'stationErrors'=>$errors,'error'=>'No se pudo consultar ninguna estación.'];
+        if (count($stations)===1) {
+            $station=$stations[0];
+            try { $pdo=$this->stationPdo($station); $query="$cte SELECT * FROM CTE WHERE rn=1 $typeWhere $search ORDER BY $order $direction, despacho ASC OFFSET $start ROWS FETCH NEXT $length ROWS ONLY"; $stmt=$pdo->prepare($query); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams)); while($row=$stmt->fetch(PDO::FETCH_ASSOC)) $rows[]=$row; $stmt->closeCursor(); }
+            catch (Throwable $e) { error_log('dispatches_by_billing_station data failed station '.(int)($station['codigo']??0)); $errors[]=$station['estacion_nombre'] ?? 'Estación'; }
+            return ['data'=>$rows,'recordsTotal'=>$total,'recordsFiltered'=>$filtered,'stationErrors'=>$errors];
+        }
+
+        // Un cursor por estación, una sola fila retenida de cada cursor. Así el
+        // merge global conserva el orden sin materializar start + length por
+        // estación; sólo el desplazamiento profundo tiene el límite explícito.
+        $active=[]; $timedOut=false;
+        foreach ($availableStations as $station) {
+            if (microtime(true) >= $deadline) { $timedOut=true; break; }
+            try {
+                $pdo=$this->stationPdo($station, $deadline);
+                $this->stationQueryTimeout($pdo, $deadline); $stmt=$pdo->prepare("$cte SELECT * FROM CTE WHERE rn=1 $typeWhere $search ORDER BY $order $direction, despacho ASC");
+                $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams));
+                $row=$stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row !== false) $active[]=['pdo'=>$pdo,'stmt'=>$stmt,'row'=>$row,'station'=>$station];
+                else { $stmt->closeCursor(); $pdo=null; }
+            } catch (Throwable $e) { error_log('dispatches_by_billing_station cursor failed station '.(int)($station['codigo']??0)); $errors[]=$station['estacion_nombre'] ?? 'Estación'; }
+        }
+        $sortKey=trim($order, '[]'); $seen=0;
+        try {
+            while ($active && count($rows)<$length) {
+                if (microtime(true) >= $deadline) { $timedOut=true; break; }
+                $next=0;
+                for ($i=1,$n=count($active);$i<$n;$i++) {
+                    $a=$active[$i]['row']; $b=$active[$next]['row']; $v=($a[$sortKey]??'')<=>($b[$sortKey]??'');
+                    if ($v!==0) { if ($direction==='DESC') $v=-$v; }
+                    else { $v=($a['despacho']??0)<=>($b['despacho']??0); if ($v===0) $v=(($a['estacion'] ?? $active[$i]['station']['estacion_nombre'] ?? '')<=>($b['estacion'] ?? $active[$next]['station']['estacion_nombre'] ?? '')); }
+                    if ($v<0) $next=$i;
+                }
+                $item=&$active[$next]; $row=$item['row'];
+                if ($seen++ >= $start) $rows[]=$row;
+                try { $nextRow=$item['stmt']->fetch(PDO::FETCH_ASSOC); }
+                catch (Throwable $e) { error_log('dispatches_by_billing_station fetch failed station '.(int)($item['station']['codigo']??0)); $errors[]=$item['station']['estacion_nombre'] ?? 'Estación'; $nextRow=false; }
+                if ($nextRow === false) { $item['stmt']->closeCursor(); $item['pdo']=null; array_splice($active,$next,1); }
+                else $item['row']=$nextRow;
+                unset($item);
+            }
+        } finally {
+            foreach ($active as $item) { try { $item['stmt']->closeCursor(); } catch (Throwable $e) {} $item['pdo']=null; }
+        }
+        $result=['data'=>$rows,'recordsTotal'=>$total,'recordsFiltered'=>$filtered,'stationErrors'=>array_values(array_unique($errors))];
+        if ($timedOut) $result['error']='La consulta alcanzó el límite de tiempo; se muestran resultados parciales.';
+        return $result;
+    }
+
+    /** Exporta estación por estación para no retener el conjunto completo en memoria. */
+    function stream_dispatches_by_billing_stations($from, $until, array $stations, $uuid, $tipoCliente, $orderColKey, $orderDir, array $columnSearches=[], string $globalSearch='', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
+        [$cte,$typeWhere,$typeParams,$search,$searchParams,$order,$direction]=$this->stationBillingSql($uuid,$tipoCliente,$orderColKey,$orderDir,$columnSearches,$globalSearch,$dispatchFrom,$dispatchUntil);
+        $ok=0;
+        foreach ($stations as $station) {
+            try { $pdo=$this->stationPdo($station); $stmt=$pdo->prepare("$cte SELECT * FROM CTE WHERE rn=1 $typeWhere $search ORDER BY $order $direction, despacho ASC"); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams)); $ok++; while($row=$stmt->fetch(PDO::FETCH_ASSOC)) yield $row; $stmt->closeCursor(); $pdo=null; }
+            catch (Throwable $e) { error_log('dispatches_by_billing_station export failed station '.(int)($station['codigo']??0)); }
+        }
+        if ($ok===0) throw new RuntimeException('No station was available');
     }
 
     /**

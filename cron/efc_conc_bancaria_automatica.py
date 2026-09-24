@@ -24,8 +24,6 @@ import pyodbc
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 TOLERANCE = 1.00  # Misma tolerancia usada por runBankFixed en la consola.
-GASOMEX_PRIMARY_DAYS = 2
-GASOMEX_FALLBACK_DAYS = 7
 COMPANY_STATIONS = {
     2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22,
     23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 199,
@@ -232,31 +230,60 @@ def candidate_bank_rows(
     return candidates
 
 
-def unique_gasomex_combination(turns: list[dict], target: float, used: set[str]) -> tuple[list[dict] | None, int, int, list[list[dict]]]:
-    """Find exactly one GASOMEX combination and return diagnostics for rejects."""
-    target_cents = round(target * 100)
-    candidates = [item for item in turns if item["key"] not in used and item["date"] <= item["bank_date"]]
-    candidates.sort(key=lambda item: abs((item["bank_date"] - item["date"]).days))
-    solutions: list[list[dict]] = []
-    nodes = 0
+def gasomex_lots(turns: list[dict]) -> list[dict]:
+    """Build the known GASOMEX operational lots.
 
-    def visit(start: int, total: int, picked: list[dict]) -> None:
-        nonlocal nodes
-        nodes += 1
-        if nodes > 120_000 or len(solutions) > 1:
-            return
-        if picked and abs(total - target_cents) < 100:
-            solutions.append(picked[:])
-            return
-        if total >= target_cents + 100:
-            return
-        for index in range(start, len(candidates)):
-            next_total = total + round(candidates[index]["amount"] * 100)
-            if next_total <= target_cents + 99:
-                visit(index + 1, next_total, picked + [candidates[index]])
+    The deposit for operational day D contains D/T2, D/T3, D/T4 and
+    (D+1)/T1.  The bank date is intentionally not part of this grouping:
+    deposits may arrive several days after the operational lot.
+    """
+    by_turn: dict[tuple[date, str], list[dict]] = {}
+    for item in turns:
+        by_turn.setdefault((item["date"], turn_key(item["turn"])), []).append(item)
 
-    visit(0, 0, [])
-    return (solutions[0] if len(solutions) == 1 else None, len(solutions), nodes, solutions[:2])
+    lots: list[dict] = []
+    anchors = sorted({item["date"] for item in turns})
+    for anchor in anchors:
+        required = [(anchor, "2"), (anchor, "3"), (anchor, "4"), (anchor + timedelta(days=1), "1")]
+        if not all((day, turn) in by_turn for day, turn in required):
+            continue
+        items = [item for key in required for item in by_turn[key]]
+        lots.append({
+            "anchor": anchor,
+            "last_date": anchor + timedelta(days=1),
+            "items": items,
+            "amount": round(sum(item["amount"] for item in items), 2),
+        })
+    return lots
+
+
+def matching_gasomex_bank(lot: dict, banks: list[tuple], used: set[int]) -> list[tuple]:
+    """Return deposits after the lot date that match its total.
+
+    There is no assumed T+1 rule.  The earliest available matching movement
+    is preferred by the caller, while a same-value duplicate remains visible
+    in diagnostics instead of being solved through arbitrary turn subsets.
+    """
+    return [
+        bank for bank in banks
+        if int(bank[0]) not in used
+        and as_date(bank[1]) >= lot["last_date"]
+        and abs(amount(bank[2]) - lot["amount"]) < TOLERANCE
+    ]
+
+
+def gasomex_lot_diagnostics(lot: dict, banks: list[tuple], used: set[int]) -> dict:
+    """Explain why a complete lot did not find a usable bank movement."""
+    scoped = [bank for bank in banks if int(bank[0]) not in used]
+    same_amount = [bank for bank in scoped if abs(amount(bank[2]) - lot["amount"]) < TOLERANCE]
+    before_lot = [bank for bank in same_amount if as_date(bank[1]) < lot["last_date"]]
+    nearest = sorted(scoped, key=lambda bank: (abs(amount(bank[2]) - lot["amount"]), as_date(bank[1]), int(bank[0])))[:3]
+    return {
+        "available": len(scoped),
+        "same_amount": same_amount,
+        "before_lot": before_lot,
+        "nearest": nearest,
+    }
 
 
 def run() -> int:
@@ -300,7 +327,10 @@ def run() -> int:
                     FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
                     WHERE V.estacion_id=? AND V.activo=1""", station_id).fetchall()}
                 controlgas_first = first - timedelta(days=2) if int(station_id) in GASOMEX_STATIONS else first
-                controlgas_rows = fetch_controlgas(int(station_id), controlgas_first, last)
+                # GASOMEX lots include T1 of the following day, so include
+                # that day even when the deposit itself arrives later.
+                controlgas_last = last + timedelta(days=1) if int(station_id) in GASOMEX_STATIONS else last
+                controlgas_rows = fetch_controlgas(int(station_id), controlgas_first, controlgas_last)
                 log(f"Estación {station_id}: ControlGas devolvió {len(controlgas_rows)} registros.")
                 if int(station_id) in GASOMEX_STATIONS:
                     turns: list[dict] = []
@@ -330,57 +360,32 @@ def run() -> int:
                                 continue
                             turns.append({"key": key, "date": cut, "turn": turn, "concept": concept, "amount": target})
                     gas_bank_rows = [bank for bank in bank_rows if int(bank[0]) not in used and gasomex_account_matches(bank, int(station_id))]
-                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos elegibles={len(turns)}, ya conciliados={already_conciliated}, sin vínculo={no_link}, sin importe CG={no_amount}, depósitos por cuenta={len(gas_bank_rows)}.")
-                    for bank in sorted(gas_bank_rows, key=lambda item: as_date(item[1])):
-                        bank_date = as_date(bank[1])
-                        # Primera pasada: mismo día o hasta dos días anteriores.
-                        window_start = bank_date - timedelta(days=GASOMEX_PRIMARY_DAYS)
-                        pool = [
-                            dict(item, bank_date=bank_date)
-                            for item in turns
-                            if window_start <= item["date"] <= bank_date
-                        ]
-                        picked, solution_count, search_nodes, solution_examples = unique_gasomex_combination(pool, amount(bank[2]), set())
-                        search_window = f"{window_start}..{bank_date}"
-                        search_mode = "2_dias"
-                        # Si la primera pasada no produce una única solución,
-                        # hacemos una segunda búsqueda de diagnóstico hasta siete
-                        # días. Sólo se acepta si también resulta única; así se
-                        # pueden detectar depósitos que cruzan varios días sin
-                        # aprobar una combinación ambigua.
-                        if not picked:
-                            fallback_start = bank_date - timedelta(days=GASOMEX_FALLBACK_DAYS)
-                            fallback_pool = [
-                                dict(item, bank_date=bank_date)
-                                for item in turns
-                                if fallback_start <= item["date"] <= bank_date
-                            ]
-                            fallback_picked, fallback_count, fallback_nodes, fallback_examples = unique_gasomex_combination(fallback_pool, amount(bank[2]), set())
-                            log(f"GASOMEX ampliación: estación={station_id}, banco={bank[0]}, ventana={fallback_start}..{bank_date}, turnos_disponibles={len(fallback_pool)}, soluciones_encontradas={fallback_count}, nodos={fallback_nodes}.")
-                            if fallback_picked:
-                                picked = fallback_picked
-                                solution_count = fallback_count
-                                search_nodes += fallback_nodes
-                                search_window = f"{fallback_start}..{bank_date}"
-                                search_mode = "7_dias"
-                            else:
-                                solution_examples = fallback_examples or solution_examples
-                        if not picked:
-                            log(f"GASOMEX sin combinación: estación={station_id}, banco={bank[0]}, fecha={bank_date}, ventana_inicial={window_start}..{bank_date}, importe={amount(bank[2]):.2f}, turnos_disponibles={len(pool)}, soluciones_encontradas={solution_count}, nodos={search_nodes}.")
-                            for example_number, example in enumerate(solution_examples, 1):
-                                signature = ", ".join(f"{item['date']} T{item['turn']} {item['concept']}={item['amount']:.2f}" for item in example)
-                                log(f"GASOMEX solución alternativa {example_number}: {signature}")
+                    lots = gasomex_lots(turns)
+                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos elegibles={len(turns)}, ya conciliados={already_conciliated}, sin vínculo={no_link}, sin importe CG={no_amount}, lotes completos={len(lots)}, depósitos por cuenta={len(gas_bank_rows)}.")
+                    for lot in lots:
+                        candidates = matching_gasomex_bank(lot, gas_bank_rows, used)
+                        if not candidates:
+                            diagnostic = gasomex_lot_diagnostics(lot, gas_bank_rows, used)
+                            before_ids = ",".join(f"{bank[0]}({bank[1]})" for bank in diagnostic["before_lot"][:5]) or "ninguno"
+                            nearest_text = ", ".join(f"{bank[0]}:{as_date(bank[1])}/{amount(bank[2]):.2f}" for bank in diagnostic["nearest"]) or "ninguno"
+                            log(f"GASOMEX lote pendiente: estación={station_id}, lote={lot['anchor']}, cubre_hasta={lot['last_date']}, importe={lot['amount']:.2f}, depósitos_disponibles={diagnostic['available']}, mismo_importe={len(diagnostic['same_amount'])}, mismos_anteriores={before_ids}, más_cercanos={nearest_text}.")
                             continue
-                        cg_total = round(sum(item["amount"] for item in picked), 2)
-                        log(f"GASOMEX candidato: estación={station_id}, banco={bank[0]}, modo={search_mode}, ventana={search_window}, importe_banco={amount(bank[2]):.2f}, importe_cg={cg_total:.2f}, turnos={len(picked)}.")
+                        candidates.sort(key=lambda item: (as_date(item[1]), int(item[0])))
+                        bank = candidates[0]
+                        if len(candidates) > 1:
+                            log(f"GASOMEX lote con varios depósitos candidatos: estación={station_id}, lote={lot['anchor']}, candidatos={','.join(str(item[0]) for item in candidates)}; se toma el más antiguo {bank[0]}.")
+                        picked = lot["items"]
+                        cg_total = lot["amount"]
+                        bank_date = as_date(bank[1])
+                        log(f"GASOMEX candidato: estación={station_id}, banco={bank[0]}, lote={lot['anchor']}, fecha_banco={bank_date}, importe_banco={amount(bank[2]):.2f}, importe_lote={cg_total:.2f}, turnos={len(picked)}.")
                         payload = "<turns>" + "".join(
                             f'<turn id="{escape(item["key"])}" date="{item["date"].isoformat()}" turn="{escape(item["turn"])}" currency="MN" amount="{item["amount"]:.2f}" />'
                             for item in picked
                         ) + "</turns>"
                         try:
-                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?", station_id, min(item["date"] for item in picked), payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
-                            conn.commit(); used.add(int(bank[0])); turns = [item for item in turns if item["key"] not in {chosen["key"] for chosen in picked}]; matched += 1
-                            log(f"Conciliada GASOMEX: estación={station_id}, turnos={len(picked)}, banco={bank[0]}.")
+                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?", station_id, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
+                            conn.commit(); used.add(int(bank[0])); gas_bank_rows = [item for item in gas_bank_rows if int(item[0]) != int(bank[0])]; turns = [item for item in turns if item["key"] not in {chosen["key"] for chosen in picked}]; matched += 1
+                            log(f"Conciliada GASOMEX: estación={station_id}, lote={lot['anchor']}, turnos={len(picked)}, banco={bank[0]}.")
                         except pyodbc.Error as exc:
                             conn.rollback(); errors += 1
                             log(f"Error DB conciliando GASOMEX estación={station_id}, banco={bank[0]}: {error_text(exc)}")

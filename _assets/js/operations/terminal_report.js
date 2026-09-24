@@ -43,7 +43,7 @@ $(function () {
     };
 
     function incidentTable(incidents) {
-        if (!incidents.length) return '<div class="terminal-incidents-empty"><i data-feather="check-circle"></i> Sin incidencias vinculadas a este tipo en este inventario.</div>';
+        if (!incidents.length) return '<div class="terminal-incidents-empty"><i data-feather="check-circle"></i> Sin incidencias vinculadas a este tipo en este registro.</div>';
         let html = '<div class="table-responsive"><table class="table table-sm terminal-incident-table mb-0"><thead><tr><th>Ticket Mojo</th><th>Serie UROVO</th><th>Descripción</th><th>Apertura</th><th>Días laborales / Horas<br><small>08:00–18:00, lunes a viernes</small></th><th>Estado</th><th>Cierre</th><th>Cerrado por Mojo</th><th>Confirmación estación</th></tr></thead><tbody>';
         incidents.forEach(incident => {
             const closed = !!incident.fecha_cierre_mojo;
@@ -54,7 +54,7 @@ $(function () {
         return html + '</tbody></table></div>';
     }
     function typeRows(types, inventoryId) {
-        if (!types.length) return '<div class="terminal-incidents-empty"><i data-feather="info"></i> Este inventario no tiene detalle por terminal.</div>';
+        if (!types.length) return '<div class="terminal-incidents-empty"><i data-feather="info"></i> Este registro no tiene detalle por terminal.</div>';
         let html = '<table class="table terminal-type-table mb-0"><thead><tr><th>Tipo de terminal</th><th class="text-center">Stock</th><th class="text-center">Funcionando</th><th class="text-center">Dañadas</th><th>Incidencias</th></tr></thead><tbody>';
         types.forEach(item => {
             const damaged = Number(item.danadas || 0), expected = expectedForType(item);
@@ -165,7 +165,7 @@ $(function () {
                 $(this).next('.terminal-tree-child').addClass('d-none').hide();
             });
             filtered.slice((page - 1) * pageSize, page * pageSize).each(function () { $(this).show(); });
-            $count.text(filtered.length + ' fecha' + (filtered.length === 1 ? '' : 's') + ' con inventario');
+            $count.text(filtered.length + ' fecha' + (filtered.length === 1 ? '' : 's') + ' con registros');
             renderPagination(totalPages);
         }
         $pagination.on('click', '.report-page-prev', function () { if (page > 1) { page--; renderRows(); } });
@@ -209,7 +209,7 @@ $(function () {
     setupGroupBrowser();
     const $inventoryRows = $('.terminal-date-row');
     if ($inventoryRows.length && $.fn.DataTable && $('#terminalInventoryExportTable').length === 0) {
-        const $exportTable = $('<table id="terminalInventoryExportTable" class="terminal-export-source"><thead><tr><th>Fecha de inventario</th><th>Estaciones</th><th>Total terminales</th><th>Funcionando</th><th>Dañadas</th></tr></thead><tbody></tbody></table>');
+        const $exportTable = $('<table id="terminalInventoryExportTable" class="terminal-export-source"><thead><tr><th>Fecha de registro</th><th>Estaciones</th><th>Total terminales</th><th>Funcionando</th><th>Dañadas</th></tr></thead><tbody></tbody></table>');
         $inventoryRows.each(function () {
             const cells = $(this).children('td').map(function () { return $('<div>').html($(this).html()).text().replace(/\s+/g, ' ').trim(); }).get();
             $exportTable.find('tbody').append($('<tr>').append(cells.map(value => $('<td>').text(value))));
@@ -221,8 +221,8 @@ $(function () {
             info: false,
             dom: 'B',
             buttons: [
-                { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Resumen de inventarios de terminales' },
-                { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm', title: 'Resumen de inventarios de terminales', orientation: 'landscape', pageSize: 'LEGAL' }
+                { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Resumen de incidencias de terminales' },
+                { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm', title: 'Resumen de incidencias de terminales', orientation: 'landscape', pageSize: 'LEGAL' }
             ]
         });
         inventoryExportTable.buttons().container().appendTo('#terminalInventoryExportActions');

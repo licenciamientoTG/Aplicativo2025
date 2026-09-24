@@ -506,6 +506,9 @@
             <a class="sidebar-link" href="/income/control_dispatches">Control de Despachos
             </a>
           </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/income/despachos_por_facturacion">Despachos por facturación</a>
+          </li>
 
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/anomalies">Despachos Facturados
@@ -699,23 +702,23 @@
         <a data-bs-target="#terminal_inventory_menu" data-bs-toggle="collapse" class="sidebar-link collapsed"
           aria-expanded="false">
           <i data-feather="monitor"></i>
-          <span class="align-middle">Inventario terminales</span>
+          <span class="align-middle">Incidencias de terminales</span>
         </a>
         <ul id="terminal_inventory_menu" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           {% if terminal_inventory_access() %}
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/operations/terminal_inventory">Registrar inventario</a>
+            <a class="sidebar-link" href="/operations/terminal_inventory">Registrar incidencias</a>
           </li>
           {% endif %}
           {% if terminal_inventory_report_access() %}
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/operations/terminal_report">Reporte de terminales</a>
+            <a class="sidebar-link" href="/operations/terminal_incident_report">Gestión de incidencias</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/operations/terminal_inventory_status">Cumplimiento inventarios</a>
+            <a class="sidebar-link" href="/operations/terminal_inventory_status">Cumplimiento de registros</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/operations/terminal_inventory_settings">Configuración inventario</a>
+            <a class="sidebar-link" href="/operations/terminal_inventory_settings">Configuración de incidencias</a>
           </li>
           {% endif %}
         </ul>

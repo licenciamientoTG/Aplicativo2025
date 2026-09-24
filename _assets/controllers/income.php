@@ -1747,6 +1747,261 @@ public function anomalies_client_tickets()
         }
     }
 
+    /** Página del reporte Despachos por facturación (la vista se mantiene independiente). */
+    function dispatches_by_billing() : void {
+        $stations = $this->gasolinerasModel->get_active_stations();
+        $from = $_REQUEST['from'] ?? date('Y-m-d');
+        $until = $_REQUEST['until'] ?? date('Y-m-d');
+        $codgas = $_REQUEST['codgas'] ?? 0;
+        echo $this->twig->render($this->route . 'despachos_por_facturacion.html', compact('from', 'until', 'codgas', 'stations'));
+    }
+
+    // Alias de navegación en español; conserva el endpoint API en inglés.
+    function despachos_por_facturacion() : void {
+        $this->dispatches_by_billing();
+    }
+
+    /**
+     * Valida el contrato común de los endpoints por fecha de factura. No se
+     * delega a dateToInt hasta comprobar el formato, porque DateTime acepta
+     * textos relativos que no deben convertirse en filtros SQL.
+     */
+    private function dispatchesByBillingRequest() : ?array {
+        $from = $_POST['from'] ?? '';
+        $until = $_POST['until'] ?? '';
+        $fromDate = is_string($from) ? DateTime::createFromFormat('!Y-m-d', $from) : false;
+        $fromErrors = DateTime::getLastErrors();
+        $untilDate = is_string($until) ? DateTime::createFromFormat('!Y-m-d', $until) : false;
+        $untilErrors = DateTime::getLastErrors();
+        $fromValid = $fromDate && ($fromErrors === false || ($fromErrors['warning_count'] === 0 && $fromErrors['error_count'] === 0))
+            && $fromDate->format('Y-m-d') === $from;
+        $untilValid = $untilDate && ($untilErrors === false || ($untilErrors['warning_count'] === 0 && $untilErrors['error_count'] === 0))
+            && $untilDate->format('Y-m-d') === $until;
+
+        // El rango de fecha de despacho es opcional, pero no se permite
+        // aplicar solamente uno de sus extremos. Igual que las fechas de
+        // factura, se valida antes de convertirlo al entero usado en SQL.
+        $dispatchFrom = $_POST['dispatch_from'] ?? '';
+        $dispatchUntil = $_POST['dispatch_until'] ?? '';
+        $dispatchFromProvided = $dispatchFrom !== '';
+        $dispatchUntilProvided = $dispatchUntil !== '';
+        $dispatchFromDate = is_string($dispatchFrom) ? DateTime::createFromFormat('!Y-m-d', $dispatchFrom) : false;
+        $dispatchFromErrors = DateTime::getLastErrors();
+        $dispatchUntilDate = is_string($dispatchUntil) ? DateTime::createFromFormat('!Y-m-d', $dispatchUntil) : false;
+        $dispatchUntilErrors = DateTime::getLastErrors();
+        $dispatchFromValid = $dispatchFromDate && ($dispatchFromErrors === false || ($dispatchFromErrors['warning_count'] === 0 && $dispatchFromErrors['error_count'] === 0))
+            && $dispatchFromDate->format('Y-m-d') === $dispatchFrom;
+        $dispatchUntilValid = $dispatchUntilDate && ($dispatchUntilErrors === false || ($dispatchUntilErrors['warning_count'] === 0 && $dispatchUntilErrors['error_count'] === 0))
+            && $dispatchUntilDate->format('Y-m-d') === $dispatchUntil;
+        $dispatchRangeValid = (!$dispatchFromProvided && !$dispatchUntilProvided)
+            || ($dispatchFromProvided && $dispatchUntilProvided && $dispatchFromValid && $dispatchUntilValid && $dispatchFromDate <= $dispatchUntilDate);
+
+        $codgasRaw = $_POST['codgas'] ?? 0;
+        $uuidRaw = $_POST['uuid'] ?? 0;
+        $codgasValid = is_scalar($codgasRaw) && filter_var((string) $codgasRaw, FILTER_VALIDATE_INT) !== false && (int) $codgasRaw >= 0;
+        $uuidValid = is_scalar($uuidRaw) && in_array((int) $uuidRaw, [0, 1, 2], true);
+        $tipoCliente = $_POST['tipo_cliente'] ?? 0;
+        $allowedClientTypes = [0, '0', 'cliente_credito', 'cliente_debito', 'monedero', 'contado', 'factura_global'];
+        $clientTypeValid = is_scalar($tipoCliente) && in_array($tipoCliente, $allowedClientTypes, true);
+        $mode = $_POST['modo_consulta'] ?? 'corpo';
+        $modeValid = is_scalar($mode) && in_array($mode, ['corpo', 'estaciones'], true);
+
+        if (!$fromValid || !$untilValid || $fromDate > $untilDate || !$dispatchRangeValid || !$codgasValid || !$uuidValid || !$clientTypeValid || !$modeValid) {
+            http_response_code(400);
+            json_output(['data' => [], 'error' => 'Parámetros de consulta inválidos.']);
+            return null;
+        }
+
+        return [
+            'from' => dateToInt($from),
+            'until' => dateToInt($until),
+            'dispatch_from' => $dispatchFromProvided ? dateToInt($dispatchFrom) : null,
+            'dispatch_until' => $dispatchUntilProvided ? dateToInt($dispatchUntil) : null,
+            'codgas' => (int) $codgasRaw,
+            'uuid' => (int) $uuidRaw,
+            'tipo_cliente' => $tipoCliente === '0' ? 0 : $tipoCliente,
+            'modo_consulta' => $mode,
+        ];
+    }
+
+    /** Las credenciales sólo se leen del catálogo en servidor y nunca salen en la respuesta. */
+    private function dispatchesByBillingStations(array $filters) : array {
+        if ($filters['codgas'] > 0) {
+            $station = $this->gasolinerasModel->get_estations_servidor_cod_gas($filters['codgas']);
+            return $station ? [$station] : [];
+        }
+        return $this->gasolinerasModel->get_estations_servidor() ?: [];
+    }
+
+    private function formatDispatchesByBillingRow(array &$dispatch) : void {
+        $dispatch['hora_formateada'] = date('H:i', strtotime($dispatch['hora_formateada']));
+        $dispatch['cliente_fac'] = $dispatch['cliente_fac'] ?? $dispatch['cliente_des'];
+        $dispatch['factura'] = $dispatch['factura'] ?? $dispatch['factura_desp'];
+        $dispatch['UUID'] = $dispatch['UUID'] ?? '.';
+        $dispatch['codigo_cliente'] = ($dispatch['codigo_cliente'] < 0 ? '' : $dispatch['codigo_cliente']);
+        $dispatch['tipo_pago'] = $dispatch['tipo_pago'] ?? $dispatch['tipo_pago_despacho'];
+    }
+
+    function datatables_dispatches_by_billing_paginated() : void {
+        ini_set('memory_limit', '512M');
+        $filters = $this->dispatchesByBillingRequest();
+        if ($filters === null) { return; }
+        // Mantener un límite total para la petición; el modelo usa un margen
+        // para devolver resultados parciales antes de que PHP la termine.
+        set_time_limit(300);
+
+        $draw = isset($_POST['draw']) ? max(0, (int) $_POST['draw']) : 0;
+        $start = isset($_POST['start']) ? max(0, (int) $_POST['start']) : 0;
+        $length = isset($_POST['length']) ? (int) $_POST['length'] : 100;
+        $length = $length > 0 ? min($length, $filters['modo_consulta'] === 'estaciones' ? 100 : 1000) : 100;
+        $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+        $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
+        $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
+
+        $columnSearches = [];
+        if (!empty($_POST['columns']) && is_array($_POST['columns'])) {
+            foreach ($_POST['columns'] as $col) {
+                if (isset($col['data'], $col['search']['value']) && is_scalar($col['data']) && is_scalar($col['search']['value']) && $col['search']['value'] !== '') {
+                    $columnSearches[(string) $col['data']] = mb_substr((string) $col['search']['value'], 0, 250);
+                }
+            }
+        }
+        $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
+
+        if ($filters['modo_consulta'] === 'estaciones') {
+            $stations = $this->dispatchesByBillingStations($filters);
+            if (!$stations) { json_output(['draw'=>$draw,'recordsTotal'=>0,'recordsFiltered'=>0,'data'=>[],'stationErrors'=>[],'error'=>'No hay estaciones configuradas para la consulta.']); return; }
+            $result = $this->despachosModel->dispatches_by_billing_stations_paginated($filters['from'], $filters['until'], $stations, $filters['uuid'], $filters['tipo_cliente'], $start, $length, is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch, $filters['dispatch_from'], $filters['dispatch_until'], microtime(true) + 285);
+        } else {
+            $result = $this->despachosModel->control_dispatches_by_billing_paginated(
+                $filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'],
+                $start, $length, is_scalar($orderColKey) ? (string) $orderColKey : 'fecha', is_scalar($orderDir) ? (string) $orderDir : 'asc',
+                $columnSearches, $globalSearch, $filters['dispatch_from'], $filters['dispatch_until']
+            );
+        }
+        foreach ($result['data'] as &$dispatch) { $this->formatDispatchesByBillingRow($dispatch); }
+        unset($dispatch);
+        $response=['draw' => $draw, 'recordsTotal' => $result['recordsTotal'], 'recordsFiltered' => $result['recordsFiltered'], 'data' => $result['data']];
+        if ($filters['modo_consulta'] === 'estaciones') { $response['stationErrors']=$result['stationErrors'] ?? []; if (!empty($result['error'])) $response['error']=$result['error']; }
+        json_output($response);
+    }
+
+    function export_dispatches_by_billing_excel() : void {
+        ini_set('memory_limit', '512M');
+        set_time_limit(0);
+        $filters = $this->dispatchesByBillingRequest();
+        if ($filters === null) { return; }
+
+        $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+        $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
+        $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
+        $columnSearches = [];
+        if (!empty($_POST['columns']) && is_array($_POST['columns'])) {
+            foreach ($_POST['columns'] as $col) {
+                if (isset($col['data'], $col['search']['value']) && is_scalar($col['data']) && is_scalar($col['search']['value']) && $col['search']['value'] !== '') {
+                    $columnSearches[(string) $col['data']] = mb_substr((string) $col['search']['value'], 0, 250);
+                }
+            }
+        }
+        $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
+        $dispatches = $filters['modo_consulta'] === 'estaciones'
+            ? $this->despachosModel->stream_dispatches_by_billing_stations($filters['from'], $filters['until'], $this->dispatchesByBillingStations($filters), $filters['uuid'], $filters['tipo_cliente'], is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch, $filters['dispatch_from'], $filters['dispatch_until'])
+            : $this->despachosModel->stream_dispatches_by_billing_all($filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'], is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch, $filters['dispatch_from'], $filters['dispatch_until']);
+        try { $dispatches->valid(); }
+        catch (Throwable $e) { http_response_code(500); json_output(['error' => 'No se pudo generar el Excel. Intentelo nuevamente.']); return; }
+
+        $tempFolder = ROOT . 'temp';
+        if (!is_dir($tempFolder)) { @mkdir($tempFolder, 0775, true); }
+        if (!is_dir($tempFolder) || !is_writable($tempFolder)) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el Excel: la carpeta temporal no está disponible.']);
+            return;
+        }
+        $headers = ['Fecha despacho', 'Hora', 'Turno', 'Despacho', 'Producto', 'Estacion', 'Empresa', 'Cliente', 'Cantidad', 'Importe', 'Precio', 'Despachador', 'Pago', 'Factura', 'Fecha Factura', 'UUID', 'Notas', 'Rut', 'Denominacion', 'Codigo', 'Tipo', 'Tipo Aplicativo', 'Vehiculo', 'Placas'];
+        $fields = ['fecha', 'hora_formateada', 'turno', 'despacho', 'producto', 'estacion', 'empresa', 'cliente_fac', 'cantidad', 'importe', 'precio', 'despachador', 'tipo_pago', 'factura', 'FechaFactura', 'UUID', 'txtref', 'rut', 'denominacion', 'codigo_cliente', 'tipo_cliente', 'tipo_cliente_aplicativo', 'vehiculo', 'placas'];
+        $options = new SpoutXlsxOptions();
+        $options->setTempFolder($tempFolder);
+        $options->DEFAULT_COLUMN_WIDTH = 16;
+        $writer = new SpoutXlsxWriter($options);
+        $writer->openToBrowser('Despachos_por_facturacion.xlsx');
+        $writer->getCurrentSheet()->setName('Despachos por facturación');
+        $writer->addRow(SpoutRow::fromValues($headers, (new SpoutStyle())->setFontBold()));
+        foreach ($dispatches as $dispatch) {
+            $this->formatDispatchesByBillingRow($dispatch);
+            $values = [];
+            foreach ($fields as $field) { $value = $dispatch[$field] ?? ''; $values[] = is_numeric($value) ? $value + 0 : $value; }
+            $writer->addRow(SpoutRow::fromValues($values));
+        }
+        $writer->close();
+        exit;
+    }
+
+    function export_dispatches_by_billing_csv() : void {
+        set_time_limit(0);
+        $filters = $this->dispatchesByBillingRequest();
+        if ($filters === null) { return; }
+
+        $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+        $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
+        $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
+        $columnSearches = [];
+        if (!empty($_POST['columns']) && is_array($_POST['columns'])) {
+            foreach ($_POST['columns'] as $col) {
+                if (isset($col['data'], $col['search']['value']) && is_scalar($col['data']) && is_scalar($col['search']['value']) && $col['search']['value'] !== '') {
+                    $columnSearches[(string) $col['data']] = mb_substr((string) $col['search']['value'], 0, 250);
+                }
+            }
+        }
+        $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
+
+        try {
+            $dispatches = $filters['modo_consulta'] === 'estaciones'
+                ? $this->despachosModel->stream_dispatches_by_billing_stations($filters['from'], $filters['until'], $this->dispatchesByBillingStations($filters), $filters['uuid'], $filters['tipo_cliente'], is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch, $filters['dispatch_from'], $filters['dispatch_until'])
+                : $this->despachosModel->stream_dispatches_by_billing_all($filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'], is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch, $filters['dispatch_from'], $filters['dispatch_until']);
+            $dispatches->valid();
+        } catch (Throwable $e) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el CSV. Intentelo nuevamente.']);
+            return;
+        }
+
+        $output = fopen('php://output', 'wb');
+        if ($output === false) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el CSV. Intentelo nuevamente.']);
+            return;
+        }
+
+        $headers = ['Fecha despacho', 'Hora', 'Turno', 'Despacho', 'Producto', 'Estacion', 'Empresa', 'Cliente', 'Cantidad', 'Importe', 'Precio', 'Despachador', 'Pago', 'Factura', 'Fecha Factura', 'UUID', 'Notas', 'Rut', 'Denominacion', 'Codigo', 'Tipo', 'Tipo Aplicativo', 'Vehiculo', 'Placas'];
+        $fields = ['fecha', 'hora_formateada', 'turno', 'despacho', 'producto', 'estacion', 'empresa', 'cliente_fac', 'cantidad', 'importe', 'precio', 'despachador', 'tipo_pago', 'factura', 'FechaFactura', 'UUID', 'txtref', 'rut', 'denominacion', 'codigo_cliente', 'tipo_cliente', 'tipo_cliente_aplicativo', 'vehiculo', 'placas'];
+        $numericFields = ['cantidad', 'importe', 'precio', 'despacho', 'codigo_cliente'];
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="Despachos_por_facturacion.csv"');
+        echo "\xEF\xBB\xBF";
+        fputcsv($output, $headers, ';', '"', '', "\r\n");
+
+        foreach ($dispatches as $dispatch) {
+            $this->formatDispatchesByBillingRow($dispatch);
+            $values = [];
+            foreach ($fields as $field) {
+                $value = $dispatch[$field] ?? '';
+                if (in_array($field, $numericFields, true) && is_numeric($value)) {
+                    $values[] = $value + 0;
+                    continue;
+                }
+                $value = (string) $value;
+                // Excel puede ignorar espacios y controles iniciales al
+                // interpretar una celda. Neutralizar también esos prefijos
+                // evita que texto como "\t=FORMULA()" se ejecute al abrir CSV.
+                $values[] = preg_match('/^[\x00-\x20]*[=+\-@]/', $value) ? "'" . $value : $value;
+            }
+            fputcsv($output, $values, ';', '"', '', "\r\n");
+        }
+        fclose($output);
+        exit;
+    }
+
     function overal_invoice_out_table(){
         ini_set('memory_limit', '512M'); // o más si lo necesitas, como '1024M'
         set_time_limit(300); // 300 segundos = 5 minutos. Puedes subirlo más si hace falta.

@@ -1,0 +1,109 @@
+{% extends "views/layouts/base.html" %}
+
+{% block title %}Despachos por facturación{% endblock %}
+{% block menutitle %}Despachos por facturación{% endblock %}
+
+{% block mycss %}
+<style>
+    .billing-dispatches-report { --report-blue: #188ae2; }
+    .billing-dispatches-report .report-card { border: 1px solid #e2e9f0; border-radius: .75rem; box-shadow: 0 .2rem .75rem rgba(30, 54, 78, .06); }
+    .billing-dispatches-report .report-heading { color: #17324d; font-weight: 600; }
+    .billing-dispatches-report .report-note { color: #657586; font-size: .875rem; }
+    .billing-dispatches-report .query-scope-note { background: #f7fbff; border-left: .2rem solid var(--report-blue); border-radius: .4rem; color: #4e6173; font-size: .875rem; }
+    .billing-dispatches-report .station-feedback { font-size: .875rem; }
+    .billing-dispatches-report .report-table-wrap { position: relative; min-height: 11rem; }
+    .billing-dispatches-report .report-table-wrap.loading::after { background: rgba(255,255,255,.72); content: ''; inset: 0; position: absolute; z-index: 2; }
+    .billing-dispatches-report .report-table-wrap.loading::before { animation: billing-report-spin .8s linear infinite; border: .22rem solid #dbeaf7; border-right-color: var(--report-blue); border-radius: 50%; content: ''; height: 2rem; left: 50%; position: absolute; top: 5rem; transform: translateX(-50%); width: 2rem; z-index: 3; }
+    .billing-dispatches-report .table { font-size: .75rem; white-space: nowrap; }
+    .billing-dispatches-report .column-filter { min-width: 6.5rem; }
+    .billing-dispatches-report .billing-dispatches-filter-row th { background: #fff; padding-bottom: .45rem; padding-top: .3rem; }
+    .billing-dispatches-report .dt-buttons .btn { margin-right: .4rem; }
+    @keyframes billing-report-spin { to { transform: translateX(-50%) rotate(360deg); } }
+    @media (max-width: 767.98px) { .billing-dispatches-report .report-actions .btn { width: 100%; } }
+    @media (prefers-reduced-motion: reduce) { .billing-dispatches-report *, .billing-dispatches-report *::before, .billing-dispatches-report *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="billing-dispatches-report" aria-labelledby="billing-dispatches-title">
+    <section class="card report-card mb-3">
+        <div class="card-body">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-3">
+                <div>
+                    <h5 id="billing-dispatches-title" class="report-heading mb-1">Despachos por facturación</h5>
+                    <p class="report-note mb-0">Consulta por <strong>fecha de facturación</strong> y, si lo necesita, limite adicionalmente por la <strong>fecha original del despacho</strong>.</p>
+                </div>
+                <span class="badge bg-info align-self-lg-start">Consulta paginada</span>
+            </div>
+            <form id="billing-dispatches-form" novalidate>
+                <div class="row g-3 align-items-end">
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-from" class="form-label">Fecha de facturación desde</label>
+                        <input type="date" id="billing-from" class="form-control" required>
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-until" class="form-label">Fecha de facturación hasta</label>
+                        <input type="date" id="billing-until" class="form-control" required>
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-dispatch-from" class="form-label">Fecha de despacho desde <small class="text-muted">(opcional)</small></label>
+                        <input type="date" id="billing-dispatch-from" class="form-control">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-dispatch-until" class="form-label">Fecha de despacho hasta <small class="text-muted">(opcional)</small></label>
+                        <input type="date" id="billing-dispatch-until" class="form-control">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-codgas" class="form-label">Estación</label>
+                        <select id="billing-codgas" class="form-select" name="codgas">
+                            <option value="0">Todas las estaciones</option>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-query-mode" class="form-label">Origen de consulta</label>
+                        <select id="billing-query-mode" class="form-select" name="modo_consulta" aria-describedby="billing-query-scope">
+                            <option value="corpo" selected>Consultado del corpo</option>
+                            <option value="estaciones">Consultado de estaciones</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="billing-uuid" class="form-label">Timbrado</label>
+                        <select id="billing-uuid" class="form-select" name="uuid">
+                            <option value="0">Todos</option><option value="1">No</option><option value="2">Sí</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-lg-3 report-actions"><button type="submit" class="btn btn-primary w-100"><i data-feather="search"></i><span class="ms-1">Consultar</span></button></div>
+                </div>
+                <p id="billing-query-scope" class="query-scope-note p-2 mt-3 mb-0">Consulta los datos corporativos. Puede elegir una estación o consultar todas las estaciones.</p>
+                <div id="billing-dispatches-validation" class="invalid-feedback d-block" role="alert" hidden></div>
+                <div id="billing-dispatches-station-feedback" class="alert alert-warning station-feedback mt-3 mb-0" role="alert" hidden></div>
+            </form>
+        </div>
+    </section>
+
+    <section class="card report-card">
+        <div class="card-header bg-white border-bottom-0 d-flex flex-column flex-md-row justify-content-between gap-2">
+            <div><h5 id="billing-dispatches-table-title" class="card-title mb-1">Control de despachos corporativo</h5><small id="billing-dispatches-export-note" class="text-muted">Excel incluye todos los resultados filtrados; PDF página actual sólo incluye las filas visibles.</small></div>
+            <span id="billing-dispatches-status" class="report-note" role="status" aria-live="polite">Listo para consultar.</span>
+        </div>
+        <div id="billing-dispatches-table-wrap" class="card-body report-table-wrap table-responsive">
+            <table id="billing-dispatches-table" class="table table-hover table-striped table-sm w-100" aria-describedby="billing-dispatches-status">
+                <thead><tr>
+                    <th>Fecha despacho</th><th>Hora</th><th>Turno</th><th>Despacho</th><th>Producto</th><th>Estación</th><th>Empresa</th><th>Cliente</th><th>Cantidad</th><th>Importe</th><th>Precio</th><th>Despachador</th><th>Pago</th><th>Factura</th><th>Fecha factura</th><th>UUID</th><th>Notas</th><th>Rut</th><th>Denominación</th><th>Código</th><th>Tipo</th><th>Tipo Aplicativo</th><th>Vehículo</th><th>Placas</th>
+                </tr>
+                <tr class="billing-dispatches-filter-row">
+                    <th>Fecha despacho</th><th>Hora</th><th>Turno</th><th>Despacho</th><th>Producto</th><th>Estación</th><th>Empresa</th><th>Cliente</th><th>Cantidad</th><th>Importe</th><th>Precio</th><th>Despachador</th><th>Pago</th><th>Factura</th><th>Fecha factura</th><th>UUID</th><th>Notas</th><th>Rut</th><th>Denominación</th><th>Código</th><th>Tipo</th><th>Tipo Aplicativo</th><th>Vehículo</th><th>Placas</th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+{% endblock %}
+
+{% block myjs %}
+<script src="{{ js_v('income/DespachosPorFacturacion.js') }}"></script>
+{% endblock %}

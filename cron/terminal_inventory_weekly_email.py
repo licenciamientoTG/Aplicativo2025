@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 import smtplib
 import sys
+from zoneinfo import ZoneInfo
 from typing import Iterable
 from urllib.parse import urlencode
 
@@ -34,7 +35,8 @@ import pyodbc
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 MOJO_TICKET_URL = "https://totalgas.mojohelpdesk.com/mc/tickets/{}"
-VALERA_DISPLAY_ORDER = ("ticketcard", "ultragas", "efecticard", "eox", "inburgas", "sodexo", "mobil")
+VALERA_DISPLAY_ORDER = ("inburgas", "ticketcard", "ultragas", "efecticard", "eox", "sodexo", "mobil")
+LOCAL_TIMEZONE = ZoneInfo("America/Ojinaga")
 
 
 def load_env_file() -> None:
@@ -78,14 +80,23 @@ def db_connection() -> pyodbc.Connection:
 
 def parse_datetime(value: object) -> datetime:
     if isinstance(value, datetime):
-        return value
-    text = str(value).replace("T", " ").split(".", 1)[0]
-    return datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+        date_value = value
+    else:
+        text = str(value).strip()
+        if text.endswith("Z"):
+            date_value = datetime.fromisoformat(text[:-1] + "+00:00")
+        else:
+            date_value = datetime.fromisoformat(text.replace("T", " ").split(".", 1)[0])
+    if date_value.tzinfo is None:
+        return date_value.replace(tzinfo=LOCAL_TIMEZONE)
+    return date_value.astimezone(LOCAL_TIMEZONE)
 
 
 def business_time(from_value: object, until: datetime) -> dict[str, float]:
     """Cuenta días y horas laborables dentro de 08:00-18:00, lunes a viernes."""
     start = parse_datetime(from_value)
+    until = until if until.tzinfo else until.replace(tzinfo=LOCAL_TIMEZONE)
+    until = until.astimezone(LOCAL_TIMEZONE)
     if start >= until:
         return {"dias_laborales": 0, "horas_laborales": 0.0}
     cursor = start.date()
@@ -94,8 +105,8 @@ def business_time(from_value: object, until: datetime) -> dict[str, float]:
     total_hours = 0.0
     while cursor <= end_date:
         if cursor.weekday() < 5:
-            window_start = datetime.combine(cursor, datetime.min.time()).replace(hour=8)
-            window_end = datetime.combine(cursor, datetime.min.time()).replace(hour=18)
+            window_start = datetime.combine(cursor, datetime.min.time(), tzinfo=LOCAL_TIMEZONE).replace(hour=8)
+            window_end = datetime.combine(cursor, datetime.min.time(), tzinfo=LOCAL_TIMEZONE).replace(hour=18)
             left = max(start, window_start)
             right = min(until, window_end)
             if right > left:
@@ -117,7 +128,7 @@ def fetch_open_incidents(connection: pyodbc.Connection) -> list[dict[str, object
         WHERE i.fecha_cierre_mojo IS NULL
         ORDER BY i.fecha_apertura_mojo ASC, i.id ASC
     """
-    now = datetime.now()
+    now = datetime.now(LOCAL_TIMEZONE)
     with connection.cursor() as cursor:
         cursor.execute(query)
         columns = [column[0] for column in cursor.description]
@@ -224,11 +235,23 @@ def terminal_report_url() -> str:
     return env_first("TERMINAL_REPORT_URL", default="http://totalgasonline.net:400/operations/terminal_report")
 
 
+def terminal_incident_report_url() -> str:
+    return env_first("TERMINAL_INCIDENT_REPORT_URL", default="http://totalgasonline.net:400/operations/terminal_incident_report")
+
+
 def terminal_report_link(type_code: str = "", station_code: object = "", date_value: object = "") -> str:
     if date_value:
         date_value = date_value.strftime("%Y-%m-%d") if hasattr(date_value, "strftime") else str(date_value).split(" ", 1)[0]
     params = {key: value for key, value in (("tab", "inventories"), ("type", type_code), ("station", station_code), ("date", date_value)) if str(value).strip()}
     base = terminal_report_url()
+    return base + (("&" if "?" in base else "?") + urlencode(params) if params else "")
+
+
+def terminal_incident_report_link(station_code: object = "", date_value: object = "") -> str:
+    if date_value:
+        date_value = date_value.strftime("%Y-%m-%d") if hasattr(date_value, "strftime") else str(date_value).split(" ", 1)[0]
+    params = {key: value for key, value in (("station", station_code), ("as_of", date_value)) if str(value).strip()}
+    base = terminal_incident_report_url()
     return base + (("&" if "?" in base else "?") + urlencode(params) if params else "")
 
 
@@ -350,7 +373,7 @@ def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str]
         ) or '<tr><td colspan="5" style="padding:7px;color:#687887">No hay incidencias abiertas.</td></tr>'
         details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Responsable</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
         background = "#ffffff" if index % 2 == 0 else "#dff3fb"
-        station_link = escape(terminal_report_link("", station_data["codigo"], station_data.get("date")), quote=True)
+        station_link = escape(terminal_incident_report_link(station_data["codigo"], sent_at), quote=True)
         body.append(f'<tr style="background:{background};border-bottom:1px solid #9bd5e8"><td style="padding:4px 8px;color:#123f66;min-width:190px"><a href="{station_link}" style="color:#125ca8;font-weight:700;text-decoration:none">{escape(station)}</a></td>{"".join(values)}</tr>')
 
     sent = sent_at.strftime("%d/%m/%Y %H:%M")
@@ -389,7 +412,7 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
             for item in station_incidents
         ) or '<tr><td colspan="5" style="padding:7px;color:#687887">No hay incidencias abiertas.</td></tr>'
         details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Responsable</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
-        station_link = escape(terminal_report_link("", row.get("estacion_codigo"), row.get("inventario_fecha")), quote=True)
+        station_link = escape(terminal_incident_report_link(row.get("estacion_codigo"), sent_at), quote=True)
         summary_rows.append(
             f'<tr style="background:{background};border-bottom:1px solid #9bd5e8">'
             f'<td style="padding:5px 8px;color:#123f66"><a href="{station_link}" style="color:#125ca8;font-weight:700;text-decoration:none">{escape(station)}</a></td>'
