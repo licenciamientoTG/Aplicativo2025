@@ -1090,7 +1090,7 @@ class VentasModel extends Model
                 WITH Base AS (
                     SELECT
                         E.Nombre AS Estacion,
-                        CONVERT(DATE, CAST(t1.fchtrn AS DATETIME) - 1) AS Fecha,
+                        CONVERT(DATE, CAST(t1.fchcor AS DATETIME) - 1) AS Fecha, -- fecha de corte, igual que Ingresos.fch
                         t1.mto AS Monto,
                         CASE
                             WHEN t2.tipval = 3 THEN 'CREDITO'
@@ -1122,7 +1122,7 @@ class VentasModel extends Model
                     ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas AND t12.rn = 1
                     LEFT JOIN SG12.dbo.Valores v ON t12.codbco = v.cod
                     INNER JOIN TG.dbo.Estaciones E ON t1.codgas = E.Codigo
-                    WHERE t1.fchtrn BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                    WHERE t1.fchcor BETWEEN @fecha_inicial_int AND @fecha_fin_int
                         AND t1.mto > 0
                         AND t1.tiptrn NOT IN (65, 74) -- muestras de turno / jarreo: no es venta
                     $estation_string

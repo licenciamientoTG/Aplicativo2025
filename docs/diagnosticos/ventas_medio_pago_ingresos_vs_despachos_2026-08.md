@@ -89,6 +89,22 @@ Diferencias = Despachos − Ingresos (pesos). Crédito/Débito cuadran salvo don
 | 🟢 | 15 Electrolux | 0.0 | 72,204 | +11,934 | +1,647 | −7,244 | Pagos mixtos |
 | 🟢 | 28 Hermanos Escobar | 0.0 | 33,211 | +559 | −1,158 | −1,758 | Pagos mixtos |
 
+## Totales Ingresos vs Despachos (agosto 2026, revisado 2026-09-24)
+
+- Global: Despachos − Ingresos = +127,588 sobre 580.4M (**0.022%**). 30 de 36 estaciones con |dif| < 2,000 en el mes.
+- `fchtrn` vs `fchcor`: prácticamente igual (solo mueve despachos en el cambio de día). El query de Despachos ya usa
+  **`fchcor`** (fecha de corte, misma que `Ingresos.fch`) desde 2026-09-24.
+- Casos con diferencia:
+  - **30 El Castaño +50,490**: 23-ago turnos 21 y 31, exactamente +25,000 cada uno, repartido por isla en montos
+    cerrados (4,500 / 8,500 / 5,500 / 6,000 / 500; 9,000 / 16,000) y con "Efectivo MN" casi en cero en esas islas →
+    **efectivo (retiros/depósitos) no capturado en el corte**. Dato de la estación.
+  - **31 Travel Center +29,873**: el corte se captura a nivel estación (isla -33), no por isla; diferencias de 1–2%
+    en algunos turnos de la 1a quincena. Sin causa única identificada.
+  - **22 Satélite +8,133**: 11-ago t31, dos despachos idénticos de 3,583.93 (141.16 L, 17:36, islas 220 y 221,
+    PUBLICO EN GENERAL) en islas cuyo corte es 100% Clientes Débito → probable despacho duplicado.
+- Despachos manuales (`nrotrn` negativo) **sí** son venta real: quitarlos empeora el cuadre (Ventanas 0 → −14,419).
+- El resto (+/− cientos de pesos) = sobrantes/faltantes normales de caja: Ingresos es lo declarado, Despachos lo vendido.
+
 ## Detalle: 29 Villa Ahumada (codgas 31) — 2026-09-24
 
 - Solo SMARTBT (Bancarias + AmEx) está integrada y cuadra al centavo con voucher. Crédito/Débito cuadran.
