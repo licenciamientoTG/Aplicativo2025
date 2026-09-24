@@ -3248,9 +3248,23 @@ class Operations{
             $service=new MojoTerminalTicketsService();
             foreach ($this->terminalInventoryModel->activeIncidents($stationId) as $incident) {
                 $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
-                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),$origin);
+                $open=$service->isOpen($ticket);
+                $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
+                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],$open ? (string)($ticket['status'] ?? 'open') : 'closed',$open ? null : ($ticket['solved_on'] ?? date('Y-m-d H:i:s')),$open ? null : $service->closedByFromTicket($ticket),$origin,$data['serial_urovo'] ?? null);
             }
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias de terminales: '.$e->getMessage()); }
+    }
+    private function syncAllTerminalIncidents(?string $type=null, string $origin='reporte_global'): void {
+        try {
+            $service=new MojoTerminalTicketsService();
+            foreach ($this->terminalInventoryModel->history(0,true,['type'=>$type]) as $incident) {
+                if (!empty($incident['fecha_cierre_mojo'])) continue;
+                $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
+                $open=$service->isOpen($ticket);
+                $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
+                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],$open ? (string)($ticket['status'] ?? 'open') : 'closed',$open ? null : ($ticket['solved_on'] ?? date('Y-m-d H:i:s')),$open ? null : $service->closedByFromTicket($ticket),$origin,$data['serial_urovo'] ?? null);
+            }
+        } catch (Throwable $e) { error_log('No se sincronizaron incidencias desde Mojo: '.$e->getMessage()); }
     }
     private function terminalJsonError(string $message, int $status=422): void { http_response_code($status); json_output(['success'=>false,'message'=>$message]); }
     public function terminal_inventory(): void {
@@ -3258,6 +3272,7 @@ class Operations{
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
         $schedule=$this->terminalInventorySchedule();
+        $this->syncTerminalIncidents($stationId,'vista');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
         echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'inventoryDate'=>$schedule['inventoryDate'],'nextInventoryDate'=>$schedule['nextDate'],'captureAllowed'=>$schedule['allowed'],'types'=>$types,'activeIncidents'=>$active,'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'pendingConfirmations'=>$this->terminalInventoryModel->pendingResolutionConfirmations($stationId),'alreadySaved'=>$this->terminalInventoryModel->inventoryExists($stationId,$schedule['inventoryDate']),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)]);
     }
@@ -3358,15 +3373,8 @@ class Operations{
     public function terminal_report(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte global.'; return; }
         $type=$_GET['type'] ?? ''; $station=(string)($_GET['station'] ?? ''); $types=$this->terminalTypeCatalog(); $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]);
-        try {
-            $service=new MojoTerminalTicketsService();
-            foreach ($rows as $incident) {
-                if (!empty($incident['fecha_cierre_mojo'])) continue;
-                $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
-                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),'reporte_global');
-            }
-            $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]);
-        } catch (Throwable $e) { error_log('No se sincronizaron incidencias al consultar el reporte global: '.$e->getMessage()); }
+        $this->syncAllTerminalIncidents($type,'reporte_global');
+        $rows=$this->terminalInventoryModel->history(0,true,['type'=>$type]);
         if ($station !== '') $rows=array_values(array_filter($rows,fn($row)=>(string)($row['estacion_id'] ?? '') === $station));
         foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
         $openCount=count(array_filter($rows,fn($row)=>empty($row['fecha_cierre_mojo'])));
@@ -3385,6 +3393,7 @@ class Operations{
         if ($status!=='open' && $status!=='closed') $status='';
         if ($station!=='' && !preg_match('/^\d+$/',$station)) $station='';
         if ($assigned!=='' && !preg_match('/^\d+$/',$assigned)) $assigned='';
+        $this->syncAllTerminalIncidents($type,'reporte_incidencias');
         try {
             $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }

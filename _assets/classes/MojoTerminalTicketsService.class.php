@@ -6,7 +6,10 @@ class MojoTerminalTicketsService {
     private const SYSTEM_QUEUE = 53551;
     // Campo de texto exclusivo del formulario UROVO. Ajustar sólo si Mojo
     // cambia el slug del campo, sin exponer esa configuración al cliente.
-    private const UROVO_SERIAL_FIELD = 'custom_field_numero_de_serie_urovo';
+    // Mojo agrega automáticamente el prefijo custom_field_ al nombre del
+    // campo enviado en el payload de creación. El nombre del atributo del
+    // formulario ya contiene ese prefijo, por lo que aquí se envía sin él.
+    private const UROVO_SERIAL_FIELD = 'numero_de_serie_urovo';
     private const VERIFONE_PROBLEMS = [
         'Verifones - Bloqueado (tamper)', 'Verifones - Impresora',
         'Verifones - Red', 'Verifones - Teclado',
@@ -102,7 +105,7 @@ class MojoTerminalTicketsService {
             'provider_date'=>$this->ticketField($ticket,['custom_field_fecha_de_reporte_a_proveedor','fecha_de_reporte_a_proveedor','Fecha de reporte al proveedor']),
             'description'=>trim((string)($ticket['description'] ?? $ticket['title'] ?? '')),
             'problem'=>$this->ticketField($ticket,['custom_field_problema','problema','Problema']),
-            'serial_urovo'=>$type==='urovo' ? $this->ticketField($ticket,[self::UROVO_SERIAL_FIELD,'numero_de_serie_urovo','Número de serie UROVO','Numero de serie UROVO']) : '',
+            'serial_urovo'=>$type==='urovo' ? $this->ticketField($ticket,['custom_field_numero_de_serie_urovo','custom_field_custom_field_numero_de_serie_urovo',self::UROVO_SERIAL_FIELD,'Número de serie UROVO','Numero de serie UROVO']) : '',
         ];
     }
     public function closedByFromTicket(array $ticket): ?string {

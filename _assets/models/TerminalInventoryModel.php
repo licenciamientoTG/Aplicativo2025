@@ -184,8 +184,8 @@ class TerminalInventoryModel extends Model {
         $id=(int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias] (estacion_id,tipo_terminal,ticket_mojo_id,estado_mojo,fecha_apertura_mojo,folio_proveedor,fecha_reporte_proveedor,descripcion,serial_urovo,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?,?,?,?,?,?)', $data);
         if (!$id) throw new RuntimeException('No fue posible crear la incidencia.'); return $id;
     }
-    public function updateTicketState(int $id, string $old, string $new, ?string $closedAt, ?string $closedByMojo, string $origin): void {
-        $this->sql->update('UPDATE [TG].[dbo].[inv_ter_incidencias] SET estado_mojo=?, fecha_cierre_mojo=COALESCE(?,fecha_cierre_mojo), cerrado_por_mojo=COALESCE(?,cerrado_por_mojo) WHERE id=?', [$new,$closedAt,$closedByMojo,$id]);
+    public function updateTicketState(int $id, string $old, string $new, ?string $closedAt, ?string $closedByMojo, string $origin, ?string $serialUrovo=null): void {
+        $this->sql->update('UPDATE [TG].[dbo].[inv_ter_incidencias] SET estado_mojo=?, fecha_cierre_mojo=COALESCE(?,fecha_cierre_mojo), cerrado_por_mojo=COALESCE(?,cerrado_por_mojo), serial_urovo=COALESCE(NULLIF(?,\'\'),serial_urovo) WHERE id=?', [$new,$closedAt,$closedByMojo,$serialUrovo,$id]);
         if ($old === $new) return;
         $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencia_estados] (incidencia_id,estado_anterior,estado_nuevo,fecha_estado_mojo,origen) VALUES (?,?,?,?,?)', [$id,$old,$new,$closedAt,$origin]);
     }
