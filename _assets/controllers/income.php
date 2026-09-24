@@ -1747,6 +1747,155 @@ public function anomalies_client_tickets()
         }
     }
 
+    /** Página del reporte Despachos por facturación (la vista se mantiene independiente). */
+    function dispatches_by_billing() : void {
+        $stations = $this->gasolinerasModel->get_active_stations();
+        $from = $_REQUEST['from'] ?? date('Y-m-d');
+        $until = $_REQUEST['until'] ?? date('Y-m-d');
+        $codgas = $_REQUEST['codgas'] ?? 0;
+        echo $this->twig->render($this->route . 'despachos_por_facturacion.html', compact('from', 'until', 'codgas', 'stations'));
+    }
+
+    // Alias de navegación en español; conserva el endpoint API en inglés.
+    function despachos_por_facturacion() : void {
+        $this->dispatches_by_billing();
+    }
+
+    /**
+     * Valida el contrato común de los endpoints por fecha de factura. No se
+     * delega a dateToInt hasta comprobar el formato, porque DateTime acepta
+     * textos relativos que no deben convertirse en filtros SQL.
+     */
+    private function dispatchesByBillingRequest() : ?array {
+        $from = $_POST['from'] ?? '';
+        $until = $_POST['until'] ?? '';
+        $fromDate = is_string($from) ? DateTime::createFromFormat('!Y-m-d', $from) : false;
+        $fromErrors = DateTime::getLastErrors();
+        $untilDate = is_string($until) ? DateTime::createFromFormat('!Y-m-d', $until) : false;
+        $untilErrors = DateTime::getLastErrors();
+        $fromValid = $fromDate && ($fromErrors === false || ($fromErrors['warning_count'] === 0 && $fromErrors['error_count'] === 0))
+            && $fromDate->format('Y-m-d') === $from;
+        $untilValid = $untilDate && ($untilErrors === false || ($untilErrors['warning_count'] === 0 && $untilErrors['error_count'] === 0))
+            && $untilDate->format('Y-m-d') === $until;
+
+        $codgasRaw = $_POST['codgas'] ?? 0;
+        $uuidRaw = $_POST['uuid'] ?? 0;
+        $codgasValid = is_scalar($codgasRaw) && filter_var((string) $codgasRaw, FILTER_VALIDATE_INT) !== false && (int) $codgasRaw >= 0;
+        $uuidValid = is_scalar($uuidRaw) && in_array((int) $uuidRaw, [0, 1, 2], true);
+        $tipoCliente = $_POST['tipo_cliente'] ?? 0;
+        $allowedClientTypes = [0, '0', 'cliente_credito', 'cliente_debito', 'monedero', 'contado', 'factura_global'];
+        $clientTypeValid = is_scalar($tipoCliente) && in_array($tipoCliente, $allowedClientTypes, true);
+
+        if (!$fromValid || !$untilValid || $fromDate > $untilDate || !$codgasValid || !$uuidValid || !$clientTypeValid) {
+            http_response_code(400);
+            json_output(['data' => [], 'error' => 'Parámetros de consulta inválidos.']);
+            return null;
+        }
+
+        return [
+            'from' => dateToInt($from),
+            'until' => dateToInt($until),
+            'codgas' => (int) $codgasRaw,
+            'uuid' => (int) $uuidRaw,
+            'tipo_cliente' => $tipoCliente === '0' ? 0 : $tipoCliente,
+        ];
+    }
+
+    private function formatDispatchesByBillingRow(array &$dispatch) : void {
+        $dispatch['hora_formateada'] = date('H:i', strtotime($dispatch['hora_formateada']));
+        $dispatch['cliente_fac'] = $dispatch['cliente_fac'] ?? $dispatch['cliente_des'];
+        $dispatch['factura'] = $dispatch['factura'] ?? $dispatch['factura_desp'];
+        $dispatch['UUID'] = $dispatch['UUID'] ?? '.';
+        $dispatch['codigo_cliente'] = ($dispatch['codigo_cliente'] < 0 ? '' : $dispatch['codigo_cliente']);
+        $dispatch['tipo_pago'] = $dispatch['tipo_pago'] ?? $dispatch['tipo_pago_despacho'];
+    }
+
+    function datatables_dispatches_by_billing_paginated() : void {
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
+        $filters = $this->dispatchesByBillingRequest();
+        if ($filters === null) { return; }
+
+        $draw = isset($_POST['draw']) ? max(0, (int) $_POST['draw']) : 0;
+        $start = isset($_POST['start']) ? max(0, (int) $_POST['start']) : 0;
+        $length = isset($_POST['length']) ? (int) $_POST['length'] : 100;
+        $length = $length > 0 ? min($length, 1000) : 100;
+        $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+        $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
+        $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
+
+        $columnSearches = [];
+        if (!empty($_POST['columns']) && is_array($_POST['columns'])) {
+            foreach ($_POST['columns'] as $col) {
+                if (isset($col['data'], $col['search']['value']) && is_scalar($col['data']) && is_scalar($col['search']['value']) && $col['search']['value'] !== '') {
+                    $columnSearches[(string) $col['data']] = mb_substr((string) $col['search']['value'], 0, 250);
+                }
+            }
+        }
+        $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
+
+        $result = $this->despachosModel->control_dispatches_by_billing_paginated(
+            $filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'],
+            $start, $length, is_scalar($orderColKey) ? (string) $orderColKey : 'fecha', is_scalar($orderDir) ? (string) $orderDir : 'asc',
+            $columnSearches, $globalSearch
+        );
+        foreach ($result['data'] as &$dispatch) { $this->formatDispatchesByBillingRow($dispatch); }
+        unset($dispatch);
+        json_output(['draw' => $draw, 'recordsTotal' => $result['recordsTotal'], 'recordsFiltered' => $result['recordsFiltered'], 'data' => $result['data']]);
+    }
+
+    function export_dispatches_by_billing_excel() : void {
+        ini_set('memory_limit', '512M');
+        set_time_limit(0);
+        $filters = $this->dispatchesByBillingRequest();
+        if ($filters === null) { return; }
+
+        $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+        $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
+        $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
+        $columnSearches = [];
+        if (!empty($_POST['columns']) && is_array($_POST['columns'])) {
+            foreach ($_POST['columns'] as $col) {
+                if (isset($col['data'], $col['search']['value']) && is_scalar($col['data']) && is_scalar($col['search']['value']) && $col['search']['value'] !== '') {
+                    $columnSearches[(string) $col['data']] = mb_substr((string) $col['search']['value'], 0, 250);
+                }
+            }
+        }
+        $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
+        $dispatches = $this->despachosModel->stream_dispatches_by_billing_all(
+            $filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'],
+            is_scalar($orderColKey) ? (string) $orderColKey : 'fecha', is_scalar($orderDir) ? (string) $orderDir : 'asc',
+            $columnSearches, $globalSearch
+        );
+        try { $dispatches->valid(); }
+        catch (Throwable $e) { http_response_code(500); json_output(['error' => 'No se pudo generar el Excel. Intentelo nuevamente.']); return; }
+
+        $tempFolder = ROOT . 'temp';
+        if (!is_dir($tempFolder)) { @mkdir($tempFolder, 0775, true); }
+        if (!is_dir($tempFolder) || !is_writable($tempFolder)) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el Excel: la carpeta temporal no está disponible.']);
+            return;
+        }
+        $headers = ['Fecha', 'Hora', 'Turno', 'Despacho', 'Producto', 'Estacion', 'Empresa', 'Cliente', 'Cantidad', 'Importe', 'Precio', 'Despachador', 'Pago', 'Factura', 'Fecha Factura', 'UUID', 'Notas', 'Rut', 'Denominacion', 'Codigo', 'Tipo', 'Tipo Aplicativo', 'Vehiculo', 'Placas'];
+        $fields = ['fecha', 'hora_formateada', 'turno', 'despacho', 'producto', 'estacion', 'empresa', 'cliente_fac', 'cantidad', 'importe', 'precio', 'despachador', 'tipo_pago', 'factura', 'FechaFactura', 'UUID', 'txtref', 'rut', 'denominacion', 'codigo_cliente', 'tipo_cliente', 'tipo_cliente_aplicativo', 'vehiculo', 'placas'];
+        $options = new SpoutXlsxOptions();
+        $options->setTempFolder($tempFolder);
+        $options->DEFAULT_COLUMN_WIDTH = 16;
+        $writer = new SpoutXlsxWriter($options);
+        $writer->openToBrowser('Despachos_por_facturacion.xlsx');
+        $writer->getCurrentSheet()->setName('Despachos por facturación');
+        $writer->addRow(SpoutRow::fromValues($headers, (new SpoutStyle())->setFontBold()));
+        foreach ($dispatches as $dispatch) {
+            $this->formatDispatchesByBillingRow($dispatch);
+            $values = [];
+            foreach ($fields as $field) { $value = $dispatch[$field] ?? ''; $values[] = is_numeric($value) ? $value + 0 : $value; }
+            $writer->addRow(SpoutRow::fromValues($values));
+        }
+        $writer->close();
+        exit;
+    }
+
     function overal_invoice_out_table(){
         ini_set('memory_limit', '512M'); // o más si lo necesitas, como '1024M'
         set_time_limit(300); // 300 segundos = 5 minutos. Puedes subirlo más si hace falta.

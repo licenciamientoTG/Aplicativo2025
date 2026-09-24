@@ -1050,12 +1050,19 @@ class DespachosModel extends Model{
      * consultas paginadas y agregadas sin traer todo el detalle a memoria.
      * $from/$until son enteros (dateToInt) y $where viene de dispatchesWhere().
      */
-    private function dispatchesCTE($from, $until, $where) : string {
+    private function dispatchesCTE($from, $until, $where, string $periodMode = 'dispatch') : string {
         $from  = (int) $from;
         $until = (int) $until;
         // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
         $mov_from  = $from - 1;
         $mov_until = $until + 1;
+        // El modo factura se usa por el reporte de facturación.  La relación
+        // con DocumentosC es obligatoria y el periodo se aplica a su fecha,
+        // no a la fecha del despacho.
+        $periodWhere = $periodMode === 'invoice'
+            ? "t3.nro IS NOT NULL AND t3.fch BETWEEN $from AND $until"
+            : "t1.fchtrn BETWEEN $from AND $until";
+
         return "WITH CTE AS (
                     SELECT
                     CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
@@ -1165,7 +1172,7 @@ class DespachosModel extends Model{
                         Where
                         t1.mto != 0 and
                         t1.tiptrn  not in (65,74) and
-                        t1.fchtrn BETWEEN  $from and  $until  {$where}
+                        $periodWhere {$where}
                         )";
     }
 
@@ -1177,9 +1184,10 @@ class DespachosModel extends Model{
      * @param array $columnSearches  ['clave_columna' => 'texto', ...]
      * @param string $globalSearch   búsqueda global de DataTables
      */
-    function control_dispatches2_paginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                           $start, $length, $orderColKey, $orderDir,
-                                           array $columnSearches = [], string $globalSearch = '') : array {
+    private function dispatchesPaginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                         $start, $length, $orderColKey, $orderDir,
+                                         array $columnSearches = [], string $globalSearch = '',
+                                         string $periodMode = 'dispatch') : array {
         // Whitelist columna -> expresión SQL (sobre las columnas que expone el CTE).
         // Las columnas "coalesce" se buscan/ordenan igual que se muestran.
         $colExpr = [
@@ -1210,7 +1218,7 @@ class DespachosModel extends Model{
         ];
 
         $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where);
+        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode);
 
         // recordsTotal: total sin búsqueda DataTables (parámetros del reporte ya aplicados en el CTE).
         $totalRow = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1", []);
@@ -1265,6 +1273,29 @@ class DespachosModel extends Model{
         ];
     }
 
+    function control_dispatches2_paginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                           $start, $length, $orderColKey, $orderDir,
+                                           array $columnSearches = [], string $globalSearch = '') : array {
+        return $this->dispatchesPaginated(
+            $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch
+        );
+    }
+
+    /**
+     * Reporte independiente por fecha de factura. Siempre exige la relación
+     * real con DocumentosC y conserva exactamente las columnas del reporte de
+     * Control Despachos.
+     */
+    function control_dispatches_by_billing_paginated($from, $until, $codgas, $uuid, $tipo_cliente,
+                                                      $start, $length, $orderColKey, $orderDir,
+                                                      array $columnSearches = [], string $globalSearch = '') : array {
+        return $this->dispatchesPaginated(
+            $from, $until, $codgas, $uuid, $tipo_cliente, 2,
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice'
+        );
+    }
+
     /**
      * Igual que control_dispatches2_paginated pero sin OFFSET/FETCH: recorre
      * TODAS las filas que cumplen los mismos filtros de reporte + búsquedas de
@@ -1273,9 +1304,10 @@ class DespachosModel extends Model{
      * memoria, para que la exportación a Excel pueda escribir en streaming sin
      * límite de registros (ver export_dispatches_excel en el controller).
      */
-    function stream_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                     $orderColKey, $orderDir,
-                                     array $columnSearches = [], string $globalSearch = '') : Generator {
+    private function streamDispatchesAll($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                         $orderColKey, $orderDir,
+                                         array $columnSearches = [], string $globalSearch = '',
+                                         string $periodMode = 'dispatch') : Generator {
         $colExpr = [
             'fecha'                   => 'fecha',
             'hora_formateada'         => 'hora_formateada',
@@ -1304,7 +1336,7 @@ class DespachosModel extends Model{
         ];
 
         $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where);
+        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode);
 
         $searchWhere = '';
         $params = [];
@@ -1339,6 +1371,24 @@ class DespachosModel extends Model{
             yield $row;
         }
         $stmt->closeCursor();
+    }
+
+    function stream_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                     $orderColKey, $orderDir,
+                                     array $columnSearches = [], string $globalSearch = '') : Generator {
+        return $this->streamDispatchesAll(
+            $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+            $orderColKey, $orderDir, $columnSearches, $globalSearch
+        );
+    }
+
+    function stream_dispatches_by_billing_all($from, $until, $codgas, $uuid, $tipo_cliente,
+                                               $orderColKey, $orderDir,
+                                               array $columnSearches = [], string $globalSearch = '') : Generator {
+        return $this->streamDispatchesAll(
+            $from, $until, $codgas, $uuid, $tipo_cliente, 2,
+            $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice'
+        );
     }
 
     /**
