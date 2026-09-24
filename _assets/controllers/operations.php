@@ -3246,6 +3246,15 @@ class Operations{
         }
         return ['dias_laborales'=>$days,'horas_laborales'=>round($seconds / 3600, 2)];
     }
+    private function terminalLocalClosedAt(?string $value): ?string {
+        if (!$value) return null;
+        try {
+            $timezone=new DateTimeZone('America/Ojinaga');
+            $hasTimezone=(bool)preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i',trim($value));
+            $date=new DateTimeImmutable($value,$hasTimezone ? null : $timezone);
+            return $date->setTimezone($timezone)->format('Y-m-d H:i:s');
+        } catch (Throwable $e) { return null; }
+    }
     private function terminalValeraCode(string $value): string {
         $value=mb_strtolower(trim($value),'UTF-8');
         $value=strtr($value,['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n']);
@@ -3258,7 +3267,7 @@ class Operations{
                 $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
                 $open=$service->isOpen($ticket);
                 $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
-                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],$open ? (string)($ticket['status'] ?? 'open') : 'closed',$open ? null : ($ticket['solved_on'] ?? date('Y-m-d H:i:s')),$open ? null : $service->closedByFromTicket($ticket),$origin,$data['serial_urovo'] ?? null);
+                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],$open ? (string)($ticket['status'] ?? 'open') : 'closed',$open ? null : ($this->terminalLocalClosedAt($ticket['solved_on'] ?? null) ?? date('Y-m-d H:i:s')),$open ? null : $service->closedByFromTicket($ticket),$origin,$data['serial_urovo'] ?? null);
             }
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias de terminales: '.$e->getMessage()); }
     }
@@ -3270,7 +3279,7 @@ class Operations{
                 $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
                 $open=$service->isOpen($ticket);
                 $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
-                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],$open ? (string)($ticket['status'] ?? 'open') : 'closed',$open ? null : ($ticket['solved_on'] ?? date('Y-m-d H:i:s')),$open ? null : $service->closedByFromTicket($ticket),$origin,$data['serial_urovo'] ?? null);
+                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],$open ? (string)($ticket['status'] ?? 'open') : 'closed',$open ? null : ($this->terminalLocalClosedAt($ticket['solved_on'] ?? null) ?? date('Y-m-d H:i:s')),$open ? null : $service->closedByFromTicket($ticket),$origin,$data['serial_urovo'] ?? null);
             }
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias desde Mojo: '.$e->getMessage()); }
     }
@@ -3354,7 +3363,7 @@ class Operations{
             if (empty($incident['fecha_cierre_mojo'])) {
                 $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
                 if ($service->isOpen($ticket)) { $this->terminalJsonError('La incidencia aún no ha sido cerrada en Mojo.'); return; }
-                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),'confirmacion');
+                $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$this->terminalLocalClosedAt($ticket['solved_on'] ?? null) ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),'confirmacion');
             }
             $confirmed=$this->terminalInventoryModel->confirmSolvedIncident((int)$incidentId,(int)$station['Codigo'],(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$note==='' ? null : $note);
             if (!$confirmed) { $this->terminalJsonError('La incidencia debe estar cerrada, pertenecer a su estación y no haber sido confirmada previamente.'); return; }
@@ -3438,7 +3447,7 @@ class Operations{
             foreach ($rows as $incident) {
                 if (!empty($incident['fecha_cierre_mojo'])) continue;
                 $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
-                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$ticket['solved_on'] ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),'reporte');
+                if (!$service->isOpen($ticket)) $this->terminalInventoryModel->updateTicketState((int)$incident['id'],(string)$incident['estado_mojo'],(string)($ticket['status'] ?? 'closed'),$this->terminalLocalClosedAt($ticket['solved_on'] ?? null) ?? date('Y-m-d H:i:s'),$service->closedByFromTicket($ticket),'reporte');
             }
             $rows=$this->terminalInventoryModel->inventoryIncidents($inventoryId,$type);
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias al consultar el reporte: '.$e->getMessage()); }
