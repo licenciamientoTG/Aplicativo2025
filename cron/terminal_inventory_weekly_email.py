@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 import smtplib
 import sys
+from zoneinfo import ZoneInfo
 from typing import Iterable
 from urllib.parse import urlencode
 
@@ -35,6 +36,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 MOJO_TICKET_URL = "https://totalgas.mojohelpdesk.com/mc/tickets/{}"
 VALERA_DISPLAY_ORDER = ("inburgas", "ticketcard", "ultragas", "efecticard", "eox", "sodexo", "mobil")
+LOCAL_TIMEZONE = ZoneInfo("America/Ojinaga")
 
 
 def load_env_file() -> None:
@@ -78,14 +80,23 @@ def db_connection() -> pyodbc.Connection:
 
 def parse_datetime(value: object) -> datetime:
     if isinstance(value, datetime):
-        return value
-    text = str(value).replace("T", " ").split(".", 1)[0]
-    return datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+        date_value = value
+    else:
+        text = str(value).strip()
+        if text.endswith("Z"):
+            date_value = datetime.fromisoformat(text[:-1] + "+00:00")
+        else:
+            date_value = datetime.fromisoformat(text.replace("T", " ").split(".", 1)[0])
+    if date_value.tzinfo is None:
+        return date_value.replace(tzinfo=LOCAL_TIMEZONE)
+    return date_value.astimezone(LOCAL_TIMEZONE)
 
 
 def business_time(from_value: object, until: datetime) -> dict[str, float]:
     """Cuenta días y horas laborables dentro de 08:00-18:00, lunes a viernes."""
     start = parse_datetime(from_value)
+    until = until if until.tzinfo else until.replace(tzinfo=LOCAL_TIMEZONE)
+    until = until.astimezone(LOCAL_TIMEZONE)
     if start >= until:
         return {"dias_laborales": 0, "horas_laborales": 0.0}
     cursor = start.date()
@@ -94,8 +105,8 @@ def business_time(from_value: object, until: datetime) -> dict[str, float]:
     total_hours = 0.0
     while cursor <= end_date:
         if cursor.weekday() < 5:
-            window_start = datetime.combine(cursor, datetime.min.time()).replace(hour=8)
-            window_end = datetime.combine(cursor, datetime.min.time()).replace(hour=18)
+            window_start = datetime.combine(cursor, datetime.min.time(), tzinfo=LOCAL_TIMEZONE).replace(hour=8)
+            window_end = datetime.combine(cursor, datetime.min.time(), tzinfo=LOCAL_TIMEZONE).replace(hour=18)
             left = max(start, window_start)
             right = min(until, window_end)
             if right > left:
@@ -117,7 +128,7 @@ def fetch_open_incidents(connection: pyodbc.Connection) -> list[dict[str, object
         WHERE i.fecha_cierre_mojo IS NULL
         ORDER BY i.fecha_apertura_mojo ASC, i.id ASC
     """
-    now = datetime.now()
+    now = datetime.now(LOCAL_TIMEZONE)
     with connection.cursor() as cursor:
         cursor.execute(query)
         columns = [column[0] for column in cursor.description]

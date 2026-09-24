@@ -1,8 +1,7 @@
 <?php
 
 // Definimos el uso horario por defecto
-date_default_timezone_set('America/Mazatlan'); // 1 hora atras
-// date_default_timezone_set('America/Mexico_City'); // 1 hora adelante
+date_default_timezone_set('America/Ojinaga'); // Ciudad Juárez: horario de montaña con DST
 
 // Definimos el lenguaje
 define('LANG', 'es');

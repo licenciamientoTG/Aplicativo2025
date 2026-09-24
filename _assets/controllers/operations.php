@@ -3224,7 +3224,15 @@ class Operations{
         return $validated;
     }
     private function terminalBusinessTime(string $from, ?string $until=null): array {
-        try { $start=new DateTimeImmutable($from); $end=new DateTimeImmutable($until ?: 'now'); } catch (Throwable $e) { return ['dias_laborales'=>0,'horas_laborales'=>0.0]; }
+        try {
+            $timezone=new DateTimeZone('America/Ojinaga');
+            $parse=function(string $value) use ($timezone): DateTimeImmutable {
+                $hasTimezone=(bool)preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i',trim($value));
+                $date=new DateTimeImmutable($value,$hasTimezone ? null : $timezone);
+                return $date->setTimezone($timezone);
+            };
+            $start=$parse($from); $end=$until!==null ? $parse($until) : new DateTimeImmutable('now',$timezone);
+        } catch (Throwable $e) { return ['dias_laborales'=>0,'horas_laborales'=>0.0]; }
         if ($start >= $end) return ['dias_laborales'=>0,'horas_laborales'=>0.0];
         $seconds=0;
         $days=0;
