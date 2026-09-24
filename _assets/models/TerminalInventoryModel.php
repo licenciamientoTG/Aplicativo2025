@@ -111,7 +111,7 @@ class TerminalInventoryModel extends Model {
         return $counts;
     }
     public function activeStation(int $stationId): array|false {
-        $rows=$this->sql->select('SELECT Codigo,Nombre FROM [TG].[dbo].[Estaciones] WHERE Codigo=? AND activa=1 AND Codigo NOT IN (0,4,20)', [$stationId]);
+        $rows=$this->sql->select('SELECT Codigo,Nombre,mojo_user_id,email FROM [TG].[dbo].[Estaciones] WHERE Codigo=? AND activa=1 AND Codigo NOT IN (0,4,20)', [$stationId]);
         return $rows[0] ?? false;
     }
     public function activeStationIds(): array {

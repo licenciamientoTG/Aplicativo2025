@@ -3297,8 +3297,23 @@ class Operations{
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $ticketId=(int)($_POST['ticket_id'] ?? 0); $type=(string)($_POST['type'] ?? '');
         if (!$ticketId || !isset($this->terminalTypes()[$type])) { $this->terminalJsonError('Ticket o tipo de terminal inválido.'); return; }
+        $station=$this->terminalAssignedStation(); $mojoUserId=(int)($station['mojo_user_id'] ?? 0);
+        if (!$station || $mojoUserId<1) { $this->terminalJsonError('La estación no tiene un usuario de Mojo configurado.'); return; }
         if ($this->terminalInventoryModel->ticketUsed($ticketId)) { $this->terminalJsonError('Este ticket ya está vinculado a otra incidencia.'); return; }
-        try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type,$this->terminalTypes()[$type]['mojo'])) { $this->terminalJsonError('El ticket debe estar abierto y el tipo de terminal debe coincidir con la incidencia.'); return; } $ticketData=$service->incidentDataFromTicket($ticket,$type); if (!in_array($type,['urovo','verifone'],true) && (!$ticketData['provider_folio'] || !$ticketData['provider_date'] || !$ticketData['description'])) { $this->terminalJsonError('El ticket de valera debe incluir folio, fecha de reporte y descripción.'); return; } json_output(['success'=>true,'ticket'=>$ticket,'incident_data'=>$ticketData]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
+        try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->ticketBelongsToMojoUser($ticket,$mojoUserId)) { $this->terminalJsonError('El ticket no pertenece al usuario de Mojo configurado para su estación.'); return; } if (!$service->validateForType($ticket,$type,$this->terminalTypes()[$type]['mojo'])) { $this->terminalJsonError('El ticket debe estar abierto y el tipo de terminal debe coincidir con la incidencia.'); return; } $ticketData=$service->incidentDataFromTicket($ticket,$type); if (!in_array($type,['urovo','verifone'],true) && (!$ticketData['provider_folio'] || !$ticketData['provider_date'] || !$ticketData['description'])) { $this->terminalJsonError('El ticket de valera debe incluir folio, fecha de reporte y descripción.'); return; } json_output(['success'=>true,'ticket'=>$ticket,'incident_data'=>$ticketData]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
+    }
+    public function terminal_ticket_candidates(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $type=(string)($_GET['type'] ?? ''); $term=trim((string)($_GET['q'] ?? ''));
+        if (!isset($this->terminalTypes()[$type]) || mb_strlen($term)>100) { $this->terminalJsonError('Tipo de terminal o búsqueda inválidos.'); return; }
+        $station=$this->terminalAssignedStation(); $mojoUserId=(int)($station['mojo_user_id'] ?? 0);
+        if (!$station || $mojoUserId<1) { $this->terminalJsonError('La estación no tiene un usuario de Mojo configurado.'); return; }
+        try {
+            $typeInfo=$this->terminalTypes()[$type];
+            $tickets=(new MojoTerminalTicketsService())->searchCandidates($type,(string)$typeInfo['mojo'],$mojoUserId,$term);
+            $tickets=array_slice(array_values(array_filter($tickets,fn($ticket)=>!$this->terminalInventoryModel->ticketUsed((int)$ticket['id']))),0,25);
+            json_output(['success'=>true,'tickets'=>$tickets]);
+        } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
     }
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
@@ -3310,7 +3325,11 @@ class Operations{
         if (!in_array($type,['urovo','verifone'],true) && (!trim($_POST['provider_folio'] ?? '') || !($_POST['provider_date'] ?? ''))) { $this->terminalJsonError('Valeras requiere folio y fecha de reporte al proveedor.'); return; }
         $station=$this->terminalAssignedStation();
         if (!$station) { $this->terminalJsonError('El usuario no tiene una estación válida asignada.'); return; }
-        try { $info=$this->terminalTypes()[$type]; $ticket=(new MojoTerminalTicketsService())->create(['type'=>$type,'label'=>$info['label'],'mojo_type'=>$info['mojo'],'problem'=>$problem,'description'=>$description,'provider_folio'=>trim($_POST['provider_folio'] ?? ''),'provider_date'=>$_POST['provider_date'] ?? null,'serial_urovo'=>$urovoSerial],$email,$station['Nombre']); json_output(['success'=>true,'ticket_id'=>$ticket['id'] ?? null,'ticket'=>$ticket]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
+        $mojoUserId=(int)($station['mojo_user_id'] ?? 0);
+        if ($mojoUserId<1) { $this->terminalJsonError('La estación no tiene configurado un usuario de Mojo. Solicite la asignación en la configuración de Estaciones.'); return; }
+        $stationEmail=trim((string)($station['email'] ?? ''));
+        if (!filter_var($stationEmail,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('La estación no tiene configurado un correo válido de Mojo. Solicite la corrección en la configuración de Estaciones.'); return; }
+        try { $info=$this->terminalTypes()[$type]; $ticket=(new MojoTerminalTicketsService())->create(['type'=>$type,'label'=>$info['label'],'mojo_type'=>$info['mojo'],'problem'=>$problem,'description'=>$description,'provider_folio'=>trim($_POST['provider_folio'] ?? ''),'provider_date'=>$_POST['provider_date'] ?? null,'serial_urovo'=>$urovoSerial],$mojoUserId,$stationEmail,(string)$station['Nombre']); json_output(['success'=>true,'ticket_id'=>$ticket['id'] ?? null,'ticket'=>$ticket]); } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); }
     }
     public function terminal_inventory_save(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
@@ -3338,7 +3357,7 @@ class Operations{
             if (!isset($types[$type]) || !$ticketId || $this->terminalInventoryModel->ticketUsed($ticketId)) { $this->terminalJsonError('Existe una incidencia nueva inválida.'); return; }
             if (isset($submittedTickets[$ticketId])) { $this->terminalJsonError('El ticket Mojo #'.$ticketId.' ya fue agregado a otra incidencia de este inventario.'); return; }
             $submittedTickets[$ticketId]=true;
-            try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->validateForType($ticket,$type,$types[$type]['mojo'])) { $this->terminalJsonError('Un ticket no está abierto o su tipo de terminal no corresponde a la incidencia.'); return; }
+            try { $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket($ticketId); if (!$service->ticketBelongsToMojoUser($ticket,(int)($station['mojo_user_id'] ?? 0))) { $this->terminalJsonError('Un ticket no pertenece al usuario de Mojo configurado para su estación.'); return; } if (!$service->validateForType($ticket,$type,$types[$type]['mojo'])) { $this->terminalJsonError('Un ticket no está abierto o su tipo de terminal no corresponde a la incidencia.'); return; }
             } catch (Throwable $e) { $this->terminalJsonError($e->getMessage(),503); return; }
             $providerFolio=trim((string)($item['provider_folio'] ?? '')); $providerDate=$item['provider_date'] ?? null;
             $ticketData=$service->incidentDataFromTicket($ticket,$type); $stagedSerial=trim((string)($item['serial_urovo'] ?? $item['urovo_serial'] ?? ''));
