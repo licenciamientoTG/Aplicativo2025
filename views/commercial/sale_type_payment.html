@@ -85,6 +85,28 @@ tr.group:hover {
     width: 100%;
     padding: 15px;
 }
+/* El contenedor se vacía antes de cargar: sin altura el overlay .loading no se ve */
+#comparativeEstationContainer.loading,
+#despachosEstationContainer.loading,
+#ingresosVsDespachosContainer.loading {
+    min-height: 200px;
+}
+#ingresosVsDespachosContainer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px;
+}
+.card_compare {
+    width: calc(50% - 5px);
+    border: 1px solid #a7d162;
+    box-sizing: border-box;
+}
+@media (max-width: 1300px) {
+    .card_compare {
+        width: 100%;
+    }
+}
 </style>
 <ul class="nav nav-tabs" id="myTab" role="tablist">
     <li class="nav-item" role="presentation">
@@ -363,10 +385,41 @@ tr.group:hover {
         </div>
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title">Venta Estacion Mensual</h5>
+                <h5 class="card-title">
+                    Venta Estacion Mensual
+                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" onclick="differencesInfoModal()" title="¿Por qué hay diferencias entre Ingresos y Despachos?" aria-label="Explicación de diferencias">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                </h5>
             </div>
-            <div id="comparativeEstationContainer" class="row"></div>
-
+            <ul class="nav nav-tabs mt-2 px-2" id="estationSubTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="est-ingresos-tab" data-bs-toggle="tab" data-bs-target="#est-ingresos" type="button" role="tab" aria-controls="est-ingresos" aria-selected="true">Ingresos</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="est-despachos-tab" data-bs-toggle="tab" data-bs-target="#est-despachos" type="button" role="tab" aria-controls="est-despachos" aria-selected="false">Despachos</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="est-comparativa-tab" data-bs-toggle="tab" data-bs-target="#est-comparativa" type="button" role="tab" aria-controls="est-comparativa" aria-selected="false">Comparativa</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="est-detalle-tab" data-bs-toggle="tab" data-bs-target="#est-detalle" type="button" role="tab" aria-controls="est-detalle" aria-selected="false">Detalle</button>
+                </li>
+            </ul>
+            <div class="tab-content">
+            <div class="tab-pane active" id="est-ingresos" role="tabpanel" aria-labelledby="est-ingresos-tab">
+                <p class="text-muted small mx-3 mt-2 mb-0">Monto por medio de pago según el corte (Ingresos).</p>
+                <div id="comparativeEstationContainer" class="row"></div>
+            </div>
+            <div class="tab-pane" id="est-despachos" role="tabpanel" aria-labelledby="est-despachos-tab">
+                <p class="text-muted small mx-3 mt-2 mb-0">Monto y transacciones por medio de pago según los despachos (Despachos + vouchers de terminal).</p>
+                <div id="despachosEstationContainer" class="row"></div>
+            </div>
+            <div class="tab-pane" id="est-comparativa" role="tabpanel" aria-labelledby="est-comparativa-tab">
+                <p class="text-muted small mx-3 mt-2 mb-0">Despachos vs Ingresos del periodo seleccionado. "En medio distinto" = parte de la venta que Despachos asigna a un medio de pago diferente al del corte.</p>
+                <div id="ingresosVsDespachosContainer"></div>
+            </div>
+            <div class="tab-pane" id="est-detalle" role="tabpanel" aria-labelledby="est-detalle-tab">
 
             <div class="card-body table-responsive" id="cont">
                 <div id="filtro-mounth_estation_table" class="mb-1">
@@ -385,12 +438,25 @@ tr.group:hover {
                     </tfoot>
                 </table>
             </div>
+            </div>
+            </div>
         </div>
 
     </div>
 </div>
 
-
+<!-- Modal: explicación de diferencias Ingresos vs Despachos -->
+<div class="modal fade" id="differencesInfoModal" tabindex="-1" aria-labelledby="differencesInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="differencesInfoModalLabel">Diferencias entre Ingresos y Despachos</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="differencesInfoModalContent"></div>
+        </div>
+    </div>
+</div>
 
 
 {% endblock %}
@@ -413,6 +479,12 @@ $('#seach_mounth_company').on('click', function() {
 });
 $('#seach_mounth_estation').on('click', function() {
     mounth_estation_table();
+});
+// La tabla Detalle se dibuja con el sub-tab oculto: al mostrarlo, recalcular anchos de columnas
+$('#est-detalle-tab').on('shown.bs.tab', function() {
+    if ($.fn.DataTable.isDataTable('#mounth_estation_table')) {
+        $('#mounth_estation_table').DataTable().columns.adjust();
+    }
 });
 
 

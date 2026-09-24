@@ -2413,8 +2413,8 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             return acc;
         }, {});
     }
-    function groupAndSumEstation(data, eventosRows) {
-        const eventosIndex = indexEventosByEstacionMedio(eventosRows);
+    // Agrupa por estación las filas de Ingresos (getMounthEstationPayment); sin transacciones
+    function groupAndSumEstation(data) {
         return data.reduce((acc, item) => {
             let Estacion = item.Estacion;
             let paymentMethod = item.MedioPago;
@@ -2422,17 +2422,14 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 acc[Estacion] = {
                     Grupo: Estacion,
                     TotalSum: 0,  // Total general del grupo
-                    EventosSum: 0, // Total de transacciones del grupo
                     MediosPago: {} // Detalle de medios de pago
                 };
             }
             if (!acc[Estacion].MediosPago[paymentMethod]) {// Si el medio de pago no existe dentro del grupo, lo inicializamos
                 acc[Estacion].MediosPago[paymentMethod] = {
                     MedioPago: paymentMethod,
-                    TotalSum: 0, // Total por medio de pago
-                    Eventos: eventosIndex[`${Estacion}|${paymentMethod}`] || 0 // # transacciones por medio de pago
+                    TotalSum: 0 // Total por medio de pago
                 };
-                acc[Estacion].EventosSum += acc[Estacion].MediosPago[paymentMethod].Eventos;
             }
             Object.keys(item).forEach(key => {// Recorremos las claves del objeto y sumamos solo las numéricas (excluyendo las especificadas)
                 if (![ "Estacion", "Descripcion", "MedioPago", "Total"].includes(key)) {
@@ -2444,6 +2441,22 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     acc[Estacion].MediosPago[paymentMethod].TotalSum += value;
                 }
             });
+            return acc;
+        }, {});
+    }
+
+    // Agrupa por estación las filas de Despachos (getMounthEstationEventos): monto + transacciones
+    function groupDespachosEstation(rows) {
+        return (rows || []).reduce((acc, row) => {
+            const Estacion = row.Estacion;
+            if (!acc[Estacion]) {
+                acc[Estacion] = { Grupo: Estacion, TotalSum: 0, EventosSum: 0, MediosPago: {} };
+            }
+            const monto = parseFloat(row.Total) || 0;
+            const eventos = parseInt(row.TotalEventos, 10) || 0;
+            acc[Estacion].MediosPago[row.MedioPago] = { MedioPago: row.MedioPago, TotalSum: monto, Eventos: eventos };
+            acc[Estacion].TotalSum += monto;
+            acc[Estacion].EventosSum += eventos;
             return acc;
         }, {});
     }
@@ -2483,15 +2496,12 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         return table;
     }
     // Función que renderiza las cards comparativas
-    function renderComparativeCards(currentData, previousData, containerId, currentEventos, previousEventos) {
-        console.log(containerId);
-        if(containerId == 'comparativeEstationContainer'){
-            var currentGroups = groupAndSumEstation(currentData, currentEventos);
-            var previousGroups = groupAndSumEstation(previousData, previousEventos);
-        }else{
-            var currentGroups = groupAndSumCompay(currentData);
-            var previousGroups = groupAndSumCompay(previousData);
-        }
+    function renderComparativeCards(currentData, previousData, containerId) {
+        renderGroupCards(groupAndSumCompay(currentData), groupAndSumCompay(previousData), containerId);
+    }
+
+    // Cards Año Anterior / Año Actual / Diferencia a partir de grupos ya armados
+    function renderGroupCards(currentGroups, previousGroups, containerId) {
         const allGroups = new Set([...Object.keys(currentGroups), ...Object.keys(previousGroups)]);
     
         let container = document.getElementById(containerId);
@@ -2545,7 +2555,15 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
 
         let diffP = document.createElement('p');
         diffP.className = 'card-text';
-        diffP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diff)}</strong>`;
+        // Transacciones: solo existen cuando los grupos vienen de Despachos
+        const prevEventos = previousGroups[group] ? previousGroups[group].EventosSum : undefined;
+        const currEventos = currentGroups[group] ? currentGroups[group].EventosSum : undefined;
+        let eventosTxt = '';
+        if (prevEventos !== undefined || currEventos !== undefined) {
+            const diffEventos = (currEventos || 0) - (prevEventos || 0);
+            eventosTxt = ` &nbsp;|&nbsp; Transacciones: ${diffEventos.toLocaleString('es-MX')}`;
+        }
+        diffP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diff)}${eventosTxt}</strong>`;
         diffP.style.color = diffColor;
         diffCardBody.appendChild(diffP);
 
@@ -2622,13 +2640,15 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         
         let table = document.createElement('table');
         table.className = 'table table_card table-sm';
-        
-        // Encabezado: se muestran "Medio de Pago", "Diferencia Monto" y "Diferencia %"
+        const hasEventos = [...Object.values(previousMedios), ...Object.values(currentMedios)].some(med => med.Eventos !== undefined);
+
+        // Encabezado: se muestran "Medio de Pago", "Diferencia Monto", "Diferencia Transacc." (solo Despachos) y "Diferencia %"
         let thead = document.createElement('thead');
         thead.innerHTML = `
             <tr>
                 <th>Medio de Pago</th>
                 <th>Diferencia Monto</th>
+                ${hasEventos ? '<th>Dif. Transacc.</th>' : ''}
                 <th>Diferencia %</th>
             </tr>
         `;
@@ -2653,6 +2673,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             tr.innerHTML = `
                 <td>${medio}</td>
                 <td class="text-end" style="color: ${diffColor};">${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diffAmount)}</td>
+                ${hasEventos ? `<td class="text-end">${(((currentMedios[medio] || {}).Eventos || 0) - ((previousMedios[medio] || {}).Eventos || 0)).toLocaleString('es-MX')}</td>` : ''}
                 <td class="text-end" style="color: ${diffColor};">
                     <strong>${diffPercentage.toFixed(2)}%</strong>
                 </td>
@@ -2745,7 +2766,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             $('#mounth_estation_table tbody').empty(); // Limpia el cuerpo
             $('#mounth_estation_table tfoot').empty(); // Limpia el pie de tabla si lo usas
         }
-        $('#comparativeEstationContainer').empty().addClass('loading');
+        $(ESTATION_CONTAINERS.join(',')).empty().addClass('loading');
         var fromDate = document.getElementById('from5').value;
         var untilDate = document.getElementById('until5').value;
         var estation = document.getElementById('estation5').value;
@@ -2786,7 +2807,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 error: function() {
                     $('#mounth_estation_table').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
-                    $('#comparativeEstationContainer').removeClass('loading');
+                    $(ESTATION_CONTAINERS.join(',')).removeClass('loading');
 
                     alertify.myAlert(
                         `<div class="container text-center text-danger">
@@ -2865,45 +2886,143 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         });
     }
 
+    const ESTATION_CONTAINERS = ['#comparativeEstationContainer', '#despachosEstationContainer', '#ingresosVsDespachosContainer'];
+
+    // Llena los sub-tabs Ingresos / Despachos / Comparativa del tab Venta por Estación Mensual.
+    // currentData = filas de Ingresos del periodo (las mismas de la tabla Detalle).
     async function generateCardsEstation(data,fromDate,untilDate,estation) {
-        const currentData = data; // Los datos que ya usas para renderCards
+        const currentData = data;
 
         var lastYearFrom = subtracYear(fromDate);
         var lastYearUntil = subtracYear(untilDate);
         var dynamicColumns = getMounthCompanyColumns(lastYearFrom, lastYearUntil,'mounth_estation_table');
-        $('#comparativeEstationContainer').addClass('loading');
+        $(ESTATION_CONTAINERS.join(',')).addClass('loading');
         try {
-            const response = await fetch('/commercial/mounth_estation_table', {
+            const [jsonData, currentEventos, previousEventos] = await Promise.all([
+                fetch('/commercial/mounth_estation_table', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json, text/javascript, */*',
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    credentials: 'include',
+                    body: `fromDate=${lastYearFrom}&untilDate=${lastYearUntil}&estation=${estation}&json=1&total=${0}&dinamicColumns=${encodeURIComponent(JSON.stringify(dynamicColumns))}`
+                }).then(r => r.json()),
+                fetchMounthEstationEventos(fromDate, untilDate, estation),
+                fetchMounthEstationEventos(lastYearFrom, lastYearUntil, estation),
+            ]);
+
+            const previousData = (jsonData && jsonData.data) ? jsonData.data : [];
+            const ingresosActual = groupAndSumEstation(currentData);
+            const despachosActual = groupDespachosEstation(currentEventos);
+
+            renderGroupCards(ingresosActual, groupAndSumEstation(previousData), 'comparativeEstationContainer');
+            renderGroupCards(despachosActual, groupDespachosEstation(previousEventos), 'despachosEstationContainer');
+            renderIngresosVsDespachos(ingresosActual, despachosActual, 'ingresosVsDespachosContainer');
+        } catch (error) {
+            console.error("Error al obtener los datos de las cards por estación:", error);
+        } finally {
+            $(ESTATION_CONTAINERS.join(',')).removeClass('loading');
+        }
+
+    }
+
+    // Comparativa Ingresos vs Despachos por estación y medio de pago (periodo seleccionado).
+    // "En medio distinto" = Σ|Despachos − Ingresos| / 2 / Total Ingresos: parte de la venta
+    // que Despachos asigna a un medio distinto al del corte (ver docs/diagnosticos/ventas_medio_pago_*).
+    function renderIngresosVsDespachos(ingresosGroups, despachosGroups, containerId) {
+        const money = v => Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v);
+        const pct = (dif, base) => base !== 0 ? `${((dif / base) * 100).toFixed(2)}%` : '—';
+        const color = v => Math.abs(v) < 0.005 ? 'gray' : (v > 0 ? 'green' : 'red');
+        const orden = ['CREDITO', 'DEBITO', 'EFECTIVO', 'TARJETAS', 'VALERAS', 'OTRO'];
+        const posicion = medio => orden.includes(medio) ? orden.indexOf(medio) : orden.length;
+
+        let container = document.getElementById(containerId);
+        container.innerHTML = '';
+        const estaciones = [...new Set([...Object.keys(ingresosGroups), ...Object.keys(despachosGroups)])].sort();
+        if (estaciones.length === 0) {
+            container.innerHTML = '<p class="m-3">Sin datos</p>';
+            return;
+        }
+        estaciones.forEach(estacion => {
+            const ing = ingresosGroups[estacion] || { TotalSum: 0, MediosPago: {} };
+            const desp = despachosGroups[estacion] || { TotalSum: 0, EventosSum: 0, MediosPago: {} };
+            const medios = [...new Set([...Object.keys(ing.MediosPago), ...Object.keys(desp.MediosPago)])]
+                .sort((a, b) => posicion(a) - posicion(b));
+
+            let sumAbs = 0;
+            let rows = '';
+            medios.forEach(medio => {
+                const vIng = ing.MediosPago[medio] ? ing.MediosPago[medio].TotalSum : 0;
+                const vDesp = desp.MediosPago[medio] ? desp.MediosPago[medio].TotalSum : 0;
+                const eventos = desp.MediosPago[medio] ? desp.MediosPago[medio].Eventos : 0;
+                const dif = vDesp - vIng;
+                sumAbs += Math.abs(dif);
+                rows += `
+                    <tr>
+                        <td>${medio}</td>
+                        <td class="text-end">${money(vIng)}</td>
+                        <td class="text-end">${money(vDesp)}</td>
+                        <td class="text-end">${(eventos || 0).toLocaleString('es-MX')}</td>
+                        <td class="text-end" style="color: ${color(dif)};">${money(dif)}</td>
+                        <td class="text-end" style="color: ${color(dif)};"><strong>${pct(dif, vIng)}</strong></td>
+                    </tr>`;
+            });
+            const difTotal = desp.TotalSum - ing.TotalSum;
+            const medioDistinto = ing.TotalSum !== 0 ? (sumAbs / 2 / ing.TotalSum) * 100 : 0;
+            const nivel = medioDistinto > 15 ? 'text-danger' : (medioDistinto > 5 ? 'text-warning' : (medioDistinto > 1 ? 'text-info' : 'text-success'));
+
+            let card = document.createElement('div');
+            card.className = 'card card_compare';
+            card.innerHTML = `
+                <div class="card-body body_card">
+                    <h5 class="card-title">${estacion}</h5>
+                    <p class="card-text mb-1">
+                        <strong>Ingresos: ${money(ing.TotalSum)} &nbsp;|&nbsp; Despachos: ${money(desp.TotalSum)}
+                        &nbsp;|&nbsp; <span style="color: ${color(difTotal)};">Diferencia: ${money(difTotal)} (${pct(difTotal, ing.TotalSum)})</span></strong>
+                    </p>
+                    <p class="card-text">
+                        <strong class="${nivel}">En medio distinto: ${medioDistinto.toFixed(1)}%</strong>
+                        &nbsp;|&nbsp; Transacciones: ${(desp.EventosSum || 0).toLocaleString('es-MX')}
+                    </p>
+                    <table class="table table_card table-sm">
+                        <thead>
+                            <tr>
+                                <th>Medio de Pago</th>
+                                <th>Ingresos</th>
+                                <th>Despachos</th>
+                                <th>Transacc.</th>
+                                <th>Diferencia</th>
+                                <th>Dif. %</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+            container.appendChild(card);
+        });
+    }
+
+    // Modal con la explicación de las diferencias Ingresos vs Despachos
+    async function differencesInfoModal() {
+        try {
+            $('#differencesInfoModal').modal('show');
+            const response = await fetch('/commercial/differencesInfoModal', {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json, text/javascript, */*',
                     'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                credentials: 'include',
-                body: `fromDate=${lastYearFrom}&untilDate=${lastYearUntil}&estation=${estation}&json=1&total=${0}&dinamicColumns=${encodeURIComponent(JSON.stringify(dynamicColumns))}`
+                credentials: 'include'
             });
-            const jsonData = await response.json();
-
-            const [currentEventos, previousEventos] = await Promise.all([
-                fetchMounthEstationEventos(fromDate, untilDate, estation),
-                fetchMounthEstationEventos(lastYearFrom, lastYearUntil, estation),
-            ]);
-
-            if (jsonData && jsonData.data) {
-
-                const previousData = jsonData.data;
-                renderComparativeCards(currentData, previousData, 'comparativeEstationContainer', currentEventos, previousEventos);
-
-            }
+            const content = await response.text();
+            $('#differencesInfoModal').find('#differencesInfoModalContent').html(content);
         } catch (error) {
-            console.error("Error al obtener los datos del año anterior:", error);
-        } finally {
-            $('#comparativeEstationContainer').removeClass('loading');
+            console.error(error);
         }
-
     }
 
-    // Trae el # de transacciones por Estacion + MedioPago (VentasModel::getMounthEstationEventos)
+    // Trae monto y # de transacciones por Estacion + MedioPago desde Despachos (VentasModel::getMounthEstationEventos)
     async function fetchMounthEstationEventos(fromDate, untilDate, estation) {
         try {
             const response = await fetch('/commercial/mounth_estation_eventos', {
@@ -2918,19 +3037,9 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             const jsonData = await response.json();
             return (jsonData && jsonData.data) ? jsonData.data : [];
         } catch (error) {
-            console.error("Error al obtener el número de transacciones:", error);
+            console.error("Error al obtener los despachos:", error);
             return [];
         }
-    }
-
-    // Indexa las filas de eventos por "Estacion|MedioPago" -> TotalEventos
-    function indexEventosByEstacionMedio(eventosRows) {
-        const index = {};
-        (eventosRows || []).forEach(row => {
-            const key = `${row.Estacion}|${row.MedioPago}`;
-            index[key] = (parseInt(row.TotalEventos, 10) || 0);
-        });
-        return index;
     }
 
     async function upload_file_budget() {

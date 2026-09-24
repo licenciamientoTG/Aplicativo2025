@@ -1,0 +1,150 @@
+{# Modal: explicación de diferencias Ingresos vs Despachos (tab Venta por Estación Mensual) #}
+<div class="modal-body" style="font-size: .9rem;">
+
+    <h6 class="fw-bold">¿De dónde sale cada tab?</h6>
+    <table class="table table-sm table-bordered mb-3">
+        <thead class="table-light">
+            <tr>
+                <th style="width: 18%;">Tab</th>
+                <th>Fuente</th>
+                <th style="width: 22%;">¿Tiene transacciones?</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Ingresos</strong></td>
+                <td>El <strong>corte</strong>: lo que se declara por turno e isla en cada medio de pago (efectivo, cada terminal, cada valera). Es el monto oficial.</td>
+                <td>No. El corte solo guarda totales por turno/isla, no cada venta.</td>
+            </tr>
+            <tr>
+                <td><strong>Despachos</strong></td>
+                <td>Cada <strong>venta en bomba</strong> y, si existe, el voucher de la terminal ligado a ese despacho.</td>
+                <td>Sí. 1 despacho = 1 transacción.</td>
+            </tr>
+            <tr>
+                <td><strong>Comparativa</strong></td>
+                <td>Despachos contra Ingresos en cada rubro, para el periodo seleccionado.</td>
+                <td>Sí (de Despachos).</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h6 class="fw-bold">¿Cómo se clasifica un despacho?</h6>
+    <p class="mb-1">Se revisa en este orden y se queda con la primera regla que cumpla:</p>
+    <ol class="mb-3">
+        <li>Cliente con cuenta de <strong>crédito</strong> o <strong>débito</strong> → Crédito / Débito.</li>
+        <li>Tiene <strong>voucher de terminal</strong> → el rubro de esa terminal (Tarjetas, Valeras o Efectivo en dólares). Si el despacho se pagó con varios, cuenta el de mayor monto.</li>
+        <li>Sin voucher y marcado como tarjeta en bomba → Tarjetas (o Efectivo si es un cliente de contado, p. ej. "PAGO EN EFECTIVO CHOFERES DE PLATAFORMA").</li>
+        <li>Sin voucher y marcado como vale → Valeras; como cheque → Efectivo.</li>
+        <li>Todo lo demás → Efectivo.</li>
+    </ol>
+    <p class="mb-3 text-muted">No se cuentan como venta: jarreos, muestras de turno ni cancelaciones de voucher.</p>
+
+    <h6 class="fw-bold">¿Por qué puede haber diferencias?</h6>
+    <div class="accordion mb-3" id="differencesAccordion">
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#dif1">
+                    1. Terminales no integradas (la causa más grande)
+                </button>
+            </h2>
+            <div id="dif1" class="accordion-collapse collapse show" data-bs-parent="#differencesAccordion">
+                <div class="accordion-body">
+                    Hay terminales que ControlGas no conoce (p. ej. Santander, Banorte, EfectiCard, TicketCar, Ultra Gas, Sodexo en algunas estaciones).
+                    El cobro se captura en el corte, pero el despacho no trae ninguna marca del medio de pago y queda como <strong>efectivo</strong>.
+                    <br><strong>Se ve así:</strong> Efectivo con diferencia positiva grande y Tarjetas/Valeras negativas.
+                    <br><strong>Ejemplo:</strong> Villa Ahumada, agosto 2026: 28% de la venta se cobró en terminales no integradas.
+                    <br><strong>No se corrige en el reporte:</strong> la información no existe en el despacho. Se corrige integrando la terminal o marcando el tipo de pago en bomba.
+                </div>
+            </div>
+        </div>
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#dif2">
+                    2. Pagos mixtos (tarjeta + efectivo)
+                </button>
+            </h2>
+            <div id="dif2" class="accordion-collapse collapse" data-bs-parent="#differencesAccordion">
+                <div class="accordion-body">
+                    Si un despacho de $500 se paga $300 con tarjeta y $200 en efectivo, el corte registra $300 en tarjeta y $200 en efectivo,
+                    pero Despachos cuenta los $500 completos como tarjeta.
+                    <br><strong>Se ve así:</strong> Tarjetas un poco arriba y Efectivo un poco abajo, casi en espejo (normalmente menos de 1% de la venta).
+                    <br><strong>Ejemplo:</strong> Lerdo, agosto 2026: 191 despachos mixtos, ±$25 mil.
+                    <br>No afecta el número de transacciones: sigue siendo una venta.
+                </div>
+            </div>
+        </div>
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#dif3">
+                    3. Diferencias de captura en el corte
+                </button>
+            </h2>
+            <div id="dif3" class="accordion-collapse collapse" data-bs-parent="#differencesAccordion">
+                <div class="accordion-body">
+                    Lo capturado en el corte no siempre coincide con los vouchers: un monto tecleado distinto, un voucher manual sin despacho,
+                    o una valera capturada con otro nombre (p. ej. la terminal registra "TicketCar" y el corte "TicketCar +").
+                    <br><strong>Se ve así:</strong> diferencias chicas (cientos o pocos miles de pesos) en un rubro.
+                </div>
+            </div>
+        </div>
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#dif4">
+                    4. Datos mal capturados en ControlGas
+                </button>
+            </h2>
+            <div id="dif4" class="accordion-collapse collapse" data-bs-parent="#differencesAccordion">
+                <div class="accordion-body">
+                    Despachos de contado cargados a un cliente de crédito o débito por error.
+                    <br><strong>Se ve así:</strong> Crédito o Débito con diferencia (normalmente cuadran al centavo).
+                    <br><strong>Ejemplo:</strong> San Rafael, agosto 2026: cliente "(NO UTILIZAR) BIO COMBUSTIBLE DEL NORTE", +$709 mil en Crédito.
+                    <br>Se corrige en ControlGas.
+                </div>
+            </div>
+        </div>
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#dif5">
+                    5. Dólares
+                </button>
+            </h2>
+            <div id="dif5" class="accordion-collapse collapse" data-bs-parent="#differencesAccordion">
+                <div class="accordion-body">
+                    Cuando se paga en dólares y el cambio se entrega en pesos, el corte registra los dólares recibidos (convertidos a pesos) y el despacho solo su importe.
+                    Ambos quedan dentro de Efectivo, así que no mueve el rubro, solo el detalle.
+                </div>
+            </div>
+        </div>
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#dif6">
+                    6. Rubro "Otro"
+                </button>
+            </h2>
+            <div id="dif6" class="accordion-collapse collapse" data-bs-parent="#differencesAccordion">
+                <div class="accordion-body">
+                    Conceptos que no son un medio de pago como tal: Promociones MKT, TRIBU Rewards, Servigas, y algunos tipos de transacción poco usados.
+                    Son montos chicos. Si aparece un monto grande en "Otro", es un concepto nuevo que hay que asignar a su rubro.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h6 class="fw-bold">¿Cómo leer la Comparativa?</h6>
+    <ul class="mb-2">
+        <li><strong>Diferencia total:</strong> debe ser cercana a 0 (menos de 2%). Ambas fuentes cubren las mismas ventas.</li>
+        <li><strong>En medio distinto:</strong> qué parte de la venta pone Despachos en un medio de pago diferente al del corte.</li>
+    </ul>
+    <table class="table table-sm table-bordered mb-0">
+        <tbody>
+            <tr><td class="text-success fw-bold" style="width: 18%;">Menos de 1%</td><td>Bien. Solo pagos mixtos.</td></tr>
+            <tr><td class="text-info fw-bold">1% a 5%</td><td>Aceptable. Alguna terminal parcialmente integrada o diferencias de captura.</td></tr>
+            <tr><td class="text-warning fw-bold">5% a 15%</td><td>Revisar. Terminales no integradas o datos mal capturados.</td></tr>
+            <tr><td class="text-danger fw-bold">Más de 15%</td><td>Crítico. Las transacciones por medio de pago de Despachos no son confiables para esa estación.</td></tr>
+        </tbody>
+    </table>
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+</div>

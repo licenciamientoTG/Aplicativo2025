@@ -993,11 +993,11 @@ class VentasModel extends Model
                         SUM(i.can) AS Cantidad,
                         SUM(i.mto) AS Monto,
                        CASE
-							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias') THEN 'EFECTIVO'
+							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'INTERL - Efectivo') THEN 'EFECTIVO'
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
-							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
+							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa') THEN 'TARJETAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +', ' GASnGO MEXICO') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago,
                     E.Nombre as Estacion
@@ -1095,19 +1095,36 @@ class VentasModel extends Model
                         CASE
                             WHEN t2.tipval = 3 THEN 'CREDITO'
                             WHEN t2.tipval = 4 THEN 'DEBITO'
-                            WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias') THEN 'EFECTIVO'
-                            WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-                            WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
+                            WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
+                            WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa') THEN 'TARJETAS'
+                            WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +', ' GASnGO MEXICO') THEN 'VALERAS'
                             WHEN v.den IS NULL AND t1.tiptrn IN (0, 49) THEN 'EFECTIVO'
+                            WHEN v.den IS NULL AND t1.tiptrn = 53 THEN 'VALERAS' -- vale sin voucher ligado
+                            WHEN v.den IS NULL AND t1.tiptrn = 50 THEN 'EFECTIVO' -- cheque (datref @P:02)
+                            -- tarjeta bancaria (51=crédito, 52=débito) sin voucher ligado; solo si el
+                            -- cliente no existe: clientes contado también usan 51 (p.ej. choferes de plataforma)
+                            WHEN v.den IS NULL AND t1.tiptrn IN (51, 52) AND t2.cod IS NULL THEN 'TARJETAS'
+                            -- cliente contado (ni crédito ni débito) con 51/52 sin voucher: pagó en efectivo
+                            WHEN v.den IS NULL AND t1.tiptrn IN (51, 52) THEN 'EFECTIVO'
                             ELSE 'OTRO'
                         END AS MedioPago
                     FROM SG12.dbo.Despachos t1
                     LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
-                    LEFT JOIN SG12.dbo.MovimientosTar t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas AND t12.mto != 0
+                    -- 1 fila por despacho: si se pagó con varios valores gana el de mayor monto;
+                    -- sin cancelación/reverso (tipmov 86/97), que duplicaban el conteo
+                    LEFT JOIN (
+                        SELECT codgas, nrotrn, codbco,
+                            ROW_NUMBER() OVER (PARTITION BY codgas, nrotrn ORDER BY mto DESC) AS rn
+                        FROM SG12.dbo.MovimientosTar
+                        WHERE mto <> 0
+                            AND tipmov NOT IN (86, 97)
+                            AND fchmov BETWEEN @fecha_inicial_int - 1 AND @fecha_fin_int + 1
+                    ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas AND t12.rn = 1
                     LEFT JOIN SG12.dbo.Valores v ON t12.codbco = v.cod
                     INNER JOIN TG.dbo.Estaciones E ON t1.codgas = E.Codigo
                     WHERE t1.fchtrn BETWEEN @fecha_inicial_int AND @fecha_fin_int
                         AND t1.mto > 0
+                        AND t1.tiptrn NOT IN (65, 74) -- muestras de turno / jarreo: no es venta
                     $estation_string
                 )
 

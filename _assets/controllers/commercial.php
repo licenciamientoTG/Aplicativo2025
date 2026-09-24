@@ -244,6 +244,11 @@ class Commercial{
      * para complementar mounth_estation_table() (que viene de Ingresos y no
      * trae conteo de transacciones). Ver VentasModel::getMounthEstationEventos().
      */
+    // Modal con la explicación de las diferencias Ingresos vs Despachos (tab Venta por Estación Mensual)
+    function differencesInfoModal(){
+        echo $this->twig->render($this->route . 'modals/differences_info.html');
+    }
+
     function mounth_estation_eventos(){
         $rows = $this->ventas->getMounthEstationEventos($_POST['fromDate'], $_POST['untilDate'], $_POST['estation']);
         echo json_encode(array("data" => $rows));
