@@ -1785,8 +1785,10 @@ public function anomalies_client_tickets()
         $tipoCliente = $_POST['tipo_cliente'] ?? 0;
         $allowedClientTypes = [0, '0', 'cliente_credito', 'cliente_debito', 'monedero', 'contado', 'factura_global'];
         $clientTypeValid = is_scalar($tipoCliente) && in_array($tipoCliente, $allowedClientTypes, true);
+        $mode = $_POST['modo_consulta'] ?? 'corpo';
+        $modeValid = is_scalar($mode) && in_array($mode, ['corpo', 'estaciones'], true);
 
-        if (!$fromValid || !$untilValid || $fromDate > $untilDate || !$codgasValid || !$uuidValid || !$clientTypeValid) {
+        if (!$fromValid || !$untilValid || $fromDate > $untilDate || !$codgasValid || !$uuidValid || !$clientTypeValid || !$modeValid) {
             http_response_code(400);
             json_output(['data' => [], 'error' => 'Parámetros de consulta inválidos.']);
             return null;
@@ -1798,7 +1800,17 @@ public function anomalies_client_tickets()
             'codgas' => (int) $codgasRaw,
             'uuid' => (int) $uuidRaw,
             'tipo_cliente' => $tipoCliente === '0' ? 0 : $tipoCliente,
+            'modo_consulta' => $mode,
         ];
+    }
+
+    /** Las credenciales sólo se leen del catálogo en servidor y nunca salen en la respuesta. */
+    private function dispatchesByBillingStations(array $filters) : array {
+        if ($filters['codgas'] > 0) {
+            $station = $this->gasolinerasModel->get_estations_servidor_cod_gas($filters['codgas']);
+            return $station ? [$station] : [];
+        }
+        return $this->gasolinerasModel->get_estations_servidor() ?: [];
     }
 
     private function formatDispatchesByBillingRow(array &$dispatch) : void {
@@ -1812,14 +1824,16 @@ public function anomalies_client_tickets()
 
     function datatables_dispatches_by_billing_paginated() : void {
         ini_set('memory_limit', '512M');
-        set_time_limit(300);
         $filters = $this->dispatchesByBillingRequest();
         if ($filters === null) { return; }
+        // Mantener un límite total para la petición; el modelo usa un margen
+        // para devolver resultados parciales antes de que PHP la termine.
+        set_time_limit(300);
 
         $draw = isset($_POST['draw']) ? max(0, (int) $_POST['draw']) : 0;
         $start = isset($_POST['start']) ? max(0, (int) $_POST['start']) : 0;
         $length = isset($_POST['length']) ? (int) $_POST['length'] : 100;
-        $length = $length > 0 ? min($length, 1000) : 100;
+        $length = $length > 0 ? min($length, $filters['modo_consulta'] === 'estaciones' ? 100 : 1000) : 100;
         $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
         $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
         $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
@@ -1834,14 +1848,22 @@ public function anomalies_client_tickets()
         }
         $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
 
-        $result = $this->despachosModel->control_dispatches_by_billing_paginated(
-            $filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'],
-            $start, $length, is_scalar($orderColKey) ? (string) $orderColKey : 'fecha', is_scalar($orderDir) ? (string) $orderDir : 'asc',
-            $columnSearches, $globalSearch
-        );
+        if ($filters['modo_consulta'] === 'estaciones') {
+            $stations = $this->dispatchesByBillingStations($filters);
+            if (!$stations) { json_output(['draw'=>$draw,'recordsTotal'=>0,'recordsFiltered'=>0,'data'=>[],'stationErrors'=>[],'error'=>'No hay estaciones configuradas para la consulta.']); return; }
+            $result = $this->despachosModel->dispatches_by_billing_stations_paginated($filters['from'], $filters['until'], $stations, $filters['uuid'], $filters['tipo_cliente'], $start, $length, is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch, microtime(true) + 285);
+        } else {
+            $result = $this->despachosModel->control_dispatches_by_billing_paginated(
+                $filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'],
+                $start, $length, is_scalar($orderColKey) ? (string) $orderColKey : 'fecha', is_scalar($orderDir) ? (string) $orderDir : 'asc',
+                $columnSearches, $globalSearch
+            );
+        }
         foreach ($result['data'] as &$dispatch) { $this->formatDispatchesByBillingRow($dispatch); }
         unset($dispatch);
-        json_output(['draw' => $draw, 'recordsTotal' => $result['recordsTotal'], 'recordsFiltered' => $result['recordsFiltered'], 'data' => $result['data']]);
+        $response=['draw' => $draw, 'recordsTotal' => $result['recordsTotal'], 'recordsFiltered' => $result['recordsFiltered'], 'data' => $result['data']];
+        if ($filters['modo_consulta'] === 'estaciones') { $response['stationErrors']=$result['stationErrors'] ?? []; if (!empty($result['error'])) $response['error']=$result['error']; }
+        json_output($response);
     }
 
     function export_dispatches_by_billing_excel() : void {
@@ -1862,11 +1884,9 @@ public function anomalies_client_tickets()
             }
         }
         $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
-        $dispatches = $this->despachosModel->stream_dispatches_by_billing_all(
-            $filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'],
-            is_scalar($orderColKey) ? (string) $orderColKey : 'fecha', is_scalar($orderDir) ? (string) $orderDir : 'asc',
-            $columnSearches, $globalSearch
-        );
+        $dispatches = $filters['modo_consulta'] === 'estaciones'
+            ? $this->despachosModel->stream_dispatches_by_billing_stations($filters['from'], $filters['until'], $this->dispatchesByBillingStations($filters), $filters['uuid'], $filters['tipo_cliente'], is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch)
+            : $this->despachosModel->stream_dispatches_by_billing_all($filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'], is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch);
         try { $dispatches->valid(); }
         catch (Throwable $e) { http_response_code(500); json_output(['error' => 'No se pudo generar el Excel. Intentelo nuevamente.']); return; }
 
@@ -1915,11 +1935,9 @@ public function anomalies_client_tickets()
         $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
 
         try {
-            $dispatches = $this->despachosModel->stream_dispatches_by_billing_all(
-                $filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'],
-                is_scalar($orderColKey) ? (string) $orderColKey : 'fecha', is_scalar($orderDir) ? (string) $orderDir : 'asc',
-                $columnSearches, $globalSearch
-            );
+            $dispatches = $filters['modo_consulta'] === 'estaciones'
+                ? $this->despachosModel->stream_dispatches_by_billing_stations($filters['from'], $filters['until'], $this->dispatchesByBillingStations($filters), $filters['uuid'], $filters['tipo_cliente'], is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch)
+                : $this->despachosModel->stream_dispatches_by_billing_all($filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'], is_scalar($orderColKey) ? (string)$orderColKey : 'fecha', is_scalar($orderDir) ? (string)$orderDir : 'asc', $columnSearches, $globalSearch);
             $dispatches->valid();
         } catch (Throwable $e) {
             http_response_code(500);

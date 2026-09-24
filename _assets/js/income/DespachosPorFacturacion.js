@@ -7,6 +7,12 @@
     var $wrap = $('#billing-dispatches-table-wrap');
     var $status = $('#billing-dispatches-status');
     var $validation = $('#billing-dispatches-validation');
+    var $stationFeedback = $('#billing-dispatches-station-feedback');
+    var $scopeNote = $('#billing-query-scope');
+    var $tableTitle = $('#billing-dispatches-table-title');
+    var $exportNote = $('#billing-dispatches-export-note');
+    var footerLabels = $('#billing-dispatches-table tfoot th').map(function () { return $(this).text(); }).get();
+    var responseMessage = '';
     var columns = [
         'fecha', 'hora_formateada', 'turno', 'despacho', 'producto', 'estacion', 'empresa', 'cliente_fac',
         'cantidad', 'importe', 'precio', 'despachador', 'tipo_pago', 'factura', 'FechaFactura', 'UUID',
@@ -25,7 +31,36 @@
     }
 
     function filters() {
-        return { from: $('#billing-from').val(), until: $('#billing-until').val(), codgas: $('#billing-codgas').val(), uuid: $('#billing-uuid').val() };
+        return {
+            from: $('#billing-from').val(), until: $('#billing-until').val(), codgas: $('#billing-codgas').val(),
+            uuid: $('#billing-uuid').val(), modo_consulta: $('#billing-query-mode').val()
+        };
+    }
+
+    function isStationMode() {
+        return $('#billing-query-mode').val() === 'estaciones';
+    }
+
+    function updateScopeCopy() {
+        if (isStationMode()) {
+            $scopeNote.text('Conecta directamente con el servidor de la estación seleccionada o de todas las estaciones. Consultar todas las estaciones puede tardar más.');
+            $tableTitle.text('Control de despachos por estaciones');
+            $exportNote.text($('#billing-codgas').val() === '0'
+                ? 'CSV y Excel incluyen todos los resultados filtrados agrupados por estación; el orden no es el global de la tabla. PDF página actual sólo incluye las filas visibles.'
+                : 'Excel incluye todos los resultados filtrados; PDF página actual sólo incluye las filas visibles.');
+            return;
+        }
+
+        $scopeNote.text('Consulta los datos corporativos. Puede elegir una estación o consultar todas las estaciones.');
+        $tableTitle.text('Control de despachos corporativo');
+        $exportNote.text('Excel incluye todos los resultados filtrados; PDF página actual sólo incluye las filas visibles.');
+    }
+
+    function loadingMessage() {
+        if (!isStationMode()) { return 'Consultando despachos…'; }
+        return $('#billing-codgas').val() === '0'
+            ? 'Conectando directamente con todas las estaciones; esta consulta puede tardar más…'
+            : 'Conectando directamente con la estación seleccionada…';
     }
 
     function setLoading(loading, message) {
@@ -35,6 +70,42 @@
 
     function showValidation(message) {
         $validation.text(message).prop('hidden', !message);
+    }
+
+    function stationErrorsMessage(response) {
+        if (!response || !response.stationErrors) { return ''; }
+
+        var raw = response.stationErrors;
+        var items = $.isArray(raw) ? raw : (raw.stations || raw.errors || raw.items || []);
+        var labels = $.map(items, function (item) {
+            if (typeof item === 'string' || typeof item === 'number') { return String(item); }
+            if (!item || typeof item !== 'object') { return null; }
+            return item.label || item.station || item.abr || item.name || null;
+        });
+        var count = raw && typeof raw === 'object' && !$.isArray(raw) ? parseInt(raw.count, 10) : NaN;
+        count = isNaN(count) ? labels.length : count;
+
+        if (!count) { return ''; }
+        var summary = 'No fue posible consultar ' + count + ' ' + (count === 1 ? 'estación' : 'estaciones') + '.';
+        if (labels.length) { summary += ' Estaciones: ' + labels.slice(0, 5).join(', ') + (labels.length > 5 ? '…' : '') + '.'; }
+        return summary;
+    }
+
+    function responseFeedbackMessage(response) {
+        var stationMessage = stationErrorsMessage(response);
+        var serverMessage = response && typeof response.error === 'string' ? response.error : '';
+        if (serverMessage && stationMessage) { return serverMessage + ' ' + stationMessage; }
+        return serverMessage || stationMessage;
+    }
+
+    function showStationFeedback(response) {
+        var message = responseFeedbackMessage(response);
+        $stationFeedback.text(message).prop('hidden', !message);
+        return message;
+    }
+
+    function clearStationFeedback() {
+        $stationFeedback.text('').prop('hidden', true);
     }
 
     function validRange() {
@@ -84,6 +155,22 @@
         }).fail(function (xhr) { setLoading(false, 'No se pudo generar el CSV.'); showExportError(xhr, 'No se pudo generar el archivo CSV. Intente nuevamente.'); });
     }
 
+    function restoreFooter() {
+        $('#billing-dispatches-table tfoot th').each(function (index) {
+            $(this).empty().text(footerLabels[index]);
+        });
+    }
+
+    function resetTable() {
+        if (table) {
+            table.destroy();
+            table = null;
+        }
+        $('#billing-dispatches-table').off('xhr.dt.billingDispatches').find('tbody').empty();
+        restoreFooter();
+        clearStationFeedback();
+    }
+
     function buildTable() {
         $('#billing-dispatches-table tfoot th').each(function (index) {
             var label = $(this).text();
@@ -92,6 +179,11 @@
                 clearTimeout(filterTimer);
                 filterTimer = setTimeout(function () { table.column(index).search($('#billing-dispatches-table tfoot th').eq(index).find('input').val()).draw(); }, 600);
             });
+        });
+
+        $('#billing-dispatches-table').off('xhr.dt.billingDispatches').on('xhr.dt.billingDispatches', function (event, settings, json) {
+            var warning = showStationFeedback(json);
+            responseMessage = warning ? 'Consulta completada con incidencias.' : 'Consulta actualizada.';
         });
 
         table = $('#billing-dispatches-table').DataTable({
@@ -105,9 +197,20 @@
             ],
             ajax: {
                 url: '/income/datatables_dispatches_by_billing_paginated', method: 'POST', data: function (data) { return $.extend(data, filters()); },
-                beforeSend: function () { setLoading(true, 'Consultando despachos…'); },
-                complete: function () { setLoading(false); },
-                error: function () { setLoading(false, 'No fue posible consultar los despachos.'); }
+                beforeSend: function () {
+                    responseMessage = '';
+                    clearStationFeedback();
+                    setLoading(true, loadingMessage());
+                },
+                complete: function () { setLoading(false, responseMessage || 'Consulta actualizada.'); },
+                error: function (xhr) {
+                    var response = xhr.responseJSON;
+                    if (!response && xhr.responseText) {
+                        try { response = JSON.parse(xhr.responseText); } catch (error) { response = null; }
+                    }
+                    var warning = showStationFeedback(response);
+                    setLoading(false, warning || 'No fue posible consultar los despachos.');
+                }
             },
             columns: columns.map(function (name) { return { data: name }; }).map(function (column, index) {
                 if (index === 8) { column.render = $.fn.dataTable.render.number(',', '.', 3, ''); }
@@ -121,6 +224,7 @@
     $(function () {
         var range = currentMonthRange();
         $('#billing-from').val(range[0]); $('#billing-until').val(range[1]);
+        updateScopeCopy();
         // No consultar al abrir la pantalla: un periodo de facturación puede
         // devolver muchos despachos. La primera carga ocurre únicamente cuando
         // el usuario confirma el rango con el botón Consultar.
@@ -135,5 +239,13 @@
 
             buildTable();
         });
+
+        $('#billing-query-mode').on('change', function () {
+            resetTable();
+            updateScopeCopy();
+            $status.text('Origen de consulta actualizado. Configure los filtros y pulse Consultar.');
+        });
+
+        $('#billing-codgas').on('change', updateScopeCopy);
     });
 }(jQuery));
