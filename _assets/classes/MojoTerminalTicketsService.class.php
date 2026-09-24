@@ -6,10 +6,11 @@ class MojoTerminalTicketsService {
     private const SYSTEM_QUEUE = 53551;
     // Campo de texto exclusivo del formulario UROVO. Ajustar sólo si Mojo
     // cambia el slug del campo, sin exponer esa configuración al cliente.
-    // Mojo agrega automáticamente el prefijo custom_field_ al nombre del
-    // campo enviado en el payload de creación. El nombre del atributo del
-    // formulario ya contiene ese prefijo, por lo que aquí se envía sin él.
-    private const UROVO_SERIAL_FIELD = 'numero_de_serie_urovo';
+    // El atributo real publicado por Mojo incluye dos veces custom_field_:
+    // el segundo prefijo forma parte del nombre del campo configurado en el
+    // formulario Ticket Sistemas. Debe enviarse exactamente así para que
+    // Mojo persista el número de serie.
+    private const UROVO_SERIAL_FIELD = 'custom_field_custom_field_numero_de_serie_urovo';
     private const VERIFONE_PROBLEMS = [
         'Verifones - Bloqueado (tamper)', 'Verifones - Impresora',
         'Verifones - Red', 'Verifones - Teclado',
@@ -65,7 +66,18 @@ class MojoTerminalTicketsService {
         if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$this->valeraStationOption($stationName),'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
         else $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_solicitante'=>$email,'custom_field_problema'=>$incident['type']==='urovo' ? 'Terminal Urovo' : (string)($incident['problem'] ?? '')];
         if ($incident['type']==='urovo') $payload[self::UROVO_SERIAL_FIELD]=(string)($incident['serial_urovo'] ?? $incident['urovo_serial'] ?? '');
-        return $this->request('POST','/v2/tickets',$payload);
+        $ticket=$this->request('POST','/v2/tickets',$payload);
+        if ($incident['type']==='urovo' && !empty($ticket['id']) && trim((string)($incident['serial_urovo'] ?? $incident['urovo_serial'] ?? ''))!=='') {
+            $expected=trim((string)($incident['serial_urovo'] ?? $incident['urovo_serial']));
+            $actual=$this->ticketField($ticket,[self::UROVO_SERIAL_FIELD,'custom_field_numero_de_serie_urovo','numero_de_serie_urovo','Número de serie UROVO','Numero de serie UROVO']);
+            if ($actual!==$expected) {
+                $this->request('PUT','/v2/tickets/'.(int)$ticket['id'],[self::UROVO_SERIAL_FIELD=>$expected]);
+                $ticket=$this->getTicket((int)$ticket['id']);
+                $actual=$this->ticketField($ticket,[self::UROVO_SERIAL_FIELD,'custom_field_numero_de_serie_urovo','numero_de_serie_urovo','Número de serie UROVO','Numero de serie UROVO']);
+                if ($actual!==$expected) throw new RuntimeException('Mojo no confirmó el número de serie UROVO del ticket creado.');
+            }
+        }
+        return $ticket;
     }
     private function normalizeTerminal(string $value): string {
         $value=trim(mb_strtolower($value,'UTF-8'));
@@ -105,7 +117,7 @@ class MojoTerminalTicketsService {
             'provider_date'=>$this->ticketField($ticket,['custom_field_fecha_de_reporte_a_proveedor','fecha_de_reporte_a_proveedor','Fecha de reporte al proveedor']),
             'description'=>trim((string)($ticket['description'] ?? $ticket['title'] ?? '')),
             'problem'=>$this->ticketField($ticket,['custom_field_problema','problema','Problema']),
-            'serial_urovo'=>$type==='urovo' ? $this->ticketField($ticket,['custom_field_numero_de_serie_urovo','custom_field_custom_field_numero_de_serie_urovo',self::UROVO_SERIAL_FIELD,'Número de serie UROVO','Numero de serie UROVO']) : '',
+            'serial_urovo'=>$type==='urovo' ? $this->ticketField($ticket,[self::UROVO_SERIAL_FIELD,'custom_field_numero_de_serie_urovo','numero_de_serie_urovo','Número de serie UROVO','Numero de serie UROVO']) : '',
         ];
     }
     public function closedByFromTicket(array $ticket): ?string {
