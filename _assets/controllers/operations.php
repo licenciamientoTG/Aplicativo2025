@@ -3271,7 +3271,7 @@ class Operations{
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         if (!$this->terminalInventorySchedule()['allowed']) { $this->terminalJsonError('El inventario solo puede capturarse el día configurado.'); return; }
-        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $problem=trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
         if (!isset($this->terminalTypes()[$type]) || $description==='' || mb_strlen($description)>250 || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción (máximo 250 caracteres) y correo del usuario.'); return; }
         if ($type==='urovo' && ($urovoSerial==='' || mb_strlen($urovoSerial)>100)) { $this->terminalJsonError('Capture el número de serie UROVO (máximo 100 caracteres).'); return; }
         if ($type==='verifone' && !in_array($problem,MojoTerminalTicketsService::verifoneProblems(),true)) { $this->terminalJsonError('Seleccione un problema válido para Verifone.'); return; }
