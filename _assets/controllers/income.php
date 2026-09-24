@@ -1896,6 +1896,74 @@ public function anomalies_client_tickets()
         exit;
     }
 
+    function export_dispatches_by_billing_csv() : void {
+        set_time_limit(0);
+        $filters = $this->dispatchesByBillingRequest();
+        if ($filters === null) { return; }
+
+        $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+        $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
+        $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
+        $columnSearches = [];
+        if (!empty($_POST['columns']) && is_array($_POST['columns'])) {
+            foreach ($_POST['columns'] as $col) {
+                if (isset($col['data'], $col['search']['value']) && is_scalar($col['data']) && is_scalar($col['search']['value']) && $col['search']['value'] !== '') {
+                    $columnSearches[(string) $col['data']] = mb_substr((string) $col['search']['value'], 0, 250);
+                }
+            }
+        }
+        $globalSearch = is_scalar($_POST['search']['value'] ?? '') ? mb_substr((string) ($_POST['search']['value'] ?? ''), 0, 250) : '';
+
+        try {
+            $dispatches = $this->despachosModel->stream_dispatches_by_billing_all(
+                $filters['from'], $filters['until'], $filters['codgas'], $filters['uuid'], $filters['tipo_cliente'],
+                is_scalar($orderColKey) ? (string) $orderColKey : 'fecha', is_scalar($orderDir) ? (string) $orderDir : 'asc',
+                $columnSearches, $globalSearch
+            );
+            $dispatches->valid();
+        } catch (Throwable $e) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el CSV. Intentelo nuevamente.']);
+            return;
+        }
+
+        $output = fopen('php://output', 'wb');
+        if ($output === false) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el CSV. Intentelo nuevamente.']);
+            return;
+        }
+
+        $headers = ['Fecha', 'Hora', 'Turno', 'Despacho', 'Producto', 'Estacion', 'Empresa', 'Cliente', 'Cantidad', 'Importe', 'Precio', 'Despachador', 'Pago', 'Factura', 'Fecha Factura', 'UUID', 'Notas', 'Rut', 'Denominacion', 'Codigo', 'Tipo', 'Tipo Aplicativo', 'Vehiculo', 'Placas'];
+        $fields = ['fecha', 'hora_formateada', 'turno', 'despacho', 'producto', 'estacion', 'empresa', 'cliente_fac', 'cantidad', 'importe', 'precio', 'despachador', 'tipo_pago', 'factura', 'FechaFactura', 'UUID', 'txtref', 'rut', 'denominacion', 'codigo_cliente', 'tipo_cliente', 'tipo_cliente_aplicativo', 'vehiculo', 'placas'];
+        $numericFields = ['cantidad', 'importe', 'precio', 'despacho', 'codigo_cliente'];
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="Despachos_por_facturacion.csv"');
+        echo "\xEF\xBB\xBF";
+        fputcsv($output, $headers, ';', '"', '', "\r\n");
+
+        foreach ($dispatches as $dispatch) {
+            $this->formatDispatchesByBillingRow($dispatch);
+            $values = [];
+            foreach ($fields as $field) {
+                $value = $dispatch[$field] ?? '';
+                if (in_array($field, $numericFields, true) && is_numeric($value)) {
+                    $values[] = $value + 0;
+                    continue;
+                }
+                $value = (string) $value;
+                // Excel puede ignorar espacios y controles iniciales al
+                // interpretar una celda. Neutralizar también esos prefijos
+                // evita que texto como "\t=FORMULA()" se ejecute al abrir CSV.
+                $values[] = preg_match('/^[\x00-\x20]*[=+\-@]/', $value) ? "'" . $value : $value;
+            }
+            fputcsv($output, $values, ';', '"', '', "\r\n");
+        }
+        fclose($output);
+        exit;
+    }
+
     function overal_invoice_out_table(){
         ini_set('memory_limit', '512M'); // o más si lo necesitas, como '1024M'
         set_time_limit(300); // 300 segundos = 5 minutos. Puedes subirlo más si hace falta.

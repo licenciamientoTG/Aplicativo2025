@@ -45,8 +45,7 @@
         return true;
     }
 
-    function showExportError(xhr) {
-        var generic = 'No se pudo generar el archivo Excel. Intente nuevamente.';
+    function showExportError(xhr, generic) {
         if (!(xhr.response instanceof Blob)) { window.alert(generic); return; }
         var reader = new FileReader();
         reader.onload = function () {
@@ -69,7 +68,20 @@
             link.href = url; link.download = 'Despachos_por_facturacion.xlsx';
             document.body.appendChild(link); link.click(); link.remove(); window.URL.revokeObjectURL(url);
             setLoading(false, 'Excel descargado.');
-        }).fail(function (xhr) { setLoading(false, 'No se pudo generar el Excel.'); showExportError(xhr); });
+        }).fail(function (xhr) { setLoading(false, 'No se pudo generar el Excel.'); showExportError(xhr, 'No se pudo generar el archivo Excel. Intente nuevamente.'); });
+    }
+
+    function exportCsv(e, dt) {
+        setLoading(true, 'Generando CSV rápido con todos los resultados filtrados…');
+        $.ajax({
+            url: '/income/export_dispatches_by_billing_csv', method: 'POST', data: dt.ajax.params(), xhrFields: { responseType: 'blob' }
+        }).done(function (blob) {
+            var url = window.URL.createObjectURL(blob);
+            var link = document.createElement('a');
+            link.href = url; link.download = 'Despachos_por_facturacion.csv';
+            document.body.appendChild(link); link.click(); link.remove(); window.URL.revokeObjectURL(url);
+            setLoading(false, 'CSV descargado.');
+        }).fail(function (xhr) { setLoading(false, 'No se pudo generar el CSV.'); showExportError(xhr, 'No se pudo generar el archivo CSV. Intente nuevamente.'); });
     }
 
     function buildTable() {
@@ -87,6 +99,7 @@
             dom: '<"d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2"Bf>rt<"d-flex flex-wrap gap-2 justify-content-between align-items-center mt-2"lip>',
             order: [[14, 'desc']],
             buttons: [
+                { text: '<i data-feather="download"></i> CSV rápido completo', className: 'btn btn-outline-primary', action: exportCsv },
                 { text: '<i data-feather="download"></i> Excel completo', className: 'btn btn-outline-success', action: exportExcel },
                 { extend: 'pdfHtml5', text: 'PDF página actual', className: 'btn btn-outline-danger', title: 'Despachos por facturación — página actual', orientation: 'landscape', pageSize: 'LEGAL', exportOptions: { modifier: { page: 'current' } } }
             ],
