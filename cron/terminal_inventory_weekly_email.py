@@ -125,7 +125,7 @@ def fetch_open_incidents(connection: pyodbc.Connection) -> list[dict[str, object
         LEFT JOIN TG.dbo.Estaciones AS s ON s.Codigo = i.estacion_id
         LEFT JOIN TG.dbo.mojo_tickets AS t ON t.id_mojo = i.ticket_mojo_id
         LEFT JOIN TG.dbo.mojo_users AS u ON u.id_mojo = t.assigned_to_id
-        WHERE i.fecha_cierre_mojo IS NULL
+        WHERE i.estado_local IN ('Abierta','Solved','Reabierta')
         ORDER BY i.fecha_apertura_mojo ASC, i.id ASC
     """
     now = datetime.now(LOCAL_TIMEZONE)
@@ -142,27 +142,17 @@ def fetch_open_incidents(connection: pyodbc.Connection) -> list[dict[str, object
 
 
 def fetch_inventory_summary(connection: pyodbc.Connection) -> list[dict[str, object]]:
-    """Obtiene el último inventario de UROVO por estación y su responsable."""
+    """Calcula stock y terminales dañadas a partir de incidencias activas."""
     query = """
-        WITH latest_inventory AS (
-            SELECT i.id, i.estacion_id, i.fecha_inventario,
-                   ROW_NUMBER() OVER (PARTITION BY i.estacion_id ORDER BY i.fecha_inventario DESC, i.id DESC) AS rn
-            FROM TG.dbo.inv_ter_inventarios AS i
-        ), urovo_detail AS (
-            SELECT d.inventario_id, d.funcionando, d.danadas
-            FROM TG.dbo.inv_ter_inventario_detalles AS d
-            WHERE d.tipo_terminal = 'urovo'
-        )
         SELECT s.Codigo AS estacion_codigo, s.Nombre AS estacion_nombre,
-               li.fecha_inventario AS inventario_fecha,
+               CAST(NULL AS date) AS inventario_fecha,
                COALESCE(c.terminales_esperadas, 0) AS stock,
-               COALESCE(d.danadas, 0) AS danadas,
-               COALESCE(d.funcionando, 0) AS funcionando,
+               COALESCE(opened.open_count, 0) AS danadas,
+               CASE WHEN COALESCE(c.terminales_esperadas,0)-COALESCE(opened.open_count,0)>0
+                    THEN COALESCE(c.terminales_esperadas,0)-COALESCE(opened.open_count,0) ELSE 0 END AS funcionando,
                COALESCE(opened.open_count, 0) AS open_count,
                COALESCE(opened.responsable, 'Sin asignar') AS responsable
         FROM TG.dbo.Estaciones AS s
-        LEFT JOIN latest_inventory AS li ON li.estacion_id = s.Codigo AND li.rn = 1
-        LEFT JOIN urovo_detail AS d ON d.inventario_id = li.id
         LEFT JOIN TG.dbo.inv_ter_configuracion_estacion AS c
                ON c.estacion_id = s.Codigo AND c.tipo_terminal = 'urovo'
         OUTER APPLY (
@@ -173,7 +163,7 @@ def fetch_inventory_summary(connection: pyodbc.Connection) -> list[dict[str, obj
             LEFT JOIN TG.dbo.mojo_users AS u ON u.id_mojo = t.assigned_to_id
             WHERE inc.estacion_id = s.Codigo
               AND inc.tipo_terminal = 'urovo'
-              AND inc.fecha_cierre_mojo IS NULL
+              AND inc.estado_local IN ('Abierta','Solved','Reabierta')
         ) AS opened
         WHERE s.activa = 1 AND s.Codigo NOT IN (0, 4, 20)
         ORDER BY s.Codigo
@@ -185,7 +175,7 @@ def fetch_inventory_summary(connection: pyodbc.Connection) -> list[dict[str, obj
 
 
 def fetch_valera_inventory(connection: pyodbc.Connection) -> tuple[list[dict[str, object]], list[str]]:
-    """Obtiene el último stock y las dañadas de cada valera habilitada por estación."""
+    """Obtiene stock y terminales dañadas desde las incidencias activas."""
     with connection.cursor() as cursor:
         cursor.execute("SELECT valeras_habilitadas FROM TG.dbo.inv_ter_configuracion WHERE id=1")
         settings_row = cursor.fetchone()
@@ -200,23 +190,20 @@ def fetch_valera_inventory(connection: pyodbc.Connection) -> tuple[list[dict[str
 
     marks = ",".join("?" for _ in codes)
     query = f"""
-        WITH latest_inventory AS (
-            SELECT i.id, i.estacion_id, i.fecha_inventario,
-                   ROW_NUMBER() OVER (PARTITION BY i.estacion_id ORDER BY i.fecha_inventario DESC, i.id DESC) AS rn
-            FROM TG.dbo.inv_ter_inventarios AS i
-        )
         SELECT s.Codigo AS estacion_codigo, s.Nombre AS estacion_nombre,
-               li.fecha_inventario AS inventario_fecha,
+               CAST(NULL AS date) AS inventario_fecha,
                v.codigo AS valera_codigo, v.nombre AS valera_nombre,
                COALESCE(c.terminales_esperadas, 0) AS stock,
-               COALESCE(d.danadas, 0) AS danadas
+               COALESCE(opened.danadas, 0) AS danadas
         FROM TG.dbo.Estaciones AS s
         CROSS JOIN TG.dbo.inv_ter_valeras AS v
-        LEFT JOIN latest_inventory AS li ON li.estacion_id = s.Codigo AND li.rn = 1
         LEFT JOIN TG.dbo.inv_ter_configuracion_estacion AS c
                ON c.estacion_id = s.Codigo AND c.tipo_terminal = v.codigo
-        LEFT JOIN TG.dbo.inv_ter_inventario_detalles AS d
-               ON d.inventario_id = li.id AND d.tipo_terminal = v.codigo
+        OUTER APPLY (
+            SELECT COUNT(*) AS danadas FROM TG.dbo.inv_ter_incidencias AS inc
+            WHERE inc.estacion_id=s.Codigo AND inc.tipo_terminal=v.codigo
+              AND inc.estado_local IN ('Abierta','Solved','Reabierta')
+        ) AS opened
         WHERE s.activa = 1 AND s.Codigo NOT IN (0, 4, 20)
           AND v.activo = 1 AND v.codigo IN ({marks})
         ORDER BY s.Codigo, v.codigo
@@ -340,7 +327,12 @@ def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str]
         for _ in codes
     )
     body = []
-    for index, (station, station_data) in enumerate(station_rows.items()):
+    ordered_stations = sorted(station_rows.items(), key=lambda entry: (
+        -sum(int(row.get("danadas") or 0) for row in entry[1]["types"].values()),
+        min(((int(row.get("stock") or 0)-int(row.get("danadas") or 0))/int(row.get("stock") or 1)) for row in entry[1]["types"].values()),
+        entry[0].casefold(),
+    ))
+    for index, (station, station_data) in enumerate(ordered_stations):
         values = []
         for code in codes:
             row = station_data["types"].get(code, {})
@@ -381,6 +373,11 @@ def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str]
 
 
 def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, object]], sent_at: datetime) -> str:
+    summary.sort(key=lambda row: (
+        -int(row.get("danadas") or 0),
+        (int(row.get("stock") or 0)-int(row.get("danadas") or 0))/int(row.get("stock") or 1),
+        str(row.get("estacion_nombre") or "").casefold(),
+    ))
     summary_rows = []
     total_stock = total_damaged = total_working = total_missing = 0
     incidents_by_station: dict[str, list[dict[str, object]]] = {}

@@ -3,13 +3,11 @@
 {% block menutitle %}Configuración de incidencias de terminales{% endblock %}
 {% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
 {% block content %}
-<div class="terminal-page-header mb-3"><p class="text-muted mb-0">Define el día en que las estaciones podrán registrar incidencias de terminales.</p></div>
+<div class="terminal-page-header mb-3"><p class="text-muted mb-0">Administra el stock esperado por estación y las valeras disponibles.</p></div>
 <div class="row"><div class="col-12"><div class="card terminal-card"><div class="card-body p-4">
-  <h5 class="card-title">Día de registro</h5>
-  <p class="text-muted">Cada estación podrá registrar un único reporte durante el día seleccionado. Las fechas históricas no cambian si se modifica esta configuración.</p>
+  <h5 class="card-title">Configuración del módulo</h5>
   <form id="terminalSettingsForm" class="row g-3 align-items-end">
-    <div class="col-md-7"><label for="inventoryDay" class="form-label">Día permitido</label><select id="inventoryDay" name="inventory_day" class="form-select">{% for number,name in inventoryDays %}<option value="{{ number }}" {{ settings.dia_inventario_semana == number ? 'selected' : '' }}>{{ name }}</option>{% endfor %}</select></div>
-    <div class="col-md-5"><button type="submit" id="saveTerminalSettings" class="btn btn-primary w-100"><i data-feather="save"></i> Guardar configuración</button></div>
+    <div class="col-12"><button type="submit" id="saveTerminalSettings" class="btn btn-primary"><i data-feather="save"></i> Guardar configuración</button></div>
   </form>
   <hr class="my-4">
   <div class="d-flex justify-content-between align-items-center gap-3 mb-1"><h5 class="card-title mb-0">Terminales internas</h5><span class="badge bg-primary">Siempre disponible</span></div>
@@ -19,7 +17,6 @@
   <div class="row g-2">
     {% for code, valera in valeras %}<div class="col-md-6"><label class="terminal-setting-option"><input class="form-check-input" type="checkbox" name="valeras[]" value="{{ code }}" form="terminalSettingsForm" {{ code in enabledValeras ? 'checked' : '' }}><span class="terminal-brand terminal-brand-{{ code }}">{{ valera.logo }}</span><span>{{ valera.label }}</span></label></div>{% endfor %}
   </div>
-  <div class="alert alert-primary small mt-4 mb-0"><i data-feather="info"></i> El cambio aplica en su próxima ocurrencia: si seleccionas el día de hoy, queda disponible hoy; en otro caso, se habilita en la siguiente fecha de ese día.</div>
   <hr class="my-4">
   <div class="terminal-settings-heading"><div><h5 class="card-title mb-1">Stock de terminales por estación y tipo</h5><p class="text-muted mb-0">Define el stock de cada tipo activo. El total de estación se calcula con esas cantidades.</p></div></div>
   <div class="terminal-matrix-hint mt-3"><i data-feather="move"></i><span>Desplázate horizontalmente para ver todos los tipos. En celular, cada estación se muestra como una tarjeta.</span></div>

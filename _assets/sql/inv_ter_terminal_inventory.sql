@@ -1,57 +1,6 @@
-/* Inventario diario de terminales. Ejecutar una sola vez en TG.
+/* Gestión permanente de incidencias de terminales. Ejecutar una sola vez en TG.
    No usa GO: es compatible con clientes que envían el archivo como un solo lote. */
 USE [TG];
-
-IF OBJECT_ID('dbo.inv_ter_inventarios', 'U') IS NULL
-EXEC(N'CREATE TABLE dbo.inv_ter_inventarios (
-    id INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_inv_ter_inventarios PRIMARY KEY,
-    estacion_id INT NOT NULL,
-    estacion_nombre VARCHAR(120) NOT NULL,
-    fecha_inventario DATE NOT NULL,
-    usuario_id INT NOT NULL,
-    usuario_correo VARCHAR(160) NOT NULL,
-    fecha_registro DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_inventarios_fecha DEFAULT SYSDATETIME(),
-    CONSTRAINT UQ_inv_ter_inventarios_estacion_fecha UNIQUE (estacion_id, fecha_inventario)
-)');
-
-/* Migra los registros semanales ya existentes a su fecha real de captura. */
-IF COL_LENGTH('dbo.inv_ter_inventarios', 'fecha_inventario') IS NULL
-EXEC(N'ALTER TABLE dbo.inv_ter_inventarios ADD fecha_inventario DATE NULL');
-
-EXEC(N'UPDATE dbo.inv_ter_inventarios
-      SET fecha_inventario = CAST(fecha_registro AS DATE)
-      WHERE fecha_inventario IS NULL');
-
-EXEC(N'IF EXISTS (SELECT 1 FROM dbo.inv_ter_inventarios WHERE fecha_inventario IS NULL)
-      THROW 50001, ''No fue posible asignar fecha_inventario a todos los registros existentes.'', 1;');
-
-EXEC(N'ALTER TABLE dbo.inv_ter_inventarios ALTER COLUMN fecha_inventario DATE NOT NULL');
-
-IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_inventarios') AND name='UQ_inv_ter_inventarios_estacion_semana')
-EXEC(N'ALTER TABLE dbo.inv_ter_inventarios DROP CONSTRAINT UQ_inv_ter_inventarios_estacion_semana');
-
-IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_inventarios') AND name='CK_inv_ter_inventarios_semana')
-EXEC(N'ALTER TABLE dbo.inv_ter_inventarios DROP CONSTRAINT CK_inv_ter_inventarios_semana');
-
-IF COL_LENGTH('dbo.inv_ter_inventarios', 'semana_inicio') IS NOT NULL
-EXEC(N'ALTER TABLE dbo.inv_ter_inventarios DROP COLUMN semana_inicio');
-IF COL_LENGTH('dbo.inv_ter_inventarios', 'semana_fin') IS NOT NULL
-EXEC(N'ALTER TABLE dbo.inv_ter_inventarios DROP COLUMN semana_fin');
-
-IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_inventarios') AND name='UQ_inv_ter_inventarios_estacion_fecha')
-EXEC(N'ALTER TABLE dbo.inv_ter_inventarios ADD CONSTRAINT UQ_inv_ter_inventarios_estacion_fecha UNIQUE (estacion_id, fecha_inventario)');
-
-IF OBJECT_ID('dbo.inv_ter_inventario_detalles', 'U') IS NULL
-CREATE TABLE dbo.inv_ter_inventario_detalles (
-    id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    inventario_id INT NOT NULL,
-    tipo_terminal VARCHAR(20) NOT NULL,
-    funcionando INT NOT NULL,
-    danadas INT NOT NULL,
-    CONSTRAINT FK_inv_ter_detalle_inventario FOREIGN KEY (inventario_id) REFERENCES dbo.inv_ter_inventarios(id),
-    CONSTRAINT UQ_inv_ter_detalle_tipo UNIQUE (inventario_id, tipo_terminal),
-    CONSTRAINT CK_inv_ter_detalle_cantidades CHECK (funcionando >= 0 AND danadas >= 0)
-);
 
 IF OBJECT_ID('dbo.inv_ter_incidencias', 'U') IS NULL
 CREATE TABLE dbo.inv_ter_incidencias (
@@ -65,6 +14,7 @@ CREATE TABLE dbo.inv_ter_incidencias (
     folio_proveedor VARCHAR(100) NULL,
     fecha_reporte_proveedor DATE NULL,
     descripcion VARCHAR(250) NOT NULL,
+    problema_recurrente BIT NOT NULL CONSTRAINT DF_inv_ter_incidencias_recurrente DEFAULT 0,
     usuario_id INT NOT NULL,
     usuario_correo VARCHAR(160) NOT NULL,
     serial_urovo VARCHAR(100) NULL,
@@ -93,56 +43,98 @@ IF COL_LENGTH('dbo.inv_ter_incidencias', 'resolucion_confirmada') IS NULL
 EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD resolucion_confirmada BIT NULL');
 IF COL_LENGTH('dbo.inv_ter_incidencias', 'nota_confirmacion_resolucion') IS NULL
 EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD nota_confirmacion_resolucion VARCHAR(500) NULL');
-
-IF OBJECT_ID('dbo.inv_ter_incidencias_inventario', 'U') IS NULL
-CREATE TABLE dbo.inv_ter_incidencias_inventario (
-    inventario_id INT NOT NULL,
-    incidencia_id INT NOT NULL,
-    CONSTRAINT PK_inv_ter_incidencias_inventario PRIMARY KEY (inventario_id, incidencia_id),
-    CONSTRAINT FK_inv_ter_inc_inv FOREIGN KEY (inventario_id) REFERENCES dbo.inv_ter_inventarios(id),
-    CONSTRAINT FK_inv_ter_inc_inc FOREIGN KEY (incidencia_id) REFERENCES dbo.inv_ter_incidencias(id)
-);
+IF COL_LENGTH('dbo.inv_ter_incidencias', 'problema_recurrente') IS NULL
+EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD problema_recurrente BIT NOT NULL CONSTRAINT DF_inv_ter_incidencias_recurrente DEFAULT 0');
 
 IF OBJECT_ID('dbo.inv_ter_incidencia_estados', 'U') IS NULL
 CREATE TABLE dbo.inv_ter_incidencia_estados (
     id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     incidencia_id INT NOT NULL,
+    ticket_mojo_id BIGINT NULL,
     estado_anterior VARCHAR(40) NULL,
     estado_nuevo VARCHAR(40) NOT NULL,
     fecha_estado_mojo DATETIME2 NULL,
     origen VARCHAR(30) NOT NULL,
+    usuario_id INT NULL,
+    usuario_correo VARCHAR(160) NULL,
+    comentario VARCHAR(1000) NULL,
+    sincronizacion VARCHAR(30) NULL,
     fecha_registro DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_estados_fecha DEFAULT SYSDATETIME(),
     CONSTRAINT FK_inv_ter_estado_incidencia FOREIGN KEY (incidencia_id) REFERENCES dbo.inv_ter_incidencias(id)
+);
+IF COL_LENGTH('dbo.inv_ter_incidencias','estado_local') IS NULL
+    ALTER TABLE dbo.inv_ter_incidencias ADD estado_local VARCHAR(20) NULL;
+UPDATE dbo.inv_ter_incidencias SET estado_local=CASE
+    WHEN LOWER(estado_mojo) IN ('solved','resolved','resuelto') THEN 'Solved'
+    WHEN LOWER(estado_mojo) IN ('closed','cerrado') THEN 'Closed'
+    WHEN fecha_cierre_mojo IS NOT NULL THEN 'Closed'
+    ELSE 'Abierta' END WHERE estado_local IS NULL;
+ALTER TABLE dbo.inv_ter_incidencias ALTER COLUMN estado_local VARCHAR(20) NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_incidencias') AND name='CK_inv_ter_incidencias_estado_local')
+    ALTER TABLE dbo.inv_ter_incidencias ADD CONSTRAINT CK_inv_ter_incidencias_estado_local CHECK (estado_local IN ('Abierta','Solved','Reabierta','Closed'));
+IF COL_LENGTH('dbo.inv_ter_incidencia_estados','usuario_id') IS NULL ALTER TABLE dbo.inv_ter_incidencia_estados ADD usuario_id INT NULL;
+IF COL_LENGTH('dbo.inv_ter_incidencia_estados','ticket_mojo_id') IS NULL ALTER TABLE dbo.inv_ter_incidencia_estados ADD ticket_mojo_id BIGINT NULL;
+IF COL_LENGTH('dbo.inv_ter_incidencia_estados','usuario_correo') IS NULL ALTER TABLE dbo.inv_ter_incidencia_estados ADD usuario_correo VARCHAR(160) NULL;
+IF COL_LENGTH('dbo.inv_ter_incidencia_estados','comentario') IS NULL ALTER TABLE dbo.inv_ter_incidencia_estados ADD comentario VARCHAR(1000) NULL;
+IF COL_LENGTH('dbo.inv_ter_incidencia_estados','sincronizacion') IS NULL ALTER TABLE dbo.inv_ter_incidencia_estados ADD sincronizacion VARCHAR(30) NULL;
+UPDATE h SET ticket_mojo_id=i.ticket_mojo_id
+FROM dbo.inv_ter_incidencia_estados h
+INNER JOIN dbo.inv_ter_incidencias i ON i.id=h.incidencia_id
+WHERE h.ticket_mojo_id IS NULL;
+INSERT INTO dbo.inv_ter_incidencia_estados (incidencia_id,ticket_mojo_id,estado_anterior,estado_nuevo,fecha_estado_mojo,origen,usuario_id,usuario_correo,comentario,sincronizacion)
+SELECT i.id,i.ticket_mojo_id,NULL,i.estado_local,i.fecha_apertura_mojo,'migracion',i.usuario_id,i.usuario_correo,NULL,'migrado'
+FROM dbo.inv_ter_incidencias i
+WHERE NOT EXISTS (SELECT 1 FROM dbo.inv_ter_incidencia_estados h WHERE h.incidencia_id=i.id);
+
+IF OBJECT_ID('dbo.inv_ter_solicitudes','U') IS NULL
+CREATE TABLE dbo.inv_ter_solicitudes (
+    request_key VARCHAR(64) NOT NULL CONSTRAINT PK_inv_ter_solicitudes PRIMARY KEY,
+    estacion_id INT NOT NULL,
+    usuario_id INT NOT NULL,
+    payload_hash CHAR(64) NOT NULL,
+    payload_json NVARCHAR(MAX) NOT NULL,
+    estado VARCHAR(20) NOT NULL CONSTRAINT DF_inv_ter_solicitudes_estado DEFAULT 'pendiente',
+    ticket_mojo_id BIGINT NULL,
+    incidencia_id INT NULL,
+    ultimo_error VARCHAR(500) NULL,
+    creado_en DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_solicitudes_creado DEFAULT SYSDATETIME(),
+    actualizado_en DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_solicitudes_actualizado DEFAULT SYSDATETIME(),
+    CONSTRAINT CK_inv_ter_solicitudes_estado CHECK (estado IN ('pendiente','completada'))
 );
 
 IF OBJECT_ID('dbo.inv_ter_configuracion', 'U') IS NULL
 EXEC(N'CREATE TABLE dbo.inv_ter_configuracion (
     id TINYINT NOT NULL CONSTRAINT PK_inv_ter_configuracion PRIMARY KEY,
-    dia_inventario_semana TINYINT NOT NULL,
     valeras_habilitadas VARCHAR(200) NOT NULL CONSTRAINT DF_inv_ter_configuracion_valeras DEFAULT ''ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox'',
     actualizado_por INT NULL,
     actualizado_en DATETIME2 NOT NULL CONSTRAINT DF_inv_ter_configuracion_actualizado DEFAULT SYSDATETIME(),
-    CONSTRAINT CK_inv_ter_configuracion_id CHECK (id = 1),
-    CONSTRAINT CK_inv_ter_configuracion_dia_inventario CHECK (dia_inventario_semana BETWEEN 1 AND 7)
+    CONSTRAINT CK_inv_ter_configuracion_id CHECK (id = 1)
 )');
-
-IF COL_LENGTH('dbo.inv_ter_configuracion', 'dia_inventario_semana') IS NULL
-EXEC(N'ALTER TABLE dbo.inv_ter_configuracion ADD dia_inventario_semana TINYINT NULL');
-
-IF COL_LENGTH('dbo.inv_ter_configuracion', 'dia_cierre_semana') IS NOT NULL
-EXEC(N'UPDATE dbo.inv_ter_configuracion
-      SET dia_inventario_semana = dia_cierre_semana
-      WHERE dia_inventario_semana IS NULL');
-
-EXEC(N'UPDATE dbo.inv_ter_configuracion SET dia_inventario_semana=7 WHERE dia_inventario_semana IS NULL');
-EXEC(N'ALTER TABLE dbo.inv_ter_configuracion ALTER COLUMN dia_inventario_semana TINYINT NOT NULL');
-
-IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion') AND name='CK_inv_ter_configuracion_dia')
-EXEC(N'ALTER TABLE dbo.inv_ter_configuracion DROP CONSTRAINT CK_inv_ter_configuracion_dia');
-IF COL_LENGTH('dbo.inv_ter_configuracion', 'dia_cierre_semana') IS NOT NULL
-EXEC(N'ALTER TABLE dbo.inv_ter_configuracion DROP COLUMN dia_cierre_semana');
-IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion') AND name='CK_inv_ter_configuracion_dia_inventario')
-EXEC(N'ALTER TABLE dbo.inv_ter_configuracion ADD CONSTRAINT CK_inv_ter_configuracion_dia_inventario CHECK (dia_inventario_semana BETWEEN 1 AND 7)');
+DECLARE @dayConstraint SYSNAME, @dayDropSql NVARCHAR(MAX);
+DECLARE dayConstraintCursor CURSOR LOCAL FAST_FORWARD FOR
+    SELECT name FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion')
+      AND (definition LIKE '%dia_inventario_semana%' OR definition LIKE '%dia_cierre_semana%');
+OPEN dayConstraintCursor;
+FETCH NEXT FROM dayConstraintCursor INTO @dayConstraint;
+WHILE @@FETCH_STATUS=0 BEGIN
+    SET @dayDropSql=N'ALTER TABLE dbo.inv_ter_configuracion DROP CONSTRAINT '+QUOTENAME(@dayConstraint);
+    EXEC sp_executesql @dayDropSql;
+    FETCH NEXT FROM dayConstraintCursor INTO @dayConstraint;
+END;
+CLOSE dayConstraintCursor; DEALLOCATE dayConstraintCursor;
+DECLARE dayDefaultCursor CURSOR LOCAL FAST_FORWARD FOR
+    SELECT dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id=dc.parent_object_id AND c.column_id=dc.parent_column_id
+    WHERE dc.parent_object_id=OBJECT_ID('dbo.inv_ter_configuracion') AND c.name IN ('dia_inventario_semana','dia_cierre_semana');
+OPEN dayDefaultCursor;
+FETCH NEXT FROM dayDefaultCursor INTO @dayConstraint;
+WHILE @@FETCH_STATUS=0 BEGIN
+    SET @dayDropSql=N'ALTER TABLE dbo.inv_ter_configuracion DROP CONSTRAINT '+QUOTENAME(@dayConstraint);
+    EXEC sp_executesql @dayDropSql;
+    FETCH NEXT FROM dayDefaultCursor INTO @dayConstraint;
+END;
+CLOSE dayDefaultCursor; DEALLOCATE dayDefaultCursor;
+IF COL_LENGTH('dbo.inv_ter_configuracion', 'dia_inventario_semana') IS NOT NULL ALTER TABLE dbo.inv_ter_configuracion DROP COLUMN dia_inventario_semana;
+IF COL_LENGTH('dbo.inv_ter_configuracion', 'dia_cierre_semana') IS NOT NULL ALTER TABLE dbo.inv_ter_configuracion DROP COLUMN dia_cierre_semana;
 
 IF COL_LENGTH('dbo.inv_ter_configuracion', 'valeras_habilitadas') IS NULL
 EXEC(N'ALTER TABLE dbo.inv_ter_configuracion ADD valeras_habilitadas VARCHAR(200) NOT NULL CONSTRAINT DF_inv_ter_configuracion_valeras DEFAULT ''ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox''');
@@ -227,8 +219,8 @@ BEGIN
 END;
 
 EXEC(N'IF NOT EXISTS (SELECT 1 FROM dbo.inv_ter_configuracion WHERE id=1)
-      INSERT INTO dbo.inv_ter_configuracion (id,dia_inventario_semana,valeras_habilitadas)
-      VALUES (1,7,''ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox'');
+      INSERT INTO dbo.inv_ter_configuracion (id,valeras_habilitadas)
+      VALUES (1,''ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox'');
       UPDATE dbo.inv_ter_configuracion
       SET valeras_habilitadas=''ticketcard,efecticard,inburgas,sodexo,ultragas,mobil,eox''
       WHERE id=1 AND (valeras_habilitadas IS NULL OR valeras_habilitadas='''')');
@@ -262,3 +254,37 @@ IF NOT EXISTS (SELECT 1 FROM dbo.tg_permissions WHERE department='Operaciones' A
 INSERT INTO dbo.tg_permissions ([action],department,description,[status],updated_at,created_at) VALUES ('read','Operaciones','Inventario terminales - Captura propia',1,GETDATE(),GETDATE());
 IF NOT EXISTS (SELECT 1 FROM dbo.tg_permissions WHERE department='Operaciones' AND description='Inventario terminales - Reporte global')
 INSERT INTO dbo.tg_permissions ([action],department,description,[status],updated_at,created_at) VALUES ('read','Operaciones','Inventario terminales - Reporte global',1,GETDATE(),GETDATE());
+
+/* Las capturas semanales fueron pruebas. El código nuevo ya no las consulta.
+   Se elimina su contenido y esquema, conservando incidencias, estados, stock,
+   configuración de valeras y trazabilidad. Para restaurar los datos eliminados
+   se requiere una copia de seguridad tomada antes de ejecutar esta migración. */
+BEGIN TRY
+BEGIN TRANSACTION;
+IF EXISTS (
+    SELECT 1 FROM sys.foreign_keys fk
+    JOIN sys.tables parent ON parent.object_id=fk.parent_object_id
+    JOIN sys.tables referenced ON referenced.object_id=fk.referenced_object_id
+    WHERE (referenced.name IN ('inv_ter_inventarios','inv_ter_inventario_detalles','inv_ter_incidencias_inventario')
+        OR parent.name IN ('inv_ter_inventarios','inv_ter_inventario_detalles','inv_ter_incidencias_inventario'))
+      AND parent.name NOT IN ('inv_ter_inventarios','inv_ter_inventario_detalles','inv_ter_incidencias_inventario')
+)
+    THROW 50006, 'Hay dependencias FK externas a las tablas de captura semanal; resolverlas antes de eliminarlas.', 1;
+IF EXISTS (
+    SELECT 1 FROM sys.sql_expression_dependencies d
+    WHERE d.referenced_id IN (OBJECT_ID('dbo.inv_ter_inventarios'),OBJECT_ID('dbo.inv_ter_inventario_detalles'),OBJECT_ID('dbo.inv_ter_incidencias_inventario'))
+      AND NOT EXISTS (SELECT 1 FROM sys.tables t WHERE t.object_id=d.referencing_id AND t.name IN ('inv_ter_inventarios','inv_ter_inventario_detalles','inv_ter_incidencias_inventario'))
+)
+    THROW 50007, 'Hay módulos SQL que dependen de tablas de captura semanal; retirarlos antes de eliminarlas.', 1;
+IF OBJECT_ID('dbo.inv_ter_incidencias_inventario','U') IS NOT NULL DELETE FROM dbo.inv_ter_incidencias_inventario;
+IF OBJECT_ID('dbo.inv_ter_inventario_detalles','U') IS NOT NULL DELETE FROM dbo.inv_ter_inventario_detalles;
+IF OBJECT_ID('dbo.inv_ter_inventarios','U') IS NOT NULL DELETE FROM dbo.inv_ter_inventarios;
+IF OBJECT_ID('dbo.inv_ter_incidencias_inventario','U') IS NOT NULL DROP TABLE dbo.inv_ter_incidencias_inventario;
+IF OBJECT_ID('dbo.inv_ter_inventario_detalles','U') IS NOT NULL DROP TABLE dbo.inv_ter_inventario_detalles;
+IF OBJECT_ID('dbo.inv_ter_inventarios','U') IS NOT NULL DROP TABLE dbo.inv_ter_inventarios;
+COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT>0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;

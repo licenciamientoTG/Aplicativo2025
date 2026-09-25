@@ -57,6 +57,24 @@ class MojoTerminalTicketsService {
         return is_array($data)?$data:[];
     }
     public function getTicket(int $id): array { return $this->request('GET','/v3/tickets/'.$id); }
+    public function addPublicComment(int $ticketId, string $message): array {
+        return $this->request('POST','/v2/tickets/'.$ticketId.'/comments',['body'=>$message,'is_private'=>false]);
+    }
+    public function closeTicket(int $ticketId): array {
+        // Mojo's API accepts partial ticket updates; status_id 60 is Closed in
+        // the configured TG instance (Solved is status_id 50).
+        return $this->request('PUT','/v2/tickets/'.$ticketId,['status_id'=>60]);
+    }
+    public function reopenTicket(int $ticketId): array {
+        return $this->request('PUT','/v2/tickets/'.$ticketId,['status_id'=>20]);
+    }
+    public function findByRequestKey(string $requestKey): ?array {
+        $marker='terminal-request-'.$requestKey;
+        $response=$this->request('GET','/v2/tickets/search?'.http_build_query(['query'=>'description:("'.$marker.'")','sf'=>'created_on','r'=>1,'per_page'=>50,'page'=>1]));
+        $rows=isset($response[0]) ? $response : (array)($response['result'] ?? []);
+        foreach ($rows as $row) if (str_contains((string)($row['description'] ?? ''),$marker)) return $row;
+        return null;
+    }
     public function searchCandidates(string $type, ?string $mojoType, int $mojoUserId, string $searchText): array {
         if ($mojoUserId<1) throw new InvalidArgumentException('La estación no tiene un usuario de Mojo configurado.');
         $systemTicket=in_array($type,['urovo','verifone'],true);
@@ -104,13 +122,29 @@ class MojoTerminalTicketsService {
         }
         return $candidates;
     }
-    public function isOpen(array $ticket): bool { $status=strtolower((string)($ticket['status'] ?? $ticket['status_name'] ?? '')); return !in_array($status,['closed','solved','resolved','cerrado','resuelto'],true) && empty($ticket['solved_on']); }
+    public function isOpen(array $ticket): bool {
+        $id=(int)($ticket['status_id'] ?? $ticket['status']['id'] ?? 0);
+        if ($id>0) return $id<50;
+        $status=strtolower((string)($ticket['status'] ?? $ticket['status_name'] ?? ''));
+        return !in_array($status,['closed','solved','resolved','cerrado','resuelto'],true) && empty($ticket['solved_on']);
+    }
+    public function localState(array $ticket, string $previous): string {
+        $id=(int)($ticket['status_id'] ?? $ticket['status']['id'] ?? 0);
+        $status=strtolower((string)($ticket['status'] ?? $ticket['status_name'] ?? ''));
+        if ($id===60 || in_array($status,['closed','cerrado'],true) || !empty($ticket['closed_on'])) return 'Closed';
+        if ($id===50 || in_array($status,['solved','resolved','resuelto'],true) || !empty($ticket['solved_on'])) return 'Solved';
+        return in_array($previous,['Solved','Closed'],true) ? 'Reabierta' : 'Abierta';
+    }
     public static function verifoneProblems(): array { return self::VERIFONE_PROBLEMS; }
     public function create(array $incident, int $mojoUserId, string $stationEmail, string $stationName): array {
         if ($mojoUserId<1) throw new RuntimeException('La estación no tiene un usuario de Mojo configurado.');
         $systemTicket=in_array($incident['type'],['urovo','verifone'],true);
         $valeras=!$systemTicket;
-        $payload=['title'=>'Terminal '.$incident['label'].' - '.$stationName,'description'=>$incident['description'],'ticket_queue_id'=>self::SYSTEM_QUEUE,'priority_id'=>30,'user_id'=>$mojoUserId];
+        $description=(string)$incident['description'];
+        if (!empty($incident['request_key'])) $description .= "\n\n<!-- terminal-request-".preg_replace('/[^a-f0-9-]/i','',(string)$incident['request_key'])." -->";
+        $title='Terminal '.$incident['label'].' - '.$stationName;
+        if (!empty($incident['recurring_problem'])) $title.=' - Problema recurrente';
+        $payload=['title'=>$title,'description'=>$description,'ticket_queue_id'=>self::SYSTEM_QUEUE,'priority_id'=>30,'user_id'=>$mojoUserId];
         if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$this->valeraStationOption($stationName),'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
         else {
             $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_problema'=>$incident['type']==='urovo' ? 'Terminal Urovo' : (string)($incident['problem'] ?? '')];

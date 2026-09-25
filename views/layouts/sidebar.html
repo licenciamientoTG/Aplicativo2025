@@ -710,13 +710,12 @@
             <a class="sidebar-link" href="/operations/terminal_inventory">Registrar incidencias</a>
           </li>
           {% endif %}
-          {% if terminal_inventory_report_access() %}
+          {% if terminal_inventory_report_access() or terminal_inventory_access() %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/operations/terminal_incident_report">Gestión de incidencias</a>
           </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/operations/terminal_inventory_status">Cumplimiento de registros</a>
-          </li>
+          {% endif %}
+          {% if terminal_inventory_report_access() %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/operations/terminal_inventory_settings">Configuración de incidencias</a>
           </li>
