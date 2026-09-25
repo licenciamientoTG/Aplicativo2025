@@ -243,7 +243,9 @@ def candidate_bank_rows(
     return candidates
 
 
-def gasomex_lots(turns: list[dict]) -> list[dict]:
+def gasomex_lots(
+    turns: list[dict], operational_turns: set[tuple[date, str]] | None = None
+) -> list[dict]:
     """Build the known GASOMEX operational lots.
 
     The deposit for operational day D contains D/T2, D/T3, D/T4 and
@@ -256,19 +258,36 @@ def gasomex_lots(turns: list[dict]) -> list[dict]:
         by_turn.setdefault((bucket, item["date"], turn_key(item["turn"])), []).append(item)
 
     lots: list[dict] = []
-    anchors = sorted({(key[0], key[1]) for key in by_turn})
-    for bucket, anchor in anchors:
+    # A turn belongs to the operational lot even when a particular bucket has
+    # no amount.  This is common for USD: e.g. T4 can have USD = 0 while the
+    # same turn still has MN activity.  Keep the optional argument so the
+    # helper remains compatible with isolated tests/callers that only provide
+    # bucketed items.
+    present_turns = operational_turns or {
+        (key[1], key[2]) for key in by_turn
+    }
+    anchors = sorted({day for day, _turn in present_turns})
+    for anchor in anchors:
         required = [(anchor, "2"), (anchor, "3"), (anchor, "4"), (anchor + timedelta(days=1), "1")]
-        if not all((bucket, day, turn) in by_turn for day, turn in required):
+        if not all(turn in present_turns for turn in required):
             continue
-        items = [item for day, turn in required for item in by_turn[(bucket, day, turn)]]
-        lots.append({
-            "anchor": anchor,
-            "last_date": anchor + timedelta(days=1),
-            "bucket": bucket,
-            "items": items,
-            "amount": round(sum(item["amount"] for item in items), 2),
-        })
+        for bucket in ("MN", "USD"):
+            items = [
+                item
+                for day, turn in required
+                for item in by_turn.get((bucket, day, turn), [])
+            ]
+            # Do not create a meaningless zero-value lot when the station has
+            # no linked amount at all for this bucket.
+            if not items:
+                continue
+            lots.append({
+                "anchor": anchor,
+                "last_date": anchor + timedelta(days=1),
+                "bucket": bucket,
+                "items": items,
+                "amount": round(sum(item["amount"] for item in items), 2),
+            })
     return lots
 
 
@@ -350,6 +369,7 @@ def run() -> int:
                 log(f"Estación {station_id}: ControlGas devolvió {len(controlgas_rows)} registros.")
                 if int(station_id) in GASOMEX_STATIONS:
                     turns: list[dict] = []
+                    operational_turns: set[tuple[date, str]] = set()
                     no_link = 0
                     no_amount = 0
                     active_cg_keys = {
@@ -370,14 +390,15 @@ def run() -> int:
                             if not target or target <= 0:
                                 no_link += 1
                                 continue
+                            operational_turns.add((cut, turn_key(turn)))
                             key = f"cg-{station_id}-{cut.isoformat()}-{turn}-{concept}"
                             if key in active_cg_keys:
                                 already_conciliated += 1
                                 continue
                             turns.append({"key": key, "date": cut, "turn": turn, "concept": concept, "amount": target})
                     gas_bank_rows = [bank for bank in bank_rows if int(bank[0]) not in used and gasomex_account_matches(bank, int(station_id))]
-                    lots = gasomex_lots(turns)
-                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos elegibles={len(turns)}, ya conciliados={already_conciliated}, sin vínculo={no_link}, sin importe CG={no_amount}, lotes completos={len(lots)}, depósitos por cuenta={len(gas_bank_rows)}.")
+                    lots = gasomex_lots(turns, operational_turns)
+                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos elegibles={len(turns)}, turnos operativos={len(operational_turns)}, ya conciliados={already_conciliated}, sin vínculo={no_link}, sin importe CG={no_amount}, lotes completos={len(lots)}, depósitos por cuenta={len(gas_bank_rows)}.")
                     for lot in lots:
                         candidates = matching_gasomex_bank(lot, gas_bank_rows, used)
                         if not candidates:
