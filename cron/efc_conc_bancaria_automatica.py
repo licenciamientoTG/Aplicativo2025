@@ -186,7 +186,14 @@ def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
         # the E-prefix used by ControlGas (never a broad LIKE with an empty code).
         code = "".join(char for char in str(station_code or "") if char.isdigit()).lstrip("0")
         name_hit = len(station_name) >= 4 and station_name in text
-        code_hit = bool(code) and re.search(r"(?<![A-Z0-9])E0*" + re.escape(code) + r"(?![A-Z0-9])", text) is not None
+        # Banks do not use one single format for the station code.  Some
+        # movements contain E04188, while others contain the zero-padded
+        # numeric token 000000000004188.  Match the complete token in either
+        # format; never match a short code embedded inside another number.
+        code_hit = bool(code) and (
+            re.search(r"(?<![A-Z0-9])E0*" + re.escape(code) + r"(?![A-Z0-9])", text) is not None
+            or re.search(r"(?<![A-Z0-9])0*" + re.escape(code) + r"(?![A-Z0-9])", text) is not None
+        )
         if name_hit or code_hit:
             matches.add(int(station_id))
     return next(iter(matches)) if len(matches) == 1 else None

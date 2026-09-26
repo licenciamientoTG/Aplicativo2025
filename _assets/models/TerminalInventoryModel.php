@@ -129,6 +129,12 @@ class TerminalInventoryModel extends Model {
         $rows=$this->sql->select('SELECT TOP (1) * FROM [TG].[dbo].[inv_ter_solicitudes] WHERE request_key=?', [$requestKey]);
         return $rows[0] ?? false;
     }
+    public function lockIncidentRequest(string $requestKey): void {
+        // El bloqueo de sesión cubre también la llamada a MOJO. SQL Server lo
+        // libera al cerrar la conexión al terminar la petición PHP.
+        $rows=$this->sql->select("DECLARE @result INT; EXEC @result=sys.sp_getapplock @Resource=?, @LockMode='Exclusive', @LockOwner='Session', @LockTimeout=15000; SELECT @result AS result", ['inv_ter_request_'.$requestKey]);
+        if (!$rows || (int)$rows[0]['result']<0) throw new RuntimeException('Otra solicitud para este ticket sigue en curso. Reintente en unos segundos.');
+    }
     public function setIncidentRequestTicket(string $requestKey, int $ticketId): void {
         $this->sql->update("UPDATE [TG].[dbo].[inv_ter_solicitudes] SET ticket_mojo_id=?, actualizado_en=SYSDATETIME() WHERE request_key=?", [$ticketId,$requestKey]);
     }
@@ -165,7 +171,7 @@ class TerminalInventoryModel extends Model {
             else {
                 $incidentId=(int)$this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencias] (estacion_id,tipo_terminal,ticket_mojo_id,estado_mojo,estado_local,fecha_apertura_mojo,folio_proveedor,fecha_reporte_proveedor,descripcion,problema_recurrente,serial_urovo,usuario_id,usuario_correo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [$data[0],$data[1],$data[2],$data[3],'Abierta',$data[4],$data[5],$data[6],$data[7],$data[8],$data[9],$data[10],$data[11]]);
                 if (!$incidentId) throw new RuntimeException('No fue posible crear la incidencia.');
-                $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencia_estados] (incidencia_id,ticket_mojo_id,estado_anterior,estado_nuevo,fecha_estado_mojo,origen,usuario_id,usuario_correo,comentario,sincronizacion) VALUES (?,?,NULL,?,?,?,?,?,?,?)', [$incidentId,(int)$data[2],'Abierta',date('Y-m-d H:i:s'),'registro',$data[9],$data[10],null,'sincronizado']);
+                $this->sql->insert('INSERT INTO [TG].[dbo].[inv_ter_incidencia_estados] (incidencia_id,ticket_mojo_id,estado_anterior,estado_nuevo,fecha_estado_mojo,origen,usuario_id,usuario_correo,comentario,sincronizacion) VALUES (?,?,NULL,?,?,?,?,?,?,?)', [$incidentId,(int)$data[2],'Abierta',date('Y-m-d H:i:s'),'registro',$data[10],$data[11],null,'sincronizado']);
             }
             $this->sql->update("UPDATE [TG].[dbo].[inv_ter_solicitudes] SET ticket_mojo_id=?, incidencia_id=?, estado='completada', actualizado_en=SYSDATETIME() WHERE request_key=?", [(int)$data[2],$incidentId,$requestKey]);
             $this->sql->commit(); return $incidentId;

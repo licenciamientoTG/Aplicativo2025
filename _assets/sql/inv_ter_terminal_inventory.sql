@@ -9,6 +9,7 @@ CREATE TABLE dbo.inv_ter_incidencias (
     tipo_terminal VARCHAR(20) NOT NULL,
     ticket_mojo_id BIGINT NOT NULL,
     estado_mojo VARCHAR(40) NOT NULL,
+    estado_local VARCHAR(20) NOT NULL CONSTRAINT DF_inv_ter_incidencias_estado_local DEFAULT 'Abierta',
     fecha_apertura_mojo DATETIME2 NOT NULL,
     fecha_cierre_mojo DATETIME2 NULL,
     folio_proveedor VARCHAR(100) NULL,
@@ -64,14 +65,14 @@ CREATE TABLE dbo.inv_ter_incidencia_estados (
 );
 IF COL_LENGTH('dbo.inv_ter_incidencias','estado_local') IS NULL
     ALTER TABLE dbo.inv_ter_incidencias ADD estado_local VARCHAR(20) NULL;
-UPDATE dbo.inv_ter_incidencias SET estado_local=CASE
+EXEC(N'UPDATE dbo.inv_ter_incidencias SET estado_local=CASE
     WHEN LOWER(estado_mojo) IN ('solved','resolved','resuelto') THEN 'Solved'
     WHEN LOWER(estado_mojo) IN ('closed','cerrado') THEN 'Closed'
     WHEN fecha_cierre_mojo IS NOT NULL THEN 'Closed'
-    ELSE 'Abierta' END WHERE estado_local IS NULL;
+    ELSE 'Abierta' END WHERE estado_local IS NULL');
 ALTER TABLE dbo.inv_ter_incidencias ALTER COLUMN estado_local VARCHAR(20) NOT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID('dbo.inv_ter_incidencias') AND name='CK_inv_ter_incidencias_estado_local')
-    ALTER TABLE dbo.inv_ter_incidencias ADD CONSTRAINT CK_inv_ter_incidencias_estado_local CHECK (estado_local IN ('Abierta','Solved','Reabierta','Closed'));
+    EXEC(N'ALTER TABLE dbo.inv_ter_incidencias ADD CONSTRAINT CK_inv_ter_incidencias_estado_local CHECK (estado_local IN (''Abierta'',''Solved'',''Reabierta'',''Closed''))');
 IF COL_LENGTH('dbo.inv_ter_incidencia_estados','usuario_id') IS NULL ALTER TABLE dbo.inv_ter_incidencia_estados ADD usuario_id INT NULL;
 IF COL_LENGTH('dbo.inv_ter_incidencia_estados','ticket_mojo_id') IS NULL ALTER TABLE dbo.inv_ter_incidencia_estados ADD ticket_mojo_id BIGINT NULL;
 IF COL_LENGTH('dbo.inv_ter_incidencia_estados','usuario_correo') IS NULL ALTER TABLE dbo.inv_ter_incidencia_estados ADD usuario_correo VARCHAR(160) NULL;
@@ -81,10 +82,10 @@ UPDATE h SET ticket_mojo_id=i.ticket_mojo_id
 FROM dbo.inv_ter_incidencia_estados h
 INNER JOIN dbo.inv_ter_incidencias i ON i.id=h.incidencia_id
 WHERE h.ticket_mojo_id IS NULL;
-INSERT INTO dbo.inv_ter_incidencia_estados (incidencia_id,ticket_mojo_id,estado_anterior,estado_nuevo,fecha_estado_mojo,origen,usuario_id,usuario_correo,comentario,sincronizacion)
-SELECT i.id,i.ticket_mojo_id,NULL,i.estado_local,i.fecha_apertura_mojo,'migracion',i.usuario_id,i.usuario_correo,NULL,'migrado'
+EXEC(N'INSERT INTO dbo.inv_ter_incidencia_estados (incidencia_id,ticket_mojo_id,estado_anterior,estado_nuevo,fecha_estado_mojo,origen,usuario_id,usuario_correo,comentario,sincronizacion)
+SELECT i.id,i.ticket_mojo_id,NULL,i.estado_local,i.fecha_apertura_mojo,''migracion'',i.usuario_id,i.usuario_correo,NULL,''migrado''
 FROM dbo.inv_ter_incidencias i
-WHERE NOT EXISTS (SELECT 1 FROM dbo.inv_ter_incidencia_estados h WHERE h.incidencia_id=i.id);
+WHERE NOT EXISTS (SELECT 1 FROM dbo.inv_ter_incidencia_estados h WHERE h.incidencia_id=i.id)');
 
 IF OBJECT_ID('dbo.inv_ter_solicitudes','U') IS NULL
 CREATE TABLE dbo.inv_ter_solicitudes (

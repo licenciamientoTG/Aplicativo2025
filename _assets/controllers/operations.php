@@ -3315,6 +3315,7 @@ class Operations{
         $payloadHash=hash('sha256',json_encode($incidentData,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
         $stationId=(int)$station['Codigo']; $userId=(int)$_SESSION['tg_user']['Id']; $userEmail=(string)$_SESSION['tg_user']['Correo'];
         try {
+            $this->terminalInventoryModel->lockIncidentRequest($requestKey);
             $request=$this->terminalInventoryModel->startIncidentRequest($requestKey,$stationId,$userId,$payloadHash,json_encode($incidentData,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
             if (($request['estado'] ?? '')==='completada' && !empty($request['incidencia_id'])) {
                 $saved=$this->terminalInventoryModel->incidentById((int)$request['incidencia_id']);
