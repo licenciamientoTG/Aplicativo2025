@@ -269,6 +269,7 @@ class TerminalInventoryModel extends Model {
                 q.name AS mojo_queue,tf.name AS mojo_form,
                 co.name AS mojo_company,
                 NULLIF(LTRIM(RTRIM(COALESCE(ur.first_name,'')+' '+COALESCE(ur.middle_name,'')+' '+COALESCE(ur.last_name,''))),'') AS mojo_solicitante,
+                GETDATE() AS fecha_calculo,
                 DATEDIFF(DAY,i.fecha_apertura_mojo,COALESCE(i.fecha_cierre_mojo,GETDATE())) AS dias_naturales
             FROM [TG].[dbo].[inv_ter_incidencias] i
             LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id

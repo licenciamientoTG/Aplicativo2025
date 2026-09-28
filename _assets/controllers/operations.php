@@ -3224,19 +3224,21 @@ class Operations{
                 return $date->setTimezone($timezone);
             };
             $start=$parse($from); $end=$until!==null ? $parse($until) : new DateTimeImmutable('now',$timezone);
-        } catch (Throwable $e) { return ['dias_laborales'=>0,'horas_laborales'=>0.0]; }
-        if ($start >= $end) return ['dias_laborales'=>0,'horas_laborales'=>0.0];
+        } catch (Throwable $e) { return ['dias_transcurridos'=>0,'horas_laborales'=>0.0]; }
+        if ($start >= $end) return ['dias_transcurridos'=>0,'horas_laborales'=>0.0];
         $seconds=0;
-        $days=0;
         for ($day=$start->setTime(0,0); $day <= $end->setTime(0,0); $day=$day->modify('+1 day')) {
             if ((int)$day->format('N') > 5) continue;
             $windowStart=$day->setTime(8,0);
             $windowEnd=$day->setTime(18,0);
             $segmentStart=$start > $windowStart ? $start : $windowStart;
             $segmentEnd=$end < $windowEnd ? $end : $windowEnd;
-            if ($segmentEnd > $segmentStart) { $seconds += $segmentEnd->getTimestamp() - $segmentStart->getTimestamp(); $days++; }
+            if ($segmentEnd > $segmentStart) $seconds += $segmentEnd->getTimestamp() - $segmentStart->getTimestamp();
         }
-        return ['dias_laborales'=>$days,'horas_laborales'=>round($seconds / 3600, 2)];
+        // Count completed elapsed days; a few working minutes on the opening
+        // day must not immediately appear as one full day.
+        $days=intdiv($end->getTimestamp()-$start->getTimestamp(),86400);
+        return ['dias_transcurridos'=>$days,'horas_laborales'=>round($seconds / 3600, 2)];
     }
     private function terminalLocalClosedAt(?string $value): ?string {
         if (!$value) return null;
@@ -3482,7 +3484,8 @@ class Operations{
             $ticketId=(int)$incident['ticket_mojo_id'];
             $comments=array_merge($service->getPublicComments($ticketId),$service->getTechnicianNotes($ticketId));
             usort($comments,static fn($a,$b)=>strcmp((string)$a['created_on'],(string)$b['created_on']));
-            try { $mojoFiles=$service->getTicketAttachments($ticketId); } catch (Throwable $attachmentError) { $mojoFiles=[]; }
+            $attachmentsUnavailable=false;
+            try { $mojoFiles=$service->getTicketAttachments($ticketId); } catch (Throwable $attachmentError) { $mojoFiles=[]; $attachmentsUnavailable=true; }
             $attachments=[];
             foreach ($mojoFiles as $file) {
                 if (empty($file['name'])) continue;
@@ -3501,6 +3504,10 @@ class Operations{
             $assignedToId=(int)($ticket['assigned_to_id'] ?? (is_array($assignedTo) ? ($assignedTo['id'] ?? 0) : (is_numeric($assignedTo) ? $assignedTo : 0)));
             if ($assigneeName==='' && $assignedToId>0) $assigneeName=$service->getUserName($assignedToId);
             if ($assigneeName==='') $assigneeName='Sin asignar';
+            $requesterName=$text($ticket['user'] ?? $ticket['requester'] ?? $ticket['user_name'] ?? '');
+            if (in_array(mb_strtolower($requesterName,'UTF-8'),['usuario','user','requester','solicitante'],true)) $requesterName='';
+            if ($requesterName==='' && (int)($ticket['user_id'] ?? 0)>0) $requesterName=$service->getUserName((int)$ticket['user_id']);
+            $closedBy=$service->closedByFromTicket($ticket) ?? '';
 
             $history=$this->terminalInventoryModel->incidentStateHistory((int)$incidentId);
             $needsMojoActors=false;
@@ -3537,7 +3544,33 @@ class Operations{
                 }
             }
             unset($stateChange);
-            json_output(['success'=>true,'incident'=>['id'=>(int)$incident['id'],'ticket_id'=>$ticketId,'type'=>(string)$incident['tipo_terminal'],'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? '')],'ticket'=>['title'=>$text($ticket['title'] ?? ''),'description'=>$text($ticket['description'] ?? ''),'status'=>$text($ticket['status'] ?? $ticket['status_name'] ?? ''),'priority'=>$text($ticket['priority'] ?? $ticket['priority_name'] ?? ''),'requester'=>$text($ticket['user'] ?? $ticket['requester'] ?? $ticket['user_name'] ?? ''),'assignee'=>$assigneeName,'created'=>$text($ticket['created_on'] ?? ''),'updated'=>$text($ticket['updated_on'] ?? ''),'due'=>$text($ticket['due_on'] ?? ''),'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,'attachments'=>$attachments],'comments'=>$comments,'state_history'=>$history]);
+            json_output([
+                'success'=>true,
+                'incident'=>[
+                    'id'=>(int)$incident['id'],'ticket_id'=>$ticketId,'type'=>(string)$incident['tipo_terminal'],
+                    'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),
+                    'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),
+                    'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),
+                    'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? ''),
+                    'resolution_confirmed'=>(bool)($incident['resolucion_confirmada'] ?? false),
+                    'resolution_confirmed_at'=>(string)($incident['fecha_confirmacion_resolucion'] ?? ''),
+                    'resolution_confirmed_by'=>(string)($incident['confirmado_resuelto_correo'] ?? ''),
+                    'resolution_note'=>(string)($incident['nota_confirmacion_resolucion'] ?? '')
+                ],
+                'ticket'=>[
+                    'title'=>$text($ticket['title'] ?? ''),'description'=>$text($ticket['description'] ?? ''),
+                    'status'=>$text($ticket['status'] ?? $ticket['status_name'] ?? ''),'priority'=>$text($ticket['priority'] ?? $ticket['priority_name'] ?? ''),
+                    'requester'=>$requesterName,'assignee'=>$assigneeName,'created'=>$text($ticket['created_on'] ?? ''),
+                    'updated'=>$text($ticket['updated_on'] ?? ''),'due'=>$text($ticket['due_on'] ?? ''),
+                    'solved'=>$text($ticket['solved_on'] ?? ''),'closed'=>$text($ticket['closed_on'] ?? ''),'closed_by'=>$closedBy,
+                    'queue'=>$text($ticket['queue'] ?? $ticket['ticket_queue'] ?? $ticket['queue_name'] ?? ''),
+                    'form'=>$text($ticket['form'] ?? $ticket['ticket_form'] ?? $ticket['form_name'] ?? ''),
+                    'company'=>$text($ticket['company'] ?? $ticket['company_name'] ?? ''),
+                    'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,
+                    'attachments'=>$attachments,'attachments_unavailable'=>$attachmentsUnavailable
+                ],
+                'comments'=>$comments,'state_history'=>$history
+            ]);
         } catch (Throwable $e) { error_log('No se pudo consultar detalle del ticket '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('No fue posible cargar el detalle desde Mojo.',503); }
     }
     public function terminal_incident_history(): void {
@@ -3601,8 +3634,9 @@ class Operations{
             $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
         foreach ($rows as &$row) {
-            $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null);
-            $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales'];
+            $until=$row['fecha_cierre_mojo'] ?: ($row['fecha_calculo'] ?? null);
+            $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$until ? (string)$until : null);
+            $row['dias_transcurridos']=$time['dias_transcurridos']; $row['horas_laborales']=$time['horas_laborales'];
             $state=(string)($row['estado_local'] ?? $row['estado_mojo'] ?? '');
             $row['estado_etiqueta']=['Closed'=>'Cerrada','closed'=>'Cerrada','Solved'=>'Resuelto','solved'=>'Resuelto','Abierta'=>'Abierta','abierta'=>'Abierta','Reabierta'=>'Reabierta','reabierta'=>'Reabierta','Open'=>'Abierta','open'=>'Abierta','Reopened'=>'Reabierta','reopened'=>'Reabierta'][$state] ?? ($state ?: 'Sin estado');
         } unset($row);
