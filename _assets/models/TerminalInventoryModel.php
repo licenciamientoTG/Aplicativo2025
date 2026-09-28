@@ -240,7 +240,8 @@ class TerminalInventoryModel extends Model {
     public function incidentReport(array $filters=[]): array {
         $where=['1=1']; $params=[];
         if (!empty($filters['station'])) { $where[]='i.estacion_id=?'; $params[]=(int)$filters['station']; }
-        if (!empty($filters['type'])) { $where[]='i.tipo_terminal=?'; $params[]=(string)$filters['type']; }
+        if (($filters['type'] ?? '')==='valeras') $where[]="i.tipo_terminal NOT IN ('urovo','verifone')";
+        elseif (!empty($filters['type'])) { $where[]='i.tipo_terminal=?'; $params[]=(string)$filters['type']; }
         if (($filters['status'] ?? '')==='open') $where[]="i.estado_local IN ('Abierta','Solved','Reabierta')";
         if (($filters['status'] ?? '')==='solved') $where[]="i.estado_local='Solved'";
         if (($filters['status'] ?? '')==='reopened') $where[]="i.estado_local='Reabierta'";
