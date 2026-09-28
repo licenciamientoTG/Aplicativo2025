@@ -3419,7 +3419,7 @@ class Operations{
         if (!$station || !$incidentId || $incidentId<1 || !in_array($action,['close','reply','reopen'],true)) { $this->terminalJsonError('Incidencia u operación inválida.'); return; }
         $incident=$this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)$station['Codigo']);
         $oldState=(string)($incident['estado_local'] ?? '');
-        if (!$incident || $oldState==='Closed' || ($action==='close' && $oldState!=='Solved') || ($action==='reopen' && $oldState!=='Solved')) { $this->terminalJsonError('La acción no está disponible para el estado actual del ticket.'); return; }
+        if (!$incident || $oldState==='Closed' || ($action==='close' && !in_array($oldState,['Abierta','Reabierta','Solved'],true)) || ($action==='reopen' && $oldState!=='Solved')) { $this->terminalJsonError('La acción no está disponible para el estado actual del ticket.'); return; }
         $message=trim((string)($_POST['message'] ?? ''));
         $existingNoteId=filter_var($_POST['note_id'] ?? 0,FILTER_VALIDATE_INT) ?: 0;
         try { $uploads=$action==='reply' ? $this->terminalTechnicianUploads() : []; }
