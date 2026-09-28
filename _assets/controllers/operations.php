@@ -3311,7 +3311,7 @@ class Operations{
         if ($mojoUserId<1) { $this->terminalJsonError('La estación no tiene configurado un usuario de Mojo. Solicite la asignación en la configuración de Estaciones.'); return; }
         $stationEmail=trim((string)($station['email'] ?? ''));
         if (!filter_var($stationEmail,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('La estación no tiene configurado un correo válido de Mojo. Solicite la corrección en la configuración de Estaciones.'); return; }
-        $incidentData=['type'=>$type,'description'=>$description,'problem'=>$problem,'provider_folio'=>trim((string)($_POST['provider_folio'] ?? '')),'provider_date'=>(string)($_POST['provider_date'] ?? ''),'serial_urovo'=>$urovoSerial,'recurring_problem'=>in_array($type,['urovo','verifone'],true) && filter_var($_POST['recurring_problem'] ?? false,FILTER_VALIDATE_BOOLEAN)];
+        $incidentData=['type'=>$type,'description'=>$description,'problem'=>$problem,'provider_folio'=>trim((string)($_POST['provider_folio'] ?? '')),'provider_date'=>(string)($_POST['provider_date'] ?? ''),'serial_urovo'=>$urovoSerial];
         $payloadHash=hash('sha256',json_encode($incidentData,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
         $stationId=(int)$station['Codigo']; $userId=(int)$_SESSION['tg_user']['Id']; $userEmail=(string)$_SESSION['tg_user']['Correo'];
         try {
@@ -3330,14 +3330,14 @@ class Operations{
             if (!$ticket) {
                 if (count(array_filter($already,fn($row)=>$row['tipo_terminal']===$type)) >= (int)($expected[$type] ?? 0)) { $this->terminalJsonError('No hay stock disponible para registrar otra incidencia de este tipo.'); return; }
                 $info=$types[$type];
-                $ticket=$service->create(['type'=>$type,'label'=>$info['label'],'mojo_type'=>$info['mojo'],'problem'=>$problem,'description'=>$description,'provider_folio'=>$incidentData['provider_folio'],'provider_date'=>$incidentData['provider_date'],'serial_urovo'=>$urovoSerial,'recurring_problem'=>$incidentData['recurring_problem'],'request_key'=>$requestKey],$mojoUserId,$stationEmail,(string)$station['Nombre']);
+                $ticket=$service->create(['type'=>$type,'label'=>$info['label'],'mojo_type'=>$info['mojo'],'problem'=>$problem,'description'=>$description,'provider_folio'=>$incidentData['provider_folio'],'provider_date'=>$incidentData['provider_date'],'serial_urovo'=>$urovoSerial,'request_key'=>$requestKey],$mojoUserId,$stationEmail,(string)$station['Nombre']);
             }
             $ticketId=(int)($ticket['id'] ?? 0);
             if ($ticketId<1) throw new RuntimeException('Mojo no devolvió un número de ticket.');
             $this->terminalInventoryModel->setIncidentRequestTicket($requestKey,$ticketId);
             $opened=$ticket['created_on'] ?? date('c');
             $date=strtotime((string)$opened); $openedAt=$date ? date('Y-m-d H:i:s',$date) : date('Y-m-d H:i:s');
-            $incidentId=$this->terminalInventoryModel->completeIncidentRequest($requestKey,[$stationId,$type,$ticketId,'Abierta',$openedAt,$incidentData['provider_folio'] ?: null,$incidentData['provider_date'] ?: null,$description,$incidentData['recurring_problem'] ? 1 : 0,$urovoSerial ?: null,$userId,$userEmail]);
+            $incidentId=$this->terminalInventoryModel->completeIncidentRequest($requestKey,[$stationId,$type,$ticketId,'Abierta',$openedAt,$incidentData['provider_folio'] ?: null,$incidentData['provider_date'] ?: null,$description,0,$urovoSerial ?: null,$userId,$userEmail]);
             $saved=$this->terminalInventoryModel->incidentById($incidentId);
             json_output(['success'=>true,'ticket_id'=>$ticketId,'incident'=>$saved]);
         } catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage()); }
