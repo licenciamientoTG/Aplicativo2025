@@ -78,6 +78,12 @@ class MojoTerminalTicketsService {
         return is_array($data)?$data:[];
     }
     public function getTicket(int $id): array { return $this->request('GET','/v3/tickets/'.$id); }
+    public function getUserName(int $userId): string { return $userId>0 ? $this->commenterName(['user_id'=>$userId]) : ''; }
+    public function getTicketEvents(int $ticketId): array {
+        $response=$this->request('GET','/v2/tickets/'.$ticketId.'/events?'.http_build_query(['page'=>1,'per_page'=>100]));
+        $events=isset($response[0]) ? $response : (array)($response['result'] ?? $response['events'] ?? []);
+        return array_values(array_filter($events,static fn($event)=>is_array($event)));
+    }
     private function commenterName(array $entry): string {
         $user=$entry['related_data']['user'] ?? $entry['user'] ?? [];
         $name=is_array($user) ? trim((string)($user['full_name'] ?? $user['name'] ?? '')) : '';

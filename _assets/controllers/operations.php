@@ -3509,7 +3509,50 @@ class Operations{
                 }
                 unset($comment);
             }
-            json_output(['success'=>true,'incident'=>['id'=>(int)$incident['id'],'ticket_id'=>$ticketId,'type'=>(string)$incident['tipo_terminal'],'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? '')],'ticket'=>['title'=>$text($ticket['title'] ?? ''),'description'=>$text($ticket['description'] ?? ''),'status'=>$text($ticket['status'] ?? $ticket['status_name'] ?? ''),'priority'=>$text($ticket['priority'] ?? $ticket['priority_name'] ?? ''),'requester'=>$text($ticket['user'] ?? $ticket['requester'] ?? $ticket['user_name'] ?? ''),'assignee'=>$text($ticket['assigned_to'] ?? $ticket['assignee'] ?? $ticket['assigned_to_name'] ?? ''),'created'=>$text($ticket['created_on'] ?? ''),'updated'=>$text($ticket['updated_on'] ?? ''),'due'=>$text($ticket['due_on'] ?? ''),'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,'attachments'=>$attachments],'comments'=>$comments,'state_history'=>$this->terminalInventoryModel->incidentStateHistory((int)$incidentId)]);
+            $assignedTo=$ticket['assigned_to'] ?? $ticket['assignee'] ?? [];
+            $assigneeName=is_array($assignedTo) ? $text($assignedTo['full_name'] ?? $assignedTo['name'] ?? $assignedTo['display_name'] ?? $assignedTo['email'] ?? '') : (is_string($assignedTo) && !ctype_digit($assignedTo) ? trim($assignedTo) : '');
+            if ($assigneeName==='' && is_array($assignedTo)) $assigneeName=trim((string)($assignedTo['first_name'] ?? '').' '.(string)($assignedTo['last_name'] ?? ''));
+            if ($assigneeName==='') $assigneeName=$text($ticket['assigned_to_name'] ?? $ticket['related_data']['assigned_to']['full_name'] ?? $ticket['related_data']['assigned_to']['name'] ?? '');
+            $assignedToId=(int)($ticket['assigned_to_id'] ?? (is_array($assignedTo) ? ($assignedTo['id'] ?? 0) : (is_numeric($assignedTo) ? $assignedTo : 0)));
+            if ($assigneeName==='' && $assignedToId>0) $assigneeName=$service->getUserName($assignedToId);
+            if ($assigneeName==='') $assigneeName='Sin asignar';
+
+            $history=$this->terminalInventoryModel->incidentStateHistory((int)$incidentId);
+            $needsMojoActors=false;
+            foreach ($history as $stateChange) if (strtoupper(trim((string)($stateChange['origen'] ?? '')))==='MOJO/API' || strtoupper(trim((string)($stateChange['usuario_correo'] ?? '')))==='MOJO/API') { $needsMojoActors=true; break; }
+            try { $mojoEvents=$needsMojoActors ? $service->getTicketEvents($ticketId) : []; } catch (Throwable $eventError) { $mojoEvents=[]; }
+            $stateTerms=static function(string $state): array {
+                return match (mb_strtolower(trim($state),'UTF-8')) {
+                    'solved','resuelto','resuelta'=>['solved','resolved','resuelto','resuelta'],
+                    'closed','cerrado','cerrada'=>['closed','cerrado','cerrada'],
+                    'reabierta','reabierto'=>['reopen','reopened','reabiert','in progress'],
+                    'abierta','abierto'=>['open','new','in progress','abierto','abierta'],
+                    default=>[mb_strtolower(trim($state),'UTF-8')],
+                };
+            };
+            foreach ($history as &$stateChange) {
+                if (strtoupper(trim((string)($stateChange['origen'] ?? '')))!=='MOJO/API' && strtoupper(trim((string)($stateChange['usuario_correo'] ?? '')))!=='MOJO/API') {
+                    $stateChange['actor']=trim((string)($stateChange['usuario_correo'] ?? $stateChange['origen'] ?? ''));
+                    continue;
+                }
+                $stateChange['actor']='Autor no disponible en Mojo';
+                $targetTime=strtotime((string)($stateChange['fecha_estado_mojo'] ?? $stateChange['fecha_registro'] ?? ''));
+                $newTerms=$stateTerms((string)($stateChange['estado_nuevo'] ?? ''));
+                $bestDistance=301;
+                foreach ($mojoEvents as $event) {
+                    $description=mb_strtolower(trim((string)($event['description'] ?? '').' '.(string)($event['action_name'] ?? '')),'UTF-8');
+                    if (!preg_match('/status|state|solv|resolv|clos|reopen|abiert/u',$description)) continue;
+                    $hasNewState=false; foreach ($newTerms as $term) if ($term!=='' && str_contains($description,$term)) { $hasNewState=true; break; }
+                    if (!$hasNewState) continue;
+                    $eventTime=strtotime((string)($event['created_on'] ?? ''));
+                    $actor=trim((string)($event['user_full_name'] ?? $event['related_data']['user']['full_name'] ?? ''));
+                    if ($targetTime===false || $eventTime===false || $actor==='' || abs($eventTime-$targetTime)>300) continue;
+                    $distance=abs($eventTime-$targetTime);
+                    if ($distance<$bestDistance) { $stateChange['actor']=$actor; $bestDistance=$distance; }
+                }
+            }
+            unset($stateChange);
+            json_output(['success'=>true,'incident'=>['id'=>(int)$incident['id'],'ticket_id'=>$ticketId,'type'=>(string)$incident['tipo_terminal'],'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? '')],'ticket'=>['title'=>$text($ticket['title'] ?? ''),'description'=>$text($ticket['description'] ?? ''),'status'=>$text($ticket['status'] ?? $ticket['status_name'] ?? ''),'priority'=>$text($ticket['priority'] ?? $ticket['priority_name'] ?? ''),'requester'=>$text($ticket['user'] ?? $ticket['requester'] ?? $ticket['user_name'] ?? ''),'assignee'=>$assigneeName,'created'=>$text($ticket['created_on'] ?? ''),'updated'=>$text($ticket['updated_on'] ?? ''),'due'=>$text($ticket['due_on'] ?? ''),'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,'attachments'=>$attachments],'comments'=>$comments,'state_history'=>$history]);
         } catch (Throwable $e) { error_log('No se pudo consultar detalle del ticket '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('No fue posible cargar el detalle desde Mojo.',503); }
     }
     public function terminal_incident_history(): void {
