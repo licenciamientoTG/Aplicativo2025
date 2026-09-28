@@ -3609,7 +3609,12 @@ class Operations{
         try {
             $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
-        foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
+        foreach ($rows as &$row) {
+            $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null);
+            $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales'];
+            $state=(string)($row['estado_local'] ?? $row['estado_mojo'] ?? '');
+            $row['estado_etiqueta']=['Closed'=>'Cerrada','closed'=>'Cerrada','Solved'=>'Resuelto','solved'=>'Resuelto','Abierta'=>'Abierta','abierta'=>'Abierta','Reabierta'=>'Reabierta','reabierta'=>'Reabierta','Open'=>'Abierta','open'=>'Abierta','Reopened'=>'Reabierta','reopened'=>'Reabierta'][$state] ?? ($state ?: 'Sin estado');
+        } unset($row);
         $stations=[]; foreach ($this->terminalInventoryModel->activeStations() as $stationRow) if ($stationScope===null || (int)$stationRow['Codigo']===$stationScope) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
         $assignees=[]; foreach ($this->terminalInventoryModel->incidentAssignees($stationScope) as $assignee) $assignees[(string)$assignee['assigned_to_id']]=(string)$assignee['asignado_a'];
         $openCount=count(array_filter($rows,fn($row)=>($row['estado_local'] ?? '')!=='Closed'));
