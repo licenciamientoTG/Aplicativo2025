@@ -1,29 +1,64 @@
 $(function () {
   const app=$('#terminalInventoryApp'); if(!app.length)return;
   const types=JSON.parse(app.attr('data-types')),expected=JSON.parse(app.attr('data-expected-counts')||'{}');
-  let active=JSON.parse(app.attr('data-active')||'[]'),requestKey=null;
+  let active=JSON.parse(app.attr('data-active')||'[]'),requestKey=null,resolvedType=null,selectedCloseId=null;
   const modal=new bootstrap.Modal(document.getElementById('terminalIncidentModal'));
+  const resolvedModal=new bootstrap.Modal(document.getElementById('terminalResolvedModal'));
   const replyModal=new bootstrap.Modal(document.getElementById('terminalReplyModal'));
   const esc=value=>$('<div>').text(value||'').html();
   function newRequestKey(){if(window.crypto?.randomUUID)return window.crypto.randomUUID();const bytes=new Uint8Array(16);if(window.crypto?.getRandomValues)window.crypto.getRandomValues(bytes);else for(let i=0;i<bytes.length;i++)bytes[i]=Math.floor(Math.random()*256);return Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');}
   $('#printTerminalRegister').on('click',()=>window.print());
   function statusOf(i){return i.estado_local||i.estado_mojo||'Abierta';}
+  function solvedFor(type){return active.filter(i=>i.tipo_terminal===type&&statusOf(i)==='Solved');}
+  function renderResolvedModal(){
+    if(!resolvedType)return;
+    const list=$('#terminalResolvedList').empty(),solved=solvedFor(resolvedType);
+    selectedCloseId=null;
+    $('#terminalCloseConfirmation').addClass('d-none');
+    $('#resolvedTypeLabel').text(types[resolvedType]?.label||resolvedType);
+    if(!solved.length){list.append('<p class="text-muted mb-0">No hay tickets resueltos pendientes de cierre para este tipo.</p>');return;}
+    solved.forEach(i=>list.append('<div class="terminal-resolved-ticket"><div><a target="_blank" rel="noopener" href="https://totalgas.mojohelpdesk.com/mc/tickets/'+Number(i.ticket_mojo_id)+'">Ticket #'+Number(i.ticket_mojo_id)+'</a><p class="mb-0">'+esc(i.descripcion)+'</p>'+(i.serial_urovo?'<small>Serie: '+esc(i.serial_urovo)+'</small>':'')+'</div><button type="button" class="btn btn-sm btn-outline-success select-resolved" data-id="'+Number(i.id)+'">Cerrar</button></div>'));
+  }
+  function selectResolved(id){
+    const incident=solvedFor(resolvedType).find(i=>Number(i.id)===id);
+    if(!incident)return;
+    selectedCloseId=id;
+    $('#terminalCloseTicket').text('#'+Number(incident.ticket_mojo_id));
+    $('#terminalCloseConfirmation').removeClass('d-none');
+    $('#confirmResolvedClose').trigger('focus');
+  }
   function refresh(){
-    let totalStock=0,totalDamaged=0,totalWorking=0;
-    Object.keys(types).forEach(type=>{const count=active.filter(i=>i.tipo_terminal===type&&statusOf(i)!=='Closed').length,stock=Math.max(0,Number(expected[type])||0),working=Math.max(0,stock-count);totalStock+=stock;totalDamaged+=count;totalWorking+=working;$('[data-damaged="'+type+'"]').text(count);$('[data-working="'+type+'"]').text(working);$('.add-incident[data-type="'+type+'"]').prop('disabled',count>=stock);});
-    $('#terminalStockTotal').text(totalStock);$('#terminalDamagedTotal').text(totalDamaged);$('#terminalWorkingTotal').text(totalWorking);
+    let totalStock=0,totalDamaged=0,totalWorking=0,totalSolved=0;
+    Object.keys(types).forEach(type=>{const count=active.filter(i=>i.tipo_terminal===type&&statusOf(i)!=='Closed').length,solved=solvedFor(type).length,stock=Math.max(0,Number(expected[type])||0),working=Math.max(0,stock-count);totalStock+=stock;totalDamaged+=count;totalWorking+=working;totalSolved+=solved;$('[data-damaged="'+type+'"]').text(count);$('[data-working="'+type+'"]').text(working);$('[data-solved="'+type+'"]').text(solved).toggleClass('has-solved',solved>0);$('.show-resolved[data-type="'+type+'"]').prop('disabled',solved===0);$('.add-incident[data-type="'+type+'"]').prop('disabled',count>=stock);});
+    $('#terminalStockTotal').text(totalStock);$('#terminalDamagedTotal').text(totalDamaged);$('#terminalWorkingTotal').text(totalWorking);$('#terminalSolvedTotal').text(totalSolved);
     const list=$('#terminalIncidentList').empty(),open=active.filter(i=>['Abierta','Reabierta'].includes(statusOf(i))),solved=active.filter(i=>statusOf(i)==='Solved');
     list.append('<h6>Abiertas</h6>');
     if(!open.length)list.append('<p class="text-muted">No hay incidencias abiertas.</p>');
     open.forEach(i=>list.append('<div class="terminal-incident active mb-2"><strong>'+esc(types[i.tipo_terminal]?.label||i.tipo_terminal)+'</strong> · <a target="_blank" rel="noopener" href="https://totalgas.mojohelpdesk.com/mc/tickets/'+Number(i.ticket_mojo_id)+'">#'+Number(i.ticket_mojo_id)+'</a> <span class="badge bg-warning text-dark">'+esc(statusOf(i))+'</span><div>'+esc(i.descripcion)+'</div></div>'));
     list.append('<h6 class="mt-4">Resueltos en MOJO</h6>');
     if(!solved.length)list.append('<p class="text-muted">No hay tickets resueltos pendientes de cierre o respuesta.</p>');
-    solved.forEach(i=>list.append('<div class="terminal-incident mb-2"><strong>'+esc(types[i.tipo_terminal]?.label||i.tipo_terminal)+'</strong> · <a target="_blank" rel="noopener" href="https://totalgas.mojohelpdesk.com/mc/tickets/'+Number(i.ticket_mojo_id)+'">#'+Number(i.ticket_mojo_id)+'</a> <span class="badge bg-info text-dark">Solved</span><div>'+esc(i.descripcion)+'</div><div class="mt-2"><button class="btn btn-sm btn-outline-success close-incident" data-id="'+Number(i.id)+'">Cerrar ticket</button> <button class="btn btn-sm btn-outline-primary reply-incident" data-id="'+Number(i.id)+'">Responder y reabrir</button></div></div>'));
+    solved.forEach(i=>list.append('<div class="terminal-incident mb-2"><strong>'+esc(types[i.tipo_terminal]?.label||i.tipo_terminal)+'</strong> · <a target="_blank" rel="noopener" href="https://totalgas.mojohelpdesk.com/mc/tickets/'+Number(i.ticket_mojo_id)+'">#'+Number(i.ticket_mojo_id)+'</a> <span class="badge bg-info text-dark">Solved</span><div>'+esc(i.descripcion)+'</div><div class="mt-2"><button class="btn btn-sm btn-outline-success open-resolved-ticket" data-id="'+Number(i.id)+'">Cerrar</button> <button class="btn btn-sm btn-outline-primary reply-incident" data-id="'+Number(i.id)+'">Responder y reabrir</button></div></div>'));
+    renderResolvedModal();
     if(window.feather)feather.replace();
   }
   $('.add-incident').on('click',function(){const type=$(this).data('type');$('#terminalIncidentForm')[0].reset();$('#incidentType').val(type);$('#incidentTypeLabel').text(types[type].label);$('#urovoSerialField').toggleClass('d-none',type!=='urovo');$('#verifoneProblemField').toggleClass('d-none',type!=='verifone');$('.valera-fields').toggleClass('d-none',['urovo','verifone'].includes(type));$('#recurringProblemField').toggle(['urovo','verifone'].includes(type));requestKey=newRequestKey();modal.show();});
   $('#terminalIncidentForm').on('submit',function(e){e.preventDefault();const type=$('#incidentType').val(),description=$('#incidentDescription').val().trim(),serial=$('#urovoSerial').val().trim(),problem=type==='urovo'?'Terminal Urovo':$('#verifoneProblem').val(),button=$('#confirmIncident');if(!description){toastr.error('La descripción es obligatoria.');return;}if(type==='urovo'&&!serial){toastr.error('Capture el número de serie UROVO.');return;}if(type==='verifone'&&!problem){toastr.error('Seleccione un problema para la Verifone.');return;}if(!['urovo','verifone'].includes(type)&&(!$('#providerFolio').val().trim()||!$('#providerDate').val())){toastr.error('Capture folio y fecha del reporte al proveedor.');return;}button.prop('disabled',true).text('Creando y registrando...');$.post('/operations/terminal_ticket_create',{type,description,problem,provider_folio:$('#providerFolio').val().trim(),provider_date:$('#providerDate').val(),urovo_serial:serial,recurring_problem:$('#recurringProblem').is(':checked')?1:0,request_key:requestKey}).done(r=>{if(!r.success)return toastr.error(r.message||'No fue posible registrar la incidencia.');toastr.success('Incidencia registrada · Ticket MOJO #'+r.ticket_id);active.unshift(r.incident);modal.hide();refresh();requestKey=null;}).fail(x=>toastr.error(x.responseJSON?.message||'No se confirmó el resultado. Reintenta sin cerrar esta ventana para conciliar el mismo ticket.')).always(()=>button.prop('disabled',false).text('Crear ticket y registrar'));});
-  $('#terminalIncidentList').on('click','.close-incident',function(){const id=Number($(this).data('id'));if(!window.confirm('¿Confirmas cerrar este ticket en MOJO?'))return;const button=$(this).prop('disabled',true).text('Cerrando...');$.post('/operations/terminal_incident_action',{incident_id:id,action:'close'}).done(r=>{if(!r.success){toastr.error(r.message||'No se pudo cerrar en MOJO.');return;}active=active.filter(i=>Number(i.id)!==id);toastr.success('Ticket cerrado.');refresh();}).fail(x=>toastr.error(x.responseJSON?.message||'No fue posible cerrar el ticket.')).always(()=>button.prop('disabled',false).text('Cerrar ticket'));});
+  $('.show-resolved').on('click',function(){resolvedType=$(this).data('type');renderResolvedModal();resolvedModal.show();});
+  $('#terminalIncidentList').on('click','.open-resolved-ticket',function(){const id=Number($(this).data('id')),incident=active.find(i=>Number(i.id)===id);if(!incident)return;resolvedType=incident.tipo_terminal;renderResolvedModal();resolvedModal.show();selectResolved(id);});
+  $('#terminalResolvedList').on('click','.select-resolved',function(){selectResolved(Number($(this).data('id')));});
+  $('#cancelResolvedClose').on('click',function(){selectedCloseId=null;$('#terminalCloseConfirmation').addClass('d-none');});
+  $('#confirmResolvedClose').on('click',function(){
+    const id=selectedCloseId;
+    if(!id||!solvedFor(resolvedType).some(i=>Number(i.id)===id))return;
+    const button=$(this).prop('disabled',true).text('Cerrando...');
+    $.post('/operations/terminal_incident_action',{incident_id:id,action:'close'}).done(r=>{
+      if(!r.success){toastr.error(r.message||'No se pudo cerrar en MOJO.');return;}
+      active=active.filter(i=>Number(i.id)!==id);
+      toastr.success('Ticket cerrado. La terminal ya no cuenta como dañada.');
+      refresh();
+    }).fail(x=>toastr.error(x.responseJSON?.message||'No fue posible cerrar el ticket.')).always(()=>button.prop('disabled',false).text('Sí, cerrar ticket'));
+  });
+  $('#terminalResolvedModal').on('hidden.bs.modal',function(){resolvedType=null;selectedCloseId=null;});
   $('#terminalIncidentList').on('click','.reply-incident',function(){$('#replyIncidentId').val($(this).data('id'));$('#incidentReply').val('');replyModal.show();});
   $('#terminalReplyForm').on('submit',function(e){e.preventDefault();const id=Number($('#replyIncidentId').val()),message=$('#incidentReply').val().trim();if(!message)return;const button=$(this).find('[type="submit"]').prop('disabled',true).text('Enviando...');$.post('/operations/terminal_incident_action',{incident_id:id,action:'reply',message}).done(r=>{if(!r.success){toastr.error(r.message||'No se pudo enviar la respuesta.');return;}const item=active.find(i=>Number(i.id)===id);if(item)item.estado_local='Reabierta';replyModal.hide();toastr.success('Respuesta enviada y ticket reabierto en MOJO.');refresh();}).fail(x=>toastr.error(x.responseJSON?.message||'No fue posible completar la operación en MOJO.')).always(()=>button.prop('disabled',false).text('Enviar y reabrir'));});
   refresh();
