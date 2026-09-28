@@ -1,7 +1,7 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Operaciones - Gestión de incidencias de terminales{% endblock %}
 {% block menutitle %}Gestión de incidencias de terminales{% endblock %}
-{% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
+{% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet"><link href="/_assets/css/terminal-ticket-detail.css" rel="stylesheet">{% endblock %}
 {% block content %}
 <div id="terminalInventoryApp" data-types='{{ types|json_encode|e("html_attr") }}' data-active='{{ activeIncidents|json_encode|e("html_attr") }}' data-expected-counts='{{ expectedCounts|json_encode|e("html_attr") }}'>
   <div class="terminal-page-header d-flex justify-content-between flex-wrap gap-3 mb-3"><div><p class="text-muted mb-0">Incidencias · {{ station.Nombre }} <span>(#{{ station.Codigo }})</span></p></div><div class="d-flex gap-2"><button type="button" id="printTerminalRegister" class="btn btn-outline-secondary"><i data-feather="printer"></i> Imprimir</button>{% if canReport %}<a class="btn btn-outline-primary" href="/operations/terminal_incident_report"><i data-feather="bar-chart-2"></i> Ver reporte</a>{% endif %}</div></div>
