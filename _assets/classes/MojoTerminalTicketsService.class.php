@@ -57,6 +57,14 @@ class MojoTerminalTicketsService {
         return is_array($data)?$data:[];
     }
     public function getTicket(int $id): array { return $this->request('GET','/v3/tickets/'.$id); }
+    public function getPublicComments(int $ticketId): array {
+        $response=$this->request('GET','/v2/tickets/'.$ticketId.'/comments?'.http_build_query(['page'=>1,'per_page'=>100]));
+        $comments=isset($response[0]) ? $response : (array)($response['result'] ?? $response['comments'] ?? []);
+        return array_values(array_map(static function($comment) {
+            $user=$comment['related_data']['user'] ?? $comment['user'] ?? [];
+            return ['body'=>(string)($comment['body'] ?? $comment['comment'] ?? ''),'created_on'=>(string)($comment['created_on'] ?? $comment['created_at'] ?? ''),'user_name'=>is_array($user) ? (string)($user['full_name'] ?? $user['name'] ?? $user['email'] ?? '') : (string)($comment['user_name'] ?? $comment['author'] ?? '')];
+        },array_filter($comments,static fn($comment)=>is_array($comment) && empty($comment['is_private']))));
+    }
     public function addPublicComment(int $ticketId, string $message): array {
         return $this->request('POST','/v2/tickets/'.$ticketId.'/comments',['body'=>$message,'is_private'=>false]);
     }
@@ -131,8 +139,15 @@ class MojoTerminalTicketsService {
     public function localState(array $ticket, string $previous): string {
         $id=(int)($ticket['status_id'] ?? $ticket['status']['id'] ?? 0);
         $status=strtolower((string)($ticket['status'] ?? $ticket['status_name'] ?? ''));
-        if ($id===60 || in_array($status,['closed','cerrado'],true) || !empty($ticket['closed_on'])) return 'Closed';
-        if ($id===50 || in_array($status,['solved','resolved','resuelto'],true) || !empty($ticket['solved_on'])) return 'Solved';
+        if ($id>0) {
+            if ($id===60) return 'Closed';
+            if ($id===50) return 'Solved';
+            return in_array($previous,['Solved','Closed'],true) ? 'Reabierta' : 'Abierta';
+        }
+        if (in_array($status,['closed','cerrado'],true)) return 'Closed';
+        if (in_array($status,['solved','resolved','resuelto'],true)) return 'Solved';
+        if (!empty($ticket['closed_on'])) return 'Closed';
+        if (!empty($ticket['solved_on'])) return 'Solved';
         return in_array($previous,['Solved','Closed'],true) ? 'Reabierta' : 'Abierta';
     }
     public static function verifoneProblems(): array { return self::VERIFONE_PROBLEMS; }

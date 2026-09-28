@@ -3356,24 +3356,43 @@ class Operations{
     public function terminal_incident_action(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $station=$this->terminalAssignedStation(); $incidentId=filter_var($_POST['incident_id'] ?? null,FILTER_VALIDATE_INT); $action=(string)($_POST['action'] ?? '');
-        if (!$station || !$incidentId || $incidentId<1 || !in_array($action,['close','reply'],true)) { $this->terminalJsonError('Incidencia u operación inválida.'); return; }
+        if (!$station || !$incidentId || $incidentId<1 || !in_array($action,['close','reply','reopen'],true)) { $this->terminalJsonError('Incidencia u operación inválida.'); return; }
         $incident=$this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)$station['Codigo']);
-        if (!$incident || (string)$incident['estado_local']!=='Solved') { $this->terminalJsonError('La acción solo está disponible para tickets en estado Solved.'); return; }
+        $oldState=(string)($incident['estado_local'] ?? '');
+        if (!$incident || $oldState==='Closed' || ($action==='close' && $oldState!=='Solved') || ($action==='reopen' && $oldState!=='Solved')) { $this->terminalJsonError('La acción no está disponible para el estado actual del ticket.'); return; }
         $message=trim((string)($_POST['message'] ?? ''));
         if ($action==='reply' && ($message==='' || mb_strlen($message)>1000)) { $this->terminalJsonError('La respuesta debe tener entre 1 y 1000 caracteres.'); return; }
         try {
             $service=new MojoTerminalTicketsService(); $ticketId=(int)$incident['ticket_mojo_id'];
             if ($action==='close') $service->closeTicket($ticketId);
+            elseif ($action==='reopen') $service->reopenTicket($ticketId);
             else {
                 $service->addPublicComment($ticketId,$message);
-                $service->reopenTicket($ticketId);
+                if ($oldState==='Solved') $service->reopenTicket($ticketId);
             }
-            $ticket=$service->getTicket($ticketId); $newState=$service->localState($ticket,'Solved');
+            $ticket=$service->getTicket($ticketId); $newState=$service->localState($ticket,$oldState);
             if ($action==='close' && $newState!=='Closed') throw new RuntimeException('Mojo no confirmó el cierre del ticket.');
-            if ($action==='reply' && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la reapertura del ticket.');
-            $this->terminalInventoryModel->updateTicketState((int)$incident['id'],'Solved',$newState,$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? date('Y-m-d H:i:s')) : null,$newState==='Closed' ? $service->closedByFromTicket($ticket) : null,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$action==='reply' ? $message : 'Cierre confirmado por el usuario de estación.','sincronizado');
+            if (($action==='reply' && $oldState==='Solved' || $action==='reopen') && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la reapertura del ticket.');
+            if ($action==='reply' && $oldState!=='Solved' && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la respuesta del ticket.');
+            $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$oldState,$newState,$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? date('Y-m-d H:i:s')) : null,$newState==='Closed' ? $service->closedByFromTicket($ticket) : null,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$action==='reply' ? $message : ($action==='close' ? 'Cierre confirmado por el usuario de estación.' : 'Ticket reabierto por el usuario de estación.'),'sincronizado');
             json_output(['success'=>true,'state'=>$newState]);
         } catch (Throwable $e) { try { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],'Solved','accion_'.$action,$e->getMessage()); } catch (Throwable $ignored) {} error_log('No se pudo completar '.$action.' sobre ticket MOJO '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('MOJO no confirmó toda la operación. Actualice la vista antes de volver a intentarlo.',503); }
+    }
+    public function terminal_incident_detail(): void {
+        $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
+        $station=$this->terminalAssignedStation(); $global=$reportPermission && !$station;
+        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($reportPermission && $station)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $incidentId=filter_var($_GET['incident_id'] ?? null,FILTER_VALIDATE_INT);
+        if (!$incidentId || $incidentId<1) { $this->terminalJsonError('Incidencia inválida.'); return; }
+        $incident=$global ? $this->terminalInventoryModel->incidentById((int)$incidentId) : $this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)$station['Codigo']);
+        if (!$incident) { $this->terminalJsonError('La incidencia no está disponible para su estación.',404); return; }
+        try {
+            $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
+            $text=static function($value): string { if (is_array($value)) return trim((string)($value['full_name'] ?? $value['name'] ?? $value['display_name'] ?? $value['email'] ?? $value['value'] ?? '')); return is_scalar($value) ? trim((string)$value) : ''; };
+            $custom=[]; foreach ((array)($ticket['custom_fields'] ?? []) as $field) { if (!is_array($field)) continue; $label=$text($field['label'] ?? $field['name'] ?? $field['slug'] ?? ''); $value=$text($field['display_value'] ?? $field['value'] ?? ''); if ($label!=='' && $value!=='') $custom[]=['label'=>$label,'value'=>$value]; }
+            $attachments=[]; foreach ((array)($ticket['attachments'] ?? []) as $file) { if (!is_array($file)) continue; $name=$text($file['filename'] ?? $file['name'] ?? $file['file_name'] ?? ''); $url=$text($file['url'] ?? $file['download_url'] ?? ''); if (strtolower((string)parse_url($url,PHP_URL_SCHEME))!=='https') $url=''; if ($name!=='') $attachments[]=['name'=>$name,'url'=>$url]; }
+            json_output(['success'=>true,'incident'=>['id'=>(int)$incident['id'],'ticket_id'=>(int)$incident['ticket_mojo_id'],'type'=>(string)$incident['tipo_terminal'],'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? '')],'ticket'=>['title'=>$text($ticket['title'] ?? ''),'description'=>$text($ticket['description'] ?? ''),'status'=>$text($ticket['status'] ?? $ticket['status_name'] ?? ''),'priority'=>$text($ticket['priority'] ?? $ticket['priority_name'] ?? ''),'requester'=>$text($ticket['user'] ?? $ticket['requester'] ?? $ticket['user_name'] ?? ''),'assignee'=>$text($ticket['assigned_to'] ?? $ticket['assignee'] ?? $ticket['assigned_to_name'] ?? ''),'created'=>$text($ticket['created_on'] ?? ''),'updated'=>$text($ticket['updated_on'] ?? ''),'due'=>$text($ticket['due_on'] ?? ''),'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,'attachments'=>$attachments],'comments'=>$service->getPublicComments((int)$incident['ticket_mojo_id']),'state_history'=>$this->terminalInventoryModel->incidentStateHistory((int)$incidentId)]);
+        } catch (Throwable $e) { error_log('No se pudo consultar detalle del ticket '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('No fue posible cargar el detalle desde Mojo.',503); }
     }
     public function terminal_incident_history(): void {
         $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);

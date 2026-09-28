@@ -200,7 +200,7 @@ class TerminalInventoryModel extends Model {
         return $affected === 1;
     }
     public function incidentForStation(int $incidentId, int $stationId): array|false {
-        $rows=$this->sql->select('SELECT id,estado_mojo,estado_local,fecha_cierre_mojo,ticket_mojo_id FROM [TG].[dbo].[inv_ter_incidencias] WHERE id=? AND estacion_id=?', [$incidentId,$stationId]);
+        $rows=$this->sql->select('SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE id=? AND estacion_id=?', [$incidentId,$stationId]);
         return $rows[0] ?? false;
     }
     public function changeIncidentState(int $incidentId, string $old, string $new, int $userId, string $email, string $origin, ?string $comment=null, string $sync='sincronizado'): void {
