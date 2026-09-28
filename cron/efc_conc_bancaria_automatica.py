@@ -33,6 +33,14 @@ GASOMEX_ACCOUNT_STATIONS = {
     "4409": {29}, "4547": {23}, "8214": {23}, "8492": {25, 26},
     "4412": {26}, "4777": {27}, "4669": {28}, "3678": {28}, "4638": {24},
 }
+# Deposit accounts are the currency boundary for GASOMEX.  A lot is built
+# independently per bucket, so MN and USD can never be searched against the
+# same bank movement.  MORRALLA is part of the MN bucket when present.
+GASOMEX_ACCOUNT_BUCKETS = {
+    "4409": {"MN"}, "4547": {"MN"}, "8214": {"USD"},
+    "8492": {"MN", "USD"}, "4412": {"USD"}, "4777": {"MN"},
+    "4669": {"USD"}, "3678": {"MN", "USD"}, "4638": {"MN", "USD"},
+}
 # Same known-account universe as EfcConciliacionModel::allAccountSuffixes().
 ACCOUNT_SUFFIXES = (
     "0185322470", "369", "3281", "8837", "8520", "7291", "2570", "7533",
@@ -178,7 +186,14 @@ def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
         # the E-prefix used by ControlGas (never a broad LIKE with an empty code).
         code = "".join(char for char in str(station_code or "") if char.isdigit()).lstrip("0")
         name_hit = len(station_name) >= 4 and station_name in text
-        code_hit = bool(code) and re.search(r"(?<![A-Z0-9])E0*" + re.escape(code) + r"(?![A-Z0-9])", text) is not None
+        # Banks do not use one single format for the station code.  Some
+        # movements contain E04188, while others contain the zero-padded
+        # numeric token 000000000004188.  Match the complete token in either
+        # format; never match a short code embedded inside another number.
+        code_hit = bool(code) and (
+            re.search(r"(?<![A-Z0-9])E0*" + re.escape(code) + r"(?![A-Z0-9])", text) is not None
+            or re.search(r"(?<![A-Z0-9])0*" + re.escape(code) + r"(?![A-Z0-9])", text) is not None
+        )
         if name_hit or code_hit:
             matches.add(int(station_id))
     return next(iter(matches)) if len(matches) == 1 else None
@@ -203,6 +218,11 @@ def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = N
 def gasomex_account_matches(bank: tuple, station_id: int) -> bool:
     account = re.sub(r"\D", "", str(bank[6] or ""))
     return station_id in {candidate for suffix, stations in GASOMEX_ACCOUNT_STATIONS.items() if account.endswith(suffix) for candidate in stations}
+
+
+def gasomex_bank_buckets(bank: tuple) -> set[str]:
+    account = re.sub(r"\D", "", str(bank[6] or ""))
+    return {bucket for suffix, buckets in GASOMEX_ACCOUNT_BUCKETS.items() if account.endswith(suffix) for bucket in buckets}
 
 
 def index_bank_rows(rows: list[tuple], stations: list[tuple]) -> dict[int, dict[date, list[tuple]]]:
@@ -230,30 +250,51 @@ def candidate_bank_rows(
     return candidates
 
 
-def gasomex_lots(turns: list[dict]) -> list[dict]:
+def gasomex_lots(
+    turns: list[dict], operational_turns: set[tuple[date, str]] | None = None
+) -> list[dict]:
     """Build the known GASOMEX operational lots.
 
     The deposit for operational day D contains D/T2, D/T3, D/T4 and
     (D+1)/T1.  The bank date is intentionally not part of this grouping:
     deposits may arrive several days after the operational lot.
     """
-    by_turn: dict[tuple[date, str], list[dict]] = {}
+    by_turn: dict[tuple[str, date, str], list[dict]] = {}
     for item in turns:
-        by_turn.setdefault((item["date"], turn_key(item["turn"])), []).append(item)
+        bucket = "USD" if item["concept"] == "USD" else "MN"
+        by_turn.setdefault((bucket, item["date"], turn_key(item["turn"])), []).append(item)
 
     lots: list[dict] = []
-    anchors = sorted({item["date"] for item in turns})
+    # A turn belongs to the operational lot even when a particular bucket has
+    # no amount.  This is common for USD: e.g. T4 can have USD = 0 while the
+    # same turn still has MN activity.  Keep the optional argument so the
+    # helper remains compatible with isolated tests/callers that only provide
+    # bucketed items.
+    present_turns = operational_turns or {
+        (key[1], key[2]) for key in by_turn
+    }
+    anchors = sorted({day for day, _turn in present_turns})
     for anchor in anchors:
         required = [(anchor, "2"), (anchor, "3"), (anchor, "4"), (anchor + timedelta(days=1), "1")]
-        if not all((day, turn) in by_turn for day, turn in required):
+        if not all(turn in present_turns for turn in required):
             continue
-        items = [item for key in required for item in by_turn[key]]
-        lots.append({
-            "anchor": anchor,
-            "last_date": anchor + timedelta(days=1),
-            "items": items,
-            "amount": round(sum(item["amount"] for item in items), 2),
-        })
+        for bucket in ("MN", "USD"):
+            items = [
+                item
+                for day, turn in required
+                for item in by_turn.get((bucket, day, turn), [])
+            ]
+            # Do not create a meaningless zero-value lot when the station has
+            # no linked amount at all for this bucket.
+            if not items:
+                continue
+            lots.append({
+                "anchor": anchor,
+                "last_date": anchor + timedelta(days=1),
+                "bucket": bucket,
+                "items": items,
+                "amount": round(sum(item["amount"] for item in items), 2),
+            })
     return lots
 
 
@@ -267,6 +308,7 @@ def matching_gasomex_bank(lot: dict, banks: list[tuple], used: set[int]) -> list
     return [
         bank for bank in banks
         if int(bank[0]) not in used
+        and lot["bucket"] in gasomex_bank_buckets(bank)
         and as_date(bank[1]) >= lot["last_date"]
         and abs(amount(bank[2]) - lot["amount"]) < TOLERANCE
     ]
@@ -274,7 +316,7 @@ def matching_gasomex_bank(lot: dict, banks: list[tuple], used: set[int]) -> list
 
 def gasomex_lot_diagnostics(lot: dict, banks: list[tuple], used: set[int]) -> dict:
     """Explain why a complete lot did not find a usable bank movement."""
-    scoped = [bank for bank in banks if int(bank[0]) not in used]
+    scoped = [bank for bank in banks if int(bank[0]) not in used and lot["bucket"] in gasomex_bank_buckets(bank)]
     same_amount = [bank for bank in scoped if abs(amount(bank[2]) - lot["amount"]) < TOLERANCE]
     before_lot = [bank for bank in same_amount if as_date(bank[1]) < lot["last_date"]]
     nearest = sorted(scoped, key=lambda bank: (abs(amount(bank[2]) - lot["amount"]), as_date(bank[1]), int(bank[0])))[:3]
@@ -334,6 +376,7 @@ def run() -> int:
                 log(f"Estación {station_id}: ControlGas devolvió {len(controlgas_rows)} registros.")
                 if int(station_id) in GASOMEX_STATIONS:
                     turns: list[dict] = []
+                    operational_turns: set[tuple[date, str]] = set()
                     no_link = 0
                     no_amount = 0
                     active_cg_keys = {
@@ -354,30 +397,31 @@ def run() -> int:
                             if not target or target <= 0:
                                 no_link += 1
                                 continue
+                            operational_turns.add((cut, turn_key(turn)))
                             key = f"cg-{station_id}-{cut.isoformat()}-{turn}-{concept}"
                             if key in active_cg_keys:
                                 already_conciliated += 1
                                 continue
                             turns.append({"key": key, "date": cut, "turn": turn, "concept": concept, "amount": target})
                     gas_bank_rows = [bank for bank in bank_rows if int(bank[0]) not in used and gasomex_account_matches(bank, int(station_id))]
-                    lots = gasomex_lots(turns)
-                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos elegibles={len(turns)}, ya conciliados={already_conciliated}, sin vínculo={no_link}, sin importe CG={no_amount}, lotes completos={len(lots)}, depósitos por cuenta={len(gas_bank_rows)}.")
+                    lots = gasomex_lots(turns, operational_turns)
+                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos elegibles={len(turns)}, turnos operativos={len(operational_turns)}, ya conciliados={already_conciliated}, sin vínculo={no_link}, sin importe CG={no_amount}, lotes completos={len(lots)}, depósitos por cuenta={len(gas_bank_rows)}.")
                     for lot in lots:
                         candidates = matching_gasomex_bank(lot, gas_bank_rows, used)
                         if not candidates:
                             diagnostic = gasomex_lot_diagnostics(lot, gas_bank_rows, used)
                             before_ids = ",".join(f"{bank[0]}({bank[1]})" for bank in diagnostic["before_lot"][:5]) or "ninguno"
                             nearest_text = ", ".join(f"{bank[0]}:{as_date(bank[1])}/{amount(bank[2]):.2f}" for bank in diagnostic["nearest"]) or "ninguno"
-                            log(f"GASOMEX lote pendiente: estación={station_id}, lote={lot['anchor']}, cubre_hasta={lot['last_date']}, importe={lot['amount']:.2f}, depósitos_disponibles={diagnostic['available']}, mismo_importe={len(diagnostic['same_amount'])}, mismos_anteriores={before_ids}, más_cercanos={nearest_text}.")
+                            log(f"GASOMEX lote pendiente: estación={station_id}, lote={lot['anchor']}, bucket={lot['bucket']}, cubre_hasta={lot['last_date']}, importe={lot['amount']:.2f}, depósitos_disponibles={diagnostic['available']}, mismo_importe={len(diagnostic['same_amount'])}, mismos_anteriores={before_ids}, más_cercanos={nearest_text}.")
                             continue
                         candidates.sort(key=lambda item: (as_date(item[1]), int(item[0])))
                         bank = candidates[0]
                         if len(candidates) > 1:
-                            log(f"GASOMEX lote con varios depósitos candidatos: estación={station_id}, lote={lot['anchor']}, candidatos={','.join(str(item[0]) for item in candidates)}; se toma el más antiguo {bank[0]}.")
+                            log(f"GASOMEX lote con varios depósitos candidatos: estación={station_id}, lote={lot['anchor']}, bucket={lot['bucket']}, candidatos={','.join(str(item[0]) for item in candidates)}; se toma el más antiguo {bank[0]}.")
                         picked = lot["items"]
                         cg_total = lot["amount"]
                         bank_date = as_date(bank[1])
-                        log(f"GASOMEX candidato: estación={station_id}, banco={bank[0]}, lote={lot['anchor']}, fecha_banco={bank_date}, importe_banco={amount(bank[2]):.2f}, importe_lote={cg_total:.2f}, turnos={len(picked)}.")
+                        log(f"GASOMEX candidato: estación={station_id}, banco={bank[0]}, lote={lot['anchor']}, bucket={lot['bucket']}, fecha_banco={bank_date}, importe_banco={amount(bank[2]):.2f}, importe_lote={cg_total:.2f}, turnos={len(picked)}.")
                         payload = "<turns>" + "".join(
                             f'<turn id="{escape(item["key"])}" date="{item["date"].isoformat()}" turn="{escape(item["turn"])}" currency="MN" amount="{item["amount"]:.2f}" />'
                             for item in picked
@@ -385,7 +429,7 @@ def run() -> int:
                         try:
                             cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?", station_id, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
                             conn.commit(); used.add(int(bank[0])); gas_bank_rows = [item for item in gas_bank_rows if int(item[0]) != int(bank[0])]; turns = [item for item in turns if item["key"] not in {chosen["key"] for chosen in picked}]; matched += 1
-                            log(f"Conciliada GASOMEX: estación={station_id}, lote={lot['anchor']}, turnos={len(picked)}, banco={bank[0]}.")
+                            log(f"Conciliada GASOMEX: estación={station_id}, lote={lot['anchor']}, bucket={lot['bucket']}, turnos={len(picked)}, banco={bank[0]}.")
                         except pyodbc.Error as exc:
                             conn.rollback(); errors += 1
                             log(f"Error DB conciliando GASOMEX estación={station_id}, banco={bank[0]}: {error_text(exc)}")

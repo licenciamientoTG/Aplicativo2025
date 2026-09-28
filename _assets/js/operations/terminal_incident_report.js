@@ -25,6 +25,27 @@ $(function () {
     table.on('click', '.terminal-ticket-link', function (event) {
         event.stopPropagation();
     });
+    table.on('click', '.terminal-incident-row', function () {
+        const target=$(this).attr('data-bs-target'), modal=$(target), incidentId=Number(String(target).replace('#terminalIncidentDetail',''));
+        const body=modal.find('.modal-body');
+        if(!incidentId||body.data('history-loaded'))return;
+        body.data('history-loaded',true);
+        const section=$('<section class="terminal-detail-section"><h6>Historial de estados</h6><p class="text-muted mb-0">Cargando trazabilidad…</p></section>');
+        body.append(section);
+        $.getJSON('/operations/terminal_incident_history',{incident_id:incidentId}).done(response=>{
+            const list=$('<div class="terminal-state-history"></div>');
+            (response.history||[]).forEach(item=>{
+                const transition=$('<div class="terminal-state-history-item"></div>');
+                $('<strong></strong>').text((item.estado_anterior||'Inicio')+' → '+item.estado_nuevo).appendTo(transition);
+                $('<small></small>').text((item.fecha_registro||item.fecha_estado_mojo||'')+' · '+(item.usuario_correo||'Sistema')+' · '+(item.origen||'')).appendTo(transition);
+                if(item.comentario)$('<p></p>').text(item.comentario).appendTo(transition);
+                if(item.sincronizacion)$('<span class="badge bg-light text-secondary"></span>').text(item.sincronizacion).appendTo(transition);
+                list.append(transition);
+            });
+            section.empty().append('<h6>Historial de estados</h6>').append(list);
+            if(!list.children().length)section.append('<p class="text-muted mb-0">Sin cambios registrados.</p>');
+        }).fail(()=>section.html('<h6>Historial de estados</h6><p class="text-muted mb-0">No se pudo cargar la trazabilidad.</p>'));
+    });
     table.on('keydown', '.terminal-incident-row', function (event) {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();

@@ -57,14 +57,98 @@ class MojoTerminalTicketsService {
         return is_array($data)?$data:[];
     }
     public function getTicket(int $id): array { return $this->request('GET','/v3/tickets/'.$id); }
-    public function isOpen(array $ticket): bool { $status=strtolower((string)($ticket['status'] ?? $ticket['status_name'] ?? '')); return !in_array($status,['closed','solved','resolved','cerrado','resuelto'],true) && empty($ticket['solved_on']); }
+    public function addPublicComment(int $ticketId, string $message): array {
+        return $this->request('POST','/v2/tickets/'.$ticketId.'/comments',['body'=>$message,'is_private'=>false]);
+    }
+    public function closeTicket(int $ticketId): array {
+        // Mojo's API accepts partial ticket updates; status_id 60 is Closed in
+        // the configured TG instance (Solved is status_id 50).
+        return $this->request('PUT','/v2/tickets/'.$ticketId,['status_id'=>60]);
+    }
+    public function reopenTicket(int $ticketId): array {
+        return $this->request('PUT','/v2/tickets/'.$ticketId,['status_id'=>20]);
+    }
+    public function findByRequestKey(string $requestKey): ?array {
+        $marker='terminal-request-'.$requestKey;
+        $response=$this->request('GET','/v2/tickets/search?'.http_build_query(['query'=>'description:("'.$marker.'")','sf'=>'created_on','r'=>1,'per_page'=>50,'page'=>1]));
+        $rows=isset($response[0]) ? $response : (array)($response['result'] ?? []);
+        foreach ($rows as $row) if (str_contains((string)($row['description'] ?? ''),$marker)) return $row;
+        return null;
+    }
+    public function searchCandidates(string $type, ?string $mojoType, int $mojoUserId, string $searchText): array {
+        if ($mojoUserId<1) throw new InvalidArgumentException('La estación no tiene un usuario de Mojo configurado.');
+        $systemTicket=in_array($type,['urovo','verifone'],true);
+        $form=$systemTicket ? self::SYSTEM_FORM : self::VALERAS_FORM;
+        // created_by.id es el agente/integración que originó el ticket, no necesariamente
+        // el solicitante. Se filtra requester por user_id en los resultados de Mojo.
+        $query='ticket_form.id:'.$form.' AND status.id:\\(\\<50\\)';
+        if ($type==='urovo') {
+            $query.=' AND custom.field:("problema-terminal urovo")';
+        } elseif ($type==='verifone') {
+            $problems=array_map(fn($problem)=>'custom.field:("problema-'.mb_strtolower($problem,'UTF-8').'")',self::VERIFONE_PROBLEMS);
+            $query.=' AND ('.implode(' OR ',$problems).')';
+        } else {
+            $value=trim((string)$mojoType);
+            if ($value==='') throw new InvalidArgumentException('El tipo de terminal no tiene un valor Mojo configurado.');
+            $query.=' AND custom.field:("tipo_de_terminal-'.mb_strtolower($value,'UTF-8').'")';
+        }
+        $term=trim((string)preg_replace('/[^\pL\pN\s-]/u',' ', $searchText));
+        $term=trim((string)preg_replace('/\s+/u',' ',$term));
+        if ($term==='') throw new InvalidArgumentException('Capture un número o texto para buscar tickets.');
+        $escaped=str_replace(['\\','"'],['\\\\','\\"'],$term);
+        $textQuery='(title:("'.$escaped.'") OR description:("'.$escaped.'"))';
+        if (ctype_digit($term)) $textQuery='(id:'.(int)$term.' OR '.$textQuery.')';
+        $query.=' AND '.$textQuery;
+        $response=$this->request('GET','/v2/tickets/search?'.http_build_query([
+            'query'=>$query,'sf'=>'created_on','r'=>1,'per_page'=>50,'page'=>1,
+        ]));
+        $rows=isset($response[0]) ? $response : (array)($response['result'] ?? []);
+        $candidates=[];
+        foreach ($rows as $row) {
+            if ((int)($row['user_id'] ?? 0)!==$mojoUserId
+                || (int)($row['ticket_form_id'] ?? 0)!==$form
+                || (int)($row['status_id'] ?? 0)>=50
+                || !empty($row['solved_on'])) continue;
+            $id=(int)($row['id'] ?? 0);
+            if ($id<1) continue;
+            $candidates[]=[
+                'id'=>$id,
+                'title'=>(string)($row['title'] ?? ''),
+                'description'=>(string)($row['description'] ?? ''),
+                'status'=>(string)($row['status'] ?? $row['status_name'] ?? 'Abierto'),
+                'created_on'=>(string)($row['created_on'] ?? ''),
+            ];
+            if (count($candidates)>=50) break;
+        }
+        return $candidates;
+    }
+    public function isOpen(array $ticket): bool {
+        $id=(int)($ticket['status_id'] ?? $ticket['status']['id'] ?? 0);
+        if ($id>0) return $id<50;
+        $status=strtolower((string)($ticket['status'] ?? $ticket['status_name'] ?? ''));
+        return !in_array($status,['closed','solved','resolved','cerrado','resuelto'],true) && empty($ticket['solved_on']);
+    }
+    public function localState(array $ticket, string $previous): string {
+        $id=(int)($ticket['status_id'] ?? $ticket['status']['id'] ?? 0);
+        $status=strtolower((string)($ticket['status'] ?? $ticket['status_name'] ?? ''));
+        if ($id===60 || in_array($status,['closed','cerrado'],true) || !empty($ticket['closed_on'])) return 'Closed';
+        if ($id===50 || in_array($status,['solved','resolved','resuelto'],true) || !empty($ticket['solved_on'])) return 'Solved';
+        return in_array($previous,['Solved','Closed'],true) ? 'Reabierta' : 'Abierta';
+    }
     public static function verifoneProblems(): array { return self::VERIFONE_PROBLEMS; }
-    public function create(array $incident, string $email, string $stationName): array {
+    public function create(array $incident, int $mojoUserId, string $stationEmail, string $stationName): array {
+        if ($mojoUserId<1) throw new RuntimeException('La estación no tiene un usuario de Mojo configurado.');
         $systemTicket=in_array($incident['type'],['urovo','verifone'],true);
         $valeras=!$systemTicket;
-        $payload=['title'=>'Terminal '.$incident['label'].' - '.$stationName,'description'=>$incident['description'],'ticket_queue_id'=>self::SYSTEM_QUEUE,'priority_id'=>30,'user'=>['email'=>$email]];
+        $description=(string)$incident['description'];
+        if (!empty($incident['request_key'])) $description .= "\n\n<!-- terminal-request-".preg_replace('/[^a-f0-9-]/i','',(string)$incident['request_key'])." -->";
+        $title='Terminal '.$incident['label'].' - '.$stationName;
+        $payload=['title'=>$title,'description'=>$description,'ticket_queue_id'=>self::SYSTEM_QUEUE,'priority_id'=>30,'user_id'=>$mojoUserId];
         if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$this->valeraStationOption($stationName),'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
-        else $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_solicitante'=>$email,'custom_field_problema'=>$incident['type']==='urovo' ? 'Terminal Urovo' : (string)($incident['problem'] ?? '')];
+        else {
+            $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_problema'=>$incident['type']==='urovo' ? 'Terminal Urovo' : (string)($incident['problem'] ?? '')];
+            if (trim($stationEmail)!=='') $payload['custom_field_solicitante']=trim($stationEmail);
+        }
         if ($incident['type']==='urovo') $payload[self::UROVO_SERIAL_FIELD]=(string)($incident['serial_urovo'] ?? $incident['urovo_serial'] ?? '');
         $ticket=$this->request('POST','/v2/tickets',$payload);
         if ($incident['type']==='urovo' && !empty($ticket['id']) && trim((string)($incident['serial_urovo'] ?? $incident['urovo_serial'] ?? ''))!=='') {
@@ -141,5 +225,9 @@ class MojoTerminalTicketsService {
         if ($form!==self::VALERAS_FORM) return false;
         $typeInTicket=$this->incidentDataFromTicket($ticket,$type)['type_terminal'];
         return $this->normalizeTerminal($typeInTicket)===$this->normalizeTerminal($mojoType ?: $type);
+    }
+    public function ticketBelongsToMojoUser(array $ticket, int $mojoUserId): bool {
+        $ticketUserId=(int)($ticket['user_id'] ?? $ticket['user']['id'] ?? 0);
+        return $mojoUserId>0 && $ticketUserId===$mojoUserId;
     }
 }
