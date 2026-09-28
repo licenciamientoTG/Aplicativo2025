@@ -3613,9 +3613,7 @@ class Operations{
         $stations=[]; foreach ($this->terminalInventoryModel->activeStations() as $stationRow) if ($stationScope===null || (int)$stationRow['Codigo']===$stationScope) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
         $assignees=[]; foreach ($this->terminalInventoryModel->incidentAssignees($stationScope) as $assignee) $assignees[(string)$assignee['assigned_to_id']]=(string)$assignee['asignado_a'];
         $openCount=count(array_filter($rows,fn($row)=>($row['estado_local'] ?? '')!=='Closed'));
-        $monthly=$this->terminalInventoryModel->monthlyIncidentSummary($stationScope);
-        $monthlyTotals=['incidents'=>array_sum(array_map(fn($row)=>(int)$row['incident_count'],$monthly)),'urovo'=>array_sum(array_map(fn($row)=>(int)$row['urovo_count'],$monthly))];
-        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'monthly'=>$monthly,'monthlyTotals'=>$monthlyTotals,'globalReport'=>$globalReport,'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q],'openCount'=>$openCount]);
+        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'globalReport'=>$globalReport,'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q],'openCount'=>$openCount]);
     }
     public function terminal_inventory_group(): void {
         $this->terminalJsonError('Los reportes por captura semanal fueron retirados. Consulte el reporte de incidencias.',410);

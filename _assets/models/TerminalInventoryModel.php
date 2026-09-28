@@ -279,16 +279,4 @@ class TerminalInventoryModel extends Model {
             LEFT JOIN [TG].[dbo].[mojo_ticket_forms] tf ON tf.id_mojo=t.ticket_form_id
             WHERE ".implode(' AND ',$where)." ORDER BY i.fecha_apertura_mojo DESC,i.id DESC", $params);
     }
-    public function monthlyIncidentSummary(?int $stationId=null): array {
-        $where=$stationId===null ? '' : 'WHERE estacion_id=?';
-        $params=$stationId===null ? [] : [$stationId];
-        return $this->sql->select("WITH monthly AS (
-                SELECT YEAR(fecha_apertura_mojo) AS [year],MONTH(fecha_apertura_mojo) AS [month],
-                       COUNT(*) AS incident_count,SUM(CASE WHEN tipo_terminal='urovo' THEN 1 ELSE 0 END) AS urovo_count
-                FROM [TG].[dbo].[inv_ter_incidencias] $where
-                GROUP BY YEAR(fecha_apertura_mojo),MONTH(fecha_apertura_mojo)
-            ) SELECT [year],[month],incident_count,urovo_count,
-                SUM(incident_count) OVER (ORDER BY [year],[month] ROWS UNBOUNDED PRECEDING) AS cumulative_count
-              FROM monthly ORDER BY [year] DESC,[month] DESC",$params);
-    }
 }
