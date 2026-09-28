@@ -3401,12 +3401,14 @@ class Operations{
         return $files;
     }
     public function terminal_incident_action(): void {
-        if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $station=$this->terminalAssignedStation(); $incidentId=filter_var($_POST['incident_id'] ?? null,FILTER_VALIDATE_INT); $action=(string)($_POST['action'] ?? '');
+        $canManage=$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION);
+        $canReopenClosed=$action==='reopen' && $this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION);
+        if (!$canManage && !$canReopenClosed) { $this->terminalJsonError('Sin autorización.',403); return; }
         if (!$station || !$incidentId || $incidentId<1 || !in_array($action,['close','reply','reopen'],true)) { $this->terminalJsonError('Incidencia u operación inválida.'); return; }
         $incident=$this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)$station['Codigo']);
         $oldState=(string)($incident['estado_local'] ?? '');
-        if (!$incident || $oldState==='Closed' || ($action==='close' && !in_array($oldState,['Abierta','Reabierta','Solved'],true)) || ($action==='reopen' && $oldState!=='Solved')) { $this->terminalJsonError('La acción no está disponible para el estado actual del ticket.'); return; }
+        if (!$incident || (!$canManage && $oldState!=='Closed') || ($oldState==='Closed' && $action!=='reopen') || ($action==='close' && !in_array($oldState,['Abierta','Reabierta','Solved'],true)) || ($action==='reopen' && !in_array($oldState,['Solved','Closed'],true))) { $this->terminalJsonError('La acción no está disponible para el estado actual del ticket.'); return; }
         $message=trim((string)($_POST['message'] ?? ''));
         $existingNoteId=filter_var($_POST['note_id'] ?? 0,FILTER_VALIDATE_INT) ?: 0;
         try { $uploads=$action==='reply' ? $this->terminalTechnicianUploads() : []; }
@@ -3452,7 +3454,7 @@ class Operations{
             $warnings=$failedFiles ? ['No se adjuntaron: '.implode(', ',$failedFiles).'. El mensaje ya fue enviado; selecciona solo esos archivos si quieres reintentarlo.'] : [];
             if ($reopenFailure!=='') $warnings[]=$reopenFailure;
             json_output(['success'=>true,'state'=>$newState,'uploaded_files'=>$uploadedCount,'failed_files'=>$failedFiles,'note_id'=>$failedFiles?$noteId:0,'warnings'=>$warnings]);
-        } catch (Throwable $e) { try { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],'Solved','accion_'.$action,$e->getMessage()); } catch (Throwable $ignored) {} error_log('No se pudo completar '.$action.' sobre ticket MOJO '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $message=$replyCreated ? 'La nota ya se creó en Mojo, pero el portal no pudo terminar de actualizarse. Actualiza el detalle y revisa la conversación antes de enviar otra vez.' : 'Mojo no confirmó la operación. Actualiza el detalle antes de reintentar.'; $this->terminalJsonError($message,503); }
+        } catch (Throwable $e) { try { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],$oldState,'accion_'.$action,$e->getMessage()); } catch (Throwable $ignored) {} error_log('No se pudo completar '.$action.' sobre ticket MOJO '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $message=$replyCreated ? 'La nota ya se creó en Mojo, pero el portal no pudo terminar de actualizarse. Actualiza el detalle y revisa la conversación antes de enviar otra vez.' : 'Mojo no confirmó la operación. Actualiza el detalle antes de reintentar.'; $this->terminalJsonError($message,503); }
     }
     public function terminal_incident_attachment(int $incidentId, int $attachmentId): void {
         $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);

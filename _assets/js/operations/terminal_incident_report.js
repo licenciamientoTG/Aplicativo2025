@@ -38,6 +38,29 @@ $(function () {
         table.on('click', '.terminal-ticket-link', event => event.stopPropagation());
     }
 
+    $(document).on('click', '.terminal-reopen-closed-ticket', function () {
+        const button = $(this);
+        const original = button.text();
+        button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Reabriendo…');
+        $.ajax({
+            url: '/operations/terminal_incident_action',
+            method: 'POST',
+            data: { incident_id: button.data('incident-id'), action: 'reopen' }
+        }).done(response => {
+            if (!response?.success) {
+                button.prop('disabled', false).text(original);
+                if (window.toastr) toastr.error(response?.message || 'No se pudo reabrir el ticket.');
+                return;
+            }
+            if (window.toastr) toastr.success('Ticket reabierto.');
+            window.setTimeout(() => window.location.reload(), 500);
+        }).fail(xhr => {
+            button.prop('disabled', false).text(original);
+            const message = xhr.responseJSON?.message || 'No se pudo reabrir el ticket.';
+            if (window.toastr) toastr.error(message);
+        });
+    });
+
     const escape = value => $('<div>').text(value == null ? '' : String(value)).html();
     const empty = value => value == null || String(value).trim() === '' ? 'No disponible' : String(value);
     const typeLabel = value => ({ urovo: 'Urovo', verifone: 'Verifone', efecticard: 'EfectiCard', inburgas: 'Inburgas', ticketcard: 'Ticket Card', sodexo: 'Sodexo', ultragas: 'Ultragas', mobil: 'Mobil', eox: 'EOX' })[value] || value || 'Terminal';
