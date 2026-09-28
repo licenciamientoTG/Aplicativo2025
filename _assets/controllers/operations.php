@@ -3361,6 +3361,41 @@ class Operations{
     public function terminal_incident_confirm(): void {
         $this->terminalJsonError('La confirmación manual fue retirada. Los tickets pasan a Solved y se cierran desde la lista de incidencias.',410);
     }
+    private function terminalTechnicianUploads(): array {
+        $bundle=$_FILES['attachments'] ?? null;
+        if (!is_array($bundle) || !isset($bundle['name'])) return [];
+        $names=is_array($bundle['name']) ? $bundle['name'] : [$bundle['name']];
+        if (count($names)>5) throw new InvalidArgumentException('Adjunta un máximo de 5 archivos por envío.');
+        $allowed=[
+            'pdf'=>['application/pdf'],
+            'png'=>['image/png'],
+            'jpg'=>['image/jpeg'], 'jpeg'=>['image/jpeg'],
+            'webp'=>['image/webp'],
+            'doc'=>['application/msword','application/x-ole-storage','application/vnd.ms-office'],
+            'docx'=>['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/zip','application/x-zip'],
+            'xls'=>['application/vnd.ms-excel','application/x-ole-storage','application/vnd.ms-office'],
+            'xlsx'=>['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/zip','application/x-zip'],
+            'txt'=>['text/plain'],
+            'csv'=>['text/plain','text/csv','application/csv','application/vnd.ms-excel'],
+        ];
+        $finfo=new finfo(FILEINFO_MIME_TYPE); $files=[]; $totalSize=0;
+        foreach ($names as $index=>$originalName) {
+            $error=(int)($bundle['error'][$index] ?? $bundle['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($error===UPLOAD_ERR_NO_FILE) continue;
+            if ($error!==UPLOAD_ERR_OK) throw new InvalidArgumentException('Uno de los archivos no terminó de subirse. Intenta de nuevo.');
+            $tmp=(string)($bundle['tmp_name'][$index] ?? $bundle['tmp_name'] ?? '');
+            $name=basename(str_replace(["\\","\r","\n"],['/','',''],(string)$originalName));
+            $size=(int)($bundle['size'][$index] ?? $bundle['size'] ?? 0); $extension=strtolower(pathinfo($name,PATHINFO_EXTENSION));
+            if (!is_uploaded_file($tmp) || $size<1 || $size>10*1024*1024) throw new InvalidArgumentException('Cada archivo debe pesar menos de 10 MB.');
+            $totalSize+=$size;
+            if ($totalSize>25*1024*1024) throw new InvalidArgumentException('El total de archivos no debe superar 25 MB.');
+            $mime=(string)$finfo->file($tmp);
+            if (!isset($allowed[$extension]) || !in_array($mime,$allowed[$extension],true)) throw new InvalidArgumentException('Tipo de archivo no permitido. Usa PDF, imagen, Word, Excel, TXT o CSV.');
+            $safeName=preg_replace('/[^\pL\pN._ -]/u','_', $name) ?: 'archivo.'.$extension;
+            $files[]=['tmp'=>$tmp,'name'=>$safeName,'mime'=>$mime,'size'=>$size];
+        }
+        return $files;
+    }
     public function terminal_incident_action(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $station=$this->terminalAssignedStation(); $incidentId=filter_var($_POST['incident_id'] ?? null,FILTER_VALIDATE_INT); $action=(string)($_POST['action'] ?? '');
@@ -3369,22 +3404,66 @@ class Operations{
         $oldState=(string)($incident['estado_local'] ?? '');
         if (!$incident || $oldState==='Closed' || ($action==='close' && $oldState!=='Solved') || ($action==='reopen' && $oldState!=='Solved')) { $this->terminalJsonError('La acción no está disponible para el estado actual del ticket.'); return; }
         $message=trim((string)($_POST['message'] ?? ''));
-        if ($action==='reply' && ($message==='' || mb_strlen($message)>1000)) { $this->terminalJsonError('La respuesta debe tener entre 1 y 1000 caracteres.'); return; }
+        $existingNoteId=filter_var($_POST['note_id'] ?? 0,FILTER_VALIDATE_INT) ?: 0;
+        try { $uploads=$action==='reply' ? $this->terminalTechnicianUploads() : []; }
+        catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage(),422); return; }
+        if ($action==='reply' && (($message==='' && !$uploads) || ($existingNoteId>0 && $message!=='') || mb_strlen($message)>1000)) { $this->terminalJsonError('Escribe un mensaje o adjunta archivos; si estás reintentando adjuntos, deja el mensaje vacío.',422); return; }
+        $replyCreated=false;
         try {
             $service=new MojoTerminalTicketsService(); $ticketId=(int)$incident['ticket_mojo_id'];
+            $failedFiles=[]; $uploadedCount=0; $reopenFailure='';
             if ($action==='close') $service->closeTicket($ticketId);
             elseif ($action==='reopen') $service->reopenTicket($ticketId);
             else {
-                $service->addPublicComment($ticketId,$message);
-                if ($oldState==='Solved') $service->reopenTicket($ticketId);
+                if ($existingNoteId>0) {
+                    $matchingNote=array_filter($service->getTechnicianNotes($ticketId),static fn($item)=>(int)$item['id']===$existingNoteId);
+                    if (!$matchingNote) { $this->terminalJsonError('La nota para adjuntar esos archivos ya no está disponible. Actualiza el ticket y envía un mensaje nuevo.',422); return; }
+                    $noteId=$existingNoteId;
+                } else {
+                    $sender=trim((string)($_SESSION['tg_user']['Nombre'] ?? $_SESSION['tg_user']['Usuario'] ?? 'Usuario de estación'));
+                    $senderEmail=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+                    $noteBody='Enviado desde el Portal TotalGas por '.$sender.($senderEmail!==''?' ('.$senderEmail.')':'').' · Estación '.trim((string)($station['Nombre'] ?? '')).":".PHP_EOL.($message!=='' ? $message : 'Se adjuntó documentación desde el portal.');
+                    $note=$service->addTechnicianNote($ticketId,$noteBody); $noteId=(int)($note['id'] ?? 0);
+                }
+                if ($noteId<1) throw new RuntimeException('MOJO no devolvió el identificador de la nota técnica.');
+                $replyCreated=true;
+                foreach ($uploads as $file) {
+                    try { $service->uploadTechnicianAttachment($ticketId,$noteId,new CURLFile($file['tmp'],$file['mime'],$file['name'])); $uploadedCount++; }
+                    catch (Throwable $uploadError) { $failedFiles[]=$file['name']; error_log('No se pudo adjuntar '.$file['name'].' al ticket MOJO '.$ticketId.': '.$uploadError->getMessage()); }
+                }
+                if ($oldState==='Solved') {
+                    try { $service->reopenTicket($ticketId); }
+                    catch (Throwable $reopenError) { $reopenFailure='El mensaje llegó al técnico, pero el ticket sigue resuelto. Puedes reabrirlo con el botón correspondiente.'; error_log('No se pudo reabrir el ticket MOJO '.$ticketId.' después de enviar una nota: '.$reopenError->getMessage()); }
+                }
             }
-            $ticket=$service->getTicket($ticketId); $newState=$service->localState($ticket,$oldState);
+            if ($action==='reply') {
+                try { $ticket=$service->getTicket($ticketId); $newState=$service->localState($ticket,$oldState); }
+                catch (Throwable $refreshError) { $ticket=[]; $newState=$oldState==='Solved' && $reopenFailure==='' ? 'Reabierta' : $oldState; error_log('La nota se guardó en MOJO pero no se pudo refrescar el estado del ticket '.$ticketId.': '.$refreshError->getMessage()); }
+            } else { $ticket=$service->getTicket($ticketId); $newState=$service->localState($ticket,$oldState); }
             if ($action==='close' && $newState!=='Closed') throw new RuntimeException('Mojo no confirmó el cierre del ticket.');
-            if (($action==='reply' && $oldState==='Solved' || $action==='reopen') && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la reapertura del ticket.');
-            if ($action==='reply' && $oldState!=='Solved' && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la respuesta del ticket.');
-            $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$oldState,$newState,$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? date('Y-m-d H:i:s')) : null,$newState==='Closed' ? $service->closedByFromTicket($ticket) : null,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$action==='reply' ? $message : ($action==='close' ? 'Cierre confirmado por el usuario de estación.' : 'Ticket reabierto por el usuario de estación.'),'sincronizado');
-            json_output(['success'=>true,'state'=>$newState]);
-        } catch (Throwable $e) { try { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],'Solved','accion_'.$action,$e->getMessage()); } catch (Throwable $ignored) {} error_log('No se pudo completar '.$action.' sobre ticket MOJO '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('MOJO no confirmó toda la operación. Actualice la vista antes de volver a intentarlo.',503); }
+            if ($action==='reopen' && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la reapertura del ticket.');
+            if ($action==='reply' && $oldState==='Solved' && $reopenFailure==='' && !in_array($newState,['Abierta','Reabierta'],true)) $reopenFailure='El mensaje llegó al técnico, pero no se confirmó la reapertura. Revisa el estado antes de intentarlo de nuevo.';
+            $auditMessage=$action==='reply' ? ($message!==''?$message:'Adjuntos enviados al técnico: '.implode(', ',array_column($uploads,'name'))) : ($action==='close' ? 'Cierre confirmado por el usuario de estación.' : 'Ticket reabierto por el usuario de estación.');
+            $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$oldState,$newState,$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? date('Y-m-d H:i:s')) : null,$newState==='Closed' ? $service->closedByFromTicket($ticket) : null,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$auditMessage,'sincronizado');
+            $warnings=$failedFiles ? ['No se adjuntaron: '.implode(', ',$failedFiles).'. El mensaje ya fue enviado; selecciona solo esos archivos si quieres reintentarlo.'] : [];
+            if ($reopenFailure!=='') $warnings[]=$reopenFailure;
+            json_output(['success'=>true,'state'=>$newState,'uploaded_files'=>$uploadedCount,'failed_files'=>$failedFiles,'note_id'=>$failedFiles?$noteId:0,'warnings'=>$warnings]);
+        } catch (Throwable $e) { try { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],'Solved','accion_'.$action,$e->getMessage()); } catch (Throwable $ignored) {} error_log('No se pudo completar '.$action.' sobre ticket MOJO '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $message=$replyCreated ? 'La nota ya se creó en Mojo, pero el portal no pudo terminar de actualizarse. Actualiza el detalle y revisa la conversación antes de enviar otra vez.' : 'Mojo no confirmó la operación. Actualiza el detalle antes de reintentar.'; $this->terminalJsonError($message,503); }
+    }
+    public function terminal_incident_attachment(int $incidentId, int $attachmentId): void {
+        $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
+        $station=$this->terminalAssignedStation(); $global=$reportPermission && !$station;
+        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($reportPermission && $station)) { http_response_code(403); exit; }
+        $incident=$global ? $this->terminalInventoryModel->incidentById($incidentId) : ($station ? $this->terminalInventoryModel->incidentForStation($incidentId,(int)$station['Codigo']) : false);
+        if (!$incident || $attachmentId<1) { http_response_code(404); exit; }
+        try {
+            $service=new MojoTerminalTicketsService();
+            $found=false;
+            foreach ($service->getTicketAttachments((int)$incident['ticket_mojo_id']) as $file) if ((int)$file['id']===$attachmentId) { $found=true; break; }
+            if (!$found) { http_response_code(404); exit; }
+            header('Location: '.$service->attachmentDownloadLocation($attachmentId),true,302);
+            exit;
+        } catch (Throwable $e) { error_log('No se pudo abrir el adjunto '.$attachmentId.' del ticket '.$incident['ticket_mojo_id'].': '.$e->getMessage()); http_response_code(502); echo 'No fue posible abrir el archivo. Intenta de nuevo desde el ticket.'; }
     }
     public function terminal_incident_detail(): void {
         $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
@@ -3398,8 +3477,22 @@ class Operations{
             $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
             $text=static function($value): string { if (is_array($value)) return trim((string)($value['full_name'] ?? $value['name'] ?? $value['display_name'] ?? $value['email'] ?? $value['value'] ?? '')); return is_scalar($value) ? trim((string)$value) : ''; };
             $custom=[]; foreach ((array)($ticket['custom_fields'] ?? []) as $field) { if (!is_array($field)) continue; $label=$text($field['label'] ?? $field['name'] ?? $field['slug'] ?? ''); $value=$text($field['display_value'] ?? $field['value'] ?? ''); if ($label!=='' && $value!=='') $custom[]=['label'=>$label,'value'=>$value]; }
-            $attachments=[]; foreach ((array)($ticket['attachments'] ?? []) as $file) { if (!is_array($file)) continue; $name=$text($file['filename'] ?? $file['name'] ?? $file['file_name'] ?? ''); $url=$text($file['url'] ?? $file['download_url'] ?? ''); if (strtolower((string)parse_url($url,PHP_URL_SCHEME))!=='https') $url=''; if ($name!=='') $attachments[]=['name'=>$name,'url'=>$url]; }
-            json_output(['success'=>true,'incident'=>['id'=>(int)$incident['id'],'ticket_id'=>(int)$incident['ticket_mojo_id'],'type'=>(string)$incident['tipo_terminal'],'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? '')],'ticket'=>['title'=>$text($ticket['title'] ?? ''),'description'=>$text($ticket['description'] ?? ''),'status'=>$text($ticket['status'] ?? $ticket['status_name'] ?? ''),'priority'=>$text($ticket['priority'] ?? $ticket['priority_name'] ?? ''),'requester'=>$text($ticket['user'] ?? $ticket['requester'] ?? $ticket['user_name'] ?? ''),'assignee'=>$text($ticket['assigned_to'] ?? $ticket['assignee'] ?? $ticket['assigned_to_name'] ?? ''),'created'=>$text($ticket['created_on'] ?? ''),'updated'=>$text($ticket['updated_on'] ?? ''),'due'=>$text($ticket['due_on'] ?? ''),'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,'attachments'=>$attachments],'comments'=>$service->getPublicComments((int)$incident['ticket_mojo_id']),'state_history'=>$this->terminalInventoryModel->incidentStateHistory((int)$incidentId)]);
+            $ticketId=(int)$incident['ticket_mojo_id'];
+            $comments=array_merge($service->getPublicComments($ticketId),$service->getTechnicianNotes($ticketId));
+            usort($comments,static fn($a,$b)=>strcmp((string)$a['created_on'],(string)$b['created_on']));
+            try { $mojoFiles=$service->getTicketAttachments($ticketId); } catch (Throwable $attachmentError) { $mojoFiles=[]; }
+            $attachments=[];
+            foreach ($mojoFiles as $file) {
+                if (empty($file['name'])) continue;
+                $url=(int)($file['id'] ?? 0)>0 ? '/operations/terminal_incident_attachment/'.(int)$incident['id'].'/'.(int)$file['id'] : '';
+                $attachments[]=['id'=>(int)($file['id'] ?? 0),'name'=>$text($file['name']),'url'=>$url];
+                foreach ($comments as &$comment) {
+                    $target=$comment['is_private'] ? (int)$file['staff_note_id'] : (int)$file['comment_id'];
+                    if ($target>0 && $target===(int)$comment['id']) $comment['attachments'][]=['id'=>(int)$file['id'],'name'=>$text($file['name']),'url'=>$url];
+                }
+                unset($comment);
+            }
+            json_output(['success'=>true,'incident'=>['id'=>(int)$incident['id'],'ticket_id'=>$ticketId,'type'=>(string)$incident['tipo_terminal'],'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? '')],'ticket'=>['title'=>$text($ticket['title'] ?? ''),'description'=>$text($ticket['description'] ?? ''),'status'=>$text($ticket['status'] ?? $ticket['status_name'] ?? ''),'priority'=>$text($ticket['priority'] ?? $ticket['priority_name'] ?? ''),'requester'=>$text($ticket['user'] ?? $ticket['requester'] ?? $ticket['user_name'] ?? ''),'assignee'=>$text($ticket['assigned_to'] ?? $ticket['assignee'] ?? $ticket['assigned_to_name'] ?? ''),'created'=>$text($ticket['created_on'] ?? ''),'updated'=>$text($ticket['updated_on'] ?? ''),'due'=>$text($ticket['due_on'] ?? ''),'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,'attachments'=>$attachments],'comments'=>$comments,'state_history'=>$this->terminalInventoryModel->incidentStateHistory((int)$incidentId)]);
         } catch (Throwable $e) { error_log('No se pudo consultar detalle del ticket '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('No fue posible cargar el detalle desde Mojo.',503); }
     }
     public function terminal_incident_history(): void {

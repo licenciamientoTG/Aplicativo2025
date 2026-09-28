@@ -29,6 +29,7 @@ class MojoTerminalTicketsService {
         'Ventanas', 'San Rafael', 'Puertecito', 'Jesus mMaria', 'Gabriela Mistral', 'Praxedis',
     ];
     private string $key;
+    private array $userSummaryCache = [];
     public function __construct() {
         $this->key = $this->loadApiKey();
         if ($this->key === '') throw new RuntimeException('La integración de Mojo no está configurada.');
@@ -63,14 +64,80 @@ class MojoTerminalTicketsService {
         }
         return is_array($data)?$data:[];
     }
+    private function upload(string $path, CURLFile $file): array {
+        $url=self::BASE_URL.$path.(str_contains($path,'?')?'&':'?').'access_key='.rawurlencode($this->key);
+        $ch=curl_init($url);
+        curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>['file'=>$file],CURLOPT_TIMEOUT=>60,CURLOPT_CONNECTTIMEOUT=>10]);
+        $raw=curl_exec($ch); $code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE); $error=curl_error($ch); curl_close($ch);
+        $data=json_decode((string)$raw,true);
+        if ($raw===false) throw new RuntimeException('MOJO_TRANSPORT_ERROR'.($error?': '.$error:''));
+        if ($code<200 || $code>=300) {
+            $detail=is_array($data) ? trim((string)($data['message'] ?? $data['error'] ?? '')) : '';
+            throw new RuntimeException('MOJO_HTTP_'.$code.($detail!==''?': '.mb_substr(strip_tags($detail),0,320):''));
+        }
+        return is_array($data)?$data:[];
+    }
     public function getTicket(int $id): array { return $this->request('GET','/v3/tickets/'.$id); }
+    private function commenterName(array $entry): string {
+        $user=$entry['related_data']['user'] ?? $entry['user'] ?? [];
+        $name=is_array($user) ? trim((string)($user['full_name'] ?? $user['name'] ?? '')) : '';
+        if ($name==='' && is_array($user)) $name=trim((string)($user['first_name'] ?? '').' '.(string)($user['last_name'] ?? ''));
+        if ($name==='' && is_array($user)) $name=trim((string)($user['email'] ?? ''));
+        if ($name==='' && !is_array($entry['author'] ?? null)) $name=trim((string)($entry['user_name'] ?? $entry['author'] ?? ''));
+        $id=(int)($entry['user_id'] ?? $entry['created_by_user_id'] ?? (is_array($user)?($user['id'] ?? 0):0));
+        // Mojo puede devolver "Usuario" como etiqueta genérica aunque incluya
+        // user_id. Tratarla como dato ausente para resolver el perfil real.
+        if (in_array(mb_strtolower($name,'UTF-8'),['usuario','user','requester','solicitante'],true)) $name='';
+        if ($name!=='' || $id<1) return $name;
+        if (!array_key_exists($id,$this->userSummaryCache)) {
+            try {
+                $profile=$this->request('GET','/v2/users/'.$id);
+                if (is_array($profile['user'] ?? null)) $profile=$profile['user'];
+                $related=$profile['related_data'] ?? [];
+                $fullName=trim((string)($profile['first_name'] ?? '').' '.(string)($profile['last_name'] ?? ''));
+                if ($fullName==='') $fullName=trim((string)($related['full_name'] ?? $profile['full_name'] ?? $profile['name'] ?? ''));
+                $this->userSummaryCache[$id]=$fullName!=='' ? $fullName : trim((string)($profile['email'] ?? $related['email'] ?? ''));
+            } catch (Throwable $error) { $this->userSummaryCache[$id]=''; }
+        }
+        return $this->userSummaryCache[$id];
+    }
     public function getPublicComments(int $ticketId): array {
         $response=$this->request('GET','/v2/tickets/'.$ticketId.'/comments?'.http_build_query(['page'=>1,'per_page'=>100]));
         $comments=isset($response[0]) ? $response : (array)($response['result'] ?? $response['comments'] ?? []);
-        return array_values(array_map(static function($comment) {
-            $user=$comment['related_data']['user'] ?? $comment['user'] ?? [];
-            return ['body'=>(string)($comment['body'] ?? $comment['comment'] ?? ''),'created_on'=>(string)($comment['created_on'] ?? $comment['created_at'] ?? ''),'user_name'=>is_array($user) ? (string)($user['full_name'] ?? $user['name'] ?? $user['email'] ?? '') : (string)($comment['user_name'] ?? $comment['author'] ?? '')];
+        return array_values(array_map(function($comment) {
+            return ['id'=>(int)($comment['id'] ?? 0),'user_id'=>(int)($comment['user_id'] ?? $comment['created_by_user_id'] ?? 0),'body'=>(string)($comment['body'] ?? $comment['comment'] ?? ''),'created_on'=>(string)($comment['created_on'] ?? $comment['created_at'] ?? ''),'user_name'=>$this->commenterName($comment),'is_private'=>false];
         },array_filter($comments,static fn($comment)=>is_array($comment) && empty($comment['is_private']))));
+    }
+    public function getTechnicianNotes(int $ticketId): array {
+        $response=$this->request('GET','/v2/tickets/'.$ticketId.'/staff_notes?'.http_build_query(['page'=>1,'per_page'=>100]));
+        $notes=isset($response[0]) ? $response : (array)($response['result'] ?? $response['staff_notes'] ?? []);
+        return array_values(array_map(function($note) {
+            return ['id'=>(int)($note['id'] ?? 0),'user_id'=>(int)($note['user_id'] ?? $note['created_by_user_id'] ?? 0),'body'=>(string)($note['body'] ?? ''),'created_on'=>(string)($note['created_on'] ?? $note['created_at'] ?? ''),'user_name'=>$this->commenterName($note),'is_private'=>true];
+        },array_filter($notes,static fn($note)=>is_array($note))));
+    }
+    public function getTicketAttachments(int $ticketId): array {
+        $response=$this->request('GET','/v2/tickets/'.$ticketId.'/attachments');
+        $files=isset($response[0]) ? $response : (array)($response['result'] ?? $response['attachments'] ?? []);
+        return array_values(array_map(static function($file) {
+            return ['id'=>(int)($file['id'] ?? 0),'name'=>(string)($file['filename'] ?? $file['name'] ?? ''),'url'=>(string)($file['url'] ?? $file['download_url'] ?? ''),'staff_note_id'=>(int)($file['staff_note_id'] ?? 0),'comment_id'=>(int)($file['comment_id'] ?? 0)];
+        },array_filter($files,static fn($file)=>is_array($file))));
+    }
+    public function attachmentDownloadLocation(int $attachmentId): string {
+        if ($attachmentId<1) throw new InvalidArgumentException('Adjunto inválido.');
+        $url=self::BASE_URL.'/v2/attachments/'.$attachmentId.'?access_key='.rawurlencode($this->key);
+        $ch=curl_init($url); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HEADER=>true,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_TIMEOUT=>30,CURLOPT_CONNECTTIMEOUT=>10]);
+        $raw=curl_exec($ch); $code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE); $headerSize=(int)curl_getinfo($ch,CURLINFO_HEADER_SIZE); $error=curl_error($ch); curl_close($ch);
+        if ($raw===false) throw new RuntimeException('MOJO_TRANSPORT_ERROR'.($error?': '.$error:''));
+        $headers=substr((string)$raw,0,$headerSize); $location='';
+        foreach (preg_split('/\r?\n/',$headers) as $line) if (stripos($line,'Location:')===0) $location=trim(substr($line,9));
+        if ($code<300 || $code>=400 || strtolower((string)parse_url($location,PHP_URL_SCHEME))!=='https') throw new RuntimeException('Mojo no devolvió un enlace seguro para el archivo.');
+        return $location;
+    }
+    public function addTechnicianNote(int $ticketId, string $message): array {
+        return $this->request('POST','/v2/tickets/'.$ticketId.'/staff_notes',['body'=>$message]);
+    }
+    public function uploadTechnicianAttachment(int $ticketId, int $noteId, CURLFile $file): array {
+        return $this->upload('/v2/tickets/'.$ticketId.'/attachments?'.http_build_query(['staff_note_id'=>$noteId]),$file);
     }
     public function addPublicComment(int $ticketId, string $message): array {
         return $this->request('POST','/v2/tickets/'.$ticketId.'/comments',['body'=>$message,'is_private'=>false]);
