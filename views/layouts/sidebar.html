@@ -673,7 +673,7 @@
 
       {% endif %}
 
-      {% if authorized(19) or terminal_inventory_access() or terminal_inventory_report_access() %}
+      {% if authorized(19) or terminal_inventory_access() or terminal_inventory_report_access() or terminal_inventory_station_report_access() %}
       <li class="sidebar-header">OPERACIONES</li>
       {% if authorized(21) %}
       <li class="sidebar-item">
@@ -697,7 +697,7 @@
         </a>
       </li>
       {% endif %}
-      {% if terminal_inventory_access() or terminal_inventory_report_access() %}
+      {% if terminal_inventory_access() or terminal_inventory_report_access() or terminal_inventory_station_report_access() %}
       <li class="sidebar-item">
         <a data-bs-target="#terminal_inventory_menu" data-bs-toggle="collapse" class="sidebar-link collapsed"
           aria-expanded="false">
@@ -710,9 +710,14 @@
             <a class="sidebar-link" href="/operations/terminal_inventory">Registrar incidencias</a>
           </li>
           {% endif %}
-          {% if terminal_inventory_report_access() or terminal_inventory_access() %}
+          {% if terminal_inventory_report_access() %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/operations/terminal_incident_report">Reporte de incidencias</a>
+          </li>
+          {% endif %}
+          {% if terminal_inventory_station_report_access() %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/terminal_station_incident_report">Incidencias de mi estación</a>
           </li>
           {% endif %}
           {% if terminal_inventory_report_access() %}

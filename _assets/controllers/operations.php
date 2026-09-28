@@ -3289,7 +3289,7 @@ class Operations{
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
         $this->syncTerminalIncidents($stationId,'vista');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
-        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)]);
+        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)]);
     }
     public function terminal_ticket_validate(): void {
         $this->terminalJsonError('La vinculación de tickets existentes fue retirada. Registrar una incidencia crea un ticket nuevo en Mojo.',410);
@@ -3469,8 +3469,8 @@ class Operations{
     }
     public function terminal_incident_attachment(int $incidentId, int $attachmentId): void {
         $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
-        $station=$this->terminalAssignedStation(); $global=$reportPermission && !$station;
-        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($reportPermission && $station)) { http_response_code(403); exit; }
+        $station=$this->terminalAssignedStation(); $stationReport=$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION); $global=$reportPermission;
+        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($stationReport && $station)) { http_response_code(403); exit; }
         $incident=$global ? $this->terminalInventoryModel->incidentById($incidentId) : ($station ? $this->terminalInventoryModel->incidentForStation($incidentId,(int)$station['Codigo']) : false);
         if (!$incident || $attachmentId<1) { http_response_code(404); exit; }
         try {
@@ -3484,8 +3484,8 @@ class Operations{
     }
     public function terminal_incident_detail(): void {
         $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
-        $station=$this->terminalAssignedStation(); $global=$reportPermission && !$station;
-        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($reportPermission && $station)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $station=$this->terminalAssignedStation(); $stationReport=$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION); $global=$reportPermission;
+        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($stationReport && $station)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $incidentId=filter_var($_GET['incident_id'] ?? null,FILTER_VALIDATE_INT);
         if (!$incidentId || $incidentId<1) { $this->terminalJsonError('Incidencia inválida.'); return; }
         $incident=$global ? $this->terminalInventoryModel->incidentById((int)$incidentId) : $this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)$station['Codigo']);
@@ -3558,8 +3558,8 @@ class Operations{
     public function terminal_incident_history(): void {
         $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
         $assignedStation=$this->terminalAssignedStation();
-        $global=$reportPermission && !$assignedStation;
-        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($reportPermission && $assignedStation)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $stationReport=$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION); $global=$reportPermission;
+        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($stationReport && $assignedStation)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $incidentId=filter_var($_GET['incident_id'] ?? null,FILTER_VALIDATE_INT);
         if (!$incidentId || $incidentId<1) { $this->terminalJsonError('Incidencia inválida.'); return; }
         $incident=$global ? $this->terminalInventoryModel->incidentById((int)$incidentId) : $this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)($_SESSION['tg_user']['IdEstacion'] ?? 0));
@@ -3588,11 +3588,17 @@ class Operations{
         header('Location: /operations/terminal_incident_report',true,302);
     }
     public function terminal_incident_report(): void {
-        $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
-        $captureAccess=$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION);
-        $assignedStation=$this->terminalAssignedStation();
-        $globalReport=$reportPermission && !$assignedStation;
-        if (!$globalReport && !$captureAccess && !($reportPermission && $assignedStation)) { http_response_code(403); echo 'No cuenta con permiso para consultar incidencias.'; return; }
+        if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte completo de incidencias.'; return; }
+        $this->renderTerminalIncidentReport(null,false);
+    }
+    public function terminal_station_incident_report(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte de su estación.'; return; }
+        $station=$this->terminalAssignedStation();
+        if (!$station) { http_response_code(403); echo 'El usuario no tiene una estación asignada válida.'; return; }
+        $this->renderTerminalIncidentReport((int)$station['Codigo'],true,(string)$station['Nombre']);
+    }
+    private function renderTerminalIncidentReport(?int $stationScope,bool $stationView,string $stationName=''): void {
+        $globalReport=!$stationView;
         $month=trim((string)($_GET['month'] ?? '')); $from=trim((string)($_GET['from'] ?? '')); $to=trim((string)($_GET['to'] ?? ''));
         $asOf=trim((string)($_GET['as_of'] ?? '')); $station=(string)($_GET['station'] ?? ''); $type=trim((string)($_GET['type'] ?? ''));
         $status=trim((string)($_GET['status'] ?? '')); $assigned=(string)($_GET['assigned'] ?? ''); $q=trim((string)($_GET['q'] ?? ''));
@@ -3601,9 +3607,7 @@ class Operations{
         if (!in_array($status,['open','solved','reopened','closed'],true)) $status='';
         if ($station!=='' && !preg_match('/^\d+$/',$station)) $station='';
         if ($assigned!=='' && !preg_match('/^\d+$/',$assigned)) $assigned='';
-        $stationScope=$globalReport ? null : (int)($_SESSION['tg_user']['IdEstacion'] ?? 0);
-        if ($stationScope!==null && in_array($stationScope,[0,4,20],true)) { http_response_code(403); echo 'El reporte requiere una estación asignada o permiso de reporte global.'; return; }
-        if (!$globalReport) $station=(string)$stationScope;
+        if ($stationScope!==null) $station=(string)$stationScope;
         if ($globalReport) $this->syncAllTerminalIncidents($type,'reporte_incidencias');
         elseif ($stationScope>0) $this->syncTerminalIncidents($stationScope,'reporte_estacion');
         try {
@@ -3618,7 +3622,7 @@ class Operations{
         $stations=[]; foreach ($this->terminalInventoryModel->activeStations() as $stationRow) if ($stationScope===null || (int)$stationRow['Codigo']===$stationScope) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
         $assignees=[]; foreach ($this->terminalInventoryModel->incidentAssignees($stationScope) as $assignee) $assignees[(string)$assignee['assigned_to_id']]=(string)$assignee['asignado_a'];
         $openCount=count(array_filter($rows,fn($row)=>($row['estado_local'] ?? '')!=='Closed'));
-        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'globalReport'=>$globalReport,'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q],'openCount'=>$openCount]);
+        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'globalReport'=>$globalReport,'stationView'=>$stationView,'stationName'=>$stationName,'canCapture'=>$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION),'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q],'openCount'=>$openCount]);
     }
     public function terminal_inventory_group(): void {
         $this->terminalJsonError('Los reportes por captura semanal fueron retirados. Consulte el reporte de incidencias.',410);

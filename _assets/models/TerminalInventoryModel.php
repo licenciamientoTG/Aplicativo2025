@@ -2,8 +2,10 @@
 class TerminalInventoryModel extends Model {
     public const CAPTURE_PERMISSION = 'Inventario terminales - Captura propia';
     public const REPORT_PERMISSION = 'Inventario terminales - Reporte global';
+    public const STATION_REPORT_PERMISSION = 'Inventario terminales - Reporte de estación';
     public const CAPTURE_PERMISSION_ID = 96;
     public const REPORT_PERMISSION_ID = 97;
+    private static array $resolvedPermissionIds = [];
 
     public function hasPermission(int $userId, string $description): bool {
         // Los permisos ya se cargan en la sesión al iniciar sesión. Consultar la
@@ -14,6 +16,13 @@ class TerminalInventoryModel extends Model {
             self::REPORT_PERMISSION => self::REPORT_PERMISSION_ID,
             default => 0,
         };
+        if ($permissionId === 0 && $description === self::STATION_REPORT_PERMISSION) {
+            if (!array_key_exists($description, self::$resolvedPermissionIds)) {
+                $rows=$this->sql->select('SELECT MIN(id) AS id,COUNT(*) AS matching_count FROM [TG].[dbo].[tg_permissions] WHERE [action]=? AND department=? AND description=? AND status=1', ['read','Operaciones',$description]);
+                self::$resolvedPermissionIds[$description]=((int)($rows[0]['matching_count'] ?? 0)===1) ? (int)$rows[0]['id'] : 0;
+            }
+            $permissionId=self::$resolvedPermissionIds[$description];
+        }
         $permissions = explode(',', (string)($_SESSION['tg_user']['permissions'] ?? ''));
         return $permissionId > 0 && in_array((string)$permissionId, $permissions, true);
     }
