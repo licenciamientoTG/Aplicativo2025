@@ -205,7 +205,9 @@ $(document).ready(function () {
             }
             a.filas.forEach(function (f, idx) {
                 html += '<tr style="background:#ecfdf5;">'
-                    + (idx === 0 ? '<td rowspan="' + a.filas.length + '"><small>' + a.archivo + '</small></td>'
+                    + (idx === 0 ? '<td rowspan="' + a.filas.length + '"><small>' + a.archivo + '</small>'
+                                   + (a.advertencia ? '<br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ' + a.advertencia + '</small>' : '')
+                                   + '</td>'
                                    + '<td rowspan="' + a.filas.length + '">' + a.fecha + '</td>' : '')
                     + '<td>' + f.producto + '</td>'
                     + '<td class="text-end">' + Number(f.inv_fisico).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'

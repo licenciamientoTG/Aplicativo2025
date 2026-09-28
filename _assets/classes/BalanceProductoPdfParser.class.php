@@ -44,9 +44,16 @@ class BalanceProductoPdfParser
             $base['error'] = 'El PDF cubre un rango (Fecha != Fecha Hasta), se esperaba un solo día';
             return $base;
         }
-        if (!preg_match('/Estación\s+(\S+)/u', $texto, $mEst) || strtoupper($mEst[1]) !== 'PRAXEDIS') {
-            $base['error'] = 'El PDF no es de la estación PRAXEDIS';
-            return $base;
+        // Algunos exports de ControlGas no imprimen la línea "Estación" en el
+        // encabezado: si viene, debe ser PRAXEDIS; si no viene, se acepta
+        // con advertencia (el preview la muestra para que el usuario confirme).
+        if (preg_match('/Estación\s+(\S+)/u', $texto, $mEst)) {
+            if (strtoupper($mEst[1]) !== 'PRAXEDIS') {
+                $base['error'] = "El PDF es de la estación {$mEst[1]}, no de PRAXEDIS";
+                return $base;
+            }
+        } else {
+            $base['advertencia'] = 'El PDF no indica la estación; verifica que sea de Praxedis';
         }
         if (!preg_match('/Tipo\s+(\S+)/', $texto, $mTipo) || strtolower($mTipo[1]) !== 'diario') {
             $base['error'] = 'El PDF no es de tipo Diario';

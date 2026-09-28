@@ -24,6 +24,8 @@ class Merma
     private const API_URL  = 'http://192.168.0.109:82/api/inventarios_turnos/';
     private const CODGAS_PRAXEDIS = 40;
     private const CODGAS_COLOSIO  = 199;
+    // Estaciones sin sync por ApiER (su snapshot solo se alimenta por PDF)
+    private const CODGAS_CARGA_MANUAL = [self::CODGAS_PRAXEDIS, self::CODGAS_COLOSIO];
 
     private $twig;
     private $route;
@@ -1081,6 +1083,18 @@ class Merma
     {
         $inicio = microtime(true);
 
+        if (in_array($codgas, self::CODGAS_CARGA_MANUAL, true)) {
+            return [
+                'success'          => false,
+                'message'          => 'Esta estación no se sincroniza con ApiER; sus datos se cargan desde PDF',
+                'estaciones_ok'    => 0,
+                'estaciones_error' => 0,
+                'errores'          => [],
+                'filas'            => 0,
+                'duracion_seg'     => 0,
+            ];
+        }
+
         $ch = curl_init(self::API_URL);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
@@ -1134,6 +1148,9 @@ class Merma
             $codigo  = (int)($est['Codigo'] ?? 0);
             $nombre  = $est['Nombre'] ?? '';
             $filas   = $est['filas'] ?? [];
+            // Praxedis/Colosio se cargan a mano desde PDF: ApiER no tiene
+            // sus datos y un replace aquí borraría lo capturado
+            if (in_array($codigo, self::CODGAS_CARGA_MANUAL, true)) continue;
             try {
                 $filasTotal += $this->mermaModel->replace_station_range(
                     $codigo, $nombre, $desde, $hasta, $filas
@@ -1144,7 +1161,8 @@ class Merma
             }
         }
 
-        $errores      = $api['errores'] ?? [];
+        $errores      = array_values(array_filter($api['errores'] ?? [],
+            fn($e) => !in_array((int)($e['Codigo'] ?? 0), self::CODGAS_CARGA_MANUAL, true)));
         $todosErrores = array_merge($errores, $fallosLocales);
         $duracion     = round(microtime(true) - $inicio, 1);
         $detalle      = $todosErrores
