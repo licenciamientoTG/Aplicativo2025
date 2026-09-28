@@ -3267,21 +3267,6 @@ class Operations{
             }
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias de terminales: '.$e->getMessage()); }
     }
-    private function syncAllTerminalIncidents(?string $type=null, string $origin='reporte_global'): void {
-        try {
-            $service=new MojoTerminalTicketsService();
-            foreach ($this->terminalInventoryModel->history(0,true,['type'=>$type]) as $incident) {
-                $previous=(string)($incident['estado_local'] ?? $incident['estado_mojo']);
-                try {
-                    $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
-                    $state=$service->localState($ticket,$previous);
-                    $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
-                    $closedAt=$state==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? $ticket['solved_on'] ?? null) ?? date('Y-m-d H:i:s')) : null;
-                    $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$previous,$state,$closedAt,$state==='Closed' ? $service->closedByFromTicket($ticket) : null,$origin,$data['serial_urovo'] ?? null);
-                } catch (Throwable $e) { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],$previous,$origin,$e->getMessage()); error_log('No se sincronizó ticket Mojo #'.$incident['ticket_mojo_id'].': '.$e->getMessage()); }
-            }
-        } catch (Throwable $e) { error_log('No se sincronizaron incidencias desde Mojo: '.$e->getMessage()); }
-    }
     private function terminalJsonError(string $message, int $status=422): void { http_response_code($status); json_output(['success'=>false,'message'=>$message]); }
     public function terminal_inventory(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para registrar incidencias de terminales.'; return; }
@@ -3608,8 +3593,10 @@ class Operations{
         if ($station!=='' && !preg_match('/^\d+$/',$station)) $station='';
         if ($assigned!=='' && !preg_match('/^\d+$/',$assigned)) $assigned='';
         if ($stationScope!==null) $station=(string)$stationScope;
-        if ($globalReport) $this->syncAllTerminalIncidents($type,'reporte_incidencias');
-        elseif ($stationScope>0) $this->syncTerminalIncidents($stationScope,'reporte_estacion');
+        // El reporte global no debe sincronizar cada ticket con Mojo en serie:
+        // cada llamada externa puede tardar hasta 30 s y bloquear la respuesta.
+        // Mostrar el último estado persistido y sincronizar al actuar sobre el ticket.
+        if ($stationScope>0) $this->syncTerminalIncidents($stationScope,'reporte_estacion');
         try {
             $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
