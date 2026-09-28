@@ -3601,7 +3601,7 @@ class Operations{
         $globalReport=!$stationView;
         $month=trim((string)($_GET['month'] ?? '')); $from=trim((string)($_GET['from'] ?? '')); $to=trim((string)($_GET['to'] ?? ''));
         $asOf=trim((string)($_GET['as_of'] ?? '')); $station=(string)($_GET['station'] ?? ''); $type=trim((string)($_GET['type'] ?? ''));
-        $status=trim((string)($_GET['status'] ?? '')); $assigned=(string)($_GET['assigned'] ?? ''); $q=trim((string)($_GET['q'] ?? ''));
+        $status=trim((string)($_GET['status'] ?? '')); $assigned=(string)($_GET['assigned'] ?? '');
         if ($month!=='' && !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month)) $month='';
         foreach (['from','to','as_of'] as $key) { $value=$$key; if ($value!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$value)) $$key=''; }
         if (!in_array($status,['open','solved','reopened','closed'],true)) $status='';
@@ -3611,7 +3611,7 @@ class Operations{
         if ($globalReport) $this->syncAllTerminalIncidents($type,'reporte_incidencias');
         elseif ($stationScope>0) $this->syncTerminalIncidents($stationScope,'reporte_estacion');
         try {
-            $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q]);
+            $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
         foreach ($rows as &$row) {
             $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null);
@@ -3622,7 +3622,7 @@ class Operations{
         $stations=[]; foreach ($this->terminalInventoryModel->activeStations() as $stationRow) if ($stationScope===null || (int)$stationRow['Codigo']===$stationScope) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
         $assignees=[]; foreach ($this->terminalInventoryModel->incidentAssignees($stationScope) as $assignee) $assignees[(string)$assignee['assigned_to_id']]=(string)$assignee['asignado_a'];
         $openCount=count(array_filter($rows,fn($row)=>($row['estado_local'] ?? '')!=='Closed'));
-        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'globalReport'=>$globalReport,'stationView'=>$stationView,'stationName'=>$stationName,'canCapture'=>$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION),'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q],'openCount'=>$openCount]);
+        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'globalReport'=>$globalReport,'stationView'=>$stationView,'stationName'=>$stationName,'canCapture'=>$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION),'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned],'openCount'=>$openCount]);
     }
     public function terminal_inventory_group(): void {
         $this->terminalJsonError('Los reportes por captura semanal fueron retirados. Consulte el reporte de incidencias.',410);

@@ -14,13 +14,21 @@ $(function () {
     if (!table.length || !$.fn.DataTable) return;
     const exportOptions = { columns: ':visible', modifier: { search: 'applied' }, format: { header: (data, column) => table.find('thead tr:first th').eq(column).text().trim() } };
     const dt = table.DataTable({
-        pageLength: 25, searching: false, orderCellsTop: false,
+        pageLength: 25, searching: true, orderCellsTop: true,
         dom: '<"terminal-dt-toolbar"B l>t<"terminal-dt-footer"ip>',
         buttons: [
             { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Reporte de incidencias', exportOptions },
             { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm', title: 'Reporte de incidencias', orientation: 'landscape', pageSize: 'LEGAL', exportOptions }
         ],
         language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' }
+    });
+    table.find('.terminal-column-search').on('click', function (event) { event.stopPropagation(); });
+    table.on('input change', '.terminal-column-search', function () {
+        const column = dt.column(Number(this.dataset.column));
+        const value = this.value.trim();
+        const exact = this.tagName === 'SELECT' && value !== '';
+        const query = exact ? '^' + $.fn.dataTable.util.escapeRegex(value) + '$' : value;
+        column.search(query, exact, !exact).draw();
     });
     table.on('click', '.terminal-ticket-link', function (event) {
         event.stopPropagation();

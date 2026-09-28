@@ -253,11 +253,6 @@ class TerminalInventoryModel extends Model {
         if (!empty($filters['from'])) { $where[]='i.fecha_apertura_mojo >= ?'; $params[]=(string)$filters['from'].' 00:00:00'; }
         if (!empty($filters['to'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['to']; }
         if (!empty($filters['as_of'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['as_of']; }
-        if (!empty($filters['q'])) {
-            $where[]="(CONVERT(varchar(30),i.ticket_mojo_id) LIKE ? OR s.Nombre LIKE ? OR i.tipo_terminal LIKE ? OR i.descripcion LIKE ? OR i.folio_proveedor LIKE ? OR i.serial_urovo LIKE ? OR i.estado_mojo LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR st.name LIKE ? OR pr.name LIKE ? OR q.name LIKE ? OR tf.name LIKE ? OR co.name LIKE ? OR ur.first_name LIKE ? OR ur.last_name LIKE ?)";
-            $needle='%'.(string)$filters['q'].'%';
-            for ($n=0;$n<18;$n++) $params[]=$needle;
-        }
         return $this->sql->select("SELECT i.*,s.Nombre AS estacion_nombre,
                 COALESCE(c.terminales_esperadas,0) AS terminales_esperadas,
                 i.serial_urovo AS serie_urovo,
