@@ -373,11 +373,16 @@ def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str]
 
 
 def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, object]], sent_at: datetime) -> str:
-    summary.sort(key=lambda row: (
-        -int(row.get("danadas") or 0),
-        (int(row.get("stock") or 0)-int(row.get("danadas") or 0))/int(row.get("stock") or 1),
-        str(row.get("estacion_nombre") or "").casefold(),
-    ))
+    def coverage_sort_key(row: dict[str, object]) -> tuple[int, float, str]:
+        stock = int(row.get("stock") or 0)
+        damaged = int(row.get("danadas") or 0)
+        name = str(row.get("estacion_nombre") or "").casefold()
+        if stock <= 0:
+            return (1, 0.0, name)  # Sin stock no hay cobertura comparable; va al final.
+        coverage = max(0, stock - damaged) / stock
+        return (0, coverage, name)
+
+    summary.sort(key=coverage_sort_key)
     summary_rows = []
     total_stock = total_damaged = total_working = total_missing = 0
     incidents_by_station: dict[str, list[dict[str, object]]] = {}
@@ -408,7 +413,7 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
             f'<tr><td style="padding:5px 7px">#{escape(str(item.get("ticket_mojo_id") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("tipo_terminal") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("descripcion") or "—"))}</td><td style="padding:5px 7px">{escape(str(item.get("responsable") or "Sin asignar"))}</td><td style="padding:5px 7px;white-space:nowrap">{int(item.get("dias_laborales") or 0)} días / {float(item.get("horas_laborales") or 0):.2f} h</td></tr>'
             for item in station_incidents
         ) or '<tr><td colspan="5" style="padding:7px;color:#687887">No hay incidencias abiertas.</td></tr>'
-        details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Responsable</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
+        details = f'<details><summary style="cursor:pointer;color:#125ca8;font-weight:700">Ver incidencias ({len(station_incidents)})</summary><table style="margin-top:8px;border-collapse:collapse;width:100%;font-size:11px"><thead><tr style="background:#e5f0fa"><th style="padding:5px 7px;text-align:left">Ticket Mojo</th><th style="padding:5px 7px;text-align:left">Tipo</th><th style="padding:5px 7px;text-align:left">Descripción</th><th style="padding:5px 7px;text-align:left">Técnico TI</th><th style="padding:5px 7px;text-align:left">Días / Horas</th></tr></thead><tbody>{incident_detail}</tbody></table></details>'
         station_link = escape(terminal_incident_report_link(row.get("estacion_codigo"), sent_at), quote=True)
         summary_rows.append(
             f'<tr style="background:{background};border-bottom:1px solid #9bd5e8">'
@@ -437,7 +442,7 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
         color = "#d71920" if critical else "#a56a00"
         assigned_table.append(f'<tr style="background:{background};color:{color}"><td style="padding:11px 10px">{escape(responsable)}</td><td style="padding:11px 10px;text-align:center">{between_7_14}</td><td style="padding:11px 10px;text-align:center">{over_two_weeks}</td><td style="padding:11px 10px;text-align:center">{urgency:.2f}%</td></tr>')
     sent = sent_at.strftime("%d/%m/%Y %H:%M")
-    return f'''<!doctype html><html lang="es"><body style="margin:0;padding:18px;background:#ffffff;font-family:Arial,sans-serif;color:#173b59"><div style="max-width:900px;margin:0 auto"><div style="background:#28587c;color:#fff;text-align:center;padding:4px 8px;font-size:19px;font-weight:700">UROVO — Control de Inventario de Terminales</div><p style="font-size:12px;color:#687887">Reporte enviado el {sent}. El stock corresponde a la configuración vigente; funcionando = stock menos dañadas. Haz clic en el nombre de una estación para abrir directamente su reporte y consultar UROVO/Verifone.</p><table style="border-collapse:collapse;width:100%;font-size:12px;border:1px solid #9bd5e8"><thead><tr style="background:#377dc5;color:#fff"><th style="padding:7px 8px;text-align:left">Estación</th><th style="padding:7px 8px">Stock</th><th style="padding:7px 8px">Dañadas</th><th style="padding:7px 8px">Funcionando</th><th style="padding:7px 8px">Faltante</th><th style="padding:7px 8px">Cobertura</th></tr></thead><tbody>{"".join(summary_rows)}</tbody></table><h2 style="margin:24px 0 8px;color:#28587c;font-size:18px">Estadísticas por Asignado</h2><table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr style="border-bottom:1px solid #d8d8d8"><th style="padding:9px 10px;text-align:left">Asignado a</th><th style="padding:9px 10px">Tickets Sin Atención Entre 7 y 14 Días</th><th style="padding:9px 10px">Tickets Sin Atención Con Mas De Dos Semanas</th><th style="padding:9px 10px">% Urgencia</th></tr></thead><tbody>{"".join(assigned_table) or '<tr><td colspan="4" style="padding:16px;text-align:center">No hay tickets abiertos.</td></tr>'}</tbody></table></div></body></html>'''
+    return f'''<!doctype html><html lang="es"><body style="margin:0;padding:18px;background:#ffffff;font-family:Arial,sans-serif;color:#173b59"><div style="max-width:900px;margin:0 auto"><div style="background:#28587c;color:#fff;text-align:center;padding:4px 8px;font-size:19px;font-weight:700">UROVO — Control de Inventario de Terminales</div><p style="font-size:12px;color:#687887">Reporte enviado el {sent}. El stock corresponde a la configuración vigente; funcionando = stock menos dañadas. Haz clic en el nombre de una estación para abrir directamente su reporte y consultar UROVO/Verifone.</p><table style="border-collapse:collapse;width:100%;font-size:12px;border:1px solid #9bd5e8"><thead><tr style="background:#377dc5;color:#fff"><th style="padding:7px 8px;text-align:left">Estación</th><th style="padding:7px 8px">Stock</th><th style="padding:7px 8px">Dañadas</th><th style="padding:7px 8px">Funcionando</th><th style="padding:7px 8px">Faltante</th><th style="padding:7px 8px">Cobertura</th></tr></thead><tbody>{"".join(summary_rows)}</tbody></table><h2 style="margin:24px 0 8px;color:#28587c;font-size:18px">Estadísticas por Técnico TI</h2><table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr style="border-bottom:1px solid #d8d8d8"><th style="padding:9px 10px;text-align:left">Técnico TI</th><th style="padding:9px 10px">Tickets Sin Atención Entre 7 y 14 Días</th><th style="padding:9px 10px">Tickets Sin Atención Con Mas De Dos Semanas</th><th style="padding:9px 10px">% Urgencia</th></tr></thead><tbody>{"".join(assigned_table) or '<tr><td colspan="4" style="padding:16px;text-align:center">No hay tickets abiertos.</td></tr>'}</tbody></table></div></body></html>'''
 
 
 def send_internal_email(to: list[str], summary: list[dict[str, object]], rows: list[dict[str, object]], sent_at: datetime, dry_run: bool) -> None:
@@ -448,7 +453,7 @@ def send_internal_email(to: list[str], summary: list[dict[str, object]], rows: l
     message["From"] = env_first("SMTP_FROM", "EMAIL_FROM", default="no-reply@totalgas.com")
     message["To"] = ", ".join(to)
     message["Subject"] = subject
-    message.set_content("Reporte de control de inventario UROVO y tickets abiertos por responsable.")
+    message.set_content("Reporte de control de inventario UROVO y tickets abiertos por técnico TI.")
     message.add_alternative(render_internal_html(summary, rows, sent_at), subtype="html")
     if dry_run:
         print(f"DRY-RUN: {subject} -> {message['To']} ({len(rows)} tickets)")
