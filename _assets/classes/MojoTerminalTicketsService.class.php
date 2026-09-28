@@ -53,7 +53,14 @@ class MojoTerminalTicketsService {
         $ch=curl_init($url); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_CUSTOMREQUEST=>$method,CURLOPT_TIMEOUT=>30,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_HTTPHEADER=>['Content-Type: application/json']]);
         if ($payload!==null) curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($payload,JSON_UNESCAPED_UNICODE));
         $raw=curl_exec($ch); $code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE); $error=curl_error($ch); curl_close($ch);
-        $data=json_decode((string)$raw,true); if ($raw===false || $code<200 || $code>=300) throw new RuntimeException('No fue posible comunicarse con Mojo'.($error?": $error":''));
+        $data=json_decode((string)$raw,true);
+        if ($raw===false) throw new RuntimeException('MOJO_TRANSPORT_ERROR'.($error?': '.$error:''));
+        if ($code<200 || $code>=300) {
+            $detail=is_array($data) ? trim((string)($data['message'] ?? $data['error'] ?? '')) : '';
+            if ($detail==='' && is_array($data['errors'] ?? null)) $detail=implode('; ',array_map(static fn($item)=>is_scalar($item) ? (string)$item : '',$data['errors']));
+            $detail=mb_substr(trim(preg_replace('/\s+/u',' ',strip_tags($detail)) ?? ''),0,320);
+            throw new RuntimeException('MOJO_HTTP_'.$code.($detail!==''?': '.$detail:''));
+        }
         return is_array($data)?$data:[];
     }
     public function getTicket(int $id): array { return $this->request('GET','/v3/tickets/'.$id); }

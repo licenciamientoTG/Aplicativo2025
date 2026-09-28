@@ -3344,6 +3344,14 @@ class Operations{
         catch (Throwable $e) {
             try { $this->terminalInventoryModel->recordIncidentError($requestKey,$e->getMessage()); } catch (Throwable $ignored) {}
             error_log('No se pudo completar incidencia MOJO '.$requestKey.': '.$e->getMessage());
+            if (preg_match('/^MOJO_HTTP_(\d{3})(?::\s*(.*))?$/s',$e->getMessage(),$apiError)) {
+                $status=(int)$apiError[1];
+                $message=in_array($status,[401,403],true)
+                    ? 'La integración no está autorizada para completar la operación con Mojo. Solicite a soporte revisar su configuración.'
+                    : 'No se pudo completar la operación con Mojo (HTTP '.$status.'). Mantenga esta ventana abierta y reintente para conciliar la misma solicitud.';
+                $this->terminalJsonError($message,502);
+                return;
+            }
             $this->terminalJsonError('No se pudo confirmar el registro local. Reintente la misma solicitud para conciliar el ticket MOJO sin duplicarlo.',503);
         }
     }
