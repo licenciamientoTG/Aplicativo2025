@@ -3361,6 +3361,16 @@ class Operations{
     public function terminal_incident_confirm(): void {
         $this->terminalJsonError('La confirmación manual fue retirada. Los tickets pasan a Solved y se cierran desde la lista de incidencias.',410);
     }
+    private function terminalIsTextUpload(string $path): bool {
+        $contents=file_get_contents($path);
+        if ($contents===false) return false;
+        if (str_starts_with($contents,"\xFF\xFE")) { if (!mb_check_encoding(substr($contents,2),'UTF-16LE')) return false; $contents=mb_convert_encoding(substr($contents,2),'UTF-8','UTF-16LE'); }
+        elseif (str_starts_with($contents,"\xFE\xFF")) { if (!mb_check_encoding(substr($contents,2),'UTF-16BE')) return false; $contents=mb_convert_encoding(substr($contents,2),'UTF-8','UTF-16BE'); }
+        if (str_starts_with($contents,"\xEF\xBB\xBF")) $contents=substr($contents,3);
+        return !str_contains($contents,"\0")
+            && mb_check_encoding($contents,'UTF-8')
+            && !preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/',$contents);
+    }
     private function terminalTechnicianUploads(): array {
         $bundle=$_FILES['attachments'] ?? null;
         if (!is_array($bundle) || !isset($bundle['name'])) return [];
@@ -3390,7 +3400,14 @@ class Operations{
             $totalSize+=$size;
             if ($totalSize>25*1024*1024) throw new InvalidArgumentException('El total de archivos no debe superar 25 MB.');
             $mime=(string)$finfo->file($tmp);
-            if (!isset($allowed[$extension]) || !in_array($mime,$allowed[$extension],true)) throw new InvalidArgumentException('Tipo de archivo no permitido. Usa PDF, imagen, Word, Excel, TXT o CSV.');
+            $validMime=isset($allowed[$extension]) && in_array($mime,$allowed[$extension],true);
+            // Algunos sistemas identifican archivos .txt/.csv válidos como
+            // application/octet-stream; aceptar sólo si el contenido es texto.
+            if (!$validMime && in_array($extension,['txt','csv'],true) && in_array($mime,['application/octet-stream','application/x-empty'],true)) {
+                $validMime=$this->terminalIsTextUpload($tmp);
+                if ($validMime) $mime=$extension==='csv'?'text/csv':'text/plain';
+            }
+            if (!$validMime) throw new InvalidArgumentException('Tipo de archivo no permitido. Usa PDF, imagen, Word, Excel, TXT o CSV.');
             $safeName=preg_replace('/[^\pL\pN._ -]/u','_', $name) ?: 'archivo.'.$extension;
             $files[]=['tmp'=>$tmp,'name'=>$safeName,'mime'=>$mime,'size'=>$size];
         }
