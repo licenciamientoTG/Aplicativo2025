@@ -4,7 +4,7 @@ $(function () {
     const $other = $('#exchangeUser');
     const $review = $('#reviewStationTransfer');
     const $confirm = $('#confirmStationTransfer');
-    const $confirmation = $('#transferConfirmation');
+    const $confirmation = $('#stationTransferConfirmModal');
     let users = [];
     let operation = 'move';
 
@@ -13,6 +13,27 @@ $(function () {
     const stationIdOf = user => Number(user.station_id);
     const userLabel = user => (user.name || user.username || 'Usuario') + ' · ' + (user.station_name || 'Sin estación');
     const feedback = (message, type) => $('#transferFeedback').html(message ? '<div class="alert alert-' + type + ' mb-0" role="alert">' + esc(message) + '</div>' : '');
+
+    function initSearchableSelect($select, placeholder) {
+        if (!$select.length || !$.fn.select2) return;
+        if ($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+        $select.select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder,
+            allowClear: true,
+            dropdownParent: $(document.body),
+            language: {
+                noResults: () => 'No se encontraron resultados',
+                searching: () => 'Buscando…',
+                inputTooShort: () => 'Escribe para buscar'
+            }
+        });
+    }
+
+    initSearchableSelect($user, 'Buscar encargado…');
+    initSearchableSelect($other, 'Buscar encargado…');
+    initSearchableSelect($station, 'Buscar estación…');
 
     function readRenderedUsers() {
         return $user.find('option').map(function () {
@@ -33,6 +54,8 @@ $(function () {
             if (idOf(user) !== current) $other.append(new Option(userLabel(user), user.user_id));
         });
         if (users.some(user => idOf(user) === current)) $user.val(String(current));
+        $user.trigger('change.select2');
+        $other.trigger('change.select2');
         updateForm();
     }
 
@@ -47,7 +70,7 @@ $(function () {
         $station.prop('disabled', operation !== 'move' || !selected);
         $other.prop('disabled', operation !== 'exchange' || !selected);
         $review.prop('disabled', !selected || (operation === 'move' ? !selectedStation() || Number(selectedStation().Codigo) === stationIdOf(selected) : !other || idOf(other) === idOf(selected)));
-        $confirmation.addClass('d-none');
+        if ($confirmation.hasClass('show')) $confirmation.modal('hide');
         $confirm.prop('disabled', false).text('Confirmar cambio');
     }
 
@@ -98,18 +121,24 @@ $(function () {
         const user = activeUser();
         if (!user) return;
         const other = otherUser();
-        let description;
+        let summary;
         if (operation === 'move') {
             const station = selectedStation();
             if (!station || Number(station.Codigo) === stationIdOf(user)) return;
-            description = '<strong>' + esc(user.name || user.username) + '</strong> cambiará de <strong>' + esc(user.station_name || 'su estación actual') + '</strong> a <strong>' + esc(station.Nombre) + '</strong>.';
+            summary = '<div class="station-transfer-summary-card"><small>Encargado</small><strong>' + esc(user.name || user.username) + '</strong><span class="text-muted">' + esc(user.station_name || 'Sin estación') + '</span></div>'
+                + '<i class="station-transfer-summary-arrow" data-feather="arrow-right" aria-hidden="true"></i>'
+                + '<div class="station-transfer-summary-card"><small>Nueva estación</small><strong>' + esc(station.Nombre) + '</strong><span class="text-muted">Destino</span></div>';
+            $('#transferConfirmationIntro').text('El encargado cambiará de su estación actual a la estación seleccionada.');
         } else {
             if (!other || idOf(other) === idOf(user)) return;
-            description = '<strong>' + esc(user.name || user.username) + '</strong> (' + esc(user.station_name) + ') y <strong>' + esc(other.name || other.username) + '</strong> (' + esc(other.station_name) + ') intercambiarán sus estaciones.';
+            summary = '<div class="station-transfer-summary-card"><small>Primer encargado</small><strong>' + esc(user.name || user.username) + '</strong><span class="text-muted">' + esc(user.station_name || 'Sin estación') + '</span></div>'
+                + '<i class="station-transfer-summary-arrow" data-feather="repeat" aria-hidden="true"></i>'
+                + '<div class="station-transfer-summary-card"><small>Segundo encargado</small><strong>' + esc(other.name || other.username) + '</strong><span class="text-muted">' + esc(other.station_name || 'Sin estación') + '</span></div>';
+            $('#transferConfirmationIntro').text('Las estaciones actuales de estos dos encargados se intercambiarán.');
         }
-        $('#transferConfirmationText').html(description + ' Esta acción se registrará en el historial.');
-        $confirmation.removeClass('d-none');
-        $confirm.trigger('focus');
+        $('#transferConfirmationSummary').html(summary);
+        if (window.feather) feather.replace();
+        $confirmation.modal('show');
     }
     function saveTransfer() {
         const user = activeUser();
@@ -121,7 +150,7 @@ $(function () {
             .done(response => {
                 if (!response.success) { feedback(response.message || 'No se pudo completar el cambio.', 'danger'); return; }
                 feedback(response.message || 'Cambio de estación registrado.', 'success');
-                $confirmation.addClass('d-none');
+                $confirmation.modal('hide');
                 if (operation === 'move') {
                     user.station_id = payload.station_id;
                     user.station_name = selectedStation()?.Nombre || user.station_name;
@@ -142,8 +171,7 @@ $(function () {
     $station.add($other).on('change', updateForm);
     $review.on('click', reviewTransfer);
     $confirm.on('click', saveTransfer);
-    $('#cancelStationTransfer').on('click', () => $confirmation.addClass('d-none'));
-    $('#resetStationTransfer').on('click', function () { $user.val(''); $station.val(''); $other.val(''); $confirmation.addClass('d-none'); feedback('', 'info'); updateForm(); loadHistory(null); });
+    $('#resetStationTransfer').on('click', function () { $user.val('').trigger('change.select2'); $station.val('').trigger('change.select2'); $other.val('').trigger('change.select2'); if ($confirmation.hasClass('show')) $confirmation.modal('hide'); feedback('', 'info'); updateForm(); loadHistory(null); });
     if (window.feather) feather.replace();
     users = readRenderedUsers();
     updateForm();
