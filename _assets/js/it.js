@@ -168,6 +168,117 @@ $('#filtro-datatables_users input').on('keyup change clear', function () {
         .draw();
   });
 
+// Filtros Excel por columna: funcionan junto con la búsqueda global y los inputs existentes.
+(function () {
+    const selectedValues = {};
+    let activeColumn = null;
+    const $table = $('#datatables_users');
+
+    function cellValue(rowIndex, columnIndex) {
+        const rendered = datatables_users.cell(rowIndex, columnIndex).render('filter');
+        return rendered == null ? '' : String(rendered).trim();
+    }
+
+    function distinctValues(columnIndex) {
+        const values = new Set();
+        datatables_users.rows({ search: 'none' }).indexes().each(function (rowIndex) {
+            values.add(cellValue(rowIndex, columnIndex));
+        });
+        return Array.from(values).sort(function (a, b) { return a.localeCompare(b, 'es', { numeric: true }); });
+    }
+
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+        if (settings.nTable !== $table[0]) return true;
+        return Object.keys(selectedValues).every(function (key) {
+            const columnIndex = Number(key);
+            const selected = selectedValues[columnIndex];
+            return !selected || selected.has(cellValue(dataIndex, columnIndex));
+        });
+    });
+
+    function closeMenu() {
+        $('#users-excel-filter').remove();
+        activeColumn = null;
+    }
+
+    function openMenu(columnIndex, trigger) {
+        closeMenu();
+        activeColumn = columnIndex;
+        const values = distinctValues(columnIndex);
+        const applied = selectedValues[columnIndex];
+        const draft = new Set(applied ? Array.from(applied) : values);
+        const $menu = $('<div id="users-excel-filter" role="dialog" aria-label="Filtrar columna"></div>');
+        const $search = $('<input type="search" class="form-control form-control-sm" aria-label="Buscar valores" placeholder="Buscar">');
+        const $all = $('<label class="users-filter-value"><input type="checkbox" class="users-filter-select-all"> <span>(Seleccionar todo)</span></label>');
+        const $list = $('<div class="users-filter-values" role="group"></div>');
+
+        values.forEach(function (value, index) {
+            const $label = $('<label class="users-filter-value"></label>');
+            const $checkbox = $('<input type="checkbox" class="users-filter-option">').val(value).prop('checked', draft.has(value));
+            const $text = $('<span></span>').text(value === '' ? '(Vacío)' : value);
+            $label.attr('data-filter-text', value.toLocaleLowerCase('es')).append($checkbox, $text);
+            $list.append($label);
+        });
+        const $selectAll = $all.find('input');
+        function syncSelectAll() {
+            const shown = $list.find('.users-filter-option:visible');
+            const checked = shown.filter(':checked').length;
+            $selectAll.prop('checked', shown.length > 0 && checked === shown.length).prop('indeterminate', checked > 0 && checked < shown.length);
+        }
+        $search.on('input', function () {
+            const query = this.value.toLocaleLowerCase('es');
+            $list.children().each(function () { $(this).toggle($(this).attr('data-filter-text').indexOf(query) >= 0); });
+            syncSelectAll();
+        });
+        $list.on('change', '.users-filter-option', function () {
+            if (this.checked) draft.add(this.value); else draft.delete(this.value);
+            syncSelectAll();
+        });
+        $selectAll.on('change', function () {
+            $list.find('.users-filter-option:visible').each(function () {
+                $(this).prop('checked', $selectAll.prop('checked'));
+                if (this.checked) draft.add(this.value); else draft.delete(this.value);
+            });
+            syncSelectAll();
+        });
+        const $cancel = $('<button type="button" class="btn btn-sm btn-light">Cancelar</button>').on('click', closeMenu);
+        const $accept = $('<button type="button" class="btn btn-sm btn-primary">Aceptar</button>').on('click', function () {
+            if (draft.size === values.length) delete selectedValues[columnIndex];
+            else selectedValues[columnIndex] = new Set(draft);
+            closeMenu();
+            datatables_users.draw();
+        });
+        const $actions = $('<div class="users-filter-actions"></div>').append($cancel, $accept);
+        $menu.append($search, $all, $list, $actions).appendTo(document.body);
+        const rect = trigger.getBoundingClientRect();
+        const left = Math.max(8, Math.min(rect.left, window.innerWidth - $menu.outerWidth() - 8));
+        const top = Math.min(rect.bottom + 4, window.innerHeight - $menu.outerHeight() - 8);
+        $menu.css({ left: left + 'px', top: Math.max(8, top) + 'px' });
+        syncSelectAll();
+        $search.trigger('focus');
+    }
+
+    function addHeaderFilters() {
+        $table.find('thead th').each(function () {
+            const columnIndex = datatables_users.column(this).index();
+            if (columnIndex == null || columnIndex >= 9 || $(this).find('.users-filter-trigger').length) return;
+            const $trigger = $('<button type="button" class="users-filter-trigger" aria-label="Filtrar columna"><i class="fas fa-filter" aria-hidden="true"></i></button>');
+            $trigger.on('click', function (event) { event.stopPropagation(); openMenu(columnIndex, this); });
+            $(this).append($trigger);
+        });
+    }
+
+    datatables_users.on('init.dt', addHeaderFilters);
+    datatables_users.on('xhr.dt', addHeaderFilters);
+    addHeaderFilters();
+    $(document).on('click.usersExcelFilter', function (event) {
+        if (!$(event.target).closest('#users-excel-filter, .users-filter-trigger').length) closeMenu();
+    }).on('keydown.usersExcelFilter', function (event) {
+        if (event.key === 'Escape') closeMenu();
+    });
+    $(window).on('resize.usersExcelFilter scroll.usersExcelFilter', closeMenu);
+})();
+
 // Agregar un evento clic de refresh
 $('.refresh_datatables_users').on('click', function () {
     datatables_users.clear().draw();
