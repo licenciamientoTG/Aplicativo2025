@@ -2,8 +2,10 @@
 class TerminalInventoryModel extends Model {
     public const CAPTURE_PERMISSION = 'Inventario terminales - Captura propia';
     public const REPORT_PERMISSION = 'Inventario terminales - Reporte global';
+    public const STATION_REPORT_PERMISSION = 'Inventario terminales - Reporte de estación';
     public const CAPTURE_PERMISSION_ID = 96;
     public const REPORT_PERMISSION_ID = 97;
+    private static array $resolvedPermissionIds = [];
 
     public function hasPermission(int $userId, string $description): bool {
         // Los permisos ya se cargan en la sesión al iniciar sesión. Consultar la
@@ -14,6 +16,13 @@ class TerminalInventoryModel extends Model {
             self::REPORT_PERMISSION => self::REPORT_PERMISSION_ID,
             default => 0,
         };
+        if ($permissionId === 0 && $description === self::STATION_REPORT_PERMISSION) {
+            if (!array_key_exists($description, self::$resolvedPermissionIds)) {
+                $rows=$this->sql->select('SELECT MIN(id) AS id,COUNT(*) AS matching_count FROM [TG].[dbo].[tg_permissions] WHERE [action]=? AND department=? AND description=? AND status=1', ['read','Operaciones',$description]);
+                self::$resolvedPermissionIds[$description]=((int)($rows[0]['matching_count'] ?? 0)===1) ? (int)$rows[0]['id'] : 0;
+            }
+            $permissionId=self::$resolvedPermissionIds[$description];
+        }
         $permissions = explode(',', (string)($_SESSION['tg_user']['permissions'] ?? ''));
         return $permissionId > 0 && in_array((string)$permissionId, $permissions, true);
     }
@@ -104,6 +113,12 @@ class TerminalInventoryModel extends Model {
             WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
             GROUP BY e.Codigo,e.Nombre ORDER BY COUNT(i.id) DESC,e.Nombre");
     }
+    public function reportStations(): array {
+        return $this->sql->select("SELECT e.Codigo,e.Nombre FROM [TG].[dbo].[Estaciones] e
+            WHERE e.Codigo NOT IN (0,4,20) AND (e.activa=1 OR EXISTS (
+                SELECT 1 FROM [TG].[dbo].[inv_ter_incidencias] i WHERE i.estacion_id=e.Codigo
+            )) ORDER BY e.Nombre");
+    }
     public function incidentAssignees(?int $stationId=null): array {
         $stationWhere=$stationId===null ? '' : ' WHERE i.estacion_id=?';
         $params=$stationId===null ? [] : [$stationId];
@@ -116,6 +131,11 @@ class TerminalInventoryModel extends Model {
     }
     public function activeIncidents(int $stationId): array {
         return $this->sql->select("SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE estacion_id=? AND estado_local IN ('Abierta','Solved','Reabierta') ORDER BY fecha_apertura_mojo DESC", [$stationId]);
+    }
+    public function closedIncidentsForMonth(int $stationId, string $start, string $endExclusive): array {
+        return $this->sql->select("SELECT * FROM [TG].[dbo].[inv_ter_incidencias]
+            WHERE estacion_id=? AND estado_local='Closed' AND fecha_cierre_mojo >= ? AND fecha_cierre_mojo < ?
+            ORDER BY fecha_cierre_mojo DESC", [$stationId,$start,$endExclusive]);
     }
     public function pendingResolutionConfirmations(int $stationId): array {
         return $this->sql->select("SELECT id AS incident_id,tipo_terminal,ticket_mojo_id,fecha_cierre_mojo,
@@ -200,7 +220,7 @@ class TerminalInventoryModel extends Model {
         return $affected === 1;
     }
     public function incidentForStation(int $incidentId, int $stationId): array|false {
-        $rows=$this->sql->select('SELECT id,estado_mojo,estado_local,fecha_cierre_mojo,ticket_mojo_id FROM [TG].[dbo].[inv_ter_incidencias] WHERE id=? AND estacion_id=?', [$incidentId,$stationId]);
+        $rows=$this->sql->select('SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE id=? AND estacion_id=?', [$incidentId,$stationId]);
         return $rows[0] ?? false;
     }
     public function changeIncidentState(int $incidentId, string $old, string $new, int $userId, string $email, string $origin, ?string $comment=null, string $sync='sincronizado'): void {
@@ -231,7 +251,9 @@ class TerminalInventoryModel extends Model {
     public function incidentReport(array $filters=[]): array {
         $where=['1=1']; $params=[];
         if (!empty($filters['station'])) { $where[]='i.estacion_id=?'; $params[]=(int)$filters['station']; }
-        if (!empty($filters['type'])) { $where[]='i.tipo_terminal=?'; $params[]=(string)$filters['type']; }
+        if (($filters['type'] ?? '')==='valeras') $where[]="i.tipo_terminal NOT IN ('urovo','verifone')";
+        elseif (($filters['type'] ?? '')==='internas') $where[]="i.tipo_terminal IN ('urovo','verifone')";
+        elseif (!empty($filters['type'])) { $where[]='i.tipo_terminal=?'; $params[]=(string)$filters['type']; }
         if (($filters['status'] ?? '')==='open') $where[]="i.estado_local IN ('Abierta','Solved','Reabierta')";
         if (($filters['status'] ?? '')==='solved') $where[]="i.estado_local='Solved'";
         if (($filters['status'] ?? '')==='reopened') $where[]="i.estado_local='Reabierta'";
@@ -243,12 +265,6 @@ class TerminalInventoryModel extends Model {
         }
         if (!empty($filters['from'])) { $where[]='i.fecha_apertura_mojo >= ?'; $params[]=(string)$filters['from'].' 00:00:00'; }
         if (!empty($filters['to'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['to']; }
-        if (!empty($filters['as_of'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['as_of']; }
-        if (!empty($filters['q'])) {
-            $where[]="(CONVERT(varchar(30),i.ticket_mojo_id) LIKE ? OR s.Nombre LIKE ? OR i.tipo_terminal LIKE ? OR i.descripcion LIKE ? OR i.folio_proveedor LIKE ? OR i.serial_urovo LIKE ? OR i.estado_mojo LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR st.name LIKE ? OR pr.name LIKE ? OR q.name LIKE ? OR tf.name LIKE ? OR co.name LIKE ? OR ur.first_name LIKE ? OR ur.last_name LIKE ?)";
-            $needle='%'.(string)$filters['q'].'%';
-            for ($n=0;$n<18;$n++) $params[]=$needle;
-        }
         return $this->sql->select("SELECT i.*,s.Nombre AS estacion_nombre,
                 COALESCE(c.terminales_esperadas,0) AS terminales_esperadas,
                 i.serial_urovo AS serie_urovo,
@@ -265,6 +281,7 @@ class TerminalInventoryModel extends Model {
                 q.name AS mojo_queue,tf.name AS mojo_form,
                 co.name AS mojo_company,
                 NULLIF(LTRIM(RTRIM(COALESCE(ur.first_name,'')+' '+COALESCE(ur.middle_name,'')+' '+COALESCE(ur.last_name,''))),'') AS mojo_solicitante,
+                GETDATE() AS fecha_calculo,
                 DATEDIFF(DAY,i.fecha_apertura_mojo,COALESCE(i.fecha_cierre_mojo,GETDATE())) AS dias_naturales
             FROM [TG].[dbo].[inv_ter_incidencias] i
             LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id
@@ -278,17 +295,5 @@ class TerminalInventoryModel extends Model {
             LEFT JOIN [TG].[dbo].[mojo_ticket_queue] q ON q.id_mojo=t.ticket_queue_id
             LEFT JOIN [TG].[dbo].[mojo_ticket_forms] tf ON tf.id_mojo=t.ticket_form_id
             WHERE ".implode(' AND ',$where)." ORDER BY i.fecha_apertura_mojo DESC,i.id DESC", $params);
-    }
-    public function monthlyIncidentSummary(?int $stationId=null): array {
-        $where=$stationId===null ? '' : 'WHERE estacion_id=?';
-        $params=$stationId===null ? [] : [$stationId];
-        return $this->sql->select("WITH monthly AS (
-                SELECT YEAR(fecha_apertura_mojo) AS [year],MONTH(fecha_apertura_mojo) AS [month],
-                       COUNT(*) AS incident_count,SUM(CASE WHEN tipo_terminal='urovo' THEN 1 ELSE 0 END) AS urovo_count
-                FROM [TG].[dbo].[inv_ter_incidencias] $where
-                GROUP BY YEAR(fecha_apertura_mojo),MONTH(fecha_apertura_mojo)
-            ) SELECT [year],[month],incident_count,urovo_count,
-                SUM(incident_count) OVER (ORDER BY [year],[month] ROWS UNBOUNDED PRECEDING) AS cumulative_count
-              FROM monthly ORDER BY [year] DESC,[month] DESC",$params);
     }
 }

@@ -31,6 +31,7 @@ class Operations{
     public XmlVsVentasModel $xmlVsVentasModel;
     public ClientesModel $clientesModel;
     public TerminalInventoryModel $terminalInventoryModel;
+    public StationTransferModel $stationTransferModel;
     private ?array $terminalSettingsCache = null;
     private ?array $terminalValerasCache = null;
 
@@ -65,6 +66,7 @@ class Operations{
         $this->xmlVsVentasModel             = new XmlVsVentasModel();
         $this->clientesModel                = new ClientesModel();
         $this->terminalInventoryModel       = new TerminalInventoryModel();
+        $this->stationTransferModel          = new StationTransferModel();
 
     }
 
@@ -3217,31 +3219,33 @@ class Operations{
     }
     private function terminalBusinessTime(string $from, ?string $until=null): array {
         try {
-            $timezone=new DateTimeZone('America/Ojinaga');
+            $timezone=new DateTimeZone('America/Ciudad_Juarez');
             $parse=function(string $value) use ($timezone): DateTimeImmutable {
                 $hasTimezone=(bool)preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i',trim($value));
                 $date=new DateTimeImmutable($value,$hasTimezone ? null : $timezone);
                 return $date->setTimezone($timezone);
             };
             $start=$parse($from); $end=$until!==null ? $parse($until) : new DateTimeImmutable('now',$timezone);
-        } catch (Throwable $e) { return ['dias_laborales'=>0,'horas_laborales'=>0.0]; }
-        if ($start >= $end) return ['dias_laborales'=>0,'horas_laborales'=>0.0];
+        } catch (Throwable $e) { return ['dias_transcurridos'=>0,'horas_laborales'=>0.0]; }
+        if ($start >= $end) return ['dias_transcurridos'=>0,'horas_laborales'=>0.0];
         $seconds=0;
-        $days=0;
         for ($day=$start->setTime(0,0); $day <= $end->setTime(0,0); $day=$day->modify('+1 day')) {
             if ((int)$day->format('N') > 5) continue;
             $windowStart=$day->setTime(8,0);
             $windowEnd=$day->setTime(18,0);
             $segmentStart=$start > $windowStart ? $start : $windowStart;
             $segmentEnd=$end < $windowEnd ? $end : $windowEnd;
-            if ($segmentEnd > $segmentStart) { $seconds += $segmentEnd->getTimestamp() - $segmentStart->getTimestamp(); $days++; }
+            if ($segmentEnd > $segmentStart) $seconds += $segmentEnd->getTimestamp() - $segmentStart->getTimestamp();
         }
-        return ['dias_laborales'=>$days,'horas_laborales'=>round($seconds / 3600, 2)];
+        // Count completed elapsed days; a few working minutes on the opening
+        // day must not immediately appear as one full day.
+        $days=intdiv($end->getTimestamp()-$start->getTimestamp(),86400);
+        return ['dias_transcurridos'=>$days,'horas_laborales'=>round($seconds / 3600, 2)];
     }
     private function terminalLocalClosedAt(?string $value): ?string {
         if (!$value) return null;
         try {
-            $timezone=new DateTimeZone('America/Ojinaga');
+            $timezone=new DateTimeZone('America/Ciudad_Juarez');
             $hasTimezone=(bool)preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i',trim($value));
             $date=new DateTimeImmutable($value,$hasTimezone ? null : $timezone);
             return $date->setTimezone($timezone)->format('Y-m-d H:i:s');
@@ -3261,26 +3265,11 @@ class Operations{
                     $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
                     $state=$service->localState($ticket,$previous);
                     $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
-                    $closedAt=$state==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? $ticket['solved_on'] ?? null) ?? date('Y-m-d H:i:s')) : null;
+                    $closedAt=$state==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? $ticket['solved_on'] ?? null) ?? (new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez')))->format('Y-m-d H:i:s')) : null;
                     $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$previous,$state,$closedAt,$state==='Closed' ? $service->closedByFromTicket($ticket) : null,$origin,$data['serial_urovo'] ?? null);
                 } catch (Throwable $e) { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],$previous,$origin,$e->getMessage()); error_log('No se sincronizó ticket Mojo #'.$incident['ticket_mojo_id'].': '.$e->getMessage()); }
             }
         } catch (Throwable $e) { error_log('No se sincronizaron incidencias de terminales: '.$e->getMessage()); }
-    }
-    private function syncAllTerminalIncidents(?string $type=null, string $origin='reporte_global'): void {
-        try {
-            $service=new MojoTerminalTicketsService();
-            foreach ($this->terminalInventoryModel->history(0,true,['type'=>$type]) as $incident) {
-                $previous=(string)($incident['estado_local'] ?? $incident['estado_mojo']);
-                try {
-                    $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
-                    $state=$service->localState($ticket,$previous);
-                    $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
-                    $closedAt=$state==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? $ticket['solved_on'] ?? null) ?? date('Y-m-d H:i:s')) : null;
-                    $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$previous,$state,$closedAt,$state==='Closed' ? $service->closedByFromTicket($ticket) : null,$origin,$data['serial_urovo'] ?? null);
-                } catch (Throwable $e) { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],$previous,$origin,$e->getMessage()); error_log('No se sincronizó ticket Mojo #'.$incident['ticket_mojo_id'].': '.$e->getMessage()); }
-            }
-        } catch (Throwable $e) { error_log('No se sincronizaron incidencias desde Mojo: '.$e->getMessage()); }
     }
     private function terminalJsonError(string $message, int $status=422): void { http_response_code($status); json_output(['success'=>false,'message'=>$message]); }
     public function terminal_inventory(): void {
@@ -3288,8 +3277,84 @@ class Operations{
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
         $this->syncTerminalIncidents($stationId,'vista');
+        $monthStart=(new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez')))->modify('first day of this month')->setTime(0,0);
+        $nextMonth=$monthStart->modify('+1 month');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
-        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)]);
+        $closed=$this->terminalInventoryModel->closedIncidentsForMonth($stationId,$monthStart->format('Y-m-d H:i:s'),$nextMonth->format('Y-m-d H:i:s'));
+        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'closedIncidents'=>$closed,'currentMonth'=>$monthStart->format('Y-m'),'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)]);
+    }
+
+    /** Operations module for transferring station assignments between station managers. */
+    public function station_transfer(): void {
+        if (!authorized(100)) { http_response_code(403); echo 'No cuenta con permiso para administrar cambios de estación.'; return; }
+        try {
+            if (empty($_SESSION['station_transfer_csrf'])) {
+                $_SESSION['station_transfer_csrf'] = bin2hex(random_bytes(32));
+            }
+            $csrf_token = $_SESSION['station_transfer_csrf'];
+            $users = $this->stationTransferModel->candidates();
+            $stations = $this->stationTransferModel->activeStations();
+            echo $this->twig->render($this->route . 'station_transfer.html', compact('users', 'stations', 'csrf_token'));
+        } catch (Throwable $e) {
+            error_log('No se pudo abrir cambios de estación: ' . $e->getMessage());
+            http_response_code(500); echo 'No fue posible cargar los cambios de estación.';
+        }
+    }
+
+    public function station_transfer_users(): void {
+        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        try { json_output(['success'=>true,'users'=>$this->stationTransferModel->candidates()]); }
+        catch (Throwable $e) { error_log('No se pudo consultar usuarios para cambio de estación: '.$e->getMessage()); http_response_code(500); json_output(['success'=>false,'message'=>'No fue posible cargar los usuarios.']); }
+    }
+
+    public function station_transfer_history(): void {
+        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        $userId=filter_var($_GET['user_id'] ?? null,FILTER_VALIDATE_INT);
+        if (!$userId || $userId<1) { http_response_code(422); json_output(['success'=>false,'message'=>'Usuario inválido.']); return; }
+        try { json_output(['success'=>true,'history'=>$this->stationTransferModel->history((int)$userId)]); }
+        catch (Throwable $e) { error_log('No se pudo consultar historial de cambio de estación: '.$e->getMessage()); http_response_code(500); json_output(['success'=>false,'message'=>'No fue posible cargar el historial.']); }
+    }
+
+    public function station_transfer_save(): void {
+        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { http_response_code(405); json_output(['success'=>false,'message'=>'Método no permitido.']); return; }
+        $csrfToken = (string)($_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        $sessionToken = (string)($_SESSION['station_transfer_csrf'] ?? '');
+        if ($sessionToken === '' || $csrfToken === '' || !hash_equals($sessionToken, $csrfToken)) {
+            http_response_code(403); json_output(['success'=>false,'message'=>'La sesión del formulario venció. Actualiza la página e inténtalo de nuevo.']); return;
+        }
+        $operation=trim((string)($_POST['operation'] ?? ''));
+        $userId=filter_var($_POST['user_id'] ?? null,FILTER_VALIDATE_INT);
+        $otherRaw=$_POST['other_user_id'] ?? null;
+        $otherUserId=($otherRaw === null || $otherRaw === '') ? null : filter_var($otherRaw,FILTER_VALIDATE_INT);
+        $stationRaw=$_POST['station_id'] ?? null;
+        $stationId=($stationRaw === null || $stationRaw === '') ? null : filter_var($stationRaw,FILTER_VALIDATE_INT);
+        if (!$userId || $userId<1 || ($otherRaw !== null && $otherRaw !== '' && (!$otherUserId || $otherUserId<1)) || ($stationRaw !== null && $stationRaw !== '' && (!$stationId || $stationId<1))) {
+            http_response_code(422); json_output(['success'=>false,'message'=>'Los datos enviados no son válidos.']); return;
+        }
+        try {
+            $this->stationTransferModel->save($operation,(int)$userId,$otherUserId ? (int)$otherUserId : null,$stationId ? (int)$stationId : null,(int)($_SESSION['tg_user']['Id'] ?? 0));
+            json_output(['success'=>true]);
+        } catch (InvalidArgumentException $e) { http_response_code(422); json_output(['success'=>false,'message'=>$e->getMessage()]); }
+        catch (Throwable $e) { error_log('No se pudo guardar cambio de estación: '.$e->getMessage()); http_response_code(500); json_output(['success'=>false,'message'=>'No fue posible guardar el cambio de estación.']); }
+    }
+
+    public function terminal_inventory_snapshot(): void {
+        if (($_SERVER['REQUEST_METHOD'] ?? '')!=='GET') { $this->terminalJsonError('Método no permitido.',405); return; }
+        if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $station=$this->terminalAssignedStation();
+        if (!$station) { $this->terminalJsonError('El usuario no tiene una estación válida asignada.',403); return; }
+        $stationId=(int)$station['Codigo'];
+        $monthStart=(new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez')))->modify('first day of this month')->setTime(0,0);
+        $nextMonth=$monthStart->modify('+1 month');
+        $types=$this->terminalTypes();
+        json_output([
+            'success'=>true,
+            'active'=>$this->terminalInventoryModel->activeIncidents($stationId),
+            'closed'=>$this->terminalInventoryModel->closedIncidentsForMonth($stationId,$monthStart->format('Y-m-d H:i:s'),$nextMonth->format('Y-m-d H:i:s')),
+            'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),
+            'currentMonth'=>$monthStart->format('Y-m'),
+        ]);
     }
     public function terminal_ticket_validate(): void {
         $this->terminalJsonError('La vinculación de tickets existentes fue retirada. Registrar una incidencia crea un ticket nuevo en Mojo.',410);
@@ -3299,9 +3364,23 @@ class Operations{
     }
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
-        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+        $type=(string)($_POST['type'] ?? ''); $description=$type==='urovo' ? '' : trim((string)($_POST['description'] ?? '')); $urovoProblem=$type==='urovo' ? ($_POST['urovo_problem'] ?? null) : ''; $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
         $requestKey=strtolower(trim((string)($_POST['request_key'] ?? '')));
-        if (!preg_match('/^[a-f0-9-]{16,64}$/',$requestKey) || !isset($this->terminalTypes()[$type]) || $description==='' || mb_strlen($description)>250 || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
+        $urovoProblems=['Pantalla quebrada','Pantalla Negra','Carcasa Exterior','Puerto de Carga ( Punta )','Usb dañado','Falta Bateria','Touch','Modo Seguro','Impresora','Tapa de impresora','Boton de encendido','Tapa de bateria','Lector de Tarjetas','Otro'];
+        if (!preg_match('/^[a-f0-9-]{16,64}$/',$requestKey) || !isset($this->terminalTypes()[$type]) || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
+        if ($type==='urovo') {
+            if (!is_array($urovoProblem) || $urovoProblem===[]) { $this->terminalJsonError('Seleccione al menos un problema válido para UROVO.'); return; }
+            foreach ($urovoProblem as $selectedProblem) {
+                if (!is_string($selectedProblem) || !in_array($selectedProblem,$urovoProblems,true)) { $this->terminalJsonError('Seleccione problemas válidos para UROVO.'); return; }
+            }
+            if (count(array_unique($urovoProblem,SORT_STRING))!==count($urovoProblem)) { $this->terminalJsonError('No repita problemas UROVO.'); return; }
+            $urovoOtherDetail=$_POST['urovo_other_detail'] ?? '';
+            if (!is_string($urovoOtherDetail)) { $this->terminalJsonError('Describa el problema UROVO seleccionado como Otro.'); return; }
+            $urovoOtherDetail=trim($urovoOtherDetail);
+            if (in_array('Otro',$urovoProblem,true) && $urovoOtherDetail==='') { $this->terminalJsonError('Describa el problema UROVO seleccionado como Otro.'); return; }
+            $description=implode(', ',array_map(static fn($selectedProblem)=>$selectedProblem==='Otro' ? 'Otro: '.$urovoOtherDetail : $selectedProblem,$urovoProblem));
+            if (mb_strlen($description)>250) { $this->terminalJsonError('La descripción UROVO completa no puede exceder 250 caracteres.'); return; }
+        } elseif ($description==='' || mb_strlen($description)>250) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
         if ($type==='urovo' && ($urovoSerial==='' || mb_strlen($urovoSerial)>100)) { $this->terminalJsonError('Capture el número de serie UROVO (máximo 100 caracteres).'); return; }
         if ($type==='verifone' && !in_array($problem,MojoTerminalTicketsService::verifoneProblems(),true)) { $this->terminalJsonError('Seleccione un problema válido para Verifone.'); return; }
         if (!in_array($type,['urovo','verifone'],true) && (!trim($_POST['provider_folio'] ?? '') || !($_POST['provider_date'] ?? ''))) { $this->terminalJsonError('Valeras requiere folio y fecha de reporte al proveedor.'); return; }
@@ -3311,7 +3390,7 @@ class Operations{
         if ($mojoUserId<1) { $this->terminalJsonError('La estación no tiene configurado un usuario de Mojo. Solicite la asignación en la configuración de Estaciones.'); return; }
         $stationEmail=trim((string)($station['email'] ?? ''));
         if (!filter_var($stationEmail,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('La estación no tiene configurado un correo válido de Mojo. Solicite la corrección en la configuración de Estaciones.'); return; }
-        $incidentData=['type'=>$type,'description'=>$description,'problem'=>$problem,'provider_folio'=>trim((string)($_POST['provider_folio'] ?? '')),'provider_date'=>(string)($_POST['provider_date'] ?? ''),'serial_urovo'=>$urovoSerial];
+        $incidentData=['type'=>$type,'description'=>$description,'problem'=>$problem,'urovo_problem'=>$urovoProblem,'provider_folio'=>trim((string)($_POST['provider_folio'] ?? '')),'provider_date'=>(string)($_POST['provider_date'] ?? ''),'serial_urovo'=>$urovoSerial];
         $payloadHash=hash('sha256',json_encode($incidentData,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
         $stationId=(int)$station['Codigo']; $userId=(int)$_SESSION['tg_user']['Id']; $userEmail=(string)$_SESSION['tg_user']['Correo'];
         try {
@@ -3344,6 +3423,14 @@ class Operations{
         catch (Throwable $e) {
             try { $this->terminalInventoryModel->recordIncidentError($requestKey,$e->getMessage()); } catch (Throwable $ignored) {}
             error_log('No se pudo completar incidencia MOJO '.$requestKey.': '.$e->getMessage());
+            if (preg_match('/^MOJO_HTTP_(\d{3})(?::\s*(.*))?$/s',$e->getMessage(),$apiError)) {
+                $status=(int)$apiError[1];
+                $message=in_array($status,[401,403],true)
+                    ? 'La integración no está autorizada para completar la operación con Mojo. Solicite a soporte revisar su configuración.'
+                    : 'No se pudo completar la operación con Mojo (HTTP '.$status.'). Mantenga esta ventana abierta y reintente para conciliar la misma solicitud.';
+                $this->terminalJsonError($message,502);
+                return;
+            }
             $this->terminalJsonError('No se pudo confirmar el registro local. Reintente la misma solicitud para conciliar el ticket MOJO sin duplicarlo.',503);
         }
     }
@@ -3353,33 +3440,256 @@ class Operations{
     public function terminal_incident_confirm(): void {
         $this->terminalJsonError('La confirmación manual fue retirada. Los tickets pasan a Solved y se cierran desde la lista de incidencias.',410);
     }
+    private function terminalIsTextUpload(string $path): bool {
+        $contents=file_get_contents($path);
+        if ($contents===false) return false;
+        if (str_starts_with($contents,"\xFF\xFE")) { if (!mb_check_encoding(substr($contents,2),'UTF-16LE')) return false; $contents=mb_convert_encoding(substr($contents,2),'UTF-8','UTF-16LE'); }
+        elseif (str_starts_with($contents,"\xFE\xFF")) { if (!mb_check_encoding(substr($contents,2),'UTF-16BE')) return false; $contents=mb_convert_encoding(substr($contents,2),'UTF-8','UTF-16BE'); }
+        if (str_starts_with($contents,"\xEF\xBB\xBF")) $contents=substr($contents,3);
+        return !str_contains($contents,"\0")
+            && mb_check_encoding($contents,'UTF-8')
+            && !preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/',$contents);
+    }
+    private function terminalTechnicianUploads(): array {
+        $bundle=$_FILES['attachments'] ?? null;
+        if (!is_array($bundle) || !isset($bundle['name'])) return [];
+        $names=is_array($bundle['name']) ? $bundle['name'] : [$bundle['name']];
+        if (count($names)>5) throw new InvalidArgumentException('Adjunta un máximo de 5 archivos por envío.');
+        $allowed=[
+            'pdf'=>['application/pdf'],
+            'png'=>['image/png'],
+            'jpg'=>['image/jpeg'], 'jpeg'=>['image/jpeg'],
+            'webp'=>['image/webp'],
+            'doc'=>['application/msword','application/x-ole-storage','application/vnd.ms-office'],
+            'docx'=>['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/zip','application/x-zip'],
+            'xls'=>['application/vnd.ms-excel','application/x-ole-storage','application/vnd.ms-office'],
+            'xlsx'=>['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/zip','application/x-zip'],
+            'txt'=>['text/plain'],
+            'csv'=>['text/plain','text/csv','application/csv','application/vnd.ms-excel'],
+        ];
+        $finfo=new finfo(FILEINFO_MIME_TYPE); $files=[]; $totalSize=0;
+        foreach ($names as $index=>$originalName) {
+            $error=(int)($bundle['error'][$index] ?? $bundle['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($error===UPLOAD_ERR_NO_FILE) continue;
+            if ($error!==UPLOAD_ERR_OK) throw new InvalidArgumentException('Uno de los archivos no terminó de subirse. Intenta de nuevo.');
+            $tmp=(string)($bundle['tmp_name'][$index] ?? $bundle['tmp_name'] ?? '');
+            $name=basename(str_replace(["\\","\r","\n"],['/','',''],(string)$originalName));
+            $size=(int)($bundle['size'][$index] ?? $bundle['size'] ?? 0); $extension=strtolower(pathinfo($name,PATHINFO_EXTENSION));
+            if (!is_uploaded_file($tmp) || $size<1 || $size>10*1024*1024) throw new InvalidArgumentException('Cada archivo debe pesar menos de 10 MB.');
+            $totalSize+=$size;
+            if ($totalSize>25*1024*1024) throw new InvalidArgumentException('El total de archivos no debe superar 25 MB.');
+            $mime=(string)$finfo->file($tmp);
+            $validMime=isset($allowed[$extension]) && in_array($mime,$allowed[$extension],true);
+            // Algunos sistemas identifican archivos .txt/.csv válidos como
+            // application/octet-stream; aceptar sólo si el contenido es texto.
+            if (!$validMime && in_array($extension,['txt','csv'],true) && in_array($mime,['application/octet-stream','application/x-empty'],true)) {
+                $validMime=$this->terminalIsTextUpload($tmp);
+                if ($validMime) $mime=$extension==='csv'?'text/csv':'text/plain';
+            }
+            if (!$validMime) throw new InvalidArgumentException('Tipo de archivo no permitido. Usa PDF, imagen, Word, Excel, TXT o CSV.');
+            $safeName=preg_replace('/[^\pL\pN._ -]/u','_', $name) ?: 'archivo.'.$extension;
+            $files[]=['tmp'=>$tmp,'name'=>$safeName,'mime'=>$mime,'size'=>$size];
+        }
+        return $files;
+    }
     public function terminal_incident_action(): void {
-        if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $station=$this->terminalAssignedStation(); $incidentId=filter_var($_POST['incident_id'] ?? null,FILTER_VALIDATE_INT); $action=(string)($_POST['action'] ?? '');
-        if (!$station || !$incidentId || $incidentId<1 || !in_array($action,['close','reply'],true)) { $this->terminalJsonError('Incidencia u operación inválida.'); return; }
+        $canManage=$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION);
+        $canReopenClosed=$action==='reopen' && $this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION);
+        if (!$canManage && !$canReopenClosed) { $this->terminalJsonError('Sin autorización.',403); return; }
+        if (!$station || !$incidentId || $incidentId<1 || !in_array($action,['close','reply','reopen'],true)) { $this->terminalJsonError('Incidencia u operación inválida.'); return; }
         $incident=$this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)$station['Codigo']);
-        if (!$incident || (string)$incident['estado_local']!=='Solved') { $this->terminalJsonError('La acción solo está disponible para tickets en estado Solved.'); return; }
+        $oldState=(string)($incident['estado_local'] ?? '');
+        if (!$incident || (!$canManage && $oldState!=='Closed') || ($oldState==='Closed' && $action!=='reopen') || ($action==='close' && !in_array($oldState,['Abierta','Reabierta','Solved'],true)) || ($action==='reopen' && !in_array($oldState,['Solved','Closed'],true))) { $this->terminalJsonError('La acción no está disponible para el estado actual del ticket.'); return; }
         $message=trim((string)($_POST['message'] ?? ''));
-        if ($action==='reply' && ($message==='' || mb_strlen($message)>1000)) { $this->terminalJsonError('La respuesta debe tener entre 1 y 1000 caracteres.'); return; }
+        $existingNoteId=filter_var($_POST['note_id'] ?? 0,FILTER_VALIDATE_INT) ?: 0;
+        try { $uploads=$action==='reply' ? $this->terminalTechnicianUploads() : []; }
+        catch (InvalidArgumentException $e) { $this->terminalJsonError($e->getMessage(),422); return; }
+        if ($action==='reply' && (($message==='' && !$uploads) || ($existingNoteId>0 && $message!=='') || mb_strlen($message)>1000)) { $this->terminalJsonError('Escribe un mensaje o adjunta archivos; si estás reintentando adjuntos, deja el mensaje vacío.',422); return; }
+        $replyCreated=false;
         try {
             $service=new MojoTerminalTicketsService(); $ticketId=(int)$incident['ticket_mojo_id'];
+            $failedFiles=[]; $uploadedCount=0; $reopenFailure='';
             if ($action==='close') $service->closeTicket($ticketId);
+            elseif ($action==='reopen') $service->reopenTicket($ticketId);
             else {
-                $service->addPublicComment($ticketId,$message);
-                $service->reopenTicket($ticketId);
+                if ($existingNoteId>0) {
+                    $matchingNote=array_filter($service->getTechnicianNotes($ticketId),static fn($item)=>(int)$item['id']===$existingNoteId);
+                    if (!$matchingNote) { $this->terminalJsonError('La nota para adjuntar esos archivos ya no está disponible. Actualiza el ticket y envía un mensaje nuevo.',422); return; }
+                    $noteId=$existingNoteId;
+                } else {
+                    $sender=trim((string)($_SESSION['tg_user']['Nombre'] ?? $_SESSION['tg_user']['Usuario'] ?? 'Usuario de estación'));
+                    $senderEmail=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+                    $noteBody='Enviado desde el Portal TotalGas por '.$sender.($senderEmail!==''?' ('.$senderEmail.')':'').' · Estación '.trim((string)($station['Nombre'] ?? '')).":".PHP_EOL.($message!=='' ? $message : 'Se adjuntó documentación desde el portal.');
+                    $note=$service->addTechnicianNote($ticketId,$noteBody); $noteId=(int)($note['id'] ?? 0);
+                }
+                if ($noteId<1) throw new RuntimeException('MOJO no devolvió el identificador de la nota técnica.');
+                $replyCreated=true;
+                foreach ($uploads as $file) {
+                    try { $service->uploadTechnicianAttachment($ticketId,$noteId,new CURLFile($file['tmp'],$file['mime'],$file['name'])); $uploadedCount++; }
+                    catch (Throwable $uploadError) { $failedFiles[]=$file['name']; error_log('No se pudo adjuntar '.$file['name'].' al ticket MOJO '.$ticketId.': '.$uploadError->getMessage()); }
+                }
+                if ($oldState==='Solved') {
+                    try { $service->reopenTicket($ticketId); }
+                    catch (Throwable $reopenError) { $reopenFailure='El mensaje llegó al técnico, pero el ticket sigue resuelto. Puedes reabrirlo con el botón correspondiente.'; error_log('No se pudo reabrir el ticket MOJO '.$ticketId.' después de enviar una nota: '.$reopenError->getMessage()); }
+                }
             }
-            $ticket=$service->getTicket($ticketId); $newState=$service->localState($ticket,'Solved');
+            if ($action==='reply') {
+                try { $ticket=$service->getTicket($ticketId); $newState=$service->localState($ticket,$oldState); }
+                catch (Throwable $refreshError) { $ticket=[]; $newState=$oldState==='Solved' && $reopenFailure==='' ? 'Reabierta' : $oldState; error_log('La nota se guardó en MOJO pero no se pudo refrescar el estado del ticket '.$ticketId.': '.$refreshError->getMessage()); }
+            } else { $ticket=$service->getTicket($ticketId); $newState=$service->localState($ticket,$oldState); }
             if ($action==='close' && $newState!=='Closed') throw new RuntimeException('Mojo no confirmó el cierre del ticket.');
-            if ($action==='reply' && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la reapertura del ticket.');
-            $this->terminalInventoryModel->updateTicketState((int)$incident['id'],'Solved',$newState,$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? date('Y-m-d H:i:s')) : null,$newState==='Closed' ? $service->closedByFromTicket($ticket) : null,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$action==='reply' ? $message : 'Cierre confirmado por el usuario de estación.','sincronizado');
-            json_output(['success'=>true,'state'=>$newState]);
-        } catch (Throwable $e) { try { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],'Solved','accion_'.$action,$e->getMessage()); } catch (Throwable $ignored) {} error_log('No se pudo completar '.$action.' sobre ticket MOJO '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('MOJO no confirmó toda la operación. Actualice la vista antes de volver a intentarlo.',503); }
+            if ($action==='reopen' && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la reapertura del ticket.');
+            if ($action==='reply' && $oldState==='Solved' && $reopenFailure==='' && !in_array($newState,['Abierta','Reabierta'],true)) $reopenFailure='El mensaje llegó al técnico, pero no se confirmó la reapertura. Revisa el estado antes de intentarlo de nuevo.';
+            $auditMessage=$action==='reply' ? ($message!==''?$message:'Adjuntos enviados al técnico: '.implode(', ',array_column($uploads,'name'))) : ($action==='close' ? 'Cierre confirmado por el usuario de estación.' : 'Ticket reabierto por el usuario de estación.');
+            $juarezNow=new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez'));
+            $closedAt=$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? $juarezNow->format('Y-m-d H:i:s')) : null;
+            $closedByMojo=$newState==='Closed' ? $service->closedByFromTicket($ticket) : null;
+            if ($action==='close') {
+                $monthStart=$juarezNow->modify('first day of this month')->setTime(0,0);
+                $nextMonth=$monthStart->modify('+1 month');
+            }
+            $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$oldState,$newState,$closedAt,$closedByMojo,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$auditMessage,'sincronizado');
+            $warnings=$failedFiles ? ['No se adjuntaron: '.implode(', ',$failedFiles).'. El mensaje ya fue enviado; selecciona solo esos archivos si quieres reintentarlo.'] : [];
+            if ($reopenFailure!=='') $warnings[]=$reopenFailure;
+            $response=['success'=>true,'state'=>$newState,'uploaded_files'=>$uploadedCount,'failed_files'=>$failedFiles,'note_id'=>$failedFiles?$noteId:0,'warnings'=>$warnings];
+            if ($action==='close') {
+                $updatedIncident=$incident;
+                $updatedIncident['estado_local']='Closed';
+                $updatedIncident['estado_mojo']='Closed';
+                $updatedIncident['fecha_cierre_mojo']=$closedAt;
+                if ($closedByMojo!==null) $updatedIncident['cerrado_por_mojo']=$closedByMojo;
+                $response['incident']=$updatedIncident;
+                $response['closed_this_month']=$closedAt >= $monthStart->format('Y-m-d H:i:s') && $closedAt < $nextMonth->format('Y-m-d H:i:s');
+                $response['current_month']=$monthStart->format('Y-m');
+            }
+            json_output($response);
+        } catch (Throwable $e) { try { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],$oldState,'accion_'.$action,$e->getMessage()); } catch (Throwable $ignored) {} error_log('No se pudo completar '.$action.' sobre ticket MOJO '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $message=$replyCreated ? 'La nota ya se creó en Mojo, pero el portal no pudo terminar de actualizarse. Actualiza el detalle y revisa la conversación antes de enviar otra vez.' : 'Mojo no confirmó la operación. Actualiza el detalle antes de reintentar.'; $this->terminalJsonError($message,503); }
+    }
+    public function terminal_incident_attachment(int $incidentId, int $attachmentId): void {
+        $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
+        $station=$this->terminalAssignedStation(); $stationReport=$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION); $global=$reportPermission;
+        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($stationReport && $station)) { http_response_code(403); exit; }
+        $incident=$global ? $this->terminalInventoryModel->incidentById($incidentId) : ($station ? $this->terminalInventoryModel->incidentForStation($incidentId,(int)$station['Codigo']) : false);
+        if (!$incident || $attachmentId<1) { http_response_code(404); exit; }
+        try {
+            $service=new MojoTerminalTicketsService();
+            $found=false;
+            foreach ($service->getTicketAttachments((int)$incident['ticket_mojo_id']) as $file) if ((int)$file['id']===$attachmentId) { $found=true; break; }
+            if (!$found) { http_response_code(404); exit; }
+            header('Location: '.$service->attachmentDownloadLocation($attachmentId),true,302);
+            exit;
+        } catch (Throwable $e) { error_log('No se pudo abrir el adjunto '.$attachmentId.' del ticket '.$incident['ticket_mojo_id'].': '.$e->getMessage()); http_response_code(502); echo 'No fue posible abrir el archivo. Intenta de nuevo desde el ticket.'; }
+    }
+    public function terminal_incident_detail(): void {
+        $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
+        $station=$this->terminalAssignedStation(); $stationReport=$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION); $global=$reportPermission;
+        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($stationReport && $station)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $incidentId=filter_var($_GET['incident_id'] ?? null,FILTER_VALIDATE_INT);
+        if (!$incidentId || $incidentId<1) { $this->terminalJsonError('Incidencia inválida.'); return; }
+        $incident=$global ? $this->terminalInventoryModel->incidentById((int)$incidentId) : $this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)$station['Codigo']);
+        if (!$incident) { $this->terminalJsonError('La incidencia no está disponible para su estación.',404); return; }
+        try {
+            $service=new MojoTerminalTicketsService(); $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
+            $text=static function($value): string { if (is_array($value)) return trim((string)($value['full_name'] ?? $value['name'] ?? $value['display_name'] ?? $value['email'] ?? $value['value'] ?? '')); return is_scalar($value) ? trim((string)$value) : ''; };
+            $custom=[]; foreach ((array)($ticket['custom_fields'] ?? []) as $field) { if (!is_array($field)) continue; $label=$text($field['label'] ?? $field['name'] ?? $field['slug'] ?? ''); $value=$text($field['display_value'] ?? $field['value'] ?? ''); if ($label!=='' && $value!=='') $custom[]=['label'=>$label,'value'=>$value]; }
+            $ticketId=(int)$incident['ticket_mojo_id'];
+            $comments=array_merge($service->getPublicComments($ticketId),$service->getTechnicianNotes($ticketId));
+            usort($comments,static fn($a,$b)=>strcmp((string)$a['created_on'],(string)$b['created_on']));
+            $attachmentsUnavailable=false;
+            try { $mojoFiles=$service->getTicketAttachments($ticketId); } catch (Throwable $attachmentError) { $mojoFiles=[]; $attachmentsUnavailable=true; }
+            $attachments=[];
+            foreach ($mojoFiles as $file) {
+                if (empty($file['name'])) continue;
+                $url=(int)($file['id'] ?? 0)>0 ? '/operations/terminal_incident_attachment/'.(int)$incident['id'].'/'.(int)$file['id'] : '';
+                $attachments[]=['id'=>(int)($file['id'] ?? 0),'name'=>$text($file['name']),'url'=>$url];
+                foreach ($comments as &$comment) {
+                    $target=$comment['is_private'] ? (int)$file['staff_note_id'] : (int)$file['comment_id'];
+                    if ($target>0 && $target===(int)$comment['id']) $comment['attachments'][]=['id'=>(int)$file['id'],'name'=>$text($file['name']),'url'=>$url];
+                }
+                unset($comment);
+            }
+            $assignedTo=$ticket['assigned_to'] ?? $ticket['assignee'] ?? [];
+            $assigneeName=is_array($assignedTo) ? $text($assignedTo['full_name'] ?? $assignedTo['name'] ?? $assignedTo['display_name'] ?? $assignedTo['email'] ?? '') : (is_string($assignedTo) && !ctype_digit($assignedTo) ? trim($assignedTo) : '');
+            if ($assigneeName==='' && is_array($assignedTo)) $assigneeName=trim((string)($assignedTo['first_name'] ?? '').' '.(string)($assignedTo['last_name'] ?? ''));
+            if ($assigneeName==='') $assigneeName=$text($ticket['assigned_to_name'] ?? $ticket['related_data']['assigned_to']['full_name'] ?? $ticket['related_data']['assigned_to']['name'] ?? '');
+            $assignedToId=(int)($ticket['assigned_to_id'] ?? (is_array($assignedTo) ? ($assignedTo['id'] ?? 0) : (is_numeric($assignedTo) ? $assignedTo : 0)));
+            if ($assigneeName==='' && $assignedToId>0) $assigneeName=$service->getUserName($assignedToId);
+            if ($assigneeName==='') $assigneeName='Sin asignar';
+            $requesterName=$text($ticket['user'] ?? $ticket['requester'] ?? $ticket['user_name'] ?? '');
+            if (in_array(mb_strtolower($requesterName,'UTF-8'),['usuario','user','requester','solicitante'],true)) $requesterName='';
+            if ($requesterName==='' && (int)($ticket['user_id'] ?? 0)>0) $requesterName=$service->getUserName((int)$ticket['user_id']);
+            $closedBy=$service->closedByFromTicket($ticket) ?? '';
+
+            $history=$this->terminalInventoryModel->incidentStateHistory((int)$incidentId);
+            $needsMojoActors=false;
+            foreach ($history as $stateChange) if (strtoupper(trim((string)($stateChange['origen'] ?? '')))==='MOJO/API' || strtoupper(trim((string)($stateChange['usuario_correo'] ?? '')))==='MOJO/API') { $needsMojoActors=true; break; }
+            try { $mojoEvents=$needsMojoActors ? $service->getTicketEvents($ticketId) : []; } catch (Throwable $eventError) { $mojoEvents=[]; }
+            $stateTerms=static function(string $state): array {
+                return match (mb_strtolower(trim($state),'UTF-8')) {
+                    'solved','resuelto','resuelta'=>['solved','resolved','resuelto','resuelta'],
+                    'closed','cerrado','cerrada'=>['closed','cerrado','cerrada'],
+                    'reabierta','reabierto'=>['reopen','reopened','reabiert','in progress'],
+                    'abierta','abierto'=>['open','new','in progress','abierto','abierta'],
+                    default=>[mb_strtolower(trim($state),'UTF-8')],
+                };
+            };
+            foreach ($history as &$stateChange) {
+                if (strtoupper(trim((string)($stateChange['origen'] ?? '')))!=='MOJO/API' && strtoupper(trim((string)($stateChange['usuario_correo'] ?? '')))!=='MOJO/API') {
+                    $stateChange['actor']=trim((string)($stateChange['usuario_correo'] ?? $stateChange['origen'] ?? ''));
+                    continue;
+                }
+                $stateChange['actor']='Autor no disponible en Mojo';
+                $targetTime=strtotime((string)($stateChange['fecha_estado_mojo'] ?? $stateChange['fecha_registro'] ?? ''));
+                $newTerms=$stateTerms((string)($stateChange['estado_nuevo'] ?? ''));
+                $bestDistance=301;
+                foreach ($mojoEvents as $event) {
+                    $description=mb_strtolower(trim((string)($event['description'] ?? '').' '.(string)($event['action_name'] ?? '')),'UTF-8');
+                    if (!preg_match('/status|state|solv|resolv|clos|reopen|abiert/u',$description)) continue;
+                    $hasNewState=false; foreach ($newTerms as $term) if ($term!=='' && str_contains($description,$term)) { $hasNewState=true; break; }
+                    if (!$hasNewState) continue;
+                    $eventTime=strtotime((string)($event['created_on'] ?? ''));
+                    $actor=trim((string)($event['user_full_name'] ?? $event['related_data']['user']['full_name'] ?? ''));
+                    if ($targetTime===false || $eventTime===false || $actor==='' || abs($eventTime-$targetTime)>300) continue;
+                    $distance=abs($eventTime-$targetTime);
+                    if ($distance<$bestDistance) { $stateChange['actor']=$actor; $bestDistance=$distance; }
+                }
+            }
+            unset($stateChange);
+            json_output([
+                'success'=>true,
+                'incident'=>[
+                    'id'=>(int)$incident['id'],'ticket_id'=>$ticketId,'type'=>(string)$incident['tipo_terminal'],
+                    'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),
+                    'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),
+                    'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),
+                    'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? ''),
+                    'resolution_confirmed'=>(bool)($incident['resolucion_confirmada'] ?? false),
+                    'resolution_confirmed_at'=>(string)($incident['fecha_confirmacion_resolucion'] ?? ''),
+                    'resolution_confirmed_by'=>(string)($incident['confirmado_resuelto_correo'] ?? ''),
+                    'resolution_note'=>(string)($incident['nota_confirmacion_resolucion'] ?? '')
+                ],
+                'ticket'=>[
+                    'title'=>$text($ticket['title'] ?? ''),'description'=>$text($ticket['description'] ?? ''),
+                    'status'=>$text($ticket['status'] ?? $ticket['status_name'] ?? ''),'priority'=>$text($ticket['priority'] ?? $ticket['priority_name'] ?? ''),
+                    'requester'=>$requesterName,'assignee'=>$assigneeName,'created'=>$text($ticket['created_on'] ?? ''),
+                    'updated'=>$text($ticket['updated_on'] ?? ''),'due'=>$text($ticket['due_on'] ?? ''),
+                    'solved'=>$text($ticket['solved_on'] ?? ''),'closed'=>$text($ticket['closed_on'] ?? ''),'closed_by'=>$closedBy,
+                    'queue'=>$text($ticket['queue'] ?? $ticket['ticket_queue'] ?? $ticket['queue_name'] ?? ''),
+                    'form'=>$text($ticket['form'] ?? $ticket['ticket_form'] ?? $ticket['form_name'] ?? ''),
+                    'company'=>$text($ticket['company'] ?? $ticket['company_name'] ?? ''),
+                    'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,
+                    'attachments'=>$attachments,'attachments_unavailable'=>$attachmentsUnavailable
+                ],
+                'comments'=>$comments,'state_history'=>$history
+            ]);
+        } catch (Throwable $e) { error_log('No se pudo consultar detalle del ticket '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('No fue posible cargar el detalle desde Mojo.',503); }
     }
     public function terminal_incident_history(): void {
         $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
         $assignedStation=$this->terminalAssignedStation();
-        $global=$reportPermission && !$assignedStation;
-        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($reportPermission && $assignedStation)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $stationReport=$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION); $global=$reportPermission;
+        if (!$global && !$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION) && !($stationReport && $assignedStation)) { $this->terminalJsonError('Sin autorización.',403); return; }
         $incidentId=filter_var($_GET['incident_id'] ?? null,FILTER_VALIDATE_INT);
         if (!$incidentId || $incidentId<1) { $this->terminalJsonError('Incidencia inválida.'); return; }
         $incident=$global ? $this->terminalInventoryModel->incidentById((int)$incidentId) : $this->terminalInventoryModel->incidentForStation((int)$incidentId,(int)($_SESSION['tg_user']['IdEstacion'] ?? 0));
@@ -3408,34 +3718,45 @@ class Operations{
         header('Location: /operations/terminal_incident_report',true,302);
     }
     public function terminal_incident_report(): void {
-        $reportPermission=$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION);
-        $captureAccess=$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION);
-        $assignedStation=$this->terminalAssignedStation();
-        $globalReport=$reportPermission && !$assignedStation;
-        if (!$globalReport && !$captureAccess && !($reportPermission && $assignedStation)) { http_response_code(403); echo 'No cuenta con permiso para consultar incidencias.'; return; }
+        if (!$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte completo de incidencias.'; return; }
+        $this->renderTerminalIncidentReport(null,false);
+    }
+    public function terminal_station_incident_report(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte de su estación.'; return; }
+        $station=$this->terminalAssignedStation();
+        if (!$station) { http_response_code(403); echo 'El usuario no tiene una estación asignada válida.'; return; }
+        $this->renderTerminalIncidentReport((int)$station['Codigo'],true,(string)$station['Nombre']);
+    }
+    private function renderTerminalIncidentReport(?int $stationScope,bool $stationView,string $stationName=''): void {
+        $globalReport=!$stationView;
         $month=trim((string)($_GET['month'] ?? '')); $from=trim((string)($_GET['from'] ?? '')); $to=trim((string)($_GET['to'] ?? ''));
-        $asOf=trim((string)($_GET['as_of'] ?? '')); $station=(string)($_GET['station'] ?? ''); $type=trim((string)($_GET['type'] ?? ''));
-        $status=trim((string)($_GET['status'] ?? '')); $assigned=(string)($_GET['assigned'] ?? ''); $q=trim((string)($_GET['q'] ?? ''));
+        $station=(string)($_GET['station'] ?? ''); $type=trim((string)($_GET['type'] ?? ''));
+        $status=trim((string)($_GET['status'] ?? '')); $assigned=(string)($_GET['assigned'] ?? '');
         if ($month!=='' && !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month)) $month='';
-        foreach (['from','to','as_of'] as $key) { $value=$$key; if ($value!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$value)) $$key=''; }
+        foreach (['from','to'] as $key) { $value=$$key; if ($value!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$value)) $$key=''; }
         if (!in_array($status,['open','solved','reopened','closed'],true)) $status='';
         if ($station!=='' && !preg_match('/^\d+$/',$station)) $station='';
         if ($assigned!=='' && !preg_match('/^\d+$/',$assigned)) $assigned='';
-        $stationScope=$globalReport ? null : (int)($_SESSION['tg_user']['IdEstacion'] ?? 0);
-        if ($stationScope!==null && in_array($stationScope,[0,4,20],true)) { http_response_code(403); echo 'El reporte requiere una estación asignada o permiso de reporte global.'; return; }
-        if (!$globalReport) $station=(string)$stationScope;
-        if ($globalReport) $this->syncAllTerminalIncidents($type,'reporte_incidencias');
-        elseif ($stationScope>0) $this->syncTerminalIncidents($stationScope,'reporte_estacion');
+        if ($stationScope!==null) $station=(string)$stationScope;
+        // El reporte global no debe sincronizar cada ticket con Mojo en serie:
+        // cada llamada externa puede tardar hasta 30 s y bloquear la respuesta.
+        // Mostrar el último estado persistido y sincronizar al actuar sobre el ticket.
+        if ($stationScope>0) $this->syncTerminalIncidents($stationScope,'reporte_estacion');
         try {
-            $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q]);
+            $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
-        foreach ($rows as &$row) { $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$row['fecha_cierre_mojo'] ?: null); $row['dias_laborales']=$time['dias_laborales']; $row['horas_laborales']=$time['horas_laborales']; $row['dias_habiles']=$time['dias_laborales']; } unset($row);
-        $stations=[]; foreach ($this->terminalInventoryModel->activeStations() as $stationRow) if ($stationScope===null || (int)$stationRow['Codigo']===$stationScope) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
+        foreach ($rows as &$row) {
+            $until=$row['fecha_cierre_mojo'] ?: ($row['fecha_calculo'] ?? null);
+            $time=$this->terminalBusinessTime((string)$row['fecha_apertura_mojo'],$until ? (string)$until : null);
+            $row['dias_transcurridos']=$time['dias_transcurridos']; $row['horas_laborales']=$time['horas_laborales'];
+            $state=(string)($row['estado_local'] ?? $row['estado_mojo'] ?? '');
+            $row['estado_etiqueta']=['Closed'=>'Cerrada','closed'=>'Cerrada','Solved'=>'Resuelto','solved'=>'Resuelto','Abierta'=>'Abierta','abierta'=>'Abierta','Reabierta'=>'Reabierta','reabierta'=>'Reabierta','Open'=>'Abierta','open'=>'Abierta','Reopened'=>'Reabierta','reopened'=>'Reabierta'][$state] ?? ($state ?: 'Sin estado');
+        } unset($row);
+        $stationRows=$globalReport ? $this->terminalInventoryModel->reportStations() : $this->terminalInventoryModel->activeStations();
+        $stations=[]; foreach ($stationRows as $stationRow) if ($stationScope===null || (int)$stationRow['Codigo']===$stationScope) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
         $assignees=[]; foreach ($this->terminalInventoryModel->incidentAssignees($stationScope) as $assignee) $assignees[(string)$assignee['assigned_to_id']]=(string)$assignee['asignado_a'];
         $openCount=count(array_filter($rows,fn($row)=>($row['estado_local'] ?? '')!=='Closed'));
-        $monthly=$this->terminalInventoryModel->monthlyIncidentSummary($stationScope);
-        $monthlyTotals=['incidents'=>array_sum(array_map(fn($row)=>(int)$row['incident_count'],$monthly)),'urovo'=>array_sum(array_map(fn($row)=>(int)$row['urovo_count'],$monthly))];
-        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'monthly'=>$monthly,'monthlyTotals'=>$monthlyTotals,'globalReport'=>$globalReport,'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned,'q'=>$q],'openCount'=>$openCount]);
+        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'globalReport'=>$globalReport,'stationView'=>$stationView,'stationName'=>$stationName,'canCapture'=>$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION),'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned],'openCount'=>$openCount]);
     }
     public function terminal_inventory_group(): void {
         $this->terminalJsonError('Los reportes por captura semanal fueron retirados. Consulte el reporte de incidencias.',410);

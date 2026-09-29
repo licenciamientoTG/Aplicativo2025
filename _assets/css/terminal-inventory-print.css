@@ -1,0 +1,25 @@
+@page{size:auto;margin:12mm}
+@media print{
+  html,body{width:100%!important;min-height:0!important;margin:0!important;padding:0!important;background:#fff!important}
+  .navbar,.navbar-bg,.sidebar,.sidebar-nav,.sidebar-content,header,footer,.alert,
+  .main>h1,.content>.container-fluid>h1,.terminal-page-header{display:none!important}
+  .wrapper,.main,.content,.content>.container-fluid{display:block!important;width:100%!important;max-width:none!important;margin:0!important;padding:0!important;overflow:visible!important}
+  #terminalInventoryApp{display:block!important;width:100%!important;margin:0!important;padding:0!important}
+  #terminalInventoryApp>.terminal-card.mt-3{display:none!important}
+  #terminalInventoryApp>.terminal-card:not(.mt-3){display:block!important;width:100%!important;margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important}
+  #terminalInventoryApp>.terminal-card:not(.mt-3) .card-body{padding:0!important}
+  #terminalInventoryApp>.terminal-card:not(.mt-3) .card-title{margin:0 0 10px!important}
+  #terminalInventoryApp .terminal-status-table{width:100%!important;min-width:0!important;margin:0!important;border-collapse:collapse!important;font-size:10pt!important}
+  #terminalInventoryApp .terminal-status-table th:nth-child(5),
+  #terminalInventoryApp .terminal-status-table td:nth-child(5),
+  #terminalInventoryApp .terminal-status-table th:nth-child(6),
+  #terminalInventoryApp .terminal-status-table td:nth-child(6){display:none!important}
+  #terminalInventoryApp .terminal-status-table .terminal-brand{display:none!important}
+  #terminalInventoryApp .terminal-status-table .add-incident,
+  #terminalInventoryApp .terminal-status-table .show-resolved{display:none!important}
+  #terminalInventoryApp .terminal-status-table th,
+  #terminalInventoryApp .terminal-status-table td{padding:8px 10px!important;border-color:#d8e0e8!important;background:#fff!important;color:#243746!important}
+  #terminalInventoryApp .terminal-status-table td strong{color:#243746!important}
+  #terminalInventoryApp .terminal-status-table tfoot{display:table-footer-group!important}
+  #terminalInventoryApp .terminal-status-table tr{break-inside:avoid!important;page-break-inside:avoid!important}
+}

@@ -6962,7 +6962,7 @@ public function stamped_invoices_detail(): void
     /** Papeletas REGIO para corrección trazable de fecha. */
     public function efc_conc_analiticos_papeletas(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
-        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->papersForManagement((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->papersForManagement((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),strtoupper(trim((string)($_GET['empresa']??'DIAZ GAS'))))]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 

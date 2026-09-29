@@ -182,6 +182,11 @@ $terminal_inventory_report_access = new \Twig\TwigFunction('terminal_inventory_r
     return (new TerminalInventoryModel())->hasPermission((int)$_SESSION['tg_user']['Id'], TerminalInventoryModel::REPORT_PERMISSION);
 });
 $twig->addFunction($terminal_inventory_report_access);
+$terminal_inventory_station_report_access = new \Twig\TwigFunction('terminal_inventory_station_report_access', function () {
+    if (empty($_SESSION['tg_user']['Id']) || !class_exists('TerminalInventoryModel')) return false;
+    return (new TerminalInventoryModel())->hasPermission((int)$_SESSION['tg_user']['Id'], TerminalInventoryModel::STATION_REPORT_PERMISSION);
+});
+$twig->addFunction($terminal_inventory_station_report_access);
 $twig->addFunction($getFlashMessage);
 $twig->addFunction($get_week_days);
 $twig->addFunction($text_to_int);

@@ -14,7 +14,7 @@ class UsuariosModel extends Model{
                     FROM
                         [TG].[dbo].[Usuario] t1
                         LEFT JOIN [TG].[dbo].[Perfil] t2 ON t1.IdPerfil = t2.Id
-                        LEFT JOIN [TG].[dbo].[UsuarioEstacion] t3 ON t1.Id = t3.IdUsuario
+                        OUTER APPLY (SELECT TOP (1) ue.IdEstacion FROM [TG].[dbo].[UsuarioEstacion] ue WHERE ue.IdUsuario = t1.Id ORDER BY ue.FechaRegistro DESC, ue.IdEstacion DESC) t3
                         LEFT JOIN [TG].[dbo].[Estaciones] t4 ON t3.IdEstacion = t4.Codigo
                         LEFT JOIN (SELECT user_id,
                                 STUFF((SELECT \',\' + CONVERT(VARCHAR(255), permission_id)
@@ -43,7 +43,7 @@ class UsuariosModel extends Model{
                     FROM
                         [TG].[dbo].[Usuario] t1
                         LEFT JOIN [TG].[dbo].[Perfil] t2 ON t1.IdPerfil = t2.Id
-                        LEFT JOIN [TG].[dbo].[UsuarioEstacion] t3 ON t1.Id = t3.IdUsuario
+                        OUTER APPLY (SELECT TOP (1) ue.IdEstacion FROM [TG].[dbo].[UsuarioEstacion] ue WHERE ue.IdUsuario = t1.Id ORDER BY ue.FechaRegistro DESC, ue.IdEstacion DESC) t3
                         LEFT JOIN [TG].[dbo].[Estaciones] t4 ON t3.IdEstacion = t4.Codigo
                         LEFT JOIN [TG].[dbo].[Departamentos] t6 ON t1.IdDepartamento = t6.Id
                     WHERE t1.Id = ?;

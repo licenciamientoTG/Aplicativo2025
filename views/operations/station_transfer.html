@@ -1,0 +1,32 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones - Cambio de estación{% endblock %}
+{% block menutitle %}Cambio de estación{% endblock %}
+{% block mycss %}
+<style>
+  .station-transfer-intro { border-left: 4px solid #188ae2; }
+  .station-transfer-option { height: 100%; border: 1px solid #dee2e6; border-radius: .5rem; transition: border-color .15s, box-shadow .15s; }
+  .station-transfer-option.is-selected { border-color: #188ae2; box-shadow: 0 0 0 .15rem rgba(24,138,226,.12); }
+  .station-transfer-history-row td { vertical-align: middle; }
+  .station-transfer-route { display: inline-flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  @media (max-width: 575.98px) { .station-transfer-actions .btn { width: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .station-transfer-option { transition: none; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid px-0 station-transfer-page">
+  <input type="hidden" id="stationTransferCsrf" value="{{ csrf_token|e('html_attr') }}">
+  <div class="card shadow-sm mb-4 station-transfer-intro"><div class="card-body p-3 p-lg-4"><div class="d-flex align-items-start gap-3"><span class="rounded-circle bg-primary bg-opacity-10 text-primary p-3"><i data-feather="shuffle"></i></span><div><h4 class="mb-1">Cambio de estación</h4><p class="text-muted mb-0">Asigna a un encargado otra estación o intercambia las estaciones de dos encargados. Cada cambio queda en el historial.</p></div></div></div></div>
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6"><button type="button" class="station-transfer-option is-selected w-100 text-start p-3 p-lg-4 bg-white" data-operation="move" aria-pressed="true"><span class="d-flex align-items-center gap-3"><span class="rounded-circle bg-info bg-opacity-10 text-info p-2"><i data-feather="map-pin"></i></span><span><strong class="d-block">Mover a otra estación</strong><small class="text-muted">El encargado seleccionado quedará asignado a la estación indicada.</small></span></span></button></div>
+    <div class="col-lg-6"><button type="button" class="station-transfer-option w-100 text-start p-3 p-lg-4 bg-white" data-operation="exchange" aria-pressed="false"><span class="d-flex align-items-center gap-3"><span class="rounded-circle bg-warning bg-opacity-10 text-warning p-2"><i data-feather="repeat"></i></span><span><strong class="d-block">Intercambiar estaciones</strong><small class="text-muted">Intercambia la estación actual de dos encargados.</small></span></span></button></div>
+  </div>
+  <div class="card shadow-sm mb-4"><div class="card-header bg-white"><h5 class="card-title mb-0">Datos del cambio</h5></div><div class="card-body p-3 p-lg-4"><div class="row g-3 align-items-end">
+    <div class="col-md-6"><label for="transferUser" class="form-label">Encargado Estacion</label><select id="transferUser" class="form-select" required><option value="">Seleccione un encargado</option>{% for user in users %}<option value="{{ user.user_id }}" data-station-id="{{ user.station_id }}" data-station-name="{{ user.station_name|e('html_attr') }}" data-name="{{ user.name|e('html_attr') }}" data-username="{{ user.username|e('html_attr') }}">{{ user.name }} · {{ user.station_name }}</option>{% endfor %}</select><small class="form-text text-muted">Se muestran encargados activos que tienen una estación asignada.</small></div>
+    <div class="col-md-6" id="transferStationField"><label for="transferStation" class="form-label">Nueva estación</label><select id="transferStation" class="form-select" required><option value="">Seleccione una estación</option>{% for station in stations %}<option value="{{ station.Codigo }}">{{ station.Nombre }}</option>{% endfor %}</select></div>
+    <div class="col-md-6 d-none" id="exchangeUserField"><label for="exchangeUser" class="form-label">Intercambiar con</label><select id="exchangeUser" class="form-select" disabled><option value="">Seleccione otro encargado</option></select></div>
+    <div class="col-12 station-transfer-actions d-flex flex-wrap gap-2 mt-4"><button type="button" class="btn btn-primary" id="reviewStationTransfer" disabled><i data-feather="check-circle"></i> Revisar y confirmar</button><button type="button" class="btn btn-outline-secondary" id="resetStationTransfer">Limpiar</button></div>
+  </div><div id="transferConfirmation" class="alert alert-warning mt-4 mb-0 d-none" role="alert" aria-live="polite"><h6 class="alert-heading"><i data-feather="alert-triangle"></i> Confirma el cambio</h6><p class="mb-3" id="transferConfirmationText"></p><div class="d-flex flex-wrap gap-2 station-transfer-actions"><button type="button" class="btn btn-warning" id="confirmStationTransfer">Confirmar cambio</button><button type="button" class="btn btn-outline-secondary" id="cancelStationTransfer">Cancelar</button></div></div><div id="transferFeedback" class="mt-3" aria-live="polite"></div></div></div>
+  <div class="card shadow-sm"><div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h5 class="card-title mb-1">Historial del encargado</h5><small class="text-muted">Selecciona un encargado para ver quién hizo el cambio, cuándo y entre qué estaciones.</small></div><span class="badge bg-light text-dark" id="transferHistoryCount">0 movimientos</span></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0" id="stationTransferHistory"><thead class="table-light"><tr><th>Fecha y hora</th><th>Tipo</th><th>Encargado(s)</th><th>Movimiento</th><th>Realizado por</th></tr></thead><tbody><tr><td colspan="5" class="text-center text-muted py-4">Selecciona un encargado para consultar su historial.</td></tr></tbody></table></div></div></div>
+</div>
+{% endblock %}
+{% block myjs %}<script src="{{ js_v('station_transfer.js') }}"></script>{% endblock %}
