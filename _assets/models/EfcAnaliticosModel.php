@@ -80,20 +80,26 @@ class EfcAnaliticosModel {
      * Consola independiente de papeletas. La fecha efectiva es una capa propia
      * de TG: fecha_reportada y el Excel original nunca se actualizan.
      */
-    public function papersForManagement(int $stationId, int $year, int $month): array {
+    public function papersForManagement(int $stationId, int $year, int $month, string $company = 'DIAZ GAS'): array {
         if ($year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo inválido.');
+        if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) throw new RuntimeException('Empresa inválida.');
+        $stationIds=EfcConciliacionModel::stationIds($company);
+        if ($stationId > 0 && !in_array($stationId,$stationIds,true)) throw new RuntimeException('Estación fuera de la empresa seleccionada.');
+        $stationMarks=implode(',',array_fill(0,count($stationIds),'?'));
         $sql = "SELECT P.id,P.importacion_id,P.fecha_reportada AS fecha_original,C.id AS correccion_id,C.fecha_efectiva,C.usuario_id AS correccion_usuario,C.creado_en AS correccion_creada,
-                       P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,P.estacion_id AS estacion_original_id,S.id AS estacion_correccion_id,S.estacion_corregida_id,E.Nombre AS estacion_nombre,I.nombre_archivo,
+                       P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,P.estacion_id AS estacion_original_id,S.id AS estacion_correccion_id,S.estacion_corregida_id,E.Nombre AS estacion_nombre,EOriginal.Nombre AS estacion_original_nombre,I.nombre_archivo,
                        CASE WHEN EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos V WHERE V.papeleta_id=P.id AND V.activo=1) THEN 1 ELSE 0 END AS vinculada
                 FROM dbo.efc_conc_analiticos_papeletas P
                 JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id
                 LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1
                 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1
                 LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=COALESCE(S.estacion_corregida_id,P.estacion_id)
+                LEFT JOIN TG.dbo.Estaciones EOriginal ON EOriginal.Codigo=P.estacion_id
                 WHERE I.estado='IMPORTADA'
                   AND YEAR(COALESCE(C.fecha_efectiva,P.fecha_reportada))=?
-                  AND MONTH(COALESCE(C.fecha_efectiva,P.fecha_reportada))=?";
-        $params=[$year,$month];
+                  AND MONTH(COALESCE(C.fecha_efectiva,P.fecha_reportada))=?
+                  AND COALESCE(S.estacion_corregida_id,P.estacion_id) IN ($stationMarks)";
+        $params=array_merge([$year,$month],$stationIds);
         if ($stationId > 0) { $sql .= ' AND COALESCE(S.estacion_corregida_id,P.estacion_id)=?'; $params[]=$stationId; }
         $sql .= ' ORDER BY COALESCE(C.fecha_efectiva,P.fecha_reportada) DESC,P.id DESC';
         $stmt=$this->db->prepare($sql); $stmt->execute($params); $items=[];
@@ -104,7 +110,7 @@ class EfcAnaliticosModel {
                 'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,
                 'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),
                 'remittance'=>$this->normaliseRemittance($row['remesa_numero']),
-                'account'=>$row['cuenta_mn_original'], 'station_id'=>(int)($row['estacion_corregida_id'] ?: $row['estacion_original_id']), 'original_station_id'=>(int)$row['estacion_original_id'], 'station'=>$row['estacion_nombre'],
+                'account'=>$row['cuenta_mn_original'], 'station_id'=>(int)($row['estacion_corregida_id'] ?: $row['estacion_original_id']), 'original_station_id'=>(int)$row['estacion_original_id'], 'station'=>$row['estacion_nombre'], 'original_station'=>$row['estacion_original_nombre'],
                 'declared_mn'=>(float)($row['dice_contener_mn']??0), 'real_mn'=>(float)($row['real_mn']??0),
                 'declared_usd'=>(float)($row['dice_contener_usd']??0), 'real_usd'=>(float)($row['real_usd']??0),
                 'file'=>$row['nombre_archivo'], 'correction_id'=>$row['correccion_id']?(int)$row['correccion_id']:null,
