@@ -3286,7 +3286,7 @@ class Operations{
 
     /** Operations module for transferring station assignments between station managers. */
     public function station_transfer(): void {
-        if (!authorized(100)) { http_response_code(403); echo 'No cuenta con permiso para administrar cambios de estación.'; return; }
+        if (!authorized(101)) { http_response_code(403); echo 'No cuenta con permiso para administrar cambios de estación.'; return; }
         try {
             if (empty($_SESSION['station_transfer_csrf'])) {
                 $_SESSION['station_transfer_csrf'] = bin2hex(random_bytes(32));
@@ -3302,13 +3302,13 @@ class Operations{
     }
 
     public function station_transfer_users(): void {
-        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        if (!authorized(101)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
         try { json_output(['success'=>true,'users'=>$this->stationTransferModel->candidates()]); }
         catch (Throwable $e) { error_log('No se pudo consultar usuarios para cambio de estación: '.$e->getMessage()); http_response_code(500); json_output(['success'=>false,'message'=>'No fue posible cargar los usuarios.']); }
     }
 
     public function station_transfer_history(): void {
-        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        if (!authorized(101)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
         $userId=filter_var($_GET['user_id'] ?? null,FILTER_VALIDATE_INT);
         if (!$userId || $userId<1) { http_response_code(422); json_output(['success'=>false,'message'=>'Usuario inválido.']); return; }
         try { json_output(['success'=>true,'history'=>$this->stationTransferModel->history((int)$userId)]); }
@@ -3316,7 +3316,7 @@ class Operations{
     }
 
     public function station_transfer_save(): void {
-        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        if (!authorized(101)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
         if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { http_response_code(405); json_output(['success'=>false,'message'=>'Método no permitido.']); return; }
         $csrfToken = (string)($_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
         $sessionToken = (string)($_SESSION['station_transfer_csrf'] ?? '');
