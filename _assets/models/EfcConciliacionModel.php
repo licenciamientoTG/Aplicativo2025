@@ -7,7 +7,7 @@ class EfcConciliacionModel {
     private const COMPANY_ACCOUNTS = [
         'DIAZ GAS' => ['0185322470', '369'],
         'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', '7533', '2627', '5247', '7604', '0031'],
-        'GASOMEX'   => ['4409', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4638'],
+        'GASOMEX'   => ['8504', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4638'],
     ];
     /* La razón social fiscal no identifica por sí sola la operación. Gasomex
        tiene estaciones con RFC propio; este es el catálogo operativo usado por
@@ -28,7 +28,7 @@ class EfcConciliacionModel {
             '0031'=>['PUERTECITO','SAN RAFAEL','COLOSIO','JESUS MARIA'],
         ],
         'GASOMEX' => [
-            '4409'=>['JARUDO'], '4547'=>['EJERCITO'], '8214'=>['EJERCITO','FUENTES'],
+            '8504'=>['JARUDO'], '4547'=>['EJERCITO'], '8214'=>['EJERCITO','FUENTES'],
             '8492'=>['FUENTES','CLARA'], '4412'=>['CLARA'], '4777'=>['SOLIS'],
             '4669'=>['SANTIAGO'], '3678'=>['SANTIAGO'], '4638'=>['SATELITE'],
         ],

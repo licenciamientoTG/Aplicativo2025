@@ -30,24 +30,24 @@ COMPANY_STATIONS = {
 }
 GASOMEX_STATIONS = {23, 24, 25, 26, 27, 28, 29}
 GASOMEX_ACCOUNT_STATIONS = {
-    "4409": {29}, "4547": {23}, "8214": {23, 25}, "8492": {25, 26},
+    "8504": {29}, "4547": {23}, "8214": {23, 25}, "8492": {25, 26},
     "4412": {26}, "4777": {27}, "4669": {28}, "3678": {28}, "4638": {24},
 }
 # Deposit accounts are the currency boundary for GASOMEX.  A lot is built
 # independently per bucket, so MN and USD can never be searched against the
 # same bank movement.  MORRALLA is part of the MN bucket when present.
 GASOMEX_ACCOUNT_STATION_BUCKETS = {
-    "4409": {29: {"MN"}}, "4547": {23: {"MN"}},
+    "8504": {29: {"MN"}}, "4547": {23: {"MN"}},
     "8214": {23: {"USD"}, 25: {"MN"}},
     "8492": {25: {"USD"}, 26: {"MN", "USD"}},
     "4412": {26: {"USD"}}, "4777": {27: {"MN"}},
-    "4669": {28: {"USD"}}, "3678": {28: {"MN", "USD"}},
+    "4669": {28: {"MN"}}, "3678": {28: {"USD"}},
     "4638": {24: {"MN", "USD"}},
 }
 # Same known-account universe as EfcConciliacionModel::allAccountSuffixes().
 ACCOUNT_SUFFIXES = (
     "0185322470", "369", "3281", "8837", "8520", "7291", "2570", "7533",
-    "2627", "5247", "7604", "0031", "4409", "4547", "8214", "8492",
+    "2627", "5247", "7604", "0031", "8504", "4547", "8214", "8492",
     "4412", "4777", "4669", "3678", "4638",
 )
 
