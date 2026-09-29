@@ -28,7 +28,7 @@ class EfcConciliacionModel {
             '0031'=>['PUERTECITO','SAN RAFAEL','COLOSIO','JESUS MARIA'],
         ],
         'GASOMEX' => [
-            '4409'=>['JARUDO'], '4547'=>['EJERCITO'], '8214'=>['EJERCITO'],
+            '4409'=>['JARUDO'], '4547'=>['EJERCITO'], '8214'=>['EJERCITO','FUENTES'],
             '8492'=>['FUENTES','CLARA'], '4412'=>['CLARA'], '4777'=>['SOLIS'],
             '4669'=>['SANTIAGO'], '3678'=>['SANTIAGO'], '4638'=>['SATELITE'],
         ],
@@ -371,13 +371,29 @@ class EfcConciliacionModel {
         if (count($cg)<1 || count($bank)<1) throw new RuntimeException('La conciliacion requiere al menos un turno y un deposito.');
         if ($company!=='GASOMEX' && (count($cg)!==1 || count($bank)>2)) throw new RuntimeException('La conciliacion requiere un turno y uno o dos depositos.');
         if ($company==='GASOMEX') {
+            $currencies=array_values(array_unique(array_map(static fn(array $item): string => strtoupper(trim((string)($item['currency']??''))),$cg)));
+            if (array_diff($currencies,['MN','MORRALLA','USD'])) throw new RuntimeException('El lote contiene un concepto GASOMEX inválido.');
+            if (!$currencies || (in_array('USD',$currencies,true) && count($currencies)>1)) throw new RuntimeException('No se pueden mezclar dólares con moneda nacional en un mismo lote GASOMEX.');
+            if (count($cg)>1) {
+                $shiftIndexes=[];
+                foreach($cg as $item) {
+                    if (!preg_match('/^(\d{4}-\d{2}-\d{2})$/',(string)($item['date']??''),$dateMatch) || !preg_match('/\d+/',(string)($item['turn']??''),$turnMatch)) throw new RuntimeException('Uno de los turnos GASOMEX tiene fecha o turno inválido.');
+                    $turnNo=(int)$turnMatch[0];
+                    if ($turnNo<1 || $turnNo>4) throw new RuntimeException('El lote GASOMEX sólo admite turnos del 1 al 4.');
+                    $dayIndex=(new DateTimeImmutable('1970-01-01'))->diff(new DateTimeImmutable($dateMatch[1]))->days;
+                    $shiftIndexes[]=$dayIndex*4+$turnNo-1;
+                }
+                $firstShift=min($shiftIndexes); $lastShift=max($shiftIndexes); $shiftCount=$lastShift-$firstShift+1;
+                $firstTurn=($firstShift%4)+1; $lastTurn=($lastShift%4)+1;
+                if ($shiftCount<3 || $shiftCount>9 || !in_array($firstTurn,[2,3],true) || !in_array($lastTurn,[1,2],true)) throw new RuntimeException('El lote debe seguir una secuencia GASOMEX continua de 3 a 9 turnos, desde T2 o T3 y con corte en T1 o T2.');
+            }
             $cgTotal=round(array_sum(array_map(fn(array $item): float => (float)($item['amount']??0), $cg)),2);
             $bankTotal=round(array_sum(array_map(fn(array $item): float => (float)($item['amount']??0), $bank)),2);
             if (abs($bankTotal-$cgTotal)>=1.00) throw new RuntimeException('La combinacion GASOMEX debe coincidir con el deposito con una tolerancia menor a $1.00.');
-            $group['cg_total']=$cgTotal; $group['bank_total']=$bankTotal; $group['difference']=round($bankTotal-$cgTotal,2);
+            $group['cg_total']=$cgTotal; $group['bank_total']=$bankTotal; $group['difference']=round($bankTotal-$cgTotal,2); $group['concept']=in_array('USD',$currencies,true)?'USD':'MN';
         }
         $operationDate=min(array_map(fn(array $item): string => $this->transitOperationDate($item), $cg));
-        $this->assertOpen((int)$group['station_id'],$operationDate,(string)$cg[0]['currency']); $this->db->beginTransaction();
+        $this->assertOpen((int)$group['station_id'],$operationDate,(string)($group['concept']??$cg[0]['currency'])); $this->db->beginTransaction();
         try {
             $id=$this->createGroup($group,$cg,$bank,$userId,$operationDate);
             foreach ($cg as $item) $this->markTransitReconciled($item,$id,$userId);
@@ -531,7 +547,7 @@ class EfcConciliacionModel {
         $first=$cg[0];
         $operationDate=$operationDate??$first['date'];
         $q=$this->db->prepare("INSERT dbo.efc_conc_grupos(estacion_id,fecha_operativa,turno,concepto,tipo,total_controlgas,total_banorte,diferencia,creado_por) OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,?,?)");
-        $q->execute([$group['station_id'],$operationDate,count($cg)>1?'VARIOS':$first['turn'],$first['currency'],$group['type'],$group['cg_total'],$group['bank_total'],$group['difference'],$userId]); $id=(int)$q->fetchColumn();
+        $q->execute([$group['station_id'],$operationDate,count($cg)>1?'VARIOS':$first['turn'],$group['concept']??$first['currency'],$group['type'],$group['cg_total'],$group['bank_total'],$group['difference'],$userId]); $id=(int)$q->fetchColumn();
         $part=$this->db->prepare("INSERT dbo.efc_conc_partidas(grupo_id,origen,clave_externa,movimiento_bancario_id,fecha_operacion,turno,concepto,importe,referencia,estacion_id) VALUES(?,?,?,?,?,?,?,?,?,?)");
         foreach ($cg as $item) $part->execute([$id,'CG',$item['id'],null,$item['date'],$item['turn'],$item['currency'],$item['amount'],null,$group['station_id']]);
         foreach($bank as $item) $part->execute([$id,'BANCO',$item['id'],(int)preg_replace('/\D/','',$item['id']),$item['date'],null,null,$item['amount'],$item['reference']??null,$group['station_id']]);

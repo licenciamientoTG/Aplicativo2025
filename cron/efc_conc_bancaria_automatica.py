@@ -30,16 +30,19 @@ COMPANY_STATIONS = {
 }
 GASOMEX_STATIONS = {23, 24, 25, 26, 27, 28, 29}
 GASOMEX_ACCOUNT_STATIONS = {
-    "4409": {29}, "4547": {23}, "8214": {23}, "8492": {25, 26},
+    "4409": {29}, "4547": {23}, "8214": {23, 25}, "8492": {25, 26},
     "4412": {26}, "4777": {27}, "4669": {28}, "3678": {28}, "4638": {24},
 }
 # Deposit accounts are the currency boundary for GASOMEX.  A lot is built
 # independently per bucket, so MN and USD can never be searched against the
 # same bank movement.  MORRALLA is part of the MN bucket when present.
-GASOMEX_ACCOUNT_BUCKETS = {
-    "4409": {"MN"}, "4547": {"MN"}, "8214": {"USD"},
-    "8492": {"MN", "USD"}, "4412": {"USD"}, "4777": {"MN"},
-    "4669": {"USD"}, "3678": {"MN", "USD"}, "4638": {"MN", "USD"},
+GASOMEX_ACCOUNT_STATION_BUCKETS = {
+    "4409": {29: {"MN"}}, "4547": {23: {"MN"}},
+    "8214": {23: {"USD"}, 25: {"MN"}},
+    "8492": {25: {"USD"}, 26: {"MN", "USD"}},
+    "4412": {26: {"USD"}}, "4777": {27: {"MN"}},
+    "4669": {28: {"USD"}}, "3678": {28: {"MN", "USD"}},
+    "4638": {24: {"MN", "USD"}},
 }
 # Same known-account universe as EfcConciliacionModel::allAccountSuffixes().
 ACCOUNT_SUFFIXES = (
@@ -225,9 +228,14 @@ def gasomex_account_matches(bank: tuple, station_id: int) -> bool:
     return station_id in {candidate for suffix, stations in GASOMEX_ACCOUNT_STATIONS.items() if account.endswith(suffix) for candidate in stations}
 
 
-def gasomex_bank_buckets(bank: tuple) -> set[str]:
+def gasomex_bank_buckets(bank: tuple, station_id: int) -> set[str]:
     account = re.sub(r"\D", "", str(bank[6] or ""))
-    return {bucket for suffix, buckets in GASOMEX_ACCOUNT_BUCKETS.items() if account.endswith(suffix) for bucket in buckets}
+    return {
+        bucket
+        for suffix, station_buckets in GASOMEX_ACCOUNT_STATION_BUCKETS.items()
+        if account.endswith(suffix)
+        for bucket in station_buckets.get(station_id, set())
+    }
 
 
 def index_bank_rows(rows: list[tuple], stations: list[tuple]) -> dict[int, dict[date, list[tuple]]]:
@@ -288,12 +296,12 @@ def gasomex_slots(controlgas_rows: list[dict], links: dict, active_keys: set[str
     return slots
 
 
-def gasomex_candidates(bank: tuple, slots: dict[str, dict], used_keys: set[str]) -> list[dict]:
+def gasomex_candidates(bank: tuple, slots: dict[str, dict], used_keys: set[str], station_id: int) -> list[dict]:
     """Find only continuous 3–9 shift runs ending after T1 or T2."""
     found: list[dict] = []
     bank_date = as_date(bank[1])
     bank_amount = amount(bank[2])
-    for bucket in gasomex_bank_buckets(bank):
+    for bucket in gasomex_bank_buckets(bank, station_id):
         by_turn = slots[bucket]
         for start_day, start_turn in sorted(by_turn):
             if start_turn not in {"2", "3"}:
@@ -367,6 +375,12 @@ def run() -> int:
                             JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id
                             WHERE P.estacion_id=? AND P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA'""", station_id).fetchall()
                     }
+                    transit_keys = {
+                        str(row[0]) for row in cursor.execute("""SELECT clave_externa
+                            FROM dbo.efc_conc_transitos
+                            WHERE estacion_id=? AND estado='PENDIENTE'""", station_id).fetchall()
+                    }
+                    active_cg_keys.update(transit_keys)
                     slots = gasomex_slots(controlgas_rows, links, active_cg_keys, int(station_id))
                     gas_bank_rows = [
                         bank for bank in bank_rows
@@ -375,10 +389,10 @@ def run() -> int:
                         and resolved_bank_station(bank, stations) in (None, int(station_id))
                     ]
                     reserved_keys: set[str] = set(active_cg_keys)
-                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos MN={len(slots['MN'])}, turnos USD={len(slots['USD'])}, depósitos por cuenta={len(gas_bank_rows)}.")
+                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos MN={len(slots['MN'])}, turnos USD={len(slots['USD'])}, turnos bloqueados por tránsito={len(transit_keys)}, depósitos por cuenta={len(gas_bank_rows)}.")
                     no_sequence = ambiguous = 0
                     for bank in sorted(gas_bank_rows, key=lambda item: (as_date(item[1]), int(item[0]))):
-                        candidates = gasomex_candidates(bank, slots, reserved_keys)
+                        candidates = gasomex_candidates(bank, slots, reserved_keys, int(station_id))
                         if len(candidates) != 1:
                             if candidates:
                                 ambiguous += 1
