@@ -3306,17 +3306,22 @@ class Operations{
     }
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
-        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $urovoProblem=$type==='urovo' ? trim((string)($_POST['urovo_problem'] ?? '')) : ''; $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+        $type=(string)($_POST['type'] ?? ''); $description=$type==='urovo' ? '' : trim((string)($_POST['description'] ?? '')); $urovoProblem=$type==='urovo' ? ($_POST['urovo_problem'] ?? null) : ''; $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
         $requestKey=strtolower(trim((string)($_POST['request_key'] ?? '')));
         $urovoProblems=['Pantalla quebrada','Pantalla Negra','Carcasa Exterior','Puerto de Carga ( Punta )','Usb dañado','Falta Bateria','Touch','Modo Seguro','Impresora','Tapa de impresora','Boton de encendido','Tapa de bateria','Lector de Tarjetas','Otro'];
         if (!preg_match('/^[a-f0-9-]{16,64}$/',$requestKey) || !isset($this->terminalTypes()[$type]) || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
         if ($type==='urovo') {
-            if (!in_array($urovoProblem,$urovoProblems,true)) { $this->terminalJsonError('Seleccione un problema válido para UROVO.'); return; }
-            if ($urovoProblem==='Otro') {
-                if ($description==='' || mb_strlen($description)>250) { $this->terminalJsonError('Describa el problema UROVO (máximo 250 caracteres).'); return; }
-            } else {
-                $description=$urovoProblem;
+            if (!is_array($urovoProblem) || $urovoProblem===[]) { $this->terminalJsonError('Seleccione al menos un problema válido para UROVO.'); return; }
+            foreach ($urovoProblem as $selectedProblem) {
+                if (!is_string($selectedProblem) || !in_array($selectedProblem,$urovoProblems,true)) { $this->terminalJsonError('Seleccione problemas válidos para UROVO.'); return; }
             }
+            if (count(array_unique($urovoProblem,SORT_STRING))!==count($urovoProblem)) { $this->terminalJsonError('No repita problemas UROVO.'); return; }
+            $urovoOtherDetail=$_POST['urovo_other_detail'] ?? '';
+            if (!is_string($urovoOtherDetail)) { $this->terminalJsonError('Describa el problema UROVO seleccionado como Otro.'); return; }
+            $urovoOtherDetail=trim($urovoOtherDetail);
+            if (in_array('Otro',$urovoProblem,true) && $urovoOtherDetail==='') { $this->terminalJsonError('Describa el problema UROVO seleccionado como Otro.'); return; }
+            $description=implode(', ',array_map(static fn($selectedProblem)=>$selectedProblem==='Otro' ? 'Otro: '.$urovoOtherDetail : $selectedProblem,$urovoProblem));
+            if (mb_strlen($description)>250) { $this->terminalJsonError('La descripción UROVO completa no puede exceder 250 caracteres.'); return; }
         } elseif ($description==='' || mb_strlen($description)>250) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
         if ($type==='urovo' && ($urovoSerial==='' || mb_strlen($urovoSerial)>100)) { $this->terminalJsonError('Capture el número de serie UROVO (máximo 100 caracteres).'); return; }
         if ($type==='verifone' && !in_array($problem,MojoTerminalTicketsService::verifoneProblems(),true)) { $this->terminalJsonError('Seleccione un problema válido para Verifone.'); return; }
