@@ -1,0 +1,512 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Llamadas SAT{% endblock %}
+{% block mycss %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<style>
+    #panelEstado .sem { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background: #adb5bd; flex: 0 0 auto; }
+    #panelEstado .sem.verde    { background: #198754; }
+    #panelEstado .sem.amarillo { background: #ffc107; }
+    #panelEstado .sem.rojo     { background: #dc3545; }
+</style>
+{% endblock %}
+{% block menutitle %}Llamadas SAT{% endblock %}
+{% block content %}
+<div id="panelError" class="alert alert-danger alert-dismissible d-none" role="alert">
+    <div class="alert-message">
+        <strong id="panelErrorTitulo">Error</strong>
+        <small class="text-muted ms-2" id="panelErrorHora"></small>
+        <div id="panelErrorTexto" class="mt-1" style="white-space:pre-wrap; word-break:break-word;"></div>
+    </div>
+    <button type="button" class="btn-close" id="panelErrorCerrar" aria-label="Cerrar"></button>
+</div>
+
+<div class="card">
+    <div class="card-header pb-0">
+        <h5 class="card-title mb-0">Nueva petición de descarga masiva</h5>
+    </div>
+    <div class="card-body">
+        <form id="formPeticion" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label" for="razon_social">Razón social</label>
+                <select class="form-select form-select-sm" id="razon_social" name="razon_social" required>
+                    {% for rfc, nombre in rfcs %}
+                    <option value="{{ rfc }}">{{ nombre }} ({{ rfc }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="emited">Facturas</label>
+                <select class="form-select form-select-sm" id="emited" name="emited" required>
+                    <option value="1">Emitidas</option>
+                    <option value="0">Recibidas</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="tipo">Tipo</label>
+                <select class="form-select form-select-sm" id="tipo" name="tipo" required>
+                    <option value="2">XML</option>
+                    <option value="1">Metadata</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="start_date">Desde</label>
+                <input type="datetime-local" step="1" class="form-control form-control-sm" id="start_date" name="start_date" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="end_date">Hasta</label>
+                <input type="datetime-local" step="1" class="form-control form-control-sm" id="end_date" name="end_date" required>
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-sm btn-primary w-100" id="btnCrear">Enviar</button>
+            </div>
+        </form>
+        <div class="form-text mt-2">
+            Metadata solo sirve para consultar (el proceso de descarga espera XML).
+            Recibidas + XML puede ser rechazado por el SAT hasta que la API pida solo vigentes.
+        </div>
+    </div>
+</div>
+
+<div class="card" id="panelEstado">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnEstadoRefresh"><i data-feather="refresh-cw"></i> Actualizar</button>
+        </div>
+        <h5 class="card-title mb-0">Estado del proceso</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-12 col-md-6 col-xl-3">
+                <div class="border rounded p-2 h-100" data-tarjeta="peticiones">
+                    <div class="d-flex align-items-center gap-2"><span class="sem"></span><b>1. Peticiones SAT</b></div>
+                    <div class="small mt-1 cuerpo text-muted">Cargando…</div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+                <div class="border rounded p-2 h-100" data-tarjeta="zip">
+                    <div class="d-flex align-items-center gap-2"><span class="sem"></span><b>2. ZIP por descomprimir</b></div>
+                    <div class="small mt-1 cuerpo text-muted">Cargando…</div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btnDescomprimir" disabled>Descomprimir</button>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+                <div class="border rounded p-2 h-100" data-tarjeta="xml">
+                    <div class="d-flex align-items-center gap-2"><span class="sem"></span><b>3. XML por importar</b></div>
+                    <div class="small mt-1 cuerpo text-muted">Cargando…</div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btnImportar" disabled>Importar</button>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+                <div class="border rounded p-2 h-100" data-tarjeta="importado">
+                    <div class="d-flex align-items-center gap-2"><span class="sem"></span><b>4. Importado a la BD</b></div>
+                    <div class="small mt-1 cuerpo text-muted">Cargando…</div>
+                </div>
+            </div>
+        </div>
+        <small class="text-muted d-block mt-2" id="estadoGenerado"></small>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <button type="button" class="btn btn-sm btn-outline-danger" id="btnLogErrores"><i data-feather="alert-triangle"></i> Log de errores</button>
+            <button type="button" class="btn btn-sm btn-success" id="btnRefresh"><i data-feather="refresh-ccw"></i> Actualizar</button>
+        </div>
+        <h5 class="card-title mb-0">Peticiones pendientes (estado 1)</h5>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="datatables_llamadas_sat" class="table table-sm w-100" style="font-size:small;">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>EMPRESA</th>
+                    <th>RFC</th>
+                    <th>FACTURAS</th>
+                    <th>TIPO</th>
+                    <th>DESDE</th>
+                    <th>HASTA</th>
+                    <th>CREADA</th>
+                    <th>PETICIÓN SAT</th>
+                    <th class="text-center">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div class="form-text">
+            "Verificar" pregunta al SAT por la petición pendiente <b>más antigua</b> de ese RFC (no modifica nada).
+            "Marcar error" saca la petición de pendientes para que ya no se consulte (queda registrado en el log).
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="erroresSatModal" tabindex="-1" aria-labelledby="erroresSatModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="erroresSatModalLabel">Log de errores · Descarga masiva SAT</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div id="erroresSatModalContent"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script>
+$(document).ready(function () {
+    // Por defecto: el día de ayer completo
+    var ayer = new Date(Date.now() - 86400000);
+    var d = ayer.getFullYear() + '-' + String(ayer.getMonth() + 1).padStart(2, '0') + '-' + String(ayer.getDate()).padStart(2, '0');
+    $('#start_date').val(d + 'T00:00:00');
+    $('#end_date').val(d + 'T23:59:59');
+
+    // Los errores se muestran en una alerta y además quedan fijos en el panel rojo de arriba
+    function mostrarError(titulo, texto) {
+        $('#panelErrorTitulo').text(titulo);
+        $('#panelErrorTexto').text(texto);
+        $('#panelErrorHora').text(new Date().toLocaleString());
+        $('#panelError').removeClass('d-none');
+        Swal.fire({ titleText: titulo, text: texto, icon: 'error' });
+    }
+    $('#panelErrorCerrar').on('click', function () { $('#panelError').addClass('d-none'); });
+
+    // Error de red, PHP o sesión expirada (la respuesta no es JSON)
+    function errorAjax(titulo, xhr, textStatus) {
+        var texto;
+        if (xhr.status === 0) {
+            texto = 'No hubo respuesta del servidor (red caída o tiempo agotado).';
+        } else if (textStatus === 'parsererror') {
+            texto = /login|iniciar sesi/i.test(xhr.responseText || '')
+                ? 'Tu sesión expiró. Recarga la página e inicia sesión de nuevo.'
+                : 'El servidor no regresó JSON: ' + limpiar(xhr.responseText);
+        } else {
+            texto = 'HTTP ' + xhr.status + ': ' + limpiar(xhr.responseText);
+        }
+        mostrarError(titulo, texto);
+    }
+
+    function limpiar(html) {
+        var t = $('<div>').html(html || '').text().replace(/\s+/g, ' ').trim();
+        return t ? t.substring(0, 500) : '(respuesta vacía)';
+    }
+
+    function mensajeError(res) {
+        return res.message || ('HTTP ' + res.status);
+    }
+
+    var table = $('#datatables_llamadas_sat').DataTable({
+        ajax: {
+            url: '/it/llamadas_sat_pendientes',
+            type: 'GET',
+            dataSrc: function (json) {
+                if (!json.success) {
+                    mostrarError('No se pudieron cargar las pendientes', mensajeError(json));
+                    return [];
+                }
+                return json.data;
+            },
+            error: function (xhr, textStatus) {
+                errorAjax('No se pudieron cargar las pendientes', xhr, textStatus);
+                table.clear().draw();
+            }
+        },
+        columns: [
+            { data: 'id' },
+            { data: 'empresa' },
+            { data: 'razon_social' },
+            { data: 'emited', render: function (v) { return String(v) === '1' ? 'Emitidas' : 'Recibidas'; } },
+            { data: 'tipo', render: function (v) { return String(v) === '1' ? 'Metadata' : 'XML'; } },
+            { data: 'periodo_inicio' },
+            { data: 'periodo_final' },
+            { data: 'fecha' },
+            { data: 'peticion' },
+            {
+                data: null, orderable: false, searchable: false, className: 'text-center',
+                render: function (row) {
+                    var rfc = $('<div>').text(row.razon_social).html();
+                    return '<div class="btn-group btn-group-sm">'
+                        + '<button type="button" class="btn btn-outline-primary btn-verificar" data-rfc="' + rfc + '">Verificar</button>'
+                        + '<button type="button" class="btn btn-outline-success btn-descargar" data-rfc="' + rfc + '">Descargar</button>'
+                        + '<button type="button" class="btn btn-outline-danger btn-marcar-error" data-id="' + parseInt(row.id, 10) + '"'
+                        + ' data-peticion="' + $('<div>').text(row.peticion).html() + '" data-empresa="' + $('<div>').text(row.empresa || row.razon_social).html() + '"'
+                        + ' data-periodo="' + $('<div>').text(row.periodo_inicio + ' → ' + row.periodo_final).html() + '">Marcar error</button>'
+                        + '</div>';
+                }
+            }
+        ],
+        order: [[0, 'asc']],
+        pageLength: 25,
+        language: { url: 'https://cdn.datatables.net/plug-ins/2.1.8/i18n/es-ES.json' }
+    });
+
+    $('#btnRefresh').on('click', function () { table.ajax.reload(); });
+
+    $('#formPeticion').on('submit', function (e) {
+        e.preventDefault();
+        var datos = $(this).serialize();
+        var resumen = $('#razon_social option:selected').text() + '<br>' +
+            $('#emited option:selected').text() + ' · ' + $('#tipo option:selected').text() + '<br>' +
+            $('#start_date').val().replace('T', ' ') + ' → ' + $('#end_date').val().replace('T', ' ');
+
+        Swal.fire({
+            title: '¿Enviar petición al SAT?',
+            html: resumen,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Enviar',
+            cancelButtonText: 'Cancelar'
+        }).then(function (r) {
+            if (!r.isConfirmed) return;
+            $('#btnCrear').prop('disabled', true);
+            Swal.fire({ title: 'Enviando al SAT…', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+
+            $.post('/it/llamadas_sat_crear', datos, null, 'json')
+                .done(function (res) {
+                    if (res.success) {
+                        $('#panelError').addClass('d-none');
+                        Swal.fire('Petición creada', 'ID SAT: ' + ((res.body && res.body.data && res.body.data.peticion) || ''), 'success');
+                        table.ajax.reload();
+                    } else {
+                        mostrarError('No se creó la petición', mensajeError(res));
+                    }
+                })
+                .fail(function (xhr, textStatus) { errorAjax('No se creó la petición', xhr, textStatus); })
+                .always(function () { $('#btnCrear').prop('disabled', false); });
+        });
+    });
+
+    $('#datatables_llamadas_sat').on('click', '.btn-verificar', function () {
+        var btn = $(this);
+        btn.prop('disabled', true);
+        Swal.fire({ title: 'Consultando al SAT…', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+
+        $.post('/it/llamadas_sat_verificar', { razon_social: btn.data('rfc') }, null, 'json')
+            .done(function (res) {
+                var results = (res.body && res.body.results) || [];
+                if (!res.success || !results.length) {
+                    mostrarError('Verificar ' + btn.data('rfc'), mensajeError(res));
+                    return;
+                }
+                // failed / rejected / not_completed / error son errores del SAT o de la API
+                var errores = results.filter(function (r) { return ['finished', 'in_progress'].indexOf(r.status) === -1; });
+                if (errores.length) {
+                    mostrarError('El SAT respondió con error (' + btn.data('rfc') + ')', errores.map(function (r) {
+                        return r.requestId + ' → ' + r.status + ': ' + r.message;
+                    }).join('\n'));
+                    return;
+                }
+                var html = results.map(function (r) {
+                    var txt = '<b>' + $('<div>').text(r.requestId).html() + '</b><br>Estado: ' + $('<div>').text(r.status).html() +
+                        '<br>' + $('<div>').text(r.message).html();
+                    if (r.packages) txt += '<br>Paquetes: ' + r.packages.length;
+                    return txt;
+                }).join('<hr>');
+                Swal.fire({ title: 'Respuesta del SAT', html: html, icon: results[0].status === 'finished' ? 'success' : 'info' });
+            })
+            .fail(function (xhr, textStatus) { errorAjax('Verificar ' + btn.data('rfc'), xhr, textStatus); })
+            .always(function () { btn.prop('disabled', false); });
+    });
+
+    // Log de errores: vista parcial Twig renderizada por el controlador
+    function cargarLogErrores(rfc) {
+        var fd = new FormData();
+        fd.append('razon_social', rfc || '');
+        $('#erroresSatModalContent').html('<div class="modal-body text-center text-muted py-5"><div class="spinner-border spinner-border-sm"></div> Cargando…</div>');
+        fetch('/it/llamadas_sat_errores_modal', { method: 'POST', body: fd })
+            .then(function (r) { return r.text(); })
+            .then(function (html) { $('#erroresSatModalContent').html(html); })
+            .catch(function (err) {
+                $('#erroresSatModalContent').html('<div class="modal-body"><div class="alert alert-danger mb-0">No se pudo cargar el log: ' + $('<div>').text(err.message).html() + '</div></div>');
+            });
+    }
+    $('#btnLogErrores').on('click', function () {
+        $('#erroresSatModal').modal('show');
+        cargarLogErrores('');
+    });
+    $('#erroresSatModal').on('change', '#erroresRfc', function () { cargarLogErrores($(this).val()); });
+
+    $('#datatables_llamadas_sat').on('click', '.btn-marcar-error', function () {
+        var btn = $(this);
+        var esc = function (v) { return $('<div>').text(String(v)).html(); };
+        Swal.fire({
+            title: '¿Marcar la petición como error?',
+            html: '<b>' + esc(btn.data('empresa')) + '</b><br>' + esc(btn.data('periodo')) + '<br><small><code>' + esc(btn.data('peticion')) + '</code></small>'
+                + '<br><br><small>Ya no se volverá a consultar al SAT. Queda registrado en el log.</small>',
+            icon: 'warning',
+            input: 'text',
+            inputPlaceholder: 'Motivo (opcional)',
+            showCancelButton: true,
+            confirmButtonText: 'Marcar error',
+            confirmButtonColor: '#dc3545',
+            cancelButtonText: 'Cancelar'
+        }).then(function (r) {
+            if (!r.isConfirmed) return;
+            btn.prop('disabled', true);
+            $.post('/it/llamadas_sat_marcar_error', { id: btn.data('id'), motivo: r.value || '' }, null, 'json')
+                .done(function (res) {
+                    if (res.success) {
+                        Swal.fire('Listo', res.message, 'success');
+                        table.ajax.reload();
+                    } else {
+                        mostrarError('No se marcó la petición', mensajeError(res));
+                    }
+                })
+                .fail(function (xhr, textStatus) { errorAjax('No se marcó la petición', xhr, textStatus); })
+                .always(function () { btn.prop('disabled', false); });
+        });
+    });
+
+    // ---- Panel "Estado del proceso" ----
+    var ultimoEstado = null;
+    function fmtN(n) { return Number(n || 0).toLocaleString('es-MX'); }
+    function fmtF(f) { return f ? f.substring(0, 16).replace('T', ' ') : '—'; }
+    function pintarTarjeta(clave, t, html) {
+        var box = $('#panelEstado [data-tarjeta="' + clave + '"]');
+        box.find('.sem').attr('class', 'sem ' + (t.semaforo || ''));
+        box.find('.cuerpo').removeClass('text-muted').html(html);
+    }
+    function cargarEstado() {
+        return $.getJSON('/it/llamadas_sat_estado')
+            .done(function (res) {
+                if (!res.success) { mostrarError('No se pudo cargar el estado del proceso', mensajeError(res)); return; }
+                var t = res.tarjetas, esc = function (v) { return $('<div>').text(String(v)).html(); };
+                ultimoEstado = t;
+                pintarTarjeta('peticiones', t.peticiones, t.peticiones.pendientes
+                    ? fmtN(t.peticiones.pendientes) + ' pendiente(s)<br>La más vieja: ' + fmtF(t.peticiones.mas_vieja)
+                    : 'Sin pendientes');
+                pintarTarjeta('zip', t.zip, t.zip.disponible
+                    ? 'Emitidas: ' + fmtN(t.zip.emitidas) + ' · Recibidas: ' + fmtN(t.zip.recibidas) + '<br>Más viejo: ' + fmtF(t.zip.mas_viejo)
+                    : '<span class="text-danger">' + esc(t.zip.mensaje) + '</span>');
+                pintarTarjeta('xml', t.xml, t.xml.disponible
+                    ? 'Emitidas: ' + fmtN(t.xml.emitidas) + ' · Recibidas: ' + fmtN(t.xml.recibidas) + '<br>Más viejo: ' + fmtF(t.xml.mas_viejo)
+                      + (t.xml.en_error ? '<br><span class="text-danger">En cfdis_error: ' + fmtN(t.xml.en_error) + '</span>' : '')
+                    : '<span class="text-danger">' + esc(t.xml.mensaje) + '</span>');
+                pintarTarjeta('importado', t.importado,
+                    'Emitidas: ' + fmtF(t.importado.emitidas) + '<br>Recibidas: ' + fmtF(t.importado.recibidas));
+                $('#btnDescomprimir').prop('disabled', !(t.zip.disponible && (t.zip.emitidas + t.zip.recibidas) > 0));
+                // Importar se permite aunque falte pipeline_status (process_xml existe desde antes)
+                $('#btnImportar').prop('disabled', t.xml.disponible && (t.xml.emitidas + t.xml.recibidas) === 0);
+                $('#estadoGenerado').text('Actualizado: ' + new Date().toLocaleString());
+            })
+            .fail(function (xhr, textStatus) { errorAjax('No se pudo cargar el estado del proceso', xhr, textStatus); });
+    }
+    $('#btnEstadoRefresh').on('click', cargarEstado);
+    cargarEstado();
+
+    function htmlErrores(errores) {
+        if (!errores || !errores.length) return '';
+        var esc = function (v) { return $('<div>').text(String(v)).html(); };
+        return '<div class="text-start small mt-2"><b>Errores:</b><ul class="mb-0">' + errores.map(function (e) {
+            return '<li>' + esc(e.mensaje) + ' <b>×' + e.cantidad + '</b>'
+                + (e.ejemplos.length ? '<br><small class="text-muted">' + e.ejemplos.map(esc).join(', ') + '</small>' : '') + '</li>';
+        }).join('') + '</ul></div>';
+    }
+
+    $('#datatables_llamadas_sat').on('click', '.btn-descargar', function () {
+        var btn = $(this), rfc = btn.data('rfc');
+        Swal.fire({ title: '¿Descargar ahora?', html: 'Revisa hasta 5 pendientes de <b>' + $('<div>').text(rfc).html() + '</b> y baja los paquetes de las que el SAT ya terminó.',
+                    icon: 'question', showCancelButton: true, confirmButtonText: 'Descargar', cancelButtonText: 'Cancelar' })
+        .then(function (r) {
+            if (!r.isConfirmed) return;
+            Swal.fire({ title: 'Descargando del SAT…', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+            $.post('/it/llamadas_sat_descargar', { razon_social: rfc }, null, 'json')
+                .done(function (res) {
+                    if (!res.success) { mostrarError('Descargar ' + rfc, mensajeError(res)); return; }
+                    if (res.sin_pendientes) { Swal.fire('Sin pendientes', res.message, 'info'); return; }
+                    var esc = function (v) { return $('<div>').text(String(v)).html(); };
+                    var html = res.results.map(function (x) {
+                        return '<b>' + esc(x.requestId) + '</b><br>' + esc(x.status) + ': ' + esc(x.message || '');
+                    }).join('<hr>');
+                    var algunError = res.results.some(function (x) { return ['finished', 'in_progress'].indexOf(x.status) === -1; });
+                    Swal.fire({ title: 'Resultado de la descarga', html: html || 'Sin resultados', icon: algunError ? 'warning' : 'success' });
+                })
+                .fail(function (xhr, textStatus) { errorAjax('Descargar ' + rfc, xhr, textStatus); })
+                .always(function () { table.ajax.reload(); cargarEstado(); });
+        });
+    });
+
+    $('#btnDescomprimir').on('click', function () {
+        Swal.fire({ title: '¿Descomprimir los ZIP?', text: 'Pasa los XML de todos los ZIP descargados a las carpetas de importación.',
+                    icon: 'question', showCancelButton: true, confirmButtonText: 'Descomprimir', cancelButtonText: 'Cancelar' })
+        .then(function (r) {
+            if (!r.isConfirmed) return;
+            Swal.fire({ title: 'Descomprimiendo…', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+            $.post('/it/llamadas_sat_descomprimir', {}, null, 'json')
+                .done(function (res) {
+                    if (!res.success) { mostrarError('Descomprimir', mensajeError(res)); return; }
+                    Swal.fire({ title: 'Descompresión terminada', icon: res.failed ? 'warning' : 'success',
+                                html: 'ZIP descomprimidos: <b>' + res.processed + '</b> · con error: <b>' + res.failed + '</b>' + htmlErrores(res.errores) });
+                })
+                .fail(function (xhr, textStatus) { errorAjax('Descomprimir', xhr, textStatus); })
+                .always(cargarEstado);
+        });
+    });
+
+    var importando = false, detenerImport = false;
+    $('#btnImportar').on('click', function () {
+        if (importando) return;
+        var inicial = ultimoEstado && ultimoEstado.xml.disponible ? (ultimoEstado.xml.emitidas + ultimoEstado.xml.recibidas) : null;
+        Swal.fire({ title: '¿Importar XML a la BD?', icon: 'question', showCancelButton: true,
+                    html: (inicial !== null ? 'Hay <b>' + fmtN(inicial) + '</b> XML esperando. ' : '')
+                        + 'Se importan en lotes pequeños; puedes detener entre lotes.',
+                    confirmButtonText: 'Importar', cancelButtonText: 'Cancelar' })
+        .then(function (r) { if (r.isConfirmed) importarLotes(inicial); });
+    });
+
+    function importarLotes(inicial) {
+        importando = true; detenerImport = false;
+        var tot = { lotes: 0, ok: 0, omitidos: 0, fallidos: 0, apartados: 0 }, errores = {}, restante = inicial;
+        Swal.fire({ title: 'Importando…',
+                    html: '<div id="impProgreso">Iniciando…</div>'
+                        + '<small class="text-muted d-block mt-2">Detener espera a que termine el lote en curso.</small>',
+                    allowOutsideClick: false, allowEscapeKey: false,
+                    showConfirmButton: false, showCancelButton: true, cancelButtonText: 'Detener',
+                    didOpen: function () { Swal.showLoading(); } })
+        .then(function (r) { if (r.dismiss === Swal.DismissReason.cancel) detenerImport = true; });
+
+        // El resumen se arma de los totales (no del DOM): al dar Detener el modal de progreso ya se cerró
+        function resumenHtml() {
+            return 'Lotes: <b>' + tot.lotes + '</b><br>Importados: <b>' + fmtN(tot.ok) + '</b> · omitidos (ya existían o no aplican): ' + fmtN(tot.omitidos)
+                + '<br>Con error: <b>' + fmtN(tot.fallidos) + '</b> (apartados a cfdis_error: ' + fmtN(tot.apartados) + ')'
+                + (restante !== null ? '<br>Quedan: <b>' + fmtN(restante) + '</b>' : '');
+        }
+        function pintar() { $('#impProgreso').html(resumenHtml()); }
+        function terminar(motivo, icono) {
+            importando = false;
+            var lista = Object.keys(errores).map(function (k) { return errores[k]; })
+                .sort(function (a, b) { return b.cantidad - a.cantidad; }).slice(0, 10);
+            Swal.fire({ title: 'Importación ' + motivo, icon: icono, html: resumenHtml() + htmlErrores(lista) });
+            cargarEstado();
+        }
+        function lote() {
+            if (detenerImport) { pintar(); terminar('detenida', 'info'); return; }
+            $.post('/it/llamadas_sat_importar_lote', {}, null, 'json')
+                .done(function (res) {
+                    if (!res.success) { importando = false; mostrarError('Importar', mensajeError(res)); cargarEstado(); return; }
+                    var s = res.summary;
+                    tot.lotes++; tot.ok += s.successful; tot.omitidos += s.skipped; tot.fallidos += s.failed; tot.apartados += s.moved_to_error;
+                    (res.errores || []).forEach(function (e) {
+                        errores[e.mensaje] = errores[e.mensaje] || { mensaje: e.mensaje, cantidad: 0, ejemplos: e.ejemplos };
+                        errores[e.mensaje].cantidad += e.cantidad;
+                    });
+                    var avance = s.successful + s.skipped + s.moved_to_error;
+                    restante = s.remaining !== null ? s.remaining : (restante !== null ? Math.max(0, restante - avance) : null);
+                    pintar();
+                    // Ningún XML entró en todo el lote: puede ser una falla general (BD, permisos),
+                    // no de los archivos. Se detiene para que el usuario vea el error antes de seguir.
+                    if (s.successful === 0 && s.failed > 0) { terminar('detenida: ningún XML se importó en el lote', 'error'); return; }
+                    if (s.total_processed === 0 || restante === 0) { terminar('terminada', tot.fallidos ? 'warning' : 'success'); return; }
+                    // Sin avance: todos fallaron y siguen en la carpeta (ApiTotal viejo o rename fallido)
+                    if (avance === 0) { terminar('detenida: el lote no avanzó', 'error'); return; }
+                    lote();
+                })
+                .fail(function (xhr, textStatus) { importando = false; errorAjax('Importar (lote ' + (tot.lotes + 1) + ')', xhr, textStatus); cargarEstado(); });
+        }
+        lote();
+    }
+
+    feather.replace();
+});
+</script>
+{% endblock %}

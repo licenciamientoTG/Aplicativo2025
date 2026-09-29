@@ -140,6 +140,7 @@ $(document).ready(function () {
     // ---- Carga manual: Balance de Producto (Praxedis) ---------------------
     let balanceFiles = [];
     let balancePreview = [];
+    let balanceResumen = {};
 
     window.abrirModalBalancePraxedis = function () {
         $('#inputBalances').val('');
@@ -151,6 +152,7 @@ $(document).ready(function () {
         $('#btnGuardarBalance').prop('disabled', true);
         balanceFiles = [];
         balancePreview = [];
+        balanceResumen = {};
         $('#balancePraxedisModal').modal('show');
     };
 
@@ -185,11 +187,13 @@ $(document).ready(function () {
                 $('#balanceLoading').hide();
                 if (!res.success) { Swal.fire({ icon: 'error', title: 'Error', text: res.message || 'Error al procesar' }); return; }
                 balancePreview = res.archivos || [];
-                $('#balanceOk').text(res.resumen.ok || 0);
-                $('#balanceErr').text(res.resumen.error || 0);
+                balanceResumen = res.resumen || {};
+                $('#balanceOk').text(balanceResumen.dias || 0);
+                $('#balanceSobrescribe').text(balanceResumen.sobrescriben || 0);
+                $('#balanceErr').text(balanceResumen.error || 0);
                 $('#balanceResumen').show();
                 renderBalanceTabla(balancePreview);
-                $('#btnGuardarBalance').prop('disabled', res.resumen.ok === 0);
+                $('#btnGuardarBalance').prop('disabled', !balanceResumen.dias);
             })
             .catch(err => { $('#balanceLoading').hide(); Swal.fire({ icon: 'error', title: 'Conexión', text: err.message }); });
     }
@@ -203,18 +207,37 @@ $(document).ready(function () {
                     + '<td><span class="badge bg-danger">Error</span></td></tr>';
                 return;
             }
-            a.filas.forEach(function (f, idx) {
-                html += '<tr style="background:#ecfdf5;">'
-                    + (idx === 0 ? '<td rowspan="' + a.filas.length + '"><small>' + a.archivo + '</small>'
-                                   + (a.advertencia ? '<br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ' + a.advertencia + '</small>' : '')
-                                   + '</td>'
-                                   + '<td rowspan="' + a.filas.length + '">' + a.fecha + '</td>' : '')
-                    + '<td>' + f.producto + '</td>'
-                    + '<td class="text-end">' + Number(f.inv_fisico).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
-                    + '<td class="text-end">' + Number(f.ventas_reales).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
-                    + '<td class="text-end">' + Number(f.compras).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
-                    + (idx === 0 ? '<td rowspan="' + a.filas.length + '"><span class="badge bg-success">Listo</span></td>' : '')
-                    + '</tr>';
+            // Un archivo puede traer un día o un rango: una fila por día+producto,
+            // con la celda del archivo abarcando todas.
+            const totalFilas = a.dias.reduce((n, d) => n + d.filas.length, 0);
+            let primeraDelArchivo = true;
+            a.dias.forEach(function (d) {
+                let filaBg, badge;
+                if (d.duplicado) {
+                    filaBg = '#f3f4f6';
+                    badge = '<span class="badge bg-secondary" title="Otro archivo de esta carga ya trae esta fecha; se ignorará aquí">Duplicado</span>';
+                } else if (d.ya_existe) {
+                    filaBg = '#fffbeb';
+                    badge = '<span class="badge bg-warning text-dark" title="Ya existe un corte guardado para esta fecha; al confirmar se sobrescribirá">Se sobrescribirá</span>';
+                } else {
+                    filaBg = '#ecfdf5';
+                    badge = '<span class="badge bg-success">Nuevo</span>';
+                }
+                d.filas.forEach(function (f, idx) {
+                    html += '<tr style="background:' + filaBg + ';">'
+                        + (primeraDelArchivo ? '<td rowspan="' + totalFilas + '" style="background:#fff;"><small>' + a.archivo + '</small>'
+                                       + (a.fecha_desde !== a.fecha_hasta ? '<br><small class="text-muted">' + a.fecha_desde + ' a ' + a.fecha_hasta + ' · ' + a.dias.length + ' día(s)</small>' : '')
+                                       + (a.advertencia ? '<br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ' + a.advertencia + '</small>' : '')
+                                       + '</td>' : '')
+                        + (idx === 0 ? '<td rowspan="' + d.filas.length + '">' + d.fecha + '</td>' : '')
+                        + '<td>' + f.producto + '</td>'
+                        + '<td class="text-end">' + Number(f.inv_fisico).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
+                        + '<td class="text-end">' + Number(f.ventas_reales).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
+                        + '<td class="text-end">' + Number(f.compras).toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>'
+                        + (idx === 0 ? '<td rowspan="' + d.filas.length + '">' + badge + '</td>' : '')
+                        + '</tr>';
+                    primeraDelArchivo = false;
+                });
             });
         });
         $('#tablaBalancePreview tbody').html(html);
@@ -226,7 +249,11 @@ $(document).ready(function () {
 
         Swal.fire({
             icon: 'question', title: 'Confirmar carga',
-            html: 'Vas a guardar el corte de Praxedis para las fechas leídas. Si ya existía un corte para alguna de esas fechas, se sobrescribirá.',
+            html: 'Vas a guardar el corte de Praxedis para <strong>' + (balanceResumen.dias || 0) + '</strong> fecha(s).'
+                + (balanceResumen.sobrescriben
+                    ? '<br><span class="text-warning"><i class="fas fa-exclamation-triangle"></i> <strong>' + balanceResumen.sobrescriben
+                      + '</strong> ya tienen un corte guardado y se sobrescribirán.</span>'
+                    : ''),
             showCancelButton: true, confirmButtonText: 'Sí, guardar', cancelButtonText: 'Cancelar',
         }).then(function (r) {
             if (!r.isConfirmed) return;

@@ -1,0 +1,75 @@
+{# Modal: bitácora de errores de ApiTotal (TGV2.dbo.ApiFailures) #}
+{% set etiquetas = {
+    'failed': ['Falló verificación', 'danger'],
+    'rejected': ['Rechazada', 'danger'],
+    'not_completed': ['No completada', 'warning'],
+    'download_failed': ['Descarga fallida', 'warning'],
+    'error': ['Error', 'danger'],
+    'fiel_invalida': ['FIEL inválida', 'danger'],
+    'error_manual': ['Marcada a mano', 'secondary']
+} %}
+<div class="modal-body">
+    <div class="row g-2 align-items-end mb-2">
+        <div class="col-md-5">
+            <label class="form-label mb-0" for="erroresRfc">Razón social</label>
+            <select class="form-select form-select-sm" id="erroresRfc">
+                <option value="">Todas</option>
+                {% for r, nombre in rfcs %}
+                <option value="{{ r }}" {{ r == rfc ? 'selected' }}>{{ nombre }} ({{ r }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-7 text-end">
+            <small class="text-muted">Últimos {{ errores|length }} registros · más reciente primero</small>
+        </div>
+    </div>
+
+    {% if errores is empty %}
+    <div class="alert alert-success mb-0">No hay errores registrados{{ rfc ? ' para ' ~ rfcs[rfc] }}.</div>
+    {% else %}
+    <div class="table-responsive" style="max-height:60vh;">
+        <table class="table table-sm table-hover mb-0" style="font-size:small;">
+            <thead class="table-light" style="position:sticky; top:0;">
+                <tr>
+                    <th>FECHA</th>
+                    <th>PROCESO</th>
+                    <th>EMPRESA</th>
+                    <th>PETICIÓN / PERIODO</th>
+                    <th>TIPO</th>
+                    <th>DETALLE</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in errores %}
+                {% set status = e.ResponseData in etiquetas|keys ? e.ResponseData : null %}
+                <tr>
+                    <td class="text-nowrap">{{ e.fecha|date('d/m/Y H:i') }}</td>
+                    <td class="text-nowrap"><code>{{ e.Method }}</code></td>
+                    <td class="text-nowrap">
+                        {% if e.razon_social %}{{ rfcs[e.razon_social] ?? '' }}<br><small class="text-muted">{{ e.razon_social }}</small>{% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if e.peticion %}<small><code>{{ e.peticion }}</code></small><br>{% endif %}
+                        {% if e.periodo %}<small>{{ e.periodo }}</small>{% endif %}
+                        {% if e.emited is not null %}<small class="text-muted"> · {{ e.emited == 1 ? 'Emitidas' : 'Recibidas' }}</small>{% endif %}
+                    </td>
+                    <td>
+                        {% if status %}
+                        <span class="badge bg-{{ etiquetas[status][1] }}">{{ etiquetas[status][0] }}</span>
+                        {% else %}
+                        <span class="badge bg-danger">Error</span>
+                        {% endif %}
+                        {% if e.ErrorCode %}<br><small class="text-muted">código {{ e.ErrorCode }}</small>{% endif %}
+                    </td>
+                    <td style="white-space:pre-wrap; word-break:break-word; min-width:280px;">{{ e.ErrorMessage }}{% if not status and e.ResponseData and e.ResponseData not in e.ErrorMessage %}
+<small class="text-muted">{{ e.ResponseData }}</small>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+</div>

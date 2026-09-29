@@ -1127,6 +1127,372 @@ class It{
     }
 
     /* ------------------------------------------------------------------ */
+    /*  LLAMADAS SAT (peticiones de descarga masiva vía ApiTotal)           */
+    /* ------------------------------------------------------------------ */
+
+    private const SAT_USERS   = [6382, 6371, 6177, 6296, 6274];
+    private const SAT_API_URL = 'http://192.168.0.3:388/api/facturas/';
+
+    // Semáforo del panel "Estado del proceso" (días)
+    private const SAT_UMBRAL_PETICION_AMARILLO = 1;
+    private const SAT_UMBRAL_PETICION_ROJO     = 3;
+    private const SAT_UMBRAL_ARCHIVO_ROJO      = 1;  // ZIP/XML esperando
+    private const SAT_UMBRAL_IMPORT_AMARILLO   = 1;
+    private const SAT_UMBRAL_IMPORT_ROJO       = 3;
+    private const SAT_IMPORT_LIMITE = 100;  // XML por carpeta por lote (bajar si IIS corta por timeout)
+
+    private const SAT_RFCS    = [
+        'DGA930823KD3' => 'Dias Gas',
+        'ECU0602287R6' => 'Estación Custodia',
+        'GVA9709154V2' => 'Villa Ahumada',
+        'DCL880518UG2' => 'Clara',
+        'DGM880621FU5' => 'Gasomex',
+        'GOG181220973' => 'TSA',
+        'SSY940520271' => 'SYC',
+        'PET180213L66' => 'Petrotal',
+    ];
+
+    public function llamadas_sat(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            (new Errors())->get404();
+            return;
+        }
+        echo $this->twig->render($this->route . 'llamadas_sat.html', [
+            'rfcs' => self::SAT_RFCS,
+        ]);
+    }
+
+    public function llamadas_sat_pendientes(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        $res = $this->_sat_api('GET', 'get_petitions', null, 30);
+        if (!$res['success']) {
+            json_output($res);
+        }
+        $data = array_map(function ($p) {
+            $p['empresa'] = self::SAT_RFCS[$p['razon_social']] ?? '';
+            return $p;
+        }, is_array($res['body']) ? $res['body'] : []);
+        json_output(['success' => true, 'data' => $data]);
+    }
+
+    public function llamadas_sat_crear(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        $rfc    = $_POST['razon_social'] ?? '';
+        $tipo   = (int)($_POST['tipo'] ?? 0);
+        $emited = (int)($_POST['emited'] ?? -1);
+        $start  = $this->_sat_fecha($_POST['start_date'] ?? '');
+        $end    = $this->_sat_fecha($_POST['end_date'] ?? '');
+
+        if (!isset(self::SAT_RFCS[$rfc]))     json_output(['success' => false, 'message' => 'Razón social inválida']);
+        if (!in_array($tipo, [1, 2], true))   json_output(['success' => false, 'message' => 'Tipo inválido']);
+        if (!in_array($emited, [0, 1], true)) json_output(['success' => false, 'message' => 'Indica emitidas o recibidas']);
+        if (!$start || !$end)                 json_output(['success' => false, 'message' => 'Fechas inválidas']);
+        if ($start >= $end)                   json_output(['success' => false, 'message' => 'La fecha final debe ser mayor a la inicial']);
+
+        // Se manda como JSON con enteros: la API compara tipo/emited con ===
+        $res = $this->_sat_api('POST', 'create_petition', [
+            'razon_social' => $rfc,
+            'tipo'         => $tipo,
+            'emited'       => $emited,
+            'start_date'   => $start,
+            'end_date'     => $end,
+        ], 90);
+        json_output($res);
+    }
+
+    public function llamadas_sat_verificar(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        $rfc = $_POST['razon_social'] ?? '';
+        if (!isset(self::SAT_RFCS[$rfc])) {
+            json_output(['success' => false, 'message' => 'Razón social inválida']);
+        }
+        // consult_status solo consulta al SAT la petición pendiente más antigua del RFC; no modifica nada
+        json_output($this->_sat_api('POST', 'consult_status', ['razon_social' => $rfc], 120));
+    }
+
+    /**
+     * Modal con la bitácora de errores de ApiTotal (TGV2.dbo.ApiFailures):
+     * fallas al crear peticiones, al verificarlas y marcados manuales.
+     * POST razon_social (opcional, filtra por RFC). Responde HTML parcial.
+     */
+    public function llamadas_sat_errores_modal(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            echo '<div class="modal-body"><div class="alert alert-danger">Sin permisos</div></div>';
+            return;
+        }
+        $rfc = $_POST['razon_social'] ?? '';
+        if ($rfc !== '' && !isset(self::SAT_RFCS[$rfc])) $rfc = '';
+
+        $errores = (new SatPeticionesModel)->get_errores($rfc);
+        echo $this->twig->render($this->route . 'modals/llamadas_sat_errores.html', [
+            'errores' => $errores,
+            'rfcs'    => self::SAT_RFCS,
+            'rfc'     => $rfc,
+        ]);
+    }
+
+    /**
+     * Marca una petición pendiente como error (estado 4) para que ApiTotal ya
+     * no la vuelva a consultar, y deja el registro en la bitácora.
+     * POST id, motivo (opcional).
+     */
+    public function llamadas_sat_marcar_error(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        $id     = (int)($_POST['id'] ?? 0);
+        $motivo = mb_substr(trim($_POST['motivo'] ?? ''), 0, 500);
+
+        $model    = new SatPeticionesModel;
+        $peticion = $id > 0 ? $model->get_peticion($id) : null;
+        if (!$peticion) {
+            json_output(['success' => false, 'message' => 'La petición no existe']);
+        }
+        if ((int)$peticion['estado'] !== SatPeticionesModel::ESTADO_PENDIENTE) {
+            json_output(['success' => false, 'message' => 'La petición ya no está pendiente (estado ' . $peticion['estado'] . ')']);
+        }
+
+        $afectadas = $model->marcar_error($id);
+        if ($afectadas === false) {
+            json_output(['success' => false, 'message' => 'No se pudo actualizar la petición']);
+        }
+        if ($afectadas === 0) {
+            json_output(['success' => false, 'message' => 'La petición cambió de estado mientras tanto; recarga la tabla']);
+        }
+
+        $usuario = $_SESSION['tg_user']['Nombre'] ?? $_SESSION['tg_user']['Usuario'] ?? ('usuario ' . $_SESSION['tg_user']['Id']);
+        try {
+            $model->log_marcado_manual($peticion, $motivo, (int)$_SESSION['tg_user']['Id'], $usuario);
+        } catch (Throwable $e) {
+            // El marcado ya quedó; que falle la bitácora no debe revertirlo
+            error_log('llamadas_sat_marcar_error: no se pudo registrar en ApiFailures: ' . $e->getMessage());
+        }
+        json_output(['success' => true, 'message' => 'Petición marcada como error; ya no se consultará']);
+    }
+
+    /** Panel "Estado del proceso": combina carpetas (ApiTotal) con datos de BD. */
+    public function llamadas_sat_estado(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        session_write_close();
+        $model = new SatPeticionesModel;
+
+        $pend = $model->get_resumen_pendientes();
+        $peticiones = $pend + ['semaforo' => SatPeticionesModel::semaforo(
+            SatPeticionesModel::edad_dias($pend['mas_vieja']),
+            self::SAT_UMBRAL_PETICION_AMARILLO, self::SAT_UMBRAL_PETICION_ROJO)];
+
+        $imp = $model->get_ultima_importacion();
+        $fechaImp = max($imp['emitidas'] ?? '', $imp['recibidas'] ?? '') ?: null;
+        $importado = $imp + ['semaforo' => $fechaImp === null ? 'sin_datos' : SatPeticionesModel::semaforo(
+            SatPeticionesModel::edad_dias($fechaImp),
+            self::SAT_UMBRAL_IMPORT_AMARILLO, self::SAT_UMBRAL_IMPORT_ROJO)];
+
+        $res = $this->_sat_api('GET', 'pipeline_status', null, 60);
+        $c = ($res['success'] && is_array($res['body'])) ? ($res['body']['carpetas'] ?? null) : null;
+        if ($c === null) {
+            $mensaje = ($res['status'] ?? 0) === 404
+                ? 'Falta subir ApiTotal (pipeline_status)'
+                : ($res['message'] ?? 'No se pudo leer el estado de las carpetas');
+            $zip = ['disponible' => false, 'semaforo' => 'sin_datos', 'mensaje' => $mensaje];
+            $xml = ['disponible' => false, 'semaforo' => 'sin_datos', 'mensaje' => $mensaje];
+        } else {
+            // ApiTotal puede correr en otra zona horaria; normaliza a hora local antes
+            // de usarlo, y rellena las 6 llaves esperadas por si alguna faltó.
+            $loc = fn(?string $iso): ?string => $iso ? date('Y-m-d H:i:s', strtotime($iso)) : null;
+            foreach (['zip_emited', 'zip_received', 'xml_emited', 'xml_received', 'error_emited', 'error_received'] as $clave) {
+                $c[$clave] = $c[$clave] ?? ['cantidad' => 0, 'mas_viejo' => null];
+            }
+            $masViejo = function (array ...$cs) use ($loc): ?string {
+                $fechas = array_filter(array_map($loc, array_column($cs, 'mas_viejo')));
+                return $fechas ? min($fechas) : null;
+            };
+            $semArchivo = function (int $cantidad, ?string $viejo): string {
+                if ($cantidad === 0) return 'verde';
+                return SatPeticionesModel::semaforo(SatPeticionesModel::edad_dias($viejo), 0, self::SAT_UMBRAL_ARCHIVO_ROJO);
+            };
+
+            $zipViejo = $masViejo($c['zip_emited'], $c['zip_received']);
+            $zipCant  = $c['zip_emited']['cantidad'] + $c['zip_received']['cantidad'];
+            $zip = ['disponible' => true, 'emitidas' => $c['zip_emited']['cantidad'],
+                    'recibidas' => $c['zip_received']['cantidad'], 'mas_viejo' => $zipViejo,
+                    'semaforo' => $semArchivo($zipCant, $zipViejo)];
+
+            $xmlViejo = $masViejo($c['xml_emited'], $c['xml_received']);
+            $xmlCant  = $c['xml_emited']['cantidad'] + $c['xml_received']['cantidad'];
+            $enError  = $c['error_emited']['cantidad'] + $c['error_received']['cantidad'];
+            $semXml   = $semArchivo($xmlCant, $xmlViejo);
+            if ($semXml === 'verde' && $enError > 0) $semXml = 'amarillo';
+            $xml = ['disponible' => true, 'emitidas' => $c['xml_emited']['cantidad'],
+                    'recibidas' => $c['xml_received']['cantidad'], 'en_error' => $enError,
+                    'mas_viejo' => $xmlViejo, 'semaforo' => $semXml];
+        }
+
+        json_output(['success' => true, 'tarjetas' => compact('peticiones') + ['zip' => $zip, 'xml' => $xml, 'importado' => $importado]]);
+    }
+
+    /** Descarga ahora las pendientes terminadas de un RFC (lo que hace la tarea de cada 4 h). */
+    public function llamadas_sat_descargar(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_output(['success' => false, 'message' => 'Método no permitido']);
+        session_write_close();
+        set_time_limit(0);
+        $rfc = $_POST['razon_social'] ?? '';
+        if (!isset(self::SAT_RFCS[$rfc])) {
+            json_output(['success' => false, 'message' => 'Razón social inválida']);
+        }
+        $res = $this->_sat_api('POST', 'consult_pending', ['razon_social' => $rfc], 600);
+        if (($res['status'] ?? 0) === 404) {
+            json_output(['success' => true, 'sin_pendientes' => true, 'results' => [],
+                         'message' => 'No hay peticiones pendientes para ' . self::SAT_RFCS[$rfc]]);
+        }
+        if (!$res['success']) json_output($res);
+        json_output(['success' => true, 'results' => $res['body']['results'] ?? []]);
+    }
+
+    /** Descomprime todos los ZIP descargados (process_downloaded_packages). */
+    public function llamadas_sat_descomprimir(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_output(['success' => false, 'message' => 'Método no permitido']);
+        session_write_close();
+        set_time_limit(0);
+        $res = $this->_sat_api('POST', 'process_downloaded_packages', [], 600);
+        if (!$res['success']) json_output($res);
+        $body = $res['body'];
+        $fallidos = array_filter($body['results'] ?? [], fn($r) => ($r['status'] ?? '') !== 'success');
+        json_output([
+            'success'   => true,
+            'processed' => (int)($body['processed'] ?? 0),
+            'failed'    => (int)($body['failed'] ?? 0),
+            'errores'   => $this->_sat_agrupar_errores(array_values($fallidos), 'file', 'message'),
+        ]);
+    }
+
+    /** Un lote de importación (process_xml: ≤SAT_IMPORT_LIMITE emitidas + ≤SAT_IMPORT_LIMITE recibidas). */
+    public function llamadas_sat_importar_lote(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_output(['success' => false, 'message' => 'Método no permitido']);
+        session_write_close();
+        set_time_limit(0);
+        $res = $this->_sat_api('POST', 'process_xml', ['limit' => self::SAT_IMPORT_LIMITE], 600);
+        if (($res['status'] ?? 0) === 409) {
+            json_output(['success' => false, 'message' => 'Ya hay una importación en curso (otra pestaña, otro usuario o la tarea programada). Intenta en unos minutos.']);
+        }
+        if (!$res['success'] || !is_array($res['body'])) {
+            json_output(['success' => false, 'message' => $res['message'] ?? 'Respuesta inesperada de process_xml']);
+        }
+        $s = $res['body']['summary'] ?? [];
+        $errores = array_values(array_filter($res['body']['logs'] ?? [], fn($l) => ($l['status'] ?? '') === 'error'));
+        json_output([
+            'success' => true,
+            'summary' => [
+                'total_processed' => (int)($s['total_processed'] ?? 0),
+                'successful'      => (int)($s['successful'] ?? 0),
+                'failed'          => (int)($s['failed'] ?? 0),
+                'skipped'         => (int)($s['skipped'] ?? 0),
+                'moved_to_error'  => (int)($s['moved_to_error'] ?? 0),
+                'remaining'       => isset($s['remaining_emited'], $s['remaining_received'])
+                    ? (int)$s['remaining_emited'] + (int)$s['remaining_received'] : null,
+            ],
+            'errores' => $this->_sat_agrupar_errores($errores, 'file', 'message'),
+        ]);
+    }
+
+    /** Agrupa errores por mensaje: top 10 con cantidad y hasta 3 archivos de ejemplo. */
+    private function _sat_agrupar_errores(array $items, string $campoArchivo, string $campoMensaje): array {
+        $grupos = [];
+        foreach ($items as $it) {
+            $msg = mb_substr((string)($it[$campoMensaje] ?? 'Error sin mensaje'), 0, 300);
+            $grupos[$msg] ??= ['mensaje' => $msg, 'cantidad' => 0, 'ejemplos' => []];
+            $grupos[$msg]['cantidad']++;
+            if (count($grupos[$msg]['ejemplos']) < 3 && !empty($it[$campoArchivo])) {
+                $grupos[$msg]['ejemplos'][] = $it[$campoArchivo];
+            }
+        }
+        usort($grupos, fn($a, $b) => $b['cantidad'] <=> $a['cantidad']);
+        return array_slice($grupos, 0, 10);
+    }
+
+    /** Convierte 'YYYY-MM-DDTHH:MM[:SS]' (input datetime-local) a 'YYYY-MM-DD HH:MM:SS'. */
+    private function _sat_fecha(string $value): ?string {
+        $value = str_replace('T', ' ', trim($value));
+        foreach (['Y-m-d H:i:s', 'Y-m-d H:i'] as $format) {
+            $date = DateTime::createFromFormat($format, $value);
+            if ($date && $date->format($format) === $value) {
+                return $date->format('Y-m-d H:i:s');
+            }
+        }
+        return null;
+    }
+
+    private function _sat_api(string $method, string $endpoint, ?array $payload, int $timeout): array {
+        $ch = curl_init(self::SAT_API_URL . $endpoint);
+        $headers = ['Accept: application/json'];
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT        => $timeout,
+        ]);
+        if ($method === 'POST') {
+            $headers[] = 'Content-Type: application/json';
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload ?? []));
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $raw    = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error  = curl_error($ch);
+        curl_close($ch);
+
+        if ($raw === false) {
+            return ['success' => false, 'message' => "No se pudo conectar con ApiTotal ({$endpoint}): $error"];
+        }
+        $body   = json_decode($raw, true);
+        $result = [
+            'success' => $status >= 200 && $status < 300,
+            'status'  => $status,
+            'body'    => $body ?? $raw,
+        ];
+        if (!$result['success']) {
+            $result['message'] = "ApiTotal respondió HTTP {$status} en {$endpoint}: " . $this->_sat_api_error($body, $raw);
+        }
+        return $result;
+    }
+
+    /** Arma un mensaje legible con cualquier formato de error que regrese ApiTotal. */
+    private function _sat_api_error($body, string $raw): string {
+        if (is_array($body)) {
+            if (!empty($body['detalles'])) {
+                return implode(' ', array_merge(...array_values(array_map('array_values', (array)$body['detalles']))));
+            }
+            if (!empty($body['error'])) {
+                return $body['error'] . (!empty($body['details']) ? ': ' . $body['details'] : '');
+            }
+            if (!empty($body['message'])) {
+                return $body['message'];
+            }
+            return json_encode($body, JSON_UNESCAPED_UNICODE);
+        }
+        // Respuesta no JSON (p. ej. página de error de IIS/Laravel): texto plano recortado
+        $text = trim(preg_replace('/\s+/', ' ', strip_tags($raw)));
+        return $text === '' ? 'respuesta vacía' : mb_substr($text, 0, 500);
+    }
+
+    /* ------------------------------------------------------------------ */
     /*  VISOR DEL LOG DE ERRORES PHP (logs/php_errors.log)                  */
     /* ------------------------------------------------------------------ */
 

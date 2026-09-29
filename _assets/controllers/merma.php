@@ -1271,12 +1271,12 @@ class Merma
         }
 
         $resultados = [];
-        $resumen = ['ok' => 0, 'error' => 0, 'total' => $total];
+        $resumen = ['ok' => 0, 'error' => 0, 'total' => $total, 'dias' => 0, 'sobrescriben' => 0, 'duplicados' => 0];
 
         for ($i = 0; $i < $total; $i++) {
             $nombre = $files['name'][$i];
             if ($files['error'][$i] !== UPLOAD_ERR_OK || strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
-                $resultados[] = ['archivo' => $nombre, 'ok' => false, 'error' => 'Archivo inválido', 'fecha' => '', 'filas' => []];
+                $resultados[] = ['archivo' => $nombre, 'ok' => false, 'error' => 'Archivo inválido', 'dias' => []];
                 $resumen['error']++;
                 continue;
             }
@@ -1284,6 +1284,31 @@ class Merma
             $resultados[] = $r;
             $r['ok'] ? $resumen['ok']++ : $resumen['error']++;
         }
+
+        // Marca por día: si ya tiene corte guardado (se sobrescribirá) y si
+        // otro archivo del lote ya trae esa fecha (el guardado conserva la
+        // primera aparición e ignora las siguientes, igual que aquí).
+        $fechasLeidas = [];
+        foreach ($resultados as $r) {
+            foreach ($r['dias'] as $d) $fechasLeidas[] = $d['fecha'];
+        }
+        $fechasExistentes = $this->mermaModel->fechas_existentes(self::CODGAS_PRAXEDIS, $fechasLeidas);
+        $vistas = [];
+        foreach ($resultados as &$r) {
+            foreach ($r['dias'] as &$d) {
+                $d['duplicado'] = isset($vistas[$d['fecha']]);
+                $d['ya_existe'] = in_array($d['fecha'], $fechasExistentes, true);
+                $vistas[$d['fecha']] = true;
+                if ($d['duplicado']) {
+                    $resumen['duplicados']++;
+                    continue;
+                }
+                $resumen['dias']++;
+                if ($d['ya_existe']) $resumen['sobrescriben']++;
+            }
+            unset($d);
+        }
+        unset($r);
 
         json_output(['success' => true, 'resumen' => $resumen, 'archivos' => $resultados]);
     }
@@ -1317,7 +1342,8 @@ class Merma
             return;
         }
 
-        // Agrupar filas válidas por fecha (un PDF = un día; el lote puede traer varios días)
+        // Agrupar filas válidas por fecha. Un PDF puede ser de un día o de un
+        // rango; si dos archivos traen la misma fecha se conserva la primera.
         $porFecha = [];
         $resultados = [];
         for ($i = 0; $i < $total; $i++) {
@@ -1331,19 +1357,34 @@ class Merma
                 $resultados[] = ['archivo' => $nombre, 'success' => false, 'message' => $r['error']];
                 continue;
             }
-            if (isset($porFecha[$r['fecha']])) {
-                $resultados[] = ['archivo' => $nombre, 'success' => false,
-                    'message' => "Fecha {$r['fecha']} duplicada en este lote; se ignoró este archivo"];
-                continue;
+            $tomadas = [];
+            $duplicadas = [];
+            foreach ($r['dias'] as $d) {
+                if (isset($porFecha[$d['fecha']])) {
+                    $duplicadas[] = $d['fecha'];
+                    continue;
+                }
+                $porFecha[$d['fecha']] = $d['filas'];
+                $tomadas[] = $d['fecha'];
             }
-            $porFecha[$r['fecha']] = $r['filas'];
-            $resultados[] = ['archivo' => $nombre, 'success' => true, 'message' => "Fecha {$r['fecha']} lista"];
+            if ($tomadas) {
+                $resultados[] = ['archivo' => $nombre, 'success' => true, 'message' => count($tomadas) === 1
+                    ? "Fecha {$tomadas[0]} lista"
+                    : count($tomadas) . ' fechas listas (' . reset($tomadas) . ' a ' . end($tomadas) . ')'];
+            }
+            if ($duplicadas) {
+                $resultados[] = ['archivo' => $nombre, 'success' => false,
+                    'message' => 'Fecha(s) duplicada(s) en este lote, se ignoraron: ' . implode(', ', $duplicadas)];
+            }
         }
 
         if (empty($porFecha)) {
             json_output(['success' => false, 'message' => 'Ningún PDF válido para guardar', 'resultados' => $resultados]);
             return;
         }
+        // Ascendente: así solo el primer día puede necesitar "semilla" del día
+        // anterior; los siguientes ya encadenan con el día recién guardado.
+        ksort($porFecha);
 
         $filasInsertadas = 0;
         $fechasOk = [];
