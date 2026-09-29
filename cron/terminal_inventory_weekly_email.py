@@ -222,15 +222,13 @@ def terminal_incident_report_url() -> str:
     return env_first("TERMINAL_INCIDENT_REPORT_URL", default="http://totalgasonline.net:400/operations/terminal_incident_report")
 
 
-def terminal_report_link(type_code: str = "", station_code: object = "", date_value: object = "") -> str:
-    return terminal_incident_report_link(station_code, date_value, type_code=type_code)
+def terminal_report_link(type_code: str = "", station_code: object = "") -> str:
+    return terminal_incident_report_link(station_code, type_code=type_code)
 
 
-def terminal_incident_report_link(station_code: object = "", date_value: object = "", status: str = "", type_code: str = "") -> str:
-    if date_value and str(date_value).strip().lower() != "none":
-        date_value = date_value.strftime("%Y-%m-%d") if hasattr(date_value, "strftime") else str(date_value).split(" ", 1)[0]
+def terminal_incident_report_link(station_code: object = "", status: str = "", type_code: str = "") -> str:
     params = {
-        key: value for key, value in (("station", station_code), ("as_of", date_value), ("status", status), ("type", type_code))
+        key: value for key, value in (("station", station_code), ("status", status), ("type", type_code))
         if value is not None and str(value).strip() and str(value).strip().lower() != "none"
     }
     base = terminal_incident_report_url()
@@ -405,7 +403,7 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
         station = str(row.get("estacion_nombre") or "Sin estación")
         station_label = escape(station)
         if damaged > 0:
-            station_link = escape(terminal_incident_report_link(row.get("estacion_codigo"), sent_at, status="open", type_code="urovo"), quote=True)
+            station_link = escape(terminal_incident_report_link(row.get("estacion_codigo"), status="open", type_code="urovo"), quote=True)
             station_label = f'<a href="{station_link}" style="color:#125ca8;font-weight:700;text-decoration:none">{station_label}</a>'
         station_incidents = incidents_by_station.get(station, [])
         incident_detail = "".join(

@@ -3263,7 +3263,7 @@ class Operations{
                     $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
                     $state=$service->localState($ticket,$previous);
                     $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
-                    $closedAt=$state==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? $ticket['solved_on'] ?? null) ?? date('Y-m-d H:i:s')) : null;
+                    $closedAt=$state==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? $ticket['solved_on'] ?? null) ?? (new DateTimeImmutable('now',new DateTimeZone('America/Ojinaga')))->format('Y-m-d H:i:s')) : null;
                     $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$previous,$state,$closedAt,$state==='Closed' ? $service->closedByFromTicket($ticket) : null,$origin,$data['serial_urovo'] ?? null);
                 } catch (Throwable $e) { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],$previous,$origin,$e->getMessage()); error_log('No se sincronizó ticket Mojo #'.$incident['ticket_mojo_id'].': '.$e->getMessage()); }
             }
@@ -3275,8 +3275,11 @@ class Operations{
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
         $this->syncTerminalIncidents($stationId,'vista');
+        $monthStart=(new DateTimeImmutable('now',new DateTimeZone('America/Ojinaga')))->modify('first day of this month')->setTime(0,0);
+        $nextMonth=$monthStart->modify('+1 month');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
-        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)]);
+        $closed=$this->terminalInventoryModel->closedIncidentsForMonth($stationId,$monthStart->format('Y-m-d H:i:s'),$nextMonth->format('Y-m-d H:i:s'));
+        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'closedIncidents'=>$closed,'currentMonth'=>$monthStart->format('Y-m'),'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)]);
     }
     public function terminal_ticket_validate(): void {
         $this->terminalJsonError('La vinculación de tickets existentes fue retirada. Registrar una incidencia crea un ticket nuevo en Mojo.',410);
@@ -3450,10 +3453,28 @@ class Operations{
             if ($action==='reopen' && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la reapertura del ticket.');
             if ($action==='reply' && $oldState==='Solved' && $reopenFailure==='' && !in_array($newState,['Abierta','Reabierta'],true)) $reopenFailure='El mensaje llegó al técnico, pero no se confirmó la reapertura. Revisa el estado antes de intentarlo de nuevo.';
             $auditMessage=$action==='reply' ? ($message!==''?$message:'Adjuntos enviados al técnico: '.implode(', ',array_column($uploads,'name'))) : ($action==='close' ? 'Cierre confirmado por el usuario de estación.' : 'Ticket reabierto por el usuario de estación.');
-            $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$oldState,$newState,$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? date('Y-m-d H:i:s')) : null,$newState==='Closed' ? $service->closedByFromTicket($ticket) : null,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$auditMessage,'sincronizado');
+            $ojinagaNow=new DateTimeImmutable('now',new DateTimeZone('America/Ojinaga'));
+            $closedAt=$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? $ojinagaNow->format('Y-m-d H:i:s')) : null;
+            $closedByMojo=$newState==='Closed' ? $service->closedByFromTicket($ticket) : null;
+            if ($action==='close') {
+                $monthStart=$ojinagaNow->modify('first day of this month')->setTime(0,0);
+                $nextMonth=$monthStart->modify('+1 month');
+            }
+            $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$oldState,$newState,$closedAt,$closedByMojo,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$auditMessage,'sincronizado');
             $warnings=$failedFiles ? ['No se adjuntaron: '.implode(', ',$failedFiles).'. El mensaje ya fue enviado; selecciona solo esos archivos si quieres reintentarlo.'] : [];
             if ($reopenFailure!=='') $warnings[]=$reopenFailure;
-            json_output(['success'=>true,'state'=>$newState,'uploaded_files'=>$uploadedCount,'failed_files'=>$failedFiles,'note_id'=>$failedFiles?$noteId:0,'warnings'=>$warnings]);
+            $response=['success'=>true,'state'=>$newState,'uploaded_files'=>$uploadedCount,'failed_files'=>$failedFiles,'note_id'=>$failedFiles?$noteId:0,'warnings'=>$warnings];
+            if ($action==='close') {
+                $updatedIncident=$incident;
+                $updatedIncident['estado_local']='Closed';
+                $updatedIncident['estado_mojo']='Closed';
+                $updatedIncident['fecha_cierre_mojo']=$closedAt;
+                if ($closedByMojo!==null) $updatedIncident['cerrado_por_mojo']=$closedByMojo;
+                $response['incident']=$updatedIncident;
+                $response['closed_this_month']=$closedAt >= $monthStart->format('Y-m-d H:i:s') && $closedAt < $nextMonth->format('Y-m-d H:i:s');
+                $response['current_month']=$monthStart->format('Y-m');
+            }
+            json_output($response);
         } catch (Throwable $e) { try { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],$oldState,'accion_'.$action,$e->getMessage()); } catch (Throwable $ignored) {} error_log('No se pudo completar '.$action.' sobre ticket MOJO '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $message=$replyCreated ? 'La nota ya se creó en Mojo, pero el portal no pudo terminar de actualizarse. Actualiza el detalle y revisa la conversación antes de enviar otra vez.' : 'Mojo no confirmó la operación. Actualiza el detalle antes de reintentar.'; $this->terminalJsonError($message,503); }
     }
     public function terminal_incident_attachment(int $incidentId, int $attachmentId): void {
@@ -3620,10 +3641,10 @@ class Operations{
     private function renderTerminalIncidentReport(?int $stationScope,bool $stationView,string $stationName=''): void {
         $globalReport=!$stationView;
         $month=trim((string)($_GET['month'] ?? '')); $from=trim((string)($_GET['from'] ?? '')); $to=trim((string)($_GET['to'] ?? ''));
-        $asOf=trim((string)($_GET['as_of'] ?? '')); $station=(string)($_GET['station'] ?? ''); $type=trim((string)($_GET['type'] ?? ''));
+        $station=(string)($_GET['station'] ?? ''); $type=trim((string)($_GET['type'] ?? ''));
         $status=trim((string)($_GET['status'] ?? '')); $assigned=(string)($_GET['assigned'] ?? '');
         if ($month!=='' && !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month)) $month='';
-        foreach (['from','to','as_of'] as $key) { $value=$$key; if ($value!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$value)) $$key=''; }
+        foreach (['from','to'] as $key) { $value=$$key; if ($value!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$value)) $$key=''; }
         if (!in_array($status,['open','solved','reopened','closed'],true)) $status='';
         if ($station!=='' && !preg_match('/^\d+$/',$station)) $station='';
         if ($assigned!=='' && !preg_match('/^\d+$/',$assigned)) $assigned='';
@@ -3633,7 +3654,7 @@ class Operations{
         // Mostrar el último estado persistido y sincronizar al actuar sobre el ticket.
         if ($stationScope>0) $this->syncTerminalIncidents($stationScope,'reporte_estacion');
         try {
-            $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned]);
+            $rows=$this->terminalInventoryModel->incidentReport(['month'=>$month,'from'=>$from,'to'=>$to,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de incidencias: '.$e->getMessage()); $rows=[]; }
         foreach ($rows as &$row) {
             $until=$row['fecha_cierre_mojo'] ?: ($row['fecha_calculo'] ?? null);
@@ -3646,7 +3667,7 @@ class Operations{
         $stations=[]; foreach ($stationRows as $stationRow) if ($stationScope===null || (int)$stationRow['Codigo']===$stationScope) $stations[(string)$stationRow['Codigo']]=(string)$stationRow['Nombre'];
         $assignees=[]; foreach ($this->terminalInventoryModel->incidentAssignees($stationScope) as $assignee) $assignees[(string)$assignee['assigned_to_id']]=(string)$assignee['asignado_a'];
         $openCount=count(array_filter($rows,fn($row)=>($row['estado_local'] ?? '')!=='Closed'));
-        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'globalReport'=>$globalReport,'stationView'=>$stationView,'stationName'=>$stationName,'canCapture'=>$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION),'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'as_of'=>$asOf,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned],'openCount'=>$openCount]);
+        echo $this->twig->render($this->route.'terminal_incident_report.html',['rows'=>$rows,'globalReport'=>$globalReport,'stationView'=>$stationView,'stationName'=>$stationName,'canCapture'=>$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION),'types'=>$this->terminalTypeCatalog(),'stations'=>$stations,'assignees'=>$assignees,'filters'=>['month'=>$month,'from'=>$from,'to'=>$to,'station'=>$station,'type'=>$type,'status'=>$status,'assigned'=>$assigned],'openCount'=>$openCount]);
     }
     public function terminal_inventory_group(): void {
         $this->terminalJsonError('Los reportes por captura semanal fueron retirados. Consulte el reporte de incidencias.',410);

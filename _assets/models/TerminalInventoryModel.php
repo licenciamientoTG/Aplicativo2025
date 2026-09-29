@@ -132,6 +132,11 @@ class TerminalInventoryModel extends Model {
     public function activeIncidents(int $stationId): array {
         return $this->sql->select("SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE estacion_id=? AND estado_local IN ('Abierta','Solved','Reabierta') ORDER BY fecha_apertura_mojo DESC", [$stationId]);
     }
+    public function closedIncidentsForMonth(int $stationId, string $start, string $endExclusive): array {
+        return $this->sql->select("SELECT * FROM [TG].[dbo].[inv_ter_incidencias]
+            WHERE estacion_id=? AND estado_local='Closed' AND fecha_cierre_mojo >= ? AND fecha_cierre_mojo < ?
+            ORDER BY fecha_cierre_mojo DESC", [$stationId,$start,$endExclusive]);
+    }
     public function pendingResolutionConfirmations(int $stationId): array {
         return $this->sql->select("SELECT id AS incident_id,tipo_terminal,ticket_mojo_id,fecha_cierre_mojo,
                 cerrado_por_mojo,cerrado_por_mojo AS cerrado_por_mojo_nombre
@@ -260,7 +265,6 @@ class TerminalInventoryModel extends Model {
         }
         if (!empty($filters['from'])) { $where[]='i.fecha_apertura_mojo >= ?'; $params[]=(string)$filters['from'].' 00:00:00'; }
         if (!empty($filters['to'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['to']; }
-        if (!empty($filters['as_of'])) { $where[]='i.fecha_apertura_mojo < DATEADD(day,1,CAST(? AS date))'; $params[]=(string)$filters['as_of']; }
         return $this->sql->select("SELECT i.*,s.Nombre AS estacion_nombre,
                 COALESCE(c.terminales_esperadas,0) AS terminales_esperadas,
                 i.serial_urovo AS serie_urovo,
