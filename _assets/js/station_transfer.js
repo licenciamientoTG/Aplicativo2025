@@ -21,7 +21,7 @@ $(function () {
             theme: 'bootstrap-5',
             width: '100%',
             placeholder,
-            allowClear: true,
+            allowClear: false,
             dropdownParent: $(document.body),
             language: {
                 noResults: () => 'No se encontraron resultados',
