@@ -673,7 +673,7 @@
 
       {% endif %}
 
-      {% if authorized(19) or terminal_inventory_access() or terminal_inventory_report_access() or terminal_inventory_station_report_access() %}
+      {% if authorized(19) or authorized(100) or terminal_inventory_access() or terminal_inventory_report_access() or terminal_inventory_station_report_access() %}
       <li class="sidebar-header">OPERACIONES</li>
       {% if authorized(21) %}
       <li class="sidebar-item">
@@ -694,6 +694,14 @@
         <a class="sidebar-link" href="/operations/clientes_contado">
           <i data-feather="users"></i>
           <span class="align-middle">Clientes contado</span>
+        </a>
+      </li>
+      {% endif %}
+      {% if authorized(100) %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/operations/station_transfer">
+          <i data-feather="shuffle"></i>
+          <span class="align-middle">Cambio de estación</span>
         </a>
       </li>
       {% endif %}

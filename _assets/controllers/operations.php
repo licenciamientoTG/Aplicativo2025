@@ -31,6 +31,7 @@ class Operations{
     public XmlVsVentasModel $xmlVsVentasModel;
     public ClientesModel $clientesModel;
     public TerminalInventoryModel $terminalInventoryModel;
+    public StationTransferModel $stationTransferModel;
     private ?array $terminalSettingsCache = null;
     private ?array $terminalValerasCache = null;
 
@@ -65,6 +66,7 @@ class Operations{
         $this->xmlVsVentasModel             = new XmlVsVentasModel();
         $this->clientesModel                = new ClientesModel();
         $this->terminalInventoryModel       = new TerminalInventoryModel();
+        $this->stationTransferModel          = new StationTransferModel();
 
     }
 
@@ -3281,6 +3283,62 @@ class Operations{
         $closed=$this->terminalInventoryModel->closedIncidentsForMonth($stationId,$monthStart->format('Y-m-d H:i:s'),$nextMonth->format('Y-m-d H:i:s'));
         echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'closedIncidents'=>$closed,'currentMonth'=>$monthStart->format('Y-m'),'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)]);
     }
+
+    /** Operations module for transferring station assignments between station managers. */
+    public function station_transfer(): void {
+        if (!authorized(100)) { http_response_code(403); echo 'No cuenta con permiso para administrar cambios de estación.'; return; }
+        try {
+            if (empty($_SESSION['station_transfer_csrf'])) {
+                $_SESSION['station_transfer_csrf'] = bin2hex(random_bytes(32));
+            }
+            $csrf_token = $_SESSION['station_transfer_csrf'];
+            $users = $this->stationTransferModel->candidates();
+            $stations = $this->stationTransferModel->activeStations();
+            echo $this->twig->render($this->route . 'station_transfer.html', compact('users', 'stations', 'csrf_token'));
+        } catch (Throwable $e) {
+            error_log('No se pudo abrir cambios de estación: ' . $e->getMessage());
+            http_response_code(500); echo 'No fue posible cargar los cambios de estación.';
+        }
+    }
+
+    public function station_transfer_users(): void {
+        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        try { json_output(['success'=>true,'users'=>$this->stationTransferModel->candidates()]); }
+        catch (Throwable $e) { error_log('No se pudo consultar usuarios para cambio de estación: '.$e->getMessage()); http_response_code(500); json_output(['success'=>false,'message'=>'No fue posible cargar los usuarios.']); }
+    }
+
+    public function station_transfer_history(): void {
+        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        $userId=filter_var($_GET['user_id'] ?? null,FILTER_VALIDATE_INT);
+        if (!$userId || $userId<1) { http_response_code(422); json_output(['success'=>false,'message'=>'Usuario inválido.']); return; }
+        try { json_output(['success'=>true,'history'=>$this->stationTransferModel->history((int)$userId)]); }
+        catch (Throwable $e) { error_log('No se pudo consultar historial de cambio de estación: '.$e->getMessage()); http_response_code(500); json_output(['success'=>false,'message'=>'No fue posible cargar el historial.']); }
+    }
+
+    public function station_transfer_save(): void {
+        if (!authorized(100)) { http_response_code(403); json_output(['success'=>false,'message'=>'Sin autorización.']); return; }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { http_response_code(405); json_output(['success'=>false,'message'=>'Método no permitido.']); return; }
+        $csrfToken = (string)($_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        $sessionToken = (string)($_SESSION['station_transfer_csrf'] ?? '');
+        if ($sessionToken === '' || $csrfToken === '' || !hash_equals($sessionToken, $csrfToken)) {
+            http_response_code(403); json_output(['success'=>false,'message'=>'La sesión del formulario venció. Actualiza la página e inténtalo de nuevo.']); return;
+        }
+        $operation=trim((string)($_POST['operation'] ?? ''));
+        $userId=filter_var($_POST['user_id'] ?? null,FILTER_VALIDATE_INT);
+        $otherRaw=$_POST['other_user_id'] ?? null;
+        $otherUserId=($otherRaw === null || $otherRaw === '') ? null : filter_var($otherRaw,FILTER_VALIDATE_INT);
+        $stationRaw=$_POST['station_id'] ?? null;
+        $stationId=($stationRaw === null || $stationRaw === '') ? null : filter_var($stationRaw,FILTER_VALIDATE_INT);
+        if (!$userId || $userId<1 || ($otherRaw !== null && $otherRaw !== '' && (!$otherUserId || $otherUserId<1)) || ($stationRaw !== null && $stationRaw !== '' && (!$stationId || $stationId<1))) {
+            http_response_code(422); json_output(['success'=>false,'message'=>'Los datos enviados no son válidos.']); return;
+        }
+        try {
+            $this->stationTransferModel->save($operation,(int)$userId,$otherUserId ? (int)$otherUserId : null,$stationId ? (int)$stationId : null,(int)($_SESSION['tg_user']['Id'] ?? 0));
+            json_output(['success'=>true]);
+        } catch (InvalidArgumentException $e) { http_response_code(422); json_output(['success'=>false,'message'=>$e->getMessage()]); }
+        catch (Throwable $e) { error_log('No se pudo guardar cambio de estación: '.$e->getMessage()); http_response_code(500); json_output(['success'=>false,'message'=>'No fue posible guardar el cambio de estación.']); }
+    }
+
     public function terminal_inventory_snapshot(): void {
         if (($_SERVER['REQUEST_METHOD'] ?? '')!=='GET') { $this->terminalJsonError('Método no permitido.',405); return; }
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
