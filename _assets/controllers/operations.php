@@ -3217,7 +3217,7 @@ class Operations{
     }
     private function terminalBusinessTime(string $from, ?string $until=null): array {
         try {
-            $timezone=new DateTimeZone('America/Ojinaga');
+            $timezone=new DateTimeZone('America/Ciudad_Juarez');
             $parse=function(string $value) use ($timezone): DateTimeImmutable {
                 $hasTimezone=(bool)preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i',trim($value));
                 $date=new DateTimeImmutable($value,$hasTimezone ? null : $timezone);
@@ -3243,7 +3243,7 @@ class Operations{
     private function terminalLocalClosedAt(?string $value): ?string {
         if (!$value) return null;
         try {
-            $timezone=new DateTimeZone('America/Ojinaga');
+            $timezone=new DateTimeZone('America/Ciudad_Juarez');
             $hasTimezone=(bool)preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i',trim($value));
             $date=new DateTimeImmutable($value,$hasTimezone ? null : $timezone);
             return $date->setTimezone($timezone)->format('Y-m-d H:i:s');
@@ -3263,7 +3263,7 @@ class Operations{
                     $ticket=$service->getTicket((int)$incident['ticket_mojo_id']);
                     $state=$service->localState($ticket,$previous);
                     $data=$service->incidentDataFromTicket($ticket,(string)$incident['tipo_terminal']);
-                    $closedAt=$state==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? $ticket['solved_on'] ?? null) ?? (new DateTimeImmutable('now',new DateTimeZone('America/Ojinaga')))->format('Y-m-d H:i:s')) : null;
+                    $closedAt=$state==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? $ticket['solved_on'] ?? null) ?? (new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez')))->format('Y-m-d H:i:s')) : null;
                     $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$previous,$state,$closedAt,$state==='Closed' ? $service->closedByFromTicket($ticket) : null,$origin,$data['serial_urovo'] ?? null);
                 } catch (Throwable $e) { $this->terminalInventoryModel->recordIncidentSyncFailure((int)$incident['id'],$previous,$origin,$e->getMessage()); error_log('No se sincronizó ticket Mojo #'.$incident['ticket_mojo_id'].': '.$e->getMessage()); }
             }
@@ -3275,11 +3275,28 @@ class Operations{
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
         $this->syncTerminalIncidents($stationId,'vista');
-        $monthStart=(new DateTimeImmutable('now',new DateTimeZone('America/Ojinaga')))->modify('first day of this month')->setTime(0,0);
+        $monthStart=(new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez')))->modify('first day of this month')->setTime(0,0);
         $nextMonth=$monthStart->modify('+1 month');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
         $closed=$this->terminalInventoryModel->closedIncidentsForMonth($stationId,$monthStart->format('Y-m-d H:i:s'),$nextMonth->format('Y-m-d H:i:s'));
         echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'closedIncidents'=>$closed,'currentMonth'=>$monthStart->format('Y-m'),'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)]);
+    }
+    public function terminal_inventory_snapshot(): void {
+        if (($_SERVER['REQUEST_METHOD'] ?? '')!=='GET') { $this->terminalJsonError('Método no permitido.',405); return; }
+        if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
+        $station=$this->terminalAssignedStation();
+        if (!$station) { $this->terminalJsonError('El usuario no tiene una estación válida asignada.',403); return; }
+        $stationId=(int)$station['Codigo'];
+        $monthStart=(new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez')))->modify('first day of this month')->setTime(0,0);
+        $nextMonth=$monthStart->modify('+1 month');
+        $types=$this->terminalTypes();
+        json_output([
+            'success'=>true,
+            'active'=>$this->terminalInventoryModel->activeIncidents($stationId),
+            'closed'=>$this->terminalInventoryModel->closedIncidentsForMonth($stationId,$monthStart->format('Y-m-d H:i:s'),$nextMonth->format('Y-m-d H:i:s')),
+            'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),
+            'currentMonth'=>$monthStart->format('Y-m'),
+        ]);
     }
     public function terminal_ticket_validate(): void {
         $this->terminalJsonError('La vinculación de tickets existentes fue retirada. Registrar una incidencia crea un ticket nuevo en Mojo.',410);
@@ -3453,11 +3470,11 @@ class Operations{
             if ($action==='reopen' && !in_array($newState,['Abierta','Reabierta'],true)) throw new RuntimeException('Mojo no confirmó la reapertura del ticket.');
             if ($action==='reply' && $oldState==='Solved' && $reopenFailure==='' && !in_array($newState,['Abierta','Reabierta'],true)) $reopenFailure='El mensaje llegó al técnico, pero no se confirmó la reapertura. Revisa el estado antes de intentarlo de nuevo.';
             $auditMessage=$action==='reply' ? ($message!==''?$message:'Adjuntos enviados al técnico: '.implode(', ',array_column($uploads,'name'))) : ($action==='close' ? 'Cierre confirmado por el usuario de estación.' : 'Ticket reabierto por el usuario de estación.');
-            $ojinagaNow=new DateTimeImmutable('now',new DateTimeZone('America/Ojinaga'));
-            $closedAt=$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? $ojinagaNow->format('Y-m-d H:i:s')) : null;
+            $juarezNow=new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez'));
+            $closedAt=$newState==='Closed' ? ($this->terminalLocalClosedAt($ticket['closed_on'] ?? null) ?? $juarezNow->format('Y-m-d H:i:s')) : null;
             $closedByMojo=$newState==='Closed' ? $service->closedByFromTicket($ticket) : null;
             if ($action==='close') {
-                $monthStart=$ojinagaNow->modify('first day of this month')->setTime(0,0);
+                $monthStart=$juarezNow->modify('first day of this month')->setTime(0,0);
                 $nextMonth=$monthStart->modify('+1 month');
             }
             $this->terminalInventoryModel->updateTicketState((int)$incident['id'],$oldState,$newState,$closedAt,$closedByMojo,'usuario_estacion',null,(int)$_SESSION['tg_user']['Id'],(string)$_SESSION['tg_user']['Correo'],$auditMessage,'sincronizado');

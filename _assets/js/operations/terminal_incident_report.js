@@ -70,9 +70,20 @@ $(function () {
     function dateLabel(value) {
         if (!value) return 'No disponible';
         const raw = String(value);
-        const date = new Date(raw);
+        const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+        const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+        let date, timeZone = 'America/Ciudad_Juarez';
+        if (dateOnly) {
+            date = new Date(raw + 'T00:00:00Z');
+            timeZone = 'UTC';
+        } else if (!hasZone && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(raw)) {
+            date = new Date(raw.replace(' ', 'T') + 'Z');
+            timeZone = 'UTC';
+        } else {
+            date = new Date(raw);
+        }
         if (Number.isNaN(date.getTime())) return raw;
-        return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+        return new Intl.DateTimeFormat('es-MX', { timeZone, dateStyle: 'medium', ...(!dateOnly ? { timeStyle: 'short' } : {}) }).format(date);
     }
     function stateLabel(value) {
         const normalized = String(value || '').toLowerCase();

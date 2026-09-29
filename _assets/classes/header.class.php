@@ -1,7 +1,7 @@
 <?php
 
 // Definimos el uso horario por defecto
-date_default_timezone_set('America/Ojinaga'); // Ciudad Juárez: horario de montaña con DST
+date_default_timezone_set('America/Ciudad_Juarez'); // Horario local de Ciudad Juárez
 
 // Definimos el lenguaje
 define('LANG', 'es');
