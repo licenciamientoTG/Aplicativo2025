@@ -3306,9 +3306,18 @@ class Operations{
     }
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
-        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+        $type=(string)($_POST['type'] ?? ''); $description=trim((string)($_POST['description'] ?? '')); $urovoProblem=$type==='urovo' ? trim((string)($_POST['urovo_problem'] ?? '')) : ''; $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
         $requestKey=strtolower(trim((string)($_POST['request_key'] ?? '')));
-        if (!preg_match('/^[a-f0-9-]{16,64}$/',$requestKey) || !isset($this->terminalTypes()[$type]) || $description==='' || mb_strlen($description)>250 || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
+        $urovoProblems=['Pantalla quebrada','Pantalla Negra','Carcasa Exterior','Puerto de Carga ( Punta )','Usb dañado','Falta Bateria','Touch','Modo Seguro','Impresora','Tapa de impresora','Boton de encendido','Tapa de bateria','Lector de Tarjetas','Otro'];
+        if (!preg_match('/^[a-f0-9-]{16,64}$/',$requestKey) || !isset($this->terminalTypes()[$type]) || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
+        if ($type==='urovo') {
+            if (!in_array($urovoProblem,$urovoProblems,true)) { $this->terminalJsonError('Seleccione un problema válido para UROVO.'); return; }
+            if ($urovoProblem==='Otro') {
+                if ($description==='' || mb_strlen($description)>250) { $this->terminalJsonError('Describa el problema UROVO (máximo 250 caracteres).'); return; }
+            } else {
+                $description=$urovoProblem;
+            }
+        } elseif ($description==='' || mb_strlen($description)>250) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
         if ($type==='urovo' && ($urovoSerial==='' || mb_strlen($urovoSerial)>100)) { $this->terminalJsonError('Capture el número de serie UROVO (máximo 100 caracteres).'); return; }
         if ($type==='verifone' && !in_array($problem,MojoTerminalTicketsService::verifoneProblems(),true)) { $this->terminalJsonError('Seleccione un problema válido para Verifone.'); return; }
         if (!in_array($type,['urovo','verifone'],true) && (!trim($_POST['provider_folio'] ?? '') || !($_POST['provider_date'] ?? ''))) { $this->terminalJsonError('Valeras requiere folio y fecha de reporte al proveedor.'); return; }
@@ -3318,7 +3327,7 @@ class Operations{
         if ($mojoUserId<1) { $this->terminalJsonError('La estación no tiene configurado un usuario de Mojo. Solicite la asignación en la configuración de Estaciones.'); return; }
         $stationEmail=trim((string)($station['email'] ?? ''));
         if (!filter_var($stationEmail,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('La estación no tiene configurado un correo válido de Mojo. Solicite la corrección en la configuración de Estaciones.'); return; }
-        $incidentData=['type'=>$type,'description'=>$description,'problem'=>$problem,'provider_folio'=>trim((string)($_POST['provider_folio'] ?? '')),'provider_date'=>(string)($_POST['provider_date'] ?? ''),'serial_urovo'=>$urovoSerial];
+        $incidentData=['type'=>$type,'description'=>$description,'problem'=>$problem,'urovo_problem'=>$urovoProblem,'provider_folio'=>trim((string)($_POST['provider_folio'] ?? '')),'provider_date'=>(string)($_POST['provider_date'] ?? ''),'serial_urovo'=>$urovoSerial];
         $payloadHash=hash('sha256',json_encode($incidentData,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
         $stationId=(int)$station['Codigo']; $userId=(int)$_SESSION['tg_user']['Id']; $userEmail=(string)$_SESSION['tg_user']['Correo'];
         try {
