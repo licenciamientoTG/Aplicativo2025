@@ -113,6 +113,12 @@ class TerminalInventoryModel extends Model {
             WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
             GROUP BY e.Codigo,e.Nombre ORDER BY COUNT(i.id) DESC,e.Nombre");
     }
+    public function reportStations(): array {
+        return $this->sql->select("SELECT e.Codigo,e.Nombre FROM [TG].[dbo].[Estaciones] e
+            WHERE e.Codigo NOT IN (0,4,20) AND (e.activa=1 OR EXISTS (
+                SELECT 1 FROM [TG].[dbo].[inv_ter_incidencias] i WHERE i.estacion_id=e.Codigo
+            )) ORDER BY e.Nombre");
+    }
     public function incidentAssignees(?int $stationId=null): array {
         $stationWhere=$stationId===null ? '' : ' WHERE i.estacion_id=?';
         $params=$stationId===null ? [] : [$stationId];
@@ -241,6 +247,7 @@ class TerminalInventoryModel extends Model {
         $where=['1=1']; $params=[];
         if (!empty($filters['station'])) { $where[]='i.estacion_id=?'; $params[]=(int)$filters['station']; }
         if (($filters['type'] ?? '')==='valeras') $where[]="i.tipo_terminal NOT IN ('urovo','verifone')";
+        elseif (($filters['type'] ?? '')==='internas') $where[]="i.tipo_terminal IN ('urovo','verifone')";
         elseif (!empty($filters['type'])) { $where[]='i.tipo_terminal=?'; $params[]=(string)$filters['type']; }
         if (($filters['status'] ?? '')==='open') $where[]="i.estado_local IN ('Abierta','Solved','Reabierta')";
         if (($filters['status'] ?? '')==='solved') $where[]="i.estado_local='Solved'";
