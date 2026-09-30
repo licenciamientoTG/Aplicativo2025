@@ -37,6 +37,11 @@
         <h5 class="card-title mb-0">Usuarios ControlGas (SG12)</h5>
     </div>
     <div class="card-body table-responsive">
+        <ul class="nav nav-tabs mb-3" role="tablist" aria-label="Administración de usuarios ControlGas">
+            <li class="nav-item" role="presentation"><button class="nav-link active" id="controlgas-list-tab" type="button" role="tab" aria-selected="true" aria-controls="controlgas-list-pane">Usuarios</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" id="controlgas-bulk-tab" type="button" role="tab" aria-selected="false" aria-controls="controlgas-bulk-pane" tabindex="-1">Deshabilitación masiva</button></li>
+        </ul>
+        <section id="controlgas-list-pane" role="tabpanel" aria-labelledby="controlgas-list-tab">
         <div id="filtro-controlgas_users" class="mb-1">
             <div class="row g-1">
                 <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="0" placeholder="Cód"></div>
@@ -95,6 +100,16 @@
                 </tr>
             </tfoot>
         </table>
+        </section>
+        <section id="controlgas-bulk-pane" role="tabpanel" aria-labelledby="controlgas-bulk-tab" hidden>
+            <div class="row"><div class="col-lg-8 col-xl-6">
+                <label for="controlgas-bulk-cods" class="form-label">Códigos COD</label>
+                <textarea id="controlgas-bulk-cods" class="form-control" rows="4" aria-describedby="controlgas-bulk-help" placeholder="Ejemplo: 1024, 2048, 3072"></textarea>
+                <small id="controlgas-bulk-help" class="form-text text-muted">Pega los COD separados por comas. Se mostrará una vista previa antes de deshabilitarlos.</small>
+                <div class="mt-3"><button type="button" id="controlgas-bulk-preview" class="btn btn-primary">Revisar usuarios</button></div>
+                <div id="controlgas-bulk-status" class="mt-2" role="status" aria-live="polite"></div>
+            </div></div>
+        </section>
     </div>
 </div>
 {% endblock %}
@@ -102,6 +117,25 @@
 <script src="{{ js_v('it.js') }}"></script>
 <script>
 $(document).ready(function () {
+    function selectControlgasTab(button) {
+        var isBulk = button.id === 'controlgas-bulk-tab';
+        $('#controlgas-list-tab').toggleClass('active', !isBulk).attr('aria-selected', String(!isBulk)).attr('tabindex', isBulk ? '-1' : '0');
+        $('#controlgas-bulk-tab').toggleClass('active', isBulk).attr('aria-selected', String(isBulk)).attr('tabindex', isBulk ? '0' : '-1');
+        $('#controlgas-list-pane').prop('hidden', isBulk);
+        $('#controlgas-bulk-pane').prop('hidden', !isBulk);
+    }
+    $('#controlgas-list-tab, #controlgas-bulk-tab').on('click', function () { selectControlgasTab(this); });
+    $('#controlgas-list-tab, #controlgas-bulk-tab').on('keydown', function (event) {
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+            event.preventDefault();
+            var next = this.id === 'controlgas-list-tab' ? $('#controlgas-bulk-tab') : $('#controlgas-list-tab');
+            selectControlgasTab(next[0]); next.trigger('focus');
+        }
+    });
+    function renderControlgasUserText(value, type) {
+        var text = value == null ? '' : String(value);
+        return type === 'display' ? $('<div>').text(text).html() : text;
+    }
     var table = $('#datatables_controlgas_users').DataTable({
         ajax: {
             url: '/it/datatables_controlgas_users',
@@ -110,20 +144,20 @@ $(document).ready(function () {
         },
         columns: [
             { data: 'COD' },
-            { data: 'DEN' },
-            { data: 'CLV' },
-            { data: 'ACC' },
-            { data: 'ACCX' },
-            { data: 'TIPOPR' },
-            { data: 'TIPUSU' },
-            { data: 'CODROL' },
-            { data: 'CODEST' },
-            { data: 'LOGUSU' },
-            { data: 'LOGFCH' },
-            { data: 'LOGNEW' },
-            { data: 'USERID' },
-            { data: 'CLVFCH' },
-            { data: 'CLVEXP' },
+            { data: 'DEN', render: renderControlgasUserText },
+            { data: 'CLV', render: renderControlgasUserText },
+            { data: 'ACC', render: renderControlgasUserText },
+            { data: 'ACCX', render: renderControlgasUserText },
+            { data: 'TIPOPR', render: renderControlgasUserText },
+            { data: 'TIPUSU', render: renderControlgasUserText },
+            { data: 'CODROL', render: renderControlgasUserText },
+            { data: 'CODEST', render: renderControlgasUserText },
+            { data: 'LOGUSU', render: renderControlgasUserText },
+            { data: 'LOGFCH', render: renderControlgasUserText },
+            { data: 'LOGNEW', render: renderControlgasUserText },
+            { data: 'USERID', render: renderControlgasUserText },
+            { data: 'CLVFCH', render: renderControlgasUserText },
+            { data: 'CLVEXP', render: renderControlgasUserText },
             { data: 'ACCIONES', orderable: false, searchable: false, className: 'text-center' }
         ],
         createdRow: function (row, data) {
@@ -319,13 +353,55 @@ $(document).ready(function () {
     $('#exportPrinter').on('click', function (e) { e.preventDefault(); table.button(2).trigger(); });
     $('#btnRefresh, #btnRefreshFilter').on('click', function () { table.ajax.reload(); });
 
+    var bulkBusy = false;
+    $('#controlgas-bulk-preview').on('click', async function () {
+        if (bulkBusy) return;
+        var $button = $(this), $status = $('#controlgas-bulk-status');
+        var cods = $('#controlgas-bulk-cods').val().trim();
+        if (!cods) { $status.text('Ingresa al menos un COD.'); $('#controlgas-bulk-cods').trigger('focus'); return; }
+        bulkBusy = true; $button.prop('disabled', true); $status.text('Buscando usuarios…');
+        try {
+            var response = await fetch('/it/preview_controlgas_users', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, credentials: 'include', body: 'cods=' + encodeURIComponent(cods) });
+            var data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.message || 'No se pudo revisar la lista.');
+            var users = Array.isArray(data.users) ? data.users : [];
+            var missing = Array.isArray(data.missing) ? data.missing : [];
+            var content = document.createElement('div');
+            var intro = document.createElement('p'); intro.textContent = 'Se deshabilitarán estos usuarios:'; content.appendChild(intro);
+            if (users.length) {
+                var list = document.createElement('ul'); list.className = 'text-start';
+                users.forEach(function (user) { var item = document.createElement('li'); item.textContent = String(user.COD) + ' — ' + String(user.DEN == null ? '' : user.DEN); list.appendChild(item); });
+                content.appendChild(list);
+            } else { var none = document.createElement('p'); none.textContent = 'No se encontraron usuarios para deshabilitar.'; content.appendChild(none); }
+            if (missing.length) { var absent = document.createElement('p'); absent.className = 'text-warning'; absent.textContent = 'COD no encontrados: ' + missing.map(String).join(', '); content.appendChild(absent); }
+            var confirmed = false;
+            if (users.length) {
+                var result = await Swal.fire({ title: 'Confirmar deshabilitación masiva', icon: 'warning', html: content, showCancelButton: true, confirmButtonText: 'Deshabilitar usuarios', cancelButtonText: 'Cancelar', customClass: { confirmButton: 'btn btn-danger', cancelButton: 'btn btn-secondary' } });
+                confirmed = result.isConfirmed;
+            } else {
+                await Swal.fire({ title: 'Vista previa', icon: 'info', html: content, confirmButtonText: 'Cerrar', customClass: { confirmButton: 'btn btn-primary' } });
+            }
+            if (!confirmed) { $status.text(''); return; }
+            var matchedCods = users.map(function (user) { return String(user.COD); }).join(',');
+            var updateResponse = await fetch('/it/disable_controlgas_users', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, credentials: 'include', body: 'cods=' + encodeURIComponent(matchedCods) });
+            var updateData = await updateResponse.json();
+            if (!updateResponse.ok || !updateData.success) throw new Error(updateData.message || 'No se pudieron deshabilitar los usuarios.');
+            $status.text('Usuarios deshabilitados: ' + updateData.updated + '.');
+            table.ajax.reload(null, false);
+            await Swal.fire({ title: 'Deshabilitados', text: 'Se deshabilitaron ' + updateData.updated + ' usuarios.', icon: 'success', confirmButtonText: 'Aceptar', customClass: { confirmButton: 'btn btn-primary' } });
+        } catch (error) {
+            $status.text(error.message || 'Problema de conexión con el servidor.');
+            await Swal.fire({ title: 'Error', text: error.message || 'Problema de conexión con el servidor.', icon: 'error', customClass: { confirmButton: 'btn btn-primary' } });
+        } finally { bulkBusy = false; $button.prop('disabled', false); }
+    });
+
     feather.replace();
 });
 
 async function disableControlgasUser(cod, nombre) {
     const result = await Swal.fire({
         title: '¿Deshabilitar usuario?',
-        html: `<b>${nombre}</b> (COD: ${cod}) perderá acceso al sistema.<br><small class="text-muted">Se asignará la contraseña: <code>51nP4ssw0rd!</code></small>`,
+        text: `${nombre} (COD: ${cod}) perderá acceso al sistema. Se asignará la contraseña: 51nP4ssw0rd!`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sí, deshabilitar',
@@ -353,6 +429,44 @@ async function disableControlgasUser(cod, nombre) {
             $('#datatables_controlgas_users').DataTable().ajax.reload(null, false);
         } else {
             Swal.fire('Error', data.message || 'No se pudo deshabilitar el usuario.', 'error');
+        }
+    } catch (e) {
+        Swal.fire('Error', 'Problema de conexión con el servidor.', 'error');
+    }
+}
+
+async function rehabilitateControlgasUser(cod, nombre) {
+    const displayName = String(nombre || '').replace(/^BAJA\s+/, '');
+    const result = await Swal.fire({
+        title: '¿Rehabilitar usuario?',
+        text: `${displayName} (COD: ${cod}) recuperará los datos de acceso guardados en TG.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, rehabilitar',
+        cancelButtonText: 'Cancelar',
+        customClass: {
+            confirmButton: 'btn btn-success',
+            cancelButton: 'btn btn-secondary'
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const response = await fetch('/it/rehabilitate_controlgas_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `cod=${encodeURIComponent(cod)}`
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            await Swal.fire('Rehabilitado', 'El usuario fue rehabilitado correctamente.', 'success');
+            $('#datatables_controlgas_users').DataTable().ajax.reload(null, false);
+        } else {
+            Swal.fire('Error', data.message || 'No se pudo rehabilitar el usuario.', 'error');
         }
     } catch (e) {
         Swal.fire('Error', 'Problema de conexión con el servidor.', 'error');
