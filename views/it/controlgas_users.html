@@ -131,12 +131,13 @@ $(document).ready(function () {
         },
         order: [[0, 'asc']],
         pageLength: 25,
+        lengthMenu: [[25, 50, 100, 250, 500, 1000], [25, 50, 100, 250, 500, 1000]],
         language: {
             url: 'https://cdn.datatables.net/plug-ins/2.1.8/i18n/es-ES.json'
         },
-        dom: 'Bfrtip',
+        dom: 'Blfrtip',
         buttons: [
-            { extend: 'excel', text: '<i data-feather="file-text"></i>', className: 'd-none', exportOptions: { columns: ':not(:last-child)' } },
+            { extend: 'excel', text: '<i data-feather="file-text"></i>', className: 'buttons-excel d-none', exportOptions: { columns: ':not(:last-child)' } },
             { extend: 'pdf',   text: '<i data-feather="file-text"></i>', className: 'd-none', exportOptions: { columns: ':not(:last-child)' } },
             { extend: 'print', text: '<i data-feather="printer"></i>',   className: 'd-none', exportOptions: { columns: ':not(:last-child)' } }
         ]
@@ -276,7 +277,7 @@ $(document).ready(function () {
     })();
 
     // Toolbar buttons
-    $('#exportExcel').on('click', function (e) { e.preventDefault(); table.button(0).trigger(); });
+    $('#exportExcel').on('click', function (e) { e.preventDefault(); table.button('.buttons-excel').trigger(); });
     $('#exportPDF').on('click',   function (e) { e.preventDefault(); table.button(1).trigger(); });
     $('#exportPrinter').on('click', function (e) { e.preventDefault(); table.button(2).trigger(); });
     $('#btnRefresh, #btnRefreshFilter').on('click', function () { table.ajax.reload(); });
