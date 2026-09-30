@@ -71,6 +71,7 @@
     .panel-split { flex:1;background:#fff;border-radius:12px;border:1px solid var(--border-color);display:flex;flex-direction:column;overflow:hidden;position:relative; }
     .panel-header { color:white;padding:10px 15px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid rgba(0,0,0,.1); }
     .panel-content { flex:1;overflow-y:auto;padding:0; }
+    #tes-content { container-type:inline-size; }
 
     /* FILAS */
     .row-item { padding:0 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:.88rem;transition:all .1s;user-select:none;height:54px;overflow:hidden; }
@@ -225,9 +226,9 @@
     .amex-badge-iva  { display:inline-block;font-size:.63rem;font-weight:700;color:#fff;background:#6610f2;border-radius:4px;padding:1px 5px;margin-right:3px;vertical-align:middle;font-family:'Consolas',monospace; }
     .amex-badge-com  { display:inline-block;font-size:.63rem;font-weight:700;color:#fff;background:#0d6efd;border-radius:4px;padding:1px 5px;margin-right:4px;vertical-align:middle;font-family:'Consolas',monospace; }
     .amex-badge-lock { display:inline-flex;align-items:center;gap:3px;font-size:.63rem;font-weight:700;color:#fff;background:#fd7e14;border-radius:4px;padding:2px 6px;margin-right:6px;vertical-align:middle; }
-    @media (max-width:767.98px) {
-        /* En móvil la fecha y el monto tienen prioridad; las etiquetas AMEX
-           se pueden consultar tocando el renglón. */
+    @container (max-width:440px) {
+        /* El panel puede ser angosto aunque la ventana sea amplia. Priorizar
+           fecha y monto, y mostrar etiquetas AMEX al tocar el renglón. */
         .tes-amex-row:not(.amex-tags-visible) .amex-badge-com,
         .tes-amex-row:not(.amex-tags-visible) .amex-badge-iva { display:none; }
     }
@@ -2694,7 +2695,8 @@ function toggleTESComponentes(el) {
     recalcTotals();
 }
 function toggleTESBadges(el) {
-    if (window.matchMedia('(max-width: 767.98px)').matches) {
+    const tesContent = document.getElementById('tes-content');
+    if (tesContent && tesContent.clientWidth <= 440) {
         $(el).toggleClass('amex-tags-visible');
     }
 }
