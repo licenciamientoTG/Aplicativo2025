@@ -1727,9 +1727,14 @@ class It{
                 JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE
             );
             $isDisabled = strncmp($den, 'BAJA ', 5) === 0;
-            $actions = $isDisabled
-                ? "<button class='btn btn-success btn-sm' onclick='rehabilitateControlgasUser({$cod}, {$denForHandler})' title='Rehabilitar' aria-label='Rehabilitar usuario COD {$cod}'><i class='fas fa-user-check' aria-hidden='true'></i></button>"
-                : "<button class='btn btn-warning btn-sm' onclick='disableControlgasUser({$cod}, {$denForHandler})' title='Deshabilitar' aria-label='Deshabilitar usuario COD {$cod}'><svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'></line></svg></button>";
+            $hasActiveBackup = !empty($row['has_active_backup']);
+            if ($isDisabled) {
+                $actions = $hasActiveBackup
+                    ? "<button class='btn btn-success btn-sm' onclick='rehabilitateControlgasUser({$cod}, {$denForHandler})' title='Rehabilitar' aria-label='Rehabilitar usuario COD {$cod}'><i class='fas fa-user-check' aria-hidden='true'></i></button>"
+                    : "<span class='text-muted' title='No existe un respaldo activo para recuperar este usuario'>Sin respaldo</span>";
+            } else {
+                $actions = "<button class='btn btn-warning btn-sm' onclick='disableControlgasUser({$cod}, {$denForHandler})' title='Deshabilitar' aria-label='Deshabilitar usuario COD {$cod}'><svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'></line></svg></button>";
+            }
             $data[] = [
                 'COD'     => $cod,
                 'DEN'     => $row['den'],

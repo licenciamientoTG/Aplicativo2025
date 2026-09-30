@@ -42,7 +42,6 @@ BEGIN CATCH
     IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
     THROW;
 END CATCH;
-GO
 
 /*
     Rollback: after all active snapshots have been recovered or exported, the

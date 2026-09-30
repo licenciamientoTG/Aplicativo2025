@@ -245,12 +245,28 @@ class ControlgasUsersModel extends Model {
 
     public function get_users(): array {
         $query = "SELECT TOP (1000)
-                    [cod], [den], [clv], [acc], [accx],
-                    [tipopr], [tipusu], [codrol], [codest],
-                    [logusu], [logfch], [lognew], [userid],
-                    [clvfch], [clvexp]
-                  FROM [SG12].[dbo].[Usuarios]
-                  ORDER BY [cod]";
-        return $this->sql->select($query) ?: [];
+                    users.[cod], users.[den], users.[clv], users.[acc], users.[accx],
+                    users.[tipopr], users.[tipusu], users.[codrol], users.[codest],
+                    users.[logusu], users.[logfch], users.[lognew], users.[userid],
+                    users.[clvfch], users.[clvexp],
+                    CASE WHEN snapshot.[cod] IS NULL THEN 0 ELSE 1 END AS [has_active_backup]
+                  FROM [SG12].[dbo].[Usuarios] AS users
+                  LEFT JOIN " . self::BACKUP_TABLE . " AS snapshot
+                    ON snapshot.[cod] = users.[cod] AND snapshot.[is_active] = 1
+                  ORDER BY users.[cod]";
+        $rows = $this->sql->selectSafe($query);
+        if ($rows !== false) {
+            return $rows;
+        }
+
+        // Keep the table readable before the user-created TG backup table exists.
+        $fallbackQuery = "SELECT TOP (1000)
+                            [cod], [den], [clv], [acc], [accx],
+                            [tipopr], [tipusu], [codrol], [codest],
+                            [logusu], [logfch], [lognew], [userid],
+                            [clvfch], [clvexp], 0 AS [has_active_backup]
+                          FROM [SG12].[dbo].[Usuarios]
+                          ORDER BY [cod]";
+        return $this->sql->select($fallbackQuery) ?: [];
     }
 }
