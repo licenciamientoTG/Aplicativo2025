@@ -1,6 +1,16 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Usuarios ControlGas{% endblock %}
 {% block mycss %}
+<style>
+    #datatables_controlgas_users thead th { white-space: nowrap; }
+    #datatables_controlgas_users .controlgas-filter-trigger { border: 0; background: transparent; color: inherit; padding: 0 0 0 4px; cursor: pointer; border-radius: 2px; }
+    #datatables_controlgas_users .controlgas-filter-trigger:focus-visible { outline: 2px solid #0d6efd; outline-offset: 2px; }
+    #controlgas-excel-filter { position: fixed; z-index: 2000; width: 260px; max-width: calc(100vw - 16px); padding: 10px; overflow: hidden; background: #fff; color: #212529; border: 1px solid #ced4da; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+    #controlgas-excel-filter .controlgas-filter-values { max-height: 220px; overflow-y: auto; margin: 8px 0; }
+    #controlgas-excel-filter .controlgas-filter-value { display: flex; align-items: center; gap: 7px; padding: 3px 2px; overflow-wrap: anywhere; }
+    #controlgas-excel-filter .controlgas-filter-actions { display: flex; justify-content: flex-end; gap: 6px; }
+    #controlgas-excel-filter :focus-visible { outline: 2px solid #0d6efd; outline-offset: 1px; }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 {% endblock %}
 {% block menutitle %}Usuarios ControlGas{% endblock %}
@@ -137,6 +147,133 @@ $(document).ready(function () {
         var colIdx = $(this).data('col');
         table.column(colIdx).search(this.value).draw();
     });
+
+    // Excel-style exact-value filters; scoped to this table and composed with DataTables searches.
+    (function () {
+        var selectedValues = {};
+        var activeTrigger = null;
+        var $table = $('#datatables_controlgas_users');
+
+        function cellValue(rowIndex, columnIndex) {
+            var rendered = table.cell(rowIndex, columnIndex).render('filter');
+            return rendered == null ? '' : String(rendered).trim();
+        }
+
+        function distinctValues(columnIndex) {
+            var values = new Set();
+            table.rows({ search: 'none' }).indexes().each(function (rowIndex) {
+                values.add(cellValue(rowIndex, columnIndex));
+            });
+            return Array.from(values).sort(function (a, b) { return a.localeCompare(b, 'es', { numeric: true }); });
+        }
+
+        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+            if (settings.nTable !== $table[0]) return true;
+            return Object.keys(selectedValues).every(function (key) {
+                var selected = selectedValues[key];
+                return selected.has(cellValue(dataIndex, Number(key)));
+            });
+        });
+
+        function closeMenu(restoreFocus) {
+            $('#controlgas-excel-filter').remove();
+            if (activeTrigger) {
+                $(activeTrigger).attr('aria-expanded', 'false');
+                if (restoreFocus) $(activeTrigger).trigger('focus');
+            }
+            activeTrigger = null;
+        }
+
+        function openMenu(columnIndex, trigger) {
+            if (activeTrigger) $(activeTrigger).attr('aria-expanded', 'false');
+            $('#controlgas-excel-filter').remove();
+            activeTrigger = trigger;
+            $(trigger).attr('aria-expanded', 'true');
+            var values = distinctValues(columnIndex);
+            var applied = selectedValues[columnIndex];
+            var draft = new Set(applied ? Array.from(applied) : values);
+            var columnName = $(trigger).closest('th').clone().children().remove().end().text().trim();
+            var $menu = $('<div id="controlgas-excel-filter" role="dialog"></div>').attr('aria-label', 'Filtrar columna ' + columnName);
+            var $search = $('<input type="search" class="form-control form-control-sm" aria-label="Buscar valores" placeholder="Buscar">');
+            var $all = $('<label class="controlgas-filter-value"><input type="checkbox" class="controlgas-filter-select-all"> <span>(Seleccionar todo lo visible)</span></label>');
+            var $list = $('<div class="controlgas-filter-values" role="group" aria-label="Valores disponibles"></div>');
+
+            values.forEach(function (value) {
+                var $label = $('<label class="controlgas-filter-value"></label>');
+                var $checkbox = $('<input type="checkbox" class="controlgas-filter-option">').val(value).prop('checked', draft.has(value));
+                var $text = $('<span></span>').text(value === '' ? '(Vacío)' : value);
+                $label.attr('data-filter-text', value.toLocaleLowerCase('es')).append($checkbox, $text);
+                $list.append($label);
+            });
+            var $selectAll = $all.find('input');
+            function syncSelectAll() {
+                var $shown = $list.find('.controlgas-filter-option:visible');
+                var checked = $shown.filter(':checked').length;
+                $selectAll.prop('checked', $shown.length > 0 && checked === $shown.length)
+                    .prop('indeterminate', checked > 0 && checked < $shown.length);
+            }
+            $search.on('input', function () {
+                var query = this.value.toLocaleLowerCase('es');
+                $list.children().each(function () { $(this).toggle($(this).attr('data-filter-text').indexOf(query) >= 0); });
+                syncSelectAll();
+            });
+            $list.on('change', '.controlgas-filter-option', function () {
+                if (this.checked) draft.add(this.value); else draft.delete(this.value);
+                syncSelectAll();
+            });
+            $selectAll.on('change', function () {
+                $list.find('.controlgas-filter-option:visible').each(function () {
+                    $(this).prop('checked', $selectAll.prop('checked'));
+                    if (this.checked) draft.add(this.value); else draft.delete(this.value);
+                });
+                syncSelectAll();
+            });
+            var $cancel = $('<button type="button" class="btn btn-sm btn-light">Cancelar</button>').on('click', function () { closeMenu(true); });
+            var $apply = $('<button type="button" class="btn btn-sm btn-primary">Aplicar</button>').on('click', function () {
+                if (draft.size === values.length) delete selectedValues[columnIndex];
+                else selectedValues[columnIndex] = new Set(draft);
+                closeMenu(true);
+                table.draw();
+            });
+            var $actions = $('<div class="controlgas-filter-actions"></div>').append($cancel, $apply);
+            $menu.append($search, $all, $list, $actions).appendTo(document.body);
+            var rect = trigger.getBoundingClientRect();
+            var menuWidth = $menu.outerWidth();
+            var menuHeight = $menu.outerHeight();
+            var left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
+            var roomBelow = window.innerHeight - rect.bottom - 12;
+            var roomAbove = rect.top - 12;
+            var top = roomBelow >= Math.min(menuHeight, 300) || roomBelow >= roomAbove
+                ? Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - menuHeight - 8))
+                : Math.max(8, rect.top - Math.min(menuHeight, roomAbove) - 4);
+            $menu.css({ left: left + 'px', top: top + 'px', maxHeight: Math.max(120, window.innerHeight - 16) + 'px' });
+            $list.css('max-height', Math.max(60, Math.min(220, $menu.innerHeight() - 118)) + 'px');
+            syncSelectAll();
+            $search.trigger('focus');
+        }
+
+        function addHeaderFilters() {
+            $table.find('thead th').each(function () {
+                var columnIndex = table.column(this).index();
+                if (columnIndex == null || columnIndex >= 15 || $(this).find('.controlgas-filter-trigger').length) return;
+                var columnName = $(this).clone().children().remove().end().text().trim();
+                var $trigger = $('<button type="button" class="controlgas-filter-trigger" aria-haspopup="dialog" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button>')
+                    .attr('aria-label', 'Filtrar columna ' + columnName);
+                $trigger.on('click', function (event) { event.stopPropagation(); openMenu(columnIndex, this); });
+                $(this).append($trigger);
+            });
+        }
+
+        table.on('init.dt', addHeaderFilters);
+        table.on('xhr.dt', addHeaderFilters);
+        addHeaderFilters();
+        $(document).on('click.controlgasExcelFilter', function (event) {
+            if (!$(event.target).closest('#controlgas-excel-filter, .controlgas-filter-trigger').length) closeMenu(false);
+        }).on('keydown.controlgasExcelFilter', function (event) {
+            if (event.key === 'Escape' && activeTrigger) closeMenu(true);
+        });
+        $(window).on('resize.controlgasExcelFilter scroll.controlgasExcelFilter', function () { closeMenu(false); });
+    })();
 
     // Toolbar buttons
     $('#exportExcel').on('click', function (e) { e.preventDefault(); table.button(0).trigger(); });
