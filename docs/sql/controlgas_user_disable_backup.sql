@@ -3,7 +3,7 @@
 
     Reads SG12.dbo.Usuarios to copy source column types and lengths. This script
     does not write to SG12 or alter its schema. Run with access to both databases.
-    Existing target tables are left unchanged.
+    Existing target tables are not replaced; missing schema pieces are completed.
 */
 SET XACT_ABORT ON;
 BEGIN TRY
@@ -25,14 +25,40 @@ BEGIN TRY
             u.[ACCX2] AS [accx2_original]
         INTO [TG].[dbo].[ControlgasUserDisableBackup]
         FROM [SG12].[dbo].[Usuarios] AS u;
+    END;
 
+    IF EXISTS (
+        SELECT 1
+        FROM [TG].[sys].[columns]
+        WHERE [object_id] = OBJECT_ID(N'[TG].[dbo].[ControlgasUserDisableBackup]')
+          AND [name] = N'cod'
+          AND [is_nullable] = 1
+    )
+    BEGIN
+        ALTER TABLE [TG].[dbo].[ControlgasUserDisableBackup]
+            ALTER COLUMN [cod] bigint NOT NULL;
+    END;
+
+    IF COL_LENGTH(N'TG.dbo.ControlgasUserDisableBackup', N'is_active') IS NULL
+    BEGIN
         ALTER TABLE [TG].[dbo].[ControlgasUserDisableBackup]
             ADD [is_active] bit NOT NULL
                 CONSTRAINT [DF_ControlgasUserDisableBackup_is_active] DEFAULT (0) WITH VALUES;
+    END;
 
+    IF COL_LENGTH(N'TG.dbo.ControlgasUserDisableBackup', N'captured_at') IS NULL
+    BEGIN
         ALTER TABLE [TG].[dbo].[ControlgasUserDisableBackup]
             ADD [captured_at] datetime2 NULL;
+    END;
 
+    IF NOT EXISTS (
+        SELECT 1
+        FROM [TG].[sys].[key_constraints]
+        WHERE [parent_object_id] = OBJECT_ID(N'[TG].[dbo].[ControlgasUserDisableBackup]')
+          AND [type] = 'PK'
+    )
+    BEGIN
         ALTER TABLE [TG].[dbo].[ControlgasUserDisableBackup]
             ADD CONSTRAINT [PK_ControlgasUserDisableBackup] PRIMARY KEY ([cod]);
     END;

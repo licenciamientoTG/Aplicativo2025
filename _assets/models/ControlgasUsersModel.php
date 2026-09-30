@@ -12,7 +12,10 @@ class ControlgasUsersModel extends Model {
         $result = $this->disable_users([$cod]);
         return !empty($result['success'])
             ? ['success' => true, 'message' => 'Usuario deshabilitado']
-            : ['success' => false, 'message' => 'No se pudo deshabilitar el usuario'];
+            : [
+                'success' => false,
+                'message' => $result['message'] ?? 'No se pudo deshabilitar el usuario',
+            ];
     }
 
     /**
@@ -157,7 +160,15 @@ class ControlgasUsersModel extends Model {
         } catch (Throwable $e) {
             $this->sql->rollBack();
             error_log('Controlgas user disable failed: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'No se pudieron deshabilitar los usuarios'];
+            // RuntimeException messages above are deliberately written as
+            // user-safe explanations (missing users, already disabled users,
+            // row-count mismatches, etc.). Preserve those instead of hiding
+            // every bulk failure behind the same generic response. Keep raw
+            // database/runtime details in the server log only.
+            $message = get_class($e) === RuntimeException::class
+                ? $e->getMessage()
+                : 'Ocurrió un error al guardar los respaldos o actualizar SG12. Revisa el log del servidor.';
+            return ['success' => false, 'message' => $message];
         }
     }
 
