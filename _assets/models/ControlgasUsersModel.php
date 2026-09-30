@@ -4,6 +4,10 @@ class ControlgasUsersModel extends Model {
     public function disable_user(int $cod): array {
         $query = "UPDATE [SG12].[dbo].[Usuarios]
                   SET [clv]    = 'O5fz43Stf5x2C5W7j3CcCrWGjcWHCdMB',
+                      [den]    = CASE WHEN LEFT([den], 5) = 'BAJA '
+                                       THEN [den]
+                                       ELSE 'BAJA ' + [den]
+                                  END,
                       [acc]    = 0,
                       [accx]   = 0,
                       [codrol] = 0,
