@@ -7094,23 +7094,23 @@ public function stamped_invoices_detail(): void
             // restringe las cuentas, porque el banco puede recibir un depósito
             // de otra empresa en una cuenta distinta.
             $suffixes = EfcConciliacionModel::allAccountSuffixes();
-            $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
+            $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT id, fecha, banco, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
-                 FROM [TG].[dbo].[movimientos_bancarios]
-                 WHERE abono > 0
-                   AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                "SELECT M.id, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled
+                 FROM [TG].[dbo].[movimientos_bancarios] M
+                 WHERE M.abono > 0
+                   AND YEAR(M.fecha) = ? AND MONTH(M.fecha) = ?
                    -- Banorte, Bankaool y Santander no nombran el mismo movimiento
                    -- de efectivo igual. Sólo se admiten las descripciones operativas
                    -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
                    AND (
-                       UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
-                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EFECTIVO%'
-                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEP EN EFECTIV%'
-                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO VTAS%'
+                       UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                       OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EFECTIVO%'
+                       OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%'
+                       OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO VTAS%'
                    )
                    AND ($accountWhere)
-                 ORDER BY fecha, id"
+                 ORDER BY M.fecha, M.id"
             );
             $params = [$year, $month];
             foreach ($suffixes as $suffix) { $params[] = $suffix; $params[] = $suffix; }
@@ -7194,6 +7194,7 @@ public function stamped_invoices_detail(): void
                     'station'           => $estacion['station'] ?? null,
                     'station_status'    => $estatus,
                     'station_corrected' => $corregida,
+                    'reconciled'        => (bool)$mov['reconciled'],
                     'original_station_id' => $estacionOriginal['station_id'] ?? null,
                     'original_station'    => $estacionOriginal['station'] ?? null,
                     'station_raw'       => $coincidencias[0],
