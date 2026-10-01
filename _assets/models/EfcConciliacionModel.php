@@ -255,7 +255,7 @@ class EfcConciliacionModel {
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>round($regio,2),
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
-                    'faltante'=>round($amount-$regio,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
+                    'faltante'=>round($amount-$regio,2), 'diferencia_controlgas_regio'=>round($regio-$amount,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
                     'papeleta_id'=>(int)$link['papeleta_id'], 'remesa'=>$this->normaliseRemittance($link['remesa_numero'] ?? ''), 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''),
                     'grupo_id'=>$group['id'] ?? null,
                 ];

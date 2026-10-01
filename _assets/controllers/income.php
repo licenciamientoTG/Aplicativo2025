@@ -6847,7 +6847,7 @@ public function stamped_invoices_detail(): void
             if ($report === 'faltantes') {
                 // El modo normal conserva el umbral; “Mostrar todos” incluye
                 // cualquier diferencia positiva o negativa distinta de cero.
-                $rows=array_values(array_filter($rows, static fn(array $row): bool => $mostrarTodos ? abs((float)$row['faltante']) > 0.004 : (float)$row['faltante'] > 10.00));
+                $rows=array_values(array_filter($rows, static fn(array $row): bool => $mostrarTodos ? abs((float)$row['diferencia_controlgas_regio']) > 0.004 : (float)$row['diferencia_controlgas_regio'] < -10.00));
             } else {
                 $rows=array_values(array_filter($rows, static fn(array $row): bool => $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             }
