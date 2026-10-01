@@ -6752,15 +6752,21 @@ public function stamped_invoices_detail(): void
         // La vista decide cómo presentarlo; mantener null cuando el cron aún
         // no ha completado una ejecución evita inventar una fecha de proceso.
         $lastAutomaticRun=$this->efcConciliacion->lastAutomaticRun();
-        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun'));
+        $profile = mb_strtolower(trim((string)($_SESSION['tg_user']['profile'] ?? '')));
+        $isSuperAdmin = strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
+        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin'));
     }
 
     public function cash_reconciliation_faltantes(): void {
-        echo $this->twig->render($this->route . 'cash_reconciliation_faltantes.html');
+        $profile = mb_strtolower(trim((string)($_SESSION['tg_user']['profile'] ?? '')));
+        $isSuperAdmin = strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
+        echo $this->twig->render($this->route . 'cash_reconciliation_faltantes.html',compact('isSuperAdmin'));
     }
 
     public function cash_reconciliation_diferencias(): void {
-        echo $this->twig->render($this->route . 'cash_reconciliation_diferencias.html');
+        $profile = mb_strtolower(trim((string)($_SESSION['tg_user']['profile'] ?? '')));
+        $isSuperAdmin = strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
+        echo $this->twig->render($this->route . 'cash_reconciliation_diferencias.html',compact('isSuperAdmin'));
     }
 
     public function cash_reconciliation_movements(): void {
