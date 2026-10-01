@@ -3109,7 +3109,7 @@ public function anomalies_client_tickets()
         exit;
     }
 
-  private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
+    private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
         if (!$nombre) return "SinNombre";
 
         // 1. Limpieza inicial y normalización de espacios y BOM
@@ -3169,10 +3169,11 @@ public function anomalies_client_tickets()
         return;
     }
 
-    private function obtener_ajuste_juarez_php($fecha_trans) {
+    private function obtener_ajuste_juarez_php($fecha_trans, $hora_trans = '00:00:00') {
         if (!$fecha_trans || trim((string)$fecha_trans) === '-') return -1;
         try {
-            $dt = ($fecha_trans instanceof \DateTime) ? $fecha_trans : new \DateTime($fecha_trans);
+            $fecha = ($fecha_trans instanceof \DateTimeInterface) ? $fecha_trans->format('Y-m-d') : (string)$fecha_trans;
+            $dt = new \DateTime($fecha . ' ' . ($hora_trans ?: '00:00:00'));
             $year = (int)$dt->format('Y');
         } catch (\Throwable $e) {
             return -1;
@@ -3181,12 +3182,12 @@ public function anomalies_client_tickets()
         // 2do domingo de Marzo
         $mar1 = new \DateTime("$year-03-01");
         $dias_al_primero_mar = (7 - (int)$mar1->format('N')) % 7;
-        $segundo_dom_mar = $mar1->modify("+" . ($dias_al_primero_mar + 7) . " days");
+        $segundo_dom_mar = $mar1->modify("+" . ($dias_al_primero_mar + 7) . " days")->setTime(2, 0, 0);
         
         // 1er domingo de Noviembre
         $nov1 = new \DateTime("$year-11-01");
         $dias_al_primero_nov = (7 - (int)$nov1->format('N')) % 7;
-        $primer_dom_nov = $nov1->modify("+" . $dias_al_primero_nov . " days");
+        $primer_dom_nov = $nov1->modify("+" . $dias_al_primero_nov . " days")->setTime(2, 0, 0);
         
         // Horario Verano (UTC-6) vs Invierno (UTC-7)
         if ($dt >= $segundo_dom_mar && $dt < $primer_dom_nov) {
@@ -3571,6 +3572,19 @@ public function anomalies_client_tickets()
                 $stmtH = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_banorte");
                 $huellas = [];
                 while ($r = $stmtH->fetch(PDO::FETCH_ASSOC)) {
+                    if ($bankType === 'BANORTE') {
+                        $key = $this->clave_huella_banorte($r);
+                        $huellas[$key] = true;
+                        $afil_db = ltrim($this->normalizar_valor_huella_banorte($r['Afiliacion'] ?? ''), '0');
+                        $idext_db = $this->normalizar_valor_huella_banorte($r['ID_Externo'] ?? '', true);
+                        $fch = $this->limpiar_fecha_banorte($r['Fecha_Transaccion'] ?? null) ?? '';
+                        $monto_db = number_format((float)($r['Monto'] ?? 0), 2, '.', '');
+                        $hora_db = $this->limpiar_hora_banorte($r['Hora'] ?? null);
+                        $auth_db = $this->normalizar_valor_huella_banorte($r['Codigo_Autorizacion'] ?? '', true);
+                        $term_db = $this->normalizar_valor_huella_banorte($r['Terminal'] ?? '', true);
+                        $huellas["7f:$afil_db|$idext_db|$fch|$monto_db|$hora_db|$auth_db|$term_db"] = true;
+                        continue;
+                    }
                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
                     $hora_db = trim($r['Hora'] ?? '');
                     // SQL Server time type returns HH:MM:SS.NNNNNNN — strip fractional part before normalizing
@@ -3611,26 +3625,23 @@ public function anomalies_client_tickets()
                         // Strip Excel formula notation: ="VALUE" → VALUE
                         if (is_string($val) && preg_match('/^="(.*)"$/', $val, $em)) $val = $em[1];
 
-                        if ($col === 'Monto') $val = (float)str_replace(['$', ','], '', $val ?? 0);
+                        if (in_array($col, ['ID_Externo', 'Afiliacion', 'Codigo_Autorizacion', 'Referencia', 'Terminal'], true)) {
+                            $val = $this->normalizar_valor_huella_banorte($val, in_array($col, ['ID_Externo', 'Codigo_Autorizacion', 'Referencia', 'Terminal'], true));
+                        }
+                        if ($col === 'Monto') {
+                            $montoRaw = str_replace(['$', ','], '', $this->normalizar_valor_huella_banorte($val ?? '0'));
+                            $val = is_numeric($montoRaw) ? (float)$montoRaw : 0.0;
+                        }
                         if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') {
-                            if ($val && trim((string)$val) !== '-') {
-                                try {
-                                    $d = \DateTime::createFromFormat('d/m/Y', $val);
-                                    if (!$d) $d = new \DateTime($val);
-                                    $val = $d ? $d->format('Y-m-d') : null;
-                                } catch (\Throwable $e) {
-                                    $val = null;
-                                }
-                            } else {
-                                $val = null;
-                            }
+                            $val = ($val && trim((string)$val) !== '-') ? $this->limpiar_fecha_banorte($val) : null;
                         }
                         if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
+                        if ($col === 'Hora') $val = ($val && trim((string)$val) !== '-') ? $this->limpiar_hora_banorte($val) : '00:00:00';
                         if ($col === 'Hora' && $val && trim((string)$val) !== '-' && isset($dataRow['Fecha_Transaccion'])) {
                             // Sólo aplicar ajuste horario para estaciones configuradas como "JUAREZ"
                             $debeAjustar = $this->debe_ajustar_juarez_por_afiliacion($dataRow['Afiliacion'] ?? null, $bankType);
                             if ($debeAjustar) {
-                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion'], $val);
                                 if ($ajuste !== 0) {
                                     try {
                                         $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
@@ -3644,25 +3655,27 @@ public function anomalies_client_tickets()
                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                     }
 
-                    $hora_row = trim($dataRow['Hora'] ?? '');
+                    $hora_row = $this->limpiar_hora_banorte($dataRow['Hora'] ?? null);
                     if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $hora_row)) {
                         $parts = explode(':', $hora_row);
                         $hora_row = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
                     }
-                    $afil_row  = trim($dataRow['Afiliacion']??'');
-                    $idext_row = trim($dataRow['ID_Externo']??'');
+                    $afil_row  = ltrim($this->normalizar_valor_huella_banorte($dataRow['Afiliacion']??''), '0');
+                    $idext_row = $this->normalizar_valor_huella_banorte($dataRow['ID_Externo']??'', true);
                     $fecha_row = $dataRow['Fecha_Transaccion']??'';
                     $monto_row = number_format((float)($dataRow['Monto']??0), 2, '.', '');
-                    $auth_row  = trim($dataRow['Codigo_Autorizacion']??'');
-                    $ref_row   = trim($dataRow['Referencia']??'');
-                    $term_row  = trim($dataRow['Terminal']??'');
+                    $auth_row  = $this->normalizar_valor_huella_banorte($dataRow['Codigo_Autorizacion']??'', true);
+                    $ref_row   = $this->normalizar_valor_huella_banorte($dataRow['Referencia']??'', true);
+                    $term_row  = $this->normalizar_valor_huella_banorte($dataRow['Terminal']??'', true);
                     $keyRow  = "$afil_row|$idext_row|$fecha_row|$monto_row|$hora_row|$auth_row|$ref_row|$term_row";
                     $keyRow7 = "7f:$afil_row|$idext_row|$fecha_row|$monto_row|$hora_row|$auth_row|$term_row";
 
-                    if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
+                    if (empty($dataRow['ID_Externo']) || ($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
                     if (isset($huellas[$keyRow]) || isset($huellas[$keyRow7])) { $skipped++; continue; }
 
                     $ins->execute(array_values($dataRow));
+                    $huellas[$keyRow] = true;
+                    $huellas[$keyRow7] = true;
                     $inserted++;
                 }
                 
@@ -6755,6 +6768,66 @@ public function stamped_invoices_detail(): void
         $profile = mb_strtolower(trim((string)($_SESSION['tg_user']['profile'] ?? '')));
         $isSuperAdmin = strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
         echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin'));
+    }
+
+    /** Normaliza valores Banorte para que la huella no dependa del formato de Excel/CSV. */
+    private function normalizar_valor_huella_banorte($valor, bool $quitarDecimalEntero = false): string {
+        if ($valor === null || is_array($valor) || is_object($valor)) return '';
+        $valor = trim((string)$valor);
+        if (preg_match('/^="(.*)"$/s', $valor, $m)) $valor = trim($m[1]);
+        if ($quitarDecimalEntero && preg_match('/^([+-]?\d+)\.0+$/', $valor, $m)) $valor = $m[1];
+        return $valor;
+    }
+
+    /** Equivalente a limpiar_hora() del importador automático de bancos.py. */
+    private function limpiar_hora_banorte($valor): string {
+        if ($valor === null || $valor === '' || strtolower(trim((string)$valor)) === 'nan') return '00:00:00';
+        if (is_numeric($valor) && (float)$valor >= 0 && (float)$valor < 1) {
+            $seconds = (int)round((float)$valor * 86400) % 86400;
+            return sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60);
+        }
+        $s = strtoupper(trim((string)$valor));
+        if (preg_match('/^(\d{1,2}:\d{2}:\d{2})\.\d+$/', $s, $fraction)) $s = $fraction[1];
+        $s = str_replace('.', '', $s);
+        $s = preg_replace('/([AP])\s*M/', '$1M', $s);
+        $s = str_replace(['AM', 'PM'], [' AM', ' PM'], $s);
+        $s = trim(preg_replace('/\s+/', ' ', $s));
+        foreach (['!h:i:s A', '!h:i A', '!H:i:s A', '!H:i A'] as $format) {
+            $dt = \DateTime::createFromFormat($format, $s);
+            $errors = \DateTime::getLastErrors();
+            if ($dt && ($errors === false || (!$errors['warning_count'] && !$errors['error_count']))) return $dt->format('H:i:s');
+        }
+        if (preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $s, $m)) return sprintf('%02d:%02d:%02d', (int)$m[1], (int)$m[2], isset($m[3]) ? (int)$m[3] : 0);
+        $digits = preg_replace('/\D/', '', $s);
+        if (strlen($digits) === 6) return substr($digits, 0, 2) . ':' . substr($digits, 2, 2) . ':' . substr($digits, 4, 2);
+        if (strlen($digits) === 4) return substr($digits, 0, 2) . ':' . substr($digits, 2, 2) . ':00';
+        return strlen($s) <= 8 ? $s : substr($s, 0, 8);
+    }
+
+    /** Equivalente a limpiar_fecha() de bancos.py para fechas Banorte. */
+    private function limpiar_fecha_banorte($valor): ?string {
+        if ($valor instanceof \DateTimeInterface) return $valor->format('Y-m-d');
+        if ($valor === null || trim((string)$valor) === '' || in_array(strtolower(trim((string)$valor)), ['nan', 'nat', 'none'], true)) return null;
+        $s = trim(str_replace("'", '', (string)$valor));
+        foreach (['!d/m/Y', '!Y-m-d', '!d-m-y', '!m/d/Y', '!d/m/Y H:i:s', '!Y-m-d H:i:s', '!d/m/Y h:i:s A', '!m/d/Y h:i:s A'] as $format) {
+            $dt = \DateTime::createFromFormat($format, $s);
+            $errors = \DateTime::getLastErrors();
+            if ($dt && ($errors === false || (!$errors['warning_count'] && !$errors['error_count']))) return $dt->format('Y-m-d');
+        }
+        return null;
+    }
+
+    private function clave_huella_banorte(array $row): string {
+        $afil = ltrim($this->normalizar_valor_huella_banorte($row['Afiliacion'] ?? ''), '0');
+        $id = $this->normalizar_valor_huella_banorte($row['ID_Externo'] ?? '', true);
+        $fecha = $this->limpiar_fecha_banorte($row['Fecha_Transaccion'] ?? null) ?? '';
+        $montoRaw = str_replace(['$', ','], '', $this->normalizar_valor_huella_banorte($row['Monto'] ?? '0'));
+        $monto = is_numeric($montoRaw) ? (float)$montoRaw : 0.0;
+        $hora = $this->limpiar_hora_banorte($row['Hora'] ?? null);
+        $auth = $this->normalizar_valor_huella_banorte($row['Codigo_Autorizacion'] ?? '', true);
+        $ref = $this->normalizar_valor_huella_banorte($row['Referencia'] ?? '', true);
+        $term = $this->normalizar_valor_huella_banorte($row['Terminal'] ?? '', true);
+        return "$afil|$id|$fecha|" . number_format($monto, 2, '.', '') . "|$hora|$auth|$ref|$term";
     }
 
     public function cash_reconciliation_faltantes(): void {
