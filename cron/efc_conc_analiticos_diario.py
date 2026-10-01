@@ -811,6 +811,17 @@ def import_manual_file(file_path: str) -> dict:
     return result
 
 
+def parse_cli_date(value: str) -> date:
+    """Convierte un argumento de fecha ISO (AAAA-MM-DD) para la CLI."""
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Use formato AAAA-MM-DD.") from exc
+    if parsed.isoformat() != value:
+        raise argparse.ArgumentTypeError("Use formato AAAA-MM-DD.")
+    return parsed
+
+
 def reassign_unidentified_stations() -> dict:
     """Corrige sólo papeletas sin estación a partir de sus campos fuente.
 
@@ -868,10 +879,26 @@ def main() -> int:
         metavar="PATH",
         help="Importa un concentrado tabulado manual de GASOMEX usando la misma ruta de persistencia del correo.",
     )
+    parser.add_argument(
+        "--from", "--start-date",
+        dest="start_date",
+        type=parse_cli_date,
+        metavar="AAAA-MM-DD",
+        help="Incluye archivos con fecha operativa igual o posterior (fecha tomada del nombre del archivo).",
+    )
+    parser.add_argument(
+        "--to", "--end-date",
+        dest="end_date",
+        type=parse_cli_date,
+        metavar="AAAA-MM-DD",
+        help="Incluye archivos con fecha operativa igual o anterior (fecha tomada del nombre del archivo).",
+    )
     args = parser.parse_args()
+    if (args.start_date or args.end_date) and (args.reassign_stations or args.manual_file):
+        parser.error("--from/--to solo aplican a la sincronización del buzón.")
     load_env_file()
     try:
-        result = reassign_unidentified_stations() if args.reassign_stations else import_manual_file(args.manual_file) if args.manual_file else sync(reprocess=args.reprocess)
+        result = reassign_unidentified_stations() if args.reassign_stations else import_manual_file(args.manual_file) if args.manual_file else sync(args.start_date, args.end_date, reprocess=args.reprocess)
         print(json.dumps(result, ensure_ascii=False)); return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr); return 1
