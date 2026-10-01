@@ -208,8 +208,8 @@ class EfcConciliacionModel {
 
     /**
      * Filas operativas para los reportes de excepción. Parte de los turnos de
-     * ControlGas (fuente canónica de la consola triple), no de grupos V3: un
-     * vínculo REGIO válido sigue siendo reportable aunque no tenga depósito.
+     * ControlGas (fuente canónica de la consola triple), no de grupos V3.
+     * También conserva los turnos sin vínculo REGIO para mostrarlos bajo demanda.
      */
     public function reportRows(int $stationId, int $year, int $month, ?string $concept, array $controlGasRows): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12 || ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true))) throw new RuntimeException('Parámetros de reporte inválidos.');
@@ -231,6 +231,7 @@ class EfcConciliacionModel {
         foreach ($this->activeGroups($stationId, $year, $month) as $group) foreach ($group['cg'] as $cg) {
             $groupsByCg[(string)$cg['id']]=$group;
         }
+        $stationQuery=$this->db->prepare('SELECT Nombre FROM TG.dbo.Estaciones WHERE Codigo=?'); $stationQuery->execute([$stationId]); $stationName=(string)($stationQuery->fetchColumn() ?: '');
         $out=[];
         foreach ($controlGasRows as $source) {
             $date=$this->reportDate($source['Fecha'] ?? null); $turn=(string)($source['Turno'] ?? '');
@@ -238,8 +239,7 @@ class EfcConciliacionModel {
             foreach (['MN'=>(float)($source['MN'] ?? 0), 'MORRALLA'=>(float)($source['Morralla'] ?? 0), 'USD'=>(float)($source['Dolares'] ?? 0)+(float)($source['Dolares2'] ?? 0)] as $currency=>$amount) {
                 if ($amount <= 0 || ($concept !== null && $currency !== $concept)) continue;
                 $turnKey=$this->reportTurnKey($date, $turn, $currency);
-                if (!isset($byTurn[$turnKey])) continue;
-                $link=$byTurn[$turnKey];
+                $link=$byTurn[$turnKey] ?? null; $hasPaper=$link !== null; $link=$link ?? [];
                 $cgKey='cg-'.$stationId.'-'.$date.'-'.$turn.'-'.$currency;
                 $group=$groupsByCg[$cgKey] ?? null;
                 $bank=0.0; $references=[];
@@ -251,12 +251,12 @@ class EfcConciliacionModel {
                 // respaldo; para los demás conceptos se usa real_mn.
                 $regio=$currency === 'USD' ? ($usdMxn ?: $realMn) : $realMn;
                 $out[]=[
-                    'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? ''), 'turno'=>$turn, 'concepto'=>$currency,
+                    'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? $stationName), 'turno'=>$turn, 'concepto'=>$currency,
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>round($regio,2),
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
                     'faltante'=>round($amount-$regio,2), 'diferencia_controlgas_regio'=>round($regio-$amount,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
-                    'papeleta_id'=>(int)$link['papeleta_id'], 'remesa'=>$this->normaliseRemittance($link['remesa_numero'] ?? ''), 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''),
+                    'papeleta_id'=>$hasPaper?(int)$link['papeleta_id']:null, 'remesa'=>$hasPaper?$this->normaliseRemittance($link['remesa_numero'] ?? ''):'', 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''), 'sin_papeleta'=>!$hasPaper,
                     'grupo_id'=>$group['id'] ?? null,
                 ];
             }

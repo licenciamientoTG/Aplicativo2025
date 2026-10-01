@@ -6844,12 +6844,13 @@ public function stamped_invoices_detail(): void
                 $rows=array_merge($rows,$this->efcConciliacion->reportRows($reportStation,$year,$month,$concept,$this->efcConcReportControlGas($reportStation,$year,$month)));
             }
             $mostrarTodos=filter_var($_GET['mostrar_todos'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $mostrarSinPapeleta=filter_var($_GET['mostrar_sin_papeleta'] ?? false, FILTER_VALIDATE_BOOLEAN);
             if ($report === 'faltantes') {
                 // El modo normal conserva el umbral; “Mostrar todos” incluye
                 // cualquier diferencia positiva o negativa distinta de cero.
-                $rows=array_values(array_filter($rows, static fn(array $row): bool => $mostrarTodos ? abs((float)$row['diferencia_controlgas_regio']) > 0.004 : (float)$row['diferencia_controlgas_regio'] < -10.00));
+                $rows=array_values(array_filter($rows, static fn(array $row): bool => !empty($row['sin_papeleta']) ? $mostrarSinPapeleta : ($mostrarTodos ? abs((float)$row['diferencia_controlgas_regio']) > 0.004 : (float)$row['diferencia_controlgas_regio'] < -10.00)));
             } else {
-                $rows=array_values(array_filter($rows, static fn(array $row): bool => $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
+                $rows=array_values(array_filter($rows, static fn(array $row): bool => empty($row['sin_papeleta']) && $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             }
             echo json_encode(['status'=>'success','data'=>$rows]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
