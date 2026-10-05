@@ -6915,7 +6915,7 @@ public function stamped_invoices_detail(): void
 
     /** POST /income/efc_conc_praxedis_importar multipart image, rows, ocr_text */
     public function efc_conc_praxedis_importar(): void {
-        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        ob_clean(); header('Content-Type: application/json; charset=utf-8'); header('Cache-Control: no-store, no-cache, must-revalidate');
         try {
             $file=$_FILES['image']??null;
             if(!is_array($file) || (int)($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK || !is_uploaded_file((string)($file['tmp_name']??''))) throw new RuntimeException('No se recibió correctamente la imagen.');
@@ -6929,7 +6929,13 @@ public function stamped_invoices_detail(): void
             $userName=strtoupper(trim((string)($_SESSION['tg_user']['Usuario']??$_SESSION['tg_user']['usuario']??'')));
             $result=$this->efcConciliacion->importarPraxedis(hash('sha256',$image),$mime,$image,(string)($_POST['ocr_text']??''),$decoded,(int)($_SESSION['tg_user']['Id']??0),$userName);
             echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
-        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);}
+        } catch(Throwable $e){
+            http_response_code(422);
+            error_log('[Praxedis cut import] '.$e);
+            $message=trim($e->getMessage()) ?: 'No fue posible importar los cortes.';
+            $payload=json_encode(['status'=>'error','message'=>$message],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
+            echo $payload!==false?$payload:'{"status":"error","message":"No fue posible importar los cortes."}';
+        }
         exit;
     }
 /**
