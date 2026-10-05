@@ -1,6 +1,14 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Todos los Pagos{% endblock %}
-{% block menutitle %}Todos los Pagos{% endblock %}
+{% block title %}Comprobantes de pago{% endblock %}
+{% block menutitle %}
+<div class="d-flex justify-content-between align-items-center">
+    <span>Comprobantes de pago</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="abrirHistorialEliminados()"
+        style="font-size:.8rem;border-radius:.4rem;">
+        <i class="fas fa-history me-1"></i> Historial de eliminaciones
+    </button>
+</div>
+{% endblock %}
 {% block content %}
 
 <style>
@@ -53,6 +61,24 @@
     .ap-stat-label { font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #94a3b8; }
     .ap-stat-value { font-size: 1.05rem; font-weight: 700; color: #1e293b; }
     .ap-stat-sub   { font-size: .72rem; color: #64748b; }
+
+    /* Fila de filtros de cabecera (mismo patrón que payment_list_table) */
+    #all_payments_table thead tr.filter th {
+        background-color: #e2e8f0 !important;
+        padding: 3px 6px !important;
+    }
+    #all_payments_table thead tr.filter th input {
+        font-size: 0.7rem;
+        padding: 2px 5px;
+        height: 22px;
+        border-radius: 3px;
+        border: 1px solid #cbd5e1;
+        width: 100%;
+        box-sizing: border-box;
+        text-transform: none;
+        letter-spacing: normal;
+        font-weight: 400;
+    }
 </style>
 
 <div class="card border-0 shadow-sm">
@@ -145,7 +171,9 @@
 {% endblock %}
 
 {% block myjs %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+var CAN_DELETE_PAYMENTS = {{ can_delete_payments ? 'true' : 'false' }};
 var allPaymentsTable = null;
 // Mapa: rowIndex → transaction_ids (para child rows)
 var apTransactionIds = {};
@@ -153,6 +181,7 @@ var apTransactionIds = {};
 function loadAllPayments() {
     if ($.fn.DataTable.isDataTable('#all_payments_table')) {
         $('#all_payments_table').DataTable().destroy();
+        $('#all_payments_table thead tr.filter').remove();
         $('#all_payments_table tbody').empty();
     }
     apTransactionIds = {};
@@ -229,7 +258,30 @@ function loadAllPayments() {
             url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json',
             emptyTable: 'No se encontraron pagos en el rango seleccionado'
         },
-        pageLength: 25
+        pageLength: 25,
+        initComplete: function() {
+            var api = this.api();
+            // Segunda fila de cabecera con un filtro por columna (la de expandir no lleva)
+            $('#all_payments_table thead tr.filter').remove();
+            var $filterRow = $('<tr class="filter"></tr>');
+            api.columns(':visible').every(function() {
+                var colIdx = this.index();
+                var title  = $(this.header()).text().trim();
+                if (colIdx === 0) {
+                    $filterRow.append('<th data-col-idx="' + colIdx + '"></th>');
+                } else {
+                    $filterRow.append('<th data-col-idx="' + colIdx + '"><input type="text" placeholder="' + title + '" /></th>');
+                }
+            });
+            $('#all_payments_table thead').append($filterRow);
+
+            $('#all_payments_table thead tr.filter th input').on('keyup change', function() {
+                var colIdx = $(this).closest('th').data('col-idx');
+                if (api.column(colIdx).search() !== this.value) {
+                    api.column(colIdx).search(this.value).draw();
+                }
+            }).on('click', function(e) { e.stopPropagation(); });
+        }
     });
 }
 
@@ -270,8 +322,21 @@ function toggleApChild(btn, rowIndex) {
                 return;
             }
 
-            var html = '<div class="ap-child-wrap">'
-                + '<table class="table table-sm table-bordered mb-0 w-100">'
+            // Transacciones del lote agrupadas por orden de pago (para "Quitar orden")
+            var txPorOrden = {};
+            rows.forEach(function(r) {
+                (txPorOrden[r.request_id] = txPorOrden[r.request_id] || []).push(r.id);
+            });
+            var ordenYaMostrada = {};
+
+            var html = '<div class="ap-child-wrap">';
+            if (CAN_DELETE_PAYMENTS) {
+                html += '<div class="d-flex justify-content-end mb-2">'
+                    + '<button class="btn btn-sm btn-outline-danger" onclick="eliminarPagoEjecutado(\'' + txIds + '\', \'toda la referencia (' + rows.length + ' factura(s))\', this)">'
+                    + '<i class="fas fa-trash-alt me-1"></i>Eliminar referencia completa</button>'
+                    + '</div>';
+            }
+            html += '<table class="table table-sm table-bordered mb-0 w-100">'
                 + '<thead><tr>'
                 + '<th>#Tx</th>'
                 + '<th>Orden de pago</th>'
@@ -283,9 +348,18 @@ function toggleApChild(btn, rowIndex) {
                 + '<th>Notas</th>'
                 + '<th>Registrado</th>'
                 + '<th class="text-center">Comprobante</th>'
+                + (CAN_DELETE_PAYMENTS ? '<th class="text-center">Acciones</th>' : '')
                 + '</tr></thead><tbody>';
 
             rows.forEach(function(r) {
+                var accion = '';
+                if (CAN_DELETE_PAYMENTS && !ordenYaMostrada[r.request_id]) {
+                    ordenYaMostrada[r.request_id] = true;
+                    var idsOrden = txPorOrden[r.request_id];
+                    accion = '<button class="btn btn-sm" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:4px;padding:2px 7px;white-space:nowrap;"'
+                        + ' onclick="eliminarPagoEjecutado(\'' + idsOrden.join(',') + '\', \'la orden #' + r.request_id + ' (' + idsOrden.length + ' factura(s))\', this)"'
+                        + ' title="Quitar esta orden de pago de la referencia"><i class="fas fa-minus-circle me-1"></i>Quitar orden #' + r.request_id + '</button>';
+                }
                 html += '<tr>'
                     + '<td class="text-muted" style="font-size:.72rem;">' + r.id + '</td>'
                     + '<td>' + r.payment_request_id + '</td>'
@@ -297,6 +371,7 @@ function toggleApChild(btn, rowIndex) {
                     + '<td>' + (r.notes !== '-' ? r.notes : '') + '</td>'
                     + '<td class="text-center" style="white-space:nowrap;">' + r.created_at + '</td>'
                     + '<td class="text-center">' + r.comprobante + '</td>'
+                    + (CAN_DELETE_PAYMENTS ? '<td class="text-center">' + accion + '</td>' : '')
                     + '</tr>';
             });
 
@@ -310,10 +385,59 @@ function toggleApChild(btn, rowIndex) {
 }
 
 
+function eliminarPagoEjecutado(transactionIds, descripcion, btn) {
+    Swal.fire({
+        icon: 'warning',
+        title: 'Eliminar pago ejecutado',
+        html: 'Se eliminará el pago de <b>' + descripcion + '</b>.<br>'
+            + '<small class="text-muted">La(s) orden(es) regresarán a <b>Autorizada</b> y sus facturas volverán a la cola de ejecución. '
+            + 'Quedará registrado en la pestaña Auditoría de la orden.</small>',
+        input: 'textarea',
+        inputPlaceholder: 'Motivo (obligatorio)',
+        showCancelButton: true,
+        confirmButtonText: 'Eliminar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc2626',
+        inputValidator: function(v) {
+            if (!v || v.trim().length < 5) return 'Escribe el motivo (mínimo 5 caracteres)';
+        },
+        showLoaderOnConfirm: true,
+        allowOutsideClick: function() { return !Swal.isLoading(); },
+        preConfirm: function(motivo) {
+            return $.post('/payment/delete_executed_payment', { transaction_ids: transactionIds, motivo: motivo.trim() }, null, 'json')
+                .then(function(res) {
+                    if (!res.success) Swal.showValidationMessage(res.message || 'No se pudo eliminar');
+                    return res;
+                }, function() {
+                    Swal.showValidationMessage('Error de comunicación con el servidor');
+                });
+        }
+    }).then(function(result) {
+        if (result.isConfirmed && result.value && result.value.success) {
+            Swal.fire({ icon: 'success', title: 'Pago eliminado', text: result.value.message });
+            loadAllPayments();
+        }
+    });
+}
+
+
 $(document).ready(function () {
     $('.selectpicker').selectpicker();
     loadAllPayments();
 });
+
+
+async function abrirHistorialEliminados() {
+    var $content = $('#modalHistorialEliminadosContent');
+    $content.html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-secondary"></i></div>');
+    $('#modalHistorialEliminados').modal('show');
+    try {
+        var response = await fetch('/payment/deletedPaymentsModal', { method: 'POST' });
+        $content.html(await response.text());
+    } catch (e) {
+        $content.html('<div class="modal-body text-danger">Error al cargar el historial.</div>');
+    }
+}
 
 
 function abrirComprobanteModal(docId, ext) {
@@ -333,6 +457,21 @@ function abrirComprobanteModal(docId, ext) {
     }
 }
 </script>
+
+{# Modal Historial de eliminaciones (contenido: views/payment/modals/deletedPaymentsModal.html) #}
+<div class="modal fade" id="modalHistorialEliminados" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header py-2" style="background:#1e293b;">
+                <h6 class="modal-title text-white mb-0">
+                    <i class="fas fa-history me-2"></i>Historial de pagos eliminados
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div id="modalHistorialEliminadosContent"></div>
+        </div>
+    </div>
+</div>
 
 {# Modal Comprobante #}
 <div class="modal fade" id="modalComprobante" tabindex="-1" aria-hidden="true">

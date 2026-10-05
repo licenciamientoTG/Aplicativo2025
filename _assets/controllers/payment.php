@@ -1699,6 +1699,10 @@ class Payment
                 'invoice_number'      => $datos['invoice_number'] ?? ($datos['Factura'] ?? null),
                 'amount'              => $datos['amount'] ?? ($datos['total_fac'] ?? ($datos['authorized_amount'] ?? null)),
                 'fue_post_agrupacion' => !empty($row['AccountingGroupId']),
+                // Solo en DELETE_PAYMENT: motivo y datos del pago eliminado
+                'motivo'              => $datos['motivo'] ?? null,
+                'referencia'          => $datos['transaccion']['payment_reference'] ?? null,
+                'fecha_pago'          => $datos['transaccion']['payment_date'] ?? null,
             ];
         }, $audit_log_raw);
 
@@ -1757,7 +1761,8 @@ class Payment
     {
         $proveedores = $this->proveedores->get_actives();
         $companys = $this->gasolinerasModel->get_company();
-        echo $this->twig->render($this->route . 'all_payments.html', compact('proveedores', 'companys'));
+        $can_delete_payments = authorized(102);
+        echo $this->twig->render($this->route . 'all_payments.html', compact('proveedores', 'companys', 'can_delete_payments'));
     }
 
 
@@ -1843,6 +1848,7 @@ class Payment
 
                 $data[] = [
                     'id'                 => $r['id'],
+                    'request_id'         => (int)$r['payment_request_id'],
                     'payment_request_id' => '<a href="/payment/payment_detail/' . $r['payment_request_id'] . '" class="text-primary text-decoration-none fw-semibold">#' . $r['payment_request_id'] . '</a>',
                     'folio'              => $r['folio']          ?? '-',
                     'invoice_number'     => $r['invoice_number'] ?? '-',
@@ -1858,6 +1864,110 @@ class Payment
             echo json_encode(['data' => $data]);
         } catch (Exception $e) {
             echo json_encode(['data' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
+
+    /**
+     * Modal (vista parcial) con el historial de pagos ejecutados eliminados.
+     * Cada eliminación deja una fila por transacción en el audit log; aquí se
+     * agrupan en eventos: mismo usuario + motivo + referencia, registrados con
+     * menos de 10 s de diferencia (una sola acción del botón).
+     */
+    public function deletedPaymentsModal()
+    {
+        $rows = $this->PaymentRequestAuditLogModel->get_deleted_payments();
+
+        $eventos = [];
+        $actual  = null;
+        foreach ($rows as $r) {
+            $d   = json_decode($r['DatosAnteriores'] ?? '', true) ?: [];
+            $tx  = $d['transaccion'] ?? [];
+            $ts  = strtotime($r['Fecha']);
+            $ref = $tx['payment_reference'] ?? '-';
+            $key = $r['UsuarioAplicativo'] . '|' . ($d['motivo'] ?? '') . '|' . $ref;
+
+            if (!$actual || $actual['key'] !== $key || abs($actual['ts'] - $ts) > 10) {
+                if ($actual) $eventos[] = $actual;
+                $actual = [
+                    'key'        => $key,
+                    'ts'         => $ts,
+                    'fecha'      => $r['Fecha'],
+                    'usuario'    => $r['UsuarioNombre'],
+                    'motivo'     => $d['motivo'] ?? null,
+                    'referencia' => $ref,
+                    'fecha_pago' => $tx['payment_date'] ?? null,
+                    'proveedor'  => $r['proveedor'],
+                    'comprobantes' => [],
+                    'total'      => 0,
+                    'detalle'    => [],
+                ];
+            }
+            $actual['ts'] = $ts;
+            $actual['total'] += (float)($tx['payment_amount'] ?? 0);
+            foreach ($d['comprobantes'] ?? [] as $c) {
+                $actual['comprobantes'][$c['id']] = $c['original_filename'] ?? ('#' . $c['id']);
+            }
+            $actual['detalle'][] = [
+                'orden'          => $r['PaymentRequestId'],
+                'transaccion_id' => $tx['id'] ?? null,
+                'folio'          => $d['folio'] ?? null,
+                'invoice_number' => $d['invoice_number'] ?? null,
+                'monto'          => (float)($tx['payment_amount'] ?? 0),
+                'lote'           => $tx['batch_id'] ?? null,
+                'post_agrupacion'=> !empty($r['AccountingGroupId']),
+            ];
+        }
+        if ($actual) $eventos[] = $actual;
+
+        echo $this->twig->render($this->route . 'modals/deletedPaymentsModal.html', compact('eventos'));
+    }
+
+    /**
+     * Elimina pagos ejecutados (transacciones) de una referencia: una orden de
+     * pago o el lote completo. Deja historial en el tab Auditoría de cada orden
+     * y la regresa a Autorizada (las facturas conservan su autorización y vuelven
+     * a la cola de ejecución). Permiso 102.
+     */
+    public function delete_executed_payment()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(102)) {
+                json_output(['success' => false, 'message' => 'No tienes permiso para eliminar pagos ejecutados']); return;
+            }
+            $user_id   = intval($_SESSION['tg_user']['Id'] ?? 0);
+            $user_name = $_SESSION['tg_user']['Nombre'] ?? null;
+            if (!$user_id) {
+                json_output(['success' => false, 'message' => 'Usuario no identificado']); return;
+            }
+
+            $ids    = array_filter(array_map('intval', explode(',', $_POST['transaction_ids'] ?? '')));
+            $motivo = trim($_POST['motivo'] ?? '');
+            if (empty($ids)) {
+                json_output(['success' => false, 'message' => 'No se indicaron transacciones']); return;
+            }
+            if (mb_strlen($motivo) < 5) {
+                json_output(['success' => false, 'message' => 'Escribe el motivo de la eliminación']); return;
+            }
+
+            $result = $this->paymentTransactionsModel->delete_transactions_with_audit($ids, $motivo, $user_id, $user_name);
+            if (!$result['success']) {
+                json_output($result); return;
+            }
+
+            foreach ($result['payment_request_ids'] as $prid) {
+                $this->PaymentRequestsModel->recalculate_payment_chain($prid);
+            }
+
+            json_output([
+                'success' => true,
+                'message' => $result['message'] . ' por $' . number_format($result['total_eliminado'], 2)
+                    . '. Orden(es) #' . implode(', #', $result['payment_request_ids']) . ' regresaron a Autorizada.',
+            ]);
+        } catch (Exception $e) {
+            error_log("Error en delete_executed_payment: " . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
         }
     }
 

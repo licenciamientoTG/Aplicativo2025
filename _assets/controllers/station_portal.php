@@ -309,16 +309,27 @@ class station_portal
             }
         }
 
-        $data = array_map(function ($r) use ($counts, $asignacionesPorCodgas) {
+        // Nombre corto de la estación por codgas (una sola consulta).
+        $nombresPorCodgas = [];
+        if (!empty($recepciones)) {
+            foreach ($this->gasolinerasModel->get_active_stations() ?: [] as $s) {
+                $nombresPorCodgas[(int)$s['cod']] = $s['abr'];
+            }
+        }
+
+        $data = array_map(function ($r) use ($counts, $asignacionesPorCodgas, $nombresPorCodgas) {
             $codgasFila = (int)$r['codgas'];
             $nrotrn = (int)$r['nrotrn'];
             $fchtrn = (int)$r['fchtrn'];
-            $totalRemisiones = $counts[$codgasFila][$fchtrn][$nrotrn] ?? 0;
+            $conteo = $counts[$codgasFila][$fchtrn][$nrotrn] ?? [];
+            $totalRemisiones = $conteo[RecepcionRemisionesModel::TIPO_REMISION] ?? 0;
+            $totalCartasPorte = $conteo[RecepcionRemisionesModel::TIPO_CARTA_PORTE] ?? 0;
             $asignacion = $asignacionesPorCodgas[$codgasFila][$nrotrn] ?? null;
 
             return [
                 'nrotrn'           => $nrotrn,
                 'codgas'           => $codgasFila,
+                'estacion'         => $nombresPorCodgas[$codgasFila] ?? (string)$codgasFila,
                 'fchtrn'           => $fchtrn,
                 'fecha'            => $r['fecha'],
                 'hora'             => $r['hora'],
@@ -328,6 +339,7 @@ class station_portal
                 'documento'        => $r['documento'],
                 'referencia'       => $r['referencia'],
                 'total_remisiones' => $totalRemisiones,
+                'total_cartas_porte' => $totalCartasPorte,
                 'factura_id'       => $asignacion['FacturaId'] ?? null,
                 'factura_folio'    => $asignacion['Folio'] ?? null,
                 'factura_proveedor' => $asignacion['EmisorNombre'] ?? null,
@@ -441,9 +453,15 @@ class station_portal
         $nrotrn = (int)($_POST['nrotrn'] ?? 0);
         $fchtrn = (int)($_POST['fchtrn'] ?? 0);
         $fecha = trim($_POST['fecha'] ?? '');
+        $tipoDocumento = trim($_POST['tipo_documento'] ?? RecepcionRemisionesModel::TIPO_REMISION);
 
         if ($nrotrn <= 0 || $fchtrn <= 0 || $fecha === '' || !isset($_FILES['archivo'])) {
             json_output(['success' => false, 'message' => 'Datos incompletos']);
+            return;
+        }
+
+        if (!in_array($tipoDocumento, RecepcionRemisionesModel::TIPOS_DOCUMENTO, true)) {
+            json_output(['success' => false, 'message' => 'Tipo de documento no válido']);
             return;
         }
 
@@ -473,7 +491,7 @@ class station_portal
         }
 
         $userId = (int)$_SESSION['tg_user']['Id'];
-        $result = $this->recepcionRemisionesModel->upload($nrotrn, $codgasEfectivo, $fchtrn, $_FILES['archivo'], $userId);
+        $result = $this->recepcionRemisionesModel->upload($nrotrn, $codgasEfectivo, $fchtrn, $_FILES['archivo'], $userId, $tipoDocumento);
 
         json_output($result);
     }
@@ -495,9 +513,11 @@ class station_portal
             exit;
         }
 
-        $remisiones = $this->recepcionRemisionesModel->get_by_recepcion($nrotrn, $codgasEfectivo, $fchtrn);
+        $documentos = $this->recepcionRemisionesModel->get_by_recepcion($nrotrn, $codgasEfectivo, $fchtrn);
+        $remisiones = array_values(array_filter($documentos, fn($d) => $d['tipo_documento'] !== RecepcionRemisionesModel::TIPO_CARTA_PORTE));
+        $cartasPorte = array_values(array_filter($documentos, fn($d) => $d['tipo_documento'] === RecepcionRemisionesModel::TIPO_CARTA_PORTE));
 
-        echo $this->twig->render($this->route . 'modals/remisiones_list.html', compact('remisiones', 'canDelete'));
+        echo $this->twig->render($this->route . 'modals/remisiones_list.html', compact('remisiones', 'cartasPorte', 'canDelete'));
     }
 
     public function delete_remision(): void

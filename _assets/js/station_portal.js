@@ -100,6 +100,15 @@ function construirConfigDataTable() {
                     dt.draw();
                 },
             },
+            {
+                text: '<i class="fa-solid fa-truck"></i> Sin carta porte',
+                className: 'btn btn-outline-warning',
+                action: function (e, dt, node) {
+                    filtroSinCartaPorteActivo = !filtroSinCartaPorteActivo;
+                    node.toggleClass('btn-outline-warning btn-warning');
+                    dt.draw();
+                },
+            },
         ],
         ajax: {
             url: '/station_portal/datatables_recepciones',
@@ -131,8 +140,9 @@ function construirConfigDataTable() {
             }
         },
         deferRender: true,
-        order: [[0, 'desc'], [1, 'desc']],
+        order: [[1, 'desc'], [2, 'desc']],
         columns: [
+            { data: 'estacion', defaultContent: '' },
             { data: 'fecha' },
             { data: 'hora' },
             { data: 'tanque' },
@@ -149,10 +159,25 @@ function construirConfigDataTable() {
                 }
             },
             {
+                data: 'total_cartas_porte',
+                defaultContent: 0,
+                render: function (data) {
+                    return data > 0
+                        ? `<span class="badge bg-success">${data} subida(s)</span>`
+                        : `<span class="badge bg-warning text-dark">Sin carta porte</span>`;
+                }
+            },
+            {
                 data: null,
                 render: function (row) {
-                    let html = `<button type="button" class="btn btn-sm btn-primary btn-subir-remision" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}" data-fecha="${row.fecha}">Subir</button> `;
-                    if (row.total_remisiones > 0) {
+                    // Un botón por tipo de documento; ambos abren el mismo
+                    // modal (#modalSubirRemision), que se ajusta según data-tipo.
+                    const attrs = `data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}" data-fecha="${row.fecha}"` +
+                        ` data-hora="${row.hora || ''}" data-estacion="${escHtml(row.estacion || '')}" data-tanque="${row.tanque || ''}"` +
+                        ` data-producto="${escHtml(row.producto || '')}" data-volumen="${row.volumen || 0}"`;
+                    let html = `<button type="button" class="btn btn-sm btn-primary btn-subir-remision" data-tipo="remision" ${attrs} data-bs-toggle="tooltip" title="Subir remisión"><i class="fa-solid fa-file-invoice"></i></button> `;
+                    html += `<button type="button" class="btn btn-sm btn-info btn-subir-remision" data-tipo="carta_porte" ${attrs} data-bs-toggle="tooltip" title="Subir carta porte"><i class="fa-solid fa-truck"></i></button> `;
+                    if (row.total_remisiones > 0 || row.total_cartas_porte > 0) {
                         html += `<button type="button" class="btn btn-sm btn-secondary btn-ver-remisiones" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}">Ver</button> `;
                     }
                     // Solo aparece cuando Abastos ya confirmó, en Conciliación
@@ -170,6 +195,11 @@ function construirConfigDataTable() {
         initComplete: function () {
             addColumnFilters('datatables_mis_recepciones', this.api());
         },
+        drawCallback: function () {
+            $('#datatables_mis_recepciones [data-bs-toggle="tooltip"]').each(function () {
+                bootstrap.Tooltip.getOrCreateInstance(this);
+            });
+        },
     };
 }
 
@@ -185,6 +215,17 @@ $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
 
     const rowData = settings.aoData[dataIndex] ? settings.aoData[dataIndex]._aData : null;
     return rowData ? !rowData.documento : true;
+});
+
+// Filtro "Sin carta porte": mismo patrón que "Sin documento".
+let filtroSinCartaPorteActivo = false;
+
+$.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+    if (settings.nTable.id !== 'datatables_mis_recepciones') return true;
+    if (!filtroSinCartaPorteActivo) return true;
+
+    const rowData = settings.aoData[dataIndex] ? settings.aoData[dataIndex]._aData : null;
+    return rowData ? !(rowData.total_cartas_porte > 0) : true;
 });
 
 function rangoEsValido() {
@@ -465,19 +506,151 @@ $(document).on('click', '.resumen-fila-estacion', function () {
     $('#btnBuscarRecepciones').trigger('click');
 });
 
+function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ---- Modal de subida (remisión / carta porte) ----
+// Un solo modal para ambos tipos; el atributo data-tipo del modal cambia el
+// color de acento (CSS) y el título/ícono se ajustan al abrirlo.
+const SUBIR_DOC_TIPOS = {
+    remision:    { titulo: 'Subir remisión',    icono: 'fa-file-invoice' },
+    carta_porte: { titulo: 'Subir carta porte', icono: 'fa-truck' },
+};
+const SUBIR_DOC_MAX_BYTES = 10 * 1024 * 1024;
+const SUBIR_DOC_EXT = ['pdf', 'jpg', 'jpeg', 'png'];
+const SUBIR_DOC_BTN_HTML = '<i class="fa-solid fa-upload me-1"></i> Subir';
+
+function formatoTamano(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function subirDocError(mensaje) {
+    $('#subirDocError').text(mensaje || '').toggleClass('d-none', !mensaje);
+}
+
+function subirDocLimpiarArchivo() {
+    $('#archivo_remision').val('');
+    $('#subirDocPreview').empty();
+    $('#subirDocArchivo').addClass('d-none');
+    $('#subirDocDropzone').removeClass('d-none');
+    $('#btnConfirmarSubirRemision').prop('disabled', true);
+}
+
+// Valida el archivo elegido (o soltado) y muestra su tarjeta con vista previa.
+function subirDocMostrarArchivo(file) {
+    subirDocError('');
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!SUBIR_DOC_EXT.includes(ext)) {
+        subirDocLimpiarArchivo();
+        subirDocError('Tipo de archivo no permitido. Usa PDF, JPG o PNG.');
+        return;
+    }
+    if (file.size > SUBIR_DOC_MAX_BYTES) {
+        subirDocLimpiarArchivo();
+        subirDocError('El archivo excede el tamaño máximo de 10 MB.');
+        return;
+    }
+
+    const $preview = $('#subirDocPreview').empty();
+    if (ext === 'pdf') {
+        $preview.html('<i class="fa-solid fa-file-pdf"></i>');
+    } else {
+        const url = URL.createObjectURL(file);
+        $('<img alt="">').attr('src', url).on('load', () => URL.revokeObjectURL(url)).appendTo($preview);
+    }
+    $('#subirDocNombre').text(file.name).attr('title', file.name);
+    $('#subirDocTamano').text(formatoTamano(file.size));
+    $('#subirDocDropzone').addClass('d-none');
+    $('#subirDocArchivo').removeClass('d-none');
+    $('#btnConfirmarSubirRemision').prop('disabled', false);
+}
+
 $(document).on('click', '.btn-subir-remision', function () {
+    const $btn = $(this);
     // reset() primero: limpia el input de archivo y también pondría en blanco
     // los hidden inputs, así que los valores se asignan después.
     $('#formSubirRemision')[0].reset();
-    $('#subir_nrotrn').val($(this).data('nrotrn'));
-    $('#subir_codgas').val($(this).data('codgas'));
-    $('#subir_fchtrn').val($(this).data('fchtrn'));
-    $('#subir_fecha').val($(this).data('fecha'));
+    $('#subir_nrotrn').val($btn.data('nrotrn'));
+    $('#subir_codgas').val($btn.data('codgas'));
+    $('#subir_fchtrn').val($btn.data('fchtrn'));
+    $('#subir_fecha').val($btn.data('fecha'));
+
+    const tipo = $btn.data('tipo') === 'carta_porte' ? 'carta_porte' : 'remision';
+    $('#subir_tipo_documento').val(tipo);
+    $('#modalSubirRemision').attr('data-tipo', tipo);
+    $('#modalSubirRemisionTitulo').text(SUBIR_DOC_TIPOS[tipo].titulo);
+    $('#modalSubirRemisionIcono').attr('class', 'fa-solid ' + SUBIR_DOC_TIPOS[tipo].icono);
+    $('#modalSubirRemisionSubtitulo').text(`Recepción #${$btn.data('nrotrn')}`);
+
+    // Resumen de la recepción, para que el operador confirme que es la correcta.
+    const volumen = Number($btn.data('volumen') || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const dato = (etiqueta, valor) => `<div><div class="etiqueta">${etiqueta}</div><div class="fw-semibold">${escHtml(valor || '-')}</div></div>`;
+    $('#subirDocRecepcion').html(
+        dato('Estación', $btn.data('estacion')) +
+        dato('Fecha y hora', `${$btn.data('fecha') || ''} ${$btn.data('hora') || ''}`.trim()) +
+        dato('Tanque / Producto', `${$btn.data('tanque') || '-'} · ${$btn.data('producto') || '-'}`) +
+        dato('Volumen recibido', volumen + ' L')
+    );
+
+    subirDocLimpiarArchivo();
+    subirDocError('');
+    $('#btnConfirmarSubirRemision').html(SUBIR_DOC_BTN_HTML);
+
+    // Si no se oculta, el tooltip queda flotando encima del modal.
+    bootstrap.Tooltip.getInstance(this)?.hide();
     $('#modalSubirRemision').modal('show');
 });
 
+$('#archivo_remision').on('change', function () {
+    if (this.files && this.files[0]) {
+        subirDocMostrarArchivo(this.files[0]);
+    }
+});
+
+$('#subirDocQuitar').on('click', function () {
+    bootstrap.Tooltip.getInstance(this)?.hide();
+    subirDocLimpiarArchivo();
+    subirDocError('');
+});
+
+$('#subirDocDropzone')
+    .on('dragenter dragover', function (e) {
+        e.preventDefault();
+        $(this).addClass('arrastrando');
+    })
+    .on('dragleave dragend', function (e) {
+        e.preventDefault();
+        $(this).removeClass('arrastrando');
+    })
+    .on('drop', function (e) {
+        e.preventDefault();
+        $(this).removeClass('arrastrando');
+        const files = e.originalEvent.dataTransfer.files;
+        if (!files || !files.length) return;
+        // Se asigna al input real para que FormData lo incluya al subir.
+        const dt = new DataTransfer();
+        dt.items.add(files[0]);
+        $('#archivo_remision')[0].files = dt.files;
+        subirDocMostrarArchivo(files[0]);
+    });
+
+$('[data-bs-toggle="tooltip"]', '#modalSubirRemision').each(function () {
+    bootstrap.Tooltip.getOrCreateInstance(this);
+});
+
 $('#btnConfirmarSubirRemision').on('click', async function () {
+    const $btn = $(this);
+    if (!$('#archivo_remision')[0].files.length) {
+        subirDocError('Selecciona un archivo.');
+        return;
+    }
+
     const formData = new FormData($('#formSubirRemision')[0]);
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Subiendo...');
+    subirDocError('');
 
     try {
         const response = await fetch('/station_portal/upload_remision', {
@@ -490,11 +663,14 @@ $('#btnConfirmarSubirRemision').on('click', async function () {
         if (result.success) {
             $('#modalSubirRemision').modal('hide');
             datatables_mis_recepciones.ajax.reload(null, false);
+            if (alertify.success) alertify.success(result.message);
         } else {
-            alertify.myAlert(`<div class="text-danger text-center"><p>${result.message}</p></div>`);
+            subirDocError(result.message);
         }
     } catch (error) {
-        alertify.myAlert('<div class="text-danger text-center"><p>Error al subir el archivo.</p></div>');
+        subirDocError('Error al subir el archivo. Intenta nuevamente.');
+    } finally {
+        $btn.html(SUBIR_DOC_BTN_HTML).prop('disabled', !$('#archivo_remision')[0].files.length);
     }
 });
 
@@ -512,7 +688,7 @@ $(document).on('click', '.btn-ver-remisiones', async function () {
         $('#modalVerRemisionesContent').html(content);
         $('#modalVerRemisiones').modal('show');
     } catch (error) {
-        alertify.myAlert('<div class="text-danger text-center"><p>Error al cargar las remisiones.</p></div>');
+        alertify.myAlert('<div class="text-danger text-center"><p>Error al cargar los documentos.</p></div>');
     }
 });
 
@@ -535,6 +711,6 @@ $(document).on('click', '.btn-eliminar-remision', async function () {
             alertify.myAlert(`<div class="text-danger text-center"><p>${result.message}</p></div>`);
         }
     } catch (error) {
-        alertify.myAlert('<div class="text-danger text-center"><p>Error al eliminar la remisión.</p></div>');
+        alertify.myAlert('<div class="text-danger text-center"><p>Error al eliminar el documento.</p></div>');
     }
 });
