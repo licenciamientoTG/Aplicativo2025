@@ -1,7 +1,7 @@
 """Conciliación bancaria automática de efectivo (cada 10 minutos).
 
 No invoca endpoints PHP ni modifica datos al importar: lee ControlGas y TG,
-y delega la persistencia a dbo.usp_efc_conc_guardar_automatica.  El SP usa una
+y delega la persistencia a procedimientos transaccionales. Estos usan una
 transacción SERIALIZABLE para que un depósito/turno no pueda ser tomado por
 dos ejecuciones (ni por una asociación manual concurrente).
 
@@ -110,11 +110,50 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
           omitidas INT NOT NULL DEFAULT 0, errores INT NOT NULL DEFAULT 0, detalle NVARCHAR(MAX) NULL)""")
     cursor.execute("""IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_efc_conc_ejecuciones_estado_fin')
         CREATE INDEX IX_efc_conc_ejecuciones_estado_fin ON dbo.efc_conc_ejecuciones_automaticas(estado,fin_en DESC)""")
+    cursor.execute("""CREATE OR ALTER PROCEDURE dbo.usp_efc_conc_guardar_automatica
+      @estacion_id INT,@fecha DATE,@turno VARCHAR(20),@concepto VARCHAR(20),@importe_cg DECIMAL(18,2),
+      @movimiento_bancario_id INT,@fecha_banco DATE,@importe_banco DECIMAL(18,2),@referencia VARCHAR(255),@ejecucion_id BIGINT
+    AS BEGIN
+      SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+      BEGIN TRANSACTION;
+      IF DATEDIFF(MONTH,@fecha,@fecha_banco) NOT IN (0,1) THROW 50012,'El depósito debe ser del mismo mes del turno o del mes siguiente.',1;
+      DECLARE @cruza_mes BIT=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23) THEN 1 ELSE 0 END,
+              @fecha_operativa DATE=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23) THEN DATEFROMPARTS(YEAR(@fecha_banco),MONTH(@fecha_banco),1) ELSE @fecha END,
+              @cg_key VARCHAR(180)='cg-'+CONVERT(VARCHAR(20),@estacion_id)+'-'+CONVERT(CHAR(10),@fecha,23)+'-'+@turno+'-'+@concepto,
+              @transito_id INT=NULL;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND estado='CERRADO')
+        THROW 50001,'Periodo cerrado.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND etapa='BANCO' AND estado='CERRADO')
+        THROW 50005,'Etapa bancaria cerrada.',1;
+      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha,23) AND concepto=@concepto AND estado='CERRADO')
+        THROW 50011,'El mes de origen esta cerrado; no se puede crear el transito automaticamente.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND clave_externa=@cg_key AND estado IN ('PENDIENTE','CONCILIADO'))
+        THROW 50002,'Turno en transito.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.clave_externa=@cg_key AND P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA')
+        THROW 50003,'Turno ya conciliado.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.movimiento_bancario_id=@movimiento_bancario_id AND P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA')
+        THROW 50004,'Deposito ya conciliado.',1;
+      IF @cruza_mes=1 BEGIN
+        INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
+        VALUES(@estacion_id,@cg_key,@fecha,CONVERT(CHAR(7),@fecha,23),CONVERT(CHAR(7),@fecha_banco,23),@turno,@concepto,@importe_cg,'CONCILIADO','Transito automatico por deposito bancario del mes siguiente',NULL);
+        SET @transito_id=CONVERT(INT,SCOPE_IDENTITY());
+      END;
+      DECLARE @grupo TABLE(id INT); INSERT dbo.efc_conc_grupos(estacion_id,fecha_operativa,turno,concepto,tipo,total_controlgas,total_banorte,diferencia,creado_por)
+        OUTPUT inserted.id INTO @grupo VALUES(@estacion_id,@fecha_operativa,@turno,@concepto,'AUTOMATICA',@importe_cg,@importe_banco,@importe_banco-@importe_cg,NULL);
+      DECLARE @id INT=(SELECT id FROM @grupo);
+      INSERT dbo.efc_conc_partidas(grupo_id,origen,clave_externa,movimiento_bancario_id,fecha_operacion,turno,concepto,importe,referencia,estacion_id)
+        VALUES(@id,'CG',CASE WHEN @transito_id IS NULL THEN @cg_key ELSE 'TR:'+CONVERT(VARCHAR(20),@transito_id) END,NULL,
+          CASE WHEN @transito_id IS NULL THEN @fecha ELSE @fecha_operativa END,@turno,@concepto,@importe_cg,NULL,@estacion_id),
+          (@id,'BANCO','mb_'+CONVERT(VARCHAR(20),@movimiento_bancario_id),@movimiento_bancario_id,@fecha_banco,NULL,NULL,@importe_banco,@referencia,@estacion_id);
+      INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id,CASE WHEN @cruza_mes=1 THEN '; transito automatico creado' ELSE '' END));
+      COMMIT;
+    END""")
     # A procedure (rather than client-side INSERTs) keeps the reservations,
     # closure validation and group creation in one server-side transaction.
     cursor.execute("""CREATE OR ALTER PROCEDURE dbo.usp_efc_conc_guardar_gasomex
       @estacion_id INT,@fecha DATE,@cg_xml XML,
-      @movimiento_bancario_id INT,@fecha_banco DATE,@importe_banco DECIMAL(18,2),@referencia VARCHAR(255),@ejecucion_id BIGINT
+      @movimiento_bancario_id INT,@fecha_banco DATE,@importe_banco DECIMAL(18,2),@referencia VARCHAR(255),@ejecucion_id BIGINT,
+      @tolerancia DECIMAL(18,2)=1.00
     AS BEGIN
       SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
       BEGIN TRANSACTION;
@@ -122,15 +161,16 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       INSERT @cg SELECT item.value('@id','VARCHAR(180)'),item.value('@date','DATE'),item.value('@turn','VARCHAR(20)'),item.value('@currency','VARCHAR(20)'),item.value('@amount','DECIMAL(18,2)') FROM @cg_xml.nodes('/turns/turn') AS turns(item);
       DECLARE @transitos TABLE(clave_externa VARCHAR(180),transito_id INT);
       IF NOT EXISTS(SELECT 1 FROM @cg) THROW 50006,'No hay turnos GASOMEX para conciliar.',1;
-      DECLARE @concepto VARCHAR(20)=CASE WHEN EXISTS(SELECT 1 FROM @cg WHERE concepto='USD') THEN 'USD' ELSE 'MN' END,
+      DECLARE @concepto VARCHAR(20)=CASE WHEN EXISTS(SELECT 1 FROM @cg WHERE concepto='USD') THEN 'USD' WHEN EXISTS(SELECT 1 FROM @cg WHERE concepto='MN') THEN 'MN' WHEN EXISTS(SELECT 1 FROM @cg WHERE concepto='MORRALLA') THEN 'MORRALLA' ELSE 'MN' END,
               @importe_cg DECIMAL(18,2)=(SELECT ROUND(SUM(importe),2) FROM @cg),
               @turno VARCHAR(20)=CASE WHEN (SELECT COUNT(*) FROM @cg)>1 THEN 'VARIOS' ELSE (SELECT TOP 1 turno FROM @cg) END;
       IF EXISTS(SELECT 1 FROM @cg WHERE concepto NOT IN ('MN','MORRALLA','USD'))
          OR (@concepto='USD' AND EXISTS(SELECT 1 FROM @cg WHERE concepto<>'USD'))
         THROW 50008,'Conceptos GASOMEX mezclados en un lote.',1;
+      IF EXISTS(SELECT 1 FROM @cg WHERE DATEDIFF(MONTH,fecha,@fecha_banco) NOT IN (0,1))
+        THROW 50012,'El depósito debe ser del mismo mes del turno o del mes siguiente.',1;
       IF @estacion_id=40 AND (
         EXISTS(SELECT 1 FROM @cg WHERE concepto<>'MN' OR clave_externa NOT LIKE 'cg-40-%-MN')
-        OR EXISTS(SELECT 1 FROM @cg WHERE DATEDIFF(MONTH,fecha,@fecha_banco) NOT IN (0,1))
         OR NOT EXISTS(SELECT 1 FROM TG.dbo.movimientos_bancarios M
           WHERE M.id=@movimiento_bancario_id AND M.abono>0
             AND RIGHT(REPLACE(REPLACE(REPLACE(ISNULL(M.cuenta,''),'-',''),' ',''),'.',''),11)='60630878973'
@@ -142,17 +182,17 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
           WHERE X.id IS NULL OR C.clave_externa<>'cg-40-'+CONVERT(CHAR(10),C.fecha,23)+'-'+C.turno+'-MN'
             OR ROUND(X.efectivo,2)<>C.importe)
       ) THROW 50009,'El lote Praxedis debe usar turnos vigentes y un depósito elegible de la cuenta 8973.',1;
-      IF ABS(@importe_banco-@importe_cg)>=1.00 THROW 50007,'La combinación GASOMEX no coincide con el depósito en menos de un peso.',1;
-      DECLARE @cruza_mes BIT=CASE WHEN @estacion_id=40 AND EXISTS(SELECT 1 FROM @cg WHERE CONVERT(CHAR(7),fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23)) THEN 1 ELSE 0 END,
-              @fecha_operativa DATE=CASE WHEN @estacion_id=40 AND EXISTS(SELECT 1 FROM @cg WHERE CONVERT(CHAR(7),fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23)) THEN DATEFROMPARTS(YEAR(@fecha_banco),MONTH(@fecha_banco),1) ELSE @fecha END;
+      IF ABS(@importe_banco-@importe_cg)>=@tolerancia THROW 50007,'La combinación de turnos no coincide con el depósito dentro de la tolerancia.',1;
+      DECLARE @cruza_mes BIT=CASE WHEN EXISTS(SELECT 1 FROM @cg WHERE CONVERT(CHAR(7),fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23)) THEN 1 ELSE 0 END,
+              @fecha_operativa DATE=CASE WHEN EXISTS(SELECT 1 FROM @cg WHERE CONVERT(CHAR(7),fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23)) THEN DATEFROMPARTS(YEAR(@fecha_banco),MONTH(@fecha_banco),1) ELSE @fecha END;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND estado='CERRADO')
         THROW 50001,'Periodo cerrado.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND etapa='BANCO' AND estado='CERRADO')
         THROW 50005,'Etapa bancaria cerrada.',1;
-      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_cierres C WITH(UPDLOCK,HOLDLOCK) JOIN @cg X ON C.mes=CONVERT(CHAR(7),X.fecha,23) WHERE C.estacion_id=40 AND C.concepto='MN' AND C.estado='CERRADO')
-        THROW 50011,'El mes de origen Praxedis esta cerrado; no se puede crear el transito automaticamente.',1;
-      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa WHERE T.estacion_id=40 AND T.estado IN ('PENDIENTE','CONCILIADO'))
-        THROW 50010,'Uno de los turnos Praxedis ya tiene un tránsito registrado.',1;
+      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_cierres C WITH(UPDLOCK,HOLDLOCK) JOIN @cg X ON C.mes=CONVERT(CHAR(7),X.fecha,23) WHERE C.estacion_id=@estacion_id AND C.concepto IN (@concepto,CASE WHEN @concepto='MN' THEN 'MORRALLA' ELSE @concepto END) AND C.estado='CERRADO')
+        THROW 50011,'El mes de origen esta cerrado; no se puede crear el transito automaticamente.',1;
+      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa WHERE T.estacion_id=@estacion_id AND T.estado IN ('PENDIENTE','CONCILIADO'))
+        THROW 50010,'Uno de los turnos ya tiene un tránsito registrado.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa WHERE T.estacion_id=@estacion_id AND T.estado='PENDIENTE')
         THROW 50002,'Turno en transito pendiente.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id JOIN @cg C ON C.clave_externa=P.clave_externa WHERE P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA')
@@ -163,7 +203,7 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       BEGIN
         INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
           OUTPUT inserted.clave_externa,inserted.id INTO @transitos
-          SELECT 40,C.clave_externa,C.fecha,CONVERT(CHAR(7),C.fecha,23),CONVERT(CHAR(7),@fecha_banco,23),C.turno,'MN',C.importe,'CONCILIADO','Transito automatico por deposito bancario del mes siguiente',NULL
+          SELECT @estacion_id,C.clave_externa,C.fecha,CONVERT(CHAR(7),C.fecha,23),CONVERT(CHAR(7),@fecha_banco,23),C.turno,C.concepto,C.importe,'CONCILIADO','Transito automatico por deposito bancario del mes siguiente',NULL
           FROM @cg C WHERE CONVERT(CHAR(7),C.fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23);
       END;
       DECLARE @grupo TABLE(id INT); INSERT dbo.efc_conc_grupos(estacion_id,fecha_operativa,turno,concepto,tipo,total_controlgas,total_banorte,diferencia,creado_por)
@@ -640,9 +680,9 @@ def run() -> int:
         run_id = cursor.execute("INSERT dbo.efc_conc_ejecuciones_automaticas(estado) OUTPUT inserted.id VALUES('EJECUTANDO')").fetchone()[0]; conn.commit()
         today = date.today()
         current_month_first = today.replace(day=1)
-        # During days 1–4, include the full previous month so late bank
-        # movements and station corrections can still be reconciled.
-        first = (current_month_first - timedelta(days=1)).replace(day=1) if today.day <= 4 else current_month_first
+        # Keep the last seven operational days from the prior month available
+        # throughout the current month so next-month deposits can create transit.
+        first = max((current_month_first - timedelta(days=1)).replace(day=1), current_month_first - timedelta(days=7))
         last = today
         allowed = ",".join(str(value) for value in sorted(COMPANY_STATIONS))
         stations = cursor.execute(f"SELECT Codigo,Nombre,Estacion FROM TG.dbo.Estaciones WHERE Codigo IN ({allowed}) AND Nombre<>'NO FUNCIONA'").fetchall()
@@ -727,7 +767,7 @@ def run() -> int:
                         ) + "</turns>"
                         log(f"Praxedis candidato: banco={bank[0]}, lote={lot['anchor']}, fecha_banco={bank[1]}, importe_banco={amount(bank[2]):.2f}, importe_turnos={cg_total:.2f}, turnos={lot['shifts']}.")
                         try:
-                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?", 40, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
+                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?,?", 40, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id, TOLERANCE)
                             conn.commit(); used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
                             log(f"Conciliado lote Praxedis: fecha={lot['anchor']}, turnos={lot['shifts']}, banco={bank[0]}.")
                         except pyodbc.Error as exc:
@@ -782,7 +822,7 @@ def run() -> int:
                             inferred = inferred_stations.get(int(bank[0]))
                             if inferred:
                                 save_inferred_station_correction(cursor, int(bank[0]), int(station_id), inferred[1], int(run_id))
-                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?", station_id, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
+                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?,?", station_id, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id, TOLERANCE)
                             conn.commit(); used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
                             log(f"Conciliada GASOMEX: estación={station_id}, lote={lot['anchor']}, bucket={lot['bucket']}, turnos={lot['shifts']}, banco={bank[0]}.")
                         except pyodbc.Error as exc:
