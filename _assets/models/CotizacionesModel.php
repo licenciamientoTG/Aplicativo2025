@@ -14,9 +14,11 @@ class CotizacionesModel extends Model{
     public $lognew;
 
     /**
-     * Estaciones que no vinieron en la última respuesta de get_exchange_rates()
-     * (caídas, o la llamada a ApiER falló por completo). Cada elemento trae
-     * ['no_station' => ..., 'station_name' => ...]. La llena get_exchange_rates().
+     * Estaciones que no vinieron en la última respuesta de get_exchange_rates().
+     * ApiER omite una estación tanto si su consulta falla (sin conexión) como si
+     * no tiene ninguna Cotizacion con su propio codgas, así que aquí no se puede
+     * distinguir un caso del otro. Cada elemento trae
+     * ['codgas', 'no_station', 'station_name', 'description'].
      */
     public array $disconnectedStations = [];
 
@@ -123,24 +125,33 @@ class CotizacionesModel extends Model{
 
         if ($response === false || $httpCode !== 200) {
             error_log("get_exchange_rates: fallo al llamar a ApiER (HTTP {$httpCode}) {$curlError}");
-            $this->disconnectedStations = array_map(fn($p) => ['no_station' => $p['no_station'], 'station_name' => $p['station_name']], $payload);
+            $this->disconnectedStations = array_map(fn($p) => $this->station_summary($p), $payload);
             return [];
         }
 
         $rows = json_decode($response, true);
         if (!is_array($rows)) {
             error_log("get_exchange_rates: respuesta de ApiER no es un array válido: {$response}");
-            $this->disconnectedStations = array_map(fn($p) => ['no_station' => $p['no_station'], 'station_name' => $p['station_name']], $payload);
+            $this->disconnectedStations = array_map(fn($p) => $this->station_summary($p), $payload);
             return [];
         }
 
         $returnedCodgas = array_column($rows, 'codgas');
         $this->disconnectedStations = array_values(array_map(
-            fn($p) => ['no_station' => $p['no_station'], 'station_name' => $p['station_name']],
+            fn($p) => $this->station_summary($p),
             array_filter($payload, fn($p) => !in_array($p['codgas'], $returnedCodgas))
         ));
 
         return $rows;
+    }
+
+    private function station_summary(array $p) : array {
+        return [
+            'codgas'       => $p['codgas'],
+            'no_station'   => $p['no_station'],
+            'station_name' => $p['station_name'],
+            'description'  => $p['description'],
+        ];
     }
 
     function insert($codmda, $codgas, $from, $hour, $cot, $tg_user) : bool {

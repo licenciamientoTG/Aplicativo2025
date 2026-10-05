@@ -1,6 +1,17 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Sistemas{% endblock %}
-{% block mycss %}{% endblock %}
+{% block mycss %}
+<style>
+    #datatables_users thead th { white-space: nowrap; }
+    #datatables_users .users-filter-trigger { border: 0; background: transparent; color: inherit; padding: 0 0 0 4px; cursor: pointer; border-radius: 2px; }
+    #datatables_users .users-filter-trigger:focus-visible { outline: 2px solid #0d6efd; outline-offset: 2px; }
+    #users-excel-filter { position: fixed; z-index: 2000; width: 260px; max-width: calc(100vw - 16px); padding: 10px; overflow: hidden; background: #fff; color: #212529; border: 1px solid #ced4da; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+    #users-excel-filter .users-filter-values { max-height: 220px; overflow-y: auto; margin: 8px 0; }
+    #users-excel-filter .users-filter-value { display: flex; align-items: center; gap: 7px; padding: 3px 2px; overflow-wrap: anywhere; }
+    #users-excel-filter .users-filter-actions { display: flex; justify-content: flex-end; gap: 6px; }
+    #users-excel-filter :focus-visible { outline: 2px solid #0d6efd; outline-offset: 1px; }
+</style>
+{% endblock %}
 {% block menutitle %}Usuarios{% endblock %}
 {% block content %}
 <div class="card">

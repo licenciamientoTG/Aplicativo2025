@@ -24,9 +24,11 @@ import pyodbc
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 TOLERANCE = 1.00  # Misma tolerancia usada por runBankFixed en la consola.
+PARRAL_TOLERANCE = 6.00
 COMPANY_STATIONS = {
     2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22,
     23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 199,
+    40,
 }
 GASOMEX_STATIONS = {23, 24, 25, 26, 27, 28, 29}
 GASOMEX_ACCOUNT_STATIONS = {
@@ -48,8 +50,14 @@ GASOMEX_ACCOUNT_STATION_BUCKETS = {
 ACCOUNT_SUFFIXES = (
     "0185322470", "369", "3281", "8837", "8520", "7291", "2570", "7533",
     "2627", "5247", "7604", "0031", "8504", "4547", "8214", "8492",
-    "4412", "4777", "4669", "3678", "4638",
+    "4412", "4777", "4669", "3678", "4638", "60630878973",
 )
+# Mirror EfcConciliacionModel::COMPANY_ACCOUNT_STATIONS for unmapped bank rows.
+# The 369 account is assigned to Parral; shared accounts require text/correction.
+BANK_ACCOUNT_STATION_MARKERS = {
+    "369": ("PARRAL",),
+    "60630878973": ("PRAXEDIS",),
+}
 
 
 def log(message: str) -> None:
@@ -159,6 +167,32 @@ def fetch_controlgas(station_id: int, first: date, last: date) -> list[dict]:
     return data.get("respuesta", [])
 
 
+def fetch_station_turns(cursor: pyodbc.Cursor, station_id: int, first: date, last: date) -> list[dict]:
+    """Use Praxedis' reviewed cuts for station 40; preserve ControlGas elsewhere."""
+    if station_id != 40:
+        return fetch_controlgas(station_id, first, last)
+
+    rows = cursor.execute(
+        """SELECT fecha_operativa, turno, efectivo, [dollar]
+           FROM TG.dbo.efc_conc_praxedis_cortes
+           WHERE estacion_id=40 AND fecha_operativa>=? AND fecha_operativa<=?
+           ORDER BY fecha_operativa, turno""",
+        first,
+        last,
+    ).fetchall()
+    return [
+        {
+            "Fecha": row[0],
+            "Turno": str(row[1]).strip(),
+            "MN": row[2] or 0,
+            "Morralla": 0,
+            "Dolares": row[3] or 0,
+            "Dolares2": 0,
+        }
+        for row in rows
+    ]
+
+
 def as_date(value: object) -> date:
     text = str(value)[:10]
     if "/" in text:
@@ -182,7 +216,7 @@ def normalize_name(value: object) -> str:
 
 
 def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
-    """Accept explicit correction, else exactly one explicit name/E-code hit."""
+    """Resolve correction, then explicit description/code or known account map."""
     correction = bank[5]
     if correction is not None:
         return int(correction)
@@ -204,14 +238,26 @@ def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
         )
         if name_hit or code_hit:
             matches.add(int(station_id))
-    return next(iter(matches)) if len(matches) == 1 else None
+    if matches:
+        return next(iter(matches)) if len(matches) == 1 else None
+
+    account = re.sub(r"[^A-Z0-9]", "", str(bank[6] or "").upper())
+    account_matches: set[int] = set()
+    for suffix, station_markers in BANK_ACCOUNT_STATION_MARKERS.items():
+        if not account.endswith(suffix):
+            continue
+        for station_id, station_name, _station_code in catalog:
+            normalized_station = re.sub(r"^\d+\s+", "", normalize_name(station_name))
+            if any(marker in normalized_station for marker in station_markers):
+                account_matches.add(int(station_id))
+    return next(iter(account_matches)) if len(account_matches) == 1 else None
 
 
 def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = None) -> list[tuple]:
     # Corrections take precedence. Bank account must still belong to the
     # controlled account universe, matching validateDeposit's account gate.
     account_where = " OR ".join("RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''),'-',''),' ','')),LEN(?))=?" for _ in ACCOUNT_SUFFIXES)
-    # A single run covers every possible cut window: first of month through
+    # A single run covers every possible cut window: scan start through
     # today+7 (the query's exclusive upper bound is therefore today+8).
     end_base = first if last is None else last
     params = [first, end_base, *[value for suffix in ACCOUNT_SUFFIXES for value in (suffix, suffix)]]
@@ -238,11 +284,16 @@ def gasomex_bank_buckets(bank: tuple, station_id: int) -> set[str]:
     }
 
 
-def index_bank_rows(rows: list[tuple], stations: list[tuple]) -> dict[int, dict[date, list[tuple]]]:
+def index_bank_rows(
+    rows: list[tuple],
+    stations: list[tuple],
+    inferred_stations: dict[int, tuple[int, tuple[str, str, str, float]]] | None = None,
+) -> dict[int, dict[date, list[tuple]]]:
     """Classify each eligible movement once and index it by station and date."""
     indexed: dict[int, dict[date, list[tuple]]] = {}
+    inferred_stations = inferred_stations or {}
     for bank in rows:
-        station_id = resolved_bank_station(bank, stations)
+        station_id = resolved_bank_station(bank, stations) or inferred_stations.get(int(bank[0]), (None,))[0]
         if station_id is None:
             continue
         bank_date = as_date(bank[1])
@@ -250,15 +301,169 @@ def index_bank_rows(rows: list[tuple], stations: list[tuple]) -> dict[int, dict[
     return indexed
 
 
+def infer_unassigned_bank_stations(
+    cursor: pyodbc.Cursor,
+    bank_rows: list[tuple],
+    stations: list[tuple],
+    used_banks: set[int],
+    first: date,
+    last: date,
+) -> dict[int, tuple[int, tuple[str, str, str, float]]]:
+    """Infer a station only for a unique exact REGIO-real match in its date window."""
+    station_names = {int(row[0]): str(row[1] or "") for row in stations}
+    station_ids = sorted(station_names)
+    unresolved = [
+        bank for bank in bank_rows
+        if int(bank[0]) not in used_banks
+        and bank[5] is None
+        and resolved_bank_station(bank, stations) is None
+    ]
+    if not unresolved or not station_ids:
+        return {}
+
+    marks = ",".join("?" for _ in station_ids)
+    link_rows = cursor.execute(
+        """SELECT V.estacion_id,CONVERT(CHAR(10),V.fecha_cg,23),V.turno,V.concepto,
+                  CASE WHEN V.concepto='USD' THEN ISNULL(P.real_usd,0)*ISNULL(V.tipo_cambio_usd,0)
+                       ELSE ISNULL(P.real_mn,0) END
+           FROM dbo.efc_conc_analiticos_vinculos V
+           JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
+           WHERE V.activo=1 AND V.estacion_id IN (""" + marks + ") AND V.fecha_cg>=? AND V.fecha_cg<=?",
+        *station_ids,
+        first,
+        last,
+    ).fetchall()
+    occupied_rows = cursor.execute(
+        """SELECT P.estacion_id,CONVERT(CHAR(10),P.fecha_operacion,23),P.turno,P.concepto
+           FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id
+           WHERE P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA'
+             AND P.estacion_id IN (""" + marks + ")",
+        *station_ids,
+    ).fetchall()
+    occupied_turns = {
+        (int(row[0]), str(row[1]), turn_key(row[2]), str(row[3]).upper())
+        for row in occupied_rows
+    }
+    transit_rows = cursor.execute(
+        """SELECT estacion_id,CONVERT(CHAR(10),fecha_origen,23),turno,concepto
+           FROM dbo.efc_conc_transitos WHERE estado='PENDIENTE' AND estacion_id IN (""" + marks + ")",
+        *station_ids,
+    ).fetchall()
+    occupied_turns.update(
+        (int(row[0]), str(row[1]), turn_key(row[2]), str(row[3]).upper())
+        for row in transit_rows
+    )
+
+    unresolved_ids = {int(bank[0]) for bank in unresolved}
+    banks_by_turn: dict[tuple[int, str, str, str], set[int]] = {}
+    turns_by_bank: dict[int, set[tuple[int, str, str, str]]] = {}
+    targets: dict[tuple[int, str, str, str], float] = {}
+    for row in link_rows:
+        station_id = int(row[0])
+        day = str(row[1])
+        turn = turn_key(row[2])
+        concept = str(row[3] or "").upper()
+        target = amount(row[4])
+        if target <= 0 or (station_id, day, turn, concept) in occupied_turns:
+            continue
+        # Only infer from REGIO amounts in workflows that already reconcile
+        # against REGIO real. Parral compares bank deposits directly to CG.
+        if "PARRAL" in station_names.get(station_id, "").upper():
+            continue
+        if station_id not in GASOMEX_STATIONS and concept not in {"MN", "MORRALLA"}:
+            continue
+        targets[(station_id, day, turn, concept)] = target
+
+    for turn_key_value, target in targets.items():
+        station_id, day_text, turn, concept = turn_key_value
+        cut = date.fromisoformat(day_text)
+        gasomex_bucket = "USD" if concept == "USD" else "MN"
+        for bank in unresolved:
+            bank_id = int(bank[0])
+            bank_day = as_date(bank[1])
+            if not cut <= bank_day <= cut + timedelta(days=7) or amount(bank[2]) != target:
+                continue
+            if station_id in GASOMEX_STATIONS and gasomex_bucket not in gasomex_bank_buckets(bank, station_id):
+                continue
+
+            # Count other possible bank movements within the existing amount
+            # tolerance before assigning a station. Unknown deposits are
+            # counted conservatively across stations to avoid guessing.
+            competing_banks = []
+            for other in bank_rows:
+                other_id = int(other[0])
+                if other_id in used_banks or not cut <= as_date(other[1]) <= cut + timedelta(days=7):
+                    continue
+                other_station = resolved_bank_station(other, stations)
+                if other_station not in (None, station_id):
+                    continue
+                if station_id in GASOMEX_STATIONS:
+                    other_bucket = "USD" if concept == "USD" else "MN"
+                    if other_bucket not in gasomex_bank_buckets(other, station_id):
+                        continue
+                if abs(amount(other[2]) - target) <= TOLERANCE:
+                    competing_banks.append(other_id)
+            if len(competing_banks) != 1 or competing_banks[0] != bank_id:
+                continue
+
+            banks_by_turn.setdefault(turn_key_value, set()).add(bank_id)
+            turns_by_bank.setdefault(bank_id, set()).add(turn_key_value)
+
+    inferred: dict[int, tuple[int, tuple[str, str, str, float]]] = {}
+    for turn_key_value, bank_ids in banks_by_turn.items():
+        if len(bank_ids) != 1:
+            continue
+        bank_id = next(iter(bank_ids))
+        if bank_id not in unresolved_ids or len(turns_by_bank.get(bank_id, set())) != 1:
+            continue
+        inferred[bank_id] = (turn_key_value[0], (*turn_key_value[1:], targets[turn_key_value]))
+    return inferred
+
+
+def save_inferred_station_correction(
+    cursor: pyodbc.Cursor,
+    bank_id: int,
+    station_id: int,
+    match: tuple[str, str, str, float],
+    run_id: int,
+) -> None:
+    """Persist an inferred station inside the caller's reconciliation transaction."""
+    existing = cursor.execute(
+        "SELECT estacion_id FROM dbo.efc_conc_correcciones_banco WITH (UPDLOCK,HOLDLOCK) WHERE movimiento_bancario_id=?",
+        bank_id,
+    ).fetchone()
+    if existing:
+        if int(existing[0]) != station_id:
+            raise RuntimeError("El depósito recibió una corrección manual de estación durante la conciliación.")
+        return
+    day, turn, concept, target = match
+    cursor.execute(
+        "INSERT dbo.efc_conc_correcciones_banco(movimiento_bancario_id,estacion_id,creado_por) VALUES(?,?,NULL)",
+        bank_id,
+        station_id,
+    )
+    cursor.execute(
+        "INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle,usuario_id) VALUES(NULL,?,?,?,NULL)",
+        bank_id,
+        "CORRECCION_ESTACION_AUTO_REGIO",
+        json.dumps({"estacion_id": station_id, "fecha_cg": day, "turno": turn, "concepto": concept, "regio_real": target, "ejecucion_id": run_id}),
+    )
+
+
 def candidate_bank_rows(
-    indexed: dict[int, dict[date, list[tuple]]], station_id: int, cut: date, used: set[int], target: float
+    indexed: dict[int, dict[date, list[tuple]]],
+    station_id: int,
+    cut: date,
+    used: set[int],
+    target: float,
+    tolerance: float = TOLERANCE,
 ) -> list[tuple]:
     """Return the same unique-candidate pool as the old per-cut query."""
     candidates: list[tuple] = []
     station_rows = indexed.get(station_id, {})
     for offset in range(8):
         for bank in station_rows.get(cut + timedelta(days=offset), ()):
-            if int(bank[0]) not in used and abs(amount(bank[2]) - target) <= TOLERANCE:
+            if int(bank[0]) not in used and abs(amount(bank[2]) - target) <= tolerance:
                 candidates.append(bank)
     return candidates
 
@@ -344,13 +549,32 @@ def run() -> int:
             conn.rollback(); log("Otra ejecución automática mantiene el applock; no se procesa nada."); return 0
         log("Applock adquirido.")
         run_id = cursor.execute("INSERT dbo.efc_conc_ejecuciones_automaticas(estado) OUTPUT inserted.id VALUES('EJECUTANDO')").fetchone()[0]; conn.commit()
-        today = date.today(); first = today.replace(day=1); last = today
+        today = date.today()
+        current_month_first = today.replace(day=1)
+        # During days 1–4, include the full previous month so late bank
+        # movements and station corrections can still be reconciled.
+        first = (current_month_first - timedelta(days=1)).replace(day=1) if today.day <= 4 else current_month_first
+        last = today
         allowed = ",".join(str(value) for value in sorted(COMPANY_STATIONS))
         stations = cursor.execute(f"SELECT Codigo,Nombre,Estacion FROM TG.dbo.Estaciones WHERE Codigo IN ({allowed}) AND Nombre<>'NO FUNCIONA'").fetchall()
-        log(f"Ejecución {run_id}: ventana {first.isoformat()} a {last.isoformat()}; {len(stations)} estaciones.")
+        previous_month_included = today.day <= 4
+        log(
+            f"Ejecución {run_id}: ventana {first.isoformat()} a {last.isoformat()}"
+            f"{' (incluye el mes anterior, días 1–4)' if previous_month_included else ''}; "
+            f"{len(stations)} estaciones."
+        )
         used = {int(row[0]) for row in cursor.execute("SELECT P.movimiento_bancario_id FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA'").fetchall()}
         bank_rows = matching_bank_rows(cursor, first, last)
-        bank_index = index_bank_rows(bank_rows, stations)
+        inferred_stations = infer_unassigned_bank_stations(cursor, bank_rows, stations, used, first, last)
+        unassigned_count = sum(
+            1 for bank in bank_rows
+            if bank[5] is None and resolved_bank_station(bank, stations) is None
+        )
+        log(
+            f"Depósitos sin estación detectada: {unassigned_count}; "
+            f"coincidencias exactas y únicas con REGIO real: {len(inferred_stations)}."
+        )
+        bank_index = index_bank_rows(bank_rows, stations, inferred_stations)
         indexed_count = sum(len(rows) for by_date in bank_index.values() for rows in by_date.values())
         log(f"Movimientos bancarios elegibles: {len(bank_rows)}; clasificados: {indexed_count}; usados: {len(used)}.")
         matched = skipped = errors = 0; details: list[str] = []
@@ -366,8 +590,9 @@ def run() -> int:
                 # the bank's actual date still determines eligibility.
                 controlgas_first = first - timedelta(days=3) if int(station_id) in GASOMEX_STATIONS else first
                 controlgas_last = last + timedelta(days=2) if int(station_id) in GASOMEX_STATIONS else last
-                controlgas_rows = fetch_controlgas(int(station_id), controlgas_first, controlgas_last)
-                log(f"Estación {station_id}: ControlGas devolvió {len(controlgas_rows)} registros.")
+                turn_rows = fetch_station_turns(cursor, int(station_id), controlgas_first, controlgas_last)
+                source_name = "cortes Praxedis" if int(station_id) == 40 else "ControlGas"
+                log(f"Estación {station_id}: {source_name} devolvió {len(turn_rows)} registros.")
                 if int(station_id) in GASOMEX_STATIONS:
                     active_cg_keys = {
                         str(row[0]) for row in cursor.execute("""SELECT P.clave_externa
@@ -381,12 +606,13 @@ def run() -> int:
                             WHERE estacion_id=? AND estado='PENDIENTE'""", station_id).fetchall()
                     }
                     active_cg_keys.update(transit_keys)
-                    slots = gasomex_slots(controlgas_rows, links, active_cg_keys, int(station_id))
+                    slots = gasomex_slots(turn_rows, links, active_cg_keys, int(station_id))
                     gas_bank_rows = [
                         bank for bank in bank_rows
                         if int(bank[0]) not in used
                         and gasomex_account_matches(bank, int(station_id))
                         and resolved_bank_station(bank, stations) in (None, int(station_id))
+                        and inferred_stations.get(int(bank[0]), (int(station_id),))[0] == int(station_id)
                     ]
                     reserved_keys: set[str] = set(active_cg_keys)
                     log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos MN={len(slots['MN'])}, turnos USD={len(slots['USD'])}, turnos bloqueados por tránsito={len(transit_keys)}, depósitos por cuenta={len(gas_bank_rows)}.")
@@ -410,6 +636,9 @@ def run() -> int:
                             for item in picked
                         ) + "</turns>"
                         try:
+                            inferred = inferred_stations.get(int(bank[0]))
+                            if inferred:
+                                save_inferred_station_correction(cursor, int(bank[0]), int(station_id), inferred[1], int(run_id))
                             cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?", station_id, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
                             conn.commit(); used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
                             log(f"Conciliada GASOMEX: estación={station_id}, lote={lot['anchor']}, bucket={lot['bucket']}, turnos={lot['shifts']}, banco={bank[0]}.")
@@ -419,7 +648,7 @@ def run() -> int:
                             details.append(f"GASOMEX/{station_id}/banco/{bank[0]}: {exc}")
                     log(f"GASOMEX estación={station_id}: depósitos sin secuencia={no_sequence}, ambiguos={ambiguous}.")
                     continue
-                for row in controlgas_rows:
+                for row in turn_rows:
                     cut = as_date(row.get("Fecha")); turn = str(row.get("Turno", "")).strip()
                     if not turn: continue
                     for concept, raw in (("MN", row.get("MN")), ("MORRALLA", row.get("Morralla"))):
@@ -433,11 +662,15 @@ def run() -> int:
                         target = cg if "PARRAL" in str(name).upper() else links[link_key]
                         if target <= 0:
                             skipped += 1; continue
-                        candidates = candidate_bank_rows(bank_index, int(station_id), cut, used, target)
+                        tolerance = PARRAL_TOLERANCE if "PARRAL" in str(name).upper() else TOLERANCE
+                        candidates = candidate_bank_rows(bank_index, int(station_id), cut, used, target, tolerance)
                         if len(candidates) != 1:
                             skipped += 1; continue
                         bank = candidates[0]
                         try:
+                            inferred = inferred_stations.get(int(bank[0]))
+                            if inferred:
+                                save_inferred_station_correction(cursor, int(bank[0]), int(station_id), inferred[1], int(run_id))
                             cursor.execute("EXEC dbo.usp_efc_conc_guardar_automatica ?,?,?,?,?,?,?,?,?,?", station_id, cut, turn, concept, cg, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
                             conn.commit(); used.add(int(bank[0])); matched += 1
                             log(f"Conciliada: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, banco={bank[0]}.")

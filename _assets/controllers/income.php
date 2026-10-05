@@ -3109,7 +3109,7 @@ public function anomalies_client_tickets()
         exit;
     }
 
-  private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
+    private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
         if (!$nombre) return "SinNombre";
 
         // 1. Limpieza inicial y normalización de espacios y BOM
@@ -3169,10 +3169,11 @@ public function anomalies_client_tickets()
         return;
     }
 
-    private function obtener_ajuste_juarez_php($fecha_trans) {
+    private function obtener_ajuste_juarez_php($fecha_trans, $hora_trans = '00:00:00') {
         if (!$fecha_trans || trim((string)$fecha_trans) === '-') return -1;
         try {
-            $dt = ($fecha_trans instanceof \DateTime) ? $fecha_trans : new \DateTime($fecha_trans);
+            $fecha = ($fecha_trans instanceof \DateTimeInterface) ? $fecha_trans->format('Y-m-d') : (string)$fecha_trans;
+            $dt = new \DateTime($fecha . ' ' . ($hora_trans ?: '00:00:00'));
             $year = (int)$dt->format('Y');
         } catch (\Throwable $e) {
             return -1;
@@ -3181,12 +3182,12 @@ public function anomalies_client_tickets()
         // 2do domingo de Marzo
         $mar1 = new \DateTime("$year-03-01");
         $dias_al_primero_mar = (7 - (int)$mar1->format('N')) % 7;
-        $segundo_dom_mar = $mar1->modify("+" . ($dias_al_primero_mar + 7) . " days");
+        $segundo_dom_mar = $mar1->modify("+" . ($dias_al_primero_mar + 7) . " days")->setTime(2, 0, 0);
         
         // 1er domingo de Noviembre
         $nov1 = new \DateTime("$year-11-01");
         $dias_al_primero_nov = (7 - (int)$nov1->format('N')) % 7;
-        $primer_dom_nov = $nov1->modify("+" . $dias_al_primero_nov . " days");
+        $primer_dom_nov = $nov1->modify("+" . $dias_al_primero_nov . " days")->setTime(2, 0, 0);
         
         // Horario Verano (UTC-6) vs Invierno (UTC-7)
         if ($dt >= $segundo_dom_mar && $dt < $primer_dom_nov) {
@@ -3571,6 +3572,19 @@ public function anomalies_client_tickets()
                 $stmtH = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_banorte");
                 $huellas = [];
                 while ($r = $stmtH->fetch(PDO::FETCH_ASSOC)) {
+                    if ($bankType === 'BANORTE') {
+                        $key = $this->clave_huella_banorte($r);
+                        $huellas[$key] = true;
+                        $afil_db = ltrim($this->normalizar_valor_huella_banorte($r['Afiliacion'] ?? ''), '0');
+                        $idext_db = $this->normalizar_valor_huella_banorte($r['ID_Externo'] ?? '', true);
+                        $fch = $this->limpiar_fecha_banorte($r['Fecha_Transaccion'] ?? null) ?? '';
+                        $monto_db = number_format((float)($r['Monto'] ?? 0), 2, '.', '');
+                        $hora_db = $this->limpiar_hora_banorte($r['Hora'] ?? null);
+                        $auth_db = $this->normalizar_valor_huella_banorte($r['Codigo_Autorizacion'] ?? '', true);
+                        $term_db = $this->normalizar_valor_huella_banorte($r['Terminal'] ?? '', true);
+                        $huellas["7f:$afil_db|$idext_db|$fch|$monto_db|$hora_db|$auth_db|$term_db"] = true;
+                        continue;
+                    }
                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
                     $hora_db = trim($r['Hora'] ?? '');
                     // SQL Server time type returns HH:MM:SS.NNNNNNN — strip fractional part before normalizing
@@ -3611,26 +3625,23 @@ public function anomalies_client_tickets()
                         // Strip Excel formula notation: ="VALUE" → VALUE
                         if (is_string($val) && preg_match('/^="(.*)"$/', $val, $em)) $val = $em[1];
 
-                        if ($col === 'Monto') $val = (float)str_replace(['$', ','], '', $val ?? 0);
+                        if (in_array($col, ['ID_Externo', 'Afiliacion', 'Codigo_Autorizacion', 'Referencia', 'Terminal'], true)) {
+                            $val = $this->normalizar_valor_huella_banorte($val, in_array($col, ['ID_Externo', 'Codigo_Autorizacion', 'Referencia', 'Terminal'], true));
+                        }
+                        if ($col === 'Monto') {
+                            $montoRaw = str_replace(['$', ','], '', $this->normalizar_valor_huella_banorte($val ?? '0'));
+                            $val = is_numeric($montoRaw) ? (float)$montoRaw : 0.0;
+                        }
                         if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') {
-                            if ($val && trim((string)$val) !== '-') {
-                                try {
-                                    $d = \DateTime::createFromFormat('d/m/Y', $val);
-                                    if (!$d) $d = new \DateTime($val);
-                                    $val = $d ? $d->format('Y-m-d') : null;
-                                } catch (\Throwable $e) {
-                                    $val = null;
-                                }
-                            } else {
-                                $val = null;
-                            }
+                            $val = ($val && trim((string)$val) !== '-') ? $this->limpiar_fecha_banorte($val) : null;
                         }
                         if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
+                        if ($col === 'Hora') $val = ($val && trim((string)$val) !== '-') ? $this->limpiar_hora_banorte($val) : '00:00:00';
                         if ($col === 'Hora' && $val && trim((string)$val) !== '-' && isset($dataRow['Fecha_Transaccion'])) {
                             // Sólo aplicar ajuste horario para estaciones configuradas como "JUAREZ"
                             $debeAjustar = $this->debe_ajustar_juarez_por_afiliacion($dataRow['Afiliacion'] ?? null, $bankType);
                             if ($debeAjustar) {
-                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion'], $val);
                                 if ($ajuste !== 0) {
                                     try {
                                         $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
@@ -3644,25 +3655,27 @@ public function anomalies_client_tickets()
                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                     }
 
-                    $hora_row = trim($dataRow['Hora'] ?? '');
+                    $hora_row = $this->limpiar_hora_banorte($dataRow['Hora'] ?? null);
                     if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $hora_row)) {
                         $parts = explode(':', $hora_row);
                         $hora_row = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
                     }
-                    $afil_row  = trim($dataRow['Afiliacion']??'');
-                    $idext_row = trim($dataRow['ID_Externo']??'');
+                    $afil_row  = ltrim($this->normalizar_valor_huella_banorte($dataRow['Afiliacion']??''), '0');
+                    $idext_row = $this->normalizar_valor_huella_banorte($dataRow['ID_Externo']??'', true);
                     $fecha_row = $dataRow['Fecha_Transaccion']??'';
                     $monto_row = number_format((float)($dataRow['Monto']??0), 2, '.', '');
-                    $auth_row  = trim($dataRow['Codigo_Autorizacion']??'');
-                    $ref_row   = trim($dataRow['Referencia']??'');
-                    $term_row  = trim($dataRow['Terminal']??'');
+                    $auth_row  = $this->normalizar_valor_huella_banorte($dataRow['Codigo_Autorizacion']??'', true);
+                    $ref_row   = $this->normalizar_valor_huella_banorte($dataRow['Referencia']??'', true);
+                    $term_row  = $this->normalizar_valor_huella_banorte($dataRow['Terminal']??'', true);
                     $keyRow  = "$afil_row|$idext_row|$fecha_row|$monto_row|$hora_row|$auth_row|$ref_row|$term_row";
                     $keyRow7 = "7f:$afil_row|$idext_row|$fecha_row|$monto_row|$hora_row|$auth_row|$term_row";
 
-                    if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
+                    if (empty($dataRow['ID_Externo']) || ($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
                     if (isset($huellas[$keyRow]) || isset($huellas[$keyRow7])) { $skipped++; continue; }
 
                     $ins->execute(array_values($dataRow));
+                    $huellas[$keyRow] = true;
+                    $huellas[$keyRow7] = true;
                     $inserted++;
                 }
                 
@@ -6747,20 +6760,92 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation.html');
     }
 
+    /** Indica si el perfil de sesión habilita las vistas de todas las empresas. */
+    private function currentUserIsSuperAdmin(): bool {
+        $user = $_SESSION['tg_user'] ?? [];
+        $profile = $user['profile'] ?? $user['Perfil'] ?? $user['perfil'] ?? $user['PROFILE'] ?? '';
+        $profile = mb_strtolower(trim((string)$profile));
+
+        return strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
+    }
+
     /** Consola unificada: ControlGas, evidencia REGIO y depósitos bancarios. */
     public function cash_reconciliation_triple(): void {
         // La vista decide cómo presentarlo; mantener null cuando el cron aún
         // no ha completado una ejecución evita inventar una fecha de proceso.
         $lastAutomaticRun=$this->efcConciliacion->lastAutomaticRun();
-        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun'));
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
+        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin'));
+    }
+
+    /** Normaliza valores Banorte para que la huella no dependa del formato de Excel/CSV. */
+    private function normalizar_valor_huella_banorte($valor, bool $quitarDecimalEntero = false): string {
+        if ($valor === null || is_array($valor) || is_object($valor)) return '';
+        $valor = trim((string)$valor);
+        if (preg_match('/^="(.*)"$/s', $valor, $m)) $valor = trim($m[1]);
+        if ($quitarDecimalEntero && preg_match('/^([+-]?\d+)\.0+$/', $valor, $m)) $valor = $m[1];
+        return $valor;
+    }
+
+    /** Equivalente a limpiar_hora() del importador automático de bancos.py. */
+    private function limpiar_hora_banorte($valor): string {
+        if ($valor === null || $valor === '' || strtolower(trim((string)$valor)) === 'nan') return '00:00:00';
+        if (is_numeric($valor) && (float)$valor >= 0 && (float)$valor < 1) {
+            $seconds = (int)round((float)$valor * 86400) % 86400;
+            return sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60);
+        }
+        $s = strtoupper(trim((string)$valor));
+        if (preg_match('/^(\d{1,2}:\d{2}:\d{2})\.\d+$/', $s, $fraction)) $s = $fraction[1];
+        $s = str_replace('.', '', $s);
+        $s = preg_replace('/([AP])\s*M/', '$1M', $s);
+        $s = str_replace(['AM', 'PM'], [' AM', ' PM'], $s);
+        $s = trim(preg_replace('/\s+/', ' ', $s));
+        foreach (['!h:i:s A', '!h:i A', '!H:i:s A', '!H:i A'] as $format) {
+            $dt = \DateTime::createFromFormat($format, $s);
+            $errors = \DateTime::getLastErrors();
+            if ($dt && ($errors === false || (!$errors['warning_count'] && !$errors['error_count']))) return $dt->format('H:i:s');
+        }
+        if (preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $s, $m)) return sprintf('%02d:%02d:%02d', (int)$m[1], (int)$m[2], isset($m[3]) ? (int)$m[3] : 0);
+        $digits = preg_replace('/\D/', '', $s);
+        if (strlen($digits) === 6) return substr($digits, 0, 2) . ':' . substr($digits, 2, 2) . ':' . substr($digits, 4, 2);
+        if (strlen($digits) === 4) return substr($digits, 0, 2) . ':' . substr($digits, 2, 2) . ':00';
+        return strlen($s) <= 8 ? $s : substr($s, 0, 8);
+    }
+
+    /** Equivalente a limpiar_fecha() de bancos.py para fechas Banorte. */
+    private function limpiar_fecha_banorte($valor): ?string {
+        if ($valor instanceof \DateTimeInterface) return $valor->format('Y-m-d');
+        if ($valor === null || trim((string)$valor) === '' || in_array(strtolower(trim((string)$valor)), ['nan', 'nat', 'none'], true)) return null;
+        $s = trim(str_replace("'", '', (string)$valor));
+        foreach (['!d/m/Y', '!Y-m-d', '!d-m-y', '!m/d/Y', '!d/m/Y H:i:s', '!Y-m-d H:i:s', '!d/m/Y h:i:s A', '!m/d/Y h:i:s A'] as $format) {
+            $dt = \DateTime::createFromFormat($format, $s);
+            $errors = \DateTime::getLastErrors();
+            if ($dt && ($errors === false || (!$errors['warning_count'] && !$errors['error_count']))) return $dt->format('Y-m-d');
+        }
+        return null;
+    }
+
+    private function clave_huella_banorte(array $row): string {
+        $afil = ltrim($this->normalizar_valor_huella_banorte($row['Afiliacion'] ?? ''), '0');
+        $id = $this->normalizar_valor_huella_banorte($row['ID_Externo'] ?? '', true);
+        $fecha = $this->limpiar_fecha_banorte($row['Fecha_Transaccion'] ?? null) ?? '';
+        $montoRaw = str_replace(['$', ','], '', $this->normalizar_valor_huella_banorte($row['Monto'] ?? '0'));
+        $monto = is_numeric($montoRaw) ? (float)$montoRaw : 0.0;
+        $hora = $this->limpiar_hora_banorte($row['Hora'] ?? null);
+        $auth = $this->normalizar_valor_huella_banorte($row['Codigo_Autorizacion'] ?? '', true);
+        $ref = $this->normalizar_valor_huella_banorte($row['Referencia'] ?? '', true);
+        $term = $this->normalizar_valor_huella_banorte($row['Terminal'] ?? '', true);
+        return "$afil|$id|$fecha|" . number_format($monto, 2, '.', '') . "|$hora|$auth|$ref|$term";
     }
 
     public function cash_reconciliation_faltantes(): void {
-        echo $this->twig->render($this->route . 'cash_reconciliation_faltantes.html');
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
+        echo $this->twig->render($this->route . 'cash_reconciliation_faltantes.html',compact('isSuperAdmin'));
     }
 
     public function cash_reconciliation_diferencias(): void {
-        echo $this->twig->render($this->route . 'cash_reconciliation_diferencias.html');
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
+        echo $this->twig->render($this->route . 'cash_reconciliation_diferencias.html',compact('isSuperAdmin'));
     }
 
     public function cash_reconciliation_movements(): void {
@@ -6820,7 +6905,40 @@ public function stamped_invoices_detail(): void
     public function efc_conc_resumen_detalle(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryDetail((int)($_GET['estacion_id']??0),isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_agrupado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryGrouped(isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
 
-    /**
+    /** GET /income/efc_conc_praxedis_turnos?year=YYYY&month=MM&estacion_id=40 */
+    public function efc_conc_praxedis_turnos(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); $station=(int)($_GET['estacion_id']??40); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->praxedisTurnos($year,$month,$station)],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);}
+        exit;
+    }
+
+    /** POST /income/efc_conc_praxedis_importar multipart image + reviewed rows; only its hash is retained. */
+    public function efc_conc_praxedis_importar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8'); header('Cache-Control: no-store, no-cache, must-revalidate');
+        try {
+            $file=$_FILES['image']??null;
+            if(!is_array($file) || (int)($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK || !is_uploaded_file((string)($file['tmp_name']??''))) throw new RuntimeException('No se recibió correctamente la imagen.');
+            $size=(int)($file['size']??0); if($size<1 || $size>10485760) throw new RuntimeException('La imagen debe pesar entre 1 byte y 10 MB.');
+            if(!class_exists('finfo')) throw new RuntimeException('No se pudo validar el tipo de imagen.');
+            $finfo=new finfo(FILEINFO_MIME_TYPE); $mime=(string)$finfo->file((string)$file['tmp_name']);
+            if(!in_array($mime,['image/png','image/jpeg'],true)) throw new RuntimeException('Sólo se admiten imágenes PNG o JPEG.');
+            $sha256=hash_file('sha256',(string)$file['tmp_name']); if(!is_string($sha256) || !preg_match('/^[a-f0-9]{64}$/',$sha256)) throw new RuntimeException('No se pudo calcular la huella de la captura.');
+            $decoded=json_decode((string)($_POST['rows']??''),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($decoded) || !array_is_list($decoded)) throw new RuntimeException('La lista de turnos revisados no es válida.');
+            $userName=strtoupper(trim((string)($_SESSION['tg_user']['Usuario']??$_SESSION['tg_user']['usuario']??'')));
+            $result=$this->efcConciliacion->importarPraxedis($sha256,$mime,$decoded,(int)($_SESSION['tg_user']['Id']??0),$userName);
+            echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){
+            http_response_code(422);
+            error_log('[Praxedis cut import] '.$e);
+            $message=trim($e->getMessage()) ?: 'No fue posible importar los cortes.';
+            $payload=json_encode(['status'=>'error','message'=>$message],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
+            echo $payload!==false?$payload:'{"status":"error","message":"No fue posible importar los cortes."}';
+        }
+        exit;
+    }
+/**
      * Reportes operativos de excepción, en una fila por turno ControlGas con
      * papeleta REGIO asociada. No reutiliza summaryDetail(): ese resumen sólo
      * conoce grupos de conciliación y omitiría faltantes sin depósito.
@@ -6844,12 +6962,13 @@ public function stamped_invoices_detail(): void
                 $rows=array_merge($rows,$this->efcConciliacion->reportRows($reportStation,$year,$month,$concept,$this->efcConcReportControlGas($reportStation,$year,$month)));
             }
             $mostrarTodos=filter_var($_GET['mostrar_todos'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $mostrarSinPapeleta=filter_var($_GET['mostrar_sin_papeleta'] ?? false, FILTER_VALIDATE_BOOLEAN);
             if ($report === 'faltantes') {
                 // El modo normal conserva el umbral; “Mostrar todos” incluye
                 // cualquier diferencia positiva o negativa distinta de cero.
-                $rows=array_values(array_filter($rows, static fn(array $row): bool => $mostrarTodos ? abs((float)$row['faltante']) > 0.004 : (float)$row['faltante'] > 10.00));
+                $rows=array_values(array_filter($rows, static fn(array $row): bool => !empty($row['sin_papeleta']) ? $mostrarSinPapeleta : ($mostrarTodos ? abs((float)$row['diferencia_controlgas_regio']) > 0.004 : (float)$row['diferencia_controlgas_regio'] < -10.00)));
             } else {
-                $rows=array_values(array_filter($rows, static fn(array $row): bool => $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
+                $rows=array_values(array_filter($rows, static fn(array $row): bool => empty($row['sin_papeleta']) && $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             }
             echo json_encode(['status'=>'success','data'=>$rows]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
@@ -6858,6 +6977,7 @@ public function stamped_invoices_detail(): void
 
     /** Fuente CG usada también por la consola triple; sólo lectura. */
     private function efcConcReportControlGas(int $station, int $year, int $month): array {
+        if($station===40) return $this->efcConciliacion->praxedisTurnos($year,$month,40);
         $first=sprintf('%04d%02d01',$year,$month); $last=sprintf('%04d%02d%02d',$year,$month,cal_days_in_month(CAL_GREGORIAN,$month,$year));
         $payload=json_encode(['Datos'=>['FechaInicial'=>$first,'FechaFinal'=>$last,'Gasolinera'=>$station]], JSON_THROW_ON_ERROR);
         $url='http://201.174.170.236:99/api/Depositos/GetDepositosEstacion';
@@ -7093,23 +7213,23 @@ public function stamped_invoices_detail(): void
             // restringe las cuentas, porque el banco puede recibir un depósito
             // de otra empresa en una cuenta distinta.
             $suffixes = EfcConciliacionModel::allAccountSuffixes();
-            $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
+            $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT id, fecha, banco, cuenta, referencia, sucursal, descripcion, concepto, descripcion_larga, abono
-                 FROM [TG].[dbo].[movimientos_bancarios]
-                 WHERE abono > 0
-                   AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                "SELECT M.id, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled
+                 FROM [TG].[dbo].[movimientos_bancarios] M
+                 WHERE M.abono > 0
+                   AND YEAR(M.fecha) = ? AND MONTH(M.fecha) = ?
                    -- Banorte, Bankaool y Santander no nombran el mismo movimiento
                    -- de efectivo igual. Sólo se admiten las descripciones operativas
                    -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
                    AND (
-                       UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
-                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO EFECTIVO%'
-                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEP EN EFECTIV%'
-                       OR UPPER(ISNULL(descripcion,'')) LIKE '%DEPOSITO VTAS%'
+                       UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                       OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EFECTIVO%'
+                       OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%'
+                       OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO VTAS%'
                    )
                    AND ($accountWhere)
-                 ORDER BY fecha, id"
+                 ORDER BY M.fecha, M.id"
             );
             $params = [$year, $month];
             foreach ($suffixes as $suffix) { $params[] = $suffix; $params[] = $suffix; }
@@ -7193,6 +7313,7 @@ public function stamped_invoices_detail(): void
                     'station'           => $estacion['station'] ?? null,
                     'station_status'    => $estatus,
                     'station_corrected' => $corregida,
+                    'reconciled'        => (bool)$mov['reconciled'],
                     'original_station_id' => $estacionOriginal['station_id'] ?? null,
                     'original_station'    => $estacionOriginal['station'] ?? null,
                     'station_raw'       => $coincidencias[0],

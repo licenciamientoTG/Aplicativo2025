@@ -1113,17 +1113,138 @@ class It{
     }
 
     public function controlgas_users(): void {
+        if (!$this->is_controlgas_admin()) {
+            (new Errors())->get404();
+            return;
+        }
         echo $this->twig->render($this->route . 'controlgas_users.html');
     }
 
+    private function is_controlgas_admin(): bool {
+        return isset($_SESSION['tg_user']['Id'])
+            && in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::ALLOWED_USERS, true);
+    }
+
+    private function deny_controlgas_api(): void {
+        http_response_code(403);
+        json_output(['success' => false, 'message' => 'Sin permisos']);
+    }
+
     public function disable_controlgas_user(): void {
-        $cod = (int)($_POST['cod'] ?? 0);
-        if (!$cod) {
+        if (!$this->is_controlgas_admin()) {
+            $this->deny_controlgas_api();
+            return;
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            http_response_code(405);
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+        $cods = $this->parse_controlgas_user_codes($_POST['cod'] ?? null);
+        if ($cods === null || count($cods) !== 1) {
             json_output(['success' => false, 'message' => 'Código inválido']);
             return;
         }
         $model = new ControlgasUsersModel();
-        json_output($model->disable_user($cod));
+        json_output($model->disable_user($cods[0]));
+    }
+
+    public function rehabilitate_controlgas_user(): void {
+        if (!$this->is_controlgas_admin()) {
+            $this->deny_controlgas_api();
+            return;
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+
+        $rawCod = $_POST['cod'] ?? null;
+        if ((!is_string($rawCod) && !is_int($rawCod))
+            || !preg_match('/^[0-9]+$/', (string)$rawCod)) {
+            json_output(['success' => false, 'message' => 'Código inválido']);
+            return;
+        }
+        $normalized = ltrim((string)$rawCod, '0');
+        if ($normalized === '' || strlen($normalized) > strlen((string)PHP_INT_MAX)
+            || (strlen($normalized) === strlen((string)PHP_INT_MAX)
+                && strcmp($normalized, (string)PHP_INT_MAX) > 0)) {
+            json_output(['success' => false, 'message' => 'Código inválido']);
+            return;
+        }
+
+        $model = new ControlgasUsersModel();
+        json_output($model->rehabilitate_user((int)$normalized));
+    }
+
+    private function parse_controlgas_user_codes($value): ?array {
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        $tokens = explode(',', $value);
+        if (count($tokens) > 500) {
+            return null;
+        }
+
+        $cods = [];
+        foreach ($tokens as $token) {
+            $token = trim($token);
+            if ($token === '' || !preg_match('/^[0-9]+$/', $token)) {
+                return null;
+            }
+            $normalized = ltrim($token, '0');
+            if ($normalized === '') {
+                return null;
+            }
+            $maxInt = (string)PHP_INT_MAX;
+            if (strlen($normalized) > strlen($maxInt)
+                || (strlen($normalized) === strlen($maxInt) && strcmp($normalized, $maxInt) > 0)) {
+                return null;
+            }
+            $cod = (int)$normalized;
+            if (!in_array($cod, $cods, true)) {
+                $cods[] = $cod;
+            }
+        }
+        return $cods ?: null;
+    }
+
+    public function preview_controlgas_users(): void {
+        if (!$this->is_controlgas_admin()) {
+            $this->deny_controlgas_api();
+            return;
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+        $cods = $this->parse_controlgas_user_codes($_POST['cods'] ?? null);
+        if ($cods === null) {
+            json_output(['success' => false, 'message' => 'Ingresa una lista válida de códigos (máximo 500)']);
+            return;
+        }
+        $model = new ControlgasUsersModel();
+        $matches = $model->find_users_by_codes($cods);
+        json_output(['success' => true, 'users' => $matches['users'], 'missing' => $matches['missing']]);
+    }
+
+    public function disable_controlgas_users(): void {
+        if (!$this->is_controlgas_admin()) {
+            $this->deny_controlgas_api();
+            return;
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+        $cods = $this->parse_controlgas_user_codes($_POST['cods'] ?? null);
+        if ($cods === null) {
+            json_output(['success' => false, 'message' => 'Ingresa una lista válida de códigos (máximo 500)']);
+            return;
+        }
+        $model = new ControlgasUsersModel();
+        json_output($model->disable_users($cods));
     }
 
     /* ------------------------------------------------------------------ */
@@ -1592,10 +1713,28 @@ class It{
     }
 
     public function datatables_controlgas_users(): void {
+        if (!$this->is_controlgas_admin()) {
+            $this->deny_controlgas_api();
+            return;
+        }
         $model = new ControlgasUsersModel();
         $data  = [];
         foreach ($model->get_users() as $row) {
             $cod = (int)$row['cod'];
+            $den = (string)$row['den'];
+            $denForHandler = json_encode(
+                $den,
+                JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+            $isDisabled = strncmp($den, 'BAJA ', 5) === 0;
+            $hasActiveBackup = !empty($row['has_active_backup']);
+            if ($isDisabled) {
+                $actions = $hasActiveBackup
+                    ? "<button class='btn btn-success btn-sm' onclick='rehabilitateControlgasUser({$cod}, {$denForHandler})' title='Rehabilitar' aria-label='Rehabilitar usuario COD {$cod}'><i class='fas fa-user-check' aria-hidden='true'></i></button>"
+                    : "<span class='text-muted' title='No existe un respaldo activo para recuperar este usuario'>Sin respaldo</span>";
+            } else {
+                $actions = "<button class='btn btn-warning btn-sm' onclick='disableControlgasUser({$cod}, {$denForHandler})' title='Deshabilitar' aria-label='Deshabilitar usuario COD {$cod}'><svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'></line></svg></button>";
+            }
             $data[] = [
                 'COD'     => $cod,
                 'DEN'     => $row['den'],
@@ -1612,7 +1751,7 @@ class It{
                 'USERID'  => $row['userid'],
                 'CLVFCH'  => $row['clvfch'],
                 'CLVEXP'  => $row['clvexp'],
-                'ACCIONES' => "<button class='btn btn-warning btn-sm' onclick='disableControlgasUser({$cod}, " . json_encode($row['den']) . ")' title='Deshabilitar'><svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'></line></svg></button>",
+                'ACCIONES' => $actions,
             ];
         }
         json_output(['data' => $data]);

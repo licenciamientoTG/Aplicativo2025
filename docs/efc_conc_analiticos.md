@@ -35,6 +35,25 @@ Programar una ejecución diaria con:
 python C:\ruta\Aplicativo2025\cron\efc_conc_analiticos_diario.py
 ```
 
+Para limitar la sincronización a fechas operativas inclusivas, se puede indicar
+un límite inicial, final o ambos. El rango se determina por la fecha del nombre
+del archivo `TOTAL GAS dd-mm-aaaa.xls`, no por la fecha de recepción del correo:
+
+```powershell
+python .\cron\efc_conc_analiticos_diario.py --from 2026-09-08 --to 2026-09-09
+```
+
+Para reimportar y reevaluar vínculos únicamente dentro de ese rango, agrega
+`--reprocess`:
+
+```powershell
+python .\cron\efc_conc_analiticos_diario.py --from 2026-09-08 --to 2026-09-09 --reprocess
+```
+
+`--reprocess` elimina y vuelve a crear las papeletas de cada archivo incluido;
+los vínculos asociados a esas papeletas se regeneran. Por eso conviene acotar el
+rango cuando se reprocesa.
+
 El proceso acepta asuntos que contengan `ANALIT...`, incluyendo `ANALITICOS` y
 reenvíos como `Analitos DG`. Toma sólo Excel cuyo nombre corresponde a `TOTAL
 GAS`; PDFs de Actas, imágenes y Excel de otras razones sociales se ignoran. La

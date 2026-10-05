@@ -1,6 +1,18 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Usuarios ControlGas{% endblock %}
 {% block mycss %}
+<style>
+    #datatables_controlgas_users thead th { white-space: nowrap; }
+    #datatables_controlgas_users .controlgas-filter-trigger { border: 0; background: transparent; color: inherit; padding: 0 0 0 4px; cursor: pointer; border-radius: 2px; }
+    #datatables_controlgas_users .controlgas-filter-trigger.is-filtered { color: #0d6efd; position: relative; }
+    #datatables_controlgas_users .controlgas-filter-trigger.is-filtered::after { content: ''; position: absolute; width: 6px; height: 6px; right: -2px; top: -2px; border-radius: 50%; background: #dc3545; }
+    #datatables_controlgas_users .controlgas-filter-trigger:focus-visible { outline: 2px solid #0d6efd; outline-offset: 2px; }
+    #controlgas-excel-filter { position: fixed; z-index: 2000; width: 260px; max-width: calc(100vw - 16px); padding: 10px; overflow: hidden; background: #fff; color: #212529; border: 1px solid #ced4da; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+    #controlgas-excel-filter .controlgas-filter-values { max-height: 220px; overflow-y: auto; margin: 8px 0; }
+    #controlgas-excel-filter .controlgas-filter-value { display: flex; align-items: center; gap: 7px; padding: 3px 2px; overflow-wrap: anywhere; }
+    #controlgas-excel-filter .controlgas-filter-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    #controlgas-excel-filter :focus-visible { outline: 2px solid #0d6efd; outline-offset: 1px; }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 {% endblock %}
 {% block menutitle %}Usuarios ControlGas{% endblock %}
@@ -25,6 +37,11 @@
         <h5 class="card-title mb-0">Usuarios ControlGas (SG12)</h5>
     </div>
     <div class="card-body table-responsive">
+        <ul class="nav nav-tabs mb-3" role="tablist" aria-label="Administración de usuarios ControlGas">
+            <li class="nav-item" role="presentation"><button class="nav-link active" id="controlgas-list-tab" type="button" role="tab" aria-selected="true" aria-controls="controlgas-list-pane">Usuarios</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" id="controlgas-bulk-tab" type="button" role="tab" aria-selected="false" aria-controls="controlgas-bulk-pane" tabindex="-1">Deshabilitación masiva</button></li>
+        </ul>
+        <section id="controlgas-list-pane" role="tabpanel" aria-labelledby="controlgas-list-tab">
         <div id="filtro-controlgas_users" class="mb-1">
             <div class="row g-1">
                 <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="0" placeholder="Cód"></div>
@@ -35,6 +52,7 @@
                 <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="8" placeholder="Est"></div>
                 <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="9" placeholder="Log Usu"></div>
                 <div class="col-auto p-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnClearColumnFilters" aria-label="Quitar todos los filtros de columna" title="Quitar todos los filtros de columna">Quitar filtros de columnas</button>
                     <button type="button" class="btn btn-sm btn-success" id="btnRefreshFilter"><i data-feather="refresh-ccw"></i></button>
                 </div>
             </div>
@@ -82,6 +100,16 @@
                 </tr>
             </tfoot>
         </table>
+        </section>
+        <section id="controlgas-bulk-pane" role="tabpanel" aria-labelledby="controlgas-bulk-tab" hidden>
+            <div class="row"><div class="col-lg-8 col-xl-6">
+                <label for="controlgas-bulk-cods" class="form-label">Códigos COD</label>
+                <textarea id="controlgas-bulk-cods" class="form-control" rows="4" aria-describedby="controlgas-bulk-help" placeholder="Ejemplo: 1024, 2048, 3072"></textarea>
+                <small id="controlgas-bulk-help" class="form-text text-muted">Pega los COD separados por comas. Se mostrará una vista previa antes de deshabilitarlos.</small>
+                <div class="mt-3"><button type="button" id="controlgas-bulk-preview" class="btn btn-primary">Revisar usuarios</button></div>
+                <div id="controlgas-bulk-status" class="mt-2" role="status" aria-live="polite"></div>
+            </div></div>
+        </section>
     </div>
 </div>
 {% endblock %}
@@ -89,6 +117,25 @@
 <script src="{{ js_v('it.js') }}"></script>
 <script>
 $(document).ready(function () {
+    function selectControlgasTab(button) {
+        var isBulk = button.id === 'controlgas-bulk-tab';
+        $('#controlgas-list-tab').toggleClass('active', !isBulk).attr('aria-selected', String(!isBulk)).attr('tabindex', isBulk ? '-1' : '0');
+        $('#controlgas-bulk-tab').toggleClass('active', isBulk).attr('aria-selected', String(isBulk)).attr('tabindex', isBulk ? '0' : '-1');
+        $('#controlgas-list-pane').prop('hidden', isBulk);
+        $('#controlgas-bulk-pane').prop('hidden', !isBulk);
+    }
+    $('#controlgas-list-tab, #controlgas-bulk-tab').on('click', function () { selectControlgasTab(this); });
+    $('#controlgas-list-tab, #controlgas-bulk-tab').on('keydown', function (event) {
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+            event.preventDefault();
+            var next = this.id === 'controlgas-list-tab' ? $('#controlgas-bulk-tab') : $('#controlgas-list-tab');
+            selectControlgasTab(next[0]); next.trigger('focus');
+        }
+    });
+    function renderControlgasUserText(value, type) {
+        var text = value == null ? '' : String(value);
+        return type === 'display' ? $('<div>').text(text).html() : text;
+    }
     var table = $('#datatables_controlgas_users').DataTable({
         ajax: {
             url: '/it/datatables_controlgas_users',
@@ -97,20 +144,20 @@ $(document).ready(function () {
         },
         columns: [
             { data: 'COD' },
-            { data: 'DEN' },
-            { data: 'CLV' },
-            { data: 'ACC' },
-            { data: 'ACCX' },
-            { data: 'TIPOPR' },
-            { data: 'TIPUSU' },
-            { data: 'CODROL' },
-            { data: 'CODEST' },
-            { data: 'LOGUSU' },
-            { data: 'LOGFCH' },
-            { data: 'LOGNEW' },
-            { data: 'USERID' },
-            { data: 'CLVFCH' },
-            { data: 'CLVEXP' },
+            { data: 'DEN', render: renderControlgasUserText },
+            { data: 'CLV', render: renderControlgasUserText },
+            { data: 'ACC', render: renderControlgasUserText },
+            { data: 'ACCX', render: renderControlgasUserText },
+            { data: 'TIPOPR', render: renderControlgasUserText },
+            { data: 'TIPUSU', render: renderControlgasUserText },
+            { data: 'CODROL', render: renderControlgasUserText },
+            { data: 'CODEST', render: renderControlgasUserText },
+            { data: 'LOGUSU', render: renderControlgasUserText },
+            { data: 'LOGFCH', render: renderControlgasUserText },
+            { data: 'LOGNEW', render: renderControlgasUserText },
+            { data: 'USERID', render: renderControlgasUserText },
+            { data: 'CLVFCH', render: renderControlgasUserText },
+            { data: 'CLVEXP', render: renderControlgasUserText },
             { data: 'ACCIONES', orderable: false, searchable: false, className: 'text-center' }
         ],
         createdRow: function (row, data) {
@@ -121,10 +168,11 @@ $(document).ready(function () {
         },
         order: [[0, 'asc']],
         pageLength: 25,
+        lengthMenu: [[25, 50, 100, 250, 500, 1000], [25, 50, 100, 250, 500, 1000]],
         language: {
             url: 'https://cdn.datatables.net/plug-ins/2.1.8/i18n/es-ES.json'
         },
-        dom: 'Bfrtip',
+        dom: 'Blfrtip',
         buttons: [
             { extend: 'excel', text: '<i data-feather="file-text"></i>', className: 'd-none', exportOptions: { columns: ':not(:last-child)' } },
             { extend: 'pdf',   text: '<i data-feather="file-text"></i>', className: 'd-none', exportOptions: { columns: ':not(:last-child)' } },
@@ -138,11 +186,214 @@ $(document).ready(function () {
         table.column(colIdx).search(this.value).draw();
     });
 
+    // Excel-style exact-value filters; scoped to this table and composed with DataTables searches.
+    (function () {
+        var selectedValues = {};
+        var activeTrigger = null;
+        var $table = $('#datatables_controlgas_users');
+
+        function cellValue(rowIndex, columnIndex) {
+            var rendered = table.cell(rowIndex, columnIndex).render('filter');
+            return rendered == null ? '' : String(rendered).trim();
+        }
+
+        function distinctValues(columnIndex) {
+            var values = new Set();
+            table.rows({ search: 'none' }).indexes().each(function (rowIndex) {
+                values.add(cellValue(rowIndex, columnIndex));
+            });
+            return Array.from(values).sort(function (a, b) { return a.localeCompare(b, 'es', { numeric: true }); });
+        }
+
+        function updateHeaderIndicators() {
+            $table.find('thead th').each(function () {
+                var columnIndex = table.column(this).index();
+                var isFiltered = columnIndex != null && Object.prototype.hasOwnProperty.call(selectedValues, columnIndex);
+                var $trigger = $(this).find('.controlgas-filter-trigger');
+                var columnName = $(this).clone().children().remove().end().text().trim();
+                $trigger.toggleClass('is-filtered', isFiltered)
+                    .attr('aria-pressed', isFiltered ? 'true' : 'false')
+                    .attr('aria-label', (isFiltered ? 'Filtro activo en columna ' : 'Filtrar columna ') + columnName);
+            });
+        }
+
+        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+            if (settings.nTable !== $table[0]) return true;
+            return Object.keys(selectedValues).every(function (key) {
+                var selected = selectedValues[key];
+                return selected.has(cellValue(dataIndex, Number(key)));
+            });
+        });
+
+        function closeMenu(restoreFocus) {
+            $('#controlgas-excel-filter').remove();
+            if (activeTrigger) {
+                $(activeTrigger).attr('aria-expanded', 'false');
+                if (restoreFocus) $(activeTrigger).trigger('focus');
+            }
+            activeTrigger = null;
+        }
+
+        function openMenu(columnIndex, trigger) {
+            if (activeTrigger) $(activeTrigger).attr('aria-expanded', 'false');
+            $('#controlgas-excel-filter').remove();
+            activeTrigger = trigger;
+            $(trigger).attr('aria-expanded', 'true');
+            var values = distinctValues(columnIndex);
+            var applied = selectedValues[columnIndex];
+            var draft = new Set(applied ? Array.from(applied) : values);
+            var columnName = $(trigger).closest('th').clone().children().remove().end().text().trim();
+            var $menu = $('<div id="controlgas-excel-filter" role="dialog"></div>').attr('aria-label', 'Filtrar columna ' + columnName);
+            var $search = $('<input type="search" class="form-control form-control-sm" aria-label="Buscar valores" placeholder="Buscar">');
+            var $all = $('<label class="controlgas-filter-value"><input type="checkbox" class="controlgas-filter-select-all"> <span>(Seleccionar todo lo visible)</span></label>');
+            var $list = $('<div class="controlgas-filter-values" role="group" aria-label="Valores disponibles"></div>');
+
+            values.forEach(function (value) {
+                var $label = $('<label class="controlgas-filter-value"></label>');
+                var $checkbox = $('<input type="checkbox" class="controlgas-filter-option">').val(value).prop('checked', draft.has(value));
+                var $text = $('<span></span>').text(value === '' ? '(Vacío)' : value);
+                $label.attr('data-filter-text', value.toLocaleLowerCase('es')).append($checkbox, $text);
+                $list.append($label);
+            });
+            var $selectAll = $all.find('input');
+            function syncSelectAll() {
+                var $shown = $list.find('.controlgas-filter-option:visible');
+                var checked = $shown.filter(':checked').length;
+                $selectAll.prop('checked', $shown.length > 0 && checked === $shown.length)
+                    .prop('indeterminate', checked > 0 && checked < $shown.length);
+            }
+            $search.on('input', function () {
+                var query = this.value.toLocaleLowerCase('es');
+                $list.children().each(function () { $(this).toggle($(this).attr('data-filter-text').indexOf(query) >= 0); });
+                syncSelectAll();
+            });
+            $list.on('change', '.controlgas-filter-option', function () {
+                if (this.checked) draft.add(this.value); else draft.delete(this.value);
+                syncSelectAll();
+            });
+            $selectAll.on('change', function () {
+                $list.find('.controlgas-filter-option:visible').each(function () {
+                    $(this).prop('checked', $selectAll.prop('checked'));
+                    if (this.checked) draft.add(this.value); else draft.delete(this.value);
+                });
+                syncSelectAll();
+            });
+            var $cancel = $('<button type="button" class="btn btn-sm btn-light">Cancelar</button>').on('click', function () { closeMenu(true); });
+            var $clear = $('<button type="button" class="btn btn-sm btn-outline-secondary">Quitar filtro</button>').on('click', function () {
+                delete selectedValues[columnIndex];
+                $table.closest('.card-body').find('.col-filter[data-col="' + columnIndex + '"]').val('');
+                table.column(columnIndex).search('');
+                closeMenu(true);
+                updateHeaderIndicators();
+                table.draw();
+            });
+            var $apply = $('<button type="button" class="btn btn-sm btn-primary">Aplicar</button>').on('click', function () {
+                if (draft.size === values.length) delete selectedValues[columnIndex];
+                else selectedValues[columnIndex] = new Set(draft);
+                closeMenu(true);
+                updateHeaderIndicators();
+                table.draw();
+            });
+            var $menuActions = $('<div class="d-flex gap-1"></div>').append($cancel, $apply);
+            var $actions = $('<div class="controlgas-filter-actions"></div>').append($clear, $menuActions);
+            $menu.append($search, $all, $list, $actions).appendTo(document.body);
+            var rect = trigger.getBoundingClientRect();
+            var menuWidth = $menu.outerWidth();
+            var menuHeight = $menu.outerHeight();
+            var left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
+            var roomBelow = window.innerHeight - rect.bottom - 12;
+            var roomAbove = rect.top - 12;
+            var top = roomBelow >= Math.min(menuHeight, 300) || roomBelow >= roomAbove
+                ? Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - menuHeight - 8))
+                : Math.max(8, rect.top - Math.min(menuHeight, roomAbove) - 4);
+            $menu.css({ left: left + 'px', top: top + 'px', maxHeight: Math.max(120, window.innerHeight - 16) + 'px' });
+            $list.css('max-height', Math.max(60, Math.min(220, $menu.innerHeight() - 118)) + 'px');
+            syncSelectAll();
+            $search.trigger('focus');
+        }
+
+        function addHeaderFilters() {
+            $table.find('thead th').each(function () {
+                var columnIndex = table.column(this).index();
+                if (columnIndex == null || columnIndex >= 15 || $(this).find('.controlgas-filter-trigger').length) return;
+                var columnName = $(this).clone().children().remove().end().text().trim();
+                var $trigger = $('<button type="button" class="controlgas-filter-trigger" aria-haspopup="dialog" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button>')
+                    .attr({ 'aria-label': 'Filtrar columna ' + columnName, 'aria-pressed': 'false' });
+                $trigger.on('click', function (event) { event.stopPropagation(); openMenu(columnIndex, this); });
+                $(this).append($trigger);
+            });
+            updateHeaderIndicators();
+        }
+
+        table.on('init.dt', addHeaderFilters);
+        table.on('xhr.dt', addHeaderFilters);
+        table.on('draw.dt', updateHeaderIndicators);
+        addHeaderFilters();
+        $('#btnClearColumnFilters').on('click', function () {
+            Object.keys(selectedValues).forEach(function (columnIndex) { delete selectedValues[columnIndex]; });
+            $table.closest('.card-body').find('.col-filter').each(function () {
+                var columnIndex = Number($(this).data('col'));
+                $(this).val('');
+                table.column(columnIndex).search('');
+            });
+            updateHeaderIndicators();
+            table.draw();
+        });
+        $(document).on('click.controlgasExcelFilter', function (event) {
+            if (!$(event.target).closest('#controlgas-excel-filter, .controlgas-filter-trigger').length) closeMenu(false);
+        }).on('keydown.controlgasExcelFilter', function (event) {
+            if (event.key === 'Escape' && activeTrigger) closeMenu(true);
+        });
+        $(window).on('resize.controlgasExcelFilter scroll.controlgasExcelFilter', function () { closeMenu(false); });
+    })();
+
     // Toolbar buttons
     $('#exportExcel').on('click', function (e) { e.preventDefault(); table.button(0).trigger(); });
     $('#exportPDF').on('click',   function (e) { e.preventDefault(); table.button(1).trigger(); });
     $('#exportPrinter').on('click', function (e) { e.preventDefault(); table.button(2).trigger(); });
     $('#btnRefresh, #btnRefreshFilter').on('click', function () { table.ajax.reload(); });
+
+    var bulkBusy = false;
+    $('#controlgas-bulk-preview').on('click', async function () {
+        if (bulkBusy) return;
+        var $button = $(this), $status = $('#controlgas-bulk-status');
+        var cods = $('#controlgas-bulk-cods').val().trim();
+        if (!cods) { $status.text('Ingresa al menos un COD.'); $('#controlgas-bulk-cods').trigger('focus'); return; }
+        bulkBusy = true; $button.prop('disabled', true); $status.text('Buscando usuarios…');
+        try {
+            var response = await fetch('/it/preview_controlgas_users', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, credentials: 'include', body: 'cods=' + encodeURIComponent(cods) });
+            var data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.message || 'No se pudo revisar la lista.');
+            var users = Array.isArray(data.users) ? data.users : [];
+            var missing = Array.isArray(data.missing) ? data.missing : [];
+            var content = document.createElement('div');
+            var intro = document.createElement('p'); intro.textContent = 'Se deshabilitarán estos usuarios:'; content.appendChild(intro);
+            if (users.length) {
+                var list = document.createElement('ul'); list.className = 'text-start';
+                users.forEach(function (user) { var item = document.createElement('li'); item.textContent = String(user.COD) + ' — ' + String(user.DEN == null ? '' : user.DEN); list.appendChild(item); });
+                content.appendChild(list);
+            } else { var none = document.createElement('p'); none.textContent = 'No se encontraron usuarios para deshabilitar.'; content.appendChild(none); }
+            if (missing.length) { var absent = document.createElement('p'); absent.className = 'text-warning'; absent.textContent = 'COD no encontrados: ' + missing.map(String).join(', '); content.appendChild(absent); }
+            var confirmed = false;
+            if (users.length) {
+                var result = await Swal.fire({ title: 'Confirmar deshabilitación masiva', icon: 'warning', html: content, showCancelButton: true, confirmButtonText: 'Deshabilitar usuarios', cancelButtonText: 'Cancelar', customClass: { confirmButton: 'btn btn-danger', cancelButton: 'btn btn-secondary' } });
+                confirmed = result.isConfirmed;
+            } else {
+                await Swal.fire({ title: 'Vista previa', icon: 'info', html: content, confirmButtonText: 'Cerrar', customClass: { confirmButton: 'btn btn-primary' } });
+            }
+            if (!confirmed) { $status.text(''); return; }
+            var matchedCods = users.map(function (user) { return String(user.COD); }).join(',');
+            var updateResponse = await fetch('/it/disable_controlgas_users', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, credentials: 'include', body: 'cods=' + encodeURIComponent(matchedCods) });
+            var updateData = await updateResponse.json();
+            if (!updateResponse.ok || !updateData.success) throw new Error(updateData.message || 'No se pudieron deshabilitar los usuarios.');
+            $status.text('Usuarios deshabilitados: ' + updateData.updated + '.');
+            table.ajax.reload(null, false);
+            await Swal.fire({ title: 'Deshabilitados', text: 'Se deshabilitaron ' + updateData.updated + ' usuarios.', icon: 'success', confirmButtonText: 'Aceptar', customClass: { confirmButton: 'btn btn-primary' } });
+        } catch (error) {
+            $status.text(error.message || 'Problema de conexión con el servidor.');
+            await Swal.fire({ title: 'Error', text: error.message || 'Problema de conexión con el servidor.', icon: 'error', customClass: { confirmButton: 'btn btn-primary' } });
+        } finally { bulkBusy = false; $button.prop('disabled', false); }
+    });
 
     feather.replace();
 });
@@ -150,7 +401,7 @@ $(document).ready(function () {
 async function disableControlgasUser(cod, nombre) {
     const result = await Swal.fire({
         title: '¿Deshabilitar usuario?',
-        html: `<b>${nombre}</b> (COD: ${cod}) perderá acceso al sistema.<br><small class="text-muted">Se asignará la contraseña: <code>51nP4ssw0rd!</code></small>`,
+        text: `${nombre} (COD: ${cod}) perderá acceso al sistema. Se asignará la contraseña: 51nP4ssw0rd!`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sí, deshabilitar',
@@ -178,6 +429,44 @@ async function disableControlgasUser(cod, nombre) {
             $('#datatables_controlgas_users').DataTable().ajax.reload(null, false);
         } else {
             Swal.fire('Error', data.message || 'No se pudo deshabilitar el usuario.', 'error');
+        }
+    } catch (e) {
+        Swal.fire('Error', 'Problema de conexión con el servidor.', 'error');
+    }
+}
+
+async function rehabilitateControlgasUser(cod, nombre) {
+    const displayName = String(nombre || '').replace(/^BAJA\s+/, '');
+    const result = await Swal.fire({
+        title: '¿Rehabilitar usuario?',
+        text: `${displayName} (COD: ${cod}) recuperará los datos de acceso guardados en TG.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, rehabilitar',
+        cancelButtonText: 'Cancelar',
+        customClass: {
+            confirmButton: 'btn btn-success',
+            cancelButton: 'btn btn-secondary'
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const response = await fetch('/it/rehabilitate_controlgas_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `cod=${encodeURIComponent(cod)}`
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            await Swal.fire('Rehabilitado', 'El usuario fue rehabilitado correctamente.', 'success');
+            $('#datatables_controlgas_users').DataTable().ajax.reload(null, false);
+        } else {
+            Swal.fire('Error', data.message || 'No se pudo rehabilitar el usuario.', 'error');
         }
     } catch (e) {
         Swal.fire('Error', 'Problema de conexión con el servidor.', 'error');

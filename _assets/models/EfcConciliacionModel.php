@@ -5,7 +5,7 @@ class EfcConciliacionModel {
     private array $bankStationCatalogCache = [];
     private const TOLERANCE = 20.00;
     private const COMPANY_ACCOUNTS = [
-        'DIAZ GAS' => ['0185322470', '369'],
+        'DIAZ GAS' => ['0185322470', '369', '60630878973'],
         'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', '7533', '2627', '5247', '7604', '0031'],
         'GASOMEX'   => ['8504', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4638'],
     ];
@@ -13,14 +13,17 @@ class EfcConciliacionModel {
        tiene estaciones con RFC propio; este es el catálogo operativo usado por
        conciliación y sus cuentas bancarias. */
     private const COMPANY_STATIONS = [
-        'DIAZ GAS' => [2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33],
+        'DIAZ GAS' => [2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33,40],
         'FORANEAS' => [19,21,31,32,34,35,36,37,38,39,199],
         'GASOMEX' => [23,24,25,26,27,28,29],
     ];
     /* Cuenta → estación operativa. Algunas cuentas atienden más de una
        estación: en esos casos se conserva la validación por referencia. */
     private const COMPANY_ACCOUNT_STATIONS = [
-        'DIAZ GAS' => ['369' => ['PARRAL']],
+        'DIAZ GAS' => [
+            '369' => ['PARRAL'],
+            '60630878973' => ['PRAXEDIS'],
+        ],
         'FORANEAS' => [
             '3281'=>['VILLA AHUMADA'], '8837'=>['DELICIAS'], '8520'=>['PLUTARCO'],
             '7291'=>['PICACHOS'], '2570'=>['PICACHOS'], '7533'=>['VENTANAS'],
@@ -208,8 +211,8 @@ class EfcConciliacionModel {
 
     /**
      * Filas operativas para los reportes de excepción. Parte de los turnos de
-     * ControlGas (fuente canónica de la consola triple), no de grupos V3: un
-     * vínculo REGIO válido sigue siendo reportable aunque no tenga depósito.
+     * ControlGas (fuente canónica de la consola triple), no de grupos V3.
+     * También conserva los turnos sin vínculo REGIO para mostrarlos bajo demanda.
      */
     public function reportRows(int $stationId, int $year, int $month, ?string $concept, array $controlGasRows): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12 || ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true))) throw new RuntimeException('Parámetros de reporte inválidos.');
@@ -231,6 +234,7 @@ class EfcConciliacionModel {
         foreach ($this->activeGroups($stationId, $year, $month) as $group) foreach ($group['cg'] as $cg) {
             $groupsByCg[(string)$cg['id']]=$group;
         }
+        $stationQuery=$this->db->prepare('SELECT Nombre FROM TG.dbo.Estaciones WHERE Codigo=?'); $stationQuery->execute([$stationId]); $stationName=(string)($stationQuery->fetchColumn() ?: '');
         $out=[];
         foreach ($controlGasRows as $source) {
             $date=$this->reportDate($source['Fecha'] ?? null); $turn=(string)($source['Turno'] ?? '');
@@ -238,8 +242,7 @@ class EfcConciliacionModel {
             foreach (['MN'=>(float)($source['MN'] ?? 0), 'MORRALLA'=>(float)($source['Morralla'] ?? 0), 'USD'=>(float)($source['Dolares'] ?? 0)+(float)($source['Dolares2'] ?? 0)] as $currency=>$amount) {
                 if ($amount <= 0 || ($concept !== null && $currency !== $concept)) continue;
                 $turnKey=$this->reportTurnKey($date, $turn, $currency);
-                if (!isset($byTurn[$turnKey])) continue;
-                $link=$byTurn[$turnKey];
+                $link=$byTurn[$turnKey] ?? null; $hasPaper=$link !== null; $link=$link ?? [];
                 $cgKey='cg-'.$stationId.'-'.$date.'-'.$turn.'-'.$currency;
                 $group=$groupsByCg[$cgKey] ?? null;
                 $bank=0.0; $references=[];
@@ -251,12 +254,12 @@ class EfcConciliacionModel {
                 // respaldo; para los demás conceptos se usa real_mn.
                 $regio=$currency === 'USD' ? ($usdMxn ?: $realMn) : $realMn;
                 $out[]=[
-                    'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? ''), 'turno'=>$turn, 'concepto'=>$currency,
+                    'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? $stationName), 'turno'=>$turn, 'concepto'=>$currency,
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>round($regio,2),
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
-                    'faltante'=>round($amount-$regio,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
-                    'papeleta_id'=>(int)$link['papeleta_id'], 'remesa'=>$this->normaliseRemittance($link['remesa_numero'] ?? ''), 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''),
+                    'faltante'=>round($amount-$regio,2), 'diferencia_controlgas_regio'=>round($regio-$amount,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
+                    'papeleta_id'=>$hasPaper?(int)$link['papeleta_id']:null, 'remesa'=>$hasPaper?$this->normaliseRemittance($link['remesa_numero'] ?? ''):'', 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''), 'sin_papeleta'=>!$hasPaper,
                     'grupo_id'=>$group['id'] ?? null,
                 ];
             }
@@ -633,4 +636,74 @@ class EfcConciliacionModel {
     private function dateValue($value): string { return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : substr((string)$value,0,10); }
     private function sourceKey(int $station,string $date,string $turn): string { return 'CG:'.$station.':'.$date.':'.$turn.':MN'; }
     private function log(?int $groupId,?int $movementId,string $action,?string $detail,?int $userId): void { $this->db->prepare("INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle,usuario_id) VALUES(?,?,?,?,?)")->execute([$groupId,$movementId,$action,$detail,$userId]); }
+
+    /** Praxedis (station 40) OCR cuts exposed in the ControlGas-compatible shape. */
+    public function praxedisTurnos(int $year, int $month, int $stationId=40): array {
+        if ($stationId !== 40 || $year < 1 || $year > 9998 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación Praxedis inválidos.');
+        $q=$this->db->prepare("SELECT fecha_operativa,turno,efectivo,dollar FROM dbo.efc_conc_praxedis_cortes WHERE estacion_id=40 AND fecha_operativa>=? AND fecha_operativa<? ORDER BY fecha_operativa,turno");
+        $start=sprintf('%04d-%02d-01',$year,$month); $end=(new DateTimeImmutable($start))->modify('+1 month')->format('Y-m-d');
+        $q->execute([$start,$end]); $out=[];
+        while($r=$q->fetch(PDO::FETCH_ASSOC)) {
+            $date=$r['fecha_operativa'] instanceof DateTimeInterface ? $r['fecha_operativa']->format('Y-m-d') : substr((string)$r['fecha_operativa'],0,10);
+            $out[]=['Fecha'=>$date,'Turno'=>(string)$r['turno'],'MN'=>(float)$r['efectivo'],'Morralla'=>0,'Dolares'=>(float)$r['dollar'],'Dolares2'=>0,'details'=>['efectivo'=>(float)$r['efectivo'],'dollar'=>(float)$r['dollar']]];
+        }
+        return $out;
+    }
+
+    /** Persist one confirmed OCR batch and upsert reviewed rows with row-level history. */
+    public function importarPraxedis(string $sha256,string $mimeType,array $rows,int $userId,?string $userName=null): array {
+        if(!preg_match('/^[a-f0-9]{64}$/',$sha256) || !in_array($mimeType,['image/png','image/jpeg'],true)) throw new RuntimeException('La huella o el tipo de captura no son válidos.');
+        if(!$rows || count($rows)>500) throw new RuntimeException('El lote debe contener entre 1 y 500 turnos revisados.');
+        $normal=[]; $seen=[]; $duplicateUnchanged=0;
+        $amountKeys=['efectivo','dollar'];
+        foreach($rows as $row) {
+            if(!is_array($row) || !isset($row['estacion_id']) || (int)$row['estacion_id']!==40) throw new RuntimeException('Sólo se permiten turnos de Praxedis (estación 40).');
+            $stationName=strtoupper(trim((string)($row['estacion_nombre']??(is_string($row['estacion']??null)?$row['estacion']:''))));
+            if($stationName!=='PRAXEDIS') throw new RuntimeException('La estación capturada debe ser PRAXEDIS.');
+            $date=(string)($row['fecha_operativa']??$row['fecha']??$row['Fecha']??'');
+            $d=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
+            if(!$d || $d->format('Y-m-d')!==$date) throw new RuntimeException('Cada fecha debe estar en formato ISO YYYY-MM-DD.');
+            $turn=$row['turno']??$row['Turno']??null;
+            if(!(is_int($turn) || (is_string($turn)&&preg_match('/^[1-9]\d*$/',$turn))) || (int)$turn<1 || (int)$turn>255) throw new RuntimeException('El turno debe ser un entero positivo dentro del rango permitido.');
+            $item=['fecha_operativa'=>$date,'turno'=>(int)$turn];
+            foreach($amountKeys as $key){$v=$row[$key]??null;if(!is_numeric($v)||!is_finite((float)$v)||(float)$v<0||(float)$v>999999999999999.9999)throw new RuntimeException("Importe inválido: {$key}.");$item[$key]=round((float)$v,4);}
+            $key=$date.'|'.$item['turno'];
+            if(isset($seen[$key])) { if($seen[$key]!==$item) throw new RuntimeException('El lote contiene un mismo turno con valores distintos.'); $duplicateUnchanged++; continue; }
+            $seen[$key]=$item; $normal[]=$item;
+        }
+        $this->db->beginTransaction();
+        try {
+            $ins=$this->db->prepare("INSERT dbo.efc_conc_praxedis_lotes(estacion_id,usuario_id,usuario_nombre,imagen_original,sha256_servidor,texto_ocr,registros_insertados,registros_actualizados,registros_sin_cambios) OUTPUT INSERTED.id VALUES(40,?,?,NULL,?,NULL,0,0,0)");
+            $ins->execute([$userId,$userName,$sha256]); $batchId=(int)$ins->fetchColumn();
+            $find=$this->db->prepare("SELECT id,estacion_id,fecha_operativa,turno,efectivo,dollar FROM dbo.efc_conc_praxedis_cortes WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=40 AND fecha_operativa=? AND turno=?");
+            $insert=$this->db->prepare("INSERT dbo.efc_conc_praxedis_cortes(estacion_id,fecha_operativa,turno,efectivo,dollar,estado) OUTPUT INSERTED.id VALUES(40,?,?,?,?,'Cerrado')");
+            $update=$this->db->prepare("UPDATE dbo.efc_conc_praxedis_cortes SET efectivo=?,dollar=?,actualizado_en=SYSDATETIME() WHERE id=?");
+            $activeSourceGroups=$this->db->prepare("SELECT DISTINCT grupo_id FROM dbo.efc_conc_partidas WHERE origen='CG' AND clave_externa IN (?,?) AND activo=1");
+            $updateSourceAmount=$this->db->prepare("UPDATE dbo.efc_conc_partidas SET importe=? WHERE origen='CG' AND clave_externa=? AND activo=1");
+            $refreshGroup=$this->db->prepare("UPDATE G SET total_controlgas=ISNULL((SELECT SUM(P.importe) FROM dbo.efc_conc_partidas P WHERE P.grupo_id=G.id AND P.origen='CG' AND P.activo=1),0),total_banorte=ISNULL((SELECT SUM(P.importe) FROM dbo.efc_conc_partidas P WHERE P.grupo_id=G.id AND P.origen='BANCO' AND P.activo=1),0),diferencia=ISNULL((SELECT SUM(P.importe) FROM dbo.efc_conc_partidas P WHERE P.grupo_id=G.id AND P.origen='BANCO' AND P.activo=1),0)-ISNULL((SELECT SUM(P.importe) FROM dbo.efc_conc_partidas P WHERE P.grupo_id=G.id AND P.origen='CG' AND P.activo=1),0) FROM dbo.efc_conc_grupos G WHERE G.id=? AND G.estado='ACTIVA'");
+            $history=$this->db->prepare("INSERT dbo.efc_conc_praxedis_historial(corte_id,lote_id,accion,datos_anteriores,datos_nuevos,usuario_id,usuario_nombre) VALUES(?,?,?,?,?,?,?)");
+            $counts=['insertados'=>0,'actualizados'=>0,'sin_cambios'=>$duplicateUnchanged];
+            foreach($normal as $item){
+                $find->execute([$item['fecha_operativa'],$item['turno']]); $old=$find->fetch(PDO::FETCH_ASSOC);
+                $new=['estacion_id'=>40]+$item;
+                if(!$old){$insert->execute([$item['fecha_operativa'],$item['turno'],$item['efectivo'],$item['dollar']]);$turnId=(int)$insert->fetchColumn();$action='INSERT';$oldJson=null;$counts['insertados']++;}
+                else {
+                    $oldDate=$old['fecha_operativa'] instanceof DateTimeInterface?$old['fecha_operativa']->format('Y-m-d'):substr((string)$old['fecha_operativa'],0,10);
+                    $oldNorm=['estacion_id'=>(int)$old['estacion_id'],'fecha_operativa'=>$oldDate,'turno'=>(int)$old['turno']]; foreach($amountKeys as $k)$oldNorm[$k]=round((float)$old[$k],4);
+                    $same=true; foreach($new as $k=>$v) if($oldNorm[$k]!==$v){$same=false;break;}
+                    $turnId=(int)$old['id'];
+                    if($same){$counts['sin_cambios']++;continue;}
+                    $update->execute([$item['efectivo'],$item['dollar'],$turnId]);
+                    $key='cg-40-'.$item['fecha_operativa'].'-'.$item['turno'].'-MN';
+                    $legacyKey=$this->sourceKey(40,$item['fecha_operativa'],(string)$item['turno']);
+                    $activeSourceGroups->execute([$key,$legacyKey]);$groupIds=array_map('intval',$activeSourceGroups->fetchAll(PDO::FETCH_COLUMN));
+                    if($groupIds){$updateSourceAmount->execute([$item['efectivo'],$key]);$updateSourceAmount->execute([$item['efectivo'],$legacyKey]);foreach($groupIds as $groupId)$refreshGroup->execute([$groupId]);}
+                    $action='UPDATE';$oldJson=json_encode($oldNorm,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);$counts['actualizados']++;
+                }
+                $history->execute([$turnId,$batchId,$action,$oldJson,json_encode($new,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$userId,$userName]);
+            }
+            $this->db->prepare("UPDATE dbo.efc_conc_praxedis_lotes SET registros_insertados=?,registros_actualizados=?,registros_sin_cambios=? WHERE id=?")->execute([$counts['insertados'],$counts['actualizados'],$counts['sin_cambios'],$batchId]);
+            $this->db->commit(); return ['lote_id'=>$batchId]+$counts;
+        } catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}
+    }
 }
