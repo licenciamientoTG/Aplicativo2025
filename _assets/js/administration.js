@@ -1350,11 +1350,12 @@ let datatable_exchange_rate = $('#datatable_exchange_rate').DataTable({
                 }).join('');
                 alertify.myAlert(
                     `<div class="container text-center text-warning">
-                        <h4 class="mt-2 text-warning">Estaciones sin conexión</h4>
+                        <h4 class="mt-2 text-warning">Estaciones sin tipo de cambio</h4>
                     </div>
                     <div class="text-dark">
-                        <p class="text-center">No se pudo obtener el tipo de cambio de las siguientes estaciones (posiblemente sin conexión):</p>
+                        <p class="text-center">No se pudo obtener el tipo de cambio de las siguientes estaciones. Puede ser que no tengan ninguno registrado o que estén sin conexión:</p>
                         <ul class="text-start">${lista}</ul>
+                        <p class="text-center">Aparecen en la tabla como "Sin tipo de cambio registrado"; puedes seleccionarlas para asignarles uno.</p>
                     </div>`
                 );
             }
