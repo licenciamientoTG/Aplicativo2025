@@ -6905,7 +6905,34 @@ public function stamped_invoices_detail(): void
     public function efc_conc_resumen_detalle(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryDetail((int)($_GET['estacion_id']??0),isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_agrupado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryGrouped(isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
 
-    /**
+    /** GET /income/efc_conc_praxedis_turnos?year=YYYY&month=MM&estacion_id=40 */
+    public function efc_conc_praxedis_turnos(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); $station=(int)($_GET['estacion_id']??40); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->praxedisTurnos($year,$month,$station)],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);}
+        exit;
+    }
+
+    /** POST /income/efc_conc_praxedis_importar multipart image, rows, ocr_text */
+    public function efc_conc_praxedis_importar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $file=$_FILES['image']??null;
+            if(!is_array($file) || (int)($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK || !is_uploaded_file((string)($file['tmp_name']??''))) throw new RuntimeException('No se recibió correctamente la imagen.');
+            $size=(int)($file['size']??0); if($size<1 || $size>10485760) throw new RuntimeException('La imagen debe pesar entre 1 byte y 10 MB.');
+            if(!class_exists('finfo')) throw new RuntimeException('No se pudo validar el tipo de imagen.');
+            $finfo=new finfo(FILEINFO_MIME_TYPE); $mime=(string)$finfo->file((string)$file['tmp_name']);
+            if(!in_array($mime,['image/png','image/jpeg'],true)) throw new RuntimeException('Sólo se admiten imágenes PNG o JPEG.');
+            $image=file_get_contents((string)$file['tmp_name']); if($image===false || strlen($image)!==$size) throw new RuntimeException('No se pudo leer la imagen subida.');
+            $decoded=json_decode((string)($_POST['rows']??''),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($decoded) || !array_is_list($decoded)) throw new RuntimeException('La lista de turnos revisados no es válida.');
+            $userName=strtoupper(trim((string)($_SESSION['tg_user']['Usuario']??$_SESSION['tg_user']['usuario']??'')));
+            $result=$this->efcConciliacion->importarPraxedis(hash('sha256',$image),$mime,$image,(string)($_POST['ocr_text']??''),$decoded,(int)($_SESSION['tg_user']['Id']??0),$userName);
+            echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);}
+        exit;
+    }
+/**
      * Reportes operativos de excepción, en una fila por turno ControlGas con
      * papeleta REGIO asociada. No reutiliza summaryDetail(): ese resumen sólo
      * conoce grupos de conciliación y omitiría faltantes sin depósito.
@@ -6944,6 +6971,7 @@ public function stamped_invoices_detail(): void
 
     /** Fuente CG usada también por la consola triple; sólo lectura. */
     private function efcConcReportControlGas(int $station, int $year, int $month): array {
+        if($station===40) return $this->efcConciliacion->praxedisTurnos($year,$month,40);
         $first=sprintf('%04d%02d01',$year,$month); $last=sprintf('%04d%02d%02d',$year,$month,cal_days_in_month(CAL_GREGORIAN,$month,$year));
         $payload=json_encode(['Datos'=>['FechaInicial'=>$first,'FechaFinal'=>$last,'Gasolinera'=>$station]], JSON_THROW_ON_ERROR);
         $url='http://201.174.170.236:99/api/Depositos/GetDepositosEstacion';

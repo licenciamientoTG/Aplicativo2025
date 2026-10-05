@@ -3,6 +3,9 @@ uploads/
 
 # Vendor dependencies
 vendor/
+!_assets/vendor/
+!_assets/vendor/tesseract/
+!_assets/vendor/tesseract/**
 
 .claude/
 
