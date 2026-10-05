@@ -10,14 +10,18 @@
   const rowsNode = document.getElementById('tr-cuts-rows');
   const confirm = document.getElementById('tr-cuts-confirm');
   let originalImage = null;
-  let recognizedText = '';
   let rows = [];
   let worker = null;
   let workerPromise = null;
   let previewUrl = null;
   let recognitionGeneration = 0;
 
-  const fields = [['estacion', 'Estación'], ['fecha', 'Fecha'], ['turno', 'Turno'], ['efectivo', 'Efectivo'], ['dollar', 'Dollar']];
+  const fields = [
+    ['estacion', 'Estación'], ['fecha', 'Fecha'], ['turno', 'Turno'], ['isla', 'Isla'],
+    ['ventas', 'Ventas'], ['donativo', 'Donativo'], ['vale_tarjeta_interna', 'Vale/Tarjeta Interna'],
+    ['vale_tarjeta_externa', 'Vale/Tarjeta Externa'], ['efectivo', 'Efectivo'], ['dollar', 'Dollar'], ['estado', 'Estado']
+  ];
+  const visibleFields = fields.filter(([field]) => ['estacion','fecha','turno','efectivo','dollar'].includes(field));
   const setStatus = (message, kind = 'info') => {
     status.className = `cuts-status is-${kind}`;
     status.textContent = message;
@@ -36,7 +40,8 @@
     return workerPromise;
   };
   const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const moneyFields = new Set(['efectivo','dollar']);
+  const moneyFields = new Set(['ventas','donativo','vale_tarjeta_interna','vale_tarjeta_externa','efectivo','dollar']);
+  const editableMoneyFields = new Set(['efectivo','dollar']);
   const formatMoney = value => {
     const amount = parseMoney(value);
     return Number.isFinite(amount) ? new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}).format(amount) : value;
@@ -48,7 +53,6 @@
     match = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
     return match ? `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}` : text;
   };
-  const normalizeState = value => /cerrad|closed|finaliz|terminad/i.test(String(value||''))?'closed':/abiert|open/i.test(String(value||''))?'open':'';
   const parseMoney = value => {
     const text = String(value ?? '').trim().replace(/[ $]/g, '');
     if (!text) return NaN;
@@ -95,7 +99,6 @@
     const headerIndex=lines.findIndex(line=>/fecha|date/i.test(line.text)&&/turno|shift/i.test(line.text));
     if(headerIndex<0) throw new Error('No se detectaron las columnas Fecha y Turno. Prueba con una captura más nítida.');
     const headerRules=[['estacion',/estaci[oó]n|station/i],['fecha',/fecha|date/i],['turno',/turno|shift/i],['isla',/isla|island/i],['ventas',/ventas|sales/i],['donativo',/donativo|donation/i],['vale_tarjeta_interna',/interna|internal/i],['vale_tarjeta_externa',/externa|external/i],['efectivo',/efectivo|cash/i],['dollar',/dollar|d[oó]lar|usd/i],['estado',/estado|status/i]];
-    const requiredHeaders=new Set(['estacion','fecha','turno','efectivo','dollar']);
     const headerLines=[lines[headerIndex]],headerHeight=Math.max(...lines[headerIndex].words.map(word=>word.height),lineTolerance);
     for(let i=headerIndex+1;i<lines.length&&i<=headerIndex+2;i++){
       const candidate=lines[i];
@@ -104,7 +107,7 @@
     }
     const headerWords=headerLines.flatMap(line=>line.words).sort((a,b)=>a.left-b.left);
     const anchors=headerRules.map(([field,pattern])=>{const wordIndex=headerWords.findIndex(item=>pattern.test(item.text));if(wordIndex<0)return null;let word=headerWords[wordIndex],left=word.left,right=word.left+word.width;if(field.startsWith('vale_tarjeta_')){for(let i=wordIndex-1;i>=0;i--){const part=headerWords[i];if(word.left-part.left>Math.max(word.height,part.height)*12)break;if(/vale|tarjeta/i.test(part.text)){left=Math.min(left,part.left);right=Math.max(right,part.left+part.width)}}}return {field,x:(left+right)/2}}).filter(Boolean).sort((a,b)=>a.x-b.x);
-    const missingHeaders=headerRules.filter(([field])=>requiredHeaders.has(field)&&!anchors.some(anchor=>anchor.field===field)).map(([field])=>fields.find(([key])=>key===field)?.[1]||field);
+    const missingHeaders=headerRules.filter(([field])=>!anchors.some(anchor=>anchor.field===field)).map(([field])=>fields.find(([key])=>key===field)?.[1]||field);
     if(missingHeaders.length) throw new Error(`No pude reconocer con seguridad estas columnas: ${missingHeaders.join(', ')}. Pega una captura más nítida o recorta la tabla.`);
     const dataLines=lines.slice(headerIndex+headerLines.length);
     const assignWords=words=>{
@@ -130,8 +133,10 @@
       const upperBound=nextCenter===null?seed.line.center+(seed.line.center-previousCenter)/2:(seed.line.center+nextCenter)/2;
       const words=dataLines.filter(line=>line.center>=lowerBound&&line.center<=upperBound).flatMap(line=>line.words);
       const row=assignWords(words);
+      const cashValues=(row.efectivo.match(/(?:\$\s*)?\d[\d.,]*/g)||[]).filter(value=>Number.isFinite(parseMoney(value))&&parseMoney(value)>=0);
+      if(!row.vale_tarjeta_externa.trim()&&cashValues.length===2){row.vale_tarjeta_externa=cashValues[0];row.efectivo=cashValues[1]}
       row.fecha=parseDate(row.fecha);
-      ['efectivo','dollar'].forEach(field=>{const money=parseMoney(row[field]);row[field]=Number.isFinite(money)?money.toFixed(2):row[field]});
+      [...moneyFields].forEach(field=>{const money=parseMoney(row[field]);row[field]=Number.isFinite(money)?money.toFixed(2):row[field]});
       return row;
     });
   };
@@ -148,7 +153,7 @@
   const render = () => {
     rows.forEach(row => { const identity=`cg-40-${row.fecha}-${String(row.turno).match(/\d+/)?.[0]||row.turno}-MN`; const existing=window.tripleCashReconciliation?.state.rows.find(item=>item.id===identity&&item.group); row._warning=row._edited&&existing?'Este turno ya tiene una conciliación asociada; la asociación existente se conservará.':''; });
     validate();
-    rowsNode.innerHTML = rows.map((row, index) => `<tr class="${row._issues.length ? 'is-invalid' : ''}">${fields.map(([field, label]) => {const value=moneyFields.has(field)?formatMoney(row[field]):row[field];return `<td><label class="sr-only" for="tr-cuts-${index}-${field}">${safe(label)} fila ${index + 1}</label><input id="tr-cuts-${index}-${field}" data-row="${index}" data-field="${field}" value="${safe(value)}" aria-label="${safe(label)}, fila ${index + 1}" class="form-control form-control-sm"></td>`}).join('')}<td class="cuts-row-error">${safe([row._warning,...row._issues].filter(Boolean).join(' '))}</td></tr>`).join('');
+    rowsNode.innerHTML = rows.map((row, index) => `<tr class="${row._issues.length ? 'is-invalid' : ''}">${visibleFields.map(([field, label]) => {const value=editableMoneyFields.has(field)?formatMoney(row[field]):row[field];return `<td><label class="sr-only" for="tr-cuts-${index}-${field}">${safe(label)} fila ${index + 1}</label><input id="tr-cuts-${index}-${field}" data-row="${index}" data-field="${field}" value="${safe(value)}" aria-label="${safe(label)}, fila ${index + 1}" class="form-control form-control-sm"></td>`}).join('')}<td class="cuts-row-error">${safe([row._warning,...row._issues].filter(Boolean).join(' '))}</td></tr>`).join('');
     confirm.disabled = !rows.length || rows.some(row => row._issues.length);
   };
   const syncButton = () => { button.hidden = String(station.value) !== '40'; };
@@ -157,7 +162,6 @@
     const generation = ++recognitionGeneration;
     originalImage = null;
     rows = [];
-    recognizedText = '';
     confirm.disabled = true;
     rowsNode.innerHTML = '';
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -176,9 +180,8 @@
       setStatus('Mejorando la captura para leer sus columnas…');
       const ocrImage = await prepareOcrImage(image);
       if (generation !== recognitionGeneration) return;
-      const result = await worker.recognize(ocrImage, {}, {text:true, tsv:true});
+      const result = await worker.recognize(ocrImage, {}, {tsv:true});
       if (generation !== recognitionGeneration) return;
-      recognizedText = result.data.text || '';
       rows = parseTsv(result.data.tsv || '');
       render();
       if (!rows.length) throw new Error('OCR terminó, pero no encontró filas. Corrige la imagen y vuelve a pegarla.');
@@ -206,11 +209,11 @@
   });
   rowsNode.addEventListener('focusin', event => {
     const input = event.target.closest('[data-row][data-field]');
-    if (input && moneyFields.has(input.dataset.field)) input.value = input.value.replace(/,/g, '');
+    if (input && editableMoneyFields.has(input.dataset.field)) input.value = input.value.replace(/,/g, '');
   });
   rowsNode.addEventListener('focusout', event => {
     const input = event.target.closest('[data-row][data-field]');
-    if (!input || !moneyFields.has(input.dataset.field)) return;
+    if (!input || !editableMoneyFields.has(input.dataset.field)) return;
     const amount = parseMoney(input.value);
     if (Number.isFinite(amount)) input.value = formatMoney(amount);
   });
@@ -222,7 +225,6 @@
     const body = new FormData();
     body.append('image', originalImage, 'cortes.png');
     body.append('rows', JSON.stringify(rows.map(row => ({estacion:'PRAXEDIS',estacion_id:40,fecha_operativa:row.fecha,turno:String(row.turno).trim(),efectivo:parseMoney(row.efectivo),dollar:parseMoney(row.dollar)}))));
-    body.append('ocr_text', recognizedText);
     try {
       const response = await fetch('/income/efc_conc_praxedis_importar', {method:'POST', body});
       const responseText = await response.text();
