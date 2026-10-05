@@ -3,7 +3,7 @@
     Base de datos: TG
     Crear las tablas de captura, lote OCR e historial para la estación 40.
     Este archivo es idempotente: puede volver a ejecutarse sin duplicar objetos.
-    No ejecuta migraciones ni cambia datos existentes.
+    Incluye cambios de esquema idempotentes y no modifica datos existentes.
 */
 USE [TG];
 GO
@@ -40,7 +40,8 @@ BEGIN
         usuario_id              INT NULL,
         usuario_nombre          NVARCHAR(150) NULL,
         creado_en               DATETIME2(0) NOT NULL CONSTRAINT DF_efc_prax_lotes_creado DEFAULT SYSDATETIME(),
-        imagen_original         VARBINARY(MAX) NOT NULL,
+        /* Columna heredada; las capturas nuevas sólo conservan una huella SHA-256. */
+        imagen_original         VARBINARY(MAX) NULL,
         /* SHA-256 hexadecimal (64 caracteres), calculado por el servidor de aplicación. */
         sha256_servidor         CHAR(64) NOT NULL,
         texto_ocr               NVARCHAR(MAX) NULL,
@@ -53,6 +54,20 @@ BEGIN
             registros_insertados >= 0 AND registros_actualizados >= 0 AND registros_sin_cambios >= 0
         )
     );
+END;
+GO
+
+/* Evita guardar capturas nuevas en SQL Server; conserva intactos los blobs heredados. */
+IF OBJECT_ID(N'dbo.efc_conc_praxedis_lotes', N'U') IS NOT NULL
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM sys.columns
+        WHERE object_id = OBJECT_ID(N'dbo.efc_conc_praxedis_lotes')
+          AND name = N'imagen_original'
+          AND is_nullable = 0
+    )
+        ALTER TABLE dbo.efc_conc_praxedis_lotes ALTER COLUMN imagen_original VARBINARY(MAX) NULL;
 END;
 GO
 

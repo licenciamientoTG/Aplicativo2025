@@ -648,8 +648,8 @@ class EfcConciliacionModel {
     }
 
     /** Persist one confirmed OCR batch and upsert reviewed rows with row-level history. */
-    public function importarPraxedis(string $sha256,string $mimeType,string $image,string $ocrText,array $rows,int $userId,?string $userName=null): array {
-        if(!preg_match('/^[a-f0-9]{64}$/',$sha256) || !in_array($mimeType,['image/png','image/jpeg'],true) || $image==='' || strlen($image)>10485760 || !hash_equals(hash('sha256',$image),$sha256)) throw new RuntimeException('Imagen de importación inválida.');
+    public function importarPraxedis(string $sha256,string $mimeType,array $rows,int $userId,?string $userName=null): array {
+        if(!preg_match('/^[a-f0-9]{64}$/',$sha256) || !in_array($mimeType,['image/png','image/jpeg'],true)) throw new RuntimeException('La huella o el tipo de captura no son válidos.');
         if(!$rows || count($rows)>500) throw new RuntimeException('El lote debe contener entre 1 y 500 turnos revisados.');
         $normal=[]; $seen=[]; $duplicateUnchanged=0;
         $amountKeys=['efectivo','dollar'];
@@ -670,8 +670,8 @@ class EfcConciliacionModel {
         }
         $this->db->beginTransaction();
         try {
-            $ins=$this->db->prepare("INSERT dbo.efc_conc_praxedis_lotes(estacion_id,usuario_id,usuario_nombre,imagen_original,sha256_servidor,texto_ocr,registros_insertados,registros_actualizados,registros_sin_cambios) OUTPUT INSERTED.id VALUES(40,?,?,?,?,?,0,0,0)");
-            $ins->bindValue(1,$userId,PDO::PARAM_INT); $ins->bindValue(2,$userName); $ins->bindValue(3,$image,PDO::PARAM_LOB); $ins->bindValue(4,$sha256); $ins->bindValue(5,$ocrText); $ins->execute(); $batchId=(int)$ins->fetchColumn();
+            $ins=$this->db->prepare("INSERT dbo.efc_conc_praxedis_lotes(estacion_id,usuario_id,usuario_nombre,imagen_original,sha256_servidor,texto_ocr,registros_insertados,registros_actualizados,registros_sin_cambios) OUTPUT INSERTED.id VALUES(40,?,?,NULL,?,NULL,0,0,0)");
+            $ins->execute([$userId,$userName,$sha256]); $batchId=(int)$ins->fetchColumn();
             $find=$this->db->prepare("SELECT id,estacion_id,fecha_operativa,turno,efectivo,dollar FROM dbo.efc_conc_praxedis_cortes WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=40 AND fecha_operativa=? AND turno=?");
             $insert=$this->db->prepare("INSERT dbo.efc_conc_praxedis_cortes(estacion_id,fecha_operativa,turno,efectivo,dollar,estado) OUTPUT INSERTED.id VALUES(40,?,?,?,?,'Cerrado')");
             $update=$this->db->prepare("UPDATE dbo.efc_conc_praxedis_cortes SET efectivo=?,dollar=?,actualizado_en=SYSDATETIME() WHERE id=?");

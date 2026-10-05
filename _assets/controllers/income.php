@@ -6913,7 +6913,7 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
-    /** POST /income/efc_conc_praxedis_importar multipart image, rows, ocr_text */
+    /** POST /income/efc_conc_praxedis_importar multipart image + reviewed rows; only its hash is retained. */
     public function efc_conc_praxedis_importar(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8'); header('Cache-Control: no-store, no-cache, must-revalidate');
         try {
@@ -6923,11 +6923,11 @@ public function stamped_invoices_detail(): void
             if(!class_exists('finfo')) throw new RuntimeException('No se pudo validar el tipo de imagen.');
             $finfo=new finfo(FILEINFO_MIME_TYPE); $mime=(string)$finfo->file((string)$file['tmp_name']);
             if(!in_array($mime,['image/png','image/jpeg'],true)) throw new RuntimeException('Sólo se admiten imágenes PNG o JPEG.');
-            $image=file_get_contents((string)$file['tmp_name']); if($image===false || strlen($image)!==$size) throw new RuntimeException('No se pudo leer la imagen subida.');
+            $sha256=hash_file('sha256',(string)$file['tmp_name']); if(!is_string($sha256) || !preg_match('/^[a-f0-9]{64}$/',$sha256)) throw new RuntimeException('No se pudo calcular la huella de la captura.');
             $decoded=json_decode((string)($_POST['rows']??''),true,512,JSON_THROW_ON_ERROR);
             if(!is_array($decoded) || !array_is_list($decoded)) throw new RuntimeException('La lista de turnos revisados no es válida.');
             $userName=strtoupper(trim((string)($_SESSION['tg_user']['Usuario']??$_SESSION['tg_user']['usuario']??'')));
-            $result=$this->efcConciliacion->importarPraxedis(hash('sha256',$image),$mime,$image,(string)($_POST['ocr_text']??''),$decoded,(int)($_SESSION['tg_user']['Id']??0),$userName);
+            $result=$this->efcConciliacion->importarPraxedis($sha256,$mime,$decoded,(int)($_SESSION['tg_user']['Id']??0),$userName);
             echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         } catch(Throwable $e){
             http_response_code(422);
