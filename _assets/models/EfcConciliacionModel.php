@@ -624,7 +624,19 @@ class EfcConciliacionModel {
         if($q->rowCount()) $this->log($groupId,null,'TRANSITO_CONCILIADO',json_encode(['transito_id'=>(int)$match[1]]),$userId);
     }
     private function transitGroupIds(int $transitId,string $sourceKey): array { $q=$this->db->prepare("SELECT DISTINCT G.id FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa IN (?,?) AND P.activo=1 AND G.estado='ACTIVA'"); $q->execute([$sourceKey,'TR:'.$transitId]); return array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN)); }
-    private function cancelGroup(int $groupId,int $userId): void { $this->db->prepare("UPDATE dbo.efc_conc_grupos SET estado='CANCELADA',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='ACTIVA'")->execute([$userId,$groupId]); $this->db->prepare("UPDATE dbo.efc_conc_partidas SET activo=0 WHERE grupo_id=?")->execute([$groupId]); $this->log($groupId,null,'DESHACER',null,$userId); }
+    private function cancelGroup(int $groupId,int $userId): void {
+        $transits=$this->db->prepare("SELECT T.id,T.descripcion FROM dbo.efc_conc_transitos T JOIN dbo.efc_conc_partidas P ON P.origen='CG' AND P.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id) AND P.grupo_id=? AND P.activo=1 WHERE T.estado='CONCILIADO'");
+        $transits->execute([$groupId]);
+        foreach($transits->fetchAll(PDO::FETCH_ASSOC) as $transit) {
+            $automatic=(string)($transit['descripcion']??'')==='Transito automatico por deposito bancario del mes siguiente';
+            $state=$automatic?'CANCELADO':'PENDIENTE';
+            $this->db->prepare("UPDATE dbo.efc_conc_transitos SET estado=?,cancelado_por=CASE WHEN ?='CANCELADO' THEN ? ELSE NULL END,cancelado_en=CASE WHEN ?='CANCELADO' THEN GETDATE() ELSE NULL END WHERE id=? AND estado='CONCILIADO'")->execute([$state,$state,$userId,$state,(int)$transit['id']]);
+            $this->log($groupId,null,$automatic?'TRANSITO_AUTOMATICO_CANCELADO':'TRANSITO_REABIERTO',json_encode(['transito_id'=>(int)$transit['id']]),$userId);
+        }
+        $this->db->prepare("UPDATE dbo.efc_conc_grupos SET estado='CANCELADA',cancelado_por=?,cancelado_en=GETDATE() WHERE id=? AND estado='ACTIVA'")->execute([$userId,$groupId]);
+        $this->db->prepare("UPDATE dbo.efc_conc_partidas SET activo=0 WHERE grupo_id=?")->execute([$groupId]);
+        $this->log($groupId,null,'DESHACER',null,$userId);
+    }
     private function reportTurnKey(string $date, string $turn, string $concept): string { preg_match('/\d+/', $turn, $match); return $date.'|'.($match[0] ?? trim($turn)).'|'.strtoupper(trim($concept)); }
     private function normaliseRemittance($value): string { $text=(string)$value; return preg_match('/^\d+\.0$/',$text) ? substr($text,0,-2) : $text; }
     private function reportDate($value): ?string {

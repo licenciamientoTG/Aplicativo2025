@@ -120,6 +120,7 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       BEGIN TRANSACTION;
       DECLARE @cg TABLE(clave_externa VARCHAR(180),fecha DATE,turno VARCHAR(20),concepto VARCHAR(20),importe DECIMAL(18,2));
       INSERT @cg SELECT item.value('@id','VARCHAR(180)'),item.value('@date','DATE'),item.value('@turn','VARCHAR(20)'),item.value('@currency','VARCHAR(20)'),item.value('@amount','DECIMAL(18,2)') FROM @cg_xml.nodes('/turns/turn') AS turns(item);
+      DECLARE @transitos TABLE(clave_externa VARCHAR(180),transito_id INT);
       IF NOT EXISTS(SELECT 1 FROM @cg) THROW 50006,'No hay turnos GASOMEX para conciliar.',1;
       DECLARE @concepto VARCHAR(20)=CASE WHEN EXISTS(SELECT 1 FROM @cg WHERE concepto='USD') THEN 'USD' ELSE 'MN' END,
               @importe_cg DECIMAL(18,2)=(SELECT ROUND(SUM(importe),2) FROM @cg),
@@ -127,25 +128,54 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       IF EXISTS(SELECT 1 FROM @cg WHERE concepto NOT IN ('MN','MORRALLA','USD'))
          OR (@concepto='USD' AND EXISTS(SELECT 1 FROM @cg WHERE concepto<>'USD'))
         THROW 50008,'Conceptos GASOMEX mezclados en un lote.',1;
+      IF @estacion_id=40 AND (
+        EXISTS(SELECT 1 FROM @cg WHERE concepto<>'MN' OR clave_externa NOT LIKE 'cg-40-%-MN')
+        OR EXISTS(SELECT 1 FROM @cg WHERE DATEDIFF(MONTH,fecha,@fecha_banco) NOT IN (0,1))
+        OR NOT EXISTS(SELECT 1 FROM TG.dbo.movimientos_bancarios M
+          WHERE M.id=@movimiento_bancario_id AND M.abono>0
+            AND RIGHT(REPLACE(REPLACE(REPLACE(ISNULL(M.cuenta,''),'-',''),' ',''),'.',''),11)='60630878973'
+            AND NULLIF(LTRIM(RTRIM(ISNULL(M.concepto,''))),'') IS NULL
+            AND (UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%'
+              OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%'))
+        OR EXISTS(SELECT 1 FROM @cg C LEFT JOIN TG.dbo.efc_conc_praxedis_cortes X
+          ON X.estacion_id=40 AND X.fecha_operativa=C.fecha AND CONVERT(VARCHAR(20),X.turno)=C.turno
+          WHERE X.id IS NULL OR C.clave_externa<>'cg-40-'+CONVERT(CHAR(10),C.fecha,23)+'-'+C.turno+'-MN'
+            OR ROUND(X.efectivo,2)<>C.importe)
+      ) THROW 50009,'El lote Praxedis debe usar turnos vigentes y un depósito elegible de la cuenta 8973.',1;
       IF ABS(@importe_banco-@importe_cg)>=1.00 THROW 50007,'La combinación GASOMEX no coincide con el depósito en menos de un peso.',1;
-      IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha,23) AND concepto=@concepto AND estado='CERRADO')
+      DECLARE @cruza_mes BIT=CASE WHEN @estacion_id=40 AND EXISTS(SELECT 1 FROM @cg WHERE CONVERT(CHAR(7),fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23)) THEN 1 ELSE 0 END,
+              @fecha_operativa DATE=CASE WHEN @estacion_id=40 AND EXISTS(SELECT 1 FROM @cg WHERE CONVERT(CHAR(7),fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23)) THEN DATEFROMPARTS(YEAR(@fecha_banco),MONTH(@fecha_banco),1) ELSE @fecha END;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND estado='CERRADO')
         THROW 50001,'Periodo cerrado.',1;
-      IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha,23) AND concepto=@concepto AND etapa='BANCO' AND estado='CERRADO')
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND etapa='BANCO' AND estado='CERRADO')
         THROW 50005,'Etapa bancaria cerrada.',1;
+      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_cierres C WITH(UPDLOCK,HOLDLOCK) JOIN @cg X ON C.mes=CONVERT(CHAR(7),X.fecha,23) WHERE C.estacion_id=40 AND C.concepto='MN' AND C.estado='CERRADO')
+        THROW 50011,'El mes de origen Praxedis esta cerrado; no se puede crear el transito automaticamente.',1;
+      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa WHERE T.estacion_id=40 AND T.estado IN ('PENDIENTE','CONCILIADO'))
+        THROW 50010,'Uno de los turnos Praxedis ya tiene un tránsito registrado.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa WHERE T.estacion_id=@estacion_id AND T.estado='PENDIENTE')
         THROW 50002,'Turno en transito pendiente.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id JOIN @cg C ON C.clave_externa=P.clave_externa WHERE P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA')
         THROW 50003,'Turno ya conciliado.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.movimiento_bancario_id=@movimiento_bancario_id AND P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA')
         THROW 50004,'Deposito ya conciliado.',1;
+      IF @cruza_mes=1
+      BEGIN
+        INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
+          OUTPUT inserted.clave_externa,inserted.id INTO @transitos
+          SELECT 40,C.clave_externa,C.fecha,CONVERT(CHAR(7),C.fecha,23),CONVERT(CHAR(7),@fecha_banco,23),C.turno,'MN',C.importe,'CONCILIADO','Transito automatico por deposito bancario del mes siguiente',NULL
+          FROM @cg C WHERE CONVERT(CHAR(7),C.fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23);
+      END;
       DECLARE @grupo TABLE(id INT); INSERT dbo.efc_conc_grupos(estacion_id,fecha_operativa,turno,concepto,tipo,total_controlgas,total_banorte,diferencia,creado_por)
-        OUTPUT inserted.id INTO @grupo VALUES(@estacion_id,@fecha,@turno,@concepto,'AUTOMATICA',@importe_cg,@importe_banco,@importe_banco-@importe_cg,NULL);
+        OUTPUT inserted.id INTO @grupo VALUES(@estacion_id,@fecha_operativa,@turno,@concepto,'AUTOMATICA',@importe_cg,@importe_banco,@importe_banco-@importe_cg,NULL);
       DECLARE @id INT=(SELECT id FROM @grupo);
       INSERT dbo.efc_conc_partidas(grupo_id,origen,clave_externa,movimiento_bancario_id,fecha_operacion,turno,concepto,importe,referencia,estacion_id)
-        SELECT @id,'CG',clave_externa,NULL,fecha,turno,concepto,importe,NULL,@estacion_id FROM @cg;
+        SELECT @id,'CG',CASE WHEN T.transito_id IS NULL THEN C.clave_externa ELSE 'TR:'+CONVERT(VARCHAR(20),T.transito_id) END,NULL,
+          CASE WHEN T.transito_id IS NULL THEN C.fecha ELSE @fecha_operativa END,C.turno,C.concepto,C.importe,NULL,@estacion_id
+        FROM @cg C LEFT JOIN @transitos T ON T.clave_externa=C.clave_externa;
       INSERT dbo.efc_conc_partidas(grupo_id,origen,clave_externa,movimiento_bancario_id,fecha_operacion,turno,concepto,importe,referencia,estacion_id)
         VALUES(@id,'BANCO','mb_'+CONVERT(VARCHAR(20),@movimiento_bancario_id),@movimiento_bancario_id,@fecha_banco,NULL,NULL,@importe_banco,@referencia,@estacion_id);
-      INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id));
+      INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id,CASE WHEN @cruza_mes=1 THEN '; transito(s) automatico(s) creado(s)' ELSE '' END));
       COMMIT;
     END""")
 
@@ -262,10 +292,15 @@ def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = N
     end_base = first if last is None else last
     params = [first, end_base, *[value for suffix in ACCOUNT_SUFFIXES for value in (suffix, suffix)]]
     return cursor.execute("""SELECT M.id,CONVERT(CHAR(10),M.fecha,23),M.abono,COALESCE(M.referencia,''),
-      COALESCE(M.descripcion_larga,M.descripcion,''),C.estacion_id,M.cuenta FROM TG.dbo.movimientos_bancarios M
+      CONCAT(ISNULL(M.descripcion_larga,''),' ',ISNULL(M.descripcion,'')),C.estacion_id,M.cuenta,
+      COALESCE(M.concepto,''),COALESCE(M.descripcion,'') FROM TG.dbo.movimientos_bancarios M
       LEFT JOIN dbo.efc_conc_correcciones_banco C ON C.movimiento_bancario_id=M.id
       WHERE M.abono>0 AND M.fecha>=? AND M.fecha<DATEADD(day,8,?)
-        AND (UPPER(COALESCE(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(COALESCE(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%')
+        AND ((UPPER(COALESCE(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(COALESCE(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%')
+          OR (RIGHT(UPPER(REPLACE(REPLACE(REPLACE(ISNULL(M.cuenta,''),'-',''),' ',''),'.','')),11)='60630878973'
+            AND NULLIF(LTRIM(RTRIM(ISNULL(M.concepto,''))),'') IS NULL
+            AND (UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%'
+              OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%')))
         AND (""" + account_where + ")", *params).fetchall()
 
 
@@ -526,6 +561,60 @@ def gasomex_candidates(bank: tuple, slots: dict[str, dict], used_keys: set[str],
     return found
 
 
+def praxedis_bank_matches(bank: tuple) -> bool:
+    """Praxedis deposits are identified by account, blank concept and bank legend."""
+    account = re.sub(r"\D", "", str(bank[6] or ""))
+    concept = str(bank[7] or "").strip()
+    description = f"{bank[8] or ''} {bank[4] or ''}".upper()
+    return account.endswith("60630878973") and not concept and "DEP EN EFECTIV" in description
+
+
+def praxedis_slots(cut_rows: list[dict], active_keys: set[str]) -> dict[tuple[date, str], dict]:
+    """Build chronological cash-only slots from Praxedis' imported cuts."""
+    slots: dict[tuple[date, str], dict] = {}
+    for row in cut_rows:
+        day = as_date(row.get("Fecha"))
+        turn = turn_key(row.get("Turno"))
+        if turn not in {"1", "2", "3", "4"}:
+            continue
+        key = (day, turn)
+        slot = slots.setdefault(key, {"items": [], "blocked": False})
+        if slot["items"] or slot.get("seen"):
+            slot["blocked"] = True
+        slot["seen"] = True
+        source_key = f"cg-40-{day.isoformat()}-{turn}-MN"
+        cash = amount(row.get("MN"))
+        if cash > 0:
+            if source_key in active_keys:
+                slot["blocked"] = True
+            else:
+                slot["items"].append({"key": source_key, "date": day, "turn": turn, "concept": "MN", "amount": cash})
+    return slots
+
+
+def praxedis_candidates(bank: tuple, slots: dict[tuple[date, str], dict], used_keys: set[str]) -> list[dict]:
+    """Find unique 3–9 consecutive shift lots, following GASOMEX boundaries."""
+    found: list[dict] = []
+    bank_date = as_date(bank[1])
+    bank_amount = amount(bank[2])
+    for start_day, start_turn in sorted(slots):
+        if start_turn not in {"2", "3"}:
+            continue
+        day, turn = start_day, start_turn
+        items: list[dict] = []
+        total = 0.0
+        for length in range(1, 10):
+            slot = slots.get((day, turn))
+            if not slot or slot["blocked"] or any(item["key"] in used_keys for item in slot["items"]):
+                break
+            items.extend(slot["items"])
+            total = round(total + sum(item["amount"] for item in slot["items"]), 2)
+            if length >= 3 and turn in {"1", "2"} and items and bank_date >= day and abs(bank_amount-total) < TOLERANCE:
+                found.append({"anchor": start_day, "last_date": day, "items": items.copy(), "amount": total, "shifts": length})
+            day, turn = gasomex_next_turn(day, turn)
+    return found
+
+
 def run() -> int:
     log("Inicio de ejecución; cargando configuración.")
     load_env_file()
@@ -588,11 +677,65 @@ def run() -> int:
                 # Nine shifts can span parts of three operational days across
                 # a month boundary. Extra days contain only candidate shifts;
                 # the bank's actual date still determines eligibility.
-                controlgas_first = first - timedelta(days=3) if int(station_id) in GASOMEX_STATIONS else first
-                controlgas_last = last + timedelta(days=2) if int(station_id) in GASOMEX_STATIONS else last
+                is_praxedis = int(station_id) == 40
+                praxedis_first = min(first, (current_month_first - timedelta(days=1)).replace(day=1)) if is_praxedis else first
+                controlgas_first = first - timedelta(days=3) if int(station_id) in GASOMEX_STATIONS else praxedis_first - timedelta(days=3) if is_praxedis else first
+                controlgas_last = last + timedelta(days=2) if int(station_id) in GASOMEX_STATIONS or is_praxedis else last
                 turn_rows = fetch_station_turns(cursor, int(station_id), controlgas_first, controlgas_last)
                 source_name = "cortes Praxedis" if int(station_id) == 40 else "ControlGas"
                 log(f"Estación {station_id}: {source_name} devolvió {len(turn_rows)} registros.")
+                if is_praxedis:
+                    # Praxedis may be imported/reconciled after month end. Keep
+                    # the previous month in scope on every run without widening
+                    # other stations' routine processing window.
+                    praxedis_bank_rows_all = matching_bank_rows(cursor, praxedis_first, last)
+                    active_cg_keys = {
+                        str(row[0]) for row in cursor.execute("""SELECT P.clave_externa
+                            FROM dbo.efc_conc_partidas P
+                            JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id
+                            WHERE P.estacion_id=40 AND P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA'""").fetchall()
+                    }
+                    transit_keys = {
+                        str(row[0]) for row in cursor.execute("""SELECT clave_externa
+                            FROM dbo.efc_conc_transitos WHERE estacion_id=40 AND estado IN ('PENDIENTE','CONCILIADO')""").fetchall()
+                    }
+                    active_cg_keys.update(transit_keys)
+                    slots = praxedis_slots(turn_rows, active_cg_keys)
+                    praxedis_bank_rows = [
+                        bank for bank in praxedis_bank_rows_all
+                        if int(bank[0]) not in used and praxedis_bank_matches(bank)
+                        and bank[5] in (None, 40)
+                    ]
+                    reserved_keys: set[str] = set(active_cg_keys)
+                    log(f"Praxedis: turnos importados={len(slots)}, turnos bloqueados por conciliación/tránsito={len(active_cg_keys)}, depósitos elegibles (8973, concepto vacío, DEP EN EFECTIV)={len(praxedis_bank_rows)}.")
+                    no_sequence = ambiguous = 0
+                    for bank in sorted(praxedis_bank_rows, key=lambda item: (as_date(item[1]), int(item[0]))):
+                        candidates = praxedis_candidates(bank, slots, reserved_keys)
+                        if len(candidates) != 1:
+                            if candidates:
+                                ambiguous += 1
+                                log(f"Praxedis depósito ambiguo: banco={bank[0]}, importe={amount(bank[2]):.2f}, secuencias={len(candidates)}; revisión manual.")
+                            else:
+                                no_sequence += 1
+                            continue
+                        lot = candidates[0]
+                        picked = lot["items"]
+                        cg_total = lot["amount"]
+                        payload = "<turns>" + "".join(
+                            f'<turn id="{escape(item["key"])}" date="{item["date"].isoformat()}" turn="{escape(item["turn"])}" currency="MN" amount="{item["amount"]:.2f}" />'
+                            for item in picked
+                        ) + "</turns>"
+                        log(f"Praxedis candidato: banco={bank[0]}, lote={lot['anchor']}, fecha_banco={bank[1]}, importe_banco={amount(bank[2]):.2f}, importe_turnos={cg_total:.2f}, turnos={lot['shifts']}.")
+                        try:
+                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?", 40, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
+                            conn.commit(); used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
+                            log(f"Conciliado lote Praxedis: fecha={lot['anchor']}, turnos={lot['shifts']}, banco={bank[0]}.")
+                        except pyodbc.Error as exc:
+                            conn.rollback(); errors += 1
+                            log(f"Error DB conciliando Praxedis, banco={bank[0]}: {error_text(exc)}")
+                            details.append(f"PRAXEDIS/40/banco/{bank[0]}: {exc}")
+                    log(f"Praxedis: depósitos sin lote={no_sequence}, ambiguos={ambiguous}.")
+                    continue
                 if int(station_id) in GASOMEX_STATIONS:
                     active_cg_keys = {
                         str(row[0]) for row in cursor.execute("""SELECT P.clave_externa

@@ -7224,9 +7224,13 @@ public function stamped_invoices_detail(): void
                    -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
                    AND (
                        UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+                       OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%'
                        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EFECTIVO%'
+                       OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EFECTIVO%'
                        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%'
+                       OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%'
                        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO VTAS%'
+                       OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO VTAS%'
                    )
                    AND ($accountWhere)
                  ORDER BY M.fecha, M.id"
@@ -7286,7 +7290,21 @@ public function stamped_invoices_detail(): void
                     }
                 }
                 $estacionPorTexto = count($candidatasTexto) === 1 ? reset($candidatasTexto) : null;
-                $estacionOriginal = $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta;
+                $cuentaDigitos = preg_replace('/\D+/', '', (string)($mov['cuenta'] ?? ''));
+                $conceptoVacio = trim((string)($mov['concepto'] ?? '')) === '';
+                $descripcionPraxedis = stripos((string)($mov['descripcion'] ?? ''), 'DEP EN EFECTIV') !== false
+                    || stripos((string)($mov['descripcion_larga'] ?? ''), 'DEP EN EFECTIV') !== false;
+                $firmaPraxedis = str_ends_with($cuentaDigitos, '60630878973') && $conceptoVacio && $descripcionPraxedis;
+                $estacionPraxedis = null;
+                if ($firmaPraxedis) {
+                    foreach ($catalogoPorNombre as $candidata) {
+                        if ((int)$candidata['station_id'] === 40) {
+                            $estacionPraxedis = ['station_id'=>40, 'station'=>$candidata['station']];
+                            break;
+                        }
+                    }
+                }
+                $estacionOriginal = $estacionPraxedis ?? $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta;
                 $estatus = $estacionOriginal ? 'IDENTIFICADA'
                     : (count($codigos) > 1 || count($candidatasTexto) > 1 || count($candidatasCuenta) > 1 ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
                 $corregida = isset($correcciones[(int)$mov['id']]);
