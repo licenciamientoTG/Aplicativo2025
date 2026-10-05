@@ -38,6 +38,10 @@ let colsActivas = prefsGuardadas.cols || 3;
 let proveedorFiltroActivo = prefsGuardadas.proveedorFiltro || null;
 let ocultarVaciasEstacion = prefsGuardadas.ocultarVaciasEstacion || false;
 let ocultarVaciosTerminal = prefsGuardadas.ocultarVaciosTerminal || false;
+// Filtro por turno: no se persiste -- se reinicia a "Todos" al recargar.
+let turnoFiltroActivo = '';
+// Búsqueda por nombre de estación: tampoco se persiste.
+let busquedaEstacion = '';
 
 // Las 16 combinaciones Proveedor→Terminal reales del programa mensual
 // (confirmadas contra los Excel de julio y septiembre 2026 -- mismo
@@ -182,6 +186,7 @@ function botonesAccion(id, invoiceId, estatus) {
         <div class="btn-group btn-group-sm" role="group">
             <button type="button" class="btn ${colorRecibido} btn-toggle-recibido btn-accion-icono" data-id="${id}" title="${recibida ? 'Marcada como recibida (clic para desmarcar)' : 'Marcar como recibida'}"><i data-feather="check-circle"></i></button>
             <button type="button" class="btn btn-outline-success btn-editar-recepcion btn-accion-icono" data-id="${id}" title="Editar"><i data-feather="edit-3"></i></button>
+            <button type="button" class="btn btn-outline-primary btn-duplicar-recepcion btn-accion-icono" data-id="${id}" title="Duplicar esta línea en el mismo día"><i data-feather="copy"></i></button>
             <button type="button" class="btn ${colorFactura} btn-factura-recepcion btn-accion-icono" data-id="${id}" title="${invoiceId ? 'Ver factura' : 'Subir factura'}"><i data-feather="paperclip"></i></button>
             <button type="button" class="btn btn-outline-danger btn-cancelar-recepcion btn-accion-icono" data-id="${id}" title="Cancelar"><i data-feather="trash-2"></i></button>
         </div>
@@ -333,8 +338,13 @@ function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, peso
 }
 
 function filasFiltradas() {
-    if (!proveedorFiltroActivo) return ultimasFilas;
-    return ultimasFilas.filter(function (f) { return String(f.supplier_id) === String(proveedorFiltroActivo); });
+    return ultimasFilas.filter(function (f) {
+        if (proveedorFiltroActivo && String(f.supplier_id) !== String(proveedorFiltroActivo)) return false;
+        // Turno (T1/T2/T3) vive en la columna hora; las filas capturadas con
+        // horario real no tienen turno y quedan fuera al elegir uno.
+        if (turnoFiltroActivo && String(f.hora || '').toUpperCase() !== turnoFiltroActivo) return false;
+        return true;
+    });
 }
 
 function renderBotonesProveedor() {
@@ -435,6 +445,15 @@ function renderPorTerminal(filas) {
         });
 }
 
+// Buscador de estación (solo en "Agrupado por Estación"). Ignora mayúsculas y
+// acentos: "aeronautica" encuentra "16 Aeronáutica".
+function normalizarTexto(t) {
+    return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+function coincideBusquedaEstacion(nombre) {
+    return !busquedaEstacion || normalizarTexto(nombre).includes(normalizarTexto(busquedaEstacion));
+}
+
 function renderPorEstacion(filas) {
     const contenedor = $('#contenedorGrupos');
     contenedor.empty();
@@ -452,11 +471,14 @@ function renderPorEstacion(filas) {
     });
 
     const nombres = Object.keys(grupos).filter(function (nombre) {
+        if (!coincideBusquedaEstacion(nombre)) return false;
         return !ocultarVacias || grupos[nombre].filas.length > 0;
     }).sort();
 
     if (!nombres.length) {
-        contenedor.html('<p class="text-muted text-center">Sin recepciones programadas para este día.</p>');
+        contenedor.html(busquedaEstacion
+            ? '<p class="text-muted text-center">Ninguna estación coincide con "' + esc(busquedaEstacion) + '".</p>'
+            : '<p class="text-muted text-center">Sin recepciones programadas para este día.</p>');
         return;
     }
 
@@ -481,7 +503,9 @@ function renderPorEstacion(filas) {
 function filasParaExportar() {
     const filas = filasFiltradas();
     if (agrupacionActiva === 'estacion') {
-        return filas.map(function (f) {
+        return filas.filter(function (f) {
+            return coincideBusquedaEstacion(f.station_nombre || 'Sin estación');
+        }).map(function (f) {
             return Object.assign({}, f, { grupo: f.station_nombre || 'Sin estación' });
         });
     }
@@ -530,9 +554,80 @@ function actualizarTotalDia(filas) {
     $('#totalLitrosDia').text(total.toLocaleString('es-MX'));
 }
 
+// Resumen colapsable por proveedor (arriba de los tabs): litros, número de
+// entregas, recibidas y desglose por producto. Usa las mismas filas que la
+// vista (respeta los filtros de proveedor y turno, igual que el total del día).
+function renderResumenProveedores(filas) {
+    const contenedor = $('#resumenProveedoresContenido');
+    if (!contenedor.length) return;
+
+    const porProveedor = {};
+    filas.forEach(function (f) {
+        const id = String(f.supplier_id);
+        if (!porProveedor[id]) porProveedor[id] = { litros: 0, entregas: 0, recibidas: 0, productos: {}, nombre: f.supplier_nombre };
+        const p = porProveedor[id];
+        const litros = Number(f.litros) || 0;
+        p.litros += litros;
+        p.entregas += 1;
+        if (f.estatus === 'Recibido') p.recibidas += 1;
+        const prod = f.product || 'Otro';
+        if (!p.productos[prod]) p.productos[prod] = { litros: 0, entregas: 0 };
+        p.productos[prod].litros += litros;
+        p.productos[prod].entregas += 1;
+    });
+
+    const fmt = function (n) { return Number(n).toLocaleString('es-MX'); };
+    const ordenProductos = ['Regular', 'Premium', 'Diesel', 'Mixta', 'Otro'];
+
+    function tarjeta(nombre, color, p) {
+        const productos = ordenProductos.filter(function (k) { return p.productos[k]; }).map(function (k) {
+            return `<div class="resumen-prov-prod">${badgeProducto(k)}<span>${fmt(p.productos[k].litros)} L · ${p.productos[k].entregas}</span></div>`;
+        }).join('');
+        return `
+            <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+                <div class="resumen-prov-card" style="border-left-color:${color};">
+                    <div class="resumen-prov-nombre" style="color:${color};">${esc(nombre)}</div>
+                    <div class="resumen-prov-litros">${fmt(p.litros)} L</div>
+                    <div class="resumen-prov-sub mb-1">${p.entregas} entrega${p.entregas === 1 ? '' : 's'} · ${p.recibidas} recibida${p.recibidas === 1 ? '' : 's'}</div>
+                    ${productos}
+                </div>
+            </div>`;
+    }
+
+    // Mismo orden que los botones de filtro; cualquier proveedor fuera de la
+    // lista fija (no debería pasar) se agrega al final con su nombre de BD.
+    const ids = PROVEEDORES_FILTRO.map(function (p) { return String(p.id); })
+        .filter(function (id) { return porProveedor[id]; });
+    Object.keys(porProveedor).forEach(function (id) { if (ids.indexOf(id) === -1) ids.push(id); });
+
+    if (!ids.length) {
+        contenedor.html('<div class="col-12 text-muted small">Sin recepciones programadas con los filtros actuales.</div>');
+        return;
+    }
+
+    const total = { litros: 0, entregas: 0, recibidas: 0, productos: {} };
+    let html = '';
+    ids.forEach(function (id) {
+        const p = porProveedor[id];
+        const conf = PROVEEDORES_FILTRO.find(function (x) { return String(x.id) === id; });
+        const nombre = conf ? conf.nombreCorto : (p.nombre || 'Proveedor ' + id);
+        html += tarjeta(nombre, colorProveedor(nombre), p);
+        total.litros += p.litros;
+        total.entregas += p.entregas;
+        total.recibidas += p.recibidas;
+        Object.keys(p.productos).forEach(function (k) {
+            if (!total.productos[k]) total.productos[k] = { litros: 0, entregas: 0 };
+            total.productos[k].litros += p.productos[k].litros;
+            total.productos[k].entregas += p.productos[k].entregas;
+        });
+    });
+    contenedor.html(tarjeta('Total del día', '#1e293b', total) + html);
+}
+
 function renderizarTodo() {
     const filas = filasFiltradas();
     actualizarTotalDia(filas);
+    renderResumenProveedores(filas);
     if (agrupacionActiva === 'estacion') {
         renderPorEstacion(filas);
     } else {
@@ -639,6 +734,7 @@ $(document).ready(function () {
     }
     $('#btnOcultarVacias').toggle(agrupacionActiva === 'estacion');
     $('#btnOcultarVaciosTerminal').toggle(agrupacionActiva === 'terminal');
+    $('#barraBuscarEstacion').toggle(agrupacionActiva === 'estacion');
     if (ocultarVaciasEstacion) {
         $('#btnOcultarVacias').addClass('active')
             .attr('title', 'Mostrar estaciones sin recepción programada')
@@ -666,6 +762,7 @@ $(document).ready(function () {
         $(this).addClass('active');
         $('#btnOcultarVacias').toggle(agrupacionActiva === 'estacion');
         $('#btnOcultarVaciosTerminal').toggle(agrupacionActiva === 'terminal');
+        $('#barraBuscarEstacion').toggle(agrupacionActiva === 'estacion');
         guardarPreferenciasScheduling({ agrupacion: agrupacionActiva });
         renderizarTodo();
     });
@@ -687,6 +784,16 @@ $(document).ready(function () {
         if (window.feather) feather.replace();
         ocultarVaciosTerminal = activo;
         guardarPreferenciasScheduling({ ocultarVaciosTerminal: activo });
+        renderizarTodo();
+    });
+
+    $('#buscarEstacion').on('input', function () {
+        busquedaEstacion = $(this).val() || '';
+        if (agrupacionActiva === 'estacion') renderizarTodo();
+    });
+
+    $('#filtroTurno').on('change', function () {
+        turnoFiltroActivo = $(this).val() || '';
         renderizarTodo();
     });
 
@@ -783,11 +890,17 @@ $(document).ready(function () {
                 bootstrap.Modal.getInstance(document.getElementById('modalFactura')).hide();
                 if (resp.advertencia_rfc) {
                     alertify.myAlert('<div class="text-warning text-center"><p>' + esc(resp.advertencia_rfc) + '</p></div>');
+                } else if (resp.ya_existia) {
+                    alertify.myAlert('<div class="text-center"><p>La factura ya estaba registrada en el sistema; se vinculó a esta recepción sin volver a subirla.</p></div>');
                 }
                 cargarDia($('#fecha_programacion').val());
             })
-            .fail(function () {
-                errorBox.text('No se pudo guardar la factura.').show();
+            .fail(function (xhr) {
+                // Si el servidor mandó JSON con el motivo, mostrarlo; si no,
+                // al menos el código HTTP para no quedar en un error mudo.
+                const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                    || ('No se pudo guardar la factura (error del servidor' + (xhr.status ? ' ' + xhr.status : '') + ').');
+                errorBox.text(msg).show();
             })
             .always(function () {
                 boton.prop('disabled', false);
@@ -948,6 +1061,24 @@ $(document).ready(function () {
             .done(function () { cargarDia(fechaInput.val()); })
             .fail(function () {
                 alertify.myAlert('<div class="text-danger text-center"><p>No se pudo cancelar.</p></div>');
+            });
+    });
+
+    $(document).on('click', '.btn-duplicar-recepcion', function () {
+        const boton = $(this);
+        boton.prop('disabled', true);
+        $.post('/supply/scheduling_duplicate', { id: boton.data('id') })
+            .done(function (resp) {
+                if (!resp.success) {
+                    alertify.myAlert('<div class="text-danger text-center"><p>' + esc(resp.message || 'No se pudo duplicar.') + '</p></div>');
+                    boton.prop('disabled', false);
+                    return;
+                }
+                cargarDia(fechaInput.val());
+            })
+            .fail(function () {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo duplicar.</p></div>');
+                boton.prop('disabled', false);
             });
     });
 

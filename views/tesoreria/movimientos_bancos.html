@@ -1894,6 +1894,8 @@ $(function () {
             Number(data.insertados).toLocaleString('en-US') + '</b><span>importados</span></div>' +
             '<div><b class="' + (data.duplicados > 0 ? '' : 'n-0') + '">' +
             Number(data.duplicados).toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
+            (data.completados > 0 ? '<div><b class="n-ok">' + Number(data.completados).toLocaleString('en-US') +
+              '</b><span>completados</span></div>' : '') +
             '</div>';
 
     // Detalle: cada banco declara lo que puede, se muestra solo lo que hay.
@@ -1976,7 +1978,7 @@ $(function () {
    */
   function subirCola(banco, cuenta, archivos) {
     var filas = $('#uploadCola .mb-cola-item');
-    var totales = { insertados: 0, duplicados: 0 };
+    var totales = { insertados: 0, duplicados: 0, completados: 0 };
     var avisos = [];
     var errores = [];
     var conError = false;
@@ -1998,6 +2000,8 @@ $(function () {
           totales.insertados.toLocaleString('en-US') + '</b><span>importados</span></div>' +
           '<div><b class="' + (totales.duplicados > 0 ? '' : 'n-0') + '">' +
           totales.duplicados.toLocaleString('en-US') + '</b><span>ya existían</span></div>' +
+          (totales.completados > 0 ? '<div><b class="n-ok">' + totales.completados.toLocaleString('en-US') +
+            '</b><span>completados</span></div>' : '') +
           '</div>' +
           bloqueNota('warn', 'triangle-exclamation', 'Avisos', avisos) +
           bloqueNota('error', 'circle-xmark', 'Archivos con error', errores) +
@@ -2024,6 +2028,7 @@ $(function () {
           }
           totales.insertados += data.insertados || 0;
           totales.duplicados += data.duplicados || 0;
+          totales.completados += data.completados || 0;
           (data.avisos || []).forEach(function (a) { avisos.push(archivo.name + ': ' + a); });
           (data.errores || []).forEach(function (e) { avisos.push(archivo.name + ': ' + e); });
           marcarFila(i, data.insertados > 0 ? 'ok' : 'duplicado',

@@ -1755,12 +1755,36 @@ class MovimientosBancariosModel extends Model
         while (($c = fgetcsv($fh, 0, ',')) !== false) $filas[] = $c;
         fclose($fh);
 
-        $enc = array_map(fn($x) => self::limpia(mb_strtoupper((string)$x)), $filas[0] ?? []);
-        if (($enc[0] ?? '') !== 'CUENTA' || !in_array('DEPÓSITOS', $enc, true)
+        // Sin acentos: el portal no siempre los manda igual.
+        $norm = fn($x) => strtr(self::limpia(mb_strtoupper((string)$x)),
+                                ['Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U']);
+        $enc = array_map($norm, $filas[0] ?? []);
+        if (!in_array('CUENTA', $enc, true) || !in_array('DEPOSITOS', $enc, true)
             || !in_array('RETIROS', $enc, true) || !in_array('MOVIMIENTO', $enc, true)) {
             return ['movimientos' => [], 'errores' =>
                 ['El archivo no tiene el layout de Cuentas de Cheques de Banorte'], 'info' => []];
         }
+
+        // Columnas por NOMBRE de encabezado, con la posición clásica de
+        // respaldo. Bug 2026-10-02 (cuenta 0185322470): un export trajo
+        // MOVIMIENTO y DESCRIPCIÓN DETALLADA en orden invertido; leídas por
+        // posición, el folio cayó en descripcion_larga, secuencia quedó NULL,
+        // llave_natural() no pudo cruzar contra el TXT y se duplicaron 175
+        // movimientos.
+        $pos = array_flip($enc);
+        $col = fn(string $nombre, int $default) => $pos[$nombre] ?? $default;
+        $iCuenta  = $col('CUENTA', 0);
+        $iFechaOp = $col('FECHA DE OPERACION', 1);
+        $iFecha   = $col('FECHA', 2);
+        $iRef     = $col('REFERENCIA', 3);
+        $iDesc    = $col('DESCRIPCION', 4);
+        $iCod     = $col('COD. TRANSAC', 5);
+        $iSuc     = $col('SUCURSAL', 6);
+        $iDep     = $col('DEPOSITOS', 7);
+        $iRet     = $col('RETIROS', 8);
+        $iSaldo   = $col('SALDO', 9);
+        $iFolio   = $col('MOVIMIENTO', 10);
+        $iDetalle = $col('DESCRIPCION DETALLADA', 11);
 
         $movimientos = [];
         $errores     = [];
@@ -1776,8 +1800,8 @@ class MovimientosBancariosModel extends Model
             $linea = $n + 2;
             if (count($c) < 12) continue;
 
-            $cuenta = ltrim(self::limpia((string)$c[0]), "'");
-            $fechaRaw = self::limpia((string)$c[2]);
+            $cuenta = ltrim(self::limpia((string)($c[$iCuenta] ?? '')), "'");
+            $fechaRaw = self::limpia((string)($c[$iFecha] ?? ''));
             if ($cuenta === '' && $fechaRaw === '') continue;
 
             if (!preg_match('#^(\d{2})/(\d{2})/(\d{4})$#', $fechaRaw, $mf)
@@ -1790,25 +1814,25 @@ class MovimientosBancariosModel extends Model
             // FECHA DE OPERACIÓN (columna B) puede venir distinta de FECHA
             // (columna C, la de aplicación/liquidación): se guarda aparte en
             // vez de descartarla. Si no valida, no bloquea el movimiento.
-            $fechaOperacionRaw = self::limpia((string)($c[1] ?? ''));
+            $fechaOperacionRaw = self::limpia((string)($c[$iFechaOp] ?? ''));
             $fechaOperacion = null;
             if (preg_match('#^(\d{2})/(\d{2})/(\d{4})$#', $fechaOperacionRaw, $mfo)
                 && checkdate((int)$mfo[2], (int)$mfo[1], (int)$mfo[3])) {
                 $fechaOperacion = "$mfo[3]-$mfo[2]-$mfo[1]";
             }
 
-            $deposito = $importe($c[7] ?? 0);
-            $retiro   = $importe($c[8] ?? 0);
-            $saldo    = $importe($c[9] ?? 0);
-            $desc     = self::limpia((string)($c[4] ?? ''));
+            $deposito = $importe($c[$iDep] ?? 0);
+            $retiro   = $importe($c[$iRet] ?? 0);
+            $saldo    = $importe($c[$iSaldo] ?? 0);
+            $desc     = self::limpia((string)($c[$iDesc] ?? ''));
             if ($deposito == 0.0 && $retiro == 0.0) {
                 $errores[] = "Línea $linea: movimiento sin depósito ni retiro ($desc)";
                 continue;
             }
 
-            $detalle = self::limpia((string)($c[11] ?? ''));
+            $detalle = self::limpia((string)($c[$iDetalle] ?? ''));
             $cp      = self::contraparte_banorte($detalle);
-            $folio   = $dato($c[10] ?? '');
+            $folio   = $dato($c[$iFolio] ?? '');
             $cuentas[$cuenta] = true;
 
             $movimientos[] = [
@@ -1817,13 +1841,13 @@ class MovimientosBancariosModel extends Model
                 'fecha'              => $fecha,
                 'fecha_operacion'    => $fechaOperacion,
                 'hora'               => $cp['hora'] !== '' ? $cp['hora'] : null,
-                'sucursal'           => mb_substr($dato($c[6] ?? ''), 0, 10) ?: null,
-                'clave_trans'        => mb_substr($dato($c[5] ?? ''), 0, 10) ?: null,
+                'sucursal'           => mb_substr($dato($c[$iSuc] ?? ''), 0, 10) ?: null,
+                'clave_trans'        => mb_substr($dato($c[$iCod] ?? ''), 0, 10) ?: null,
                 'descripcion'        => mb_substr($desc, 0, 150),
                 'cargo'              => $retiro   > 0 ? $retiro   : null,
                 'abono'              => $deposito > 0 ? $deposito : null,
                 'saldo'              => $saldo,
-                'referencia'         => mb_substr($dato($c[3] ?? ''), 0, 40),
+                'referencia'         => mb_substr($dato($c[$iRef] ?? ''), 0, 40),
                 'concepto'           => mb_substr($cp['concepto'], 0, 120) ?: null,
                 'banco_contraparte'  => mb_substr($cp['banco'], 0, 60),
                 'cuenta_contraparte' => mb_substr($cp['cuenta'], 0, 30),
@@ -1839,6 +1863,15 @@ class MovimientosBancariosModel extends Model
                 ])),
                 'secuencia'          => is_numeric($folio) ? (int)$folio : null,
             ];
+        }
+
+        // Sin folio no hay llave natural: el mismo movimiento ya subido por el
+        // TXT de Banorte entraría otra vez. Mejor no importar nada.
+        if ($movimientos && !array_filter($movimientos, fn($m) => $m['secuencia'] !== null)) {
+            return ['movimientos' => [], 'errores' => [
+                'Ningún movimiento trae folio numérico en la columna MOVIMIENTO: sin él no se puede '
+                . 'detectar si ya se subió por el TXT y se duplicaría. Revisa el encabezado del archivo.',
+            ], 'info' => []];
         }
 
         $rotas = 0;
@@ -2450,12 +2483,12 @@ class MovimientosBancariosModel extends Model
      */
     public function insert_bulk(array $movimientos, string $archivo, ?int $usuario): array
     {
-        if (empty($movimientos)) return ['insertados' => 0, 'duplicados' => 0];
+        if (empty($movimientos)) return ['insertados' => 0, 'duplicados' => 0, 'completados' => 0];
 
         $fechas = array_column($movimientos, 'fecha');
         $existentes = $this->sql->select(
-            'SELECT huella, banco, cuenta, CONVERT(varchar(10), fecha, 23) AS fecha,
-                    secuencia, cargo, abono, hora, saldo
+            'SELECT id, huella, banco, cuenta, CONVERT(varchar(10), fecha, 23) AS fecha,
+                    secuencia, cargo, abono, hora, saldo, ' . implode(', ', array_diff(self::CAMPOS_COMPLETABLES, ['hora', 'saldo'])) . '
              FROM [TG].[dbo].[movimientos_bancarios] WHERE fecha BETWEEN ? AND ?;',
             [min($fechas), max($fechas)]
         ) ?: [];
@@ -2472,18 +2505,23 @@ class MovimientosBancariosModel extends Model
         // guardar ni los movimientos nuevos legítimos. Normalizar a
         // minúsculas en PHP hace que esta comparación coincida con lo que
         // SQL Server ya considera "igual".
-        $vistas = array_fill_keys(array_map('strtolower', array_column($existentes, 'huella')), true);
+        //
+        // Los valores son el índice de la fila en $existentes (para poder
+        // completarla, ver completa_existente()); -1 = insertado en esta misma
+        // llamada, que no se completa.
+        $vistas = [];
+        foreach ($existentes as $i => $e) $vistas[strtolower($e['huella'])] = $i;
 
         // Llaves naturales de lo ya guardado en el rango, calculadas igual que
         // las de los movimientos entrantes.
         $llaves = [];
-        foreach ($existentes as $e) {
+        foreach ($existentes as $i => $e) {
             $l = self::llave_natural($e['banco'], $e['cuenta'], $e['fecha'],
                                      $e['secuencia'], $e['cargo'], $e['abono'], $e['hora'], $e['saldo']);
-            if ($l !== null) $llaves[$l] = true;
+            if ($l !== null) $llaves[$l] = $i;
         }
 
-        $insertados = $duplicados = 0;
+        $insertados = $duplicados = $completados = 0;
         // cuenta+fecha de Santander/Afirme tocadas en este insert: al terminar
         // se renumera orden_dia solo para esas (ver
         // recalcula_orden_dia_santander / recalcula_orden_dia_afirme).
@@ -2496,12 +2534,14 @@ class MovimientosBancariosModel extends Model
                                              $m['secuencia'] ?? null, $m['cargo'] ?? 0, $m['abono'] ?? 0,
                                              $m['hora'] ?? null, $m['saldo'] ?? null);
                 $huellaCmp = strtolower($m['huella']);
-                if (isset($vistas[$huellaCmp]) || ($llave !== null && isset($llaves[$llave]))) {
+                $previo = $vistas[$huellaCmp] ?? ($llave !== null ? ($llaves[$llave] ?? null) : null);
+                if ($previo !== null) {
                     $duplicados++;
+                    if ($previo >= 0 && $this->completa_existente($existentes[$previo], $m)) $completados++;
                     continue;
                 }
-                $vistas[$huellaCmp] = true;   // dedup también dentro del mismo archivo
-                if ($llave !== null) $llaves[$llave] = true;
+                $vistas[$huellaCmp] = -1;   // dedup también dentro del mismo archivo
+                if ($llave !== null) $llaves[$llave] = -1;
                 $this->sql->insert(
                     'INSERT INTO [TG].[dbo].[movimientos_bancarios]
                      (banco, cuenta, fecha, fecha_operacion, hora, sucursal, clave_trans, descripcion,
@@ -2539,7 +2579,51 @@ class MovimientosBancariosModel extends Model
             $this->sql->rollBack();
             throw $e;
         }
-        return ['insertados' => $insertados, 'duplicados' => $duplicados];
+        return ['insertados' => $insertados, 'duplicados' => $duplicados, 'completados' => $completados];
+    }
+
+    /**
+     * Campos informativos que un segundo archivo del mismo movimiento puede
+     * aportar cuando el primero los dejó vacíos (p. ej. el TXT de Banorte no
+     * trae la contraparte de los depósitos que el CSV sí, o el layout v2 de
+     * Bankaool no trae saldo). Quedan fuera a propósito los que identifican
+     * el movimiento —fecha, importes, descripción, huella, secuencia—: el
+     * match ya dice que son el mismo, y secuencia/orden_dia los usan las
+     * renumeraciones por banco.
+     */
+    private const CAMPOS_COMPLETABLES = [
+        'fecha_operacion', 'hora', 'sucursal', 'clave_trans', 'saldo', 'referencia',
+        'concepto', 'banco_contraparte', 'cuenta_contraparte', 'nombre_contraparte',
+        'rfc_contraparte', 'clave_rastreo', 'descripcion_larga',
+    ];
+
+    /**
+     * Completa la fila ya guardada $e con lo que trae el movimiento entrante
+     * $m, SOLO en los campos que $e tiene vacíos (NULL o ''). Nunca
+     * sobrescribe un dato existente. Actualiza $e por referencia para que un
+     * tercer match en el mismo archivo no repita el UPDATE.
+     *
+     * @return bool true si se completó algún campo
+     */
+    private function completa_existente(array &$e, array $m): bool
+    {
+        $vacio = fn($v) => $v === null || trim((string)$v) === '';
+        $set = [];
+        foreach (self::CAMPOS_COMPLETABLES as $campo) {
+            if ($vacio($e[$campo] ?? null) && !$vacio($m[$campo] ?? null)) {
+                $set[$campo] = $m[$campo];
+            }
+        }
+        if (!$set) return false;
+
+        $this->sql->update(
+            'UPDATE [TG].[dbo].[movimientos_bancarios] SET '
+            . implode(', ', array_map(fn($c) => "$c = ?", array_keys($set)))
+            . ' WHERE id = ?;',
+            [...array_values($set), $e['id']]
+        );
+        $e = array_merge($e, $set);
+        return true;
     }
 
     /**

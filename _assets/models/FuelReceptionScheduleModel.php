@@ -17,7 +17,9 @@ class FuelReceptionScheduleModel extends Model {
             LEFT JOIN TG.dbo.fuel_carriers c ON c.id = s.carrier_id
             LEFT JOIN TG.dbo.Estaciones e ON e.Codigo = s.station_code
             WHERE s.fecha = ? AND s.estatus <> 'Cancelado'
-            ORDER BY p2.den, t.nombre, s.hora
+            -- Desempate dentro de la misma hora: estación, producto e id, para
+            -- que una línea duplicada quede justo debajo de su original.
+            ORDER BY p2.den, t.nombre, s.hora, e.Nombre, s.product, s.id
         ";
         return $this->sql->select($query, [$fecha]) ?: [];
     }
@@ -117,6 +119,25 @@ class FuelReceptionScheduleModel extends Model {
             $data['carrier_id'] ?: null, $data['referencia'] ?? null, $data['notas'] ?? null,
             $userId,
         ]);
+    }
+
+    /**
+     * Copia exacta de una recepción en el mismo día (Abastos la usa cuando
+     * ControlGas registra una descarga doble: duplican la de 30,000 y luego
+     * editan a mano cada una a 15,000). La copia nace como 'Programado' y
+     * sin factura vinculada (una factura solo puede ir a una recepción).
+     */
+    function duplicate(int $id, int $userId): int {
+        $query = "
+            INSERT INTO TG.dbo.fuel_reception_schedule
+                (fecha, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
+                 carrier_id, referencia, notas, estatus, created_by, created_at)
+            SELECT fecha, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
+                   carrier_id, referencia, notas, 'Programado', ?, GETDATE()
+            FROM TG.dbo.fuel_reception_schedule
+            WHERE id = ? AND estatus <> 'Cancelado'
+        ";
+        return (int)$this->sql->insert($query, [$userId, $id]);
     }
 
     function update(int $id, array $data, int $userId): void {

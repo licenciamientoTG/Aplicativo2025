@@ -2898,6 +2898,27 @@ class Supply
         json_output(['success' => true]);
     }
 
+    public function scheduling_duplicate()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        $original = $id > 0 ? $this->fuelReceptionScheduleModel->get_one($id) : null;
+        if (!$original || $original['estatus'] === 'Cancelado') {
+            json_output(['success' => false, 'message' => 'La recepción no existe o está cancelada']);
+            return;
+        }
+        $nuevoId = $this->fuelReceptionScheduleModel->duplicate($id, (int)($_SESSION['tg_user']['Id'] ?? 0));
+        if (!$nuevoId) {
+            json_output(['success' => false, 'message' => 'No se pudo duplicar la recepción']);
+            return;
+        }
+        json_output(['success' => true, 'id' => $nuevoId]);
+    }
+
     public function scheduling_toggle_recibido()
     {
         header('Content-Type: application/json');
@@ -3056,19 +3077,75 @@ class Supply
 
         try {
             $parseado = $this->fuelReceptionInvoiceModel->parseCfdiXml($_FILES['xml']['tmp_name']);
-        } catch (Exception $e) {
-            json_output(['success' => false, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            // Throwable (no solo Exception): un XML con estructura inesperada
+            // puede producir un Error de PHP; antes eso salía como 500 sin
+            // mensaje y el usuario solo veía "No se pudo guardar la factura".
+            error_log('scheduling_upload_invoice parseCfdiXml: ' . $e->getMessage());
+            $msg = $e instanceof Exception ? $e->getMessage() : 'El XML tiene una estructura que no se pudo leer';
+            json_output(['success' => false, 'message' => $msg]);
             return;
         }
 
-        $advertenciaRfc = null;
-        $proveedorPorRfc = $this->fuelReceptionInvoiceModel->resolverProveedorPorRfc($parseado['factura']['EmisorRfc'] ?? '');
+        $fac       = $parseado['factura'];
+        $uuid      = $fac['UUID'];
+        $folioTxt  = trim(($fac['Serie'] ?? '') . ' ' . ($fac['Folio'] ?? '')) ?: $uuid;
+        $stationCode = (int)$recepcion['station_code'];
+        $estacionRecepcion = $this->fuelReceptionInvoiceModel->nombreEstacion($stationCode);
+
+        // 1. La recepción ya tiene una factura vinculada (UQ_fri_schedule)
+        $yaVinculada = $this->fuelReceptionInvoiceModel->facturaDeRecepcion($scheduleId);
+        if ($yaVinculada) {
+            $mismo = strcasecmp($yaVinculada['UUID'], $uuid) === 0;
+            json_output(['success' => false, 'message' => $mismo
+                ? "Esta factura ($folioTxt) ya está subida y vinculada a esta recepción."
+                : 'Esta recepción ya tiene vinculada la factura '
+                    . trim(($yaVinculada['Serie'] ?? '') . ' ' . ($yaVinculada['Folio'] ?? '')) . '. Desvincúlala primero si quieres cambiarla.']);
+            return;
+        }
+
+        // 2. Emisor = proveedor de la recepción
+        $proveedorPorRfc = $this->fuelReceptionInvoiceModel->resolverProveedorPorRfc($fac['EmisorRfc'] ?? '');
         if (!$proveedorPorRfc || (int)$proveedorPorRfc['id'] !== (int)$recepcion['supplier_id']) {
-            $advertenciaRfc = 'El RFC del emisor de la factura no coincide con el proveedor de esta recepción. Se guardó de todas formas.';
+            json_output(['success' => false, 'message' =>
+                'La factura la emite ' . ($fac['EmisorNombre'] ?? '?') . ' (RFC ' . ($fac['EmisorRfc'] ?? '?') . '), '
+                . 'que no es el proveedor de esta recepción.']);
+            return;
+        }
+
+        // 3. Receptor = razón social dueña de la estación
+        $empresa = $this->fuelReceptionInvoiceModel->empresaDeEstacion($stationCode);
+        if ($empresa && strcasecmp(trim($empresa['rfc']), trim($fac['ReceptorRfc'] ?? '')) !== 0) {
+            json_output(['success' => false, 'message' =>
+                'La factura está a nombre de ' . ($fac['ReceptorNombre'] ?? '?') . ' (RFC ' . ($fac['ReceptorRfc'] ?? '?') . '), '
+                . "pero $estacionRecepcion pertenece a " . trim($empresa['nombre']) . ' (RFC ' . trim($empresa['rfc']) . ').']);
+            return;
         }
 
         $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
-        $existente = $this->fuelReceptionInvoiceModel->buscarPorUuid($parseado['factura']['UUID']);
+        $existente = $this->fuelReceptionInvoiceModel->buscarPorUuid($uuid);
+
+        if ($existente) {
+            // 4. Ya registrada y vinculada a OTRA recepción
+            $otra = $this->fuelReceptionInvoiceModel->recepcionVinculada((int)$existente['Id']);
+            if ($otra) {
+                json_output(['success' => false, 'message' =>
+                    "La factura $folioTxt ya está subida y vinculada a otra recepción: "
+                    . date('d/m/Y', strtotime($otra['fecha'])) . ' · ' . ($otra['estacion'] ?? '?')
+                    . ' · ' . $otra['product'] . ' ' . number_format((float)$otra['litros']) . ' L.']);
+                return;
+            }
+            // 5. Ya registrada (llegó por correo) con otra estación resuelta
+            $estacionFactura = (int)($existente['EstacionCodgas'] ?? 0);
+            if ($estacionFactura && $estacionFactura !== $stationCode) {
+                json_output(['success' => false, 'message' =>
+                    "La factura $folioTxt ya está registrada y es de la estación "
+                    . $this->fuelReceptionInvoiceModel->nombreEstacion($estacionFactura)
+                    . ", no de $estacionRecepcion."]);
+                return;
+            }
+        }
+        $advertenciaRfc = null;
 
         // El UUID ya existe en BD, pero su PDF (y/o XML) archivado ya no está
         // en disco -- se borró a mano, se perdió el archivo, etc. En vez de
