@@ -127,6 +127,162 @@ class PaymentTransactionsModel extends Model
             ];
         }
     }
+
+    /**
+     * Elimina físicamente transacciones de pago ya ejecutadas (p. ej. una orden
+     * conciliada por error contra un comprobante ajeno) dejando historial en
+     * PaymentRequestAuditLog: una fila por transacción con el snapshot completo
+     * de la transacción, su lote y su comprobante, más el motivo.
+     *
+     * - Recalcula paid_amount de cada factura con las transacciones restantes.
+     * - Comprobante: si el lote conserva otras transacciones se reasigna a una de
+     *   ellas; si el lote queda vacío se borran el registro del comprobante y el
+     *   lote (el archivo físico se queda en disco y su ruta queda en el historial).
+     * - NO recalcula status de facturas/requisición: update_request_status abre su
+     *   propia transacción, así que el llamador debe correr
+     *   PaymentRequestsModel::recalculate_payment_chain() después del commit,
+     *   con los payment_request_ids devueltos.
+     *
+     * @return array ['success','message','payment_request_ids','total_eliminado','transacciones']
+     */
+    public function delete_transactions_with_audit(array $transaction_ids, string $motivo, int $user_id, ?string $user_name) : array {
+        $transaction_ids = array_values(array_unique(array_filter(array_map('intval', $transaction_ids))));
+        if (empty($transaction_ids)) {
+            return ['success' => false, 'message' => 'No se indicaron transacciones'];
+        }
+
+        $ph = implode(',', array_fill(0, count($transaction_ids), '?'));
+        $rows = $this->sql->select("
+            SELECT
+                pt.*,
+                pri.folio,
+                pri.invoice_number,
+                pri.amount              AS invoice_amount,
+                pri.paid_amount         AS invoice_paid_amount_antes,
+                pr.status               AS request_status,
+                pr.accounting_group_id
+            FROM [TG].[dbo].[payment_transactions] pt
+            INNER JOIN [TG].[dbo].[payment_request_invoices] pri ON pt.invoice_id = pri.id
+            INNER JOIN [TG].[dbo].[payment_requests]         pr  ON pt.payment_request_id = pr.id
+            WHERE pt.id IN ($ph)
+        ", $transaction_ids) ?: [];
+
+        if (count($rows) !== count($transaction_ids)) {
+            return ['success' => false, 'message' => 'Alguna transacción no existe o ya fue eliminada. Recarga la vista.'];
+        }
+
+        $auditModel = new PaymentRequestAuditLogModel();
+
+        $this->sql->beginTransaction();
+        try {
+            $batch_ids   = array_values(array_unique(array_filter(array_column($rows, 'batch_id'))));
+            $batches     = [];
+            $documents   = [];
+            if ($batch_ids) {
+                $bph = implode(',', array_fill(0, count($batch_ids), '?'));
+                foreach ($this->sql->select("SELECT * FROM [TG].[dbo].[payment_batches] WHERE id IN ($bph)", $batch_ids) ?: [] as $b) {
+                    $batches[$b['id']] = $b;
+                }
+            }
+            foreach ($this->sql->select("
+                SELECT * FROM [TG].[dbo].[payment_transaction_documents]
+                WHERE transaction_id IN ($ph)" . ($batch_ids ? " OR batch_id IN (" . implode(',', array_map('intval', $batch_ids)) . ")" : ""),
+                $transaction_ids
+            ) ?: [] as $d) {
+                $documents[$d['id']] = $d;
+            }
+
+            // 1. Historial ANTES de borrar
+            foreach ($rows as $r) {
+                $docs_tx = array_values(array_filter($documents, function ($d) use ($r) {
+                    return (int)$d['transaction_id'] === (int)$r['id']
+                        || ($r['batch_id'] && (int)$d['batch_id'] === (int)$r['batch_id']);
+                }));
+                $snapshot = [
+                    'motivo'         => $motivo,
+                    'folio'          => $r['folio'],
+                    'invoice_number' => $r['invoice_number'],
+                    'amount'         => $r['payment_amount'],
+                    'transaccion'    => $r,
+                    'lote'           => $batches[$r['batch_id']] ?? null,
+                    'comprobantes'   => $docs_tx,
+                ];
+                if (!$auditModel->log_delete_payment($r['payment_request_id'], $r['invoice_id'], $snapshot, $user_id, $user_name, $r['accounting_group_id'])) {
+                    throw new Exception('No se pudo registrar el historial de la transacción ' . $r['id']);
+                }
+            }
+
+            // 2. Comprobantes ligados a las transacciones que se van: reasignar a
+            //    una transacción restante del lote, o borrar si el lote queda vacío
+            foreach ($documents as $d) {
+                if (!in_array((int)$d['transaction_id'], $transaction_ids, true)) {
+                    continue;
+                }
+                $restante = null;
+                if ($d['batch_id']) {
+                    $rs = $this->sql->select("
+                        SELECT TOP 1 id FROM [TG].[dbo].[payment_transactions]
+                        WHERE batch_id = ? AND id NOT IN ($ph)
+                        ORDER BY id ASC",
+                        array_merge([$d['batch_id']], $transaction_ids)
+                    );
+                    $restante = $rs ? (int)$rs[0]['id'] : null;
+                }
+                if ($restante) {
+                    $this->sql->update(
+                        "UPDATE [TG].[dbo].[payment_transaction_documents] SET transaction_id = ? WHERE id = ?",
+                        [$restante, $d['id']]
+                    );
+                } else {
+                    $this->sql->delete("DELETE FROM [TG].[dbo].[payment_transaction_documents] WHERE id = ?", [$d['id']]);
+                }
+            }
+
+            // 3. Borrar transacciones
+            if (!$this->sql->delete("DELETE FROM [TG].[dbo].[payment_transactions] WHERE id IN ($ph)", $transaction_ids)) {
+                throw new Exception('No se pudieron eliminar las transacciones');
+            }
+
+            // 4. Lotes que quedaron vacíos
+            foreach ($batch_ids as $bid) {
+                $this->sql->delete("
+                    DELETE FROM [TG].[dbo].[payment_batches]
+                    WHERE id = ?
+                      AND NOT EXISTS (SELECT 1 FROM [TG].[dbo].[payment_transactions] WHERE batch_id = ?)
+                      AND NOT EXISTS (SELECT 1 FROM [TG].[dbo].[payment_transaction_documents] WHERE batch_id = ?)",
+                    [$bid, $bid, $bid]
+                );
+            }
+
+            // 5. paid_amount de cada factura = dinero real de las transacciones vigentes
+            foreach (array_unique(array_column($rows, 'invoice_id')) as $invoice_id) {
+                $this->sql->update("
+                    UPDATE [TG].[dbo].[payment_request_invoices]
+                    SET paid_amount = (
+                        SELECT ISNULL(SUM(payment_amount), 0)
+                        FROM [TG].[dbo].[payment_transactions]
+                        WHERE invoice_id = ? AND status IN (1, 2)
+                    )
+                    WHERE id = ?",
+                    [$invoice_id, $invoice_id]
+                );
+            }
+
+            $this->sql->commit();
+
+            return [
+                'success'             => true,
+                'message'             => count($rows) . ' transacción(es) eliminada(s)',
+                'payment_request_ids' => array_values(array_unique(array_map('intval', array_column($rows, 'payment_request_id')))),
+                'total_eliminado'     => array_sum(array_map('floatval', array_column($rows, 'payment_amount'))),
+                'transacciones'       => $rows,
+            ];
+        } catch (Exception $e) {
+            $this->sql->rollBack();
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function get_by_account_name($name) : array|false {
         $query = 'SELECT * FROM [TG].[dbo].[CatalogosCuentasBancarias] WHERE Descripcion LIKE ?;';
         $params = ["%$name%"];

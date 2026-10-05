@@ -215,7 +215,7 @@
                         <label>Estación (opcional):</label>
                         <select id="sync_codgas" class="form-control">
                             <option value="0">Todas</option>
-                            {% for f in filas %}
+                            {% for f in filas|filter(f => (f.codgas + 0) not in syncExcluir) %}
                             <option value="{{ f.codgas }}">{{ f.nombre }}</option>
                             {% endfor %}
                         </select>

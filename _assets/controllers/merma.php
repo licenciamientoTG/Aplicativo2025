@@ -147,10 +147,12 @@ class Merma
         $maxHasta  = $ayerStr;
 
         $ultimoSync = $this->mermaModel->get_ultimo_sync_ok();
+        // Praxedis/Colosio se cargan por PDF: no se ofrecen en el modal de sync
+        $syncExcluir = self::CODGAS_CARGA_MANUAL;
 
         echo $this->twig->render($this->route . 'analisis.html',
             compact('anio', 'mes', 'desde', 'hasta', 'maxHasta', 'filas', 'totales',
-                    'syncDesde', 'syncHasta', 'ultimoSync',
+                    'syncDesde', 'syncHasta', 'ultimoSync', 'syncExcluir',
                     'enNormaCount', 'evaluablesCount', 'peores', 'enNorma', 'mermaNorma'));
     }
 

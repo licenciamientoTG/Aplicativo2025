@@ -129,7 +129,8 @@ notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
     <td>Vista de autorización masiva de Tesorería (permiso 68). Sustituyó al modal de
     payment_list en 2026-07-10. Incluye anticipos.</td></tr>
   <tr><td><code>/payment/all_payments</code></td><td><code>all_payments.html</code></td>
-    <td>Histórico de transacciones y lotes de pago con filtros; detalle de lote.</td></tr>
+    <td>Histórico de transacciones y lotes de pago con filtros; detalle de lote. Con permiso 102:
+    botones <i>Quitar orden #N</i> y <i>Eliminar referencia completa</i> (motivo obligatorio).</td></tr>
   <tr><td><code>/payment/anticipo_detail/{id}</code></td><td><code>anticipo_detail.html</code></td>
     <td>Detalle del anticipo: autorización 68, pago con comprobante, resumen de aplicaciones y saldo.</td></tr>
   <tr><td><code>/payment/aplicar_anticipo/{id}</code></td><td><code>aplicar_anticipo.html</code></td>
@@ -168,6 +169,10 @@ notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
     <code>update_payment_fields</code>, <code>delete_payment</code>,
     <code>payment_list_table</code>, <code>payment_invoices_json</code>,
     <code>get_payment_history</code></td></tr>
+  <tr><td>Pagos ejecutados</td>
+    <td><code>all_payments_table</code>, <code>all_payments_lote_detail</code>,
+    <code>delete_executed_payment</code> (nuevo 2026-10-04, permiso 102),
+    <code>deletedPaymentsModal</code> (historial de eliminaciones, botón junto al título)</td></tr>
   <tr><td>Autorización / ejecución</td>
     <td><code>authorize_payment</code>, <code>authorize_payment_execution</code>,
     <code>bulk_authorize_payment_execution</code>, <code>get_pending_payment_invoices</code>,
@@ -233,7 +238,9 @@ notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
     <td>Grupos contables con ID consecutivo único; congela las requisiciones agrupadas.</td></tr>
   <tr><td><code>PaymentRequestAuditLog</code></td>
     <td>Bitácora de alta/baja/desautorización de facturas en requisiciones (snapshot JSON
-    de datos anteriores/nuevos, usuario y grupo contable).</td></tr>
+    de datos anteriores/nuevos, usuario y grupo contable). Desde 2026-10-04 también
+    <code>DELETE_PAYMENT</code>: una fila por transacción eliminada con motivo, transacción,
+    lote y comprobante completos (es el único rastro: la transacción se borra físicamente).</td></tr>
   <tr><td><code>payment_notification_recipients</code></td>
     <td>Destinatarios del correo "pagos listos" (<code>send_to_payments</code>).</td></tr>
   <tr><td><code>CatalogosCuentasBancarias</code></td>
@@ -316,6 +323,10 @@ método del controlador</b>. Los checks Twig en las vistas solo ocultan botones 
     <td>Autorización y ejecución de pagos, desautorizar, aplicar/pagar anticipos,
     conciliación de comprobantes.</td></tr>
   <tr><td><b>69</b></td><td>Eliminar pagos</td><td><code>delete_payment</code>.</td></tr>
+  <tr><td><b>102</b></td><td>Eliminar pagos ejecutados</td><td><code>delete_executed_payment</code>:
+    borra transacciones de una orden o referencia, recalcula <code>paid_amount</code> y regresa la
+    orden a Autorizada (las facturas conservan su autorización). Script
+    <code>_assets/sql/permiso_eliminar_pagos_ejecutados.sql</code>.</td></tr>
   <tr><td><b>70</b></td><td>Contabilidad</td><td><code>auto_group_accounting</code> (o token CRON).</td></tr>
 </table>
 <div class="riesgo">
@@ -443,7 +454,7 @@ método del controlador</b>. Los checks Twig en las vistas solo ocultan botones 
     <td>Presentación ejecutiva de la primera versión; desactualizada.</td></tr>
   <tr><td><code>docs/SISTEMA_CONCILIACION_ESPECIFICACION_FUNCIONAL.md</code></td><td>2026</td>
     <td>Especificación funcional de la conciliación de comprobantes (vigente como spec).</td></tr>
-  <tr><td><code>docs/pagos_documentacion_tecnica.html</code> (este documento)</td><td>2026-07-22</td>
+  <tr><td><code>docs/pagos_documentacion_tecnica.html</code> (este documento)</td><td>2026-07-22 (act. 2026-10-04)</td>
     <td>Vigente — refleja el controlador <code>payment.php</code> actual.</td></tr>
   <tr><td><code>docs/pagos_flujo_procesos.html</code></td><td>2026-07-22</td>
     <td>Vigente — diagramas de flujo de los 7 procesos del módulo.</td></tr>

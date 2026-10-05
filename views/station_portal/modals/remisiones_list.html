@@ -1,8 +1,9 @@
-{% if remisiones is empty %}
-<p class="text-center text-muted">No hay remisiones subidas para esta recepción.</p>
+{% macro lista_documentos(documentos, canDelete, vacio) %}
+{% if documentos is empty %}
+<p class="text-center text-muted small mb-0">{{ vacio }}</p>
 {% else %}
 <ul class="list-group remisiones-list">
-    {% for r in remisiones %}
+    {% for r in documentos %}
     <li class="list-group-item d-flex justify-content-between align-items-center remision-row">
         <div>
             <a href="/station_portal/view_remision/{{ r.id }}" target="_blank">{{ r.original_filename }}</a>
@@ -17,3 +18,10 @@
     {% endfor %}
 </ul>
 {% endif %}
+{% endmacro %}
+
+<h6 class="mb-2">Remisiones</h6>
+{{ _self.lista_documentos(remisiones, canDelete, 'No hay remisiones subidas para esta recepción.') }}
+
+<h6 class="mt-3 mb-2">Cartas porte</h6>
+{{ _self.lista_documentos(cartasPorte, canDelete, 'No hay cartas porte subidas para esta recepción.') }}

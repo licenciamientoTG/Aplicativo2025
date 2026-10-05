@@ -1,6 +1,55 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Mis Recepciones{% endblock %}
-{% block mycss %}{% endblock %}
+{% block mycss %}
+<style>
+    /* Modal de subida: el color de acento cambia según el tipo de documento */
+    #modalSubirRemision { --doc-accent: #0d6efd; --doc-accent-soft: rgba(13, 110, 253, .08); }
+    #modalSubirRemision[data-tipo="carta_porte"] { --doc-accent: #0dcaf0; --doc-accent-soft: rgba(13, 202, 240, .10); }
+
+    .subir-doc-modal { border: 0; border-radius: .75rem; overflow: hidden; }
+    .subir-doc-header { background: var(--doc-accent); color: #fff; border-bottom: 0; }
+    .subir-doc-header .modal-title { color: #fff; }
+    .subir-doc-subtitulo { color: rgba(255, 255, 255, .85); }
+    .subir-doc-icono {
+        width: 2.5rem; height: 2.5rem; border-radius: 50%;
+        background: rgba(255, 255, 255, .2);
+        display: inline-flex; align-items: center; justify-content: center; font-size: 1.1rem;
+    }
+
+    .subir-doc-recepcion {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: .35rem 1rem;
+        background: #f8f9fa; border-radius: .5rem; padding: .75rem 1rem; font-size: .85rem;
+    }
+    .subir-doc-recepcion .etiqueta { color: #6c757d; font-size: .75rem; text-transform: uppercase; letter-spacing: .02em; }
+
+    .subir-doc-dropzone {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        border: 2px dashed #ced4da; border-radius: .75rem; padding: 2rem 1rem;
+        cursor: pointer; text-align: center; transition: border-color .15s, background-color .15s;
+        margin-bottom: 0;
+    }
+    .subir-doc-dropzone:hover,
+    .subir-doc-dropzone.arrastrando { border-color: var(--doc-accent); background: var(--doc-accent-soft); }
+    .subir-doc-dropzone-icono { font-size: 2.25rem; color: var(--doc-accent); margin-bottom: .5rem; }
+    .subir-doc-link { color: var(--doc-accent); text-decoration: underline; }
+
+    .subir-doc-archivo {
+        display: flex; align-items: center; gap: .75rem;
+        border: 1px solid #dee2e6; border-radius: .75rem; padding: .75rem;
+    }
+    .subir-doc-preview {
+        width: 3.5rem; height: 3.5rem; flex-shrink: 0; border-radius: .5rem; overflow: hidden;
+        background: var(--doc-accent-soft); color: var(--doc-accent);
+        display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+    }
+    .subir-doc-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .subir-doc-preview .fa-file-pdf { color: #dc3545; }
+
+    .subir-doc-btn { background: var(--doc-accent); border-color: var(--doc-accent); color: #fff; }
+    .subir-doc-btn:hover, .subir-doc-btn:focus { filter: brightness(.92); color: #fff; }
+    .subir-doc-btn:disabled { background: var(--doc-accent); border-color: var(--doc-accent); color: #fff; opacity: .5; }
+</style>
+{% endblock %}
 {% block menutitle %}Mis Recepciones{% endblock %}
 {% block content %}
 {% if sinEstacionAsignada %}
@@ -106,6 +155,7 @@
                 <table id="datatables_mis_recepciones" class="table table-sm w-100" data-codgas="{{ tg_user['IdEstacion'] }}" data-can-delete="{{ canDelete ? '1' : '0' }}">
                     <thead>
                         <tr>
+                            <th>ESTACIÓN</th>
                             <th>FECHA</th>
                             <th>HORA</th>
                             <th>TANQUE</th>
@@ -114,11 +164,12 @@
                             <th>DOCUMENTO</th>
                             <th>REFERENCIA</th>
                             <th>REMISIÓN</th>
+                            <th>CARTA PORTE</th>
                             <th>ACCIONES</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td colspan="9" class="text-center text-muted">Selecciona un rango y presiona Buscar</td></tr>
+                        <tr><td colspan="11" class="text-center text-muted">Selecciona un rango y presiona Buscar</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -126,28 +177,56 @@
     </div>
 </div>
 
-<div class="modal fade" id="modalSubirRemision" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Subir remisión</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+<div class="modal fade" id="modalSubirRemision" tabindex="-1" data-tipo="remision">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content subir-doc-modal">
+            <div class="modal-header subir-doc-header">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="subir-doc-icono"><i class="fa-solid fa-file-invoice" id="modalSubirRemisionIcono"></i></span>
+                    <div>
+                        <h5 class="modal-title mb-0" id="modalSubirRemisionTitulo">Subir remisión</h5>
+                        <small class="subir-doc-subtitulo" id="modalSubirRemisionSubtitulo"></small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <div class="subir-doc-recepcion mb-3" id="subirDocRecepcion"></div>
+
                 <form id="formSubirRemision" enctype="multipart/form-data">
                     <input type="hidden" name="nrotrn" id="subir_nrotrn">
                     <input type="hidden" name="codgas" id="subir_codgas">
                     <input type="hidden" name="fchtrn" id="subir_fchtrn">
                     <input type="hidden" name="fecha" id="subir_fecha">
-                    <div class="mb-3">
-                        <label for="archivo_remision" class="form-label">Archivo (PDF, JPG, PNG - máx. 10 MB):</label>
-                        <input type="file" class="form-control" name="archivo" id="archivo_remision" accept=".pdf,.jpg,.jpeg,.png" required>
+                    <input type="hidden" name="tipo_documento" id="subir_tipo_documento" value="remision">
+                    <input type="file" class="d-none" name="archivo" id="archivo_remision" accept=".pdf,.jpg,.jpeg,.png" required>
+
+                    <label for="archivo_remision" class="subir-doc-dropzone" id="subirDocDropzone">
+                        <i class="fa-solid fa-cloud-arrow-up subir-doc-dropzone-icono"></i>
+                        <span class="fw-semibold">Arrastra el archivo aquí</span>
+                        <span class="text-muted small">o <span class="subir-doc-link">haz clic para seleccionarlo</span></span>
+                        <span class="text-muted small mt-2">PDF, JPG o PNG · máx. 10 MB</span>
+                    </label>
+
+                    <div class="subir-doc-archivo d-none" id="subirDocArchivo">
+                        <div class="subir-doc-preview" id="subirDocPreview"></div>
+                        <div class="flex-grow-1 text-truncate">
+                            <div class="fw-semibold text-truncate" id="subirDocNombre"></div>
+                            <div class="text-muted small" id="subirDocTamano"></div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="subirDocQuitar" data-bs-toggle="tooltip" title="Quitar archivo">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
                     </div>
+
+                    <div class="text-danger small mt-2 d-none" id="subirDocError"></div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btnConfirmarSubirRemision">Subir</button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn subir-doc-btn" id="btnConfirmarSubirRemision" disabled>
+                    <i class="fa-solid fa-upload me-1"></i> Subir
+                </button>
             </div>
         </div>
     </div>
@@ -157,7 +236,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Remisiones de la recepción</h5>
+                <h5 class="modal-title">Documentos de la recepción</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="modalVerRemisionesContent"></div>

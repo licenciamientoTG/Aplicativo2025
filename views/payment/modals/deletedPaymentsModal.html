@@ -1,0 +1,67 @@
+{# Modal: historial de pagos ejecutados eliminados (desde Comprobantes de pago) #}
+<div class="modal-body" style="max-height:75vh;overflow-y:auto;background:#f8fafc;">
+    {% if eventos is empty %}
+        <p class="text-muted text-center py-4 mb-0">
+            <i class="fas fa-inbox me-1"></i> No se ha eliminado ningún pago.
+        </p>
+    {% else %}
+        {% for e in eventos %}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-start gap-2" style="border-bottom:1px solid #e2e8f0;">
+                <div>
+                    <div class="fw-bold" style="font-size:.9rem;color:#1e293b;">
+                        Ref. {{ e.referencia }}
+                        {% if e.proveedor %}<span class="text-muted fw-normal">· {{ e.proveedor }}</span>{% endif %}
+                    </div>
+                    <div class="text-muted" style="font-size:.75rem;">
+                        <i class="fas fa-user me-1"></i>{{ e.usuario ?? 'Desconocido' }}
+                        · <i class="far fa-clock ms-1 me-1"></i>{{ e.fecha|date('d/m/Y H:i') }}
+                        {% if e.fecha_pago %}· pago del {{ e.fecha_pago|date('d/m/Y') }}{% endif %}
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold text-danger" style="font-size:.95rem;">-${{ e.total|number_format(2) }}</div>
+                    <div class="text-muted" style="font-size:.72rem;">{{ e.detalle|length }} factura(s)</div>
+                </div>
+            </div>
+            <div class="card-body py-2">
+                {% if e.motivo %}
+                <div class="mb-2 p-2 rounded" style="background:#fef2f2;border:1px solid #fecaca;font-size:.8rem;color:#7f1d1d;">
+                    <b>Motivo:</b> {{ e.motivo }}
+                </div>
+                {% endif %}
+                <table class="table table-sm table-bordered mb-1" style="font-size:.78rem;">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Orden de pago</th><th>Folio</th><th>Factura</th>
+                            <th>#Tx</th><th>Lote</th><th class="text-end">Monto</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in e.detalle %}
+                        <tr>
+                            <td><a href="/payment/payment_detail/{{ d.orden }}" class="fw-semibold text-decoration-none">#{{ d.orden }}</a></td>
+                            <td>{{ d.folio ?? '-' }}</td>
+                            <td>{{ d.invoice_number ?? '-' }}</td>
+                            <td class="text-muted">{{ d.transaccion_id ?? '-' }}</td>
+                            <td class="text-muted">{{ d.lote ?? '-' }}</td>
+                            <td class="text-end">${{ d.monto|number_format(2) }}</td>
+                            <td class="text-center">
+                                {% if d.post_agrupacion %}
+                                <span class="badge bg-danger" title="La orden ya estaba en un archivo de contabilidad">Post-agrupación</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if e.comprobantes is not empty %}
+                <div class="text-muted" style="font-size:.72rem;">
+                    <i class="fas fa-paperclip me-1"></i>Comprobante: {{ e.comprobantes|join(', ') }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% endif %}
+</div>

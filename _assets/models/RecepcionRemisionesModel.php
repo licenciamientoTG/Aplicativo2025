@@ -5,8 +5,17 @@ class RecepcionRemisionesModel extends Model
     const MAX_SIZE    = 10 * 1024 * 1024; // 10 MB
     const ALLOWED_EXT = ['pdf', 'jpg', 'jpeg', 'png'];
 
-    public function upload(int $nrotrn, int $codgas, int $fchtrn, array $file, int $user_id): array
+    // Tipos de documento que se suben por recepción (columna tipo_documento).
+    const TIPO_REMISION    = 'remision';
+    const TIPO_CARTA_PORTE = 'carta_porte';
+    const TIPOS_DOCUMENTO  = [self::TIPO_REMISION, self::TIPO_CARTA_PORTE];
+
+    public function upload(int $nrotrn, int $codgas, int $fchtrn, array $file, int $user_id, string $tipo_documento = self::TIPO_REMISION): array
     {
+        if (!in_array($tipo_documento, self::TIPOS_DOCUMENTO, true)) {
+            return ['success' => false, 'message' => 'Tipo de documento no válido'];
+        }
+
         if ($file['error'] !== UPLOAD_ERR_OK) {
             return ['success' => false, 'message' => 'Error al recibir el archivo'];
         }
@@ -22,13 +31,15 @@ class RecepcionRemisionesModel extends Model
 
         $doc_id = $this->sql->insert(
             "INSERT INTO [TG].[dbo].[recepcion_remisiones]
-                (nrotrn, codgas, fchtrn, file_path, file_extension, original_filename, file_size, created_by)
-             VALUES (?, ?, ?, '', ?, ?, ?, ?)",
-            [$nrotrn, $codgas, $fchtrn, $ext, $file['name'], $file['size'], $user_id]
+                (nrotrn, codgas, fchtrn, file_path, file_extension, original_filename, file_size, created_by, tipo_documento)
+             VALUES (?, ?, ?, '', ?, ?, ?, ?, ?)",
+            [$nrotrn, $codgas, $fchtrn, $ext, $file['name'], $file['size'], $user_id, $tipo_documento]
         );
 
+        $etiqueta = $tipo_documento === self::TIPO_CARTA_PORTE ? 'Carta porte' : 'Remisión';
+
         if (!$doc_id) {
-            return ['success' => false, 'message' => 'Error al registrar la remisión en BD'];
+            return ['success' => false, 'message' => 'Error al registrar el documento en BD'];
         }
 
         $subdir = self::UPLOAD_BASE . date('Y') . '/' . date('m') . '/';
@@ -51,13 +62,13 @@ class RecepcionRemisionesModel extends Model
             [$storedPath, $doc_id]
         );
 
-        return ['success' => true, 'doc_id' => $doc_id, 'message' => 'Remisión subida correctamente'];
+        return ['success' => true, 'doc_id' => $doc_id, 'message' => $etiqueta . ' subida correctamente'];
     }
 
     public function get_by_recepcion(int $nrotrn, int $codgas, int $fchtrn): array
     {
         $query = "
-            SELECT r.id, r.original_filename, r.file_path, r.file_extension, r.file_size, r.created_at, r.created_by, u.Nombre as created_by_name
+            SELECT r.id, r.tipo_documento, r.original_filename, r.file_path, r.file_extension, r.file_size, r.created_at, r.created_by, u.Nombre as created_by_name
             FROM [TG].[dbo].[recepcion_remisiones] r
             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = r.created_by
             WHERE r.nrotrn = ? AND r.codgas = ? AND r.fchtrn = ? AND r.is_deleted = 0
@@ -81,19 +92,25 @@ class RecepcionRemisionesModel extends Model
         return $rows ? $rows[0] : null;
     }
 
+    /**
+     * Conteo de documentos activos por recepción del día, separado por tipo.
+     * @return array<int, array{remision: int, carta_porte: int}> indexado por nrotrn
+     */
     public function get_counts_by_day(int $codgas, int $fchtrn): array
     {
         $query = "
-            SELECT nrotrn, COUNT(*) AS total
+            SELECT nrotrn, tipo_documento, COUNT(*) AS total
             FROM [TG].[dbo].[recepcion_remisiones]
             WHERE codgas = ? AND fchtrn = ? AND is_deleted = 0
-            GROUP BY nrotrn
+            GROUP BY nrotrn, tipo_documento
         ";
         $rows = $this->sql->select($query, [$codgas, $fchtrn]) ?: [];
 
         $out = [];
         foreach ($rows as $r) {
-            $out[(int)$r['nrotrn']] = (int)$r['total'];
+            $nrotrn = (int)$r['nrotrn'];
+            $out[$nrotrn] ??= [self::TIPO_REMISION => 0, self::TIPO_CARTA_PORTE => 0];
+            $out[$nrotrn][$r['tipo_documento']] = (int)$r['total'];
         }
         return $out;
     }
@@ -119,7 +136,7 @@ class RecepcionRemisionesModel extends Model
         );
 
         if (!$existing) {
-            return ['success' => false, 'message' => 'La remisión no existe, ya fue eliminada o no pertenece a tu estación'];
+            return ['success' => false, 'message' => 'El documento no existe, ya fue eliminado o no pertenece a tu estación'];
         }
 
         $this->sql->update(
@@ -129,6 +146,6 @@ class RecepcionRemisionesModel extends Model
             array_merge([$user_id, $id], $codgas !== null ? [$codgas] : [])
         );
 
-        return ['success' => true, 'message' => 'Remisión eliminada correctamente'];
+        return ['success' => true, 'message' => 'Documento eliminado correctamente'];
     }
 }
