@@ -104,14 +104,37 @@
     const anchors=headerRules.map(([field,pattern])=>{const wordIndex=headerWords.findIndex(item=>pattern.test(item.text));if(wordIndex<0)return null;let word=headerWords[wordIndex],left=word.left,right=word.left+word.width;if(field.startsWith('vale_tarjeta_')){for(let i=wordIndex-1;i>=0;i--){const part=headerWords[i];if(word.left-part.left>Math.max(word.height,part.height)*12)break;if(/vale|tarjeta/i.test(part.text)){left=Math.min(left,part.left);right=Math.max(right,part.left+part.width)}}}return {field,x:(left+right)/2}}).filter(Boolean).sort((a,b)=>a.x-b.x);
     const missingHeaders=headerRules.filter(([field])=>!anchors.some(anchor=>anchor.field===field)).map(([field])=>fields.find(([key])=>key===field)?.[1]||field);
     if(missingHeaders.length) throw new Error(`No pude reconocer con seguridad estas columnas: ${missingHeaders.join(', ')}. Pega una captura más nítida o recorta la tabla.`);
-    return lines.slice(headerIndex+headerLines.length).map(line=>{
+    const dataLines=lines.slice(headerIndex+headerLines.length);
+    const moneyFields=new Set(['ventas','donativo','vale_tarjeta_interna','vale_tarjeta_externa','efectivo','dollar']);
+    const assignWords=words=>{
       const row=Object.fromEntries(fields.map(([field])=>[field,'']));
-      line.words.forEach(word=>{let best=anchors[0],distance=Infinity;anchors.forEach(anchor=>{const delta=Math.abs(anchor.x-(word.left+word.width/2));if(delta<distance){best=anchor;distance=delta}});row[best.field]=(row[best.field]+' '+word.text).trim()});
-      if(!row.fecha&&!row.turno)return null;
+      words.forEach(word=>{
+        const numeric=/\d/.test(word.text),right=word.left+word.width;
+        let best=anchors[0],distance=Infinity;
+        anchors.forEach((anchor,index)=>{
+          const boundary=index<anchors.length-1?(anchor.x+anchors[index+1].x)/2:null;
+          const delta=numeric&&moneyFields.has(anchor.field)&&boundary!==null?Math.abs(boundary-right):Math.abs(anchor.x-(word.left+word.width/2));
+          if(delta<distance){best=anchor;distance=delta}
+        });
+        row[best.field]=(row[best.field]+' '+word.text).trim();
+      });
+      return row;
+    };
+    const seeds=dataLines.map(line=>({line,row:assignWords(line.words)})).filter(seed=>/^\d{4}-\d{1,2}-\d{1,2}$/.test(parseDate(seed.row.fecha))&&/^\d+$/.test(seed.row.turno.trim()));
+    if(!seeds.length) throw new Error('No pude separar las filas por fecha y turno. Pega una captura más nítida o recorta la tabla.');
+    return seeds.map((seed,index)=>{
+      const previousCenter=index>0?seeds[index-1].line.center:headerLines[headerLines.length-1].center;
+      const nextCenter=index+1<seeds.length?seeds[index+1].line.center:null;
+      const lowerBound=(previousCenter+seed.line.center)/2;
+      const upperBound=nextCenter===null?seed.line.center+(seed.line.center-previousCenter)/2:(seed.line.center+nextCenter)/2;
+      const words=dataLines.filter(line=>line.center>=lowerBound&&line.center<=upperBound).flatMap(line=>line.words);
+      const row=assignWords(words);
+      const cashValues=(row.efectivo.match(/(?:\$\s*)?\d[\d.,]*/g)||[]).filter(value=>Number.isFinite(parseMoney(value))&&parseMoney(value)>=0);
+      if(!row.vale_tarjeta_externa.trim()&&cashValues.length===2){row.vale_tarjeta_externa=cashValues[0];row.efectivo=cashValues[1]}
       row.fecha=parseDate(row.fecha); if(['-','—','=','- -'].includes(row.isla.trim()))row.isla='--';
       ['ventas','donativo','vale_tarjeta_interna','vale_tarjeta_externa','efectivo','dollar'].forEach(field=>{const money=parseMoney(row[field]);row[field]=Number.isFinite(money)?money.toFixed(2):row[field]});
       return row;
-    }).filter(Boolean);
+    });
   };
   const validate = () => rows.map((row, index) => {
     const issues = [];
