@@ -504,6 +504,34 @@ def controlgas_turns(station_id: int, start: date, end: date) -> list[dict]:
     return out
 
 
+def turns_for_station(cursor: pyodbc.Cursor, station_id: int, start: date, end: date) -> list[dict]:
+    """Praxedis uses its reviewed OCR cuts; all other stations stay on ControlGas."""
+    if station_id != 40:
+        return controlgas_turns(station_id, start, end)
+
+    rows = cursor.execute(
+        """SELECT fecha_operativa, turno, efectivo, [dollar]
+           FROM TG.dbo.efc_conc_praxedis_cortes
+           WHERE estacion_id=40 AND fecha_operativa>=? AND fecha_operativa<=?
+           ORDER BY fecha_operativa, turno""",
+        start,
+        end,
+    ).fetchall()
+    out: list[dict] = []
+    for raw_date, raw_turn, raw_mn, raw_usd in rows:
+        turn_date = raw_date.date() if isinstance(raw_date, datetime) else raw_date
+        if not isinstance(turn_date, date):
+            continue
+        turn = str(raw_turn).strip()
+        if not turn:
+            continue
+        for concept, raw_amount in (("MN", raw_mn), ("USD", raw_usd)):
+            value = money(raw_amount)
+            if value is not None and value > 0:
+                out.append({"date": turn_date, "turn": turn, "concept": concept, "amount": float(value)})
+    return out
+
+
 def historical_rates(cursor: pyodbc.Cursor, station_id: int) -> list[tuple[datetime, float]]:
     """Misma fuente y corte de turno que EfcAnaliticosModel en PHP; sólo lectura."""
     base = date(1900, 1, 1)
@@ -595,11 +623,16 @@ def sequential_tie_groups(tied: list[tuple[dict, list[tuple[dict, int]]]]) -> li
     return sorted(groups, key=lambda group: turn_sequence_sort_key(group[0][0]))
 
 
-def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
+def auto_link_import(cursor: pyodbc.Cursor, import_id: int, station_filter: int | None = None) -> int:
     """Persiste las mismas dos pasadas automáticas de la vista, dentro de la importación."""
-    paper_rows = cursor.execute("""SELECT id,estacion_id,fecha_reportada,remesa_numero,dice_contener_mn,real_mn,dice_contener_usd,real_usd
-                                   FROM dbo.efc_conc_analiticos_papeletas
-                                   WHERE importacion_id=? AND estacion_id IS NOT NULL AND fecha_reportada IS NOT NULL""", import_id).fetchall()
+    paper_sql = """SELECT id,estacion_id,fecha_reportada,remesa_numero,dice_contener_mn,real_mn,dice_contener_usd,real_usd
+                   FROM dbo.efc_conc_analiticos_papeletas
+                   WHERE importacion_id=? AND estacion_id IS NOT NULL AND fecha_reportada IS NOT NULL"""
+    paper_params: tuple = (import_id,)
+    if station_filter is not None:
+        paper_sql += " AND estacion_id=?"
+        paper_params += (station_filter,)
+    paper_rows = cursor.execute(paper_sql, *paper_params).fetchall()
     by_station: dict[int, list[dict]] = {}
     for row in paper_rows:
         paper_date = row[2].date() if isinstance(row[2], datetime) else row[2]
@@ -612,7 +645,7 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
         first = first_paper_date - timedelta(days=3)
         last_base = max(paper["date"] for paper in papers)
         last = (last_base.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-        turns = controlgas_turns(station_id, first, last)
+        turns = turns_for_station(cursor, station_id, first, last)
         rates = historical_rates(cursor, station_id) if any(turn["concept"] == "USD" for turn in turns) else []
         active_papers = {int(row[0]) for row in cursor.execute("SELECT papeleta_id FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND estacion_id=?", station_id)}
         active_turns = {(station_id, row[0], str(turn_number(row[1]) or row[1]), str(row[2])) for row in cursor.execute("SELECT fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND estacion_id=?", station_id)}
@@ -688,6 +721,90 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int) -> int:
         match_pass("declared", 1.0, "AUTO_DICE_±1")
         match_pass("real", 20.0, "AUTO_REAL_±20")
     return linked
+
+
+def relink_praxedis(start_date: date, end_date: date) -> dict:
+    """Recalcula sólo vínculos automáticos de Praxedis para fechas de archivo."""
+    if start_date > end_date:
+        raise RuntimeError("La fecha inicial no puede ser posterior a la fecha final.")
+
+    connection = db_connection()
+    try:
+        cursor = connection.cursor()
+        imported = cursor.execute(
+            "SELECT id,nombre_archivo FROM dbo.efc_conc_analiticos_importaciones WHERE estado='IMPORTADA'"
+        ).fetchall()
+        targets = sorted(
+            (
+                (report_date, int(import_id))
+                for import_id, filename in imported
+                if (report_date := report_date_from_filename(str(filename or ""))) is not None
+                and start_date <= report_date <= end_date
+            ),
+            key=lambda item: (item[0], item[1]),
+        )
+        if not targets:
+            return {
+                "operation": "relink_praxedis",
+                "station_id": 40,
+                "from": start_date.isoformat(),
+                "to": end_date.isoformat(),
+                "imports": 0,
+                "praxedis_papers": 0,
+                "auto_links_deactivated": 0,
+                "auto_links_created": 0,
+            }
+
+        import_ids = [import_id for _report_date, import_id in targets]
+        placeholders = ",".join("?" for _ in import_ids)
+        papers = int(cursor.execute(
+            f"SELECT COUNT(*) FROM dbo.efc_conc_analiticos_papeletas WHERE estacion_id=40 AND importacion_id IN ({placeholders})",
+            *import_ids,
+        ).fetchone()[0])
+
+        # Only criteria emitted by the automatic linker are eligible. Manual
+        # links and user-blocked links remain active and continue reserving turns.
+        automatic_criteria = (
+            "AUTO_DICE_±1", "AUTO_REAL_±20", "AUTO_REAL_±8",
+            "AUTO_DICE_±1_SECUENCIA_REMESA", "AUTO_REAL_±20_SECUENCIA_REMESA",
+            "AUTO_REAL_±8_SECUENCIA_REMESA",
+        )
+        criteria_placeholders = ",".join("?" for _ in automatic_criteria)
+        deactivated = 0
+        for import_id in import_ids:
+            cursor.execute(
+                f"""UPDATE V SET activo=0,actualizado_en=GETDATE()
+                    OUTPUT deleted.id
+                    FROM dbo.efc_conc_analiticos_vinculos V
+                    JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
+                    WHERE P.importacion_id=? AND P.estacion_id=40 AND V.estacion_id=40
+                      AND V.activo=1 AND V.usuario_id IS NULL AND V.bloqueado_auto=0
+                      AND V.criterio IN ({criteria_placeholders})""",
+                import_id,
+                *automatic_criteria,
+            )
+            deactivated += len(cursor.fetchall())
+
+        created = 0
+        for _report_date, import_id in targets:
+            created += auto_link_import(cursor, import_id, station_filter=40)
+
+        connection.commit()
+        return {
+            "operation": "relink_praxedis",
+            "station_id": 40,
+            "from": start_date.isoformat(),
+            "to": end_date.isoformat(),
+            "imports": len(import_ids),
+            "praxedis_papers": papers,
+            "auto_links_deactivated": deactivated,
+            "auto_links_created": created,
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def import_attachment(connection: pyodbc.Connection, content: bytes, filename: str, metadata: dict[str, str], reprocess: bool = False, parser=parse_workbook) -> dict:
@@ -875,6 +992,11 @@ def main() -> int:
         help="Reemplaza y reimporta adjuntos ya registrados, y reevalúa los vínculos automáticos.",
     )
     operation_group.add_argument(
+        "--relink-praxedis",
+        action="store_true",
+        help="Recalcula únicamente vínculos automáticos de Praxedis en el rango de fechas indicado.",
+    )
+    operation_group.add_argument(
         "--manual-file",
         metavar="PATH",
         help="Importa un concentrado tabulado manual de GASOMEX usando la misma ruta de persistencia del correo.",
@@ -894,11 +1016,20 @@ def main() -> int:
         help="Incluye archivos con fecha operativa igual o anterior (fecha tomada del nombre del archivo).",
     )
     args = parser.parse_args()
+    if args.relink_praxedis and (args.start_date is None or args.end_date is None):
+        parser.error("--relink-praxedis requiere --from y --to para limitar el reproceso.")
     if (args.start_date or args.end_date) and (args.reassign_stations or args.manual_file):
         parser.error("--from/--to solo aplican a la sincronización del buzón.")
     load_env_file()
     try:
-        result = reassign_unidentified_stations() if args.reassign_stations else import_manual_file(args.manual_file) if args.manual_file else sync(args.start_date, args.end_date, reprocess=args.reprocess)
+        if args.reassign_stations:
+            result = reassign_unidentified_stations()
+        elif args.manual_file:
+            result = import_manual_file(args.manual_file)
+        elif args.relink_praxedis:
+            result = relink_praxedis(args.start_date, args.end_date)
+        else:
+            result = sync(args.start_date, args.end_date, reprocess=args.reprocess)
         print(json.dumps(result, ensure_ascii=False)); return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr); return 1

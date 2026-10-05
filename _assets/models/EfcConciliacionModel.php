@@ -5,7 +5,7 @@ class EfcConciliacionModel {
     private array $bankStationCatalogCache = [];
     private const TOLERANCE = 20.00;
     private const COMPANY_ACCOUNTS = [
-        'DIAZ GAS' => ['0185322470', '369'],
+        'DIAZ GAS' => ['0185322470', '369', '60630878973'],
         'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', '7533', '2627', '5247', '7604', '0031'],
         'GASOMEX'   => ['8504', '4547', '8214', '8492', '4412', '4777', '4669', '3678', '4638'],
     ];
@@ -20,7 +20,10 @@ class EfcConciliacionModel {
     /* Cuenta → estación operativa. Algunas cuentas atienden más de una
        estación: en esos casos se conserva la validación por referencia. */
     private const COMPANY_ACCOUNT_STATIONS = [
-        'DIAZ GAS' => ['369' => ['PARRAL']],
+        'DIAZ GAS' => [
+            '369' => ['PARRAL'],
+            '60630878973' => ['PRAXEDIS'],
+        ],
         'FORANEAS' => [
             '3281'=>['VILLA AHUMADA'], '8837'=>['DELICIAS'], '8520'=>['PLUTARCO'],
             '7291'=>['PICACHOS'], '2570'=>['PICACHOS'], '7533'=>['VENTANAS'],

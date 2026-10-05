@@ -28,6 +28,7 @@ PARRAL_TOLERANCE = 6.00
 COMPANY_STATIONS = {
     2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22,
     23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 199,
+    40,
 }
 GASOMEX_STATIONS = {23, 24, 25, 26, 27, 28, 29}
 GASOMEX_ACCOUNT_STATIONS = {
@@ -49,11 +50,14 @@ GASOMEX_ACCOUNT_STATION_BUCKETS = {
 ACCOUNT_SUFFIXES = (
     "0185322470", "369", "3281", "8837", "8520", "7291", "2570", "7533",
     "2627", "5247", "7604", "0031", "8504", "4547", "8214", "8492",
-    "4412", "4777", "4669", "3678", "4638",
+    "4412", "4777", "4669", "3678", "4638", "60630878973",
 )
 # Mirror EfcConciliacionModel::COMPANY_ACCOUNT_STATIONS for unmapped bank rows.
 # The 369 account is assigned to Parral; shared accounts require text/correction.
-BANK_ACCOUNT_STATION_MARKERS = {"369": ("PARRAL",)}
+BANK_ACCOUNT_STATION_MARKERS = {
+    "369": ("PARRAL",),
+    "60630878973": ("PRAXEDIS",),
+}
 
 
 def log(message: str) -> None:
@@ -161,6 +165,32 @@ def fetch_controlgas(station_id: int, first: date, last: date) -> list[dict]:
     if not bool(data.get("exito")) and data.get("codigo") != 0:
         raise RuntimeError(data.get("mensaje", "ControlGas no respondió"))
     return data.get("respuesta", [])
+
+
+def fetch_station_turns(cursor: pyodbc.Cursor, station_id: int, first: date, last: date) -> list[dict]:
+    """Use Praxedis' reviewed cuts for station 40; preserve ControlGas elsewhere."""
+    if station_id != 40:
+        return fetch_controlgas(station_id, first, last)
+
+    rows = cursor.execute(
+        """SELECT fecha_operativa, turno, efectivo, [dollar]
+           FROM TG.dbo.efc_conc_praxedis_cortes
+           WHERE estacion_id=40 AND fecha_operativa>=? AND fecha_operativa<=?
+           ORDER BY fecha_operativa, turno""",
+        first,
+        last,
+    ).fetchall()
+    return [
+        {
+            "Fecha": row[0],
+            "Turno": str(row[1]).strip(),
+            "MN": row[2] or 0,
+            "Morralla": 0,
+            "Dolares": row[3] or 0,
+            "Dolares2": 0,
+        }
+        for row in rows
+    ]
 
 
 def as_date(value: object) -> date:
@@ -560,8 +590,9 @@ def run() -> int:
                 # the bank's actual date still determines eligibility.
                 controlgas_first = first - timedelta(days=3) if int(station_id) in GASOMEX_STATIONS else first
                 controlgas_last = last + timedelta(days=2) if int(station_id) in GASOMEX_STATIONS else last
-                controlgas_rows = fetch_controlgas(int(station_id), controlgas_first, controlgas_last)
-                log(f"Estación {station_id}: ControlGas devolvió {len(controlgas_rows)} registros.")
+                turn_rows = fetch_station_turns(cursor, int(station_id), controlgas_first, controlgas_last)
+                source_name = "cortes Praxedis" if int(station_id) == 40 else "ControlGas"
+                log(f"Estación {station_id}: {source_name} devolvió {len(turn_rows)} registros.")
                 if int(station_id) in GASOMEX_STATIONS:
                     active_cg_keys = {
                         str(row[0]) for row in cursor.execute("""SELECT P.clave_externa
@@ -575,7 +606,7 @@ def run() -> int:
                             WHERE estacion_id=? AND estado='PENDIENTE'""", station_id).fetchall()
                     }
                     active_cg_keys.update(transit_keys)
-                    slots = gasomex_slots(controlgas_rows, links, active_cg_keys, int(station_id))
+                    slots = gasomex_slots(turn_rows, links, active_cg_keys, int(station_id))
                     gas_bank_rows = [
                         bank for bank in bank_rows
                         if int(bank[0]) not in used
@@ -617,7 +648,7 @@ def run() -> int:
                             details.append(f"GASOMEX/{station_id}/banco/{bank[0]}: {exc}")
                     log(f"GASOMEX estación={station_id}: depósitos sin secuencia={no_sequence}, ambiguos={ambiguous}.")
                     continue
-                for row in controlgas_rows:
+                for row in turn_rows:
                     cut = as_date(row.get("Fecha")); turn = str(row.get("Turno", "")).strip()
                     if not turn: continue
                     for concept, raw in (("MN", row.get("MN")), ("MORRALLA", row.get("Morralla"))):
