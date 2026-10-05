@@ -272,9 +272,9 @@ class EfcConciliacionModel {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
         $origin = sprintf('%04d-%02d', $year, $month);
         $next = (new DateTimeImmutable($origin . '-01'))->modify('+1 month')->format('Y-m');
-        // Los pendientes se muestran en origen y destino. Un tránsito ya
-        // conciliado sólo se expone en su mes destino: así el tablero conserva
-        // la evidencia sin ocultar el corte original en su mes de origen.
+        // Los pendientes se muestran en origen y destino. Los conciliados se
+        // exponen en ambos meses: en origen su clave oculta el corte de la lista
+        // pendiente; en destino el tablero muestra la conciliación recibida.
         // Legacy data can contain the same transit key in both PENDIENTE and
         // CONCILIADO rows. Expose one canonical row, preferring CONCILIADO,
         // without deleting or changing either persisted record.
@@ -287,11 +287,11 @@ class EfcConciliacionModel {
                     ) AS transit_rank
                 FROM dbo.efc_conc_transitos T
                 WHERE T.estacion_id=?
-                  AND ((T.estado='PENDIENTE' AND (T.mes_origen=? OR T.mes_destino=?)) OR (T.estado='CONCILIADO' AND T.mes_destino=?))
+                  AND ((T.estado='PENDIENTE' AND (T.mes_origen=? OR T.mes_destino=?)) OR (T.estado='CONCILIADO' AND (T.mes_origen=? OR T.mes_destino=?)))
             ) AS ranked
             WHERE transit_rank=1
             ORDER BY fecha_origen,turno,concepto,id");
-        $stmt->execute([$stationId, $origin, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->execute([$stationId, $origin, $origin, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
         $outgoing=[]; $incoming=[];
         foreach ($rows as $row) {
             $item=['id'=>(int)$row['id'],'station_id'=>(int)$row['estacion_id'],'source_key'=>(string)$row['clave_externa'],'date'=>$this->dateValue($row['fecha_origen']),'origin_month'=>(string)$row['mes_origen'],'destination_month'=>(string)$row['mes_destino'],'turn'=>(string)$row['turno'],'currency'=>(string)$row['concepto'],'amount'=>(float)$row['importe'],'status'=>(string)$row['estado'],'description'=>(string)($row['descripcion']??'')];
