@@ -134,6 +134,7 @@ def obtener_conexion():
     return pyodbc.connect(f'DRIVER={{SQL Server}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}')
 
 def limpiar_moneda(valor):
+    if valor is None or pd.isna(valor): return 0.0
     if isinstance(valor, (int, float)): return float(valor)
     if not valor: return 0.0
     s = str(valor).replace('$', '').replace(',', '').strip()
@@ -141,8 +142,12 @@ def limpiar_moneda(valor):
     except: return 0.0
 
 def limpiar_hora(valor):
-    if not valor or str(valor).lower() == 'nan': return "00:00:00"
+    if valor is None or pd.isna(valor) or str(valor).lower() == 'nan': return "00:00:00"
+    if isinstance(valor, (int, float)) and 0 <= float(valor) < 1:
+        segundos = round(float(valor) * 86400) % 86400
+        return f"{segundos // 3600:02d}:{(segundos % 3600) // 60:02d}:{segundos % 60:02d}"
     s = str(valor).strip().upper()
+    s = re.sub(r'^(\d{1,2}:\d{2}:\d{2})\.\d+$', r'\1', s)
     
     # 1. Normalización de AM/PM (Quitar puntos, unir A M -> AM y asegurar espacio)
     s = s.replace('.', '')
@@ -180,7 +185,7 @@ def limpiar_hora(valor):
     return s if len(s) <= 8 else s[:8]
 
 def limpiar_fecha(valor, formato_origen=None):
-    if not valor or str(valor).lower() == 'nan': return None
+    if valor is None or pd.isna(valor) or str(valor).lower() in ('nan', 'nat', 'none'): return None
     if isinstance(valor, datetime): return valor.strftime('%Y-%m-%d')
     s = str(valor).strip().replace("'", "")
     if formato_origen:
@@ -193,6 +198,20 @@ def limpiar_fecha(valor, formato_origen=None):
             return datetime.strptime(s, fmt).strftime('%Y-%m-%d')
         except: continue
     return None
+
+def normalizar_campo_banorte(valor, quitar_decimal_entero=False):
+    """Iguala texto del archivo y de SQL a la normalización de la carga manual PHP."""
+    if valor is None or pd.isna(valor):
+        texto = ''
+    else:
+        texto = str(valor).strip()
+        if texto.lower() in ('nan', 'nat', 'none'):
+            texto = ''
+    if texto.startswith('="') and texto.endswith('"'):
+        texto = texto[2:-1].strip()
+    if quitar_decimal_entero and re.fullmatch(r'[+-]?\d+\.0+', texto):
+        texto = texto.split('.', 1)[0]
+    return texto
 
 AFILIACION_TZ_POLICY = {}
 
@@ -385,7 +404,9 @@ def subir_a_db(file_path, tipo_banco, razon_social=None):
     try:
         conn = obtener_conexion()
         cursor = conn.cursor()
-        df = pd.read_excel(file_path) if tipo_banco == 'BANORTE' else pd.read_csv(file_path, encoding='utf-8-sig')
+        # object evita que pandas convierta IDs de texto de 16+ dígitos a float,
+        # perdiendo precisión antes de construir la huella de Banorte.
+        df = pd.read_excel(file_path, dtype=object) if tipo_banco == 'BANORTE' else pd.read_csv(file_path, encoding='utf-8-sig')
         if df.empty:
             conn.close()
             return True, 0, "Archivo vacio"
@@ -470,17 +491,19 @@ def subir_a_db(file_path, tipo_banco, razon_social=None):
         huellas = set()
         for r in cursor.fetchall():
             # ESTANDARIZAR PARA COMPARACION ROBUSTA
-            afil_db = str(r[0] or '').strip().lstrip('0')
-            id_ext_db = str(r[1] or '').strip()
+            afil_db = (normalizar_campo_banorte(r[0]) if tipo_banco == 'BANORTE' else str(r[0] or '').strip()).lstrip('0')
+            id_ext_db = normalizar_campo_banorte(r[1], True) if tipo_banco == 'BANORTE' else str(r[1] or '').strip()
             fch_db = str(r[2])[:10] if r[2] else ''
             monto_db = float(r[3] or 0)
             hora_db = limpiar_hora(r[4])
-            auth_db = str(r[5] or '').strip()
-            ref_db = str(r[6] or '').strip()
-            term_db = str(r[7] or '').strip()
+            auth_db = normalizar_campo_banorte(r[5], True) if tipo_banco == 'BANORTE' else str(r[5] or '').strip()
+            ref_db = normalizar_campo_banorte(r[6], True) if tipo_banco == 'BANORTE' else str(r[6] or '').strip()
+            term_db = normalizar_campo_banorte(r[7], True) if tipo_banco == 'BANORTE' else str(r[7] or '').strip()
             
             key = f"{afil_db}|{id_ext_db}|{fch_db}|{monto_db:.2f}|{hora_db}|{auth_db}|{ref_db}|{term_db}"
             huellas.add(key)
+            if tipo_banco == 'BANORTE':
+                huellas.add(f"7f:{afil_db}|{id_ext_db}|{fch_db}|{monto_db:.2f}|{hora_db}|{auth_db}|{term_db}")
 
         # 3. Procesar Filas
         nuevos_rows = []
@@ -493,14 +516,19 @@ def subir_a_db(file_path, tipo_banco, razon_social=None):
 
         for _, row in df.iterrows():
             # Extraer y Limpiar (Logica Bank Upload)
-            afil = str(row.get(mapped_indices.get('Afiliacion')) or '').strip().lstrip('0')
-            id_ext = str(row.get(mapped_indices.get('ID_Externo')) or '').strip()
+            afil_raw = row.get(mapped_indices.get('Afiliacion'))
+            afil = (normalizar_campo_banorte(afil_raw) if tipo_banco == 'BANORTE' else str(afil_raw or '').strip()).lstrip('0')
+            id_ext_raw = row.get(mapped_indices.get('ID_Externo'))
+            id_ext = normalizar_campo_banorte(id_ext_raw, True) if tipo_banco == 'BANORTE' else str(id_ext_raw or '').strip()
             monto = limpiar_moneda(row.get(mapped_indices.get('Monto')))
-            auth = str(row.get(mapped_indices.get('Codigo_Autorizacion')) or '').strip()
+            auth_raw = row.get(mapped_indices.get('Codigo_Autorizacion'))
+            auth = normalizar_campo_banorte(auth_raw, True) if tipo_banco == 'BANORTE' else str(auth_raw or '').strip()
             # CAMBIO: Usar limpiar_hora para estandarizar formato HH:MM:SS
             hora = limpiar_hora(row.get(mapped_indices.get('Hora')))
-            ref = str(row.get(mapped_indices.get('Referencia')) or '').strip()
-            term = str(row.get(mapped_indices.get('Terminal')) or '').strip()
+            ref_raw = row.get(mapped_indices.get('Referencia'))
+            ref = normalizar_campo_banorte(ref_raw, True) if tipo_banco == 'BANORTE' else str(ref_raw or '').strip()
+            term_raw = row.get(mapped_indices.get('Terminal'))
+            term = normalizar_campo_banorte(term_raw, True) if tipo_banco == 'BANORTE' else str(term_raw or '').strip()
             f_trans = limpiar_fecha(row.get(mapped_indices.get('Fecha_Transaccion')))
             f_depo = limpiar_fecha(row.get(mapped_indices.get('Fecha_Deposito')))
 
@@ -515,12 +543,15 @@ def subir_a_db(file_path, tipo_banco, razon_social=None):
                 continue
 
             huella_row = f"{afil}|{id_ext}|{f_trans or ''}|{monto:.2f}|{hora}|{auth}|{ref}|{term}"
-            if huella_row in huellas:
+            huella_row7 = f"7f:{afil}|{id_ext}|{f_trans or ''}|{monto:.2f}|{hora}|{auth}|{term}"
+            if huella_row in huellas or (tipo_banco == 'BANORTE' and huella_row7 in huellas):
                 continue
 
             data_to_insert = [id_ext, afil, f_trans, hora, monto, auth, term, ref, f_depo, db_file_path]
             nuevos_rows.append(tuple(data_to_insert))
             huellas.add(huella_row)
+            if tipo_banco == 'BANORTE':
+                huellas.add(huella_row7)
 
         # ---------------------------------------------------------
         # COPIA SEGURA: Primero copiamos el archivo fisico
@@ -634,7 +665,7 @@ def ejecutar_banorte(browser):
     USUARIO, PASSWORD = "israel.ibarra@totalgas.com", "TotGAS26@$"
     
     # 1. Definir rango de fechas
-    fecha_limite = datetime.now() - timedelta(days=3)
+    fecha_limite = datetime.now() - timedelta(days=1)
     fecha_inicio = get_last_banorte_date() + timedelta(days=1)
     
     # NUEVO: Tracking de dias procesados en esta sesion para no repetir

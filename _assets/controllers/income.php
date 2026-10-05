@@ -6760,13 +6760,21 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation.html');
     }
 
+    /** Indica si el perfil de sesión habilita las vistas de todas las empresas. */
+    private function currentUserIsSuperAdmin(): bool {
+        $user = $_SESSION['tg_user'] ?? [];
+        $profile = $user['profile'] ?? $user['Perfil'] ?? $user['perfil'] ?? $user['PROFILE'] ?? '';
+        $profile = mb_strtolower(trim((string)$profile));
+
+        return strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
+    }
+
     /** Consola unificada: ControlGas, evidencia REGIO y depósitos bancarios. */
     public function cash_reconciliation_triple(): void {
         // La vista decide cómo presentarlo; mantener null cuando el cron aún
         // no ha completado una ejecución evita inventar una fecha de proceso.
         $lastAutomaticRun=$this->efcConciliacion->lastAutomaticRun();
-        $profile = mb_strtolower(trim((string)($_SESSION['tg_user']['profile'] ?? '')));
-        $isSuperAdmin = strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
         echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin'));
     }
 
@@ -6831,14 +6839,12 @@ public function stamped_invoices_detail(): void
     }
 
     public function cash_reconciliation_faltantes(): void {
-        $profile = mb_strtolower(trim((string)($_SESSION['tg_user']['profile'] ?? '')));
-        $isSuperAdmin = strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
         echo $this->twig->render($this->route . 'cash_reconciliation_faltantes.html',compact('isSuperAdmin'));
     }
 
     public function cash_reconciliation_diferencias(): void {
-        $profile = mb_strtolower(trim((string)($_SESSION['tg_user']['profile'] ?? '')));
-        $isSuperAdmin = strpos($profile, 'super') !== false && strpos($profile, 'admin') !== false;
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
         echo $this->twig->render($this->route . 'cash_reconciliation_diferencias.html',compact('isSuperAdmin'));
     }
 
