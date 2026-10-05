@@ -1461,6 +1461,23 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
                 );
             }
         }
+        // Las estaciones que ApiER no devolvió (sin conexión o sin ningún tipo de cambio
+        // registrado) se agregan como filas vacías para poder seleccionarlas y asignarles
+        // uno. fch y hra van en 0 porque exchange_rate_process() solo usa codmda y codgas
+        // del uniqueId; codmda 2 es dólar, el mismo que traen todas las filas existentes.
+        foreach ($this->cotizacionesModel->disconnectedStations as $station) {
+            $uniqueId = '2,' . $station['codgas'] . ',0,0';
+            $data[] = array(
+                'CHECK' => '<input type="checkbox" class="form-check-input" name="check" value="'.$uniqueId.'">',
+                'DESCRIPCION' => $station['description'],
+                'NO_ESTACION' => $station['no_station'],
+                'ESTACION' => $station['station_name'],
+                'FECHA' => '<span class="text-muted">Sin tipo de cambio registrado</span>',
+                'HORA' => '',
+                'CAMBIO' => '',
+                'ACCIONES' => ''
+            );
+        }
         json_output(array(
             "data" => $data,
             "disconnected" => $this->cotizacionesModel->disconnectedStations
