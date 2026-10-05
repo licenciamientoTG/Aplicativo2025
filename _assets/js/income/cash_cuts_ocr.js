@@ -17,11 +17,7 @@
   let previewUrl = null;
   let recognitionGeneration = 0;
 
-  const fields = [
-    ['estacion', 'Estación'], ['fecha', 'Fecha'], ['turno', 'Turno'], ['isla', 'Isla'],
-    ['ventas', 'Ventas'], ['donativo', 'Donativo'], ['vale_tarjeta_interna', 'Vale/Tarjeta Interna'],
-    ['vale_tarjeta_externa', 'Vale/Tarjeta Externa'], ['efectivo', 'Efectivo'], ['dollar', 'Dollar'], ['estado', 'Estado']
-  ];
+  const fields = [['estacion', 'Estación'], ['fecha', 'Fecha'], ['turno', 'Turno'], ['efectivo', 'Efectivo'], ['dollar', 'Dollar']];
   const setStatus = (message, kind = 'info') => {
     status.className = `cuts-status is-${kind}`;
     status.textContent = message;
@@ -40,6 +36,11 @@
     return workerPromise;
   };
   const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const moneyFields = new Set(['efectivo','dollar']);
+  const formatMoney = value => {
+    const amount = parseMoney(value);
+    return Number.isFinite(amount) ? new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}).format(amount) : value;
+  };
   const parseDate = value => {
     const text = String(value || '').trim();
     let match = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
@@ -94,18 +95,18 @@
     const headerIndex=lines.findIndex(line=>/fecha|date/i.test(line.text)&&/turno|shift/i.test(line.text));
     if(headerIndex<0) throw new Error('No se detectaron las columnas Fecha y Turno. Prueba con una captura más nítida.');
     const headerRules=[['estacion',/estaci[oó]n|station/i],['fecha',/fecha|date/i],['turno',/turno|shift/i],['isla',/isla|island/i],['ventas',/ventas|sales/i],['donativo',/donativo|donation/i],['vale_tarjeta_interna',/interna|internal/i],['vale_tarjeta_externa',/externa|external/i],['efectivo',/efectivo|cash/i],['dollar',/dollar|d[oó]lar|usd/i],['estado',/estado|status/i]];
+    const requiredHeaders=new Set(['estacion','fecha','turno','efectivo','dollar']);
     const headerLines=[lines[headerIndex]],headerHeight=Math.max(...lines[headerIndex].words.map(word=>word.height),lineTolerance);
     for(let i=headerIndex+1;i<lines.length&&i<=headerIndex+2;i++){
       const candidate=lines[i];
-      if(candidate.center-headerLines[0].center>headerHeight*2.5||!/vale|tarjeta|interna|externa|estaci[oó]n|dollar|d[oó]lar|estado/i.test(candidate.text))break;
+      if(candidate.center-headerLines[0].center>headerHeight*2.5||!/vale|tarjeta|interna|externa|efectivo|cash|dollar|d[oó]lar|estaci[oó]n/i.test(candidate.text))break;
       headerLines.push(candidate);
     }
     const headerWords=headerLines.flatMap(line=>line.words).sort((a,b)=>a.left-b.left);
     const anchors=headerRules.map(([field,pattern])=>{const wordIndex=headerWords.findIndex(item=>pattern.test(item.text));if(wordIndex<0)return null;let word=headerWords[wordIndex],left=word.left,right=word.left+word.width;if(field.startsWith('vale_tarjeta_')){for(let i=wordIndex-1;i>=0;i--){const part=headerWords[i];if(word.left-part.left>Math.max(word.height,part.height)*12)break;if(/vale|tarjeta/i.test(part.text)){left=Math.min(left,part.left);right=Math.max(right,part.left+part.width)}}}return {field,x:(left+right)/2}}).filter(Boolean).sort((a,b)=>a.x-b.x);
-    const missingHeaders=headerRules.filter(([field])=>!anchors.some(anchor=>anchor.field===field)).map(([field])=>fields.find(([key])=>key===field)?.[1]||field);
+    const missingHeaders=headerRules.filter(([field])=>requiredHeaders.has(field)&&!anchors.some(anchor=>anchor.field===field)).map(([field])=>fields.find(([key])=>key===field)?.[1]||field);
     if(missingHeaders.length) throw new Error(`No pude reconocer con seguridad estas columnas: ${missingHeaders.join(', ')}. Pega una captura más nítida o recorta la tabla.`);
     const dataLines=lines.slice(headerIndex+headerLines.length);
-    const moneyFields=new Set(['ventas','donativo','vale_tarjeta_interna','vale_tarjeta_externa','efectivo','dollar']);
     const assignWords=words=>{
       const row=Object.fromEntries(fields.map(([field])=>[field,'']));
       words.forEach(word=>{
@@ -129,10 +130,8 @@
       const upperBound=nextCenter===null?seed.line.center+(seed.line.center-previousCenter)/2:(seed.line.center+nextCenter)/2;
       const words=dataLines.filter(line=>line.center>=lowerBound&&line.center<=upperBound).flatMap(line=>line.words);
       const row=assignWords(words);
-      const cashValues=(row.efectivo.match(/(?:\$\s*)?\d[\d.,]*/g)||[]).filter(value=>Number.isFinite(parseMoney(value))&&parseMoney(value)>=0);
-      if(!row.vale_tarjeta_externa.trim()&&cashValues.length===2){row.vale_tarjeta_externa=cashValues[0];row.efectivo=cashValues[1]}
-      row.fecha=parseDate(row.fecha); if(['-','—','=','- -'].includes(row.isla.trim()))row.isla='--';
-      ['ventas','donativo','vale_tarjeta_interna','vale_tarjeta_externa','efectivo','dollar'].forEach(field=>{const money=parseMoney(row[field]);row[field]=Number.isFinite(money)?money.toFixed(2):row[field]});
+      row.fecha=parseDate(row.fecha);
+      ['efectivo','dollar'].forEach(field=>{const money=parseMoney(row[field]);row[field]=Number.isFinite(money)?money.toFixed(2):row[field]});
       return row;
     });
   };
@@ -141,9 +140,7 @@
     if (!/^\d{4}-\d{2}-\d{2}$/.test(row.fecha) || Number.isNaN(Date.parse(`${row.fecha}T00:00:00Z`)) || new Date(`${row.fecha}T00:00:00Z`).toISOString().slice(0,10)!==row.fecha) issues.push('Fecha ISO válida requerida');
     if (!/^\d+$/.test(String(row.turno).trim())) issues.push('Turno requerido');
     if (String(row.estacion).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase() !== 'PRAXEDIS') issues.push('La estación debe ser PRAXEDIS');
-    if (!String(row.isla).trim()) issues.push('Isla requerida o --');
-    if (!normalizeState(row.estado)) issues.push('Estado debe ser Abierto o Cerrado');
-    ['ventas','donativo','vale_tarjeta_interna','vale_tarjeta_externa','efectivo','dollar'].forEach(field => { if (!Number.isFinite(parseMoney(row[field])) || parseMoney(row[field]) < 0) issues.push(`Importe inválido: ${field}`); });
+    ['efectivo','dollar'].forEach(field => { if (!Number.isFinite(parseMoney(row[field])) || parseMoney(row[field]) < 0) issues.push(`Importe inválido: ${field}`); });
     row._issues = issues;
     row._index = index;
     return issues.length === 0;
@@ -151,7 +148,7 @@
   const render = () => {
     rows.forEach(row => { const identity=`cg-40-${row.fecha}-${String(row.turno).match(/\d+/)?.[0]||row.turno}-MN`; const existing=window.tripleCashReconciliation?.state.rows.find(item=>item.id===identity&&item.group); row._warning=row._edited&&existing?'Este turno ya tiene una conciliación asociada; la asociación existente se conservará.':''; });
     validate();
-    rowsNode.innerHTML = rows.map((row, index) => `<tr class="${row._issues.length ? 'is-invalid' : ''}">${fields.map(([field, label]) => `<td><label class="sr-only" for="tr-cuts-${index}-${field}">${safe(label)} fila ${index + 1}</label><input id="tr-cuts-${index}-${field}" data-row="${index}" data-field="${field}" value="${safe(row[field])}" aria-label="${safe(label)}, fila ${index + 1}" class="form-control form-control-sm"></td>`).join('')}<td class="cuts-row-error">${safe([row._warning,...row._issues].filter(Boolean).join(' '))}</td></tr>`).join('');
+    rowsNode.innerHTML = rows.map((row, index) => `<tr class="${row._issues.length ? 'is-invalid' : ''}">${fields.map(([field, label]) => {const value=moneyFields.has(field)?formatMoney(row[field]):row[field];return `<td><label class="sr-only" for="tr-cuts-${index}-${field}">${safe(label)} fila ${index + 1}</label><input id="tr-cuts-${index}-${field}" data-row="${index}" data-field="${field}" value="${safe(value)}" aria-label="${safe(label)}, fila ${index + 1}" class="form-control form-control-sm"></td>`}).join('')}<td class="cuts-row-error">${safe([row._warning,...row._issues].filter(Boolean).join(' '))}</td></tr>`).join('');
     confirm.disabled = !rows.length || rows.some(row => row._issues.length);
   };
   const syncButton = () => { button.hidden = String(station.value) !== '40'; };
@@ -207,6 +204,16 @@
     rows[Number(input.dataset.row)][input.dataset.field] = input.value; rows[Number(input.dataset.row)]._edited=true;
     const row=rows[Number(input.dataset.row)]; const valid=validate(); const tr=input.closest('tr'); tr.classList.toggle('is-invalid',row._issues.length>0); tr.querySelector('.cuts-row-error').textContent=row._issues.join(', '); confirm.disabled=!rows.length||valid.some(ok=>!ok);
   });
+  rowsNode.addEventListener('focusin', event => {
+    const input = event.target.closest('[data-row][data-field]');
+    if (input && moneyFields.has(input.dataset.field)) input.value = input.value.replace(/,/g, '');
+  });
+  rowsNode.addEventListener('focusout', event => {
+    const input = event.target.closest('[data-row][data-field]');
+    if (!input || !moneyFields.has(input.dataset.field)) return;
+    const amount = parseMoney(input.value);
+    if (Number.isFinite(amount)) input.value = formatMoney(amount);
+  });
   confirm.addEventListener('click', async () => {
     const valid = validate();
     if (!originalImage || valid.some(ok => !ok)) { render(); setStatus('Corrige las filas marcadas antes de importar.', 'error'); return; }
@@ -214,11 +221,15 @@
     setStatus('Importando cortes…');
     const body = new FormData();
     body.append('image', originalImage, 'cortes.png');
-    body.append('rows', JSON.stringify(rows.map(row => ({estacion:'PRAXEDIS',estacion_id:40,fecha_operativa:row.fecha,turno:String(row.turno).trim(),isla:row.isla,ventas:parseMoney(row.ventas),donativo:parseMoney(row.donativo),vale_interno:parseMoney(row.vale_tarjeta_interna),vale_externo:parseMoney(row.vale_tarjeta_externa),efectivo:parseMoney(row.efectivo),dollar:parseMoney(row.dollar),estado:normalizeState(row.estado)}))));
+    body.append('rows', JSON.stringify(rows.map(row => ({estacion:'PRAXEDIS',estacion_id:40,fecha_operativa:row.fecha,turno:String(row.turno).trim(),efectivo:parseMoney(row.efectivo),dollar:parseMoney(row.dollar)}))));
     body.append('ocr_text', recognizedText);
     try {
       const response = await fetch('/income/efc_conc_praxedis_importar', {method:'POST', body});
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+      try { result = responseText ? JSON.parse(responseText) : {}; }
+      catch { throw new Error(`El servidor respondió con contenido inválido (HTTP ${response.status}).`); }
+      if (!responseText) throw new Error(`El servidor rechazó la importación (HTTP ${response.status}) sin proporcionar un mensaje. Revisa el tamaño permitido de la imagen y los registros del servidor.`);
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'No fue posible importar los cortes.');
       setStatus('Importación completada. Actualizando conciliación…', 'success');
       await window.tripleCashReconciliation.consult();

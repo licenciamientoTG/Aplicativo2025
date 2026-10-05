@@ -637,12 +637,12 @@ class EfcConciliacionModel {
     /** Praxedis (station 40) OCR cuts exposed in the ControlGas-compatible shape. */
     public function praxedisTurnos(int $year, int $month, int $stationId=40): array {
         if ($stationId !== 40 || $year < 1 || $year > 9998 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación Praxedis inválidos.');
-        $q=$this->db->prepare("SELECT fecha_operativa,turno,isla,ventas,donativo,vale_interno,vale_externo,efectivo,dollar,estado FROM dbo.efc_conc_praxedis_cortes WHERE estacion_id=40 AND fecha_operativa>=? AND fecha_operativa<? ORDER BY fecha_operativa,turno");
+        $q=$this->db->prepare("SELECT fecha_operativa,turno,efectivo,dollar FROM dbo.efc_conc_praxedis_cortes WHERE estacion_id=40 AND fecha_operativa>=? AND fecha_operativa<? ORDER BY fecha_operativa,turno");
         $start=sprintf('%04d-%02d-01',$year,$month); $end=(new DateTimeImmutable($start))->modify('+1 month')->format('Y-m-d');
         $q->execute([$start,$end]); $out=[];
         while($r=$q->fetch(PDO::FETCH_ASSOC)) {
             $date=$r['fecha_operativa'] instanceof DateTimeInterface ? $r['fecha_operativa']->format('Y-m-d') : substr((string)$r['fecha_operativa'],0,10);
-            $out[]=['Fecha'=>$date,'Turno'=>(string)$r['turno'],'MN'=>(float)$r['ventas'],'Morralla'=>0,'Dolares'=>(float)$r['dollar'],'Dolares2'=>0,'details'=>['isla'=>$r['isla'],'ventas'=>(float)$r['ventas'],'donativo'=>(float)$r['donativo'],'vale_interno'=>(float)$r['vale_interno'],'vale_externo'=>(float)$r['vale_externo'],'efectivo'=>(float)$r['efectivo'],'dollar'=>(float)$r['dollar'],'estado'=>$r['estado']]];
+            $out[]=['Fecha'=>$date,'Turno'=>(string)$r['turno'],'MN'=>(float)$r['efectivo'],'Morralla'=>0,'Dolares'=>(float)$r['dollar'],'Dolares2'=>0,'details'=>['efectivo'=>(float)$r['efectivo'],'dollar'=>(float)$r['dollar']]];
         }
         return $out;
     }
@@ -652,25 +652,18 @@ class EfcConciliacionModel {
         if(!preg_match('/^[a-f0-9]{64}$/',$sha256) || !in_array($mimeType,['image/png','image/jpeg'],true) || $image==='' || strlen($image)>10485760 || !hash_equals(hash('sha256',$image),$sha256)) throw new RuntimeException('Imagen de importación inválida.');
         if(!$rows || count($rows)>500) throw new RuntimeException('El lote debe contener entre 1 y 500 turnos revisados.');
         $normal=[]; $seen=[]; $duplicateUnchanged=0;
-        $amountKeys=['ventas','donativo','vale_interno','vale_externo','efectivo','dollar'];
+        $amountKeys=['efectivo','dollar'];
         foreach($rows as $row) {
             if(!is_array($row) || !isset($row['estacion_id']) || (int)$row['estacion_id']!==40) throw new RuntimeException('Sólo se permiten turnos de Praxedis (estación 40).');
             $stationName=strtoupper(trim((string)($row['estacion_nombre']??(is_string($row['estacion']??null)?$row['estacion']:''))));
-            if($stationName!=='' && $stationName!=='PRAXEDIS') throw new RuntimeException('La estación capturada debe ser PRAXEDIS.');
+            if($stationName!=='PRAXEDIS') throw new RuntimeException('La estación capturada debe ser PRAXEDIS.');
             $date=(string)($row['fecha_operativa']??$row['fecha']??$row['Fecha']??'');
             $d=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
             if(!$d || $d->format('Y-m-d')!==$date) throw new RuntimeException('Cada fecha debe estar en formato ISO YYYY-MM-DD.');
             $turn=$row['turno']??$row['Turno']??null;
             if(!(is_int($turn) || (is_string($turn)&&preg_match('/^[1-9]\d*$/',$turn))) || (int)$turn<1 || (int)$turn>255) throw new RuntimeException('El turno debe ser un entero positivo dentro del rango permitido.');
-            $state=strtolower(trim((string)($row['estado']??'')));
-            $stateMap=['open'=>'Abierto','abierto'=>'Abierto','closed'=>'Cerrado','cerrado'=>'Cerrado'];
-            if(!isset($stateMap[$state])) throw new RuntimeException('El estado debe ser Abierto o Cerrado.');
-            $state=$stateMap[$state];
-            $island=trim((string)($row['isla']??''));
-            if($island==='') throw new RuntimeException('Cada turno debe incluir isla o --.');
-            $item=['fecha_operativa'=>$date,'turno'=>(int)$turn,'isla'=>$island,'estado'=>$state];
-            $aliases=['vale_interno'=>'vale_tarjeta_interna','vale_externo'=>'vale_tarjeta_externa'];
-            foreach($amountKeys as $key){$v=$row[$key]??(isset($aliases[$key])?($row[$aliases[$key]]??null):null);if(!is_numeric($v)||!is_finite((float)$v)||(float)$v<0||(float)$v>999999999999999.9999)throw new RuntimeException("Importe inválido: {$key}.");$item[$key]=round((float)$v,4);}
+            $item=['fecha_operativa'=>$date,'turno'=>(int)$turn];
+            foreach($amountKeys as $key){$v=$row[$key]??null;if(!is_numeric($v)||!is_finite((float)$v)||(float)$v<0||(float)$v>999999999999999.9999)throw new RuntimeException("Importe inválido: {$key}.");$item[$key]=round((float)$v,4);}
             $key=$date.'|'.$item['turno'];
             if(isset($seen[$key])) { if($seen[$key]!==$item) throw new RuntimeException('El lote contiene un mismo turno con valores distintos.'); $duplicateUnchanged++; continue; }
             $seen[$key]=$item; $normal[]=$item;
@@ -679,9 +672,9 @@ class EfcConciliacionModel {
         try {
             $ins=$this->db->prepare("INSERT dbo.efc_conc_praxedis_lotes(estacion_id,usuario_id,usuario_nombre,imagen_original,sha256_servidor,texto_ocr,registros_insertados,registros_actualizados,registros_sin_cambios) OUTPUT INSERTED.id VALUES(40,?,?,?,?,?,0,0,0)");
             $ins->bindValue(1,$userId,PDO::PARAM_INT); $ins->bindValue(2,$userName); $ins->bindValue(3,$image,PDO::PARAM_LOB); $ins->bindValue(4,$sha256); $ins->bindValue(5,$ocrText); $ins->execute(); $batchId=(int)$ins->fetchColumn();
-            $find=$this->db->prepare("SELECT id,estacion_id,fecha_operativa,turno,isla,ventas,donativo,vale_interno,vale_externo,efectivo,dollar,estado FROM dbo.efc_conc_praxedis_cortes WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=40 AND fecha_operativa=? AND turno=?");
-            $insert=$this->db->prepare("INSERT dbo.efc_conc_praxedis_cortes(estacion_id,fecha_operativa,turno,isla,ventas,donativo,vale_interno,vale_externo,efectivo,dollar,estado) OUTPUT INSERTED.id VALUES(40,?,?,?,?,?,?,?,?,?,?)");
-            $update=$this->db->prepare("UPDATE dbo.efc_conc_praxedis_cortes SET isla=?,ventas=?,donativo=?,vale_interno=?,vale_externo=?,efectivo=?,dollar=?,estado=?,actualizado_en=SYSDATETIME() WHERE id=?");
+            $find=$this->db->prepare("SELECT id,estacion_id,fecha_operativa,turno,efectivo,dollar FROM dbo.efc_conc_praxedis_cortes WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=40 AND fecha_operativa=? AND turno=?");
+            $insert=$this->db->prepare("INSERT dbo.efc_conc_praxedis_cortes(estacion_id,fecha_operativa,turno,efectivo,dollar,estado) OUTPUT INSERTED.id VALUES(40,?,?,?,?,'Cerrado')");
+            $update=$this->db->prepare("UPDATE dbo.efc_conc_praxedis_cortes SET efectivo=?,dollar=?,actualizado_en=SYSDATETIME() WHERE id=?");
             $activeSourceGroups=$this->db->prepare("SELECT DISTINCT grupo_id FROM dbo.efc_conc_partidas WHERE origen='CG' AND clave_externa IN (?,?) AND activo=1");
             $updateSourceAmount=$this->db->prepare("UPDATE dbo.efc_conc_partidas SET importe=? WHERE origen='CG' AND clave_externa=? AND activo=1");
             $refreshGroup=$this->db->prepare("UPDATE G SET total_controlgas=ISNULL((SELECT SUM(P.importe) FROM dbo.efc_conc_partidas P WHERE P.grupo_id=G.id AND P.origen='CG' AND P.activo=1),0),total_banorte=ISNULL((SELECT SUM(P.importe) FROM dbo.efc_conc_partidas P WHERE P.grupo_id=G.id AND P.origen='BANCO' AND P.activo=1),0),diferencia=ISNULL((SELECT SUM(P.importe) FROM dbo.efc_conc_partidas P WHERE P.grupo_id=G.id AND P.origen='BANCO' AND P.activo=1),0)-ISNULL((SELECT SUM(P.importe) FROM dbo.efc_conc_partidas P WHERE P.grupo_id=G.id AND P.origen='CG' AND P.activo=1),0) FROM dbo.efc_conc_grupos G WHERE G.id=? AND G.estado='ACTIVA'");
@@ -690,19 +683,18 @@ class EfcConciliacionModel {
             foreach($normal as $item){
                 $find->execute([$item['fecha_operativa'],$item['turno']]); $old=$find->fetch(PDO::FETCH_ASSOC);
                 $new=['estacion_id'=>40]+$item;
-                if(!$old){$insert->execute([$item['fecha_operativa'],$item['turno'],$item['isla'],$item['ventas'],$item['donativo'],$item['vale_interno'],$item['vale_externo'],$item['efectivo'],$item['dollar'],$item['estado']]);$turnId=(int)$insert->fetchColumn();$action='INSERT';$oldJson=null;$counts['insertados']++;}
+                if(!$old){$insert->execute([$item['fecha_operativa'],$item['turno'],$item['efectivo'],$item['dollar']]);$turnId=(int)$insert->fetchColumn();$action='INSERT';$oldJson=null;$counts['insertados']++;}
                 else {
                     $oldDate=$old['fecha_operativa'] instanceof DateTimeInterface?$old['fecha_operativa']->format('Y-m-d'):substr((string)$old['fecha_operativa'],0,10);
-                    $oldState=strtolower(trim((string)$old['estado'])); $oldState=['open'=>'Abierto','abierto'=>'Abierto','closed'=>'Cerrado','cerrado'=>'Cerrado'][$oldState]??(string)$old['estado'];
-                    $oldNorm=['estacion_id'=>(int)$old['estacion_id'],'fecha_operativa'=>$oldDate,'turno'=>(int)$old['turno'],'isla'=>trim((string)$old['isla']),'estado'=>$oldState]; foreach($amountKeys as $k)$oldNorm[$k]=round((float)$old[$k],4);
+                    $oldNorm=['estacion_id'=>(int)$old['estacion_id'],'fecha_operativa'=>$oldDate,'turno'=>(int)$old['turno']]; foreach($amountKeys as $k)$oldNorm[$k]=round((float)$old[$k],4);
                     $same=true; foreach($new as $k=>$v) if($oldNorm[$k]!==$v){$same=false;break;}
                     $turnId=(int)$old['id'];
                     if($same){$counts['sin_cambios']++;continue;}
-                    $update->execute([$item['isla'],$item['ventas'],$item['donativo'],$item['vale_interno'],$item['vale_externo'],$item['efectivo'],$item['dollar'],$item['estado'],$turnId]);
+                    $update->execute([$item['efectivo'],$item['dollar'],$turnId]);
                     $key='cg-40-'.$item['fecha_operativa'].'-'.$item['turno'].'-MN';
                     $legacyKey=$this->sourceKey(40,$item['fecha_operativa'],(string)$item['turno']);
                     $activeSourceGroups->execute([$key,$legacyKey]);$groupIds=array_map('intval',$activeSourceGroups->fetchAll(PDO::FETCH_COLUMN));
-                    if($groupIds){$updateSourceAmount->execute([$item['ventas'],$key]);$updateSourceAmount->execute([$item['ventas'],$legacyKey]);foreach($groupIds as $groupId)$refreshGroup->execute([$groupId]);}
+                    if($groupIds){$updateSourceAmount->execute([$item['efectivo'],$key]);$updateSourceAmount->execute([$item['efectivo'],$legacyKey]);foreach($groupIds as $groupId)$refreshGroup->execute([$groupId]);}
                     $action='UPDATE';$oldJson=json_encode($oldNorm,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);$counts['actualizados']++;
                 }
                 $history->execute([$turnId,$batchId,$action,$oldJson,json_encode($new,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$userId,$userName]);
