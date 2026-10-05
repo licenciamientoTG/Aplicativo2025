@@ -2898,6 +2898,83 @@ class Supply
         json_output(['success' => true]);
     }
 
+    /**
+     * Inventario de una estación agrupado por producto (Regular/Premium/
+     * Diesel) para el tab "Plan inventarios". El JS lo pide estación por
+     * estación, varias en paralelo, y va dibujando conforme responden.
+     *
+     * vw_tank_info trae una fila por TANQUE: capacidad y volumen se suman,
+     * pero total_sales/average_daily_sales son del PRODUCTO y vienen
+     * repetidos en cada tanque del mismo producto -- se toman una sola vez
+     * (MAX), si no la venta saldría duplicada en estaciones con 2 tanques.
+     */
+    public function scheduling_inventory_station()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        // Liberar el lock de sesión: el navegador manda varias estaciones a la
+        // vez y PHP serializa las peticiones de una misma sesión abierta.
+        session_write_close();
+
+        $codigo = (int)($_GET['station_code'] ?? $_POST['station_code'] ?? 0);
+        if ($codigo <= 0) {
+            json_output(['success' => false, 'message' => 'Falta la estación']);
+            return;
+        }
+
+        try {
+            $tanques = $this->tanquesModel->get_tank_info_estacion($codigo);
+        } catch (Throwable $e) {
+            error_log('scheduling_inventory_station ' . $codigo . ': ' . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage() ?: 'No se pudo consultar la estación']);
+            return;
+        }
+        if ($tanques === null) {
+            json_output(['success' => false, 'message' => 'La estación no tiene servidor configurado']);
+            return;
+        }
+
+        $productos = [];
+        foreach ($tanques as $t) {
+            $nombre = mb_strtolower((string)($t['product_name'] ?? ''));
+            if (str_contains($nombre, 'diesel')) {
+                $prod = 'Diesel';
+            } elseif (str_contains($nombre, 'premium') || str_contains($nombre, 'super')) {
+                $prod = 'Premium';
+            } elseif (str_contains($nombre, 'regular') || str_contains($nombre, 'magna') || str_contains($nombre, 'maxima')) {
+                $prod = 'Regular';
+            } else {
+                $prod = $t['product_name'] ?? 'Otro';
+            }
+            if (!isset($productos[$prod])) {
+                $productos[$prod] = ['cap_operativa' => 0.0, 'volumen' => 0.0, 'venta_mes' => null, 'prom_dia' => null, 'tanques' => 0];
+            }
+            $p = &$productos[$prod];
+            $p['cap_operativa'] += (float)($t['CapacidadOpe'] ?? 0);
+            $p['volumen'] += (float)($t['current_volume'] ?? 0);
+            $p['tanques']++;
+            if ($t['total_sales'] !== null) {
+                $p['venta_mes'] = max((float)$p['venta_mes'], (float)$t['total_sales']);
+            }
+            if ($t['average_daily_sales'] !== null) {
+                $p['prom_dia'] = max((float)$p['prom_dia'], (float)$t['average_daily_sales']);
+            }
+            unset($p);
+        }
+
+        foreach ($productos as &$p) {
+            $p['porcentaje'] = $p['cap_operativa'] > 0 ? round($p['volumen'] * 100 / $p['cap_operativa'], 2) : null;
+            $p['dias_inv'] = ($p['prom_dia'] ?? 0) > 0 ? round($p['volumen'] / $p['prom_dia'], 1) : null;
+            $p['espacio_libre'] = round($p['cap_operativa'] - $p['volumen'], 2);
+        }
+        unset($p);
+
+        json_output(['success' => true, 'station_code' => $codigo, 'productos' => $productos]);
+    }
+
     public function scheduling_duplicate()
     {
         header('Content-Type: application/json');
