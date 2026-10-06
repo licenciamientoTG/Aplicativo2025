@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Incluir la clase generadora (ajusta la ruta según tu estructura)
 require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/GeneradorXMLPrecios.php';
 

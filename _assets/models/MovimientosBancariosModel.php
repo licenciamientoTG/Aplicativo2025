@@ -2808,6 +2808,28 @@ class MovimientosBancariosModel extends Model
     }
 
     /**
+     * Movimientos de UNA cuenta Banorte para el layout .cba de One Goal
+     * (Accounting::exportar_cba_banorte). Difiere de get_movimientos() en dos
+     * puntos, ambos para reproducir el "Convertidor Bancos" de Contabilidad:
+     * - el rango es por fecha de OPERACIÓN (es la que ellos pegan en las dos
+     *   columnas de fecha); los CSV viejos sin fecha_operacion caen a fecha.
+     * - orden por secuencia (folio "Movimiento" de Banorte), que es el orden
+     *   del estado de cuenta.
+     * Sin secuencia solo existen los SALDO INICIAL de ALTA MANUAL, que no son
+     * movimientos del banco y el Excel tampoco trae.
+     */
+    public function get_movimientos_cba_banorte(string $cuenta, string $desde, string $hasta): array
+    {
+        $query = "SELECT ISNULL(fecha_operacion, fecha) AS fecha_operacion, referencia, descripcion,
+                         sucursal, abono, cargo, saldo, secuencia, descripcion_larga
+                  FROM [TG].[dbo].[movimientos_bancarios]
+                  WHERE banco = 'BANORTE' AND cuenta = ? AND secuencia IS NOT NULL
+                    AND ISNULL(fecha_operacion, fecha) BETWEEN ? AND ?
+                  ORDER BY secuencia, id;";
+        return $this->sql->select($query, [$cuenta, $desde, $hasta]) ?: [];
+    }
+
+    /**
      * Guarda el comentario libre de un movimiento (edición inline con lápiz
      * en la tabla, permiso 93). $cuenta se pasa para que el controlador
      * pueda validarla contra cuentas_permitidas() antes de llamar aquí, pero

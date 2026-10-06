@@ -549,6 +549,55 @@ function exportarExcel() {
     document.body.removeChild(form);
 }
 
+// Copia al portapapeles lo mismo que exportarExcel() (mismas filas filtradas y
+// mismas columnas) como texto separado por tabulaciones: al pegar en Excel cae
+// cada valor en su celda. Litros sin separador de miles para que Excel los
+// tome como número.
+function copiarComoExcel() {
+    const filas = filasParaExportar();
+    if (!filas.length) {
+        alertify.myAlert('<div class="text-center"><p>No hay recepciones programadas que copiar con los filtros actuales.</p></div>');
+        return;
+    }
+    const limpiar = function (v) { return String(v === null || v === undefined ? '' : v).replace(/[\t\r\n]+/g, ' ').trim(); };
+    const nombreGrupo = (agrupacionActiva === 'estacion' || agrupacionActiva === 'inventarios') ? 'Estación' : 'Grupo (Proveedor — Terminal)';
+    const lineas = [[nombreGrupo, 'Hora', 'Producto', 'Litros', 'Estación', 'Proveedor', 'Terminal', 'Transportista', 'Referencia', 'Notas'].join('\t')];
+    filas.forEach(function (f) {
+        lineas.push([
+            f.grupo, f.hora, f.product, Number(f.litros) || 0, f.station_nombre,
+            f.supplier_nombre, f.terminal_nombre, f.carrier_nombre, f.referencia, f.notas,
+        ].map(limpiar).join('\t'));
+    });
+    const texto = lineas.join('\r\n');
+
+    const ok = function () { alertify.success(filas.length + ' fila(s) copiadas. Pégalas en Excel.'); };
+    // navigator.clipboard solo existe en contexto seguro (https o localhost);
+    // en el servidor por http se usa el textarea + execCommand de respaldo.
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(texto).then(ok, function () { copiarConRespaldo(texto) ? ok() : avisarFalloCopia(); });
+    } else {
+        copiarConRespaldo(texto) ? ok() : avisarFalloCopia();
+    }
+}
+
+function copiarConRespaldo(texto) {
+    const area = document.createElement('textarea');
+    area.value = texto;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.top = '-1000px';
+    document.body.appendChild(area);
+    area.select();
+    let copiado = false;
+    try { copiado = document.execCommand('copy'); } catch (e) { copiado = false; }
+    document.body.removeChild(area);
+    return copiado;
+}
+
+function avisarFalloCopia() {
+    alertify.myAlert('<div class="text-danger text-center"><p>El navegador no permitió copiar. Usa Exportar.</p></div>');
+}
+
 function actualizarTotalDia(filas) {
     const total = filas.reduce(function (sum, f) { return sum + (Number(f.litros) || 0); }, 0);
     $('#totalLitrosDia').text(total.toLocaleString('es-MX'));
@@ -1057,6 +1106,10 @@ $(document).ready(function () {
 
     $('#btnExportarExcel').on('click', function () {
         exportarExcel();
+    });
+
+    $('#btnCopiarExcel').on('click', function () {
+        copiarComoExcel();
     });
 
     $('#btnAgregarRecepcion').on('click', function () {

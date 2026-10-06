@@ -189,7 +189,8 @@ class Accounting{
      * hoja por cuenta (cada cuenta pertenece a un solo banco en la práctica,
      * así que la hoja usa el set de columnas de ESE banco, igual que su tab
      * en pantalla). Mismos filtros que movimientos_bancos_table(): Desde,
-     * Hasta, Cuenta o Descripción.
+     * Hasta, Cuenta o Descripción; además banco=BANORTE (card "Exportar":
+     * "Todas las de Banorte") acota a las cuentas de ese banco.
      */
     public function exportar_movimientos_bancos(): void {
         if (!authorized(self::PERM_MOVIMIENTOS_BANCOS)) {
@@ -202,6 +203,8 @@ class Accounting{
         $cuentasPermitidas = null;
         if (!empty($filtros['descripcion'])) {
             $cuentasPermitidas = $this->movsModel->get_cuentas_por_descripcion($filtros['descripcion']);
+        } elseif (strtoupper(trim($_GET['banco'] ?? '')) === 'BANORTE') {
+            $cuentasPermitidas = $this->cuentas_banorte();
         }
 
         $movimientos = $this->movsModel->get_movimientos($filtros, $cuentasPermitidas);
@@ -220,6 +223,123 @@ class Accounting{
         header('Cache-Control: max-age=0');
         (new Xlsx($libro))->save('php://output');
         exit;
+    }
+
+    /**
+     * GET: descarga el layout .cba de Banorte ("Conciliación Bancaria
+     * Automática" de One Goal ERP) de una cuenta y rango. Reemplaza pegar los
+     * movimientos en el Excel "Convertidor Bancos" y apretar Exportar
+     * (macro ExportaBanorte). Verificado 2026-10-06 contra el .cba real de
+     * agosto 2026 de las cuentas 0652978520 y 1156265202: idéntico.
+     *
+     * Con cuenta vacía ("Todas las de Banorte") baja un .zip con un .cba por
+     * cuenta Banorte que tenga movimientos en el rango, porque One Goal
+     * concilia cuenta por cuenta (igual que una hoja por cuenta en el Excel).
+     */
+    public function exportar_cba_banorte(): void {
+        if (!authorized(self::PERM_MOVIMIENTOS_BANCOS)) {
+            (new Errors())->get404();
+            return;
+        }
+
+        $filtros  = $this->filtros_movimientos_bancos($_GET);
+        $banorte  = $this->cuentas_banorte();
+        $rango    = $filtros['desde'] . '_' . $filtros['hasta'];
+        $cuentas  = $filtros['cuenta'] !== '' ? [$filtros['cuenta']] : $banorte;
+
+        if ($filtros['cuenta'] !== '' && !in_array($filtros['cuenta'], $banorte, true)) {
+            http_response_code(400);
+            echo 'La cuenta elegida no es de Banorte';
+            return;
+        }
+
+        // nombre de archivo => contenido, solo cuentas con movimientos
+        $archivos = [];
+        foreach ($cuentas as $cuenta) {
+            $movs = $this->movsModel->get_movimientos_cba_banorte($cuenta, $filtros['desde'], $filtros['hasta']);
+            if (!$movs && count($cuentas) > 1) continue;
+            $archivos['Layout Banorte ' . $cuenta . ' ' . $rango . '.cba'] = self::contenido_cba_banorte($movs);
+        }
+
+        if (!$archivos) {
+            http_response_code(404);
+            echo 'No hay movimientos de Banorte en el rango elegido';
+            return;
+        }
+
+        if (count($cuentas) === 1) {
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment; filename="' . array_key_first($archivos) . '"');
+            header('Cache-Control: max-age=0');
+            echo reset($archivos);
+            exit;
+        }
+
+        $zipFile = tempnam(sys_get_temp_dir(), 'cba');
+        $zip     = new ZipArchive();
+        if ($zip->open($zipFile, ZipArchive::OVERWRITE) !== true) {
+            http_response_code(500);
+            echo 'No se pudo crear el archivo ZIP';
+            return;
+        }
+        foreach ($archivos as $nombre => $contenido) {
+            $zip->addFromString($nombre, $contenido);
+        }
+        $zip->close();
+
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="Layouts Banorte ' . $rango . '.zip"');
+        header('Content-Length: ' . filesize($zipFile));
+        header('Cache-Control: max-age=0');
+        readfile($zipFile);
+        unlink($zipFile);
+        exit;
+    }
+
+    /** Números de cuenta de Banorte que tienen movimientos en la tabla. */
+    private function cuentas_banorte(): array {
+        $cuentas = array_filter($this->movsModel->get_cuentas(),
+                                fn($c) => self::banco_de($c['banco']) === 'BANORTE');
+        return array_values(array_unique(array_column($cuentas, 'cuenta')));
+    }
+
+    /**
+     * Texto del .cba de Banorte, igual al que escribe la macro del Excel:
+     * encabezado + una línea por movimiento, 11 columnas separadas por "|",
+     * CRLF y Windows-1252 (Print # de VBA). Particularidades del layout que
+     * usa Contabilidad:
+     * - "Fecha" repite la fecha de operación (no la de aplicación).
+     * - "Cod. Transac" lleva el folio (secuencia), igual que "Movimiento";
+     *   no el código de transacción real de Banorte (003, 004...).
+     * - importes como los imprime VBA: sin miles ni ceros de sobra
+     *   (81721.5, 1000) y vacío = 0.
+     * Estático y sin BD para poder probarlo por CLI.
+     */
+    public static function contenido_cba_banorte(array $movs): string {
+        $num = function ($v): string {
+            $s = trim((string)$v);
+            if ($s === '') return '0';
+            $neg = $s[0] === '-';
+            $s   = ltrim($s, '-');
+            if ($s[0] === '.') $s = '0' . $s;   // sqlsrv entrega .02 para 0.02
+            if (strpos($s, '.') !== false) $s = rtrim(rtrim($s, '0'), '.');
+            if ($s === '' || $s === '0') return '0';
+            return ($neg ? '-' : '') . $s;
+        };
+        $txt = fn($v) => str_replace(["\r\n", "\r", "\n"], ' ', trim((string)$v));
+
+        $lineas = ['Fecha de Operación|Fecha|Referencia|Descripción|Cod. Transac|Sucursal|Depósitos|Retiros|Saldo|Movimiento|Descripción Detallada'];
+        foreach ($movs as $m) {
+            $fecha = date('d/m/Y', strtotime(substr((string)$m['fecha_operacion'], 0, 10)));
+            $folio = $txt($m['secuencia']);
+            $lineas[] = implode('|', [
+                $fecha, $fecha, $txt($m['referencia']), $txt($m['descripcion']), $folio,
+                $txt($m['sucursal']), $num($m['abono']), $num($m['cargo']), $num($m['saldo']),
+                $folio, $txt($m['descripcion_larga']),
+            ]);
+        }
+
+        return mb_convert_encoding(implode("\r\n", $lineas) . "\r\n", 'Windows-1252', 'UTF-8');
     }
 
     /**
