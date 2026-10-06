@@ -18,15 +18,12 @@
    ============================================================================ */
 
 USE [TG];
-GO
 
 IF OBJECT_ID(N'[dbo].[movimientos_bancarios]', N'U') IS NULL
     THROW 50001, 'Requisito faltante: TG.dbo.movimientos_bancarios debe existir antes de esta migración.', 1;
-GO
 
 IF COL_LENGTH(N'dbo.movimientos_bancarios', N'id') IS NULL
     THROW 50002, 'Requisito faltante: TG.dbo.movimientos_bancarios.id debe existir.', 1;
-GO
 
 IF OBJECT_ID(N'[dbo].[efc_conc_one_goal_movimientos]', N'U') IS NULL
 BEGIN
@@ -45,4 +42,3 @@ BEGIN
             REFERENCES [dbo].[movimientos_bancarios] ([id])
     );
 END;
-GO
