@@ -46,7 +46,7 @@ class VentasRentabilidadModel extends Model
      *       'factura_total','docs','docs_sin_factura','costo_sin_factura','docs_sin_precio','litros_sin_precio','ventas_atipicas',
      *   ]],
      *   'diario'      => ['Y-m-d' => [codgas => [familia => ['litros' => float, 'pesos' => float]]]],
-     *   'compras_dia' => ['Y-m-d' => [familia => ['litros' => float, 'costo' => float]]]  (solo con precio),
+     *   'compras_dia' => ['Y-m-d' => [codgas => [familia => ['litros' => float, 'costo' => float]]]]  (solo con precio),
      *   'proveedores' => [['proveedor','codgas','familia','litros','costo'], ...]  (solo con precio),
      *   'prov_docs'   => [proveedor => ['docs' => int, 'facturado' => float]],
      *   'descuentos'  => [proveedor => float]  (sin IVA),
@@ -118,16 +118,17 @@ class VentasRentabilidadModel extends Model
             [$d, $h]) ?: [];
         $comprasDia = [];
         foreach ($compras as $r) {
-            $f = &$this->fila($out, (int) $r['codgas'], $r['familia']);
+            $cod = (int) $r['codgas'];
+            $f = &$this->fila($out, $cod, $r['familia']);
             $f['litros_compra']     += (float) $r['litros'];
             $f['litros_con_precio'] += (float) $r['litros_precio'];
             $f['costo_compra']      += (float) $r['costo'];
             unset($f);
             if ((float) $r['litros_precio'] > 0) {
-                $c = &$comprasDia[$r['fecha']][$r['familia']];
-                $c['litros'] = ($c['litros'] ?? 0) + (float) $r['litros_precio'];
-                $c['costo']  = ($c['costo'] ?? 0) + (float) $r['costo'];
-                unset($c);
+                $comprasDia[$r['fecha']][$cod][$r['familia']] = [
+                    'litros' => (float) $r['litros_precio'],
+                    'costo'  => (float) $r['costo'],
+                ];
             }
         }
         ksort($comprasDia);

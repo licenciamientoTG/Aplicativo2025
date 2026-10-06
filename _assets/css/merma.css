@@ -474,7 +474,98 @@
 }
 .vd-ayuda-cerrar:hover { color: #334155; }
 
+/* Panel "Compras y merma" del RESUMEN DIRECCIÓN: tarjetas + lista de mayor merma */
+.vd-cm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .65rem; }
+.vd-cm-tile {
+    display: flex; align-items: flex-start; gap: .7rem;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .55rem; padding: .7rem .8rem;
+}
+.vd-cm-tile.vd-cm-alerta { background: #fef2f2; border-color: #fecaca; }
+.vd-cm-icono {
+    flex: 0 0 2.1rem; width: 2.1rem; height: 2.1rem; border-radius: .5rem;
+    display: inline-flex; align-items: center; justify-content: center; font-size: .95rem;
+}
+.vd-cm-azul  { background: #e0f2fe; color: #0077b0; }
+.vd-cm-verde { background: #dcfce7; color: #00713f; }
+.vd-cm-gris  { background: #e2e8f0; color: #475569; }
+.vd-cm-ambar { background: #fef3c7; color: #92400e; }
+.vd-cm-rojo  { background: #fee2e2; color: #b91c1c; }
+.vd-cm-label { font-size: .78rem; font-weight: 600; color: #64748b; }
+.vd-cm-num {
+    font-size: 1.3rem; font-weight: 700; color: #0f172a; line-height: 1.25;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.vd-cm-num small { font-size: .75rem; font-weight: 500; color: #64748b; }
+.vd-cm-sub { font-size: .75rem; color: #64748b; margin-top: .1rem; }
+.vd-cm-pill {
+    display: inline-block; padding: .05rem .5rem; border-radius: 999px;
+    font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.vd-cm-pill-mal { background: #fee2e2; color: #b91c1c; }
+.vd-cm-pill-ok  { background: #dcfce7; color: #00713f; }
+.vd-cm-barra { height: .35rem; background: #fee2e2; border-radius: 999px; overflow: hidden; margin: .3rem 0 .15rem; max-width: 9rem; }
+.vd-cm-barra span { display: block; height: 100%; background: #009559; border-radius: 999px; }
+
+.vd-cm-top { border: 1px solid #e2e8f0; border-radius: .55rem; overflow: hidden; height: 100%; }
+.vd-cm-top-titulo {
+    font-size: .8rem; font-weight: 700; color: #991b1b; background: #fef2f2;
+    padding: .55rem .85rem; border-bottom: 1px solid #fecaca;
+}
+.vd-cm-top-fila {
+    display: grid; grid-template-columns: 1.4rem 1fr auto auto; align-items: center; gap: .6rem;
+    padding: .5rem .85rem; border-bottom: 1px solid #f1f5f9; color: inherit; text-decoration: none;
+}
+.vd-cm-top-fila:last-child { border-bottom: 0; }
+.vd-cm-top-fila:hover, .vd-cm-top-fila:focus-visible { background: #f8fafc; color: inherit; }
+.vd-cm-top-pos {
+    width: 1.4rem; height: 1.4rem; border-radius: 50%; background: #f1f5f9; color: #475569;
+    font-size: .72rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.vd-cm-top-nombre { font-size: .85rem; font-weight: 600; color: #1e3a5f; min-width: 0; }
+.vd-cm-top-nombre small { display: block; font-size: .7rem; font-weight: 400; color: #94a3b8; }
+.vd-cm-top-litros { font-size: .78rem; color: #64748b; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* "De la venta al margen": una columna de indicadores por color.
+   Verde suma, rojo resta, azul subtotal, el final resaltado. */
+.vd-mg { display: flex; flex-direction: column; gap: .2rem; }
+.vd-mg-paso {
+    display: grid; grid-template-columns: 1.35rem 1fr auto; align-items: center; gap: .55rem;
+    padding: .3rem .65rem; border-radius: .35rem; border-left: 3px solid transparent; background: #f8fafc;
+}
+.vd-mg-signo {
+    width: 1.35rem; height: 1.35rem; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: .8rem; line-height: 1;
+}
+.vd-mg-texto { font-size: .8rem; color: #334155; font-weight: 600; min-width: 0; }
+.vd-mg-texto small { display: block; font-size: .67rem; font-weight: 400; color: #64748b; }
+.vd-mg-monto { text-align: right; font-size: .85rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vd-mg-monto small { display: block; font-size: .67rem; font-weight: 500; color: #64748b; }
+.vd-chart-margen { height: 100%; min-height: 300px; }
+
+.vd-mg-base     { border-left-color: #94a3b8; }
+.vd-mg-base .vd-mg-signo { background: #e2e8f0; color: #475569; }
+.vd-mg-suma     { border-left-color: #009559; background: #f0faf5; }
+.vd-mg-suma .vd-mg-signo { background: #d1f0e0; color: #00713f; }
+.vd-mg-suma .vd-mg-monto { color: #00713f; }
+.vd-mg-resta    { border-left-color: #dc2626; background: #fef5f5; }
+.vd-mg-resta .vd-mg-signo { background: #fde0e0; color: #b91c1c; }
+.vd-mg-resta .vd-mg-monto { color: #b91c1c; }
+.vd-mg-subtotal { border-left-color: #0095DA; background: #eef8fd; }
+.vd-mg-subtotal .vd-mg-signo { background: #d5eefa; color: #0077b0; }
+.vd-mg-subtotal .vd-mg-monto { color: #0f4c75; }
+.vd-mg-final {
+    border-left-color: #0f4c75; background: #0f4c75; margin-top: .15rem; padding: .45rem .65rem;
+}
+.vd-mg-final .vd-mg-signo { background: rgba(255,255,255,.18); color: #fff; }
+.vd-mg-final .vd-mg-texto, .vd-mg-final .vd-mg-monto { color: #fff; }
+.vd-mg-final .vd-mg-monto { font-size: 1rem; }
+.vd-mg-final small { color: rgba(255,255,255,.75); }
+
 /* Sección Rentabilidad: subtítulos y gráficas */
 .vd-sub-titulo { font-weight: 600; color: #334155; font-size: .9rem; margin: 1rem 0 .4rem; padding-top: .6rem; border-top: 1px solid #e2e8f0; }
 .vd-chart-sm { height: 260px; }
-#vr-diario-prod .btn.active { background: #e0f2fe; border-color: #7dd3fc; color: #075985; }
+#vr-pe-prod .btn.active { background: #e0f2fe; border-color: #7dd3fc; color: #075985; }
+.vr-pe-controles { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-bottom: .5rem; }
+.vr-pe-controles .bootstrap-select { min-width: 16rem; }
+.vr-chart-estacion { height: 480px; width: 100%; }

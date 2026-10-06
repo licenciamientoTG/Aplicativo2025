@@ -343,6 +343,9 @@ class station_portal
                 'volumen'          => $r['VolumenRecibido'],
                 'documento'        => $r['documento'],
                 'referencia'       => $r['referencia'],
+                // UUID del CFDI cargado en ControlGas (DocumentosC.satuid, vía
+                // ApiER); vacío = el XML aún no se sube en ControlGas.
+                'uuid'             => $r['uuid'] ?? null,
                 'total_remisiones' => $totalRemisiones,
                 'total_cartas_porte' => $totalCartasPorte,
                 'factura_id'       => $asignacion['FacturaId'] ?? null,

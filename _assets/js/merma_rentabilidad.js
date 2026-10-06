@@ -9,6 +9,14 @@ var VR_NOMBRE_PROD = { maxima: 'Regular', super: 'Premium', diesel: 'Diesel' };
 var VR_COLOR_ZONA = { 'MARCA Y PROTS': '#0095DA', 'TSA AGS': '#009559', 'ZONA 3': '#f59e0b' };
 var vrCharts = [];
 
+var VR_DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/** 'YYYY-MM-DD' → nombre del día de la semana (fecha local, sin desfase de zona). */
+function vrDiaSemana(fecha) {
+    var p = String(fecha).split('-');
+    return VR_DIAS_SEMANA[new Date(+p[0], +p[1] - 1, +p[2]).getDay()];
+}
+
 function vrDatos(el, attr) {
     try { return JSON.parse(el.getAttribute(attr) || 'null'); } catch (e) { return null; }
 }
@@ -30,51 +38,50 @@ function vrInit(id) {
 function initRentabilidad() {
     vrCharts.forEach(function (c) { c.dispose(); });
     vrCharts = [];
-    vrCascada();
+    vrMargenColumna();
     vrProvPrecio();
     vrProvLitros();
-    vrDiario('total');
+    vrEstacionesInit();
     vrDispersion();
-
-    $('#vr-diario-prod').on('click', 'button', function () {
-        $(this).addClass('active').siblings().removeClass('active');
-        vrDiario($(this).data('prod'));
-    });
 }
 
-/** Cascada: barras flotantes de la venta al margen ajustado. */
-function vrCascada() {
-    var c = vrInit('vr-chart-cascada');
+/**
+ * Una sola columna apilada con las piezas del margen ajustado (antes de
+ * estímulo, estímulo, descuentos, diferencia de inventario). Las piezas
+ * negativas se apilan por debajo de cero; arriba, el total.
+ */
+function vrMargenColumna() {
+    var c = vrInit('vr-chart-margen');
     if (!c) return;
-    var pasos = vrDatos(c.el, 'data-cascada') || [];
-    var base = [], valor = [], acumulado = 0;
-    pasos.forEach(function (p) {
-        var color;
-        if (p.t === 'total') {
-            acumulado = p.v;
-            base.push(Math.min(0, p.v));
-            color = p.v < 0 ? '#dc2626' : '#334155';
-        } else {
-            var desde = acumulado, hasta = acumulado + p.v;
-            acumulado = hasta;
-            base.push(Math.min(desde, hasta));
-            color = p.v < 0 ? '#dc2626' : '#009559';
-        }
-        valor.push({ value: Math.abs(p.v), itemStyle: { color: color }, real: p.v });
-    });
+    var piezas = vrDatos(c.el, 'data-piezas') || [];
+    var total = parseFloat(c.el.getAttribute('data-total'));
+    var maxPos = piezas.reduce(function (s, p) { return s + Math.max(p.v, 0); }, 0);
     c.chart.setOption({
-        grid: { left: 80, right: 16, top: 24, bottom: 30 },
-        tooltip: {
-            trigger: 'axis', axisPointer: { type: 'shadow' },
-            formatter: function (p) { var s = p[1]; return '<strong>' + s.name + '</strong><br>' + vrPesos(s.data.real); }
-        },
-        xAxis: { type: 'category', data: pasos.map(function (p) { return p.l; }), axisLabel: { interval: 0, fontSize: 11 } },
-        yAxis: { type: 'value', axisLabel: { formatter: vrMillones } },
-        series: [
-            { type: 'bar', stack: 'c', data: base, itemStyle: { color: 'transparent' }, emphasis: { disabled: true }, tooltip: { show: false } },
-            { type: 'bar', stack: 'c', data: valor, barMaxWidth: 56,
-              label: { show: true, position: 'top', fontSize: 11, formatter: function (p) { return vrMillones(p.data.real); } } }
-        ]
+        grid: { left: 70, right: 150, top: 34, bottom: 12 },
+        tooltip: { trigger: 'item', formatter: function (p) {
+            return p.marker + '<strong>' + p.seriesName + '</strong><br>' + vrPesos(p.value);
+        } },
+        xAxis: { type: 'category', data: ['Margen ajustado'], axisTick: { show: false },
+                 axisLabel: { show: false }, axisLine: { show: false } },
+        yAxis: { type: 'value', axisLabel: { formatter: vrMillones }, max: function (v) { return Math.max(v.max, maxPos) * 1.12; } },
+        series: piezas.map(function (p, i) {
+            return {
+                name: p.l, type: 'bar', stack: 'margen', barWidth: '46%',
+                itemStyle: { color: p.c },
+                data: [p.v],
+                label: { show: Math.abs(p.v) >= maxPos * 0.06, formatter: function (x) { return vrMillones(x.value); },
+                         color: '#fff', fontSize: 11, fontWeight: 600 }
+            };
+        }).concat([{
+            // Serie vacía solo para rotular el total sobre la columna
+            name: 'Total', type: 'bar', stack: 'margen', data: [0], barWidth: '46%', legendHoverLink: false,
+            tooltip: { show: false },
+            label: { show: true, position: 'top', fontSize: 13, fontWeight: 700, color: '#0f4c75',
+                     formatter: function () { return 'Total ' + vrMillones(total); } }
+        }]),
+        // La serie "Total" no aparece en la leyenda
+        legend: { data: piezas.map(function (p) { return p.l; }), orient: 'vertical', right: 0, top: 'middle',
+                  itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 11 } }
     });
 }
 
@@ -125,44 +132,103 @@ function vrProvLitros() {
     });
 }
 
-/** Precio de venta vs precio de compra por día, con el margen diario en barras. */
-function vrDiario(prod) {
-    var el = document.getElementById('vr-chart-diario');
+/**
+ * Precio de compra y venta por estación: arriba los precios (venta continua,
+ * compra punteada con un punto por descarga), abajo el margen por litro.
+ * Un color por estación; las tres series de una estación comparten nombre
+ * para que la leyenda las prenda/apague juntas.
+ */
+var VR_COLORES_EST = ['#0095DA', '#009559', '#f59e0b', '#a855f7', '#dc2626', '#0f4c75'];
+var vrPeProd = 'maxima';
+
+function vrEstacionesInit() {
+    var el = document.getElementById('vr-chart-estacion');
     if (!el || typeof echarts === 'undefined') return;
-    var chart = echarts.getInstanceByDom(el) || vrInit('vr-chart-diario').chart;
-    var dias = vrDatos(el, 'data-diario') || [];
-    var punto = function (d) { return d[prod] || {}; };
+    var datos = vrDatos(el, 'data-serie');
+    if (!datos || !datos.estaciones.length) return;
+    var chart = echarts.init(el);
+    vrCharts.push(chart);
+
+    var $sel = $('#vr-pe-estaciones');
+    // Por defecto, la estación de mayor venta del mes
+    var mayor = datos.estaciones.slice().sort(function (a, b) { return b.litros - a.litros; })[0];
+    $sel.val([String(mayor.cod)]);
+    if ($.fn.selectpicker) $sel.selectpicker();
+
+    var pintar = function () { vrEstacionesPintar(chart, datos, ($sel.val() || []).map(Number), vrPeProd); };
+    // Con bootstrap-select el aviso es changed.bs.select; sin él, el change nativo
+    $sel.on($.fn.selectpicker ? 'changed.bs.select' : 'change', pintar);
+    $('#vr-pe-prod').on('click', 'button', function () {
+        $(this).addClass('active').siblings().removeClass('active');
+        vrPeProd = $(this).data('prod');
+        pintar();
+    });
+    pintar();
+}
+
+function vrEstacionesPintar(chart, datos, cods, prod) {
+    var dias = datos.fechas.map(function (f) {
+        var d = vrDiaSemana(f).substring(0, 3);
+        return +f.substring(8, 10) + '\n' + d.charAt(0).toUpperCase() + d.slice(1);
+    });
+    var sel = datos.estaciones.filter(function (e) { return cods.indexOf(e.cod) !== -1 && e.familias[prod]; });
+    var fmt = function (v) { return v == null ? '—' : (v < 0 ? '−$' : '$') + Math.abs(v).toFixed(2); };
+
+    var series = [];
+    sel.forEach(function (e, i) {
+        var color = VR_COLORES_EST[i % VR_COLORES_EST.length];
+        var s = e.familias[prod];
+        series.push(
+            { name: e.nombre, type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: s.v, showSymbol: false,
+              lineStyle: { width: 2, color: color }, itemStyle: { color: color }, connectNulls: false, vrTipo: 'venta' },
+            { name: e.nombre, type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: s.c, symbol: 'circle', symbolSize: 7,
+              connectNulls: true, lineStyle: { width: 1.5, type: 'dashed', color: color }, itemStyle: { color: color }, vrTipo: 'compra' },
+            { name: e.nombre, type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: s.m, showSymbol: false,
+              lineStyle: { width: 2, color: color }, itemStyle: { color: color },
+              areaStyle: sel.length === 1 ? { color: color, opacity: .12 } : undefined, vrTipo: 'margen' }
+        );
+    });
+
     chart.setOption({
-        grid: { left: 60, right: 80, top: 36, bottom: 30 },
-        legend: { top: 0 },
+        color: VR_COLORES_EST,
+        legend: { top: 0, data: sel.map(function (e) { return e.nombre; }) },
+        axisPointer: { link: [{ xAxisIndex: 'all' }] },
         tooltip: {
             trigger: 'axis',
             formatter: function (p) {
-                var d = dias[p[0].dataIndex], q = punto(d);
-                return '<strong>' + d.fecha + '</strong>' +
-                    '<br>Venta s/IVA: ' + (q.precio_venta == null ? '—' : '$' + q.precio_venta.toFixed(2) + '/L') +
-                    '<br>Compra s/IVA: ' + (q.precio_compra == null ? 'sin descargas con precio' : '$' + q.precio_compra.toFixed(2) + '/L') +
-                    '<br>Margen del día: ' + vrPesos(q.margen) +
-                    '<br>Litros vendidos: ' + Math.round(q.litros || 0).toLocaleString('es-MX');
+                if (!p.length) return '';
+                var i = p[0].dataIndex;
+                var html = '<strong>' + datos.fechas[i] + ' (' + vrDiaSemana(datos.fechas[i]) + ')</strong>';
+                sel.forEach(function (e, k) {
+                    var s = e.familias[prod];
+                    html += '<br><span style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:' +
+                            VR_COLORES_EST[k % VR_COLORES_EST.length] + '"></span><strong>' + e.nombre + '</strong>' +
+                            '<br>&nbsp;&nbsp;Venta ' + fmt(s.v[i]) + ' · Compra ' + (s.c[i] == null ? 'sin descarga' : fmt(s.c[i])) +
+                            ' · <strong>Margen ' + fmt(s.m[i]) + '/L</strong>';
+                });
+                return html;
             }
         },
-        xAxis: { type: 'category', data: dias.map(function (d) { return d.dia; }) },
-        yAxis: [
-            { type: 'value', scale: true, name: '$/L', axisLabel: { formatter: '${value}' } },
-            { type: 'value', name: 'Margen', axisLabel: { formatter: vrMillones }, splitLine: { show: false } }
+        grid: [
+            { left: 60, right: 24, top: 40, height: '48%' },
+            { left: 60, right: 24, top: '67%', bottom: 46 }
         ],
-        series: [
-            { name: 'Margen del día', type: 'bar', yAxisIndex: 1, barMaxWidth: 14,
-              data: dias.map(function (d) {
-                  var m = punto(d).margen;
-                  return m == null ? null : { value: m, itemStyle: { color: m < 0 ? 'rgba(220,38,38,.35)' : 'rgba(0,149,89,.3)' } };
-              }) },
-            { name: 'Precio de venta s/IVA', type: 'line', symbolSize: 5, connectNulls: true,
-              itemStyle: { color: '#009559' }, data: dias.map(function (d) { return punto(d).precio_venta; }) },
-            { name: 'Precio de compra s/IVA', type: 'line', symbolSize: 5, connectNulls: true,
-              itemStyle: { color: '#0095DA' }, lineStyle: { type: 'dashed' },
-              data: dias.map(function (d) { return punto(d).precio_compra; }) }
-        ]
+        xAxis: [
+            { type: 'category', gridIndex: 0, data: dias, axisLabel: { show: false }, axisTick: { show: false } },
+            { type: 'category', gridIndex: 1, data: dias, axisLabel: { interval: 0, fontSize: 10, lineHeight: 13 } }
+        ],
+        yAxis: [
+            { type: 'value', gridIndex: 0, scale: true, name: 'Precio $/L sin IVA', nameTextStyle: { align: 'left' },
+              axisLabel: { formatter: function (v) { return '$' + v.toFixed(2); } } },
+            { type: 'value', gridIndex: 1, name: 'Margen $/L', nameTextStyle: { align: 'left' },
+              axisLabel: { formatter: function (v) { return '$' + v.toFixed(2); } } }
+        ],
+        series: series.concat([{
+            // Línea de margen cero en la gráfica de abajo
+            type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: [], silent: true,
+            markLine: { silent: true, symbol: 'none', label: { show: false },
+                        lineStyle: { color: '#94a3b8', type: 'dashed' }, data: [{ yAxis: 0 }] }
+        }])
     }, true);
 }
 

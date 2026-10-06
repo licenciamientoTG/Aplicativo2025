@@ -125,7 +125,7 @@ function graficaDiaria() {
 
     var chart = echarts.init(el);
     chart.setOption({
-        grid: { left: 70, right: 20, top: 30, bottom: 30 },
+        grid: { left: 70, right: 20, top: 30, bottom: 44 },
         legend: { top: 0, data: tieneRitmo ? ['Venta del día', 'Ritmo presupuesto'] : ['Venta del día'] },
         tooltip: {
             trigger: 'axis',
@@ -136,7 +136,15 @@ function graficaDiaria() {
                 return html;
             }
         },
-        xAxis: { type: 'category', data: diario.map(function (d) { return d.dia; }) },
+        // Número de día y, debajo, el día de la semana abreviado (Lun, Mar…)
+        xAxis: {
+            type: 'category',
+            data: diario.map(function (d) {
+                var dia = String(d.nombre || '').substring(0, 3);
+                return d.dia + '\n' + dia.charAt(0).toUpperCase() + dia.slice(1);
+            }),
+            axisLabel: { interval: 0, fontSize: 10, lineHeight: 13 }
+        },
         yAxis: { type: 'value', axisLabel: { formatter: function (v) { return (v / 1000).toLocaleString('es-MX') + ' mil'; } } },
         series: [
             {

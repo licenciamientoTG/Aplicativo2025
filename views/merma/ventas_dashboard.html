@@ -188,53 +188,89 @@
 </div>
 
 {# ---------- Compras y merma ---------- #}
+{% set urlDetalle = '?desde=' ~ desdeMes ~ '&hasta=' ~ desdeMes|date('Y-m-t') %}
+{% set fueraNorma = mz.pct is not null and mz.pct > mz.norma %}
 <div class="vd-panel mb-3">
-    <div class="vd-panel-titulo">
-        <i class="fas fa-truck-droplet"></i> Compras y merma{{ ayuda.icono('Compras y merma', 'Litros que entraron a los tanques contra los que salieron por bomba, y cuánto combustible no cuadra (merma). Sale del mismo registro de inventarios por turno que el Análisis de merma.') }}
-        <a href="/merma/analisis?desde={{ desdeMes }}&hasta={{ desdeMes|date('Y-m-t') }}" class="small fw-normal ms-2">Ver análisis de merma →</a>
+    <div class="vd-panel-titulo d-flex flex-wrap align-items-center gap-2">
+        <span><i class="fas fa-truck-droplet"></i> Compras y merma{{ ayuda.icono('Compras y merma', 'Litros que entraron a los tanques contra los que salieron por bomba, y cuánto combustible no cuadra (merma). Sale del mismo registro de inventarios por turno que el Análisis de merma.') }}</span>
+        <a href="/merma/analisis{{ urlDetalle }}" class="small fw-normal ms-auto">Ver análisis de merma</a>
     </div>
     <div class="row g-3">
-        <div class="col-lg-6">
-            <div class="vd-merma-grid">
-                <div><div class="vd-kpi-label">Litros comprados{{ ayuda.icono('Litros comprados', 'Litros recibidos en las estaciones durante el mes (descargas de pipa registradas en ControlGas).') }}</div><div class="vd-merma-num">{{ f.lts(mz.compras) }}</div></div>
-                <div><div class="vd-kpi-label">Litros vendidos{{ ayuda.icono('Litros vendidos', 'Litros vendidos según el registro de inventarios por turno. Es la base sobre la que se calcula el porcentaje de merma.') }}</div><div class="vd-merma-num">{{ f.lts(mz.ventas) }}</div></div>
-                <div>
-                    <div class="vd-kpi-label">Compras − ventas{{ ayuda.icono('Compras − ventas', '<strong>Positivo:</strong> se compró más de lo que se vendió; el inventario en tanques subió.<br><strong>Negativo:</strong> se vendió más de lo comprado; se usó inventario que ya había.<br><br>En el mes en curso suele salir negativo porque las últimas descargas todavía no se registran.') }}</div>
-                    <div class="vd-merma-num">{{ mz.compras is null or mz.ventas is null ? '—' : f.lts(mz.compras - mz.ventas) }}</div>
-                </div>
-                <div>
-                    <div class="vd-kpi-label">Merma{{ ayuda.icono('Merma', 'Suma, turno por turno, de la diferencia entre el inventario medido en el tanque y el que debería haber (inicial + compras − ventas). Entre paréntesis, como porcentaje de lo vendido.<br><br>Un porcentaje alto puede ser pérdida real o un error de captura (compras, cortes físicos o tanques): conviene revisar el detalle de la estación.') }}</div>
-                    <div class="vd-merma-num {{ mz.pct is not null and mz.pct > mz.norma ? 'pct-neg' : '' }}">
-                        {{ f.lts(mz.litros) }} L <span class="small">({{ mz.pct is null ? '—' : mz.pct|number_format(2) ~ '%' }})</span>
+        <div class="col-lg-7">
+            <div class="vd-cm-grid">
+                <div class="vd-cm-tile">
+                    <span class="vd-cm-icono vd-cm-azul"><i class="fas fa-truck-ramp-box"></i></span>
+                    <div>
+                        <div class="vd-cm-label">Litros comprados{{ ayuda.icono('Litros comprados', 'Litros recibidos en las estaciones durante el mes (descargas de pipa registradas en ControlGas).') }}</div>
+                        <div class="vd-cm-num">{{ f.lts(mz.compras) }}</div>
                     </div>
                 </div>
-                <div>
-                    <div class="vd-kpi-label">Merma valorizada{{ ayuda.icono('Merma valorizada', 'Los litros de merma multiplicados por el precio por litro configurado para el mes en el Análisis de merma. Es una referencia del tamaño del problema en pesos.') }}</div>
-                    <div class="vd-merma-num">{{ mz.valor is null ? '—' : '$' ~ mz.valor|number_format(0, '.', ',') }}</div>
-                    <div class="vd-mini text-muted">a ${{ mz.precio|number_format(2) }} por litro</div>
+                <div class="vd-cm-tile">
+                    <span class="vd-cm-icono vd-cm-verde"><i class="fas fa-gas-pump"></i></span>
+                    <div>
+                        <div class="vd-cm-label">Litros vendidos{{ ayuda.icono('Litros vendidos', 'Litros vendidos según el registro de inventarios por turno. Es la base sobre la que se calcula el porcentaje de merma.') }}</div>
+                        <div class="vd-cm-num">{{ f.lts(mz.ventas) }}</div>
+                    </div>
                 </div>
-                <div>
-                    <div class="vd-kpi-label">Dentro de norma ({{ mz.norma|number_format(1) }}%){{ ayuda.icono('Dentro de norma', 'Cuántas estaciones tuvieron una merma del mes igual o menor a la norma permitida (0.5% de sus ventas), de todas las que tienen datos.') }}</div>
-                    <div class="vd-merma-num">{{ mz.en_norma }} / {{ mz.evaluables }}</div>
+                <div class="vd-cm-tile">
+                    <span class="vd-cm-icono vd-cm-gris"><i class="fas fa-scale-balanced"></i></span>
+                    <div>
+                        <div class="vd-cm-label">Compras − ventas{{ ayuda.icono('Compras − ventas', '<strong>Positivo:</strong> se compró más de lo que se vendió; el inventario en tanques subió.<br><strong>Negativo:</strong> se vendió más de lo comprado; se usó inventario que ya había.<br><br>En el mes en curso suele salir negativo porque las últimas descargas todavía no se registran.') }}</div>
+                        {% if mz.compras is null or mz.ventas is null %}
+                        <div class="vd-cm-num">—</div>
+                        {% else %}
+                        {% set dif = mz.compras - mz.ventas %}
+                        <div class="vd-cm-num">{{ dif > 0 ? '+' : '' }}{{ f.lts(dif) }}</div>
+                        <div class="vd-cm-sub">{{ dif >= 0 ? 'el inventario subió' : 'se usó inventario' }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="vd-cm-tile {{ fueraNorma ? 'vd-cm-alerta' : '' }}">
+                    <span class="vd-cm-icono {{ fueraNorma ? 'vd-cm-rojo' : 'vd-cm-verde' }}"><i class="fas fa-droplet-slash"></i></span>
+                    <div>
+                        <div class="vd-cm-label">Merma{{ ayuda.icono('Merma', 'Suma, turno por turno, de la diferencia entre el inventario medido en el tanque y el que debería haber (inicial + compras − ventas). Al lado, como porcentaje de lo vendido.<br><br>Un porcentaje alto puede ser pérdida real o un error de captura (compras, cortes físicos o tanques): conviene revisar el detalle de la estación.') }}</div>
+                        <div class="vd-cm-num">{{ f.lts(mz.litros) }} <small>L</small></div>
+                        <div class="vd-cm-sub">
+                            <span class="vd-cm-pill {{ fueraNorma ? 'vd-cm-pill-mal' : 'vd-cm-pill-ok' }}">{{ mz.pct is null ? '—' : mz.pct|number_format(2) ~ '%' }}</span>
+                            de lo vendido
+                        </div>
+                    </div>
+                </div>
+                <div class="vd-cm-tile">
+                    <span class="vd-cm-icono vd-cm-ambar"><i class="fas fa-money-bill-wave"></i></span>
+                    <div>
+                        <div class="vd-cm-label">Merma valorizada{{ ayuda.icono('Merma valorizada', 'Los litros de merma multiplicados por el precio por litro configurado para el mes en el Análisis de merma. Es una referencia del tamaño del problema en pesos.') }}</div>
+                        <div class="vd-cm-num">{{ mz.valor is null ? '—' : '$' ~ mz.valor|number_format(0, '.', ',') }}</div>
+                        <div class="vd-cm-sub">a ${{ mz.precio|number_format(2) }} por litro</div>
+                    </div>
+                </div>
+                <div class="vd-cm-tile">
+                    <span class="vd-cm-icono {{ mz.en_norma < mz.evaluables / 2 ? 'vd-cm-rojo' : 'vd-cm-verde' }}"><i class="fas fa-circle-check"></i></span>
+                    <div>
+                        <div class="vd-cm-label">Dentro de norma{{ ayuda.icono('Dentro de norma', 'Cuántas estaciones tuvieron una merma del mes igual o menor a la norma permitida (' ~ mz.norma|number_format(1) ~ '% de sus ventas), de todas las que tienen datos.') }}</div>
+                        <div class="vd-cm-num">{{ mz.en_norma }} <small>de {{ mz.evaluables }}</small></div>
+                        <div class="vd-cm-barra" role="img" aria-label="{{ mz.en_norma }} de {{ mz.evaluables }} estaciones dentro de norma">
+                            <span style="width: {{ mz.evaluables ? (mz.en_norma / mz.evaluables * 100)|round(1) : 0 }}%"></span>
+                        </div>
+                        <div class="vd-cm-sub">norma {{ mz.norma|number_format(1) }}%</div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-6">
-            <div class="vd-rank-titulo vd-rank-mal"><i class="fas fa-triangle-exclamation"></i> Mayor merma del mes{{ ayuda.icono('Mayor merma del mes', 'Las 5 estaciones con mayor merma como porcentaje de sus ventas. Haz clic en el nombre para ver su detalle por día y turno.') }}</div>
-            <table class="table table-sm vd-tabla mb-0">
-                <tbody>
-                    {% for s in mz.peores %}
-                    <tr>
-                        <td><a href="/merma/detalle/{{ s.codgas }}?desde={{ desdeMes }}&hasta={{ desdeMes|date('Y-m-t') }}">{{ s.nombre }}</a>
-                            <div class="text-muted vd-mini">{{ s.zona }}</div></td>
-                        <td class="text-end">{{ f.lts(s.litros) }} L</td>
-                        <td class="text-end {{ s.pct > mz.norma ? 'pct-neg' : '' }}">{{ s.pct|number_format(2) }}%</td>
-                    </tr>
-                    {% else %}
-                    <tr><td class="text-muted small">Sin datos de merma para este mes.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="col-lg-5">
+            <div class="vd-cm-top">
+                <div class="vd-cm-top-titulo"><i class="fas fa-triangle-exclamation"></i> Mayor merma del mes{{ ayuda.icono('Mayor merma del mes', 'Las 5 estaciones con mayor merma como porcentaje de sus ventas. Haz clic en el nombre para ver su detalle por día y turno.') }}</div>
+                {% for s in mz.peores %}
+                <a class="vd-cm-top-fila" href="/merma/detalle/{{ s.codgas }}{{ urlDetalle }}">
+                    <span class="vd-cm-top-pos">{{ loop.index }}</span>
+                    <span class="vd-cm-top-nombre">{{ s.nombre }}<small>{{ s.zona }}</small></span>
+                    <span class="vd-cm-top-litros">{{ f.lts(s.litros) }} L</span>
+                    <span class="vd-cm-pill {{ s.pct > mz.norma ? 'vd-cm-pill-mal' : 'vd-cm-pill-ok' }}">{{ s.pct|number_format(2) }}%</span>
+                </a>
+                {% else %}
+                <p class="text-muted small mb-0">Sin datos de merma para este mes.</p>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </div>

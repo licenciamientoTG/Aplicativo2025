@@ -30,6 +30,16 @@ class VentasRentabilidad
     private const MIN_PCT_REFERENCIA = 5.0;
 
     /**
+     * Estímulo fiscal del IEPS en la franja fronteriza, $ por litro VENDIDO
+     * en estaciones fronterizas (las de IVA 8%). Montos indicados por el
+     * usuario el 2026-10-06: gasolina < 91 octanos (Regular) $3.410 y
+     * ≥ 91 octanos (Premium) $2.860; diesel sin monto. SHCP los publica cada
+     * semana en el DOF: si cambian, actualizar aquí.
+     */
+    public const ESTIMULO_FRONTERA = ['maxima' => 3.410, 'super' => 2.860, 'diesel' => 0.0];
+    private const IVA_FRONTERA = 0.08;
+
+    /**
      * @param array $datos      VentasRentabilidadModel::get_mes()
      * @param array $estaciones [['Codigo','Nombre','zona'], ...] — todas
      * @param array $merma      [codgas => [familia => ?float]] diferencia de
@@ -52,7 +62,8 @@ class VentasRentabilidad
             $costoGlobal[$fam] = $l > 0 ? $c / $l : null;
         }
 
-        $vacio = fn() => ['litros' => 0.0, 'venta' => 0.0, 'costo' => 0.0];
+        $vacio = fn() => ['litros' => 0.0, 'venta' => 0.0, 'costo' => 0.0, 'estimulo' => 0.0];
+        $litrosEstimulo = 0.0;
         $total   = $vacio();
         $porFam  = [];
         foreach ($familias as $fam) $porFam[$fam] = $vacio();
@@ -109,12 +120,15 @@ class VentasRentabilidad
                 if ($f['litros_venta'] <= 0 || $costoLitro === null) continue;
                 if (!$conPrecio) $estimado = true;
 
+                $estimuloLitro = self::estimuloLitro($d['tasa_iva'], $fam);
+                if ($estimuloLitro > 0) $litrosEstimulo += $f['litros_venta'];
                 $linea = [
-                    'litros' => $f['litros_venta'],
-                    'venta'  => $f['pesos_venta'] / (1 + $d['tasa_iva']),
-                    'costo'  => $f['litros_venta'] * $costoLitro,
+                    'litros'   => $f['litros_venta'],
+                    'venta'    => $f['pesos_venta'] / (1 + $d['tasa_iva']),
+                    'costo'    => $f['litros_venta'] * $costoLitro,
+                    'estimulo' => $f['litros_venta'] * $estimuloLitro,
                 ];
-                foreach (['litros', 'venta', 'costo'] as $k) {
+                foreach (['litros', 'venta', 'costo', 'estimulo'] as $k) {
                     $est[$k]                 += $linea[$k];
                     $porFam[$fam][$k]        += $linea[$k];
                     $porZona[$e['zona']][$k] += $linea[$k];
@@ -130,6 +144,7 @@ class VentasRentabilidad
                 'nombre'         => $e['Nombre'],
                 'zona'           => VentasConsolidado::ZONAS[$e['zona']]['label'],
                 'iva'            => $d['tasa_iva'] * 100,
+                'frontera'       => $d['tasa_iva'] == self::IVA_FRONTERA,
                 'costo_estimado' => $estimado,
             ];
         }
@@ -149,15 +164,18 @@ class VentasRentabilidad
         $descuentos  = array_sum($datos['descuentos']);
         $tot = self::metricas($total);
 
-        // Cascada: venta → costo → margen bruto → descuentos → diferencia
-        // de inventario → margen ajustado. La diferencia de inventario es
-        // fís − contable: positiva = sobrante (combustible que no costó y se
-        // venderá), negativa = faltante; por eso se SUMA con su signo.
+        // Cascada: margen antes de estímulo → + estímulo fronterizo = margen
+        // bruto → descuentos → diferencia de inventario → margen ajustado. La
+        // diferencia de inventario es fís − contable: positiva = sobrante
+        // (combustible que no costó y se venderá), negativa = faltante; por
+        // eso se SUMA con su signo.
         $cascada = null;
         if ($tot['margen'] !== null) {
             $cascada = [
                 'venta'      => $tot['venta'],
                 'costo'      => $tot['costo'],
+                'antes'      => $tot['venta'] - $tot['costo'],
+                'estimulo'   => $tot['estimulo'],
                 'margen'     => $tot['margen'],
                 'descuentos' => $descuentos,
                 'dif_inv'    => $difInvPesos,
@@ -178,8 +196,13 @@ class VentasRentabilidad
             'estaciones'  => count($filas),
             'compras'     => $compras,
             'proveedores' => $proveedores,
-            'diario'      => self::diario($datos, $tasaEst, $costoEF),
+            'por_estacion'=> self::porEstacion($datos, $filas, $tasaEst, $costoEF),
             'cascada'     => $cascada,
+            'estimulo'    => [
+                'tarifas' => self::ESTIMULO_FRONTERA,
+                'total'   => $tot['estimulo'],
+                'litros'  => $litrosEstimulo,
+            ],
             'sin_datos'   => $sinDatos,
             'atipicas'    => $atipicas,
         ];
@@ -253,53 +276,81 @@ class VentasRentabilidad
     }
 
     /**
-     * Serie diaria por familia y total: litros, precio de venta sin IVA por
-     * litro, precio de compra del día ($/L de las descargas con precio) y
-     * margen del día (venta sin IVA − litros × costo promedio del mes).
+     * Serie diaria POR ESTACIÓN y familia para la gráfica "Precio de compra
+     * y venta por estación". Por cada día:
+     *   v = precio de venta sin IVA por litro (lo cobrado en bomba)
+     *   c = precio por litro de las descargas con precio de ESE día (null si
+     *       ese día no hubo descarga de esa familia)
+     *   m = margen por litro = v + estímulo − costo de reposición, donde el
+     *       costo de reposición es el precio de la última descarga conocida
+     *       (arrastrado día a día; antes de la primera descarga del mes se usa
+     *       el costo promedio del mes de la estación)
+     *   l = litros vendidos
+     * Usar la última descarga y no el promedio del mes es lo que hace que el
+     * margen "se mueva" con cada cambio de precio del proveedor.
+     *
+     * @return array ['fechas' => ['Y-m-d', ...], 'estaciones' => [
+     *     ['cod','nombre','zona','frontera','litros', 'familias' => [fam => ['v'=>[],'c'=>[],'m'=>[],'l'=>[]]]], ...]]
      */
-    private static function diario(array $datos, array $tasaEst, array $costoEF): array
+    private static function porEstacion(array $datos, array $filas, array $tasaEst, array $costoEF): array
     {
-        $serie = [];
         $fechas = array_unique(array_merge(array_keys($datos['diario']), array_keys($datos['compras_dia'])));
         sort($fechas);
 
-        foreach ($fechas as $fecha) {
-            $dia = ['fecha' => $fecha, 'dia' => (int) substr($fecha, 8, 2)];
-            $tot = ['litros' => 0.0, 'venta' => 0.0, 'costo' => 0.0, 'c_litros' => 0.0, 'c_costo' => 0.0];
+        $estaciones = [];
+        foreach ($filas as $s) {
+            $cod = $s['codgas'];
+            $tasa = $tasaEst[$cod];
+            $familias = [];
             foreach (array_keys(MermaDiariaModel::FAMILIAS) as $fam) {
-                $v = ['litros' => 0.0, 'venta' => 0.0, 'costo' => 0.0];
-                foreach ($datos['diario'][$fecha] ?? [] as $cod => $porFam) {
-                    if (!isset($porFam[$fam], $tasaEst[$cod]) || ($costoEF[$cod][$fam] ?? null) === null) continue;
-                    $v['litros'] += $porFam[$fam]['litros'];
-                    $v['venta']  += $porFam[$fam]['pesos'] / (1 + $tasaEst[$cod]);
-                    $v['costo']  += $porFam[$fam]['litros'] * $costoEF[$cod][$fam];
+                $reposicion = $costoEF[$cod][$fam] ?? null;
+                $estimulo   = self::estimuloLitro($tasa, $fam);
+                $serie = ['v' => [], 'c' => [], 'm' => [], 'l' => []];
+                $hayVenta = false;
+                foreach ($fechas as $fecha) {
+                    $venta  = $datos['diario'][$fecha][$cod][$fam] ?? null;
+                    $compra = $datos['compras_dia'][$fecha][$cod][$fam] ?? null;
+                    $pc = $compra && $compra['litros'] > 0 ? $compra['costo'] / $compra['litros'] : null;
+                    if ($pc !== null) $reposicion = $pc;
+
+                    $pv = $venta && $venta['litros'] > 0 ? $venta['pesos'] / (1 + $tasa) / $venta['litros'] : null;
+                    if ($pv !== null) $hayVenta = true;
+
+                    $serie['v'][] = $pv === null ? null : round($pv, 3);
+                    $serie['c'][] = $pc === null ? null : round($pc, 3);
+                    $serie['m'][] = ($pv === null || $reposicion === null) ? null : round($pv + $estimulo - $reposicion, 3);
+                    $serie['l'][] = $venta ? round($venta['litros']) : 0;
                 }
-                $c = $datos['compras_dia'][$fecha][$fam] ?? ['litros' => 0.0, 'costo' => 0.0];
-                $dia[$fam] = self::puntoDiario($v, $c['litros'], $c['costo']);
-                foreach (['litros', 'venta', 'costo'] as $k) $tot[$k] += $v[$k];
-                $tot['c_litros'] += $c['litros'];
-                $tot['c_costo']  += $c['costo'];
+                if ($hayVenta) $familias[$fam] = $serie;
             }
-            $dia['total'] = self::puntoDiario($tot, $tot['c_litros'], $tot['c_costo']);
-            $serie[] = $dia;
+            if (!$familias) continue;
+            $estaciones[] = [
+                'cod'      => $cod,
+                'nombre'   => $s['nombre'],
+                'zona'     => $s['zona'],
+                'frontera' => $s['frontera'],
+                'litros'   => round($s['litros']),
+                'familias' => $familias,
+            ];
         }
-        return $serie;
+        usort($estaciones, fn($a, $b) => strnatcasecmp($a['nombre'], $b['nombre']));
+
+        return ['fechas' => $fechas, 'estaciones' => $estaciones];
     }
 
-    private static function puntoDiario(array $v, float $cLitros, float $cCosto): array
+    /** Estímulo por litro: solo estaciones fronterizas (IVA 8%). */
+    private static function estimuloLitro(float $tasaIva, string $familia): float
     {
-        return [
-            'litros'        => round($v['litros']),
-            'precio_venta'  => $v['litros'] > 0 ? round($v['venta'] / $v['litros'], 3) : null,
-            'precio_compra' => $cLitros > 0 ? round($cCosto / $cLitros, 3) : null,
-            'margen'        => $v['litros'] > 0 ? round($v['venta'] - $v['costo']) : null,
-        ];
+        return $tasaIva == self::IVA_FRONTERA ? (self::ESTIMULO_FRONTERA[$familia] ?? 0.0) : 0.0;
     }
 
-    /** Agrega margen, margen por litro y % sobre la venta sin IVA. */
+    /**
+     * Agrega margen (venta sin IVA − costo + estímulo fronterizo), margen
+     * por litro y % sobre la venta sin IVA.
+     */
     private static function metricas(array $v): array
     {
-        $margen = $v['litros'] > 0 ? $v['venta'] - $v['costo'] : null;
+        $margen = $v['litros'] > 0 ? $v['venta'] - $v['costo'] + $v['estimulo'] : null;
         return $v + [
             'margen'       => $margen,
             'margen_litro' => $margen !== null ? $margen / $v['litros'] : null,

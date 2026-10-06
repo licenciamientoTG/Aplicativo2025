@@ -151,6 +151,22 @@ function construirConfigDataTable() {
             { data: 'documento', defaultContent: '' },
             { data: 'referencia', defaultContent: '' },
             {
+                // UUID del CFDI en ControlGas: si no hay, el XML no se ha
+                // subido allá. Varias compras en una recepción vienen "; ".
+                data: 'uuid',
+                defaultContent: '',
+                render: function (data, type) {
+                    if (type !== 'display') return data || '';
+                    if (!data) return '<span class="badge bg-warning text-dark">Sin XML</span>';
+                    return String(data).split(';').map(function (u) {
+                        u = u.trim();
+                        // Completo (no recortado): el export a Excel de la tabla toma
+                        // el texto visible.
+                        return `<span class="font-monospace text-nowrap" style="font-size:.72rem;">${escHtml(u)}</span>`;
+                    }).join('<br>');
+                }
+            },
+            {
                 data: 'total_remisiones',
                 render: function (data) {
                     return data > 0

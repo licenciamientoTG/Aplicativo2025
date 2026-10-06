@@ -16,11 +16,16 @@
 {% set c = rent.compras %}
 {% set nombres = {'maxima': 'Regular', 'super': 'Premium', 'diesel': 'Diesel'} %}
 
-<div class="alert alert-info py-2 small mb-3">
-    <i class="fas fa-circle-info"></i>
-    <strong>Estímulo del IEPS:</strong> lo aplica el proveedor (importador) y ya viene descontado en el precio de la factura —
-    las estaciones de Juárez pagan casi lo mismo por litro que las del interior—, así que no se suma aparte.
-    Si contabilidad recibe algún apoyo adicional por litro fuera de la factura, ese no está incluido.
+{% set est = rent.estimulo %}
+<div class="alert alert-success py-2 small mb-3">
+    <i class="fas fa-circle-check"></i>
+    <strong>Incluye el estímulo fronterizo del IEPS:</strong>
+    Regular (menor a 91 octanos) <strong>${{ est.tarifas.maxima|number_format(3) }}/L</strong> ·
+    Premium (91 octanos o más) <strong>${{ est.tarifas.super|number_format(3) }}/L</strong>{% if est.tarifas.diesel > 0 %} ·
+    Diesel <strong>${{ est.tarifas.diesel|number_format(3) }}/L</strong>{% endif %},
+    sobre los litros vendidos en estaciones de franja fronteriza (IVA 8%):
+    <strong>{{ est.litros|number_format(0, '.', ',') }} L → {{ f.dinero(est.total) }}</strong> este mes.
+    Ya está sumado en el margen, las zonas, los productos, las estaciones y las gráficas.
 </div>
 
 <div class="vd-merma-grid mb-3">
@@ -35,9 +40,10 @@
         <div class="vd-mini text-muted">litros vendidos × costo promedio del mes</div>
     </div>
     <div>
-        <div class="vd-kpi-label">Margen bruto{{ ayuda.icono('Margen bruto', 'Venta sin IVA − costo de lo vendido. También se muestra por litro y como porcentaje de la venta.<br><br>Es <strong>antes de gastos de operación</strong>. El estímulo del IEPS ya viene incluido en el precio de compra de la factura.') }}</div>
+        <div class="vd-kpi-label">Margen bruto{{ ayuda.icono('Margen bruto', 'Venta sin IVA − costo de lo vendido <strong>+ estímulo fronterizo del IEPS</strong>. También se muestra por litro y como porcentaje de la venta.<br><br>El estímulo se suma solo en las estaciones de franja fronteriza (IVA 8%): Regular $' ~ est.tarifas.maxima|number_format(3) ~ '/L y Premium $' ~ est.tarifas.super|number_format(3) ~ '/L por litro vendido.<br><br>Es <strong>antes de gastos de operación</strong> (nómina, luz, renta, etc.).') }}</div>
         <div class="vd-merma-num {{ t.margen is not null and t.margen < 0 ? 'pct-neg' : '' }}">{{ f.dinero(t.margen) }}</div>
         <div class="vd-mini text-muted">{{ f.litro(t.margen_litro) }} por litro · {{ f.pct(t.margen_pct) }} de la venta</div>
+        <div class="vd-mini text-success">incluye {{ f.dinero(est.total) }} de estímulo fronterizo</div>
     </div>
     <div>
         <div class="vd-kpi-label">Gasto en compras (facturado){{ ayuda.icono('Gasto en compras', 'Suma del total de las facturas (CFDI) de las descargas recibidas en el mes, <strong>con IVA</strong>: lo que se le paga a los proveedores.<br><br>Abajo, el mismo gasto sin IVA y cuántas descargas hubo. Si alguna todavía no tiene precio en ControlGas, se avisa en rojo.') }}</div>
@@ -53,9 +59,9 @@
         <div class="vd-mini text-muted">{{ c.docs_sin_factura > 0 ? f.dinero(c.costo_sin_factura) ~ ' sin IVA pendientes de CFDI' : 'todas ligadas a su CFDI' }}</div>
     </div>
     <div>
-        <div class="vd-kpi-label">Estaciones con margen negativo{{ ayuda.icono('Estaciones con margen negativo', 'Estaciones cuyo margen bruto del mes salió menor a cero: su venta sin IVA no alcanzó a cubrir el costo de lo que vendieron.<br><br>Pasa sobre todo en Juárez: compra casi al mismo costo que el interior pero vende con precio de frontera.') }}</div>
+        <div class="vd-kpi-label">Estaciones con margen negativo{{ ayuda.icono('Estaciones con margen negativo', 'Estaciones cuyo margen bruto del mes salió menor a cero: su venta sin IVA no alcanzó a cubrir el costo de lo que vendieron.<br><br>Ya considera el estímulo fronterizo del IEPS en las estaciones de IVA 8%.') }}</div>
         <div class="vd-merma-num {{ rent.negativas > 0 ? 'pct-neg' : '' }}">{{ rent.negativas }} / {{ rent.estaciones }}</div>
-        <div class="vd-mini text-muted">margen bruto del mes</div>
+        <div class="vd-mini text-muted">margen bruto del mes, con estímulo</div>
     </div>
 </div>
 
@@ -77,34 +83,55 @@
 </div>
 {% endif %}
 
-{# ---------- Cascada: de la venta al margen ajustado ---------- #}
+{# ---------- De la venta al margen: una columna de indicadores ---------- #}
 {% if rent.cascada %}
 {% set cz = rent.cascada %}
-<div class="vd-sub-titulo">De la venta al margen{{ ayuda.icono('De la venta al margen', 'Cómo se llega de lo vendido a lo que realmente queda:<br><br><strong>Venta sin IVA</strong> − <strong>costo de lo vendido</strong> = <strong>margen bruto</strong>.<br>+ <strong>Descuentos de proveedor:</strong> notas de crédito del mes (bonos de franquicia, pronto pago, ajustes de precio), sin contar aplicaciones de anticipo.<br>± <strong>Diferencia de inventario:</strong> litros de más (sobrante, suma) o de menos (faltante, resta) en los tanques según el Análisis de merma, valorados al costo de cada estación. El combustible que sobra no costó y se vende; el que falta se pagó y no se vende.<br>= <strong>Margen ajustado.</strong>') }}</div>
-<div class="row g-3 mb-3 align-items-center">
-    <div class="col-lg-8">
-        <div id="vr-chart-cascada" class="vd-chart vd-chart-sm"
-             {# Arranca en el margen bruto: la venta (~$500 M) aplastaría
-                los pasos de abajo (~$0.2–6 M) hasta hacerlos invisibles.
-                Venta y costo ya están en los indicadores de arriba. #}
-             data-cascada='{{ [
-                 {'l': 'Margen bruto', 'v': cz.margen, 't': 'total'},
-                 {'l': 'Descuentos', 'v': cz.descuentos, 't': 'delta'},
-                 {'l': 'Dif. inventario', 'v': cz.dif_inv, 't': 'delta'},
-                 {'l': 'Margen ajustado', 'v': cz.ajustado, 't': 'total'}
-             ]|json_encode|e('html_attr') }}'></div>
+{#
+  Cada paso: s = signo mostrado, t = tipo (base / suma / resta / subtotal /
+  final), v = pesos, n = nota. "suma"/"resta" se decide por el signo real
+  del monto, no por la etiqueta, para que un faltante salga en rojo.
+#}
+{% set difInvNota = (cz.dif_inv_litros|abs)|number_format(0, '.', ',') ~ ' L de ' ~ (cz.dif_inv_litros >= 0 ? 'sobrante' : 'faltante') ~ ' en tanques' %}
+{% set pasos = [
+    {'s': '',  't': 'base',     'l': 'Venta sin IVA',             'v': cz.venta,      'n': t.litros|number_format(0, '.', ',') ~ ' L vendidos'},
+    {'s': '−', 't': 'resta',    'l': 'Costo de lo vendido',       'v': -cz.costo,     'n': 'precio de factura sin IVA, con IEPS'},
+    {'s': '=', 't': 'subtotal', 'l': 'Margen antes de estímulo',  'v': cz.antes,      'n': ''},
+    {'s': '+', 't': cz.estimulo >= 0 ? 'suma' : 'resta', 'l': 'Estímulo fronterizo del IEPS', 'v': cz.estimulo, 'n': est.litros|number_format(0, '.', ',') ~ ' L en estaciones de frontera'},
+    {'s': '=', 't': 'subtotal', 'l': 'Margen bruto',              'v': cz.margen,     'n': ''},
+    {'s': '+', 't': cz.descuentos >= 0 ? 'suma' : 'resta', 'l': 'Descuentos de proveedor', 'v': cz.descuentos, 'n': 'notas de crédito del mes, sin anticipos'},
+    {'s': '±', 't': cz.dif_inv >= 0 ? 'suma' : 'resta', 'l': 'Diferencia de inventario', 'v': cz.dif_inv, 'n': difInvNota},
+    {'s': '=', 't': 'final',    'l': 'Margen ajustado',           'v': cz.ajustado,   'n': ''}
+] %}
+<div class="vd-sub-titulo">De la venta al margen{{ ayuda.icono('De la venta al margen', 'Cómo se llega de lo vendido a lo que realmente queda, paso por paso:<br><br><strong>Venta sin IVA</strong> − <strong>costo de lo vendido</strong> = <strong>margen antes de estímulo</strong>.<br>+ <strong>Estímulo fronterizo del IEPS:</strong> litros vendidos en estaciones de frontera × monto por litro = <strong>margen bruto</strong>.<br>+ <strong>Descuentos de proveedor:</strong> notas de crédito del mes (bonos de franquicia, pronto pago, ajustes de precio), sin contar aplicaciones de anticipo.<br>± <strong>Diferencia de inventario:</strong> litros de más (sobrante, suma) o de menos (faltante, resta) en los tanques según el Análisis de merma, valorados al costo de cada estación.<br>= <strong>Margen ajustado.</strong><br><br>Verde suma, rojo resta, azul son subtotales. A la derecha, cuánto representa cada paso por litro vendido.<br><br><strong>Columna:</strong> las piezas que forman el margen ajustado, apiladas; su altura total es el margen ajustado. Las piezas negativas quedan por debajo de cero.') }}</div>
+<div class="row g-3 mb-3 align-items-stretch">
+    <div class="col-lg-7">
+        <div class="vd-mg">
+            {% for p in pasos %}
+            <div class="vd-mg-paso vd-mg-{{ p.t }}">
+                <span class="vd-mg-signo" aria-hidden="true">{{ p.s }}</span>
+                <span class="vd-mg-texto">
+                    {{ p.l }}
+                    {% if p.n %}<small>{{ p.n }}</small>{% endif %}
+                </span>
+                <span class="vd-mg-monto">
+                    {{ f.dinero(p.v) }}
+                    <small>{{ t.litros > 0 ? ((p.v < 0 ? '−$' : '$') ~ (p.v / t.litros)|abs|number_format(2) ~ '/L') : '' }}</small>
+                </span>
+            </div>
+            {% endfor %}
+        </div>
     </div>
-    <div class="col-lg-4">
-        <table class="table table-sm vd-tabla mb-0">
-            <tbody>
-                <tr><td>Margen bruto</td><td class="text-end">{{ f.dinero(cz.margen) }}</td></tr>
-                <tr><td>+ Descuentos de proveedor</td><td class="text-end">{{ f.dinero(cz.descuentos) }}</td></tr>
-                <tr><td>± Diferencia de inventario<div class="vd-mini text-muted">{{ cz.dif_inv_litros|number_format(0, '.', ',') }} L {{ cz.dif_inv_litros >= 0 ? 'de sobrante' : 'de faltante' }}</div></td>
-                    <td class="text-end {{ cz.dif_inv < 0 ? 'pct-neg' : '' }}">{{ f.dinero(cz.dif_inv) }}</td></tr>
-                <tr class="fw-bold"><td>Margen ajustado</td><td class="text-end {{ cz.ajustado < 0 ? 'pct-neg' : '' }}">{{ f.dinero(cz.ajustado) }}</td></tr>
-                <tr><td class="text-muted small">por litro vendido</td><td class="text-end small">{{ f.litro(t.litros > 0 ? cz.ajustado / t.litros : null) }}</td></tr>
-            </tbody>
-        </table>
+    <div class="col-lg-5">
+        {# Una sola columna apilada: las piezas del margen ajustado. Venta y
+           costo no entran (~$500 M aplastarían piezas de ~$0.2–60 M). #}
+        <div id="vr-chart-margen" class="vd-chart vd-chart-margen"
+             data-piezas='{{ [
+                 {'l': 'Antes de estímulo', 'v': cz.antes,      'c': '#64748b'},
+                 {'l': 'Estímulo fronterizo', 'v': cz.estimulo, 'c': '#009559'},
+                 {'l': 'Descuentos',        'v': cz.descuentos, 'c': '#0095DA'},
+                 {'l': 'Dif. inventario',   'v': cz.dif_inv,    'c': '#f59e0b'}
+             ]|json_encode|e('html_attr') }}'
+             data-total="{{ cz.ajustado }}"></div>
     </div>
 </div>
 {% endif %}
@@ -210,17 +237,37 @@
     </table>
 </div>
 
-{# ---------- Precio de venta vs costo, día por día ---------- #}
-<div class="vd-sub-titulo d-flex flex-wrap align-items-center gap-2">
-    <span>Precio de venta vs costo, por día{{ ayuda.icono('Precio de venta vs costo', '<strong>Línea verde:</strong> precio promedio de venta sin IVA por litro de ese día.<br><strong>Línea azul:</strong> precio promedio por litro de las descargas compradas ese día (sin IVA). Los días sin descargas con precio no tienen punto.<br><strong>Barras:</strong> margen bruto del día en pesos (venta sin IVA − litros × costo promedio del mes).<br><br>Cuando las líneas se acercan, el margen se aprieta. Sirve para ver el efecto de cada cambio de precio o de IEPS. Elige el producto con los botones.') }}</span>
-    <div class="btn-group btn-group-sm ms-auto" role="group" id="vr-diario-prod">
-        <button type="button" class="btn btn-merma-neutro active" data-prod="total">Total</button>
-        <button type="button" class="btn btn-merma-neutro" data-prod="maxima">Regular</button>
+{# ---------- Precio de compra y venta por estación ---------- #}
+{% set pe = rent.por_estacion %}
+<div class="vd-sub-titulo">Precio de compra y venta por estación{{ ayuda.icono('Precio de compra y venta por estación', 'Cómo se movieron los precios de cada estación día por día. Elige una estación o varias para compararlas (hasta 6), y el producto con los botones.<br><br><strong>Arriba</strong>, por estación:<br>— <strong>Línea continua:</strong> precio de venta sin IVA por litro (lo cobrado en bomba).<br>— <strong>Línea punteada con puntos:</strong> precio por litro de las descargas de ese día (sin IVA). Solo hay punto los días que llegó pipa con precio.<br><br><strong>Abajo:</strong> margen por litro de cada día = venta sin IVA + estímulo fronterizo − precio de la última descarga. Cuando sube el precio del proveedor y no se mueve el de bomba, el margen baja.<br><br>En las estaciones de frontera el margen incluye el estímulo, por eso puede ser positivo aunque la línea de compra quede arriba de la de venta.') }}</div>
+{% if pe.estaciones|length %}
+<div class="vr-pe-controles">
+    {# data-container="body" + data-size: mismo patrón que arqueo/cajas y
+       petrotal_reconciliation. Sin ellos el menú (36 estaciones + grupos)
+       se abría hacia arriba dentro del panel y, al enfocar el buscador,
+       desplazaba toda la vista. data-dropup-auto="false": siempre hacia abajo. #}
+    <select id="vr-pe-estaciones" class="selectpicker" multiple data-live-search="true" data-max-options="6"
+            data-size="10" data-container="body" data-dropup-auto="false" data-width="280px"
+            data-actions-box="false" title="Elige estaciones" data-selected-text-format="count > 2"
+            data-count-selected-text="{0} estaciones">
+        {% for z in ['MARCA Y PROTS', 'TSA AGS', 'ZONA 3'] %}
+        <optgroup label="{{ z }}">
+            {% for s in pe.estaciones|filter(s => s.zona == z) %}
+            <option value="{{ s.cod }}" data-subtext="{{ s.frontera ? 'frontera' : '' }}">{{ s.nombre }}</option>
+            {% endfor %}
+        </optgroup>
+        {% endfor %}
+    </select>
+    <div class="btn-group btn-group-sm" role="group" id="vr-pe-prod" aria-label="Producto">
+        <button type="button" class="btn btn-merma-neutro active" data-prod="maxima">Regular</button>
         <button type="button" class="btn btn-merma-neutro" data-prod="super">Premium</button>
         <button type="button" class="btn btn-merma-neutro" data-prod="diesel">Diesel</button>
     </div>
 </div>
-<div id="vr-chart-diario" class="vd-chart mb-3" data-diario='{{ rent.diario|json_encode|e('html_attr') }}'></div>
+<div id="vr-chart-estacion" class="vr-chart-estacion mb-3" data-serie='{{ pe|json_encode|e('html_attr') }}'></div>
+{% else %}
+<p class="text-muted small">Sin datos diarios por estación para este mes.</p>
+{% endif %}
 
 {# ---------- Dispersión por estación ---------- #}
 <div class="vd-sub-titulo">Volumen vs margen por estación{{ ayuda.icono('Volumen vs margen', 'Cada punto es una estación: hacia la derecha vende más litros, hacia arriba gana más por litro.<br><br><strong>Abajo a la derecha</strong> están las que más pesan en el resultado: mucho volumen con poco margen. Ahí es donde un centavo por litro hace más diferencia.<br>Los colores son la zona. Pasa el mouse para ver el nombre.') }}</div>
