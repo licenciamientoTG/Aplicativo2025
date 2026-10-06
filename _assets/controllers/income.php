@@ -7215,8 +7215,9 @@ public function stamped_invoices_detail(): void
             $suffixes = EfcConciliacionModel::allAccountSuffixes();
             $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT M.id, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled
+                "SELECT M.id, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled
                  FROM [TG].[dbo].[movimientos_bancarios] M
+                 LEFT JOIN [TG].[dbo].[efc_conc_one_goal_movimientos] OG ON OG.movimiento_bancario_id=M.id
                  WHERE M.abono > 0
                    AND YEAR(M.fecha) = ? AND MONTH(M.fecha) = ?
                    -- Banorte, Bankaool y Santander no nombran el mismo movimiento
@@ -7332,6 +7333,7 @@ public function stamped_invoices_detail(): void
                     'station_status'    => $estatus,
                     'station_corrected' => $corregida,
                     'reconciled'        => (bool)$mov['reconciled'],
+                    'one_goal'          => (int)$mov['one_goal'],
                     'original_station_id' => $estacionOriginal['station_id'] ?? null,
                     'original_station'    => $estacionOriginal['station'] ?? null,
                     'station_raw'       => $coincidencias[0],
@@ -7341,6 +7343,59 @@ public function stamped_invoices_detail(): void
             echo json_encode(['status' => 'success', 'empresa' => $empresa, 'data' => $movimientos]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error consultando depósitos bancarios: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /** Marca o desmarca un movimiento como capturado por One Goal.
+     * POST /income/efc_conc_one_goal
+     */
+    public function efc_conc_one_goal(): void {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['status' => 'error', 'message' => 'Método no permitido']);
+            exit;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        $movementValue = is_array($data) ? ($data['movimiento_bancario_id'] ?? null) : null;
+        $capturedValue = is_array($data) ? ($data['capturado'] ?? null) : null;
+        if ((!is_int($movementValue) && !(is_string($movementValue) && ctype_digit($movementValue)))
+            || (int)$movementValue <= 0
+            || (!is_int($capturedValue) && !(is_string($capturedValue) && in_array($capturedValue, ['0', '1'], true)))
+            || !in_array((int)$capturedValue, [0, 1], true)) {
+            http_response_code(422);
+            echo json_encode(['status' => 'error', 'message' => 'Parámetros inválidos']);
+            exit;
+        }
+
+        $movementId = (int)$movementValue;
+        $captured = (int)$capturedValue;
+        $userId = isset($_SESSION['tg_user']['Id']) ? (int)$_SESSION['tg_user']['Id'] : null;
+        try {
+            $conn = $this->v3_conn();
+            $conn->beginTransaction();
+            $exists = $conn->prepare('SELECT 1 FROM [TG].[dbo].[movimientos_bancarios] WHERE id = ?');
+            $exists->execute([$movementId]);
+            if (!$exists->fetchColumn()) {
+                $conn->rollBack();
+                http_response_code(404);
+                echo json_encode(['status' => 'error', 'message' => 'Movimiento no encontrado']);
+                exit;
+            }
+
+            // HOLDLOCK serializes the existence check and write for this key,
+            // so repeated and concurrent requests remain idempotent.
+            $save = $conn->prepare("IF EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_one_goal_movimientos] WITH (UPDLOCK, HOLDLOCK) WHERE movimiento_bancario_id = ?)\n                    UPDATE [TG].[dbo].[efc_conc_one_goal_movimientos]\n                    SET capturado = ?, actualizado_en = GETDATE(), actualizado_por = ?\n                    WHERE movimiento_bancario_id = ?\n                ELSE\n                    INSERT INTO [TG].[dbo].[efc_conc_one_goal_movimientos]\n                    (movimiento_bancario_id, capturado, capturado_por) VALUES (?, ?, ?)");
+            $save->execute([$movementId, $captured, $userId, $movementId, $movementId, $captured, $userId]);
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'capturado' => $captured]);
+        } catch (Throwable $e) {
+            if (isset($conn) && $conn->inTransaction()) $conn->rollBack();
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'No se pudo actualizar el estado One Goal']);
         }
         exit;
     }

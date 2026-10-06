@@ -120,23 +120,41 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       DECLARE @cruza_mes BIT=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23) THEN 1 ELSE 0 END,
               @fecha_operativa DATE=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23) THEN DATEFROMPARTS(YEAR(@fecha_banco),MONTH(@fecha_banco),1) ELSE @fecha END,
               @cg_key VARCHAR(180)='cg-'+CONVERT(VARCHAR(20),@estacion_id)+'-'+CONVERT(CHAR(10),@fecha,23)+'-'+@turno+'-'+@concepto,
-              @transito_id INT=NULL;
+              @transito_id INT=NULL,@transito_mes CHAR(7)=NULL,@transito_importe DECIMAL(18,2)=NULL,@reutiliza_transito BIT=0;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND estado='CERRADO')
         THROW 50001,'Periodo cerrado.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND etapa='BANCO' AND estado='CERRADO')
         THROW 50005,'Etapa bancaria cerrada.',1;
       IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha,23) AND concepto=@concepto AND estado='CERRADO')
         THROW 50011,'El mes de origen esta cerrado; no se puede crear el transito automaticamente.',1;
-      IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND clave_externa=@cg_key AND estado IN ('PENDIENTE','CONCILIADO'))
-        THROW 50002,'Turno en transito.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND clave_externa=@cg_key AND estado='CONCILIADO')
+        THROW 50002,'Turno ya conciliado mediante un transito.',1;
+      SELECT @transito_id=id,@transito_mes=mes_destino,@transito_importe=importe
+        FROM dbo.efc_conc_transitos WITH(UPDLOCK,HOLDLOCK)
+        WHERE estacion_id=@estacion_id AND clave_externa=@cg_key AND estado='PENDIENTE';
+      IF @transito_id IS NOT NULL
+      BEGIN
+        IF @cruza_mes=0 OR @transito_mes<>CONVERT(CHAR(7),@fecha_banco,23) OR @transito_importe<>@importe_cg
+          THROW 50013,'El transito pendiente no coincide con el mes o importe del deposito.',1;
+        SET @reutiliza_transito=1;
+      END;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.clave_externa=@cg_key AND P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA')
         THROW 50003,'Turno ya conciliado.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.movimiento_bancario_id=@movimiento_bancario_id AND P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA')
         THROW 50004,'Deposito ya conciliado.',1;
       IF @cruza_mes=1 BEGIN
-        INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
-        VALUES(@estacion_id,@cg_key,@fecha,CONVERT(CHAR(7),@fecha,23),CONVERT(CHAR(7),@fecha_banco,23),@turno,@concepto,@importe_cg,'CONCILIADO','Transito automatico por deposito bancario del mes siguiente',NULL);
-        SET @transito_id=CONVERT(INT,SCOPE_IDENTITY());
+        IF @transito_id IS NULL
+        BEGIN
+          INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
+          VALUES(@estacion_id,@cg_key,@fecha,CONVERT(CHAR(7),@fecha,23),CONVERT(CHAR(7),@fecha_banco,23),@turno,@concepto,@importe_cg,'CONCILIADO','Transito automatico por deposito bancario del mes siguiente',NULL);
+          SET @transito_id=CONVERT(INT,SCOPE_IDENTITY());
+        END
+        ELSE
+        BEGIN
+          UPDATE dbo.efc_conc_transitos SET estado='CONCILIADO',descripcion='Transito conciliado automaticamente con deposito bancario'
+          WHERE id=@transito_id AND estado='PENDIENTE';
+          IF @@ROWCOUNT<>1 THROW 50014,'No se pudo completar el transito pendiente.',1;
+        END;
       END;
       DECLARE @grupo TABLE(id INT); INSERT dbo.efc_conc_grupos(estacion_id,fecha_operativa,turno,concepto,tipo,total_controlgas,total_banorte,diferencia,creado_por)
         OUTPUT inserted.id INTO @grupo VALUES(@estacion_id,@fecha_operativa,@turno,@concepto,'AUTOMATICA',@importe_cg,@importe_banco,@importe_banco-@importe_cg,NULL);
@@ -145,7 +163,7 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
         VALUES(@id,'CG',CASE WHEN @transito_id IS NULL THEN @cg_key ELSE 'TR:'+CONVERT(VARCHAR(20),@transito_id) END,NULL,
           CASE WHEN @transito_id IS NULL THEN @fecha ELSE @fecha_operativa END,@turno,@concepto,@importe_cg,NULL,@estacion_id),
           (@id,'BANCO','mb_'+CONVERT(VARCHAR(20),@movimiento_bancario_id),@movimiento_bancario_id,@fecha_banco,NULL,NULL,@importe_banco,@referencia,@estacion_id);
-      INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id,CASE WHEN @cruza_mes=1 THEN '; transito automatico creado' ELSE '' END));
+      INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id,CASE WHEN @reutiliza_transito=1 THEN '; transito pendiente asociado y conciliado' WHEN @cruza_mes=1 THEN '; transito automatico creado' ELSE '' END));
       COMMIT;
     END""")
     # A procedure (rather than client-side INSERTs) keeps the reservations,
@@ -191,20 +209,31 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
         THROW 50005,'Etapa bancaria cerrada.',1;
       IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_cierres C WITH(UPDLOCK,HOLDLOCK) JOIN @cg X ON C.mes=CONVERT(CHAR(7),X.fecha,23) WHERE C.estacion_id=@estacion_id AND C.concepto IN (@concepto,CASE WHEN @concepto='MN' THEN 'MORRALLA' ELSE @concepto END) AND C.estado='CERRADO')
         THROW 50011,'El mes de origen esta cerrado; no se puede crear el transito automaticamente.',1;
-      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa WHERE T.estacion_id=@estacion_id AND T.estado IN ('PENDIENTE','CONCILIADO'))
-        THROW 50010,'Uno de los turnos ya tiene un tránsito registrado.',1;
-      IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa WHERE T.estacion_id=@estacion_id AND T.estado='PENDIENTE')
-        THROW 50002,'Turno en transito pendiente.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa WHERE T.estacion_id=@estacion_id AND T.estado='CONCILIADO')
+        THROW 50010,'Uno de los turnos ya tiene un tránsito conciliado.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) JOIN @cg C ON C.clave_externa=T.clave_externa
+        WHERE T.estacion_id=@estacion_id AND T.estado='PENDIENTE'
+          AND (CONVERT(CHAR(7),C.fecha,23)=CONVERT(CHAR(7),@fecha_banco,23)
+            OR T.mes_destino<>CONVERT(CHAR(7),@fecha_banco,23) OR T.importe<>C.importe))
+        THROW 50013,'El tránsito pendiente no coincide con el mes o importe del depósito.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id JOIN @cg C ON C.clave_externa=P.clave_externa WHERE P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA')
         THROW 50003,'Turno ya conciliado.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.movimiento_bancario_id=@movimiento_bancario_id AND P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA')
         THROW 50004,'Deposito ya conciliado.',1;
       IF @cruza_mes=1
       BEGIN
+        INSERT @transitos(clave_externa,transito_id)
+          SELECT C.clave_externa,T.id FROM @cg C
+          JOIN dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK) ON T.estacion_id=@estacion_id
+            AND T.clave_externa=C.clave_externa AND T.estado='PENDIENTE'
+          WHERE CONVERT(CHAR(7),C.fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23);
+        UPDATE T SET estado='CONCILIADO',descripcion='Transito conciliado automaticamente con deposito bancario'
+          FROM dbo.efc_conc_transitos T JOIN @transitos X ON X.transito_id=T.id WHERE T.estado='PENDIENTE';
         INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
           OUTPUT inserted.clave_externa,inserted.id INTO @transitos
           SELECT @estacion_id,C.clave_externa,C.fecha,CONVERT(CHAR(7),C.fecha,23),CONVERT(CHAR(7),@fecha_banco,23),C.turno,C.concepto,C.importe,'CONCILIADO','Transito automatico por deposito bancario del mes siguiente',NULL
-          FROM @cg C WHERE CONVERT(CHAR(7),C.fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23);
+          FROM @cg C LEFT JOIN @transitos X ON X.clave_externa=C.clave_externa
+          WHERE CONVERT(CHAR(7),C.fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23) AND X.transito_id IS NULL;
       END;
       DECLARE @grupo TABLE(id INT); INSERT dbo.efc_conc_grupos(estacion_id,fecha_operativa,turno,concepto,tipo,total_controlgas,total_banorte,diferencia,creado_por)
         OUTPUT inserted.id INTO @grupo VALUES(@estacion_id,@fecha_operativa,@turno,@concepto,'AUTOMATICA',@importe_cg,@importe_banco,@importe_banco-@importe_cg,NULL);
@@ -215,7 +244,7 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
         FROM @cg C LEFT JOIN @transitos T ON T.clave_externa=C.clave_externa;
       INSERT dbo.efc_conc_partidas(grupo_id,origen,clave_externa,movimiento_bancario_id,fecha_operacion,turno,concepto,importe,referencia,estacion_id)
         VALUES(@id,'BANCO','mb_'+CONVERT(VARCHAR(20),@movimiento_bancario_id),@movimiento_bancario_id,@fecha_banco,NULL,NULL,@importe_banco,@referencia,@estacion_id);
-      INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id,CASE WHEN @cruza_mes=1 THEN '; transito(s) automatico(s) creado(s)' ELSE '' END));
+      INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id,CASE WHEN @cruza_mes=1 THEN '; transito(s) asociado(s) y conciliado(s)' ELSE '' END));
       COMMIT;
     END""")
 
@@ -324,8 +353,9 @@ def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
 
 
 def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = None) -> list[tuple]:
-    # Corrections take precedence. Bank account must still belong to the
-    # controlled account universe, matching validateDeposit's account gate.
+    # A manual station correction is an explicit operator decision: include
+    # that movement even when its account or description is outside the normal
+    # automatic-classification rules. The corrected station is resolved later.
     account_where = " OR ".join("RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''),'-',''),' ','')),LEN(?))=?" for _ in ACCOUNT_SUFFIXES)
     # A single run covers every possible cut window: scan start through
     # today+7 (the query's exclusive upper bound is therefore today+8).
@@ -336,12 +366,13 @@ def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = N
       COALESCE(M.concepto,''),COALESCE(M.descripcion,'') FROM TG.dbo.movimientos_bancarios M
       LEFT JOIN dbo.efc_conc_correcciones_banco C ON C.movimiento_bancario_id=M.id
       WHERE M.abono>0 AND M.fecha>=? AND M.fecha<DATEADD(day,8,?)
-        AND ((UPPER(COALESCE(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(COALESCE(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%')
+        AND (C.estacion_id IS NOT NULL
+          OR (UPPER(COALESCE(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(COALESCE(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%')
           OR (RIGHT(UPPER(REPLACE(REPLACE(REPLACE(ISNULL(M.cuenta,''),'-',''),' ',''),'.','')),11)='60630878973'
             AND NULLIF(LTRIM(RTRIM(ISNULL(M.concepto,''))),'') IS NULL
             AND (UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%'
               OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%')))
-        AND (""" + account_where + ")", *params).fetchall()
+        AND (C.estacion_id IS NOT NULL OR (""" + account_where + "))", *params).fetchall()
 
 
 def gasomex_account_matches(bank: tuple, station_id: int) -> bool:
@@ -543,6 +574,18 @@ def candidate_bank_rows(
     return candidates
 
 
+def prefer_unique_manual_bank_correction(candidates: list[tuple], station_id: int) -> list[tuple]:
+    """Prefer one explicitly corrected movement over inferred station matches."""
+    corrected = [bank for bank in candidates if bank[5] is not None and int(bank[5]) == station_id]
+    return corrected if len(corrected) == 1 else candidates
+
+
+def bank_candidate_order(bank: tuple, station_id: int) -> tuple:
+    """Process manually assigned deposits before station inferred from bank text."""
+    corrected = bank[5] is not None and int(bank[5]) == station_id
+    return (0 if corrected else 1, as_date(bank[1]), int(bank[0]))
+
+
 def gasomex_next_turn(day: date, turn: str) -> tuple[date, str]:
     return (day, str(int(turn) + 1)) if turn != "4" else (day + timedelta(days=1), "1")
 
@@ -737,8 +780,10 @@ def run() -> int:
                     }
                     transit_keys = {
                         str(row[0]) for row in cursor.execute("""SELECT clave_externa
-                            FROM dbo.efc_conc_transitos WHERE estacion_id=40 AND estado IN ('PENDIENTE','CONCILIADO')""").fetchall()
+                            FROM dbo.efc_conc_transitos WHERE estacion_id=40 AND estado='CONCILIADO'""").fetchall()
                     }
+                    pending_transit_count = int(cursor.execute("""SELECT COUNT(*) FROM dbo.efc_conc_transitos
+                        WHERE estacion_id=40 AND estado='PENDIENTE'""").fetchone()[0])
                     active_cg_keys.update(transit_keys)
                     slots = praxedis_slots(turn_rows, active_cg_keys)
                     praxedis_bank_rows = [
@@ -747,9 +792,9 @@ def run() -> int:
                         and bank[5] in (None, 40)
                     ]
                     reserved_keys: set[str] = set(active_cg_keys)
-                    log(f"Praxedis: turnos importados={len(slots)}, turnos bloqueados por conciliación/tránsito={len(active_cg_keys)}, depósitos elegibles (8973, concepto vacío, DEP EN EFECTIV)={len(praxedis_bank_rows)}.")
+                    log(f"Praxedis: turnos importados={len(slots)}, turnos bloqueados por conciliación/tránsito conciliado={len(active_cg_keys)}, tránsitos pendientes disponibles para asociar={pending_transit_count}, depósitos elegibles (8973, concepto vacío, DEP EN EFECTIV)={len(praxedis_bank_rows)}.")
                     no_sequence = ambiguous = 0
-                    for bank in sorted(praxedis_bank_rows, key=lambda item: (as_date(item[1]), int(item[0]))):
+                    for bank in sorted(praxedis_bank_rows, key=lambda item: bank_candidate_order(item, 40)):
                         candidates = praxedis_candidates(bank, slots, reserved_keys)
                         if len(candidates) != 1:
                             if candidates:
@@ -786,8 +831,10 @@ def run() -> int:
                     transit_keys = {
                         str(row[0]) for row in cursor.execute("""SELECT clave_externa
                             FROM dbo.efc_conc_transitos
-                            WHERE estacion_id=? AND estado='PENDIENTE'""", station_id).fetchall()
+                            WHERE estacion_id=? AND estado='CONCILIADO'""", station_id).fetchall()
                     }
+                    pending_transit_count = int(cursor.execute("""SELECT COUNT(*) FROM dbo.efc_conc_transitos
+                        WHERE estacion_id=? AND estado='PENDIENTE'""", station_id).fetchone()[0])
                     active_cg_keys.update(transit_keys)
                     slots = gasomex_slots(turn_rows, links, active_cg_keys, int(station_id))
                     gas_bank_rows = [
@@ -798,9 +845,9 @@ def run() -> int:
                         and inferred_stations.get(int(bank[0]), (int(station_id),))[0] == int(station_id)
                     ]
                     reserved_keys: set[str] = set(active_cg_keys)
-                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos MN={len(slots['MN'])}, turnos USD={len(slots['USD'])}, turnos bloqueados por tránsito={len(transit_keys)}, depósitos por cuenta={len(gas_bank_rows)}.")
+                    log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos MN={len(slots['MN'])}, turnos USD={len(slots['USD'])}, turnos bloqueados por tránsito conciliado={len(transit_keys)}, tránsitos pendientes disponibles para asociar={pending_transit_count}, depósitos por cuenta={len(gas_bank_rows)}.")
                     no_sequence = ambiguous = 0
-                    for bank in sorted(gas_bank_rows, key=lambda item: (as_date(item[1]), int(item[0]))):
+                    for bank in sorted(gas_bank_rows, key=lambda item: bank_candidate_order(item, int(station_id))):
                         candidates = gasomex_candidates(bank, slots, reserved_keys, int(station_id))
                         if len(candidates) != 1:
                             if candidates:
@@ -847,7 +894,10 @@ def run() -> int:
                             skipped += 1; continue
                         tolerance = PARRAL_TOLERANCE if "PARRAL" in str(name).upper() else TOLERANCE
                         candidates = candidate_bank_rows(bank_index, int(station_id), cut, used, target, tolerance)
+                        candidates = prefer_unique_manual_bank_correction(candidates, int(station_id))
                         if len(candidates) != 1:
+                            if len(candidates) > 1:
+                                log(f"Depósito ambiguo: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, importe_objetivo={target:.2f}, candidatos={len(candidates)}; revisión manual.")
                             skipped += 1; continue
                         bank = candidates[0]
                         try:
