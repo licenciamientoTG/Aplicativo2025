@@ -7221,9 +7221,19 @@ public function stamped_invoices_detail(): void
             $suffixes = EfcConciliacionModel::allAccountSuffixes();
             $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT M.id, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled
+                "SELECT M.id, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, CG_MATCH.controlgas_matches
                  FROM [TG].[dbo].[movimientos_bancarios] M
                  LEFT JOIN [TG].[dbo].[efc_conc_one_goal_movimientos] OG ON OG.movimiento_bancario_id=M.id
+                 OUTER APPLY (
+                     SELECT STRING_AGG(CONVERT(VARCHAR(10), X.fecha_operacion, 23) + '|' + COALESCE(X.turno, ''), ';') AS controlgas_matches
+                     FROM (
+                         SELECT DISTINCT C.fecha_operacion, C.turno
+                         FROM [TG].[dbo].[efc_conc_partidas] B
+                         JOIN [TG].[dbo].[efc_conc_grupos] G ON G.id=B.grupo_id AND G.estado='ACTIVA'
+                         JOIN [TG].[dbo].[efc_conc_partidas] C ON C.grupo_id=G.id AND C.origen='CG' AND C.activo=1
+                         WHERE B.movimiento_bancario_id=M.id AND B.origen='BANCO' AND B.activo=1
+                     ) X
+                 ) CG_MATCH
                  WHERE M.abono > 0
                    AND YEAR(M.fecha) = ? AND MONTH(M.fecha) = ?
                    -- Banorte, Bankaool y Santander no nombran el mismo movimiento
@@ -7339,6 +7349,7 @@ public function stamped_invoices_detail(): void
                     'station_status'    => $estatus,
                     'station_corrected' => $corregida,
                     'reconciled'        => (bool)$mov['reconciled'],
+                    'controlgas_matches' => (string)($mov['controlgas_matches'] ?? ''),
                     'one_goal'          => (int)$mov['one_goal'],
                     'original_station_id' => $estacionOriginal['station_id'] ?? null,
                     'original_station'    => $estacionOriginal['station'] ?? null,
