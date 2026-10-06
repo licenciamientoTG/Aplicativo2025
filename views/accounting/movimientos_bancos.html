@@ -137,26 +137,36 @@
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
+      <div class="col-auto">
+        {# href se arma en JS con los filtros actuales antes de cada clic
+           (mismo patrón que btnExportarGrupos en Tesorería). Si hay
+           Descripción elegida, exporta todas sus cuentas; si no, todas las
+           cuentas del filtro/rango actual — siempre una hoja por cuenta. #}
+        <a class="btn btn-success" id="btnExportarExcel" href="#" title="Descargar en Excel, una hoja por cuenta">
+          <i class="fas fa-file-excel"></i> Exportar Excel
+        </a>
+      </div>
     </form>
   </div>
 </div>
 
-{# Exportaciones: contraído por default (mismo patrón de card contraíble que
-   Tesorería > Movimientos bancos). Tiene sus PROPIOS filtros, independientes
-   del buscador de la tabla. #}
+{# Layout .cba de Banorte para One Goal (sustituye al Excel "Convertidor
+   Bancos"). Contraído por default, mismo patrón de card contraíble que
+   Tesorería > Movimientos bancos. Filtros PROPIOS, independientes del
+   buscador de la tabla. #}
 <div class="card mb-3">
   <div class="card-header p-0 bg-white">
     <button class="btn w-100 d-flex justify-content-between align-items-center collapsed mb-collapse-btn"
-            type="button" data-bs-toggle="collapse" data-bs-target="#exportarCollapse"
-            aria-expanded="false" aria-controls="exportarCollapse">
+            type="button" data-bs-toggle="collapse" data-bs-target="#cbaCollapse"
+            aria-expanded="false" aria-controls="cbaCollapse">
       <span style="color:#334155;">
-        <i class="fas fa-file-export me-2 text-primary"></i><strong>Exportar</strong>
-        <small class="text-muted">Excel o layout .cba para One Goal</small>
+        <i class="fas fa-file-export me-2 text-primary"></i><strong>Layout Banorte (.cba)</strong>
+        <small class="text-muted">para One Goal</small>
       </span>
       <i class="fas fa-chevron-down mb-chevron"></i>
     </button>
   </div>
-  <div class="collapse" id="exportarCollapse">
+  <div class="collapse" id="cbaCollapse">
     <div class="card-body">
       <div class="row align-items-end g-2">
         <div class="col-auto">
@@ -169,8 +179,7 @@
         </div>
         <div class="col-auto">
           <label for="expCuenta">Cuenta:</label>
-          {# Solo cuentas Banorte: el card exporta lo que va a One Goal.
-             Vacío = todas las de Banorte. #}
+          {# Solo cuentas Banorte. Vacío = todas las de Banorte. #}
           <select class="selectpicker" data-live-search="true" data-width="300px" id="expCuenta">
             <option value="" selected>Todas las de Banorte</option>
             {% for c in cuentas|filter(c => c.banco|upper == 'BANORTE') %}
@@ -181,16 +190,10 @@
           </select>
         </div>
         <div class="col-auto">
-          <a class="btn btn-success" id="btnExportarExcel" href="#" title="Descargar en Excel, una hoja por cuenta">
-            <i class="fas fa-file-excel"></i> Exportar Excel
-          </a>
-        </div>
-        <div class="col-auto">
-          {# Layout para One Goal (sustituye al Excel "Convertidor Bancos").
-             Una cuenta = un .cba; "Todas las de Banorte" = .zip con un .cba
+          {# Una cuenta = un .cba; "Todas las de Banorte" = .zip con un .cba
              por cuenta. El rango va por fecha de operación. #}
           <a class="btn btn-outline-dark" id="btnExportarCba" href="#">
-            <i class="fas fa-file-export"></i> Layout .cba Banorte
+            <i class="fas fa-file-export"></i> Descargar .cba
           </a>
         </div>
       </div>
@@ -639,34 +642,44 @@ $(function () {
     buscarMovimientos();
   });
 
-  // ===== Card "Exportar": filtros propios (expDesde/expHasta/expCuenta),
-  // independientes del buscador. Los href se arman en cada cambio y justo
-  // antes de cada clic, así sirven sin haber presionado Buscar. =====
-  function actualizarExportar() {
+  // ===== Exportar Excel: mismo filtro Desde/Hasta/Cuenta/Descripción que la
+  // búsqueda en pantalla, resuelto justo antes de cada clic (no en submit,
+  // así sirve sin haber presionado Buscar primero). =====
+  function actualizarUrlExportar() {
+    var params = new URLSearchParams({
+      desde:       $('#desde').val() || '',
+      hasta:       $('#hasta').val() || '',
+      cuenta:      $('#cuenta').val() || '',
+      descripcion: $('#descripcion').val() || '',
+    });
+    $('#btnExportarExcel').attr('href', '/accounting/exportar_movimientos_bancos?' + params.toString());
+  }
+  $('#btnExportarExcel').on('click', actualizarUrlExportar);
+  actualizarUrlExportar();
+
+  // ===== Card "Layout Banorte (.cba)": filtros propios (expDesde/expHasta/
+  // expCuenta), independientes del buscador. =====
+  function actualizarCba() {
     var cuenta = $('#expCuenta').val() || '';   // vacío = todas las de Banorte
     var desde  = $('#expDesde').val() || '';
     var hasta  = $('#expHasta').val() || '';
     var ok     = desde !== '' && hasta !== '' && desde <= hasta;
+    var params = new URLSearchParams({ desde: desde, hasta: hasta, cuenta: cuenta });
 
-    var pExcel = new URLSearchParams({ desde: desde, hasta: hasta, cuenta: cuenta });
-    if (cuenta === '') pExcel.set('banco', 'BANORTE');
-    var pCba   = new URLSearchParams({ desde: desde, hasta: hasta, cuenta: cuenta });
-
-    $('#btnExportarExcel, #btnExportarCba')
+    $('#btnExportarCba')
       .toggleClass('disabled', !ok)
-      .attr('aria-disabled', ok ? 'false' : 'true');
-    $('#btnExportarExcel').attr('href', ok ? '/accounting/exportar_movimientos_bancos?' + pExcel.toString() : '#');
-    $('#btnExportarCba').attr('href', ok ? '/accounting/exportar_cba_banorte?' + pCba.toString() : '#');
+      .attr('aria-disabled', ok ? 'false' : 'true')
+      .attr('href', ok ? '/accounting/exportar_cba_banorte?' + params.toString() : '#');
 
     var ayuda;
     if (!ok)               ayuda = 'Revisa el rango: "Desde" no puede ser posterior a "Hasta".';
-    else if (cuenta === '') ayuda = 'Layout .cba: se descarga un .zip con un archivo por cada cuenta de Banorte con movimientos. Rango por fecha de operación.';
-    else                   ayuda = 'Layout .cba: un archivo de esta cuenta, rango por fecha de operación.';
+    else if (cuenta === '') ayuda = 'Se descarga un .zip con un .cba por cada cuenta de Banorte con movimientos. Rango por fecha de operación.';
+    else                   ayuda = 'Se descarga el .cba de esta cuenta. Rango por fecha de operación.';
     $('#expAyuda').text(ayuda);
   }
-  $('#expCuenta, #expDesde, #expHasta').on('change', actualizarExportar);
-  $('#btnExportarExcel, #btnExportarCba').on('click', actualizarExportar);
-  actualizarExportar();
+  $('#expCuenta, #expDesde, #expHasta').on('change', actualizarCba);
+  $('#btnExportarCba').on('click', actualizarCba);
+  actualizarCba();
 
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) ocultarLoader();

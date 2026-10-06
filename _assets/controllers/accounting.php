@@ -189,8 +189,7 @@ class Accounting{
      * hoja por cuenta (cada cuenta pertenece a un solo banco en la práctica,
      * así que la hoja usa el set de columnas de ESE banco, igual que su tab
      * en pantalla). Mismos filtros que movimientos_bancos_table(): Desde,
-     * Hasta, Cuenta o Descripción; además banco=BANORTE (card "Exportar":
-     * "Todas las de Banorte") acota a las cuentas de ese banco.
+     * Hasta, Cuenta o Descripción.
      */
     public function exportar_movimientos_bancos(): void {
         if (!authorized(self::PERM_MOVIMIENTOS_BANCOS)) {
@@ -203,8 +202,6 @@ class Accounting{
         $cuentasPermitidas = null;
         if (!empty($filtros['descripcion'])) {
             $cuentasPermitidas = $this->movsModel->get_cuentas_por_descripcion($filtros['descripcion']);
-        } elseif (strtoupper(trim($_GET['banco'] ?? '')) === 'BANORTE') {
-            $cuentasPermitidas = $this->cuentas_banorte();
         }
 
         $movimientos = $this->movsModel->get_movimientos($filtros, $cuentasPermitidas);
