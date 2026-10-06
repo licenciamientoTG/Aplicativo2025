@@ -112,16 +112,21 @@ segunda papeleta** en un turno que ya tenga la primera. Las dos deben pertenecer
 a la misma estación efectiva y no estar asociadas a otro turno. Se admite una
 sola papeleta adicional; el criterio de la excepción es `MANUAL_DOBLE`.
 
-El turno doble necesita **dos depósitos distintos**, asociados manualmente como
-un solo grupo. Esta condición también aplica a la excepción en USD: los turnos
-USD ordinarios conservan su tratamiento habitual. En GASOMEX, el turno doble se
-concilia por separado y no se mezcla con otros turnos en un lote.
+El turno doble necesita **dos depósitos distintos**. La asociación de la segunda
+papeleta al turno sigue siendo manual, pero el cron bancario puede conciliar los
+depósitos automáticamente: cada depósito debe coincidir con el real REGIO de su
+papeleta, con tolerancia de $1 por pareja. Si hay más de una combinación posible,
+el turno queda pendiente para revisión. Los turnos dobles se procesan por separado
+y no se mezclan con lotes GASOMEX. En USD cada importe REGIO se convierte usando
+el tipo de cambio histórico del vínculo.
 
 Las diferencias se calculan una sola vez por turno:
 
 ```text
 Diferencia REGIO = real de primera + real de segunda − ControlGas
 Diferencia banco = depósito 1 + depósito 2 − real de ambas papeletas
+Validación automática = |depósito 1 − real papeleta 1| ≤ $1 y
+                       |depósito 2 − real papeleta 2| ≤ $1
 ```
 
 Un tránsito conserva el turno de origen y ambas papeletas; al recibirlo en el
@@ -130,11 +135,12 @@ libera los dos depósitos conjuntamente. Antes de agregar, quitar o cambiar una
 papeleta de un turno con banco asociado, se debe deshacer su conciliación. Se
 puede quitar únicamente la segunda o desasociar ambas desde el panel.
 
-La asociación automática REGIO sigue vinculando una papeleta por turno; reserva
-las dos papeletas de una excepción manual. La conciliación automática bancaria
-omite los turnos dobles, incluidas las rutas de Praxedis y lotes GASOMEX. El
-reprocesamiento de importaciones y el reinicio de pruebas rechazan documentos
-protegidos por esta excepción.
+La asociación automática REGIO sigue vinculando una papeleta por turno y reserva
+las dos papeletas de una excepción manual. El cron bancario automático procesa
+los turnos dobles como un grupo de un turno y dos depósitos; las rutas de lotes
+GASOMEX y Praxedis no los agrupan con otros turnos. El reprocesamiento de
+importaciones y el reinicio de pruebas rechazan documentos protegidos por esta
+excepción.
 
 Para actualizar una instalación existente, usar
 `docs/sql/efc_conc_segunda_papeleta.sql` en TG; el script no utiliza separadores

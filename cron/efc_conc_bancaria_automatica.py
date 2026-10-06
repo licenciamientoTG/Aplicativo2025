@@ -172,6 +172,80 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id,CASE WHEN @reutiliza_transito=1 THEN '; transito pendiente asociado y conciliado' WHEN @cruza_mes=1 THEN '; transito automatico creado' ELSE '' END));
       COMMIT;
     END""")
+    cursor.execute("""CREATE OR ALTER PROCEDURE dbo.usp_efc_conc_guardar_automatica_doble
+      @estacion_id INT,@fecha DATE,@turno VARCHAR(20),@concepto VARCHAR(20),@importe_cg DECIMAL(18,2),
+      @movimiento_1 INT,@fecha_banco_1 DATE,@importe_1 DECIMAL(18,2),@referencia_1 VARCHAR(255),
+      @movimiento_2 INT,@fecha_banco_2 DATE,@importe_2 DECIMAL(18,2),@referencia_2 VARCHAR(255),@ejecucion_id BIGINT
+    AS BEGIN
+      SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; BEGIN TRANSACTION;
+      DECLARE @paper1 INT,@paper2 INT,@target1 DECIMAL(18,2),@target2 DECIMAL(18,2),@rate DECIMAL(18,6)=0,
+              @total_banco DECIMAL(18,2)=@importe_1+@importe_2,
+              @cg_key VARCHAR(180)='cg-'+CONVERT(VARCHAR(20),@estacion_id)+'-'+CONVERT(CHAR(10),@fecha,23)+'-'+@turno+'-'+@concepto,
+              @cruza_mes BIT=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco_1,23) THEN 1 ELSE 0 END,
+              @fecha_operativa DATE=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco_1,23) THEN DATEFROMPARTS(YEAR(@fecha_banco_1),MONTH(@fecha_banco_1),1) ELSE @fecha END,
+              @transito_id INT=NULL;
+      IF @movimiento_1=@movimiento_2 OR CONVERT(CHAR(7),@fecha_banco_1,23)<>CONVERT(CHAR(7),@fecha_banco_2,23)
+        THROW 50021,'Los dos depósitos deben ser distintos y del mismo mes receptor.',1;
+      IF DATEDIFF(DAY,@fecha,@fecha_banco_1) NOT BETWEEN 0 AND 7 OR DATEDIFF(DAY,@fecha,@fecha_banco_2) NOT BETWEEN 0 AND 7
+        THROW 50022,'Cada depósito debe estar entre la fecha del turno y siete días después.',1;
+      SELECT @paper1=P.id,@target1=P.real_mn,@rate=ISNULL(V.tipo_cambio_usd,0)
+        FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
+        JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
+        WHERE V.estacion_id=@estacion_id AND V.fecha_cg=@fecha AND (V.turno=@turno OR TRY_CONVERT(INT,V.turno)=TRY_CONVERT(INT,@turno)) AND V.concepto=@concepto AND V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL;
+      SELECT @paper2=P.id,@target2=P.real_mn FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
+        JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_secundaria_id
+        WHERE V.estacion_id=@estacion_id AND V.fecha_cg=@fecha AND (V.turno=@turno OR TRY_CONVERT(INT,V.turno)=TRY_CONVERT(INT,@turno)) AND V.concepto=@concepto AND V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL;
+      IF @paper1 IS NULL OR @paper2 IS NULL THROW 50023,'La segunda papeleta ya no está asociada al turno.',1;
+      IF @concepto='USD'
+      BEGIN
+        SELECT @target1=CASE WHEN ISNULL(real_usd,0)>0 AND @rate>0 THEN real_usd*@rate ELSE real_mn END FROM dbo.efc_conc_analiticos_papeletas WHERE id=@paper1;
+        SELECT @target2=CASE WHEN ISNULL(real_usd,0)>0 AND @rate>0 THEN real_usd*@rate ELSE real_mn END FROM dbo.efc_conc_analiticos_papeletas WHERE id=@paper2;
+      END;
+      IF ABS(@importe_1-@target1)>1.00 OR ABS(@importe_2-@target2)>1.00
+        THROW 50024,'Cada depósito debe coincidir con el real REGIO de su papeleta dentro de $1.',1;
+      IF EXISTS(SELECT 1 FROM (VALUES(@movimiento_1,@importe_1,@fecha_banco_1),(@movimiento_2,@importe_2,@fecha_banco_2)) B(id,importe,fecha)
+        LEFT JOIN TG.dbo.movimientos_bancarios M WITH(UPDLOCK,HOLDLOCK) ON M.id=B.id
+        WHERE M.id IS NULL OR M.abono<>B.importe OR M.fecha<>B.fecha OR M.abono<=0)
+        THROW 50025,'Un depósito cambió o ya no está disponible.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id
+        WHERE P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA' AND (P.clave_externa=@cg_key OR (P.estacion_id=@estacion_id AND P.fecha_operacion=@fecha AND P.turno=@turno AND P.concepto=@concepto)))
+        THROW 50003,'Turno ya conciliado.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id
+        WHERE P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA' AND P.movimiento_bancario_id IN(@movimiento_1,@movimiento_2))
+        THROW 50004,'Uno de los depósitos ya está conciliado.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND estado='CERRADO')
+        THROW 50001,'Periodo cerrado.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha_operativa,23) AND concepto=@concepto AND etapa='BANCO' AND estado='CERRADO')
+        THROW 50005,'Etapa bancaria cerrada.',1;
+      IF @cruza_mes=1 AND EXISTS(SELECT 1 FROM dbo.efc_conc_cierres WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND mes=CONVERT(CHAR(7),@fecha,23) AND concepto=@concepto AND estado='CERRADO')
+        THROW 50011,'El mes de origen está cerrado.',1;
+      SELECT @transito_id=id FROM dbo.efc_conc_transitos WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND clave_externa=@cg_key AND estado='PENDIENTE';
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_transitos WITH(UPDLOCK,HOLDLOCK) WHERE estacion_id=@estacion_id AND clave_externa=@cg_key AND estado='CONCILIADO')
+        THROW 50002,'Turno ya conciliado mediante un tránsito.',1;
+      IF @transito_id IS NOT NULL AND (@cruza_mes=0 OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos WHERE id=@transito_id AND (mes_destino<>CONVERT(CHAR(7),@fecha_banco_1,23) OR importe<>@importe_cg)))
+        THROW 50013,'El tránsito pendiente no coincide con el mes o importe de los depósitos.',1;
+      IF @cruza_mes=1
+      BEGIN
+        IF @transito_id IS NULL
+        BEGIN
+          INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
+          VALUES(@estacion_id,@cg_key,@fecha,CONVERT(CHAR(7),@fecha,23),CONVERT(CHAR(7),@fecha_banco_1,23),@turno,@concepto,@importe_cg,'CONCILIADO','Transito automatico por doble papeleta y depositos',NULL);
+          SET @transito_id=CONVERT(INT,SCOPE_IDENTITY());
+        END ELSE UPDATE dbo.efc_conc_transitos SET estado='CONCILIADO',descripcion='Transito conciliado automaticamente con dos depositos' WHERE id=@transito_id AND estado='PENDIENTE';
+      END;
+      DECLARE @grupo TABLE(id INT);
+      INSERT dbo.efc_conc_grupos(estacion_id,fecha_operativa,turno,concepto,tipo,total_controlgas,total_banorte,diferencia,creado_por)
+        OUTPUT inserted.id INTO @grupo VALUES(@estacion_id,@fecha_operativa,@turno,@concepto,'AUTOMATICA',@importe_cg,@total_banco,@total_banco-@importe_cg,NULL);
+      DECLARE @id INT=(SELECT id FROM @grupo);
+      INSERT dbo.efc_conc_partidas(grupo_id,origen,clave_externa,movimiento_bancario_id,fecha_operacion,turno,concepto,importe,referencia,estacion_id)
+        VALUES(@id,'CG',CASE WHEN @transito_id IS NULL THEN @cg_key ELSE 'TR:'+CONVERT(VARCHAR(20),@transito_id) END,NULL,CASE WHEN @transito_id IS NULL THEN @fecha ELSE @fecha_operativa END,@turno,@concepto,@importe_cg,NULL,@estacion_id),
+          (@id,'BANCO','mb_'+CONVERT(VARCHAR(20),@movimiento_1),@movimiento_1,@fecha_banco_1,NULL,NULL,@importe_1,@referencia_1,@estacion_id),
+          (@id,'BANCO','mb_'+CONVERT(VARCHAR(20),@movimiento_2),@movimiento_2,@fecha_banco_2,NULL,NULL,@importe_2,@referencia_2,@estacion_id);
+      INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle)
+        VALUES(@id,@movimiento_1,'CONCILIACION_AUTOMATICA_DOBLE',CONCAT('ejecucion=',@ejecucion_id,'; papeleta=',@paper1,'; banco=',@movimiento_1)),
+              (@id,@movimiento_2,'CONCILIACION_AUTOMATICA_DOBLE',CONCAT('ejecucion=',@ejecucion_id,'; papeleta=',@paper2,'; banco=',@movimiento_2));
+      COMMIT;
+    END""")
     # A procedure (rather than client-side INSERTs) keeps the reservations,
     # closure validation and group creation in one server-side transaction.
     cursor.execute("""CREATE OR ALTER PROCEDURE dbo.usp_efc_conc_guardar_gasomex
@@ -423,12 +497,35 @@ def index_bank_rows(
 
 
 def paired_turns(cursor: pyodbc.Cursor) -> set[tuple[int, str, str, str]]:
-    """Paired REGIO turns are reserved for manual bank reconciliation."""
+    """Return turns whose second REGIO paper was associated manually."""
     if not cursor.execute("SELECT COL_LENGTH('dbo.efc_conc_analiticos_vinculos','papeleta_secundaria_id')").fetchone()[0]:
         return set()
     return {(int(row[0]), str(row[1]), turn_key(row[2]), str(row[3]).upper())
             for row in cursor.execute("""SELECT estacion_id,CONVERT(CHAR(10),fecha_cg,23),turno,concepto
                 FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND papeleta_secundaria_id IS NOT NULL""").fetchall()}
+
+
+def paired_paper_targets(cursor: pyodbc.Cursor, station_id: int) -> dict[tuple[str, str, str], tuple[float, float]]:
+    """Return each paper's REGIO real amount separately (USD converted to MXN)."""
+    has_column = cursor.execute("SELECT COL_LENGTH('dbo.efc_conc_analiticos_vinculos','papeleta_secundaria_id')").fetchone()[0]
+    if not has_column:
+        return {}
+    rows = cursor.execute("""SELECT CONVERT(CHAR(10),V.fecha_cg,23),V.turno,V.concepto,
+        CASE WHEN V.concepto='USD' AND ISNULL(P.real_usd,0)>0 AND ISNULL(V.tipo_cambio_usd,0)>0 THEN P.real_usd*V.tipo_cambio_usd ELSE P.real_mn END,
+        CASE WHEN V.concepto='USD' AND ISNULL(P2.real_usd,0)>0 AND ISNULL(V.tipo_cambio_usd,0)>0 THEN P2.real_usd*V.tipo_cambio_usd ELSE P2.real_mn END
+        FROM dbo.efc_conc_analiticos_vinculos V
+        JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
+        JOIN dbo.efc_conc_analiticos_papeletas P2 ON P2.id=V.papeleta_secundaria_id
+        WHERE V.estacion_id=? AND V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL
+          AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_partidas C
+            JOIN dbo.efc_conc_grupos G ON G.id=C.grupo_id
+            WHERE C.estacion_id=V.estacion_id AND C.origen='CG' AND C.activo=1 AND G.estado='ACTIVA'
+              AND ((C.fecha_operacion=V.fecha_cg AND (C.turno=V.turno OR TRY_CONVERT(INT,C.turno)=TRY_CONVERT(INT,V.turno)) AND C.concepto=V.concepto)
+                OR C.clave_externa='cg-'+CONVERT(VARCHAR(20),V.estacion_id)+'-'+CONVERT(CHAR(10),V.fecha_cg,23)+'-'+V.turno+'-'+V.concepto))
+          AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id
+            AND T.fecha_origen=V.fecha_cg AND (T.turno=V.turno OR TRY_CONVERT(INT,T.turno)=TRY_CONVERT(INT,V.turno))
+            AND T.concepto=V.concepto AND T.estado='CONCILIADO')""", station_id).fetchall()
+    return {(str(row[0]), turn_key(row[1]), str(row[2]).upper()): (amount(row[3]), amount(row[4])) for row in rows}
 
 
 def infer_unassigned_bank_stations(
@@ -597,6 +694,29 @@ def candidate_bank_rows(
             if int(bank[0]) not in used and abs(amount(bank[2]) - target) <= tolerance:
                 candidates.append(bank)
     return candidates
+
+
+def candidate_paired_bank_sets(
+    indexed: dict[int, dict[date, list[tuple]]], station_id: int, cut: date, used: set[int],
+    first_target: float, second_target: float, tolerance: float = TOLERANCE, eligible=None,
+) -> list[tuple[tuple, tuple]]:
+    """Find unique unordered pairs of distinct deposits, matching each paper individually."""
+    first = candidate_bank_rows(indexed, station_id, cut, used, first_target, tolerance)
+    second = candidate_bank_rows(indexed, station_id, cut, used, second_target, tolerance)
+    if eligible is not None:
+        first = [bank for bank in first if eligible(bank)]
+        second = [bank for bank in second if eligible(bank)]
+    first = prefer_unique_manual_bank_correction(first, station_id)
+    second = prefer_unique_manual_bank_correction(second, station_id)
+    found: dict[tuple[int, int], tuple[tuple, tuple]] = {}
+    for one in first:
+        for two in second:
+            one_id, two_id = int(one[0]), int(two[0])
+            if one_id == two_id or as_date(one[1]).strftime('%Y-%m') != as_date(two[1]).strftime('%Y-%m'):
+                continue
+            key = tuple(sorted((one_id, two_id)))
+            found.setdefault(key, (one, two))
+    return list(found.values())
 
 
 def prefer_unique_manual_bank_correction(candidates: list[tuple], station_id: int) -> list[tuple]:
@@ -794,6 +914,48 @@ def run() -> int:
                 turn_rows = fetch_station_turns(cursor, int(station_id), controlgas_first, controlgas_last)
                 source_name = "cortes Praxedis" if int(station_id) == 40 else "ControlGas"
                 log(f"Estación {station_id}: {source_name} devolvió {len(turn_rows)} registros.")
+                # The paper pair remains a manual REGIO association, but once
+                # linked, match one distinct bank deposit to each paper's real.
+                paired_targets = paired_paper_targets(cursor, int(station_id))
+                paired_rows: dict[tuple[str, str, str], tuple[dict, float]] = {}
+                for row in turn_rows:
+                    cut = as_date(row.get("Fecha")); turn = turn_key(row.get("Turno"))
+                    for concept, raw in (("MN", row.get("MN")), ("MORRALLA", row.get("Morralla")), ("USD", amount(row.get("Dolares"))+amount(row.get("Dolares2")))):
+                        key = (cut.isoformat(), turn, concept)
+                        if key in paired_targets and amount(raw) > 0:
+                            paired_rows.setdefault(key, (row, amount(raw)))
+                for (day_text, turn, concept), (_row, cg_amount) in paired_rows.items():
+                    targets = paired_targets[(day_text, turn, concept)]
+                    if min(targets) <= 0:
+                        skipped += 1; log(f"Doble papeleta sin importe REGIO válido: estación={station_id}, fecha={day_text}, turno={turn}, concepto={concept}."); continue
+                    cut = date.fromisoformat(day_text)
+                    eligible = None
+                    if is_praxedis:
+                        eligible = lambda bank: praxedis_bank_matches(bank) and bank[5] in (None, 40)
+                    elif int(station_id) in GASOMEX_STATIONS:
+                        required_bucket = "USD" if concept == "USD" else "MN"
+                        eligible = lambda bank: gasomex_account_matches(bank, int(station_id)) and required_bucket in gasomex_bank_buckets(bank, int(station_id)) and resolved_bank_station(bank, stations) in (None, int(station_id)) and inferred_stations.get(int(bank[0]), (int(station_id),))[0] == int(station_id)
+                    candidates = candidate_paired_bank_sets(bank_index, int(station_id), cut, used, targets[0], targets[1], eligible=eligible)
+                    if len(candidates) != 1:
+                        if candidates:
+                            log(f"Doble papeleta ambigua: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, combinaciones={len(candidates)}; requiere revisión.")
+                        skipped += 1; continue
+                    first_bank, second_bank = candidates[0]
+                    try:
+                        for bank in (first_bank, second_bank):
+                            inferred = inferred_stations.get(int(bank[0]))
+                            if inferred:
+                                save_inferred_station_correction(cursor, int(bank[0]), int(station_id), inferred[1], int(run_id))
+                        cursor.execute("EXEC dbo.usp_efc_conc_guardar_automatica_doble ?,?,?,?,?,?,?,?,?,?,?,?,?,?",
+                            station_id, cut, turn, concept, cg_amount,
+                            first_bank[0], first_bank[1], amount(first_bank[2]), first_bank[3],
+                            second_bank[0], second_bank[1], amount(second_bank[2]), second_bank[3], run_id)
+                        conn.commit(); used.update((int(first_bank[0]), int(second_bank[0]))); matched += 1
+                        log(f"Conciliación automática doble: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, papeleta1={targets[0]:.2f}/banco={first_bank[0]}, papeleta2={targets[1]:.2f}/banco={second_bank[0]}.")
+                    except pyodbc.Error as exc:
+                        conn.rollback(); errors += 1
+                        log(f"Error DB conciliando doble papeleta estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}: {error_text(exc)}")
+                        details.append(f"{station_id}/{cut}/{turn}/{concept}/doble: {exc}")
                 if is_praxedis:
                     # Praxedis may be imported/reconciled after month end. Keep
                     # the previous month in scope on every run without widening
