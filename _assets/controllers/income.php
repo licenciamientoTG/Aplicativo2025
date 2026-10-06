@@ -6964,9 +6964,9 @@ public function stamped_invoices_detail(): void
             $mostrarTodos=filter_var($_GET['mostrar_todos'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $mostrarSinPapeleta=filter_var($_GET['mostrar_sin_papeleta'] ?? false, FILTER_VALIDATE_BOOLEAN);
             if ($report === 'faltantes') {
-                // El modo normal conserva el umbral; “Mostrar todos” incluye
-                // cualquier diferencia positiva o negativa distinta de cero.
-                $rows=array_values(array_filter($rows, static fn(array $row): bool => !empty($row['sin_papeleta']) ? $mostrarSinPapeleta : ($mostrarTodos ? abs((float)$row['diferencia_controlgas_regio']) > 0.004 : (float)$row['diferencia_controlgas_regio'] < -10.00)));
+                // El modo normal incluye faltantes y sobrantes que rebasen $10;
+                // “Mostrar todos” incluye cualquier diferencia distinta de cero.
+                $rows=array_values(array_filter($rows, static fn(array $row): bool => !empty($row['sin_papeleta']) ? $mostrarSinPapeleta : ($mostrarTodos ? abs((float)$row['diferencia_controlgas_regio']) > 0.004 : abs((float)$row['diferencia_controlgas_regio']) > 10.00)));
             } else {
                 $rows=array_values(array_filter($rows, static fn(array $row): bool => empty($row['sin_papeleta']) && $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             }
