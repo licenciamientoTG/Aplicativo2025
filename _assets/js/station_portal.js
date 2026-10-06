@@ -175,8 +175,14 @@ function construirConfigDataTable() {
                     const attrs = `data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}" data-fecha="${row.fecha}"` +
                         ` data-hora="${row.hora || ''}" data-estacion="${escHtml(row.estacion || '')}" data-tanque="${row.tanque || ''}"` +
                         ` data-producto="${escHtml(row.producto || '')}" data-volumen="${row.volumen || 0}"`;
-                    let html = `<button type="button" class="btn btn-sm btn-primary btn-subir-remision" data-tipo="remision" ${attrs} data-bs-toggle="tooltip" title="Subir remisión"><i class="fa-solid fa-file-invoice"></i></button> `;
-                    html += `<button type="button" class="btn btn-sm btn-info btn-subir-remision" data-tipo="carta_porte" ${attrs} data-bs-toggle="tooltip" title="Subir carta porte"><i class="fa-solid fa-truck"></i></button> `;
+                    // Subir documentos requiere el permiso 86 (el mismo de
+                    // eliminar); con solo el 84 la estación únicamente consulta.
+                    const puedeSubir = String($('#datatables_mis_recepciones').data('can-delete')) === '1';
+                    let html = '';
+                    if (puedeSubir) {
+                        html += `<button type="button" class="btn btn-sm btn-primary btn-subir-remision" data-tipo="remision" ${attrs} data-bs-toggle="tooltip" title="Subir remisión"><i class="fa-solid fa-file-invoice"></i></button> `;
+                        html += `<button type="button" class="btn btn-sm btn-info btn-subir-remision" data-tipo="carta_porte" ${attrs} data-bs-toggle="tooltip" title="Subir carta porte"><i class="fa-solid fa-truck"></i></button> `;
+                    }
                     if (row.total_remisiones > 0 || row.total_cartas_porte > 0) {
                         html += `<button type="button" class="btn btn-sm btn-secondary btn-ver-remisiones" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}">Ver</button> `;
                     }

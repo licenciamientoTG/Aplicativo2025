@@ -11,7 +11,9 @@ class station_portal
 
     const PERM_VER              = 84; // "Ver Mis Recepciones (portal estaciones)"
     const PERM_TODAS_ESTACIONES = 85; // "Mis Recepciones: ver todas las estaciones"
-    const PERM_ELIMINAR         = 86; // "Mis Recepciones: eliminar remisión"
+    // 86 cubre subir Y eliminar documentos (remisión / carta porte): desde
+    // 2026-10-06 subir ya no basta con el 84 -- el 84 solo permite consultar.
+    const PERM_ELIMINAR         = 86; // "Mis Recepciones: subir y eliminar documentos"
 
     public function __construct($twig)
     {
@@ -445,8 +447,8 @@ class station_portal
 
     public function upload_remision(): void
     {
-        if (!authorized(self::PERM_VER)) {
-            json_output(['success' => false, 'message' => 'No autorizado']);
+        if (!authorized(self::PERM_VER) || !authorized(self::PERM_ELIMINAR)) {
+            json_output(['success' => false, 'message' => 'No tienes permiso para subir documentos']);
             return;
         }
 
