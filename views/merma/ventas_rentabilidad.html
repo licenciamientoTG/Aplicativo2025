@@ -1,0 +1,285 @@
+{#
+  Sección "Rentabilidad" del RESUMEN DIRECCIÓN. Parcial sin layout: la pide
+  merma_ventas.js por AJAX a /merma/ventas_rentabilidad.
+  Recibe `rent` (VentasRentabilidad::construir).
+#}
+{% macro dinero(v) %}{{ v is null ? '—' : (v < 0 ? '−$' : '$') ~ (v|abs)|number_format(0, '.', ',') }}{% endmacro %}
+{% macro litro(v) %}
+    {%- if v is null -%}<span class="text-muted">—</span>
+    {%- else -%}<span class="{{ v < 0 ? 'pct-neg' : 'pct-pos' }}">{{ v < 0 ? '−' : '' }}${{ (v|abs)|number_format(2) }}</span>
+    {%- endif -%}
+{% endmacro %}
+{% macro pct(v) %}{{ v is null ? '—' : v|number_format(1) ~ '%' }}{% endmacro %}
+{% import _self as f %}
+{% import 'views/merma/ventas_ayuda.html' as ayuda %}
+{% set t = rent.total %}
+{% set c = rent.compras %}
+{% set nombres = {'maxima': 'Regular', 'super': 'Premium', 'diesel': 'Diesel'} %}
+
+<div class="alert alert-info py-2 small mb-3">
+    <i class="fas fa-circle-info"></i>
+    <strong>Estímulo del IEPS:</strong> lo aplica el proveedor (importador) y ya viene descontado en el precio de la factura —
+    las estaciones de Juárez pagan casi lo mismo por litro que las del interior—, así que no se suma aparte.
+    Si contabilidad recibe algún apoyo adicional por litro fuera de la factura, ese no está incluido.
+</div>
+
+<div class="vd-merma-grid mb-3">
+    <div>
+        <div class="vd-kpi-label">Venta sin IVA{{ ayuda.icono('Venta sin IVA', 'Lo cobrado en bomba según ControlGas, quitándole el IVA de cada estación: <strong>8%</strong> en la franja fronteriza y <strong>16%</strong> en el resto. Abajo, los litros vendidos.') }}</div>
+        <div class="vd-merma-num">{{ f.dinero(t.venta) }}</div>
+        <div class="vd-mini text-muted">{{ t.litros|number_format(0, '.', ',') }} litros</div>
+    </div>
+    <div>
+        <div class="vd-kpi-label">Costo de lo vendido{{ ayuda.icono('Costo de lo vendido', 'Litros vendidos × costo promedio por litro de lo comprado en el mes (misma estación y producto), con el precio de la factura sin IVA y con IEPS.<br><br>No es el total comprado: lo que se compró y no se vendió sigue en el tanque y no es costo del mes.') }}</div>
+        <div class="vd-merma-num">{{ f.dinero(t.costo) }}</div>
+        <div class="vd-mini text-muted">litros vendidos × costo promedio del mes</div>
+    </div>
+    <div>
+        <div class="vd-kpi-label">Margen bruto{{ ayuda.icono('Margen bruto', 'Venta sin IVA − costo de lo vendido. También se muestra por litro y como porcentaje de la venta.<br><br>Es <strong>antes de gastos de operación</strong>. El estímulo del IEPS ya viene incluido en el precio de compra de la factura.') }}</div>
+        <div class="vd-merma-num {{ t.margen is not null and t.margen < 0 ? 'pct-neg' : '' }}">{{ f.dinero(t.margen) }}</div>
+        <div class="vd-mini text-muted">{{ f.litro(t.margen_litro) }} por litro · {{ f.pct(t.margen_pct) }} de la venta</div>
+    </div>
+    <div>
+        <div class="vd-kpi-label">Gasto en compras (facturado){{ ayuda.icono('Gasto en compras', 'Suma del total de las facturas (CFDI) de las descargas recibidas en el mes, <strong>con IVA</strong>: lo que se le paga a los proveedores.<br><br>Abajo, el mismo gasto sin IVA y cuántas descargas hubo. Si alguna todavía no tiene precio en ControlGas, se avisa en rojo.') }}</div>
+        <div class="vd-merma-num">{{ f.dinero(c.facturado) }}</div>
+        <div class="vd-mini text-muted">con IVA · {{ f.dinero(c.costo) }} sin IVA · {{ c.docs }} recepciones</div>
+        {% if c.docs_sin_precio > 0 %}
+        <div class="vd-mini pct-neg">{{ c.docs_sin_precio }} recepciones ({{ c.litros_sin_precio|number_format(0, '.', ',') }} L) aún sin precio en ControlGas</div>
+        {% endif %}
+    </div>
+    <div>
+        <div class="vd-kpi-label">Recepciones sin factura{{ ayuda.icono('Recepciones sin factura', 'Descargas del mes cuya factura (CFDI) todavía no está en el sistema.<br><br>Es normal en los últimos días del mes; si una descarga sigue sin factura semanas después, falta descargar o ligar el CFDI.') }}</div>
+        <div class="vd-merma-num {{ c.docs_sin_factura > 0 ? 'pct-neg' : '' }}">{{ c.docs_sin_factura }}</div>
+        <div class="vd-mini text-muted">{{ c.docs_sin_factura > 0 ? f.dinero(c.costo_sin_factura) ~ ' sin IVA pendientes de CFDI' : 'todas ligadas a su CFDI' }}</div>
+    </div>
+    <div>
+        <div class="vd-kpi-label">Estaciones con margen negativo{{ ayuda.icono('Estaciones con margen negativo', 'Estaciones cuyo margen bruto del mes salió menor a cero: su venta sin IVA no alcanzó a cubrir el costo de lo que vendieron.<br><br>Pasa sobre todo en Juárez: compra casi al mismo costo que el interior pero vende con precio de frontera.') }}</div>
+        <div class="vd-merma-num {{ rent.negativas > 0 ? 'pct-neg' : '' }}">{{ rent.negativas }} / {{ rent.estaciones }}</div>
+        <div class="vd-mini text-muted">margen bruto del mes</div>
+    </div>
+</div>
+
+{% if rent.atipicas|length %}
+<div class="alert alert-warning py-2 small mb-3">
+    <i class="fas fa-triangle-exclamation"></i>
+    Renglones de venta con importe fuera de rango (menos de $10 o más de $40 por litro) en ControlGas:
+    <strong>{{ rent.atipicas|join(', ') }}</strong>. Se valoraron al precio promedio de la estación;
+    conviene corregirlos en origen.
+</div>
+{% endif %}
+
+{% if rent.estimadas > 0 %}
+<div class="alert alert-warning py-2 small mb-3">
+    <i class="fas fa-triangle-exclamation"></i>
+    {{ rent.estimadas }} de {{ rent.estaciones }} estaciones usan un <strong>costo estimado</strong>
+    (promedio de todas las estaciones) en al menos un producto, porque sus recepciones del mes aún no tienen precio.
+    Conforme se capturen las facturas, el margen se vuelve más exacto.
+</div>
+{% endif %}
+
+{# ---------- Cascada: de la venta al margen ajustado ---------- #}
+{% if rent.cascada %}
+{% set cz = rent.cascada %}
+<div class="vd-sub-titulo">De la venta al margen{{ ayuda.icono('De la venta al margen', 'Cómo se llega de lo vendido a lo que realmente queda:<br><br><strong>Venta sin IVA</strong> − <strong>costo de lo vendido</strong> = <strong>margen bruto</strong>.<br>+ <strong>Descuentos de proveedor:</strong> notas de crédito del mes (bonos de franquicia, pronto pago, ajustes de precio), sin contar aplicaciones de anticipo.<br>± <strong>Diferencia de inventario:</strong> litros de más (sobrante, suma) o de menos (faltante, resta) en los tanques según el Análisis de merma, valorados al costo de cada estación. El combustible que sobra no costó y se vende; el que falta se pagó y no se vende.<br>= <strong>Margen ajustado.</strong>') }}</div>
+<div class="row g-3 mb-3 align-items-center">
+    <div class="col-lg-8">
+        <div id="vr-chart-cascada" class="vd-chart vd-chart-sm"
+             {# Arranca en el margen bruto: la venta (~$500 M) aplastaría
+                los pasos de abajo (~$0.2–6 M) hasta hacerlos invisibles.
+                Venta y costo ya están en los indicadores de arriba. #}
+             data-cascada='{{ [
+                 {'l': 'Margen bruto', 'v': cz.margen, 't': 'total'},
+                 {'l': 'Descuentos', 'v': cz.descuentos, 't': 'delta'},
+                 {'l': 'Dif. inventario', 'v': cz.dif_inv, 't': 'delta'},
+                 {'l': 'Margen ajustado', 'v': cz.ajustado, 't': 'total'}
+             ]|json_encode|e('html_attr') }}'></div>
+    </div>
+    <div class="col-lg-4">
+        <table class="table table-sm vd-tabla mb-0">
+            <tbody>
+                <tr><td>Margen bruto</td><td class="text-end">{{ f.dinero(cz.margen) }}</td></tr>
+                <tr><td>+ Descuentos de proveedor</td><td class="text-end">{{ f.dinero(cz.descuentos) }}</td></tr>
+                <tr><td>± Diferencia de inventario<div class="vd-mini text-muted">{{ cz.dif_inv_litros|number_format(0, '.', ',') }} L {{ cz.dif_inv_litros >= 0 ? 'de sobrante' : 'de faltante' }}</div></td>
+                    <td class="text-end {{ cz.dif_inv < 0 ? 'pct-neg' : '' }}">{{ f.dinero(cz.dif_inv) }}</td></tr>
+                <tr class="fw-bold"><td>Margen ajustado</td><td class="text-end {{ cz.ajustado < 0 ? 'pct-neg' : '' }}">{{ f.dinero(cz.ajustado) }}</td></tr>
+                <tr><td class="text-muted small">por litro vendido</td><td class="text-end small">{{ f.litro(t.litros > 0 ? cz.ajustado / t.litros : null) }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-6">
+        <table class="table table-sm vd-tabla mb-0">
+            <thead>
+                <tr><th>Zona{{ ayuda.icono('Margen por zona', 'Venta sin IVA, margen bruto en pesos, margen por litro y margen como % de la venta, por zona.') }}</th><th class="text-end">Venta s/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
+            </thead>
+            <tbody>
+                {% for z in rent.zonas %}
+                <tr>
+                    <td>{{ z.label }}</td>
+                    <td class="text-end">{{ f.dinero(z.venta) }}</td>
+                    <td class="text-end {{ z.margen is not null and z.margen < 0 ? 'pct-neg' : '' }}">{{ f.dinero(z.margen) }}</td>
+                    <td class="text-end">{{ f.litro(z.margen_litro) }}</td>
+                    <td class="text-end">{{ f.pct(z.margen_pct) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="col-lg-6">
+        <table class="table table-sm vd-tabla mb-0">
+            <thead>
+                <tr><th>Producto{{ ayuda.icono('Margen por producto', 'Venta sin IVA, margen bruto en pesos, margen por litro y margen como % de la venta, por producto.') }}</th><th class="text-end">Venta s/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
+            </thead>
+            <tbody>
+                {% for p in rent.productos %}
+                {% set prodCss = {'maxima': 'regular', 'super': 'premium', 'diesel': 'diesel'}[p.clave] %}
+                <tr>
+                    <td><span class="vd-prod vd-prod-{{ prodCss }}"></span>{{ nombres[p.clave] }}</td>
+                    <td class="text-end">{{ f.dinero(p.venta) }}</td>
+                    <td class="text-end {{ p.margen is not null and p.margen < 0 ? 'pct-neg' : '' }}">{{ f.dinero(p.margen) }}</td>
+                    <td class="text-end">{{ f.litro(p.margen_litro) }}</td>
+                    <td class="text-end">{{ f.pct(p.margen_pct) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ---------- Por proveedor ---------- #}
+{% set provConPrecio = rent.proveedores|filter(p => p.litros > 0) %}
+<div class="vd-sub-titulo">Por proveedor{{ ayuda.icono('Por proveedor', 'A quién se le compra y a qué precio.<br><br><strong>Barras:</strong> costo por litro sin IVA de cada proveedor por producto (precio de factura, ya con IEPS y estímulo).<br><strong>Dona:</strong> participación de cada proveedor en los litros comprados.<br><br>En la tabla, <strong>sobrecosto</strong> = lo que se pagó de más contra el proveedor más barato de la <em>misma zona y producto</em> (solo cuentan como referencia proveedores con al menos 5% del volumen de esa zona). Es un techo teórico: no considera logística, capacidad del proveedor ni el precio del día de cada compra.') }}</div>
+{% if provConPrecio|length %}
+<div class="row g-3 mb-2">
+    <div class="col-lg-8">
+        <div id="vr-chart-prov-precio" class="vd-chart vd-chart-sm"
+             data-prov='{{ provConPrecio|map(p => {"n": p.proveedor, "maxima": p.familias.maxima.pxl ?? null, "super": p.familias.super.pxl ?? null, "diesel": p.familias.diesel.pxl ?? null})|json_encode|e('html_attr') }}'></div>
+    </div>
+    <div class="col-lg-4">
+        <div id="vr-chart-prov-litros" class="vd-chart vd-chart-sm"
+             data-prov='{{ provConPrecio|map(p => {"n": p.proveedor, "v": p.litros|round})|json_encode|e('html_attr') }}'></div>
+    </div>
+</div>
+{% endif %}
+<div class="table-responsive mb-3">
+    <table class="table table-sm vd-tabla mb-0">
+        <thead>
+            <tr>
+                <th>Proveedor</th>
+                <th class="text-end">Litros</th>
+                <th class="text-end">% litros</th>
+                <th class="text-end">$/L Regular</th>
+                <th class="text-end">$/L Premium</th>
+                <th class="text-end">$/L Diesel</th>
+                <th class="text-end">Facturado c/IVA</th>
+                <th class="text-end">Descuentos</th>
+                <th class="text-end">Sobrecosto</th>
+                <th class="text-end">Descargas</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in rent.proveedores %}
+            <tr>
+                <td>{{ p.proveedor }}</td>
+                <td class="text-end">{{ p.litros|number_format(0, '.', ',') }}</td>
+                <td class="text-end">{{ f.pct(p.pct) }}</td>
+                {% for fam in ['maxima', 'super', 'diesel'] %}
+                <td class="text-end">{{ p.familias[fam].pxl is defined and p.familias[fam].pxl is not null ? '$' ~ p.familias[fam].pxl|number_format(2) : '—' }}</td>
+                {% endfor %}
+                <td class="text-end">{{ f.dinero(p.facturado) }}</td>
+                <td class="text-end">{{ p.descuentos ? f.dinero(p.descuentos) : '—' }}</td>
+                <td class="text-end {{ p.sobrecosto > 0 ? 'pct-neg' : '' }}">{{ p.sobrecosto > 0 ? f.dinero(p.sobrecosto) : '—' }}</td>
+                <td class="text-end">{{ p.docs }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="fw-bold">
+                <td>Total</td>
+                <td class="text-end">{{ rent.proveedores|reduce((s, p) => s + p.litros, 0)|number_format(0, '.', ',') }}</td>
+                <td colspan="4"></td>
+                <td class="text-end">{{ f.dinero(rent.proveedores|reduce((s, p) => s + p.facturado, 0)) }}</td>
+                <td class="text-end">{{ f.dinero(rent.proveedores|reduce((s, p) => s + p.descuentos, 0)) }}</td>
+                <td class="text-end pct-neg">{{ f.dinero(rent.proveedores|reduce((s, p) => s + p.sobrecosto, 0)) }}</td>
+                <td class="text-end">{{ rent.proveedores|reduce((s, p) => s + p.docs, 0) }}</td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+{# ---------- Precio de venta vs costo, día por día ---------- #}
+<div class="vd-sub-titulo d-flex flex-wrap align-items-center gap-2">
+    <span>Precio de venta vs costo, por día{{ ayuda.icono('Precio de venta vs costo', '<strong>Línea verde:</strong> precio promedio de venta sin IVA por litro de ese día.<br><strong>Línea azul:</strong> precio promedio por litro de las descargas compradas ese día (sin IVA). Los días sin descargas con precio no tienen punto.<br><strong>Barras:</strong> margen bruto del día en pesos (venta sin IVA − litros × costo promedio del mes).<br><br>Cuando las líneas se acercan, el margen se aprieta. Sirve para ver el efecto de cada cambio de precio o de IEPS. Elige el producto con los botones.') }}</span>
+    <div class="btn-group btn-group-sm ms-auto" role="group" id="vr-diario-prod">
+        <button type="button" class="btn btn-merma-neutro active" data-prod="total">Total</button>
+        <button type="button" class="btn btn-merma-neutro" data-prod="maxima">Regular</button>
+        <button type="button" class="btn btn-merma-neutro" data-prod="super">Premium</button>
+        <button type="button" class="btn btn-merma-neutro" data-prod="diesel">Diesel</button>
+    </div>
+</div>
+<div id="vr-chart-diario" class="vd-chart mb-3" data-diario='{{ rent.diario|json_encode|e('html_attr') }}'></div>
+
+{# ---------- Dispersión por estación ---------- #}
+<div class="vd-sub-titulo">Volumen vs margen por estación{{ ayuda.icono('Volumen vs margen', 'Cada punto es una estación: hacia la derecha vende más litros, hacia arriba gana más por litro.<br><br><strong>Abajo a la derecha</strong> están las que más pesan en el resultado: mucho volumen con poco margen. Ahí es donde un centavo por litro hace más diferencia.<br>Los colores son la zona. Pasa el mouse para ver el nombre.') }}</div>
+<div id="vr-chart-dispersion" class="vd-chart mb-2"
+     data-estaciones='{{ rent.todas|map(s => {"n": s.nombre, "z": s.zona, "l": s.litros|round, "m": s.margen_litro|round(3), "t": s.margen|round})|json_encode|e('html_attr') }}'></div>
+<details class="vc-leyenda mb-3">
+    <summary>Ver todas las estaciones ({{ rent.todas|length }})</summary>
+    <div class="table-responsive">
+        <table class="table table-sm vd-tabla mb-0">
+            <thead>
+                <tr><th>Estación</th><th>Zona</th><th class="text-end">IVA</th><th class="text-end">Litros</th><th class="text-end">Venta s/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
+            </thead>
+            <tbody>
+                {% for s in rent.todas %}
+                <tr>
+                    <td>{{ s.nombre }}{% if s.costo_estimado %} <span class="text-muted vd-mini">(costo estimado)</span>{% endif %}</td>
+                    <td class="small">{{ s.zona }}</td>
+                    <td class="text-end">{{ s.iva|number_format(0) }}%</td>
+                    <td class="text-end">{{ s.litros|number_format(0, '.', ',') }}</td>
+                    <td class="text-end">{{ f.dinero(s.venta) }}</td>
+                    <td class="text-end {{ s.margen < 0 ? 'pct-neg' : '' }}">{{ f.dinero(s.margen) }}</td>
+                    <td class="text-end">{{ f.litro(s.margen_litro) }}</td>
+                    <td class="text-end">{{ f.pct(s.margen_pct) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</details>
+
+<div class="row g-3">
+    {% for bloque in [
+        {'t': 'Mayor margen por litro', 'l': rent.mejores, 'ok': true},
+        {'t': 'Menor margen por litro', 'l': rent.peores,  'ok': false}
+    ] %}
+    <div class="col-md-6">
+        <div class="vd-rank-titulo {{ bloque.ok ? 'vd-rank-ok' : 'vd-rank-mal' }}">
+            <i class="fas {{ bloque.ok ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down' }}"></i> {{ bloque.t }}{{ ayuda.icono(bloque.t, 'Estaciones ordenadas por cuánto ganan por cada litro vendido. Debajo del nombre: zona, tasa de IVA y si su costo se estimó con el promedio de todas las estaciones (porque sus facturas del mes aún no tienen precio).') }}
+        </div>
+        <table class="table table-sm vd-tabla mb-0">
+            <tbody>
+                {% for s in bloque.l %}
+                <tr>
+                    <td>{{ s.nombre }}
+                        <div class="text-muted vd-mini">{{ s.zona }} · IVA {{ s.iva|number_format(0) }}%{{ s.costo_estimado ? ' · costo estimado' : '' }}</div></td>
+                    <td class="text-end">{{ f.dinero(s.margen) }}</td>
+                    <td class="text-end">{{ f.litro(s.margen_litro) }}/L</td>
+                </tr>
+                {% else %}
+                <tr><td class="text-muted small">Sin datos.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+</div>
+
+{% if rent.sin_datos|length %}
+<p class="text-muted small mt-2 mb-0">
+    Sin datos de rentabilidad (no están en la base central de ControlGas): {{ rent.sin_datos|join(', ') }}.
+</p>
+{% endif %}

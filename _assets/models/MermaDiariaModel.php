@@ -318,6 +318,7 @@ class MermaDiariaModel extends Model
                     ' . $this->familiaCase('diesel', 'diferencia') . ' AS merma_diesel,
                     SUM(diferencia)          AS merma_total,
                     SUM(ventas_reales)       AS venta_total,
+                    SUM(compras)             AS compras_total,
                     COUNT(DISTINCT fecha)    AS dias_con_datos,
                     MAX(updated_at)          AS last_update
                   FROM [TG].[dbo].[merma_diaria]

@@ -1,0 +1,248 @@
+{#
+  RESUMEN DIRECCIÓN de /merma/ventas. Se incluye desde ventas.html; recibe
+  `dashboard` (VentasDashboard::construir), `mes`, `anio` y `meses`.
+#}
+{% set k = dashboard.kpis %}
+{% set mz = dashboard.merma %}
+{% set desdeMes = '%04d-%02d-01'|format(anio, mes) %}
+
+{% macro pct(v, dec = 1, signo = true) %}
+    {%- if v is null -%}<span class="text-muted">—</span>
+    {%- else -%}<span class="{{ v < 0 ? 'pct-neg' : 'pct-pos' }}">{{ signo and v > 0 ? '+' : '' }}{{ v|number_format(dec) }}%</span>
+    {%- endif -%}
+{% endmacro %}
+{% macro avance(v) %}
+    {%- if v is null -%}<span class="text-muted">—</span>
+    {%- else -%}<span class="vd-semaforo {{ v >= 100 ? 'vd-ok' : (v >= 95 ? 'vd-alerta' : 'vd-mal') }}">{{ v|number_format(1) }}%</span>
+    {%- endif -%}
+{% endmacro %}
+{% macro lts(v) %}{{ v is null ? '—' : v|number_format(0, '.', ',') }}{% endmacro %}
+{% import _self as f %}
+{% import 'views/merma/ventas_ayuda.html' as ayuda %}
+
+<div class="vc-zona-header">
+    <h5 class="vc-zona-titulo mb-0">Resumen de dirección — {{ meses[mes - 1]|capitalize }} {{ anio }}</h5>
+    <span class="small text-muted">{{ k.dias_con_datos }} de {{ k.dias_del_mes }} días con datos · todas las zonas</span>
+</div>
+
+{# ---------- Indicadores principales ---------- #}
+<div class="vd-kpis">
+    <div class="vd-kpi">
+        <div class="vd-kpi-label">Litros vendidos{{ ayuda.icono('Litros vendidos', 'Suma de los litros de Regular, Premium y Diesel vendidos por todas las estaciones en los días del mes que ya tienen datos. <br><br><strong>Proyección al cierre:</strong> estimado del mes completo si se mantiene el ritmo actual (litros ÷ días con datos × días del mes).') }}</div>
+        <div class="vd-kpi-valor">{{ f.lts(k.litros) }}</div>
+        <div class="vd-kpi-sub">Proyección al cierre: {{ f.lts(k.proy) }}</div>
+    </div>
+    <div class="vd-kpi">
+        <div class="vd-kpi-label">Avance vs presupuesto{{ ayuda.icono('Avance vs presupuesto', 'La proyección al cierre como porcentaje de la meta de litros del mes (presupuesto de Incentivos). <strong>100% = se llega a la meta.</strong><br><br>Verde: 100% o más · Ámbar: 95% a 99.9% · Rojo: menos de 95%.<br><br>“Faltan/sobran” son los litros de diferencia entre la proyección y la meta. Solo cuenta estaciones con presupuesto cargado.') }}</div>
+        <div class="vd-kpi-valor">{{ f.avance(k.avance) }}</div>
+        <div class="vd-kpi-sub">
+            Presupuesto: {{ f.lts(k.ppto) }}
+            {% if k.proy is not null and k.ppto is not null %}
+            · {{ k.proy >= k.ppto ? 'sobran' : 'faltan' }} {{ f.lts((k.proy - k.ppto)|abs) }}
+            {% endif %}
+        </div>
+    </div>
+    <div class="vd-kpi">
+        <div class="vd-kpi-label">Vs mismo mes año anterior{{ ayuda.icono('Vs mismo mes año anterior', 'Crecimiento de la proyección del mes contra lo vendido en el mismo mes del año pasado.<br><br><strong>El número grande</strong> compara solo las estaciones que ya operaban hace un año: es el crecimiento real del negocio.<br><strong>“Con nuevas”</strong> incluye las estaciones abiertas después, que inflan el crecimiento porque el año pasado no vendían.') }}</div>
+        <div class="vd-kpi-valor">{{ f.pct(k.aa_mismas) }}</div>
+        <div class="vd-kpi-sub">
+            Mismas estaciones. Con nuevas: {{ f.pct(k.aa) }}
+            {% if dashboard.nuevas|length %}
+            <i class="fas fa-info-circle text-muted" title="Nuevas (sin venta el año anterior): {{ dashboard.nuevas|map(n => n.nombre)|join(', ') }}"></i>
+            {% endif %}
+        </div>
+    </div>
+    <div class="vd-kpi">
+        <div class="vd-kpi-label">Vs mes anterior{{ ayuda.icono('Vs mes anterior', 'Proyección del mes contra el total vendido el mes anterior.<br><br><strong>Última semana vs la previa:</strong> los últimos 7 días con datos contra los 7 días anteriores. Sirve para detectar si la venta está subiendo o bajando en este momento.') }}</div>
+        <div class="vd-kpi-valor">{{ f.pct(k.ma) }}</div>
+        <div class="vd-kpi-sub">Última semana vs la previa: {{ f.pct(k.vs_semana) }}</div>
+    </div>
+    <div class="vd-kpi">
+        <div class="vd-kpi-label">Ritmo diario{{ ayuda.icono('Ritmo diario', 'Promedio de litros vendidos por día en lo que va del mes.<br><br>Si el mes no ha terminado, abajo dice <strong>cuántos litros por día hay que vender</strong> en los días que quedan para llegar al presupuesto. Si ya terminó, muestra el ritmo diario que pedía el presupuesto.') }}</div>
+        <div class="vd-kpi-valor">{{ f.lts(k.ritmo_actual) }}</div>
+        <div class="vd-kpi-sub">
+            {% if k.ritmo_necesario is not null %}
+            Para llegar al presupuesto: <strong>{{ f.lts(k.ritmo_necesario) }}</strong>/día
+            {% else %}
+            Ritmo del presupuesto: {{ f.lts(k.ritmo_ppto) }}/día
+            {% endif %}
+        </div>
+    </div>
+    <div class="vd-kpi">
+        <div class="vd-kpi-label">Merma vs ventas{{ ayuda.icono('Merma vs ventas', 'Diferencia entre el inventario medido en los tanques y el que debería haber (inicial + compras − ventas), como porcentaje de lo vendido. Es el mismo cálculo del Análisis de merma.<br><br><strong>La norma permitida es 0.5%</strong>; arriba de eso se marca en rojo. Abajo: cuántas estaciones están dentro de la norma.') }}</div>
+        <div class="vd-kpi-valor"><span class="{{ mz.pct is not null and mz.pct > mz.norma ? 'pct-neg' : 'pct-pos' }}">{{ mz.pct is null ? '—' : mz.pct|number_format(2) ~ '%' }}</span></div>
+        <div class="vd-kpi-sub">Norma {{ mz.norma|number_format(1) }}% · {{ mz.en_norma }} de {{ mz.evaluables }} estaciones en norma</div>
+    </div>
+</div>
+
+{% if dashboard.sin_presupuesto %}
+<div class="alert alert-warning py-2 small">Sin presupuesto cargado para este mes: el avance y el ritmo requerido salen vacíos.</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    {# ---------- Zonas ---------- #}
+    <div class="col-lg-7">
+        <div class="vd-panel">
+            <div class="vd-panel-titulo"><i class="fas fa-map-marked-alt"></i> Por zona{{ ayuda.icono('Por zona', 'Los mismos indicadores de arriba, separados por las tres zonas del reporte consolidado.<br><br><strong>Avance ppto:</strong> proyección vs meta · <strong>Vs A.A.:</strong> vs mismo mes del año pasado · <strong>Vs M.A.:</strong> vs mes anterior · <strong>Compras:</strong> litros recibidos · <strong>Merma:</strong> % sobre lo vendido.<br><br>Haz clic en el nombre de una zona para abrir su tab con el detalle por estación y día.') }}</div>
+            <div class="table-responsive">
+                <table class="table table-sm vd-tabla mb-0">
+                    <thead>
+                        <tr>
+                            <th>Zona</th>
+                            <th class="text-end">Litros</th>
+                            <th class="text-end">Avance ppto</th>
+                            <th class="text-end">Vs A.A.</th>
+                            <th class="text-end">Vs M.A.</th>
+                            <th class="text-end">Compras</th>
+                            <th class="text-end">Merma</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for z in dashboard.zonas %}
+                        <tr>
+                            <td><a href="#tab-zona-{{ z.clave }}" class="vd-ir-zona" data-zona-destino="{{ z.clave }}">{{ z.label }}</a>
+                                <span class="text-muted small">({{ z.estaciones }})</span></td>
+                            <td class="text-end">{{ f.lts(z.litros) }}</td>
+                            <td class="text-end">{{ f.avance(z.avance) }}</td>
+                            <td class="text-end">{{ f.pct(z.aa) }}</td>
+                            <td class="text-end">{{ f.pct(z.ma) }}</td>
+                            <td class="text-end">{{ f.lts(z.compras) }}</td>
+                            <td class="text-end {{ z.merma_pct is not null and z.merma_pct > mz.norma ? 'pct-neg' : '' }}">{{ z.merma_pct is null ? '—' : z.merma_pct|number_format(2) ~ '%' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {# ---------- Mezcla de producto ---------- #}
+    <div class="col-lg-5">
+        <div class="vd-panel">
+            <div class="vd-panel-titulo"><i class="fas fa-gas-pump"></i> Mezcla de producto{{ ayuda.icono('Mezcla de producto', 'Cómo se reparte la venta entre Regular, Premium y Diesel.<br><br><strong>% Mix:</strong> participación de cada producto en los litros totales · <strong>Avance ppto:</strong> proyección del producto vs su meta · <strong>Vs A.A.:</strong> crecimiento vs el mismo mes del año pasado.') }}</div>
+            <table class="table table-sm vd-tabla mb-0">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="text-end">Litros</th>
+                        <th class="text-end">% Mix</th>
+                        <th class="text-end">Avance ppto</th>
+                        <th class="text-end">Vs A.A.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in dashboard.mix %}
+                    <tr>
+                        <td><span class="vd-prod vd-prod-{{ p.clave }}"></span>{{ p.label|capitalize }}</td>
+                        <td class="text-end">{{ f.lts(p.litros) }}</td>
+                        <td class="text-end">{{ p.pct is null ? '—' : p.pct|number_format(1) ~ '%' }}</td>
+                        <td class="text-end">{{ f.avance(p.avance) }}</td>
+                        <td class="text-end">{{ f.pct(p.aa) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ---------- Ritmo diario ---------- #}
+<div class="vd-panel mb-3">
+    <div class="vd-panel-titulo"><i class="fas fa-chart-column"></i> Venta diaria vs ritmo del presupuesto{{ ayuda.icono('Venta diaria', 'Cada barra es la venta total de un día, sumando todas las estaciones.<br><br>La <strong>línea punteada azul</strong> es lo que habría que vender cada día para llegar al presupuesto (presupuesto ÷ días del mes).<br><br><strong>Barras ámbar:</strong> días que quedaron debajo de ese ritmo · <strong>Barras verdes:</strong> días arriba. Pasa el mouse sobre una barra para ver el detalle.') }}</div>
+    <div id="vd-chart-diario" class="vd-chart"
+         data-diario='{{ dashboard.diario|json_encode|e('html_attr') }}'
+         data-ritmo="{{ k.ritmo_ppto }}"></div>
+</div>
+
+{# ---------- Estaciones a vigilar ---------- #}
+<div class="vd-panel mb-3">
+    <div class="vd-panel-titulo">
+        <i class="fas fa-ranking-star"></i> Estaciones{{ ayuda.icono('Estaciones', 'Las 5 mejores y las 5 peores estaciones en dos medidas:<br><br><strong>Avance vs presupuesto:</strong> qué tan cerca va cada estación de su propia meta del mes.<br><strong>Crecimiento vs año anterior:</strong> su venta proyectada contra el mismo mes del año pasado. Las estaciones nuevas (sin venta hace un año) no entran a este ranking.<br><br>Arriba se indica cuántas estaciones van debajo de su presupuesto.') }}
+        <span class="small text-muted fw-normal">· {{ dashboard.ranking.bajo_ppto }} de {{ dashboard.ranking.con_ppto }} van debajo del presupuesto</span>
+    </div>
+    <div class="row g-3">
+        {% for bloque in [
+            {'t': 'Mejor avance vs presupuesto', 'l': dashboard.ranking.avance_mejores, 'c': 'avance', 'ok': true},
+            {'t': 'Peor avance vs presupuesto',  'l': dashboard.ranking.avance_peores,  'c': 'avance', 'ok': false},
+            {'t': 'Más crecen vs año anterior',  'l': dashboard.ranking.aa_mejores,     'c': 'aa',     'ok': true},
+            {'t': 'Más caen vs año anterior',    'l': dashboard.ranking.aa_peores,      'c': 'aa',     'ok': false}
+        ] %}
+        <div class="col-md-6 col-xl-3">
+            <div class="vd-rank-titulo {{ bloque.ok ? 'vd-rank-ok' : 'vd-rank-mal' }}">
+                <i class="fas {{ bloque.ok ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down' }}"></i> {{ bloque.t }}
+            </div>
+            <table class="table table-sm vd-tabla mb-0">
+                <tbody>
+                    {% for s in bloque.l %}
+                    <tr>
+                        <td>{{ s.nombre }}<div class="text-muted vd-mini">{{ s.zona }}</div></td>
+                        <td class="text-end">{{ bloque.c == 'avance' ? f.avance(s.avance) : f.pct(s.aa) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td class="text-muted small">Sin datos.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{# ---------- Compras y merma ---------- #}
+<div class="vd-panel mb-3">
+    <div class="vd-panel-titulo">
+        <i class="fas fa-truck-droplet"></i> Compras y merma{{ ayuda.icono('Compras y merma', 'Litros que entraron a los tanques contra los que salieron por bomba, y cuánto combustible no cuadra (merma). Sale del mismo registro de inventarios por turno que el Análisis de merma.') }}
+        <a href="/merma/analisis?desde={{ desdeMes }}&hasta={{ desdeMes|date('Y-m-t') }}" class="small fw-normal ms-2">Ver análisis de merma →</a>
+    </div>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="vd-merma-grid">
+                <div><div class="vd-kpi-label">Litros comprados{{ ayuda.icono('Litros comprados', 'Litros recibidos en las estaciones durante el mes (descargas de pipa registradas en ControlGas).') }}</div><div class="vd-merma-num">{{ f.lts(mz.compras) }}</div></div>
+                <div><div class="vd-kpi-label">Litros vendidos{{ ayuda.icono('Litros vendidos', 'Litros vendidos según el registro de inventarios por turno. Es la base sobre la que se calcula el porcentaje de merma.') }}</div><div class="vd-merma-num">{{ f.lts(mz.ventas) }}</div></div>
+                <div>
+                    <div class="vd-kpi-label">Compras − ventas{{ ayuda.icono('Compras − ventas', '<strong>Positivo:</strong> se compró más de lo que se vendió; el inventario en tanques subió.<br><strong>Negativo:</strong> se vendió más de lo comprado; se usó inventario que ya había.<br><br>En el mes en curso suele salir negativo porque las últimas descargas todavía no se registran.') }}</div>
+                    <div class="vd-merma-num">{{ mz.compras is null or mz.ventas is null ? '—' : f.lts(mz.compras - mz.ventas) }}</div>
+                </div>
+                <div>
+                    <div class="vd-kpi-label">Merma{{ ayuda.icono('Merma', 'Suma, turno por turno, de la diferencia entre el inventario medido en el tanque y el que debería haber (inicial + compras − ventas). Entre paréntesis, como porcentaje de lo vendido.<br><br>Un porcentaje alto puede ser pérdida real o un error de captura (compras, cortes físicos o tanques): conviene revisar el detalle de la estación.') }}</div>
+                    <div class="vd-merma-num {{ mz.pct is not null and mz.pct > mz.norma ? 'pct-neg' : '' }}">
+                        {{ f.lts(mz.litros) }} L <span class="small">({{ mz.pct is null ? '—' : mz.pct|number_format(2) ~ '%' }})</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="vd-kpi-label">Merma valorizada{{ ayuda.icono('Merma valorizada', 'Los litros de merma multiplicados por el precio por litro configurado para el mes en el Análisis de merma. Es una referencia del tamaño del problema en pesos.') }}</div>
+                    <div class="vd-merma-num">{{ mz.valor is null ? '—' : '$' ~ mz.valor|number_format(0, '.', ',') }}</div>
+                    <div class="vd-mini text-muted">a ${{ mz.precio|number_format(2) }} por litro</div>
+                </div>
+                <div>
+                    <div class="vd-kpi-label">Dentro de norma ({{ mz.norma|number_format(1) }}%){{ ayuda.icono('Dentro de norma', 'Cuántas estaciones tuvieron una merma del mes igual o menor a la norma permitida (0.5% de sus ventas), de todas las que tienen datos.') }}</div>
+                    <div class="vd-merma-num">{{ mz.en_norma }} / {{ mz.evaluables }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="vd-rank-titulo vd-rank-mal"><i class="fas fa-triangle-exclamation"></i> Mayor merma del mes{{ ayuda.icono('Mayor merma del mes', 'Las 5 estaciones con mayor merma como porcentaje de sus ventas. Haz clic en el nombre para ver su detalle por día y turno.') }}</div>
+            <table class="table table-sm vd-tabla mb-0">
+                <tbody>
+                    {% for s in mz.peores %}
+                    <tr>
+                        <td><a href="/merma/detalle/{{ s.codgas }}?desde={{ desdeMes }}&hasta={{ desdeMes|date('Y-m-t') }}">{{ s.nombre }}</a>
+                            <div class="text-muted vd-mini">{{ s.zona }}</div></td>
+                        <td class="text-end">{{ f.lts(s.litros) }} L</td>
+                        <td class="text-end {{ s.pct > mz.norma ? 'pct-neg' : '' }}">{{ s.pct|number_format(2) }}%</td>
+                    </tr>
+                    {% else %}
+                    <tr><td class="text-muted small">Sin datos de merma para este mes.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ---------- Rentabilidad (se carga por AJAX: consulta aparte a SG12) ---------- #}
+<div class="vd-panel mb-3">
+    <div class="vd-panel-titulo"><i class="fas fa-sack-dollar"></i> Rentabilidad: gasto en compras y margen bruto{{ ayuda.icono('Rentabilidad', 'Cuánto se gastó en combustible y cuánto se ganó al venderlo.<br><br>La venta sale de lo cobrado en bomba (ControlGas) y el costo, de las facturas de los proveedores ligadas a cada descarga. Es <strong>margen bruto</strong>: no incluye gastos de operación (nómina, luz, renta, etc.).') }}</div>
+    <div id="vd-rentabilidad" data-url="/merma/ventas_rentabilidad?anio={{ anio }}&mes={{ mes }}">
+        <p class="text-muted small mb-0"><i class="fas fa-spinner fa-spin"></i> Calculando rentabilidad…</p>
+    </div>
+</div>

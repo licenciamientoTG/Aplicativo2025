@@ -1,0 +1,11 @@
+{#
+  Ícono de ayuda de las cards del RESUMEN DIRECCIÓN. Al hacer clic,
+  merma_ventas.js abre una burbuja con `texto` (HTML propio de la plantilla,
+  nunca datos del usuario).
+  Uso: {% import 'views/merma/ventas_ayuda.html' as ayuda %}
+       {{ ayuda.icono('Título', 'Explicación…') }}
+#}
+{% macro icono(titulo, texto) %}
+<button type="button" class="vd-ayuda" aria-label="¿Qué es {{ titulo }}?"
+        data-titulo="{{ titulo }}" data-texto="{{ texto }}"><i class="fas fa-circle-question"></i></button>
+{%- endmacro %}

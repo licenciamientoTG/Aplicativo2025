@@ -49,17 +49,44 @@
 {% endif %}
 
 <ul class="nav nav-tabs merma-tabs-zona" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tab-resumen-direccion" role="tab"
+           id="tab-resumen-link"><i class="fas fa-chart-pie"></i> RESUMEN DIRECCIÓN</a>
+    </li>
     {% for zonaClave, zona in zonas %}
     <li class="nav-item">
-        <a class="nav-link {{ loop.first ? 'active' : '' }}" data-bs-toggle="tab"
+        <a class="nav-link" data-bs-toggle="tab"
            href="#tab-zona-{{ zonaClave }}" role="tab" data-zona="{{ zonaClave }}">{{ zona.label }}</a>
     </li>
     {% endfor %}
 </ul>
 
 <div class="tab-content">
+    <div class="tab-pane fade show active" id="tab-resumen-direccion" role="tabpanel">
+        {% include 'views/merma/ventas_dashboard.html' %}
+    </div>
     {% for zonaClave, zona in zonas %}
-    <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}" id="tab-zona-{{ zonaClave }}" role="tabpanel">
+    <div class="tab-pane fade" id="tab-zona-{{ zonaClave }}" role="tabpanel">
+
+        <div class="vc-zona-header">
+            <h5 class="vc-zona-titulo mb-0">{{ zona.label }}</h5>
+            <button type="button" class="vc-zona-info" data-bs-toggle="collapse"
+                    data-bs-target="#vc-zona-estaciones-{{ zonaClave }}" aria-expanded="false"
+                    aria-controls="vc-zona-estaciones-{{ zonaClave }}"
+                    title="Ver estaciones de {{ zona.label }}">
+                <i class="fas fa-info-circle"></i>
+                <span class="small">{{ zona.estaciones|length }} estaciones</span>
+            </button>
+        </div>
+        <div class="collapse" id="vc-zona-estaciones-{{ zonaClave }}">
+            <div class="vc-zona-estaciones">
+                {% for e in zona.estaciones %}
+                <span class="vc-zona-chip">{{ e.Nombre }}</span>
+                {% else %}
+                <span class="text-muted small">Sin estaciones asignadas a esta zona.</span>
+                {% endfor %}
+            </div>
+        </div>
 
         <ul class="nav nav-tabs merma-tabs" role="tablist">
             {% for clave, p in zona.pestanas %}
@@ -208,5 +235,7 @@
 
 {% endblock %}
 {% block myjs %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script src="/_assets/js/merma_rentabilidad.js"></script>
 <script src="/_assets/js/merma_ventas.js"></script>
 {% endblock %}

@@ -21,6 +21,7 @@ class Merma
 {
     private const PERM_VER      = 33;  // Ver sección de Reportes (Abastos)
     private const PERM_CORREGIR = 83;  // Corregir físico y compras (Merma)
+    private const MERMA_NORMA   = 0.5; // % de merma permitido (Análisis y Resumen Dirección)
     private const API_URL  = 'http://192.168.0.109:82/api/inventarios_turnos/';
     private const CODGAS_PRAXEDIS = 40;
     private const CODGAS_COLOSIO  = 199;
@@ -129,7 +130,7 @@ class Merma
         }
 
         // Dashboard de norma: 0.5% es el límite permitido de merma
-        $mermaNorma = 0.5;
+        $mermaNorma = self::MERMA_NORMA;
         $conNormaEvaluable = array_filter($filas, fn($f) => $f['pct'] !== null);
         $enNormaCount    = count(array_filter($conNormaEvaluable, fn($f) => $f['pct'] <= $mermaNorma));
         $evaluablesCount = count($conNormaEvaluable);
@@ -310,6 +311,8 @@ class Merma
         if ($anio < 2020 || $anio > 2100)  $anio = (int) date('Y', $ayer);
 
         $reporte = $this->armarReporte($anio, $mes);
+        $reporte['dashboard'] = $this->armarDashboard($reporte['ctx'], $anio, $mes);
+        unset($reporte['ctx']);
 
         // Selector de año: los últimos 3 años (el actual y los dos previos),
         // más reciente primero. Los años sin datos en merma_diaria salen en
@@ -335,6 +338,71 @@ class Merma
             'histHasta' => $anioAyer,
             'histProds' => VentasConsolidado::PESTANAS,
         ]);
+    }
+
+    /**
+     * RESUMEN DIRECCIÓN: ventas consolidadas + compras y merma del mismo mes,
+     * con la misma norma y el mismo precio de valorización que el Análisis
+     * de merma, para que ambas pantallas den el mismo número.
+     */
+    private function armarDashboard(array $ctx, int $anio, int $mes): array
+    {
+        $desde = sprintf('%04d-%02d-01', $anio, $mes);
+        $hasta = min(date('Y-m-t', mktime(0, 0, 0, $mes, 1, $anio)), date('Y-m-d', strtotime('yesterday')));
+
+        $merma = [];
+        foreach ($this->mermaModel->get_resumen_rango($desde, $hasta) as $cod => $r) {
+            $merma[$cod] = [
+                'merma'   => $r['merma_total'] === null ? null : (float) $r['merma_total'],
+                'venta'   => $r['venta_total'] === null ? null : (float) $r['venta_total'],
+                'compras' => $r['compras_total'] === null ? null : (float) $r['compras_total'],
+            ];
+        }
+
+        return VentasDashboard::construir($ctx + [
+            'merma'  => $merma,
+            'precio' => $this->mermaModel->get_precio($anio, $mes),
+            'norma'  => self::MERMA_NORMA,
+        ]);
+    }
+
+    /**
+     * Sección "Rentabilidad" del RESUMEN DIRECCIÓN. Se pide por AJAX después
+     * de pintar la página para que su consulta a SG12 no retrase el resto
+     * del reporte. Devuelve solo el HTML de la sección.
+     */
+    public function ventas_rentabilidad(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            (new Errors())->get404();
+            return;
+        }
+        $ayer = strtotime('yesterday');
+        $anio = (int) ($_GET['anio'] ?? date('Y', $ayer));
+        $mes  = (int) ($_GET['mes']  ?? date('n', $ayer));
+        if ($mes < 1 || $mes > 12)        $mes  = (int) date('n', $ayer);
+        if ($anio < 2020 || $anio > 2100) $anio = (int) date('Y', $ayer);
+
+        $desde = sprintf('%04d-%02d-01', $anio, $mes);
+        $hasta = min(date('Y-m-t', mktime(0, 0, 0, $mes, 1, $anio)), date('Y-m-d', $ayer));
+
+        $estaciones = array_map(
+            fn($e) => $e + ['zona' => VentasConsolidado::clasificarZona(
+                isset($e['ZonaConso']) ? (int) $e['ZonaConso'] : null)],
+            $this->mermaModel->get_estaciones_ordenadas()
+        );
+        // Diferencia de inventario del mes por estación y familia (misma
+        // fuente que el Análisis de merma), para valorarla al costo real
+        $merma = [];
+        foreach ($this->mermaModel->get_resumen_rango($desde, $hasta) as $cod => $r) {
+            foreach (array_keys(MermaDiariaModel::FAMILIAS) as $fam) {
+                $merma[$cod][$fam] = $r["merma_$fam"] === null ? null : (float) $r["merma_$fam"];
+            }
+        }
+        $rent = VentasRentabilidad::construir(
+            (new VentasRentabilidadModel())->get_mes($desde, $hasta), $estaciones, $merma);
+
+        echo $this->twig->render($this->route . 'ventas_rentabilidad.html', compact('rent'));
     }
 
     /**
@@ -639,11 +707,19 @@ class Merma
             ];
         }
 
+        // Contexto completo (todas las estaciones, cada una con su zona) para
+        // el RESUMEN DIRECCIÓN, que consolida las tres zonas.
+        $ctxBase['estaciones'] = array_map(
+            fn($e) => $e + ['zona' => VentasConsolidado::clasificarZona($e['ZonaConso'])],
+            $estaciones
+        );
+
         return [
             'anio'            => $anio,
             'mes'             => $mes,
             'zonas'           => $zonas,
             'sin_presupuesto' => $presupuesto === [],
+            'ctx'             => $ctxBase,
         ];
     }
 

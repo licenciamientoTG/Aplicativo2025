@@ -8,6 +8,8 @@
  */
 $(function () {
     var cargadas = {};   // zonaClave -> bool, para no recargar el histórico de una zona ya vista
+    // El RESUMEN DIRECCIÓN no tiene data-zona: mientras está abierto, el
+    // Excel exporta la última zona vista (o MARCA Y PROTS por defecto).
     var zonaActiva = $('.merma-tabs-zona .nav-link.active').data('zona') || 'marca_prots';
 
     function controlesDe(zonaClave) {
@@ -66,10 +68,31 @@ $(function () {
     // Cambiar de tab de ZONA actualiza cuál es la zona activa (para el
     // enlace de exportación) y sincroniza el enlace con los controles de
     // esa zona, ya estén cargados o con los valores por defecto del render.
-    $('.merma-tabs-zona .nav-link').on('shown.bs.tab', function () {
+    $('.merma-tabs-zona .nav-link[data-zona]').on('shown.bs.tab', function () {
         zonaActiva = $(this).data('zona');
         sincronizarEnlaceExportar();
     });
+
+    // Los nombres de zona del resumen abren el tab de esa zona
+    $('.vd-ir-zona').on('click', function (e) {
+        e.preventDefault();
+        var link = document.querySelector('.merma-tabs-zona [data-zona="' + $(this).data('zona-destino') + '"]');
+        if (link) bootstrap.Tab.getOrCreateInstance(link).show();
+    });
+
+    graficaDiaria();
+
+    // Rentabilidad: consulta aparte a SG12, se pide después de pintar la
+    // página para no retrasar el resto del reporte.
+    var $rent = $('#vd-rentabilidad');
+    if ($rent.length) {
+        $.get($rent.data('url'))
+            .done(function (html) { $rent.html(html); initRentabilidad(); })
+            .fail(function () {
+                $rent.html('<div class="alert alert-danger py-2 mb-0">No se pudo calcular la rentabilidad. ' +
+                           'Recarga la página o revisa la conexión.</div>');
+            });
+    }
 
     // Cualquier cambio de control de histórico recarga SU tabla y
     // re-sincroniza el enlace si es la zona actualmente activa.
@@ -85,4 +108,90 @@ $(function () {
     // pestaña —cuando se abra— usará los valores restaurados por el
     // navegador: se rompe en silencio.
     sincronizarEnlaceExportar();
+});
+
+/**
+ * RESUMEN DIRECCIÓN: barras con la venta de cada día del mes contra la línea
+ * del ritmo diario que pide el presupuesto (presupuesto / días del mes).
+ */
+function graficaDiaria() {
+    var el = document.getElementById('vd-chart-diario');
+    if (!el || typeof echarts === 'undefined') return;
+
+    var diario = JSON.parse(el.dataset.diario || '[]');
+    var ritmo  = parseFloat(el.dataset.ritmo);
+    var tieneRitmo = !isNaN(ritmo);
+    var fmt = function (v) { return v == null ? '—' : Math.round(v).toLocaleString('es-MX'); };
+
+    var chart = echarts.init(el);
+    chart.setOption({
+        grid: { left: 70, right: 20, top: 30, bottom: 30 },
+        legend: { top: 0, data: tieneRitmo ? ['Venta del día', 'Ritmo presupuesto'] : ['Venta del día'] },
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (p) {
+                var d = diario[p[0].dataIndex];
+                var html = '<strong>' + d.dia + ' ' + d.nombre + '</strong>';
+                p.forEach(function (s) { html += '<br>' + s.marker + s.seriesName + ': ' + fmt(s.value) + ' L'; });
+                return html;
+            }
+        },
+        xAxis: { type: 'category', data: diario.map(function (d) { return d.dia; }) },
+        yAxis: { type: 'value', axisLabel: { formatter: function (v) { return (v / 1000).toLocaleString('es-MX') + ' mil'; } } },
+        series: [
+            {
+                name: 'Venta del día', type: 'bar',
+                data: diario.map(function (d) {
+                    if (d.total == null) return null;
+                    // Debajo del ritmo del presupuesto: barra en ámbar
+                    var bajo = tieneRitmo && d.total < ritmo;
+                    return { value: d.total, itemStyle: { color: bajo ? '#f59e0b' : '#009559', borderRadius: [3, 3, 0, 0] } };
+                })
+            }
+        ].concat(tieneRitmo ? [{
+            name: 'Ritmo presupuesto', type: 'line', symbol: 'none',
+            data: diario.map(function () { return ritmo; }),
+            lineStyle: { type: 'dashed', color: '#0095DA', width: 2 }, itemStyle: { color: '#0095DA' }
+        }] : [])
+    });
+    $(window).on('resize', function () { chart.resize(); });
+}
+
+/**
+ * Íconos (?) de las cards del RESUMEN DIRECCIÓN: un clic abre una burbuja
+ * con la explicación bajo el ícono; otro clic, Esc o un clic fuera la
+ * cierran. Delegado en document porque la sección de Rentabilidad llega
+ * por AJAX después de cargar la página.
+ */
+$(function () {
+    var $pop = $('<div class="vd-ayuda-pop" role="dialog" hidden>' +
+                 '<button type="button" class="vd-ayuda-cerrar" aria-label="Cerrar">&times;</button>' +
+                 '<div class="vd-ayuda-titulo"></div><div class="vd-ayuda-texto"></div></div>').appendTo('body');
+    var abierto = null;
+
+    function cerrar() {
+        $pop.prop('hidden', true);
+        abierto = null;
+    }
+
+    $(document).on('click', '.vd-ayuda', function (e) {
+        e.stopPropagation();
+        if (abierto === this) { cerrar(); return; }
+        abierto = this;
+        // El texto viene de la plantilla (no de datos del usuario), por eso .html()
+        $pop.find('.vd-ayuda-titulo').text($(this).data('titulo'));
+        $pop.find('.vd-ayuda-texto').html($(this).data('texto'));
+        $pop.prop('hidden', false);
+
+        var r = this.getBoundingClientRect();
+        var ancho = $pop.outerWidth();
+        var left = Math.min(Math.max(8, r.left + window.scrollX - 12),
+                            window.scrollX + document.documentElement.clientWidth - ancho - 8);
+        $pop.css({ top: r.bottom + window.scrollY + 6, left: left });
+    });
+    $pop.on('click', function (e) { e.stopPropagation(); });
+    $pop.find('.vd-ayuda-cerrar').on('click', cerrar);
+    $(document).on('click', cerrar);
+    $(document).on('keydown', function (e) { if (e.key === 'Escape') cerrar(); });
+    $('.merma-tabs-zona .nav-link').on('show.bs.tab', cerrar);
 });
