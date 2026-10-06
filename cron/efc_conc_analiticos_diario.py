@@ -215,6 +215,17 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
                 bloqueado_auto BIT NOT NULL DEFAULT 0)""",
         """IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','bloqueado_auto') IS NULL
             ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD bloqueado_auto BIT NOT NULL DEFAULT 0""",
+        """IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','papeleta_secundaria_id') IS NULL
+            ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD papeleta_secundaria_id INT NULL""",
+        """IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE name='FK_efc_conc_analiticos_vinculos_secundaria')
+            ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD CONSTRAINT FK_efc_conc_analiticos_vinculos_secundaria
+            FOREIGN KEY(papeleta_secundaria_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id)""",
+        """IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_efc_conc_analiticos_vinculos_distintas')
+            ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD CONSTRAINT CK_efc_conc_analiticos_vinculos_distintas
+            CHECK(papeleta_secundaria_id IS NULL OR papeleta_secundaria_id<>papeleta_id)""",
+        """IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_vinculos_secundaria_activa')
+            CREATE UNIQUE INDEX UX_efc_conc_analiticos_vinculos_secundaria_activa
+            ON dbo.efc_conc_analiticos_vinculos(papeleta_secundaria_id) WHERE activo=1 AND papeleta_secundaria_id IS NOT NULL""",
         """IF OBJECT_ID('dbo.efc_conc_analiticos_vinculos','U') IS NOT NULL
             AND (COL_LENGTH('dbo.efc_conc_analiticos_vinculos','criterio') IS NULL
                  OR COL_LENGTH('dbo.efc_conc_analiticos_vinculos','criterio') < 40)
@@ -435,6 +446,11 @@ def record_error(cursor: pyodbc.Cursor, content: bytes, filename: str, hash_valu
 
 def remove_import_papers(cursor: pyodbc.Cursor, import_id: int) -> None:
     """Reproceso controlado: libera primero los vínculos de la propia importación."""
+    protected = cursor.execute("""SELECT TOP 1 V.id FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
+        JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id OR P.id=V.papeleta_secundaria_id
+        WHERE P.importacion_id=? AND V.papeleta_secundaria_id IS NOT NULL""", import_id).fetchone()
+    if protected:
+        raise RuntimeError("No se puede reprocesar una importación con papeletas de un vínculo manual doble; conserva su historial.")
     cursor.execute("IF OBJECT_ID('dbo.efc_conc_analiticos_vinculos','U') IS NOT NULL DELETE V FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id WHERE P.importacion_id=?", import_id)
     cursor.execute("DELETE FROM dbo.efc_conc_analiticos_errores WHERE importacion_id=?", import_id)
     cursor.execute("DELETE FROM dbo.efc_conc_analiticos_papeletas WHERE importacion_id=?", import_id)
@@ -647,7 +663,7 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int, station_filter: int 
         last = (last_base.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
         turns = turns_for_station(cursor, station_id, first, last)
         rates = historical_rates(cursor, station_id) if any(turn["concept"] == "USD" for turn in turns) else []
-        active_papers = {int(row[0]) for row in cursor.execute("SELECT papeleta_id FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND estacion_id=?", station_id)}
+        active_papers = {int(row[0]) for row in cursor.execute("SELECT papeleta_id FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 UNION SELECT papeleta_secundaria_id FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND papeleta_secundaria_id IS NOT NULL")}
         active_turns = {(station_id, row[0], str(turn_number(row[1]) or row[1]), str(row[2])) for row in cursor.execute("SELECT fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND estacion_id=?", station_id)}
         blocked_turns = {(station_id, row[0], str(turn_number(row[1]) or row[1]), str(row[2])) for row in cursor.execute("SELECT fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WHERE activo=0 AND bloqueado_auto=1 AND estacion_id=?", station_id)}
         available = [paper for paper in papers if paper["id"] not in active_papers]
@@ -671,6 +687,12 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int, station_filter: int 
 
             def apply_match(turn: dict, paper: dict, gap: int, sequential: bool = False) -> None:
                 nonlocal linked
+                reserved = cursor.execute("""SELECT TOP 1 id FROM dbo.efc_conc_analiticos_vinculos WITH(UPDLOCK,HOLDLOCK)
+                    WHERE activo=1 AND (papeleta_id=? OR papeleta_secundaria_id=?
+                        OR (estacion_id=? AND fecha_cg=? AND turno=? AND concepto=?))""",
+                    paper["id"], paper["id"], station_id, turn["date"], turn["turn"], turn["concept"]).fetchone()
+                if reserved:
+                    return
                 rate = rate_for_turn(rates, turn) if turn["concept"] == "USD" else None
                 applied_criterion = "AUTO_REAL_±8" if field == "real" and turn["concept"] == "USD" else criterion
                 if sequential:
@@ -779,6 +801,7 @@ def relink_praxedis(start_date: date, end_date: date) -> dict:
                     JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
                     WHERE P.importacion_id=? AND P.estacion_id=40 AND V.estacion_id=40
                       AND V.activo=1 AND V.usuario_id IS NULL AND V.bloqueado_auto=0
+                      AND V.papeleta_secundaria_id IS NULL AND V.criterio<>'MANUAL_DOBLE'
                       AND V.criterio IN ({criteria_placeholders})""",
                 import_id,
                 *automatic_criteria,

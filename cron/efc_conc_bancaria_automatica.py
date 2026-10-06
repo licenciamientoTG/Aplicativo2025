@@ -116,6 +116,12 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
     AS BEGIN
       SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
       BEGIN TRANSACTION;
+      IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','papeleta_secundaria_id') IS NOT NULL
+        EXEC sp_executesql N'IF EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos WITH(UPDLOCK,HOLDLOCK)
+          WHERE activo=1 AND papeleta_secundaria_id IS NOT NULL AND estacion_id=@s AND fecha_cg=@d
+            AND (turno=@t OR TRY_CONVERT(INT,turno)=TRY_CONVERT(INT,@t)) AND concepto=@c)
+          THROW 50014,''El turno con dos papeletas requiere conciliacion bancaria manual.'',1;',
+          N'@s INT,@d DATE,@t VARCHAR(20),@c VARCHAR(20)',@s=@estacion_id,@d=@fecha,@t=@turno,@c=@concepto;
       IF DATEDIFF(MONTH,@fecha,@fecha_banco) NOT IN (0,1) THROW 50012,'El depósito debe ser del mismo mes del turno o del mes siguiente.',1;
       DECLARE @cruza_mes BIT=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23) THEN 1 ELSE 0 END,
               @fecha_operativa DATE=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco,23) THEN DATEFROMPARTS(YEAR(@fecha_banco),MONTH(@fecha_banco),1) ELSE @fecha END,
@@ -176,6 +182,15 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
       BEGIN TRANSACTION;
       DECLARE @cg TABLE(clave_externa VARCHAR(180),fecha DATE,turno VARCHAR(20),concepto VARCHAR(20),importe DECIMAL(18,2));
+      IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','papeleta_secundaria_id') IS NOT NULL
+        EXEC sp_executesql N'IF EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
+          JOIN @x.nodes(''/turns/turn'') AS turns(item)
+            ON V.fecha_cg=item.value(''@date'',''DATE'')
+            AND (V.turno=item.value(''@turn'',''VARCHAR(20)'') OR TRY_CONVERT(INT,V.turno)=TRY_CONVERT(INT,item.value(''@turn'',''VARCHAR(20)'')))
+            AND V.concepto=item.value(''@currency'',''VARCHAR(20)'')
+          WHERE V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL AND V.estacion_id=@s)
+          THROW 50014,''El turno con dos papeletas requiere conciliacion bancaria manual.'',1;',
+          N'@s INT,@x XML',@s=@estacion_id,@x=@cg_xml;
       INSERT @cg SELECT item.value('@id','VARCHAR(180)'),item.value('@date','DATE'),item.value('@turn','VARCHAR(20)'),item.value('@currency','VARCHAR(20)'),item.value('@amount','DECIMAL(18,2)') FROM @cg_xml.nodes('/turns/turn') AS turns(item);
       DECLARE @transitos TABLE(clave_externa VARCHAR(180),transito_id INT);
       IF NOT EXISTS(SELECT 1 FROM @cg) THROW 50006,'No hay turnos GASOMEX para conciliar.',1;
@@ -407,6 +422,15 @@ def index_bank_rows(
     return indexed
 
 
+def paired_turns(cursor: pyodbc.Cursor) -> set[tuple[int, str, str, str]]:
+    """Paired REGIO turns are reserved for manual bank reconciliation."""
+    if not cursor.execute("SELECT COL_LENGTH('dbo.efc_conc_analiticos_vinculos','papeleta_secundaria_id')").fetchone()[0]:
+        return set()
+    return {(int(row[0]), str(row[1]), turn_key(row[2]), str(row[3]).upper())
+            for row in cursor.execute("""SELECT estacion_id,CONVERT(CHAR(10),fecha_cg,23),turno,concepto
+                FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND papeleta_secundaria_id IS NOT NULL""").fetchall()}
+
+
 def infer_unassigned_bank_stations(
     cursor: pyodbc.Cursor,
     bank_rows: list[tuple],
@@ -450,6 +474,7 @@ def infer_unassigned_bank_stations(
         (int(row[0]), str(row[1]), turn_key(row[2]), str(row[3]).upper())
         for row in occupied_rows
     }
+    occupied_turns.update(paired_turns(cursor))
     transit_rows = cursor.execute(
         """SELECT estacion_id,CONVERT(CHAR(10),fecha_origen,23),turno,concepto
            FROM dbo.efc_conc_transitos WHERE estado='PENDIENTE' AND estacion_id IN (""" + marks + ")",
@@ -753,10 +778,12 @@ def run() -> int:
         for station_number, (station_id, name, code) in enumerate(stations, 1):
             log(f"Estación {station_number}/{len(stations)} inicia: {station_id} {name}.")
             try:
+                manual_pairs = {(day, turn, concept) for station, day, turn, concept in paired_turns(cursor) if station == int(station_id)}
                 links = {(str(row[0]), turn_key(row[1]), str(row[2])): amount(row[3]) for row in cursor.execute("""SELECT CONVERT(CHAR(10),V.fecha_cg,23),V.turno,V.concepto,
                     CASE WHEN V.concepto='USD' THEN ISNULL(P.real_usd,0)*ISNULL(V.tipo_cambio_usd,0) ELSE ISNULL(P.real_mn,0) END
                     FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
                     WHERE V.estacion_id=? AND V.activo=1""", station_id).fetchall()}
+                links = {key: value for key, value in links.items() if key not in manual_pairs}
                 # Nine shifts can span parts of three operational days across
                 # a month boundary. Extra days contain only candidate shifts;
                 # the bank's actual date still determines eligibility.
@@ -785,6 +812,7 @@ def run() -> int:
                     pending_transit_count = int(cursor.execute("""SELECT COUNT(*) FROM dbo.efc_conc_transitos
                         WHERE estacion_id=40 AND estado='PENDIENTE'""").fetchone()[0])
                     active_cg_keys.update(transit_keys)
+                    active_cg_keys.update(f"cg-{station_id}-{day}-{turn}-{concept}" for day, turn, concept in manual_pairs)
                     slots = praxedis_slots(turn_rows, active_cg_keys)
                     praxedis_bank_rows = [
                         bank for bank in praxedis_bank_rows_all
@@ -836,6 +864,7 @@ def run() -> int:
                     pending_transit_count = int(cursor.execute("""SELECT COUNT(*) FROM dbo.efc_conc_transitos
                         WHERE estacion_id=? AND estado='PENDIENTE'""", station_id).fetchone()[0])
                     active_cg_keys.update(transit_keys)
+                    active_cg_keys.update(f"cg-{station_id}-{day}-{turn}-{concept}" for day, turn, concept in manual_pairs)
                     slots = gasomex_slots(turn_rows, links, active_cg_keys, int(station_id))
                     gas_bank_rows = [
                         bank for bank in bank_rows
@@ -887,6 +916,8 @@ def run() -> int:
                         # Normal stations compare against REGIO real amount; Parral's
                         # Bankaool rule compares CG directly, exactly as runBankFixed.
                         link_key = (cut.isoformat(), turn_key(turn), concept)
+                        if link_key in manual_pairs:
+                            skipped += 1; continue
                         if "PARRAL" not in str(name).upper() and link_key not in links:
                             skipped += 1; continue
                         target = cg if "PARRAL" in str(name).upper() else links[link_key]

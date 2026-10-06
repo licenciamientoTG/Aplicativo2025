@@ -28,6 +28,8 @@ def main() -> int:
         with db_connection() as connection:
             cursor = connection.cursor()
             ensure_schema(cursor)
+            if cursor.execute("SELECT TOP 1 id FROM dbo.efc_conc_analiticos_vinculos WITH(UPDLOCK,HOLDLOCK) WHERE papeleta_secundaria_id IS NOT NULL").fetchone():
+                raise RuntimeError("No se puede reiniciar Analíticos con historial de vínculos manuales dobles; conserva las papeletas y conciliaciones asociadas.")
             before = {
                 "vinculos": count(cursor, "efc_conc_analiticos_vinculos") if cursor.execute("SELECT OBJECT_ID('dbo.efc_conc_analiticos_vinculos','U')").fetchone()[0] else 0,
                 "errores": count(cursor, "efc_conc_analiticos_errores"),

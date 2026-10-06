@@ -98,3 +98,46 @@ reprocesar únicamente ese rango sin crear importaciones nuevas:
 El proceso diario no importa únicamente los correos del día: revisa todos los
 mensajes con asunto `ANALITICOS` del buzón configurado, en modo lectura. El hash
 SHA-256 del adjunto evita volver a almacenar un archivo idéntico.
+
+## Segunda papeleta manual por turno
+
+La excepción permite que dos papeletas REGIO correspondan a un único turno y
+concepto de ControlGas. Se conserva un solo vínculo y un solo importe CG; la
+segunda papeleta se guarda en `papeleta_secundaria_id`. Los importes declarados y
+reales se suman para calcular las diferencias, reportes, resumen y cierres. En
+USD se usa el tipo de cambio histórico guardado en el vínculo.
+
+En el panel de analíticos, selecciona una papeleta disponible y usa **Asociar
+segunda papeleta** en un turno que ya tenga la primera. Las dos deben pertenecer
+a la misma estación efectiva y no estar asociadas a otro turno. Se admite una
+sola papeleta adicional; el criterio de la excepción es `MANUAL_DOBLE`.
+
+El turno doble necesita **dos depósitos distintos**, asociados manualmente como
+un solo grupo. Esta condición también aplica a la excepción en USD: los turnos
+USD ordinarios conservan su tratamiento habitual. En GASOMEX, el turno doble se
+concilia por separado y no se mezcla con otros turnos en un lote.
+
+Las diferencias se calculan una sola vez por turno:
+
+```text
+Diferencia REGIO = real de primera + real de segunda − ControlGas
+Diferencia banco = depósito 1 + depósito 2 − real de ambas papeletas
+```
+
+Un tránsito conserva el turno de origen y ambas papeletas; al recibirlo en el
+mes destino también requiere dos depósitos. Deshacer la conciliación bancaria
+libera los dos depósitos conjuntamente. Antes de agregar, quitar o cambiar una
+papeleta de un turno con banco asociado, se debe deshacer su conciliación. Se
+puede quitar únicamente la segunda o desasociar ambas desde el panel.
+
+La asociación automática REGIO sigue vinculando una papeleta por turno; reserva
+las dos papeletas de una excepción manual. La conciliación automática bancaria
+omite los turnos dobles, incluidas las rutas de Praxedis y lotes GASOMEX. El
+reprocesamiento de importaciones y el reinicio de pruebas rechazan documentos
+protegidos por esta excepción.
+
+Para actualizar una instalación existente, usar
+`docs/sql/efc_conc_segunda_papeleta.sql` en TG; el script no utiliza separadores
+`GO` y admite ejecución desde DBeaver. Actualizar conjuntamente los modelos PHP,
+la vista y ambos procesos automáticos antes de habilitar la nueva acción manual.
+El cambio de código no ejecuta la migración en el servidor remoto.
