@@ -280,8 +280,9 @@ function escProgramadas(v) {
 
 // Tarjeta "Recepciones programadas": lo que Abastos ya capturó en
 // /supply/scheduling para la misma estación y rango que se está
-// consultando aquí -- solo tiene sentido con una estación concreta
-// seleccionada, "(TODAS)" (codgas=0) o sin estación resuelta la oculta.
+// consultando aquí. Con "(TODAS)" (codgas=0, solo con permiso de todas las
+// estaciones) muestra todas y agrega la columna Estación; sin estación
+// elegida se oculta.
 function cargarRecepcionesProgramadas() {
     const $row = $('#rowRecepcionesProgramadas');
     const $body = $('#recepcionesProgramadasBody');
@@ -294,10 +295,11 @@ function cargarRecepcionesProgramadas() {
     if (codgasSelect.length) {
         params.codgas = codgasSelect.val();
     }
-    if (codgasSelect.length && (!params.codgas || params.codgas === '0')) {
+    if (codgasSelect.length && (params.codgas === null || params.codgas === undefined || params.codgas === '')) {
         $row.hide();
         return;
     }
+    const verTodas = codgasSelect.length && params.codgas === '0';
 
     $body.html('<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>Cargando…</div>');
     $row.show();
@@ -316,6 +318,7 @@ function cargarRecepcionesProgramadas() {
                         <tr>
                             <th>Fecha</th>
                             <th>Hora</th>
+                            ${verTodas ? '<th>Estación</th>' : ''}
                             <th>Proveedor</th>
                             <th>Terminal</th>
                             <th>Producto</th>
@@ -340,6 +343,7 @@ function cargarRecepcionesProgramadas() {
                     <tr>
                         <td>${escProgramadas(f.fecha)}</td>
                         <td>${escProgramadas(f.hora) || '<span class="text-muted">—</span>'}</td>
+                        ${verTodas ? `<td>${escProgramadas(f.station_nombre) || '<span class="text-muted">—</span>'}</td>` : ''}
                         <td>${escProgramadas(f.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
                         <td>${escProgramadas(f.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
                         <td>${producto}</td>

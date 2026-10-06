@@ -236,7 +236,10 @@ class station_portal
         }
 
         $codgas = $this->resolveCodgas();
-        if (!$codgas) {
+        // 0 = "(TODAS)": solo válido con el permiso de todas las estaciones
+        // (resolveCodgas solo devuelve 0 en ese caso); se consultan todas.
+        $todas = $codgas === 0 && authorized(self::PERM_TODAS_ESTACIONES);
+        if (!$codgas && !$todas) {
             json_output(['data' => []]);
             return;
         }
@@ -244,7 +247,7 @@ class station_portal
         $fechaDesde = $_REQUEST['fecha_desde'] ?? date('Y-m-d');
         $fechaHasta = $_REQUEST['fecha_hasta'] ?? date('Y-m-d');
 
-        $filas = $this->fuelReceptionScheduleModel->get_by_station_range($codgas, $fechaDesde, $fechaHasta);
+        $filas = $this->fuelReceptionScheduleModel->get_by_station_range($todas ? null : $codgas, $fechaDesde, $fechaHasta);
         json_output(['data' => $filas]);
     }
 
@@ -659,8 +662,10 @@ class station_portal
             exit;
         }
 
+        // Con permiso de todas las estaciones no se necesita estación de
+        // sesión (se usa la de la recepción, abajo); sin él, sí.
         $codgas = $this->resolveCodgas();
-        if ($codgas === null) {
+        if ($codgas === null && !authorized(self::PERM_TODAS_ESTACIONES)) {
             http_response_code(403);
             echo "Acceso denegado";
             exit;

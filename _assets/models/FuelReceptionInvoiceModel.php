@@ -473,6 +473,66 @@ class FuelReceptionInvoiceModel extends Model {
         return $mapa;
     }
 
+    public function obtenerFacturaPorId(int $invoiceId): ?array {
+        $rows = $this->sql->select("SELECT * FROM TG.dbo.FacturasRecibidas WHERE Id = ?", [$invoiceId]);
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * Buscador del modal de factura: facturas del PROVEEDOR de la recepción
+     * cuyo Folio contenga $q o cuyo UUID empiece con $q. A diferencia de
+     * sugerirFacturas() no filtra por fecha ni estación (es justo para cuando
+     * la sugerencia no la encontró) y SÍ incluye las ya vinculadas, marcadas,
+     * para que el usuario vea dónde quedó en vez de "no existe".
+     */
+    public function buscarFacturasProveedor(int $scheduleId, string $q): array {
+        $recepcion = $this->sql->select(
+            "SELECT supplier_id FROM TG.dbo.fuel_reception_schedule WHERE id = ?",
+            [$scheduleId]
+        );
+        if (!$recepcion) return [];
+        $proveedor = $this->sql->select("
+            SELECT t2.rfc
+            FROM TG.dbo.Proveedores t1
+            JOIN SG12.dbo.Proveedores t2 ON t2.cod = t1.id_control_gas
+            WHERE t1.id = ?
+        ", [(int)$recepcion[0]['supplier_id']]);
+        $rfc = $proveedor[0]['rfc'] ?? null;
+        if (!$rfc) return [];
+
+        $like = '%' . str_replace(['[', '%', '_'], ['[[]', '[%]', '[_]'], $q) . '%';
+        $prefijo = str_replace(['[', '%', '_'], ['[[]', '[%]', '[_]'], $q) . '%';
+        $query = "
+            SELECT TOP 20
+                   f.Id, f.Serie, f.Folio, f.Fecha, f.Total, f.EmisorNombre, f.UUID, f.ReceptorNombre,
+                   f.EstacionCodgas, e.Nombre AS EstacionNombre,
+                   (
+                       SELECT STRING_AGG(CONCAT(c.Descripcion, ' (', FORMAT(c.Litros, 'N0'), ' L)'), ' + ')
+                       FROM (
+                           SELECT Descripcion, SUM(Cantidad) AS Litros
+                           FROM TG.dbo.FacturasRecibidasConceptos
+                           WHERE FacturaId = f.Id AND Descripcion IS NOT NULL AND Descripcion <> ''
+                           GROUP BY Descripcion
+                       ) c
+                   ) AS Productos,
+                   v.schedule_id AS VinculadaScheduleId, v.fecha AS VinculadaFecha,
+                   v.estacion AS VinculadaEstacion, v.product AS VinculadaProducto
+            FROM TG.dbo.FacturasRecibidas f
+            LEFT JOIN TG.dbo.Estaciones e ON e.Codigo = f.EstacionCodgas
+            OUTER APPLY (
+                SELECT TOP 1 s.id AS schedule_id, s.fecha, s.product, es.Nombre AS estacion
+                FROM TG.dbo.fuel_reception_invoices fri
+                JOIN TG.dbo.fuel_reception_schedule s ON s.id = fri.schedule_id
+                LEFT JOIN TG.dbo.Estaciones es ON es.Codigo = s.station_code
+                WHERE fri.invoice_id = f.Id
+            ) v
+            WHERE f.EmisorRfc = ?
+              AND (f.Folio LIKE ? OR f.UUID LIKE ?)
+            ORDER BY f.Fecha DESC
+        ";
+        return $this->sql->select($query, [$rfc, $like, $prefijo]) ?: [];
+    }
+
     public function obtenerFacturaDeRecepcion(int $scheduleId): ?array {
         $query = "
             SELECT f.Id, f.Folio, f.Fecha, f.Total, f.EmisorNombre, f.EmisorRfc, f.UUID,

@@ -1190,6 +1190,7 @@ $(document).ready(function () {
             .done(function (resp) {
                 if (!resp.success) {
                     errorBox.text(resp.message || 'No se pudo vincular la factura.').show();
+                    if (errorBox[0]) errorBox[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     boton.prop('disabled', false);
                     return;
                 }
@@ -1200,6 +1201,37 @@ $(document).ready(function () {
                 errorBox.text('No se pudo vincular la factura.').show();
                 boton.prop('disabled', false);
             });
+    });
+
+    // Buscador por folio/UUID dentro del modal de factura (vista parcial
+    // facturaResultadosBusqueda.html). Los resultados reusan el botón
+    // .btn-vincular-sugerida, que ya valida en el servidor.
+    function buscarFacturaPorFolio() {
+        const q = ($('#factura_buscar').val() || '').trim();
+        const destino = $('#facturaResultadosBusqueda');
+        if (q.length < 3) {
+            destino.html('<div class="text-muted small">Escribe al menos 3 caracteres del folio o del UUID.</div>');
+            return;
+        }
+        const boton = $('#btnBuscarFactura').prop('disabled', true);
+        destino.html('<div class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Buscando…</div>');
+        $.post('/supply/scheduling_invoice_buscar', { schedule_id: $('#factura_schedule_id').val(), q: q })
+            .done(function (html) {
+                destino.html(html);
+                if (window.feather) feather.replace();
+            })
+            .fail(function () {
+                destino.html('<div class="text-danger small">No se pudo buscar. Intenta de nuevo.</div>');
+            })
+            .always(function () { boton.prop('disabled', false); });
+    }
+
+    $(document).on('click', '#btnBuscarFactura', buscarFacturaPorFolio);
+    $(document).on('keydown', '#factura_buscar', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            buscarFacturaPorFolio();
+        }
     });
 
     $(document).on('click', '#btnReemplazarFactura', function () {

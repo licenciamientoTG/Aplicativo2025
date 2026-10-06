@@ -1,0 +1,14 @@
+{# Resultados del buscador por folio/UUID del modal "Factura de la recepción" #}
+{% import 'views/supply/modals/_tarjetaFactura.html' as tf %}
+{% if resultados is empty %}
+<div class="text-muted small">
+    No hay facturas de este proveedor con folio o UUID "{{ q }}". Si aún no llega por correo, súbela con el PDF y el XML.
+</div>
+{% else %}
+<div class="small text-muted mb-2">{{ resultados|length }} resultado{{ resultados|length > 1 ? 's' : '' }}{{ resultados|length == 20 ? ' (se muestran los 20 más recientes, afina la búsqueda)' : '' }}</div>
+<div class="d-flex flex-column gap-2">
+    {% for f in resultados %}
+    {{ tf.tarjeta(f) }}
+    {% endfor %}
+</div>
+{% endif %}

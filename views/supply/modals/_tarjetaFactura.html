@@ -1,0 +1,46 @@
+{# Tarjeta de una factura de FacturasRecibidas en el modal "Factura de la recepción".
+   La usan las sugerencias (frmFacturaRecepcion.html) y el buscador por folio
+   (facturaResultadosBusqueda.html). Si la factura ya está vinculada a otra
+   recepción se muestra a dónde y sin botón de vincular. #}
+{% macro tarjeta(f) %}
+<div class="border rounded-3 p-3 sugerencia-factura{{ f.VinculadaScheduleId ?? false ? ' bg-light' : '' }}">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+            <div class="mb-1">
+                <span class="fs-5 fw-bold text-body">Folio {{ ((f.Serie ?? '') ~ ' ' ~ (f.Folio|default('—')))|trim }}</span>
+                <span class="badge bg-success-subtle text-success-emphasis ms-2">${{ f.Total|number_format(2) }}</span>
+            </div>
+            <div class="text-muted small">
+                <i data-feather="calendar" style="width:13px;height:13px;" class="align-text-bottom"></i>
+                {{ f.Fecha|date('d/m/Y') }}
+                &nbsp;&middot;&nbsp;
+                <i data-feather="truck" style="width:13px;height:13px;" class="align-text-bottom"></i>
+                {{ f.EmisorNombre }}
+                {% if f.EstacionNombre ?? false %}
+                &nbsp;&middot;&nbsp;
+                <i data-feather="map-pin" style="width:13px;height:13px;" class="align-text-bottom"></i>
+                {{ f.EstacionNombre }}
+                {% endif %}
+            </div>
+            {% if f.Productos %}
+            <div class="mt-1">
+                <i data-feather="droplet" style="width:13px;height:13px;" class="align-text-bottom text-muted"></i>
+                {% for producto in f.Productos|split(' + ') %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ producto }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div class="text-muted small font-monospace mt-1" style="font-size:0.7rem;" title="UUID del CFDI">{{ f.UUID }}</div>
+        </div>
+        {% if f.VinculadaScheduleId ?? false %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border flex-shrink-0 text-wrap text-start" style="max-width:220px;">
+            Ya vinculada a {{ f.VinculadaFecha|date('d/m/Y') }} · {{ f.VinculadaEstacion|default('?') }} · {{ f.VinculadaProducto }}
+        </span>
+        {% else %}
+        <button type="button" class="btn btn-success btn-sm flex-shrink-0 btn-vincular-sugerida" data-invoice-id="{{ f.Id }}">
+            <i data-feather="link" style="width:14px;height:14px;" class="align-text-bottom"></i> Vincular esta
+        </button>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}

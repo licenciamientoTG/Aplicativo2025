@@ -1,8 +1,20 @@
+{% import 'views/supply/modals/_tarjetaFactura.html' as tf %}
 <input type="hidden" id="factura_schedule_id" value="{{ scheduleId }}">
 <div class="modal-body">
+    {% if recepcion %}
+    {# Contexto de la recepción, para comparar contra la factura antes de vincular #}
+    <div class="d-flex flex-wrap gap-3 align-items-center p-2 mb-3 rounded-3 bg-light border small">
+        <span><i data-feather="calendar" style="width:14px;height:14px;" class="align-text-bottom text-muted"></i> {{ recepcion.fecha|date('d/m/Y') }}{% if recepcion.hora %} · {{ recepcion.hora }}{% endif %}</span>
+        <span><i data-feather="map-pin" style="width:14px;height:14px;" class="align-text-bottom text-muted"></i> {{ recepcion.station_nombre|default('—') }}</span>
+        <span><i data-feather="droplet" style="width:14px;height:14px;" class="align-text-bottom text-muted"></i> {{ recepcion.product }} · {{ recepcion.litros|number_format(0) }} L</span>
+        <span><i data-feather="truck" style="width:14px;height:14px;" class="align-text-bottom text-muted"></i> {{ recepcion.supplier_nombre|default('—') }}{% if recepcion.terminal_nombre %} · {{ recepcion.terminal_nombre }}{% endif %}</span>
+        {% if recepcion.referencia %}<span class="text-muted">Ref. {{ recepcion.referencia }}</span>{% endif %}
+    </div>
+    {% endif %}
+
     {% if sugerencias %}
     <div class="d-flex align-items-center gap-2 mb-2">
-        <i data-feather="search" class="text-success" style="width:18px;height:18px;"></i>
+        <i data-feather="zap" class="text-success" style="width:18px;height:18px;"></i>
         <p class="text-muted mb-0">
             Se {{ sugerencias|length > 1 ? 'encontraron ' ~ sugerencias|length ~ ' facturas' : 'encontró 1 factura' }}
             ya importada{{ sugerencias|length > 1 ? 's' : '' }} que podría{{ sugerencias|length > 1 ? 'n' : '' }} corresponder a esta recepción:
@@ -10,51 +22,38 @@
     </div>
     <div class="d-flex flex-column gap-2 mb-3">
         {% for f in sugerencias %}
-        <div class="border rounded-3 p-3 sugerencia-factura">
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                <div>
-                    <div class="mb-1">
-                        <span class="fs-5 fw-bold text-body">Folio {{ f.Folio|default('—') }}</span>
-                        <span class="badge bg-success-subtle text-success-emphasis ms-2">${{ f.Total|number_format(2) }}</span>
-                    </div>
-                    <div class="text-muted small">
-                        <i data-feather="calendar" style="width:13px;height:13px;" class="align-text-bottom"></i>
-                        {{ f.Fecha|date('d/m/Y') }}
-                        &nbsp;&middot;&nbsp;
-                        <i data-feather="truck" style="width:13px;height:13px;" class="align-text-bottom"></i>
-                        {{ f.EmisorNombre }}
-                    </div>
-                    {% if f.Productos %}
-                    <div class="mt-1">
-                        <i data-feather="droplet" style="width:13px;height:13px;" class="align-text-bottom text-muted"></i>
-                        {% for producto in f.Productos|split(' + ') %}
-                        <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ producto }}</span>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    <div class="text-muted small font-monospace mt-1" style="font-size:0.7rem;" title="UUID del CFDI">{{ f.UUID }}</div>
-                </div>
-                <button type="button" class="btn btn-success btn-sm flex-shrink-0 btn-vincular-sugerida" data-invoice-id="{{ f.Id }}">
-                    <i data-feather="link" style="width:14px;height:14px;" class="align-text-bottom"></i> Vincular esta
-                </button>
-            </div>
-        </div>
+        {{ tf.tarjeta(f) }}
         {% endfor %}
     </div>
-    <hr class="my-3">
-    <p class="text-muted mb-2">Si ninguna aplica, sube el PDF y el XML del CFDI directamente:</p>
     {% else %}
-    <p class="text-muted">Sube el PDF y el XML del CFDI de esta recepción. Se validará el XML y, si es válido, la factura quedará registrada en el sistema de pagos.</p>
+    <p class="text-muted small mb-3">No se encontraron facturas sugeridas (mismo proveedor y estación, ±1 día). Búscala por folio o súbela.</p>
     {% endif %}
+
+    {# Buscador: la factura ya llegó por correo pero no salió en las sugeridas #}
     <div class="mb-3">
-        <label class="col-form-label col-form-label-sm" for="factura_pdf">Archivo PDF:</label>
-        <input type="file" class="form-control" id="factura_pdf" accept="application/pdf" required>
+        <label class="form-label small fw-semibold mb-1" for="factura_buscar">¿Ya llegó y no aparece? Búscala por folio o UUID</label>
+        <div class="input-group">
+            <span class="input-group-text"><i data-feather="search" style="width:15px;height:15px;"></i></span>
+            <input type="search" class="form-control" id="factura_buscar" placeholder="Ej. 008210 o E377919B" autocomplete="off">
+            <button type="button" class="btn btn-outline-primary" id="btnBuscarFactura">Buscar</button>
+        </div>
+        <div class="form-text">Solo busca facturas del proveedor de esta recepción.</div>
+        <div id="facturaResultadosBusqueda" class="mt-2"></div>
     </div>
-    <div class="mb-3">
-        <label class="col-form-label col-form-label-sm" for="factura_xml">Archivo XML:</label>
-        <input type="file" class="form-control" id="factura_xml" accept=".xml,text/xml" required>
+
+    <hr class="my-3">
+    <p class="text-muted small mb-2">Si no está en el sistema, sube el PDF y el XML del CFDI. Se validará el XML y la factura quedará registrada en el sistema de pagos.</p>
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label small mb-1" for="factura_pdf"><i data-feather="file-text" style="width:14px;height:14px;" class="align-text-bottom text-danger"></i> Archivo PDF</label>
+            <input type="file" class="form-control" id="factura_pdf" accept="application/pdf" required>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label small mb-1" for="factura_xml"><i data-feather="code" style="width:14px;height:14px;" class="align-text-bottom text-primary"></i> Archivo XML</label>
+            <input type="file" class="form-control" id="factura_xml" accept=".xml,text/xml" required>
+        </div>
     </div>
-    <div id="facturaMensajeError" class="alert alert-danger" style="display:none;"></div>
+    <div id="facturaMensajeError" class="alert alert-danger mt-3 mb-0" style="display:none;"></div>
 </div>
 <div class="modal-footer">
     <button type="button" class="btn btn-primary" id="btnSubirFactura">Subir y vincular</button>
