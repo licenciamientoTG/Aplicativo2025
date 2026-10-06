@@ -279,7 +279,7 @@ class EfcConciliacionModel {
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>round($regio,2),
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
                     'faltante'=>round($amount-$regio,2), 'diferencia_controlgas_regio'=>round($regio-$amount,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
-                    'papeleta_id'=>$hasPaper?(int)$link['papeleta_id']:null, 'papeleta_secundaria_id'=>$link['papeleta_secundaria_id']??null, 'paired'=>!empty($link['papeleta_secundaria_id']), 'bank_count'=>count($group['bank']??[]), 'bank_complete'=>empty($link['papeleta_secundaria_id'])?count($group['bank']??[])>0:count($group['bank']??[])===2, 'remesa'=>$hasPaper?$this->normaliseRemittance($link['remesa_numero'] ?? ''):'', 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''), 'sin_papeleta'=>!$hasPaper,
+                    'papeleta_id'=>$hasPaper?(int)$link['papeleta_id']:null, 'papeleta_secundaria_id'=>$link['papeleta_secundaria_id']??null, 'paired'=>!empty($link['papeleta_secundaria_id']), 'bank_count'=>count($group['bank']??[]), 'bank_complete'=>empty($link['papeleta_secundaria_id'])?count($group['bank']??[])>0:count($group['bank']??[])===2, 'remesa'=>$hasPaper?$this->normaliseRemittance($link['remesa_numero'] ?? ''):'', 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''), 'sin_papeleta'=>!$hasPaper, 'transito'=>$transit!==null,
                     'grupo_id'=>$group['id'] ?? null,
                 ];
             }
