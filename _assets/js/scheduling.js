@@ -38,6 +38,10 @@ let colsActivas = prefsGuardadas.cols || 3;
 let proveedorFiltroActivo = prefsGuardadas.proveedorFiltro || null;
 let ocultarVaciasEstacion = prefsGuardadas.ocultarVaciasEstacion || false;
 let ocultarVaciosTerminal = prefsGuardadas.ocultarVaciosTerminal || false;
+// Filtro por turno: no se persiste -- se reinicia a "Todos" al recargar.
+let turnoFiltroActivo = '';
+// Búsqueda por nombre de estación: tampoco se persiste.
+let busquedaEstacion = '';
 
 // Las 16 combinaciones Proveedor→Terminal reales del programa mensual
 // (confirmadas contra los Excel de julio y septiembre 2026 -- mismo
@@ -182,6 +186,7 @@ function botonesAccion(id, invoiceId, estatus) {
         <div class="btn-group btn-group-sm" role="group">
             <button type="button" class="btn ${colorRecibido} btn-toggle-recibido btn-accion-icono" data-id="${id}" title="${recibida ? 'Marcada como recibida (clic para desmarcar)' : 'Marcar como recibida'}"><i data-feather="check-circle"></i></button>
             <button type="button" class="btn btn-outline-success btn-editar-recepcion btn-accion-icono" data-id="${id}" title="Editar"><i data-feather="edit-3"></i></button>
+            <button type="button" class="btn btn-outline-primary btn-duplicar-recepcion btn-accion-icono" data-id="${id}" title="Duplicar esta línea en el mismo día"><i data-feather="copy"></i></button>
             <button type="button" class="btn ${colorFactura} btn-factura-recepcion btn-accion-icono" data-id="${id}" title="${invoiceId ? 'Ver factura' : 'Subir factura'}"><i data-feather="paperclip"></i></button>
             <button type="button" class="btn btn-outline-danger btn-cancelar-recepcion btn-accion-icono" data-id="${id}" title="Cancelar"><i data-feather="trash-2"></i></button>
         </div>
@@ -333,8 +338,13 @@ function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, peso
 }
 
 function filasFiltradas() {
-    if (!proveedorFiltroActivo) return ultimasFilas;
-    return ultimasFilas.filter(function (f) { return String(f.supplier_id) === String(proveedorFiltroActivo); });
+    return ultimasFilas.filter(function (f) {
+        if (proveedorFiltroActivo && String(f.supplier_id) !== String(proveedorFiltroActivo)) return false;
+        // Turno (T1/T2/T3) vive en la columna hora; las filas capturadas con
+        // horario real no tienen turno y quedan fuera al elegir uno.
+        if (turnoFiltroActivo && String(f.hora || '').toUpperCase() !== turnoFiltroActivo) return false;
+        return true;
+    });
 }
 
 function renderBotonesProveedor() {
@@ -435,6 +445,15 @@ function renderPorTerminal(filas) {
         });
 }
 
+// Buscador de estación (solo en "Agrupado por Estación"). Ignora mayúsculas y
+// acentos: "aeronautica" encuentra "16 Aeronáutica".
+function normalizarTexto(t) {
+    return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+function coincideBusquedaEstacion(nombre) {
+    return !busquedaEstacion || normalizarTexto(nombre).includes(normalizarTexto(busquedaEstacion));
+}
+
 function renderPorEstacion(filas) {
     const contenedor = $('#contenedorGrupos');
     contenedor.empty();
@@ -452,11 +471,14 @@ function renderPorEstacion(filas) {
     });
 
     const nombres = Object.keys(grupos).filter(function (nombre) {
+        if (!coincideBusquedaEstacion(nombre)) return false;
         return !ocultarVacias || grupos[nombre].filas.length > 0;
     }).sort();
 
     if (!nombres.length) {
-        contenedor.html('<p class="text-muted text-center">Sin recepciones programadas para este día.</p>');
+        contenedor.html(busquedaEstacion
+            ? '<p class="text-muted text-center">Ninguna estación coincide con "' + esc(busquedaEstacion) + '".</p>'
+            : '<p class="text-muted text-center">Sin recepciones programadas para este día.</p>');
         return;
     }
 
@@ -480,8 +502,10 @@ function renderPorEstacion(filas) {
 // VACÍAS se muestran en pantalla.
 function filasParaExportar() {
     const filas = filasFiltradas();
-    if (agrupacionActiva === 'estacion') {
-        return filas.map(function (f) {
+    if (agrupacionActiva === 'estacion' || agrupacionActiva === 'inventarios') {
+        return filas.filter(function (f) {
+            return coincideBusquedaEstacion(f.station_nombre || 'Sin estación');
+        }).map(function (f) {
             return Object.assign({}, f, { grupo: f.station_nombre || 'Sin estación' });
         });
     }
@@ -530,10 +554,287 @@ function actualizarTotalDia(filas) {
     $('#totalLitrosDia').text(total.toLocaleString('es-MX'));
 }
 
+// Resumen colapsable por proveedor (arriba de los tabs): litros, número de
+// entregas, recibidas y desglose por producto. Usa las mismas filas que la
+// vista (respeta los filtros de proveedor y turno, igual que el total del día).
+function renderResumenProveedores(filas) {
+    const contenedor = $('#resumenProveedoresContenido');
+    if (!contenedor.length) return;
+
+    const porProveedor = {};
+    filas.forEach(function (f) {
+        const id = String(f.supplier_id);
+        if (!porProveedor[id]) porProveedor[id] = { litros: 0, entregas: 0, recibidas: 0, productos: {}, nombre: f.supplier_nombre };
+        const p = porProveedor[id];
+        const litros = Number(f.litros) || 0;
+        p.litros += litros;
+        p.entregas += 1;
+        if (f.estatus === 'Recibido') p.recibidas += 1;
+        const prod = f.product || 'Otro';
+        if (!p.productos[prod]) p.productos[prod] = { litros: 0, entregas: 0 };
+        p.productos[prod].litros += litros;
+        p.productos[prod].entregas += 1;
+    });
+
+    const fmt = function (n) { return Number(n).toLocaleString('es-MX'); };
+    const ordenProductos = ['Regular', 'Premium', 'Diesel', 'Mixta', 'Otro'];
+
+    function tarjeta(nombre, color, p) {
+        const productos = ordenProductos.filter(function (k) { return p.productos[k]; }).map(function (k) {
+            return `<div class="resumen-prov-prod">${badgeProducto(k)}<span>${fmt(p.productos[k].litros)} L · ${p.productos[k].entregas}</span></div>`;
+        }).join('');
+        return `
+            <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+                <div class="resumen-prov-card" style="border-left-color:${color};">
+                    <div class="resumen-prov-nombre" style="color:${color};">${esc(nombre)}</div>
+                    <div class="resumen-prov-litros">${fmt(p.litros)} L</div>
+                    <div class="resumen-prov-sub mb-1">${p.entregas} entrega${p.entregas === 1 ? '' : 's'} · ${p.recibidas} recibida${p.recibidas === 1 ? '' : 's'}</div>
+                    ${productos}
+                </div>
+            </div>`;
+    }
+
+    // Mismo orden que los botones de filtro; cualquier proveedor fuera de la
+    // lista fija (no debería pasar) se agrega al final con su nombre de BD.
+    const ids = PROVEEDORES_FILTRO.map(function (p) { return String(p.id); })
+        .filter(function (id) { return porProveedor[id]; });
+    Object.keys(porProveedor).forEach(function (id) { if (ids.indexOf(id) === -1) ids.push(id); });
+
+    if (!ids.length) {
+        contenedor.html('<div class="col-12 text-muted small">Sin recepciones programadas con los filtros actuales.</div>');
+        return;
+    }
+
+    const total = { litros: 0, entregas: 0, recibidas: 0, productos: {} };
+    let html = '';
+    ids.forEach(function (id) {
+        const p = porProveedor[id];
+        const conf = PROVEEDORES_FILTRO.find(function (x) { return String(x.id) === id; });
+        const nombre = conf ? conf.nombreCorto : (p.nombre || 'Proveedor ' + id);
+        html += tarjeta(nombre, colorProveedor(nombre), p);
+        total.litros += p.litros;
+        total.entregas += p.entregas;
+        total.recibidas += p.recibidas;
+        Object.keys(p.productos).forEach(function (k) {
+            if (!total.productos[k]) total.productos[k] = { litros: 0, entregas: 0 };
+            total.productos[k].litros += p.productos[k].litros;
+            total.productos[k].entregas += p.productos[k].entregas;
+        });
+    });
+    contenedor.html(tarjeta('Total del día', '#1e293b', total) + html);
+}
+
+// ===== Tab "Plan inventarios" =====
+// No carga solo: el botón "Buscar inventarios" consulta, estación por
+// estación, el inventario en tiempo real (/supply/scheduling_inventory_station)
+// de las estaciones con líneas visibles, con hasta INV_CONCURRENCIA peticiones
+// en paralelo; cada tarjeta se redibuja en cuanto llega su estación.
+const INV_CONCURRENCIA = 6;
+// station_code -> { estado: 'pendiente'|'cargando'|'ok'|'error', productos, message }
+let invPorEstacion = {};
+let invBusqueda = { activa: false, total: 0, hechas: 0, errores: 0, hora: null };
+
+function estacionesPlanInventario(filas) {
+    const grupos = {};
+    filas.forEach(function (f) {
+        const nombre = f.station_nombre || 'Sin estación';
+        if (!coincideBusquedaEstacion(nombre)) return;
+        const code = String(f.station_code || '');
+        if (!grupos[code]) grupos[code] = { code: code, nombre: nombre, filas: [], total: 0 };
+        grupos[code].filas.push(f);
+        grupos[code].total += Number(f.litros) || 0;
+    });
+    return Object.values(grupos).sort(function (a, b) { return a.nombre.localeCompare(b.nombre); });
+}
+
+function fmtNum(n, dec) {
+    if (n === null || n === undefined || isNaN(n)) return '<span class="text-muted">—</span>';
+    return Number(n).toLocaleString('es-MX', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
+}
+
+// Mismos umbrales que /supply/inventory: >3 días OK, >1 bajo, resto crítico.
+function statusDiasInv(dias) {
+    if (dias === null || dias === undefined) return '<span class="text-muted small">N/A</span>';
+    if (dias > 3) return '<span class="badge bg-success">OK</span>';
+    if (dias > 1) return '<span class="badge bg-warning text-dark">Bajo</span>';
+    return '<span class="badge bg-danger">Crítico</span>';
+}
+
+function barraPorcentaje(pct) {
+    if (pct === null || pct === undefined) return '<span class="text-muted">—</span>';
+    const color = pct < 10 ? 'danger' : (pct < 30 ? 'warning' : 'success');
+    return `<div style="min-width:80px;"><span class="small">${fmtNum(pct, 1)}%</span>
+        <div class="progress" style="height:5px;"><div class="progress-bar bg-${color}" style="width:${Math.min(pct, 100)}%;"></div></div></div>`;
+}
+
+function encabezadosPlanInventario() {
+    return ['Hora', 'Producto', 'Litros', 'Proveedor', 'Terminal', 'Transportista',
+        'Cap. operativa', 'Volumen', '%', 'Venta total mes', 'Prom. día mes', 'Días inv', 'Status',
+        'Vol. tras descarga', 'Espacio libre'];
+}
+
+function filasHtmlPlanInventario(grupo) {
+    const inv = invPorEstacion[grupo.code];
+    const productosInv = (inv && inv.estado === 'ok') ? inv.productos : null;
+    // Litros programados por producto en esta estación (todas sus líneas
+    // visibles del día): base de "Vol. tras descarga".
+    const programadoPorProducto = {};
+    grupo.filas.forEach(function (f) {
+        programadoPorProducto[f.product] = (programadoPorProducto[f.product] || 0) + (Number(f.litros) || 0);
+    });
+
+    return grupo.filas.map(function (f) {
+        const base = `
+            <td>${esc(f.hora) || '<span class="text-muted">—</span>'}</td>
+            <td>${badgeProducto(f.product, f.mezcla)}</td>
+            <td>${Number(f.litros).toLocaleString('es-MX')}</td>
+            <td>${esc(f.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td>${esc(f.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td>${esc(f.carrier_nombre) || '<span class="text-muted">—</span>'}</td>`;
+        if (!productosInv) {
+            const txt = !inv || inv.estado === 'pendiente' ? 'Sin consultar'
+                : inv.estado === 'cargando' ? 'Consultando…' : 'Sin dato';
+            return `<tr>${base}<td colspan="9" class="text-muted small text-center">${txt}</td></tr>`;
+        }
+        const p = productosInv[f.product];
+        if (!p) {
+            return `<tr>${base}<td colspan="9" class="text-muted small text-center">La estación no tiene tanque de ${esc(f.product)}</td></tr>`;
+        }
+        const programado = programadoPorProducto[f.product] || 0;
+        const volTras = p.volumen + programado;
+        const noCabe = p.cap_operativa > 0 && volTras > p.cap_operativa;
+        const pctTras = p.cap_operativa > 0 ? volTras * 100 / p.cap_operativa : null;
+        return `<tr>${base}
+            <td class="text-end">${fmtNum(p.cap_operativa)}</td>
+            <td class="text-end">${fmtNum(p.volumen)}</td>
+            <td>${barraPorcentaje(p.porcentaje)}</td>
+            <td class="text-end">${fmtNum(p.venta_mes)}</td>
+            <td class="text-end">${fmtNum(p.prom_dia)}</td>
+            <td class="text-end">${fmtNum(p.dias_inv, 1)}</td>
+            <td class="text-center">${statusDiasInv(p.dias_inv)}</td>
+            <td class="text-end ${noCabe ? 'text-danger fw-bold' : ''}" title="Volumen actual + ${programado.toLocaleString('es-MX')} L programados de ${esc(f.product)} hoy">
+                ${fmtNum(volTras)}${pctTras !== null ? ` <span class="small">(${fmtNum(pctTras, 0)}%)</span>` : ''}${noCabe ? ' <span class="badge bg-danger">No cabe</span>' : ''}
+            </td>
+            <td class="text-end ${p.espacio_libre < programado ? 'text-danger fw-bold' : ''}">${fmtNum(p.espacio_libre)}</td>
+        </tr>`;
+    }).join('');
+}
+
+function tarjetaPlanInventario(grupo, maxTotal) {
+    const inv = invPorEstacion[grupo.code];
+    let estado = '<span class="badge bg-light text-muted border">Sin consultar</span>';
+    if (inv && inv.estado === 'cargando') estado = '<span class="badge bg-light text-primary border"><span class="spinner-border spinner-border-sm me-1" style="width:.7rem;height:.7rem;"></span>Consultando</span>';
+    if (inv && inv.estado === 'ok') estado = '<span class="badge bg-light text-success border">Inventario al momento</span>';
+    if (inv && inv.estado === 'error') estado = `<span class="badge bg-light text-danger border" title="${esc(inv.message || '')}">${esc(inv.message || 'Error')}</span>
+        <button type="button" class="btn btn-sm btn-outline-danger py-0 btn-reintentar-inv" data-code="${esc(grupo.code)}">Reintentar</button>`;
+    const peso = maxTotal > 0 ? grupo.total / maxTotal : 0;
+    const titulo = `${esc(grupo.nombre)} <span class="d-inline-flex align-items-center gap-1 fw-normal">${estado}</span>`;
+    // Siempre a ancho completo (son 15 columnas) y con id para poder
+    // reemplazar solo esta tarjeta cuando llega su estación.
+    return tarjetaGrupo(titulo, grupo.total, filasHtmlPlanInventario(grupo), encabezadosPlanInventario(), COLOR_ESTACION, peso)
+        .replace(`<div class="${colClass()} mb-4">`, `<div class="col-12 mb-4" id="inv-card-${esc(grupo.code)}">`);
+}
+
+function barraBusquedaInventario(numEstaciones) {
+    const b = invBusqueda;
+    const pct = b.total ? Math.round(b.hechas * 100 / b.total) : 0;
+    const progreso = (b.activa || b.hechas) ? `
+        <div class="flex-grow-1" style="min-width:220px;max-width:420px;">
+            <div class="small text-muted mb-1">${b.activa ? 'Consultando' : 'Consultadas'} ${b.hechas} / ${b.total} estaciones${b.errores ? ` · <span class="text-danger">${b.errores} con error</span>` : ''}${!b.activa && b.hora ? ` · a las ${b.hora}` : ''}</div>
+            <div class="progress" style="height:6px;"><div class="progress-bar ${b.activa ? 'progress-bar-striped progress-bar-animated' : (b.errores ? 'bg-warning' : 'bg-success')}" style="width:${pct}%;"></div></div>
+        </div>` : '';
+    return `
+        <div class="col-12 mb-3" id="barraPlanInventario">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <button type="button" class="btn btn-primary btn-sm" id="btnBuscarInventarios" ${b.activa || !numEstaciones ? 'disabled' : ''}>
+                    ${b.activa ? '<span class="spinner-border spinner-border-sm me-1"></span>Buscando…' : (b.hechas ? 'Volver a buscar inventarios' : 'Buscar inventarios')}
+                </button>
+                <span class="small text-muted">${numEstaciones} estación(es) con recepciones programadas</span>
+                ${progreso}
+            </div>
+        </div>`;
+}
+
+function renderPlanInventarios(filas) {
+    const contenedor = $('#contenedorGrupos');
+    const grupos = estacionesPlanInventario(filas);
+    const maxTotal = grupos.length ? Math.max.apply(null, grupos.map(function (g) { return g.total; })) : 0;
+    let html = barraBusquedaInventario(grupos.length);
+    if (!grupos.length) {
+        html += '<div class="col-12"><p class="text-muted text-center">Sin recepciones programadas con los filtros actuales.</p></div>';
+    }
+    grupos.forEach(function (g) { html += tarjetaPlanInventario(g, maxTotal); });
+    contenedor.html(html);
+}
+
+// Redibuja solo la barra de progreso y la tarjeta de una estación (sin
+// repintar todo el tab en cada respuesta).
+function actualizarTarjetaInventario(code) {
+    if (agrupacionActiva !== 'inventarios') return;
+    const grupos = estacionesPlanInventario(filasFiltradas());
+    const maxTotal = grupos.length ? Math.max.apply(null, grupos.map(function (g) { return g.total; })) : 0;
+    $('#barraPlanInventario').replaceWith(barraBusquedaInventario(grupos.length));
+    const grupo = grupos.find(function (g) { return g.code === String(code); });
+    if (grupo) $('#inv-card-' + code).replaceWith(tarjetaPlanInventario(grupo, maxTotal));
+}
+
+function consultarInventarioEstacion(code) {
+    invPorEstacion[code] = { estado: 'cargando' };
+    actualizarTarjetaInventario(code);
+    return $.ajax({ url: '/supply/scheduling_inventory_station', data: { station_code: code }, dataType: 'json', timeout: 60000 })
+        .then(function (resp) {
+            invPorEstacion[code] = resp && resp.success
+                ? { estado: 'ok', productos: resp.productos || {} }
+                : { estado: 'error', message: (resp && resp.message) || 'Sin respuesta' };
+        }, function (xhr, textStatus) {
+            invPorEstacion[code] = { estado: 'error', message: textStatus === 'timeout' ? 'Tardó demasiado' : 'Sin conexión' };
+            return $.Deferred().resolve();
+        })
+        .always(function () {
+            if (invPorEstacion[code].estado === 'error') invBusqueda.errores++;
+            invBusqueda.hechas++;
+            actualizarTarjetaInventario(code);
+        });
+}
+
+function buscarInventarios() {
+    const codes = estacionesPlanInventario(filasFiltradas())
+        .map(function (g) { return g.code; })
+        .filter(function (c) { return c && c !== '0'; });
+    if (!codes.length) return;
+    invPorEstacion = {};
+    codes.forEach(function (c) { invPorEstacion[c] = { estado: 'pendiente' }; });
+    invBusqueda = { activa: true, total: codes.length, hechas: 0, errores: 0, hora: null };
+    renderPlanInventarios(filasFiltradas());
+
+    const cola = codes.slice();
+    let enCurso = 0;
+    function siguiente() {
+        if (!cola.length) {
+            if (enCurso === 0) {
+                invBusqueda.activa = false;
+                invBusqueda.hora = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+                $('#barraPlanInventario').replaceWith(barraBusquedaInventario(codes.length));
+            }
+            return;
+        }
+        const code = cola.shift();
+        enCurso++;
+        consultarInventarioEstacion(code).always(function () {
+            enCurso--;
+            siguiente();
+        });
+    }
+    for (let i = 0; i < Math.min(INV_CONCURRENCIA, codes.length); i++) siguiente();
+}
+
 function renderizarTodo() {
     const filas = filasFiltradas();
     actualizarTotalDia(filas);
-    if (agrupacionActiva === 'estacion') {
+    renderResumenProveedores(filas);
+    if (agrupacionActiva === 'inventarios') {
+        renderPlanInventarios(filas);
+    } else if (agrupacionActiva === 'estacion') {
         renderPorEstacion(filas);
     } else {
         renderPorTerminal(filas);
@@ -633,12 +934,13 @@ $(document).ready(function () {
     // toggles de "ocultar vacíos") -- proveedorFiltroActivo no necesita
     // restauración de DOM aquí porque renderBotonesProveedor() ya lo lee
     // directo de la variable al pintar los botones.
-    if (agrupacionActiva === 'estacion') {
+    if (agrupacionActiva === 'estacion' || agrupacionActiva === 'inventarios') {
         $('#tabsAgrupacion button').removeClass('active');
-        $('#tab-btn-estacion').addClass('active');
+        $('#tab-btn-' + agrupacionActiva).addClass('active');
     }
     $('#btnOcultarVacias').toggle(agrupacionActiva === 'estacion');
     $('#btnOcultarVaciosTerminal').toggle(agrupacionActiva === 'terminal');
+    $('#barraBuscarEstacion').toggle(agrupacionActiva === 'estacion' || agrupacionActiva === 'inventarios');
     if (ocultarVaciasEstacion) {
         $('#btnOcultarVacias').addClass('active')
             .attr('title', 'Mostrar estaciones sin recepción programada')
@@ -666,6 +968,7 @@ $(document).ready(function () {
         $(this).addClass('active');
         $('#btnOcultarVacias').toggle(agrupacionActiva === 'estacion');
         $('#btnOcultarVaciosTerminal').toggle(agrupacionActiva === 'terminal');
+        $('#barraBuscarEstacion').toggle(agrupacionActiva === 'estacion' || agrupacionActiva === 'inventarios');
         guardarPreferenciasScheduling({ agrupacion: agrupacionActiva });
         renderizarTodo();
     });
@@ -687,6 +990,27 @@ $(document).ready(function () {
         if (window.feather) feather.replace();
         ocultarVaciosTerminal = activo;
         guardarPreferenciasScheduling({ ocultarVaciosTerminal: activo });
+        renderizarTodo();
+    });
+
+    $('#buscarEstacion').on('input', function () {
+        busquedaEstacion = $(this).val() || '';
+        if (agrupacionActiva === 'estacion' || agrupacionActiva === 'inventarios') renderizarTodo();
+    });
+
+    $(document).on('click', '#btnBuscarInventarios', function () {
+        buscarInventarios();
+    });
+
+    $(document).on('click', '.btn-reintentar-inv', function () {
+        const code = String($(this).data('code'));
+        if (invBusqueda.errores > 0) invBusqueda.errores--;
+        if (invBusqueda.hechas > 0) invBusqueda.hechas--;
+        consultarInventarioEstacion(code);
+    });
+
+    $('#filtroTurno').on('change', function () {
+        turnoFiltroActivo = $(this).val() || '';
         renderizarTodo();
     });
 
@@ -783,11 +1107,17 @@ $(document).ready(function () {
                 bootstrap.Modal.getInstance(document.getElementById('modalFactura')).hide();
                 if (resp.advertencia_rfc) {
                     alertify.myAlert('<div class="text-warning text-center"><p>' + esc(resp.advertencia_rfc) + '</p></div>');
+                } else if (resp.ya_existia) {
+                    alertify.myAlert('<div class="text-center"><p>La factura ya estaba registrada en el sistema; se vinculó a esta recepción sin volver a subirla.</p></div>');
                 }
                 cargarDia($('#fecha_programacion').val());
             })
-            .fail(function () {
-                errorBox.text('No se pudo guardar la factura.').show();
+            .fail(function (xhr) {
+                // Si el servidor mandó JSON con el motivo, mostrarlo; si no,
+                // al menos el código HTTP para no quedar en un error mudo.
+                const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                    || ('No se pudo guardar la factura (error del servidor' + (xhr.status ? ' ' + xhr.status : '') + ').');
+                errorBox.text(msg).show();
             })
             .always(function () {
                 boton.prop('disabled', false);
@@ -948,6 +1278,24 @@ $(document).ready(function () {
             .done(function () { cargarDia(fechaInput.val()); })
             .fail(function () {
                 alertify.myAlert('<div class="text-danger text-center"><p>No se pudo cancelar.</p></div>');
+            });
+    });
+
+    $(document).on('click', '.btn-duplicar-recepcion', function () {
+        const boton = $(this);
+        boton.prop('disabled', true);
+        $.post('/supply/scheduling_duplicate', { id: boton.data('id') })
+            .done(function (resp) {
+                if (!resp.success) {
+                    alertify.myAlert('<div class="text-danger text-center"><p>' + esc(resp.message || 'No se pudo duplicar.') + '</p></div>');
+                    boton.prop('disabled', false);
+                    return;
+                }
+                cargarDia(fechaInput.val());
+            })
+            .fail(function () {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo duplicar.</p></div>');
+                boton.prop('disabled', false);
             });
     });
 

@@ -1163,6 +1163,9 @@ class Tesoreria
             'formato'    => $formato,
             'insertados' => $res['insertados'],
             'duplicados' => $res['duplicados'],
+            // De los duplicados, cuántos ya existían con campos vacíos que
+            // este archivo completó (ver insert_bulk / completa_existente).
+            'completados' => $res['completados'] ?? 0,
             'errores'    => array_slice($errores, 0, 20),
             'avisos'     => $avisos,
             'info'       => $parseo['info'] ?? null,

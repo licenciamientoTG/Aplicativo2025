@@ -2898,6 +2898,104 @@ class Supply
         json_output(['success' => true]);
     }
 
+    /**
+     * Inventario de una estación agrupado por producto (Regular/Premium/
+     * Diesel) para el tab "Plan inventarios". El JS lo pide estación por
+     * estación, varias en paralelo, y va dibujando conforme responden.
+     *
+     * vw_tank_info trae una fila por TANQUE: capacidad y volumen se suman,
+     * pero total_sales/average_daily_sales son del PRODUCTO y vienen
+     * repetidos en cada tanque del mismo producto -- se toman una sola vez
+     * (MAX), si no la venta saldría duplicada en estaciones con 2 tanques.
+     */
+    public function scheduling_inventory_station()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        // Liberar el lock de sesión: el navegador manda varias estaciones a la
+        // vez y PHP serializa las peticiones de una misma sesión abierta.
+        session_write_close();
+
+        $codigo = (int)($_GET['station_code'] ?? $_POST['station_code'] ?? 0);
+        if ($codigo <= 0) {
+            json_output(['success' => false, 'message' => 'Falta la estación']);
+            return;
+        }
+
+        try {
+            $tanques = $this->tanquesModel->get_tank_info_estacion($codigo);
+        } catch (Throwable $e) {
+            error_log('scheduling_inventory_station ' . $codigo . ': ' . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage() ?: 'No se pudo consultar la estación']);
+            return;
+        }
+        if ($tanques === null) {
+            json_output(['success' => false, 'message' => 'La estación no tiene servidor configurado']);
+            return;
+        }
+
+        $productos = [];
+        foreach ($tanques as $t) {
+            $nombre = mb_strtolower((string)($t['product_name'] ?? ''));
+            if (str_contains($nombre, 'diesel')) {
+                $prod = 'Diesel';
+            } elseif (str_contains($nombre, 'premium') || str_contains($nombre, 'super')) {
+                $prod = 'Premium';
+            } elseif (str_contains($nombre, 'regular') || str_contains($nombre, 'magna') || str_contains($nombre, 'maxima')) {
+                $prod = 'Regular';
+            } else {
+                $prod = $t['product_name'] ?? 'Otro';
+            }
+            if (!isset($productos[$prod])) {
+                $productos[$prod] = ['cap_operativa' => 0.0, 'volumen' => 0.0, 'venta_mes' => null, 'prom_dia' => null, 'tanques' => 0];
+            }
+            $p = &$productos[$prod];
+            $p['cap_operativa'] += (float)($t['CapacidadOpe'] ?? 0);
+            $p['volumen'] += (float)($t['current_volume'] ?? 0);
+            $p['tanques']++;
+            if ($t['total_sales'] !== null) {
+                $p['venta_mes'] = max((float)$p['venta_mes'], (float)$t['total_sales']);
+            }
+            if ($t['average_daily_sales'] !== null) {
+                $p['prom_dia'] = max((float)$p['prom_dia'], (float)$t['average_daily_sales']);
+            }
+            unset($p);
+        }
+
+        foreach ($productos as &$p) {
+            $p['porcentaje'] = $p['cap_operativa'] > 0 ? round($p['volumen'] * 100 / $p['cap_operativa'], 2) : null;
+            $p['dias_inv'] = ($p['prom_dia'] ?? 0) > 0 ? round($p['volumen'] / $p['prom_dia'], 1) : null;
+            $p['espacio_libre'] = round($p['cap_operativa'] - $p['volumen'], 2);
+        }
+        unset($p);
+
+        json_output(['success' => true, 'station_code' => $codigo, 'productos' => $productos]);
+    }
+
+    public function scheduling_duplicate()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        $original = $id > 0 ? $this->fuelReceptionScheduleModel->get_one($id) : null;
+        if (!$original || $original['estatus'] === 'Cancelado') {
+            json_output(['success' => false, 'message' => 'La recepción no existe o está cancelada']);
+            return;
+        }
+        $nuevoId = $this->fuelReceptionScheduleModel->duplicate($id, (int)($_SESSION['tg_user']['Id'] ?? 0));
+        if (!$nuevoId) {
+            json_output(['success' => false, 'message' => 'No se pudo duplicar la recepción']);
+            return;
+        }
+        json_output(['success' => true, 'id' => $nuevoId]);
+    }
+
     public function scheduling_toggle_recibido()
     {
         header('Content-Type: application/json');
@@ -3056,19 +3154,75 @@ class Supply
 
         try {
             $parseado = $this->fuelReceptionInvoiceModel->parseCfdiXml($_FILES['xml']['tmp_name']);
-        } catch (Exception $e) {
-            json_output(['success' => false, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            // Throwable (no solo Exception): un XML con estructura inesperada
+            // puede producir un Error de PHP; antes eso salía como 500 sin
+            // mensaje y el usuario solo veía "No se pudo guardar la factura".
+            error_log('scheduling_upload_invoice parseCfdiXml: ' . $e->getMessage());
+            $msg = $e instanceof Exception ? $e->getMessage() : 'El XML tiene una estructura que no se pudo leer';
+            json_output(['success' => false, 'message' => $msg]);
             return;
         }
 
-        $advertenciaRfc = null;
-        $proveedorPorRfc = $this->fuelReceptionInvoiceModel->resolverProveedorPorRfc($parseado['factura']['EmisorRfc'] ?? '');
+        $fac       = $parseado['factura'];
+        $uuid      = $fac['UUID'];
+        $folioTxt  = trim(($fac['Serie'] ?? '') . ' ' . ($fac['Folio'] ?? '')) ?: $uuid;
+        $stationCode = (int)$recepcion['station_code'];
+        $estacionRecepcion = $this->fuelReceptionInvoiceModel->nombreEstacion($stationCode);
+
+        // 1. La recepción ya tiene una factura vinculada (UQ_fri_schedule)
+        $yaVinculada = $this->fuelReceptionInvoiceModel->facturaDeRecepcion($scheduleId);
+        if ($yaVinculada) {
+            $mismo = strcasecmp($yaVinculada['UUID'], $uuid) === 0;
+            json_output(['success' => false, 'message' => $mismo
+                ? "Esta factura ($folioTxt) ya está subida y vinculada a esta recepción."
+                : 'Esta recepción ya tiene vinculada la factura '
+                    . trim(($yaVinculada['Serie'] ?? '') . ' ' . ($yaVinculada['Folio'] ?? '')) . '. Desvincúlala primero si quieres cambiarla.']);
+            return;
+        }
+
+        // 2. Emisor = proveedor de la recepción
+        $proveedorPorRfc = $this->fuelReceptionInvoiceModel->resolverProveedorPorRfc($fac['EmisorRfc'] ?? '');
         if (!$proveedorPorRfc || (int)$proveedorPorRfc['id'] !== (int)$recepcion['supplier_id']) {
-            $advertenciaRfc = 'El RFC del emisor de la factura no coincide con el proveedor de esta recepción. Se guardó de todas formas.';
+            json_output(['success' => false, 'message' =>
+                'La factura la emite ' . ($fac['EmisorNombre'] ?? '?') . ' (RFC ' . ($fac['EmisorRfc'] ?? '?') . '), '
+                . 'que no es el proveedor de esta recepción.']);
+            return;
+        }
+
+        // 3. Receptor = razón social dueña de la estación
+        $empresa = $this->fuelReceptionInvoiceModel->empresaDeEstacion($stationCode);
+        if ($empresa && strcasecmp(trim($empresa['rfc']), trim($fac['ReceptorRfc'] ?? '')) !== 0) {
+            json_output(['success' => false, 'message' =>
+                'La factura está a nombre de ' . ($fac['ReceptorNombre'] ?? '?') . ' (RFC ' . ($fac['ReceptorRfc'] ?? '?') . '), '
+                . "pero $estacionRecepcion pertenece a " . trim($empresa['nombre']) . ' (RFC ' . trim($empresa['rfc']) . ').']);
+            return;
         }
 
         $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
-        $existente = $this->fuelReceptionInvoiceModel->buscarPorUuid($parseado['factura']['UUID']);
+        $existente = $this->fuelReceptionInvoiceModel->buscarPorUuid($uuid);
+
+        if ($existente) {
+            // 4. Ya registrada y vinculada a OTRA recepción
+            $otra = $this->fuelReceptionInvoiceModel->recepcionVinculada((int)$existente['Id']);
+            if ($otra) {
+                json_output(['success' => false, 'message' =>
+                    "La factura $folioTxt ya está subida y vinculada a otra recepción: "
+                    . date('d/m/Y', strtotime($otra['fecha'])) . ' · ' . ($otra['estacion'] ?? '?')
+                    . ' · ' . $otra['product'] . ' ' . number_format((float)$otra['litros']) . ' L.']);
+                return;
+            }
+            // 5. Ya registrada (llegó por correo) con otra estación resuelta
+            $estacionFactura = (int)($existente['EstacionCodgas'] ?? 0);
+            if ($estacionFactura && $estacionFactura !== $stationCode) {
+                json_output(['success' => false, 'message' =>
+                    "La factura $folioTxt ya está registrada y es de la estación "
+                    . $this->fuelReceptionInvoiceModel->nombreEstacion($estacionFactura)
+                    . ", no de $estacionRecepcion."]);
+                return;
+            }
+        }
+        $advertenciaRfc = null;
 
         // El UUID ya existe en BD, pero su PDF (y/o XML) archivado ya no está
         // en disco -- se borró a mano, se perdió el archivo, etc. En vez de

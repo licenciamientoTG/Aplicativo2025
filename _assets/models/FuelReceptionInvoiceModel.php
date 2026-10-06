@@ -132,8 +132,21 @@ class FuelReceptionInvoiceModel extends Model {
             // lo tiene) -- acceder con -> hereda el namespace cfdi: del nodo
             // padre y no encuentra nada; children() sin argumento navega en
             // el namespace vacío por defecto, que es donde realmente viven.
-            $comprobanteTesoro = $addenda->children()->AddendaEmisor->children()->TesoroAddenda
-                ->children()->Comprobantes->children()->ComprobanteTesoro ?? null;
+            // Se recorre nivel por nivel: otros proveedores (ej. MGC) mandan
+            // una cfdi:Addenda con otra estructura o vacía, y children() sobre
+            // un nodo inexistente devuelve null -- encadenarlo tronaba con un
+            // Fatal no capturable (hallado 2026-10-05, UUID E377919B...).
+            $comprobanteTesoro = null;
+            $nodo = $addenda;
+            foreach (['AddendaEmisor', 'TesoroAddenda', 'Comprobantes', 'ComprobanteTesoro'] as $hijo) {
+                $hijos = $nodo->children();
+                if ($hijos === null || !isset($hijos->{$hijo})) {
+                    $nodo = null;
+                    break;
+                }
+                $nodo = $hijos->{$hijo};
+            }
+            $comprobanteTesoro = $nodo;
             if ($comprobanteTesoro !== null) {
                 $ct = $comprobanteTesoro->attributes();
                 // Convención confirmada contra facturas reales ya guardadas por
@@ -184,6 +197,53 @@ class FuelReceptionInvoiceModel extends Model {
             WHERE t2.rfc = ?
         ";
         $rows = $this->sql->select($query, [$rfc]);
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * Razón social (empresa) dueña de una estación: SG12.Gasolineras.codemp
+     * -> SG12.Empresas. Es contra quien debe venir facturado (Receptor).
+     */
+    public function empresaDeEstacion(int $stationCode): ?array {
+        $rows = $this->sql->select("
+            SELECT e.den AS nombre, e.rfc
+            FROM SG12.dbo.Gasolineras g
+            JOIN SG12.dbo.Empresas e ON e.cod = g.codemp
+            WHERE g.cod = ?
+        ", [$stationCode]);
+        return $rows[0] ?? null;
+    }
+
+    public function nombreEstacion(?int $stationCode): string {
+        if (!$stationCode) return 'sin estación';
+        $rows = $this->sql->select("SELECT Nombre FROM TG.dbo.Estaciones WHERE Codigo = ?", [$stationCode]);
+        return $rows[0]['Nombre'] ?? ('estación ' . $stationCode);
+    }
+
+    /**
+     * Recepción a la que ya está vinculada una factura (o null).
+     */
+    public function recepcionVinculada(int $invoiceId): ?array {
+        $rows = $this->sql->select("
+            SELECT s.id, s.fecha, s.product, s.litros, s.station_code, e.Nombre AS estacion
+            FROM TG.dbo.fuel_reception_invoices fri
+            JOIN TG.dbo.fuel_reception_schedule s ON s.id = fri.schedule_id
+            LEFT JOIN TG.dbo.Estaciones e ON e.Codigo = s.station_code
+            WHERE fri.invoice_id = ?
+        ", [$invoiceId]);
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * Factura que ya tiene vinculada una recepción (o null).
+     */
+    public function facturaDeRecepcion(int $scheduleId): ?array {
+        $rows = $this->sql->select("
+            SELECT f.Id, f.UUID, f.Serie, f.Folio
+            FROM TG.dbo.fuel_reception_invoices fri
+            JOIN TG.dbo.FacturasRecibidas f ON f.Id = fri.invoice_id
+            WHERE fri.schedule_id = ?
+        ", [$scheduleId]);
         return $rows[0] ?? null;
     }
 
