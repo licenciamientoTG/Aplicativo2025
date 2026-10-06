@@ -943,13 +943,21 @@ function desmarcar_jarreo_seleccionados() {
 }
 
 // Asignar o remover permiso a un usuario
-function assignPermission(checkbox) {
+// onDone(ok) opcional: se llama al terminar, con true si se guardó.
+function assignPermission(checkbox, onDone) {
     // Obtén el estado actual del checkbox
     let isChecked     = $(checkbox).prop('checked');
     let user_id       = $(checkbox).data('user');
     let permission_id = $(checkbox).data('permission');
 
-    // Resto del código...
+    // Si el servidor no confirma, el switch regresa a su estado anterior.
+    const fallo = function (mensaje) {
+        $(checkbox).prop('checked', !isChecked);
+        toastr.error(mensaje, "¡Error!", { timeOut: 3000 });
+        if (onDone) onDone(false);
+    };
+
+    $(checkbox).prop('disabled', true);
     $.ajax({
         url: '/it/assignPermission',
         method: 'GET',
@@ -959,18 +967,73 @@ function assignPermission(checkbox) {
             'check': (isChecked ? 1 : 0 ),
         },
         dataType: 'json',
-        success: function() {
+        success: function(resp) {
+            if (resp != 1) {
+                fallo("No se pudo guardar el permiso");
+                return;
+            }
             if (isChecked) {
                 toastr.success("Permiso agregado correctamente", "¡Éxito!", { timeOut: 2000 });
             } else {
                 toastr.warning("Permiso removido correctamente", "¡Éxito!", { timeOut: 2000 });
             }
+            if (onDone) onDone(true);
         },
         error: function(xhr, textStatus, errorThrown) {
             console.error('AJAX error:', errorThrown);
+            fallo(xhr.status === 403 ? "No tienes permiso para asignar permisos" : "No se pudo guardar el permiso");
+        },
+        complete: function () {
+            $(checkbox).prop('disabled', false);
         }
     });
 }
+
+// ---- Modal "Asignar a usuarios" (/it/permissions) ----
+function filtrarPermissionUsers() {
+    const texto = ($('#permUsersBuscar').val() || '').trim().toLowerCase();
+    const filtro = $('#permUsersFiltro').val();
+    let visibles = 0;
+    $('#permUsersBody .perm-user-row').each(function () {
+        const $tr = $(this);
+        let mostrar = true;
+        if (filtro === 'activos') mostrar = $tr.attr('data-activo') === '1';
+        if (filtro === 'asignados') mostrar = $tr.attr('data-asignado') === '1';
+        if (mostrar && texto) mostrar = ($tr.attr('data-buscar') || '').includes(texto);
+        $tr.toggleClass('d-none', !mostrar);
+        if (mostrar) visibles++;
+    });
+    $('#permUsersVacio').toggleClass('d-none', visibles > 0);
+}
+
+$(document).on('click', '.btn-asignar-usuarios', async function () {
+    const id = $(this).data('id');
+    const $content = $('#permissionUsersModalContent');
+    $content.html('<div class="text-center p-5"><div class="spinner-border text-primary"></div></div>');
+    $('#permissionUsersModal').modal('show');
+    try {
+        const response = await fetch(`/it/permission_users_modal?permission_id=${encodeURIComponent(id)}`, { credentials: 'include' });
+        $content.html(await response.text());
+        filtrarPermissionUsers();
+    } catch (error) {
+        $content.html('<p class="text-danger text-center m-4">Error al cargar los usuarios.</p>');
+    }
+});
+
+$(document).on('input', '#permUsersBuscar', filtrarPermissionUsers);
+$(document).on('change', '#permUsersFiltro', filtrarPermissionUsers);
+
+$(document).on('change', '.perm-user-switch', function () {
+    const $switch = $(this);
+    assignPermission(this, function (ok) {
+        if (!ok) return;
+        const asignado = $switch.prop('checked');
+        $switch.closest('.perm-user-row').attr('data-asignado', asignado ? '1' : '0');
+        const $contador = $('#permUsersContador');
+        const total = Number($contador.attr('data-total')) + (asignado ? 1 : -1);
+        $contador.attr('data-total', total).text(total);
+    });
+});
 
 
 $('#userModal').on('show.bs.modal', function (event) {

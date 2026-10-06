@@ -450,6 +450,11 @@ class It{
      * @throws Exception
      */
     public function assignPermission() {
+        // 4 = Usuarios (vista por usuario), 5 = Permisos (vista por permiso).
+        if (!authorized(4) && !authorized(5)) {
+            http_response_code(403);
+            return json_output(0);
+        }
         $check = in_array($_GET['check'] ?? '', ['0', '1']) ? (int)$_GET['check'] : 0;
         return json_output($this->permissionsUsersModel->assignPermission((int)$_GET['user_id'], (int)$_GET['permission_id'], $check));
     }
@@ -485,6 +490,7 @@ class It{
                 Acciones
             </button>
             <ul class='dropdown-menu'>
+                <li><a class='dropdown-item btn-asignar-usuarios' href='javascript:void(0);' data-id='{$permission['permission_id']}'>Asignar a usuarios</a></li>
                 <li><a class='dropdown-item' href='#'>Deshabilitar</a></li>
                 <li><a class='dropdown-item' href='#'>Editar</a></li>
             </ul>
@@ -501,6 +507,30 @@ class It{
             );
         }
         json_output(array("data" => $data));
+    }
+
+    /**
+     * Modal "Asignar a usuarios": lista todos los usuarios con un switch por
+     * usuario para el permiso dado (vista parcial, se inyecta vía fetch).
+     * @return void
+     * @throws Exception
+     */
+    public function permission_users_modal() : void {
+        if (!authorized(5)) {
+            http_response_code(403);
+            echo '<p class="text-danger text-center m-3">No autorizado</p>';
+            return;
+        }
+        $permission_id = (int)($_GET['permission_id'] ?? 0);
+        $permission = $permission_id > 0 ? $this->permissionsUsersModel->get_permission($permission_id) : false;
+        if (!$permission) {
+            http_response_code(404);
+            echo '<p class="text-danger text-center m-3">Permiso no encontrado</p>';
+            return;
+        }
+        $users = $this->permissionsUsersModel->get_users_by_permission_assignment($permission_id);
+        $total_asignados = count(array_filter($users, fn($u) => (int)$u['Permitido'] === 1));
+        echo $this->twig->render($this->route . 'modals/permissionUsersModal.html', compact('permission', 'users', 'total_asignados'));
     }
 
     /**

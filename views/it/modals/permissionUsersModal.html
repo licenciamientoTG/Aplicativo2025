@@ -1,0 +1,63 @@
+<div class="modal-header">
+    <div>
+        <h1 class="modal-title fs-5 mb-0">Asignar permiso #{{ permission.id }}</h1>
+        <small class="text-muted">{{ permission.department }} · {{ permission.description }}</small>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+    <div class="row g-2 mb-2 align-items-center">
+        <div class="col-md-6">
+            <input type="text" class="form-control form-control-sm" id="permUsersBuscar" placeholder="Buscar por usuario, nombre, perfil o estación...">
+        </div>
+        <div class="col-md-3">
+            <select class="form-select form-select-sm" id="permUsersFiltro">
+                <option value="activos" selected>Usuarios activos</option>
+                <option value="asignados">Con este permiso</option>
+                <option value="todos">Todos</option>
+            </select>
+        </div>
+        <div class="col-md-3 text-md-end">
+            <span class="badge bg-primary fs-6" id="permUsersContador" data-total="{{ total_asignados }}">{{ total_asignados }}</span>
+            <small class="text-muted">con el permiso</small>
+        </div>
+    </div>
+
+    <div class="table-responsive" style="max-height: 60vh;">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size: small;">
+            <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                <tr>
+                    <th>USUARIO</th>
+                    <th>NOMBRE</th>
+                    <th>PERFIL</th>
+                    <th>ESTACIÓN</th>
+                    <th class="text-center">PERMISO</th>
+                </tr>
+            </thead>
+            <tbody id="permUsersBody">
+                {% for u in users %}
+                <tr class="perm-user-row" data-activo="{{ u.Estatus == 1 ? 1 : 0 }}" data-asignado="{{ u.Permitido == 1 ? 1 : 0 }}"
+                    data-buscar="{{ (u.Usuario ~ ' ' ~ u.Nombre ~ ' ' ~ u.Perfil ~ ' ' ~ u.Estacion)|lower }}">
+                    <td>{{ u.Usuario }}</td>
+                    <td>
+                        {{ u.Nombre }}
+                        {% if u.Estatus != 1 %}<span class="badge bg-secondary ms-1">Inactivo</span>{% endif %}
+                    </td>
+                    <td>{{ u.Perfil|default('--') }}</td>
+                    <td>{{ u.Estacion|default('--') }}</td>
+                    <td class="text-center">
+                        <div class="form-check form-switch fs-5 d-inline-block mb-0">
+                            <input class="form-check-input perm-user-switch" type="checkbox" role="switch"
+                                   data-user="{{ u.Id }}" data-permission="{{ permission.id }}" {{ u.Permitido == 1 ? 'checked' : '' }}>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p class="text-center text-muted my-3 d-none" id="permUsersVacio">No hay usuarios que coincidan.</p>
+    </div>
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+</div>
