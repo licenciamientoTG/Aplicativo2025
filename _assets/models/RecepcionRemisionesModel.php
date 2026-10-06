@@ -53,7 +53,12 @@ class RecepcionRemisionesModel extends Model
         $storedPath = $subdir . $filename;
 
         if (!move_uploaded_file($file['tmp_name'], $fullPath)) {
-            $this->sql->delete("DELETE FROM [TG].[dbo].[recepcion_remisiones] WHERE id = ?", [$doc_id]);
+            // Nunca se borra físico: el intento fallido queda como registro
+            // eliminado (soft delete) para conservar quién y cuándo lo intentó.
+            $this->sql->update(
+                "UPDATE [TG].[dbo].[recepcion_remisiones] SET is_deleted = 1, deleted_at = GETDATE(), deleted_by = ? WHERE id = ?",
+                [$user_id, $doc_id]
+            );
             return ['success' => false, 'message' => 'Error al guardar el archivo en disco'];
         }
 

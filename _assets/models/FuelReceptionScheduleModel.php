@@ -39,7 +39,8 @@ class FuelReceptionScheduleModel extends Model {
                 s.station_code, e.Nombre AS station_nombre, s.product, s.mezcla, s.litros,
                 s.carrier_id, c.nombre AS carrier_nombre,
                 s.referencia, s.notas, s.estatus,
-                f.Id AS invoice_id, f.Folio AS invoice_folio, f.EmisorNombre AS invoice_proveedor
+                f.Id AS invoice_id, f.Folio AS invoice_folio, f.Serie AS invoice_serie,
+                f.EmisorNombre AS invoice_proveedor, f.NombreArchivo AS invoice_archivo, f.UUID AS invoice_uuid
             FROM TG.dbo.fuel_reception_schedule s
             LEFT JOIN TG.dbo.Estaciones e ON e.Codigo = s.station_code
             LEFT JOIN TG.dbo.Proveedores p1 ON p1.id = s.supplier_id

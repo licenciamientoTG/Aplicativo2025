@@ -565,7 +565,48 @@
 /* Sección Rentabilidad: subtítulos y gráficas */
 .vd-sub-titulo { font-weight: 600; color: #334155; font-size: .9rem; margin: 1rem 0 .4rem; padding-top: .6rem; border-top: 1px solid #e2e8f0; }
 .vd-chart-sm { height: 260px; }
-#vr-pe-prod .btn.active { background: #e0f2fe; border-color: #7dd3fc; color: #075985; }
+#vr-pe-prod .btn.active, #vr-disp-prod .btn.active { background: #e0f2fe; border-color: #7dd3fc; color: #075985; }
 .vr-pe-controles { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-bottom: .5rem; }
-.vr-pe-controles .bootstrap-select { min-width: 16rem; }
+/* Selector múltiple propio de estaciones (abre siempre hacia abajo) */
+.vr-ms { position: relative; }
+.vr-ms-btn { display: inline-flex; align-items: center; gap: .45rem; min-width: 17rem; text-align: left; }
+.vr-ms-texto { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 15rem; }
+.vr-ms-flecha { font-size: .7rem; transition: transform .15s; }
+.vr-ms-abierto .vr-ms-flecha { transform: rotate(180deg); }
+.vr-ms-panel {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 1050; width: 20rem;
+    background: #fff; border: 1px solid #cbd5e1; border-radius: .5rem;
+    box-shadow: 0 10px 24px rgba(15,23,42,.14); padding: .5rem;
+}
+.vr-ms-panel[hidden] { display: none; }
+.vr-ms-lista { max-height: 16rem; overflow-y: auto; margin-top: .4rem; }
+.vr-ms-grupo[hidden], .vr-ms-op[hidden] { display: none; }
+.vr-ms-grupo-titulo {
+    font-size: .7rem; font-weight: 700; color: #64748b; padding: .35rem .4rem .15rem;
+    position: sticky; top: 0; background: #fff;
+}
+.vr-ms-op {
+    display: flex; align-items: center; gap: .45rem; padding: .25rem .4rem; border-radius: .3rem;
+    font-size: .82rem; color: #334155; cursor: pointer; margin: 0;
+}
+.vr-ms-op:hover { background: #f1f5f9; }
+.vr-ms-op small { margin-left: auto; font-size: .68rem; color: #00713f; background: #dcfce7; border-radius: 999px; padding: 0 .4rem; }
+.vr-ms-op input:disabled + span { color: #94a3b8; }
+.vr-ms-pie {
+    display: flex; justify-content: space-between; align-items: center;
+    border-top: 1px solid #e2e8f0; margin-top: .4rem; padding-top: .4rem; font-size: .75rem; color: #64748b;
+}
+@media (max-width: 575.98px) { .vr-ms-btn { min-width: 0; } .vr-ms-panel { width: calc(100vw - 2.5rem); } }
 .vr-chart-estacion { height: 480px; width: 100%; }
+/* Clave de tipos de línea de la gráfica por estación */
+.vr-pe-clave {
+    display: flex; flex-wrap: wrap; gap: .35rem 1.25rem; align-items: center;
+    font-size: .78rem; color: #475569; background: #f8fafc; border-radius: .4rem; padding: .4rem .75rem; margin-bottom: .25rem;
+}
+.vr-pe-trazo { display: inline-block; position: relative; width: 28px; height: 10px; vertical-align: middle; margin-right: .2rem; }
+.vr-pe-trazo::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; border-top: 2.5px solid #334155; }
+.vr-pe-compra::before { border-top: 2px dashed #334155; }
+.vr-pe-compra::after {
+    content: ''; position: absolute; left: 10px; top: 1px; width: 8px; height: 8px; border-radius: 50%; background: #334155;
+}
+.vr-pe-margen::before { top: 2px; height: 7px; border-top-width: 2.5px; background: rgba(51,65,85,.15); }

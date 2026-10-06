@@ -82,17 +82,17 @@ function construirConfigDataTable() {
             {
                 extend: 'excel',
                 className: 'btn btn-success',
-                text: '<i class="bi bi-file-excel"></i> Excel',
+                text: '<i class="fa-regular fa-file-excel me-1"></i> Excel',
                 exportOptions: { columns: ':visible:not(:last-child)' },
             },
             {
                 extend: 'colvis',
                 className: 'btn btn-sm btn-secondary',
-                text: '<i class="bi bi-eye"></i> Columnas',
+                text: '<i class="fa-regular fa-eye me-1"></i> Columnas',
                 columns: ':not(:last-child)',
             },
             {
-                text: '<i class="bi bi-exclamation-triangle"></i> Sin documento',
+                text: '<i class="fa-solid fa-triangle-exclamation me-1"></i> Sin documento',
                 className: 'btn btn-outline-warning',
                 action: function (e, dt, node) {
                     filtroSinDocumentoActivo = !filtroSinDocumentoActivo;
@@ -155,14 +155,15 @@ function construirConfigDataTable() {
                 // subido allá. Varias compras en una recepción vienen "; ".
                 data: 'uuid',
                 defaultContent: '',
+                className: 'col-uuid',
                 render: function (data, type) {
                     if (type !== 'display') return data || '';
-                    if (!data) return '<span class="badge bg-warning text-dark">Sin XML</span>';
+                    if (!data) return '<span class="badge badge-doc bg-warning-subtle text-warning-emphasis border border-warning-subtle">Sin XML</span>';
+                    // <wbr> tras cada guion: el UUID completo se parte en
+                    // líneas cortas en vez de empujar la columna de acciones
+                    // (el export a Excel quita las etiquetas y queda íntegro).
                     return String(data).split(';').map(function (u) {
-                        u = u.trim();
-                        // Completo (no recortado): el export a Excel de la tabla toma
-                        // el texto visible.
-                        return `<span class="font-monospace text-nowrap" style="font-size:.72rem;">${escHtml(u)}</span>`;
+                        return `<span class="font-monospace">${escHtml(u.trim()).replace(/-/g, '-<wbr>')}</span>`;
                     }).join('<br>');
                 }
             },
@@ -170,8 +171,8 @@ function construirConfigDataTable() {
                 data: 'total_remisiones',
                 render: function (data) {
                     return data > 0
-                        ? `<span class="badge bg-success">${data} subida(s)</span>`
-                        : `<span class="badge bg-warning text-dark">Sin remisión</span>`;
+                        ? `<span class="badge badge-doc bg-success-subtle text-success-emphasis border border-success-subtle">${data} subida${data > 1 ? 's' : ''}</span>`
+                        : `<span class="badge badge-doc bg-warning-subtle text-warning-emphasis border border-warning-subtle">Sin remisión</span>`;
                 }
             },
             {
@@ -179,12 +180,14 @@ function construirConfigDataTable() {
                 defaultContent: 0,
                 render: function (data) {
                     return data > 0
-                        ? `<span class="badge bg-success">${data} subida(s)</span>`
-                        : `<span class="badge bg-warning text-dark">Sin carta porte</span>`;
+                        ? `<span class="badge badge-doc bg-success-subtle text-success-emphasis border border-success-subtle">${data} subida${data > 1 ? 's' : ''}</span>`
+                        : `<span class="badge badge-doc bg-warning-subtle text-warning-emphasis border border-warning-subtle">Sin carta porte</span>`;
                 }
             },
             {
                 data: null,
+                orderable: false,
+                className: 'col-acciones',
                 render: function (row) {
                     // Un botón por tipo de documento; ambos abren el mismo
                     // modal (#modalSubirRemision), que se ajusta según data-tipo.
@@ -194,23 +197,26 @@ function construirConfigDataTable() {
                     // Subir documentos requiere el permiso 86 (el mismo de
                     // eliminar); con solo el 84 la estación únicamente consulta.
                     const puedeSubir = String($('#datatables_mis_recepciones').data('can-delete')) === '1';
+                    // Botones de línea (outline gris) agrupados: nunca se
+                    // parten en dos renglones (la celda es nowrap).
                     let html = '';
                     if (puedeSubir) {
-                        html += `<button type="button" class="btn btn-sm btn-primary btn-subir-remision" data-tipo="remision" ${attrs} data-bs-toggle="tooltip" title="Subir remisión"><i class="fa-solid fa-file-invoice"></i></button> `;
-                        html += `<button type="button" class="btn btn-sm btn-info btn-subir-remision" data-tipo="carta_porte" ${attrs} data-bs-toggle="tooltip" title="Subir carta porte"><i class="fa-solid fa-truck"></i></button> `;
+                        html += `<button type="button" class="btn btn-subir-remision" data-tipo="remision" ${attrs} data-bs-toggle="tooltip" title="Subir remisión"><i data-feather="upload"></i></button>`;
+                        html += `<button type="button" class="btn btn-subir-remision" data-tipo="carta_porte" ${attrs} data-bs-toggle="tooltip" title="Subir carta porte"><i data-feather="truck"></i></button>`;
                     }
                     if (row.total_remisiones > 0 || row.total_cartas_porte > 0) {
-                        html += `<button type="button" class="btn btn-sm btn-secondary btn-ver-remisiones" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}">Ver</button> `;
+                        html += `<button type="button" class="btn btn-ver-remisiones" data-nrotrn="${row.nrotrn}" data-codgas="${row.codgas}" data-fchtrn="${row.fchtrn}" data-bs-toggle="tooltip" title="Ver documentos subidos"><i data-feather="eye"></i></button>`;
                     }
                     // Solo aparece cuando Abastos ya confirmó, en Conciliación
                     // Petrotal, qué factura del proveedor corresponde a esta
                     // recepción (TG.dbo.FacturasMovimientosTanques, TipoOperacion=1).
                     if (row.factura_id) {
                         const base = `/station_portal/descargar_factura_recepcion/${row.nrotrn}`;
-                        html += `<a class="btn btn-sm btn-outline-success" href="${base}/pdf?codgas=${row.codgas}" title="${row.factura_proveedor || ''} · ${row.factura_folio || ''}">PDF</a> `;
-                        html += `<a class="btn btn-sm btn-outline-success" href="${base}/xml?codgas=${row.codgas}" title="${row.factura_proveedor || ''} · ${row.factura_folio || ''}">XML</a>`;
+                        const tituloFactura = escHtml(`${row.factura_proveedor || ''} · ${row.factura_folio || ''}`);
+                        html += `<a class="btn btn-accion-factura" href="${base}/pdf?codgas=${row.codgas}" data-bs-toggle="tooltip" title="Factura PDF · ${tituloFactura}"><i data-feather="file-text"></i></a>`;
+                        html += `<a class="btn btn-accion-factura" href="${base}/xml?codgas=${row.codgas}" data-bs-toggle="tooltip" title="Factura XML · ${tituloFactura}"><i data-feather="code"></i></a>`;
                     }
-                    return html;
+                    return html ? `<div class="btn-group btn-group-sm acciones-recepcion" role="group">${html}</div>` : '';
                 }
             },
         ],
@@ -218,6 +224,8 @@ function construirConfigDataTable() {
             addColumnFilters('datatables_mis_recepciones', this.api());
         },
         drawCallback: function () {
+            // Íconos de acciones (Feather, línea delgada) se dibujan por fila.
+            if (typeof feather !== 'undefined') feather.replace({ width: 15, height: 15, 'stroke-width': 1.75 });
             $('#datatables_mis_recepciones [data-bs-toggle="tooltip"]').each(function () {
                 bootstrap.Tooltip.getOrCreateInstance(this);
             });
@@ -349,10 +357,23 @@ function cargarRecepcionesProgramadas() {
                 let celdaDocumento = '<span class="text-muted">—</span>';
                 if (f.invoice_id) {
                     const base = `/station_portal/descargar_factura_programada/${f.id}`;
-                    const titulo = `${escProgramadas(f.invoice_proveedor) || ''} · ${escProgramadas(f.invoice_folio) || ''}`;
+                    const folio = [f.invoice_serie, f.invoice_folio].filter(Boolean).join(' ');
+                    const titulo = `${escProgramadas(f.invoice_proveedor) || ''} · ${escProgramadas(folio)}`;
+                    // Nombre del documento (folio + proveedor emisor) junto a las
+                    // descargas, para identificarlo sin abrirlo. El nombre de
+                    // archivo guardado es solo el UUID, no aporta.
                     celdaDocumento = `
-                        <a class="btn btn-sm btn-outline-success" href="${base}/pdf" title="${titulo}">PDF</a>
-                        <a class="btn btn-sm btn-outline-success" href="${base}/xml" title="${titulo}">XML</a>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="lh-sm">
+                                <div class="fw-semibold small">${folio ? 'Factura ' + escProgramadas(folio) : 'Factura'}</div>
+                                ${f.invoice_proveedor ? `<div class="text-muted" style="font-size:.72rem;">${escProgramadas(f.invoice_proveedor)}</div>` : ''}
+                                ${f.invoice_uuid ? `<div class="text-muted font-monospace text-break" style="font-size:.68rem;" title="UUID (nombre del archivo al descargar)">${escProgramadas(f.invoice_uuid)}</div>` : ''}
+                            </div>
+                            <div class="btn-group btn-group-sm flex-shrink-0">
+                                <a class="btn btn-outline-success" href="${base}/pdf" title="PDF · ${titulo}">PDF</a>
+                                <a class="btn btn-outline-success" href="${base}/xml" title="XML · ${titulo}">XML</a>
+                            </div>
+                        </div>
                     `;
                 }
                 html += `
@@ -718,9 +739,21 @@ $(document).on('click', '.btn-ver-remisiones', async function () {
     }
 });
 
-$(document).on('click', '.btn-eliminar-remision', async function () {
-    const id = $(this).data('id');
+$(document).on('click', '.btn-eliminar-remision', function () {
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const nombre = $btn.closest('.remision-row').find('a').first().text().trim();
+    // Confirmación antes de eliminar (es soft delete: queda el registro de
+    // quién y cuándo, y el archivo no se borra del disco).
+    alertify.confirm(
+        'Eliminar documento',
+        `¿Eliminar <b>${escHtml(nombre || 'este documento')}</b>? Dejará de aparecer en la recepción.`,
+        function () { eliminarRemision($btn, id); },
+        function () {}
+    ).set('labels', { ok: 'Eliminar', cancel: 'Cancelar' });
+});
 
+async function eliminarRemision($btn, id) {
     try {
         const response = await fetch('/station_portal/delete_remision', {
             method: 'POST',
@@ -731,12 +764,12 @@ $(document).on('click', '.btn-eliminar-remision', async function () {
         const result = await response.json();
 
         if (result.success) {
-            $(this).closest('.remision-row').remove();
+            $btn.closest('.remision-row').remove();
             datatables_mis_recepciones.ajax.reload(null, false);
         } else {
-            alertify.myAlert(`<div class="text-danger text-center"><p>${result.message}</p></div>`);
+            alertify.myAlert(`<div class="text-danger text-center"><p>${escHtml(result.message)}</p></div>`);
         }
     } catch (error) {
         alertify.myAlert('<div class="text-danger text-center"><p>Error al eliminar el documento.</p></div>');
     }
-});
+}

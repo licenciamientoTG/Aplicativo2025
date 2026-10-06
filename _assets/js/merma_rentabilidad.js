@@ -149,21 +149,84 @@ function vrEstacionesInit() {
     var chart = echarts.init(el);
     vrCharts.push(chart);
 
-    var $sel = $('#vr-pe-estaciones');
     // Por defecto, la estación de mayor venta del mes
     var mayor = datos.estaciones.slice().sort(function (a, b) { return b.litros - a.litros; })[0];
-    $sel.val([String(mayor.cod)]);
-    if ($.fn.selectpicker) $sel.selectpicker();
-
-    var pintar = function () { vrEstacionesPintar(chart, datos, ($sel.val() || []).map(Number), vrPeProd); };
-    // Con bootstrap-select el aviso es changed.bs.select; sin él, el change nativo
-    $sel.on($.fn.selectpicker ? 'changed.bs.select' : 'change', pintar);
+    var pintar = function (cods) { vrEstacionesPintar(chart, datos, cods, vrPeProd); };
+    var selector = vrMultiSelect(document.getElementById('vr-pe-ms'), [mayor.cod], pintar);
+    var seleccion = function () { return selector ? selector.valores() : [mayor.cod]; };
     $('#vr-pe-prod').on('click', 'button', function () {
         $(this).addClass('active').siblings().removeClass('active');
         vrPeProd = $(this).data('prod');
-        pintar();
+        pintar(seleccion());
     });
-    pintar();
+    pintar(seleccion());
+}
+
+/**
+ * Selector múltiple propio: botón + panel debajo con buscador y casillas.
+ * Llama onCambio(codigos) cada vez que cambia la selección.
+ * @return {{valores: function(): number[]}|null}
+ */
+function vrMultiSelect(raiz, iniciales, onCambio) {
+    if (!raiz) return null;
+    var max    = parseInt(raiz.getAttribute('data-max'), 10) || 6;
+    var btn    = raiz.querySelector('.vr-ms-btn');
+    var panel  = raiz.querySelector('.vr-ms-panel');
+    var buscar = raiz.querySelector('.vr-ms-buscar');
+    var cajas  = Array.prototype.slice.call(raiz.querySelectorAll('input[type=checkbox]'));
+    var texto  = raiz.querySelector('.vr-ms-texto');
+    var cuenta = raiz.querySelector('.vr-ms-cuenta');
+
+    var valores = function () {
+        return cajas.filter(function (c) { return c.checked; }).map(function (c) { return +c.value; });
+    };
+    var refrescar = function () {
+        var marcadas = cajas.filter(function (c) { return c.checked; });
+        // Al llegar al máximo se bloquean las demás casillas
+        cajas.forEach(function (c) { c.disabled = !c.checked && marcadas.length >= max; });
+        var nombres = marcadas.map(function (c) { return c.parentNode.querySelector('span').textContent; });
+        texto.textContent = !nombres.length ? 'Elige estaciones'
+            : nombres.length <= 2 ? nombres.join(', ') : nombres.length + ' estaciones';
+        cuenta.textContent = marcadas.length + ' de ' + max + ' estaciones';
+    };
+    var abrir = function (si) {
+        panel.hidden = !si;
+        btn.setAttribute('aria-expanded', si ? 'true' : 'false');
+        raiz.classList.toggle('vr-ms-abierto', si);
+        // preventScroll: enfocar el buscador NO debe mover la página
+        if (si) buscar.focus({ preventScroll: true });
+    };
+
+    cajas.forEach(function (c) {
+        c.checked = iniciales.indexOf(+c.value) !== -1;
+        c.addEventListener('change', function () { refrescar(); onCambio(valores()); });
+    });
+    btn.addEventListener('click', function (e) { e.stopPropagation(); abrir(panel.hidden); });
+    panel.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { if (!panel.hidden) abrir(false); });
+    raiz.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { abrir(false); btn.focus({ preventScroll: true }); }
+    });
+    buscar.addEventListener('input', function () {
+        var q = buscar.value.trim().toLowerCase();
+        raiz.querySelectorAll('.vr-ms-grupo').forEach(function (g) {
+            var visibles = 0;
+            g.querySelectorAll('.vr-ms-op').forEach(function (op) {
+                var ok = !q || op.textContent.toLowerCase().indexOf(q) !== -1;
+                op.hidden = !ok;
+                if (ok) visibles++;
+            });
+            g.hidden = visibles === 0;
+        });
+    });
+    raiz.querySelector('.vr-ms-limpiar').addEventListener('click', function () {
+        cajas.forEach(function (c) { c.checked = false; });
+        refrescar();
+        onCambio([]);
+    });
+
+    refrescar();
+    return { valores: valores };
 }
 
 function vrEstacionesPintar(chart, datos, cods, prod) {
@@ -174,23 +237,41 @@ function vrEstacionesPintar(chart, datos, cods, prod) {
     var sel = datos.estaciones.filter(function (e) { return cods.indexOf(e.cod) !== -1 && e.familias[prod]; });
     var fmt = function (v) { return v == null ? '—' : (v < 0 ? '−$' : '$') + Math.abs(v).toFixed(2); };
 
+    // Con una sola estación, cada línea se rotula al final ("Venta", "Compra",
+    // "Margen"); con varias se omite para no amontonar textos.
+    var rotulo = function (texto, color) {
+        return sel.length === 1
+            ? { show: true, formatter: texto, color: color, fontSize: 11, fontWeight: 600, distance: 6 }
+            : { show: false };
+    };
+
     var series = [];
     sel.forEach(function (e, i) {
         var color = VR_COLORES_EST[i % VR_COLORES_EST.length];
         var s = e.familias[prod];
         series.push(
             { name: e.nombre, type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: s.v, showSymbol: false,
-              lineStyle: { width: 2, color: color }, itemStyle: { color: color }, connectNulls: false, vrTipo: 'venta' },
+              lineStyle: { width: 2.5, color: color }, itemStyle: { color: color }, connectNulls: false,
+              endLabel: rotulo('Venta', color) },
             { name: e.nombre, type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: s.c, symbol: 'circle', symbolSize: 7,
-              connectNulls: true, lineStyle: { width: 1.5, type: 'dashed', color: color }, itemStyle: { color: color }, vrTipo: 'compra' },
+              connectNulls: true, lineStyle: { width: 1.5, type: 'dashed', color: color }, itemStyle: { color: color },
+              endLabel: rotulo('Compra', color) },
             { name: e.nombre, type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: s.m, showSymbol: false,
               lineStyle: { width: 2, color: color }, itemStyle: { color: color },
-              areaStyle: sel.length === 1 ? { color: color, opacity: .12 } : undefined, vrTipo: 'margen' }
+              areaStyle: sel.length === 1 ? { color: color, opacity: .12 } : undefined,
+              endLabel: rotulo('Margen', color) }
         );
     });
 
     chart.setOption({
         color: VR_COLORES_EST,
+        // Un título dentro de cada gráfica: qué se está viendo arriba y abajo
+        title: [
+            { text: 'Precio de venta (continua) y de compra (punteada), $/L sin IVA', left: 60, top: 22,
+              textStyle: { fontSize: 11, fontWeight: 600, color: '#475569' } },
+            { text: 'Margen por litro (venta + estímulo − última compra)', left: 60, top: '63%',
+              textStyle: { fontSize: 11, fontWeight: 600, color: '#475569' } }
+        ],
         legend: { top: 0, data: sel.map(function (e) { return e.nombre; }) },
         axisPointer: { link: [{ xAxisIndex: 'all' }] },
         tooltip: {
@@ -209,18 +290,19 @@ function vrEstacionesPintar(chart, datos, cods, prod) {
                 return html;
             }
         },
+        // right amplio: deja lugar a los rótulos al final de cada línea
         grid: [
-            { left: 60, right: 24, top: 40, height: '48%' },
-            { left: 60, right: 24, top: '67%', bottom: 46 }
+            { left: 60, right: 70, top: 48, height: '44%' },
+            { left: 60, right: 70, top: '68%', bottom: 46 }
         ],
         xAxis: [
             { type: 'category', gridIndex: 0, data: dias, axisLabel: { show: false }, axisTick: { show: false } },
             { type: 'category', gridIndex: 1, data: dias, axisLabel: { interval: 0, fontSize: 10, lineHeight: 13 } }
         ],
         yAxis: [
-            { type: 'value', gridIndex: 0, scale: true, name: 'Precio $/L sin IVA', nameTextStyle: { align: 'left' },
+            { type: 'value', gridIndex: 0, scale: true,
               axisLabel: { formatter: function (v) { return '$' + v.toFixed(2); } } },
-            { type: 'value', gridIndex: 1, name: 'Margen $/L', nameTextStyle: { align: 'left' },
+            { type: 'value', gridIndex: 1,
               axisLabel: { formatter: function (v) { return '$' + v.toFixed(2); } } }
         ],
         series: series.concat([{
@@ -232,23 +314,46 @@ function vrEstacionesPintar(chart, datos, cods, prod) {
     }, true);
 }
 
-/** Litros vendidos vs margen por litro, un punto por estación. */
+/**
+ * Litros vendidos vs margen por litro, un punto por estación. Los botones
+ * #vr-disp-prod eligen Total o un producto; con un producto cada punto usa
+ * solo los litros y el margen de ese producto en la estación (las que no lo
+ * venden no aparecen).
+ */
 function vrDispersion() {
     var c = vrInit('vr-chart-dispersion');
     if (!c) return;
     var est = vrDatos(c.el, 'data-estaciones') || [];
+    var botones = document.getElementById('vr-disp-prod');
+    if (botones) {
+        botones.addEventListener('click', function (ev) {
+            var b = ev.target.closest('button[data-prod]');
+            if (!b) return;
+            botones.querySelectorAll('button').forEach(function (x) { x.classList.toggle('active', x === b); });
+            vrDispersionPintar(c.chart, est, b.getAttribute('data-prod'));
+        });
+    }
+    vrDispersionPintar(c.chart, est, 'total');
+}
+
+function vrDispersionPintar(chart, est, prod) {
     var zonas = {};
-    est.forEach(function (e) { (zonas[e.z] = zonas[e.z] || []).push(e); });
+    est.forEach(function (e) {
+        var v = prod === 'total' ? e : (e.f && e.f[prod]);
+        if (!v || !v.l) return;
+        (zonas[e.z] = zonas[e.z] || []).push({ n: e.n, z: e.z, l: v.l, m: v.m, t: v.t });
+    });
     var nombres = Object.keys(zonas);
-    c.chart.setOption({
+    var etiqueta = prod === 'total' ? '' : ' de ' + VR_NOMBRE_PROD[prod];
+    chart.setOption({
         grid: { left: 60, right: 24, top: 36, bottom: 40 },
         legend: { top: 0 },
         tooltip: { formatter: function (p) {
             var e = p.data.e;
             return '<strong>' + e.n + '</strong> (' + e.z + ')<br>' + Math.round(e.l).toLocaleString('es-MX') +
-                   ' L · $' + e.m.toFixed(2) + '/L<br>Margen: ' + vrPesos(e.t);
+                   ' L' + etiqueta + ' · $' + e.m.toFixed(2) + '/L<br>Margen: ' + vrPesos(e.t);
         } },
-        xAxis: { type: 'value', name: 'Litros', nameLocation: 'middle', nameGap: 26,
+        xAxis: { type: 'value', name: 'Litros' + etiqueta, nameLocation: 'middle', nameGap: 26,
                  axisLabel: { formatter: function (v) { return (v / 1000).toLocaleString('es-MX') + ' mil'; } } },
         yAxis: { type: 'value', name: '$/L', axisLabel: { formatter: '${value}' } },
         series: nombres.map(function (z, i) {
@@ -264,7 +369,7 @@ function vrDispersion() {
             }
             return s;
         })
-    });
+    }, true);
 }
 
 // Las gráficas dibujadas mientras su tab estaba oculto quedan en tamaño 0:

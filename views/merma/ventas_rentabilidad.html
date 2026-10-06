@@ -242,27 +242,53 @@
 <div class="vd-sub-titulo">Precio de compra y venta por estación{{ ayuda.icono('Precio de compra y venta por estación', 'Cómo se movieron los precios de cada estación día por día. Elige una estación o varias para compararlas (hasta 6), y el producto con los botones.<br><br><strong>Arriba</strong>, por estación:<br>— <strong>Línea continua:</strong> precio de venta sin IVA por litro (lo cobrado en bomba).<br>— <strong>Línea punteada con puntos:</strong> precio por litro de las descargas de ese día (sin IVA). Solo hay punto los días que llegó pipa con precio.<br><br><strong>Abajo:</strong> margen por litro de cada día = venta sin IVA + estímulo fronterizo − precio de la última descarga. Cuando sube el precio del proveedor y no se mueve el de bomba, el margen baja.<br><br>En las estaciones de frontera el margen incluye el estímulo, por eso puede ser positivo aunque la línea de compra quede arriba de la de venta.') }}</div>
 {% if pe.estaciones|length %}
 <div class="vr-pe-controles">
-    {# data-container="body" + data-size: mismo patrón que arqueo/cajas y
-       petrotal_reconciliation. Sin ellos el menú (36 estaciones + grupos)
-       se abría hacia arriba dentro del panel y, al enfocar el buscador,
-       desplazaba toda la vista. data-dropup-auto="false": siempre hacia abajo. #}
-    <select id="vr-pe-estaciones" class="selectpicker" multiple data-live-search="true" data-max-options="6"
-            data-size="10" data-container="body" data-dropup-auto="false" data-width="280px"
-            data-actions-box="false" title="Elige estaciones" data-selected-text-format="count > 2"
-            data-count-selected-text="{0} estaciones">
-        {% for z in ['MARCA Y PROTS', 'TSA AGS', 'ZONA 3'] %}
-        <optgroup label="{{ z }}">
-            {% for s in pe.estaciones|filter(s => s.zona == z) %}
-            <option value="{{ s.cod }}" data-subtext="{{ s.frontera ? 'frontera' : '' }}">{{ s.nombre }}</option>
-            {% endfor %}
-        </optgroup>
-        {% endfor %}
-    </select>
+    {# Selector propio (no bootstrap-select): el plugin posicionaba mal su
+       menú en esta vista y, al enfocar su buscador, el navegador saltaba
+       hasta arriba de la página. Este panel vive en el flujo normal, justo
+       debajo del botón, y el buscador se enfoca sin desplazar la vista. #}
+    <div class="vr-ms" id="vr-pe-ms" data-max="6">
+        <button type="button" class="btn btn-merma-neutro vr-ms-btn" aria-haspopup="true" aria-expanded="false">
+            <i class="fas fa-gas-pump text-muted"></i>
+            <span class="vr-ms-texto">Elige estaciones</span>
+            <i class="fas fa-chevron-down vr-ms-flecha"></i>
+        </button>
+        <div class="vr-ms-panel" hidden>
+            <input type="search" class="form-control form-control-sm vr-ms-buscar" placeholder="Buscar estación" aria-label="Buscar estación">
+            <div class="vr-ms-lista">
+                {% for z in ['MARCA Y PROTS', 'TSA AGS', 'ZONA 3'] %}
+                {% set deZona = pe.estaciones|filter(s => s.zona == z) %}
+                {% if deZona|length %}
+                <div class="vr-ms-grupo">
+                    <div class="vr-ms-grupo-titulo">{{ z }}</div>
+                    {% for s in deZona %}
+                    <label class="vr-ms-op">
+                        <input type="checkbox" value="{{ s.cod }}">
+                        <span>{{ s.nombre }}</span>
+                        {% if s.frontera %}<small>frontera</small>{% endif %}
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <div class="vr-ms-pie">
+                <span class="vr-ms-cuenta">Hasta 6 estaciones</span>
+                <button type="button" class="btn btn-link btn-sm p-0 vr-ms-limpiar">Quitar todas</button>
+            </div>
+        </div>
+    </div>
     <div class="btn-group btn-group-sm" role="group" id="vr-pe-prod" aria-label="Producto">
         <button type="button" class="btn btn-merma-neutro active" data-prod="maxima">Regular</button>
         <button type="button" class="btn btn-merma-neutro" data-prod="super">Premium</button>
         <button type="button" class="btn btn-merma-neutro" data-prod="diesel">Diesel</button>
     </div>
+</div>
+{# Clave de los tipos de línea: el color dice la estación, el trazo dice qué es #}
+<div class="vr-pe-clave" aria-label="Qué significa cada línea">
+    <span><i class="vr-pe-trazo vr-pe-venta"></i> <strong>Precio de venta</strong> en bomba, sin IVA</span>
+    <span><i class="vr-pe-trazo vr-pe-compra"></i> <strong>Precio de compra</strong> de cada pipa, sin IVA (un punto por descarga)</span>
+    <span><i class="vr-pe-trazo vr-pe-margen"></i> <strong>Margen por litro</strong> (gráfica de abajo, ya con estímulo)</span>
+    <span class="text-muted">El color indica la estación.</span>
 </div>
 <div id="vr-chart-estacion" class="vr-chart-estacion mb-3" data-serie='{{ pe|json_encode|e('html_attr') }}'></div>
 {% else %}
@@ -270,9 +296,21 @@
 {% endif %}
 
 {# ---------- Dispersión por estación ---------- #}
-<div class="vd-sub-titulo">Volumen vs margen por estación{{ ayuda.icono('Volumen vs margen', 'Cada punto es una estación: hacia la derecha vende más litros, hacia arriba gana más por litro.<br><br><strong>Abajo a la derecha</strong> están las que más pesan en el resultado: mucho volumen con poco margen. Ahí es donde un centavo por litro hace más diferencia.<br>Los colores son la zona. Pasa el mouse para ver el nombre.') }}</div>
+<div class="vd-sub-titulo d-flex flex-wrap align-items-center gap-2">
+    <span>Volumen vs margen por estación{{ ayuda.icono('Volumen vs margen', 'Cada punto es una estación: hacia la derecha vende más litros, hacia arriba gana más por litro.<br><br><strong>Abajo a la derecha</strong> están las que más pesan en el resultado: mucho volumen con poco margen. Ahí es donde un centavo por litro hace más diferencia.<br>Los colores son la zona. Pasa el mouse para ver el nombre.<br><br>Con los botones eliges el producto: <strong>Total</strong> suma los tres; con un producto, cada punto usa solo los litros y el margen de ese producto en la estación.') }}</span>
+    <div class="btn-group btn-group-sm ms-auto vr-prod-btns" role="group" id="vr-disp-prod" aria-label="Producto">
+        <button type="button" class="btn btn-merma-neutro active" data-prod="total">Total</button>
+        <button type="button" class="btn btn-merma-neutro" data-prod="maxima">Regular</button>
+        <button type="button" class="btn btn-merma-neutro" data-prod="super">Premium</button>
+        <button type="button" class="btn btn-merma-neutro" data-prod="diesel">Diesel</button>
+    </div>
+</div>
+{# Por estación: total ("l","m","t") y por familia en "f" — mismo formato #}
 <div id="vr-chart-dispersion" class="vd-chart mb-2"
-     data-estaciones='{{ rent.todas|map(s => {"n": s.nombre, "z": s.zona, "l": s.litros|round, "m": s.margen_litro|round(3), "t": s.margen|round})|json_encode|e('html_attr') }}'></div>
+     data-estaciones='{{ rent.todas|map(s => {
+         "n": s.nombre, "z": s.zona, "l": s.litros|round, "m": s.margen_litro|round(3), "t": s.margen|round,
+         "f": s.familias|map(v => {"l": v.litros|round, "m": v.margen_litro|round(3), "t": v.margen|round})
+     })|json_encode|e('html_attr') }}'></div>
 <details class="vc-leyenda mb-3">
     <summary>Ver todas las estaciones ({{ rent.todas|length }})</summary>
     <div class="table-responsive">

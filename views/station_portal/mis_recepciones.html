@@ -48,6 +48,27 @@
     .subir-doc-btn { background: var(--doc-accent); border-color: var(--doc-accent); color: #fff; }
     .subir-doc-btn:hover, .subir-doc-btn:focus { filter: brightness(.92); color: #fff; }
     .subir-doc-btn:disabled { background: var(--doc-accent); border-color: var(--doc-accent); color: #fff; opacity: .5; }
+
+    /* Tabla Mis Recepciones: compacta y responsiva */
+    #datatables_mis_recepciones td { vertical-align: middle; }
+    #datatables_mis_recepciones .col-uuid {
+        min-width: 8.5rem; max-width: 10rem;
+        white-space: normal; word-break: break-all;
+        font-size: .72rem; line-height: 1.25;
+    }
+    #datatables_mis_recepciones .col-acciones { white-space: nowrap; width: 1%; }
+    .acciones-recepcion .btn {
+        padding: .2rem .45rem; line-height: 1;
+        border-color: #dee2e6; color: #495057; background: #fff;
+    }
+    .acciones-recepcion .btn:hover { background: #f1f3f5; color: #212529; }
+    .acciones-recepcion .btn svg { width: 15px; height: 15px; vertical-align: middle; }
+    .acciones-recepcion .btn-accion-factura { color: #198754; }
+    .badge-doc { font-weight: 500; font-size: .72rem; }
+    @media (max-width: 768px) {
+        #datatables_mis_recepciones { font-size: .8rem; }
+        #datatables_mis_recepciones_wrapper .top { display: flex; flex-wrap: wrap; gap: .5rem; }
+    }
 </style>
 {% endblock %}
 {% block menutitle %}Mis Recepciones{% endblock %}
@@ -170,7 +191,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td colspan="11" class="text-center text-muted">Selecciona un rango y presiona Buscar</td></tr>
+                        <tr><td colspan="12" class="text-center text-muted">Selecciona un rango y presiona Buscar</td></tr>
                     </tbody>
                 </table>
             </div>

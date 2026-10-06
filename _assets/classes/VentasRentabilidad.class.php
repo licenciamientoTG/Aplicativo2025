@@ -101,6 +101,7 @@ class VentasRentabilidad
             $compras['litros_sin_precio'] += $d['litros_sin_precio'];
 
             $est = $vacio();
+            $estFam = [];   // métricas de la estación por familia (selector de producto)
             $estimado = false;
             foreach ($familias as $fam) {
                 $f = $d['familias'][$fam] ?? null;
@@ -128,6 +129,7 @@ class VentasRentabilidad
                     'costo'    => $f['litros_venta'] * $costoLitro,
                     'estimulo' => $f['litros_venta'] * $estimuloLitro,
                 ];
+                $estFam[$fam] = self::metricas($linea);
                 foreach (['litros', 'venta', 'costo', 'estimulo'] as $k) {
                     $est[$k]                 += $linea[$k];
                     $porFam[$fam][$k]        += $linea[$k];
@@ -146,6 +148,7 @@ class VentasRentabilidad
                 'iva'            => $d['tasa_iva'] * 100,
                 'frontera'       => $d['tasa_iva'] == self::IVA_FRONTERA,
                 'costo_estimado' => $estimado,
+                'familias'       => $estFam,
             ];
         }
 
