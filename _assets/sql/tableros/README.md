@@ -5,6 +5,7 @@
 - `001_create_schema.sql` crea la base `tableros` y los objetos del módulo. Es aditivo e idempotente.
 - `002_seed_tg_permissions.sql` registra los permisos en `TG.dbo.tg_permissions`; no asigna permisos a personas.
 - `003_rollback_notes.sql` contiene consultas de revisión. Las instrucciones destructivas están comentadas y no deben ejecutarse como parte de un despliegue normal.
+- `004_workspace_hierarchy.sql` actualiza el espacio inicial **General** a visibilidad de equipo y limita las carpetas a tres niveles, igual que Monday. Conserva los tableros privados y no elimina contenido.
 - La conexión de la aplicación a `tableros` reutiliza la configuración SQL existente sin cambiar la conexión compartida de los demás modelos.
 
 Después de desplegar el código, Sistemas debe asignar en `/it` los permisos **Tableros - Acceso**, **Tableros - Crear** y **Tableros - Administrar** a las personas correspondientes. El módulo no concede acceso automáticamente.
@@ -22,3 +23,7 @@ El código permite archivos de hasta 25 MB y restringe extensiones y tipo MIME. 
 ## Monday
 
 La importación de proyectos desde Monday no forma parte del módulo. Los proyectos existentes se importarán por el proceso externo a cargo del equipo.
+
+## Orden de actualización
+
+En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql` una sola vez después de los scripts base. El script es idempotente, no borra datos y agrega una validación de profundidad/ciclos para carpetas. En instalaciones nuevas, `001_create_schema.sql` ya crea **General** como espacio visible para el equipo.

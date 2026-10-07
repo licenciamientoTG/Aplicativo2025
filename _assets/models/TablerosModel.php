@@ -35,16 +35,167 @@ class TablerosModel {
 
     public function getBoards(int $userId, bool $isAdmin): array {
         $sql = "SELECT DISTINCT b.id, b.workspace_id, b.folder_id, b.name, b.description,
+                       w.name AS workspace_name, w.visibility AS workspace_visibility,
+                       f.name AS folder_name, f.parent_folder_id,
                        b.visibility, b.created_by, b.created_at, b.updated_at,
-                       CASE WHEN b.created_by = ? THEN 'owner'
+                        CASE WHEN b.created_by = ? THEN 'owner'
                             WHEN ? = 1 THEN 'designer'
-                            WHEN m.role IS NOT NULL THEN m.role END AS user_role
+                            WHEN m.role IS NOT NULL THEN m.role
+                            WHEN wm.role = 'owner' AND b.visibility IN ('workspace', 'public') THEN 'owner'
+                            WHEN wm.role IN ('editor', 'viewer') AND b.visibility IN ('workspace', 'public') THEN wm.role
+                            WHEN b.visibility = 'public' OR (b.visibility = 'workspace' AND w.visibility IN ('workspace', 'public')) THEN 'viewer' END AS user_role
                 FROM tb_board b
+                INNER JOIN tb_workspace w ON w.id = b.workspace_id AND w.deleted_at IS NULL
+                LEFT JOIN tb_folder f ON f.id = b.folder_id AND f.workspace_id = b.workspace_id AND f.deleted_at IS NULL
                 LEFT JOIN tb_board_member m ON m.board_id = b.id AND m.user_id = ? AND m.deleted_at IS NULL
+                LEFT JOIN tb_workspace_member wm ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.deleted_at IS NULL
                 WHERE b.deleted_at IS NULL
-                  AND (b.created_by = ? OR m.user_id = ? OR ? = 1)
-                ORDER BY b.updated_at DESC, b.id DESC";
-        return $this->all($sql, [$userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $isAdmin ? 1 : 0]);
+                  AND (b.created_by = ? OR m.user_id = ? OR ? = 1
+                       OR b.visibility = 'public'
+                       OR (b.visibility = 'workspace' AND (wm.user_id = ? OR w.visibility IN ('workspace', 'public'))))
+                ORDER BY w.name, f.name, b.name, b.id";
+        return $this->all($sql, [$userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $userId, $isAdmin ? 1 : 0, $userId]);
+    }
+
+    /** Flat hierarchy payload; the client builds the nested folder tree. */
+    public function getWorkspaceStructure(int $userId, bool $isAdmin): array {
+        $workspaces = $this->all(
+            "SELECT w.id, w.name, w.description, w.visibility, w.created_by,
+                    CASE WHEN w.created_by = ? THEN 'owner' WHEN ? = 1 THEN 'owner'
+                         WHEN wm.role IS NOT NULL THEN wm.role
+                         WHEN w.visibility IN ('workspace', 'public') THEN 'viewer' END AS user_role
+             FROM tb_workspace w
+             LEFT JOIN tb_workspace_member wm ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.deleted_at IS NULL
+             WHERE w.workspace_type = 'workspace' AND w.deleted_at IS NULL
+               AND (w.created_by = ? OR wm.user_id = ? OR w.visibility IN ('workspace', 'public') OR ? = 1)
+             ORDER BY w.name, w.id",
+            [$userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $isAdmin ? 1 : 0]
+        );
+        $boards = $this->getBoards($userId, $isAdmin);
+        $workspaceIds = array_fill_keys(array_map(static fn($workspace) => (string)$workspace['id'], $workspaces), true);
+        foreach ($boards as $board) {
+            $workspaceId = (string)$board['workspace_id'];
+            if (!isset($workspaceIds[$workspaceId])) {
+                $workspaces[] = [
+                    'id' => (int)$board['workspace_id'], 'name' => (string)$board['workspace_name'],
+                    'description' => '', 'visibility' => (string)$board['workspace_visibility'],
+                    'created_by' => null, 'user_role' => $board['user_role'], 'shared_only' => true
+                ];
+                $workspaceIds[$workspaceId] = true;
+            }
+        }
+        $folders = [];
+        if ($workspaceIds) {
+            $ids = array_keys($workspaceIds);
+            $marks = implode(',', array_fill(0, count($ids), '?'));
+            $folders = $this->all(
+                "SELECT id, workspace_id, parent_folder_id, name, color, sort_order, created_by
+                 FROM tb_folder WHERE workspace_id IN ($marks) AND deleted_at IS NULL ORDER BY sort_order, name, id",
+                array_map('intval', $ids)
+            );
+        }
+        $folderById = [];
+        $workspaceRoles = [];
+        $workspaceVisibility = [];
+        foreach ($folders as $folder) $folderById[(string)$folder['id']] = $folder;
+        foreach ($workspaces as $workspace) {
+            $workspaceRoles[(string)$workspace['id']] = (string)($workspace['user_role'] ?? '');
+            $workspaceVisibility[(string)$workspace['id']] = (string)($workspace['visibility'] ?? '');
+        }
+        $allowed = [];
+        $markFolderPath = static function ($folder) use (&$allowed, $folderById): void {
+            while ($folder) {
+                $allowed[(string)$folder['id']] = true;
+                $folder = $folderById[(string)($folder['parent_folder_id'] ?? '')] ?? null;
+            }
+        };
+        foreach ($folders as $folder) {
+            if ((int)($folder['created_by'] ?? 0) === $userId
+                || ($workspaceRoles[(string)$folder['workspace_id']] ?? '') === 'owner'
+                || ($folder['created_by'] === null && in_array($workspaceVisibility[(string)$folder['workspace_id']] ?? '', ['workspace', 'public'], true))) {
+                $markFolderPath($folder);
+            }
+        }
+        foreach ($boards as $board) {
+            $markFolderPath($folderById[(string)($board['folder_id'] ?? '')] ?? null);
+        }
+        $folders = array_values(array_filter($folders, static fn($folder) => isset($allowed[(string)$folder['id']])));
+        return ['workspaces' => $workspaces, 'folders' => $folders, 'boards' => $boards];
+    }
+
+    public function createWorkspace(int $userId, array $input): array {
+        if (!$this->userIsActive($userId)) {
+            throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
+        }
+        $name = $this->requiredString($input, 'name', 200);
+        $description = $this->optionalString($input, 'description', 1000);
+        $visibility = strtolower(trim((string)($input['visibility'] ?? 'private')));
+        if (!in_array($visibility, ['private', 'workspace', 'public'], true)) {
+            throw new TablerosApiException('validation', 'La visibilidad del espacio no es válida.', 422);
+        }
+        return $this->transaction(function () use ($userId, $name, $description, $visibility): array {
+            $key = bin2hex(random_bytes(20));
+            $id = $this->insertId(
+                'INSERT INTO tb_workspace (workspace_key, workspace_type, name, description, visibility, created_by, created_at, updated_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$key, 'workspace', $name, $description, $visibility, $userId]
+            );
+            $this->execute(
+                'INSERT INTO tb_workspace_member (workspace_id, user_id, role, invited_by, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$id, $userId, 'owner', $userId]
+            );
+            return ['id' => $id, 'name' => $name, 'description' => $description, 'visibility' => $visibility, 'user_role' => 'owner'];
+        });
+    }
+
+    public function createFolder(int $userId, array $input): array {
+        if (!$this->userIsActive($userId)) {
+            throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
+        }
+        $workspaceId = $this->optionalPositiveInt($input['workspace_id'] ?? null, 'workspace_id');
+        if ($workspaceId === null) {
+            $defaultWorkspace = $this->one("SELECT id FROM tb_workspace WHERE workspace_key = 'general' AND deleted_at IS NULL");
+            $workspaceId = $defaultWorkspace ? (int)$defaultWorkspace['id'] : 0;
+        }
+        if ($workspaceId <= 0) throw new TablerosApiException('validation', 'Selecciona un espacio de trabajo.', 422);
+        $parentFolderId = $this->optionalPositiveInt($input['parent_folder_id'] ?? null, 'parent_folder_id');
+        $name = $this->requiredString($input, 'name', 200);
+        $color = $this->optionalString($input, 'color', 32);
+        if ($color !== null && !preg_match('/^#[0-9a-f]{3,8}$/i', $color)) {
+            throw new TablerosApiException('validation', 'El color de la carpeta no es válido.', 422);
+        }
+        if (!$this->one("SELECT id FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId])) {
+            throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
+        }
+        if ($parentFolderId !== null) {
+            $parent = $this->one('SELECT id, parent_folder_id, created_by FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', [$parentFolderId, $workspaceId]);
+            if (!$parent) {
+                throw new TablerosApiException('validation', 'La carpeta seleccionada no pertenece a este espacio.', 422);
+            }
+            $workspaceRole = $this->access->workspaceRole($workspaceId);
+            $systemFolderVisible = $parent['created_by'] === null && $workspaceRole !== null;
+            if ((int)($parent['created_by'] ?? 0) !== $userId && $workspaceRole !== 'owner' && !$systemFolderVisible
+                && !$this->folderHasVisibleBoard($parentFolderId, $workspaceId)) {
+                throw new TablerosApiException('forbidden', 'Solo puedes crear una subcarpeta en una carpeta que puedes ver.', 403);
+            }
+            $depth = 1;
+            $cursor = $parent;
+            while ($cursor && $cursor['parent_folder_id'] !== null) {
+                $cursor = $this->one('SELECT id, parent_folder_id FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', [(int)$cursor['parent_folder_id'], $workspaceId]);
+                $depth++;
+            }
+            if ($depth >= 3) {
+                throw new TablerosApiException('validation', 'Monday permite hasta tres niveles de carpetas dentro del espacio de trabajo.', 422);
+            }
+        }
+        $position = (int)($this->one('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM tb_folder WHERE workspace_id = ? AND ((parent_folder_id = ?) OR (parent_folder_id IS NULL AND ? IS NULL)) AND deleted_at IS NULL', [$workspaceId, $parentFolderId, $parentFolderId])['next_order'] ?? 0);
+        $id = $this->insertId(
+            'INSERT INTO tb_folder (workspace_id, parent_folder_id, folder_key, name, color, sort_order, created_by, created_at, updated_at)
+             OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+            [$workspaceId, $parentFolderId, bin2hex(random_bytes(20)), $name, $color, $position, $userId]
+        );
+        return ['id' => $id, 'workspace_id' => $workspaceId, 'parent_folder_id' => $parentFolderId, 'name' => $name, 'color' => $color, 'sort_order' => $position];
     }
 
     public function getBoard(int $boardId): ?array {
@@ -517,28 +668,37 @@ class TablerosModel {
         }
         $name = $this->requiredString($input, 'name', 120);
         $description = $this->optionalString($input, 'description', 2000);
+        $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+        $folderId = $this->optionalPositiveInt($input['folder_id'] ?? null, 'folder_id');
+        $visibility = strtolower(trim((string)($input['visibility'] ?? 'private')));
+        if (!in_array($visibility, ['private', 'workspace', 'public'], true)) {
+            throw new TablerosApiException('validation', 'La visibilidad del tablero no es válida.', 422);
+        }
 
-        return $this->transaction(function () use ($userId, $name, $description): array {
-            $workspace = $this->one('SELECT id FROM tb_workspace WHERE workspace_key = ? AND deleted_at IS NULL', ['general']);
+        return $this->transaction(function () use ($userId, $name, $description, $workspaceId, $folderId, $visibility): array {
+            $workspace = $this->one("SELECT id, visibility FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
             if (!$workspace) {
-                throw new RuntimeException('The default Tableros workspace is not configured');
+                throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
             }
-            $workspaceId = (int)$workspace['id'];
-            $folder = $this->one(
-                'SELECT id FROM tb_folder WHERE workspace_id = ? AND folder_key = ? AND deleted_at IS NULL',
-                [$workspaceId, 'tableros']
-            );
-            if (!$folder) {
-                throw new RuntimeException('The default Tableros folder is not configured');
+            if ($folderId !== null) {
+                $folder = $this->one('SELECT id, created_by FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', [$folderId, $workspaceId]);
+                if (!$folder) {
+                    throw new TablerosApiException('validation', 'La carpeta seleccionada no pertenece a este espacio de trabajo.', 422);
+                }
+                $workspaceRole = $this->access->workspaceRole($workspaceId);
+                $systemFolderVisible = $folder['created_by'] === null && $workspaceRole !== null;
+                if ((int)($folder['created_by'] ?? 0) !== $userId && $workspaceRole !== 'owner' && !$systemFolderVisible
+                    && !$this->folderHasVisibleBoard($folderId, $workspaceId)) {
+                    throw new TablerosApiException('forbidden', 'No tienes acceso a la carpeta seleccionada.', 403);
+                }
             }
-            $folderId = (int)$folder['id'];
             $boardId = $this->insertId(
                 'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, created_by, created_at, updated_at)
                  OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
-                [$workspaceId, $folderId, $name, $description, 'private', $userId]
+                [$workspaceId, $folderId, $name, $description, $visibility, $userId]
             );
             $this->writeActivity($boardId, null, $userId, 'board.created', ['name' => $name]);
-            return ['id' => $boardId, 'visibility' => 'private', 'role' => 'owner'];
+            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $description, 'visibility' => $visibility, 'role' => 'owner'];
         });
     }
 
@@ -2120,6 +2280,26 @@ class TablerosModel {
 
     private function findText(string $haystack, string $needle) {
         return function_exists('mb_stripos') ? mb_stripos($haystack, $needle, 0, 'UTF-8') : stripos($haystack, $needle);
+    }
+
+    private function folderHasVisibleBoard(int $folderId, int $workspaceId): bool {
+        $boards = $this->all(
+            ';WITH folder_tree AS (
+                 SELECT id FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL
+                 UNION ALL
+                 SELECT child.id FROM tb_folder child
+                 INNER JOIN folder_tree parent ON child.parent_folder_id = parent.id
+                 WHERE child.workspace_id = ? AND child.deleted_at IS NULL
+             )
+             SELECT b.id FROM tb_board b
+             INNER JOIN folder_tree f ON f.id = b.folder_id
+             WHERE b.deleted_at IS NULL',
+            [$folderId, $workspaceId, $workspaceId]
+        );
+        foreach ($boards as $board) {
+            if ($this->access->canViewBoard((int)$board['id'])) return true;
+        }
+        return false;
     }
 
     private function versionInput($value): string {

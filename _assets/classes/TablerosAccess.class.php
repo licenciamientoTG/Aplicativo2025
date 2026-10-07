@@ -123,13 +123,17 @@ class TablerosAccess
 
         try {
             $stmt = $this->boardConnection()->prepare(
-                'SELECT b.created_by, m.role
+                'SELECT b.created_by, b.visibility, b.workspace_id, m.role AS board_role,
+                        wm.role AS workspace_role, w.visibility AS workspace_visibility
                  FROM dbo.tb_board b
                  LEFT JOIN dbo.tb_board_member m
                    ON m.board_id = b.id AND m.user_id = ? AND m.deleted_at IS NULL
+                 INNER JOIN dbo.tb_workspace w ON w.id = b.workspace_id AND w.deleted_at IS NULL
+                 LEFT JOIN dbo.tb_workspace_member wm
+                   ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.deleted_at IS NULL
                  WHERE b.id = ? AND b.deleted_at IS NULL'
             );
-            $stmt->execute([$userId, $boardId]);
+            $stmt->execute([$userId, $userId, $boardId]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$row) {
                 return null;
@@ -141,8 +145,23 @@ class TablerosAccess
                 return 'designer';
             }
 
-            $role = strtolower((string)($row['role'] ?? ''));
-            return in_array($role, ['designer', 'editor', 'viewer'], true) ? $role : null;
+            $role = strtolower((string)($row['board_role'] ?? ''));
+            if (in_array($role, ['designer', 'editor', 'viewer'], true)) {
+                return $role;
+            }
+            $workspaceRole = strtolower((string)($row['workspace_role'] ?? ''));
+            if (in_array($workspaceRole, ['owner', 'editor', 'viewer'], true)
+                && in_array(strtolower((string)$row['visibility']), ['workspace', 'public'], true)) {
+                return $workspaceRole === 'owner' ? 'owner' : $workspaceRole;
+            }
+            if (strtolower((string)$row['visibility']) === 'public') {
+                return 'viewer';
+            }
+            if (in_array(strtolower((string)$row['visibility']), ['workspace', 'public'], true)
+                && in_array(strtolower((string)$row['workspace_visibility']), ['workspace', 'public'], true)) {
+                return 'viewer';
+            }
+            return null;
         } catch (Throwable $e) {
             error_log('TablerosAccess: no fue posible validar acceso al tablero: ' . $e->getMessage());
             return null;
@@ -152,6 +171,44 @@ class TablerosAccess
     public function canViewBoard(int $boardId): bool
     {
         return $this->boardRole($boardId) !== null;
+    }
+
+    /** Returns the user's effective workspace role, or null when it is private to others. */
+    public function workspaceRole(int $workspaceId): ?string
+    {
+        $userId = $this->currentUserId();
+        if ($workspaceId <= 0 || $userId <= 0) {
+            return null;
+        }
+
+        try {
+            $stmt = $this->boardConnection()->prepare(
+                'SELECT w.created_by, w.visibility, m.role
+                 FROM dbo.tb_workspace w
+                 LEFT JOIN dbo.tb_workspace_member m
+                   ON m.workspace_id = w.id AND m.user_id = ? AND m.deleted_at IS NULL
+                 WHERE w.id = ? AND w.workspace_type = ? AND w.deleted_at IS NULL'
+            );
+            $stmt->execute([$userId, $workspaceId, 'workspace']);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                return null;
+            }
+            if ($this->hasGlobalPermission('admin')) {
+                return 'owner';
+            }
+            if ((int)($row['created_by'] ?? 0) === $userId) {
+                return 'owner';
+            }
+            $role = strtolower((string)($row['role'] ?? ''));
+            if (in_array($role, ['owner', 'editor', 'viewer'], true)) {
+                return $role;
+            }
+            return in_array(strtolower((string)$row['visibility']), ['workspace', 'public'], true) ? 'viewer' : null;
+        } catch (Throwable $e) {
+            error_log('TablerosAccess: no fue posible validar acceso al espacio de trabajo: ' . $e->getMessage());
+            return null;
+        }
     }
 
     private function currentUserId(): int

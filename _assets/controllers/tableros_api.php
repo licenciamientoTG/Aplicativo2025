@@ -21,6 +21,35 @@ class tableros_api {
         });
     }
 
+    public function structure(): void {
+        $this->handle('GET', function (int $userId): array {
+            return $this->model->getWorkspaceStructure($userId, $this->access->hasGlobalPermission('admin'));
+        });
+    }
+
+    public function create_workspace(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            if (!$this->access->hasGlobalPermission('create')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para crear espacios de trabajo.', 403);
+            }
+            return $this->model->createWorkspace($userId, $input);
+        });
+    }
+
+    public function create_folder(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            if (!$this->access->hasGlobalPermission('create')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para crear carpetas.', 403);
+            }
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            $role = $this->access->workspaceRole($workspaceId);
+            if ($role === null) {
+                throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
+            }
+            return $this->model->createFolder($userId, $input);
+        });
+    }
+
     public function board($id): void {
         $this->handle('GET', function (int $userId) use ($id): array {
             $boardId = $this->positiveInt($id, 'board_id');
@@ -261,6 +290,10 @@ class tableros_api {
         $this->handle('POST', function (int $userId, array $input): array {
             if (!$this->access->hasGlobalPermission('create')) {
                 throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
+            }
+            $workspaceId = isset($input['workspace_id']) ? $this->positiveInt($input['workspace_id'], 'workspace_id') : 0;
+            if ($workspaceId > 0 && $this->access->workspaceRole($workspaceId) === null) {
+                throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
             }
             return $this->model->createBoard($userId, $input);
         });

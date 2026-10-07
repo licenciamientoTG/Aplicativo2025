@@ -109,6 +109,7 @@ BEGIN
         [parent_folder_id] BIGINT NULL,
         [folder_key] NVARCHAR(80) NOT NULL,
         [name] NVARCHAR(200) NOT NULL,
+        [color] VARCHAR(32) NULL,
         [sort_order] INT NOT NULL
             CONSTRAINT [DF_tb_folder_sort_order] DEFAULT (0),
         [created_by] INT NULL,
@@ -767,7 +768,7 @@ BEGIN TRY
             THROW 50103, 'Ya existe un workspace General sin la clave estable general.', 1;
 
         INSERT INTO dbo.tb_workspace ([workspace_key], [workspace_type], [name], [visibility])
-        VALUES (N'general', 'workspace', N'General', 'private');
+        VALUES (N'general', 'workspace', N'General', 'workspace');
     END;
 
     SELECT @default_workspace_id = [id]

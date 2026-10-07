@@ -10,6 +10,7 @@
   const canAdmin = app.dataset.canAdmin === '1';
   const els = {
     boardSelect: document.getElementById('boardSelect'),
+    workspaceSelect: document.getElementById('workspaceSelect'),
     boardLoading: document.getElementById('boardLoading'),
     boardNotice: document.getElementById('boardNotice'),
     boardsEmpty: document.getElementById('boardsEmpty'),
@@ -30,6 +31,8 @@
     boardFilterRows: document.getElementById('boardFilterRows'),
     boardFilterCount: document.getElementById('boardFilterCount'),
     createBoardDialog: document.getElementById('createBoardDialog'),
+    createWorkspaceDialog: document.getElementById('createWorkspaceDialog'),
+    createFolderDialog: document.getElementById('createFolderDialog'),
     createGroupDialog: document.getElementById('createGroupDialog'),
     createColumnDialog: document.getElementById('createColumnDialog'),
     createItemDialog: document.getElementById('createItemDialog'),
@@ -38,6 +41,8 @@
     itemDetailsDialog: document.getElementById('itemDetailsDialog'),
     automationDialog: document.getElementById('automationDialog'),
     createBoardForm: document.getElementById('createBoardForm'),
+    createWorkspaceForm: document.getElementById('createWorkspaceForm'),
+    createFolderForm: document.getElementById('createFolderForm'),
     createGroupForm: document.getElementById('createGroupForm'),
     createColumnForm: document.getElementById('createColumnForm'),
     createItemForm: document.getElementById('createItemForm'),
@@ -92,6 +97,11 @@
 
   const state = {
     boards: [],
+    workspaces: [],
+    folders: [],
+    selectedWorkspaceId: '',
+    collapsedFolderIds: new Set(),
+    pendingFolderContext: null,
     board: null,
     groups: [],
     columns: [],
@@ -251,21 +261,175 @@
     renderBoardNav();
   }
 
+  function folderPath(folderId, workspaceId) {
+    const byId = new Map(state.folders.filter((folder) => String(folder.workspace_id) === String(workspaceId)).map((folder) => [String(folder.id), folder]));
+    const parts = [];
+    let current = byId.get(String(folderId));
+    while (current) {
+      parts.unshift(current.name || 'Carpeta sin nombre');
+      current = current.parent_folder_id == null ? null : byId.get(String(current.parent_folder_id));
+    }
+    return parts.join(' / ');
+  }
+
+  function folderDepth(folderId, workspaceId) {
+    const path = folderPath(folderId, workspaceId);
+    return path ? path.split(' / ').length : 0;
+  }
+
+  function populateWorkspaceSelectors() {
+    const workspaceSelect = document.getElementById('newBoardWorkspace');
+    const folderSelect = document.getElementById('newBoardFolder');
+    const folderWorkspace = document.getElementById('newFolderWorkspace');
+    const parentSelect = document.getElementById('newFolderParent');
+    [workspaceSelect, folderWorkspace].forEach((select) => {
+      if (!select) return;
+      const previous = state.selectedWorkspaceId || select.value;
+      select.replaceChildren();
+      state.workspaces.filter((workspace) => !workspace.shared_only).forEach((workspace) => {
+        const option = makeElement('option', '', workspace.name || 'Espacio sin nombre');
+        option.value = String(workspace.id);
+        select.append(option);
+      });
+      if (Array.from(select.options).some((option) => option.value === String(previous))) select.value = String(previous);
+    });
+    const updateFolders = (select, workspaceId, includeRoot) => {
+      if (!select) return;
+      const previous = select.value;
+      select.replaceChildren();
+      if (includeRoot) {
+        const root = makeElement('option', '', 'Sin carpeta · raíz del espacio');
+        root.value = '';
+        select.append(root);
+      }
+      state.folders.filter((folder) => String(folder.workspace_id) === String(workspaceId)
+        && (select.id !== 'newFolderParent' || folderDepth(folder.id, workspaceId) < 3)).forEach((folder) => {
+        const option = makeElement('option', '', folderPath(folder.id, workspaceId));
+        option.value = String(folder.id);
+        select.append(option);
+      });
+      if (Array.from(select.options).some((option) => option.value === previous)) select.value = previous;
+    };
+    updateFolders(folderSelect, workspaceSelect?.value || state.selectedWorkspaceId, true);
+    updateFolders(parentSelect, folderWorkspace?.value || state.selectedWorkspaceId, true);
+  }
+
+  function refreshFolderChoices(workspaceId, preserveParent = true) {
+    const folderSelect = document.getElementById('newBoardFolder');
+    const parentSelect = document.getElementById('newFolderParent');
+    const fill = (select, includeRoot) => {
+      if (!select) return;
+      const previous = preserveParent ? select.value : '';
+      select.replaceChildren();
+      if (includeRoot) {
+        const root = makeElement('option', '', 'Sin carpeta · raíz del espacio');
+        root.value = '';
+        select.append(root);
+      }
+      state.folders.filter((folder) => String(folder.workspace_id) === String(workspaceId)
+        && (select.id !== 'newFolderParent' || folderDepth(folder.id, workspaceId) < 3)).forEach((folder) => {
+        const option = makeElement('option', '', folderPath(folder.id, workspaceId));
+        option.value = String(folder.id);
+        select.append(option);
+      });
+      if (Array.from(select.options).some((option) => option.value === previous)) select.value = previous;
+    };
+    fill(folderSelect, true);
+    fill(parentSelect, true);
+  }
+
+  function openCreateFolder(workspaceId = state.selectedWorkspaceId, parentFolderId = '') {
+    const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
+    if (!workspace || workspace.shared_only) {
+      setNotice('Solo puedes crear carpetas en espacios de trabajo a los que perteneces.', 'error');
+      return;
+    }
+    populateWorkspaceSelectors();
+    const workspaceSelect = document.getElementById('newFolderWorkspace');
+    if (workspaceSelect && workspaceId) workspaceSelect.value = String(workspaceId);
+    refreshFolderChoices(workspaceSelect?.value, false);
+    const parentSelect = document.getElementById('newFolderParent');
+    if (parentSelect && parentFolderId) parentSelect.value = String(parentFolderId);
+    const parentLabel = document.querySelector('label[for="newFolderParent"]');
+    const parentDepth = parentFolderId ? folderDepth(parentFolderId, workspaceSelect?.value) : 0;
+    document.getElementById('createFolderTitle').textContent = parentFolderId ? 'Crear subcarpeta' : 'Crear carpeta';
+    if (parentLabel) parentLabel.hidden = parentDepth >= 3;
+    if (parentSelect) parentSelect.hidden = parentDepth >= 3;
+    if (parentDepth >= 3 && parentSelect) parentSelect.value = String(parentFolderId);
+    openDialog(els.createFolderDialog);
+  }
+
+  function openCreateBoard(workspaceId = state.selectedWorkspaceId, folderId = '') {
+    const eligible = state.workspaces.filter((workspace) => !workspace.shared_only);
+    if (!eligible.length) {
+      openDialog(els.createWorkspaceDialog);
+      setNotice('Crea un espacio de trabajo antes de crear tableros.', 'info');
+      return;
+    }
+    if (!eligible.some((workspace) => String(workspace.id) === String(workspaceId))) workspaceId = eligible[0].id;
+    populateWorkspaceSelectors();
+    const workspaceSelect = document.getElementById('newBoardWorkspace');
+    if (workspaceSelect && workspaceId) workspaceSelect.value = String(workspaceId);
+    refreshFolderChoices(workspaceSelect?.value, false);
+    const folderSelect = document.getElementById('newBoardFolder');
+    if (folderSelect && folderId) folderSelect.value = String(folderId);
+    openDialog(els.createBoardDialog);
+  }
+
   function renderBoardNav() {
     const list = document.getElementById('boardNavList');
     const search = document.getElementById('boardNavSearch');
     if (!list || !search) return;
     const query = search.value.trim().toLocaleLowerCase('es-MX');
+    const activeWorkspace = state.selectedWorkspaceId || state.board?.workspace_id;
+    if (!state.workspaces.some((workspace) => String(workspace.id) === String(activeWorkspace))) {
+      state.selectedWorkspaceId = String(state.workspaces[0]?.id || '');
+    } else {
+      state.selectedWorkspaceId = String(activeWorkspace || '');
+    }
+    const selector = document.getElementById('workspaceSelect');
+    if (selector) {
+      selector.replaceChildren();
+      state.workspaces.forEach((workspace) => {
+        const option = makeElement('option', '', workspace.name || 'Espacio sin nombre');
+        option.value = String(workspace.id);
+        selector.append(option);
+      });
+      selector.value = state.selectedWorkspaceId;
+      if (selector.value) state.selectedWorkspaceId = selector.value;
+    }
     list.replaceChildren();
-    const matches = state.boards.filter((board) => String(board.name || '').toLocaleLowerCase('es-MX').includes(query));
-    if (!matches.length) {
-      list.append(makeElement('p', 'boards-nav-empty', state.boards.length ? 'No hay tableros con ese nombre.' : 'Crea tu primer tablero.'));
+    const workspaceId = String(state.selectedWorkspaceId || '');
+    const workspace = state.workspaces.find((entry) => String(entry.id) === workspaceId);
+    const rootFolderButton = document.getElementById('navCreateFolder');
+    const rootBoardButton = document.getElementById('navCreateBoard');
+    if (rootFolderButton) rootFolderButton.hidden = !workspace || Boolean(workspace.shared_only);
+    if (rootBoardButton) rootBoardButton.hidden = !workspace || Boolean(workspace.shared_only);
+    if (!workspace) {
+      list.append(makeElement('p', 'boards-nav-empty', state.workspaces.length ? 'No hay contenido en este espacio.' : 'Crea un espacio de trabajo para empezar.'));
       return;
     }
-    matches.forEach((board) => {
+    const workspaceFolders = state.folders.filter((folder) => String(folder.workspace_id) === workspaceId);
+    const restricted = Boolean(workspace.shared_only);
+    const folderNodes = new Map(workspaceFolders.map((folder) => [String(folder.id), { ...folder, children: [], boards: [] }]));
+    const roots = [];
+    folderNodes.forEach((folder) => {
+      const parent = folder.parent_folder_id == null ? null : folderNodes.get(String(folder.parent_folder_id));
+      (parent ? parent.children : roots).push(folder);
+    });
+    const workspaceBoards = state.boards.filter((board) => String(board.workspace_id) === workspaceId);
+    const rootBoards = [];
+    workspaceBoards.forEach((board) => {
+      const parent = board.folder_id == null ? null : folderNodes.get(String(board.folder_id));
+      (parent ? parent.boards : rootBoards).push(board);
+    });
+    const matchesText = (label) => !query || String(label || '').toLocaleLowerCase('es-MX').includes(query);
+    const renderBoard = (board, depth) => {
+      if (!matchesText(board.name)) return;
       const link = makeElement('button', 'boards-nav-board');
       link.type = 'button';
       link.dataset.navBoard = String(board.id);
+      link.style.setProperty('--nav-depth', String(depth));
       link.title = board.name || 'Tablero sin nombre';
       if (state.board && String(state.board.id) === String(board.id)) {
         link.classList.add('is-active');
@@ -275,7 +439,49 @@
       icon.setAttribute('aria-hidden', 'true');
       link.append(icon, makeElement('span', '', board.name || 'Tablero sin nombre'));
       list.append(link);
-    });
+    };
+    const renderFolder = (folder, depth = 0) => {
+      const subtreeMatches = (node) => matchesText(node.name)
+        || node.boards.some((board) => matchesText(board.name))
+        || node.children.some(subtreeMatches);
+      if (query && !subtreeMatches(folder)) return;
+      const row = makeElement('div', 'boards-nav-folder-row');
+      row.style.setProperty('--nav-depth', String(depth));
+      const toggle = makeElement('button', 'boards-nav-folder');
+      toggle.type = 'button';
+      toggle.dataset.toggleFolder = String(folder.id);
+      const folderColor = /^#[\da-f]{3,8}$/i.test(String(folder.color || '')) ? String(folder.color) : '#61d5a8';
+      toggle.style.setProperty('--folder-color', folderColor);
+      const collapsed = state.collapsedFolderIds.has(String(folder.id)) && !query;
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      toggle.append(makeElement('i', `fa-solid ${collapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`, ''));
+      toggle.append(makeElement('i', 'fa-regular fa-folder', ''));
+      toggle.append(makeElement('span', '', folder.name || 'Carpeta sin nombre'));
+      row.append(toggle);
+      if (canCreateBoard && !workspace.shared_only) {
+        const actions = makeElement('span', 'boards-nav-folder-actions');
+        if (depth < 2) {
+          const addFolder = makeElement('button', '', '');
+          addFolder.type = 'button'; addFolder.dataset.createChildFolder = String(folder.id);
+          addFolder.title = 'Crear subcarpeta'; addFolder.setAttribute('aria-label', `Crear subcarpeta en ${folder.name}`);
+          addFolder.append(makeElement('i', 'fa-regular fa-folder-plus', ''));
+          actions.append(addFolder);
+        }
+        const addBoard = makeElement('button', '', '');
+        addBoard.type = 'button'; addBoard.dataset.createBoardFolder = String(folder.id);
+        addBoard.title = 'Crear tablero en esta carpeta'; addBoard.setAttribute('aria-label', `Crear tablero en ${folder.name}`);
+        addBoard.append(makeElement('i', 'fa-solid fa-plus', ''));
+        actions.append(addBoard); row.append(actions);
+      }
+      list.append(row);
+      if (collapsed) return;
+      folder.boards.filter((board) => matchesText(board.name)).forEach((board) => renderBoard(board, depth + 1));
+      folder.children.forEach((child) => renderFolder(child, depth + 1));
+    };
+    rootBoards.forEach((board) => renderBoard(board, 0));
+    roots.forEach((folder) => renderFolder(folder));
+    if (!list.children.length) list.append(makeElement('p', 'boards-nav-empty', query ? 'No hay coincidencias en este espacio.' : 'Crea una carpeta o un tablero para empezar.'));
+    populateWorkspaceSelectors();
   }
 
   async function loadBoards() {
@@ -283,8 +489,12 @@
     els.boardWorkspace.hidden = true;
     els.boardsEmpty.hidden = true;
     try {
-      const result = await request('/boards');
+      const [result, structureResult] = await Promise.all([request('/boards'), request('/structure')]);
       state.boards = Array.isArray(result.data) ? result.data : [];
+      const structure = structureResult.data || {};
+      state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
+      state.folders = Array.isArray(structure.folders) ? structure.folders : [];
+      state.selectedWorkspaceId = String(state.boards[0]?.workspace_id || state.workspaces[0]?.id || '');
       renderBoardOptions();
       const routeId = getRouteBoardId();
       const requestedId = app.dataset.initialBoardId || routeId;
@@ -335,6 +545,7 @@
       if (requestId !== state.activeBoardRequest) return;
       const data = result.data || {};
       state.board = data.board || null;
+      state.selectedWorkspaceId = String(state.board?.workspace_id || state.selectedWorkspaceId || '');
       state.groups = Array.isArray(data.groups) ? data.groups : [];
       state.columns = Array.isArray(data.columns) ? data.columns : [];
       state.items = Array.isArray(data.items) ? data.items : [];
@@ -3012,13 +3223,15 @@
     document.querySelectorAll('[data-close-dialog]').forEach((button) => {
       button.addEventListener('click', () => closeDialog(button.closest('dialog')));
     });
-    [els.createBoardDialog, els.createGroupDialog, els.createColumnDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog].forEach((dialog) => {
+    [els.createBoardDialog, els.createWorkspaceDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
     });
-    document.getElementById('openCreateBoard')?.addEventListener('click', () => openDialog(els.createBoardDialog));
-    document.getElementById('emptyCreateBoard')?.addEventListener('click', () => openDialog(els.createBoardDialog));
+    document.getElementById('openCreateBoard')?.addEventListener('click', () => openCreateBoard(state.board?.workspace_id || state.selectedWorkspaceId, state.board?.folder_id || ''));
+    document.getElementById('emptyCreateBoard')?.addEventListener('click', () => openCreateBoard());
+    document.getElementById('navCreateWorkspace')?.addEventListener('click', () => openDialog(els.createWorkspaceDialog));
+    document.getElementById('navCreateFolder')?.addEventListener('click', () => openCreateFolder());
     document.getElementById('openCreateGroup').addEventListener('click', () => {
       if (canManageStructure()) openDialog(els.createGroupDialog);
       else setNotice('Se requiere permiso de administración para agregar grupos.', 'error');
@@ -3049,16 +3262,58 @@
       if (!canCreateBoard) throw new Error('No tienes permiso para crear tableros.');
       const name = getFormValue(formData, 'name');
       const description = getFormValue(formData, 'description');
-      const result = await post('/create_board', { name, ...(description ? { description } : {}) });
+      const workspaceId = getFormValue(formData, 'workspace_id');
+      const folderId = getFormValue(formData, 'folder_id');
+      const visibility = getFormValue(formData, 'visibility') || 'private';
+      const result = await post('/create_board', { name, workspace_id: workspaceId, visibility, ...(folderId ? { folder_id: folderId } : {}), ...(description ? { description } : {}) });
       const board = result.data || {};
       if (!board.id) throw new Error('El servidor no devolvió el tablero creado.');
       closeDialog(els.createBoardDialog);
       state.boards.push({ ...board, name: board.name || name });
+      state.selectedWorkspaceId = String(workspaceId);
       renderBoardOptions();
       els.boardSelect.value = String(board.id);
       setNotice('Tablero creado.', 'success');
       await loadBoard(board.id);
     });
+
+    dialogSubmit(els.createWorkspaceForm, async (formData) => {
+      if (!canCreateBoard) throw new Error('No tienes permiso para crear espacios de trabajo.');
+      const name = getFormValue(formData, 'name');
+      const visibility = getFormValue(formData, 'visibility') || 'private';
+      const result = await post('/create_workspace', { name, visibility });
+      const workspace = result.data || {};
+      if (!workspace.id) throw new Error('El servidor no devolvió el espacio creado.');
+      state.workspaces.push(workspace);
+      state.workspaces.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es-MX'));
+      state.selectedWorkspaceId = String(workspace.id);
+      state.board = null;
+      closeDialog(els.createWorkspaceDialog);
+      renderBoardOptions();
+      showEmptyState();
+      els.boardsEmptyText.textContent = 'Espacio creado. Agrega una carpeta o crea un tablero para comenzar.';
+      setNotice('Espacio de trabajo creado.', 'success');
+    });
+
+    dialogSubmit(els.createFolderForm, async (formData) => {
+      if (!canCreateBoard) throw new Error('No tienes permiso para crear carpetas.');
+      const name = getFormValue(formData, 'name');
+      const workspaceId = getFormValue(formData, 'workspace_id');
+      const parentFolderId = getFormValue(formData, 'parent_folder_id');
+      const color = getFormValue(formData, 'color');
+      const result = await post('/create_folder', { name, color, workspace_id: workspaceId, ...(parentFolderId ? { parent_folder_id: parentFolderId } : {}) });
+      const folder = result.data || {};
+      if (!folder.id) throw new Error('El servidor no devolvió la carpeta creada.');
+      state.folders.push(folder);
+      state.folders.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'es-MX'));
+      state.selectedWorkspaceId = String(workspaceId);
+      closeDialog(els.createFolderDialog);
+      renderBoardNav();
+      setNotice('Carpeta creada.', 'success');
+    });
+
+    document.getElementById('newBoardWorkspace')?.addEventListener('change', (event) => refreshFolderChoices(event.target.value, false));
+    document.getElementById('newFolderWorkspace')?.addEventListener('change', (event) => refreshFolderChoices(event.target.value, false));
 
     dialogSubmit(els.createGroupForm, async (formData) => {
       if (!canManageStructure()) throw new Error('Se requiere permiso de administración para agregar grupos.');
@@ -3246,13 +3501,45 @@
 
   function attachEvents() {
     document.getElementById('boardNavSearch')?.addEventListener('input', renderBoardNav);
+    els.workspaceSelect?.addEventListener('change', () => {
+      state.selectedWorkspaceId = els.workspaceSelect.value;
+      state.board = null;
+      renderBoardNav();
+      const firstBoard = state.boards.find((board) => String(board.workspace_id) === String(state.selectedWorkspaceId));
+      if (firstBoard) {
+        els.boardSelect.value = String(firstBoard.id);
+        loadBoard(firstBoard.id);
+      } else {
+        els.boardSelect.value = '';
+        updateBoardRoute('');
+        showEmptyState();
+        els.boardsEmptyText.textContent = 'Este espacio aún no tiene tableros a los que tengas acceso.';
+      }
+    });
     document.getElementById('boardNavList')?.addEventListener('click', (event) => {
       const button = event.target.closest('[data-nav-board]');
-      if (!button) return;
-      els.boardSelect.value = button.dataset.navBoard;
-      loadBoard(button.dataset.navBoard);
+      if (button) {
+        els.boardSelect.value = button.dataset.navBoard;
+        loadBoard(button.dataset.navBoard);
+        return;
+      }
+      const folderToggle = event.target.closest('[data-toggle-folder]');
+      if (folderToggle) {
+        const id = folderToggle.dataset.toggleFolder;
+        if (state.collapsedFolderIds.has(id)) state.collapsedFolderIds.delete(id);
+        else state.collapsedFolderIds.add(id);
+        renderBoardNav();
+        return;
+      }
+      const childFolder = event.target.closest('[data-create-child-folder]');
+      if (childFolder) {
+        openCreateFolder(state.selectedWorkspaceId, childFolder.dataset.createChildFolder);
+        return;
+      }
+      const createBoardInFolder = event.target.closest('[data-create-board-folder]');
+      if (createBoardInFolder) openCreateBoard(state.selectedWorkspaceId, createBoardInFolder.dataset.createBoardFolder);
     });
-    document.getElementById('navCreateBoard')?.addEventListener('click', () => openDialog(els.createBoardDialog));
+    document.getElementById('navCreateBoard')?.addEventListener('click', () => openCreateBoard());
     els.boardSelect.addEventListener('change', () => {
       const board = state.boards.find((candidate) => String(candidate.id) === els.boardSelect.value);
       if (board) loadBoard(board.id);
