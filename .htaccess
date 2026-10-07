@@ -2,3 +2,9 @@ php_value upload_max_filesize 30M
 php_value post_max_size 32M
 php_value memory_limit 512M
 php_value max_execution_time 600
+
+# Keep Tableros uploads private even when the application runs on Apache.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^uploads/tableros(?:/|$) - [F,L,NC]
+</IfModule>

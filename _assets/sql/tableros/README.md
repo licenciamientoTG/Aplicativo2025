@@ -15,7 +15,9 @@ Programar `php cron/tableros_automation_worker.php` para que se ejecute cada min
 
 ## Archivos
 
-Definir `TABLEROS_PRIVATE_STORAGE` con una ruta absoluta, escribible por el proceso de la aplicación y fuera de `DOCUMENT_ROOT` y del directorio del proyecto. El código permite archivos de hasta 25 MB y restringe extensiones y tipo MIME. Las versiones nuevas quedan pendientes; un propietario o diseñador debe aprobar manualmente la versión vigente para habilitar su descarga. Esa aprobación no es un análisis antivirus.
+Por defecto, los archivos se guardan dentro del proyecto en `uploads/tableros/`, una carpeta ignorada por Git. La estructura es `tableros/{id_tablero}/{id_elemento}/{año}/{mes}/{fragmento_hash}/{hash}`, sin usar el nombre original como ruta. El acceso HTTP directo está bloqueado en `web.config` (IIS) y `.htaccess` (Apache); las descargas se sirven por la ruta autorizada del módulo. Para cambiar el destino, `TABLEROS_PRIVATE_STORAGE` puede apuntar a una ruta absoluta escribible fuera de la raíz pública y del directorio del proyecto.
+
+El código permite archivos de hasta 25 MB y restringe extensiones y tipo MIME. Las versiones nuevas quedan pendientes; un propietario o diseñador debe aprobar manualmente la versión vigente para habilitar su descarga. Esa aprobación no es un análisis antivirus. Los archivos guardados con el formato anterior de clave hash siguen siendo resolubles.
 
 ## Monday
 

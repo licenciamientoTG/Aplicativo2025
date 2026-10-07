@@ -272,6 +272,20 @@ class TablerosModel {
         $itemId = $this->optionalPositiveInt($input['item_id'] ?? null, 'item_id');
         $fileId = $this->optionalPositiveInt($input['file_id'] ?? null, 'file_id');
         $columnId = $this->optionalPositiveInt($input['column_id'] ?? null, 'column_id');
+        if ($fileId !== null && $itemId === null) {
+            $existingFile = $this->one(
+                'SELECT item_id FROM tb_file WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
+                [$fileId, $boardId]
+            );
+            if (!$existingFile) {
+                throw new TablerosApiException('not_found', 'No se encontró el archivo en este tablero.', 404);
+            }
+            $itemId = (int)$existingFile['item_id'];
+        }
+        if ($itemId === null) {
+            throw new TablerosApiException('validation', 'item_id es obligatorio para crear un archivo.', 422);
+        }
+        $this->requireItemOnBoard($itemId, $boardId);
         if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || empty($upload['tmp_name'])) {
             throw new TablerosApiException('validation', 'No se recibió un archivo válido.', 422);
         }
@@ -286,17 +300,29 @@ class TablerosModel {
         $originalName = $this->safeFilename((string)($upload['name'] ?? 'archivo'));
         [$extension, $contentType] = $this->validateUploadedFile((string)$upload['tmp_name'], $originalName);
         $storageRoot = $this->privateStorageRoot();
-        $objectKey = bin2hex(random_bytes(32));
-        $shard = substr($objectKey, 0, 2);
-        $storageDir = $storageRoot . DIRECTORY_SEPARATOR . $shard;
+        $now = new DateTimeImmutable('now');
+        $objectHash = bin2hex(random_bytes(32));
+        $objectKey = implode('/', [
+            (string)$boardId,
+            (string)$itemId,
+            $now->format('Y'),
+            $now->format('m'),
+            substr($objectHash, 0, 2),
+            $objectHash,
+        ]);
+        $storageDir = $storageRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, dirname($objectKey));
         if (!is_dir($storageDir) && !@mkdir($storageDir, 0700, true) && !is_dir($storageDir)) {
             throw new TablerosApiException('server', 'No se pudo preparar el almacenamiento privado de archivos.', 500);
         }
-        @chmod($storageDir, 0700);
+        $securedDir = $storageDir;
+        while ($securedDir !== $storageRoot && $this->pathIsWithin($securedDir, $storageRoot)) {
+            @chmod($securedDir, 0700);
+            $securedDir = dirname($securedDir);
+        }
         if (!is_writable($storageDir)) {
             throw new TablerosApiException('server', 'El almacenamiento privado de archivos no tiene permisos de escritura.', 500);
         }
-        $destination = $storageDir . DIRECTORY_SEPARATOR . $objectKey;
+        $destination = $storageRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $objectKey);
         $target = @fopen($destination, 'xb');
         $source = @fopen((string)$upload['tmp_name'], 'rb');
         if (!is_resource($target) || !is_resource($source)) {
@@ -1873,7 +1899,7 @@ class TablerosModel {
     private function privateStorageRoot(): string {
         $configured = getenv('TABLEROS_PRIVATE_STORAGE');
         if (!is_string($configured) || trim($configured) === '') {
-            $configured = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'tableros-private';
+            $configured = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'tableros';
         }
         $configured = trim($configured);
         if (!$this->isAbsolutePath($configured)) {
@@ -1888,23 +1914,50 @@ class TablerosModel {
             throw new TablerosApiException('server', 'El almacenamiento privado de archivos no tiene permisos de escritura.', 500);
         }
         $documentRoot = isset($_SERVER['DOCUMENT_ROOT']) ? realpath((string)$_SERVER['DOCUMENT_ROOT']) : false;
-        if ($documentRoot !== false && $this->pathIsWithin($root, $documentRoot)) {
+        $applicationRoot = realpath(dirname(__DIR__, 2));
+        $defaultPrivateRoot = $applicationRoot === false
+            ? false
+            : realpath($applicationRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'tableros');
+        $isDefaultPrivateRoot = $defaultPrivateRoot !== false && $root === $defaultPrivateRoot;
+        if ($documentRoot !== false && $this->pathIsWithin($root, $documentRoot) && !$isDefaultPrivateRoot) {
             throw new TablerosApiException('server', 'El almacenamiento de archivos debe estar fuera de la raíz pública.', 500);
         }
-        $applicationRoot = realpath(dirname(__DIR__, 2));
-        if ($applicationRoot !== false && $this->pathIsWithin($root, $applicationRoot)) {
+        if ($applicationRoot !== false && $this->pathIsWithin($root, $applicationRoot) && !$isDefaultPrivateRoot) {
             throw new TablerosApiException('server', 'El almacenamiento de archivos debe estar fuera del directorio de la aplicación.', 500);
         }
         return $root;
     }
 
     private function privateObjectPath(string $objectKey): string {
-        if (!preg_match('/^[a-f0-9]{64}$/', $objectKey)) {
+        // Preserve compatibility with legacy hashed keys while new files use
+        // board/item/year/month/shard/hash to keep project assets organized.
+        $legacyKey = (bool)preg_match('/^[a-f0-9]{64}$/', $objectKey);
+        $hierarchicalKey = (bool)preg_match('~^[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}$~', $objectKey);
+        if (!$legacyKey && !$hierarchicalKey) {
             throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
         }
         $root = $this->privateStorageRoot();
-        $directory = $root . DIRECTORY_SEPARATOR . substr($objectKey, 0, 2);
-        $path = $directory . DIRECTORY_SEPARATOR . $objectKey;
+        if ($legacyKey) {
+            $directory = $root . DIRECTORY_SEPARATOR . substr($objectKey, 0, 2);
+            $path = $directory . DIRECTORY_SEPARATOR . $objectKey;
+            // The previous default was a sibling directory named tableros-private.
+            // Keep reads working there during the transition; new writes use uploads/tableros.
+            if (!is_file($path)) {
+                $previousRoot = dirname(dirname(__DIR__, 2)) . DIRECTORY_SEPARATOR . 'tableros-private';
+                $previousPath = $previousRoot . DIRECTORY_SEPARATOR . substr($objectKey, 0, 2) . DIRECTORY_SEPARATOR . $objectKey;
+                if (is_file($previousPath)) {
+                    $previousRealRoot = realpath($previousRoot);
+                    $previousRealPath = realpath($previousPath);
+                    if ($previousRealRoot !== false && $previousRealPath !== false
+                        && $this->pathIsWithin($previousRealPath, $previousRealRoot)) {
+                        return $previousRealPath;
+                    }
+                }
+            }
+        } else {
+            $path = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $objectKey);
+            $directory = dirname($path);
+        }
         $realDirectory = realpath($directory);
         $realPath = realpath($path);
         if ($realDirectory === false || !$this->pathIsWithin($realDirectory, $root)
