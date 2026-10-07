@@ -1,0 +1,220 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Tableros{% endblock %}
+{% block menutitle %}Tableros{% endblock %}
+{% block mycss %}<link href="/_assets/css/tableros.css" rel="stylesheet">{% endblock %}
+{% block content %}
+<div id="tablerosApp"
+  class="boards-app"
+  data-csrf-token="{{ csrf_token|e('html_attr') }}"
+  data-can-create="{{ can_create ? '1' : '0' }}"
+  data-can-admin="{{ can_admin ? '1' : '0' }}"
+  data-initial-board-id="{{ initial_board_id|default('')|e('html_attr') }}">
+  <header class="boards-page-heading">
+    <div>
+      <h2 class="boards-page-title">Tableros de trabajo</h2>
+      <p class="boards-page-intro">Organiza pendientes y da seguimiento al trabajo del equipo.</p>
+    </div>
+    <div class="boards-picker-wrap">
+      <label class="visually-hidden" for="boardSelect">Seleccionar tablero</label>
+      <select id="boardSelect" class="form-select" aria-label="Seleccionar tablero" disabled>
+        <option value="">Cargando tableros…</option>
+      </select>
+      {% if can_create %}<button type="button" class="btn boards-button-primary" id="openCreateBoard">Nuevo tablero</button>{% endif %}
+    </div>
+  </header>
+
+  <div id="boardNotice" class="boards-notice" role="status" aria-live="polite" hidden></div>
+  <div id="boardLoading" class="boards-loading" role="status" aria-live="polite">
+    <span class="boards-spinner" aria-hidden="true"></span><span>Cargando tus tableros…</span>
+  </div>
+
+  <section id="boardsEmpty" class="boards-empty" aria-labelledby="boardsEmptyTitle" hidden>
+    <div class="boards-empty-mark" aria-hidden="true"><i class="fa-solid fa-table-cells-large"></i></div>
+    <h3 id="boardsEmptyTitle">Aún no hay tableros</h3>
+    <p id="boardsEmptyText">Crea un tablero para reunir el trabajo de tu equipo en un solo lugar.</p>
+    {% if can_create %}<button type="button" class="btn boards-button-primary" id="emptyCreateBoard">Crear primer tablero</button>{% endif %}
+  </section>
+
+  <section id="boardWorkspace" class="boards-workspace" aria-labelledby="boardName" hidden>
+    <div class="boards-board-heading">
+      <div class="boards-board-title-wrap">
+        <div class="boards-board-mark" aria-hidden="true"><i class="fa-solid fa-table-cells-large"></i></div>
+        <div>
+          <h3 id="boardName" class="boards-board-title"></h3>
+          <p id="boardDescription" class="boards-board-description" hidden></p>
+        </div>
+      </div>
+      <div class="boards-board-meta">
+        <span id="boardRole" class="boards-role"></span>
+        <button type="button" class="btn boards-button-light" id="openAutomations"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Automatizaciones</span></button>
+        <button type="button" class="btn boards-button-light" id="openShareBoard"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Compartir</span></button>
+      </div>
+    </div>
+
+    <div class="boards-viewbar">
+      <nav class="boards-view-tabs" aria-label="Vistas del tablero">
+        <button type="button" class="boards-view-tab is-active" data-view-type="table" aria-current="page"><i class="fa-solid fa-table" aria-hidden="true"></i> Tabla</button>
+        <button type="button" class="boards-view-tab" data-view-type="calendar"><i class="fa-regular fa-calendar" aria-hidden="true"></i> Calendario</button>
+        <button type="button" class="boards-view-tab" data-view-type="timeline"><i class="fa-solid fa-bars-staggered" aria-hidden="true"></i> Cronograma</button>
+        <button type="button" class="boards-view-tab" data-view-type="kanban"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> Kanban</button>
+        <button type="button" class="boards-view-tab" data-view-type="dashboard"><i class="fa-solid fa-chart-simple" aria-hidden="true"></i> Panel</button>
+      </nav>
+      <div class="boards-saved-view-controls">
+        <label class="visually-hidden" for="savedViewSelect">Vistas guardadas</label>
+        <select id="savedViewSelect" class="form-select" aria-label="Vistas guardadas"><option value="">Vistas guardadas</option></select>
+        <button type="button" class="btn boards-button-light" id="openSaveView"><i class="fa-solid fa-bookmark" aria-hidden="true"></i><span>Guardar vista</span></button>
+      </div>
+    </div>
+
+    <div id="boardViewOptions" class="boards-view-options" hidden></div>
+
+    <div class="boards-toolbar">
+      <label class="boards-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <span class="visually-hidden">Buscar en este tablero</span>
+        <input type="search" id="boardSearch" placeholder="Buscar elementos o valores" autocomplete="off">
+        <kbd aria-hidden="true">/</kbd>
+      </label>
+      <div class="boards-toolbar-actions">
+        <span id="boardItemCount" class="boards-item-count"></span>
+        <button type="button" class="btn boards-button-light" id="toggleBoardFilters" aria-expanded="false" aria-controls="boardFiltersPanel"><i class="fa-solid fa-filter" aria-hidden="true"></i><span>Filtros</span><span id="boardFilterCount" class="boards-filter-count" hidden></span></button>
+        <button type="button" class="btn boards-button-light" id="toggleColumnControls" aria-expanded="false" aria-controls="columnControlsPanel"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Columnas</span></button>
+        <button type="button" class="btn boards-button-light" id="toggleBoardDensity" aria-pressed="false"><i class="fa-solid fa-arrows-up-down" aria-hidden="true"></i><span>Compactar</span></button>
+        <button type="button" class="btn boards-button-light" id="openCreateGroup"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>Nuevo grupo</span></button>
+        <button type="button" class="btn boards-button-light" id="openCreateColumn"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Agregar columna</span></button>
+        <button type="button" class="btn boards-button-primary" id="openCreateItem"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Agregar elemento</span></button>
+      </div>
+    </div>
+
+    <section id="boardFiltersPanel" class="boards-filters-panel" aria-label="Filtros por columna" hidden>
+      <div class="boards-filter-heading"><div><strong>Filtrar elementos</strong><span>Combina condiciones de columnas.</span></div><button type="button" class="boards-text-button" id="addBoardFilter"><i class="fa-solid fa-plus" aria-hidden="true"></i> Agregar filtro</button></div>
+      <div id="boardFilterRows" class="boards-filter-rows"></div>
+      <div class="boards-filter-actions"><button type="button" class="btn boards-button-light" id="clearBoardFilters">Limpiar</button><button type="button" class="btn boards-button-primary" id="applyBoardFilters">Aplicar filtros</button></div>
+    </section>
+
+    <section id="columnControlsPanel" class="boards-columns-panel" aria-label="Mostrar y ordenar columnas" hidden>
+      <div class="boards-filter-heading"><div><strong>Columnas visibles</strong><span>El orden y la visibilidad se incluyen al guardar esta vista.</span></div></div>
+      <div id="columnControlsList" class="boards-columns-list"></div>
+    </section>
+
+    <div id="boardTableStatus" class="boards-table-status" role="status" aria-live="polite" hidden></div>
+    <div class="boards-table-frame" id="boardTableFrame">
+      <div class="boards-table-scroll" id="boardTableContainer" tabindex="0" aria-label="Tabla del tablero"></div>
+    </div>
+    <div id="boardRendererArea" class="boards-renderer-area" hidden></div>
+  </section>
+</div>
+
+<dialog class="boards-dialog" id="createBoardDialog" aria-labelledby="createBoardTitle">
+  <form id="createBoardForm">
+    <div class="boards-dialog-heading"><div><h3 id="createBoardTitle">Crear tablero</h3><p>Empieza con una lista clara para tu equipo.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="newBoardName">Nombre del tablero</label>
+    <input class="form-control" id="newBoardName" name="name" maxlength="120" required autocomplete="off" placeholder="Ej. Proyectos de mantenimiento">
+    <label class="boards-field-label" for="newBoardDescription">Descripción <span>Opcional</span></label>
+    <textarea class="form-control" id="newBoardDescription" name="description" rows="3" maxlength="500" placeholder="¿Qué trabajo se organizará aquí?"></textarea>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Crear tablero</button></div>
+  </form>
+</dialog>
+
+<dialog class="boards-dialog" id="createGroupDialog" aria-labelledby="createGroupTitle">
+  <form id="createGroupForm">
+    <div class="boards-dialog-heading"><div><h3 id="createGroupTitle">Nuevo grupo</h3><p>Usa grupos para separar etapas o equipos.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="newGroupName">Nombre del grupo</label>
+    <input class="form-control" id="newGroupName" name="name" maxlength="120" required autocomplete="off" placeholder="Ej. En seguimiento">
+    <label class="boards-field-label" for="newGroupColor">Color del grupo</label>
+    <select class="form-select" id="newGroupColor" name="color">
+      <option value="#0f766e">Verde petróleo</option><option value="#3574a5">Azul</option><option value="#8a5ca6">Violeta</option><option value="#bb7a2a">Ámbar</option><option value="#b64f57">Coral</option>
+    </select>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Crear grupo</button></div>
+  </form>
+</dialog>
+
+<dialog class="boards-dialog" id="createColumnDialog" aria-labelledby="createColumnTitle">
+  <form id="createColumnForm">
+    <div class="boards-dialog-heading"><div><h3 id="createColumnTitle">Configurar columna</h3><p>Agrega un dato para cada elemento.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="newColumnName">Nombre de la columna</label>
+    <input class="form-control" id="newColumnName" name="name" maxlength="100" required autocomplete="off" placeholder="Ej. Responsable">
+    <label class="boards-field-label" for="newColumnType">Tipo de dato</label>
+    <select class="form-select" id="newColumnType" name="type">
+      <option value="name">Nombre</option><option value="text">Texto</option><option value="long_text">Texto largo</option><option value="numbers">Número</option><option value="formula">Fórmula</option><option value="progress">Progreso</option><option value="rating">Calificación</option><option value="people">Personas</option><option value="person">Persona</option><option value="team">Equipo</option><option value="status">Estado</option><option value="dropdown">Lista desplegable</option><option value="tags">Etiquetas</option><option value="date">Fecha</option><option value="timeline">Cronograma</option><option value="hour">Hora</option><option value="file">Archivo</option><option value="email">Correo electrónico</option><option value="phone">Teléfono</option><option value="country">País</option><option value="link">Enlace</option><option value="location">Ubicación</option><option value="board_relation">Relación con tablero</option><option value="subtasks">Subelementos</option><option value="dependency">Dependencia</option><option value="item_id">ID de elemento</option>
+    </select>
+    <div id="columnOptionsField" class="d-none"><label class="boards-field-label" for="newColumnOptions">Opciones de la columna</label><textarea class="form-control" id="newColumnOptions" rows="3" placeholder="Pendiente&#10;En curso&#10;Listo"></textarea><small class="boards-field-help">Para Estado, Lista desplegable y Etiquetas: escribe una opción por línea.</small></div>
+    <small id="columnTypeHelp" class="boards-field-help">El tipo determina el editor y las validaciones disponibles para cada celda.</small>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Agregar columna</button></div>
+  </form>
+</dialog>
+
+<dialog class="boards-dialog" id="createItemDialog" aria-labelledby="createItemTitle">
+  <form id="createItemForm">
+    <div class="boards-dialog-heading"><div><h3 id="createItemTitle">Agregar elemento</h3><p>Después de crearlo, puedes editar el nombre desde el tablero.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="newItemName">Nombre</label>
+    <input class="form-control" id="newItemName" name="name" maxlength="240" required autocomplete="off" placeholder="Describe el trabajo pendiente">
+    <label class="boards-field-label" for="newItemGroup">Grupo</label>
+    <select class="form-select" id="newItemGroup" name="group_id" required></select>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Agregar elemento</button></div>
+  </form>
+</dialog>
+
+<dialog class="boards-dialog" id="shareBoardDialog" aria-labelledby="shareBoardTitle">
+  <form id="shareBoardForm">
+    <div class="boards-dialog-heading"><div><h3 id="shareBoardTitle">Compartir tablero</h3><p>Asigna acceso a una persona del equipo.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="shareUserSearch">Buscar persona</label>
+    <input class="form-control" id="shareUserSearch" type="search" autocomplete="off" placeholder="Nombre o correo">
+    <label class="boards-field-label" for="shareUserSelect">Persona</label>
+    <select class="form-select" id="shareUserSelect" name="user_id" required><option value="">Escribe para buscar personas</option></select>
+    <label class="boards-field-label" for="shareRole">Permiso</label>
+    <select class="form-select" id="shareRole" name="role"><option value="viewer">Solo lectura</option><option value="editor">Puede editar</option><option value="designer">Puede editar y configurar</option></select>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Compartir tablero</button></div>
+  </form>
+  <section class="boards-member-section" aria-labelledby="boardMembersTitle">
+    <div class="boards-automation-history-heading"><h4 id="boardMembersTitle">Personas con acceso</h4><span id="boardMembersStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando…</span></div>
+    <div id="boardMembersList" class="boards-member-list"></div>
+  </section>
+</dialog>
+
+<dialog class="boards-dialog" id="saveViewDialog" aria-labelledby="saveViewTitle">
+  <form id="saveViewForm">
+    <div class="boards-dialog-heading"><div><h3 id="saveViewTitle">Guardar vista</h3><p>Conserva estos filtros y opciones para volver a usarlos.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="savedViewName">Nombre de la vista</label>
+    <input class="form-control" id="savedViewName" name="name" maxlength="120" required autocomplete="off" placeholder="Ej. Pendientes del mes">
+    <label class="boards-field-label" for="savedViewType">Tipo de vista</label>
+    <select class="form-select" id="savedViewType" name="view_type"><option value="table">Tabla</option><option value="calendar">Calendario</option><option value="timeline">Cronograma</option><option value="kanban">Kanban</option><option value="dashboard">Panel</option></select>
+    <label id="sharedViewOption" class="boards-checkbox-label"><input type="checkbox" id="savedViewShared" name="is_shared" value="1"><span>Compartir con las personas que tienen acceso al tablero</span></label>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Guardar vista</button></div>
+  </form>
+</dialog>
+
+<dialog class="boards-dialog boards-details-dialog" id="itemDetailsDialog" aria-labelledby="itemDetailsTitle">
+  <div class="boards-dialog-body">
+    <div class="boards-dialog-heading"><div><h3 id="itemDetailsTitle">Detalles del elemento</h3><p id="itemDetailsSubtitle">Comentarios, archivos y relaciones del elemento.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <div class="boards-details-grid">
+      <section class="boards-detail-section"><h4>Comentarios</h4><div id="itemCommentStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando comentarios…</div><div id="itemCommentsList" class="boards-detail-list"></div><form id="itemCommentForm" class="boards-comment-form"><label class="boards-field-label" for="itemCommentBody">Agregar comentario</label><textarea id="itemCommentBody" class="form-control" rows="3" maxlength="10000" required placeholder="Escribe una actualización para el equipo"></textarea><div class="boards-dialog-actions"><button class="btn boards-button-primary" type="submit">Comentar</button></div></form></section>
+      <section class="boards-detail-section"><h4>Archivos</h4><div id="itemFilesStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando archivos…</div><p class="boards-file-review-note">No hay antivirus automático. Solo las versiones aprobadas tras una revisión manual se pueden descargar.</p><div id="itemFilesList" class="boards-detail-list"></div><form id="itemFileForm" class="boards-file-form"><label class="boards-field-label" for="itemFileColumn">Columna de archivo</label><select id="itemFileColumn" class="form-select" required></select><label class="boards-field-label" for="itemFileTarget">Archivo</label><select id="itemFileTarget" class="form-select"><option value="">Crear archivo nuevo</option></select><label class="boards-field-label" for="itemFileInput">Archivo nuevo o versión</label><input id="itemFileInput" class="form-control" type="file" required><small class="boards-field-help">Máximo 25 MB. Para consultar archivos después, se guarda su referencia en la celda de archivo.</small><div class="boards-dialog-actions"><button class="btn boards-button-primary" type="submit">Subir archivo</button></div></form></section>
+      <section class="boards-detail-section"><h4>Relaciones y dependencias</h4><div id="itemRelationsStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando relaciones…</div><div id="itemRelationsList" class="boards-detail-list"></div><form id="itemRelationForm" class="boards-compact-form"><label class="boards-field-label" for="relationTargetBoard">Tablero relacionado</label><select id="relationTargetBoard" class="form-select"></select><label class="boards-field-label" for="relationTargetItem">Elemento relacionado</label><select id="relationTargetItem" class="form-select" required></select><label class="boards-field-label" for="relationType">Tipo de relación</label><select id="relationType" class="form-select"><option value="related">Relacionado</option><option value="blocks">Bloquea</option><option value="blocked_by">Bloqueado por</option><option value="duplicate">Duplicado</option><option value="connects">Conecta</option></select><div class="boards-dialog-actions"><button class="btn boards-button-light" type="submit">Agregar relación</button></div></form><div id="itemDependenciesList" class="boards-detail-list"></div><form id="itemDependencyForm" class="boards-compact-form"><label class="boards-field-label" for="dependencyTargetItem">Dependencia con</label><select id="dependencyTargetItem" class="form-select" required></select><label class="boards-field-label" for="dependencyDirection">Dirección</label><select id="dependencyDirection" class="form-select"><option value="depends">Este elemento depende del seleccionado</option><option value="blocks">Este elemento va antes del seleccionado</option></select><label class="boards-field-label" for="dependencyType">Tipo</label><select id="dependencyType" class="form-select"><option value="finish_to_start">Fin a inicio</option><option value="start_to_start">Inicio a inicio</option><option value="finish_to_finish">Fin a fin</option><option value="start_to_finish">Inicio a fin</option></select><label class="boards-field-label" for="dependencyLag">Desfase (minutos) <span>Opcional</span></label><input id="dependencyLag" class="form-control" type="number" min="-525600" max="525600" step="1" value="0"><div class="boards-dialog-actions"><button class="btn boards-button-light" type="submit">Agregar dependencia</button></div></form></section>
+      <section class="boards-detail-section"><h4>Subelementos</h4><p class="boards-field-help">Cambia el elemento principal. No se permiten ciclos en la jerarquía.</p><label class="boards-field-label" for="itemParentSelect">Elemento principal</label><select id="itemParentSelect" class="form-select"></select><div class="boards-dialog-actions"><button id="saveItemParent" class="btn boards-button-light" type="button">Guardar relación</button></div><div id="itemSubtasksList" class="boards-detail-list"></div></section>
+      <section class="boards-detail-section boards-detail-section-wide"><h4>Actividad</h4><div id="itemActivityStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando actividad…</div><div id="itemActivityList" class="boards-detail-list"></div></section>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="boards-dialog boards-automation-dialog" id="automationDialog" aria-labelledby="automationTitle">
+  <div class="boards-dialog-body">
+    <div class="boards-dialog-heading"><div><h3 id="automationTitle">Automatizaciones del tablero</h3><p>Reglas limitadas a los disparadores, filtros y acciones permitidos.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <div id="automationListStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando automatizaciones…</div><p id="automationPermissionsNote" class="boards-field-help" hidden></p><div id="automationList" class="boards-automation-list"></div>
+    <section id="automationEditorPanel" class="boards-automation-editor" hidden>
+      <h4>Nueva automatización</h4>
+      <form id="automationForm">
+        <label class="boards-field-label" for="automationName">Nombre</label><input id="automationName" class="form-control" maxlength="200" required placeholder="Ej. Recordatorio de pendientes">
+        <label class="boards-field-label" for="automationTrigger">Disparador</label><select id="automationTrigger" class="form-select"><option value="manual">Ejecución manual</option><option value="schedule">Programada</option></select>
+        <div id="automationScheduleField" hidden><label class="boards-field-label" for="automationInterval">Frecuencia</label><select id="automationInterval" class="form-select"><option value="1">Cada minuto</option><option value="5">Cada 5 minutos</option><option value="10">Cada 10 minutos</option><option value="15">Cada 15 minutos</option><option value="30">Cada 30 minutos</option><option value="60">Cada hora</option><option value="120">Cada 2 horas</option><option value="360">Cada 6 horas</option><option value="720">Cada 12 horas</option><option value="1440">Cada día</option></select></div>
+        <h5>Condición</h5><label class="boards-field-label" for="automationFilterField">Campo</label><select id="automationFilterField" class="form-select"></select><div id="automationFilterValueFields"></div>
+        <h5>Acción</h5><label class="boards-field-label" for="automationActionType">Acción permitida</label><select id="automationActionType" class="form-select"><option value="set_status">Cambiar estado</option><option value="set_date">Establecer fecha</option><option value="reminder">Crear recordatorio</option></select><div id="automationActionFields"></div>
+        <small class="boards-field-help">Las reglas nuevas quedan en borrador; actívalas antes de ejecutarlas.</small>
+        <div class="boards-dialog-actions"><button class="btn boards-button-primary" type="submit">Crear automatización</button></div>
+      </form>
+    </section>
+    <section class="boards-automation-history"><div class="boards-automation-history-heading"><h4>Historial de ejecuciones</h4><button id="refreshAutomationRuns" class="boards-text-button" type="button">Actualizar</button></div><div id="automationRunsStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando historial…</div><div id="automationRunsList" class="boards-detail-list"></div></section>
+  </div>
+</dialog>
+{% endblock %}
+{% block myjs %}<script src="{{ js_v('tableros.js') }}"></script>{% endblock %}

@@ -397,6 +397,40 @@ class MySqlPdoHandler{
         return $this->_connection;
     }
 
+    /**
+     * Abre una conexión PDO aislada a otra base del mismo servidor sin
+     * sustituir la conexión compartida que usan los modelos existentes.
+     * Las credenciales solo se reutilizan desde la instancia actual.
+     */
+    public function createIsolatedConnection(string $dbname): PDO {
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $dbname)) {
+            throw new InvalidArgumentException('Nombre de base de datos no válido.');
+        }
+
+        // Los procesos CLI (por ejemplo, la cola de automatizaciones) no
+        // siempre han inicializado el singleton. Configuramos un manejador
+        // temporal con la conexión habitual, sin cambiar el singleton ni
+        // guardar credenciales fuera de este componente.
+        if ($this->_host === null || $this->_username === null || $this->_password === null) {
+            $bootstrap = new self();
+            $bootstrap->connect('TG');
+            return $bootstrap->openIsolatedPdo($dbname);
+        }
+
+        return $this->openIsolatedPdo($dbname);
+    }
+
+    private function openIsolatedPdo(string $dbname): PDO {
+        $connection = new PDO(
+            "sqlsrv:Server={$this->_host};Database={$dbname};TrustServerCertificate=yes;MultipleActiveResultSets=1;LoginTimeout=10",
+            $this->_username,
+            $this->_password
+        );
+        $connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+        return $connection;
+    }
+
 	 /**
      * Inicia una transacción.
      * @return void

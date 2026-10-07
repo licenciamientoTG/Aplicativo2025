@@ -30,6 +30,22 @@
         </a>
       </li>
 
+      {% if tableros_access('access') %}
+      <li class="sidebar-header">GENERAL</li>
+      <li class="sidebar-item">
+        <a data-bs-target="#general_tableros" data-bs-toggle="collapse"
+          class="sidebar-link collapsed" aria-expanded="false">
+          <i data-feather="grid"></i>
+          <span class="align-middle">Tableros</span>
+        </a>
+        <ul id="general_tableros" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/tableros/index">Todos los tableros</a>
+          </li>
+        </ul>
+      </li>
+      {% endif %}
+
       {% if authorized(62) %}
       <li class="sidebar-header">Reportes</li>
       <li class="sidebar-item">
