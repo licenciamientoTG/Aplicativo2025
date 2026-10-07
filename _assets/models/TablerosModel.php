@@ -192,7 +192,8 @@ class TablerosModel {
         $position = (int)($this->one('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM tb_folder WHERE workspace_id = ? AND ((parent_folder_id = ?) OR (parent_folder_id IS NULL AND ? IS NULL)) AND deleted_at IS NULL', [$workspaceId, $parentFolderId, $parentFolderId])['next_order'] ?? 0);
         $id = $this->insertId(
             'INSERT INTO tb_folder (workspace_id, parent_folder_id, folder_key, name, color, sort_order, created_by, created_at, updated_at)
-             OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+             VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE());
+             SELECT CONVERT(INT, SCOPE_IDENTITY()) AS id',
             [$workspaceId, $parentFolderId, bin2hex(random_bytes(20)), $name, $color, $position, $userId]
         );
         return ['id' => $id, 'workspace_id' => $workspaceId, 'parent_folder_id' => $parentFolderId, 'name' => $name, 'color' => $color, 'sort_order' => $position];
@@ -2416,7 +2417,16 @@ class TablerosModel {
     private function insertId(string $sql, array $params = []): int {
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-        $id = $stmt->fetchColumn();
+        $id = false;
+        do {
+            if ($stmt->columnCount() > 0) {
+                $candidate = $stmt->fetchColumn();
+                if (is_numeric($candidate)) {
+                    $id = $candidate;
+                    break;
+                }
+            }
+        } while ($stmt->nextRowset());
         $stmt->closeCursor();
         if (!is_numeric($id) || (int)$id <= 0) {
             throw new RuntimeException('Insert did not return an id');
