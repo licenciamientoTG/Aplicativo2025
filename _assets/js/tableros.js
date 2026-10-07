@@ -630,6 +630,17 @@
     return /^#[\da-f]{3,8}$/i.test(value) ? value : '#0f766e';
   }
 
+  function statusLabelColor(label, index = 0) {
+    const normalized = String(label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-MX');
+    if (/(estancad|bloquead|rechazad|mal estado|atrasad|cancelad|error)/.test(normalized)) return '#e2445c';
+    if (/(listo|hecho|completad|terminad|finalizad|aprobado|publicad|colocad|entregad)/.test(normalized)) return '#00c875';
+    if (/(proceso|progreso|curso|trabajando|ejecucion)/.test(normalized)) return '#fdab3d';
+    if (/(revision|aprobacion)/.test(normalized)) return '#579bfc';
+    if (/(diseno|creativ|boceto)/.test(normalized)) return '#a25ddc';
+    if (/(pendiente|por hacer|nuevo|sin iniciar)/.test(normalized)) return '#c4c4c4';
+    return ['#579bfc', '#00c875', '#fdab3d', '#a25ddc', '#ff5ac4', '#00c875', '#9aadbd'][index % 7];
+  }
+
   function statusTone(column, value) {
     const stored = String(value ?? '').trim();
     const option = parseOptions(column.options).find((entry) => entry.value === stored);
@@ -652,13 +663,13 @@
     if (source && !Array.isArray(source) && Array.isArray(source.choices)) source = source.choices;
     if (source && !Array.isArray(source) && Array.isArray(source.labels)) source = source.labels;
     if (!Array.isArray(source)) return [];
-    return source.map((option) => {
+    return source.map((option, index) => {
       if (option && typeof option === 'object') {
         const value = option.value ?? option.id ?? option.name ?? option.label ?? '';
         const label = option.label ?? option.name ?? option.value ?? option.id ?? '';
-        return { value: String(value), label: String(label) };
+        return { value: String(value), label: String(label), color: safeGroupColor(option.color || option.bg_color || statusLabelColor(label, index)) };
       }
-      return { value: String(option), label: String(option) };
+      return { value: String(option), label: String(option), color: statusLabelColor(option, index) };
     }).filter((option) => option.value !== '');
   }
 
@@ -760,55 +771,236 @@
     const search = document.createElement('input');
     search.type = 'search';
     search.className = 'boards-cell-input boards-people-search';
-    search.placeholder = 'Buscar persona…';
+    search.placeholder = 'Buscar persona del espacio…';
     search.setAttribute('aria-label', `Buscar persona para ${column.name || 'columna'}`);
+    search.setAttribute('role', 'combobox');
+    search.setAttribute('aria-autocomplete', 'list');
+    search.setAttribute('aria-expanded', 'false');
+    const selected = document.createElement('div');
+    selected.className = 'boards-people-selected';
+    const results = document.createElement('div');
+    results.className = 'boards-people-results';
+    results.setAttribute('role', 'listbox');
+    results.hidden = true;
     const select = document.createElement('select');
-    select.className = 'boards-status-select boards-people-select';
-    select.multiple = multiple;
-    select.size = multiple ? 3 : 1;
+    select.multiple = true;
+    select.hidden = true;
     select.setAttribute('aria-label', `${item.name || 'Elemento'}, ${column.name || 'personas'}`);
     const ids = selectedIds(value);
-    ids.forEach((id) => {
-      const option = document.createElement('option');
-      option.value = String(id);
-      option.textContent = `Usuario #${id}`;
-      option.selected = true;
-      select.append(option);
-    });
-    wrapper.append(search, select);
+    const people = new Map();
+    ids.forEach((id) => people.set(String(id), { id, name: 'Consultando acceso…', username: '' }));
+    wrapper.append(selected, search, results, select);
+    const syncSelection = () => {
+      select.replaceChildren();
+      people.forEach((person, id) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = person.name || person.username || '';
+        option.selected = true;
+        select.append(option);
+      });
+      selected.replaceChildren();
+      if (!people.size) {
+        selected.textContent = 'Sin asignar';
+        selected.classList.add('is-empty');
+        return;
+      }
+      selected.classList.remove('is-empty');
+      people.forEach((person, id) => {
+        const chip = document.createElement('span');
+        chip.className = 'boards-people-chip';
+        chip.append(document.createTextNode(person.name || person.username || 'Sin acceso en este espacio'));
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `Quitar ${person.name || person.username || 'persona'}`);
+        remove.addEventListener('click', () => {
+          people.delete(id);
+          syncSelection();
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        chip.append(remove);
+        selected.append(chip);
+      });
+    };
+    const showResults = (message = 'Escribe para buscar personas') => {
+      results.replaceChildren(makeElement('div', 'boards-people-empty', message));
+      results.hidden = false;
+      search.setAttribute('aria-expanded', 'true');
+    };
+    const searchUsers = async (term = search.value.trim()) => {
+      const params = new URLSearchParams({ q: term, board_id: String(state.board?.id || '') });
+      if (people.size) params.set('ids', Array.from(people.keys()).join(','));
+      showResults('Buscando personas…');
+      try {
+        const response = await request(`/users?${params.toString()}`);
+        if (!document.contains(wrapper)) return;
+        const users = Array.isArray(response.data) ? response.data : [];
+        users.forEach((user) => { if (people.has(String(user.id))) people.set(String(user.id), user); });
+        people.forEach((person, id) => {
+          if (person.name === 'Consultando acceso…') people.set(id, { ...person, name: 'Sin acceso en este espacio' });
+        });
+        syncSelection();
+        results.replaceChildren();
+        if (!users.length) {
+          showResults(term ? 'No hay personas con permiso que coincidan.' : 'No hay personas con acceso a este espacio.');
+          return;
+        }
+        users.forEach((user) => {
+          const id = String(user.id);
+          const option = makeElement('button', 'boards-people-option');
+          option.type = 'button';
+          option.setAttribute('role', 'option');
+          option.setAttribute('aria-selected', people.has(id) ? 'true' : 'false');
+          const name = makeElement('strong', '', user.name || user.username || 'Persona');
+          const username = user.username && user.username !== user.name ? makeElement('small', '', user.username) : null;
+          option.append(name);
+          if (username) option.append(username);
+          option.addEventListener('click', () => {
+            if (multiple) {
+              if (people.has(id)) people.delete(id); else people.set(id, user);
+            } else {
+              people.clear();
+              people.set(id, user);
+              closeResults();
+            }
+            syncSelection();
+            if (multiple) searchUsers('');
+            else search.value = '';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+          results.append(option);
+        });
+        results.hidden = false;
+        search.setAttribute('aria-expanded', 'true');
+      } catch (error) {
+        showResults(errorMessage(error, 'No se pudo buscar personas.'));
+      }
+    };
+    const closeResults = () => {
+      results.hidden = true;
+      search.setAttribute('aria-expanded', 'false');
+    };
     let timer = null;
+    search.addEventListener('focus', () => searchUsers());
     search.addEventListener('input', () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(async () => {
-        const current = new Set(Array.from(select.selectedOptions, (option) => option.value));
-        try {
-          const params = new URLSearchParams({ q: search.value.trim() });
-          const result = await request(`/users?${params.toString()}`);
-          if (!document.contains(wrapper)) return;
-          const users = Array.isArray(result.data) ? result.data : [];
-          const byId = new Map(users.map((user) => [String(user.id), user]));
-          current.forEach((id) => {
-            if (!byId.has(id)) byId.set(id, { id, name: `Usuario #${id}` });
-          });
-          select.replaceChildren();
-          if (!multiple) {
-            const blank = document.createElement('option');
-            blank.value = '';
-            blank.textContent = 'Selecciona una persona';
-            select.append(blank);
-          }
-          byId.forEach((user, id) => {
-            const option = document.createElement('option');
-            option.value = id;
-            option.textContent = user.email ? `${user.name || 'Persona'} · ${user.email}` : (user.name || 'Persona');
-            option.selected = current.has(id);
-            select.append(option);
-          });
-        } catch (error) {
-          setNotice(errorMessage(error, 'No se pudo buscar personas.'), 'error');
-        }
-      }, 250);
+      timer = window.setTimeout(() => searchUsers(), 220);
     });
+    search.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { closeResults(); search.blur(); }
+      if (event.key === 'ArrowDown') results.querySelector('button')?.focus();
+      if (event.key === 'Enter' && results.querySelector('button')) { event.preventDefault(); results.querySelector('button').click(); }
+    });
+    results.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { closeResults(); search.focus(); }
+    });
+    search.addEventListener('blur', () => window.setTimeout(() => {
+      if (!wrapper.contains(document.activeElement)) closeResults();
+    }, 140));
+    syncSelection();
+    if (ids.length) searchUsers('');
+    return wrapper;
+  }
+
+  function createStatusEditor(item, column, value) {
+    const options = parseOptions(column.options);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'boards-status-editor';
+    markEditor(wrapper, item, column, 'status');
+    const select = document.createElement('select');
+    select.hidden = true;
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'Sin valor';
+    select.append(blank);
+    options.forEach((entry) => {
+      const option = document.createElement('option');
+      option.value = entry.value;
+      option.textContent = entry.label;
+      select.append(option);
+    });
+    const currentValue = value == null ? '' : String(value);
+    if (currentValue && !options.some((entry) => entry.value === currentValue)) {
+      const legacy = document.createElement('option');
+      legacy.value = currentValue;
+      legacy.textContent = currentValue;
+      select.append(legacy);
+    }
+    select.value = currentValue;
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'boards-status-pill';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', `${column.name || 'Estado'}: ${currentValue || 'Sin valor'}`);
+    const caret = document.createElement('span');
+    caret.className = 'boards-status-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    const menu = document.createElement('div');
+    menu.className = 'boards-status-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.hidden = true;
+
+    const updatePill = () => {
+      const selected = options.find((entry) => entry.value === select.value);
+      trigger.textContent = selected?.label || (select.value ? select.value : 'Sin valor');
+      trigger.append(caret);
+      const color = selected?.color || (select.value ? statusLabelColor(select.value) : '#8b91a7');
+      trigger.style.setProperty('--status-color', color);
+      trigger.dataset.statusTone = statusTone(column, select.value);
+      trigger.setAttribute('aria-label', `${column.name || 'Estado'}: ${selected?.label || select.value || 'Sin valor'}`);
+    };
+    const closeMenu = () => {
+      menu.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+    };
+    const openMenu = () => {
+      menu.replaceChildren();
+      const clear = makeElement('button', 'boards-status-choice is-empty', 'Sin valor');
+      clear.type = 'button';
+      clear.setAttribute('role', 'option');
+      clear.setAttribute('aria-selected', select.value === '' ? 'true' : 'false');
+      clear.addEventListener('click', () => {
+        select.value = '';
+        updatePill();
+        closeMenu();
+        wrapper.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      menu.append(clear);
+      options.forEach((entry) => {
+        const option = makeElement('button', 'boards-status-choice', entry.label);
+        option.type = 'button';
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', select.value === entry.value ? 'true' : 'false');
+        option.style.setProperty('--status-color', entry.color);
+        option.addEventListener('click', () => {
+          select.value = entry.value;
+          updatePill();
+          closeMenu();
+          wrapper.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        menu.append(option);
+      });
+      menu.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      menu.querySelector('[aria-selected="true"]')?.focus();
+    };
+
+    trigger.addEventListener('click', () => menu.hidden ? openMenu() : closeMenu());
+    trigger.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeMenu();
+      if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openMenu(); }
+    });
+    menu.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { closeMenu(); trigger.focus(); }
+    });
+    menu.addEventListener('focusout', () => window.setTimeout(() => {
+      if (!wrapper.contains(document.activeElement)) closeMenu();
+    }, 100));
+    wrapper.append(select, trigger, menu);
+    updatePill();
     return wrapper;
   }
 
@@ -835,12 +1027,17 @@
     const type = String(column.type || 'text').toLowerCase();
     if (!canEditBoard()) {
       const readonly = document.createElement('span');
-      readonly.className = 'boards-readonly-value';
+      readonly.className = ['status', 'dropdown'].includes(type) ? 'boards-status-readonly' : 'boards-readonly-value';
       const option = ['status', 'dropdown'].includes(type)
         ? parseOptions(column.options).find((entry) => entry.value === String(value ?? ''))
         : null;
       readonly.textContent = option?.label || stringifyValue(value) || '—';
+      if (type === 'status' && option) readonly.style.setProperty('--status-color', option.color);
       return readonly;
+    }
+
+    if (type === 'status' && parseOptions(column.options).length) {
+      return createStatusEditor(item, column, value);
     }
 
     const input = document.createElement('input');
@@ -916,7 +1113,7 @@
       wrapper.append(start, end, save);
       return wrapper;
     }
-    if (['status', 'dropdown'].includes(type)) {
+    if (type === 'dropdown') {
       const options = parseOptions(column.options);
       if (!options.length) {
         input.type = 'text';
@@ -2261,6 +2458,10 @@
         columns.forEach((column) => {
           const cell = document.createElement('td');
           if (['status', 'dropdown'].includes(columnType(column))) cell.dataset.statusTone = statusTone(column, getCellValue(item, column));
+          if (columnType(column) === 'status') {
+            const chosen = parseOptions(column.options).find((entry) => entry.value === String(getCellValue(item, column) ?? ''));
+            if (chosen) cell.style.setProperty('--status-color', chosen.color);
+          }
           cell.append(createCellEditor(item, column, getCellValue(item, column)));
           row.append(cell);
         });
@@ -3060,6 +3261,7 @@
       const textarea = editor.querySelector('textarea');
       return setStructuredEditorValue(textarea, ['board_relation', 'subtasks', 'dependency'].includes(editor.dataset.columnType));
     }
+    if (kind === 'status') return editor.querySelector('select')?.value ?? '';
     if (kind === 'people') {
       return Array.from(editor.querySelector('select')?.selectedOptions || [], (option) => Number(option.value)).filter(Number.isInteger);
     }
@@ -3127,7 +3329,14 @@
         const tone = statusTone(editedColumn, value);
         editor.dataset.statusTone = tone;
         const cell = editor.closest('td');
-        if (cell) cell.dataset.statusTone = tone;
+        if (cell) {
+          cell.dataset.statusTone = tone;
+          if (columnType(editedColumn) === 'status') {
+            const chosen = parseOptions(editedColumn.options).find((entry) => entry.value === String(value ?? ''));
+            if (chosen) cell.style.setProperty('--status-color', chosen.color);
+            else cell.style.removeProperty('--status-color');
+          }
+        }
       }
       if (state.activeViewType !== 'table' || els.boardSearch.value.trim() || state.filters.length) renderActiveView();
     } catch (error) {
@@ -3332,6 +3541,7 @@
       const optionsType = ['status', 'dropdown', 'tags'].includes(els.newColumnType.value);
       els.columnOptionsField.classList.toggle('d-none', !optionsType);
       const help = {
+        status: 'Escribe una opción por línea. El sistema asignará un color inicial a cada estado.',
         formula: 'La API acepta únicamente la sintaxis segura definida por el servidor.',
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
@@ -3342,6 +3552,10 @@
         dependency: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.'
       };
       els.columnTypeHelp.textContent = help[els.newColumnType.value] || 'El tipo determina el editor y las validaciones disponibles para cada celda.';
+      const optionsHelp = els.columnOptionsField.querySelector('.boards-field-help');
+      if (optionsHelp) optionsHelp.textContent = els.newColumnType.value === 'status'
+        ? 'Una opción por línea. Los estados se mostrarán como etiquetas coloreadas.'
+        : 'Para Estado, Lista desplegable y Etiquetas: escribe una opción por línea.';
     });
     els.createColumnForm.addEventListener('reset', () => {
       window.setTimeout(() => els.newColumnType.dispatchEvent(new Event('change')), 0);
@@ -3350,9 +3564,12 @@
       if (!canManageStructure()) throw new Error('Se requiere permiso de administración para agregar columnas.');
       const name = getFormValue(formData, 'name');
       const type = getFormValue(formData, 'type');
-      const options = ['status', 'dropdown', 'tags'].includes(type)
+      let options = ['status', 'dropdown', 'tags'].includes(type)
         ? els.newColumnOptions.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
         : undefined;
+      if (type === 'status' && options?.length) {
+        options = options.map((label, index) => ({ value: label, label, color: statusLabelColor(label, index) }));
+      }
       const result = await post('/create_column', { board_id: state.board.id, name, type, ...(options?.length ? { options } : {}) });
       const column = result.data || {};
       state.columns.push({ id: column.id, name, type, options: options || [], required: false, sort_order: column.sort_order ?? state.columns.length });

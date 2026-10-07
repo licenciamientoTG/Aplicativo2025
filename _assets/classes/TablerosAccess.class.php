@@ -113,6 +113,49 @@ class TablerosAccess
         }
     }
 
+    /** Lista personas activas con acceso efectivo al espacio del tablero. */
+    public function activeUsersForBoard(int $boardId, string $search = '', array $includeIds = []): array
+    {
+        $search = mb_substr(trim($search), 0, 80, 'UTF-8');
+        $includeIds = array_values(array_unique(array_filter(array_map('intval', $includeIds), static fn(int $id): bool => $id > 0)));
+        $sql = 'SELECT TOP (130) u.Id, u.Nombre, u.Usuario, u.Correo
+                FROM [TG].[dbo].[Usuario] u
+                INNER JOIN dbo.tb_board b ON b.id = ? AND b.deleted_at IS NULL
+                INNER JOIN dbo.tb_workspace w ON w.id = b.workspace_id AND w.deleted_at IS NULL
+                WHERE u.Estatus = 1
+                  AND (u.Id = b.created_by OR u.Id = w.created_by
+                       OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
+                                  WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
+                       OR EXISTS (SELECT 1 FROM dbo.tb_board_member bm
+                                  WHERE bm.board_id = b.id AND bm.user_id = u.Id AND bm.deleted_at IS NULL))';
+        $params = [$boardId];
+        $matches = [];
+        if ($search !== '') {
+            $matches[] = '(u.Nombre LIKE ? OR u.Usuario LIKE ? OR u.Correo LIKE ?)';
+            $term = '%' . $search . '%';
+            array_push($params, $term, $term, $term);
+        }
+        if ($includeIds) {
+            $matches[] = 'u.Id IN (' . implode(',', array_fill(0, count($includeIds), '?')) . ')';
+            foreach ($includeIds as $id) $params[] = $id;
+        }
+        if ($matches) $sql .= ' AND (' . implode(' OR ', $matches) . ')';
+        $sql .= ' ORDER BY u.Nombre, u.Usuario, u.Id';
+
+        try {
+            $stmt = $this->boardConnection()->prepare($sql);
+            $stmt->execute($params);
+            return array_map(static fn(array $row): array => [
+                'id' => (int)$row['Id'],
+                'name' => trim((string)($row['Nombre'] ?? '')) ?: (string)($row['Usuario'] ?? ''),
+                'username' => (string)($row['Usuario'] ?? ''),
+            ], $stmt->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Throwable $e) {
+            error_log('TablerosAccess: no fue posible listar miembros del tablero: ' . $e->getMessage());
+            return [];
+        }
+    }
+
     /** Devuelve owner, designer, editor, viewer o null si no tiene acceso. */
     public function boardRole(int $boardId): ?string
     {

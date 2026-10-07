@@ -814,6 +814,13 @@ class TablerosModel {
             }
 
             $value = $this->validateCellValue((string)$column['type'], $input['value'], $this->decodeJson($column['options_json'] ?? null, []));
+            if (in_array((string)$column['type'], ['people', 'person'], true)) {
+                foreach ($value as $assignedUserId) {
+                    if (!$this->userHasBoardAccess((int)$assignedUserId, $boardId)) {
+                        throw new TablerosApiException('validation', 'Solo puedes asignar personas con acceso al espacio de trabajo.', 422);
+                    }
+                }
+            }
             $this->validateCellReferences((string)$column['type'], $value, $boardId);
             if ((bool)$column['required'] && ($value === null || $value === '' || $value === [])) {
                 throw new TablerosApiException('validation', 'Esta columna requiere un valor.', 422);
@@ -1583,6 +1590,22 @@ class TablerosModel {
         throw new TablerosApiException('validation', 'El valor no es compatible con el tipo de columna.', 422);
     }
 
+    private function userHasBoardAccess(int $userId, int $boardId): bool {
+        return $this->one(
+            'SELECT TOP (1) u.Id
+             FROM [TG].[dbo].[Usuario] u
+             INNER JOIN dbo.tb_board b ON b.id = ? AND b.deleted_at IS NULL
+             INNER JOIN dbo.tb_workspace w ON w.id = b.workspace_id AND w.deleted_at IS NULL
+             WHERE u.Id = ? AND u.Estatus = 1
+               AND (u.Id = b.created_by OR u.Id = w.created_by
+                    OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
+                               WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
+                    OR EXISTS (SELECT 1 FROM dbo.tb_board_member bm
+                               WHERE bm.board_id = b.id AND bm.user_id = u.Id AND bm.deleted_at IS NULL))',
+            [$boardId, $userId]
+        ) !== null;
+    }
+
     private function cellStorage(string $type, $value): array {
         $storage = [null, null, null, null, null, null];
         if ($value === null) {
@@ -1597,7 +1620,9 @@ class TablerosModel {
             $storage[2] = $value;
         } elseif ($type === 'hour') {
             $storage[0] = $value;
-        } elseif (in_array($type, ['people', 'person', 'team', 'status', 'dropdown', 'tags', 'timeline', 'file', 'country', 'link', 'location', 'board_relation', 'subtasks', 'dependency'], true)) {
+        } elseif (in_array($type, ['status', 'dropdown'], true)) {
+            $storage[0] = is_scalar($value) ? (string)$value : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        } elseif (in_array($type, ['people', 'person', 'team', 'tags', 'timeline', 'file', 'country', 'link', 'location', 'board_relation', 'subtasks', 'dependency'], true)) {
             $storage[5] = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         } else {
             $storage[0] = $value;
