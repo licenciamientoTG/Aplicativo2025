@@ -10,9 +10,12 @@
   data-can-admin="{{ can_admin ? '1' : '0' }}"
   data-initial-board-id="{{ initial_board_id|default('')|e('html_attr') }}">
   <header class="boards-page-heading">
-    <div>
-      <h2 class="boards-page-title">Tableros de trabajo</h2>
-      <p class="boards-page-intro">Organiza pendientes y da seguimiento al trabajo del equipo.</p>
+    <div class="boards-page-identity">
+      <span class="boards-page-icon" aria-hidden="true"><i class="fa-solid fa-table-cells-large"></i></span>
+      <div>
+        <h2 class="boards-page-title">Tableros de trabajo</h2>
+        <p class="boards-page-intro">Organiza el trabajo y sigue cada avance en un solo lugar.</p>
+      </div>
     </div>
     <div class="boards-picker-wrap">
       <label class="visually-hidden" for="boardSelect">Seleccionar tablero</label>
@@ -22,6 +25,25 @@
       {% if can_create %}<button type="button" class="btn boards-button-primary" id="openCreateBoard">Nuevo tablero</button>{% endif %}
     </div>
   </header>
+
+  <div class="boards-main">
+    <aside id="boardNavigator" class="boards-navigator" aria-label="Navegación de tableros">
+      <div class="boards-navigator-heading">
+        <span>Espacio de trabajo</span>
+        <strong>General</strong>
+      </div>
+      <label class="boards-navigator-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <span class="visually-hidden">Buscar tableros</span>
+        <input id="boardNavSearch" type="search" placeholder="Buscar tablero" autocomplete="off">
+      </label>
+      <div class="boards-navigator-section">
+        <span><i class="fa-regular fa-folder-open" aria-hidden="true"></i> Tableros</span>
+        {% if can_create %}<button id="navCreateBoard" type="button" aria-label="Crear tablero" title="Crear tablero"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>{% endif %}
+      </div>
+      <nav id="boardNavList" class="boards-nav-list" aria-label="Tus tableros"></nav>
+    </aside>
+    <div class="boards-main-content">
 
   <div id="boardNotice" class="boards-notice" role="status" aria-live="polite" hidden></div>
   <div id="boardLoading" class="boards-loading" role="status" aria-live="polite">
@@ -39,7 +61,7 @@
     <div class="boards-board-heading">
       <div class="boards-board-title-wrap">
         <div class="boards-board-mark" aria-hidden="true"><i class="fa-solid fa-table-cells-large"></i></div>
-        <div>
+        <div class="boards-board-identity">
           <h3 id="boardName" class="boards-board-title"></h3>
           <p id="boardDescription" class="boards-board-description" hidden></p>
         </div>
@@ -72,7 +94,7 @@
       <label class="boards-search">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
         <span class="visually-hidden">Buscar en este tablero</span>
-        <input type="search" id="boardSearch" placeholder="Buscar elementos o valores" autocomplete="off">
+        <input type="search" id="boardSearch" placeholder="Buscar en el tablero" autocomplete="off">
         <kbd aria-hidden="true">/</kbd>
       </label>
       <div class="boards-toolbar-actions">
@@ -84,6 +106,14 @@
         <button type="button" class="btn boards-button-light" id="openCreateColumn"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Agregar columna</span></button>
         <button type="button" class="btn boards-button-primary" id="openCreateItem"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Agregar elemento</span></button>
       </div>
+    </div>
+
+    <div id="boardSelectionBar" class="boards-selection-bar" role="region" aria-label="Acciones para elementos seleccionados" hidden>
+      <span id="boardSelectionCount" class="boards-selection-count" aria-live="polite"></span>
+      <label class="visually-hidden" for="bulkMoveGroup">Mover seleccionados a</label>
+      <select id="bulkMoveGroup" class="form-select" aria-label="Mover seleccionados a"></select>
+      <button id="bulkMoveItems" class="btn boards-button-primary" type="button"><i class="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i><span>Mover</span></button>
+      <button id="clearSelection" class="btn boards-button-light" type="button">Cancelar selección</button>
     </div>
 
     <section id="boardFiltersPanel" class="boards-filters-panel" aria-label="Filtros por columna" hidden>
@@ -103,6 +133,8 @@
     </div>
     <div id="boardRendererArea" class="boards-renderer-area" hidden></div>
   </section>
+    </div>
+  </div>
 </div>
 
 <dialog class="boards-dialog" id="createBoardDialog" aria-labelledby="createBoardTitle">

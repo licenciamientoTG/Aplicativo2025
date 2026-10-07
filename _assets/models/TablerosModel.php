@@ -216,9 +216,9 @@ class TablerosModel {
             $this->requireItemOnBoard($itemId, $boardId);
         }
         $limit = max(1, min(200, $limit));
-        $sql = 'SELECT TOP (?) id, board_id, item_id, actor_user_id, event_type, payload_json, created_at
-                FROM tb_activity WHERE board_id = ?';
-        $params = [$limit, $boardId];
+        $sql = "SELECT TOP ($limit) id, board_id, item_id, actor_user_id, event_type, payload_json, created_at
+                FROM tb_activity WHERE board_id = ?";
+        $params = [$boardId];
         if ($itemId !== null) {
             $sql .= ' AND item_id = ?';
             $params[] = $itemId;
@@ -614,9 +614,8 @@ class TablerosModel {
             $updated = $this->returningOne(
                 'UPDATE tb_item SET name = ?, updated_by = ?, updated_at = GETDATE()
                  OUTPUT INSERTED.version
-                 WHERE id = ? AND board_id = ? AND version = ? AND deleted_at IS NULL',
-                [$name, $userId, $itemId, $boardId, hex2bin($expectedVersion)],
-                [4]
+                 WHERE id = ? AND board_id = ? AND version = CONVERT(VARBINARY(8), ?, 2) AND deleted_at IS NULL',
+                [$name, $userId, $itemId, $boardId, $expectedVersion]
             );
             if (!$updated) {
                 throw new TablerosApiException('conflict', 'El elemento cambió. Recarga el tablero e inténtalo de nuevo.', 409);
@@ -662,9 +661,8 @@ class TablerosModel {
             $updatedItem = $this->returningOne(
                 'UPDATE tb_item SET updated_by = ?, updated_at = GETDATE()
                  OUTPUT INSERTED.version
-                 WHERE id = ? AND board_id = ? AND version = ? AND deleted_at IS NULL',
-                [$userId, $itemId, $boardId, hex2bin($expectedVersion)],
-                [3]
+                 WHERE id = ? AND board_id = ? AND version = CONVERT(VARBINARY(8), ?, 2) AND deleted_at IS NULL',
+                [$userId, $itemId, $boardId, $expectedVersion]
             );
             if (!$updatedItem) {
                 throw new TablerosApiException('conflict', 'El elemento cambió. Recarga el tablero e inténtalo de nuevo.', 409);
@@ -737,9 +735,8 @@ class TablerosModel {
             $updated = $this->returningOne(
                 'UPDATE tb_item SET group_id = ?, sort_order = ?, updated_by = ?, updated_at = GETDATE()
                  OUTPUT INSERTED.version
-                WHERE id = ? AND board_id = ? AND version = ? AND deleted_at IS NULL',
-                [$groupId, $position, $userId, $itemId, $boardId, hex2bin($expectedVersion)],
-                [5]
+                WHERE id = ? AND board_id = ? AND version = CONVERT(VARBINARY(8), ?, 2) AND deleted_at IS NULL',
+                [$groupId, $position, $userId, $itemId, $boardId, $expectedVersion]
             );
             if (!$updated) {
                 throw new TablerosApiException('conflict', 'El elemento cambió. Recarga el tablero e inténtalo de nuevo.', 409);
@@ -781,9 +778,8 @@ class TablerosModel {
             $updated = $this->returningOne(
                 'UPDATE tb_item SET parent_item_id = ?, updated_by = ?, updated_at = GETDATE()
                  OUTPUT INSERTED.version
-                 WHERE id = ? AND board_id = ? AND version = ? AND deleted_at IS NULL',
-                [$parentId, $userId, $itemId, $boardId, hex2bin($expectedVersion)],
-                [4]
+                 WHERE id = ? AND board_id = ? AND version = CONVERT(VARBINARY(8), ?, 2) AND deleted_at IS NULL',
+                [$parentId, $userId, $itemId, $boardId, $expectedVersion]
             );
             if (!$updated) {
                 throw new TablerosApiException('conflict', 'El elemento cambió. Recarga el tablero e inténtalo de nuevo.', 409);
@@ -1083,9 +1079,8 @@ class TablerosModel {
         $updated = $this->returningOne(
             'UPDATE tb_automation SET name = ?, definition_json = ?, updated_by = ?, updated_at = GETDATE()
              OUTPUT INSERTED.version
-             WHERE id = ? AND board_id = ? AND version = ? AND deleted_at IS NULL',
-            [$name, $json, $userId, $automationId, $boardId, hex2bin($expectedVersion)],
-            [5]
+             WHERE id = ? AND board_id = ? AND version = CONVERT(VARBINARY(8), ?, 2) AND deleted_at IS NULL',
+            [$name, $json, $userId, $automationId, $boardId, $expectedVersion]
         );
         if (!$updated) {
             throw new TablerosApiException('conflict', 'La automatización cambió. Recarga e inténtalo de nuevo.', 409);
@@ -1117,9 +1112,8 @@ class TablerosModel {
         $updated = $this->returningOne(
             'UPDATE tb_automation SET status = ?, updated_by = ?, updated_at = GETDATE()
              OUTPUT INSERTED.version
-             WHERE id = ? AND board_id = ? AND version = ? AND deleted_at IS NULL',
-            [$status, $userId, $automationId, $boardId, hex2bin($expected)],
-            [4]
+             WHERE id = ? AND board_id = ? AND version = CONVERT(VARBINARY(8), ?, 2) AND deleted_at IS NULL',
+            [$status, $userId, $automationId, $boardId, $expected]
         );
         if (!$updated) {
             throw new TablerosApiException('conflict', 'La automatización cambió. Recarga e inténtalo de nuevo.', 409);
@@ -1144,10 +1138,10 @@ class TablerosModel {
 
     public function getAutomationRuns(int $boardId, ?int $automationId = null, int $limit = 100): array {
         $limit = max(1, min(200, $limit));
-        $sql = 'SELECT TOP (?) id, automation_id, board_id, status, idempotency_key, initiated_by,
+        $sql = "SELECT TOP ($limit) id, automation_id, board_id, status, idempotency_key, initiated_by,
                        started_at, finished_at, result_json, error_message, created_at
-                FROM tb_automation_run WHERE board_id = ?';
-        $params = [$limit, $boardId];
+                FROM tb_automation_run WHERE board_id = ?";
+        $params = [$boardId];
         if ($automationId !== null) {
             $sql .= ' AND automation_id = ?';
             $params[] = $automationId;

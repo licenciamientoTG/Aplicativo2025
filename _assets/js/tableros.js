@@ -105,6 +105,9 @@
     filterDraft: [],
     calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     collapsedGroups: new Set(),
+    selectedItemIds: new Set(),
+    bulkMoveInFlight: false,
+    inlineAddGroupId: '',
     activeBoardRequest: 0,
     userSearchTimer: null,
     activeDetailRequest: 0,
@@ -245,6 +248,34 @@
     if (state.boards.some((board) => String(board.id) === String(previous))) {
       els.boardSelect.value = String(previous);
     }
+    renderBoardNav();
+  }
+
+  function renderBoardNav() {
+    const list = document.getElementById('boardNavList');
+    const search = document.getElementById('boardNavSearch');
+    if (!list || !search) return;
+    const query = search.value.trim().toLocaleLowerCase('es-MX');
+    list.replaceChildren();
+    const matches = state.boards.filter((board) => String(board.name || '').toLocaleLowerCase('es-MX').includes(query));
+    if (!matches.length) {
+      list.append(makeElement('p', 'boards-nav-empty', state.boards.length ? 'No hay tableros con ese nombre.' : 'Crea tu primer tablero.'));
+      return;
+    }
+    matches.forEach((board) => {
+      const link = makeElement('button', 'boards-nav-board');
+      link.type = 'button';
+      link.dataset.navBoard = String(board.id);
+      link.title = board.name || 'Tablero sin nombre';
+      if (state.board && String(state.board.id) === String(board.id)) {
+        link.classList.add('is-active');
+        link.setAttribute('aria-current', 'page');
+      }
+      const icon = makeElement('i', 'fa-solid fa-table-cells');
+      icon.setAttribute('aria-hidden', 'true');
+      link.append(icon, makeElement('span', '', board.name || 'Tablero sin nombre'));
+      list.append(link);
+    });
   }
 
   async function loadBoards() {
@@ -274,8 +305,12 @@
   }
 
   function showEmptyState() {
+    state.board = null;
+    state.selectedItemIds.clear();
+    state.inlineAddGroupId = '';
     els.boardWorkspace.hidden = true;
     els.boardsEmpty.hidden = false;
+    renderBoardNav();
     if (state.boards.length === 0 && !canCreateBoard) {
       els.boardsEmptyText.textContent = 'No tienes tableros disponibles. Pide acceso a una persona administradora.';
     } else if (state.boards.length === 0) {
@@ -317,7 +352,10 @@
       state.calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       if (!skipRoute) updateBoardRoute(state.board.id);
       els.boardSelect.value = String(state.board.id);
+      renderBoardNav();
       state.collapsedGroups.clear();
+      state.selectedItemIds.clear();
+      state.inlineAddGroupId = '';
       els.boardSearch.value = '';
       renderWorkspace();
       showLoading(false);
@@ -379,6 +417,17 @@
   function safeGroupColor(color) {
     const value = String(color || '').trim();
     return /^#[\da-f]{3,8}$/i.test(value) ? value : '#0f766e';
+  }
+
+  function statusTone(column, value) {
+    const stored = String(value ?? '').trim();
+    const option = parseOptions(column.options).find((entry) => entry.value === stored);
+    const label = String(option?.label ?? stored).trim().toLocaleLowerCase('es-MX');
+    if (!label) return 'empty';
+    if (/\b(no|sin|pendiente de)\s+(aproba|completa|termina|publica|entrega)/.test(label) || /(bloquead|rechazad|cancelad|atrasad|vencid|error)/.test(label)) return 'blocked';
+    if (/(listo|hecho|completad|terminad|finalizad|aprobad|publicad|colocad|entregad)/.test(label)) return 'done';
+    if (/(proceso|progreso|curso|revisi[oó]n|aprobaci[oó]n|trabajando|ejecuci[oó]n)/.test(label)) return 'working';
+    return 'neutral';
   }
 
   function parseOptions(options) {
@@ -576,7 +625,10 @@
     if (!canEditBoard()) {
       const readonly = document.createElement('span');
       readonly.className = 'boards-readonly-value';
-      readonly.textContent = stringifyValue(value) || '—';
+      const option = ['status', 'dropdown'].includes(type)
+        ? parseOptions(column.options).find((entry) => entry.value === String(value ?? ''))
+        : null;
+      readonly.textContent = option?.label || stringifyValue(value) || '—';
       return readonly;
     }
 
@@ -658,6 +710,7 @@
       if (!options.length) {
         input.type = 'text';
         input.placeholder = type === 'status' ? 'Escribe un estado' : 'Escribe un valor';
+        input.dataset.statusTone = statusTone(column, value);
         return markEditor(input, item, column, 'string');
       }
       const currentValue = value == null ? '' : String(value);
@@ -683,6 +736,7 @@
         select.append(option);
       });
       select.value = currentValue;
+      select.dataset.statusTone = statusTone(column, currentValue);
       return markEditor(select, item, column, 'string');
     }
     if (type === 'tags') {
@@ -1829,7 +1883,7 @@
     const row = document.createElement('tr');
     row.className = 'boards-group-row';
     const cell = document.createElement('td');
-    cell.colSpan = columnCount + 3;
+    cell.colSpan = columnCount + 4;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
@@ -1901,10 +1955,14 @@
   }
 
   function createDetailsButton(item) {
-    const button = makeElement('button', 'boards-row-details', 'Detalles');
+    const button = makeElement('button', 'boards-row-details');
     button.type = 'button';
     button.dataset.openItemDetails = String(item.id);
     button.setAttribute('aria-label', `Abrir comentarios y detalles de ${item.name || 'elemento'}`);
+    button.title = 'Comentarios y detalles';
+    const icon = makeElement('i', 'fa-regular fa-comment-dots');
+    icon.setAttribute('aria-hidden', 'true');
+    button.append(icon);
     return button;
   }
 
@@ -1917,58 +1975,73 @@
     els.boardTableContainer.replaceChildren();
     const table = document.createElement('table');
     table.className = 'boards-table';
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    const itemHead = document.createElement('th');
-    itemHead.scope = 'col';
-    itemHead.className = 'boards-item-head';
-    itemHead.textContent = 'Elemento';
-    headerRow.append(itemHead);
-    columns.forEach((column) => {
-      const th = document.createElement('th');
-      th.scope = 'col';
-      const heading = document.createElement('span');
-      heading.textContent = column.name || 'Columna';
-      th.append(heading);
-      if (column.required) {
-        const required = document.createElement('span');
-        required.className = 'boards-required-label';
-        required.textContent = 'Requerido';
-        th.append(required);
-      }
-      headerRow.append(th);
-    });
-    const moveHead = document.createElement('th');
-    moveHead.scope = 'col';
-    moveHead.className = 'boards-move-head';
-    moveHead.textContent = 'Mover';
-    const detailsHead = document.createElement('th');
-    detailsHead.scope = 'col';
-    detailsHead.className = 'boards-details-head';
-    detailsHead.textContent = 'Detalles';
-    headerRow.append(detailsHead);
-    headerRow.append(moveHead);
-    thead.append(headerRow);
-    table.append(thead);
+    table.setAttribute('aria-label', `Elementos de ${state.board?.name || 'tablero'}`);
 
-    const tbody = document.createElement('tbody');
+    const createColumnRow = (group, groupItems) => {
+      const row = makeElement('tr', 'boards-group-columns');
+      const selectHead = makeElement('th', 'boards-select-head');
+      selectHead.scope = 'col';
+      if (canEditBoard() && groupItems.length) {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.selectGroup = String(group.id);
+        checkbox.setAttribute('aria-label', `Seleccionar elementos del grupo ${group.name || 'sin nombre'}`);
+        const selected = groupItems.filter((item) => state.selectedItemIds.has(String(item.id))).length;
+        checkbox.checked = selected === groupItems.length;
+        checkbox.indeterminate = selected > 0 && selected < groupItems.length;
+        selectHead.append(checkbox);
+      }
+      row.append(selectHead);
+      const itemHead = makeElement('th', 'boards-item-head', 'Elemento');
+      itemHead.scope = 'col';
+      row.append(itemHead);
+      columns.forEach((column) => {
+        const th = makeElement('th', '', column.name || 'Columna');
+        th.scope = 'col';
+        if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
+        row.append(th);
+      });
+      const detailsHead = makeElement('th', 'boards-details-head', 'Detalles');
+      detailsHead.scope = 'col';
+      const moveHead = makeElement('th', 'boards-move-head', 'Mover');
+      moveHead.scope = 'col';
+      row.append(detailsHead, moveHead);
+      return row;
+    };
+
     state.groups.forEach((group) => {
       const groupItems = filteredItems.filter((item) => String(item.group_id) === String(group.id));
+      const tbody = document.createElement('tbody');
+      tbody.className = 'boards-group-body';
       tbody.append(createGroupRow(group, groupItems.length, columns.length));
-      if (state.collapsedGroups.has(String(group.id))) return;
-      if (!groupItems.length) {
-        const emptyRow = document.createElement('tr');
-        emptyRow.className = 'boards-empty-group-row';
-        const emptyCell = document.createElement('td');
-        emptyCell.colSpan = columns.length + 3;
-        emptyCell.textContent = query || state.filters.length ? 'No hay coincidencias en este grupo.' : 'Este grupo todavía no tiene elementos.';
-        emptyRow.append(emptyCell);
-        tbody.append(emptyRow);
+      if (state.collapsedGroups.has(String(group.id))) {
+        table.append(tbody);
         return;
+      }
+      tbody.append(createColumnRow(group, groupItems));
+      if (!groupItems.length) {
+        if (query || state.filters.length || !canEditBoard()) {
+          const emptyRow = makeElement('tr', 'boards-empty-group-row');
+          const emptyCell = makeElement('td', '', query || state.filters.length ? 'No hay coincidencias en este grupo.' : 'Este grupo todavía no tiene elementos.');
+          emptyCell.colSpan = columns.length + 4;
+          emptyRow.append(emptyCell);
+          tbody.append(emptyRow);
+        }
       }
       groupItems.forEach((item) => {
         const row = document.createElement('tr');
         row.className = 'boards-item-row';
+        row.style.setProperty('--group-color', safeGroupColor(group.color));
+        const selectCell = makeElement('td', 'boards-select-cell');
+        if (canEditBoard()) {
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.dataset.selectItem = String(item.id);
+          checkbox.checked = state.selectedItemIds.has(String(item.id));
+          checkbox.setAttribute('aria-label', `Seleccionar ${item.name || 'elemento'}`);
+          selectCell.append(checkbox);
+        }
+        row.append(selectCell);
         const nameCell = document.createElement('th');
         nameCell.scope = 'row';
         nameCell.className = 'boards-item-name';
@@ -1976,6 +2049,7 @@
         row.append(nameCell);
         columns.forEach((column) => {
           const cell = document.createElement('td');
+          if (['status', 'dropdown'].includes(columnType(column))) cell.dataset.statusTone = statusTone(column, getCellValue(item, column));
           cell.append(createCellEditor(item, column, getCellValue(item, column)));
           row.append(cell);
         });
@@ -1989,29 +2063,55 @@
         row.append(moveCell);
         tbody.append(row);
       });
+      if (canEditBoard() && !query && !state.filters.length) {
+        const addRow = makeElement('tr', 'boards-add-row');
+        const addCell = document.createElement('td');
+        addCell.colSpan = columns.length + 4;
+        if (state.inlineAddGroupId === String(group.id)) {
+          const form = makeElement('form', 'boards-inline-add-form');
+          form.dataset.inlineAddForm = String(group.id);
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.name = 'name';
+          input.maxLength = 500;
+          input.required = true;
+          input.placeholder = 'Nombre del elemento';
+          input.setAttribute('aria-label', `Nuevo elemento en ${group.name || 'grupo'}`);
+          const save = makeElement('button', 'boards-inline-add-save', 'Agregar');
+          save.type = 'submit';
+          const cancel = makeElement('button', 'boards-inline-add-cancel', 'Cancelar');
+          cancel.type = 'button';
+          cancel.dataset.cancelInlineAdd = '1';
+          form.append(input, save, cancel);
+          addCell.append(form);
+        } else {
+          const add = makeElement('button', '', 'Agregar elemento');
+          add.type = 'button';
+          add.dataset.inlineAddGroup = String(group.id);
+          add.prepend(makeElement('i', 'fa-solid fa-plus'));
+          addCell.append(add);
+        }
+        addRow.append(addCell);
+        tbody.append(addRow);
+      }
+      table.append(tbody);
     });
 
     if (!state.groups.length) {
+      const tbody = document.createElement('tbody');
       const emptyRow = document.createElement('tr');
       const emptyCell = document.createElement('td');
-      emptyCell.colSpan = columns.length + 3;
+      emptyCell.colSpan = columns.length + 4;
       emptyCell.className = 'boards-table-empty';
       emptyCell.textContent = canManageStructure() ? 'Crea un grupo para empezar a agregar elementos.' : 'Este tablero todavía no tiene grupos.';
       emptyRow.append(emptyCell);
       tbody.append(emptyRow);
-    } else if ((query || state.filters.length) && visibleCount === 0) {
-      const emptyRow = document.createElement('tr');
-      const emptyCell = document.createElement('td');
-      emptyCell.colSpan = orderedColumns().length + 3;
-      emptyCell.className = 'boards-table-empty';
-      emptyCell.textContent = 'No encontramos elementos con esa búsqueda.';
-      emptyRow.append(emptyCell);
-      tbody.append(emptyRow);
+      table.append(tbody);
     }
-    table.append(tbody);
     els.boardTableContainer.append(table);
     els.boardTableStatus.hidden = state.groups.length > 0;
     els.boardTableStatus.textContent = state.groups.length ? '' : 'Agrega un grupo para organizar los elementos de este tablero.';
+    updateSelectionBar();
   }
 
   function updateItemCount(visibleCount) {
@@ -2021,6 +2121,40 @@
       : `${state.items.length} ${state.items.length === 1 ? 'elemento' : 'elementos'}`;
     els.boardFilterCount.textContent = state.filters.length ? String(state.filters.length) : '';
     els.boardFilterCount.hidden = state.filters.length === 0;
+  }
+
+  function updateSelectionBar() {
+    const bar = document.getElementById('boardSelectionBar');
+    const count = document.getElementById('boardSelectionCount');
+    const target = document.getElementById('bulkMoveGroup');
+    const move = document.getElementById('bulkMoveItems');
+    if (!bar || !count || !target || !move) return;
+    const validIds = new Set(state.items.map((item) => String(item.id)));
+    state.selectedItemIds.forEach((id) => { if (!validIds.has(id)) state.selectedItemIds.delete(id); });
+    const total = state.selectedItemIds.size;
+    bar.hidden = total === 0 || !canEditBoard();
+    count.textContent = `${total} ${total === 1 ? 'elemento seleccionado' : 'elementos seleccionados'}`;
+    const previous = target.value;
+    target.replaceChildren();
+    const prompt = makeElement('option', '', 'Mover a otro grupo');
+    prompt.value = '';
+    target.append(prompt);
+    state.groups.forEach((group) => {
+      const option = makeElement('option', '', group.name || 'Grupo sin nombre');
+      option.value = String(group.id);
+      target.append(option);
+    });
+    if (state.groups.some((group) => String(group.id) === previous)) target.value = previous;
+    move.disabled = state.bulkMoveInFlight || !target.value || !total;
+    target.disabled = state.bulkMoveInFlight;
+    document.getElementById('clearSelection').disabled = state.bulkMoveInFlight;
+    els.boardTableContainer.querySelectorAll('[data-select-item], [data-select-group]').forEach((checkbox) => { checkbox.disabled = state.bulkMoveInFlight; });
+    els.boardTableContainer.querySelectorAll('[data-select-group]').forEach((checkbox) => {
+      const groupItems = getFilteredItems().filter((item) => String(item.group_id) === checkbox.dataset.selectGroup);
+      const selected = groupItems.filter((item) => state.selectedItemIds.has(String(item.id))).length;
+      checkbox.checked = groupItems.length > 0 && selected === groupItems.length;
+      checkbox.indeterminate = selected > 0 && selected < groupItems.length;
+    });
   }
 
   function columnType(column) {
@@ -2354,6 +2488,8 @@
     renderViewOptions();
     renderColumnControls();
     const isTable = type === 'table';
+    const selectionBar = document.getElementById('boardSelectionBar');
+    if (selectionBar && !isTable) selectionBar.hidden = true;
     els.boardTableFrame.hidden = !isTable;
     els.boardTableStatus.hidden = isTable ? state.groups.length > 0 : true;
     els.boardRendererArea.hidden = isTable;
@@ -2660,8 +2796,45 @@
       setNotice(state.groups.length ? 'No tienes permiso para editar este tablero.' : 'Crea un grupo antes de agregar elementos.', 'info');
       return;
     }
+    const targetGroupId = String(groupId || state.groups[0].id);
+    if (state.activeViewType === 'table' && !els.boardSearch.value.trim() && !state.filters.length) {
+      state.inlineAddGroupId = targetGroupId;
+      state.collapsedGroups.delete(targetGroupId);
+      renderTable();
+      const input = els.boardTableContainer.querySelector('[data-inline-add-form] input[name="name"]');
+      input?.focus();
+      return;
+    }
     refreshGroupOptions(groupId);
     openDialog(els.createItemDialog);
+  }
+
+  async function submitInlineItem(form) {
+    if (!canEditBoard() || !state.board) return;
+    const boardId = state.board.id;
+    const name = form.querySelector('input[name="name"]')?.value.trim() || '';
+    const groupId = form.dataset.inlineAddForm;
+    if (!name || !groupId) return;
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    try {
+      const result = await post('/create_item', { board_id: boardId, group_id: groupId, name });
+      if (!state.board || String(state.board.id) !== String(boardId)) return;
+      const item = result.data || {};
+      if (!item.id || item.version == null) {
+        await loadBoard(state.board.id, true);
+        throw new Error('No se pudo confirmar el elemento. Se recargó el tablero.');
+      }
+      state.items.push({ ...item, name, group_id: groupId, sort_order: item.sort_order ?? state.items.length, cells: item.cells || {} });
+      state.items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+      state.inlineAddGroupId = groupId;
+      renderActiveView();
+      els.boardTableContainer.querySelector('[data-inline-add-form] input[name="name"]')?.focus();
+      setNotice('Elemento agregado.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error, 'No se pudo agregar el elemento.'), 'error');
+      if (document.contains(button)) button.disabled = false;
+    }
   }
 
   function parseEditorValue(editor) {
@@ -2738,6 +2911,13 @@
       item.cells[columnId] = value;
       editor.dataset.savedValue = JSON.stringify(value);
       editor.classList.remove('has-error');
+      const editedColumn = state.columns.find((column) => String(column.id) === String(columnId));
+      if (editedColumn && ['status', 'dropdown'].includes(columnType(editedColumn))) {
+        const tone = statusTone(editedColumn, value);
+        editor.dataset.statusTone = tone;
+        const cell = editor.closest('td');
+        if (cell) cell.dataset.statusTone = tone;
+      }
       if (state.activeViewType !== 'table' || els.boardSearch.value.trim() || state.filters.length) renderActiveView();
     } catch (error) {
       editor.classList.add('has-error');
@@ -2773,6 +2953,54 @@
       else select.value = select.dataset.currentGroup;
     } finally {
       if (document.contains(select)) select.disabled = false;
+    }
+  }
+
+  async function moveSelectedItems() {
+    const target = document.getElementById('bulkMoveGroup');
+    const button = document.getElementById('bulkMoveItems');
+    const groupId = target?.value || '';
+    if (state.bulkMoveInFlight || !groupId || !canEditBoard() || !state.board || !state.selectedItemIds.size) return;
+    const boardId = state.board.id;
+    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    let moved = 0;
+    let failed = 0;
+    state.bulkMoveInFlight = true;
+    button.disabled = true;
+    updateSelectionBar();
+    try {
+      for (const item of selected) {
+        if (!state.board || String(state.board.id) !== String(boardId)) break;
+        if (String(item.group_id) === groupId) {
+          state.selectedItemIds.delete(String(item.id));
+          continue;
+        }
+        try {
+          const result = await post('/move_item', {
+            board_id: boardId,
+            item_id: item.id,
+            group_id: groupId,
+            version: item.version
+          });
+          if (!state.board || String(state.board.id) !== String(boardId)) break;
+          item.group_id = groupId;
+          item.version = result.data?.version ?? item.version;
+          state.selectedItemIds.delete(String(item.id));
+          moved += 1;
+        } catch (error) {
+          failed += 1;
+        }
+      }
+      if (!state.board || String(state.board.id) !== String(boardId)) return;
+      renderActiveView();
+      if (failed) {
+        setNotice(`${moved} ${moved === 1 ? 'elemento movido' : 'elementos movidos'}; ${failed} sin mover. Recarga el tablero antes de volver a intentarlo.`, 'error');
+      } else {
+        setNotice(`${moved} ${moved === 1 ? 'elemento movido' : 'elementos movidos'} al grupo seleccionado.`, 'success');
+      }
+    } finally {
+      state.bulkMoveInFlight = false;
+      updateSelectionBar();
     }
   }
 
@@ -3017,6 +3245,14 @@
   }
 
   function attachEvents() {
+    document.getElementById('boardNavSearch')?.addEventListener('input', renderBoardNav);
+    document.getElementById('boardNavList')?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-nav-board]');
+      if (!button) return;
+      els.boardSelect.value = button.dataset.navBoard;
+      loadBoard(button.dataset.navBoard);
+    });
+    document.getElementById('navCreateBoard')?.addEventListener('click', () => openDialog(els.createBoardDialog));
     els.boardSelect.addEventListener('change', () => {
       const board = state.boards.find((candidate) => String(candidate.id) === els.boardSelect.value);
       if (board) loadBoard(board.id);
@@ -3124,6 +3360,48 @@
       }
       const add = event.target.closest('[data-add-item-group]');
       if (add) openCreateItem(add.dataset.addItemGroup);
+      const inlineAdd = event.target.closest('[data-inline-add-group]');
+      if (inlineAdd) openCreateItem(inlineAdd.dataset.inlineAddGroup);
+      if (event.target.closest('[data-cancel-inline-add]')) {
+        state.inlineAddGroupId = '';
+        renderTable();
+      }
+    });
+    els.boardTableContainer.addEventListener('submit', (event) => {
+      const form = event.target.closest('[data-inline-add-form]');
+      if (!form) return;
+      event.preventDefault();
+      if (form.reportValidity()) submitInlineItem(form);
+    });
+    els.boardTableContainer.addEventListener('change', (event) => {
+      const itemCheckbox = event.target.closest('[data-select-item]');
+      if (itemCheckbox) {
+        const id = itemCheckbox.dataset.selectItem;
+        if (itemCheckbox.checked) state.selectedItemIds.add(id);
+        else state.selectedItemIds.delete(id);
+        updateSelectionBar();
+        return;
+      }
+      const groupCheckbox = event.target.closest('[data-select-group]');
+      if (groupCheckbox) {
+        getFilteredItems()
+          .filter((item) => String(item.group_id) === groupCheckbox.dataset.selectGroup)
+          .forEach((item) => {
+            const id = String(item.id);
+            if (groupCheckbox.checked) state.selectedItemIds.add(id);
+            else state.selectedItemIds.delete(id);
+            const rowCheckbox = els.boardTableContainer.querySelector(`[data-select-item="${id}"]`);
+            if (rowCheckbox) rowCheckbox.checked = groupCheckbox.checked;
+          });
+        updateSelectionBar();
+      }
+    });
+    document.getElementById('bulkMoveGroup')?.addEventListener('change', updateSelectionBar);
+    document.getElementById('bulkMoveItems')?.addEventListener('click', moveSelectedItems);
+    document.getElementById('clearSelection')?.addEventListener('click', () => {
+      state.selectedItemIds.clear();
+      els.boardTableContainer.querySelectorAll('[data-select-item]').forEach((checkbox) => { checkbox.checked = false; });
+      updateSelectionBar();
     });
     [els.boardTableContainer, els.boardRendererArea].forEach((host) => {
       host.addEventListener('change', (event) => {
