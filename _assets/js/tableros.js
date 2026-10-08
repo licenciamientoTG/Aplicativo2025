@@ -933,7 +933,7 @@
       search.value = '';
       window.removeEventListener('scroll', positionResults, true);
       window.removeEventListener('resize', positionResults);
-      document.removeEventListener('pointerdown', closeOnOutside);
+      document.removeEventListener('click', closeOnOutside);
       ['position', 'z-index', 'left', 'top', 'bottom', 'width', 'max-height'].forEach((property) => results.style.removeProperty(property));
       if (results.parentElement !== wrapper) wrapper.append(results);
     };
@@ -963,7 +963,7 @@
       positionResults();
       window.addEventListener('scroll', positionResults, true);
       window.addEventListener('resize', positionResults);
-      document.addEventListener('pointerdown', closeOnOutside);
+      document.addEventListener('click', closeOnOutside);
     };
     const searchUsers = async (term = search.value.trim(), reveal = true) => {
       const currentRequest = ++requestNumber;
