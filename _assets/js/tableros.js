@@ -1,6 +1,40 @@
 (() => {
   'use strict';
 
+  const setupAppLauncher = () => {
+    const launcher = document.querySelector('.tableros-app-launcher');
+    if (!launcher) return;
+
+    const toggle = launcher.querySelector('[data-bs-toggle="dropdown"]');
+    const menu = launcher.querySelector('.tableros-app-menu');
+    const close = () => {
+      if (!launcher.classList.contains('show') && !menu?.classList.contains('show')) return;
+      const dropdown = window.bootstrap?.Dropdown;
+      const instance = dropdown && toggle ? dropdown.getInstance(toggle) : null;
+      if (instance) {
+        instance.hide();
+        return;
+      }
+      launcher.classList.remove('show');
+      menu?.classList.remove('show');
+      toggle?.setAttribute('aria-expanded', 'false');
+    };
+
+    // Normaliza el estado al entrar para que el menú nunca aparezca abierto.
+    launcher.classList.remove('show');
+    menu?.classList.remove('show');
+    toggle?.setAttribute('aria-expanded', 'false');
+
+    document.addEventListener('click', (event) => {
+      if (!launcher.contains(event.target)) close();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') close();
+    });
+  };
+
+  setupAppLauncher();
+
   const app = document.getElementById('tablerosApp');
   if (!app) return;
 

@@ -3,13 +3,16 @@
   <nav class="tableros-navbar-context" aria-label="Ubicación actual"><span>Módulos</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><strong>Tableros</strong></nav>
   <div class="navbar-collapse collapse show">
     <ul class="navbar-nav navbar-align">
-      <li class="nav-item dropdown tableros-app-launcher">
+      <li class="nav-item dropdown tableros-app-launcher" data-bs-auto-close="true">
         <a class="nav-icon dropdown-toggle" href="#" id="tablerosLauncher" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Abrir aplicaciones"><i class="fa-solid fa-grip" aria-hidden="true"></i></a>
         <div class="dropdown-menu dropdown-menu-end tableros-app-menu" aria-labelledby="tablerosLauncher">
           <div class="tableros-app-menu-title">Aplicaciones</div>
           {% if tableros_access('access') %}<a class="tableros-app-tile is-current" href="/tableros/index"><span><i class="fa-solid fa-table-cells-large"></i></span><strong>Tableros</strong></a>{% endif %}
           <a class="tableros-app-tile" href="/home/index"><span><i class="fa-solid fa-house"></i></span><strong>Aplicativo</strong></a>
           <a class="tableros-app-tile" href="https://totalgas.mojohelpdesk.com/" target="_blank" rel="noopener"><span><i class="fa-solid fa-headset"></i></span><strong>Mojo Helpdesk</strong></a>
+          <a class="tableros-app-tile" href="https://proveedores.totalgasonline.net/" target="_blank" rel="noopener"><span><i class="fa-solid fa-building" aria-hidden="true"></i></span><strong>Portal de proveedores</strong></a>
+          <a class="tableros-app-tile" href="https://hrms.totalgasonline.net/" target="_blank" rel="noopener"><span><i class="fa-solid fa-users" aria-hidden="true"></i></span><strong>HRMS</strong></a>
+          <a class="tableros-app-tile" href="https://remoto.totalgasonline.com/" target="_blank" rel="noopener"><span><i class="fa-solid fa-desktop" aria-hidden="true"></i></span><strong>Remoto</strong></a>
         </div>
       </li>
       <li class="nav-item dropdown" id="notificationsDropdown" data-csrf-token="{{ tableros_csrf|default(csrf_token|default(''))|e('html_attr') }}">
