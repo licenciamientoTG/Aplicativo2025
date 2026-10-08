@@ -151,6 +151,7 @@ class tableros_api {
                 session_write_close();
             }
             readfile($file['path']);
+            if (!empty($file['temporary']) && is_file($file['path'])) @unlink($file['path']);
             exit;
         } catch (TablerosApiException $e) {
             $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);

@@ -476,7 +476,8 @@ class TablerosModel {
         }
         $scanStatus = 'unscanned';
         $scannedAt = null;
-        $storageRoot = $this->privateStorageRoot();
+        $useNasService = $this->nasServiceEnabled();
+        $storageRoot = $useNasService ? null : $this->privateStorageRoot();
         $now = new DateTimeImmutable('now');
         $objectHash = bin2hex(random_bytes(32));
         $objectKey = implode('/', [
@@ -487,6 +488,10 @@ class TablerosModel {
             substr($objectHash, 0, 2),
             $objectHash,
         ]);
+        $destination = null;
+        if ($useNasService) {
+            $this->nasServiceRequest('PUT', $objectKey, $processingPath, $size, $contentType);
+        } else {
         $storageDir = $storageRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, dirname($objectKey));
         if (!is_dir($storageDir) && !@mkdir($storageDir, 0700, true) && !is_dir($storageDir)) {
             throw new TablerosApiException('server', 'No se pudo preparar el almacenamiento privado de archivos.', 500);
@@ -516,9 +521,16 @@ class TablerosModel {
             throw new TablerosApiException('server', 'No se pudo guardar el archivo completo.', 500);
         }
         @chmod($destination, 0600);
+        }
+        $sourceHash = hash_file('sha256', $processingPath, true);
+        if ($sourceHash === false) {
+            if ($useNasService) $this->nasServiceRequest('DELETE', $objectKey);
+            elseif ($destination !== null) @unlink($destination);
+            throw new TablerosApiException('server', 'No se pudo verificar el archivo cargado.', 500);
+        }
 
         try {
-            $result = $this->transaction(function () use ($boardId, $userId, $itemId, $fileId, $columnId, $originalName, $size, $contentType, $objectKey, $scanStatus, $scannedAt): array {
+            $result = $this->transaction(function () use ($boardId, $userId, $itemId, $fileId, $columnId, $originalName, $size, $contentType, $objectKey, $scanStatus, $scannedAt, $useNasService, $sourceHash): array {
                 if ($fileId !== null) {
                     $file = $this->one(
                         'SELECT id, board_id, item_id, column_id, name FROM tb_file WITH (UPDLOCK, HOLDLOCK)
@@ -559,12 +571,11 @@ class TablerosModel {
                     [$fileId]
                 );
                 $versionNumber = (int)($versionRow['next_version'] ?? 1);
-                $hash = hash_file('sha256', $this->privateObjectPath($objectKey), true);
                 $versionId = $this->insertId(
                     'INSERT INTO tb_file_version (file_id, version_number, original_name, content_type, byte_size,
                          storage_provider, storage_container, storage_object_key, sha256_hash, scan_status, scanned_at, created_by, created_at)
                      OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, CONVERT(VARBINARY(32), ?, 2), ?, ?, ?, GETDATE())',
-                    [$fileId, $versionNumber, $originalName, $contentType, $size, 'local', 'tableros', $objectKey, bin2hex($hash), $scanStatus, $scannedAt, $userId]
+                    [$fileId, $versionNumber, $originalName, $contentType, $size, $useNasService ? 'nas_service' : 'local', 'tableros', $objectKey, bin2hex($sourceHash), $scanStatus, $scannedAt, $userId]
                 );
                 $this->execute('UPDATE tb_file SET current_version_id = ?, name = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ?', [$versionId, $originalName, $fileId, $boardId]);
                 $this->writeActivity($boardId, $itemId, $userId, 'file.uploaded', [
@@ -579,7 +590,9 @@ class TablerosModel {
             });
             return $result;
         } catch (Throwable $e) {
-            @unlink($destination);
+            if ($useNasService) {
+                try { $this->nasServiceRequest('DELETE', $objectKey); } catch (Throwable $cleanupError) { error_log('Tableros NAS cleanup failed: ' . $cleanupError->getMessage()); }
+            } elseif ($destination !== null) @unlink($destination);
             throw $e;
         }
         } finally {
@@ -625,17 +638,37 @@ class TablerosModel {
             throw new TablerosApiException('not_found', 'El archivo no tiene una versión disponible.', 404);
         }
         $version = $this->one(
-            'SELECT id, file_id, version_number, original_name, content_type, byte_size, storage_provider, storage_container, storage_object_key, scan_status
+            'SELECT id, file_id, version_number, original_name, content_type, byte_size, storage_provider, storage_container, storage_object_key, scan_status,
+                    CONVERT(VARCHAR(64), sha256_hash, 2) AS sha256_hex
              FROM tb_file_version WHERE id = ? AND file_id = ? AND deleted_at IS NULL',
             [$wantedVersion, $fileId]
         );
-        if (!$version || (string)$version['storage_provider'] !== 'local' || (string)$version['storage_container'] !== 'tableros') {
+        if (!$version || !in_array((string)$version['storage_provider'], ['local', 'nas_service'], true) || (string)$version['storage_container'] !== 'tableros') {
             throw new TablerosApiException('not_found', 'No se encontró la versión del archivo.', 404);
         }
         if (!in_array((string)$version['scan_status'], ['clean', 'unscanned'], true)) {
             throw new TablerosApiException('conflict', 'Esta versión no está disponible para descarga.', 409);
         }
         $key = (string)$version['storage_object_key'];
+        if ((string)$version['storage_provider'] === 'nas_service') {
+            $tempPath = tempnam(sys_get_temp_dir(), 'tableros-');
+            if ($tempPath === false) throw new TablerosApiException('server', 'No se pudo preparar la descarga del archivo.', 500);
+            try {
+                $this->nasServiceRequest('GET', $key, null, null, null, $tempPath, (int)$version['byte_size']);
+                $actualSize = filesize($tempPath);
+                $actualHash = hash_file('sha256', $tempPath);
+                if ($actualSize !== (int)$version['byte_size'] || !is_string($actualHash)
+                    || !hash_equals(strtolower((string)$version['sha256_hex']), strtolower($actualHash))) {
+                    throw new TablerosApiException('server', 'El archivo almacenado no coincide con sus datos de integridad.', 500);
+                }
+                return [
+                    'file_id' => (int)$file['id'], 'board_id' => (int)$file['board_id'], 'item_id' => (int)$file['item_id'],
+                    'version_id' => (int)$version['id'], 'version_number' => (int)$version['version_number'],
+                    'name' => (string)$version['original_name'], 'content_type' => (string)$version['content_type'],
+                    'byte_size' => (int)$version['byte_size'], 'path' => $tempPath, 'temporary' => true,
+                ];
+            } catch (Throwable $e) { @unlink($tempPath); throw $e; }
+        }
         $path = $this->privateObjectPath($key);
         if (!is_file($path) || !is_readable($path)) {
             throw new TablerosApiException('not_found', 'El archivo no está disponible en el almacenamiento privado.', 404);
@@ -2296,6 +2329,72 @@ class TablerosModel {
             throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
         }
         return $realPath;
+    }
+
+    private function nasServiceEnabled(): bool {
+        $driver = strtolower(trim((string)getenv('TABLEROS_STORAGE_DRIVER')));
+        if ($driver === '' || $driver === 'local') return false;
+        if ($driver !== 'nas_service') throw new TablerosApiException('server', 'TABLEROS_STORAGE_DRIVER tiene un valor no válido.', 500);
+        return true;
+    }
+
+    /** Authenticated server-to-server request. The browser never receives this token. */
+    private function nasServiceRequest(string $method, string $objectKey, ?string $uploadPath = null, ?int $size = null, ?string $contentType = null, ?string $downloadPath = null, ?int $downloadLimit = null): string {
+        $url = rtrim((string)getenv('TABLEROS_STORAGE_SERVICE_URL'), '/');
+        $token = (string)getenv('TABLEROS_STORAGE_SERVICE_TOKEN');
+        if ($url === '' || strlen($token) < 32) throw new TablerosApiException('server', 'Falta configurar el servicio de almacenamiento Tableros con un token de al menos 32 caracteres.', 500);
+        if (strtolower((string)parse_url($url, PHP_URL_SCHEME)) !== 'https' || parse_url($url, PHP_URL_HOST) === null) {
+            throw new TablerosApiException('server', 'El servicio de almacenamiento Tableros debe usar HTTPS.', 500);
+        }
+        if (!function_exists('curl_init')) throw new TablerosApiException('server', 'La extensión PHP cURL es necesaria para el almacenamiento Tableros.', 500);
+        if (!preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $objectKey)) {
+            throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+        }
+        $handle = curl_init($url . '?key=' . rawurlencode($objectKey));
+        if ($handle === false) throw new TablerosApiException('server', 'No se pudo iniciar la conexión al almacenamiento Tableros.', 500);
+        $headers = ['Authorization: Bearer ' . $token];
+        $output = null;
+        try {
+            curl_setopt($handle, CURLOPT_CUSTOMREQUEST, $method);
+            curl_setopt($handle, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($handle, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($handle, CURLOPT_TIMEOUT, 600);
+            curl_setopt($handle, CURLOPT_FAILONERROR, false);
+            if ($method === 'PUT') {
+                if ($uploadPath === null || $size === null || !is_file($uploadPath)) throw new TablerosApiException('server', 'No se encontró el archivo temporal de carga.', 500);
+                $input = fopen($uploadPath, 'rb');
+                if (!is_resource($input)) throw new TablerosApiException('server', 'No se pudo leer el archivo para almacenamiento.', 500);
+                $headers[] = 'Content-Type: ' . ($contentType ?: 'application/octet-stream');
+                curl_setopt($handle, CURLOPT_HTTPHEADER, $headers);
+                curl_setopt($handle, CURLOPT_UPLOAD, true);
+                curl_setopt($handle, CURLOPT_INFILE, $input);
+                curl_setopt($handle, CURLOPT_INFILESIZE, $size);
+            } else $input = null;
+            if ($method === 'GET') {
+                $output = fopen((string)$downloadPath, 'wb');
+                if (!is_resource($output)) throw new TablerosApiException('server', 'No se pudo preparar la descarga temporal.', 500);
+                $written = 0;
+                curl_setopt($handle, CURLOPT_WRITEFUNCTION, static function ($curl, string $chunk) use ($output, &$written, $downloadLimit): int {
+                    $length = strlen($chunk);
+                    if ($downloadLimit === null || $length > $downloadLimit - $written) return 0;
+                    $count = fwrite($output, $chunk);
+                    if ($count === false) return 0;
+                    $written += $count;
+                    return $count;
+                });
+            } else curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
+            $response = curl_exec($handle);
+            $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+            if (is_resource($input)) fclose($input);
+            if (is_resource($output)) { fclose($output); $output = null; }
+            if ($response === false || $status < 200 || $status >= 300) {
+                throw new TablerosApiException('server', 'El servicio de almacenamiento Tableros no pudo completar la operación.', 502);
+            }
+            return is_string($response) ? $response : '';
+        } finally {
+            if (is_resource($output)) fclose($output);
+            curl_close($handle);
+        }
     }
 
     private function isAbsolutePath(string $path): bool {
