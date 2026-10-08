@@ -1238,14 +1238,28 @@
     const list = makeElement('div', 'boards-file-cell-list');
     files.forEach((file) => {
       const entry = makeElement('div', 'boards-file-cell-entry');
-      const icon = makeElement('button', `boards-file-cell-icon is-${fileTypeInfo(file).previewKind}`);
+      const typeInfo = fileTypeInfo(file);
+      const icon = makeElement('button', `boards-file-cell-icon is-${typeInfo.previewKind}`);
       icon.type = 'button';
       icon.setAttribute('aria-label', `Previsualizar ${file.name || 'archivo'}`);
       icon.title = `Abrir ${file.name || 'archivo'}`;
-      icon.append(makeElement('i', `fa-solid ${fileTypeInfo(file).icon}`));
       const status = String(file.scan_status || 'unscanned').toLowerCase();
       const downloadable = ['clean', 'unscanned'].includes(status);
       icon.disabled = !downloadable;
+      if (typeInfo.previewKind === 'image' && downloadable) {
+        icon.classList.add('has-thumbnail');
+        const thumbnail = document.createElement('img');
+        thumbnail.src = fileEndpoint(file, true);
+        thumbnail.alt = `Vista previa de ${file.name || 'imagen'}`;
+        thumbnail.addEventListener('error', () => {
+          thumbnail.remove();
+          icon.classList.remove('has-thumbnail');
+          icon.append(makeElement('i', `fa-solid ${typeInfo.icon}`));
+        }, { once: true });
+        icon.append(thumbnail);
+      } else {
+        icon.append(makeElement('i', `fa-solid ${typeInfo.icon}`));
+      }
       if (downloadable) icon.addEventListener('click', () => openFilePreview(file));
       else icon.title = status === 'pending' ? 'Archivo pendiente de habilitar.' : 'Archivo bloqueado.';
       entry.append(icon);
@@ -1286,8 +1300,7 @@
         input.value = '';
       }
     });
-    const hint = makeElement('small', 'boards-file-cell-hint', 'PDF, imágenes (se convierten a WebP) y documentos · máx. 100 MB');
-    wrapper.append(input, button, hint);
+    wrapper.append(input, button);
     return wrapper;
   }
 
