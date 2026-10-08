@@ -35,6 +35,7 @@
     createFolderDialog: document.getElementById('createFolderDialog'),
     createGroupDialog: document.getElementById('createGroupDialog'),
     createColumnDialog: document.getElementById('createColumnDialog'),
+    manageLabelsDialog: document.getElementById('manageLabelsDialog'),
     createItemDialog: document.getElementById('createItemDialog'),
     shareBoardDialog: document.getElementById('shareBoardDialog'),
     saveViewDialog: document.getElementById('saveViewDialog'),
@@ -45,6 +46,8 @@
     createFolderForm: document.getElementById('createFolderForm'),
     createGroupForm: document.getElementById('createGroupForm'),
     createColumnForm: document.getElementById('createColumnForm'),
+    manageLabelsForm: document.getElementById('manageLabelsForm'),
+    managedLabelsList: document.getElementById('managedLabelsList'),
     createItemForm: document.getElementById('createItemForm'),
     shareBoardForm: document.getElementById('shareBoardForm'),
     boardMembersList: document.getElementById('boardMembersList'),
@@ -724,9 +727,71 @@
         button.setAttribute('aria-label', `${direction < 0 ? 'Subir' : 'Bajar'} columna ${column.name || ''}`);
         actions.append(button);
       });
+      if (canManageStructure() && ['status', 'dropdown', 'tags'].includes(String(column.type || '').toLowerCase())) {
+        const labelsButton = makeElement('button', 'boards-column-labels-button', 'Etiquetas');
+        labelsButton.type = 'button';
+        labelsButton.dataset.manageColumnLabels = String(column.id);
+        labelsButton.setAttribute('aria-label', `Editar etiquetas y colores de ${column.name || 'columna'}`);
+        actions.append(labelsButton);
+      }
       row.append(label, actions);
       list.append(row);
     });
+  }
+
+  function normalizedLabelColor(value, fallback = '#579bfc') {
+    const color = String(value || '').trim();
+    if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
+    if (/^#[0-9a-f]{3}$/i.test(color)) return `#${color.slice(1).split('').map((part) => part + part).join('').toLowerCase()}`;
+    return fallback;
+  }
+
+  function managedLabelRow(option, index) {
+    const row = makeElement('div', 'boards-managed-label-row');
+    row.dataset.optionValue = String(option.value || '');
+    const swatch = document.createElement('input');
+    swatch.type = 'color';
+    swatch.className = 'boards-label-color-picker';
+    swatch.value = normalizedLabelColor(option.color, statusLabelColor(option.label, index));
+    swatch.setAttribute('aria-label', `Color para ${option.label || 'etiqueta'}`);
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.className = 'form-control boards-label-name';
+    name.value = String(option.label || '');
+    name.maxLength = 120;
+    name.required = true;
+    name.placeholder = 'Nombre de etiqueta';
+    name.setAttribute('aria-label', 'Nombre de etiqueta');
+    const preview = makeElement('span', 'boards-label-preview', name.value || 'Etiqueta');
+    preview.style.setProperty('--status-color', swatch.value);
+    const sync = () => {
+      preview.textContent = name.value.trim() || 'Etiqueta';
+      preview.style.setProperty('--status-color', swatch.value);
+      swatch.setAttribute('aria-label', `Color para ${name.value.trim() || 'etiqueta'}`);
+    };
+    name.addEventListener('input', sync);
+    swatch.addEventListener('input', sync);
+    row.append(swatch, name, preview);
+    return row;
+  }
+
+  function openLabelsEditor(column) {
+    if (!canManageStructure()) throw new Error('Se requiere permiso de diseño para editar etiquetas.');
+    if (!column || !['status', 'dropdown', 'tags'].includes(String(column.type || '').toLowerCase())) {
+      throw new Error('Esta columna no admite etiquetas configurables.');
+    }
+    els.manageLabelsForm.dataset.columnId = String(column.id);
+    document.getElementById('manageLabelsTitle').textContent = `Etiquetas de ${column.name || 'columna'}`;
+    document.getElementById('manageLabelsDescription').textContent = 'Elige el nombre y el color que verá el equipo.';
+    els.managedLabelsList.replaceChildren(...parseOptions(column.options).map(managedLabelRow));
+    openDialog(els.manageLabelsDialog);
+  }
+
+  function addManagedLabel() {
+    const label = 'Etiqueta nueva';
+    const value = `label_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    els.managedLabelsList.append(managedLabelRow({ value, label, color: statusLabelColor(label, els.managedLabelsList.children.length) }, els.managedLabelsList.children.length));
+    els.managedLabelsList.lastElementChild?.querySelector('.boards-label-name')?.focus();
   }
 
   function moveColumnInView(columnId, direction) {
@@ -768,14 +833,17 @@
     wrapper.className = 'boards-people-editor';
     markEditor(wrapper, item, column, 'people');
     wrapper.dataset.multiple = multiple ? '1' : '0';
+    const control = document.createElement('div');
+    control.className = 'boards-people-control';
     const search = document.createElement('input');
     search.type = 'search';
     search.className = 'boards-cell-input boards-people-search';
-    search.placeholder = 'Buscar persona del espacio…';
+    search.placeholder = 'Buscar persona…';
     search.setAttribute('aria-label', `Buscar persona para ${column.name || 'columna'}`);
     search.setAttribute('role', 'combobox');
     search.setAttribute('aria-autocomplete', 'list');
     search.setAttribute('aria-expanded', 'false');
+    search.setAttribute('aria-haspopup', 'listbox');
     const selected = document.createElement('div');
     selected.className = 'boards-people-selected';
     const results = document.createElement('div');
@@ -789,7 +857,27 @@
     const ids = selectedIds(value);
     const people = new Map();
     ids.forEach((id) => people.set(String(id), { id, name: 'Consultando acceso…', username: '' }));
-    wrapper.append(selected, search, results, select);
+    control.append(selected, search);
+    wrapper.append(control, results, select);
+    let requestNumber = 0;
+
+    const initialsFor = (person) => {
+      const words = String(person.name || person.username || '?').trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return '?';
+      return (words.length > 1 ? `${words[0][0]}${words[words.length - 1][0]}` : words[0].slice(0, 2)).toLocaleUpperCase('es-MX');
+    };
+    const personColor = (person) => {
+      const palette = ['#6677d8', '#168f85', '#c07835', '#9564c7', '#d05e78', '#398db1'];
+      const key = String(person.id || person.username || person.name || '');
+      const index = Array.from(key).reduce((sum, char) => sum + char.charCodeAt(0), 0) % palette.length;
+      return palette[index];
+    };
+    const avatar = (person, className = '') => {
+      const badge = makeElement('span', `boards-person-avatar ${className}`.trim(), initialsFor(person));
+      badge.style.setProperty('--person-color', personColor(person));
+      badge.title = person.name || person.username || 'Persona';
+      return badge;
+    };
     const syncSelection = () => {
       select.replaceChildren();
       people.forEach((person, id) => {
@@ -800,21 +888,17 @@
         select.append(option);
       });
       selected.replaceChildren();
-      if (!people.size) {
-        selected.textContent = 'Sin asignar';
-        selected.classList.add('is-empty');
-        return;
-      }
-      selected.classList.remove('is-empty');
+      selected.hidden = !people.size;
       people.forEach((person, id) => {
         const chip = document.createElement('span');
         chip.className = 'boards-people-chip';
-        chip.append(document.createTextNode(person.name || person.username || 'Sin acceso en este espacio'));
+        chip.append(avatar(person), makeElement('span', 'boards-people-chip-name', person.name || person.username || 'Sin acceso'));
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.textContent = '×';
         remove.setAttribute('aria-label', `Quitar ${person.name || person.username || 'persona'}`);
-        remove.addEventListener('click', () => {
+        remove.addEventListener('click', (event) => {
+          event.stopPropagation();
           people.delete(id);
           syncSelection();
           select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -822,19 +906,54 @@
         chip.append(remove);
         selected.append(chip);
       });
+      search.placeholder = people.size ? 'Cambiar…' : 'Buscar persona…';
     };
-    const showResults = (message = 'Escribe para buscar personas') => {
-      results.replaceChildren(makeElement('div', 'boards-people-empty', message));
+
+    const closeResults = () => {
+      results.hidden = true;
+      search.setAttribute('aria-expanded', 'false');
+      window.removeEventListener('scroll', closeResults, true);
+      window.removeEventListener('resize', closeResults);
+      document.removeEventListener('pointerdown', closeOnOutside);
+      ['position', 'z-index', 'left', 'top', 'bottom', 'width', 'max-height'].forEach((property) => results.style.removeProperty(property));
+      if (results.parentElement !== wrapper) wrapper.append(results);
+    };
+    const closeOnOutside = (event) => {
+      if (!wrapper.contains(event.target) && !results.contains(event.target)) closeResults();
+    };
+    const positionResults = () => {
+      const rect = control.getBoundingClientRect();
+      const width = Math.min(Math.max(280, rect.width), window.innerWidth - 16);
+      const below = window.innerHeight - rect.bottom - 12;
+      const above = rect.top - 12;
+      const maxHeight = Math.min(360, below < 260 && above > below ? above : below);
+      results.style.position = 'fixed';
+      results.style.zIndex = '10000';
+      results.style.width = `${width}px`;
+      results.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+      results.style.maxHeight = `${Math.max(130, maxHeight)}px`;
+      if (below < 260 && above > below) results.style.top = `${Math.max(8, rect.top - maxHeight - 5)}px`;
+      else results.style.top = `${rect.bottom + 5}px`;
+    };
+    const openResults = (message = 'Buscando personas…') => {
+      results.replaceChildren(makeElement('div', 'boards-people-results-heading', 'Personas sugeridas'));
+      results.append(makeElement('div', 'boards-people-empty', message));
+      document.body.append(results);
       results.hidden = false;
       search.setAttribute('aria-expanded', 'true');
+      positionResults();
+      window.addEventListener('scroll', closeResults, true);
+      window.addEventListener('resize', closeResults);
+      document.addEventListener('pointerdown', closeOnOutside);
     };
-    const searchUsers = async (term = search.value.trim()) => {
+    const searchUsers = async (term = search.value.trim(), reveal = true) => {
+      const currentRequest = ++requestNumber;
       const params = new URLSearchParams({ q: term, board_id: String(state.board?.id || '') });
       if (people.size) params.set('ids', Array.from(people.keys()).join(','));
-      showResults('Buscando personas…');
+      if (reveal) openResults('Buscando personas…');
       try {
         const response = await request(`/users?${params.toString()}`);
-        if (!document.contains(wrapper)) return;
+        if (!document.contains(wrapper) || currentRequest !== requestNumber) return;
         const users = Array.isArray(response.data) ? response.data : [];
         users.forEach((user) => { if (people.has(String(user.id))) people.set(String(user.id), user); });
         people.forEach((person, id) => {
@@ -842,8 +961,12 @@
         });
         syncSelection();
         results.replaceChildren();
+        const heading = makeElement('div', 'boards-people-results-heading', term ? 'Resultados' : 'Personas sugeridas');
+        results.append(heading);
+        if (!reveal) { closeResults(); return; }
         if (!users.length) {
-          showResults(term ? 'No hay personas con permiso que coincidan.' : 'No hay personas con acceso a este espacio.');
+          results.append(makeElement('div', 'boards-people-empty', term ? 'No hay personas con acceso que coincidan.' : 'No hay personas con acceso a este espacio.'));
+          positionResults();
           return;
         }
         users.forEach((user) => {
@@ -852,10 +975,10 @@
           option.type = 'button';
           option.setAttribute('role', 'option');
           option.setAttribute('aria-selected', people.has(id) ? 'true' : 'false');
-          const name = makeElement('strong', '', user.name || user.username || 'Persona');
-          const username = user.username && user.username !== user.name ? makeElement('small', '', user.username) : null;
-          option.append(name);
-          if (username) option.append(username);
+          const copy = makeElement('span', 'boards-people-option-copy');
+          copy.append(makeElement('strong', '', user.name || user.username || 'Persona'));
+          if (user.username && user.username !== user.name) copy.append(makeElement('small', '', user.username));
+          option.append(avatar(user), copy);
           option.addEventListener('click', () => {
             if (multiple) {
               if (people.has(id)) people.delete(id); else people.set(id, user);
@@ -865,24 +988,23 @@
               closeResults();
             }
             syncSelection();
-            if (multiple) searchUsers('');
-            else search.value = '';
+            if (multiple) { search.value = ''; search.focus(); searchUsers(''); }
+            else { search.value = ''; closeResults(); }
             select.dispatchEvent(new Event('change', { bubbles: true }));
           });
           results.append(option);
         });
-        results.hidden = false;
-        search.setAttribute('aria-expanded', 'true');
+        positionResults();
       } catch (error) {
-        showResults(errorMessage(error, 'No se pudo buscar personas.'));
+        if (!reveal || currentRequest !== requestNumber) return;
+        results.replaceChildren(makeElement('div', 'boards-people-results-heading', 'Personas sugeridas'));
+        results.append(makeElement('div', 'boards-people-empty', errorMessage(error, 'No se pudo buscar personas.')));
+        positionResults();
       }
-    };
-    const closeResults = () => {
-      results.hidden = true;
-      search.setAttribute('aria-expanded', 'false');
     };
     let timer = null;
     search.addEventListener('focus', () => searchUsers());
+    control.addEventListener('click', () => search.focus());
     search.addEventListener('input', () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => searchUsers(), 220);
@@ -896,10 +1018,10 @@
       if (event.key === 'Escape') { closeResults(); search.focus(); }
     });
     search.addEventListener('blur', () => window.setTimeout(() => {
-      if (!wrapper.contains(document.activeElement)) closeResults();
+      if (!wrapper.contains(document.activeElement) && !results.contains(document.activeElement)) closeResults();
     }, 140));
     syncSelection();
-    if (ids.length) searchUsers('');
+    if (ids.length) searchUsers('', false);
     return wrapper;
   }
 
@@ -993,6 +1115,15 @@
         });
         menu.append(option);
       });
+      if (canManageStructure()) {
+        const manage = makeElement('button', 'boards-status-manage-labels', 'Editar etiquetas y colores');
+        manage.type = 'button';
+        manage.addEventListener('click', () => {
+          closeMenu();
+          openLabelsEditor(column);
+        });
+        menu.append(manage);
+      }
       document.body.append(menu);
       menu.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
@@ -1001,7 +1132,7 @@
       const menuWidth = Math.min(Math.max(190, triggerRect.width), window.innerWidth - 16);
       const availableBelow = window.innerHeight - triggerRect.bottom - 12;
       const availableAbove = triggerRect.top - 12;
-      const desiredHeight = Math.min(300, options.length * 35 + 52);
+      const desiredHeight = Math.min(360, options.length * 35 + (canManageStructure() ? 96 : 52));
       menu.style.position = 'fixed';
       menu.style.zIndex = '10000';
       menu.style.width = `${menuWidth}px`;
@@ -1065,11 +1196,11 @@
         ? parseOptions(column.options).find((entry) => entry.value === String(value ?? ''))
         : null;
       readonly.textContent = option?.label || stringifyValue(value) || '—';
-      if (type === 'status' && option) readonly.style.setProperty('--status-color', option.color);
+      if (['status', 'dropdown', 'tags'].includes(type) && option) readonly.style.setProperty('--status-color', option.color);
       return readonly;
     }
 
-    if (type === 'status' && parseOptions(column.options).length) {
+    if (['status', 'dropdown'].includes(type) && parseOptions(column.options).length) {
       return createStatusEditor(item, column, value);
     }
 
@@ -3465,7 +3596,7 @@
     document.querySelectorAll('[data-close-dialog]').forEach((button) => {
       button.addEventListener('click', () => closeDialog(button.closest('dialog')));
     });
-    [els.createBoardDialog, els.createWorkspaceDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog].forEach((dialog) => {
+    [els.createBoardDialog, els.createWorkspaceDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
@@ -3481,6 +3612,26 @@
     document.getElementById('openCreateColumn').addEventListener('click', () => {
       if (canManageStructure()) openDialog(els.createColumnDialog);
       else setNotice('Se requiere permiso de administración para configurar columnas.', 'error');
+    });
+    document.getElementById('addManagedLabel')?.addEventListener('click', addManagedLabel);
+    dialogSubmit(els.manageLabelsForm, async () => {
+      if (!canManageStructure()) throw new Error('Se requiere permiso de diseño para editar etiquetas.');
+      const columnId = String(els.manageLabelsForm.dataset.columnId || '');
+      const rows = Array.from(els.managedLabelsList.querySelectorAll('.boards-managed-label-row'));
+      const options = rows.map((row) => ({
+        value: row.dataset.optionValue || '',
+        label: row.querySelector('.boards-label-name')?.value.trim() || '',
+        color: normalizedLabelColor(row.querySelector('.boards-label-color-picker')?.value)
+      }));
+      if (!options.length) throw new Error('Agrega al menos una etiqueta.');
+      if (options.some((option) => !option.value || !option.label)) throw new Error('Cada etiqueta necesita un nombre.');
+      const result = await post('/update_column_options', { board_id: state.board.id, column_id: columnId, options });
+      const column = state.columns.find((entry) => String(entry.id) === columnId);
+      if (!column) throw new Error('La columna ya no está disponible; vuelve a cargar el tablero.');
+      column.options = result.data?.options || options;
+      closeDialog(els.manageLabelsDialog);
+      renderActiveView();
+      setNotice('Etiquetas y colores guardados.', 'success');
     });
     document.getElementById('openCreateItem').addEventListener('click', () => openCreateItem());
     document.getElementById('openShareBoard')?.addEventListener('click', async () => {
@@ -3878,6 +4029,11 @@
     els.columnControlsList.addEventListener('click', (event) => {
       const button = event.target.closest('[data-move-column]');
       if (button) moveColumnInView(button.dataset.moveColumn, Number(button.dataset.direction));
+      const labelsButton = event.target.closest('[data-manage-column-labels]');
+      if (labelsButton) {
+        const column = state.columns.find((entry) => String(entry.id) === labelsButton.dataset.manageColumnLabels);
+        if (column) openLabelsEditor(column);
+      }
     });
     document.getElementById('toggleBoardDensity').addEventListener('click', (event) => {
       const button = event.currentTarget;

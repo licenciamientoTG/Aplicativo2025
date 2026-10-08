@@ -322,6 +322,14 @@ class tableros_api {
         });
     }
 
+    public function update_column_options(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            return $this->model->updateColumnOptions($boardId, $userId, $input);
+        });
+    }
+
     public function create_item(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);

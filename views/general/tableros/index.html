@@ -211,6 +211,16 @@
   </form>
 </dialog>
 
+<dialog class="boards-dialog boards-labels-dialog" id="manageLabelsDialog" aria-labelledby="manageLabelsTitle">
+  <form id="manageLabelsForm">
+    <div class="boards-dialog-heading"><div><h3 id="manageLabelsTitle">Etiquetas y colores</h3><p id="manageLabelsDescription">Elige un color para cada etiqueta.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <div id="managedLabelsList" class="boards-managed-labels"></div>
+    <button id="addManagedLabel" class="boards-add-label" type="button"><span aria-hidden="true">＋</span> Agregar etiqueta</button>
+    <small class="boards-field-help">Las etiquetas existentes conservan su valor en los elementos; aquí puedes cambiar su nombre visible y color.</small>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Guardar cambios</button></div>
+  </form>
+</dialog>
+
 <dialog class="boards-dialog" id="createItemDialog" aria-labelledby="createItemTitle">
   <form id="createItemForm">
     <div class="boards-dialog-heading"><div><h3 id="createItemTitle">Agregar elemento</h3><p>Después de crearlo, puedes editar el nombre desde el tablero.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>

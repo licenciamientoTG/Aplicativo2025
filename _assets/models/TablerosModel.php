@@ -744,6 +744,76 @@ class TablerosModel {
         return ['id' => $id, 'board_id' => $boardId, 'name' => $name, 'type' => $type, 'options' => $options, 'required' => $required, 'enforce_unique' => $enforceUnique, 'sort_order' => $position];
     }
 
+    public function updateColumnOptions(int $boardId, int $userId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $options = $input['options'] ?? null;
+        if (!is_array($options) || !array_is_list($options) || count($options) > 100) {
+            throw new TablerosApiException('validation', 'La lista de etiquetas no es válida.', 422);
+        }
+
+        $normalized = [];
+        $seen = [];
+        foreach ($options as $option) {
+            if (!is_array($option)) {
+                throw new TablerosApiException('validation', 'Cada etiqueta debe incluir nombre, valor y color.', 422);
+            }
+            $value = $this->requiredString($option, 'value', 120);
+            $label = $this->requiredString($option, 'label', 120);
+            $color = $this->requiredString($option, 'color', 7);
+            if (!preg_match('/^#[0-9a-f]{6}$/i', $color)) {
+                throw new TablerosApiException('validation', 'El color debe ser hexadecimal de seis dígitos.', 422);
+            }
+            $key = mb_strtolower($value, 'UTF-8');
+            if (isset($seen[$key])) {
+                throw new TablerosApiException('validation', 'No se permiten valores internos repetidos.', 422);
+            }
+            $seen[$key] = true;
+            $normalized[] = ['value' => $value, 'label' => $label, 'color' => strtoupper($color)];
+        }
+
+        return $this->transaction(function () use ($boardId, $userId, $columnId, $normalized): array {
+            $column = $this->one(
+                'SELECT id, name, type, options_json FROM tb_column WITH (UPDLOCK, HOLDLOCK)
+                 WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
+                [$columnId, $boardId]
+            );
+            if (!$column) {
+                throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+            }
+            if (!in_array((string)$column['type'], ['status', 'dropdown', 'tags'], true)) {
+                throw new TablerosApiException('validation', 'Esta columna no tiene etiquetas configurables.', 422);
+            }
+            $oldOptions = $this->decodeJson($column['options_json'] ?? null, []);
+            foreach ($this->optionValues(is_array($oldOptions) ? $oldOptions : []) as $oldValue) {
+                $preserved = false;
+                foreach ($normalized as $option) {
+                    if ((string)$option['value'] === (string)$oldValue) { $preserved = true; break; }
+                }
+                if (!$preserved) {
+                    throw new TablerosApiException('validation', 'Conserva los valores existentes para no perder las asignaciones actuales.', 422);
+                }
+            }
+            if (!$normalized) {
+                throw new TablerosApiException('validation', 'Agrega al menos una etiqueta.', 422);
+            }
+            $json = json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($json === false || strlen($json) > 16000) {
+                throw new TablerosApiException('validation', 'La configuración de etiquetas es demasiado grande.', 422);
+            }
+            $this->execute(
+                'UPDATE tb_column SET options_json = ?, updated_at = GETDATE()
+                 WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
+                [$json, $columnId, $boardId]
+            );
+            $this->writeActivity($boardId, null, $userId, 'column.options_updated', [
+                'column_id' => $columnId,
+                'column_name' => (string)$column['name'],
+                'option_count' => count($normalized),
+            ]);
+            return ['column_id' => $columnId, 'options' => $normalized];
+        });
+    }
+
     public function createItem(int $boardId, int $userId, array $input): array {
         $groupId = $this->positiveInt($input['group_id'] ?? null, 'group_id');
         $this->requireGroupOnBoard($groupId, $boardId);
