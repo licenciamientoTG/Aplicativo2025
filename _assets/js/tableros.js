@@ -931,8 +931,8 @@
       results.hidden = true;
       search.setAttribute('aria-expanded', 'false');
       search.value = '';
-      window.removeEventListener('scroll', closeResults, true);
-      window.removeEventListener('resize', closeResults);
+      window.removeEventListener('scroll', positionResults, true);
+      window.removeEventListener('resize', positionResults);
       document.removeEventListener('pointerdown', closeOnOutside);
       ['position', 'z-index', 'left', 'top', 'bottom', 'width', 'max-height'].forEach((property) => results.style.removeProperty(property));
       if (results.parentElement !== wrapper) wrapper.append(results);
@@ -961,8 +961,8 @@
       results.hidden = false;
       search.setAttribute('aria-expanded', 'true');
       positionResults();
-      window.addEventListener('scroll', closeResults, true);
-      window.addEventListener('resize', closeResults);
+      window.addEventListener('scroll', positionResults, true);
+      window.addEventListener('resize', positionResults);
       document.addEventListener('pointerdown', closeOnOutside);
     };
     const searchUsers = async (term = search.value.trim(), reveal = true) => {
@@ -1029,8 +1029,8 @@
       if (results.hidden) {
         search.value = '';
         openResults();
-        search.focus();
-      } else search.focus();
+        search.focus({ preventScroll: true });
+      } else search.focus({ preventScroll: true });
     };
     control.addEventListener('click', showPicker);
     addButton.addEventListener('click', (event) => { event.stopPropagation(); showPicker(); });
