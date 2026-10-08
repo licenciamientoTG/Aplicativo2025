@@ -442,31 +442,53 @@ class TablerosModel {
     }
 
     public function getFileComments(int $fileId): array {
-        if (!$this->one('SELECT id FROM tb_file WHERE id = ? AND deleted_at IS NULL', [$fileId])) {
+        $file = $this->one('SELECT id, board_id, item_id FROM tb_file WHERE id = ? AND deleted_at IS NULL', [$fileId]);
+        if (!$file) {
             throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
         }
-        return $this->all(
+        $comments = $this->all(
             "SELECT TOP (200) c.id, c.file_id, c.body, c.created_by,
                     COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name,
-                    c.created_at, c.updated_at
+                    c.created_at, c.updated_at, c.mentions_json
              FROM tb_file_comment c
              LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = c.created_by
              WHERE c.file_id = ? AND c.deleted_at IS NULL
              ORDER BY c.created_at, c.id",
             [$fileId]
         );
+        foreach ($comments as &$comment) {
+            $comment['mentions'] = json_decode((string)($comment['mentions_json'] ?? '[]'), true) ?: [];
+            unset($comment['mentions_json']);
+            $comment['attachments'] = $this->all(
+                'SELECT f.id AS file_id, f.name, a.created_at FROM tb_file_comment_attachment a
+                 INNER JOIN tb_file f ON f.id = a.file_id AND f.board_id = ? AND f.item_id = ? AND f.deleted_at IS NULL
+                 WHERE a.file_comment_id = ? ORDER BY a.created_at, f.id',
+                [(int)$file['board_id'], (int)$file['item_id'], (int)$comment['id']]
+            );
+        }
+        unset($comment);
+        return $comments;
     }
 
     public function addFileComment(int $fileId, int $userId, array $input): array {
         $body = $this->requiredString($input, 'body', 10000);
-        return $this->transaction(function () use ($fileId, $userId, $body): array {
-            if (!$this->one('SELECT id FROM tb_file WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$fileId])) {
+        $mentions = $input['mentions'] ?? [];
+        if (!is_array($mentions) || count($mentions) > 100) {
+            throw new TablerosApiException('validation', 'La lista de menciones no es válida.', 422);
+        }
+        $mentionIds = [];
+        foreach ($mentions as $mention) $mentionIds[] = $this->positiveInt($mention, 'mentions');
+        $mentionIds = array_values(array_unique($mentionIds));
+        return $this->transaction(function () use ($fileId, $userId, $body, $mentionIds): array {
+            $file = $this->one('SELECT id, board_id, item_id, name, created_by FROM tb_file WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$fileId]);
+            if (!$file) {
                 throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
             }
+            $recipients = $this->validatedMentionRecipients((int)$file['board_id'], $mentionIds, $userId);
             $id = $this->insertId(
-                'INSERT INTO tb_file_comment (file_id, body, created_by, created_at, updated_at)
-                 OUTPUT INSERTED.id VALUES (?, ?, ?, GETDATE(), GETDATE())',
-                [$fileId, $body, $userId]
+                'INSERT INTO tb_file_comment (file_id, body, created_by, mentions_json, created_at, updated_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$fileId, $body, $userId, json_encode($mentionIds, JSON_UNESCAPED_UNICODE)]
             );
             $comment = $this->one(
                 "SELECT c.id, c.file_id, c.body, c.created_by,
@@ -480,8 +502,77 @@ class TablerosModel {
             if (!$comment) {
                 throw new RuntimeException('No se pudo recuperar el comentario recién creado.');
             }
+            $comment['mentions'] = $mentionIds;
+            $this->createNotification((int)$file['created_by'], $userId, (int)$file['board_id'], (int)$file['item_id'], $fileId, null, $id, 'file.comment.created', ['file_name' => (string)($file['name'] ?? '')], 'file-comment:' . $id . ':uploader');
+            foreach ($recipients as $recipientId) {
+                $this->createNotification($recipientId, $userId, (int)$file['board_id'], (int)$file['item_id'], $fileId, null, $id, 'file.comment.mention', ['file_name' => (string)($file['name'] ?? '')], 'file-comment:' . $id . ':mention:' . $recipientId);
+            }
             return $comment;
         });
+    }
+
+    public function attachCommentFile(int $commentId, int $fileId): int {
+        return $this->transaction(function () use ($commentId, $fileId): int {
+            $comment = $this->one('SELECT c.file_id, f.board_id, f.item_id FROM tb_file_comment c INNER JOIN tb_file f ON f.id = c.file_id WHERE c.id = ? AND c.deleted_at IS NULL AND f.deleted_at IS NULL', [$commentId]);
+            if (!$comment) throw new TablerosApiException('not_found', 'No se encontró el comentario.', 404);
+            $file = $this->one('SELECT id FROM tb_file WHERE id = ? AND board_id = ? AND item_id = ? AND deleted_at IS NULL', [$fileId, $comment['board_id'], $comment['item_id']]);
+            if (!$file) throw new TablerosApiException('validation', 'El archivo debe pertenecer al mismo tablero y elemento del comentario.', 422);
+            $this->execute('IF NOT EXISTS (SELECT 1 FROM tb_file_comment_attachment WHERE file_comment_id = ? AND file_id = ?) INSERT INTO tb_file_comment_attachment (file_comment_id, file_id) VALUES (?, ?)', [$commentId, $fileId, $commentId, $fileId]);
+            return (int)$comment['board_id'];
+        });
+    }
+
+    public function getFileCommentBoardId(int $commentId): int {
+        $row = $this->one('SELECT f.board_id FROM tb_file_comment c INNER JOIN tb_file f ON f.id = c.file_id WHERE c.id = ? AND c.deleted_at IS NULL AND f.deleted_at IS NULL', [$commentId]);
+        if (!$row) throw new TablerosApiException('not_found', 'No se encontró el comentario.', 404);
+        return (int)$row['board_id'];
+    }
+
+    public function getNotifications(int $userId): array {
+        $rows = $this->all("SELECT TOP (100) n.id, n.actor_user_id, COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS actor_display_name,
+                    n.board_id, n.item_id, n.file_id, n.comment_id, n.file_comment_id, n.event_type, n.payload_json, n.created_at, n.read_at
+             FROM tb_notification n LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = n.actor_user_id
+             WHERE n.user_id = ? ORDER BY n.created_at DESC, n.id DESC", [$userId]);
+        $rows = array_values(array_filter($rows, fn(array $row): bool => !empty($row['board_id']) && $this->access->canViewBoard((int)$row['board_id'])));
+        foreach ($rows as &$row) $row['payload'] = json_decode((string)($row['payload_json'] ?? '{}'), true) ?: [];
+        unset($row);
+
+        $unreadBoards = $this->all('SELECT DISTINCT board_id FROM tb_notification WHERE user_id = ? AND read_at IS NULL AND board_id IS NOT NULL', [$userId]);
+        $accessibleBoardIds = [];
+        foreach ($unreadBoards as $board) {
+            $boardId = (int)$board['board_id'];
+            if ($this->access->canViewBoard($boardId)) $accessibleBoardIds[] = $boardId;
+        }
+        $unreadCount = 0;
+        if ($accessibleBoardIds) {
+            $placeholders = implode(',', array_fill(0, count($accessibleBoardIds), '?'));
+            $unreadCount = (int)($this->one(
+                "SELECT COUNT(*) AS total FROM tb_notification WHERE user_id = ? AND read_at IS NULL AND board_id IN ($placeholders)",
+                array_merge([$userId], $accessibleBoardIds)
+            )['total'] ?? 0);
+        }
+        return ['items' => $rows, 'unread_count' => $unreadCount];
+    }
+
+    public function markNotificationRead(int $userId, int $notificationId): array {
+        $this->execute('UPDATE tb_notification SET read_at = SYSUTCDATETIME() WHERE id = ? AND user_id = ? AND read_at IS NULL', [$notificationId, $userId]);
+        return ['notification_id' => $notificationId, 'read' => true];
+    }
+
+    private function validatedMentionRecipients(int $boardId, array $ids, int $actorId): array {
+        if (!$ids) return [];
+        $users = $this->access->activeUsersForBoard($boardId, '', $ids);
+        $byId = [];
+        foreach ($users as $user) $byId[(int)$user['id']] = $user;
+        foreach ($ids as $id) {
+            if (!isset($byId[$id]) || !$this->userIsActive($id)) throw new TablerosApiException('validation', 'Las menciones deben ser usuarios activos con acceso al tablero.', 422);
+        }
+        return array_values(array_filter($ids, static fn(int $id): bool => $id !== $actorId));
+    }
+
+    private function createNotification(int $recipientId, int $actorId, int $boardId, ?int $itemId, ?int $fileId, ?int $commentId, ?int $fileCommentId, string $type, array $payload, string $dedupe): void {
+        if ($recipientId <= 0 || $recipientId === $actorId) return;
+        $this->execute('IF NOT EXISTS (SELECT 1 FROM tb_notification WHERE user_id = ? AND dedupe_key = ?) INSERT INTO tb_notification (user_id, actor_user_id, board_id, item_id, file_id, comment_id, file_comment_id, event_type, payload_json, created_at, dedupe_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME(), ?)', [$recipientId, $dedupe, $recipientId, $actorId, $boardId, $itemId, $fileId, $commentId, $fileCommentId, $type, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $dedupe]);
     }
 
     public function uploadFile(int $boardId, int $userId, array $input, array $upload): array {
@@ -1281,7 +1372,7 @@ class TablerosModel {
         }
 
         return $this->transaction(function () use ($boardId, $userId, $normalized): array {
-            $board = $this->one('SELECT created_by FROM tb_board WHERE id = ? AND deleted_at IS NULL', [$boardId]);
+            $board = $this->one('SELECT created_by, name FROM tb_board WHERE id = ? AND deleted_at IS NULL', [$boardId]);
             if (!$board) {
                 throw new TablerosApiException('not_found', 'No se encontró el tablero.', 404);
             }
@@ -1293,6 +1384,7 @@ class TablerosModel {
                 if ((int)$board['created_by'] === (int)$targetId) {
                     continue;
                 }
+                $wasActiveMember = $existing && $existing['deleted_at'] === null;
                 if ($existing) {
                     $this->execute('UPDATE tb_board_member SET role = ?, invited_by = ?, updated_at = GETDATE(), deleted_at = NULL WHERE id = ?', [$role, $userId, $existing['id']]);
                 } else {
@@ -1300,6 +1392,9 @@ class TablerosModel {
                         'INSERT INTO tb_board_member (board_id, user_id, role, invited_by, created_at) VALUES (?, ?, ?, ?, GETDATE())',
                         [$boardId, $targetId, $role, $userId]
                     );
+                }
+                if (!$wasActiveMember) {
+                    $this->createNotification((int)$targetId, $userId, $boardId, null, null, null, null, 'board.member.added', ['board_name' => (string)$board['name'], 'role' => $role], 'board-member:' . $boardId . ':' . $targetId . ':' . bin2hex(random_bytes(8)));
                 }
             }
             $this->writeActivity($boardId, null, $userId, 'board.shared', ['user_ids' => array_map('intval', array_keys($normalized))]);

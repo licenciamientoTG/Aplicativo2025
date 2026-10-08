@@ -123,6 +123,30 @@ class tableros_api {
         });
     }
 
+    public function attach_comment_file(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $commentId = $this->positiveInt($input['file_comment_id'] ?? null, 'file_comment_id');
+            $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
+            $boardId = $this->model->getFileCommentBoardId($commentId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->model->attachCommentFile($commentId, $fileId);
+            return ['file_comment_id' => $commentId, 'file_id' => $fileId];
+        });
+    }
+
+    public function notifications(): void {
+        $this->handle('GET', function (int $userId): array {
+            return $this->model->getNotifications($userId);
+        });
+    }
+
+    public function mark_notification_read(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $notificationId = $this->positiveInt($input['notification_id'] ?? null, 'notification_id');
+            return $this->model->markNotificationRead($userId, $notificationId);
+        });
+    }
+
     public function upload_file(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);

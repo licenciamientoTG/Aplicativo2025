@@ -432,9 +432,29 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-preview-comment p { margin: 7px 0 0; color: #d4d8e9; font-size: .73rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .boards-preview-comment-form { display: grid; gap: 7px; margin-top: 12px; }
 .boards-preview-comment-form textarea { width: 100%; resize: vertical; padding: 8px; border: 1px solid #505676; border-radius: 6px; color: #f3f4fc; background: #1b1e34; font: inherit; font-size: .72rem; }
+.boards-preview-comment-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.boards-preview-comment-actions > :last-child { margin-left: auto; }
+.boards-preview-emoji-picker { position: relative; }
+.boards-preview-emoji-picker summary { padding: 6px 8px; border: 1px solid #505676; border-radius: 5px; color: #d4d8e9; cursor: pointer; font-size: .72rem; list-style: none; }
+.boards-preview-emoji-picker summary::-webkit-details-marker { display: none; }
+.boards-preview-emoji-options { position: absolute; z-index: 3; bottom: calc(100% + 5px); left: 0; display: grid; grid-template-columns: repeat(4, 34px); gap: 3px; padding: 5px; border: 1px solid #505676; border-radius: 6px; background: #1b1e34; box-shadow: 0 5px 18px #0005; }
+.boards-preview-emoji-options button { width: 34px; height: 32px; padding: 0; border: 0; border-radius: 4px; background: transparent; font-size: 1rem; }
+.boards-preview-emoji-options button:hover { background: #353a59; }
+.boards-preview-mention-list { display: grid; max-height: 180px; overflow-y: auto; border: 1px solid #505676; border-radius: 5px; background: #1b1e34; }
+.boards-preview-mention-option { padding: 7px 9px; border: 0; color: #e6e8f2; background: transparent; text-align: left; font-size: .74rem; }
+.boards-preview-mention-option:hover, .boards-preview-mention-option:focus, .boards-preview-mention-option[aria-selected="true"] { background: #353a59; }
+.boards-preview-comment-files,
+.boards-preview-comment-attachments { display: flex; flex-wrap: wrap; gap: 5px; }
+.boards-preview-comment-file { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid #505676; border-radius: 4px; color: #d4d8e9; font-size: .68rem; overflow-wrap: anywhere; }
+.boards-preview-comment-file button { padding: 0; border: 0; color: #b5bfd8; background: transparent; font-size: .65rem; }
+.boards-preview-comment-attachments { margin-top: 8px; }
+.boards-preview-comment-attachments a { color: #a9d6e3; font-size: .7rem; overflow-wrap: anywhere; }
 .boards-preview-submit { justify-self: end; padding: 6px 11px; border: 0; border-radius: 5px; color: #fff; background: #477cf1; cursor: pointer; font-size: .72rem; }
 .boards-preview-submit:disabled { opacity: .6; cursor: wait; }
 .boards-preview-version, .boards-preview-gallery-item { display: grid; width: 100%; gap: 5px; margin: 0 0 7px; padding: 9px; border: 1px solid #3d4260; border-radius: 7px; color: #e8eaf4; background: #2b2f4a; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.boards-preview-version-add { display: block; margin: 0 0 12px auto; padding: 6px 10px; border: 1px solid #656b8d; border-radius: 5px; color: #e8eaf4; background: transparent; cursor: pointer; font-size: .7rem; }
+.boards-preview-version-add:hover:not(:disabled) { border-color: #8da9ff; color: #fff; background: #343c60; }
+.boards-preview-version-add:disabled { opacity: .55; cursor: not-allowed; }
 .boards-preview-version[aria-current="true"], .boards-preview-gallery-item[aria-current="true"] { border-color: #7195ff; background: #343c60; }
 .boards-preview-version small { color: #aeb2ca; font-size: .63rem; }
 .boards-preview-version:disabled { color: #8589a0; cursor: not-allowed; opacity: .7; }

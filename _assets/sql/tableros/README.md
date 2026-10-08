@@ -8,6 +8,7 @@
 - `004_workspace_hierarchy.sql` actualiza el espacio inicial **General** a visibilidad de equipo y limita las carpetas a tres niveles, igual que Monday. Conserva los tableros privados y no elimina contenido.
 - `005_file_scan_availability.sql` habilita el estado `unscanned` y convierte las versiones que esperaban aprobación manual para que puedan descargarse. Ejecutar junto con el despliegue de la nueva aplicación.
 - `006_file_comments.sql` agrega comentarios asociados al archivo lógico para mostrarlos en el panel de vista previa. Es aditivo e idempotente; ejecutar después de `001_create_schema.sql`.
+- `007_comment_mentions_notifications.sql` agrega menciones opcionales a comentarios, vínculos de archivos adjuntos a comentarios y notificaciones dentro de la aplicación. Es aditivo e idempotente; ejecutar después de `006_file_comments.sql`.
 - La conexión de la aplicación a `tableros` reutiliza la configuración SQL existente sin cambiar la conexión compartida de los demás modelos.
 
 Después de desplegar el código, Sistemas debe asignar en `/it` los permisos **Tableros - Acceso**, **Tableros - Crear** y **Tableros - Administrar** a las personas correspondientes. El módulo no concede acceso automáticamente.
@@ -28,4 +29,8 @@ La importación de proyectos desde Monday no forma parte del módulo. Los proyec
 
 ## Orden de actualización
 
-En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql`, `005_file_scan_availability.sql` y `006_file_comments.sql`, en ese orden. Los scripts son idempotentes; `005` actualiza solamente estados `pending` a `unscanned`. En instalaciones nuevas, ejecutar `001_create_schema.sql` y después `006_file_comments.sql` para crear la tabla de comentarios.
+En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql`, `005_file_scan_availability.sql`, `006_file_comments.sql` y `007_comment_mentions_notifications.sql`, en ese orden. Los scripts son idempotentes; `005` actualiza solamente estados `pending` a `unscanned`. En instalaciones nuevas, ejecutar `001_create_schema.sql`, `006_file_comments.sql` y `007_comment_mentions_notifications.sql` en ese orden.
+
+`007` requiere que existan `tb_board`, `tb_item`, `tb_file`, `tb_comment` y `tb_file_comment`; no ejecuta cambios de datos existentes. Los IDs de usuario (`user_id` y `actor_user_id`) se guardan como enteros sin FK porque pertenecen a TG. La aplicación debe validar que cada archivo adjunto pertenezca al mismo tablero/elemento del comentario y que el usuario tenga acceso al archivo privado. Los vínculos sí tienen FKs locales a los registros de archivo y comentario.
+
+La compatibilidad es aditiva: `mentions_json` admite `NULL`, las tablas nuevas no cambian lecturas/escrituras previas, y `read_at`/`dedupe_key` son opcionales. Desplegar primero la migración y después el código que escriba estos campos/tablas. Para rollback de aplicación, volver al código anterior y dejar el esquema instalado; no hay rollback destructivo automático. Si se decide retirar la función, respaldar/exportar antes de eliminar `tb_notification` y `tb_file_comment_attachment`; borrar esas tablas elimina permanentemente notificaciones y asociaciones de adjuntos. Eliminar `mentions_json` también descartaría cualquier contenido de menciones guardado.

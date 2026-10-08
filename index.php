@@ -56,6 +56,10 @@ if (!isset($_SESSION['tg_user']) && !in_array($currentPath, $publicRoutes)) {
 // Si estamos logueados, pasamos la variable tg_user a Twig
 if (isset($_SESSION['tg_user'])) {
     $twig->addGlobal('tg_user', $_SESSION['tg_user']);
+    if (empty($_SESSION['tableros_csrf']) || !is_string($_SESSION['tableros_csrf'])) {
+        $_SESSION['tableros_csrf'] = bin2hex(random_bytes(32));
+    }
+    $twig->addGlobal('tableros_csrf', $_SESSION['tableros_csrf']);
 }
 
 // Instanciamos manejador de errores

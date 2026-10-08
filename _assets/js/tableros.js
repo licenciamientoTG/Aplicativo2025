@@ -1676,6 +1676,16 @@
           article.append(makeElement('strong', '', author));
           if (comment.created_at) article.append(makeElement('time', '', displayDateTime(comment.created_at)));
           article.append(makeElement('p', '', comment.body || comment.comment || ''));
+          if (Array.isArray(comment.attachments) && comment.attachments.length) {
+            const attachments = makeElement('div', 'boards-preview-comment-attachments');
+            comment.attachments.forEach((attachment) => {
+              const link = makeElement('a', '', attachment.name || `Archivo ${attachment.file_id}`);
+              link.href = fileEndpoint({ file_id: attachment.file_id });
+              link.target = '_blank'; link.rel = 'noopener noreferrer';
+              attachments.append(link);
+            });
+            article.append(attachments);
+          }
           panel.append(article);
         });
       } catch (error) {
@@ -1687,22 +1697,201 @@
       form.className = 'boards-preview-comment-form';
       const textarea = document.createElement('textarea');
       textarea.rows = 3; textarea.maxLength = 10000; textarea.required = true;
-      textarea.setAttribute('aria-label', 'Nuevo comentario'); textarea.placeholder = 'Escribe un comentario…';
+      textarea.setAttribute('aria-label', 'Nuevo comentario'); textarea.placeholder = 'Escribe un comentario… Usa @ para mencionar a alguien.';
+      const mentionList = makeElement('div', 'boards-preview-mention-list');
+      mentionList.hidden = true;
+      mentionList.setAttribute('role', 'listbox');
+      mentionList.setAttribute('aria-label', 'Usuarios para mencionar');
+      const selectedFiles = [];
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file'; fileInput.multiple = true; fileInput.hidden = true;
+      fileInput.setAttribute('aria-label', 'Archivos para adjuntar al comentario');
+      const fileList = makeElement('div', 'boards-preview-comment-files');
+      const actions = makeElement('div', 'boards-preview-comment-actions');
+      const emojiWrap = document.createElement('details');
+      emojiWrap.className = 'boards-preview-emoji-picker';
+      const emojiToggle = makeElement('summary', '', '😊 Emoji');
+      emojiToggle.setAttribute('aria-label', 'Insertar emoji');
+      const emojiOptions = makeElement('div', 'boards-preview-emoji-options');
+      ['😀', '👍', '🎉', '❤️', '😂', '🙏', '🚀', '✅'].forEach((emoji) => {
+        const button = makeElement('button', '', emoji); button.type = 'button';
+        button.setAttribute('aria-label', `Insertar ${emoji}`);
+        button.addEventListener('click', () => {
+          const start = textarea.selectionStart ?? textarea.value.length;
+          const end = textarea.selectionEnd ?? start;
+          textarea.setRangeText(emoji, start, end, 'end');
+          textarea.focus();
+          emojiWrap.open = false;
+        });
+        emojiOptions.append(button);
+      });
+      emojiWrap.append(emojiToggle, emojiOptions);
+      const attachButton = makeElement('button', 'boards-button-light', 'Adjuntar archivo'); attachButton.type = 'button';
+      attachButton.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
       const submit = makeElement('button', 'boards-preview-submit', 'Comentar'); submit.type = 'submit';
-      form.append(textarea, submit);
+      actions.append(emojiWrap, attachButton, submit);
+      form.append(textarea, mentionList, fileInput, fileList, actions);
+      let mentionSearchTimer = 0;
+      let mentionRequestId = 0;
+      let mentionStart = -1;
+      let pendingCommentId = null;
+      const selectedMentions = new Map();
+      const renderSelectedFiles = () => {
+        fileList.replaceChildren();
+        selectedFiles.forEach((entry, index) => {
+          const row = makeElement('span', 'boards-preview-comment-file', entry.name);
+          const remove = makeElement('button', '', 'Quitar'); remove.type = 'button';
+          remove.addEventListener('click', () => { selectedFiles.splice(index, 1); renderSelectedFiles(); });
+          row.append(remove); fileList.append(row);
+        });
+      };
+      fileInput.addEventListener('change', () => {
+        Array.from(fileInput.files || []).forEach((selectedFile) => {
+          const validationMessage = fileUploadValidationMessage(selectedFile);
+          if (validationMessage) { setNotice(validationMessage, 'error'); return; }
+          if (!selectedFiles.some((entry) => entry.file === selectedFile)) selectedFiles.push({ file: selectedFile, name: selectedFile.name });
+        });
+        renderSelectedFiles();
+      });
+      const findMentionTrigger = () => {
+        const caret = textarea.selectionStart ?? textarea.value.length;
+        const beforeCaret = textarea.value.slice(0, caret);
+        const match = beforeCaret.match(/(^|\s)@([^\s@]*)$/u);
+        if (!match) return null;
+        return { start: caret - match[0].length + match[1].length, query: match[2] };
+      };
+      const searchMentions = async () => {
+        const trigger = findMentionTrigger();
+        if (!trigger || !state.board?.id) {
+          mentionRequestId += 1;
+          mentionList.hidden = true; mentionList.replaceChildren(); return;
+        }
+        mentionStart = trigger.start;
+        const requestId = ++mentionRequestId;
+        const params = new URLSearchParams({ board_id: String(state.board.id), q: trigger.query });
+        try {
+          const result = await request(`/users?${params.toString()}`);
+          if (requestId !== mentionRequestId || !textarea.isConnected) return;
+          const users = Array.isArray(result.data) ? result.data : [];
+          mentionList.replaceChildren();
+          users.slice(0, 8).forEach((user) => {
+            const userId = user.id ?? user.user_id;
+            const name = user.display_name || user.Usuario || user.name || user.username || user.email || 'Usuario';
+            const username = String(user.username || user.Usuario || '').trim();
+            if (userId == null) return;
+            const option = makeElement('button', 'boards-preview-mention-option', username ? `${name} (@${username})` : name); option.type = 'button';
+            option.setAttribute('role', 'option');
+            option.addEventListener('click', () => {
+              const caret = textarea.selectionStart ?? textarea.value.length;
+              const triggerStart = mentionStart;
+              if (triggerStart < 0) return;
+              const token = `@${username || userId}`;
+              textarea.setRangeText(`${token} `, triggerStart, caret, 'end');
+              selectedMentions.set(String(userId), token);
+              mentionList.hidden = true; mentionList.replaceChildren(); textarea.focus();
+            });
+            mentionList.append(option);
+          });
+          mentionList.hidden = mentionList.childElementCount === 0;
+        } catch (_) {
+          if (requestId === mentionRequestId) { mentionList.hidden = true; mentionList.replaceChildren(); }
+        }
+      };
+      textarea.addEventListener('input', () => {
+        window.clearTimeout(mentionSearchTimer);
+        mentionSearchTimer = window.setTimeout(searchMentions, 180);
+      });
+      textarea.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !mentionList.hidden) { mentionList.hidden = true; mentionList.replaceChildren(); }
+        if (mentionList.hidden) return;
+        const options = Array.from(mentionList.querySelectorAll('[role="option"]'));
+        if (!options.length) return;
+        const activeIndex = options.findIndex((option) => option.getAttribute('aria-selected') === 'true');
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          const next = event.key === 'ArrowDown'
+            ? (activeIndex + 1) % options.length
+            : (activeIndex <= 0 ? options.length - 1 : activeIndex - 1);
+          options.forEach((option, index) => option.setAttribute('aria-selected', index === next ? 'true' : 'false'));
+        } else if (event.key === 'Enter' && activeIndex >= 0) {
+          event.preventDefault();
+          options[activeIndex].click();
+        }
+      });
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const body = textarea.value.trim(); if (!body) return;
+        const body = textarea.value.trim(); if (!body && pendingCommentId == null) return;
         submit.disabled = true;
         try {
-          await post('/add_file_comment', { file_id: file.file_id, body });
+          if (pendingCommentId == null) {
+            const mentions = Array.from(selectedMentions.entries())
+              .filter(([, token]) => body.toLocaleLowerCase().includes(token.toLocaleLowerCase()))
+              .map(([userId]) => userId);
+            const commentResult = await post('/add_file_comment', { file_id: file.file_id, body, mentions });
+            pendingCommentId = commentResult.data?.id ?? commentResult.data?.file_comment_id;
+          }
+          const commentId = pendingCommentId;
+          if (selectedFiles.length) {
+            if (!commentId) throw new Error('El servidor no devolvió el identificador del comentario para adjuntar archivos.');
+            const item = activePreviewItem;
+            if (!item || !state.board?.id) throw new Error('No se encontró el elemento del tablero para subir los archivos.');
+            for (const entry of selectedFiles) {
+              let uploadedFileId = entry.uploadedFileId;
+              if (!uploadedFileId) {
+                const payload = new FormData();
+                payload.set('csrf_token', csrfToken);
+                payload.set('board_id', String(state.board.id));
+                payload.set('item_id', String(item.id));
+                payload.set('file', entry.file);
+                const uploaded = await multipartPost('/upload_file', payload);
+                uploadedFileId = uploaded.data?.id ?? uploaded.data?.file_id;
+                entry.uploadedFileId = uploadedFileId;
+              }
+              if (!uploadedFileId) throw new Error('El servidor no devolvió el identificador del archivo adjunto.');
+              await post('/attach_comment_file', { file_comment_id: commentId, file_id: uploadedFileId });
+            }
+          }
           if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
+          selectedFiles.splice(0, selectedFiles.length);
+          selectedMentions.clear();
+          pendingCommentId = null;
           await renderFilePreviewPanel('comments');
         } catch (error) { setNotice(errorMessage(error, 'No se pudo publicar el comentario.'), 'error'); submit.disabled = false; }
       });
       panel.append(form);
     } else if (panelName === 'versions') {
       const status = makeElement('p', 'boards-preview-panel-status', 'Cargando versiones…'); panel.append(status);
+      const addVersion = makeElement('button', 'boards-preview-version-add', 'Agregar versión');
+      addVersion.type = 'button';
+      addVersion.disabled = !canEditBoard();
+      const versionInput = document.createElement('input');
+      versionInput.type = 'file';
+      versionInput.hidden = true;
+      versionInput.tabIndex = -1;
+      versionInput.setAttribute('aria-label', 'Seleccionar archivo para agregar una versión');
+      addVersion.addEventListener('click', () => { versionInput.value = ''; versionInput.click(); });
+      versionInput.addEventListener('change', async () => {
+        const selectedFile = versionInput.files?.[0];
+        const item = activePreviewItem;
+        const column = state.columns.find((candidate) => String(candidate.id) === String(file.column_id) && columnType(candidate) === 'file');
+        if (!selectedFile || !item || !column) {
+          if (selectedFile) setNotice('No se encontró la columna de archivo para agregar esta versión.', 'error');
+          return;
+        }
+        addVersion.disabled = true;
+        addVersion.textContent = 'Subiendo…';
+        try {
+          const reference = await uploadFileToItem(item, column, selectedFile, String(file.file_id));
+          openFilePreview(reference, item);
+          setNotice('Nueva versión agregada.', 'success');
+          await renderFilePreviewPanel('versions');
+        } catch (error) {
+          setNotice(errorMessage(error, 'No se pudo agregar la versión.'), 'error');
+          addVersion.disabled = false;
+          addVersion.textContent = 'Agregar versión';
+        }
+      });
+      panel.append(addVersion, versionInput);
       try {
         const result = await request(`/file_versions/${encodeURIComponent(file.file_id)}`);
         if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
