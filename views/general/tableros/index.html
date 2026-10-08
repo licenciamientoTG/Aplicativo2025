@@ -21,7 +21,7 @@
         {% if flashSuccess %}<div class="alert alert-success alert-dismissible" role="alert"><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button><strong>¡Éxito!</strong> {{ flashSuccess }}</div>{% endif %}
         {% if flashWarning %}<div class="alert alert-warning alert-dismissible" role="alert"><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button><strong>¡Alerta!</strong> {{ flashWarning }}</div>{% endif %}
         {% if flashError %}<div class="alert alert-danger alert-dismissible" role="alert"><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button><strong>¡Error!</strong> {{ flashError }}</div>{% endif %}
-        {% block content %}{% endblock %}
+        {{ block('content') }}
       </div>
     </main>
     {% include 'views/layouts/footer.html' %}
