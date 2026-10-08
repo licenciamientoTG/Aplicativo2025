@@ -955,6 +955,16 @@
     const closeMenu = () => {
       menu.hidden = true;
       trigger.setAttribute('aria-expanded', 'false');
+      wrapper.closest('.boards-item-row')?.classList.remove('is-status-menu-open');
+      menu.classList.remove('opens-up');
+      ['position', 'z-index', 'left', 'top', 'bottom', 'width', 'max-height'].forEach((property) => menu.style.removeProperty(property));
+      window.removeEventListener('scroll', closeMenu, true);
+      window.removeEventListener('resize', closeMenu);
+      document.removeEventListener('pointerdown', closeOnOutside);
+      if (menu.parentElement !== wrapper) wrapper.append(menu);
+    };
+    const closeOnOutside = (event) => {
+      if (!wrapper.contains(event.target) && !menu.contains(event.target)) closeMenu();
     };
     const openMenu = () => {
       menu.replaceChildren();
@@ -983,8 +993,31 @@
         });
         menu.append(option);
       });
+      document.body.append(menu);
       menu.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
+      wrapper.closest('.boards-item-row')?.classList.add('is-status-menu-open');
+      const triggerRect = trigger.getBoundingClientRect();
+      const menuWidth = Math.min(Math.max(190, triggerRect.width), window.innerWidth - 16);
+      const availableBelow = window.innerHeight - triggerRect.bottom - 12;
+      const availableAbove = triggerRect.top - 12;
+      const desiredHeight = Math.min(300, options.length * 35 + 52);
+      menu.style.position = 'fixed';
+      menu.style.zIndex = '10000';
+      menu.style.width = `${menuWidth}px`;
+      menu.style.left = `${Math.max(8, Math.min(triggerRect.left, window.innerWidth - menuWidth - 8))}px`;
+      if (availableBelow < desiredHeight && availableAbove > availableBelow) {
+        menu.classList.add('opens-up');
+        const menuHeight = Math.min(desiredHeight, availableAbove);
+        menu.style.maxHeight = `${menuHeight}px`;
+        menu.style.top = `${Math.max(8, triggerRect.top - menuHeight - 5)}px`;
+      } else {
+        menu.style.maxHeight = `${Math.max(90, Math.min(desiredHeight, availableBelow))}px`;
+        menu.style.top = `${triggerRect.bottom + 5}px`;
+      }
+      window.addEventListener('scroll', closeMenu, true);
+      window.addEventListener('resize', closeMenu);
+      document.addEventListener('pointerdown', closeOnOutside);
       menu.querySelector('[aria-selected="true"]')?.focus();
     };
 
@@ -997,7 +1030,7 @@
       if (event.key === 'Escape') { closeMenu(); trigger.focus(); }
     });
     menu.addEventListener('focusout', () => window.setTimeout(() => {
-      if (!wrapper.contains(document.activeElement)) closeMenu();
+      if (!wrapper.contains(document.activeElement) && !menu.contains(document.activeElement)) closeMenu();
     }, 100));
     wrapper.append(select, trigger, menu);
     updatePill();
