@@ -44,6 +44,24 @@
             </li>
         </ul> #}
         <ul class="navbar-nav navbar-align">
+            <li class="nav-item dropdown app-launcher">
+                <a class="nav-icon dropdown-toggle" href="#" id="appLauncher" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Abrir aplicaciones">
+                    <i class="fa-solid fa-grip" aria-hidden="true"></i>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end app-launcher-menu" aria-labelledby="appLauncher">
+                    <div class="app-launcher-title">Aplicaciones</div>
+                    {% if tableros_access('access') %}
+                    <a class="app-launcher-tile" href="/tableros/index">
+                        <span><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i></span>
+                        <strong>Tableros</strong>
+                    </a>
+                    {% endif %}
+                    <a class="app-launcher-tile" href="https://totalgas.mojohelpdesk.com/" target="_blank" rel="noopener">
+                        <span><i class="fa-solid fa-headset" aria-hidden="true"></i></span>
+                        <strong>Mojo Helpdesk</strong>
+                    </a>
+                </div>
+            </li>
             <li class="nav-item dropdown" id="notificationsDropdown" data-csrf-token="{{ tableros_csrf|default('')|e('html_attr') }}">
                 <a class="nav-icon dropdown-toggle" href="#" id="alertsDropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notificaciones">
                     <div class="position-relative">
@@ -69,7 +87,6 @@
                     <a class="dropdown-item" href="/it/profile"><i class="align-middle me-1" data-feather="user"></i> Perfil</a>
                     <a class="dropdown-item" href="/it/binnacle"><i class="align-middle me-1" data-feather="calendar"></i> Bitácora de actividades</a>
                     <div class="dropdown-divider"></div>
-                    <a class="dropdown-item" href="https://totalgas.mojohelpdesk.com/"><i class="align-middle me-1" data-feather="settings"></i> Mojo Helpdesk </a>
                     <a class="dropdown-item" data-bs-toggle="modal" data-bs-target="#termsModal"><i class="align-middle me-1" data-feather="edit-3"></i> Terminos y condiciones </a>
                     <div class="dropdown-divider"></div>
                     <a class="dropdown-item" href="/_assets/includes/logout.inc.php"><i class="align-middle me-1" data-feather="log-out"></i> Cerrar sesión</a>
