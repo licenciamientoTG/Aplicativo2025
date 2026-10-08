@@ -1,10 +1,11 @@
 /* Standalone shell styles are loaded only by Tableros routes. */
 .tableros-shell-page { min-width: 320px; background: #111428; }
 .tableros-shell { min-height: 100vh; }
-.tableros-shell-sidebar { flex: 0 0 264px; width: 264px; max-width: 264px; min-width: 264px; background: #004ea2; border-right: 1px solid rgb(255 255 255 / 12%); box-shadow: none; }
+.tableros-shell-sidebar { flex: 0 0 264px; width: 264px; max-width: 264px; min-width: 264px; background: #171a32; border-right: 1px solid #343955; box-shadow: none; }
 .tableros-shell-sidebar .sidebar-content { height: 100vh; overflow: auto; padding: 20px 14px; }
-.tableros-shell-brand { display: flex; min-height: 82px; align-items: center; justify-content: center; margin: 0 4px; padding: 10px; overflow: hidden; border-radius: 10px; background: #fff; box-shadow: 0 8px 20px rgb(10 31 68 / 12%); }
+.tableros-shell-brand { display: flex; min-height: 82px; align-items: center; justify-content: center; margin: 0 4px; padding: 10px; overflow: hidden; }
 .tableros-shell-brand img { display: block; width: 100%; max-width: 210px; max-height: 60px; height: auto; object-fit: contain; }
+.tableros-shell-brand img { filter: brightness(0) invert(1); }
 .tableros-shell-product { display: flex; justify-content: center; margin: 12px 8px 0; padding: 4px 8px 13px; border-bottom: 1px solid rgb(255 255 255 / 18%); color: #fff; }
 .tableros-shell-product span { position: relative; font-size: 1.22rem; font-weight: 750; letter-spacing: -.045em; line-height: 1.25; text-shadow: 0 1px 1px rgb(0 0 0 / 12%); }
 .tableros-shell-product span::after { position: absolute; right: 0; bottom: -6px; left: 0; height: 2px; border-radius: 2px; background: #a6ce39; content: ''; }
@@ -12,7 +13,7 @@
 .tableros-shell-link { display: flex; min-height: 42px; align-items: center; gap: 12px; padding: 0 13px; border-radius: 7px; color: #b7bfd9; font-size: .88rem; font-weight: 550; text-decoration: none; transition: background .15s ease, color .15s ease; }
 .tableros-shell-link i { width: 17px; text-align: center; }
 .tableros-shell-link:hover { color: #fff; background: #2a304d; }
-.tableros-shell-link.is-active { color: #fff; background: #304a83; font-weight: 650; }
+.tableros-shell-link.is-active { color: #fff; background: #303653; font-weight: 650; }
 .tableros-shell-main { min-width: 0; background: #111428; }
 .tableros-module-navbar { min-height: 64px; border-bottom: 1px solid #343955; background: #171a32; box-shadow: none; }
 .tableros-module-navbar .hamburger:before, .tableros-module-navbar .hamburger:after, .tableros-module-navbar .hamburger { background: #d2d7e8; }
