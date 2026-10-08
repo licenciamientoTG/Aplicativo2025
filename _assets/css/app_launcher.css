@@ -54,6 +54,7 @@
 }
 
 .app-launcher-tile:hover,
+.app-launcher-tile.is-current,
 .app-launcher-tile:focus-visible {
     color: #004ea2;
     background: #f1f5fa;
