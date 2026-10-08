@@ -234,11 +234,14 @@
 
 <dialog class="boards-dialog" id="shareBoardDialog" aria-labelledby="shareBoardTitle">
   <form id="shareBoardForm">
-    <div class="boards-dialog-heading"><div><h3 id="shareBoardTitle">Compartir tablero</h3><p>Asigna acceso a una persona del equipo.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
-    <label class="boards-field-label" for="shareUserSearch">Buscar persona</label>
-    <input class="form-control" id="shareUserSearch" type="search" autocomplete="off" placeholder="Nombre o correo">
-    <label class="boards-field-label" for="shareUserSelect">Persona</label>
-    <select class="form-select" id="shareUserSelect" name="user_id" required><option value="">Escribe para buscar personas</option></select>
+    <div class="boards-dialog-heading"><div><h3 id="shareBoardTitle">Compartir tablero</h3><p>Busca una cuenta activa de TG. Al compartir, tendrá acceso a este tablero y podrá ser responsable aquí.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="shareUserSearch">Persona</label>
+    <div class="boards-share-person-picker">
+      <input class="form-control" id="shareUserSearch" type="search" autocomplete="off" placeholder="Busca por nombre o usuario" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="shareUserResults">
+      <button class="boards-share-person-clear" id="clearShareUser" type="button" aria-label="Quitar persona seleccionada" hidden>&times;</button>
+      <input id="shareUserSelect" name="user_id" type="hidden">
+      <div class="boards-share-user-results" id="shareUserResults" role="listbox" hidden></div>
+    </div>
     <label class="boards-field-label" for="shareRole">Permiso</label>
     <select class="form-select" id="shareRole" name="role"><option value="viewer">Solo lectura</option><option value="editor">Puede editar</option><option value="designer">Puede editar y configurar</option></select>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Compartir tablero</button></div>

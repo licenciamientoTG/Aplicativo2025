@@ -8,6 +8,7 @@
   const csrfToken = app.dataset.csrfToken || '';
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
+  let noticeTimer = 0;
   const els = {
     boardSelect: document.getElementById('boardSelect'),
     workspaceSelect: document.getElementById('workspaceSelect'),
@@ -56,6 +57,8 @@
     newItemGroup: document.getElementById('newItemGroup'),
     shareUserSearch: document.getElementById('shareUserSearch'),
     shareUserSelect: document.getElementById('shareUserSelect'),
+    shareUserResults: document.getElementById('shareUserResults'),
+    clearShareUser: document.getElementById('clearShareUser'),
     newColumnType: document.getElementById('newColumnType'),
     columnOptionsField: document.getElementById('columnOptionsField'),
     newColumnOptions: document.getElementById('newColumnOptions'),
@@ -137,17 +140,30 @@
     fileHistoryVisible: {},
     fileHistoryLoading: {},
     fileHistoryErrors: {},
-    uploadedFiles: {},
     boardMembers: []
   };
+  let shareUserSearchRequest = 0;
+  let selectedShareUser = null;
 
   function setNotice(message, type = 'error') {
+    window.clearTimeout(noticeTimer);
+    noticeTimer = 0;
     els.boardNotice.textContent = message;
     els.boardNotice.className = `boards-notice is-${type}`;
     els.boardNotice.hidden = !message;
+    if (message) {
+      const duration = type === 'error' ? 8000 : 4500;
+      noticeTimer = window.setTimeout(() => {
+        els.boardNotice.hidden = true;
+        els.boardNotice.textContent = '';
+        noticeTimer = 0;
+      }, duration);
+    }
   }
 
   function clearNotice() {
+    window.clearTimeout(noticeTimer);
+    noticeTimer = 0;
     els.boardNotice.hidden = true;
     els.boardNotice.textContent = '';
   }
@@ -837,7 +853,7 @@
     control.className = 'boards-people-control';
     const search = document.createElement('input');
     search.type = 'search';
-    search.className = 'boards-cell-input boards-people-search';
+    search.className = 'boards-people-search';
     search.placeholder = 'Buscar persona…';
     search.setAttribute('aria-label', `Buscar persona para ${column.name || 'columna'}`);
     search.setAttribute('role', 'combobox');
@@ -848,8 +864,17 @@
     selected.className = 'boards-people-selected';
     const results = document.createElement('div');
     results.className = 'boards-people-results';
-    results.setAttribute('role', 'listbox');
     results.hidden = true;
+    const options = document.createElement('div');
+    options.className = 'boards-people-options';
+    options.setAttribute('role', 'listbox');
+    const addButton = makeElement('button', 'boards-people-add', '+');
+    addButton.type = 'button';
+    addButton.setAttribute('aria-label', multiple ? 'Agregar personas responsables' : 'Cambiar persona responsable');
+    addButton.hidden = !canEditBoard();
+    control.tabIndex = canEditBoard() ? 0 : -1;
+    control.setAttribute('role', canEditBoard() ? 'button' : 'group');
+    control.setAttribute('aria-label', `Responsables de ${item.name || 'elemento'}`);
     const select = document.createElement('select');
     select.multiple = true;
     select.hidden = true;
@@ -857,7 +882,8 @@
     const ids = selectedIds(value);
     const people = new Map();
     ids.forEach((id) => people.set(String(id), { id, name: 'Consultando acceso…', username: '' }));
-    control.append(selected, search);
+    control.append(selected, addButton);
+    results.append(search, options);
     wrapper.append(control, results, select);
     let requestNumber = 0;
 
@@ -889,29 +915,22 @@
       });
       selected.replaceChildren();
       selected.hidden = !people.size;
-      people.forEach((person, id) => {
+      people.forEach((person) => {
         const chip = document.createElement('span');
         chip.className = 'boards-people-chip';
-        chip.append(avatar(person), makeElement('span', 'boards-people-chip-name', person.name || person.username || 'Sin acceso'));
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.textContent = '×';
-        remove.setAttribute('aria-label', `Quitar ${person.name || person.username || 'persona'}`);
-        remove.addEventListener('click', (event) => {
-          event.stopPropagation();
-          people.delete(id);
-          syncSelection();
-          select.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-        chip.append(remove);
+        chip.append(avatar(person));
+        chip.title = person.name || person.username || 'Sin acceso';
         selected.append(chip);
       });
-      search.placeholder = people.size ? 'Cambiar…' : 'Buscar persona…';
+      addButton.textContent = people.size && !multiple ? '↻' : '+';
+      addButton.setAttribute('aria-label', people.size && !multiple ? 'Cambiar persona responsable' : 'Agregar responsable');
+      addButton.hidden = !canEditBoard() || (!multiple && people.size > 0);
     };
 
     const closeResults = () => {
       results.hidden = true;
       search.setAttribute('aria-expanded', 'false');
+      search.value = '';
       window.removeEventListener('scroll', closeResults, true);
       window.removeEventListener('resize', closeResults);
       document.removeEventListener('pointerdown', closeOnOutside);
@@ -936,8 +955,8 @@
       else results.style.top = `${rect.bottom + 5}px`;
     };
     const openResults = (message = 'Buscando personas…') => {
-      results.replaceChildren(makeElement('div', 'boards-people-results-heading', 'Personas sugeridas'));
-      results.append(makeElement('div', 'boards-people-empty', message));
+      options.replaceChildren(makeElement('div', 'boards-people-results-heading', 'Personas sugeridas'));
+      options.append(makeElement('div', 'boards-people-empty', message));
       document.body.append(results);
       results.hidden = false;
       search.setAttribute('aria-expanded', 'true');
@@ -960,12 +979,13 @@
           if (person.name === 'Consultando acceso…') people.set(id, { ...person, name: 'Sin acceso en este espacio' });
         });
         syncSelection();
-        results.replaceChildren();
+        options.replaceChildren();
         const heading = makeElement('div', 'boards-people-results-heading', term ? 'Resultados' : 'Personas sugeridas');
-        results.append(heading);
+        options.append(heading);
         if (!reveal) { closeResults(); return; }
         if (!users.length) {
-          results.append(makeElement('div', 'boards-people-empty', term ? 'No hay personas con acceso que coincidan.' : 'No hay personas con acceso a este espacio.'));
+          options.append(makeElement('div', 'boards-people-empty', term ? 'No hay personas con acceso que coincidan.' : 'No hay personas con acceso a este espacio.'));
+          options.append(makeElement('div', 'boards-people-empty', 'Solo aparecen usuarios activos con acceso al espacio o tablero. Usa Compartir para dar acceso a otra persona.'));
           positionResults();
           return;
         }
@@ -992,27 +1012,42 @@
             else { search.value = ''; closeResults(); }
             select.dispatchEvent(new Event('change', { bubbles: true }));
           });
-          results.append(option);
+          options.append(option);
         });
         positionResults();
       } catch (error) {
         if (!reveal || currentRequest !== requestNumber) return;
-        results.replaceChildren(makeElement('div', 'boards-people-results-heading', 'Personas sugeridas'));
-        results.append(makeElement('div', 'boards-people-empty', errorMessage(error, 'No se pudo buscar personas.')));
+        options.replaceChildren(makeElement('div', 'boards-people-results-heading', 'Personas sugeridas'));
+        options.append(makeElement('div', 'boards-people-empty', errorMessage(error, 'No se pudo buscar personas.')));
         positionResults();
       }
     };
     let timer = null;
     search.addEventListener('focus', () => searchUsers());
-    control.addEventListener('click', () => search.focus());
+    const showPicker = () => {
+      if (!canEditBoard()) return;
+      if (results.hidden) {
+        search.value = '';
+        openResults();
+        search.focus();
+      } else search.focus();
+    };
+    control.addEventListener('click', showPicker);
+    addButton.addEventListener('click', (event) => { event.stopPropagation(); showPicker(); });
+    control.addEventListener('keydown', (event) => {
+      if ((event.key === 'Enter' || event.key === ' ') && event.target === control) {
+        event.preventDefault();
+        showPicker();
+      }
+    });
     search.addEventListener('input', () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => searchUsers(), 220);
     });
     search.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { closeResults(); search.blur(); }
-      if (event.key === 'ArrowDown') results.querySelector('button')?.focus();
-      if (event.key === 'Enter' && results.querySelector('button')) { event.preventDefault(); results.querySelector('button').click(); }
+      if (event.key === 'ArrowDown') options.querySelector('button')?.focus();
+      if (event.key === 'Enter' && options.querySelector('button')) { event.preventDefault(); options.querySelector('button').click(); }
     });
     results.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { closeResults(); search.focus(); }
@@ -1180,15 +1215,79 @@
     textarea.setAttribute('aria-label', `${item.name || 'Elemento'}, ${column.name || 'dato estructurado'}`);
     const help = document.createElement('small');
     help.className = 'boards-editor-help';
-    help.textContent = type === 'file'
-      ? 'Los archivos se cargan desde Detalles; aquí puedes revisar o editar su referencia JSON.'
-      : 'Acepta JSON o texto; las relaciones requieren una lista u objeto JSON válido.';
+    help.textContent = 'Acepta JSON o texto; las relaciones requieren una lista u objeto JSON válido.';
     wrapper.append(textarea, help);
+    return wrapper;
+  }
+
+  function createFileCellEditor(item, column) {
+    const wrapper = makeElement('div', 'boards-file-cell');
+    const files = filesForItem(item).filter((file) => String(file.column_id || '') === String(column.id));
+    const list = makeElement('div', 'boards-file-cell-list');
+    files.forEach((file) => {
+      const entry = makeElement('div', 'boards-file-cell-entry');
+      const icon = makeElement('span', 'boards-file-cell-icon');
+      icon.append(makeElement('i', 'fa-solid fa-paperclip'));
+      icon.setAttribute('aria-hidden', 'true');
+      const status = String(file.scan_status || 'pending').toLowerCase();
+      const name = status === 'clean'
+        ? makeElement('a', 'boards-file-cell-name', file.name || 'Archivo')
+        : makeElement('span', 'boards-file-cell-name', file.name || 'Archivo');
+      if (status === 'clean') {
+        const versionQuery = file.version_id ? `?version_id=${encodeURIComponent(file.version_id)}` : '';
+        name.href = `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${versionQuery}`;
+        name.setAttribute('download', '');
+        name.title = `Descargar ${file.name || 'archivo'}`;
+      } else {
+        name.title = status === 'pending' ? 'Pendiente de revisión manual antes de habilitar la descarga.' : 'Descarga no disponible.';
+      }
+      entry.append(icon, name);
+      if (status === 'pending') entry.append(makeElement('small', 'boards-file-cell-status', 'En revisión'));
+      list.append(entry);
+    });
+    wrapper.append(list);
+    if (!canEditBoard()) {
+      if (!files.length) wrapper.append(makeElement('span', 'boards-file-cell-empty', '—'));
+      return wrapper;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.className = 'boards-file-cell-input';
+    input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+    input.setAttribute('aria-label', `Seleccionar archivo para ${item.name || 'elemento'}`);
+    const button = makeElement('button', 'boards-file-cell-add', files.length ? '＋ Adjuntar' : '＋ Subir archivo');
+    button.type = 'button';
+    button.addEventListener('click', () => input.click());
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const validationMessage = fileUploadValidationMessage(file);
+      if (validationMessage) {
+        setNotice(validationMessage, 'error');
+        input.value = '';
+        return;
+      }
+      button.disabled = true;
+      button.textContent = 'Subiendo…';
+      try {
+        await uploadFileToItem(item, column, file);
+        renderActiveView();
+        setNotice('Archivo subido y vinculado al elemento.', 'success');
+      } catch (error) {
+        renderActiveView();
+        setNotice(errorMessage(error, 'No se pudo subir el archivo.'), 'error');
+      } finally {
+        input.value = '';
+      }
+    });
+    const hint = makeElement('small', 'boards-file-cell-hint', 'PDF, imágenes y documentos · máx. 25 MB');
+    wrapper.append(input, button, hint);
     return wrapper;
   }
 
   function createCellEditor(item, column, value) {
     const type = String(column.type || 'text').toLowerCase();
+    if (type === 'file') return createFileCellEditor(item, column);
     if (!canEditBoard()) {
       const readonly = document.createElement('span');
       readonly.className = ['status', 'dropdown'].includes(type) ? 'boards-status-readonly' : 'boards-readonly-value';
@@ -1347,7 +1446,7 @@
       input.placeholder = 'https://…';
       return markEditor(input, item, column, 'string');
     }
-    if (['team', 'file', 'country', 'location', 'board_relation', 'subtasks', 'dependency'].includes(type)) {
+    if (['team', 'country', 'location', 'board_relation', 'subtasks', 'dependency'].includes(type)) {
       return createStructuredEditor(item, column, value, type);
     }
 
@@ -1466,9 +1565,7 @@
   }
 
   function filesForItem(item) {
-    const merged = new Map();
-    [...storedFilesForItem(item), ...(state.uploadedFiles[String(item.id)] || [])].forEach((file) => merged.set(String(file.file_id), file));
-    return Array.from(merged.values());
+    return storedFilesForItem(item);
   }
 
   function setDetailStatus(id, message, error = false) {
@@ -1627,7 +1724,7 @@
     els.itemFileInput.disabled = !canEditBoard() || fileColumns.length === 0;
     els.itemFileForm.querySelector('[type="submit"]').disabled = !canEditBoard() || fileColumns.length === 0;
     els.itemFileForm.querySelector('.boards-field-help').textContent = fileColumns.length
-      ? 'Máximo 25 MB. No hay antivirus automático: la versión queda pendiente hasta una revisión manual.'
+      ? 'Máximo 25 MB. También puedes subir archivos directamente desde su celda. La versión queda pendiente hasta una revisión manual.'
       : 'Agrega una columna de tipo Archivo para adjuntar y consultar archivos desde el tablero.';
     const selectedColumnId = els.itemFileColumn.value || String(fileColumns[0]?.id || '');
     const existing = item ? filesForItem(item).filter((file) => String(file.column_id || '') === selectedColumnId) : [];
@@ -1922,6 +2019,56 @@
     }
   }
 
+  async function uploadFileToItem(item, column, file, targetFileId = '') {
+    if (!canEditBoard()) throw new Error('No tienes permiso para adjuntar archivos.');
+    if (!item || !column || columnType(column) !== 'file' || !file) throw new Error('Selecciona un archivo y una columna válida.');
+    const validationMessage = fileUploadValidationMessage(file);
+    if (validationMessage) throw new Error(validationMessage);
+    const payload = new FormData();
+    payload.set('csrf_token', csrfToken);
+    payload.set('board_id', String(state.board.id));
+    payload.set('item_id', String(item.id));
+    payload.set('column_id', String(column.id));
+    payload.set('file', file);
+    if (targetFileId) payload.set('file_id', targetFileId);
+    const result = await multipartPost('/upload_file', payload);
+    const uploaded = result.data || {};
+    if (!uploaded.id) throw new Error('El servidor no devolvió el identificador del archivo.');
+    const reference = {
+      file_id: Number(uploaded.id), column_id: Number(column.id), name: uploaded.name || file.name,
+      version_id: Number(uploaded.version_id), version_number: Number(uploaded.version_number),
+      content_type: uploaded.content_type || file.type, byte_size: Number(uploaded.byte_size || file.size),
+      scan_status: uploaded.scan_status || 'pending'
+    };
+    const cellValue = parseStoredValue(getCellValue(item, column));
+    const existing = storedFilesForItem(item).filter((entry) => String(entry.column_id) === String(column.id));
+    const byId = new Map(existing.map((entry) => [String(entry.file_id), entry]));
+    byId.set(String(reference.file_id), reference);
+    const storedValue = { ...(cellValue && typeof cellValue === 'object' && !Array.isArray(cellValue) ? cellValue : {}), files: Array.from(byId.values()) };
+    try {
+      const linked = await post('/update_cell', {
+        board_id: state.board.id, item_id: item.id, column_id: column.id, value: storedValue, version: item.version
+      });
+      item.version = linked.data?.version ?? item.version;
+      if (!item.cells) item.cells = {};
+      item.cells[String(column.id)] = storedValue;
+    } catch (linkError) {
+      throw new Error(`El archivo se cargó, pero no se confirmó su vínculo con la celda: ${errorMessage(linkError)}. Recarga el tablero antes de volver a intentarlo.`);
+    }
+    state.fileVersions[String(reference.file_id)] = undefined;
+    return reference;
+  }
+
+  function fileUploadValidationMessage(file) {
+    if (!(file instanceof File)) return 'Selecciona un archivo válido.';
+    if (file.size <= 0) return 'El archivo está vacío.';
+    if (file.size > 25 * 1024 * 1024) return 'El archivo supera el límite de 25 MB.';
+    const extension = String(file.name.split('.').pop() || '').toLowerCase();
+    const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+    if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imagen, texto, CSV u Office.';
+    return '';
+  }
+
   async function submitItemFile(event) {
     event.preventDefault();
     if (!canEditBoard()) return;
@@ -1936,42 +2083,7 @@
     button.disabled = true;
     button.textContent = 'Subiendo…';
     try {
-      const payload = new FormData();
-      payload.set('csrf_token', csrfToken);
-      payload.set('board_id', String(state.board.id));
-      payload.set('item_id', String(item.id));
-      payload.set('column_id', String(column.id));
-      payload.set('file', file);
-      if (targetFileId) payload.set('file_id', targetFileId);
-      const result = await multipartPost('/upload_file', payload);
-      const uploaded = result.data || {};
-      if (!uploaded.id) throw new Error('El archivo se cargó, pero el servidor no devolvió su identificador.');
-      const reference = {
-        file_id: Number(uploaded.id), column_id: Number(column.id), name: uploaded.name || file.name,
-        version_id: Number(uploaded.version_id), version_number: Number(uploaded.version_number),
-        content_type: uploaded.content_type || file.type, byte_size: Number(uploaded.byte_size || file.size),
-        scan_status: uploaded.scan_status || 'pending'
-      };
-      const sessionFiles = state.uploadedFiles[String(item.id)] || [];
-      const retained = sessionFiles.filter((entry) => String(entry.file_id) !== String(reference.file_id));
-      state.uploadedFiles[String(item.id)] = [...retained, reference];
-      const cellValue = parseStoredValue(getCellValue(item, column));
-      const existing = storedFilesForItem(item).filter((entry) => String(entry.column_id) === String(column.id));
-      const byId = new Map(existing.map((entry) => [String(entry.file_id), entry]));
-      byId.set(String(reference.file_id), reference);
-      const storedValue = { ...(cellValue && typeof cellValue === 'object' && !Array.isArray(cellValue) ? cellValue : {}), files: Array.from(byId.values()) };
-      try {
-        const linked = await post('/update_cell', {
-          board_id: state.board.id, item_id: item.id, column_id: column.id, value: storedValue, version: item.version
-        });
-        item.version = linked.data?.version ?? item.version;
-        if (!item.cells) item.cells = {};
-        item.cells[String(column.id)] = storedValue;
-      } catch (linkError) {
-        renderItemFiles();
-        throw new Error(`El archivo se subió, pero no se pudo guardar su referencia en la columna: ${errorMessage(linkError)}`);
-      }
-      state.fileVersions[String(reference.file_id)] = undefined;
+      const reference = await uploadFileToItem(item, column, file, targetFileId);
       els.itemFileForm.reset();
       renderFileControls();
       renderItemFiles();
@@ -3636,13 +3748,13 @@
     document.getElementById('openCreateItem').addEventListener('click', () => openCreateItem());
     document.getElementById('openShareBoard')?.addEventListener('click', async () => {
       els.shareUserSearch.value = '';
-      els.shareUserSelect.replaceChildren();
-      const option = document.createElement('option');
-      option.value = '';
-      option.textContent = 'Escribe para buscar personas';
-      els.shareUserSelect.append(option);
+      els.shareUserSelect.value = '';
+      selectedShareUser = null;
+      els.clearShareUser.hidden = true;
+      els.shareUserResults.replaceChildren();
       openDialog(els.shareBoardDialog);
       await loadBoardMembers();
+      await searchUsers('');
     });
     document.getElementById('openSaveView').addEventListener('click', () => {
       document.getElementById('savedViewType').value = state.activeViewType;
@@ -3730,7 +3842,7 @@
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
         team: 'La celda acepta texto o JSON; no hay catálogo de equipos disponible.',
-        file: 'La celda puede guardar metadatos JSON; la carga de archivos no está disponible.',
+        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 25 MB; las versiones requieren revisión manual antes de descargarse.',
         board_relation: 'La relación debe incluir un tablero o elemento al que tengas acceso.',
         subtasks: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.',
         dependency: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.'
@@ -3816,33 +3928,52 @@
   }
 
   async function searchUsers(query) {
-    const params = new URLSearchParams();
-    params.set('q', query);
-    els.shareUserSelect.disabled = true;
+    const requestId = ++shareUserSearchRequest;
+    const params = new URLSearchParams({ q: query, board_id: String(state.board?.id || ''), directory: '1' });
+    if (!state.board) return;
+    els.shareUserSearch.setAttribute('aria-busy', 'true');
+    els.shareUserResults.replaceChildren(makeElement('div', 'boards-share-user-empty', 'Buscando personas…'));
+    els.shareUserResults.hidden = false;
     try {
       const result = await request(`/users?${params.toString()}`);
+      if (requestId !== shareUserSearchRequest || !els.shareBoardDialog.open) return;
       const users = Array.isArray(result.data) ? result.data : [];
-      const needle = query.toLocaleLowerCase();
-      const matches = users.filter((user) => !needle || `${user.name || ''} ${user.email || ''} ${user.username || ''}`.toLocaleLowerCase().includes(needle));
-      els.shareUserSelect.replaceChildren();
-      const prompt = document.createElement('option');
-      prompt.value = '';
-      prompt.textContent = matches.length ? 'Selecciona una persona' : 'No encontramos personas';
-      els.shareUserSelect.append(prompt);
-      matches.forEach((user) => {
-        const option = document.createElement('option');
-        option.value = String(user.id);
-        option.textContent = user.email ? `${user.name || 'Persona'} · ${user.email}` : (user.name || 'Persona');
-        els.shareUserSelect.append(option);
+      els.shareUserResults.replaceChildren();
+      if (!users.length) {
+        els.shareUserResults.append(makeElement('div', 'boards-share-user-empty', query ? 'No hay usuarios activos de TG que coincidan.' : 'Escribe un nombre para buscar usuarios activos de TG.'));
+      }
+      users.forEach((user) => {
+        const option = makeElement('button', 'boards-share-user-option');
+        option.type = 'button';
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(selectedShareUser?.id) === String(user.id) ? 'true' : 'false');
+        const initials = String(user.name || user.username || '?').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('es-MX');
+        option.append(makeElement('span', 'boards-share-user-avatar', initials || '?'));
+        const copy = makeElement('span', 'boards-share-user-copy');
+        copy.append(makeElement('strong', '', user.name || user.username || 'Persona'));
+        const secondary = user.username && user.username !== user.name ? user.username : (user.email || '');
+        if (secondary) copy.append(makeElement('small', '', secondary));
+        option.append(copy);
+        option.addEventListener('click', () => {
+          shareUserSearchRequest += 1;
+          window.clearTimeout(state.userSearchTimer);
+          selectedShareUser = user;
+          els.shareUserSelect.value = String(user.id);
+          els.shareUserSearch.value = user.name || user.username || '';
+          els.shareUserSearch.setAttribute('aria-expanded', 'false');
+          els.shareUserSearch.classList.add('has-selection');
+          els.clearShareUser.hidden = false;
+          els.shareUserResults.hidden = true;
+        });
+        els.shareUserResults.append(option);
       });
+      els.shareUserSearch.setAttribute('aria-expanded', 'true');
     } catch (error) {
-      els.shareUserSelect.replaceChildren();
-      const option = document.createElement('option');
-      option.value = '';
-      option.textContent = errorMessage(error, 'No se pudo buscar personas.');
-      els.shareUserSelect.append(option);
+      if (requestId !== shareUserSearchRequest) return;
+      els.shareUserResults.replaceChildren(makeElement('div', 'boards-share-user-empty', errorMessage(error, 'No se pudo buscar personas.')));
+      els.shareUserSearch.setAttribute('aria-expanded', 'true');
     } finally {
-      els.shareUserSelect.disabled = false;
+      if (requestId === shareUserSearchRequest) els.shareUserSearch.removeAttribute('aria-busy');
     }
   }
 
@@ -3855,27 +3986,22 @@
       const result = await request(`/members?${params.toString()}`);
       const data = result.data || {};
       state.boardMembers = Array.isArray(data.members) ? data.members : [];
-      let users = [];
-      try {
-        const people = await request('/users?q=');
-        users = Array.isArray(people.data) ? people.data : [];
-      } catch (error) { /* Member IDs remain useful when directory lookup is unavailable. */ }
-      const byId = new Map(users.map((user) => [String(user.id), user]));
-      const entries = [{ user_id: data.owner?.user_id, role: 'owner', isOwner: true }, ...state.boardMembers];
+      const entries = [{ ...data.owner, role: 'owner', isOwner: true }, ...state.boardMembers];
       entries.forEach((member) => {
         const id = String(member.user_id ?? '');
-        const user = byId.get(id);
         const row = makeElement('div', 'boards-member-row');
         const details = makeElement('div', 'boards-member-person');
-        details.append(makeElement('strong', '', user?.name || `Persona #${id || '—'}`));
-        if (user?.email) details.append(makeElement('span', '', user.email));
+        const displayName = member.name || member.username || 'Usuario de TG';
+        details.append(makeElement('strong', '', displayName));
+        if (member.username && member.username !== displayName) details.append(makeElement('span', '', member.username));
+        else if (member.email) details.append(makeElement('span', '', member.email));
         const roleLabels = { owner: 'Propietario', designer: 'Diseñador', editor: 'Puede editar', viewer: 'Solo lectura' };
         row.append(details, makeElement('span', 'boards-member-role', roleLabels[String(member.role || '').toLowerCase()] || String(member.role || 'Acceso')));
         if (!member.isOwner && canManageStructure()) {
           const revoke = makeElement('button', 'boards-text-button is-danger', 'Retirar acceso');
           revoke.type = 'button';
           revoke.dataset.revokeMember = id;
-          revoke.setAttribute('aria-label', `Retirar acceso a ${user?.name || `persona #${id}`}`);
+          revoke.setAttribute('aria-label', `Retirar acceso a ${displayName}`);
           row.append(revoke);
         }
         els.boardMembersList.append(row);
@@ -3890,7 +4016,7 @@
   async function revokeBoardMember(userId) {
     if (!canManageStructure()) return;
     const member = state.boardMembers.find((entry) => String(entry.user_id) === String(userId));
-    const directoryName = member?.name || `Persona #${userId}`;
+    const directoryName = member?.name || member?.username || 'usuario de TG';
     if (!window.confirm(`¿Retirar el acceso de ${directoryName} a este tablero?`)) return;
     try {
       await post('/revoke_member', { board_id: state.board.id, user_id: userId });
@@ -4148,10 +4274,61 @@
       event.preventDefault();
       els.boardSearch.focus();
     });
+    els.shareUserSearch?.addEventListener('focus', () => {
+      if (!els.shareUserSearch.value.trim()) searchUsers('');
+    });
     els.shareUserSearch?.addEventListener('input', () => {
+      if (selectedShareUser) {
+        selectedShareUser = null;
+        els.shareUserSelect.value = '';
+        els.clearShareUser.hidden = true;
+      }
+      els.shareUserSearch.classList.remove('has-selection');
+      els.shareUserSearch.setAttribute('aria-expanded', 'true');
       window.clearTimeout(state.userSearchTimer);
       const query = els.shareUserSearch.value.trim();
       state.userSearchTimer = window.setTimeout(() => searchUsers(query), 250);
+    });
+    els.clearShareUser?.addEventListener('click', () => {
+      selectedShareUser = null;
+      els.shareUserSelect.value = '';
+      els.shareUserSearch.value = '';
+      els.clearShareUser.hidden = true;
+      els.shareUserSearch.focus();
+      searchUsers('');
+    });
+    els.shareUserSearch?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        shareUserSearchRequest += 1;
+        els.shareUserResults.hidden = true;
+        els.shareUserSearch.setAttribute('aria-expanded', 'false');
+        els.shareUserSearch.removeAttribute('aria-busy');
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        els.shareUserResults.querySelector('button')?.focus();
+      }
+      if (event.key === 'Enter' && !els.shareUserResults.hidden) {
+        const first = els.shareUserResults.querySelector('button');
+        if (first) { event.preventDefault(); first.click(); }
+      }
+    });
+    els.shareUserResults?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        shareUserSearchRequest += 1;
+        els.shareUserResults.hidden = true;
+        els.shareUserSearch.setAttribute('aria-expanded', 'false');
+        els.shareUserSearch.removeAttribute('aria-busy');
+        els.shareUserSearch.focus();
+      }
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('.boards-share-person-picker')) {
+        shareUserSearchRequest += 1;
+        els.shareUserResults.hidden = true;
+        els.shareUserSearch.setAttribute('aria-expanded', 'false');
+        els.shareUserSearch.removeAttribute('aria-busy');
+      }
     });
   }
 

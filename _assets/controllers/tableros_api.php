@@ -65,6 +65,10 @@ class tableros_api {
             $query = $_GET['q'] ?? '';
             if (isset($_GET['board_id'])) {
                 $boardId = $this->positiveInt($_GET['board_id'], 'board_id');
+                if (filter_var($_GET['directory'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    $this->requireBoardRole($boardId, ['owner', 'designer']);
+                    return $this->model->activeUsers(is_string($query) ? $query : '');
+                }
                 $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
                 $rawIds = $_GET['ids'] ?? '';
                 $ids = is_string($rawIds) ? array_slice(array_filter(array_map('intval', explode(',', $rawIds)), static fn(int $id): bool => $id > 0), 0, 100) : [];

@@ -123,11 +123,15 @@ class TablerosAccess
                 INNER JOIN dbo.tb_board b ON b.id = ? AND b.deleted_at IS NULL
                 INNER JOIN dbo.tb_workspace w ON w.id = b.workspace_id AND w.deleted_at IS NULL
                 WHERE u.Estatus = 1
-                  AND (u.Id = b.created_by OR u.Id = w.created_by
-                       OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
-                                  WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
+                  AND (u.Id = b.created_by
                        OR EXISTS (SELECT 1 FROM dbo.tb_board_member bm
-                                  WHERE bm.board_id = b.id AND bm.user_id = u.Id AND bm.deleted_at IS NULL))';
+                                  WHERE bm.board_id = b.id AND bm.user_id = u.Id AND bm.deleted_at IS NULL)
+                       OR b.visibility = \'public\'
+                       OR (b.visibility = \'workspace\' AND (
+                           u.Id = w.created_by
+                           OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
+                                      WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
+                           OR w.visibility IN (\'workspace\', \'public\'))))';
         $params = [$boardId];
         $matches = [];
         if ($search !== '') {

@@ -204,20 +204,32 @@ class TablerosModel {
     }
 
     public function getBoardMembers(int $boardId): array {
-        $board = $this->one('SELECT created_by FROM tb_board WHERE id = ? AND deleted_at IS NULL', [$boardId]);
+        $board = $this->one(
+            'SELECT b.created_by, u.Nombre AS name, u.Usuario AS username, u.Correo AS email
+             FROM tb_board b
+             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = b.created_by
+             WHERE b.id = ? AND b.deleted_at IS NULL',
+            [$boardId]
+        );
         if (!$board) {
             throw new TablerosApiException('not_found', 'No se encontró el tablero.', 404);
         }
         $members = $this->all(
-            'SELECT id, board_id, user_id, role, invited_by, created_at
-             FROM tb_board_member
-             WHERE board_id = ? AND deleted_at IS NULL AND user_id <> ?
-             ORDER BY created_at, id',
+            'SELECT m.id, m.board_id, m.user_id, m.role, m.invited_by, m.created_at,
+                    u.Nombre AS name, u.Usuario AS username, u.Correo AS email
+             FROM tb_board_member m
+             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = m.user_id
+             WHERE m.board_id = ? AND m.deleted_at IS NULL AND m.user_id <> ?
+             ORDER BY m.created_at, m.id',
             [$boardId, (int)$board['created_by']]
         );
         return [
             'board_id' => $boardId,
-            'owner' => ['user_id' => (int)$board['created_by'], 'role' => 'owner'],
+            'owner' => [
+                'user_id' => (int)$board['created_by'], 'role' => 'owner',
+                'name' => trim((string)($board['name'] ?? '')),
+                'username' => (string)($board['username'] ?? ''), 'email' => (string)($board['email'] ?? ''),
+            ],
             'members' => $members,
         ];
     }
@@ -891,7 +903,7 @@ class TablerosModel {
                     }
                 }
             }
-            $this->validateCellReferences((string)$column['type'], $value, $boardId);
+            $this->validateCellReferences((string)$column['type'], $value, $boardId, $itemId, $columnId);
             if ((bool)$column['required'] && ($value === null || $value === '' || $value === [])) {
                 throw new TablerosApiException('validation', 'Esta columna requiere un valor.', 422);
             }
@@ -1667,11 +1679,15 @@ class TablerosModel {
              INNER JOIN dbo.tb_board b ON b.id = ? AND b.deleted_at IS NULL
              INNER JOIN dbo.tb_workspace w ON w.id = b.workspace_id AND w.deleted_at IS NULL
              WHERE u.Id = ? AND u.Estatus = 1
-               AND (u.Id = b.created_by OR u.Id = w.created_by
-                    OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
-                               WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
+               AND (u.Id = b.created_by
                     OR EXISTS (SELECT 1 FROM dbo.tb_board_member bm
-                               WHERE bm.board_id = b.id AND bm.user_id = u.Id AND bm.deleted_at IS NULL))',
+                               WHERE bm.board_id = b.id AND bm.user_id = u.Id AND bm.deleted_at IS NULL)
+                    OR b.visibility = \'public\'
+                    OR (b.visibility = \'workspace\' AND (
+                        u.Id = w.created_by
+                        OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
+                                   WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
+                        OR w.visibility IN (\'workspace\', \'public\'))))',
             [$boardId, $userId]
         ) !== null;
     }
@@ -1777,7 +1793,7 @@ class TablerosModel {
         }
     }
 
-    private function validateCellReferences(string $type, $value, int $boardId): void {
+    private function validateCellReferences(string $type, $value, int $boardId, int $itemId, int $columnId): void {
         if ($value === null) {
             return;
         }
@@ -1790,6 +1806,31 @@ class TablerosModel {
             $this->collectReferenceIds($value, $itemIds, ['item_id', 'itemId', 'id', 'parent_item_id', 'predecessor_item_id', 'successor_item_id']);
             foreach (array_unique($itemIds) as $itemId) {
                 $this->requireItemOnBoard((int)$itemId, $boardId);
+            }
+            return;
+        }
+        if ($type === 'file') {
+            $entries = is_array($value) && array_is_list($value)
+                ? $value
+                : (is_array($value) && is_array($value['files'] ?? null)
+                    ? $value['files']
+                    : (is_array($value) && (isset($value['file_id']) || isset($value['id'])) ? [$value] : []));
+            foreach ($entries as $entry) {
+                if (!is_array($entry)) {
+                    throw new TablerosApiException('validation', 'Cada referencia de archivo debe ser un objeto válido.', 422);
+                }
+                $rawId = $entry['file_id'] ?? $entry['id'] ?? null;
+                if ($rawId === null) {
+                    continue;
+                }
+                $fileId = $this->positiveInt($rawId, 'file_id');
+                $file = $this->one(
+                    'SELECT id FROM tb_file WHERE id = ? AND board_id = ? AND item_id = ? AND column_id = ? AND deleted_at IS NULL',
+                    [$fileId, $boardId, $itemId, $columnId]
+                );
+                if (!$file) {
+                    throw new TablerosApiException('validation', 'El archivo debe pertenecer a este elemento y columna.', 422);
+                }
             }
             return;
         }
