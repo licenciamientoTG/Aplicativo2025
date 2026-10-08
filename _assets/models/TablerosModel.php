@@ -2343,8 +2343,11 @@ class TablerosModel {
         $url = rtrim((string)getenv('TABLEROS_STORAGE_SERVICE_URL'), '/');
         $token = (string)getenv('TABLEROS_STORAGE_SERVICE_TOKEN');
         if ($url === '' || strlen($token) < 32) throw new TablerosApiException('server', 'Falta configurar el servicio de almacenamiento Tableros con un token de al menos 32 caracteres.', 500);
-        if (strtolower((string)parse_url($url, PHP_URL_SCHEME)) !== 'https' || parse_url($url, PHP_URL_HOST) === null) {
-            throw new TablerosApiException('server', 'El servicio de almacenamiento Tableros debe usar HTTPS.', 500);
+        $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
+        $host = strtolower(trim((string)parse_url($url, PHP_URL_HOST), '[]'));
+        $loopbackHttp = $scheme === 'http' && in_array($host, ['127.0.0.1', '::1'], true);
+        if (($scheme !== 'https' && !$loopbackHttp) || $host === '') {
+            throw new TablerosApiException('server', 'El servicio de almacenamiento Tableros debe usar HTTPS; HTTP solo se permite en loopback.', 500);
         }
         if (!function_exists('curl_init')) throw new TablerosApiException('server', 'La extensión PHP cURL es necesaria para el almacenamiento Tableros.', 500);
         if (!preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $objectKey)) {
