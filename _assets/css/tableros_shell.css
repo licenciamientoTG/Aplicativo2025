@@ -1,7 +1,9 @@
 /* Standalone shell styles are loaded only by Tableros routes. */
 .tableros-shell-page { min-width: 320px; background: #111428; }
 .tableros-shell { min-height: 100vh; }
-.tableros-shell-sidebar { flex: 0 0 264px; width: 264px; max-width: 264px; min-width: 264px; background: #171a32; border-right: 1px solid #343955; box-shadow: none; }
+.tableros-shell-page .tableros-shell-sidebar,
+.tableros-shell-page .tableros-shell-sidebar .sidebar-content { background: #171a32 !important; }
+.tableros-shell-sidebar { flex: 0 0 264px; width: 264px; max-width: 264px; min-width: 264px; border-right: 1px solid #343955; box-shadow: none; }
 .tableros-shell-sidebar .sidebar-content { height: 100vh; overflow: auto; padding: 20px 14px; }
 .tableros-shell-brand { display: flex; min-height: 82px; align-items: center; justify-content: center; margin: 0 4px; padding: 10px; overflow: hidden; }
 .tableros-shell-brand img { display: block; width: 100%; max-width: 210px; max-height: 60px; height: auto; object-fit: contain; }
@@ -36,6 +38,17 @@
 .tableros-app-tile strong { font-size: .77rem; font-weight: 600; }
 .tableros-module-navbar .nav-link, .tableros-module-navbar .nav-icon { color: #d2d7e8; }
 .tableros-module-navbar .dropdown-menu { border-color: #3c4261; background: #20243d; }
+.tableros-module-navbar #notificationsDropdown > .dropdown-menu { width: min(360px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: min(70vh, 520px); flex-direction: column; overflow: hidden; border: 1px solid #3c4261; border-radius: 11px; background: #20243d; box-shadow: 0 14px 36px rgb(0 0 0 / 34%); }
+.tableros-module-navbar #notificationsDropdown > .dropdown-menu.show { display: flex; }
+.tableros-module-navbar #notificationsHeader { flex: 0 0 auto; padding: 13px 16px; border-bottom: 1px solid #3c4261; color: #f0f2fa; background: #20243d; font-size: .82rem; font-weight: 650; }
+.tableros-module-navbar #notificationsList { min-height: 0; overflow-y: auto; background: #20243d; }
+.tableros-module-navbar #notificationsList .list-group-item { padding: 13px 16px; border-color: #3c4261; color: #d9dced; background: #20243d; line-height: 1.45; }
+.tableros-module-navbar #notificationsList .list-group-item.bg-light { border-left: 3px solid #6f98ff; color: #f0f2fa; background: #2b3352 !important; }
+.tableros-module-navbar #notificationsList .list-group-item:hover, .tableros-module-navbar #notificationsList .list-group-item:focus { color: #f0f2fa; background: #303653 !important; }
+.tableros-module-navbar #notificationsList .list-group-item .text-dark { color: #f0f2fa !important; font-weight: 600; }
+.tableros-module-navbar #notificationsList .list-group-item .text-muted { color: #aeb8d0 !important; }
+.tableros-module-navbar #notificationsList .list-group-item .text-danger { color: #ffabb4 !important; }
+.tableros-module-navbar #notificationsList a.list-group-item { text-decoration: none; }
 .tableros-module-navbar .dropdown-item { color: #d9dced; }
 .tableros-module-navbar .dropdown-item:hover, .tableros-module-navbar .dropdown-item:focus { color: #fff; background: #303653; }
 .tableros-module-navbar .dropdown-divider { border-color: #3c4261; }
