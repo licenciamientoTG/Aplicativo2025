@@ -1,7 +1,36 @@
 {% extends "views/layouts/base.html" %}
+{% block bodyClass %}tableros-shell-page{% endblock %}
+{% block appShell %}
+<div class="wrapper tableros-shell">
+  <aside id="sidebar" class="sidebar js-sidebar tableros-shell-sidebar" aria-label="Navegación de Tableros">
+    <div class="sidebar-content js-simplebar">
+      <a class="tableros-shell-brand" href="/tableros/index" aria-label="Tableros TotalGas">
+        <img src="{{ IMAGES }}logos/logo_TotalGas_hor_azul.png" alt="TotalGas">
+      </a>
+      <nav class="tableros-shell-nav">
+        <a class="tableros-shell-link is-active" href="/tableros/index"><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>Tableros</span></a>
+        <a class="tableros-shell-link tableros-shell-back" href="/home/index"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Regresar al aplicativo</span></a>
+      </nav>
+    </div>
+  </aside>
+  <div class="main tableros-shell-main">
+    {% include 'views/layouts/tableros_navbar.html' %}
+    <main class="content tableros-shell-content">
+      <div class="container-fluid p-0">
+        {% set flashSuccess = getFlashMessage('success') %}{% set flashWarning = getFlashMessage('warning') %}{% set flashError = getFlashMessage('error') %}
+        {% if flashSuccess %}<div class="alert alert-success alert-dismissible" role="alert"><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button><strong>¡Éxito!</strong> {{ flashSuccess }}</div>{% endif %}
+        {% if flashWarning %}<div class="alert alert-warning alert-dismissible" role="alert"><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button><strong>¡Alerta!</strong> {{ flashWarning }}</div>{% endif %}
+        {% if flashError %}<div class="alert alert-danger alert-dismissible" role="alert"><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button><strong>¡Error!</strong> {{ flashError }}</div>{% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+    {% include 'views/layouts/footer.html' %}
+  </div>
+</div>
+{% endblock %}
 {% block title %}Tableros{% endblock %}
 {% block menutitle %}Tableros{% endblock %}
-{% block mycss %}<link href="{{ css_v('tableros.css') }}" rel="stylesheet">{% endblock %}
+{% block mycss %}<link href="{{ css_v('tableros.css') }}" rel="stylesheet"><link href="{{ css_v('tableros_shell.css') }}" rel="stylesheet">{% endblock %}
 {% block heavyVendorCss %}{% endblock %}
 {% block heavyVendorJs %}{% endblock %}
 {% block content %}

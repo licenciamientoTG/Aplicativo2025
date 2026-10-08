@@ -1,0 +1,47 @@
+/* Standalone shell styles are loaded only by Tableros routes. */
+.tableros-shell-page { min-width: 320px; background: #111428; }
+.tableros-shell { min-height: 100vh; }
+.tableros-shell-sidebar { width: 242px; min-width: 242px; background: #171a32; border-right: 1px solid #343955; box-shadow: none; }
+.tableros-shell-sidebar .sidebar-content { height: 100vh; overflow: auto; padding: 20px 14px; }
+.tableros-shell-brand { display: flex; min-height: 54px; align-items: center; justify-content: center; margin: 0 4px; padding: 10px 12px; border-radius: 8px; background: #fff; }
+.tableros-shell-brand img { display: block; width: 100%; max-width: 190px; height: auto; }
+.tableros-shell-nav { display: grid; gap: 7px; padding-top: 22px; }
+.tableros-shell-link { display: flex; min-height: 42px; align-items: center; gap: 12px; padding: 0 13px; border-radius: 7px; color: #b7bfd9; font-size: .88rem; font-weight: 550; text-decoration: none; transition: background .15s ease, color .15s ease; }
+.tableros-shell-link i { width: 17px; text-align: center; }
+.tableros-shell-link:hover { color: #fff; background: #2a304d; }
+.tableros-shell-link.is-active { color: #fff; background: #304a83; font-weight: 650; }
+.tableros-shell-back { margin-top: 12px; border-top: 1px solid #343955; border-radius: 0; padding-top: 12px; }
+.tableros-shell-main { min-width: 0; background: #111428; }
+.tableros-module-navbar { min-height: 64px; border-bottom: 1px solid #343955; background: #171a32; box-shadow: none; }
+.tableros-module-navbar .hamburger:before, .tableros-module-navbar .hamburger:after, .tableros-module-navbar .hamburger { background: #d2d7e8; }
+.tableros-module-navbar .navbar-collapse { flex-grow: 1; }
+.tableros-navbar-context { display: flex; align-items: center; gap: 9px; margin-left: 12px; color: #8d94ae; font-size: .82rem; font-weight: 550; }
+.tableros-navbar-context i { color: #626985; font-size: .6rem; }
+.tableros-navbar-context strong { color: #f0f2fa; font-weight: 650; }
+.tableros-shell-content { min-height: calc(100vh - 125px); padding: 21px 26px 30px !important; background: #111428; }
+.tableros-shell-content .boards-page-heading { margin-bottom: 18px; }
+.tableros-app-launcher > .nav-icon { display: grid; width: 42px; height: 42px; place-items: center; color: #d2d7e8; }
+.tableros-app-launcher > .nav-icon::after { display: none; }
+.tableros-app-launcher > .nav-icon:hover { border-radius: 50%; background: #2a304d; }
+.tableros-app-menu { display: grid; width: 266px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 14px; border: 1px solid #3c4261; border-radius: 11px; background: #20243d; box-shadow: 0 12px 32px rgb(0 0 0 / 30%); }
+.tableros-app-menu-title { grid-column: 1 / -1; padding: 2px 5px 7px; color: #aeb2ca; font-size: .76rem; font-weight: 650; }
+.tableros-app-tile { display: flex; min-height: 94px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 8px; color: #d9dced; text-decoration: none; }
+.tableros-app-tile:hover, .tableros-app-tile.is-current { color: #fff; background: #303653; }
+.tableros-app-tile > span { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; color: #c6d5ff; background: #354673; font-size: 1.1rem; }
+.tableros-app-tile strong { font-size: .77rem; font-weight: 600; }
+.tableros-module-navbar .nav-link, .tableros-module-navbar .nav-icon { color: #d2d7e8; }
+.tableros-module-navbar .dropdown-menu { border-color: #3c4261; background: #20243d; }
+.tableros-module-navbar .dropdown-item { color: #d9dced; }
+.tableros-module-navbar .dropdown-item:hover, .tableros-module-navbar .dropdown-item:focus { color: #fff; background: #303653; }
+.tableros-module-navbar .dropdown-divider { border-color: #3c4261; }
+.tableros-module-navbar .dropdown-menu-header, .tableros-module-navbar .list-group-item { border-color: #3c4261; color: #d9dced; background: #20243d; }
+.tableros-module-navbar .text-dark { color: #f0f2fa !important; }
+.tableros-shell-page .footer { margin-top: 12px; color: #aeb2ca; background: #171a32; }
+@media (max-width: 767.98px) {
+  .tableros-shell-sidebar { width: 242px; min-width: 242px; }
+  .tableros-shell-content { padding: 17px 15px 24px !important; }
+  .tableros-navbar-context { gap: 5px; margin-left: 4px; font-size: .72rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tableros-shell-link { transition: none; }
+}

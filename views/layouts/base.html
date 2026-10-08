@@ -43,8 +43,9 @@
 	{% block mycss %}{% endblock %}
 </head>
 
-<body>
+<body class="{% block bodyClass %}{% endblock %}">
 
+	{% block appShell %}
 	<div class="wrapper">
 		{% include 'views/layouts/sidebar.html' %}
 		<div class="main">
@@ -98,6 +99,7 @@
 			{% include 'views/layouts/footer.html' %}
 		</div>
 	</div>
+	{% endblock %}
 
 	<script src="{{ js_v('app.js') }}"></script>
 

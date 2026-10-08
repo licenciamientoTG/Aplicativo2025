@@ -1,0 +1,32 @@
+<nav class="navbar navbar-expand navbar-light navbar-bg tableros-module-navbar">
+  <a class="sidebar-toggle js-sidebar-toggle" href="#" aria-label="Alternar navegación"><i class="hamburger align-self-center"></i></a>
+  <nav class="tableros-navbar-context" aria-label="Ubicación actual"><span>Módulos</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><strong>Tableros</strong></nav>
+  <div class="navbar-collapse collapse show">
+    <ul class="navbar-nav navbar-align">
+      <li class="nav-item dropdown tableros-app-launcher">
+        <a class="nav-icon dropdown-toggle" href="#" id="tablerosLauncher" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Abrir aplicaciones"><i class="fa-solid fa-grip" aria-hidden="true"></i></a>
+        <div class="dropdown-menu dropdown-menu-end tableros-app-menu" aria-labelledby="tablerosLauncher">
+          <div class="tableros-app-menu-title">Aplicaciones</div>
+          {% if tableros_access('access') %}<a class="tableros-app-tile is-current" href="/tableros/index"><span><i class="fa-solid fa-table-cells-large"></i></span><strong>Tableros</strong></a>{% endif %}
+          <a class="tableros-app-tile" href="https://totalgas.mojohelpdesk.com/" target="_blank" rel="noopener"><span><i class="fa-solid fa-headset"></i></span><strong>Mojo Helpdesk</strong></a>
+        </div>
+      </li>
+      <li class="nav-item dropdown" id="notificationsDropdown" data-csrf-token="{{ tableros_csrf|default(csrf_token|default(''))|e('html_attr') }}">
+        <a class="nav-icon dropdown-toggle" href="#" id="alertsDropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notificaciones"><div class="position-relative"><i class="align-middle" data-feather="bell"></i><span class="indicator" id="notificationsIndicator" hidden>0</span></div></a>
+        <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end py-0" aria-labelledby="alertsDropdown"><div class="dropdown-menu-header" id="notificationsHeader">Cargando notificaciones…</div><div class="list-group" id="notificationsList" aria-live="polite"><div class="list-group-item text-muted">Cargando notificaciones…</div></div></div>
+      </li>
+      <li class="nav-item dropdown">
+        <a class="nav-icon dropdown-toggle d-inline-block d-sm-none" href="#" data-bs-toggle="dropdown" aria-label="Perfil"><i class="align-middle" data-feather="settings"></i></a>
+        <a class="nav-link dropdown-toggle d-none d-sm-inline-block" href="#" data-bs-toggle="dropdown"><i class="align-middle me-1" data-feather="user" style="width:25px;height:25px"></i><span class="text-dark">{{ tg_user.Usuario }}</span></a>
+        <div class="dropdown-menu dropdown-menu-end">
+          <a class="dropdown-item" href="/it/profile"><i class="align-middle me-1" data-feather="user"></i> Perfil</a>
+          <a class="dropdown-item" href="/it/binnacle"><i class="align-middle me-1" data-feather="calendar"></i> Bitácora de actividades</a>
+          <div class="dropdown-divider"></div>
+          <a class="dropdown-item" data-bs-toggle="modal" data-bs-target="#termsModal"><i class="align-middle me-1" data-feather="edit-3"></i> Términos y condiciones</a>
+          <div class="dropdown-divider"></div>
+          <a class="dropdown-item" href="/_assets/includes/logout.inc.php"><i class="align-middle me-1" data-feather="log-out"></i> Cerrar sesión</a>
+        </div>
+      </li>
+    </ul>
+  </div>
+</nav>
