@@ -434,7 +434,7 @@ BEGIN
         [storage_object_key] NVARCHAR(512) NOT NULL,
         [sha256_hash] VARBINARY(32) NULL,
         [scan_status] VARCHAR(16) NOT NULL
-            CONSTRAINT [DF_tb_file_version_scan_status] DEFAULT ('pending'),
+            CONSTRAINT [DF_tb_file_version_scan_status] DEFAULT ('unscanned'),
         [scanned_at] DATETIME2(3) NULL,
         [created_by] INT NULL,
         [created_at] DATETIME2(3) NOT NULL
@@ -450,7 +450,7 @@ BEGIN
         CONSTRAINT [CK_tb_file_version_number] CHECK ([version_number] > 0),
         CONSTRAINT [CK_tb_file_version_size] CHECK ([byte_size] >= 0),
         CONSTRAINT [CK_tb_file_version_scan_status]
-            CHECK ([scan_status] IN ('pending', 'clean', 'quarantined', 'failed'))
+            CHECK ([scan_status] IN ('pending', 'clean', 'unscanned', 'quarantined', 'failed'))
     );
 END;
 

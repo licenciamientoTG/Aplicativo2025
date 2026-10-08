@@ -41,6 +41,11 @@
     shareBoardDialog: document.getElementById('shareBoardDialog'),
     saveViewDialog: document.getElementById('saveViewDialog'),
     itemDetailsDialog: document.getElementById('itemDetailsDialog'),
+    filePreviewDialog: document.getElementById('filePreviewDialog'),
+    filePreviewIcon: document.getElementById('filePreviewIcon'),
+    filePreviewTitle: document.getElementById('filePreviewTitle'),
+    filePreviewType: document.getElementById('filePreviewType'),
+    filePreviewContent: document.getElementById('filePreviewContent'),
     automationDialog: document.getElementById('automationDialog'),
     createBoardForm: document.getElementById('createBoardForm'),
     createWorkspaceForm: document.getElementById('createWorkspaceForm'),
@@ -508,9 +513,9 @@
     els.boardWorkspace.hidden = true;
     els.boardsEmpty.hidden = true;
     try {
-      const [result, structureResult] = await Promise.all([request('/boards'), request('/structure')]);
-      state.boards = Array.isArray(result.data) ? result.data : [];
+      const structureResult = await request('/structure');
       const structure = structureResult.data || {};
+      state.boards = Array.isArray(structure.boards) ? structure.boards : [];
       state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
       state.folders = Array.isArray(structure.folders) ? structure.folders : [];
       state.selectedWorkspaceId = String(state.boards[0]?.workspace_id || state.workspaces[0]?.id || '');
@@ -933,7 +938,7 @@
       search.value = '';
       window.removeEventListener('scroll', positionResults, true);
       window.removeEventListener('resize', positionResults);
-      document.removeEventListener('click', closeOnOutside);
+      document.removeEventListener('pointerdown', closeOnOutside, true);
       ['position', 'z-index', 'left', 'top', 'bottom', 'width', 'max-height'].forEach((property) => results.style.removeProperty(property));
       if (results.parentElement !== wrapper) wrapper.append(results);
     };
@@ -943,32 +948,37 @@
     const positionResults = () => {
       const rect = control.getBoundingClientRect();
       const width = Math.min(Math.max(280, rect.width), window.innerWidth - 16);
-      const below = window.innerHeight - rect.bottom - 12;
-      const above = rect.top - 12;
-      const maxHeight = Math.min(360, below < 260 && above > below ? above : below);
+      const below = Math.max(0, window.innerHeight - rect.bottom - 8);
+      const above = Math.max(0, rect.top - 8);
+      const desiredHeight = Math.min(360, results.scrollHeight);
+      const placeAbove = below < desiredHeight && above > below;
+      const availableHeight = placeAbove ? above : below;
+      const maxHeight = Math.min(360, Math.max(100, availableHeight));
+      const popupHeight = Math.min(desiredHeight, maxHeight);
       results.style.position = 'fixed';
       results.style.zIndex = '10000';
       results.style.width = `${width}px`;
       results.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
-      results.style.maxHeight = `${Math.max(130, maxHeight)}px`;
-      if (below < 260 && above > below) results.style.top = `${Math.max(8, rect.top - maxHeight - 5)}px`;
-      else results.style.top = `${rect.bottom + 5}px`;
+      results.style.maxHeight = `${maxHeight}px`;
+      if (placeAbove) results.style.top = `${Math.max(8, rect.top - popupHeight - 5)}px`;
+      else results.style.top = `${Math.min(rect.bottom + 5, window.innerHeight - popupHeight - 8)}px`;
     };
     const openResults = (message = 'Buscando personas…') => {
       options.replaceChildren(makeElement('div', 'boards-people-results-heading', 'Personas sugeridas'));
       options.append(makeElement('div', 'boards-people-empty', message));
-      document.body.append(results);
+      if (results.parentElement !== document.body) document.body.append(results);
       results.hidden = false;
       search.setAttribute('aria-expanded', 'true');
       positionResults();
       window.addEventListener('scroll', positionResults, true);
       window.addEventListener('resize', positionResults);
-      document.addEventListener('click', closeOnOutside);
+      // pointerdown runs before the opening click, so the opening gesture
+      // cannot immediately be treated as an outside click.
+      document.addEventListener('pointerdown', closeOnOutside, true);
     };
     const searchUsers = async (term = search.value.trim(), reveal = true) => {
       const currentRequest = ++requestNumber;
       const params = new URLSearchParams({ q: term, board_id: String(state.board?.id || '') });
-      if (people.size) params.set('ids', Array.from(people.keys()).join(','));
       if (reveal) openResults('Buscando personas…');
       try {
         const response = await request(`/users?${params.toString()}`);
@@ -1226,23 +1236,17 @@
     const list = makeElement('div', 'boards-file-cell-list');
     files.forEach((file) => {
       const entry = makeElement('div', 'boards-file-cell-entry');
-      const icon = makeElement('span', 'boards-file-cell-icon');
-      icon.append(makeElement('i', 'fa-solid fa-paperclip'));
-      icon.setAttribute('aria-hidden', 'true');
-      const status = String(file.scan_status || 'pending').toLowerCase();
-      const name = status === 'clean'
-        ? makeElement('a', 'boards-file-cell-name', file.name || 'Archivo')
-        : makeElement('span', 'boards-file-cell-name', file.name || 'Archivo');
-      if (status === 'clean') {
-        const versionQuery = file.version_id ? `?version_id=${encodeURIComponent(file.version_id)}` : '';
-        name.href = `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${versionQuery}`;
-        name.setAttribute('download', '');
-        name.title = `Descargar ${file.name || 'archivo'}`;
-      } else {
-        name.title = status === 'pending' ? 'Pendiente de revisión manual antes de habilitar la descarga.' : 'Descarga no disponible.';
-      }
-      entry.append(icon, name);
-      if (status === 'pending') entry.append(makeElement('small', 'boards-file-cell-status', 'En revisión'));
+      const icon = makeElement('button', `boards-file-cell-icon is-${fileTypeInfo(file).previewKind}`);
+      icon.type = 'button';
+      icon.setAttribute('aria-label', `Previsualizar ${file.name || 'archivo'}`);
+      icon.title = `Abrir ${file.name || 'archivo'}`;
+      icon.append(makeElement('i', `fa-solid ${fileTypeInfo(file).icon}`));
+      const status = String(file.scan_status || 'unscanned').toLowerCase();
+      const downloadable = ['clean', 'unscanned'].includes(status);
+      icon.disabled = !downloadable;
+      if (downloadable) icon.addEventListener('click', () => openFilePreview(file));
+      else icon.title = status === 'pending' ? 'Archivo pendiente de habilitar.' : 'Archivo bloqueado.';
+      entry.append(icon);
       list.append(entry);
     });
     wrapper.append(list);
@@ -1280,7 +1284,7 @@
         input.value = '';
       }
     });
-    const hint = makeElement('small', 'boards-file-cell-hint', 'PDF, imágenes y documentos · máx. 25 MB');
+    const hint = makeElement('small', 'boards-file-cell-hint', 'PDF, imágenes (se convierten a WebP) y documentos · máx. 100 MB');
     wrapper.append(input, button, hint);
     return wrapper;
   }
@@ -1568,6 +1572,64 @@
     return storedFilesForItem(item);
   }
 
+  function fileTypeInfo(file) {
+    const mime = String(file.content_type || '').toLowerCase().split(';')[0].trim();
+    const name = String(file.name || file.original_name || '');
+    const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+    const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(mime);
+    const previewKind = imageMime ? 'image'
+      : (mime === 'application/pdf' ? 'pdf'
+        : (['text/plain', 'text/csv'].includes(mime) ? 'text' : 'unsupported'));
+    const icon = previewKind === 'pdf' ? 'fa-file-pdf'
+      : (imageMime || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension) ? 'fa-file-image'
+        : (['doc', 'docx', 'odt'].includes(extension) ? 'fa-file-word'
+          : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
+            : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file'))));
+    return { extension, mime, previewKind, icon };
+  }
+
+  function fileEndpoint(file, preview = false) {
+    const query = new URLSearchParams();
+    if (file.version_id) query.set('version_id', String(file.version_id));
+    if (preview) query.set('preview', '1');
+    const suffix = query.toString();
+    return `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  function openFilePreview(file) {
+    if (!file?.file_id || !els.filePreviewDialog) return;
+    const type = fileTypeInfo(file);
+    const name = file.name || file.original_name || 'Archivo';
+    els.filePreviewTitle.textContent = name;
+    els.filePreviewType.textContent = type.extension ? type.extension.toUpperCase() : (type.mime || 'Archivo');
+    els.filePreviewIcon.replaceChildren(makeElement('i', `fa-solid ${type.icon}`));
+    els.filePreviewContent.replaceChildren();
+    if (type.previewKind === 'image') {
+      const image = makeElement('img', 'boards-preview-image');
+      image.src = fileEndpoint(file, true);
+      image.alt = name;
+      els.filePreviewContent.append(image);
+    } else if (['pdf', 'text'].includes(type.previewKind)) {
+      const frame = makeElement('iframe', 'boards-preview-frame');
+      frame.src = fileEndpoint(file, true);
+      frame.title = `Vista previa de ${name}`;
+      frame.referrerPolicy = 'no-referrer';
+      els.filePreviewContent.append(frame);
+    } else {
+      const fallback = makeElement('div', 'boards-preview-unavailable');
+      const icon = makeElement('i', `fa-solid ${type.icon} boards-preview-unavailable-icon`);
+      icon.setAttribute('aria-hidden', 'true');
+      fallback.append(icon, makeElement('h4', '', 'Este formato no se puede previsualizar aquí'));
+      fallback.append(makeElement('p', '', 'Descarga el archivo para abrirlo con una aplicación compatible.'));
+      const download = makeElement('a', 'boards-button-primary boards-preview-download', 'Descargar archivo');
+      download.href = fileEndpoint(file);
+      download.setAttribute('download', '');
+      fallback.append(download);
+      els.filePreviewContent.append(fallback);
+    }
+    openDialog(els.filePreviewDialog);
+  }
+
   function setDetailStatus(id, message, error = false) {
     const status = document.getElementById(id);
     if (!status) return;
@@ -1634,19 +1696,22 @@
       heading.append(makeElement('span', 'boards-file-version-label', versionLabel));
       const actions = makeElement('div', 'boards-detail-actions');
       const referenceScanStatus = String(file.scan_status || '').toLowerCase();
-      const provisionalStatus = ['pending', 'quarantined', 'failed'].includes(referenceScanStatus) ? referenceScanStatus : 'unknown';
+      const provisionalStatus = ['pending', 'quarantined', 'failed', 'unscanned', 'clean'].includes(referenceScanStatus) ? referenceScanStatus : 'unknown';
       const scanStatus = String(currentVersion?.scan_status || provisionalStatus || 'unknown').toLowerCase();
-      const currentVersionId = currentVersion?.id || file.version_id;
-      const scanLabels = { clean: 'Aprobado manualmente', pending: 'Pendiente de revisión', quarantined: 'Bloqueado', failed: 'Bloqueado', unknown: 'Estado sin verificar' };
+      const scanLabels = { clean: 'Disponible', unscanned: 'Sin análisis antivirus', pending: 'Analizando', quarantined: 'Amenaza detectada', failed: 'No se pudo analizar', unknown: 'Estado sin verificar' };
       heading.append(makeElement('span', `boards-file-scan-status is-${scanStatus}`, scanLabels[scanStatus] || scanStatus));
-      if (scanStatus === 'clean') {
+      if (['clean', 'unscanned'].includes(scanStatus)) {
+        const preview = makeElement('button', 'boards-text-button', 'Vista previa');
+        preview.type = 'button';
+        preview.addEventListener('click', () => openFilePreview({ ...file, version_id: currentVersion?.id || file.version_id }));
+        actions.append(preview);
         const download = makeElement('a', 'boards-text-button', 'Descargar');
-        download.href = `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}`;
+        download.href = fileEndpoint(file);
         download.setAttribute('download', '');
         actions.append(download);
       } else {
         const blocked = makeElement('span', 'boards-file-download-blocked', 'Descarga bloqueada');
-        blocked.title = 'Solo se pueden descargar versiones aprobadas.';
+        blocked.title = 'La descarga se bloquea cuando el análisis detecta una amenaza o no puede completarse.';
         actions.append(blocked);
       }
       const history = makeElement('button', 'boards-text-button', state.fileHistoryVisible[String(file.file_id)] ? 'Ocultar versiones' : 'Historial');
@@ -1658,13 +1723,6 @@
         newVersion.type = 'button';
         newVersion.dataset.fileTarget = String(file.file_id);
         actions.append(newVersion);
-      }
-      if (canManageStructure() && scanStatus === 'pending' && currentVersionId) {
-        const approve = makeElement('button', 'boards-text-button is-approve', 'Aprobar tras revisar');
-        approve.type = 'button';
-        approve.dataset.approveFile = String(file.file_id);
-        approve.dataset.versionId = String(currentVersionId);
-        actions.append(approve);
       }
       row.append(heading, makeElement('div', 'boards-detail-meta', `${file.content_type || 'Tipo desconocido'} · ${formatBytes(file.byte_size)}`), actions);
       if (state.fileHistoryVisible[String(file.file_id)]) {
@@ -1680,7 +1738,16 @@
             const line = makeElement('div', 'boards-file-history-row');
             line.append(makeElement('span', '', `v${entry.version_number} · ${entry.original_name || file.name || 'Archivo'} · ${formatBytes(entry.byte_size)} · ${entry.scan_status || 'sin estado'}`));
             let versionDownload;
-            if (String(entry.scan_status || '').toLowerCase() === 'clean') {
+            if (['clean', 'unscanned'].includes(String(entry.scan_status || '').toLowerCase())) {
+              versionDownload = makeElement('button', 'boards-text-button', 'Vista previa');
+              versionDownload.type = 'button';
+              versionDownload.addEventListener('click', () => openFilePreview({
+                ...file,
+                version_id: entry.id,
+                name: entry.original_name || file.name,
+                content_type: entry.content_type || file.content_type
+              }));
+              line.append(versionDownload);
               versionDownload = makeElement('a', 'boards-text-button', 'Descargar');
               const query = new URLSearchParams({ version_id: String(entry.id) });
               versionDownload.href = `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}?${query.toString()}`;
@@ -1724,7 +1791,7 @@
     els.itemFileInput.disabled = !canEditBoard() || fileColumns.length === 0;
     els.itemFileForm.querySelector('[type="submit"]').disabled = !canEditBoard() || fileColumns.length === 0;
     els.itemFileForm.querySelector('.boards-field-help').textContent = fileColumns.length
-      ? 'Máximo 25 MB. También puedes subir archivos directamente desde su celda. La versión queda pendiente hasta una revisión manual.'
+      ? 'Máximo 100 MB. Las imágenes se convierten a WebP. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.'
       : 'Agrega una columna de tipo Archivo para adjuntar y consultar archivos desde el tablero.';
     const selectedColumnId = els.itemFileColumn.value || String(fileColumns[0]?.id || '');
     const existing = item ? filesForItem(item).filter((file) => String(file.column_id || '') === selectedColumnId) : [];
@@ -1953,25 +2020,6 @@
     if (String(item.id) === state.detailItemId) renderItemFiles();
   }
 
-  async function approveCurrentFile(fileId, versionId) {
-    if (!canManageStructure()) return;
-    const confirmed = window.confirm('Confirma que revisaste manualmente esta versión. No hay antivirus automático en el tablero.');
-    if (!confirmed) return;
-    try {
-      await post('/approve_file', {
-        board_id: state.board.id,
-        file_id: fileId,
-        version_id: versionId,
-        confirm_manual_review: true
-      });
-      await loadFileHistory(fileId);
-      setNotice('Versión aprobada manualmente y disponible para descarga.', 'success');
-    } catch (error) {
-      setNotice(errorMessage(error, 'No se pudo aprobar la versión.'), 'error');
-      if (error.status === 409 || error.code === 'conflict') await loadFileHistory(fileId);
-    }
-  }
-
   async function multipartPost(path, body) {
     const response = await fetch(`${apiRoot}${path}`, {
       method: 'POST',
@@ -2038,7 +2086,7 @@
       file_id: Number(uploaded.id), column_id: Number(column.id), name: uploaded.name || file.name,
       version_id: Number(uploaded.version_id), version_number: Number(uploaded.version_number),
       content_type: uploaded.content_type || file.type, byte_size: Number(uploaded.byte_size || file.size),
-      scan_status: uploaded.scan_status || 'pending'
+      scan_status: uploaded.scan_status || 'unscanned'
     };
     const cellValue = parseStoredValue(getCellValue(item, column));
     const existing = storedFilesForItem(item).filter((entry) => String(entry.column_id) === String(column.id));
@@ -2062,7 +2110,7 @@
   function fileUploadValidationMessage(file) {
     if (!(file instanceof File)) return 'Selecciona un archivo válido.';
     if (file.size <= 0) return 'El archivo está vacío.';
-    if (file.size > 25 * 1024 * 1024) return 'El archivo supera el límite de 25 MB.';
+    if (file.size > 100 * 1024 * 1024) return 'El archivo supera el límite de 100 MB.';
     const extension = String(file.name.split('.').pop() || '').toLowerCase();
     const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
     if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imagen, texto, CSV u Office.';
@@ -3842,7 +3890,7 @@
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
         team: 'La celda acepta texto o JSON; no hay catálogo de equipos disponible.',
-        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 25 MB; las versiones requieren revisión manual antes de descargarse.',
+        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 100 MB; las imágenes se convierten a WebP. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.',
         board_relation: 'La relación debe incluir un tablero o elemento al que tengas acceso.',
         subtasks: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.',
         dependency: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.'
@@ -4333,7 +4381,7 @@
   }
 
   function setupExtendedEvents() {
-    [els.itemDetailsDialog, els.automationDialog].forEach((dialog) => {
+    [els.itemDetailsDialog, els.filePreviewDialog, els.automationDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
@@ -4384,11 +4432,6 @@
         state.fileHistoryVisible[key] = !state.fileHistoryVisible[key];
         renderItemFiles();
         if (state.fileHistoryVisible[key] && !Array.isArray(state.fileVersions[key]) && !state.fileHistoryLoading[key]) loadFileHistory(fileId);
-        return;
-      }
-      const approve = event.target.closest('[data-approve-file]');
-      if (approve) {
-        approveCurrentFile(approve.dataset.approveFile, approve.dataset.versionId);
         return;
       }
       const newVersion = event.target.closest('[data-file-target]');

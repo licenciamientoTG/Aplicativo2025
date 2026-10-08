@@ -458,11 +458,24 @@ class TablerosModel {
         }
         $size = (int)($upload['size'] ?? 0);
         $actualSize = filesize((string)$upload['tmp_name']);
-        if ($size <= 0 || $actualSize === false || $actualSize !== $size || $size > 25 * 1024 * 1024) {
-            throw new TablerosApiException('validation', 'El archivo debe pesar entre 1 byte y 25 MB.', 422);
+        if ($size <= 0 || $actualSize === false || $actualSize !== $size || $size > 100 * 1024 * 1024) {
+            throw new TablerosApiException('validation', 'El archivo debe pesar entre 1 byte y 100 MB.', 422);
         }
+        $convertedImagePath = null;
+        try {
         $originalName = $this->safeFilename((string)($upload['name'] ?? 'archivo'));
         [$extension, $contentType] = $this->validateUploadedFile((string)$upload['tmp_name'], $originalName);
+        $processingPath = (string)$upload['tmp_name'];
+        if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+            $converted = $this->convertImageToWebp($processingPath, $extension, $originalName);
+            $processingPath = $converted['path'];
+            $convertedImagePath = $processingPath;
+            $originalName = $converted['name'];
+            $size = $converted['size'];
+            $contentType = 'image/webp';
+        }
+        $scanStatus = 'unscanned';
+        $scannedAt = null;
         $storageRoot = $this->privateStorageRoot();
         $now = new DateTimeImmutable('now');
         $objectHash = bin2hex(random_bytes(32));
@@ -488,7 +501,7 @@ class TablerosModel {
         }
         $destination = $storageRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $objectKey);
         $target = @fopen($destination, 'xb');
-        $source = @fopen((string)$upload['tmp_name'], 'rb');
+        $source = @fopen($processingPath, 'rb');
         if (!is_resource($target) || !is_resource($source)) {
             if (is_resource($target)) fclose($target);
             if (is_resource($source)) fclose($source);
@@ -505,7 +518,7 @@ class TablerosModel {
         @chmod($destination, 0600);
 
         try {
-            $result = $this->transaction(function () use ($boardId, $userId, $itemId, $fileId, $columnId, $originalName, $size, $contentType, $objectKey): array {
+            $result = $this->transaction(function () use ($boardId, $userId, $itemId, $fileId, $columnId, $originalName, $size, $contentType, $objectKey, $scanStatus, $scannedAt): array {
                 if ($fileId !== null) {
                     $file = $this->one(
                         'SELECT id, board_id, item_id, column_id, name FROM tb_file WITH (UPDLOCK, HOLDLOCK)
@@ -549,9 +562,9 @@ class TablerosModel {
                 $hash = hash_file('sha256', $this->privateObjectPath($objectKey), true);
                 $versionId = $this->insertId(
                     'INSERT INTO tb_file_version (file_id, version_number, original_name, content_type, byte_size,
-                         storage_provider, storage_container, storage_object_key, sha256_hash, scan_status, created_by, created_at)
-                     OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, CONVERT(VARBINARY(32), ?, 2), ?, ?, GETDATE())',
-                    [$fileId, $versionNumber, $originalName, $contentType, $size, 'local', 'tableros', $objectKey, bin2hex($hash), 'pending', $userId]
+                         storage_provider, storage_container, storage_object_key, sha256_hash, scan_status, scanned_at, created_by, created_at)
+                     OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, CONVERT(VARBINARY(32), ?, 2), ?, ?, ?, GETDATE())',
+                    [$fileId, $versionNumber, $originalName, $contentType, $size, 'local', 'tableros', $objectKey, bin2hex($hash), $scanStatus, $scannedAt, $userId]
                 );
                 $this->execute('UPDATE tb_file SET current_version_id = ?, name = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ?', [$versionId, $originalName, $fileId, $boardId]);
                 $this->writeActivity($boardId, $itemId, $userId, 'file.uploaded', [
@@ -561,13 +574,16 @@ class TablerosModel {
                 return [
                     'id' => $fileId, 'board_id' => $boardId, 'item_id' => $itemId, 'column_id' => $columnId,
                     'version_id' => $versionId, 'version_number' => $versionNumber, 'name' => $originalName,
-                    'content_type' => $contentType, 'byte_size' => $size, 'scan_status' => 'pending',
+                    'content_type' => $contentType, 'byte_size' => $size, 'scan_status' => $scanStatus,
                 ];
             });
             return $result;
         } catch (Throwable $e) {
             @unlink($destination);
             throw $e;
+        }
+        } finally {
+            if (is_string($convertedImagePath) && is_file($convertedImagePath)) @unlink($convertedImagePath);
         }
     }
 
@@ -585,49 +601,6 @@ class TablerosModel {
              WHERE v.file_id = ? AND v.deleted_at IS NULL ORDER BY v.version_number DESC',
             [$boardId, $fileId]
         );
-    }
-
-    public function approveFile(int $boardId, int $actorId, array $input): array {
-        $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
-        $versionId = $this->positiveInt($input['version_id'] ?? null, 'version_id');
-        if (!$this->booleanInput($input, 'confirm_manual_review', false)) {
-            throw new TablerosApiException('validation', 'Confirma la revisión manual antes de aprobar el archivo.', 422);
-        }
-
-        return $this->transaction(function () use ($boardId, $actorId, $fileId, $versionId): array {
-            $file = $this->one(
-                'SELECT id, current_version_id FROM tb_file WITH (UPDLOCK, HOLDLOCK)
-                 WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
-                [$fileId, $boardId]
-            );
-            if (!$file || (int)($file['current_version_id'] ?? 0) !== $versionId) {
-                throw new TablerosApiException('conflict', 'La versión ya no es la versión actual del archivo.', 409);
-            }
-            $version = $this->one(
-                'SELECT id, scan_status FROM tb_file_version WITH (UPDLOCK, HOLDLOCK)
-                 WHERE id = ? AND file_id = ? AND deleted_at IS NULL',
-                [$versionId, $fileId]
-            );
-            if (!$version) {
-                throw new TablerosApiException('not_found', 'No se encontró la versión actual del archivo.', 404);
-            }
-            if ((string)$version['scan_status'] === 'clean') {
-                return ['file_id' => $fileId, 'version_id' => $versionId, 'scan_status' => 'clean', 'review_method' => 'manual'];
-            }
-            if ((string)$version['scan_status'] !== 'pending') {
-                throw new TablerosApiException('conflict', 'Solo se pueden aprobar versiones pendientes de revisión.', 409);
-            }
-            $this->execute(
-                "UPDATE tb_file_version SET scan_status = 'clean'
-                 WHERE id = ? AND file_id = ? AND scan_status = 'pending' AND deleted_at IS NULL",
-                [$versionId, $fileId]
-            );
-            $this->execute('UPDATE tb_file SET updated_at = GETDATE() WHERE id = ? AND board_id = ?', [$fileId, $boardId]);
-            $this->writeActivity($boardId, null, $actorId, 'file.manually_approved', [
-                'file_id' => $fileId, 'version_id' => $versionId, 'review_method' => 'manual',
-            ]);
-            return ['file_id' => $fileId, 'version_id' => $versionId, 'scan_status' => 'clean', 'review_method' => 'manual'];
-        });
     }
 
     public function getFileBoardId(int $fileId): int {
@@ -659,8 +632,8 @@ class TablerosModel {
         if (!$version || (string)$version['storage_provider'] !== 'local' || (string)$version['storage_container'] !== 'tableros') {
             throw new TablerosApiException('not_found', 'No se encontró la versión del archivo.', 404);
         }
-        if ((string)$version['scan_status'] !== 'clean') {
-            throw new TablerosApiException('conflict', 'Esta versión de archivo requiere aprobación manual antes de descargarse.', 409);
+        if (!in_array((string)$version['scan_status'], ['clean', 'unscanned'], true)) {
+            throw new TablerosApiException('conflict', 'Esta versión no está disponible para descarga.', 409);
         }
         $key = (string)$version['storage_object_key'];
         $path = $this->privateObjectPath($key);
@@ -2153,6 +2126,73 @@ class TablerosModel {
             $name = $this->textSlice($stem, $budget) . ($extension !== '' ? '.' . $extension : '');
         }
         return $name;
+    }
+
+    /** Convert supported raster uploads to WebP and remove their source metadata. */
+    private function convertImageToWebp(string $sourcePath, string $extension, string $originalName): array {
+        if (!function_exists('imagewebp')) {
+            throw new TablerosApiException('server', 'El servidor PHP no tiene soporte WebP en GD.', 500);
+        }
+        $imageInfo = @getimagesize($sourcePath);
+        if (!is_array($imageInfo) || empty($imageInfo[0]) || empty($imageInfo[1])) {
+            throw new TablerosApiException('validation', 'No se pudo leer la imagen para convertirla.', 422);
+        }
+        $pixels = (int)$imageInfo[0] * (int)$imageInfo[1];
+        $memoryLimit = $this->iniBytes((string)ini_get('memory_limit'));
+        $estimatedMemory = $pixels * 8;
+        if ($pixels <= 0 || ($memoryLimit > 0 && $estimatedMemory > max(0, $memoryLimit - memory_get_usage(true) - 16 * 1024 * 1024))) {
+            throw new TablerosApiException('validation', 'La resolución de la imagen excede la memoria disponible para convertirla.', 422);
+        }
+        $loader = [
+            'jpg' => 'imagecreatefromjpeg', 'jpeg' => 'imagecreatefromjpeg',
+            'png' => 'imagecreatefrompng', 'gif' => 'imagecreatefromgif', 'webp' => 'imagecreatefromwebp',
+        ][$extension] ?? null;
+        if ($loader === null || !function_exists($loader)) {
+            throw new TablerosApiException('server', 'El servidor PHP no puede leer este formato de imagen.', 500);
+        }
+        $image = @$loader($sourcePath);
+        if (!$image instanceof GdImage) {
+            throw new TablerosApiException('validation', 'La imagen está dañada o no se pudo decodificar.', 422);
+        }
+        $outputPath = tempnam(sys_get_temp_dir(), 'tg-image-');
+        if (!is_string($outputPath)) {
+            imagedestroy($image);
+            throw new TablerosApiException('server', 'No se pudo preparar la conversión WebP.', 500);
+        }
+        try {
+            imagealphablending($image, false);
+            imagesavealpha($image, true);
+            $quality = in_array($extension, ['png', 'gif'], true) ? 100 : 82;
+            if (!@imagewebp($image, $outputPath, $quality)) {
+                throw new TablerosApiException('server', 'No se pudo convertir la imagen a WebP.', 500);
+            }
+            $outputSize = filesize($outputPath);
+            $outputMime = (new finfo(FILEINFO_MIME_TYPE))->file($outputPath);
+            if (is_int($outputSize) && $outputSize > 100 * 1024 * 1024) {
+                throw new TablerosApiException('validation', 'La imagen convertida supera el límite de 100 MB.', 422);
+            }
+            if (!is_int($outputSize) || $outputSize <= 0 || $outputMime !== 'image/webp') {
+                throw new TablerosApiException('server', 'La conversión WebP produjo un archivo inválido o demasiado grande.', 500);
+            }
+            $webpName = $this->safeFilename(pathinfo($originalName, PATHINFO_FILENAME) . '.webp');
+            return ['path' => $outputPath, 'size' => $outputSize, 'name' => $webpName];
+        } catch (Throwable $e) {
+            @unlink($outputPath);
+            throw $e;
+        } finally {
+            imagedestroy($image);
+        }
+    }
+
+    private function iniBytes(string $value): int {
+        $value = trim($value);
+        if ($value === '' || $value === '-1') return 0;
+        $number = (float)$value;
+        $unit = strtolower(substr($value, -1));
+        if ($unit === 'g') $number *= 1024;
+        if ($unit === 'g' || $unit === 'm') $number *= 1024;
+        if ($unit === 'g' || $unit === 'm' || $unit === 'k') $number *= 1024;
+        return (int)$number;
     }
 
     private function validateUploadedFile(string $tmpPath, string $originalName): array {

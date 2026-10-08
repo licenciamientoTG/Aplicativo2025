@@ -116,14 +116,6 @@ class tableros_api {
         });
     }
 
-    public function approve_file(): void {
-        $this->handle('POST', function (int $userId, array $input): array {
-            $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
-            return $this->model->approveFile($boardId, $userId, $input);
-        });
-    }
-
     public function file_versions($id): void {
         $this->handle('GET', function (int $userId) use ($id): array {
             $fileId = $this->positiveInt($id, 'file_id');
@@ -150,7 +142,9 @@ class tableros_api {
             $file = $this->model->getFileDownload($fileId, $versionId);
             header('Content-Type: ' . $file['content_type']);
             header('Content-Length: ' . (int)$file['byte_size']);
-            header('Content-Disposition: ' . $this->contentDisposition((string)$file['name']));
+            $previewableTypes = ['application/pdf', 'image/webp', 'image/jpeg', 'image/png', 'image/gif', 'text/plain', 'text/csv'];
+            $inlinePreview = ($_GET['preview'] ?? '') === '1' && in_array(strtolower((string)$file['content_type']), $previewableTypes, true);
+            header('Content-Disposition: ' . $this->contentDisposition((string)$file['name'], $inlinePreview));
             header('X-Content-Type-Options: nosniff');
             header('Cache-Control: private, no-store, max-age=0');
             if (session_status() === PHP_SESSION_ACTIVE) {
@@ -510,10 +504,10 @@ class tableros_api {
         echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    private function contentDisposition(string $filename): string {
+    private function contentDisposition(string $filename, bool $inline = false): string {
         $filename = preg_replace('/[\x00-\x1F\x7F]/u', '', basename(str_replace('\\', '/', $filename))) ?? 'archivo';
         $ascii = preg_replace('/[^A-Za-z0-9._-]/', '_', $filename) ?? 'archivo';
         if ($ascii === '') $ascii = 'archivo';
-        return 'attachment; filename="' . addcslashes($ascii, '"\\') . '"; filename*=UTF-8\'\'' . rawurlencode($filename);
+        return ($inline ? 'inline' : 'attachment') . '; filename="' . addcslashes($ascii, '"\\') . '"; filename*=UTF-8\'\'' . rawurlencode($filename);
     }
 }
