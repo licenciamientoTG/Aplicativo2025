@@ -105,6 +105,24 @@ class tableros_api {
         });
     }
 
+    public function file_comments($id): void {
+        $this->handle('GET', function (int $userId) use ($id): array {
+            $fileId = $this->positiveInt($id, 'file_id');
+            $boardId = $this->model->getFileBoardId($fileId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            return $this->model->getFileComments($fileId);
+        });
+    }
+
+    public function add_file_comment(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
+            $boardId = $this->model->getFileBoardId($fileId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->addFileComment($fileId, $userId, $input);
+        });
+    }
+
     public function upload_file(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);

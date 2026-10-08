@@ -11,6 +11,9 @@
   let noticeTimer = 0;
   let filePreviewObjectUrl = '';
   let filePreviewRequest = 0;
+  let filePreviewPanelRequest = 0;
+  let activePreviewFile = null;
+  let activePreviewItem = null;
   const els = {
     boardSelect: document.getElementById('boardSelect'),
     workspaceSelect: document.getElementById('workspaceSelect'),
@@ -48,6 +51,7 @@
     filePreviewTitle: document.getElementById('filePreviewTitle'),
     filePreviewType: document.getElementById('filePreviewType'),
     filePreviewContent: document.getElementById('filePreviewContent'),
+    filePreviewPanel: document.getElementById('filePreviewPanel'),
     automationDialog: document.getElementById('automationDialog'),
     createBoardForm: document.getElementById('createBoardForm'),
     createWorkspaceForm: document.getElementById('createWorkspaceForm'),
@@ -1260,7 +1264,7 @@
       } else {
         icon.append(makeElement('i', `fa-solid ${typeInfo.icon}`));
       }
-      if (downloadable) icon.addEventListener('click', () => openFilePreview(file));
+      if (downloadable) icon.addEventListener('click', () => openFilePreview(file, item));
       else icon.title = status === 'pending' ? 'Archivo pendiente de habilitar.' : 'Archivo bloqueado.';
       entry.append(icon);
       list.append(entry);
@@ -1642,8 +1646,133 @@
     els.filePreviewContent.replaceChildren(error);
   }
 
-  async function openFilePreview(file) {
+  function previewMeta(label, value) {
+    const row = makeElement('div', 'boards-preview-meta-row');
+    row.append(makeElement('span', '', label), makeElement('strong', '', value || '—'));
+    return row;
+  }
+
+  async function renderFilePreviewPanel(panelName) {
+    if (!els.filePreviewPanel || !activePreviewFile) return;
+    const panelRequest = ++filePreviewPanelRequest;
+    const file = activePreviewFile;
+    const panel = els.filePreviewPanel;
+    panel.replaceChildren();
+    panel.hidden = false;
+    const headings = { comments: 'Comentarios', versions: 'Versiones', gallery: 'Galería', information: 'Información' };
+    panel.append(makeElement('h4', '', headings[panelName] || 'Detalles'));
+    if (panelName === 'comments') {
+      const status = makeElement('p', 'boards-preview-panel-status', 'Cargando comentarios…');
+      status.setAttribute('role', 'status');
+      panel.append(status);
+      try {
+        const result = await request(`/file_comments/${encodeURIComponent(file.file_id)}`);
+        if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
+        const comments = Array.isArray(result.data) ? result.data : [];
+        status.textContent = comments.length ? '' : 'Todavía no hay comentarios.';
+        comments.forEach((comment) => {
+          const article = makeElement('article', 'boards-preview-comment');
+          const author = comment.created_by_display_name || comment.author_name || comment.user_name || comment.username || 'Usuario desconocido';
+          article.append(makeElement('strong', '', author));
+          if (comment.created_at) article.append(makeElement('time', '', displayDateTime(comment.created_at)));
+          article.append(makeElement('p', '', comment.body || comment.comment || ''));
+          panel.append(article);
+        });
+      } catch (error) {
+        if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
+        status.textContent = errorMessage(error, 'No se pudieron cargar los comentarios.');
+        status.classList.add('is-error');
+      }
+      const form = document.createElement('form');
+      form.className = 'boards-preview-comment-form';
+      const textarea = document.createElement('textarea');
+      textarea.rows = 3; textarea.maxLength = 10000; textarea.required = true;
+      textarea.setAttribute('aria-label', 'Nuevo comentario'); textarea.placeholder = 'Escribe un comentario…';
+      const submit = makeElement('button', 'boards-preview-submit', 'Comentar'); submit.type = 'submit';
+      form.append(textarea, submit);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const body = textarea.value.trim(); if (!body) return;
+        submit.disabled = true;
+        try {
+          await post('/add_file_comment', { file_id: file.file_id, body });
+          if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
+          await renderFilePreviewPanel('comments');
+        } catch (error) { setNotice(errorMessage(error, 'No se pudo publicar el comentario.'), 'error'); submit.disabled = false; }
+      });
+      panel.append(form);
+    } else if (panelName === 'versions') {
+      const status = makeElement('p', 'boards-preview-panel-status', 'Cargando versiones…'); panel.append(status);
+      try {
+        const result = await request(`/file_versions/${encodeURIComponent(file.file_id)}`);
+        if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
+        const versions = Array.isArray(result.data) ? result.data : [];
+        state.fileVersions[String(file.file_id)] = versions;
+        status.textContent = versions.length ? '' : 'No hay versiones registradas.';
+        versions.forEach((version) => {
+          const button = makeElement('button', 'boards-preview-version', `v${version.version_number || '?'} · ${version.original_name || file.name || 'Archivo'}`);
+          button.type = 'button';
+          button.setAttribute('aria-current', String(version.id) === String(file.version_id || '') || Boolean(Number(version.is_current)) ? 'true' : 'false');
+          button.append(makeElement('small', '', `${formatBytes(version.byte_size)} · ${version.scan_status || 'sin estado'}`));
+          button.addEventListener('click', () => {
+            const status = String(version.scan_status || '').toLowerCase();
+            if (!['clean', 'unscanned'].includes(status)) return;
+            openFilePreview({ ...file, version_id: version.id, name: version.original_name || file.name, content_type: version.content_type || file.content_type }, activePreviewItem);
+            renderFilePreviewPanel('versions');
+          });
+          button.disabled = !['clean', 'unscanned'].includes(String(version.scan_status || '').toLowerCase());
+          panel.append(button);
+        });
+      } catch (error) { status.textContent = errorMessage(error, 'No se pudieron cargar las versiones.'); status.classList.add('is-error'); }
+    } else if (panelName === 'gallery') {
+      const images = (activePreviewItem ? filesForItem(activePreviewItem) : []).filter((candidate) => fileTypeInfo(candidate).previewKind === 'image' && ['clean', 'unscanned'].includes(String(candidate.scan_status || 'unscanned').toLowerCase()));
+      if (!images.length) panel.append(makeElement('p', 'boards-preview-panel-status', 'No hay otras imágenes en este elemento.'));
+      images.forEach((imageFile) => {
+        const button = makeElement('button', 'boards-preview-gallery-item'); button.type = 'button';
+        const thumbnail = document.createElement('img'); thumbnail.src = fileEndpoint(imageFile, true); thumbnail.alt = '';
+        button.append(thumbnail, makeElement('span', '', imageFile.name || imageFile.original_name || 'Imagen'));
+        button.setAttribute('aria-current', String(imageFile.file_id) === String(file.file_id) ? 'true' : 'false');
+        button.addEventListener('click', () => openFilePreview(imageFile, activePreviewItem));
+        panel.append(button);
+      });
+    } else if (panelName === 'information') {
+      if (!Array.isArray(state.fileVersions[String(file.file_id)])) {
+        try {
+          const result = await request(`/file_versions/${encodeURIComponent(file.file_id)}`);
+          if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
+          state.fileVersions[String(file.file_id)] = Array.isArray(result.data) ? result.data : [];
+        } catch (error) { /* The file reference still supplies basic metadata. */ }
+      }
+      if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
+      const version = (state.fileVersions[String(file.file_id)] || []).find((entry) => String(entry.id) === String(file.version_id))
+        || (state.fileVersions[String(file.file_id)] || []).find((entry) => Boolean(Number(entry.is_current)));
+      const info = { ...file, ...(version || {}) };
+      panel.append(previewMeta('Nombre', info.original_name || info.name), previewMeta('Tipo', info.content_type || 'Desconocido'), previewMeta('Tamaño', formatBytes(info.byte_size)), previewMeta('Versión', info.version_number ? `v${info.version_number}` : 'Actual'), previewMeta('Subido por', info.created_by_display_name || info.uploader_name || info.uploaded_by_name || info.user_name || 'Usuario desconocido'), previewMeta('Fecha', info.created_at ? displayDateTime(info.created_at) : ''));
+      if (fileTypeInfo(file).previewKind === 'image') {
+        const image = els.filePreviewContent.querySelector('img');
+        const dimensions = makeElement('p', 'boards-preview-panel-status', image?.naturalWidth ? `${image.naturalWidth} × ${image.naturalHeight} px` : 'Dimensiones disponibles al cargar la imagen.');
+        if (image) image.addEventListener('load', () => { dimensions.textContent = `${image.naturalWidth} × ${image.naturalHeight} px`; }, { once: true });
+        panel.append(dimensions);
+      }
+    }
+  }
+
+  function setupFilePreviewRail() {
+    document.querySelectorAll('[data-preview-panel]').forEach((button) => button.addEventListener('click', async () => {
+      const name = button.dataset.previewPanel;
+      const wasOpen = button.getAttribute('aria-expanded') === 'true';
+      document.querySelectorAll('[data-preview-panel]').forEach((candidate) => candidate.setAttribute('aria-expanded', 'false'));
+      if (wasOpen) { filePreviewPanelRequest += 1; els.filePreviewPanel.hidden = true; return; }
+      button.setAttribute('aria-expanded', 'true');
+      await renderFilePreviewPanel(name);
+    }));
+  }
+
+  async function openFilePreview(file, item = null) {
     if (!file?.file_id || !els.filePreviewDialog) return;
+    activePreviewFile = { ...file };
+    activePreviewItem = item || null;
+    filePreviewPanelRequest += 1;
     clearFilePreviewObjectUrl();
     const previewRequest = filePreviewRequest;
     const type = fileTypeInfo(file);
@@ -1652,6 +1781,8 @@
     els.filePreviewType.textContent = type.extension ? type.extension.toUpperCase() : (type.mime || 'Archivo');
     els.filePreviewIcon.replaceChildren(makeElement('i', `fa-solid ${type.icon}`));
     els.filePreviewContent.replaceChildren();
+    if (els.filePreviewPanel) els.filePreviewPanel.hidden = true;
+    document.querySelectorAll('[data-preview-panel]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
     if (type.previewKind === 'image') {
       const image = makeElement('img', 'boards-preview-image');
       image.src = fileEndpoint(file, true);
@@ -1727,7 +1858,7 @@
     } else {
       state.itemComments.forEach((comment) => {
         const article = makeElement('article', 'boards-comment-entry');
-        const meta = makeElement('div', 'boards-detail-meta', `Persona #${comment.created_by || '—'} · ${displayDateTime(comment.created_at)}`);
+        const meta = makeElement('div', 'boards-detail-meta', `${comment.created_by_display_name || 'Usuario desconocido'} · ${displayDateTime(comment.created_at)}`);
         const body = makeElement('p', 'boards-comment-body', comment.body || '');
         article.append(meta, body);
         els.itemCommentsList.append(article);
@@ -1755,7 +1886,8 @@
         entry.append(makeElement('strong', '', labels[event.event_type] || String(event.event_type || 'Actualización')));
         const payload = event.payload && typeof event.payload === 'object' ? stringifyValue(event.payload) : '';
         if (payload && payload !== '{}') entry.append(makeElement('p', 'boards-activity-payload', payload));
-        entry.append(makeElement('div', 'boards-detail-meta', `Persona #${event.actor_user_id || '—'} · ${displayDateTime(event.created_at)}`));
+        const actorName = event.actor_display_name || (event.actor_user_id ? 'Usuario desconocido' : 'Sistema');
+        entry.append(makeElement('div', 'boards-detail-meta', `${actorName} · ${displayDateTime(event.created_at)}`));
         els.itemActivityList.append(entry);
       });
     }
@@ -1785,7 +1917,7 @@
       if (['clean', 'unscanned'].includes(scanStatus)) {
         const preview = makeElement('button', 'boards-text-button', 'Vista previa');
         preview.type = 'button';
-        preview.addEventListener('click', () => openFilePreview({ ...file, version_id: currentVersion?.id || file.version_id }));
+        preview.addEventListener('click', () => openFilePreview({ ...file, version_id: currentVersion?.id || file.version_id }, item));
         actions.append(preview);
         const download = makeElement('a', 'boards-text-button', 'Descargar');
         download.href = fileEndpoint(file);
@@ -1828,7 +1960,7 @@
                 version_id: entry.id,
                 name: entry.original_name || file.name,
                 content_type: entry.content_type || file.content_type
-              }));
+              }, item));
               line.append(versionDownload);
               versionDownload = makeElement('a', 'boards-text-button', 'Descargar');
               const query = new URLSearchParams({ version_id: String(entry.id) });
@@ -4461,6 +4593,7 @@
 
   function setupExtendedEvents() {
     els.filePreviewDialog.addEventListener('close', clearFilePreviewObjectUrl);
+    setupFilePreviewRail();
     [els.itemDetailsDialog, els.filePreviewDialog, els.automationDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);

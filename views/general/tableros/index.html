@@ -293,7 +293,17 @@
       <div class="boards-preview-heading"><h3 id="filePreviewTitle">Vista previa</h3><span id="filePreviewType"></span></div>
       <button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar vista previa">&times;</button>
     </header>
-    <div id="filePreviewContent" class="boards-preview-content"></div>
+    <div class="boards-preview-workspace">
+      <div id="filePreviewContent" class="boards-preview-content"></div>
+      <nav class="boards-preview-rail" aria-label="Acciones del archivo">
+        <button type="button" data-preview-panel="comments" aria-expanded="false"><i class="fa-regular fa-comment" aria-hidden="true"></i><span>Comentarios</span></button>
+        <button type="button" data-preview-panel="versions" aria-expanded="false"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Versiones</span></button>
+        <button type="button" data-preview-panel="gallery" aria-expanded="false"><i class="fa-regular fa-images" aria-hidden="true"></i><span>Galería</span></button>
+        <button type="button" data-preview-panel="information" aria-expanded="false"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Información</span></button>
+        <button type="button" aria-disabled="true" disabled title="Esta función todavía no está disponible"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Extraer</span></button>
+      </nav>
+      <aside class="boards-preview-panel" id="filePreviewPanel" aria-label="Detalles del archivo" hidden></aside>
+    </div>
   </div>
 </dialog>
 

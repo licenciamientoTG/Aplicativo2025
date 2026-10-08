@@ -7,6 +7,7 @@
 - `003_rollback_notes.sql` contiene consultas de revisión. Las instrucciones destructivas están comentadas y no deben ejecutarse como parte de un despliegue normal.
 - `004_workspace_hierarchy.sql` actualiza el espacio inicial **General** a visibilidad de equipo y limita las carpetas a tres niveles, igual que Monday. Conserva los tableros privados y no elimina contenido.
 - `005_file_scan_availability.sql` habilita el estado `unscanned` y convierte las versiones que esperaban aprobación manual para que puedan descargarse. Ejecutar junto con el despliegue de la nueva aplicación.
+- `006_file_comments.sql` agrega comentarios asociados al archivo lógico para mostrarlos en el panel de vista previa. Es aditivo e idempotente; ejecutar después de `001_create_schema.sql`.
 - La conexión de la aplicación a `tableros` reutiliza la configuración SQL existente sin cambiar la conexión compartida de los demás modelos.
 
 Después de desplegar el código, Sistemas debe asignar en `/it` los permisos **Tableros - Acceso**, **Tableros - Crear** y **Tableros - Administrar** a las personas correspondientes. El módulo no concede acceso automáticamente.
@@ -27,4 +28,4 @@ La importación de proyectos desde Monday no forma parte del módulo. Los proyec
 
 ## Orden de actualización
 
-En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql` y después `005_file_scan_availability.sql`. Ambos scripts son idempotentes; el último actualiza solamente estados `pending` a `unscanned`. En instalaciones nuevas, `001_create_schema.sql` ya crea **General** como espacio visible para el equipo y admite el estado `unscanned`.
+En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql`, `005_file_scan_availability.sql` y `006_file_comments.sql`, en ese orden. Los scripts son idempotentes; `005` actualiza solamente estados `pending` a `unscanned`. En instalaciones nuevas, ejecutar `001_create_schema.sql` y después `006_file_comments.sql` para crear la tabla de comentarios.

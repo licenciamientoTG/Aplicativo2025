@@ -380,14 +380,18 @@ class TablerosModel {
             $this->requireItemOnBoard($itemId, $boardId);
         }
         $limit = max(1, min(200, $limit));
-        $sql = "SELECT TOP ($limit) id, board_id, item_id, actor_user_id, event_type, payload_json, created_at
-                FROM tb_activity WHERE board_id = ?";
+        $sql = "SELECT TOP ($limit) a.id, a.board_id, a.item_id, a.actor_user_id,
+                       COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS actor_display_name,
+                       a.event_type, a.payload_json, a.created_at
+                FROM tb_activity a
+                LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = a.actor_user_id
+                WHERE a.board_id = ?";
         $params = [$boardId];
         if ($itemId !== null) {
-            $sql .= ' AND item_id = ?';
+            $sql .= ' AND a.item_id = ?';
             $params[] = $itemId;
         }
-        $sql .= ' ORDER BY created_at DESC, id DESC';
+        $sql .= ' ORDER BY a.created_at DESC, a.id DESC';
         $events = $this->all($sql, $params);
         foreach ($events as &$event) {
             $event['payload'] = $this->decodeJson($event['payload_json'] ?? null, []);
@@ -400,9 +404,13 @@ class TablerosModel {
     public function getComments(int $boardId, int $itemId): array {
         $this->requireItemOnBoard($itemId, $boardId);
         return $this->all(
-            'SELECT TOP (200) id, board_id, item_id, parent_comment_id, body, created_by, updated_by, created_at, updated_at
-             FROM tb_comment WHERE board_id = ? AND item_id = ? AND deleted_at IS NULL
-             ORDER BY created_at, id',
+            "SELECT TOP (200) c.id, c.board_id, c.item_id, c.parent_comment_id, c.body, c.created_by, c.updated_by,
+                    COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name,
+                    c.created_at, c.updated_at
+             FROM tb_comment c
+             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = c.created_by
+             WHERE c.board_id = ? AND c.item_id = ? AND c.deleted_at IS NULL
+             ORDER BY c.created_at, c.id",
             [$boardId, $itemId]
         );
     }
@@ -428,7 +436,51 @@ class TablerosModel {
             return [
                 'id' => $id, 'board_id' => $boardId, 'item_id' => $itemId,
                 'parent_comment_id' => $parentId, 'body' => $body, 'created_by' => $userId,
+                'created_by_display_name' => $this->userDisplayName($userId),
             ];
+        });
+    }
+
+    public function getFileComments(int $fileId): array {
+        if (!$this->one('SELECT id FROM tb_file WHERE id = ? AND deleted_at IS NULL', [$fileId])) {
+            throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+        }
+        return $this->all(
+            "SELECT TOP (200) c.id, c.file_id, c.body, c.created_by,
+                    COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name,
+                    c.created_at, c.updated_at
+             FROM tb_file_comment c
+             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = c.created_by
+             WHERE c.file_id = ? AND c.deleted_at IS NULL
+             ORDER BY c.created_at, c.id",
+            [$fileId]
+        );
+    }
+
+    public function addFileComment(int $fileId, int $userId, array $input): array {
+        $body = $this->requiredString($input, 'body', 10000);
+        return $this->transaction(function () use ($fileId, $userId, $body): array {
+            if (!$this->one('SELECT id FROM tb_file WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$fileId])) {
+                throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+            }
+            $id = $this->insertId(
+                'INSERT INTO tb_file_comment (file_id, body, created_by, created_at, updated_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, GETDATE(), GETDATE())',
+                [$fileId, $body, $userId]
+            );
+            $comment = $this->one(
+                "SELECT c.id, c.file_id, c.body, c.created_by,
+                        COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name,
+                        c.created_at, c.updated_at
+                 FROM tb_file_comment c
+                 LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = c.created_by
+                 WHERE c.id = ? AND c.deleted_at IS NULL",
+                [$id]
+            );
+            if (!$comment) {
+                throw new RuntimeException('No se pudo recuperar el comentario recién creado.');
+            }
+            return $comment;
         });
     }
 
@@ -606,12 +658,15 @@ class TablerosModel {
             throw new TablerosApiException('not_found', 'No se encontró el archivo en este tablero.', 404);
         }
         return $this->all(
-            'SELECT v.id, v.file_id, v.version_number, v.original_name, v.content_type, v.byte_size,
-                    v.scan_status, v.scanned_at, v.created_by, v.created_at,
+            "SELECT v.id, v.file_id, v.version_number, v.original_name, v.content_type, v.byte_size,
+                    v.scan_status, v.scanned_at, v.created_by,
+                    COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name,
+                    v.created_at,
                     CASE WHEN f.current_version_id = v.id THEN 1 ELSE 0 END AS is_current
              FROM tb_file_version v
              INNER JOIN tb_file f ON f.id = v.file_id AND f.board_id = ?
-             WHERE v.file_id = ? AND v.deleted_at IS NULL ORDER BY v.version_number DESC',
+             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = v.created_by
+             WHERE v.file_id = ? AND v.deleted_at IS NULL ORDER BY v.version_number DESC",
             [$boardId, $fileId]
         );
     }
@@ -2653,6 +2708,15 @@ class TablerosModel {
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         $stmt->closeCursor();
         return $row ?: null;
+    }
+
+    private function userDisplayName(int $userId): ?string {
+        $row = $this->one(
+            "SELECT COALESCE(NULLIF(LTRIM(RTRIM(Nombre)), ''), NULLIF(LTRIM(RTRIM(Usuario)), '')) AS display_name
+             FROM [TG].[dbo].[Usuario] WHERE Id = ?",
+            [$userId]
+        );
+        return $row['display_name'] ?? null;
     }
 
     private function returningOne(string $sql, array $params = [], array $binaryPositions = []): ?array {
