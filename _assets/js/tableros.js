@@ -9,6 +9,8 @@
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
   let noticeTimer = 0;
+  let filePreviewObjectUrl = '';
+  let filePreviewRequest = 0;
   const els = {
     boardSelect: document.getElementById('boardSelect'),
     workspaceSelect: document.getElementById('workspaceSelect'),
@@ -1596,8 +1598,24 @@
     return `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
   }
 
-  function openFilePreview(file) {
+  function clearFilePreviewObjectUrl() {
+    filePreviewRequest += 1;
+    if (filePreviewObjectUrl) URL.revokeObjectURL(filePreviewObjectUrl);
+    filePreviewObjectUrl = '';
+  }
+
+  function showFilePreviewError(message) {
+    const error = makeElement('div', 'boards-preview-unavailable');
+    error.setAttribute('role', 'alert');
+    error.append(makeElement('h4', '', 'No se pudo cargar la vista previa'));
+    error.append(makeElement('p', '', message));
+    els.filePreviewContent.replaceChildren(error);
+  }
+
+  async function openFilePreview(file) {
     if (!file?.file_id || !els.filePreviewDialog) return;
+    clearFilePreviewObjectUrl();
+    const previewRequest = filePreviewRequest;
     const type = fileTypeInfo(file);
     const name = file.name || file.original_name || 'Archivo';
     els.filePreviewTitle.textContent = name;
@@ -1610,11 +1628,45 @@
       image.alt = name;
       els.filePreviewContent.append(image);
     } else if (['pdf', 'text'].includes(type.previewKind)) {
-      const frame = makeElement('iframe', 'boards-preview-frame');
-      frame.src = fileEndpoint(file, true);
-      frame.title = `Vista previa de ${name}`;
-      frame.referrerPolicy = 'no-referrer';
-      els.filePreviewContent.append(frame);
+      const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
+      els.filePreviewContent.append(loading);
+      openDialog(els.filePreviewDialog);
+      try {
+        const response = await fetch(fileEndpoint(file, true), {
+          credentials: 'same-origin',
+          headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : 'text/plain, text/csv, application/json' }
+        });
+        const blob = await response.blob();
+        if (!response.ok || /(?:application\/json|\+json)/i.test(response.headers.get('content-type') || '')) {
+          let message = `Error del servidor (HTTP ${response.status}).`;
+          try {
+            const payload = JSON.parse(await blob.text());
+            message = payload.error?.message || payload.message || message;
+          } catch (error) {
+            // Keep the readable HTTP fallback when the response is not JSON.
+          }
+          throw new Error(message);
+        }
+        if (previewRequest !== filePreviewRequest) return;
+        if (type.previewKind === 'pdf') {
+          filePreviewObjectUrl = URL.createObjectURL(blob);
+          const frame = makeElement('iframe', 'boards-preview-frame');
+          frame.src = filePreviewObjectUrl;
+          frame.title = `Vista previa de ${name}`;
+          frame.referrerPolicy = 'no-referrer';
+          els.filePreviewContent.replaceChildren(frame);
+        } else {
+          const text = await blob.text();
+          if (previewRequest !== filePreviewRequest) return;
+          const pre = makeElement('pre', 'boards-preview-text');
+          pre.textContent = text;
+          pre.style.cssText = 'box-sizing:border-box;width:100%;height:100%;margin:0;padding:20px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#e7e9f5;background:#1b1e34;font:inherit;text-align:left;';
+          els.filePreviewContent.replaceChildren(pre);
+        }
+      } catch (error) {
+        if (previewRequest === filePreviewRequest) showFilePreviewError(errorMessage(error, 'No se pudo conectar con el servidor.'));
+      }
+      return;
     } else {
       const fallback = makeElement('div', 'boards-preview-unavailable');
       const icon = makeElement('i', `fa-solid ${type.icon} boards-preview-unavailable-icon`);
@@ -4381,6 +4433,7 @@
   }
 
   function setupExtendedEvents() {
+    els.filePreviewDialog.addEventListener('close', clearFilePreviewObjectUrl);
     [els.itemDetailsDialog, els.filePreviewDialog, els.automationDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
