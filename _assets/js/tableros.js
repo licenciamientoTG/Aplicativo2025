@@ -1500,6 +1500,23 @@
     return button;
   }
 
+  function createTableItemName(item) {
+    const wrap = makeElement('div', 'boards-table-item-name-wrap');
+    wrap.append(makeElement('span', 'boards-item-name-link', item.name || 'Elemento sin nombre'));
+    if (canEditBoard()) {
+      const edit = makeElement('button', 'boards-item-name-edit', '');
+      edit.type = 'button';
+      edit.dataset.itemNameButton = String(item.id);
+      edit.setAttribute('aria-label', `Editar nombre: ${item.name || 'Elemento sin nombre'}`);
+      edit.title = 'Editar nombre';
+      const icon = makeElement('i', 'fa-solid fa-pen');
+      icon.setAttribute('aria-hidden', 'true');
+      edit.append(icon);
+      wrap.append(edit);
+    }
+    return wrap;
+  }
+
   function beginItemNameEdit(button) {
     const item = state.items.find((candidate) => String(candidate.id) === button.dataset.itemNameButton);
     if (!item || !canEditBoard()) return;
@@ -2680,7 +2697,7 @@
     const row = document.createElement('tr');
     row.className = 'boards-group-row';
     const cell = document.createElement('td');
-    cell.colSpan = columnCount + 4;
+    cell.colSpan = columnCount + 3;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
@@ -2798,11 +2815,9 @@
         if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
         row.append(th);
       });
-      const detailsHead = makeElement('th', 'boards-details-head', 'Detalles');
-      detailsHead.scope = 'col';
       const moveHead = makeElement('th', 'boards-move-head', 'Mover');
       moveHead.scope = 'col';
-      row.append(detailsHead, moveHead);
+      row.append(moveHead);
       return row;
     };
 
@@ -2820,7 +2835,7 @@
         if (query || state.filters.length || !canEditBoard()) {
           const emptyRow = makeElement('tr', 'boards-empty-group-row');
           const emptyCell = makeElement('td', '', query || state.filters.length ? 'No hay coincidencias en este grupo.' : 'Este grupo todavía no tiene elementos.');
-          emptyCell.colSpan = columns.length + 4;
+          emptyCell.colSpan = columns.length + 3;
           emptyRow.append(emptyCell);
           tbody.append(emptyRow);
         }
@@ -2828,6 +2843,9 @@
       groupItems.forEach((item) => {
         const row = document.createElement('tr');
         row.className = 'boards-item-row';
+        row.tabIndex = 0;
+        row.dataset.openItemDetails = String(item.id);
+        row.setAttribute('aria-label', `Abrir detalles de ${item.name || 'elemento'}`);
         row.style.setProperty('--group-color', safeGroupColor(group.color));
         const selectCell = makeElement('td', 'boards-select-cell');
         if (canEditBoard()) {
@@ -2842,7 +2860,7 @@
         const nameCell = document.createElement('th');
         nameCell.scope = 'row';
         nameCell.className = 'boards-item-name';
-        nameCell.append(createItemNameControl(item));
+        nameCell.append(createTableItemName(item));
         row.append(nameCell);
         columns.forEach((column) => {
           const cell = document.createElement('td');
@@ -2854,10 +2872,6 @@
           cell.append(createCellEditor(item, column, getCellValue(item, column)));
           row.append(cell);
         });
-        const detailsCell = document.createElement('td');
-        detailsCell.className = 'boards-details-cell';
-        detailsCell.append(createDetailsButton(item));
-        row.append(detailsCell);
         const moveCell = document.createElement('td');
         moveCell.className = 'boards-move-cell';
         moveCell.append(createMoveEditor(item));
@@ -2867,7 +2881,7 @@
       if (canEditBoard() && !query && !state.filters.length) {
         const addRow = makeElement('tr', 'boards-add-row');
         const addCell = document.createElement('td');
-        addCell.colSpan = columns.length + 4;
+        addCell.colSpan = columns.length + 3;
         if (state.inlineAddGroupId === String(group.id)) {
           const form = makeElement('form', 'boards-inline-add-form');
           form.dataset.inlineAddForm = String(group.id);
@@ -2902,7 +2916,7 @@
       const tbody = document.createElement('tbody');
       const emptyRow = document.createElement('tr');
       const emptyCell = document.createElement('td');
-      emptyCell.colSpan = columns.length + 4;
+      emptyCell.colSpan = columns.length + 3;
       emptyCell.className = 'boards-table-empty';
       emptyCell.textContent = canManageStructure() ? 'Crea un grupo para empezar a agregar elementos.' : 'Este tablero todavía no tiene grupos.';
       emptyRow.append(emptyCell);
@@ -4480,7 +4494,39 @@
     [els.boardTableContainer, els.boardRendererArea].forEach((host) => {
       host.addEventListener('click', (event) => {
         const details = event.target.closest('[data-open-item-details]');
-        if (details) openItemDetails(details.dataset.openItemDetails);
+        if (!details) return;
+        if (details.matches('.boards-item-row')) {
+          if (event.target.closest('button, a, input, select, textarea, [contenteditable], [role="button"], [data-cell-editor], .boards-item-name-form')) return;
+          details.focus();
+          openItemDetails(details.dataset.openItemDetails);
+          return;
+        }
+        openItemDetails(details.dataset.openItemDetails);
+      });
+    });
+    els.boardTableContainer.addEventListener('keydown', (event) => {
+      const row = event.target.closest('.boards-item-row');
+      if (!row || event.target !== row || !['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      openItemDetails(row.dataset.openItemDetails);
+    });
+    const detailTabs = [...els.itemDetailsDialog.querySelectorAll('[role="tab"]')];
+    const activateDetailTab = (tab, focus = false) => {
+      detailTabs.forEach((candidate) => {
+        const selected = candidate === tab;
+        candidate.setAttribute('aria-selected', selected ? 'true' : 'false');
+        candidate.tabIndex = selected ? 0 : -1;
+        document.getElementById(candidate.getAttribute('aria-controls')).hidden = !selected;
+      });
+      if (focus) tab.focus();
+    };
+    detailTabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activateDetailTab(tab));
+      tab.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? detailTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : detailTabs.length - 1)) % detailTabs.length;
+        activateDetailTab(detailTabs[next], true);
       });
     });
     els.itemCommentForm.addEventListener('submit', submitItemComment);
