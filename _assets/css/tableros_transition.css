@@ -10,6 +10,7 @@
   max-width: 34vw;
   object-fit: contain;
   pointer-events: none;
-  transform: translate3d(110vw, -50%, 0);
+  /* Keep the mascot's trailing edge on the curtain's moving edge. */
+  transform: translate3d(calc(100vw + 100%), -50%, 0);
   view-transition-name: tableros-mascot;
 }

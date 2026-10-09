@@ -16,13 +16,19 @@ html.tableros-transition-incoming body { background: #111428; }
   pointer-events: none;
   view-transition-name: tableros-mascot;
 }
-html.tableros-transition-incoming .tableros-transition-mascot { transform: translate3d(-45vw, -50%, 0); }
+html.tableros-transition-incoming { --tableros-sweep-duration: .9s; --tableros-sweep-easing: cubic-bezier(.72, 0, .28, 1); }
+html.tableros-transition-incoming .tableros-transition-mascot { transform: translate3d(-100%, -50%, 0); }
 html.tableros-transition-incoming::view-transition-old(root) {
   z-index: 2;
-  animation: tableros-root-wipe .9s .1s cubic-bezier(.72, 0, .28, 1) both;
+  animation: tableros-root-wipe var(--tableros-sweep-duration) var(--tableros-sweep-easing) both;
 }
 html.tableros-transition-incoming::view-transition-new(root) { z-index: 1; animation: none; }
-html.tableros-transition-incoming::view-transition-group(tableros-mascot) { z-index: 3; animation-duration: .9s; animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+html.tableros-transition-incoming::view-transition-group(tableros-mascot) {
+  z-index: 3;
+  animation-duration: var(--tableros-sweep-duration);
+  animation-delay: 0s;
+  animation-timing-function: var(--tableros-sweep-easing);
+}
 @keyframes tableros-root-wipe {
   from { clip-path: inset(0 0 0 0); }
   to { clip-path: inset(0 100% 0 0); }
