@@ -794,7 +794,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
   background-position: right 8px center;
   background-size: 18px 18px;
 }
-.boards-cell-input.is-date::-webkit-calendar-picker-indicator { width: 24px; height: 24px; margin: 0 -3px 0 0; opacity: 0; cursor: pointer; }
+.boards-cell-input.is-date::-webkit-calendar-picker-indicator { width: 32px; height: 28px; margin: 0 -6px 0 0; opacity: .01; cursor: pointer; }
 .boards-cell-input:hover,
 .boards-status-select:hover { border-color: #666a89; background-color: #393c5a; }
 .boards-cell-input:focus,
