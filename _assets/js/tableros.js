@@ -228,13 +228,17 @@
   }
 
   function recycleAction(label, entityType, entityId, operation, boardId = state.board?.id) {
-    const button = makeElement('button', 'boards-text-button boards-recycle-action', label);
+    const iconActions = ['trash', 'archive', 'permanent'];
+    const button = makeElement('button', 'boards-text-button boards-recycle-action', iconActions.includes(operation) ? '' : label);
     button.type = 'button';
     button.dataset.recycleAction = operation;
     button.dataset.recycleType = entityType;
     button.dataset.recycleId = String(entityId);
     if (boardId != null) button.dataset.recycleBoard = String(boardId);
     button.setAttribute('aria-label', `${label}: ${entityType} ${entityId}`);
+    button.title = label;
+    if (operation === 'archive') button.innerHTML = '<i class="fa-solid fa-box-archive" aria-hidden="true"></i>';
+    else if (iconActions.includes(operation)) button.innerHTML = '<i class="fa-solid fa-trash-can" aria-hidden="true"></i>';
     return button;
   }
 

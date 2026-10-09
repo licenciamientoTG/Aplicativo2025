@@ -157,6 +157,7 @@ class TablerosModel {
             $boardId = isset($row['board_id']) ? (int)$row['board_id'] : null;
             $workspaceId = isset($row['workspace_id']) ? (int)$row['workspace_id'] : null;
             if ($type === 'workspace') $workspaceId = $id;
+            if ($type === 'board') $boardId = $id;
             if ($type === 'file') $boardId = (int)$row['board_id'];
             if ($type === 'group' || $type === 'column' || $type === 'item') $boardId = (int)$row['board_id'];
             if ($type === 'folder') $workspaceId = (int)$row['workspace_id'];
