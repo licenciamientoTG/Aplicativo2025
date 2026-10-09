@@ -1,9 +1,8 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Dashboard{% endblock %}
-{% block mycss %}<link href="{{ css_v('tableros_transition.css') }}" rel="stylesheet">{% endblock %}
+{% block mycss %}{% endblock %}
 {% block menutitle %}Dashboard{% endblock %}
 {% block content %}
-<img id="aplicativoReturnTransitionMascot" class="tableros-transition-mascot is-reversed" data-transition-src="{{ IMAGES }}mascota-agujita.webp" alt="" aria-hidden="true" hidden>
 
 {% if authorized(6) %}
 <style>

@@ -13,6 +13,9 @@
 	<link href="/_assets/css/app.css" rel="stylesheet">
 	<link href="/_assets/css/light.css" rel="stylesheet">
 	<link href="{{ css_v('app_launcher.css') }}" rel="stylesheet">
+	{% if tableros_access('access') %}
+	<script src="{{ js_v('tableros_transition.js') }}" data-transition-stylesheet="{{ css_v('tableros_transition.css')|e('html_attr') }}"></script>
+	{% endif %}
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
 
 	<!-- Alertify -->
@@ -42,9 +45,6 @@
 
 
 	{% block mycss %}{% endblock %}
-	{% if tableros_access('access') %}
-	<script src="{{ js_v('tableros_transition.js') }}" data-transition-stylesheet="{{ css_v('tableros_transition.css')|e('html_attr') }}"></script>
-	{% endif %}
 </head>
 
 <body class="{% block bodyClass %}{% endblock %}">
