@@ -61,6 +61,7 @@
   let filePreviewPanelRequest = 0;
   let activePreviewFile = null;
   let activePreviewItem = null;
+  let imageStageObserver = null;
   const els = {
     boardSelect: document.getElementById('boardSelect'),
     workspaceSelect: document.getElementById('workspaceSelect'),
@@ -2194,6 +2195,10 @@
 
   async function openFilePreview(file, item = null) {
     if (!file?.file_id || !els.filePreviewDialog) return;
+    if (imageStageObserver) {
+      imageStageObserver.disconnect();
+      imageStageObserver = null;
+    }
     activePreviewFile = { ...file };
     activePreviewItem = item || null;
     filePreviewPanelRequest += 1;
@@ -2215,6 +2220,8 @@
       image.tabIndex = 0;
       image.style.setProperty('--preview-zoom', '1');
       image.style.setProperty('--preview-rotation', '0deg');
+      image.style.setProperty('--preview-pan-x', '0px');
+      image.style.setProperty('--preview-pan-y', '0px');
       const toolbar = makeElement('div', 'boards-preview-image-toolbar');
       toolbar.setAttribute('role', 'toolbar');
       toolbar.setAttribute('aria-label', 'Acciones de imagen');
@@ -2230,18 +2237,34 @@
         toolbar.append(button);
         return button;
       };
+      let zoom = 1;
+      let rotation = 0;
+      let panX = 0;
+      let panY = 0;
+      let dragOrigin = null;
+      const updatePan = () => {
+        const sideways = rotation % 180 !== 0;
+        const renderedWidth = sideways ? image.offsetHeight : image.offsetWidth;
+        const renderedHeight = sideways ? image.offsetWidth : image.offsetHeight;
+        const limitX = Math.max(0, (renderedWidth * zoom - stage.clientWidth) / 2);
+        const limitY = Math.max(0, (renderedHeight * zoom - stage.clientHeight) / 2);
+        panX = Math.max(-limitX, Math.min(limitX, panX));
+        panY = Math.max(-limitY, Math.min(limitY, panY));
+        image.style.setProperty('--preview-pan-x', `${panX}px`);
+        image.style.setProperty('--preview-pan-y', `${panY}px`);
+      };
       const updateImageTransform = () => {
         image.style.setProperty('--preview-zoom', String(zoom));
         image.style.setProperty('--preview-rotation', `${rotation}deg`);
+        image.classList.toggle('is-zoomed', zoom > 1);
         const rotatedSideways = rotation % 180 !== 0;
         image.style.maxWidth = rotatedSideways ? `${stage.clientHeight}px` : '100%';
         image.style.maxHeight = rotatedSideways ? `${stage.clientWidth}px` : '100%';
+        updatePan();
       };
-      let zoom = 1;
-      let rotation = 0;
       addImageAction('fa-magnifying-glass-plus', 'Acercar imagen', () => { zoom = Math.min(zoom + 0.25, 3); updateImageTransform(); });
-      addImageAction('fa-magnifying-glass-minus', 'Alejar imagen', () => { zoom = Math.max(zoom - 0.25, 0.5); updateImageTransform(); });
-      addImageAction('fa-rotate-right', 'Girar 90 grados', () => { rotation = (rotation + 90) % 360; updateImageTransform(); });
+      addImageAction('fa-magnifying-glass-minus', 'Alejar imagen', () => { zoom = Math.max(zoom - 0.25, 0.5); if (zoom <= 1) { panX = 0; panY = 0; } updateImageTransform(); });
+      addImageAction('fa-rotate-right', 'Girar 90 grados', () => { rotation = (rotation + 90) % 360; panX = 0; panY = 0; updateImageTransform(); });
       addImageAction('fa-expand', 'Pantalla completa', () => {
         if (stage.requestFullscreen) stage.requestFullscreen().catch(() => {});
       });
@@ -2265,12 +2288,26 @@
         link.click();
       });
       download.classList.add('is-download');
+      image.addEventListener('pointerdown', (event) => {
+        if (zoom <= 1 || event.button !== 0) return;
+        dragOrigin = { x: event.clientX, y: event.clientY, panX, panY };
+        image.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      });
+      image.addEventListener('pointermove', (event) => {
+        if (!dragOrigin) return;
+        panX = dragOrigin.panX + event.clientX - dragOrigin.x;
+        panY = dragOrigin.panY + event.clientY - dragOrigin.y;
+        updatePan();
+      });
+      const finishPan = () => { dragOrigin = null; };
+      image.addEventListener('pointerup', finishPan);
+      image.addEventListener('pointercancel', finishPan);
       stage.append(image, toolbar);
       els.filePreviewContent.append(stage);
       if (window.ResizeObserver) {
-        const imageStageObserver = new ResizeObserver(() => updateImageTransform());
+        imageStageObserver = new ResizeObserver(() => updateImageTransform());
         imageStageObserver.observe(stage);
-        els.filePreviewDialog.addEventListener('close', () => imageStageObserver.disconnect(), { once: true });
       }
     } else if (['pdf', 'text', 'spreadsheet'].includes(type.previewKind)) {
       const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
@@ -5113,7 +5150,13 @@
   }
 
   function setupExtendedEvents() {
-    els.filePreviewDialog.addEventListener('close', clearFilePreviewObjectUrl);
+    els.filePreviewDialog.addEventListener('close', () => {
+      clearFilePreviewObjectUrl();
+      if (imageStageObserver) {
+        imageStageObserver.disconnect();
+        imageStageObserver = null;
+      }
+    });
     setupFilePreviewRail();
     [els.itemDetailsDialog, els.filePreviewDialog, els.automationDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {

@@ -229,10 +229,16 @@
     <div class="boards-dialog-heading"><div><h3 id="createGroupTitle">Nuevo grupo</h3><p>Usa grupos para separar etapas o equipos.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
     <label class="boards-field-label" for="newGroupName">Nombre del grupo</label>
     <input class="form-control" id="newGroupName" name="name" maxlength="120" required autocomplete="off" placeholder="Ej. En seguimiento">
-    <label class="boards-field-label" for="newGroupColor">Color del grupo</label>
-    <select class="form-select" id="newGroupColor" name="color">
-      <option value="#0f766e">Verde petróleo</option><option value="#3574a5">Azul</option><option value="#8a5ca6">Violeta</option><option value="#bb7a2a">Ámbar</option><option value="#b64f57">Coral</option>
-    </select>
+    <fieldset class="boards-folder-colors boards-group-colors">
+      <legend class="boards-field-label">Color del grupo</legend>
+      <div class="boards-folder-color-options">
+        <label class="boards-folder-color" title="Verde petróleo"><input type="radio" name="color" value="#0f766e" aria-label="Verde petróleo" checked><span style="--folder-color: #0f766e"></span></label>
+        <label class="boards-folder-color" title="Azul"><input type="radio" name="color" value="#3574a5" aria-label="Azul"><span style="--folder-color: #3574a5"></span></label>
+        <label class="boards-folder-color" title="Violeta"><input type="radio" name="color" value="#8a5ca6" aria-label="Violeta"><span style="--folder-color: #8a5ca6"></span></label>
+        <label class="boards-folder-color" title="Ámbar"><input type="radio" name="color" value="#bb7a2a" aria-label="Ámbar"><span style="--folder-color: #bb7a2a"></span></label>
+        <label class="boards-folder-color" title="Coral"><input type="radio" name="color" value="#b64f57" aria-label="Coral"><span style="--folder-color: #b64f57"></span></label>
+      </div>
+    </fieldset>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Crear grupo</button></div>
   </form>
 </dialog>
