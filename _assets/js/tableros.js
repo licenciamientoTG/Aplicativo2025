@@ -3854,6 +3854,9 @@
 
     state.groups.forEach((group) => {
       const groupItems = orderItemsByHierarchy(filteredItems.filter((item) => String(item.group_id) === String(group.id)));
+      const parentIdsWithVisibleChildren = new Set(groupItems
+        .filter((item) => item.parent_item_id != null)
+        .map((item) => String(item.parent_item_id)));
       const tbody = document.createElement('tbody');
       tbody.className = 'boards-group-body';
       tbody.dataset.groupBody = String(group.id);
@@ -3876,7 +3879,9 @@
       }
       groupItems.forEach((item) => {
         const row = document.createElement('tr');
-        row.className = 'boards-item-row';
+        const isChild = item.parent_item_id != null;
+        row.className = `boards-item-row${isChild ? ' is-child-row' : ''}${parentIdsWithVisibleChildren.has(String(item.id)) ? ' has-child-rows' : ''}`;
+        if (isChild) row.dataset.parentItemId = String(item.parent_item_id);
         row.tabIndex = 0;
         row.draggable = canEditBoard() && item.parent_item_id == null;
         row.dataset.itemRow = '1';
