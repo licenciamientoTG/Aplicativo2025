@@ -177,6 +177,7 @@
     filterDraft: [],
     calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     collapsedGroups: new Set(),
+    draggedItemId: '',
     summaryFunctions: {},
     summaryPeople: new Map(),
     summaryPeopleRequested: new Set(),
@@ -1619,6 +1620,16 @@
 
   function createTableItemName(item) {
     const wrap = makeElement('div', 'boards-table-item-name-wrap');
+    if (canEditBoard() && item.parent_item_id == null) {
+      const dragHandle = makeElement('button', 'boards-item-drag-handle');
+      dragHandle.type = 'button';
+      dragHandle.draggable = true;
+      dragHandle.dataset.dragItem = String(item.id);
+      dragHandle.setAttribute('aria-label', `Arrastrar ${item.name || 'elemento'} a otro grupo`);
+      dragHandle.title = 'Arrastrar a otro grupo';
+      dragHandle.innerHTML = '<i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>';
+      wrap.append(dragHandle);
+    }
     wrap.append(makeElement('span', 'boards-item-name-link', item.name || 'Elemento sin nombre'));
     if (canEditBoard()) {
       const edit = makeElement('button', 'boards-item-name-edit', '');
@@ -3490,7 +3501,7 @@
     const row = document.createElement('tr');
     row.className = 'boards-group-row';
     const cell = document.createElement('td');
-    cell.colSpan = columnCount + 3;
+    cell.colSpan = columnCount + 2;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
@@ -3701,14 +3712,21 @@
           const ends = ranges.map((range) => range.end || range.start).filter(Boolean).sort();
           const start = starts[0];
           const end = ends[ends.length - 1];
-          cell.append(makeElement('span', 'boards-summary-count', `${formatDate(start, { day: 'numeric', month: 'short' })} – ${formatDate(end, { day: 'numeric', month: 'short' })}`));
-          const track = makeElement('div', 'boards-summary-progress');
-          const span = Math.max(1, new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`));
-          const elapsed = Math.max(0, Math.min(1, (Date.now() - new Date(`${start}T00:00:00`)) / span));
-          const fill = makeElement('span', 'boards-summary-progress-fill');
-          fill.style.width = `${Math.max(4, elapsed * 100)}%`;
-          track.append(fill);
-          cell.append(track);
+          const rangeLabel = `${formatDate(start, { day: 'numeric', month: 'short' })} – ${formatDate(end, { day: 'numeric', month: 'short' })}`;
+          if (type === 'date') {
+            const summary = makeElement('span', 'boards-summary-count', `${ranges.length} ${ranges.length === 1 ? 'fecha' : 'fechas'} · ${rangeLabel}`);
+            summary.title = `Rango de fechas con valor: ${rangeLabel}`;
+            cell.append(summary);
+          } else {
+            cell.append(makeElement('span', 'boards-summary-count', rangeLabel));
+            const track = makeElement('div', 'boards-summary-progress');
+            const span = Math.max(1, new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`));
+            const elapsed = Math.max(0, Math.min(1, (Date.now() - new Date(`${start}T00:00:00`)) / span));
+            const fill = makeElement('span', 'boards-summary-progress-fill');
+            fill.style.width = `${Math.max(4, elapsed * 100)}%`;
+            track.append(fill);
+            cell.append(track);
+          }
         }
       } else if (type === 'tags') {
         const tags = new Set(groupItems.flatMap((item) => {
@@ -3724,7 +3742,6 @@
       }
       row.append(cell);
     });
-    row.append(makeElement('td', 'boards-table-summary-spacer'));
     return row;
   }
 
@@ -3798,9 +3815,6 @@
         if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
         row.append(th);
       });
-      const moveHead = makeElement('th', 'boards-move-head', 'Mover');
-      moveHead.scope = 'col';
-      row.append(moveHead);
       return row;
     };
 
@@ -3808,6 +3822,7 @@
       const groupItems = filteredItems.filter((item) => String(item.group_id) === String(group.id));
       const tbody = document.createElement('tbody');
       tbody.className = 'boards-group-body';
+      tbody.dataset.groupBody = String(group.id);
       tbody.append(createGroupRow(group, groupItems.length, columns.length));
       if (state.collapsedGroups.has(String(group.id))) {
         const summaryRow = createGroupSummaryRow(columns, groupItems);
@@ -3820,7 +3835,7 @@
         if (query || state.filters.length || !canEditBoard()) {
           const emptyRow = makeElement('tr', 'boards-empty-group-row');
           const emptyCell = makeElement('td', '', query || state.filters.length ? 'No hay coincidencias en este grupo.' : 'Este grupo todavía no tiene elementos.');
-          emptyCell.colSpan = columns.length + 3;
+          emptyCell.colSpan = columns.length + 2;
           emptyRow.append(emptyCell);
           tbody.append(emptyRow);
         }
@@ -3829,6 +3844,7 @@
         const row = document.createElement('tr');
         row.className = 'boards-item-row';
         row.tabIndex = 0;
+        row.dataset.itemRow = '1';
         row.dataset.openItemDetails = String(item.id);
         row.setAttribute('aria-label', `Abrir detalles de ${item.name || 'elemento'}`);
         row.style.setProperty('--group-color', safeGroupColor(group.color));
@@ -3857,16 +3873,12 @@
           cell.append(createCellEditor(item, column, getCellValue(item, column)));
           row.append(cell);
         });
-        const moveCell = document.createElement('td');
-        moveCell.className = 'boards-move-cell';
-        moveCell.append(createMoveEditor(item));
-        row.append(moveCell);
         tbody.append(row);
       });
       if (canEditBoard() && !query && !state.filters.length) {
         const addRow = makeElement('tr', 'boards-add-row');
         const addCell = document.createElement('td');
-        addCell.colSpan = columns.length + 3;
+        addCell.colSpan = columns.length + 2;
         if (state.inlineAddGroupId === String(group.id)) {
           const form = makeElement('form', 'boards-inline-add-form');
           form.dataset.inlineAddForm = String(group.id);
@@ -3903,7 +3915,7 @@
       const tbody = document.createElement('tbody');
       const emptyRow = document.createElement('tr');
       const emptyCell = document.createElement('td');
-      emptyCell.colSpan = columns.length + 3;
+      emptyCell.colSpan = columns.length + 2;
       emptyCell.className = 'boards-table-empty';
       emptyCell.textContent = canManageStructure() ? 'Crea un grupo para empezar a agregar elementos.' : 'Este tablero todavía no tiene grupos.';
       emptyRow.append(emptyCell);
@@ -4848,6 +4860,18 @@
     if (!item || !groupId || String(item.group_id) === String(groupId)) return;
     select.disabled = true;
     try {
+      await moveItemToGroup(item, groupId);
+    } finally {
+      if (document.contains(select)) {
+        select.value = String(item.group_id);
+        select.disabled = false;
+      }
+    }
+  }
+
+  async function moveItemToGroup(item, groupId) {
+    if (!item || !groupId || String(item.group_id) === String(groupId) || !canEditBoard()) return;
+    try {
       const result = await post('/move_item', {
         board_id: state.board.id,
         item_id: item.id,
@@ -4867,9 +4891,6 @@
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo mover el elemento.'), 'error');
       if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
-      else select.value = select.dataset.currentGroup;
-    } finally {
-      if (document.contains(select)) select.disabled = false;
     }
   }
 
@@ -5463,6 +5484,46 @@
         state.inlineAddGroupId = '';
         renderTable();
       }
+    });
+    els.boardTableContainer.addEventListener('dragstart', (event) => {
+      const handle = event.target.closest('[data-drag-item]');
+      const row = handle?.closest('[data-item-row]');
+      const item = handle ? state.items.find((candidate) => String(candidate.id) === handle.dataset.dragItem) : null;
+      if (!handle || !row || !item || item.parent_item_id != null || !canEditBoard()) {
+        event.preventDefault();
+        return;
+      }
+      state.draggedItemId = String(item.id);
+      row.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(item.id));
+    });
+    els.boardTableContainer.addEventListener('dragover', (event) => {
+      if (!state.draggedItemId) return;
+      const body = event.target.closest('[data-group-body]');
+      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
+      if (!body || !item || String(item.group_id) === body.dataset.groupBody) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      els.boardTableContainer.querySelectorAll('.is-drop-target').forEach((target) => target.classList.remove('is-drop-target'));
+      body.classList.add('is-drop-target');
+    });
+    els.boardTableContainer.addEventListener('dragleave', (event) => {
+      const body = event.target.closest('[data-group-body]');
+      if (body && (!event.relatedTarget || !body.contains(event.relatedTarget))) body.classList.remove('is-drop-target');
+    });
+    els.boardTableContainer.addEventListener('drop', (event) => {
+      const body = event.target.closest('[data-group-body]');
+      if (!state.draggedItemId || !body) return;
+      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
+      if (!item || String(item.group_id) === body.dataset.groupBody) return;
+      event.preventDefault();
+      body.classList.remove('is-drop-target');
+      moveItemToGroup(item, body.dataset.groupBody);
+    });
+    els.boardTableContainer.addEventListener('dragend', () => {
+      state.draggedItemId = '';
+      els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target'));
     });
     els.boardTableContainer.addEventListener('submit', (event) => {
       const form = event.target.closest('[data-inline-add-form]');
