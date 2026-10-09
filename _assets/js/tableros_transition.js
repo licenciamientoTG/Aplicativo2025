@@ -4,6 +4,7 @@
   var destination = '/tableros/index';
   var transitionKey = 'tableros-transition-to';
   var mascotPath = '/_assets/images/mascota-agujita.webp';
+  var fallbackMascotPath = '/_assets/images/mascota-agujita.png';
   var script = document.currentScript;
   var transitionStylesheet = script && script.getAttribute('data-transition-stylesheet');
   var root = document.documentElement;
@@ -11,6 +12,8 @@
   var supportsTransitions = !reducedMotion && window.CSS && typeof CSS.supports === 'function' && CSS.supports('view-transition-name: tableros-mascot') && typeof document.startViewTransition === 'function';
   var mascotImage = null;
   var mascotReady = null;
+  var loadedMascotPath = mascotPath;
+  var incomingMascotPath = mascotPath;
   var transitionStylesheetReady = null;
   var navigationPending = false;
   var outgoingStylesheet = null;
@@ -21,7 +24,9 @@
     var marker = sessionStorage.getItem(transitionKey);
     if (marker !== null) {
       sessionStorage.removeItem(transitionKey);
-      var timestamp = Number(marker);
+      var markerParts = marker.split('|');
+      var timestamp = Number(markerParts[0]);
+      incomingMascotPath = markerParts[1] === 'png' ? fallbackMascotPath : mascotPath;
       incoming = window.location.pathname.replace(/\/$/, '') === destination && Number.isFinite(timestamp) && Date.now() - timestamp >= 0 && Date.now() - timestamp < 8000;
     }
   } catch (error) {
@@ -31,15 +36,22 @@
 
   function preloadMascot() {
     if (mascotReady || !supportsTransitions) return mascotReady;
-    mascotImage = new Image();
-    mascotImage.decoding = 'async';
-    mascotImage.src = mascotPath;
-    mascotReady = typeof mascotImage.decode === 'function'
-      ? mascotImage.decode().then(function () { return mascotImage; })
-      : new Promise(function (resolve, reject) {
-          mascotImage.onload = function () { resolve(mascotImage); };
-          mascotImage.onerror = reject;
-        });
+    function decodeMascot(path) {
+      return new Promise(function (resolve, reject) {
+        var image = new Image();
+        image.decoding = 'async';
+        image.onload = function () { mascotImage = image; loadedMascotPath = path; resolve(image); };
+        image.onerror = reject;
+        image.src = path;
+        if (typeof image.decode === 'function') {
+          image.decode().then(function () { mascotImage = image; loadedMascotPath = path; resolve(image); }, reject);
+        }
+      });
+    }
+    mascotReady = decodeMascot(mascotPath).catch(function () {
+      loadedMascotPath = fallbackMascotPath;
+      return decodeMascot(fallbackMascotPath);
+    });
     mascotReady.catch(function () { /* The click path falls back to ordinary navigation. */ });
     return mascotReady;
   }
@@ -96,7 +108,7 @@
     function activateIncomingMascot() {
       var image = document.getElementById('tablerosTransitionMascot');
       if (!image) return false;
-      if (!image.getAttribute('src')) image.src = image.getAttribute('data-transition-src') || mascotPath;
+      if (!image.getAttribute('src')) image.src = incomingMascotPath || image.getAttribute('data-transition-src') || mascotPath;
       image.hidden = false;
       return true;
     }
@@ -166,7 +178,7 @@
       var image = prepared[0];
       var stylesheet = prepared[1];
       try {
-        var marker = String(Date.now());
+        var marker = String(Date.now()) + '|' + (loadedMascotPath === fallbackMascotPath ? 'png' : 'webp');
         sessionStorage.setItem(transitionKey, marker);
         window.setTimeout(function () {
           try {

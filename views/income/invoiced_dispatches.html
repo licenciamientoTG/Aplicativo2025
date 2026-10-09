@@ -113,7 +113,6 @@
     #grid-progress-bar { transition: width .35s ease; }
     @media (prefers-reduced-motion: reduce) {
         #grid-progress-bar { transition: none; }
-    #grid-loader .spinner-border { animation-duration: 1.5s; }
         #grid-loader .spinner-border { animation: none; }
         #grid-progress-bar.progress-bar-animated { animation: none; }
     }
@@ -460,14 +459,14 @@ function updateGridProgress() {
     // El servidor devuelve el resultado en una sola respuesta, por eso esta
     // barra representa tiempo estimado y se reserva el 100% para el final real.
     const progress = Math.min(95, Math.floor(5 + (elapsed / GRID_PROGRESS_ESTIMATE_MS) * 90));
-    let message = 'Preparando el análisis...';
+    let message = 'Etapa estimada: preparando el análisis...';
 
     if (progress >= 75) {
-        message = 'Organizando los resultados...';
+        message = 'Etapa estimada: consolidando resultados...';
     } else if (progress >= 45) {
-        message = 'Comparando patrones históricos...';
+        message = 'Etapa estimada: comparando patrones históricos...';
     } else if (progress >= 20) {
-        message = 'Revisando los despachos...';
+        message = 'Etapa estimada: revisando despachos...';
     }
 
     $('#grid-progress-value').text(progress);
@@ -480,7 +479,7 @@ function updateGridProgress() {
 function startGridProgress() {
     clearInterval(gridProgressTimer);
     gridProgressStartedAt = Date.now();
-    $('#grid-progress-message').text('Preparando el análisis...');
+    $('#grid-progress-message').text('Etapa estimada: preparando el análisis...');
     $('#grid-progress-value').text('5');
     $('#grid-progress-elapsed').text('00:00 transcurridos');
     $('#grid-loader .progress').attr('aria-valuenow', 5);
