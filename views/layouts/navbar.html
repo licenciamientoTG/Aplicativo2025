@@ -44,47 +44,52 @@
             </li>
         </ul> #}
         <ul class="navbar-nav navbar-align">
-            <li class="nav-item dropdown">
-                <a class="nav-icon dropdown-toggle" href="#" id="alertsDropdown" data-bs-toggle="dropdown">
+            <li class="nav-item dropdown app-launcher" data-bs-auto-close="true">
+                <a class="nav-icon dropdown-toggle" href="#" id="appLauncher" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Abrir aplicaciones">
+                    <i class="fa-solid fa-grip" aria-hidden="true"></i>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end app-launcher-menu" aria-labelledby="appLauncher">
+                    <div class="app-launcher-title">Aplicaciones</div>
+                    {% if tableros_access('access') %}
+                    <a class="app-launcher-tile" href="/tableros/index">
+                        <span><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i></span>
+                        <strong>Tableros</strong>
+                    </a>
+                    {% endif %}
+                    <a class="app-launcher-tile is-current" href="/home/index">
+                        <span><i class="fa-solid fa-house" aria-hidden="true"></i></span>
+                        <strong>Aplicativo</strong>
+                    </a>
+                    <a class="app-launcher-tile" href="https://totalgas.mojohelpdesk.com/" target="_blank" rel="noopener">
+                        <span><i class="fa-solid fa-headset" aria-hidden="true"></i></span>
+                        <strong>Mojo Helpdesk</strong>
+                    </a>
+                    <a class="app-launcher-tile" href="https://proveedores.totalgasonline.net/" target="_blank" rel="noopener">
+                        <span><i class="fa-solid fa-building" aria-hidden="true"></i></span>
+                        <strong>Portal de proveedores</strong>
+                    </a>
+                    <a class="app-launcher-tile" href="https://hrms.totalgasonline.net/" target="_blank" rel="noopener">
+                        <span><i class="fa-solid fa-users" aria-hidden="true"></i></span>
+                        <strong>HRMS</strong>
+                    </a>
+                    <a class="app-launcher-tile" href="https://remoto.totalgasonline.com/" target="_blank" rel="noopener">
+                        <span><i class="fa-solid fa-desktop" aria-hidden="true"></i></span>
+                        <strong>Remoto</strong>
+                    </a>
+                </div>
+            </li>
+            <li class="nav-item dropdown" id="notificationsDropdown" data-csrf-token="{{ tableros_csrf|default('')|e('html_attr') }}">
+                <a class="nav-icon dropdown-toggle" href="#" id="alertsDropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notificaciones">
                     <div class="position-relative">
                         <i class="align-middle" data-feather="bell"></i>
-                        <span class="indicator">0</span>
+                        <span class="indicator" id="notificationsIndicator" hidden>0</span>
                     </div>
                 </a>
                 <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end py-0" aria-labelledby="alertsDropdown">
-                    <div class="dropdown-menu-header">
-                        0 Notificaciones nuevas
+                    <div class="dropdown-menu-header" id="notificationsHeader">Cargando notificaciones…</div>
+                    <div class="list-group" id="notificationsList" aria-live="polite">
+                        <div class="list-group-item text-muted">Cargando notificaciones…</div>
                     </div>
-                    <div class="list-group">
-                        <a href="#" class="list-group-item">
-                            <div class="row g-0 align-items-center">
-                                <div class="col-2">
-                                    <i class="text-success" data-feather="check-circle"></i>
-                                </div>
-                                <div class="col-10">
-                                    <div class="text-dark">No existen notificaciones</div>
-                                    {# <div class="text-muted small mt-1">Restart server 12 to complete the update.</div> #}
-                                    {# <div class="text-muted small mt-1">30m ago</div> #}
-                                </div>
-                            </div>
-                        </a>
-                        {# Utilizar este código cuando se vayan a mandar llamar notificaciones para los usuarios #}
-                        {# <a href="#" class="list-group-item">
-                            <div class="row g-0 align-items-center">
-                                <div class="col-2">
-                                    <i class="text-danger" data-feather="alert-circle"></i>
-                                </div>
-                                <div class="col-10">
-                                    <div class="text-dark">Update completed</div>
-                                    <div class="text-muted small mt-1">Restart server 12 to complete the update.</div>
-                                    <div class="text-muted small mt-1">30m ago</div>
-                                </div>
-                            </div>
-                        </a> #}
-                    </div>
-                    {# <div class="dropdown-menu-footer">
-                        <a href="#" class="text-muted">Show all notifications</a>
-                    </div> #}
                 </div>
             </li>
             <li class="nav-item dropdown">
@@ -98,7 +103,6 @@
                     <a class="dropdown-item" href="/it/profile"><i class="align-middle me-1" data-feather="user"></i> Perfil</a>
                     <a class="dropdown-item" href="/it/binnacle"><i class="align-middle me-1" data-feather="calendar"></i> Bitácora de actividades</a>
                     <div class="dropdown-divider"></div>
-                    <a class="dropdown-item" href="https://totalgas.mojohelpdesk.com/"><i class="align-middle me-1" data-feather="settings"></i> Mojo Helpdesk </a>
                     <a class="dropdown-item" data-bs-toggle="modal" data-bs-target="#termsModal"><i class="align-middle me-1" data-feather="edit-3"></i> Terminos y condiciones </a>
                     <div class="dropdown-divider"></div>
                     <a class="dropdown-item" href="/_assets/includes/logout.inc.php"><i class="align-middle me-1" data-feather="log-out"></i> Cerrar sesión</a>

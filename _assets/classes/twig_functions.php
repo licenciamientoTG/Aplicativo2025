@@ -161,6 +161,15 @@ $js_v = new \Twig\TwigFunction('js_v', function ($file) {
     return JS . $relative . ($version ? '?v=' . $version : '');
 });
 
+// Agrega una versión basada en la fecha del CSS para evitar que el navegador
+// conserve estilos anteriores después de publicar cambios.
+$css_v = new \Twig\TwigFunction('css_v', function ($file) {
+    $relative = ltrim($file, '/\\');
+    $path = ASSETS . 'css' . DS . str_replace('/', DS, $relative);
+    $version = @filemtime($path);
+    return CSS . $relative . ($version ? '?v=' . $version : '');
+});
+
 $twig->addFunction($datetimeDiffDays);
 $twig->addFunction($datetimeDiffHours);
 $twig->addFunction($strpad);
@@ -187,8 +196,24 @@ $terminal_inventory_station_report_access = new \Twig\TwigFunction('terminal_inv
     return (new TerminalInventoryModel())->hasPermission((int)$_SESSION['tg_user']['Id'], TerminalInventoryModel::STATION_REPORT_PERMISSION);
 });
 $twig->addFunction($terminal_inventory_station_report_access);
+
+// Permisos de Tableros: se resuelven en TG por nombre y asignación vigente.
+$tableros_access = new \Twig\TwigFunction('tableros_access', function ($key = 'access') {
+    if (empty($_SESSION['tg_user']['Id'])) {
+        return false;
+    }
+    try {
+        return (new TablerosAccess())->hasGlobalPermission((string)$key);
+    } catch (Throwable $e) {
+        error_log('Twig Tableros: no fue posible validar acceso: ' . $e->getMessage());
+        return false;
+    }
+});
+$twig->addFunction($tableros_access);
+
 $twig->addFunction($getFlashMessage);
 $twig->addFunction($get_week_days);
 $twig->addFunction($text_to_int);
 $twig->addFunction($js_v);
+$twig->addFunction($css_v);
 

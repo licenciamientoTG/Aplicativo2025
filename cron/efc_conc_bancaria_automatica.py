@@ -178,7 +178,8 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       @movimiento_2 INT,@fecha_banco_2 DATE,@importe_2 DECIMAL(18,2),@referencia_2 VARCHAR(255),@ejecucion_id BIGINT
     AS BEGIN
       SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; BEGIN TRANSACTION;
-      DECLARE @paper1 INT,@paper2 INT,@target1 DECIMAL(18,2),@target2 DECIMAL(18,2),@rate DECIMAL(18,6)=0,
+      DECLARE @paper1 INT,@paper2 INT,@paper_for_1 INT,@paper_for_2 INT,
+              @target1 DECIMAL(18,2),@target2 DECIMAL(18,2),@rate DECIMAL(18,6)=0,
               @total_banco DECIMAL(18,2)=@importe_1+@importe_2,
               @cg_key VARCHAR(180)='cg-'+CONVERT(VARCHAR(20),@estacion_id)+'-'+CONVERT(CHAR(10),@fecha,23)+'-'+@turno+'-'+@concepto,
               @cruza_mes BIT=CASE WHEN CONVERT(CHAR(7),@fecha,23)<>CONVERT(CHAR(7),@fecha_banco_1,23) THEN 1 ELSE 0 END,
@@ -195,14 +196,22 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       SELECT @paper2=P.id,@target2=P.real_mn FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
         JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_secundaria_id
         WHERE V.estacion_id=@estacion_id AND V.fecha_cg=@fecha AND (V.turno=@turno OR TRY_CONVERT(INT,V.turno)=TRY_CONVERT(INT,@turno)) AND V.concepto=@concepto AND V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL;
-      IF @paper1 IS NULL OR @paper2 IS NULL THROW 50023,'La segunda papeleta ya no está asociada al turno.',1;
+      IF @paper1 IS NULL OR @paper2 IS NULL OR @paper1=@paper2
+        THROW 50023,'Se requieren dos papeletas REGIO distintas asociadas al turno.',1;
       IF @concepto='USD'
       BEGIN
         SELECT @target1=CASE WHEN ISNULL(real_usd,0)>0 AND @rate>0 THEN real_usd*@rate ELSE real_mn END FROM dbo.efc_conc_analiticos_papeletas WHERE id=@paper1;
         SELECT @target2=CASE WHEN ISNULL(real_usd,0)>0 AND @rate>0 THEN real_usd*@rate ELSE real_mn END FROM dbo.efc_conc_analiticos_papeletas WHERE id=@paper2;
       END;
-      IF ABS(@importe_1-@target1)>1.00 OR ABS(@importe_2-@target2)>1.00
-        THROW 50024,'Cada depósito debe coincidir con el real REGIO de su papeleta dentro de $1.',1;
+      IF ISNULL(@target1,0)<=0 OR ISNULL(@target2,0)<=0
+        THROW 50024,'Las dos papeletas deben tener un importe real REGIO válido.',1;
+      /* Asignar cada depósito a una papeleta distinta. El total del turno no
+         participa en la coincidencia: cada real debe empatar individualmente. */
+      IF ABS(@importe_1-@target1)<=1.00 AND ABS(@importe_2-@target2)<=1.00
+      BEGIN SET @paper_for_1=@paper1; SET @paper_for_2=@paper2; END
+      ELSE IF ABS(@importe_1-@target2)<=1.00 AND ABS(@importe_2-@target1)<=1.00
+      BEGIN SET @paper_for_1=@paper2; SET @paper_for_2=@paper1; END
+      ELSE THROW 50024,'Cada depósito debe coincidir individualmente con el real de una papeleta distinta, con tolerancia de $1.',1;
       IF EXISTS(SELECT 1 FROM (VALUES(@movimiento_1,@importe_1,@fecha_banco_1),(@movimiento_2,@importe_2,@fecha_banco_2)) B(id,importe,fecha)
         LEFT JOIN TG.dbo.movimientos_bancarios M WITH(UPDLOCK,HOLDLOCK) ON M.id=B.id
         WHERE M.id IS NULL OR M.abono<>B.importe OR M.fecha<>B.fecha OR M.abono<=0)
@@ -242,8 +251,8 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
           (@id,'BANCO','mb_'+CONVERT(VARCHAR(20),@movimiento_1),@movimiento_1,@fecha_banco_1,NULL,NULL,@importe_1,@referencia_1,@estacion_id),
           (@id,'BANCO','mb_'+CONVERT(VARCHAR(20),@movimiento_2),@movimiento_2,@fecha_banco_2,NULL,NULL,@importe_2,@referencia_2,@estacion_id);
       INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle)
-        VALUES(@id,@movimiento_1,'CONCILIACION_AUTOMATICA_DOBLE',CONCAT('ejecucion=',@ejecucion_id,'; papeleta=',@paper1,'; banco=',@movimiento_1)),
-              (@id,@movimiento_2,'CONCILIACION_AUTOMATICA_DOBLE',CONCAT('ejecucion=',@ejecucion_id,'; papeleta=',@paper2,'; banco=',@movimiento_2));
+        VALUES(@id,@movimiento_1,'CONCILIACION_AUTOMATICA_DOBLE',CONCAT('ejecucion=',@ejecucion_id,'; papeleta=',@paper_for_1,'; banco=',@movimiento_1,'; real_papeleta=',CASE WHEN @paper_for_1=@paper1 THEN @target1 ELSE @target2 END,'; tolerancia=1.00')),
+              (@id,@movimiento_2,'CONCILIACION_AUTOMATICA_DOBLE',CONCAT('ejecucion=',@ejecucion_id,'; papeleta=',@paper_for_2,'; banco=',@movimiento_2,'; real_papeleta=',CASE WHEN @paper_for_2=@paper1 THEN @target1 ELSE @target2 END,'; tolerancia=1.00'));
       COMMIT;
     END""")
     # A procedure (rather than client-side INSERTs) keeps the reservations,

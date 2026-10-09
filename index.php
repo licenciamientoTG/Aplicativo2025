@@ -32,7 +32,15 @@ if (!isset($_SESSION['tg_user']) && !in_array($currentPath, $publicRoutes)) {
     if ($isAjax) {
         http_response_code(401);
         header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => 'Sesión expirada. Vuelva a iniciar sesión.']);
+        if ($currentPath === '/tableros_api' || str_starts_with($currentPath, '/tableros_api/')) {
+            echo json_encode([
+                'success' => false,
+                'code' => 'unauthenticated',
+                'message' => 'Sesión expirada. Vuelve a iniciar sesión.',
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            echo json_encode(['error' => 'Sesión expirada. Vuelva a iniciar sesión.']);
+        }
         exit;
     }
 
@@ -48,6 +56,10 @@ if (!isset($_SESSION['tg_user']) && !in_array($currentPath, $publicRoutes)) {
 // Si estamos logueados, pasamos la variable tg_user a Twig
 if (isset($_SESSION['tg_user'])) {
     $twig->addGlobal('tg_user', $_SESSION['tg_user']);
+    if (empty($_SESSION['tableros_csrf']) || !is_string($_SESSION['tableros_csrf'])) {
+        $_SESSION['tableros_csrf'] = bin2hex(random_bytes(32));
+    }
+    $twig->addGlobal('tableros_csrf', $_SESSION['tableros_csrf']);
 }
 
 // Instanciamos manejador de errores

@@ -1,5 +1,7 @@
 # Uploads directory
 uploads/
+# Private uploaded files for the Tableros module (kept under the project tree).
+uploads/tableros/
 
 # Vendor dependencies
 vendor/

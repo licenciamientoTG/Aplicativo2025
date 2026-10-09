@@ -1,4 +1,15 @@
-php_value upload_max_filesize 30M
-php_value post_max_size 32M
+php_value upload_max_filesize 100M
+php_value post_max_size 110M
 php_value memory_limit 512M
 php_value max_execution_time 600
+
+# Compress text responses when mod_deflate is available.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json application/xml text/xml image/svg+xml
+</IfModule>
+
+# Keep Tableros uploads private even when the application runs on Apache.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^uploads/tableros(?:/|$) - [F,L,NC]
+</IfModule>
