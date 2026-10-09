@@ -838,14 +838,14 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-required-label { color: #ffdc9c; background: #574639; }
 .boards-cell-input,
 .boards-status-select { min-height: 28px; color: #e8eaf5; }
-.boards-date-editor { display: flex; width: 100%; min-width: 0; height: 32px; align-items: center; gap: 2px; padding: 3px; border: 1px solid #484b69; border-radius: 6px; background: #292c49; transition: border-color .15s ease, box-shadow .15s ease; }
-.boards-date-editor:hover { border-color: #62698f; }
-.boards-date-editor:focus-within { border-color: #84a5ff; box-shadow: 0 0 0 2px rgb(102 145 255 / 17%); }
-.boards-date-editor .boards-cell-input.is-date { width: 0; min-width: 0; max-width: none; min-height: 24px; flex: 1 1 auto; padding: 2px 5px; border: 0; border-radius: 3px; color: #f2f4ff; background: transparent; box-shadow: none; color-scheme: dark; font-size: .78rem; }
+.boards-item-row td.boards-date-cell { padding: 0; }
+.boards-date-editor { position: relative; display: flex; width: 100%; min-width: 0; height: 100%; min-height: 36px; align-items: stretch; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.boards-date-editor:focus-within { box-shadow: inset 0 0 0 2px #84a5ff; }
+.boards-date-editor .boards-cell-input.is-date { width: 100%; min-width: 0; max-width: none; height: 100%; min-height: 36px; flex: 1 1 auto; padding: 2px 34px; border: 0; border-radius: 0; color: #f2f4ff; background: transparent; box-shadow: none; color-scheme: dark; font-size: .78rem; text-align: center; }
 .boards-date-editor .boards-cell-input.is-date:hover,
 .boards-date-editor .boards-cell-input.is-date:focus { border: 0; color: #fff; background: transparent; outline: 0; box-shadow: none; }
 .boards-date-editor .boards-cell-input.is-date::-webkit-calendar-picker-indicator { display: none; }
-.boards-date-picker { display: grid; width: 27px; height: 25px; flex: 0 0 27px; place-items: center; padding: 0; border: 0; border-radius: 4px; color: #f4f6ff; background: transparent; cursor: pointer; }
+.boards-date-picker { position: absolute; top: 50%; right: 7px; display: grid; width: 27px; height: 25px; flex: 0 0 27px; place-items: center; padding: 0; border: 0; border-radius: 4px; color: #f4f6ff; background: transparent; cursor: pointer; transform: translateY(-50%); }
 .boards-date-picker:hover,
 .boards-date-picker[aria-expanded="true"] { color: #fff; background: #3c4263; }
 .boards-date-picker:focus-visible { outline: 2px solid #9ab7ff; outline-offset: 1px; }
@@ -1159,6 +1159,8 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-add-row .boards-inline-add-form .boards-inline-add-cancel:hover { background: #353b5b; }
 .boards-row-details { display: inline-grid; width: 28px; min-height: 27px; place-items: center; padding: 0; font-size: .86rem; }
 .boards-table-item-name-wrap { display: flex; min-width: 0; align-items: center; gap: 5px; }
+.boards-table-item-name-wrap.is-child { padding-left: 14px; }
+.boards-table-item-name-wrap.is-child::before { content: '↳'; flex: 0 0 12px; color: #82949e; font-size: .95rem; font-weight: 700; line-height: 1; }
 .boards-table-item-name-wrap .boards-item-name-link { min-width: 0; flex: 1; cursor: pointer; }
 .boards-item-drag-handle { display: inline-grid; width: 20px; height: 26px; flex: 0 0 20px; place-items: center; padding: 0; border: 0; border-radius: 4px; color: #7a8794; background: transparent; cursor: grab; opacity: .65; }
 .boards-item-drag-handle:hover,

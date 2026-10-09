@@ -179,6 +179,7 @@
     collapsedGroups: new Set(),
     draggedItemId: '',
     draggedItemIds: [],
+    suppressItemClickUntil: 0,
     summaryFunctions: {},
     summaryPeople: new Map(),
     summaryPeopleRequested: new Set(),
@@ -1620,7 +1621,13 @@
   }
 
   function createTableItemName(item) {
-    const wrap = makeElement('div', 'boards-table-item-name-wrap');
+    const isChild = item.parent_item_id != null;
+    const wrap = makeElement('div', `boards-table-item-name-wrap${isChild ? ' is-child' : ''}`);
+    if (isChild) {
+      const parent = state.items.find((candidate) => String(candidate.id) === String(item.parent_item_id));
+      wrap.setAttribute('aria-label', `Subelemento de ${parent?.name || 'elemento principal'}`);
+      wrap.title = `Subelemento de ${parent?.name || 'elemento principal'}`;
+    }
     if (canEditBoard() && item.parent_item_id == null) {
       const dragHandle = makeElement('button', 'boards-item-drag-handle');
       dragHandle.type = 'button';
@@ -3498,6 +3505,32 @@
     return state.items.filter((item) => itemMatchesSearch(item, query) && state.filters.every((filter) => compareFilter(item, filter)));
   }
 
+  function orderItemsByHierarchy(items) {
+    const childrenByParent = new Map();
+    const visibleIds = new Set(items.map((item) => String(item.id)));
+    items.forEach((item) => {
+      if (item.parent_item_id == null) return;
+      const parentId = String(item.parent_item_id);
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId).push(item);
+    });
+
+    const ordered = [];
+    const visited = new Set();
+    const appendWithChildren = (item) => {
+      const id = String(item.id);
+      if (visited.has(id)) return;
+      visited.add(id);
+      ordered.push(item);
+      (childrenByParent.get(id) || []).forEach(appendWithChildren);
+    };
+
+    items.filter((item) => item.parent_item_id == null || !visibleIds.has(String(item.parent_item_id)))
+      .forEach(appendWithChildren);
+    items.forEach(appendWithChildren);
+    return ordered;
+  }
+
   function createGroupRow(group, itemCount, columnCount) {
     const row = document.createElement('tr');
     row.className = 'boards-group-row';
@@ -3820,7 +3853,7 @@
     };
 
     state.groups.forEach((group) => {
-      const groupItems = filteredItems.filter((item) => String(item.group_id) === String(group.id));
+      const groupItems = orderItemsByHierarchy(filteredItems.filter((item) => String(item.group_id) === String(group.id)));
       const tbody = document.createElement('tbody');
       tbody.className = 'boards-group-body';
       tbody.dataset.groupBody = String(group.id);
@@ -3867,6 +3900,7 @@
         row.append(nameCell);
         columns.forEach((column) => {
           const cell = document.createElement('td');
+          if (columnType(column) === 'date') cell.classList.add('boards-date-cell');
           if (['status', 'dropdown'].includes(columnType(column))) cell.dataset.statusTone = statusTone(column, getCellValue(item, column));
           if (columnType(column) === 'status') {
             const chosen = parseOptions(column.options).find((entry) => entry.value === String(getCellValue(item, column) ?? ''));
@@ -5555,11 +5589,13 @@
       state.draggedItemId = String(item.id);
       let movingItems = [item];
       if (state.selectedItemIds.has(String(item.id))) {
+        const groupOrder = new Map(state.groups.map((group, index) => [String(group.id), index]));
         const selectedRoots = state.items
           .filter((candidate) => candidate.parent_item_id == null
-            && String(candidate.group_id) === String(item.group_id)
             && state.selectedItemIds.has(String(candidate.id)))
-          .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+          .sort((a, b) => (groupOrder.get(String(a.group_id)) ?? 0) - (groupOrder.get(String(b.group_id)) ?? 0)
+            || Number(a.sort_order || 0) - Number(b.sort_order || 0)
+            || Number(a.id) - Number(b.id));
         if (selectedRoots.length > 1) movingItems = selectedRoots;
       }
       state.draggedItemIds = movingItems.map((candidate) => String(candidate.id));
@@ -5606,12 +5642,13 @@
       event.preventDefault();
       body.classList.remove('is-drop-target');
       targetRow?.classList.remove('is-drop-before', 'is-drop-after');
+      state.suppressItemClickUntil = Date.now() + 800;
       moveItemToGroup(item, body.dataset.groupBody, sortOrder, draggedItems);
     });
     els.boardTableContainer.addEventListener('dragend', () => {
       state.draggedItemId = '';
       state.draggedItemIds = [];
-      els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target'));
+      els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target, .is-drop-before, .is-drop-after').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
     });
     els.boardTableContainer.addEventListener('submit', (event) => {
       const form = event.target.closest('[data-inline-add-form]');
@@ -5826,6 +5863,10 @@
         const details = event.target.closest('[data-open-item-details]');
         if (!details) return;
         if (details.matches('.boards-item-row')) {
+          if (Date.now() < state.suppressItemClickUntil) {
+            state.suppressItemClickUntil = 0;
+            return;
+          }
           if (event.target.closest('button, a, input, select, textarea, [contenteditable], [role="button"], [data-cell-editor], .boards-item-name-form')) return;
           details.focus();
           openItemDetails(details.dataset.openItemDetails);
