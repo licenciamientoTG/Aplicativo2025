@@ -387,6 +387,7 @@
 
   async function request(path, options = {}) {
     const response = await fetch(`${apiRoot}${path}`, {
+      cache: 'no-store',
       credentials: 'same-origin',
       headers: {
         Accept: 'application/json',

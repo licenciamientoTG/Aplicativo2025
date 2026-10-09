@@ -667,6 +667,10 @@ class tableros_api {
     /** Run a handler after checking authentication, module access, verb and CSRF. */
     private function handle(string $method, callable $callback): void {
         header('Content-Type: application/json; charset=utf-8');
+        // Every API response is user- and state-specific. In particular, a
+        // board reload after trashing an item must not reuse a cached GET.
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
         try {
             $userId = $this->currentUserId();
             if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== $method) {
