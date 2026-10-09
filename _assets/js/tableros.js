@@ -1317,8 +1317,8 @@
       entry.append(icon);
       list.append(entry);
     });
-    wrapper.append(list);
     if (!canEditBoard()) {
+      wrapper.append(list);
       if (!files.length) wrapper.append(makeElement('span', 'boards-file-cell-empty', '—'));
       return wrapper;
     }
@@ -1357,7 +1357,7 @@
         input.value = '';
       }
     });
-    wrapper.append(input, button);
+    wrapper.append(input, button, list);
     return wrapper;
   }
 
