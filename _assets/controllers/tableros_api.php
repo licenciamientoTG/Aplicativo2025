@@ -244,6 +244,86 @@ class tableros_api {
         }
     }
 
+    public function preview_file($id): void {
+        $file = null;
+        $html = null;
+        try {
+            $userId = $this->currentUserId();
+            if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+                throw new TablerosApiException('validation', 'Método HTTP no permitido para esta operación.', 422);
+            }
+            $this->initializeServices();
+            if (!$this->access->userIsActive($userId) || !$this->access->hasGlobalPermission('access')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
+            }
+
+            $fileId = $this->positiveInt($id, 'file_id');
+            $boardId = $this->model->getFileBoardId($fileId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
+            $file = $this->model->getFileDownload($fileId, $versionId);
+            $extension = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
+            $readerTypes = ['xlsx' => 'Xlsx', 'xls' => 'Xls', 'xlsm' => 'Xlsx'];
+            if (!isset($readerTypes[$extension])) {
+                throw new TablerosApiException('validation', 'Este tipo de archivo no tiene vista previa disponible.', 415);
+            }
+            if ((int)$file['byte_size'] > 25 * 1024 * 1024) {
+                throw new TablerosApiException('validation', 'El archivo supera el límite de 25 MB para generar una vista previa.', 413);
+            }
+
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_write_close();
+            }
+
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader($readerTypes[$extension]);
+            $reader->setReadDataOnly(false);
+            $sheetNames = $reader->listWorksheetNames($file['path']);
+            if ($sheetNames !== []) {
+                $reader->setLoadSheetsOnly(array_slice($sheetNames, 0, 20));
+            }
+            $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+                public function readCell(string $columnAddress, int $row, string $worksheetName = ''): bool {
+                    return $row <= 500 && \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($columnAddress) <= 52;
+                }
+            });
+            $spreadsheet = $reader->load($file['path']);
+            try {
+                $writer = new \PhpOffice\PhpSpreadsheet\Writer\Html($spreadsheet);
+                $writer->setPreCalculateFormulas(false);
+                $writer->writeAllSheets();
+                $html = $writer->generateHtmlAll();
+                // Cell text is escaped by the HTML writer. Remove generated hyperlinks so
+                // workbook links cannot navigate the preview frame.
+                $html = preg_replace('/<\/?a\b[^>]*>/i', '', $html) ?? $html;
+                $html = preg_replace('/<\/head>/i', "<style>html,body{background:#f3f4f6;color:#1f2937}body{margin:24px}table{background:#fff;box-shadow:0 1px 5px #0002}</style>\n</head>", $html, 1) ?? $html;
+                $html = preg_replace('/<body[^>]*>/i', '$0<p style="font:14px sans-serif;color:#4b5563">La vista previa muestra hasta 20 hojas, 500 filas y 52 columnas por hoja.</p>', $html, 1) ?? $html;
+            } finally {
+                $spreadsheet->disconnectWorksheets();
+            }
+        } catch (TablerosApiException $e) {
+            $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
+            return;
+        } catch (Throwable $e) {
+            error_log('Tableros file preview error: ' . $e->getMessage());
+            $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al generar la vista previa.']);
+            return;
+        } finally {
+            if (!empty($file['temporary']) && !empty($file['path']) && is_file($file['path'])) {
+                @unlink($file['path']);
+            }
+        }
+
+        header('Content-Type: text/html; charset=utf-8');
+        header('Content-Length: ' . strlen((string)$html));
+        header('Content-Disposition: ' . $this->contentDisposition((string)$file['name'] . '.html', true));
+        header('X-Content-Type-Options: nosniff');
+        header('Referrer-Policy: no-referrer');
+        header("Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox");
+        header('Cache-Control: private, no-store, max-age=0');
+        echo $html;
+        exit;
+    }
+
     public function relations(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');

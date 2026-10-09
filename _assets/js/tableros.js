@@ -1652,7 +1652,7 @@
     const name = String(file.name || file.original_name || '');
     const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
     const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(mime);
-    const spreadsheetExtension = ['xls', 'xlsx'].includes(extension);
+    const spreadsheetExtension = ['xls', 'xlsx', 'xlsm'].includes(extension);
     const previewKind = imageMime ? 'image'
       : (mime === 'application/pdf' ? 'pdf'
         : (['text/plain', 'text/csv'].includes(mime) ? 'text'
@@ -4893,9 +4893,16 @@
     [els.boardTableContainer, els.boardRendererArea].forEach((host) => {
       host.addEventListener('change', (event) => {
         const editor = event.target.closest('[data-cell-editor]');
-        if (editor && editor.dataset.valueKind !== 'timeline') saveCell(editor);
+        // Native date inputs can emit `change` while the user is still editing
+        // one segment (for example, the year). Saving disables the input and
+        // steals focus, so commit dates only after the user leaves the field.
+        if (editor && editor.dataset.valueKind !== 'timeline' && editor.type !== 'date') saveCell(editor);
         const mover = event.target.closest('[data-move-editor]');
         if (mover) moveItem(mover);
+      });
+      host.addEventListener('focusout', (event) => {
+        const editor = event.target.closest('[data-cell-editor][type="date"]');
+        if (editor && editor.dataset.valueKind !== 'timeline') saveCell(editor);
       });
       host.addEventListener('click', (event) => {
         const nameButton = event.target.closest('[data-item-name-button]');

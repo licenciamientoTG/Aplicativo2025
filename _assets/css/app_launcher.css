@@ -18,7 +18,6 @@
     background: #edf3fa;
 }
 
-.app-launcher-menu {
     width: 276px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px;
@@ -77,3 +76,4 @@
     font-weight: 600;
     text-align: center;
 }
+.app-launcher-menu {

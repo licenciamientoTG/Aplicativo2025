@@ -4,13 +4,16 @@
   var destination = '/tableros/index';
   var transitionKey = 'tableros-transition-to';
   var mascotPath = '/_assets/images/mascota-agujita.png';
+  var script = document.currentScript;
+  var transitionStylesheet = script && script.getAttribute('data-transition-stylesheet');
   var root = document.documentElement;
   var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var supportsTransitions = !reducedMotion && window.CSS && typeof CSS.supports === 'function' && CSS.supports('view-transition-name: tableros-mascot') && typeof document.startViewTransition === 'function';
   var mascotImage = null;
   var mascotReady = null;
+  var transitionStylesheetReady = null;
   var navigationPending = false;
-  var outgoingStyle = null;
+  var outgoingStylesheet = null;
   var outgoingMascot = null;
 
   function preloadMascot() {
@@ -32,11 +35,21 @@
     window.location.assign(url);
   }
 
-  function appendOutgoingMascot(image) {
-    outgoingStyle = document.createElement('style');
-    outgoingStyle.textContent = '@view-transition { navigation: auto; } .tableros-transition-mascot { position: fixed; z-index: 10001; top: 50%; left: 0; width: auto; height: min(82vh, 760px); max-width: 34vw; object-fit: contain; pointer-events: none; transform: translate3d(110vw, -50%, 0); view-transition-name: tableros-mascot; }';
-    document.head.appendChild(outgoingStyle);
+  function loadTransitionStylesheet() {
+    if (transitionStylesheetReady) return transitionStylesheetReady;
+    transitionStylesheetReady = new Promise(function (resolve, reject) {
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = transitionStylesheet || '/_assets/css/tableros_transition.css';
+      link.onload = function () { resolve(link); };
+      link.onerror = reject;
+      document.head.appendChild(link);
+    });
+    return transitionStylesheetReady;
+  }
 
+  function appendOutgoingMascot(image, stylesheet) {
+    outgoingStylesheet = stylesheet;
     outgoingMascot = image;
     outgoingMascot.className = 'tableros-transition-mascot';
     outgoingMascot.alt = '';
@@ -46,9 +59,9 @@
 
   function cleanupOutgoing() {
     if (outgoingMascot) outgoingMascot.remove();
-    if (outgoingStyle) outgoingStyle.remove();
+    if (outgoingStylesheet) outgoingStylesheet.remove();
     outgoingMascot = null;
-    outgoingStyle = null;
+    outgoingStylesheet = null;
   }
 
   function isTablerosLink(link) {
@@ -62,18 +75,21 @@
   }
 
   if (root.classList.contains('tableros-transition-incoming')) {
+    var incomingMascot = document.getElementById('tablerosTransitionMascot');
     if (!supportsTransitions || !document.body) {
       root.classList.remove('tableros-transition-incoming');
+      if (incomingMascot) incomingMascot.remove();
       return;
     }
 
-    var incomingMascot = document.createElement('img');
-    incomingMascot.className = 'tableros-transition-mascot';
-    incomingMascot.src = mascotPath;
-    incomingMascot.alt = '';
-    incomingMascot.setAttribute('aria-hidden', 'true');
-    incomingMascot.decoding = 'async';
-    document.body.appendChild(incomingMascot);
+    if (!incomingMascot) {
+      incomingMascot = document.createElement('img');
+      incomingMascot.className = 'tableros-transition-mascot';
+      incomingMascot.src = mascotPath;
+      incomingMascot.alt = '';
+      incomingMascot.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(incomingMascot);
+    }
     window.setTimeout(function () {
       incomingMascot.remove();
       root.classList.remove('tableros-transition-incoming');
@@ -84,7 +100,7 @@
   if (!supportsTransitions) return;
 
   window.addEventListener('pageswap', function (event) {
-    if (!navigationPending || !outgoingStyle) return;
+    if (!navigationPending || !outgoingStylesheet || !outgoingMascot) return;
     if (event.viewTransition && event.viewTransition.ready) {
       event.viewTransition.ready.then(cleanupOutgoing, cleanupOutgoing);
     } else {
@@ -119,13 +135,16 @@
     event.preventDefault();
     var targetUrl = link.href;
     var ready = preloadMascot();
+    var stylesReady = loadTransitionStylesheet();
     var timeoutId;
     var timeout = new Promise(function (_, reject) {
       timeoutId = window.setTimeout(function () { reject(new Error('Mascot decode timed out')); }, 1200);
     });
 
-    Promise.race([ready, timeout]).then(function (image) {
+    Promise.race([Promise.all([ready, stylesReady]), timeout]).then(function (prepared) {
       window.clearTimeout(timeoutId);
+      var image = prepared[0];
+      var stylesheet = prepared[1];
       try {
         var marker = String(Date.now());
         sessionStorage.setItem(transitionKey, marker);
@@ -139,7 +158,7 @@
         return;
       }
 
-      appendOutgoingMascot(image);
+      appendOutgoingMascot(image, stylesheet);
       navigateWithFallback(targetUrl);
     }).catch(function () {
       window.clearTimeout(timeoutId);

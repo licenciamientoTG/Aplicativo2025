@@ -1,0 +1,15 @@
+@view-transition { navigation: auto; }
+
+.tableros-transition-mascot {
+  position: fixed;
+  z-index: 10001;
+  top: 50%;
+  left: 0;
+  width: auto;
+  height: min(82vh, 760px);
+  max-width: 34vw;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translate3d(110vw, -50%, 0);
+  view-transition-name: tableros-mascot;
+}

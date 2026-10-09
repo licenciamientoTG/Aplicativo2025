@@ -786,6 +786,8 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-required-label { color: #ffdc9c; background: #574639; }
 .boards-cell-input,
 .boards-status-select { min-height: 28px; color: #e8eaf5; }
+.boards-cell-input.is-date { color-scheme: dark; }
+.boards-cell-input.is-date::-webkit-calendar-picker-indicator { width: 18px; height: 18px; padding: 2px; opacity: 1; filter: invert(1); cursor: pointer; }
 .boards-cell-input:hover,
 .boards-status-select:hover { border-color: #666a89; background: #393c5a; }
 .boards-cell-input:focus,
@@ -949,7 +951,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-dialog .boards-button-light { border-color: #5a5f7d; color: #e3e6f4; background: #363a57; }
 .boards-dialog .boards-button-light:hover { border-color: #777d9c; background: #424663; }
 .boards-dialog-actions { padding-top: 2px; }
-.boards-folder-colors { min-width: 0; margin: 0; padding: 0; border: 0; }
+.boards-folder-colors { min-width: 0; margin: 13px 0 0; padding: 0; border: 0; }
 .boards-folder-colors .boards-field-label { float: none; width: auto; margin: 13px 0 8px; padding: 0; }
 .boards-folder-color-options { display: flex; flex-wrap: wrap; gap: 10px; }
 .boards-folder-color { display: inline-grid; width: 34px; height: 34px; place-items: center; margin: 0; border: 1px solid transparent; border-radius: 50%; cursor: pointer; }
