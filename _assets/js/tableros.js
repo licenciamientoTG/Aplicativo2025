@@ -1843,6 +1843,9 @@
       const stickerInput = document.createElement('input'); stickerInput.type = 'file'; stickerInput.accept = 'image/png,image/jpeg,image/webp'; stickerInput.hidden = true;
       stickerInput.setAttribute('aria-label', 'Subir un sticker');
       const defaultStickerButton = makeElement('button', 'boards-preview-sticker-option'); defaultStickerButton.type = 'button';
+      // Agujita is shown as a local fallback only when it is not already in
+      // the shared catalog. Otherwise the picker would render it twice.
+      defaultStickerButton.hidden = true;
       defaultStickerButton.setAttribute('aria-label', 'Agregar sticker predeterminado');
       const defaultStickerImage = document.createElement('img');
       defaultStickerImage.dataset.src = '/_assets/images/mascota-agujita.png';
@@ -1887,6 +1890,7 @@
           if (!stickerCatalog) stickerCatalog = [];
           if (!stickerCatalog.some((entry) => String(entry.id) === String(id))) stickerCatalog.unshift(savedSticker);
           renderStickerOption(savedSticker);
+          if (savedSticker.name === 'Sticker predeterminado') defaultStickerButton.hidden = true;
           selectSticker(savedSticker);
           stickerStatus.textContent = 'Sticker agregado al comentario.';
         } finally { stickerUploadButton.disabled = false; }
@@ -1916,6 +1920,7 @@
         stickerCatalogPromise = request('/stickers').then((result) => {
           stickerCatalog = Array.isArray(result.data) ? result.data : [];
           stickerCatalog.forEach(renderStickerOption);
+          defaultStickerButton.hidden = stickerCatalog.some((sticker) => sticker.name === 'Sticker predeterminado');
           stickerStatus.textContent = stickerCatalog.length ? '' : 'Aún no hay stickers compartidos.';
           return stickerCatalog;
         }).catch((error) => {
