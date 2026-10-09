@@ -85,6 +85,10 @@
         {% if can_create %}<span class="boards-nav-actions"><button id="navCreateFolder" type="button" aria-label="Crear carpeta" title="Crear carpeta"><i class="fa-regular fa-folder" aria-hidden="true"></i></button><button id="navCreateBoard" type="button" aria-label="Crear tablero" title="Crear tablero"><i class="fa-solid fa-table-cells" aria-hidden="true"></i></button></span>{% endif %}
       </div>
       <nav id="boardNavList" class="boards-nav-list" aria-label="Tus tableros"></nav>
+      <div class="boards-nav-archive" role="group" aria-label="Elementos eliminados y archivados">
+        <button type="button" class="boards-nav-board" id="openTrashView"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Papelera</span></button>
+        <button type="button" class="boards-nav-board" id="openArchiveView"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Archivados</span></button>
+      </div>
     </aside>
     <div class="boards-main-content">
 
@@ -100,6 +104,15 @@
     {% if can_create %}<button type="button" class="btn boards-button-primary" id="emptyCreateBoard">Crear primer tablero</button>{% endif %}
   </section>
 
+  <section id="trashArchiveView" class="boards-recycle-view" aria-labelledby="trashArchiveTitle" hidden>
+    <header class="boards-recycle-heading">
+      <div><h3 id="trashArchiveTitle">Papelera</h3><p id="trashArchiveDescription">Los elementos eliminados se pueden restaurar o eliminar definitivamente.</p></div>
+      <button type="button" class="btn boards-button-light" id="closeTrashArchiveView">Volver al tablero</button>
+    </header>
+    <div id="trashArchiveStatus" class="boards-detail-status" role="status" aria-live="polite"></div>
+    <div id="trashArchiveList" class="boards-recycle-list" role="list"></div>
+  </section>
+
   <section id="boardWorkspace" class="boards-workspace" aria-labelledby="boardName" hidden>
     <div class="boards-board-heading">
       <div class="boards-board-title-wrap">
@@ -111,6 +124,8 @@
       </div>
       <div class="boards-board-meta">
         <span id="boardRole" class="boards-role"></span>
+        <button type="button" class="btn boards-button-light" id="trashBoard" aria-label="Mover tablero a la papelera"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Eliminar</span></button>
+        <button type="button" class="btn boards-button-light" id="archiveBoard"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Archivar</span></button>
         <button type="button" class="btn boards-button-light" id="openAutomations"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Automatizaciones</span></button>
         <button type="button" class="btn boards-button-light" id="openShareBoard"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Compartir</span></button>
       </div>

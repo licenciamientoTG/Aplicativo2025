@@ -1628,16 +1628,6 @@
       wrap.setAttribute('aria-label', `Subelemento de ${parent?.name || 'elemento principal'}`);
       wrap.title = `Subelemento de ${parent?.name || 'elemento principal'}`;
     }
-    if (canEditBoard() && item.parent_item_id == null) {
-      const dragHandle = makeElement('button', 'boards-item-drag-handle');
-      dragHandle.type = 'button';
-      dragHandle.draggable = true;
-      dragHandle.dataset.dragItem = String(item.id);
-      dragHandle.setAttribute('aria-label', `Arrastrar ${item.name || 'elemento'} a otro grupo`);
-      dragHandle.title = 'Arrastrar a otro grupo';
-      dragHandle.innerHTML = '<i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>';
-      wrap.append(dragHandle);
-    }
     wrap.append(makeElement('span', 'boards-item-name-link', item.name || 'Elemento sin nombre'));
     if (canEditBoard()) {
       const edit = makeElement('button', 'boards-item-name-edit', '');
@@ -3891,7 +3881,7 @@
         row.dataset.openItemDetails = String(item.id);
         if (isChild) row.dataset.parentItemId = String(item.parent_item_id);
         row.tabIndex = 0;
-        row.draggable = canEditBoard() && item.parent_item_id == null;
+        row.draggable = false;
         row.setAttribute('aria-label', `Abrir detalles de ${item.name || 'elemento'}`);
         row.style.setProperty('--group-color', safeGroupColor(group.color));
         const selectCell = makeElement('td', 'boards-select-cell');
@@ -3907,6 +3897,7 @@
         const nameCell = document.createElement('th');
         nameCell.scope = 'row';
         nameCell.className = 'boards-item-name';
+        nameCell.draggable = canEditBoard() && item.parent_item_id == null;
         nameCell.append(createTableItemName(item));
         row.append(nameCell);
         columns.forEach((column) => {
@@ -5649,10 +5640,9 @@
     els.boardTableContainer.addEventListener('dragstart', (event) => {
       const row = event.target.closest('[data-item-row]');
       const nameField = event.target.closest('.boards-item-name');
-      const handle = event.target.closest('[data-drag-item]');
       const control = event.target.closest('button, a, input, select, textarea, [contenteditable="true"]');
       const item = row ? state.items.find((candidate) => String(candidate.id) === row.dataset.openItemDetails) : null;
-      if (!row || !nameField || (control && !handle) || !item || item.parent_item_id != null || !canEditBoard()) {
+      if (!row || !nameField || control || !item || item.parent_item_id != null || !canEditBoard()) {
         event.preventDefault();
         return;
       }
