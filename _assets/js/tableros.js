@@ -3631,6 +3631,7 @@
   function createGroupSummaryRow(columns, groupItems) {
     const summaryTypes = new Set(['status', 'file', 'people', 'person', 'numbers', 'progress', 'timeline', 'tags', 'date']);
     if (!columns.some((column) => summaryTypes.has(columnType(column)))) return null;
+    const summaryItems = groupItems.filter((item) => item.parent_item_id == null);
     const row = makeElement('tr', 'boards-table-summary-row');
     row.append(makeElement('td', 'boards-table-summary-label'));
     row.append(makeElement('td', 'boards-table-summary-spacer'));
@@ -3641,7 +3642,7 @@
         const options = parseOptions(column.options);
         const counts = new Map(options.map((option) => [String(option.value), 0]));
         let filled = 0;
-        groupItems.forEach((item) => {
+        summaryItems.forEach((item) => {
           const value = getCellValue(item, column);
           if (value === null || value === undefined || String(value) === '') return;
           const key = String(value);
@@ -3659,27 +3660,27 @@
           });
           const bar = makeElement('div', 'boards-summary-bar');
           bar.setAttribute('role', 'img');
-          bar.setAttribute('aria-label', `Distribución de ${column.name || 'estado'}: ${Array.from(counts).filter(([, count]) => count).map(([value, count]) => `${summaryOptions.find((option) => String(option.value) === value)?.label || value}: ${count} de ${groupItems.length}, ${groupItems.length ? ((count / groupItems.length) * 100).toFixed(1) : '0.0'}%`).join(', ')}`);
+          bar.setAttribute('aria-label', `Distribución de ${column.name || 'estado'}: ${Array.from(counts).filter(([, count]) => count).map(([value, count]) => `${summaryOptions.find((option) => String(option.value) === value)?.label || value}: ${count} de ${summaryItems.length}, ${summaryItems.length ? ((count / summaryItems.length) * 100).toFixed(1) : '0.0'}%`).join(', ')}`);
           summaryOptions.forEach((option) => {
             const count = counts.get(String(option.value)) || 0;
             if (!count) return;
             const segment = makeElement('span', 'boards-summary-segment');
-            segment.style.width = `${(count / (groupItems.length || 1)) * 100}%`;
+            segment.style.width = `${(count / (summaryItems.length || 1)) * 100}%`;
             segment.style.backgroundColor = option.color || '#8792a2';
-            segment.title = `${option.label || option.value} ${count}/${groupItems.length}  ${groupItems.length ? ((count / groupItems.length) * 100).toFixed(1) : '0.0'}%`;
+            segment.title = `${option.label || option.value} ${count}/${summaryItems.length}  ${summaryItems.length ? ((count / summaryItems.length) * 100).toFixed(1) : '0.0'}%`;
             segment.dataset.tooltip = segment.title;
             bar.append(segment);
           });
           cell.append(bar);
         }
       } else if (type === 'file') {
-        const files = groupItems.flatMap((item) => filesForItem(item).filter((file) => String(file.column_id) === String(column.id)));
+        const files = summaryItems.flatMap((item) => filesForItem(item).filter((file) => String(file.column_id) === String(column.id)));
         const count = makeElement('span', 'boards-summary-count', `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}`);
         cell.append(count);
         if (files.length) {
           const download = makeElement('button', 'boards-summary-download');
           download.type = 'button';
-          download.dataset.downloadGroupFiles = String(groupItems[0]?.group_id || '');
+          download.dataset.downloadGroupFiles = String(summaryItems[0]?.group_id || '');
           download.dataset.fileIds = files.map((file) => String(file.file_id)).join(',');
           download.title = `Descargar ${files.length} ${files.length === 1 ? 'archivo' : 'archivos'} de ${column.name || 'esta columna'} en ZIP`;
           download.setAttribute('aria-label', download.title);
@@ -3687,7 +3688,7 @@
           cell.append(download);
         }
       } else if (type === 'people' || type === 'person') {
-        const people = new Set(groupItems.flatMap((item) => selectedIds(getCellValue(item, column)).map(String)));
+        const people = new Set(summaryItems.flatMap((item) => selectedIds(getCellValue(item, column)).map(String)));
         const list = makeElement('div', 'boards-summary-people');
         Array.from(people).slice(0, 5).forEach((id) => {
           const person = state.summaryPeople.get(id);
@@ -3702,7 +3703,7 @@
         list.append(makeElement('span', 'boards-summary-count', `${people.size} ${people.size === 1 ? 'persona' : 'personas'}`));
         cell.append(list);
       } else if (type === 'numbers') {
-        const values = groupItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
+        const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
         const selectedFunction = state.summaryFunctions[String(column.id)] || 'sum';
         const select = makeElement('select', 'boards-summary-function');
         select.dataset.summaryColumn = String(column.id);
@@ -3727,7 +3728,7 @@
         }
         cell.append(makeElement('span', 'boards-summary-count', result));
       } else if (type === 'progress') {
-        const values = groupItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite).map((value) => Math.max(0, Math.min(100, value)));
+        const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite).map((value) => Math.max(0, Math.min(100, value)));
         const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
         const progress = makeElement('div', 'boards-summary-progress');
         progress.setAttribute('role', 'img');
@@ -3737,7 +3738,7 @@
         progress.append(fill);
         cell.append(progress, makeElement('span', 'boards-summary-count', values.length ? `${Math.round(average)}% promedio` : '—'));
       } else if (type === 'timeline' || type === 'date') {
-        const ranges = groupItems.map((item) => type === 'date'
+        const ranges = summaryItems.map((item) => type === 'date'
           ? { start: dateOnly(getCellValue(item, column)), end: dateOnly(getCellValue(item, column)) }
           : dateRange(getCellValue(item, column))).filter((range) => range.start || range.end);
         if (!ranges.length) cell.append(makeElement('span', 'boards-summary-count', '—'));
@@ -3763,7 +3764,7 @@
           }
         }
       } else if (type === 'tags') {
-        const tags = new Set(groupItems.flatMap((item) => {
+        const tags = new Set(summaryItems.flatMap((item) => {
           const value = parseStoredValue(getCellValue(item, column));
           if (Array.isArray(value)) return value.map((tag) => String(tag && typeof tag === 'object' ? (tag.label ?? tag.name ?? tag.value ?? '') : tag).trim()).filter(Boolean);
           return String(value ?? '').split(',').map((tag) => tag.trim()).filter(Boolean);
@@ -3854,9 +3855,6 @@
 
     state.groups.forEach((group) => {
       const groupItems = orderItemsByHierarchy(filteredItems.filter((item) => String(item.group_id) === String(group.id)));
-      const parentIdsWithVisibleChildren = new Set(groupItems
-        .filter((item) => item.parent_item_id != null)
-        .map((item) => String(item.parent_item_id)));
       const tbody = document.createElement('tbody');
       tbody.className = 'boards-group-body';
       tbody.dataset.groupBody = String(group.id);
@@ -3877,15 +3875,23 @@
           tbody.append(emptyRow);
         }
       }
+      const visibleItemIds = new Set(groupItems.map((item) => String(item.id)));
+      const childrenByParent = new Map();
       groupItems.forEach((item) => {
+        const parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
+        if (!parentId || !visibleItemIds.has(parentId)) return;
+        if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+        childrenByParent.get(parentId).push(item);
+      });
+      const renderItemRow = (item) => {
         const row = document.createElement('tr');
         const isChild = item.parent_item_id != null;
-        row.className = `boards-item-row${isChild ? ' is-child-row' : ''}${parentIdsWithVisibleChildren.has(String(item.id)) ? ' has-child-rows' : ''}`;
+        row.className = `boards-item-row${isChild ? ' is-child-row' : ''}${childrenByParent.has(String(item.id)) ? ' has-child-rows' : ''}`;
+        row.dataset.itemRow = '1';
+        row.dataset.openItemDetails = String(item.id);
         if (isChild) row.dataset.parentItemId = String(item.parent_item_id);
         row.tabIndex = 0;
         row.draggable = canEditBoard() && item.parent_item_id == null;
-        row.dataset.itemRow = '1';
-        row.dataset.openItemDetails = String(item.id);
         row.setAttribute('aria-label', `Abrir detalles de ${item.name || 'elemento'}`);
         row.style.setProperty('--group-color', safeGroupColor(group.color));
         const selectCell = makeElement('td', 'boards-select-cell');
@@ -3914,7 +3920,66 @@
           cell.append(createCellEditor(item, column, getCellValue(item, column)));
           row.append(cell);
         });
-        tbody.append(row);
+        return row;
+      };
+      const makeChildPanel = (parent, children) => {
+        const panelRow = makeElement('tr', 'boards-subitems-panel-row');
+        const panelCell = document.createElement('td');
+        panelCell.colSpan = columns.length + 2;
+        const panel = makeElement('div', 'boards-subitems-panel');
+        panel.setAttribute('role', 'group');
+        panel.setAttribute('aria-label', `Subelementos de ${parent.name || 'elemento'}`);
+        const innerScroll = makeElement('div', 'boards-subitems-scroll');
+        const innerTable = document.createElement('table');
+        innerTable.className = 'boards-table boards-subitems-table';
+        innerTable.setAttribute('aria-label', `Subelementos de ${parent.name || 'elemento'}`);
+        const head = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        const selectHead = makeElement('th', 'boards-select-head');
+        selectHead.scope = 'col';
+        headRow.append(selectHead);
+        const itemHead = makeElement('th', 'boards-item-head', 'Elemento');
+        itemHead.scope = 'col';
+        headRow.append(itemHead);
+        columns.forEach((column) => {
+          const th = makeElement('th', '', column.name || 'Columna');
+          th.scope = 'col';
+          if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
+          headRow.append(th);
+        });
+        head.append(headRow);
+        innerTable.append(head);
+        const childBody = document.createElement('tbody');
+        children.forEach((child) => {
+          childBody.append(renderItemRow(child));
+          const grandchildren = childrenByParent.get(String(child.id)) || [];
+          if (grandchildren.length) childBody.append(makeChildPanel(child, grandchildren));
+        });
+        if (canEditBoard()) {
+          const addRow = makeElement('tr', 'boards-subitem-add-row');
+          const addCell = document.createElement('td');
+          addCell.colSpan = columns.length + 2;
+          const add = makeElement('button', 'boards-subitem-add', 'Agregar subelemento');
+          add.type = 'button';
+          add.dataset.addSubitem = String(parent.id);
+          add.prepend(makeElement('i', 'fa-solid fa-plus'));
+          addCell.append(add);
+          addRow.append(addCell);
+          childBody.append(addRow);
+        }
+        innerTable.append(childBody);
+        innerScroll.append(innerTable);
+        panel.append(innerScroll);
+        panelCell.append(panel);
+        panelRow.append(panelCell);
+        return panelRow;
+      };
+      groupItems.forEach((item) => {
+        const parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
+        if (parentId && visibleItemIds.has(parentId)) return;
+        tbody.append(renderItemRow(item));
+        const children = childrenByParent.get(String(item.id)) || [];
+        if (children.length) tbody.append(makeChildPanel(item, children));
       });
       if (canEditBoard() && !query && !state.filters.length) {
         const addRow = makeElement('tr', 'boards-add-row');

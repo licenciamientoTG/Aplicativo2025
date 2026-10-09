@@ -1299,3 +1299,25 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
   .boards-inline-add-form { flex-wrap: wrap; padding-left: 12px; }
   .boards-inline-add-form input { flex-basis: 100%; }
 }
+
+/* Child rows live in their own nested table, immediately below the parent. */
+.boards-subitems-panel-row > td { min-width: 0; padding: 8px 10px 12px 30px; border-right: 0; background: #1e2139; }
+.boards-subitems-panel { min-width: 0; overflow: hidden; border: 1px solid #3d527e; border-left: 3px solid #638fff; border-radius: 5px; background: #242843; }
+.boards-subitems-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-color: #555a7d #20233e; scrollbar-width: thin; }
+.boards-subitems-table { width: 100%; min-width: max-content; table-layout: auto; }
+.boards-subitems-table thead { display: table-header-group; }
+.boards-subitems-table thead th { position: static; z-index: auto; }
+.boards-subitems-table .boards-item-name { position: sticky; left: 0; }
+.boards-subitems-table .boards-item-row.is-child-row td { background: #292c49; }
+.boards-subitems-table .boards-item-row.is-child-row:hover td,
+.boards-subitems-table .boards-item-row.is-child-row:hover .boards-item-name { background: #333654; }
+.boards-subitems-table .boards-item-row.is-child-row .boards-table-item-name-wrap { min-height: 32px; padding-left: 13px; }
+.boards-subitems-table .boards-item-row.is-child-row .boards-table-item-name-wrap::before,
+.boards-subitems-table .boards-item-row.is-child-row .boards-table-item-name-wrap::after { content: none; }
+.boards-subitem-add-row td { height: 36px; padding: 3px 10px 3px 48px; border-bottom: 0; background: #242843; }
+.boards-subitem-add { display: inline-flex; min-height: 29px; align-items: center; gap: 7px; padding: 4px 8px; border: 1px solid transparent; border-radius: 4px; color: #b8c5e8; background: transparent; font: inherit; font-size: .74rem; cursor: pointer; }
+.boards-subitem-add:hover,
+.boards-subitem-add:focus-visible { border-color: #596184; color: #fff; background: #353a5a; outline: 2px solid #82a3ff; outline-offset: 1px; }
+@media (max-width: 600px) {
+  .boards-subitems-panel-row > td { padding-left: 18px; }
+}
