@@ -1815,24 +1815,14 @@
     input.className = 'boards-item-name-input';
     input.value = item.name || '';
     input.maxLength = 500;
-    input.required = true;
     input.setAttribute('aria-label', 'Nuevo nombre del elemento');
-    const actions = makeElement('span', 'boards-item-name-actions');
-    const save = makeElement('button', 'boards-item-name-save', 'Guardar');
-    save.type = 'submit';
-    const cancel = makeElement('button', 'boards-item-name-cancel', 'Cancelar');
-    cancel.type = 'button';
-    cancel.dataset.cancelNameEdit = '1';
-    actions.append(save, cancel);
-    form.append(input, actions);
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      if (!form.reportValidity()) return;
+    form.append(input);
+    const saveName = async () => {
+      if (form.dataset.saving === '1') return;
       const name = input.value.trim();
-      if (!name) return;
-      if (name === item.name) { renderActiveView(); return; }
-      const controls = Array.from(form.querySelectorAll('input, button'));
-      controls.forEach((control) => { control.disabled = true; });
+      if (!name || name === item.name) { renderActiveView(); return; }
+      form.dataset.saving = '1';
+      input.disabled = true;
       try {
         const result = await post('/update_item_name', {
           board_id: state.board.id,
@@ -1847,9 +1837,19 @@
       } catch (error) {
         setNotice(errorMessage(error, 'No se pudo actualizar el nombre.'), 'error');
         if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
-        else controls.forEach((control) => { control.disabled = false; });
+        else {
+          delete form.dataset.saving;
+          input.disabled = false;
+          input.focus();
+          input.select();
+        }
       }
+    };
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      input.blur();
     });
+    input.addEventListener('blur', saveName);
     button.replaceWith(form);
     input.focus();
     input.select();
@@ -2795,8 +2795,10 @@
       const referenceScanStatus = String(file.scan_status || '').toLowerCase();
       const provisionalStatus = ['pending', 'quarantined', 'failed', 'unscanned', 'clean'].includes(referenceScanStatus) ? referenceScanStatus : 'unknown';
       const scanStatus = String(currentVersion?.scan_status || provisionalStatus || 'unknown').toLowerCase();
-      const scanLabels = { clean: 'Disponible', unscanned: 'Sin análisis antivirus', pending: 'Analizando', quarantined: 'Amenaza detectada', failed: 'No se pudo analizar', unknown: 'Estado sin verificar' };
-      heading.append(makeElement('span', `boards-file-scan-status is-${scanStatus}`, scanLabels[scanStatus] || scanStatus));
+      const scanLabels = { clean: 'Disponible', pending: 'Analizando', quarantined: 'Amenaza detectada', failed: 'No se pudo analizar', unknown: 'Estado sin verificar' };
+      if (scanStatus !== 'unscanned') {
+        heading.append(makeElement('span', `boards-file-scan-status is-${scanStatus}`, scanLabels[scanStatus] || scanStatus));
+      }
       if (['clean', 'unscanned'].includes(scanStatus)) {
         const preview = makeElement('button', 'boards-text-button', 'Vista previa');
         preview.type = 'button';
@@ -5988,11 +5990,6 @@
         if (nameButton) {
           event.stopPropagation();
           beginItemNameEdit(nameButton);
-          return;
-        }
-        const cancelName = event.target.closest('[data-cancel-name-edit]');
-        if (cancelName) {
-          renderActiveView();
           return;
         }
         const save = event.target.closest('[data-save-cell]');
