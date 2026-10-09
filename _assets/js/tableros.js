@@ -4176,6 +4176,12 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    requestAnimationFrame(() => {
+      table.querySelectorAll('td[data-status-tone] .boards-status-select').forEach((select) => {
+        const cell = select.closest('td');
+        if (cell) select.style.height = `${cell.getBoundingClientRect().height}px`;
+      });
+    });
     els.boardTableStatus.hidden = state.groups.length > 0;
     els.boardTableStatus.textContent = state.groups.length ? '' : 'Agrega un grupo para organizar los elementos de este tablero.';
     loadSummaryPeople();
@@ -5981,6 +5987,15 @@
         if (editor && !editor.contains(event.relatedTarget)) saveCell(editor);
       });
       host.addEventListener('click', (event) => {
+        const statusCell = event.target.closest('td[data-status-tone]');
+        const statusSelect = statusCell?.querySelector('select.boards-status-select');
+        if (statusSelect && !event.target.closest('select.boards-status-select')) {
+          event.stopPropagation();
+          statusSelect.focus();
+          if (typeof statusSelect.showPicker === 'function') statusSelect.showPicker();
+          else statusSelect.click();
+          return;
+        }
         const addSubitem = event.target.closest('[data-add-subitem]');
         if (addSubitem) {
           openCreateSubitem(addSubitem.dataset.addSubitem);
