@@ -1652,9 +1652,11 @@
     const name = String(file.name || file.original_name || '');
     const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
     const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(mime);
+    const spreadsheetExtension = ['xls', 'xlsx'].includes(extension);
     const previewKind = imageMime ? 'image'
       : (mime === 'application/pdf' ? 'pdf'
-        : (['text/plain', 'text/csv'].includes(mime) ? 'text' : 'unsupported'));
+        : (['text/plain', 'text/csv'].includes(mime) ? 'text'
+          : (spreadsheetExtension ? 'spreadsheet' : 'unsupported')));
     const icon = previewKind === 'pdf' ? 'fa-file-pdf'
       : (imageMime || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension) ? 'fa-file-image'
         : (['doc', 'docx', 'odt'].includes(extension) ? 'fa-file-word'
@@ -1669,6 +1671,13 @@
     if (preview) query.set('preview', '1');
     const suffix = query.toString();
     return `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  function spreadsheetPreviewEndpoint(file) {
+    const query = new URLSearchParams();
+    if (file.version_id) query.set('version_id', String(file.version_id));
+    const suffix = query.toString();
+    return `${apiRoot}/preview_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
   }
 
   function clearFilePreviewObjectUrl() {
@@ -2164,14 +2173,14 @@
       image.src = fileEndpoint(file, true);
       image.alt = name;
       els.filePreviewContent.append(image);
-    } else if (['pdf', 'text'].includes(type.previewKind)) {
+    } else if (['pdf', 'text', 'spreadsheet'].includes(type.previewKind)) {
       const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
       els.filePreviewContent.append(loading);
       openDialog(els.filePreviewDialog);
       try {
-        const response = await fetch(fileEndpoint(file, true), {
+        const response = await fetch(type.previewKind === 'spreadsheet' ? spreadsheetPreviewEndpoint(file) : fileEndpoint(file, true), {
           credentials: 'same-origin',
-          headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : 'text/plain, text/csv, application/json' }
+          headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : (type.previewKind === 'spreadsheet' ? 'text/html, application/json' : 'text/plain, text/csv, application/json') }
         });
         const blob = await response.blob();
         if (!response.ok || /(?:application\/json|\+json)/i.test(response.headers.get('content-type') || '')) {
@@ -2185,7 +2194,15 @@
           throw new Error(message);
         }
         if (previewRequest !== filePreviewRequest) return;
-        if (type.previewKind === 'pdf') {
+        if (type.previewKind === 'spreadsheet') {
+          filePreviewObjectUrl = URL.createObjectURL(blob);
+          const frame = makeElement('iframe', 'boards-preview-frame boards-preview-spreadsheet-frame');
+          frame.src = filePreviewObjectUrl;
+          frame.title = `Vista previa de ${name}`;
+          frame.referrerPolicy = 'no-referrer';
+          frame.setAttribute('sandbox', '');
+          els.filePreviewContent.replaceChildren(frame);
+        } else if (type.previewKind === 'pdf') {
           filePreviewObjectUrl = URL.createObjectURL(blob);
           const frame = makeElement('iframe', 'boards-preview-frame');
           frame.src = filePreviewObjectUrl;
