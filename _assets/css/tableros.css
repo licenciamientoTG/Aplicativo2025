@@ -1121,9 +1121,12 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-row-details { display: inline-grid; width: 28px; min-height: 27px; place-items: center; padding: 0; font-size: .86rem; }
 .boards-table-item-name-wrap { display: flex; min-width: 0; align-items: center; gap: 5px; }
 .boards-table-item-name-wrap .boards-item-name-link { min-width: 0; flex: 1; cursor: pointer; }
-.boards-item-name-edit { display: inline-grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #aeb5d0; background: transparent; cursor: pointer; }
+.boards-item-name-edit,
+.boards-item-subtask-add { display: inline-grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #aeb5d0; background: transparent; cursor: pointer; }
 .boards-item-name-edit:hover,
-.boards-item-name-edit:focus-visible { border-color: #596184; color: #fff; background: #353a5a; outline: 2px solid #82a3ff; outline-offset: 1px; }
+.boards-item-name-edit:focus-visible,
+.boards-item-subtask-add:hover,
+.boards-item-subtask-add:focus-visible { border-color: #596184; color: #fff; background: #353a5a; outline: 2px solid #82a3ff; outline-offset: 1px; }
 .boards-item-row { cursor: pointer; }
 .boards-item-row:focus-visible { outline: 2px solid #82a3ff; outline-offset: -2px; }
 .boards-details-dialog { position: fixed; inset: 0 0 0 auto; width: min(700px, 42vw); height: 100vh; max-height: 100vh; margin: 0; overflow: hidden; border-radius: 14px 0 0 14px; }

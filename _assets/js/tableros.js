@@ -1627,6 +1627,16 @@
       icon.setAttribute('aria-hidden', 'true');
       edit.append(icon);
       wrap.append(edit);
+
+      const addSubitem = makeElement('button', 'boards-item-subtask-add', '');
+      addSubitem.type = 'button';
+      addSubitem.dataset.addSubitem = String(item.id);
+      addSubitem.setAttribute('aria-label', `Agregar subelemento a ${item.name || 'elemento'}`);
+      addSubitem.title = 'Agregar subelemento';
+      const addIcon = makeElement('i', 'fa-solid fa-plus');
+      addIcon.setAttribute('aria-hidden', 'true');
+      addSubitem.append(addIcon);
+      wrap.append(addSubitem);
     }
     return wrap;
   }
@@ -2807,8 +2817,6 @@
     els.itemParentSelect.value = parentId;
     els.itemParentSelect.disabled = !editable;
     document.getElementById('saveItemParent').hidden = !editable;
-    const addSubitem = document.getElementById('addSubitemButton');
-    if (addSubitem) addSubitem.disabled = !editable;
     const parentWarning = document.getElementById('itemParentWarning');
     if (parentWarning) {
       parentWarning.hidden = !mismatchedParent;
@@ -4205,7 +4213,10 @@
       cell.append(number);
       (events.get(dateKey) || []).forEach((item) => {
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
-        const event = createItemNameControl(item, 'boards-calendar-event');
+        const event = makeElement('button', 'boards-calendar-event', item.name || 'Elemento sin nombre');
+        event.type = 'button';
+        event.dataset.openItemDetails = String(item.id);
+        event.setAttribute('aria-label', `Ver detalles: ${item.name || 'Elemento sin nombre'}`);
         event.title = `${item.name || 'Elemento'} · ${group?.name || 'Sin grupo'}`;
         event.style.setProperty('--group-color', safeGroupColor(group?.color));
         cell.append(event);
@@ -4456,8 +4467,8 @@
     document.querySelector('#createItemForm button[type="submit"]').textContent = 'Agregar elemento';
   }
 
-  function openCreateSubitem() {
-    const parent = state.items.find((item) => String(item.id) === state.detailItemId);
+  function openCreateSubitem(parentId = state.detailItemId) {
+    const parent = state.items.find((item) => String(item.id) === String(parentId));
     if (!parent || !canEditBoard()) return;
     state.createParentId = String(parent.id);
     refreshGroupOptions(parent.group_id);
@@ -4466,7 +4477,7 @@
     document.getElementById('createItemTitle').textContent = 'Agregar subelemento';
     document.querySelector('#createItemForm .boards-dialog-heading p').textContent = `Se agregará dentro del grupo de “${parent.name || 'este elemento'}”.`;
     document.querySelector('#createItemForm button[type="submit"]').textContent = 'Agregar subelemento';
-    closeDialog(els.itemDetailsDialog);
+    if (els.itemDetailsDialog.open) closeDialog(els.itemDetailsDialog);
     openDialog(els.createItemDialog);
   }
 
@@ -5283,6 +5294,11 @@
         if (editor && !editor.contains(event.relatedTarget)) saveCell(editor);
       });
       host.addEventListener('click', (event) => {
+        const addSubitem = event.target.closest('[data-add-subitem]');
+        if (addSubitem) {
+          openCreateSubitem(addSubitem.dataset.addSubitem);
+          return;
+        }
         const nameButton = event.target.closest('[data-item-name-button]');
         if (nameButton) {
           beginItemNameEdit(nameButton);
@@ -5468,7 +5484,6 @@
       });
     });
     els.itemCommentForm.addEventListener('submit', submitItemComment);
-    document.getElementById('addSubitemButton')?.addEventListener('click', openCreateSubitem);
     els.boardMembersList.addEventListener('click', (event) => {
       const revoke = event.target.closest('[data-revoke-member]');
       if (revoke) revokeBoardMember(revoke.dataset.revokeMember);
