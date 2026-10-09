@@ -263,9 +263,8 @@
           state.board = null;
           els.boardWorkspace.hidden = true;
           await loadBoards();
-        } else if (entityType === 'item' || entityType === 'group' || entityType === 'column' || entityType === 'file') {
-          if (entityType === 'item' || entityType === 'group' || entityType === 'column') await loadBoard(state.board?.id, true);
-          else await loadBoard(state.board?.id, true);
+        } else if (['item', 'subitem', 'group', 'column', 'file'].includes(entityType)) {
+          await loadBoard(state.board?.id, true);
         }
       }
       if (state.recycleMode) await loadRecycleView(state.recycleMode);
