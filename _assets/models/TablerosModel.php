@@ -191,8 +191,10 @@ class TablerosModel {
     }
 
     private function markEntityBundle(int $entryId, string $type, int $id, ?int $boardId, ?int $workspaceId): void {
-        $this->execute("IF OBJECT_ID('tempdb..#tableros_deleted') IS NOT NULL DROP TABLE #tableros_deleted; IF OBJECT_ID('tempdb..#tableros_target') IS NOT NULL DROP TABLE #tableros_target; CREATE TABLE #tableros_deleted (table_name SYSNAME NOT NULL, entity_id BIGINT NOT NULL)");
-        $this->execute('CREATE TABLE #tableros_target (id BIGINT NOT NULL PRIMARY KEY)');
+        // Create these temp tables in the session's outer SQL scope. PDO::prepare
+        // runs SQL Server batches through sp_executesql, whose temp tables are
+        // dropped when that prepared statement ends and cannot be reused below.
+        $this->pdo->exec("IF OBJECT_ID('tempdb..#tableros_deleted') IS NOT NULL DROP TABLE #tableros_deleted; IF OBJECT_ID('tempdb..#tableros_target') IS NOT NULL DROP TABLE #tableros_target; CREATE TABLE #tableros_deleted (table_name SYSNAME NOT NULL, entity_id BIGINT NOT NULL); CREATE TABLE #tableros_target (id BIGINT NOT NULL PRIMARY KEY)");
         if ($type === 'item') {
             $this->execute(';WITH item_tree AS (SELECT id FROM tb_item WHERE id = ? AND board_id = ? AND deleted_at IS NULL UNION ALL SELECT child.id FROM tb_item child JOIN item_tree parent ON child.parent_item_id = parent.id WHERE child.board_id = ? AND child.deleted_at IS NULL) INSERT INTO #tableros_target (id) SELECT id FROM item_tree OPTION (MAXRECURSION 100)', [$id, $boardId, $boardId]);
         } elseif ($type === 'group') {
@@ -272,7 +274,7 @@ class TablerosModel {
             $mark('tb_file_comment', 'file_id = ?', [$id]);
         }
         $this->execute('INSERT INTO tb_trash_entity (entry_id, table_name, entity_id) SELECT ?, table_name, entity_id FROM #tableros_deleted', [$entryId]);
-        $this->execute('DROP TABLE #tableros_target; DROP TABLE #tableros_deleted');
+        $this->pdo->exec('DROP TABLE #tableros_target; DROP TABLE #tableros_deleted');
         // Preserve physical file objects until permanent deletion; the manifest includes versions for the purge worker.
     }
 
