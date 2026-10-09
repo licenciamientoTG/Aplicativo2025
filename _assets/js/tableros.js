@@ -3580,6 +3580,64 @@
     return button;
   }
 
+  function createGroupSummaryRow(columns, groupItems) {
+    const summaryTypes = new Set(['status', 'file']);
+    if (!columns.some((column) => summaryTypes.has(columnType(column)))) return null;
+    const row = makeElement('tr', 'boards-table-summary-row');
+    row.append(makeElement('td', 'boards-table-summary-label'));
+    row.append(makeElement('td', 'boards-table-summary-spacer'));
+    columns.forEach((column) => {
+      const cell = makeElement('td', 'boards-table-summary-cell');
+      const type = columnType(column);
+      if (type === 'status') {
+        const options = parseOptions(column.options);
+        const counts = new Map(options.map((option) => [String(option.value), 0]));
+        let filled = 0;
+        groupItems.forEach((item) => {
+          const value = getCellValue(item, column);
+          if (value === null || value === undefined || String(value) === '') return;
+          const key = String(value);
+          counts.set(key, (counts.get(key) || 0) + 1);
+          filled += 1;
+        });
+        if (!filled) {
+          cell.append(makeElement('span', 'boards-summary-count', '—'));
+        } else {
+          const summaryOptions = options.slice();
+          counts.forEach((count, value) => {
+            if (count && !summaryOptions.some((option) => String(option.value) === value)) {
+              summaryOptions.push({ value, label: value, color: '#8792a2' });
+            }
+          });
+          const bar = makeElement('div', 'boards-summary-bar');
+          bar.setAttribute('role', 'img');
+          bar.setAttribute('aria-label', `Distribución de ${column.name || 'estado'}: ${Array.from(counts).filter(([, count]) => count).map(([value, count]) => `${summaryOptions.find((option) => String(option.value) === value)?.label || value}: ${count} de ${groupItems.length}, ${groupItems.length ? ((count / groupItems.length) * 100).toFixed(1) : '0.0'}%`).join(', ')}`);
+          summaryOptions.forEach((option) => {
+            const count = counts.get(String(option.value)) || 0;
+            if (!count) return;
+            const segment = makeElement('span', 'boards-summary-segment');
+            segment.style.width = `${(count / (groupItems.length || 1)) * 100}%`;
+            segment.style.backgroundColor = option.color || '#8792a2';
+            segment.title = `${option.label || option.value} ${count}/${groupItems.length}  ${groupItems.length ? ((count / groupItems.length) * 100).toFixed(1) : '0.0'}%`;
+            segment.dataset.tooltip = segment.title;
+            bar.append(segment);
+          });
+          cell.append(bar);
+        }
+      } else if (type === 'file') {
+        const totalFiles = groupItems.reduce((sum, item) => {
+          const value = getCellValue(item, column);
+          const files = Array.isArray(value) ? value : (Array.isArray(value?.files) ? value.files : (value && typeof value === 'object' && (value.file_id || value.id) ? [value] : []));
+          return sum + files.length;
+        }, 0);
+        cell.append(makeElement('span', 'boards-summary-count', `${totalFiles} ${totalFiles === 1 ? 'archivo' : 'archivos'}`));
+      }
+      row.append(cell);
+    });
+    row.append(makeElement('td', 'boards-table-summary-spacer'));
+    return row;
+  }
+
   function renderTable() {
     const query = els.boardSearch.value.trim().toLocaleLowerCase();
     const filteredItems = getFilteredItems();
@@ -3627,6 +3685,8 @@
       tbody.className = 'boards-group-body';
       tbody.append(createGroupRow(group, groupItems.length, columns.length));
       if (state.collapsedGroups.has(String(group.id))) {
+        const summaryRow = createGroupSummaryRow(columns, groupItems);
+        if (summaryRow) tbody.append(summaryRow);
         table.append(tbody);
         return;
       }
@@ -3709,68 +3769,10 @@
         addRow.append(addCell);
         tbody.append(addRow);
       }
+      const summaryRow = createGroupSummaryRow(columns, groupItems);
+      if (summaryRow) tbody.append(summaryRow);
       table.append(tbody);
     });
-
-    const summaryTypes = new Set(['status', 'file']);
-    if (columns.some((column) => summaryTypes.has(columnType(column)))) {
-      const footer = document.createElement('tfoot');
-      const row = makeElement('tr', 'boards-table-summary-row');
-      row.append(makeElement('td', 'boards-table-summary-label', 'Resumen'));
-      row.append(makeElement('td', 'boards-table-summary-spacer'));
-      columns.forEach((column) => {
-        const cell = document.createElement('td');
-        cell.className = 'boards-table-summary-cell';
-        const type = columnType(column);
-        if (type === 'status') {
-          const options = parseOptions(column.options);
-          const counts = new Map(options.map((option) => [String(option.value), 0]));
-          let filled = 0;
-          filteredItems.forEach((item) => {
-            const value = getCellValue(item, column);
-            if (value === null || value === undefined || String(value) === '') return;
-            const key = String(value);
-            counts.set(key, (counts.get(key) || 0) + 1);
-            filled += 1;
-          });
-          if (filled) {
-            const bar = makeElement('div', 'boards-summary-bar');
-            const summaryOptions = options.slice();
-            counts.forEach((count, value) => {
-              if (count && !summaryOptions.some((option) => String(option.value) === value)) {
-                summaryOptions.push({ value, label: value, color: '#8792a2' });
-              }
-            });
-            bar.setAttribute('role', 'img');
-            bar.setAttribute('aria-label', `Distribución de ${column.name || 'estado'}: ${Array.from(counts).filter(([, count]) => count).map(([value, count]) => `${summaryOptions.find((option) => String(option.value) === value)?.label || value}: ${count}`).join(', ')}`);
-            summaryOptions.forEach((option) => {
-              const count = counts.get(String(option.value)) || 0;
-              if (!count) return;
-              const segment = makeElement('span', 'boards-summary-segment');
-              segment.style.width = `${(count / filled) * 100}%`;
-              segment.style.backgroundColor = option.color || '#8792a2';
-              segment.title = `${option.label || option.value}: ${count}`;
-              bar.append(segment);
-            });
-            cell.append(bar);
-            cell.append(makeElement('span', 'boards-summary-count', `${filled} ${filled === 1 ? 'elemento con estado' : 'elementos con estado'}`));
-          } else {
-            cell.append(makeElement('span', 'boards-summary-count', '—'));
-          }
-        } else if (type === 'file') {
-          const totalFiles = filteredItems.reduce((sum, item) => {
-            const value = getCellValue(item, column);
-            const files = Array.isArray(value) ? value : (Array.isArray(value?.files) ? value.files : (value && typeof value === 'object' && (value.file_id || value.id) ? [value] : []));
-            return sum + files.length;
-          }, 0);
-          cell.append(makeElement('span', 'boards-summary-count', `${totalFiles} ${totalFiles === 1 ? 'archivo' : 'archivos'}`));
-        }
-        row.append(cell);
-      });
-      row.append(makeElement('td', 'boards-table-summary-spacer'));
-      footer.append(row);
-      table.append(footer);
-    }
 
     if (!state.groups.length) {
       const tbody = document.createElement('tbody');
@@ -3782,8 +3784,6 @@
       emptyRow.append(emptyCell);
       tbody.append(emptyRow);
       table.append(tbody);
-      const summaryFooter = table.querySelector('tfoot');
-      if (summaryFooter) table.append(summaryFooter);
     }
     els.boardTableContainer.append(table);
     els.boardTableStatus.hidden = state.groups.length > 0;
