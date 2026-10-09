@@ -224,6 +224,14 @@
 .boards-item-name-save:hover { background: #e7f3f1; }
 .boards-table .boards-move-head,
 .boards-table .boards-move-cell { min-width: 90px; width: 90px; border-right: 0; text-align: center; }
+.boards-table-summary-row th,
+.boards-table-summary-row td { position: sticky; z-index: 2; bottom: 0; height: 42px; border-top: 1px solid #ccd9de; border-bottom: 0; background: #f5f8f9; }
+.boards-table-summary-label { min-width: 38px !important; width: 38px; color: #60727d; font-size: .7rem; text-align: center !important; }
+.boards-table-summary-spacer { min-width: 260px !important; }
+.boards-table-summary-cell { min-width: 156px !important; text-align: center !important; }
+.boards-summary-bar { display: flex; width: 100%; height: 10px; overflow: hidden; border-radius: 999px; background: #e4eaed; }
+.boards-summary-segment { min-width: 2px; height: 100%; }
+.boards-summary-count { display: block; margin-top: 2px; color: #60727d; font-size: .67rem; line-height: 1.1; }
 .boards-item-row:hover td,
 .boards-item-row:hover .boards-item-name { background: #f7fafb; }
 .boards-group-row td { position: relative; height: 42px; padding: 0 10px; border-right: 0; background: #edf3f5; }
@@ -804,6 +812,11 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-add-in-group:hover { border-color: #505575; color: #fff; background: #363a59; }
 .boards-empty-group-row td,
 .boards-table-empty { color: #aeb2c9; background: #292c49; }
+.boards-table-summary-row th,
+.boards-table-summary-row td { border-top-color: #555978; background: #30334f; }
+.boards-table-summary-label,
+.boards-summary-count { color: #b8bfd8; }
+.boards-summary-bar { background: #444966; }
 .boards-required-label { color: #ffdc9c; background: #574639; }
 .boards-cell-input,
 .boards-status-select { min-height: 28px; color: #e8eaf5; }
