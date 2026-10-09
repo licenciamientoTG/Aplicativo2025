@@ -204,7 +204,9 @@
     fileHistoryVisible: {},
     fileHistoryLoading: {},
     fileHistoryErrors: {},
-    boardMembers: []
+    boardMembers: [],
+    recycleMode: '',
+    recycleEntries: []
   };
   let shareUserSearchRequest = 0;
   let selectedShareUser = null;
@@ -223,6 +225,149 @@
         noticeTimer = 0;
       }, duration);
     }
+  }
+
+  function recycleAction(label, entityType, entityId, operation, boardId = state.board?.id) {
+    const button = makeElement('button', 'boards-text-button boards-recycle-action', label);
+    button.type = 'button';
+    button.dataset.recycleAction = operation;
+    button.dataset.recycleType = entityType;
+    button.dataset.recycleId = String(entityId);
+    if (boardId != null) button.dataset.recycleBoard = String(boardId);
+    button.setAttribute('aria-label', `${label}: ${entityType} ${entityId}`);
+    return button;
+  }
+
+  async function runRecycleAction(button) {
+    const { recycleAction: action, recycleType: entityType, recycleId: entityId, recycleBoard: boardId } = button.dataset;
+    const archive = action === 'archive';
+    const label = action === 'trash' ? 'Mover a la papelera' : archive ? 'Archivar' : ['restore', 'restore_archive'].includes(action) ? 'Restaurar' : 'Eliminar definitivamente';
+    if (!window.confirm(`${label} este elemento?`)) return;
+    button.disabled = true;
+    try {
+      if (action === 'restore' || action === 'permanent') {
+        const endpoint = action === 'restore' ? '/restore_trash' : '/permanently_delete_trash';
+        await post(endpoint, { entry_id: entityId });
+      } else if (action === 'restore_archive') {
+        await post('/restore_archive', { entry_id: button.dataset.recycleEntry || entityId });
+      } else {
+        const payload = { entity_type: entityType, entity_id: entityId, ...(boardId ? { board_id: boardId } : {}) };
+        await post(archive ? '/archive' : '/trash', payload);
+      }
+      if (action === 'trash' || archive) {
+        if (entityType === 'board' && String(state.board?.id) === String(entityId)) {
+          state.board = null;
+          els.boardWorkspace.hidden = true;
+          await loadBoards();
+        } else if (entityType === 'item' || entityType === 'group' || entityType === 'column' || entityType === 'file') {
+          if (entityType === 'item' || entityType === 'group' || entityType === 'column') await loadBoard(state.board?.id, true);
+          else await loadBoard(state.board?.id, true);
+        }
+      }
+      if (state.recycleMode) await loadRecycleView(state.recycleMode);
+      setNotice(`${label} correctamente.`, 'success');
+    } catch (error) {
+      setNotice(errorMessage(error), 'error');
+    } finally { button.disabled = false; }
+  }
+
+  async function loadRecycleView(mode) {
+    state.recycleMode = mode;
+    els.boardWorkspace.hidden = true;
+    els.boardsEmpty.hidden = true;
+    const section = document.getElementById('trashArchiveView');
+    const list = document.getElementById('trashArchiveList');
+    const status = document.getElementById('trashArchiveStatus');
+    const title = document.getElementById('trashArchiveTitle');
+    const description = document.getElementById('trashArchiveDescription');
+    document.getElementById('trashFilters').hidden = mode !== 'trash';
+    title.textContent = mode === 'trash' ? 'Papelera' : 'Archivados';
+    description.textContent = mode === 'trash' ? 'Los elementos eliminados se pueden restaurar o eliminar definitivamente.' : 'Los elementos archivados se pueden restaurar.';
+    section.hidden = false;
+    list.replaceChildren();
+    status.textContent = 'Cargando elementos…';
+    try {
+      const workspaceId = state.selectedWorkspaceId ? `?workspace_id=${encodeURIComponent(state.selectedWorkspaceId)}` : '';
+      const result = await request(`/${mode}${workspaceId}`);
+      const entries = Array.isArray(result.data) ? result.data : (Array.isArray(result.data?.entries) ? result.data.entries : []);
+      state.recycleEntries = entries;
+      if (mode === 'trash') populateTrashFilters(entries);
+      renderRecycleEntries();
+    } catch (error) { status.textContent = errorMessage(error, 'No se pudieron cargar los elementos.'); }
+  }
+
+  function recycleLocation(entry) {
+    return String(entry.location || [entry.board_name, entry.workspace_name].filter(Boolean).join(' · ') || entry.workspace_name || 'Ubicación no disponible');
+  }
+
+  function formatRecycleDate(value) {
+    if (!value) return 'No disponible';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  }
+
+  function populateTrashFilters(entries) {
+    const typeSelect = document.getElementById('trashTypeFilter');
+    const locationSelect = document.getElementById('trashLocationFilter');
+    const previousType = typeSelect.value;
+    const previousLocation = locationSelect.value;
+    const types = [...new Set(entries.map((entry) => String(entry.entity_type || entry.type || 'elemento')))].sort();
+    const locations = [...new Set(entries.map(recycleLocation))].sort((a, b) => a.localeCompare(b, 'es-MX'));
+    typeSelect.replaceChildren(new Option('Todos los tipos', ''), ...types.map((type) => new Option(type, type)));
+    locationSelect.replaceChildren(new Option('Todas las ubicaciones', ''), ...locations.map((location) => new Option(location, location)));
+    if (types.includes(previousType)) typeSelect.value = previousType;
+    if (locations.includes(previousLocation)) locationSelect.value = previousLocation;
+  }
+
+  function renderRecycleEntries() {
+    const list = document.getElementById('trashArchiveList');
+    const status = document.getElementById('trashArchiveStatus');
+    const isTrash = state.recycleMode === 'trash';
+    const typeFilter = isTrash ? document.getElementById('trashTypeFilter').value : '';
+    const locationFilter = isTrash ? document.getElementById('trashLocationFilter').value : '';
+    const dateFilter = isTrash ? document.getElementById('trashDateFilter').value : '';
+    const entries = state.recycleEntries.filter((entry) => {
+      const type = String(entry.entity_type || entry.type || 'elemento');
+      if (typeFilter && type !== typeFilter) return false;
+      if (locationFilter && recycleLocation(entry) !== locationFilter) return false;
+      if (dateFilter) {
+        const deletedAt = new Date(entry.deleted_at);
+        if (Number.isNaN(deletedAt.getTime())) return false;
+        const deletedDate = `${deletedAt.getFullYear()}-${String(deletedAt.getMonth() + 1).padStart(2, '0')}-${String(deletedAt.getDate()).padStart(2, '0')}`;
+        if (deletedDate !== dateFilter) return false;
+      }
+      return true;
+    });
+    list.replaceChildren();
+    entries.forEach((entry) => {
+      const row = makeElement('article', 'boards-recycle-entry');
+      row.setAttribute('role', 'listitem');
+      const type = entry.entity_type || entry.type || 'elemento';
+      const id = state.recycleMode === 'trash' ? (entry.entry_id ?? entry.id) : (entry.entity_id ?? entry.id);
+      const titleText = entry.name || entry.entity_name || `${type} ${entry.entity_id ?? id}`;
+      row.append(makeElement('div', 'boards-recycle-entry-copy', titleText));
+      row.append(makeElement('small', 'boards-recycle-entry-type', type));
+      if (isTrash) {
+        const metadata = makeElement('div', 'boards-recycle-entry-metadata');
+        metadata.append(
+          makeElement('span', '', `Ubicación: ${recycleLocation(entry)}`),
+          makeElement('span', '', `Eliminado por: ${entry.deleted_by_name || 'No disponible'}`),
+          makeElement('span', '', `Eliminado: ${formatRecycleDate(entry.deleted_at)}`),
+          makeElement('span', '', `Expira: ${formatRecycleDate(entry.expires_at)}`)
+        );
+        row.append(metadata);
+      } else if (entry.board_name || entry.workspace_name) {
+        row.append(makeElement('small', 'boards-recycle-entry-location', recycleLocation(entry)));
+      }
+      const actions = makeElement('div', 'boards-recycle-entry-actions');
+      const restore = recycleAction('Restaurar', type, id, isTrash ? 'restore' : 'restore_archive', entry.board_id);
+      restore.dataset.recycleEntry = String(entry.entry_id ?? entry.id);
+      actions.append(restore);
+      if (isTrash) actions.append(recycleAction('Eliminar definitivamente', type, id, 'permanent'));
+      row.append(actions);
+      list.append(row);
+    });
+    status.textContent = entries.length ? `${entries.length} de ${state.recycleEntries.length} elemento${state.recycleEntries.length === 1 ? '' : 's'}.` : 'No hay elementos que coincidan con estos filtros.';
   }
 
   function clearNotice() {
@@ -649,6 +794,8 @@
   }
 
   async function loadBoard(id, skipRoute = false) {
+    document.getElementById('trashArchiveView').hidden = true;
+    state.recycleMode = '';
     if (!id) {
       state.board = null;
       showLoading(false);
@@ -726,6 +873,8 @@
     document.getElementById('openCreateItem').hidden = !edit;
     document.getElementById('openCreateGroup').hidden = !manage;
     document.getElementById('openCreateColumn').hidden = !manage;
+    document.getElementById('trashBoard').hidden = !manage;
+    document.getElementById('archiveBoard').hidden = !manage;
     const shareButton = document.getElementById('openShareBoard');
     if (shareButton) shareButton.hidden = !manage;
     const sharedViewOption = document.getElementById('sharedViewOption');
@@ -851,6 +1000,7 @@
         labelsButton.setAttribute('aria-label', `Editar etiquetas y colores de ${column.name || 'columna'}`);
         actions.append(labelsButton);
       }
+      if (canManageStructure()) actions.append(recycleAction('Eliminar columna', 'column', column.id, 'trash', state.board?.id));
       row.append(label, actions);
       list.append(row);
     });
@@ -1649,6 +1799,9 @@
       addIcon.setAttribute('aria-hidden', 'true');
       addSubitem.append(addIcon);
       wrap.append(addSubitem);
+      const itemType = isChild ? 'subitem' : 'item';
+      wrap.append(recycleAction(isChild ? 'Eliminar subelemento' : 'Eliminar elemento', itemType, item.id, 'trash', state.board?.id));
+      wrap.append(recycleAction(isChild ? 'Archivar subelemento' : 'Archivar elemento', itemType, item.id, 'archive', state.board?.id));
     }
     return wrap;
   }
@@ -2640,6 +2793,9 @@
       const versionLabel = currentVersion?.version_number ? `v${currentVersion.version_number}` : (file.version_number ? `v${file.version_number}` : 'Versión actual');
       heading.append(makeElement('span', 'boards-file-version-label', versionLabel));
       const actions = makeElement('div', 'boards-detail-actions');
+      if (canEditBoard()) {
+        actions.append(recycleAction('Eliminar archivo', 'file', file.file_id, 'trash', state.board?.id));
+      }
       const referenceScanStatus = String(file.scan_status || '').toLowerCase();
       const provisionalStatus = ['pending', 'quarantined', 'failed', 'unscanned', 'clean'].includes(referenceScanStatus) ? referenceScanStatus : 'unknown';
       const scanStatus = String(currentVersion?.scan_status || provisionalStatus || 'unknown').toLowerCase();
@@ -3567,6 +3723,8 @@
       label.textContent = 'Agregar';
       add.append(icon, label);
       meta.append(add);
+      meta.append(recycleAction('Eliminar grupo', 'group', group.id, 'trash', state.board?.id));
+      meta.append(recycleAction('Archivar grupo', 'group', group.id, 'archive', state.board?.id));
     }
     groupWrap.append(meta);
     cell.append(groupWrap);
@@ -4100,6 +4258,8 @@
     move.title = blockedChildren.length ? 'Quita la relación principal antes de mover un subelemento por separado.' : 'Mover elementos raíz también mueve sus subelementos.';
     target.disabled = state.bulkMoveInFlight;
     document.getElementById('clearSelection').disabled = state.bulkMoveInFlight;
+    const bulkDelete = document.getElementById('bulkTrashItems');
+    if (bulkDelete) bulkDelete.disabled = state.bulkMoveInFlight || !total || blockedChildren.length > 0;
     els.boardTableContainer.querySelectorAll('[data-select-item], [data-select-group]').forEach((checkbox) => { checkbox.disabled = state.bulkMoveInFlight; });
     els.boardTableContainer.querySelectorAll('[data-select-group]').forEach((checkbox) => {
       const groupItems = getFilteredItems().filter((item) => String(item.group_id) === checkbox.dataset.selectGroup);
@@ -4718,7 +4878,8 @@
     if (statusColumn) {
       const statusSection = makeElement('section', 'boards-panel-breakdown');
       statusSection.append(makeElement('h4', '', `Elementos por ${statusColumn.name || 'estado'}`));
-      const values = parseOptions(statusColumn.options).map((option) => option.value);
+      const statusOptions = parseOptions(statusColumn.options);
+      const values = statusOptions.map((option) => option.value);
       items.forEach((item) => {
         const value = stringifyValue(getCellValue(item, statusColumn));
         if (value && !values.includes(value)) values.push(value);
@@ -4729,11 +4890,13 @@
       const maxCount = Math.max(1, ...statusCounts.map((entry) => entry.count));
       statusCounts.forEach((entry, index) => {
         const row = makeElement('div', 'boards-panel-bar-row');
-        const label = makeElement('span', 'boards-panel-bar-label', entry.value || 'Sin estado');
+        const statusOption = statusOptions.find((option) => option.value === entry.value);
+        const statusLabel = statusOption?.label || entry.value;
+        const label = makeElement('span', 'boards-panel-bar-label', statusLabel || 'Sin estado');
         const track = makeElement('span', 'boards-panel-bar-track');
         const bar = makeElement('span', 'boards-panel-bar');
         bar.style.width = `${(entry.count / maxCount) * 100}%`;
-        bar.style.setProperty('--group-color', ['#0f766e', '#3574a5', '#8a5ca6', '#bb7a2a', '#b64f57'][index % 5]);
+        bar.style.setProperty('--group-color', safeGroupColor(statusOption?.color || statusLabelColor(statusLabel, index)));
         track.append(bar);
         row.append(label, track, makeElement('strong', 'boards-panel-bar-count', entry.count));
         statusSection.append(row);
@@ -4938,7 +5101,8 @@
           }
         }
       }
-      if (state.activeViewType !== 'table' || els.boardSearch.value.trim() || state.filters.length) renderActiveView();
+      if ((editedColumn && ['status', 'dropdown'].includes(columnType(editedColumn)))
+        || state.activeViewType !== 'table' || els.boardSearch.value.trim() || state.filters.length) renderActiveView();
     } catch (error) {
       editor.classList.add('has-error');
       setNotice(errorMessage(error, 'No se pudo guardar el cambio.'), 'error');
@@ -5102,11 +5266,33 @@
     }
   }
 
+  async function trashSelectedItems() {
+    if (state.bulkMoveInFlight || !canEditBoard() || !state.board || !state.selectedItemIds.size) return;
+    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)) && item.parent_item_id == null);
+    if (!selected.length || !window.confirm(`Mover ${selected.length} elemento(s) seleccionado(s) y sus subelementos a la papelera?`)) return;
+    const button = document.getElementById('bulkTrashItems');
+    button.disabled = true;
+    try {
+      await post('/trash', { entity_type: 'item', entity_ids: selected.map((item) => item.id), board_id: state.board.id });
+      state.selectedItemIds.clear();
+      await loadBoard(state.board.id, true);
+      setNotice('Elementos movidos a la papelera.', 'success');
+    } catch (error) { setNotice(errorMessage(error), 'error'); }
+    finally { updateSelectionBar(); }
+  }
+
   function getFormValue(formData, name) {
     return String(formData.get(name) || '').trim();
   }
 
   function setupDialogs() {
+    document.addEventListener('click', (event) => {
+      const action = event.target.closest('[data-recycle-action]');
+      if (!action) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runRecycleAction(action);
+    });
     els.createItemDialog.addEventListener('close', resetCreateItemMode);
     els.createItemDialog.addEventListener('cancel', resetCreateItemMode);
     document.querySelectorAll('[data-close-dialog]').forEach((button) => {
@@ -5118,6 +5304,35 @@
       });
     });
     document.getElementById('openCreateBoard')?.addEventListener('click', () => openCreateBoard(state.board?.workspace_id || state.selectedWorkspaceId, state.board?.folder_id || ''));
+    document.getElementById('openTrashView')?.addEventListener('click', () => loadRecycleView('trash'));
+    document.getElementById('openArchiveView')?.addEventListener('click', () => loadRecycleView('archive'));
+    ['trashTypeFilter', 'trashLocationFilter', 'trashDateFilter'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', renderRecycleEntries);
+    });
+    document.getElementById('clearTrashFilters')?.addEventListener('click', () => {
+      document.getElementById('trashTypeFilter').value = '';
+      document.getElementById('trashLocationFilter').value = '';
+      document.getElementById('trashDateFilter').value = '';
+      renderRecycleEntries();
+    });
+    document.getElementById('closeTrashArchiveView')?.addEventListener('click', () => {
+      document.getElementById('trashArchiveView').hidden = true;
+      state.recycleMode = '';
+      if (state.board) els.boardWorkspace.hidden = false;
+      else showEmptyState();
+    });
+    document.getElementById('trashBoard')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const button = event.currentTarget;
+      button.dataset.recycleAction = 'trash'; button.dataset.recycleType = 'board'; button.dataset.recycleId = String(state.board?.id || '');
+      runRecycleAction(button);
+    });
+    document.getElementById('archiveBoard')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const button = event.currentTarget;
+      button.dataset.recycleAction = 'archive'; button.dataset.recycleType = 'board'; button.dataset.recycleId = String(state.board?.id || '');
+      runRecycleAction(button);
+    });
     document.getElementById('emptyCreateBoard')?.addEventListener('click', () => openCreateBoard());
     document.getElementById('navCreateWorkspace')?.addEventListener('click', () => openDialog(els.createWorkspaceDialog));
     document.getElementById('navCreateFolder')?.addEventListener('click', () => openCreateFolder());
@@ -5747,6 +5962,7 @@
     });
     document.getElementById('bulkMoveGroup')?.addEventListener('change', updateSelectionBar);
     document.getElementById('bulkMoveItems')?.addEventListener('click', moveSelectedItems);
+    document.getElementById('bulkTrashItems')?.addEventListener('click', trashSelectedItems);
     document.getElementById('clearSelection')?.addEventListener('click', () => {
       state.selectedItemIds.clear();
       els.boardTableContainer.querySelectorAll('[data-select-item]').forEach((checkbox) => { checkbox.checked = false; });

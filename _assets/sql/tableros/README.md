@@ -11,6 +11,7 @@
 - `007_comment_mentions_notifications.sql` agrega menciones opcionales a comentarios, vínculos de archivos adjuntos a comentarios y notificaciones dentro de la aplicación. Es aditivo e idempotente; ejecutar después de `006_file_comments.sql`.
 - `008_comment_stickers.sql` agrega el catálogo de stickers compartidos y sus asociaciones a comentarios de archivo. Es aditivo e idempotente; ejecutar después de `006_file_comments.sql`.
 - `010_allow_sticker_only_comments.sql` permite comentarios de archivo que contienen solamente stickers, quitando la restricción que exigía texto. Es idempotente y no modifica datos; ejecutar después de `006_file_comments.sql`.
+- `011_trash_archive.sql` agrega el registro común de papelera/archivo y la cola de limpieza física con reintentos. Ejecutar después de `010_allow_sticker_only_comments.sql` en instalaciones existentes y nuevas.
 - La conexión de la aplicación a `tableros` reutiliza la configuración SQL existente sin cambiar la conexión compartida de los demás modelos.
 
 Después de desplegar el código, Sistemas debe asignar en `/it` los permisos **Tableros - Acceso**, **Tableros - Crear** y **Tableros - Administrar** a las personas correspondientes. El módulo no concede acceso automáticamente.
@@ -18,6 +19,8 @@ Después de desplegar el código, Sistemas debe asignar en `/it` los permisos **
 ## Automatizaciones
 
 Programar `php cron/tableros_automation_worker.php` para que se ejecute cada minuto en el servidor de la aplicación, bajo la identidad que tenga acceso a SQL Server. El worker usa un bloqueo de aplicación para evitar ejecuciones simultáneas.
+
+Programar `python cron/tableros_trash_worker.py` cada minuto. Requiere `pyodbc` (instalar con `python -m pip install pyodbc`) y un driver ODBC de SQL Server en el servidor. Configurar `TABLEROS_DB_HOST`, `TABLEROS_DB_USER` y `TABLEROS_DB_PASSWORD`; opcionalmente `TABLEROS_DB_NAME` (por defecto `tableros`), `TABLEROS_DB_PORT`, `TABLEROS_DB_DRIVER`, `TABLEROS_DB_TRUST_CERTIFICATE` y `TABLEROS_PRIVATE_STORAGE`. También lee un archivo `.env` junto al worker o en la raíz del proyecto. Si se usa almacenamiento NAS, necesita `TABLEROS_STORAGE_SERVICE_URL` y `TABLEROS_STORAGE_SERVICE_TOKEN`. Purga registros de la papelera con 30 días cumplidos y procesa las eliminaciones físicas locales/NAS. El worker usa un bloqueo de aplicación; además, reclama cada entrada en SQL antes de borrar archivos para que restauración y purga no puedan correr simultáneamente. Una entrada cuya purga ya comenzó no admite restauración. Los fallos de almacenamiento se conservan en `tb_storage_cleanup` para reintento y diagnóstico. Las entradas marcadas para eliminación permanente dejan de aparecer en la papelera y se purgan en la siguiente ejecución.
 
 ## Archivos
 
@@ -33,7 +36,7 @@ La importación de proyectos desde Monday no forma parte del módulo. Los proyec
 
 ## Orden de actualización
 
-En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql`, `005_file_scan_availability.sql`, `006_file_comments.sql`, `007_comment_mentions_notifications.sql`, `008_comment_stickers.sql` y `010_allow_sticker_only_comments.sql`, en ese orden. Los scripts son idempotentes; `005` actualiza solamente estados `pending` a `unscanned`. En instalaciones nuevas, ejecutar `001_create_schema.sql`, `006_file_comments.sql`, `007_comment_mentions_notifications.sql`, `008_comment_stickers.sql` y `010_allow_sticker_only_comments.sql` en ese orden. La aplicación valida que cada comentario tenga texto o al menos un sticker.
+En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql`, `005_file_scan_availability.sql`, `006_file_comments.sql`, `007_comment_mentions_notifications.sql`, `008_comment_stickers.sql`, `010_allow_sticker_only_comments.sql` y `011_trash_archive.sql`, en ese orden. Los scripts son idempotentes; `005` actualiza solamente estados `pending` a `unscanned`. En instalaciones nuevas, ejecutar `001_create_schema.sql`, `006_file_comments.sql`, `007_comment_mentions_notifications.sql`, `008_comment_stickers.sql`, `010_allow_sticker_only_comments.sql` y `011_trash_archive.sql` en ese orden. La aplicación valida que cada comentario tenga texto o al menos un sticker.
 
 `007` requiere que existan `tb_board`, `tb_item`, `tb_file`, `tb_comment` y `tb_file_comment`; no ejecuta cambios de datos existentes. Los IDs de usuario (`user_id` y `actor_user_id`) se guardan como enteros sin FK porque pertenecen a TG. La aplicación debe validar que cada archivo adjunto pertenezca al mismo tablero/elemento del comentario y que el usuario tenga acceso al archivo privado. Los vínculos sí tienen FKs locales a los registros de archivo y comentario.
 

@@ -27,6 +27,46 @@ class tableros_api {
         });
     }
 
+    public function trash(): void {
+        if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+            $this->handle('GET', function (int $userId): array {
+                $workspaceId = isset($_GET['workspace_id']) ? $this->positiveInt($_GET['workspace_id'], 'workspace_id') : null;
+                return $this->model->getTrashEntries($userId, $this->access->hasGlobalPermission('admin'), $workspaceId, 'trash');
+            });
+            return;
+        }
+        $this->handle('POST', function (int $userId, array $input): array { return $this->model->trashEntity($userId, $input, 'trash'); });
+    }
+
+    public function restore_trash(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            return $this->model->restoreTrashEntry($userId, $this->access->hasGlobalPermission('admin'), $this->positiveInt($input['entry_id'] ?? null, 'entry_id'), 'trash');
+        });
+    }
+
+    public function permanently_delete_trash(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            return $this->model->requestPermanentTrashDelete($userId, $this->access->hasGlobalPermission('admin'), $this->positiveInt($input['entry_id'] ?? null, 'entry_id'));
+        });
+    }
+
+    public function archive(): void {
+        if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+            $this->handle('GET', function (int $userId): array {
+                $workspaceId = isset($_GET['workspace_id']) ? $this->positiveInt($_GET['workspace_id'], 'workspace_id') : null;
+                return $this->model->getTrashEntries($userId, $this->access->hasGlobalPermission('admin'), $workspaceId, 'archive');
+            });
+            return;
+        }
+        $this->handle('POST', function (int $userId, array $input): array { return $this->model->trashEntity($userId, $input, 'archive'); });
+    }
+
+    public function restore_archive(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            return $this->model->restoreTrashEntry($userId, $this->access->hasGlobalPermission('admin'), $this->positiveInt($input['entry_id'] ?? null, 'entry_id'), 'archive');
+        });
+    }
+
     public function create_workspace(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             if (!$this->access->hasGlobalPermission('create')) {

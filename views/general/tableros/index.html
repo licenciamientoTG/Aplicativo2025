@@ -109,6 +109,12 @@
       <div><h3 id="trashArchiveTitle">Papelera</h3><p id="trashArchiveDescription">Los elementos eliminados se pueden restaurar o eliminar definitivamente.</p></div>
       <button type="button" class="btn boards-button-light" id="closeTrashArchiveView">Volver al tablero</button>
     </header>
+    <div id="trashFilters" class="boards-trash-filters" role="group" aria-label="Filtrar elementos de la papelera" hidden>
+      <label>Tipo de elemento<select id="trashTypeFilter" class="form-select"><option value="">Todos los tipos</option></select></label>
+      <label>Tablero o espacio<select id="trashLocationFilter" class="form-select"><option value="">Todas las ubicaciones</option></select></label>
+      <label>Fecha de eliminación<input id="trashDateFilter" class="form-control" type="date"></label>
+      <button id="clearTrashFilters" type="button" class="btn boards-button-light">Limpiar filtros</button>
+    </div>
     <div id="trashArchiveStatus" class="boards-detail-status" role="status" aria-live="polite"></div>
     <div id="trashArchiveList" class="boards-recycle-list" role="list"></div>
   </section>
@@ -171,6 +177,7 @@
       <select id="bulkMoveGroup" class="form-select" aria-label="Mover seleccionados a"></select>
       <span class="boards-field-help">Mover un elemento principal también mueve sus subelementos.</span>
       <button id="bulkMoveItems" class="btn boards-button-primary" type="button"><i class="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i><span>Mover</span></button>
+      <button id="bulkTrashItems" class="btn boards-button-light" type="button"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Eliminar seleccionados</span></button>
       <button id="clearSelection" class="btn boards-button-light" type="button">Cancelar selección</button>
     </div>
 

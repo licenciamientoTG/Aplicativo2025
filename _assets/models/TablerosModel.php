@@ -123,6 +123,357 @@ class TablerosModel {
         return ['workspaces' => $workspaces, 'folders' => $folders, 'boards' => $boards];
     }
 
+    /** Creates one recoverable entry and records every row changed by its cascade. */
+    public function trashEntity(int $userId, array $input, string $kind = 'trash'): array {
+        $type = strtolower(trim((string)($input['entity_type'] ?? '')));
+        if ($type === 'subitem') $type = 'item';
+        if (!in_array($type, ['workspace', 'folder', 'board', 'group', 'column', 'item', 'file'], true)) {
+            throw new TablerosApiException('validation', 'El tipo de elemento no se puede eliminar.', 422);
+        }
+        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['board', 'group', 'item'], true))) {
+            throw new TablerosApiException('validation', 'El tipo de elemento no se puede archivar.', 422);
+        }
+        $ids = $input['entity_ids'] ?? [$input['entity_id'] ?? null];
+        if (!is_array($ids) || !$ids || count($ids) > 100) throw new TablerosApiException('validation', 'Selecciona entre 1 y 100 elementos.', 422);
+        $ids = array_values(array_unique(array_map(fn($id) => $this->positiveInt($id, 'entity_id'), $ids)));
+        if ($type !== 'item' && count($ids) !== 1) throw new TablerosApiException('validation', 'Esta acción admite un elemento a la vez.', 422);
+        return $this->transaction(function () use ($ids, $userId, $type, $kind): array {
+            $entries = [];
+            foreach ($ids as $id) $entries[] = $this->trashOneEntity($userId, $type, $id, $kind);
+            return ['entries' => $entries, 'count' => count($entries)];
+        });
+    }
+
+    private function trashOneEntity(int $userId, string $type, int $id, string $kind): array {
+        $config = [
+            'workspace' => ['tb_workspace', 'id', 'name'], 'folder' => ['tb_folder', 'id', 'name'],
+            'board' => ['tb_board', 'id', 'name'], 'group' => ['tb_group', 'id', 'name'],
+            'column' => ['tb_column', 'id', 'name'], 'item' => ['tb_item', 'id', 'name'], 'file' => ['tb_file', 'id', 'name'],
+        ][$type];
+        return $this->transaction(function () use ($userId, $type, $id, $kind, $config): array {
+            [$table, $pk, $nameCol] = $config;
+            $row = $this->one("SELECT * FROM $table WITH (UPDLOCK, HOLDLOCK) WHERE $pk = ? AND deleted_at IS NULL", [$id]);
+            if (!$row) throw new TablerosApiException('not_found', 'No se encontró el elemento activo.', 404);
+            $boardId = isset($row['board_id']) ? (int)$row['board_id'] : null;
+            $workspaceId = isset($row['workspace_id']) ? (int)$row['workspace_id'] : null;
+            if ($type === 'workspace') $workspaceId = $id;
+            if ($type === 'file') $boardId = (int)$row['board_id'];
+            if ($type === 'group' || $type === 'column' || $type === 'item') $boardId = (int)$row['board_id'];
+            if ($type === 'folder') $workspaceId = (int)$row['workspace_id'];
+            if ($type === 'board') $workspaceId = (int)$row['workspace_id'];
+            $location = '';
+            if ($boardId) {
+                $board = $this->one('SELECT name, workspace_id FROM tb_board WHERE id = ?', [$boardId]);
+                $location = (string)($board['name'] ?? '');
+                $workspaceId = (int)($board['workspace_id'] ?? $workspaceId);
+            }
+            if ($workspaceId) {
+                $workspace = $this->one('SELECT name FROM tb_workspace WHERE id = ?', [$workspaceId]);
+                $workspaceName = (string)($workspace['name'] ?? '');
+                if ($workspaceName !== '') $location = $boardId ? $workspaceName . ' / ' . $location : $workspaceName;
+            } elseif ($type === 'workspace') $location = 'Espacios de trabajo';
+            if ($boardId && !$this->access->hasGlobalPermission('admin')) {
+                $role = $this->access->boardRole($boardId);
+                if ($role === null || !in_array($role, ['owner', 'designer', 'editor'], true)) throw new TablerosApiException('forbidden', 'No tienes permiso para eliminar este elemento.', 403);
+            } elseif (!$boardId && !$this->access->hasGlobalPermission('admin')) {
+                $workspaceRole = $this->access->workspaceRole((int)$workspaceId);
+                if ($workspaceRole !== 'owner' && (int)($row['created_by'] ?? 0) !== $userId) throw new TablerosApiException('forbidden', 'Solo el propietario del espacio o un administrador puede eliminarlo.', 403);
+            }
+            $entryId = $this->insertId(
+                'INSERT INTO tb_trash_entry (entry_kind, entity_type, entity_id, entity_name, location, workspace_id, board_id, deleted_by, deleted_at, expires_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME(), CASE WHEN ? = \'trash\' THEN DATEADD(DAY, 30, SYSUTCDATETIME()) ELSE NULL END)',
+                [$kind, $type, $id, (string)$row[$nameCol], $location, $workspaceId, $boardId, $userId, $kind]
+            );
+            $this->markEntityBundle($entryId, $type, $id, $boardId, $workspaceId);
+            return ['id' => $entryId, 'entity_type' => $type, 'entity_id' => $id, 'entity_name' => (string)$row[$nameCol], 'entry_kind' => $kind];
+        });
+    }
+
+    private function markEntityBundle(int $entryId, string $type, int $id, ?int $boardId, ?int $workspaceId): void {
+        $this->execute("IF OBJECT_ID('tempdb..#tableros_deleted') IS NOT NULL DROP TABLE #tableros_deleted; IF OBJECT_ID('tempdb..#tableros_target') IS NOT NULL DROP TABLE #tableros_target; CREATE TABLE #tableros_deleted (table_name SYSNAME NOT NULL, entity_id BIGINT NOT NULL)");
+        $this->execute('CREATE TABLE #tableros_target (id BIGINT NOT NULL PRIMARY KEY)');
+        if ($type === 'item') {
+            $this->execute(';WITH item_tree AS (SELECT id FROM tb_item WHERE id = ? AND board_id = ? AND deleted_at IS NULL UNION ALL SELECT child.id FROM tb_item child JOIN item_tree parent ON child.parent_item_id = parent.id WHERE child.board_id = ? AND child.deleted_at IS NULL) INSERT INTO #tableros_target (id) SELECT id FROM item_tree OPTION (MAXRECURSION 100)', [$id, $boardId, $boardId]);
+        } elseif ($type === 'group') {
+            $this->execute(';WITH item_tree AS (SELECT id FROM tb_item WHERE group_id = ? AND board_id = ? AND deleted_at IS NULL UNION ALL SELECT child.id FROM tb_item child JOIN item_tree parent ON child.parent_item_id = parent.id WHERE child.board_id = ? AND child.deleted_at IS NULL) INSERT INTO #tableros_target (id) SELECT id FROM item_tree OPTION (MAXRECURSION 100)', [$id, $boardId, $boardId]);
+        } elseif ($type === 'board') {
+            $this->execute('INSERT INTO #tableros_target SELECT id FROM tb_item WHERE board_id = ? AND deleted_at IS NULL', [$boardId]);
+        } elseif ($type === 'workspace') {
+            $this->execute('INSERT INTO #tableros_target SELECT id FROM tb_item WHERE board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?) AND deleted_at IS NULL', [$workspaceId]);
+        } elseif ($type === 'folder') {
+            $this->execute(';WITH folder_tree AS (SELECT id FROM tb_folder WHERE id = ? AND deleted_at IS NULL UNION ALL SELECT f.id FROM tb_folder f JOIN folder_tree p ON f.parent_folder_id = p.id WHERE f.deleted_at IS NULL) INSERT INTO #tableros_target SELECT i.id FROM tb_item i WHERE i.board_id IN (SELECT b.id FROM tb_board b WHERE b.folder_id IN (SELECT id FROM folder_tree)) AND i.deleted_at IS NULL OPTION (MAXRECURSION 100)', [$id]);
+        }
+        $mark = function (string $table, string $where, array $params = []) use ($entryId): void {
+            $allowed = ['tb_workspace','tb_workspace_member','tb_folder','tb_board','tb_board_member','tb_group','tb_column','tb_item','tb_cell','tb_item_person','tb_comment','tb_file','tb_file_version','tb_file_comment','tb_view','tb_automation','tb_item_relation','tb_item_dependency'];
+            if (!in_array($table, $allowed, true)) throw new LogicException('Invalid trash table');
+            $this->execute("UPDATE $table SET deleted_at = SYSUTCDATETIME() OUTPUT '" . $table . "', INSERTED.id INTO #tableros_deleted WHERE deleted_at IS NULL AND ($where)", $params);
+        };
+        if ($type === 'workspace') {
+            $mark('tb_workspace', 'id = ?', [$id]);
+            $mark('tb_folder', 'workspace_id = ?', [$id]);
+            $mark('tb_board', 'workspace_id = ?', [$id]);
+            $mark('tb_group', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_column', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_item', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_cell', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_item_person', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_comment', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_file', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_file_version', 'file_id IN (SELECT id FROM tb_file WHERE board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?))', [$id]);
+            $mark('tb_file_comment', 'file_id IN (SELECT id FROM tb_file WHERE board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?))', [$id]);
+            $mark('tb_view', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_automation', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+            $mark('tb_item_relation', 'source_board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?) OR target_board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id, $id]);
+            $mark('tb_item_dependency', 'board_id IN (SELECT id FROM tb_board WHERE workspace_id = ?)', [$id]);
+        } elseif ($type === 'folder') {
+            $this->execute(';WITH folder_tree AS (SELECT id FROM tb_folder WHERE id = ? AND deleted_at IS NULL UNION ALL SELECT child.id FROM tb_folder child JOIN folder_tree parent ON child.parent_folder_id = parent.id WHERE child.deleted_at IS NULL) UPDATE f SET deleted_at = SYSUTCDATETIME() OUTPUT \'tb_folder\', INSERTED.id INTO #tableros_deleted FROM tb_folder f JOIN folder_tree t ON t.id = f.id WHERE f.deleted_at IS NULL OPTION (MAXRECURSION 100)', [$id]);
+            $this->execute('UPDATE b SET deleted_at = SYSUTCDATETIME() OUTPUT \'tb_board\', INSERTED.id INTO #tableros_deleted FROM tb_board b WHERE b.folder_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_folder\') AND b.deleted_at IS NULL');
+            foreach (['tb_group','tb_column','tb_item','tb_cell','tb_item_person','tb_comment','tb_file','tb_view','tb_automation','tb_item_dependency'] as $table) $mark($table, 'board_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_board\')');
+            $mark('tb_file_version', 'file_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_file\')');
+            $mark('tb_file_comment', 'file_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_file\')');
+            $mark('tb_item_relation', 'source_board_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_board\') OR target_board_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_board\')');
+        } elseif ($type === 'board') {
+            $mark('tb_board', 'id = ?', [$id]);
+            foreach (['tb_group','tb_column','tb_item','tb_cell','tb_item_person','tb_comment','tb_file','tb_view','tb_automation','tb_item_dependency'] as $table) $mark($table, 'board_id = ?', [$id]);
+            $mark('tb_file_version', 'file_id IN (SELECT id FROM tb_file WHERE board_id = ?)', [$id]);
+            $mark('tb_file_comment', 'file_id IN (SELECT id FROM tb_file WHERE board_id = ?)', [$id]);
+            $mark('tb_item_relation', 'source_board_id = ? OR target_board_id = ?', [$id, $id]);
+        } elseif ($type === 'group') {
+            $mark('tb_group', 'id = ? AND board_id = ?', [$id, $boardId]);
+            $mark('tb_item', 'id IN (SELECT id FROM #tableros_target)');
+            $mark('tb_cell', 'board_id = ? AND item_id IN (SELECT id FROM #tableros_target)', [$boardId]);
+            $mark('tb_item_person', 'board_id = ? AND item_id IN (SELECT id FROM #tableros_target)', [$boardId]);
+            $mark('tb_comment', 'board_id = ? AND item_id IN (SELECT id FROM #tableros_target)', [$boardId]);
+            $mark('tb_file', 'board_id = ? AND item_id IN (SELECT id FROM #tableros_target)', [$boardId]);
+            $mark('tb_file_version', 'file_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_file\')');
+            $mark('tb_file_comment', 'file_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_file\')');
+            $mark('tb_item_dependency', 'board_id = ? AND (predecessor_item_id IN (SELECT id FROM #tableros_target) OR successor_item_id IN (SELECT id FROM #tableros_target))', [$boardId]);
+            $mark('tb_item_relation', 'source_item_id IN (SELECT id FROM #tableros_target) OR target_item_id IN (SELECT id FROM #tableros_target)');
+        } elseif ($type === 'column') {
+            $mark('tb_column', 'id = ? AND board_id = ?', [$id, $boardId]);
+            $mark('tb_cell', 'column_id = ? AND board_id = ?', [$id, $boardId]);
+            $mark('tb_item_person', 'column_id = ? AND board_id = ?', [$id, $boardId]);
+            $mark('tb_item_relation', 'column_id = ? AND source_board_id = ?', [$id, $boardId]);
+            $mark('tb_item_dependency', 'column_id = ? AND board_id = ?', [$id, $boardId]);
+            $mark('tb_file', 'column_id = ? AND board_id = ?', [$id, $boardId]);
+            $mark('tb_file_version', 'file_id IN (SELECT id FROM tb_file WHERE column_id = ? AND board_id = ?)', [$id, $boardId]);
+            $mark('tb_file_comment', 'file_id IN (SELECT id FROM tb_file WHERE column_id = ? AND board_id = ?)', [$id, $boardId]);
+        } elseif ($type === 'item') {
+            $mark('tb_item', 'id IN (SELECT id FROM #tableros_target)');
+            foreach (['tb_cell','tb_item_person','tb_comment','tb_file'] as $table) $mark($table, 'board_id = ? AND item_id IN (SELECT id FROM #tableros_target)', [$boardId]);
+            $mark('tb_file_version', 'file_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_file\')');
+            $mark('tb_file_comment', 'file_id IN (SELECT entity_id FROM #tableros_deleted WHERE table_name = \'tb_file\')');
+            $mark('tb_item_dependency', 'board_id = ? AND (predecessor_item_id IN (SELECT id FROM #tableros_target) OR successor_item_id IN (SELECT id FROM #tableros_target))', [$boardId]);
+            $mark('tb_item_relation', 'source_item_id IN (SELECT id FROM #tableros_target) OR target_item_id IN (SELECT id FROM #tableros_target)');
+        } elseif ($type === 'file') {
+            $mark('tb_file', 'id = ? AND board_id = ?', [$id, $boardId]);
+            $mark('tb_file_version', 'file_id = ?', [$id]);
+            $mark('tb_file_comment', 'file_id = ?', [$id]);
+        }
+        $this->execute('INSERT INTO tb_trash_entity (entry_id, table_name, entity_id) SELECT ?, table_name, entity_id FROM #tableros_deleted', [$entryId]);
+        $this->execute('DROP TABLE #tableros_target; DROP TABLE #tableros_deleted');
+        // Preserve physical file objects until permanent deletion; the manifest includes versions for the purge worker.
+    }
+
+    public function getTrashEntries(int $userId, bool $isAdmin, ?int $workspaceId = null, string $kind = 'trash'): array {
+        $sql = "SELECT t.id, t.entry_kind, t.entity_type, t.entity_id, t.entity_name, t.location, t.workspace_id, t.board_id, t.deleted_by, t.deleted_at, t.expires_at,
+                       COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), ''), CONVERT(NVARCHAR(20), t.deleted_by)) AS deleted_by_name
+                FROM tb_trash_entry t LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = t.deleted_by
+                WHERE t.entry_kind = ? AND t.restored_at IS NULL AND (? = 1 OR t.deleted_by = ?)
+                  AND (t.entry_kind <> 'trash' OR t.purge_requested_at IS NULL)";
+        $params = [$kind, ($isAdmin || $kind === 'archive') ? 1 : 0, $userId];
+        if ($workspaceId !== null) { $sql .= ' AND t.workspace_id = ?'; $params[] = $workspaceId; }
+        $sql .= ' ORDER BY t.deleted_at DESC, t.id DESC';
+        $entries = $this->all($sql, $params);
+        if ($kind === 'archive' && !$isAdmin) $entries = array_values(array_filter($entries, fn(array $entry): bool => $this->canEditTrashEntry($entry, $userId)));
+        return $entries;
+    }
+
+    public function restoreTrashEntry(int $userId, bool $isAdmin, int $entryId, string $kind = 'trash'): array {
+        return $this->transaction(function () use ($userId, $isAdmin, $entryId, $kind): array {
+            // Serialize restoration with the worker's purge claim. Once claimed,
+            // physical object deletion may already have started and restoration is unsafe.
+            $this->one('SELECT id FROM tb_trash_entry WITH (UPDLOCK, HOLDLOCK) WHERE id = ?', [$entryId]);
+            $entry = $this->trashEntryForActor($entryId, $userId, $isAdmin, $kind);
+            if ($kind === 'trash' && $entry['purge_started_at'] !== null) throw new TablerosApiException('conflict', 'La eliminación permanente ya comenzó y no se puede restaurar.', 409);
+            if ($kind === 'trash' && strtotime((string)$entry['expires_at']) <= time()) throw new TablerosApiException('conflict', 'El periodo de recuperación de 30 días terminó.', 409);
+            $entities = $this->all('SELECT table_name, entity_id FROM tb_trash_entity WHERE entry_id = ?', [$entryId]);
+            $allowed = ['tb_workspace','tb_workspace_member','tb_folder','tb_board','tb_board_member','tb_group','tb_column','tb_item','tb_cell','tb_item_person','tb_comment','tb_file','tb_file_version','tb_file_comment','tb_view','tb_automation','tb_item_relation','tb_item_dependency'];
+            foreach ($entities as $entity) {
+                $table = (string)$entity['table_name'];
+                if (!in_array($table, $allowed, true)) continue;
+                $this->execute("UPDATE $table SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL", [(int)$entity['entity_id']]);
+            }
+            $this->execute('UPDATE tb_trash_entry SET restored_at = SYSUTCDATETIME() WHERE id = ?', [$entryId]);
+            return ['entry_id' => $entryId, 'restored' => true];
+        });
+    }
+
+    public function requestPermanentTrashDelete(int $userId, bool $isAdmin, int $entryId): array {
+        $entry = $this->trashEntryForActor($entryId, $userId, $isAdmin, 'trash');
+        $this->execute('UPDATE tb_trash_entry SET purge_requested_at = COALESCE(purge_requested_at, SYSUTCDATETIME()) WHERE id = ?', [$entryId]);
+        return ['entry_id' => $entryId, 'purge_queued' => true];
+    }
+
+    /** Enqueue expired trash, remove stored objects with retries, then hard-delete its relational bundle. */
+    public function purgeTrash(int $limit = 50): array {
+        $limit = max(1, min(200, $limit));
+        $entries = $this->all(";WITH candidates AS (
+                                   SELECT TOP ($limit) id FROM tb_trash_entry WITH (UPDLOCK, READPAST, ROWLOCK)
+                                   WHERE entry_kind = 'trash' AND restored_at IS NULL
+                                     AND (purge_requested_at IS NOT NULL OR expires_at <= SYSUTCDATETIME())
+                                   ORDER BY COALESCE(purge_requested_at, expires_at), id
+                               )
+                               UPDATE t SET purge_started_at = COALESCE(t.purge_started_at, SYSUTCDATETIME())
+                               OUTPUT INSERTED.id
+                               FROM tb_trash_entry t JOIN candidates c ON c.id = t.id");
+        $result = ['entries_purged' => 0, 'files_removed' => 0, 'failures' => 0];
+        foreach ($entries as $entryRow) {
+            $entryId = (int)$entryRow['id'];
+            try {
+                $this->transaction(function () use ($entryId): void {
+                    $this->execute("INSERT INTO tb_storage_cleanup (entry_id, storage_provider, storage_container, storage_object_key)
+                        SELECT ?, v.storage_provider, v.storage_container, v.storage_object_key
+                        FROM tb_trash_entity e JOIN tb_file_version v ON e.table_name = 'tb_file_version' AND v.id = e.entity_id
+                        WHERE e.entry_id = ? AND NOT EXISTS (SELECT 1 FROM tb_storage_cleanup c WHERE c.entry_id = ? AND c.storage_provider = v.storage_provider AND c.storage_container = v.storage_container AND c.storage_object_key = v.storage_object_key)", [$entryId, $entryId, $entryId]);
+                });
+                $jobs = $this->all('SELECT id, storage_provider, storage_container, storage_object_key FROM tb_storage_cleanup WHERE entry_id = ? AND completed_at IS NULL ORDER BY id', [$entryId]);
+                foreach ($jobs as $job) {
+                    try {
+                        $this->removeStoredObject((string)$job['storage_provider'], (string)$job['storage_container'], (string)$job['storage_object_key']);
+                        $this->execute('UPDATE tb_storage_cleanup SET completed_at = SYSUTCDATETIME(), last_error = NULL WHERE id = ?', [(int)$job['id']]);
+                        $result['files_removed']++;
+                    } catch (Throwable $e) {
+                        $message = substr($e->getMessage(), 0, 900);
+                        $this->execute('UPDATE tb_storage_cleanup SET attempts = attempts + 1, last_error = ? WHERE id = ?', [$message, (int)$job['id']]);
+                        $result['failures']++;
+                    }
+                }
+                $pending = (int)($this->one('SELECT COUNT(*) AS total FROM tb_storage_cleanup WHERE entry_id = ? AND completed_at IS NULL', [$entryId])['total'] ?? 0);
+                if ($pending > 0) continue;
+                $this->hardDeleteTrashBundle($entryId);
+                $result['entries_purged']++;
+            } catch (Throwable $e) {
+                error_log('Tableros trash purge failed for entry ' . $entryId . ': ' . $e->getMessage());
+                $result['failures']++;
+            }
+        }
+        return $result;
+    }
+
+    private function removeStoredObject(string $provider, string $container, string $key): void {
+        if ($container !== 'tableros' || !preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $key)) {
+            throw new RuntimeException('Invalid stored object reference');
+        }
+        if ($provider === 'nas_service') { $this->nasServiceRequest('DELETE', $key); return; }
+        if ($provider !== 'local') throw new RuntimeException('Unknown storage provider');
+        $root = $this->privateStorageRoot();
+        $relative = preg_match('/^[a-f0-9]{64}$/', $key) ? substr($key, 0, 2) . DIRECTORY_SEPARATOR . $key : str_replace('/', DIRECTORY_SEPARATOR, $key);
+        $path = $root . DIRECTORY_SEPARATOR . $relative;
+        $realPath = realpath($path);
+        if ($realPath === false && preg_match('/^[a-f0-9]{64}$/', $key)) {
+            $previousRoot = dirname(dirname(__DIR__, 2)) . DIRECTORY_SEPARATOR . 'tableros-private';
+            $previousPath = $previousRoot . DIRECTORY_SEPARATOR . substr($key, 0, 2) . DIRECTORY_SEPARATOR . $key;
+            $previousRealRoot = realpath($previousRoot);
+            $previousRealPath = realpath($previousPath);
+            if ($previousRealRoot !== false && $previousRealPath !== false && $this->pathIsWithin($previousRealPath, $previousRealRoot)
+                && is_file($previousRealPath) && @unlink($previousRealPath)) return;
+        }
+        if ($realPath === false) return;
+        if (!$this->pathIsWithin($realPath, $root) || !is_file($realPath) || !@unlink($realPath)) throw new RuntimeException('Could not remove local object');
+    }
+
+    private function hardDeleteTrashBundle(int $entryId): void {
+        $this->transaction(function () use ($entryId): void {
+            $state = $this->one('SELECT restored_at, purge_started_at FROM tb_trash_entry WITH (UPDLOCK, HOLDLOCK) WHERE id = ?', [$entryId]);
+            if (!$state || $state['restored_at'] !== null || $state['purge_started_at'] === null) return;
+            $rows = $this->all('SELECT table_name, entity_id FROM tb_trash_entity WHERE entry_id = ?', [$entryId]);
+            $byTable = [];
+            foreach ($rows as $row) $byTable[(string)$row['table_name']][] = (int)$row['entity_id'];
+            $ids = static fn(string $table): array => array_values(array_unique($byTable[$table] ?? []));
+            $deleteIds = function (string $table, string $column, array $values): void {
+                foreach (array_chunk(array_values(array_unique($values)), 500) as $chunk) {
+                    if (!$chunk) continue;
+                    $marks = implode(',', array_fill(0, count($chunk), '?'));
+                    $this->execute("DELETE FROM $table WHERE $column IN ($marks)", $chunk);
+                }
+            };
+            $fileIds = $ids('tb_file'); $fileCommentIds = $ids('tb_file_comment'); $commentIds = $ids('tb_comment'); $itemIds = $ids('tb_item');
+            $boardIds = $ids('tb_board'); $workspaceIds = $ids('tb_workspace');
+            $deleteIds('tb_file_comment_sticker', 'file_comment_id', $fileCommentIds);
+            $deleteIds('tb_file_comment_attachment', 'file_comment_id', $fileCommentIds);
+            $deleteIds('tb_file_comment_attachment', 'file_id', $fileIds);
+            $deleteIds('tb_notification', 'file_comment_id', $fileCommentIds);
+            $deleteIds('tb_notification', 'comment_id', $commentIds);
+            $deleteIds('tb_notification', 'file_id', $fileIds);
+            $deleteIds('tb_notification', 'item_id', $itemIds);
+            $deleteIds('tb_notification', 'board_id', $boardIds);
+            $deleteIds('tb_automation_run', 'automation_id', $ids('tb_automation'));
+            $deleteIds('tb_item_relation', 'id', $ids('tb_item_relation'));
+            $deleteIds('tb_item_dependency', 'id', $ids('tb_item_dependency'));
+            $deleteIds('tb_activity', 'item_id', $itemIds);
+            $deleteIds('tb_activity', 'board_id', $boardIds);
+            $deleteIds('tb_activity', 'workspace_id', $workspaceIds);
+            $deleteIds('tb_cell', 'id', $ids('tb_cell'));
+            $deleteIds('tb_item_person', 'id', $ids('tb_item_person'));
+            $deleteIds('tb_file_comment', 'id', $fileCommentIds);
+            $deleteIds('tb_comment', 'id', $commentIds);
+            if ($fileIds) $this->execute('UPDATE tb_file SET current_version_id = NULL WHERE id IN (' . implode(',', array_fill(0, count($fileIds), '?')) . ')', $fileIds);
+            $deleteIds('tb_file_version', 'id', $ids('tb_file_version'));
+            $deleteIds('tb_file', 'id', $fileIds);
+            $deleteIds('tb_view', 'id', $ids('tb_view'));
+            $deleteIds('tb_automation', 'id', $ids('tb_automation'));
+            $deleteIds('tb_item', 'id', $itemIds);
+            $deleteIds('tb_group', 'id', $ids('tb_group'));
+            $deleteIds('tb_column', 'id', $ids('tb_column'));
+            $deleteIds('tb_board_member', 'id', $ids('tb_board_member'));
+            $deleteIds('tb_workspace_member', 'id', $ids('tb_workspace_member'));
+            $deleteIds('tb_board_member', 'board_id', $boardIds);
+            $deleteIds('tb_workspace_member', 'workspace_id', $workspaceIds);
+            $deleteIds('tb_board', 'id', $boardIds);
+            $deleteIds('tb_folder', 'id', $ids('tb_folder'));
+            $deleteIds('tb_workspace', 'id', $workspaceIds);
+            $this->execute('DELETE FROM tb_trash_entity WHERE entry_id = ?', [$entryId]);
+            $this->execute('DELETE FROM tb_storage_cleanup WHERE entry_id = ?', [$entryId]);
+            $this->execute('DELETE FROM tb_trash_entry WHERE id = ?', [$entryId]);
+        });
+    }
+
+    private function trashEntryForActor(int $entryId, int $userId, bool $isAdmin, string $kind): array {
+        $entry = $this->one('SELECT * FROM tb_trash_entry WHERE id = ? AND entry_kind = ? AND restored_at IS NULL', [$entryId, $kind]);
+        if (!$entry || $entry['purge_requested_at'] !== null) throw new TablerosApiException('not_found', 'No se encontró el elemento en esta sección.', 404);
+        if (!$isAdmin && $kind === 'trash' && (int)$entry['deleted_by'] !== $userId) throw new TablerosApiException('forbidden', 'Solo quien eliminó el elemento o un administrador puede realizar esta acción.', 403);
+        if (!$isAdmin && !$this->canEditTrashEntry($entry, $userId)) throw new TablerosApiException('forbidden', 'Necesitas permisos de edición vigentes para restaurar este elemento.', 403);
+        return $entry;
+    }
+
+    private function canEditTrashEntry(array $entry, int $userId): bool {
+        if ($entry['board_id'] !== null) {
+            $row = $this->one('SELECT b.created_by, b.workspace_id, b.visibility, m.role AS board_role, wm.role AS workspace_role, w.visibility AS workspace_visibility
+                FROM tb_board b LEFT JOIN tb_board_member m ON m.board_id = b.id AND m.user_id = ? AND m.deleted_at IS NULL
+                LEFT JOIN tb_workspace_member wm ON wm.workspace_id = b.workspace_id AND wm.user_id = ? AND wm.deleted_at IS NULL
+                LEFT JOIN tb_workspace w ON w.id = b.workspace_id WHERE b.id = ?', [$userId, $userId, (int)$entry['board_id']]);
+            if (!$row) return false;
+            if ((int)($row['created_by'] ?? 0) === $userId) return true;
+            if ($entry['entity_type'] === 'board') return strtolower((string)($row['workspace_role'] ?? '')) === 'owner';
+            if (in_array(strtolower((string)($row['board_role'] ?? '')), ['owner','designer','editor'], true)) return true;
+            return in_array(strtolower((string)($row['workspace_role'] ?? '')), ['owner','editor'], true)
+                && in_array(strtolower((string)$row['visibility']), ['workspace','public'], true);
+        }
+        $workspaceId = (int)($entry['workspace_id'] ?? 0);
+        if ($workspaceId <= 0) return false;
+        $member = $this->one('SELECT w.created_by, wm.role FROM tb_workspace w LEFT JOIN tb_workspace_member wm ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.deleted_at IS NULL WHERE w.id = ?', [$userId, $workspaceId]);
+        if (!$member) return false;
+        if ((int)($member['created_by'] ?? 0) === $userId) return true;
+        if ($entry['entity_type'] === 'workspace') return strtolower((string)($member['role'] ?? '')) === 'owner';
+        if (in_array(strtolower((string)($member['role'] ?? '')), ['owner','editor'], true)) return true;
+        if ($entry['entity_type'] === 'folder') {
+            $folder = $this->one('SELECT created_by FROM tb_folder WHERE id = ?', [(int)$entry['entity_id']]);
+            return (int)($folder['created_by'] ?? 0) === $userId;
+        }
+        return false;
+    }
+
     public function createWorkspace(int $userId, array $input): array {
         if (!$this->userIsActive($userId)) {
             throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);

@@ -1314,3 +1314,36 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 @media (max-width: 600px) {
   .boards-subitems-panel-row > td { padding-left: 18px; }
 }
+
+/* Trash and archive navigation remain keyboard reachable alongside the board tree. */
+.boards-nav-archive { display: grid; gap: 2px; padding-top: 8px; border-top: 1px solid #393d5a; }
+.boards-recycle-view { min-height: 440px; padding: 24px; color: #eef0fb; background: #1e2139; }
+.boards-recycle-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.boards-recycle-heading h3 { margin: 0; color: #f4f5fb; font-size: 1.25rem; }
+.boards-recycle-heading p { margin: 5px 0 0; color: #aeb2ca; font-size: .82rem; }
+.boards-trash-filters { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)) auto; align-items: end; gap: 10px; margin: 0 0 16px; padding: 12px; border: 1px solid #414663; border-radius: 6px; background: #252943; }
+.boards-trash-filters label { display: grid; gap: 5px; color: #c6cbe0; font-size: .74rem; }
+.boards-trash-filters .form-select,
+.boards-trash-filters .form-control { min-height: 36px; border-color: #4a506e; color: #f1f3fc; background-color: #1e2139; font-size: .78rem; }
+.boards-trash-filters .form-select option { color: #171b30; background: #fff; }
+.boards-trash-filters .btn { min-height: 36px; white-space: nowrap; }
+.boards-recycle-list { display: grid; gap: 8px; margin-top: 12px; }
+.boards-recycle-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 12px; padding: 12px 14px; border: 1px solid #414663; border-radius: 6px; background: #252943; }
+.boards-recycle-entry-copy { color: #f2f3fb; font-size: .84rem; font-weight: 600; }
+.boards-recycle-entry-type,
+.boards-recycle-entry-location { color: #aeb2ca; font-size: .72rem; }
+.boards-recycle-entry-metadata { display: flex; flex-wrap: wrap; gap: 3px 16px; color: #aeb2ca; font-size: .7rem; }
+.boards-recycle-entry-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; grid-column: 2; grid-row: 1 / span 3; }
+.boards-recycle-action { min-height: 25px; padding: 3px 6px; border-radius: 4px; white-space: nowrap; }
+.boards-recycle-action:hover { color: #fff; background: #353a5a; }
+.boards-recycle-action:disabled { opacity: .55; cursor: wait; }
+.boards-group-meta .boards-recycle-action { font-size: .7rem; }
+.boards-table-item-name-wrap > .boards-recycle-action { font-size: .68rem; }
+.boards-columns-list .boards-recycle-action { margin-left: 6px; }
+@media (max-width: 600px) {
+  .boards-recycle-view { padding: 16px; }
+  .boards-recycle-heading { display: grid; }
+  .boards-trash-filters { grid-template-columns: minmax(0, 1fr); }
+  .boards-recycle-entry { grid-template-columns: minmax(0, 1fr); }
+  .boards-recycle-entry-actions { grid-column: 1; grid-row: auto; justify-content: flex-start; }
+}
