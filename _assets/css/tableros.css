@@ -838,7 +838,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-required-label { color: #ffdc9c; background: #574639; }
 .boards-cell-input,
 .boards-status-select { min-height: 28px; color: #e8eaf5; }
-.boards-date-editor { display: flex; width: min(184px, 100%); min-width: 0; height: 32px; align-items: center; gap: 2px; margin-inline: auto; padding: 3px; border: 1px solid #484b69; border-radius: 6px; background: #292c49; transition: border-color .15s ease, box-shadow .15s ease; }
+.boards-date-editor { display: flex; width: 100%; min-width: 0; height: 32px; align-items: center; gap: 2px; padding: 3px; border: 1px solid #484b69; border-radius: 6px; background: #292c49; transition: border-color .15s ease, box-shadow .15s ease; }
 .boards-date-editor:hover { border-color: #62698f; }
 .boards-date-editor:focus-within { border-color: #84a5ff; box-shadow: 0 0 0 2px rgb(102 145 255 / 17%); }
 .boards-date-editor .boards-cell-input.is-date { width: 0; min-width: 0; max-width: none; min-height: 24px; flex: 1 1 auto; padding: 2px 5px; border: 0; border-radius: 3px; color: #f2f4ff; background: transparent; box-shadow: none; color-scheme: dark; font-size: .78rem; }
@@ -1167,6 +1167,10 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-group-body.is-drop-target .boards-group-row td,
 .boards-group-body.is-drop-target .boards-group-heading { background-color: #354474; box-shadow: inset 0 0 0 2px #8baaff; }
 .boards-item-row.is-dragging { opacity: .42; }
+.boards-item-row[draggable="true"] .boards-item-name { cursor: grab; }
+.boards-item-row[draggable="true"] .boards-item-name:active { cursor: grabbing; }
+.boards-item-row.is-drop-before td { box-shadow: inset 0 3px 0 #8baaff; }
+.boards-item-row.is-drop-after td { box-shadow: inset 0 -3px 0 #8baaff; }
 .boards-item-name-edit,
 .boards-item-subtask-add { display: inline-grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #aeb5d0; background: transparent; cursor: pointer; }
 .boards-item-name-edit:hover,

@@ -178,6 +178,7 @@
     calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     collapsedGroups: new Set(),
     draggedItemId: '',
+    draggedItemIds: [],
     summaryFunctions: {},
     summaryPeople: new Map(),
     summaryPeopleRequested: new Set(),
@@ -3844,6 +3845,7 @@
         const row = document.createElement('tr');
         row.className = 'boards-item-row';
         row.tabIndex = 0;
+        row.draggable = canEditBoard() && item.parent_item_id == null;
         row.dataset.itemRow = '1';
         row.dataset.openItemDetails = String(item.id);
         row.setAttribute('aria-label', `Abrir detalles de ${item.name || 'elemento'}`);
@@ -4869,15 +4871,41 @@
     }
   }
 
-  async function moveItemToGroup(item, groupId) {
-    if (!item || !groupId || String(item.group_id) === String(groupId) || !canEditBoard()) return;
+  async function moveItemToGroup(item, groupId, sortOrder = null, movingItems = [item]) {
+    if (!item || !groupId || !canEditBoard()) return;
+    if (String(item.group_id) === String(groupId) && sortOrder === null) return;
+    let movedCount = 0;
     try {
-      const result = await post('/move_item', {
+      if (Number.isInteger(sortOrder) && sortOrder >= 0) {
+        const orderedItems = movingItems.slice().sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+        const reordering = orderedItems.every((candidate) => String(candidate.group_id) === String(groupId));
+        const sequence = reordering ? orderedItems.slice().reverse() : orderedItems;
+        for (const candidate of sequence) {
+          const originalIndex = orderedItems.findIndex((entry) => String(entry.id) === String(candidate.id));
+          await post('/move_item', {
+            board_id: state.board.id,
+            item_id: candidate.id,
+            group_id: groupId,
+            sort_order: sortOrder + originalIndex,
+            version: candidate.version
+          });
+          movedCount += 1;
+        }
+        await loadBoard(state.board.id, true);
+        const reordered = orderedItems.every((candidate) => String(candidate.group_id) === String(groupId));
+        const message = orderedItems.length > 1
+          ? (reordered ? `${orderedItems.length} elementos reordenados en el grupo.` : `${orderedItems.length} elementos movidos al grupo.`)
+          : (reordered ? 'Elemento reordenado dentro del grupo.' : 'Elemento y subelementos movidos al grupo y posición seleccionados.');
+        setNotice(message, 'success');
+        return;
+      }
+      const payload = {
         board_id: state.board.id,
         item_id: item.id,
         group_id: groupId,
         version: item.version
-      });
+      };
+      const result = await post('/move_item', payload);
       item.group_id = groupId;
       item.version = result.data?.version ?? item.version;
       const hasAffected = applyAffectedItems(result.data?.affected_items, item, groupId, result.data?.version);
@@ -4890,8 +4918,37 @@
       setNotice('Elemento y sus subelementos movidos al grupo seleccionado.', 'success');
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo mover el elemento.'), 'error');
-      if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
+      if (movedCount || error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
     }
+  }
+
+  function rootBoardItem(item) {
+    let current = item;
+    const visited = new Set();
+    while (current?.parent_item_id != null && !visited.has(String(current.id))) {
+      visited.add(String(current.id));
+      current = state.items.find((candidate) => String(candidate.id) === String(current.parent_item_id));
+      if (!current) return item;
+    }
+    return current || item;
+  }
+
+  function itemDropPosition(draggedItems, targetGroupId, targetRow, pointerY) {
+    const draggedRoots = draggedItems.map(rootBoardItem);
+    const draggedRootIds = new Set(draggedRoots.map((item) => String(item.id)));
+    const roots = state.items
+      .filter((item) => String(item.group_id) === String(targetGroupId) && item.parent_item_id == null && !draggedRootIds.has(String(item.id)))
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+    if (!targetRow) return roots.length;
+    const targetItem = state.items.find((item) => String(item.id) === targetRow.dataset.openItemDetails);
+    if (!targetItem) return roots.length;
+    const targetRoot = rootBoardItem(targetItem);
+    if (draggedRootIds.has(String(targetRoot.id))) return null;
+    let index = roots.findIndex((item) => String(item.id) === String(targetRoot.id));
+    if (index < 0) return roots.length;
+    const rect = targetRow.getBoundingClientRect();
+    if (pointerY > rect.top + rect.height / 2) index += 1;
+    return index;
   }
 
   async function moveSelectedItems() {
@@ -5486,27 +5543,52 @@
       }
     });
     els.boardTableContainer.addEventListener('dragstart', (event) => {
+      const row = event.target.closest('[data-item-row]');
+      const nameField = event.target.closest('.boards-item-name');
       const handle = event.target.closest('[data-drag-item]');
-      const row = handle?.closest('[data-item-row]');
-      const item = handle ? state.items.find((candidate) => String(candidate.id) === handle.dataset.dragItem) : null;
-      if (!handle || !row || !item || item.parent_item_id != null || !canEditBoard()) {
+      const control = event.target.closest('button, a, input, select, textarea, [contenteditable="true"]');
+      const item = row ? state.items.find((candidate) => String(candidate.id) === row.dataset.openItemDetails) : null;
+      if (!row || !nameField || (control && !handle) || !item || item.parent_item_id != null || !canEditBoard()) {
         event.preventDefault();
         return;
       }
       state.draggedItemId = String(item.id);
-      row.classList.add('is-dragging');
+      let movingItems = [item];
+      if (state.selectedItemIds.has(String(item.id))) {
+        const selectedRoots = state.items
+          .filter((candidate) => candidate.parent_item_id == null
+            && String(candidate.group_id) === String(item.group_id)
+            && state.selectedItemIds.has(String(candidate.id)))
+          .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+        if (selectedRoots.length > 1) movingItems = selectedRoots;
+      }
+      state.draggedItemIds = movingItems.map((candidate) => String(candidate.id));
+      movingItems.forEach((candidate) => {
+        const selectedRow = els.boardTableContainer.querySelector(`[data-item-row][data-open-item-details="${candidate.id}"]`);
+        selectedRow?.classList.add('is-dragging');
+      });
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', String(item.id));
     });
     els.boardTableContainer.addEventListener('dragover', (event) => {
       if (!state.draggedItemId) return;
       const body = event.target.closest('[data-group-body]');
-      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
-      if (!body || !item || String(item.group_id) === body.dataset.groupBody) return;
+      const draggedItems = state.draggedItemIds.map((id) => state.items.find((candidate) => String(candidate.id) === id)).filter(Boolean);
+      const item = draggedItems[0];
+      const targetRow = event.target.closest('[data-item-row]');
+      if (!body || !item) return;
+      if (targetRow && String(targetRow.dataset.openItemDetails) === String(item.id)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
-      els.boardTableContainer.querySelectorAll('.is-drop-target').forEach((target) => target.classList.remove('is-drop-target'));
-      body.classList.add('is-drop-target');
+      els.boardTableContainer.querySelectorAll('.is-drop-target, .is-drop-before, .is-drop-after').forEach((target) => target.classList.remove('is-drop-target', 'is-drop-before', 'is-drop-after'));
+      if (targetRow) {
+        const position = itemDropPosition(draggedItems, body.dataset.groupBody, targetRow, event.clientY);
+        if (position === null) return;
+        const rect = targetRow.getBoundingClientRect();
+        targetRow.classList.add(event.clientY > rect.top + rect.height / 2 ? 'is-drop-after' : 'is-drop-before');
+      } else {
+        body.classList.add('is-drop-target');
+      }
     });
     els.boardTableContainer.addEventListener('dragleave', (event) => {
       const body = event.target.closest('[data-group-body]');
@@ -5515,14 +5597,20 @@
     els.boardTableContainer.addEventListener('drop', (event) => {
       const body = event.target.closest('[data-group-body]');
       if (!state.draggedItemId || !body) return;
-      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
-      if (!item || String(item.group_id) === body.dataset.groupBody) return;
+      const draggedItems = state.draggedItemIds.map((id) => state.items.find((candidate) => String(candidate.id) === id)).filter(Boolean);
+      const item = draggedItems[0];
+      const targetRow = event.target.closest('[data-item-row]');
+      if (!item) return;
+      const sortOrder = itemDropPosition(draggedItems, body.dataset.groupBody, targetRow, event.clientY);
+      if (sortOrder === null) return;
       event.preventDefault();
       body.classList.remove('is-drop-target');
-      moveItemToGroup(item, body.dataset.groupBody);
+      targetRow?.classList.remove('is-drop-before', 'is-drop-after');
+      moveItemToGroup(item, body.dataset.groupBody, sortOrder, draggedItems);
     });
     els.boardTableContainer.addEventListener('dragend', () => {
       state.draggedItemId = '';
+      state.draggedItemIds = [];
       els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target'));
     });
     els.boardTableContainer.addEventListener('submit', (event) => {

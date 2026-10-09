@@ -1378,7 +1378,7 @@ class TablerosModel {
         return $this->transaction(function () use ($boardId, $userId, $itemId, $groupId, $position, $expectedVersion): array {
             // Lock the board's active item range so concurrent hierarchy changes cannot
             // add or move descendants midway through this operation.
-            $rows = $this->all('SELECT id, parent_item_id, group_id, version FROM tb_item WITH (UPDLOCK, HOLDLOCK) WHERE board_id = ? AND deleted_at IS NULL', [$boardId]);
+            $rows = $this->all('SELECT id, parent_item_id, group_id, sort_order, version FROM tb_item WITH (UPDLOCK, HOLDLOCK) WHERE board_id = ? AND deleted_at IS NULL', [$boardId]);
             $byId = [];
             foreach ($rows as $row) { $byId[(int)$row['id']] = $row; }
             if (!isset($byId[$itemId])) {
@@ -1391,6 +1391,9 @@ class TablerosModel {
             if ($parentId !== null) {
                 if (!isset($byId[$parentId])) {
                     throw new TablerosApiException('validation', 'El elemento principal no está disponible en este tablero.', 422);
+                }
+                if ($position !== null && (int)$byId[$itemId]['group_id'] !== $groupId) {
+                    throw new TablerosApiException('validation', 'Un subelemento solo puede reordenarse dentro del grupo de su elemento principal.', 422);
                 }
                 if ((int)$byId[$parentId]['group_id'] !== $groupId) {
                     throw new TablerosApiException('validation', 'Un subelemento debe permanecer en el mismo grupo que su elemento principal.', 422);
@@ -1431,6 +1434,54 @@ class TablerosModel {
             }
             if ($rootVersion === null || count($affectedItems) !== count($descendants)) {
                 throw new TablerosApiException('conflict', 'El elemento cambió. Recarga el tablero e inténtalo de nuevo.', 409);
+            }
+            if ($position !== null && $parentId === null) {
+                $affectedSet = array_fill_keys($descendants, true);
+                $groupsToOrder = array_values(array_unique([(int)$byId[$itemId]['group_id'], $groupId]));
+                $childrenByParent = [];
+                foreach ($rows as $row) {
+                    if ($row['parent_item_id'] !== null) $childrenByParent[(int)$row['parent_item_id']][] = (int)$row['id'];
+                }
+                foreach ($childrenByParent as &$childIds) {
+                    usort($childIds, static function (int $left, int $right) use ($byId): int {
+                        return ((int)$byId[$left]['sort_order'] <=> (int)$byId[$right]['sort_order']) ?: ($left <=> $right);
+                    });
+                }
+                unset($childIds);
+                foreach ($groupsToOrder as $orderedGroupId) {
+                    $groupRows = array_values(array_filter($rows, static function (array $row) use ($orderedGroupId, $groupId, $affectedSet): bool {
+                        $rowId = (int)$row['id'];
+                        $rowGroupId = isset($affectedSet[$rowId]) ? $groupId : (int)$row['group_id'];
+                        return $rowGroupId === $orderedGroupId;
+                    }));
+                    $rootIds = [];
+                    foreach ($groupRows as $row) {
+                        if ($row['parent_item_id'] === null && !isset($affectedSet[(int)$row['id']])) $rootIds[] = (int)$row['id'];
+                    }
+                    usort($rootIds, static function (int $left, int $right) use ($byId): int {
+                        return ((int)$byId[$left]['sort_order'] <=> (int)$byId[$right]['sort_order']) ?: ($left <=> $right);
+                    });
+                    if ($orderedGroupId === $groupId) {
+                        $insertAt = min(max(0, $position), count($rootIds));
+                        array_splice($rootIds, $insertAt, 0, [$itemId]);
+                    }
+                    $orderedIds = [];
+                    $seen = [];
+                    $appendTree = function (int $currentId) use (&$appendTree, &$orderedIds, &$seen, $childrenByParent): void {
+                        if (isset($seen[$currentId])) return;
+                        $seen[$currentId] = true;
+                        $orderedIds[] = $currentId;
+                        foreach ($childrenByParent[$currentId] ?? [] as $childId) $appendTree($childId);
+                    };
+                    foreach ($rootIds as $rootId) $appendTree($rootId);
+                    usort($groupRows, static function (array $left, array $right): int {
+                        return ((int)$left['sort_order'] <=> (int)$right['sort_order']) ?: ((int)$left['id'] <=> (int)$right['id']);
+                    });
+                    foreach ($groupRows as $row) $appendTree((int)$row['id']);
+                    foreach ($orderedIds as $sortOrder => $orderedItemId) {
+                        $this->execute('UPDATE tb_item SET sort_order = ? WHERE board_id = ? AND id = ? AND deleted_at IS NULL', [$sortOrder, $boardId, $orderedItemId]);
+                    }
+                }
             }
             $this->writeActivity($boardId, $itemId, $userId, 'item.moved', ['group_id' => $groupId, 'sort_order' => $position, 'affected_count' => count($affectedItems)]);
             return ['id' => $itemId, 'group_id' => $groupId, 'sort_order' => $position, 'version' => $rootVersion, 'affected_items' => $affectedItems];
