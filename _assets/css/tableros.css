@@ -786,11 +786,18 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-required-label { color: #ffdc9c; background: #574639; }
 .boards-cell-input,
 .boards-status-select { min-height: 28px; color: #e8eaf5; }
-.boards-cell-input.is-date {
-  padding-right: 34px;
-  color-scheme: dark;
-}
-.boards-cell-input.is-date::-webkit-calendar-picker-indicator { width: 24px; height: 24px; margin: 0 -2px 0 0; opacity: 1; filter: invert(1); cursor: pointer; }
+.boards-date-editor { display: flex; width: min(184px, 100%); min-width: 0; height: 32px; align-items: center; gap: 2px; margin-inline: auto; padding: 3px; border: 1px solid #484b69; border-radius: 6px; background: #292c49; transition: border-color .15s ease, box-shadow .15s ease; }
+.boards-date-editor:hover { border-color: #62698f; }
+.boards-date-editor:focus-within { border-color: #84a5ff; box-shadow: 0 0 0 2px rgb(102 145 255 / 17%); }
+.boards-date-editor .boards-cell-input.is-date { width: 0; min-width: 0; max-width: none; min-height: 24px; flex: 1 1 auto; padding: 2px 5px; border: 0; border-radius: 3px; color: #f2f4ff; background: transparent; box-shadow: none; color-scheme: dark; font-size: .78rem; }
+.boards-date-editor .boards-cell-input.is-date:hover,
+.boards-date-editor .boards-cell-input.is-date:focus { border: 0; color: #fff; background: transparent; outline: 0; box-shadow: none; }
+.boards-date-editor .boards-cell-input.is-date::-webkit-calendar-picker-indicator { display: none; }
+.boards-date-picker { display: grid; width: 27px; height: 25px; flex: 0 0 27px; place-items: center; padding: 0; border: 0; border-radius: 4px; color: #f4f6ff; background: transparent; cursor: pointer; }
+.boards-date-picker:hover,
+.boards-date-picker[aria-expanded="true"] { color: #fff; background: #3c4263; }
+.boards-date-picker:focus-visible { outline: 2px solid #9ab7ff; outline-offset: 1px; }
+.boards-date-picker svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .boards-cell-input:hover,
 .boards-status-select:hover { border-color: #666a89; background-color: #393c5a; }
 .boards-cell-input:focus,

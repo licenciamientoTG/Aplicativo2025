@@ -1406,9 +1406,30 @@
     }
     if (type === 'date') {
       input.type = 'date';
-      input.classList.add('is-date');
       input.value = dateOnly(value);
-      return markEditor(input, item, column, 'string');
+      input.className = 'boards-cell-input is-date';
+      input.setAttribute('aria-label', `Fecha para ${item.name || 'elemento'}`);
+      const wrapper = makeElement('div', 'boards-date-editor');
+      const picker = makeElement('button', 'boards-date-picker');
+      picker.type = 'button';
+      picker.title = 'Abrir calendario';
+      picker.setAttribute('aria-label', `Abrir calendario para ${item.name || 'elemento'}`);
+      picker.setAttribute('aria-haspopup', 'dialog');
+      picker.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="16" rx="2.5"></rect><path d="M8 3.5v3M16 3.5v3M3.5 9.5h17M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01"></path></svg>';
+      markEditor(wrapper, item, column, 'date');
+      picker.addEventListener('click', () => {
+        wrapper._datePickerOpen = true;
+        picker.setAttribute('aria-expanded', 'true');
+        try { input.showPicker(); } catch (_) { input.focus(); }
+      });
+      input.addEventListener('change', () => {
+        if (!wrapper._datePickerOpen) return;
+        wrapper._datePickerOpen = false;
+        picker.setAttribute('aria-expanded', 'false');
+        saveCell(wrapper);
+      });
+      wrapper.append(input, picker);
+      return wrapper;
     }
     if (type === 'hour') {
       input.type = 'time';
@@ -4195,6 +4216,7 @@
 
   function parseEditorValue(editor) {
     const kind = editor.dataset.valueKind;
+    if (kind === 'date') return editor.querySelector('input[type="date"]')?.value || '';
     if (kind === 'timeline') {
       const start = editor.querySelector('[data-timeline-part="start"]')?.value || '';
       const end = editor.querySelector('[data-timeline-part="end"]')?.value || '';
@@ -4896,22 +4918,15 @@
         // Native date inputs can emit `change` while the user is still editing
         // one segment (for example, the year). Saving disables the input and
         // steals focus, so commit dates only after the user leaves the field.
-        if (editor && editor.dataset.valueKind !== 'timeline' && editor.type !== 'date') saveCell(editor);
+        if (editor && !['timeline', 'date'].includes(editor.dataset.valueKind)) saveCell(editor);
         const mover = event.target.closest('[data-move-editor]');
         if (mover) moveItem(mover);
       });
       host.addEventListener('focusout', (event) => {
-        const editor = event.target.closest('[data-cell-editor][type="date"]');
-        if (editor && editor.dataset.valueKind !== 'timeline') saveCell(editor);
+        const editor = event.target.closest('[data-cell-editor][data-value-kind="date"]');
+        if (editor && !editor.contains(event.relatedTarget)) saveCell(editor);
       });
       host.addEventListener('click', (event) => {
-        const dateEditor = event.target.closest('[data-cell-editor][type="date"]');
-        if (dateEditor) {
-          const bounds = dateEditor.getBoundingClientRect();
-          if (event.clientX >= bounds.right - 34) {
-            try { dateEditor.showPicker(); } catch (_) { /* The native indicator may have opened it already. */ }
-          }
-        }
         const nameButton = event.target.closest('[data-item-name-button]');
         if (nameButton) {
           beginItemNameEdit(nameButton);
@@ -4931,6 +4946,11 @@
       host.addEventListener('keydown', (event) => {
       const input = event.target.closest('[data-cell-editor]:not(textarea)');
       if (input && event.key === 'Enter') {
+        if (input.dataset.valueKind === 'date') {
+          event.preventDefault();
+          input.querySelector('.boards-date-picker')?.click();
+          return;
+        }
         event.preventDefault();
         input.blur();
       }
