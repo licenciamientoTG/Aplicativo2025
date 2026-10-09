@@ -854,14 +854,14 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-status-select[data-status-tone="done"],
 .boards-status-select[data-status-tone="complete"] { border-color: #309d83; background: #237f6e; }
 .boards-status-select[data-status-tone="blocked"] { border-color: #c35d73; background: #a7475e; }
-.boards-item-row td[data-status-tone] { padding: 2px 4px; }
+.boards-item-row td[data-status-tone] { position: relative; padding: 0; }
 .boards-item-row td[data-status-tone="done"] { background: var(--status-color, #237f6e); }
 .boards-item-row td[data-status-tone="working"] { background: var(--status-color, #9d7226); }
 .boards-item-row td[data-status-tone="blocked"] { background: var(--status-color, #a7475e); }
 .boards-item-row td[data-status-tone="neutral"] { background: var(--status-color, #505773); }
 .boards-item-row td[data-status-tone="empty"] { background: var(--status-color, #343752); }
 .boards-item-row:hover td[data-status-tone] { background: var(--status-color, #505773); filter: brightness(1.08); }
-.boards-item-row td[data-status-tone] .boards-status-select { width: 100%; max-width: none; min-height: 29px; border-color: transparent; color: #fff; background: transparent; }
+.boards-item-row td[data-status-tone] .boards-status-select { width: 100%; height: 100%; max-width: none; min-height: 0; border-color: transparent; border-radius: 0; color: #fff; background: transparent; }
 .boards-item-row td[data-status-tone] .boards-status-pill { min-height: 29px; border-radius: 1px; }
 .boards-add-row td { height: 37px; padding: 0; border-bottom: 1px solid #3b3e5b; background: #252843; }
 .boards-add-row button { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 9px; padding: 5px 15px; border: 0; color: #afb5d1; background: transparent; font: inherit; font-size: .76rem; text-align: left; }
