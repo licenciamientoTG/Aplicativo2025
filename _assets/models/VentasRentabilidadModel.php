@@ -49,7 +49,7 @@ class VentasRentabilidadModel extends Model
      *   'compras_dia' => ['Y-m-d' => [codgas => [familia => ['litros' => float, 'costo' => float]]]]  (solo con precio),
      *   'proveedores' => [['proveedor','codgas','familia','litros','costo'], ...]  (solo con precio),
      *   'prov_docs'   => [proveedor => ['docs' => int, 'facturado' => float]],
-     *   'descuentos'  => [proveedor => float]  (sin IVA),
+     *   'descuentos'  => [proveedor => float]  (con IVA),
      * ]
      */
     public function get_mes(string $desde, string $hasta): array
@@ -221,10 +221,10 @@ class VentasRentabilidadModel extends Model
         }
 
         // Notas de crédito del mes de los proveedores de combustible, sin
-        // aplicaciones de anticipo. Importe de concepto = sin IVA.
+        // aplicaciones de anticipo. Importe del concepto + su IVA = con IVA.
         $descuentos = [];
         $rows = $this->sql->select(
-            "SELECT f.EmisorNombre AS proveedor, SUM(k.Importe) AS importe
+            "SELECT f.EmisorNombre AS proveedor, SUM(k.Importe + ISNULL(k.ImporteImpuesto, 0)) AS importe
              FROM [TG].[dbo].[FacturasRecibidas] f
              JOIN [TG].[dbo].[FacturasRecibidasConceptos] k ON k.FacturaId = f.Id
              WHERE f.TipoDeComprobante = 'E'

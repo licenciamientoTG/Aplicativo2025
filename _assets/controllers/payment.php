@@ -3492,7 +3492,12 @@ class Payment
         $lineas = [];
         $consolidados = [];
         foreach ($pagos as $pago) {
-            $key = $pago['cuenta_cargo_empresa'] . '|' . $pago['proveedor_codigo'];
+            // Una línea (transferencia) por requisición: Tesorería necesita cada orden de pago
+            // con su propio concepto. Excepción: MGC lleva una referencia fija por empresa
+            // pagadora, así que se mantiene consolidado por cuenta de cargo + proveedor.
+            $es_mgc = $this->referencia_mgc_por_empresa($pago['proveedor_codigo'], $pago['empresa_cod'] ?? null) !== null;
+            $key = $pago['cuenta_cargo_empresa'] . '|' . $pago['proveedor_codigo']
+                . ($es_mgc ? '' : '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id']);
 
             if (!isset($consolidados[$key])) {
                 $consolidados[$key] = [
@@ -3521,13 +3526,15 @@ class Payment
         // ✅ GENERAR LÍNEAS
         foreach ($consolidados as $grupo) {
             $codigo_banco = $this->obtener_codigo_banco_desde_clabe($grupo['clabe_beneficiario']);
-            $monto_centavos = intval($grupo['monto_total'] * 100);
+            // round() evita perder un centavo por precisión flotante (ej. 0.29 * 100 = 28.999...).
+            $monto_centavos = intval(round($grupo['monto_total'] * 100));
             // Importe Santander: 18 dígitos en centavos + plaza "901".
             $monto_con_plaza = str_pad($monto_centavos, 18, '0', STR_PAD_LEFT) . '901';
             $nombre_beneficiario = $this->limpiar_texto_layout($grupo['titular_beneficiario'], 40);
 
-            // ✅ Concepto adaptado
-            $cantidad_refs = count($grupo['referencias']);
+            // ✅ Concepto: "<requisición> <TITULAR CUENTA>" o "ANTICIPO #55 <TITULAR CUENTA>".
+            // Se usa el titular de la cuenta (no el nombre del catálogo de proveedores),
+            // igual que como Tesorería captura el archivo para el banco.
             $primera_ref = $grupo['referencias'][0];
 
             // MGC exige que el concepto sea únicamente su referencia de cuenta
@@ -3536,13 +3543,8 @@ class Payment
 
             if ($referencia_mgc !== null) {
                 $concepto_texto = $referencia_mgc;
-            } else if ($grupo['es_anticipo']) {
-                // Para anticipos: "ANTICIPO #55 NOMBRE PROVEEDOR"
-                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
-            } else if ($cantidad_refs === 1) {
-                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
             } else {
-                $concepto_texto = 'C' . $primera_ref . ' ' . $grupo['proveedor_nombre'];
+                $concepto_texto = $primera_ref . ' ' . $grupo['titular_beneficiario'];
             }
 
             $concepto = $this->limpiar_texto_layout($concepto_texto, 40);
@@ -3566,7 +3568,8 @@ class Payment
             $lineas[] = $linea;
         }
 
-        return implode("\r\n", $lineas);
+        // CRLF también al final de la última línea, como lo genera el portal del banco.
+        return implode("\r\n", $lineas) . "\r\n";
     }
 
 
@@ -3776,9 +3779,13 @@ class Payment
         $lineas = [];
         $consolidados = [];
 
-        // ✅ Consolidar por cuenta cargo + proveedor
+        // Una línea (transferencia) por requisición, igual que Santander: Tesorería necesita
+        // cada orden de pago con su propio concepto. MGC se mantiene consolidado por cuenta
+        // de cargo + proveedor porque lleva una referencia fija por empresa pagadora.
         foreach ($pagos as $pago) {
-            $key = $pago['cuenta_cargo_banorte'] . '|' . $pago['proveedor_codigo'];
+            $es_mgc = $this->referencia_mgc_por_empresa($pago['proveedor_codigo'], $pago['empresa_cod'] ?? null) !== null;
+            $key = $pago['cuenta_cargo_banorte'] . '|' . $pago['proveedor_codigo']
+                . ($es_mgc ? '' : '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id']);
 
             if (!isset($consolidados[$key])) {
                 $consolidados[$key] = [
@@ -3834,15 +3841,10 @@ class Payment
             // ✅ Importe en PESOS con 2 decimales (Banorte NO usa centavos)
             $importe = number_format($grupo['monto_total'], 2, '.', '');
 
-            // ✅ Concepto adaptado
-            $cantidad_refs = count($grupo['referencias']);
+            // ✅ Concepto: "<requisición> <PROVEEDOR>" o "ANTICIPO #55 <PROVEEDOR>".
+            // MGC queda consolidado en una línea con la primera requisición.
             $primera_ref = $grupo['referencias'][0];
-
-            if ($grupo['es_anticipo'] || $cantidad_refs === 1) {
-                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
-            } else {
-                $concepto_texto = 'C' . $primera_ref . ' ' . $grupo['proveedor_nombre'];
-            }
+            $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
 
             $concepto = $this->limpiar_texto_layout($concepto_texto, 30);
 

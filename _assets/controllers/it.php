@@ -1562,6 +1562,155 @@ class It{
         ]);
     }
 
+    /* ---- Tab "Facturas SAT": CFDI emitidos (TGV2.dbo.Facturas) y recibidos (TGV2.dbo.FacturasRecibidas) ---- */
+
+    private const SAT_EXCEL_TOPE = 30000;
+
+    /** Filtros comunes del tab; null si las fechas no son válidas. */
+    private function _sat_facturas_filtros(array $in): ?array {
+        $fecha = fn($v) => ($d = DateTime::createFromFormat('!Y-m-d', (string)$v)) && $d->format('Y-m-d') === $v ? $v : null;
+        $desde = $fecha($in['desde'] ?? '');
+        $hasta = $fecha($in['hasta'] ?? '');
+        if (!$desde || !$hasta || $desde > $hasta) return null;
+        $rfc = $in['rfc'] ?? [];
+        $sentido = (string)($in['sentido'] ?? 'R');
+        return [
+            'sentido'     => in_array($sentido, ['R', 'E', 'ambas'], true) ? $sentido : 'R',
+            'desde'       => $desde,
+            'hasta'       => $hasta,
+            'rfc'         => is_array($rfc) ? $rfc : ($rfc === '' ? [] : [$rfc]),
+            'tipo'        => (string)($in['tipo'] ?? ''),
+            'contraparte' => mb_substr(trim((string)($in['contraparte'] ?? '')), 0, 100),
+            'texto'       => mb_substr(trim((string)($in['texto'] ?? '')), 0, 60),
+            'correo'      => (string)($in['correo'] ?? ''),
+        ];
+    }
+
+    /** DataTables server-side. */
+    public function llamadas_sat_facturas(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        session_write_close();
+        $draw = (int)($_POST['draw'] ?? 0);
+        $f = $this->_sat_facturas_filtros($_POST);
+        if ($f === null) {
+            json_output(['draw' => $draw, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => [], 'error' => 'Rango de fechas inválido']);
+        }
+        $rfcs  = array_keys(self::SAT_RFCS);
+        $model = new SatFacturasModel;
+        $total = $model->contar($f, $rfcs);
+        $rows  = $model->listar($f, $rfcs, (int)($_POST['start'] ?? 0), (int)($_POST['length'] ?? 25),
+                                (int)($_POST['order'][0]['column'] ?? 0), (string)($_POST['order'][0]['dir'] ?? 'desc'));
+        foreach ($rows as &$r) {
+            $r['empresa'] = self::SAT_RFCS[$r['empresa_rfc']] ?? $r['empresa_rfc'];
+        }
+        unset($r);
+        json_output(['draw' => $draw, 'recordsTotal' => $total, 'recordsFiltered' => $total, 'data' => $rows]);
+    }
+
+    public function llamadas_sat_facturas_resumen(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            json_output(['success' => false, 'message' => 'Sin permisos']);
+        }
+        session_write_close();
+        $f = $this->_sat_facturas_filtros($_POST);
+        if ($f === null) json_output(['success' => false, 'message' => 'Rango de fechas inválido']);
+        json_output(['success' => true] + (new SatFacturasModel)->resumen($f, array_keys(self::SAT_RFCS)));
+    }
+
+    /** Modal de detalle (vista parcial). POST id, sentido (R/E). */
+    public function llamadas_sat_factura_detalle(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            echo '<div class="modal-body"><div class="alert alert-danger">Sin permisos</div></div>';
+            return;
+        }
+        $sentido = ($_POST['sentido'] ?? 'R') === 'E' ? 'E' : 'R';
+        $factura = (new SatFacturasModel)->detalle($sentido, (int)($_POST['id'] ?? 0));
+        $rfcEmpresa = $factura ? ($sentido === 'E' ? $factura['EmisorRfc'] : $factura['ReceptorRfc']) : '';
+        echo $this->twig->render($this->route . 'modals/llamadas_sat_factura.html', [
+            'f'       => $factura,
+            'empresa' => self::SAT_RFCS[$rfcEmpresa] ?? '',
+            'tipos'   => SatFacturasModel::TIPOS,
+        ]);
+    }
+
+    /** Excel con los filtros actuales (GET para que el navegador lo descargue). */
+    public function llamadas_sat_facturas_excel(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::SAT_USERS)) {
+            (new Errors())->get404();
+            return;
+        }
+        session_write_close();
+        set_time_limit(300);
+        ini_set('memory_limit', '1024M');
+        $f = $this->_sat_facturas_filtros($_GET);
+        if ($f === null) {
+            http_response_code(400);
+            echo 'Rango de fechas inválido';
+            return;
+        }
+        $rows = (new SatFacturasModel)->exportar($f, array_keys(self::SAT_RFCS), self::SAT_EXCEL_TOPE + 1);
+        $recortado = count($rows) > self::SAT_EXCEL_TOPE;
+        if ($recortado) array_pop($rows);
+
+        $book  = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $book->getActiveSheet();
+        $sheet->setTitle('Facturas SAT');
+        $enc = ['Fecha', 'Fecha timbrado', 'Sentido', 'Empresa', 'RFC emisor', 'Emisor', 'RFC receptor', 'Receptor', 'Tipo', 'Serie',
+                'Folio', 'UUID', 'Uso CFDI', 'Método pago', 'Forma pago', 'Moneda', 'Tipo cambio', 'Subtotal',
+                'Impuestos trasladados', 'Retenciones', 'Total', 'En correo (TG)',
+                'Global periodicidad', 'Global meses', 'Global año', 'Fecha importación', 'Ruta XML'];
+        $sheet->fromArray($enc, null, 'A1');
+        $data = [];
+        foreach ($rows as $r) {
+            $data[] = [
+                substr((string)$r['Fecha'], 0, 19), substr((string)$r['FechaTimbrado'], 0, 19),
+                $r['sentido'] === 'E' ? 'Emitida' : 'Recibida', self::SAT_RFCS[$r['empresa_rfc']] ?? $r['empresa_rfc'],
+                $r['EmisorRfc'], $r['EmisorNombre'], $r['ReceptorRfc'], $r['ReceptorNombre'],
+                $r['TipoDeComprobante'], $r['Serie'], $r['Folio'], $r['UUID'], $r['UsoCFDI'], $r['MetodoPago'], $r['FormaPago'],
+                $r['Moneda'], (float)$r['TipoCambio'], (float)$r['SubTotal'], (float)$r['TotalImpuestosTrasladados'],
+                (float)$r['TotalImpuestosRetenidos'], (float)$r['Total'],
+                $r['en_correo'] === null ? '' : ($r['en_correo'] ? 'Sí' : 'No'),
+                $r['GlobalPeriodicidad'], $r['GlobalMeses'], $r['GlobalAnio'],
+                substr((string)$r['FechaImportacion'], 0, 19), $r['RutaArchivo'],
+            ];
+        }
+        $ultima = count($data) + 1;
+        if ($data) {
+            $sheet->fromArray($data, null, 'A2', true);
+            // Serie/Folio/UUID como texto: si no, Excel les quita los ceros a la izquierda
+            foreach (['J' => 9, 'K' => 10, 'L' => 11] as $col => $idx) {
+                $sheet->getStyle("{$col}2:{$col}{$ultima}")->getNumberFormat()->setFormatCode('@');
+                foreach ($data as $i => $fila) {
+                    $sheet->setCellValueExplicit($col . ($i + 2), (string)$fila[$idx], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                }
+            }
+            $sheet->getStyle("R2:U{$ultima}")->getNumberFormat()->setFormatCode('#,##0.00');
+        }
+        if ($recortado) {
+            $sheet->setCellValue('A' . ($ultima + 2), 'Se exportaron solo las primeras ' . self::SAT_EXCEL_TOPE . ' filas: acota los filtros.');
+        }
+        $sheet->getStyle('A1:AA1')->getFont()->setBold(true);
+        $sheet->setAutoFilter("A1:AA{$ultima}");
+        $sheet->freezePane('A2');
+        // Anchos fijos: autoSize recorre cada celda y con miles de filas tarda demasiado
+        $anchos = ['A' => 19, 'B' => 19, 'C' => 10, 'D' => 16, 'E' => 15, 'F' => 35, 'G' => 15, 'H' => 35, 'L' => 38, 'V' => 14,
+                   'Z' => 19, 'AA' => 90];
+        for ($i = 1; $i <= count($enc); $i++) {
+            $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
+            $sheet->getColumnDimension($col)->setWidth($anchos[$col] ?? 12);
+        }
+
+        $sufijo = ['R' => 'recibidas', 'E' => 'emitidas', 'ambas' => 'emitidas_recibidas'][$f['sentido']];
+        $nombre = "facturas_sat_{$sufijo}_{$f['desde']}_{$f['hasta']}.xlsx";
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $nombre . '"');
+        header('Cache-Control: max-age=0');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save('php://output');
+        exit;
+    }
+
     /** Agrupa errores por mensaje: top 10 con cantidad y hasta 3 archivos de ejemplo. */
     private function _sat_agrupar_errores(array $items, string $campoArchivo, string $campoMensaje): array {
         $grupos = [];

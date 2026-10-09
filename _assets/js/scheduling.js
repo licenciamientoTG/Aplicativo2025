@@ -94,10 +94,10 @@ function ocultaReferenciaNotas(nombreProveedor) {
     return PROVEEDORES_SIN_REFERENCIA_NOTAS.some(function (p) { return nombre.indexOf(p) !== -1; });
 }
 
-// MGC MEXICO sí usa Referencia (guarda el folio de embarque ahí) pero
-// nunca captura Notas -- a diferencia de arriba, aquí solo se oculta esa
-// columna, Referencia se sigue mostrando (2026-09-14).
-const PROVEEDORES_SIN_NOTAS = ['MGC MEXICO'];
+// Proveedores con Referencia pero sin columna Notas. MGC MEXICO estuvo aquí
+// (2026-09-14) y se quitó el 2026-10-08 a pedido de Abastos: ahora sí usan
+// Notas, así que vuelve a mostrarse en su tarjeta.
+const PROVEEDORES_SIN_NOTAS = [];
 
 function ocultaNotas(nombreProveedor) {
     const nombre = (nombreProveedor || '').toUpperCase();
@@ -306,6 +306,7 @@ function formatearFilaEstacion(fila) {
             <td>${esc(fila.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
             <td>${esc(fila.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
             <td>${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td>${esc(fila.notas) || ''}</td>
             <td>${botonesAccion(fila.id, fila.invoice_id, fila.estatus)}</td>
         </tr>
     `;
@@ -483,7 +484,7 @@ function renderPorEstacion(filas) {
     }
 
     const maxTotal = Math.max.apply(null, nombres.map(function (n) { return grupos[n].total; }));
-    const encabezados = ['Hora', 'Producto', 'Litros', 'Proveedor', 'Terminal', 'Transportista', 'Acciones'];
+    const encabezados = ['Hora', 'Producto', 'Litros', 'Proveedor', 'Terminal', 'Transportista', 'Notas', 'Acciones'];
     nombres.forEach(function (nombre) {
         const grupo = grupos[nombre];
         const filasHtml = grupo.filas.length
@@ -686,6 +687,9 @@ let invBusqueda = { activa: false, total: 0, hechas: 0, errores: 0, hora: null }
 function estacionesPlanInventario(filas) {
     const grupos = {};
     filas.forEach(function (f) {
+        // Las ya recibidas no se planean: su volumen ya está en el tanque (y
+        // contarlas inflaría "Vol. tras descarga").
+        if (f.estatus === 'Recibido') return;
         const nombre = f.station_nombre || 'Sin estación';
         if (!coincideBusquedaEstacion(nombre)) return;
         const code = String(f.station_code || '');
@@ -798,7 +802,7 @@ function barraBusquedaInventario(numEstaciones) {
                 <button type="button" class="btn btn-primary btn-sm" id="btnBuscarInventarios" ${b.activa || !numEstaciones ? 'disabled' : ''}>
                     ${b.activa ? '<span class="spinner-border spinner-border-sm me-1"></span>Buscando…' : (b.hechas ? 'Volver a buscar inventarios' : 'Buscar inventarios')}
                 </button>
-                <span class="small text-muted">${numEstaciones} estación(es) con recepciones programadas</span>
+                <span class="small text-muted">${numEstaciones} estación(es) con recepciones pendientes por recibir</span>
                 ${progreso}
             </div>
         </div>`;
@@ -810,7 +814,7 @@ function renderPlanInventarios(filas) {
     const maxTotal = grupos.length ? Math.max.apply(null, grupos.map(function (g) { return g.total; })) : 0;
     let html = barraBusquedaInventario(grupos.length);
     if (!grupos.length) {
-        html += '<div class="col-12"><p class="text-muted text-center">Sin recepciones programadas con los filtros actuales.</p></div>';
+        html += '<div class="col-12"><p class="text-muted text-center">Sin recepciones pendientes por recibir con los filtros actuales.</p></div>';
     }
     grupos.forEach(function (g) { html += tarjetaPlanInventario(g, maxTotal); });
     contenedor.html(html);

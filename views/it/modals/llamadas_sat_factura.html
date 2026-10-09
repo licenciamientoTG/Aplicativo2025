@@ -1,0 +1,150 @@
+{# Modal: detalle de un CFDI de la descarga masiva SAT (TGV2.dbo.FacturasRecibidas o TGV2.dbo.Facturas) #}
+{% macro dinero(v) %}{{ v is null ? '—' : '$' ~ v|number_format(2, '.', ',') }}{% endmacro %}
+{% macro fecha(v) %}{{ v ? v|slice(0, 16) : '—' }}{% endmacro %}
+{% import _self as m %}
+{% if not f %}
+<div class="modal-body"><div class="alert alert-warning mb-0">La factura no existe.</div></div>
+{% else %}
+{% set emitida = f.sentido == 'E' %}
+<div class="modal-body">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="badge {{ emitida ? 'bg-info' : 'bg-primary' }}">{{ emitida ? 'Emitida' : 'Recibida' }}{{ empresa ? ' por ' ~ empresa }}</span>
+        <span class="badge bg-dark">{{ f.TipoDeComprobante }} · {{ tipos[f.TipoDeComprobante] ?? f.TipoDeComprobante }}</span>
+        {% if not emitida %}
+            {% if f.en_correo %}
+            <span class="badge bg-success" title="El UUID también está en TG.dbo.FacturasRecibidas (flujo de correos)">En correo (TG)</span>
+            {% else %}
+            <span class="badge bg-secondary" title="El UUID no está en TG.dbo.FacturasRecibidas">Solo SAT</span>
+            {% endif %}
+        {% endif %}
+        <code class="ms-auto user-select-all">{{ f.UUID }}</code>
+    </div>
+
+    <div class="row g-2 small">
+        <div class="col-md-6">
+            <div class="border rounded p-2 h-100 {{ emitida ? 'border-info' }}">
+                <div class="text-muted">Emisor{{ emitida ? ' · mi empresa' : ' · proveedor' }}</div>
+                <b>{{ emitida and empresa ? empresa : f.EmisorNombre }}</b>{% if emitida and empresa %} <span class="text-muted">({{ f.EmisorNombre }})</span>{% endif %}<br>
+                {{ f.EmisorRfc }} · Régimen {{ f.EmisorRegimenFiscal }}
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="border rounded p-2 h-100 {{ not emitida ? 'border-primary' }}">
+                <div class="text-muted">Receptor{{ emitida ? ' · cliente' : ' · mi empresa' }}</div>
+                <b>{{ not emitida and empresa ? empresa : f.ReceptorNombre }}</b>{% if not emitida and empresa %} <span class="text-muted">({{ f.ReceptorNombre }})</span>{% endif %}<br>
+                {{ f.ReceptorRfc }} · Uso {{ f.UsoCFDI }}
+            </div>
+        </div>
+        <div class="col-md-3"><div class="text-muted">Serie / Folio</div>{{ f.Serie ?: '—' }} {{ f.Folio ?: '' }}</div>
+        <div class="col-md-3"><div class="text-muted">Fecha / Timbrado</div>{{ m.fecha(f.Fecha) }}<br><span class="text-muted">{{ m.fecha(f.FechaTimbrado) }}</span></div>
+        <div class="col-md-3"><div class="text-muted">Método / Forma de pago</div>{{ f.MetodoPago ?: '—' }} / {{ f.FormaPago ?: '—' }}</div>
+        <div class="col-md-3"><div class="text-muted">Moneda</div>{{ f.Moneda }}{% if f.Moneda != 'MXN' and f.TipoCambio %} · TC {{ f.TipoCambio }}{% endif %}</div>
+        <div class="col-md-3"><div class="text-muted">Subtotal</div>{{ m.dinero(f.SubTotal) }}</div>
+        <div class="col-md-3"><div class="text-muted">Impuestos trasladados</div>{{ m.dinero(f.TotalImpuestosTrasladados) }}</div>
+        <div class="col-md-3"><div class="text-muted">Retenciones</div>{{ m.dinero(f.TotalImpuestosRetenidos) }}</div>
+        <div class="col-md-3"><div class="text-muted">Total</div><b class="fs-6">{{ m.dinero(f.Total) }}</b></div>
+        {% set periodicidades = {'01': 'Diaria', '02': 'Semanal', '03': 'Quincenal', '04': 'Mensual', '05': 'Bimestral'} %}
+        {% set bimestres = {'13': 'Ene-Feb', '14': 'Mar-Abr', '15': 'May-Jun', '16': 'Jul-Ago', '17': 'Sep-Oct', '18': 'Nov-Dic'} %}
+        {% if f.GlobalAnio %}
+        <div class="col-md-6"><div class="text-muted">Factura global</div>
+            {{ periodicidades[f.GlobalPeriodicidad] ?? f.GlobalPeriodicidad }} · {{ bimestres[f.GlobalMeses] ?? ('Mes ' ~ f.GlobalMeses) }} {{ f.GlobalAnio }}</div>
+        {% endif %}
+        <div class="col-md-3"><div class="text-muted">Importada</div>{{ f.FechaImportacion ? m.fecha(f.FechaImportacion) : 'antes del 2026-10-08' }}</div>
+        <div class="col-12"><div class="text-muted">Archivo XML</div><code class="user-select-all small">{{ f.RutaArchivo ?: 'sin ruta registrada' }}</code></div>
+    </div>
+
+    {% if f.conceptos %}
+    <h6 class="mt-3 mb-1">Conceptos ({{ f.conceptos|length }}{{ f.conceptos|length >= 500 ? ", se muestran solo los primeros 500" }})</h6>
+    <div class="table-responsive" style="max-height:35vh;">
+        <table class="table table-sm table-striped mb-0" style="font-size:small;">
+            <thead class="table-light sticky-top"><tr>
+                <th>Clave SAT</th><th>No. ident.</th><th>Descripción</th><th class="text-end">Cantidad</th><th>Unidad</th>
+                <th class="text-end">Valor unit.</th><th class="text-end">Importe</th><th class="text-end">Impuesto</th>
+            </tr></thead>
+            <tbody>
+            {% for c in f.conceptos %}
+                <tr>
+                    <td>{{ c.ClaveProdServ }}</td><td>{{ c.NoIdentificacion }}</td><td>{{ c.Descripcion }}</td>
+                    <td class="text-end">{{ c.Cantidad|number_format(3, '.', ',') }}</td><td>{{ c.ClaveUnidad }} {{ c.Unidad }}</td>
+                    <td class="text-end">{{ m.dinero(c.ValorUnitario) }}</td><td class="text-end">{{ m.dinero(c.Importe) }}</td>
+                    <td class="text-end">{% if c.ImporteImpuesto is not null %}{{ m.dinero(c.ImporteImpuesto) }} <span class="text-muted">({{ (c.TasaOCuota * 100)|number_format(2) }}%)</span>{% else %}—{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if f.impuestos %}
+    <h6 class="mt-3 mb-1">Impuestos</h6>
+    <table class="table table-sm mb-0" style="font-size:small;">
+        <thead class="table-light"><tr><th>Tipo</th><th>Impuesto</th><th>Factor</th><th class="text-end">Tasa</th><th class="text-end">Base</th><th class="text-end">Importe</th></tr></thead>
+        <tbody>
+        {% for i in f.impuestos %}
+            <tr><td>{{ i.TipoImpuesto }}</td><td>{{ i.Impuesto }}</td><td>{{ i.TipoFactor }}</td>
+                <td class="text-end">{{ i.TasaOCuota is not null ? (i.TasaOCuota * 100)|number_format(4) ~ '%' : '—' }}</td>
+                <td class="text-end">{{ m.dinero(i.Base) }}</td><td class="text-end">{{ m.dinero(i.Importe) }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if f.pagos %}
+    <h6 class="mt-3 mb-1">Documentos que paga este complemento</h6>
+    <table class="table table-sm mb-0" style="font-size:small;">
+        <thead class="table-light"><tr><th>Fecha pago</th><th>Forma</th><th>Factura pagada</th><th class="text-end">Parc.</th>
+            <th class="text-end">Saldo anterior</th><th class="text-end">Pagado</th><th class="text-end">Saldo insoluto</th></tr></thead>
+        <tbody>
+        {% for p in f.pagos %}
+            <tr><td>{{ m.fecha(p.FechaPago) }}</td><td>{{ p.FormaDePagoP }}</td>
+                <td>{% if p.otro_id %}<a href="#" class="sat-ver-factura" data-sentido="{{ f.sentido }}" data-id="{{ p.otro_id }}">{{ p.Serie }}{{ p.Folio ?: p.IdDocumento }}</a>{% else %}<code title="No está en la tabla">{{ p.IdDocumento ?: '—' }}</code>{% endif %}</td>
+                <td class="text-end">{{ p.NumParcialidad }}</td><td class="text-end">{{ m.dinero(p.ImpSaldoAnt) }}</td>
+                <td class="text-end">{{ m.dinero(p.ImpPagado) }}</td><td class="text-end">{{ m.dinero(p.ImpSaldoInsoluto) }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if f.abonos %}
+    {% set ultimo = f.abonos|last %}
+    <h6 class="mt-3 mb-1">Complementos de pago que la abonan
+        <small class="text-muted">· saldo insoluto según el SAT: <b>{{ m.dinero(ultimo.ImpSaldoInsoluto) }}</b></small></h6>
+    <table class="table table-sm mb-0" style="font-size:small;">
+        <thead class="table-light"><tr><th>Fecha pago</th><th>Forma</th><th>Complemento</th><th class="text-end">Parc.</th>
+            <th class="text-end">Saldo anterior</th><th class="text-end">Pagado</th><th class="text-end">Saldo insoluto</th></tr></thead>
+        <tbody>
+        {% for a in f.abonos %}
+            <tr><td>{{ m.fecha(a.FechaPago) }}</td><td>{{ a.FormaDePagoP }}</td>
+                <td><a href="#" class="sat-ver-factura" data-sentido="{{ f.sentido }}" data-id="{{ a.otro_id }}">{{ a.Serie }}{{ a.Folio ?: a.UUID|slice(0, 8) }}</a></td>
+                <td class="text-end">{{ a.NumParcialidad }}</td><td class="text-end">{{ m.dinero(a.ImpSaldoAnt) }}</td>
+                <td class="text-end">{{ m.dinero(a.ImpPagado) }}</td><td class="text-end">{{ m.dinero(a.ImpSaldoInsoluto) }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% elseif f.TipoDeComprobante == 'I' and f.MetodoPago == 'PPD' %}
+    <div class="alert alert-light border small mt-3 mb-0">Factura PPD sin complementos de pago registrados.</div>
+    {% endif %}
+
+    {% if f.relacionados or f.relacionada_por %}
+    <h6 class="mt-3 mb-1">CFDI relacionados</h6>
+    <table class="table table-sm mb-0" style="font-size:small;">
+        <thead class="table-light"><tr><th>Relación</th><th>Sentido</th><th>CFDI</th><th>Tipo</th><th>Fecha</th><th class="text-end">Total</th></tr></thead>
+        <tbody>
+        {% for r in f.relacionados %}
+            <tr><td>{{ r.TipoRelacion }}</td><td>Esta factura relaciona a</td>
+                <td>{% if r.otro_id %}<a href="#" class="sat-ver-factura" data-sentido="{{ f.sentido }}" data-id="{{ r.otro_id }}">{{ r.Serie }}{{ r.Folio ?: r.UUID|slice(0, 8) }}</a>{% else %}<code title="No está en la tabla">{{ r.UUID }}</code>{% endif %}</td>
+                <td>{{ r.TipoDeComprobante ?? '—' }}</td><td>{{ m.fecha(r.Fecha) }}</td><td class="text-end">{{ r.otro_id ? m.dinero(r.Total) : '—' }}</td></tr>
+        {% endfor %}
+        {% for r in f.relacionada_por %}
+            <tr><td>{{ r.TipoRelacion }}</td><td>La relaciona</td>
+                <td><a href="#" class="sat-ver-factura" data-sentido="{{ f.sentido }}" data-id="{{ r.otro_id }}">{{ r.Serie }}{{ r.Folio ?: r.UUID|slice(0, 8) }}</a></td>
+                <td>{{ r.TipoDeComprobante }}</td><td>{{ m.fecha(r.Fecha) }}</td><td class="text-end">{{ m.dinero(r.Total) }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endif %}
+<div class="modal-footer">
+    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+</div>

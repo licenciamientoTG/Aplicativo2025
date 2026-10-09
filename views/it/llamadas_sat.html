@@ -20,6 +20,17 @@
     <button type="button" class="btn-close" id="panelErrorCerrar" aria-label="Cerrar"></button>
 </div>
 
+<ul class="nav nav-tabs mb-3" id="satTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-descarga" data-bs-toggle="tab" data-bs-target="#pane-descarga" type="button" role="tab" aria-controls="pane-descarga" aria-selected="true">Descarga SAT</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-recibidas" data-bs-toggle="tab" data-bs-target="#pane-recibidas" type="button" role="tab" aria-controls="pane-recibidas" aria-selected="false">Facturas SAT</button>
+    </li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="pane-descarga" role="tabpanel" aria-labelledby="tab-descarga">
+
 <div class="card">
     <div class="card-header pb-0">
         <h5 class="card-title mb-0">Nueva petición de descarga masiva</h5>
@@ -136,6 +147,114 @@
         <div class="form-text">
             "Verificar" pregunta al SAT por la petición pendiente <b>más antigua</b> de ese RFC (no modifica nada).
             "Marcar error" saca la petición de pendientes para que ya no se consulte (queda registrado en el log).
+        </div>
+    </div>
+</div>
+
+</div>{# /pane-descarga #}
+
+<div class="tab-pane fade" id="pane-recibidas" role="tabpanel" aria-labelledby="tab-recibidas">
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <button type="button" class="btn btn-sm btn-outline-success" id="btnFacExcel"><i data-feather="download"></i> Excel</button>
+        </div>
+        <h5 class="card-title mb-0">Facturas SAT · emitidas y recibidas</h5>
+        <small class="text-muted">CFDI de la descarga masiva (TGV2.dbo.Facturas y TGV2.dbo.FacturasRecibidas).
+            "En correo" = la recibida también llegó por el flujo de correos (TG.dbo.FacturasRecibidas).</small>
+    </div>
+    <div class="card-body">
+        <form id="formFacturas" class="row g-2 align-items-end">
+            <div class="col-12 col-md-3 col-xl-2">
+                <label class="form-label mb-0" for="facRfc">Empresa</label>
+                <select class="form-select form-select-sm" id="facRfc" name="rfc">
+                    <option value="">Todas mis empresas</option>
+                    {% for rfc, nombre in rfcs %}
+                    <option value="{{ rfc }}">{{ nombre }} ({{ rfc }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-3 col-xl-2">
+                <label class="form-label mb-0 d-block">Facturas que la empresa…</label>
+                <div class="btn-group btn-group-sm w-100" role="group" aria-label="Emitidas o recibidas">
+                    <input type="radio" class="btn-check" name="sentido" id="facSentR" value="R" checked>
+                    <label class="btn btn-outline-primary" for="facSentR">Recibió</label>
+                    <input type="radio" class="btn-check" name="sentido" id="facSentE" value="E">
+                    <label class="btn btn-outline-primary" for="facSentE">Emitió</label>
+                    <input type="radio" class="btn-check" name="sentido" id="facSentA" value="ambas">
+                    <label class="btn btn-outline-primary" for="facSentA">Ambas</label>
+                </div>
+            </div>
+            <div class="col-6 col-md-3 col-xl-1">
+                <label class="form-label mb-0" for="facDesde">Desde</label>
+                <input type="date" class="form-control form-control-sm" id="facDesde" name="desde" required>
+            </div>
+            <div class="col-6 col-md-3 col-xl-1">
+                <label class="form-label mb-0" for="facHasta">Hasta</label>
+                <input type="date" class="form-control form-control-sm" id="facHasta" name="hasta" required>
+            </div>
+            <div class="col-6 col-md-2 col-xl-1">
+                <label class="form-label mb-0" for="facTipo">Tipo</label>
+                <select class="form-select form-select-sm" id="facTipo" name="tipo">
+                    <option value="">Todos</option>
+                    <option value="I">Ingreso</option>
+                    <option value="E">Egreso (NC)</option>
+                    <option value="P">Pago</option>
+                    <option value="T">Traslado</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2 col-xl-1">
+                <label class="form-label mb-0" for="facCorreo">En correo</label>
+                <select class="form-select form-select-sm" id="facCorreo" name="correo" title="Solo aplica a recibidas">
+                    <option value="">Todas</option>
+                    <option value="no">Solo SAT</option>
+                    <option value="si">Sí</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-4 col-xl-1">
+                <label class="form-label mb-0 text-nowrap" for="facContra" id="facContraLabel">Proveedor</label>
+                <input type="text" class="form-control form-control-sm" id="facContra" name="contraparte" maxlength="100" placeholder="RFC o nombre">
+            </div>
+            <div class="col-12 col-md-4 col-xl-1">
+                <label class="form-label mb-0" for="facTexto">UUID / Folio</label>
+                <input type="text" class="form-control form-control-sm" id="facTexto" name="texto" maxlength="60">
+            </div>
+            <div class="col-12 col-md-4 col-xl-2">
+                <button type="submit" class="btn btn-sm btn-primary w-100" id="btnFacBuscar"><i data-feather="search"></i> Buscar</button>
+            </div>
+        </form>
+
+        <div class="row g-2 mt-1" id="facResumen">
+            <div class="col-12 small text-muted">Elige los filtros y da clic en <b>Buscar</b>.</div>
+        </div>
+
+        <div class="table-responsive mt-2">
+            <table id="datatables_sat_facturas" class="table table-sm table-hover w-100" style="font-size:small;">
+                <thead>
+                    <tr>
+                        <th>FECHA</th><th>SENTIDO</th><th>EMPRESA</th><th>RFC CONTRAPARTE</th><th>CONTRAPARTE</th><th>TIPO</th>
+                        <th>SERIE</th><th>FOLIO</th><th>UUID</th><th>MÉTODO</th><th>FORMA</th>
+                        <th class="text-end">SUBTOTAL</th><th class="text-end">TOTAL</th><th class="text-center">CORREO</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="form-text">Contraparte = proveedor en las recibidas, cliente en las emitidas. Clic en una fila para ver conceptos,
+            impuestos, complementos de pago y CFDI relacionados.</div>
+    </div>
+</div>
+</div>{# /pane-recibidas #}
+</div>{# /tab-content #}
+
+<div class="modal fade" id="facturaSatModal" tabindex="-1" aria-labelledby="facturaSatModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="facturaSatModalLabel">CFDI recibido · SAT</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div id="facturaSatModalContent"></div>
         </div>
     </div>
 </div>
@@ -505,6 +624,160 @@ $(document).ready(function () {
         }
         lote();
     }
+
+    // ---- Tab "Facturas SAT" (emitidas / recibidas) ----
+    var tiposFac = { I: 'Ingreso', E: 'Egreso', P: 'Pago', T: 'Traslado' };
+    var sentidoTxt = { R: 'Recibida', E: 'Emitida' };
+    var tablaFac = null;
+    var hoy = new Date(), ymd = function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    $('#facDesde').val(ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1)));
+    $('#facHasta').val(ymd(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)));
+
+    function sentidoFac() { return $('input[name="sentido"]:checked').val(); }
+    function filtrosFac() {
+        return { sentido: sentidoFac(), desde: $('#facDesde').val(), hasta: $('#facHasta').val(), rfc: $('#facRfc').val(),
+                 tipo: $('#facTipo').val(), correo: sentidoFac() === 'R' ? $('#facCorreo').val() : '',
+                 contraparte: $('#facContra').val().trim(), texto: $('#facTexto').val().trim() };
+    }
+    // "En correo" solo existe para recibidas; la contraparte cambia de nombre según el sentido
+    function ajustarSentidoFac() {
+        var s = sentidoFac();
+        $('#facCorreo').prop('disabled', s !== 'R');
+        if (s !== 'R') $('#facCorreo').val('');
+        $('#facContraLabel').text({ R: 'Proveedor', E: 'Cliente', ambas: 'Contraparte' }[s]);
+        if (tablaFac) {
+            tablaFac.column(1).visible(s === 'ambas');
+            tablaFac.column(13).visible(s !== 'E');
+        }
+    }
+    function fmtMoneda(v) { return v === null || v === undefined ? '—' : '$' + Number(v).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function escFac(v) { return $('<div>').text(v === null || v === undefined ? '' : String(v)).html(); }
+    function tarjeta(titulo, cuerpo) {
+        return '<div class="col-6 col-md-3 col-xl-2"><div class="border rounded p-2 h-100 small"><div class="text-muted">' + titulo + '</div>' + cuerpo + '</div></div>';
+    }
+
+    function cargarResumenFac() {
+        $('#facResumen').html('<div class="col-12 small text-muted">Calculando resumen…</div>');
+        $.post('/it/llamadas_sat_facturas_resumen', filtrosFac(), null, 'json')
+            .done(function (res) {
+                if (!res.success) { $('#facResumen').empty(); mostrarError('Resumen de facturas', mensajeError(res)); return; }
+                var html = '', varios = sentidoFac() === 'ambas';
+                ['R', 'E'].forEach(function (s) {
+                    var filas = res.por_tipo.filter(function (x) { return x.sentido === s; });
+                    if (!filas.length) return;
+                    var n = 0, solo = 0, pre = varios ? sentidoTxt[s] + 's · ' : '';
+                    filas.forEach(function (t) { n += +t.cantidad; solo += t.cantidad - (t.en_correo || 0); });
+                    html += tarjeta(pre + 'CFDI', '<b class="fs-5">' + fmtN(n) + '</b>');
+                    ['I', 'E', 'P', 'T'].forEach(function (k) {
+                        var t = filas.filter(function (x) { return x.tipo === k; })[0];
+                        if (t) html += tarjeta(pre + tiposFac[k] + ' · ' + fmtN(t.cantidad), '<b>' + (k === 'P' ? '—' : fmtMoneda(t.total)) + '</b>');
+                    });
+                    if (s === 'R') {
+                        html += tarjeta('Recibidas solo en SAT (no en correo)', '<b class="fs-5 ' + (solo ? 'text-danger' : '') + '">' + fmtN(solo) + '</b>'
+                            + (solo ? ' <a href="#" id="facVerSolo" class="small">ver</a>' : ''));
+                    }
+                });
+                if (!html) html = '<div class="col-12 small text-muted">Sin CFDI con estos filtros.</div>';
+                if (res.contrapartes.length) {
+                    html += '<div class="col-12"><details class="small"><summary>Top 10 ' + ({ R: 'proveedores', E: 'clientes', ambas: 'contrapartes' }[sentidoFac()])
+                        + ' por monto (ingresos)</summary><table class="table table-sm mb-0 mt-1" style="max-width:900px;"><tbody>'
+                        + res.contrapartes.map(function (c) {
+                            return '<tr>' + (varios ? '<td><span class="badge bg-light text-dark">' + sentidoTxt[c.sentido] + '</span></td>' : '')
+                                + '<td><a href="#" class="fac-contra" data-rfc="' + escFac(c.rfc) + '">' + escFac(c.nombre) + '</a></td><td>' + escFac(c.rfc)
+                                + '</td><td class="text-end">' + fmtN(c.cantidad) + '</td><td class="text-end">' + fmtMoneda(c.total) + '</td></tr>';
+                        }).join('') + '</tbody></table></details></div>';
+                }
+                $('#facResumen').html(html);
+            })
+            .fail(function (xhr, textStatus) { $('#facResumen').empty(); errorAjax('Resumen de facturas', xhr, textStatus); });
+    }
+
+    function initTablaFac() {
+        tablaFac = $('#datatables_sat_facturas').DataTable({
+            serverSide: true,
+            processing: true,
+            searching: false,
+            ajax: {
+                url: '/it/llamadas_sat_facturas',
+                type: 'POST',
+                data: function (d) { return $.extend(d, filtrosFac()); },
+                dataSrc: function (json) {
+                    if (json.error) mostrarError('Facturas SAT', json.error);
+                    return json.data || [];
+                },
+                error: function (xhr, textStatus) { errorAjax('Facturas SAT', xhr, textStatus); }
+            },
+            columns: [
+                { data: 'Fecha', render: function (v) { return escFac((v || '').substring(0, 16)); } },
+                { data: 'sentido', render: function (v) { return '<span class="badge ' + (v === 'E' ? 'bg-info' : 'bg-primary') + '">' + sentidoTxt[v] + '</span>'; } },
+                { data: 'empresa', render: escFac },
+                { data: 'contra_rfc', render: escFac },
+                { data: 'contra_nombre', render: function (v) { return '<span title="' + escFac(v) + '">' + escFac((v || '').length > 40 ? v.substring(0, 40) + '…' : v) + '</span>'; } },
+                { data: 'TipoDeComprobante', render: function (v) { return '<span title="' + (tiposFac[v] || '') + '">' + escFac(v) + '</span>'; } },
+                { data: 'Serie', render: escFac },
+                { data: 'Folio', render: escFac },
+                { data: 'UUID', render: function (v) { return '<code class="small" title="' + escFac(v) + '">' + escFac((v || '').substring(0, 8)) + '…</code>'; } },
+                { data: 'MetodoPago', render: escFac },
+                { data: 'FormaPago', render: escFac },
+                { data: 'SubTotal', className: 'text-end', render: fmtMoneda },
+                { data: 'Total', className: 'text-end', render: function (v, t, row) { return '<b>' + fmtMoneda(v) + '</b>' + (row.Moneda && row.Moneda !== 'MXN' && row.Moneda !== 'XXX' ? ' <small>' + escFac(row.Moneda) + '</small>' : ''); } },
+                { data: 'en_correo', className: 'text-center', orderable: false, render: function (v) {
+                    if (v === null || v === undefined) return '<span class="text-muted">—</span>';
+                    return +v ? '<span class="badge bg-success">Sí</span>' : '<span class="badge bg-secondary">No</span>';
+                } }
+            ],
+            order: [[0, 'desc']],
+            pageLength: 25,
+            lengthMenu: [25, 50, 100, 250],
+            createdRow: function (row, data) { $(row).css('cursor', 'pointer').attr({ 'data-id': data.Id, 'data-sentido': data.sentido }); },
+            language: { url: 'https://cdn.datatables.net/plug-ins/2.1.8/i18n/es-ES.json' }
+        });
+        ajustarSentidoFac();
+        cargarResumenFac();
+    }
+
+    function buscarFac() {
+        if (!$('#facDesde').val() || !$('#facHasta').val() || $('#facDesde').val() > $('#facHasta').val()) {
+            mostrarError('Facturas SAT', 'Revisa el rango de fechas.');
+            return;
+        }
+        if (!tablaFac) { initTablaFac(); return; }
+        tablaFac.ajax.reload();
+        cargarResumenFac();
+    }
+    $('#formFacturas').on('submit', function (e) { e.preventDefault(); buscarFac(); });
+    $('input[name="sentido"]').on('change', ajustarSentidoFac);
+    ajustarSentidoFac();
+    $('#facResumen').on('click', '#facVerSolo', function (e) { e.preventDefault(); $('#facSentR').prop('checked', true); ajustarSentidoFac(); $('#facCorreo').val('no'); buscarFac(); });
+    $('#facResumen').on('click', '.fac-contra', function (e) { e.preventDefault(); $('#facContra').val($(this).data('rfc')); buscarFac(); });
+
+    // No busca solo: la tabla se crea con el primer clic en Buscar (se recuerda el último tab abierto)
+    $('#tab-recibidas').on('shown.bs.tab', function () { if (tablaFac) tablaFac.columns.adjust(); });
+    $('#satTabs button').on('shown.bs.tab', function () { try { localStorage.setItem('llamadas_sat_tab', this.id); } catch (e) {} });
+    try { if (localStorage.getItem('llamadas_sat_tab') === 'tab-recibidas') bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-recibidas')).show(); } catch (e) {}
+
+    function verFacturaSat(id, sentido) {
+        var fd = new FormData();
+        fd.append('id', id);
+        fd.append('sentido', sentido);
+        $('#facturaSatModalContent').html('<div class="modal-body text-center text-muted py-5"><div class="spinner-border spinner-border-sm"></div> Cargando…</div>');
+        $('#facturaSatModal').modal('show');
+        fetch('/it/llamadas_sat_factura_detalle', { method: 'POST', body: fd })
+            .then(function (r) { return r.text(); })
+            .then(function (html) { $('#facturaSatModalContent').html(html); })
+            .catch(function (err) {
+                $('#facturaSatModalContent').html('<div class="modal-body"><div class="alert alert-danger mb-0">No se pudo cargar la factura: ' + escFac(err.message) + '</div></div>');
+            });
+    }
+    $('#datatables_sat_facturas').on('click', 'tbody tr[data-id]', function () { verFacturaSat($(this).data('id'), $(this).data('sentido')); });
+    // Enlaces dentro del modal (complementos, relacionados) abren el otro CFDI en el mismo modal
+    $('#facturaSatModal').on('click', '.sat-ver-factura', function (e) { e.preventDefault(); verFacturaSat($(this).data('id'), $(this).data('sentido')); });
+
+    $('#btnFacExcel').on('click', function () {
+        var f = filtrosFac();
+        if (!f.desde || !f.hasta || f.desde > f.hasta) { mostrarError('Excel', 'Revisa el rango de fechas.'); return; }
+        window.location = '/it/llamadas_sat_facturas_excel?' + $.param(f);
+    });
 
     feather.replace();
 });

@@ -30,25 +30,25 @@
 
 <div class="vd-merma-grid mb-3">
     <div>
-        <div class="vd-kpi-label">Venta sin IVA{{ ayuda.icono('Venta sin IVA', 'Lo cobrado en bomba según ControlGas, quitándole el IVA de cada estación: <strong>8%</strong> en la franja fronteriza y <strong>16%</strong> en el resto. Abajo, los litros vendidos.') }}</div>
+        <div class="vd-kpi-label">Venta con IVA{{ ayuda.icono('Venta con IVA', 'Lo cobrado en bomba según ControlGas, <strong>IVA incluido</strong> (8% en la franja fronteriza, 16% en el resto). Abajo, los litros vendidos.<br><br>Todo el dashboard está en pesos con IVA.') }}</div>
         <div class="vd-merma-num">{{ f.dinero(t.venta) }}</div>
         <div class="vd-mini text-muted">{{ t.litros|number_format(0, '.', ',') }} litros</div>
     </div>
     <div>
-        <div class="vd-kpi-label">Costo de lo vendido{{ ayuda.icono('Costo de lo vendido', 'Litros vendidos × costo promedio por litro de lo comprado en el mes (misma estación y producto), con el precio de la factura sin IVA y con IEPS.<br><br>No es el total comprado: lo que se compró y no se vendió sigue en el tanque y no es costo del mes.') }}</div>
+        <div class="vd-kpi-label">Costo de lo vendido{{ ayuda.icono('Costo de lo vendido', 'Litros vendidos × costo promedio por litro de lo comprado en el mes (misma estación y producto), con el precio de la factura <strong>con IVA</strong> (e IEPS) de cada estación.<br><br>No es el total comprado: lo que se compró y no se vendió sigue en el tanque y no es costo del mes.') }}</div>
         <div class="vd-merma-num">{{ f.dinero(t.costo) }}</div>
         <div class="vd-mini text-muted">litros vendidos × costo promedio del mes</div>
     </div>
     <div>
-        <div class="vd-kpi-label">Margen bruto{{ ayuda.icono('Margen bruto', 'Venta sin IVA − costo de lo vendido <strong>+ estímulo fronterizo del IEPS</strong>. También se muestra por litro y como porcentaje de la venta.<br><br>El estímulo se suma solo en las estaciones de franja fronteriza (IVA 8%): Regular $' ~ est.tarifas.maxima|number_format(3) ~ '/L y Premium $' ~ est.tarifas.super|number_format(3) ~ '/L por litro vendido.<br><br>Es <strong>antes de gastos de operación</strong> (nómina, luz, renta, etc.).') }}</div>
+        <div class="vd-kpi-label">Margen bruto{{ ayuda.icono('Margen bruto', 'Venta − costo de lo vendido <strong>+ estímulo fronterizo del IEPS</strong>, todo <strong>con IVA</strong>. También se muestra por litro y como porcentaje de la venta.<br><br>El estímulo se suma solo en las estaciones de franja fronteriza (IVA 8%): Regular $' ~ est.tarifas.maxima|number_format(3) ~ '/L y Premium $' ~ est.tarifas.super|number_format(3) ~ '/L por litro vendido.<br><br>Es <strong>antes de gastos de operación</strong> (nómina, luz, renta, etc.). Al estar con IVA incluye el IVA del margen, que se entera al SAT.') }}</div>
         <div class="vd-merma-num {{ t.margen is not null and t.margen < 0 ? 'pct-neg' : '' }}">{{ f.dinero(t.margen) }}</div>
         <div class="vd-mini text-muted">{{ f.litro(t.margen_litro) }} por litro · {{ f.pct(t.margen_pct) }} de la venta</div>
         <div class="vd-mini text-success">incluye {{ f.dinero(est.total) }} de estímulo fronterizo</div>
     </div>
     <div>
-        <div class="vd-kpi-label">Gasto en compras (facturado){{ ayuda.icono('Gasto en compras', 'Suma del total de las facturas (CFDI) de las descargas recibidas en el mes, <strong>con IVA</strong>: lo que se le paga a los proveedores.<br><br>Abajo, el mismo gasto sin IVA y cuántas descargas hubo. Si alguna todavía no tiene precio en ControlGas, se avisa en rojo.') }}</div>
+        <div class="vd-kpi-label">Gasto en compras (facturado){{ ayuda.icono('Gasto en compras', 'Suma del total de las facturas (CFDI) de las descargas recibidas en el mes, <strong>con IVA</strong>: lo que se le paga a los proveedores.<br><br>Abajo, cuántas descargas hubo. Si alguna todavía no tiene precio en ControlGas, se avisa en rojo.') }}</div>
         <div class="vd-merma-num">{{ f.dinero(c.facturado) }}</div>
-        <div class="vd-mini text-muted">con IVA · {{ f.dinero(c.costo) }} sin IVA · {{ c.docs }} recepciones</div>
+        <div class="vd-mini text-muted">con IVA · {{ c.docs }} recepciones</div>
         {% if c.docs_sin_precio > 0 %}
         <div class="vd-mini pct-neg">{{ c.docs_sin_precio }} recepciones ({{ c.litros_sin_precio|number_format(0, '.', ',') }} L) aún sin precio en ControlGas</div>
         {% endif %}
@@ -56,10 +56,10 @@
     <div>
         <div class="vd-kpi-label">Recepciones sin factura{{ ayuda.icono('Recepciones sin factura', 'Descargas del mes cuya factura (CFDI) todavía no está en el sistema.<br><br>Es normal en los últimos días del mes; si una descarga sigue sin factura semanas después, falta descargar o ligar el CFDI.') }}</div>
         <div class="vd-merma-num {{ c.docs_sin_factura > 0 ? 'pct-neg' : '' }}">{{ c.docs_sin_factura }}</div>
-        <div class="vd-mini text-muted">{{ c.docs_sin_factura > 0 ? f.dinero(c.costo_sin_factura) ~ ' sin IVA pendientes de CFDI' : 'todas ligadas a su CFDI' }}</div>
+        <div class="vd-mini text-muted">{{ c.docs_sin_factura > 0 ? f.dinero(c.costo_sin_factura) ~ ' con IVA pendientes de CFDI' : 'todas ligadas a su CFDI' }}</div>
     </div>
     <div>
-        <div class="vd-kpi-label">Estaciones con margen negativo{{ ayuda.icono('Estaciones con margen negativo', 'Estaciones cuyo margen bruto del mes salió menor a cero: su venta sin IVA no alcanzó a cubrir el costo de lo que vendieron.<br><br>Ya considera el estímulo fronterizo del IEPS en las estaciones de IVA 8%.') }}</div>
+        <div class="vd-kpi-label">Estaciones con margen negativo{{ ayuda.icono('Estaciones con margen negativo', 'Estaciones cuyo margen bruto del mes salió menor a cero: su venta no alcanzó a cubrir el costo de lo que vendieron.<br><br>Ya considera el estímulo fronterizo del IEPS en las estaciones de IVA 8%.') }}</div>
         <div class="vd-merma-num {{ rent.negativas > 0 ? 'pct-neg' : '' }}">{{ rent.negativas }} / {{ rent.estaciones }}</div>
         <div class="vd-mini text-muted">margen bruto del mes, con estímulo</div>
     </div>
@@ -93,8 +93,8 @@
 #}
 {% set difInvNota = (cz.dif_inv_litros|abs)|number_format(0, '.', ',') ~ ' L de ' ~ (cz.dif_inv_litros >= 0 ? 'sobrante' : 'faltante') ~ ' en tanques' %}
 {% set pasos = [
-    {'s': '',  't': 'base',     'l': 'Venta sin IVA',             'v': cz.venta,      'n': t.litros|number_format(0, '.', ',') ~ ' L vendidos'},
-    {'s': '−', 't': 'resta',    'l': 'Costo de lo vendido',       'v': -cz.costo,     'n': 'precio de factura sin IVA, con IEPS'},
+    {'s': '',  't': 'base',     'l': 'Venta con IVA',             'v': cz.venta,      'n': t.litros|number_format(0, '.', ',') ~ ' L vendidos'},
+    {'s': '−', 't': 'resta',    'l': 'Costo de lo vendido',       'v': -cz.costo,     'n': 'precio de factura con IVA e IEPS'},
     {'s': '=', 't': 'subtotal', 'l': 'Margen antes de estímulo',  'v': cz.antes,      'n': ''},
     {'s': '+', 't': cz.estimulo >= 0 ? 'suma' : 'resta', 'l': 'Estímulo fronterizo del IEPS', 'v': cz.estimulo, 'n': est.litros|number_format(0, '.', ',') ~ ' L en estaciones de frontera'},
     {'s': '=', 't': 'subtotal', 'l': 'Margen bruto',              'v': cz.margen,     'n': ''},
@@ -102,7 +102,7 @@
     {'s': '±', 't': cz.dif_inv >= 0 ? 'suma' : 'resta', 'l': 'Diferencia de inventario', 'v': cz.dif_inv, 'n': difInvNota},
     {'s': '=', 't': 'final',    'l': 'Margen ajustado',           'v': cz.ajustado,   'n': ''}
 ] %}
-<div class="vd-sub-titulo">De la venta al margen{{ ayuda.icono('De la venta al margen', 'Cómo se llega de lo vendido a lo que realmente queda, paso por paso:<br><br><strong>Venta sin IVA</strong> − <strong>costo de lo vendido</strong> = <strong>margen antes de estímulo</strong>.<br>+ <strong>Estímulo fronterizo del IEPS:</strong> litros vendidos en estaciones de frontera × monto por litro = <strong>margen bruto</strong>.<br>+ <strong>Descuentos de proveedor:</strong> notas de crédito del mes (bonos de franquicia, pronto pago, ajustes de precio), sin contar aplicaciones de anticipo.<br>± <strong>Diferencia de inventario:</strong> litros de más (sobrante, suma) o de menos (faltante, resta) en los tanques según el Análisis de merma, valorados al costo de cada estación.<br>= <strong>Margen ajustado.</strong><br><br>Verde suma, rojo resta, azul son subtotales. A la derecha, cuánto representa cada paso por litro vendido.<br><br><strong>Columna:</strong> las piezas que forman el margen ajustado, apiladas; su altura total es el margen ajustado. Las piezas negativas quedan por debajo de cero.') }}</div>
+<div class="vd-sub-titulo">De la venta al margen{{ ayuda.icono('De la venta al margen', 'Cómo se llega de lo vendido a lo que realmente queda, paso por paso:<br><br><strong>Venta con IVA</strong> − <strong>costo de lo vendido con IVA</strong> = <strong>margen antes de estímulo</strong>.<br>+ <strong>Estímulo fronterizo del IEPS:</strong> litros vendidos en estaciones de frontera × monto por litro = <strong>margen bruto</strong>.<br>+ <strong>Descuentos de proveedor:</strong> notas de crédito del mes (bonos de franquicia, pronto pago, ajustes de precio), sin contar aplicaciones de anticipo.<br>± <strong>Diferencia de inventario:</strong> litros de más (sobrante, suma) o de menos (faltante, resta) en los tanques según el Análisis de merma, valorados al costo de cada estación.<br>= <strong>Margen ajustado.</strong><br><br>Verde suma, rojo resta, azul son subtotales. A la derecha, cuánto representa cada paso por litro vendido.<br><br><strong>Columna:</strong> las piezas que forman el margen ajustado, apiladas; su altura total es el margen ajustado. Las piezas negativas quedan por debajo de cero.') }}</div>
 <div class="row g-3 mb-3 align-items-stretch">
     <div class="col-lg-7">
         <div class="vd-mg">
@@ -140,7 +140,7 @@
     <div class="col-lg-6">
         <table class="table table-sm vd-tabla mb-0">
             <thead>
-                <tr><th>Zona{{ ayuda.icono('Margen por zona', 'Venta sin IVA, margen bruto en pesos, margen por litro y margen como % de la venta, por zona.') }}</th><th class="text-end">Venta s/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
+                <tr><th>Zona{{ ayuda.icono('Margen por zona', 'Venta, margen bruto en pesos, margen por litro y margen como % de la venta, por zona. Todo con IVA.') }}</th><th class="text-end">Venta c/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
             </thead>
             <tbody>
                 {% for z in rent.zonas %}
@@ -158,7 +158,7 @@
     <div class="col-lg-6">
         <table class="table table-sm vd-tabla mb-0">
             <thead>
-                <tr><th>Producto{{ ayuda.icono('Margen por producto', 'Venta sin IVA, margen bruto en pesos, margen por litro y margen como % de la venta, por producto.') }}</th><th class="text-end">Venta s/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
+                <tr><th>Producto{{ ayuda.icono('Margen por producto', 'Venta, margen bruto en pesos, margen por litro y margen como % de la venta, por producto. Todo con IVA.') }}</th><th class="text-end">Venta c/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
             </thead>
             <tbody>
                 {% for p in rent.productos %}
@@ -178,7 +178,7 @@
 
 {# ---------- Por proveedor ---------- #}
 {% set provConPrecio = rent.proveedores|filter(p => p.litros > 0) %}
-<div class="vd-sub-titulo">Por proveedor{{ ayuda.icono('Por proveedor', 'A quién se le compra y a qué precio.<br><br><strong>Barras:</strong> costo por litro sin IVA de cada proveedor por producto (precio de factura, ya con IEPS y estímulo).<br><strong>Dona:</strong> participación de cada proveedor en los litros comprados.<br><br>En la tabla, <strong>sobrecosto</strong> = lo que se pagó de más contra el proveedor más barato de la <em>misma zona y producto</em> (solo cuentan como referencia proveedores con al menos 5% del volumen de esa zona). Es un techo teórico: no considera logística, capacidad del proveedor ni el precio del día de cada compra.') }}</div>
+<div class="vd-sub-titulo">Por proveedor{{ ayuda.icono('Por proveedor', 'A quién se le compra y a qué precio.<br><br><strong>Barras:</strong> costo por litro con IVA de cada proveedor por producto (precio de factura, ya con IEPS y estímulo).<br><strong>Dona:</strong> participación de cada proveedor en los litros comprados.<br><br>En la tabla, <strong>sobrecosto</strong> = lo que se pagó de más contra el proveedor más barato de la <em>misma zona, producto y tasa de IVA</em> (solo cuentan como referencia proveedores con al menos 5% del volumen de esa zona). Es un techo teórico: no considera logística, capacidad del proveedor ni el precio del día de cada compra.') }}</div>
 {% if provConPrecio|length %}
 <div class="row g-3 mb-2">
     <div class="col-lg-8">
@@ -239,7 +239,7 @@
 
 {# ---------- Precio de compra y venta por estación ---------- #}
 {% set pe = rent.por_estacion %}
-<div class="vd-sub-titulo">Precio de compra y venta por estación{{ ayuda.icono('Precio de compra y venta por estación', 'Cómo se movieron los precios de cada estación día por día. Elige una estación o varias para compararlas (hasta 6), y el producto con los botones.<br><br><strong>Arriba</strong>, por estación:<br>— <strong>Línea continua:</strong> precio de venta sin IVA por litro (lo cobrado en bomba).<br>— <strong>Línea punteada con puntos:</strong> precio por litro de las descargas de ese día (sin IVA). Solo hay punto los días que llegó pipa con precio.<br><br><strong>Abajo:</strong> margen por litro de cada día = venta sin IVA + estímulo fronterizo − precio de la última descarga. Cuando sube el precio del proveedor y no se mueve el de bomba, el margen baja.<br><br>En las estaciones de frontera el margen incluye el estímulo, por eso puede ser positivo aunque la línea de compra quede arriba de la de venta.') }}</div>
+<div class="vd-sub-titulo">Precio de compra y venta por estación{{ ayuda.icono('Precio de compra y venta por estación', 'Cómo se movieron los precios de cada estación día por día. Elige una estación o varias para compararlas (hasta 6), y el producto con los botones.<br><br><strong>Arriba</strong>, por estación:<br>— <strong>Línea continua:</strong> precio de venta con IVA por litro (lo cobrado en bomba).<br>— <strong>Línea punteada con puntos:</strong> precio por litro de las descargas de ese día (con IVA). Solo hay punto los días que llegó pipa con precio.<br><br><strong>Abajo:</strong> margen por litro de cada día = venta con IVA + estímulo fronterizo − precio con IVA de la última descarga. Cuando sube el precio del proveedor y no se mueve el de bomba, el margen baja.<br><br>En las estaciones de frontera el margen incluye el estímulo, por eso puede ser positivo aunque la línea de compra quede arriba de la de venta.') }}</div>
 {% if pe.estaciones|length %}
 <div class="vr-pe-controles">
     {# Selector propio (no bootstrap-select): el plugin posicionaba mal su
@@ -285,8 +285,8 @@
 </div>
 {# Clave de los tipos de línea: el color dice la estación, el trazo dice qué es #}
 <div class="vr-pe-clave" aria-label="Qué significa cada línea">
-    <span><i class="vr-pe-trazo vr-pe-venta"></i> <strong>Precio de venta</strong> en bomba, sin IVA</span>
-    <span><i class="vr-pe-trazo vr-pe-compra"></i> <strong>Precio de compra</strong> de cada pipa, sin IVA (un punto por descarga)</span>
+    <span><i class="vr-pe-trazo vr-pe-venta"></i> <strong>Precio de venta</strong> en bomba, con IVA</span>
+    <span><i class="vr-pe-trazo vr-pe-compra"></i> <strong>Precio de compra</strong> de cada pipa, con IVA (un punto por descarga)</span>
     <span><i class="vr-pe-trazo vr-pe-margen"></i> <strong>Margen por litro</strong> (gráfica de abajo, ya con estímulo)</span>
     <span class="text-muted">El color indica la estación.</span>
 </div>
@@ -316,7 +316,7 @@
     <div class="table-responsive">
         <table class="table table-sm vd-tabla mb-0">
             <thead>
-                <tr><th>Estación</th><th>Zona</th><th class="text-end">IVA</th><th class="text-end">Litros</th><th class="text-end">Venta s/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
+                <tr><th>Estación</th><th>Zona</th><th class="text-end">IVA</th><th class="text-end">Litros</th><th class="text-end">Venta c/IVA</th><th class="text-end">Margen</th><th class="text-end">$/L</th><th class="text-end">%</th></tr>
             </thead>
             <tbody>
                 {% for s in rent.todas %}

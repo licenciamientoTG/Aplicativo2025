@@ -85,7 +85,7 @@ function vrMargenColumna() {
     });
 }
 
-/** $/L sin IVA de cada proveedor, agrupado por producto. */
+/** $/L con IVA de cada proveedor, agrupado por producto. */
 function vrProvPrecio() {
     var c = vrInit('vr-chart-prov-precio');
     if (!c) return;
@@ -267,7 +267,7 @@ function vrEstacionesPintar(chart, datos, cods, prod) {
         color: VR_COLORES_EST,
         // Un título dentro de cada gráfica: qué se está viendo arriba y abajo
         title: [
-            { text: 'Precio de venta (continua) y de compra (punteada), $/L sin IVA', left: 60, top: 22,
+            { text: 'Precio de venta (continua) y de compra (punteada), $/L con IVA', left: 60, top: 22,
               textStyle: { fontSize: 11, fontWeight: 600, color: '#475569' } },
             { text: 'Margen por litro (venta + estímulo − última compra)', left: 60, top: '63%',
               textStyle: { fontSize: 11, fontWeight: 600, color: '#475569' } }

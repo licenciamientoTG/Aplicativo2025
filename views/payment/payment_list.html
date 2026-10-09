@@ -324,8 +324,11 @@
             </div>
             {% if authorized(68) %}
             <div class="d-flex align-items-center gap-2">
-                <button type="button" onclick="validarYGenerarLayout()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0891b2;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Generar archivo de layout bancario con los seleccionados">
-                    <i class="fas fa-file-alt" style="font-size:.75rem;"></i> Generar Layout
+                <button type="button" onclick="validarYGenerarLayout('Santander')" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#EC1C24;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Layout Santander con los seleccionados; sin selección, todos los de Santander que pasan los filtros">
+                    <i class="fas fa-landmark" style="font-size:.75rem;"></i> Layout Santander
+                </button>
+                <button type="button" onclick="validarYGenerarLayout('Banorte')" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#C9302C;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Layout Banorte con los seleccionados; sin selección, todos los de Banorte que pasan los filtros">
+                    <i class="fas fa-university" style="font-size:.75rem;"></i> Layout Banorte
                 </button>
                 <button type="button" onclick="abrirModalRegistroPago()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Registrar pago ejecutado en el banco">
                     <i class="fas fa-check-circle" style="font-size:.75rem;"></i> Registrar Pago

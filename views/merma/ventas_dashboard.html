@@ -188,6 +188,7 @@
 </div>
 
 {# ---------- Compras y merma ---------- #}
+{# Panel oculto temporalmente
 {% set urlDetalle = '?desde=' ~ desdeMes ~ '&hasta=' ~ desdeMes|date('Y-m-t') %}
 {% set fueraNorma = mz.pct is not null and mz.pct > mz.norma %}
 <div class="vd-panel mb-3">
@@ -274,11 +275,14 @@
         </div>
     </div>
 </div>
+#}
 
 {# ---------- Rentabilidad (se carga por AJAX: consulta aparte a SG12) ---------- #}
+{# Panel oculto temporalmente
 <div class="vd-panel mb-3">
     <div class="vd-panel-titulo"><i class="fas fa-sack-dollar"></i> Rentabilidad: gasto en compras y margen bruto{{ ayuda.icono('Rentabilidad', 'Cuánto se gastó en combustible y cuánto se ganó al venderlo.<br><br>La venta sale de lo cobrado en bomba (ControlGas) y el costo, de las facturas de los proveedores ligadas a cada descarga. Es <strong>margen bruto</strong>: no incluye gastos de operación (nómina, luz, renta, etc.).') }}</div>
     <div id="vd-rentabilidad" data-url="/merma/ventas_rentabilidad?anio={{ anio }}&mes={{ mes }}">
         <p class="text-muted small mb-0"><i class="fas fa-spinner fa-spin"></i> Calculando rentabilidad…</p>
     </div>
 </div>
+#}

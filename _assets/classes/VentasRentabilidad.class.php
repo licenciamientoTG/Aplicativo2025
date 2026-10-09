@@ -7,7 +7,12 @@
  * el mejor precio de la zona); serie diaria de precio de venta vs costo; y
  * la cascada venta → margen ajustado.
  *
- * Margen bruto = venta sin IVA − costo de lo vendido, donde el costo de lo
+ * TODO EN PESOS CON IVA (pedido del usuario 2026-10-07): la venta es lo
+ * cobrado en bomba tal cual (IVA incluido) y los costos de compra se llevan
+ * a con IVA con la tasa de cada estación (8% frontera / 16%). El estímulo
+ * fronterizo es un monto por litro sin IVA y se suma tal cual.
+ *
+ * Margen bruto = venta − costo de lo vendido + estímulo, donde el costo de lo
  * vendido es litros vendidos × costo promedio por litro de lo comprado en
  * el mes (misma estación y familia). No se usa el total comprado: lo que se
  * compra y no se vende queda en inventario y no es costo del mes.
@@ -96,7 +101,7 @@ class VentasRentabilidad
             $compras['facturado']         += $d['factura_total'];
             $compras['docs']              += $d['docs'];
             $compras['docs_sin_factura']  += $d['docs_sin_factura'];
-            $compras['costo_sin_factura'] += $d['costo_sin_factura'];
+            $compras['costo_sin_factura'] += $d['costo_sin_factura'] * (1 + $d['tasa_iva']);
             $compras['docs_sin_precio']   += $d['docs_sin_precio'];
             $compras['litros_sin_precio'] += $d['litros_sin_precio'];
 
@@ -107,6 +112,8 @@ class VentasRentabilidad
                 $f = $d['familias'][$fam] ?? null;
                 $conPrecio  = $f && $f['litros_con_precio'] > 0;
                 $costoLitro = $conPrecio ? $f['costo_compra'] / $f['litros_con_precio'] : $costoGlobal[$fam];
+                // A con IVA con la tasa de la estación (ver encabezado)
+                if ($costoLitro !== null) $costoLitro *= 1 + $d['tasa_iva'];
                 $costoEF[$cod][$fam] = $costoLitro;
 
                 // Diferencia de inventario valorada al costo de la estación
@@ -117,7 +124,7 @@ class VentasRentabilidad
                 }
 
                 if (!$f) continue;
-                $compras['costo'] += $f['costo_compra'];
+                $compras['costo'] += $f['costo_compra'] * (1 + $d['tasa_iva']);
                 if ($f['litros_venta'] <= 0 || $costoLitro === null) continue;
                 if (!$conPrecio) $estimado = true;
 
@@ -125,7 +132,7 @@ class VentasRentabilidad
                 if ($estimuloLitro > 0) $litrosEstimulo += $f['litros_venta'];
                 $linea = [
                     'litros'   => $f['litros_venta'],
-                    'venta'    => $f['pesos_venta'] / (1 + $d['tasa_iva']),
+                    'venta'    => $f['pesos_venta'],
                     'costo'    => $f['litros_venta'] * $costoLitro,
                     'estimulo' => $f['litros_venta'] * $estimuloLitro,
                 ];
@@ -163,7 +170,7 @@ class VentasRentabilidad
             $productos[] = self::metricas($v) + ['clave' => $fam];
         }
 
-        $proveedores = self::proveedores($datos, $zonaEst);
+        $proveedores = self::proveedores($datos, $zonaEst, $tasaEst);
         $descuentos  = array_sum($datos['descuentos']);
         $tot = self::metricas($total);
 
@@ -216,17 +223,23 @@ class VentasRentabilidad
      * y sobrecosto contra el proveedor más barato de la misma zona y familia
      * (con volumen mínimo, ver MIN_PCT_REFERENCIA).
      */
-    private static function proveedores(array $datos, array $zonaEst): array
+    private static function proveedores(array $datos, array $zonaEst, array $tasaEst): array
     {
         $sinFactura = VentasRentabilidadModel::SIN_FACTURA;
 
-        // Agrupado por zona × familia × proveedor
+        // Agrupado por zona + tasa de IVA × familia × proveedor. La tasa entra
+        // en la llave porque los precios van con IVA: MARCA Y PROTS mezcla
+        // estaciones de 8% (Juárez) y 16% (Delicias, Parral…), y sin separar
+        // el proveedor que surte a las de 16% saldría "más caro" solo por el
+        // impuesto, inflando el sobrecosto (pasaba de $3.7 M a $9.2 M).
         $grupo = [];
         foreach ($datos['proveedores'] as $r) {
-            $zona = $zonaEst[$r['codgas']] ?? 'marca_prots';
+            $tasa = $tasaEst[$r['codgas']] ?? 0.16;
+            $zona = ($zonaEst[$r['codgas']] ?? 'marca_prots') . '|' . $tasa;
             $g = &$grupo[$zona][$r['familia']][$r['proveedor']];
             $g['litros'] = ($g['litros'] ?? 0) + $r['litros'];
-            $g['costo']  = ($g['costo'] ?? 0) + $r['costo'];
+            // Con IVA, con la tasa de la estación que recibió la descarga
+            $g['costo']  = ($g['costo'] ?? 0) + $r['costo'] * (1 + $tasa);
             unset($g);
         }
 
@@ -281,8 +294,8 @@ class VentasRentabilidad
     /**
      * Serie diaria POR ESTACIÓN y familia para la gráfica "Precio de compra
      * y venta por estación". Por cada día:
-     *   v = precio de venta sin IVA por litro (lo cobrado en bomba)
-     *   c = precio por litro de las descargas con precio de ESE día (null si
+     *   v = precio de venta con IVA por litro (lo cobrado en bomba)
+     *   c = precio por litro con IVA de las descargas con precio de ESE día (null si
      *       ese día no hubo descarga de esa familia)
      *   m = margen por litro = v + estímulo − costo de reposición, donde el
      *       costo de reposición es el precio de la última descarga conocida
@@ -313,10 +326,10 @@ class VentasRentabilidad
                 foreach ($fechas as $fecha) {
                     $venta  = $datos['diario'][$fecha][$cod][$fam] ?? null;
                     $compra = $datos['compras_dia'][$fecha][$cod][$fam] ?? null;
-                    $pc = $compra && $compra['litros'] > 0 ? $compra['costo'] / $compra['litros'] : null;
+                    $pc = $compra && $compra['litros'] > 0 ? $compra['costo'] / $compra['litros'] * (1 + $tasa) : null;
                     if ($pc !== null) $reposicion = $pc;
 
-                    $pv = $venta && $venta['litros'] > 0 ? $venta['pesos'] / (1 + $tasa) / $venta['litros'] : null;
+                    $pv = $venta && $venta['litros'] > 0 ? $venta['pesos'] / $venta['litros'] : null;
                     if ($pv !== null) $hayVenta = true;
 
                     $serie['v'][] = $pv === null ? null : round($pv, 3);
@@ -348,8 +361,8 @@ class VentasRentabilidad
     }
 
     /**
-     * Agrega margen (venta sin IVA − costo + estímulo fronterizo), margen
-     * por litro y % sobre la venta sin IVA.
+     * Agrega margen (venta − costo + estímulo fronterizo, con IVA), margen
+     * por litro y % sobre la venta.
      */
     private static function metricas(array $v): array
     {

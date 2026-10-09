@@ -4770,111 +4770,80 @@ $("#modalDesgloseFacturas").on("hidden.bs.modal", function () {
 });
 
 
-function validarYGenerarLayout() {
+/**
+ * Genera el layout del banco indicado (botones "Layout Santander" / "Layout Banorte").
+ * - Con checkboxes marcados: usa solo los marcados, que deben ser todos de ese banco.
+ * - Sin ninguno marcado: usa todos los registros de ese banco que pasan los filtros
+ *   actuales de la tabla (empresa, búsqueda por columna), en todas las páginas.
+ */
+function validarYGenerarLayout(banco) {
+  const marcados = $(".invoice-group-checkbox:checked");
+  let filas = [];
+
+  if (marcados.length > 0) {
+    const otrosBancos = new Set();
+    marcados.each(function () {
+      const fila = tablaFacturasAutorizadas.row($(this).closest("tr")).data();
+      if (!fila) return;
+      if (fila.banco_asignado !== banco) {
+        otrosBancos.add(fila.banco_asignado);
+      } else {
+        filas.push(fila);
+      }
+    });
+
+    if (otrosBancos.size > 0) {
+      alertify
+        .alert(
+          '<i class="fas fa-exclamation-triangle text-warning"></i> Bancos Mezclados',
+          `<div class="text-center">
+                <p class="mb-3">Seleccionaste pagos que no son de ${banco}:</p>
+                <div class="alert alert-warning mb-3">
+                    ${Array.from(otrosBancos).map((b) => `<span class="badge bg-secondary me-2">${b}</span>`).join("")}
+                </div>
+                <small class="text-muted">Desmarca esos pagos o usa el botón del otro banco.</small>
+            </div>`,
+        )
+        .set({ maximizable: false, closable: true });
+      return;
+    }
+  } else {
+    // Sin selección = todos los de ese banco (respetando los filtros de la tabla).
+    filas = tablaFacturasAutorizadas
+      .rows({ search: "applied" })
+      .data()
+      .toArray()
+      .filter((fila) => fila.banco_asignado === banco);
+  }
+
+  if (filas.length === 0) {
+    alertify.warning(`No hay pagos de ${banco} para generar el layout`);
+    return;
+  }
+
   const facturasSeleccionadas = [];
   const anticiposSeleccionados = [];
-  const empresasSeleccionadas = [];
-  const bancos = new Set();
-
-  // ✅ Separar facturas de anticipos
-  $(".invoice-group-checkbox:checked").each(function () {
-    const banco = $(this).data("banco");
-    const tipo = $(this).data("tipo");
-    const empresa = $(this).data("empresa");
-    const proveedor = $(this).data("proveedor");
-    const monto = $(this).data("monto");
-
-    bancos.add(banco);
-
-    if (tipo === "ANTICIPO") {
-      // ✅ Para anticipos, guardar payment_request_id
-      const paymentRequestId = $(this).data("payment-request-id");
-      anticiposSeleccionados.push({
-        banco: banco,
-        payment_request_id: paymentRequestId,
-        empresa: empresa,
-        proveedor: proveedor,
-        monto: monto,
-        tipo: "ANTICIPO",
-      });
-      empresasSeleccionadas.push(empresa);
+  filas.forEach((fila) => {
+    const grupo = {
+      banco: fila.banco_asignado,
+      empresa: fila.empresa_nombre,
+      proveedor: fila.proveedor_nombre,
+      monto: fila.total_autorizado,
+    };
+    if (fila.tipo_registro === "ANTICIPO") {
+      anticiposSeleccionados.push({ ...grupo, payment_request_id: fila.payment_request_id, tipo: "ANTICIPO" });
     } else {
-      // ✅ Para facturas, guardar invoice_ids
-      const invoiceIds = $(this).data("invoice-ids");
-      facturasSeleccionadas.push({
-        banco: banco,
-        invoice_ids: invoiceIds,
-        empresa: empresa,
-        proveedor: proveedor,
-        monto: monto,
-        tipo: "FACTURAS",
-      });
-      empresasSeleccionadas.push(empresa);
+      facturasSeleccionadas.push({ ...grupo, invoice_ids: fila.invoice_ids, tipo: "FACTURAS" });
     }
   });
+  const empresasSeleccionadas = [...new Set(filas.map((fila) => fila.empresa_nombre))];
 
-  // ✅ VALIDACIÓN 1: Debe haber al menos una selección
-  if (
-    facturasSeleccionadas.length === 0 &&
-    anticiposSeleccionados.length === 0
-  ) {
-    alertify.warning(
-      "Debe seleccionar al menos un grupo de facturas o anticipos",
-    );
-    return;
-  }
-
-  // ✅ VALIDACIÓN 2: Solo un banco permitido
-  if (bancos.size > 1) {
-    const bancosArray = Array.from(bancos);
-    alertify
-      .alert(
-        '<i class="fas fa-exclamation-triangle text-warning"></i> Bancos Mezclados',
-        `<div class="text-center">
-                <p class="mb-3">Has seleccionado pagos de diferentes bancos:</p>
-                <div class="alert alert-warning mb-3">
-                    ${bancosArray.map((b) => `<span class="badge bg-secondary me-2">${b}</span>`).join("")}
-                </div>
-                <p><strong>Debes generar layouts separados por banco.</strong></p>
-                <small class="text-muted">Por favor, selecciona pagos de un solo banco a la vez.</small>
-            </div>`,
-      )
-      .set({
-        maximizable: false,
-        closable: true,
-      });
-    return;
-  }
-
-  const bancoSeleccionado = Array.from(bancos)[0];
-
-  // ✅ VALIDACIÓN 3: Redirigir según el banco
-  switch (bancoSeleccionado) {
-    case "Santander":
-      generarLayoutSantander(
-        facturasSeleccionadas,
-        anticiposSeleccionados,
-        empresasSeleccionadas,
-      );
-      break;
-
-    case "Banorte":
-      generarLayoutBanorte(
-        facturasSeleccionadas,
-        anticiposSeleccionados,
-        empresasSeleccionadas,
-      );
-      break;
-
-    case "Sin asignar":
-      alertify.error("Los pagos seleccionados no tienen banco asignado");
-      break;
-
-    default:
-      alertify.error("Banco no reconocido: " + bancoSeleccionado);
+  if (banco === "Santander") {
+    generarLayoutSantander(facturasSeleccionadas, anticiposSeleccionados, empresasSeleccionadas);
+  } else {
+    generarLayoutBanorte(facturasSeleccionadas, anticiposSeleccionados, empresasSeleccionadas);
   }
 }
-
 
 function generarLayoutSantander(
   gruposFacturas,
