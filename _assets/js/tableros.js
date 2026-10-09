@@ -129,10 +129,7 @@
     itemCommentForm: document.getElementById('itemCommentForm'),
     itemFilesList: document.getElementById('itemFilesList'),
     itemFilesStatus: document.getElementById('itemFilesStatus'),
-    itemFileForm: document.getElementById('itemFileForm'),
-    itemFileColumn: document.getElementById('itemFileColumn'),
-    itemFileTarget: document.getElementById('itemFileTarget'),
-    itemFileInput: document.getElementById('itemFileInput'),
+    itemFileTypes: document.getElementById('itemFileTypes'),
     itemRelationsList: document.getElementById('itemRelationsList'),
     itemRelationsStatus: document.getElementById('itemRelationsStatus'),
     itemRelationForm: document.getElementById('itemRelationForm'),
@@ -187,8 +184,10 @@
     userSearchTimer: null,
     activeDetailRequest: 0,
     detailItemId: '',
+    createParentId: '',
     itemComments: [],
     itemActivity: [],
+    itemFileTypeFilter: 'all',
     itemRelations: [],
     itemDependencies: [],
     automations: [],
@@ -475,6 +474,7 @@
       });
       selector.value = state.selectedWorkspaceId;
       if (selector.value) state.selectedWorkspaceId = selector.value;
+      renderWorkspacePicker();
     }
     list.replaceChildren();
     const workspaceId = String(state.selectedWorkspaceId || '');
@@ -562,6 +562,41 @@
     populateWorkspaceSelectors();
   }
 
+  function renderWorkspacePicker() {
+    const selector = document.getElementById('workspaceSelect');
+    const label = document.getElementById('workspacePickerLabel');
+    const options = document.getElementById('workspacePickerOptions');
+    if (!selector || !label || !options) return;
+    const selected = selector.selectedOptions[0];
+    label.textContent = selected?.textContent || 'Sin espacios de trabajo';
+    options.replaceChildren();
+    state.workspaces.forEach((workspace) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'boards-workspace-option';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(String(workspace.id) === String(selector.value)));
+      option.dataset.workspaceId = String(workspace.id);
+      option.innerHTML = '<i class="fa-solid fa-layer-group" aria-hidden="true"></i>';
+      const name = document.createElement('span');
+      name.textContent = workspace.name || 'Espacio sin nombre';
+      option.append(name);
+      options.append(option);
+    });
+    const button = document.getElementById('workspacePickerButton');
+    if (button) button.disabled = state.workspaces.length === 0;
+  }
+
+  function closeWorkspacePicker() {
+    const button = document.getElementById('workspacePickerButton');
+    const options = document.getElementById('workspacePickerOptions');
+    const menu = button?.closest('.boards-workspace-menu');
+    if (!button || !options || !menu) return;
+    options.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    menu.classList.remove('is-open');
+  }
+
   async function loadBoards() {
     showLoading(true);
     els.boardWorkspace.hidden = true;
@@ -580,6 +615,7 @@
       if (target) {
         els.boardSelect.value = String(target.id);
         await loadBoard(target.id, true);
+        openNotificationFileTarget(target.id);
       } else {
         showLoading(false);
         showEmptyState();
@@ -1700,6 +1736,35 @@
     return { extension, mime, previewKind, icon };
   }
 
+  function openNotificationFileTarget(boardId) {
+    const params = new URLSearchParams(window.location.search);
+    const fileId = params.get('notification_file_id');
+    if (!fileId || !/^[0-9]+$/.test(fileId) || !state.board || String(state.board.id) !== String(boardId)) return;
+
+    const requestedItemId = params.get('notification_item_id');
+    const items = requestedItemId
+      ? state.items.filter((item) => String(item.id) === requestedItemId)
+      : state.items;
+    let match = null;
+    for (const item of items) {
+      const file = filesForItem(item).find((entry) => String(entry.file_id) === fileId);
+      if (file) { match = { item, file }; break; }
+    }
+
+    if (match && fileTypeInfo(match.file).previewKind === 'image') {
+      openFilePreview(match.file, match.item).then(() => {
+        const commentsButton = [...document.querySelectorAll('[data-preview-panel]')]
+          .find((button) => button.dataset.previewPanel === 'comments');
+        if (commentsButton && !commentsButton.disabled) commentsButton.click();
+      });
+    }
+
+    // Treat notification parameters as a one-time handoff without dropping other URL state.
+    ['notification_file_id', 'notification_item_id', 'notification_comment_id'].forEach((key) => params.delete(key));
+    const remainingQuery = params.toString();
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}${window.location.hash}`);
+  }
+
   function fileEndpoint(file, preview = false) {
     const query = new URLSearchParams();
     if (file.version_id) query.set('version_id', String(file.version_id));
@@ -2418,17 +2483,20 @@
     if (!state.itemActivity.length) {
       els.itemActivityList.append(makeElement('p', 'boards-detail-empty', 'Todavía no hay actividad para este elemento.'));
     } else {
-      const labels = {
-        'comment.created': 'Agregó un comentario', 'item.name_changed': 'Cambió el nombre', 'item.moved': 'Movió el elemento',
-        'file.uploaded': 'Subió una versión de archivo', 'relation.created': 'Agregó una relación', 'relation.deleted': 'Quitó una relación',
-        'dependency.created': 'Agregó una dependencia', 'dependency.deleted': 'Quitó una dependencia',
-        'subtask.parent_changed': 'Cambió el elemento principal'
-      };
       state.itemActivity.forEach((event) => {
         const entry = makeElement('article', 'boards-activity-entry');
-        entry.append(makeElement('strong', '', labels[event.event_type] || String(event.event_type || 'Actualización')));
-        const payload = event.payload && typeof event.payload === 'object' ? stringifyValue(event.payload) : '';
-        if (payload && payload !== '{}') entry.append(makeElement('p', 'boards-activity-payload', payload));
+        const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+        const activity = activityDescription(event, payload);
+        entry.append(makeElement('strong', '', activity.title));
+        if (activity.details.length) {
+          const details = makeElement('dl', 'boards-activity-details');
+          activity.details.forEach(([label, value]) => {
+            const line = makeElement('div', 'boards-activity-detail');
+            line.append(makeElement('dt', '', label), makeElement('dd', '', value));
+            details.append(line);
+          });
+          entry.append(details);
+        }
         const actorName = event.actor_display_name || (event.actor_user_id ? 'Usuario desconocido' : 'Sistema');
         entry.append(makeElement('div', 'boards-detail-meta', `${actorName} · ${displayDateTime(event.created_at)}`));
         els.itemActivityList.append(entry);
@@ -2437,13 +2505,111 @@
     setDetailStatus('itemActivityStatus', `${state.itemActivity.length} ${state.itemActivity.length === 1 ? 'evento' : 'eventos'}`);
   }
 
+  function activityDescription(event, payload) {
+    const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
+    const column = state.columns.find((candidate) => String(candidate.id) === String(payload.column_id));
+    const target = (id) => state.items.find((candidate) => String(candidate.id) === String(id))?.name || (id ? `Elemento #${id}` : 'Sin elemento');
+    const details = [];
+    const add = (label, value) => { if (value !== '' && value !== null && value !== undefined) details.push([label, String(value)]); };
+    const type = String(event.event_type || '');
+    const labels = {
+      'comment.created': 'Agregó un comentario', 'item.name_changed': 'Cambió el nombre del elemento', 'item.moved': 'Movió el elemento',
+      'file.uploaded': 'Subió una versión de archivo', 'relation.created': 'Agregó una relación', 'relation.deleted': 'Quitó una relación',
+      'dependency.created': 'Agregó una dependencia', 'dependency.deleted': 'Quitó una dependencia',
+      'subtask.parent_changed': 'Cambió el elemento principal', 'cell.updated': 'Actualizó un campo'
+    };
+    if (type === 'cell.updated') {
+      add('Campo', column?.name || `Columna #${payload.column_id || '?'}`);
+      if (item && column) {
+        let value = getCellValue(item, column);
+        if (columnType(column) === 'file') {
+          const attached = filesForItem(item).filter((file) => String(file.column_id || '') === String(column.id));
+          value = attached.length ? attached.map((file) => file.name || 'Archivo sin nombre').join(', ') : 'Sin archivos';
+        } else if (['status', 'dropdown'].includes(columnType(column)) && value !== null && value !== undefined) {
+          const option = parseOptions(column.options).find((entry) => String(entry.value) === String(value));
+          if (option) value = option.label || option.value;
+        } else if (Array.isArray(value)) value = value.map((entry) => entry?.name || entry?.label || entry).join(', ');
+        add('Valor actual', value === null || value === undefined || value === '' ? 'Vacío' : stringifyValue(value));
+      }
+    } else if (type === 'item.name_changed') add('Nombre', payload.name || item?.name);
+    else if (type === 'item.moved') {
+      const group = state.groups.find((candidate) => String(candidate.id) === String(payload.group_id));
+      add('Grupo', group?.name || (payload.group_id ? `Grupo #${payload.group_id}` : ''));
+    } else if (type === 'file.uploaded') {
+      add('Archivo', payload.name);
+      if (payload.version_number) add('Versión', `v${payload.version_number}`);
+      if (payload.byte_size !== undefined) add('Tamaño', formatBytes(payload.byte_size));
+    } else if (type === 'comment.created') {
+      const comment = state.itemComments.find((candidate) => String(candidate.id) === String(payload.comment_id));
+      if (comment?.body) add('Comentario', comment.body);
+    } else if (type.startsWith('relation.')) {
+      if (payload.relation_type) add('Tipo', payload.relation_type);
+      if (payload.target_item_id) add('Elemento relacionado', target(payload.target_item_id));
+    } else if (type.startsWith('dependency.')) {
+      if (payload.dependency_type) add('Tipo', payload.dependency_type.replaceAll('_', ' '));
+      if (payload.successor_item_id) add('Depende de', target(payload.successor_item_id));
+    } else if (type === 'subtask.parent_changed') add('Elemento principal', target(payload.parent_item_id));
+    else {
+      const humanKeys = { column_id: 'Columna', group_id: 'Grupo', sort_order: 'Posición', parent_item_id: 'Elemento principal', dependency_type: 'Tipo', name: 'Nombre' };
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== null && value !== '' && typeof value !== 'object') add(humanKeys[key] || key.replaceAll('_', ' '), value);
+      });
+    }
+    const title = labels[type] || String(type || 'Actualización').replace(/[._]/g, ' ');
+    return { title, details };
+  }
+
+  function fileCategory(file) {
+    const mime = String(file.content_type || '').toLowerCase();
+    const extension = String(file.name || '').split('.').pop().toLowerCase();
+    if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) return 'Imágenes';
+    if (mime === 'application/pdf' || extension === 'pdf') return 'PDF';
+    if (/word|document/.test(mime) || ['doc', 'docx', 'odt'].includes(extension)) return 'Documentos';
+    if (/spreadsheet|excel/.test(mime) || ['xls', 'xlsx', 'csv'].includes(extension)) return 'Hojas de cálculo';
+    if (/presentation|powerpoint/.test(mime) || ['ppt', 'pptx'].includes(extension)) return 'Presentaciones';
+    if (mime.startsWith('text/') || ['txt', 'md', 'json', 'xml'].includes(extension)) return 'Texto y datos';
+    return 'Otros archivos';
+  }
+
   function renderItemFiles() {
     const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
     els.itemFilesList.replaceChildren();
+    els.itemFileTypes.replaceChildren();
     if (!item) return;
     const files = filesForItem(item);
-    if (!files.length) els.itemFilesList.append(makeElement('p', 'boards-detail-empty', 'No hay archivos adjuntos todavía.'));
-    files.forEach((file) => {
+    if (!files.length) {
+      els.itemFilesList.append(makeElement('p', 'boards-detail-empty', 'No hay archivos vinculados a este elemento.'));
+      setDetailStatus('itemFilesStatus', '0 archivos');
+      return;
+    }
+    const categories = ['PDF', 'Imágenes', 'Documentos', 'Hojas de cálculo', 'Presentaciones', 'Texto y datos', 'Otros archivos'];
+    const grouped = new Map(categories.map((category) => [category, files.filter((file) => fileCategory(file) === category)]));
+    const visibleCategories = categories.filter((category) => grouped.get(category).length);
+    const allFilter = makeElement('button', 'boards-file-type-filter', 'Todos');
+    allFilter.type = 'button';
+    allFilter.dataset.fileType = 'all';
+    allFilter.classList.toggle('is-active', state.itemFileTypeFilter === 'all');
+    allFilter.append(makeElement('span', '', String(files.length)));
+    els.itemFileTypes.append(allFilter);
+    visibleCategories.forEach((category) => {
+      const filter = makeElement('button', 'boards-file-type-filter', category);
+      filter.type = 'button';
+      filter.dataset.fileType = category;
+      filter.classList.toggle('is-active', state.itemFileTypeFilter === category);
+      filter.append(makeElement('span', '', String(grouped.get(category).length)));
+      els.itemFileTypes.append(filter);
+    });
+    const selectedCategory = visibleCategories.includes(state.itemFileTypeFilter) ? state.itemFileTypeFilter : 'all';
+    state.itemFileTypeFilter = selectedCategory;
+    els.itemFileTypes.querySelectorAll('[data-file-type]').forEach((filter) => filter.classList.toggle('is-active', filter.dataset.fileType === selectedCategory));
+    const categoriesToShow = selectedCategory === 'all' ? visibleCategories : [selectedCategory];
+    categoriesToShow.forEach((category) => {
+      const section = makeElement('section', 'boards-file-category');
+      const heading = makeElement('h5', 'boards-file-category-heading', category);
+      heading.append(makeElement('span', '', String(grouped.get(category).length)));
+      section.append(heading);
+      const list = makeElement('div', 'boards-file-category-list');
+      grouped.get(category).forEach((file) => {
       const row = makeElement('article', 'boards-file-entry');
       const heading = makeElement('div', 'boards-file-entry-heading');
       heading.append(makeElement('strong', '', file.name || 'Archivo sin nombre'));
@@ -2475,12 +2641,6 @@
       history.type = 'button';
       history.dataset.fileHistory = String(file.file_id);
       actions.append(history);
-      if (canEditBoard()) {
-        const newVersion = makeElement('button', 'boards-text-button', 'Nueva versión');
-        newVersion.type = 'button';
-        newVersion.dataset.fileTarget = String(file.file_id);
-        actions.append(newVersion);
-      }
       row.append(heading, makeElement('div', 'boards-detail-meta', `${file.content_type || 'Tipo desconocido'} · ${formatBytes(file.byte_size)}`), actions);
       if (state.fileHistoryVisible[String(file.file_id)]) {
         const versionList = makeElement('div', 'boards-file-history');
@@ -2518,9 +2678,12 @@
         }
         row.append(versionList);
       }
-      els.itemFilesList.append(row);
+      list.append(row);
+      });
+      section.append(list);
+      els.itemFilesList.append(section);
     });
-    setDetailStatus('itemFilesStatus', files.length ? `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}` : 'La lista se toma de las referencias guardadas en las celdas de archivo.');
+    setDetailStatus('itemFilesStatus', `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}`);
   }
 
   function formatBytes(bytes) {
@@ -2529,38 +2692,6 @@
     if (size < 1024) return `${size} B`;
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  function renderFileControls() {
-    const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
-    const fileColumns = state.columns.filter((column) => columnType(column) === 'file');
-    const previousColumn = els.itemFileColumn.value;
-    els.itemFileColumn.replaceChildren();
-    fileColumns.forEach((column) => {
-      const option = makeElement('option', '', column.name || 'Archivo');
-      option.value = String(column.id);
-      els.itemFileColumn.append(option);
-    });
-    if (fileColumns.some((column) => String(column.id) === previousColumn)) els.itemFileColumn.value = previousColumn;
-    els.itemFileForm.hidden = !canEditBoard();
-    els.itemFileColumn.disabled = !canEditBoard() || fileColumns.length === 0;
-    els.itemFileTarget.disabled = !canEditBoard() || fileColumns.length === 0;
-    els.itemFileInput.disabled = !canEditBoard() || fileColumns.length === 0;
-    els.itemFileForm.querySelector('[type="submit"]').disabled = !canEditBoard() || fileColumns.length === 0;
-    els.itemFileForm.querySelector('.boards-field-help').textContent = fileColumns.length
-      ? 'Máximo 100 MB. Las imágenes se convierten a WebP. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.'
-      : 'Agrega una columna de tipo Archivo para adjuntar y consultar archivos desde el tablero.';
-    const selectedColumnId = els.itemFileColumn.value || String(fileColumns[0]?.id || '');
-    const existing = item ? filesForItem(item).filter((file) => String(file.column_id || '') === selectedColumnId) : [];
-    const selectedFile = els.itemFileTarget.value;
-    els.itemFileTarget.replaceChildren(makeElement('option', '', 'Crear archivo nuevo'));
-    els.itemFileTarget.firstElementChild.value = '';
-    existing.forEach((file) => {
-      const option = makeElement('option', '', `${file.name || 'Archivo'} · v${file.version_number || 'actual'}`);
-      option.value = String(file.file_id);
-      els.itemFileTarget.append(option);
-    });
-    if (existing.some((file) => String(file.file_id) === selectedFile)) els.itemFileTarget.value = selectedFile;
   }
 
   function renderRelationTargetBoards() {
@@ -2664,15 +2795,25 @@
     const parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
     els.itemParentSelect.replaceChildren(makeElement('option', '', 'Sin elemento principal'));
     els.itemParentSelect.firstElementChild.value = '';
+    const mismatchedParent = state.items.find((candidate) => String(candidate.id) === parentId && String(candidate.group_id) !== String(item.group_id));
     state.items.forEach((candidate) => {
       if (String(candidate.id) === state.detailItemId) return;
+      if (String(candidate.group_id) !== String(item.group_id) && String(candidate.id) !== parentId) return;
       const option = makeElement('option', '', candidate.name || `Elemento #${candidate.id}`);
       option.value = String(candidate.id);
+      if (String(candidate.group_id) !== String(item.group_id)) option.textContent += ' · otro grupo (relación existente)';
       els.itemParentSelect.append(option);
     });
     els.itemParentSelect.value = parentId;
     els.itemParentSelect.disabled = !editable;
     document.getElementById('saveItemParent').hidden = !editable;
+    const addSubitem = document.getElementById('addSubitemButton');
+    if (addSubitem) addSubitem.disabled = !editable;
+    const parentWarning = document.getElementById('itemParentWarning');
+    if (parentWarning) {
+      parentWarning.hidden = !mismatchedParent;
+      parentWarning.textContent = mismatchedParent ? 'El elemento principal actual pertenece a otro grupo. Selecciona “Sin elemento principal” para quitar esta relación.' : '';
+    }
     const children = state.items.filter((candidate) => String(candidate.parent_item_id ?? '') === state.detailItemId);
     if (!children.length) els.itemSubtasksList.append(makeElement('p', 'boards-detail-empty', 'No hay subelementos todavía.'));
     else children.forEach((child) => els.itemSubtasksList.append(makeElement('div', 'boards-relation-entry', child.name || `Elemento #${child.id}`)));
@@ -2682,7 +2823,6 @@
   function renderItemDetails() {
     renderComments();
     renderItemFiles();
-    renderFileControls();
     renderItemRelations();
     renderActivity();
   }
@@ -2707,7 +2847,6 @@
     setDetailStatus('itemFilesStatus', 'Leyendo referencias de archivo…');
     setDetailStatus('itemRelationsStatus', 'Cargando relaciones y dependencias…');
     setDetailStatus('itemActivityStatus', 'Cargando actividad…');
-    renderFileControls();
     renderRelationTargetBoards();
     els.relationTargetBoard.value = String(state.board.id);
     loadRelationTargetItems(String(state.board.id));
@@ -2824,6 +2963,16 @@
     }
   }
 
+  function fileUploadValidationMessage(file) {
+    if (!(file instanceof File)) return 'Selecciona un archivo válido.';
+    if (file.size <= 0) return 'El archivo está vacío.';
+    if (file.size > 100 * 1024 * 1024) return 'El archivo supera el límite de 100 MB.';
+    const extension = String(file.name.split('.').pop() || '').toLowerCase();
+    const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+    if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imagen, texto, CSV u Office.';
+    return '';
+  }
+
   async function uploadFileToItem(item, column, file, targetFileId = '') {
     if (!canEditBoard()) throw new Error('No tienes permiso para adjuntar archivos.');
     if (!item || !column || columnType(column) !== 'file' || !file) throw new Error('Selecciona un archivo y una columna válida.');
@@ -2862,48 +3011,6 @@
     }
     state.fileVersions[String(reference.file_id)] = undefined;
     return reference;
-  }
-
-  function fileUploadValidationMessage(file) {
-    if (!(file instanceof File)) return 'Selecciona un archivo válido.';
-    if (file.size <= 0) return 'El archivo está vacío.';
-    if (file.size > 100 * 1024 * 1024) return 'El archivo supera el límite de 100 MB.';
-    const extension = String(file.name.split('.').pop() || '').toLowerCase();
-    const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
-    if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imagen, texto, CSV u Office.';
-    return '';
-  }
-
-  async function submitItemFile(event) {
-    event.preventDefault();
-    if (!canEditBoard()) return;
-    const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
-    const file = els.itemFileInput.files?.[0];
-    const columnId = els.itemFileColumn.value;
-    if (!item || !file || !columnId) return;
-    const column = state.columns.find((candidate) => String(candidate.id) === columnId && columnType(candidate) === 'file');
-    if (!column) return;
-    const targetFileId = els.itemFileTarget.value;
-    const button = els.itemFileForm.querySelector('[type="submit"]');
-    button.disabled = true;
-    button.textContent = 'Subiendo…';
-    try {
-      const reference = await uploadFileToItem(item, column, file, targetFileId);
-      els.itemFileForm.reset();
-      renderFileControls();
-      renderItemFiles();
-      await loadFileHistory(reference.file_id);
-      setNotice('Archivo subido y vinculado al elemento.', 'success');
-      const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
-      const activity = await request(`/activity?${params.toString()}`);
-      state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
-      renderActivity();
-    } catch (error) {
-      setNotice(errorMessage(error, 'No se pudo subir el archivo.'), 'error');
-    } finally {
-      button.disabled = !canEditBoard() || !els.itemFileColumn.value;
-      button.textContent = 'Subir archivo';
-    }
   }
 
   async function addItemRelation(event) {
@@ -3427,16 +3534,26 @@
     select.dataset.moveEditor = '1';
     select.dataset.itemId = String(item.id);
     select.dataset.currentGroup = String(item.group_id ?? '');
-    select.setAttribute('aria-label', `Mover ${item.name || 'elemento'} a otro grupo`);
+    const isChild = item.parent_item_id != null;
+    const parentItem = isChild ? state.items.find((candidate) => String(candidate.id) === String(item.parent_item_id)) : null;
+    const hasGroupMismatch = Boolean(parentItem && String(parentItem.group_id) !== String(item.group_id));
+    select.setAttribute('aria-label', isChild
+      ? (hasGroupMismatch ? `Reparar el grupo de ${item.name || 'el subelemento'} para igualarlo con su elemento principal` : `No se puede mover ${item.name || 'el subelemento'} a otro grupo mientras tenga un elemento principal`)
+      : `Mover ${item.name || 'elemento'} y sus subelementos a otro grupo`);
+    if (!isChild) select.title = 'Mover este elemento también mueve sus subelementos.';
+    if (isChild) select.title = hasGroupMismatch
+      ? 'Esta relación heredada usa grupos distintos. Repara moviendo el subelemento al grupo de su elemento principal.'
+      : 'Quita primero la relación con el elemento principal para moverlo a otro grupo.';
     const current = document.createElement('option');
     current.value = String(item.group_id ?? '');
     current.textContent = 'Mover…';
     select.append(current);
     state.groups.forEach((group) => {
+      if (isChild && (!hasGroupMismatch || String(group.id) !== String(parentItem.group_id))) return;
       if (String(group.id) === String(item.group_id)) return;
       const option = document.createElement('option');
       option.value = String(group.id);
-      option.textContent = `Mover a ${group.name || 'grupo'}`;
+      option.textContent = isChild ? `Reparar: mover al grupo de ${group.name || 'su elemento principal'}` : `Mover a ${group.name || 'grupo'}`;
       select.append(option);
     });
     select.disabled = !canEditBoard() || state.groups.length < 2;
@@ -3622,6 +3739,19 @@
     const validIds = new Set(state.items.map((item) => String(item.id)));
     state.selectedItemIds.forEach((id) => { if (!validIds.has(id)) state.selectedItemIds.delete(id); });
     const total = state.selectedItemIds.size;
+    const selectedItems = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    const selectedRoots = new Set(selectedItems.filter((item) => item.parent_item_id == null).map((item) => String(item.id)));
+    const itemsById = new Map(state.items.map((item) => [String(item.id), item]));
+    const blockedChildren = selectedItems.filter((item) => {
+      let parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
+      const visited = new Set();
+      while (parentId && !visited.has(parentId)) {
+        if (selectedRoots.has(parentId)) return false;
+        visited.add(parentId);
+        parentId = itemsById.get(parentId)?.parent_item_id == null ? '' : String(itemsById.get(parentId).parent_item_id);
+      }
+      return Boolean(item.parent_item_id != null);
+    });
     bar.hidden = total === 0 || !canEditBoard();
     count.textContent = `${total} ${total === 1 ? 'elemento seleccionado' : 'elementos seleccionados'}`;
     const previous = target.value;
@@ -3635,7 +3765,8 @@
       target.append(option);
     });
     if (state.groups.some((group) => String(group.id) === previous)) target.value = previous;
-    move.disabled = state.bulkMoveInFlight || !target.value || !total;
+    move.disabled = state.bulkMoveInFlight || !target.value || !total || blockedChildren.length > 0;
+    move.title = blockedChildren.length ? 'Quita la relación principal antes de mover un subelemento por separado.' : 'Mover elementos raíz también mueve sus subelementos.';
     target.disabled = state.bulkMoveInFlight;
     document.getElementById('clearSelection').disabled = state.bulkMoveInFlight;
     els.boardTableContainer.querySelectorAll('[data-select-item], [data-select-group]').forEach((checkbox) => { checkbox.disabled = state.bulkMoveInFlight; });
@@ -4308,8 +4439,51 @@
       input?.focus();
       return;
     }
+    state.createParentId = '';
+    document.getElementById('createItemTitle').textContent = 'Agregar elemento';
+    document.querySelector('#createItemForm .boards-dialog-heading p').textContent = 'Después de crearlo, puedes editar el nombre desde el tablero.';
+    document.querySelector('#createItemForm button[type="submit"]').textContent = 'Agregar elemento';
+    els.newItemGroup.disabled = false;
     refreshGroupOptions(groupId);
     openDialog(els.createItemDialog);
+  }
+
+  function resetCreateItemMode() {
+    state.createParentId = '';
+    els.newItemGroup.disabled = false;
+    document.getElementById('createItemTitle').textContent = 'Agregar elemento';
+    document.querySelector('#createItemForm .boards-dialog-heading p').textContent = 'Después de crearlo, puedes editar el nombre desde el tablero.';
+    document.querySelector('#createItemForm button[type="submit"]').textContent = 'Agregar elemento';
+  }
+
+  function openCreateSubitem() {
+    const parent = state.items.find((item) => String(item.id) === state.detailItemId);
+    if (!parent || !canEditBoard()) return;
+    state.createParentId = String(parent.id);
+    refreshGroupOptions(parent.group_id);
+    els.newItemGroup.value = String(parent.group_id);
+    els.newItemGroup.disabled = true;
+    document.getElementById('createItemTitle').textContent = 'Agregar subelemento';
+    document.querySelector('#createItemForm .boards-dialog-heading p').textContent = `Se agregará dentro del grupo de “${parent.name || 'este elemento'}”.`;
+    document.querySelector('#createItemForm button[type="submit"]').textContent = 'Agregar subelemento';
+    closeDialog(els.itemDetailsDialog);
+    openDialog(els.createItemDialog);
+  }
+
+  function applyAffectedItems(affectedItems, fallbackItem, groupId, responseVersion) {
+    const affected = Array.isArray(affectedItems) ? affectedItems : null;
+    if (!affected) return false;
+    affected.forEach((updated) => {
+      const item = state.items.find((candidate) => String(candidate.id) === String(updated.id));
+      if (!item) return;
+      if (updated.group_id !== undefined) item.group_id = updated.group_id;
+      if (updated.version !== undefined) item.version = updated.version;
+    });
+    if (fallbackItem && !affected.some((entry) => String(entry.id) === String(fallbackItem.id))) {
+      fallbackItem.group_id = groupId;
+      fallbackItem.version = responseVersion ?? fallbackItem.version;
+    }
+    return true;
   }
 
   async function submitInlineItem(form) {
@@ -4457,8 +4631,14 @@
       });
       item.group_id = groupId;
       item.version = result.data?.version ?? item.version;
+      const hasAffected = applyAffectedItems(result.data?.affected_items, item, groupId, result.data?.version);
+      if (!hasAffected) {
+        await loadBoard(state.board.id, true);
+        setNotice('Elemento y subelementos movidos. Se actualizaron los datos del tablero.', 'success');
+        return;
+      }
       renderActiveView();
-      setNotice('Elemento movido al grupo seleccionado.', 'success');
+      setNotice('Elemento y sus subelementos movidos al grupo seleccionado.', 'success');
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo mover el elemento.'), 'error');
       if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
@@ -4474,9 +4654,10 @@
     const groupId = target?.value || '';
     if (state.bulkMoveInFlight || !groupId || !canEditBoard() || !state.board || !state.selectedItemIds.size) return;
     const boardId = state.board.id;
-    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)) && item.parent_item_id == null);
     let moved = 0;
     let failed = 0;
+    let needsReload = false;
     state.bulkMoveInFlight = true;
     button.disabled = true;
     updateSelectionBar();
@@ -4495,14 +4676,21 @@
             version: item.version
           });
           if (!state.board || String(state.board.id) !== String(boardId)) break;
-          item.group_id = groupId;
-          item.version = result.data?.version ?? item.version;
+          if (!applyAffectedItems(result.data?.affected_items, item, groupId, result.data?.version)) {
+            needsReload = true;
+            state.selectedItemIds.clear();
+            moved += 1;
+            break;
+          }
+          (result.data?.affected_items || []).forEach((affected) => state.selectedItemIds.delete(String(affected.id)));
           state.selectedItemIds.delete(String(item.id));
           moved += 1;
         } catch (error) {
           failed += 1;
         }
       }
+      if (!state.board || String(state.board.id) !== String(boardId)) return;
+      if (needsReload) await loadBoard(boardId, true);
       if (!state.board || String(state.board.id) !== String(boardId)) return;
       renderActiveView();
       if (failed) {
@@ -4521,6 +4709,8 @@
   }
 
   function setupDialogs() {
+    els.createItemDialog.addEventListener('close', resetCreateItemMode);
+    els.createItemDialog.addEventListener('cancel', resetCreateItemMode);
     document.querySelectorAll('[data-close-dialog]').forEach((button) => {
       button.addEventListener('click', () => closeDialog(button.closest('dialog')));
     });
@@ -4694,15 +4884,18 @@
     dialogSubmit(els.createItemForm, async (formData) => {
       if (!canEditBoard()) throw new Error('No tienes permiso para editar este tablero.');
       const name = getFormValue(formData, 'name');
-      const groupId = getFormValue(formData, 'group_id');
-      const result = await post('/create_item', { board_id: state.board.id, group_id: groupId, name });
+      const groupId = els.newItemGroup.value;
+      const parentId = state.createParentId;
+      const result = await post('/create_item', { board_id: state.board.id, group_id: groupId, name, ...(parentId ? { parent_item_id: parentId } : {}) });
       const item = result.data || {};
       if (!item.id || item.version == null) {
         await loadBoard(state.board.id, true);
         throw new Error('No se pudo confirmar la versión del elemento. Se actualizaron los datos del tablero.');
       }
-      state.items.push({ ...item, name, group_id: groupId, sort_order: item.sort_order ?? state.items.length, cells: item.cells || {} });
+      state.items.push({ ...item, name, group_id: groupId, ...(parentId ? { parent_item_id: item.parent_item_id ?? parentId } : {}), sort_order: item.sort_order ?? state.items.length, cells: item.cells || {} });
       state.items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+      state.createParentId = '';
+      els.newItemGroup.disabled = false;
       closeDialog(els.createItemDialog);
       renderActiveView();
       setNotice('Elemento agregado.', 'success');
@@ -4844,6 +5037,43 @@
 
   function attachEvents() {
     document.getElementById('boardNavSearch')?.addEventListener('input', renderBoardNav);
+    const workspacePickerButton = document.getElementById('workspacePickerButton');
+    const workspacePickerOptions = document.getElementById('workspacePickerOptions');
+    workspacePickerButton?.addEventListener('click', () => {
+      const opening = workspacePickerOptions?.hidden;
+      if (!workspacePickerOptions) return;
+      workspacePickerOptions.hidden = !opening;
+      workspacePickerButton.setAttribute('aria-expanded', String(Boolean(opening)));
+      workspacePickerButton.closest('.boards-workspace-menu')?.classList.toggle('is-open', Boolean(opening));
+      if (opening) workspacePickerOptions.querySelector('[aria-selected="true"]')?.focus();
+    });
+    workspacePickerOptions?.addEventListener('click', (event) => {
+      const option = event.target.closest('[data-workspace-id]');
+      if (!option || !els.workspaceSelect) return;
+      els.workspaceSelect.value = option.dataset.workspaceId;
+      closeWorkspacePicker();
+      els.workspaceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      workspacePickerButton?.focus();
+    });
+    workspacePickerOptions?.addEventListener('keydown', (event) => {
+      const current = event.target.closest('[data-workspace-id]');
+      if (event.key === 'Escape') {
+        closeWorkspacePicker();
+        workspacePickerButton?.focus();
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const items = [...workspacePickerOptions.querySelectorAll('[data-workspace-id]')];
+        const index = items.indexOf(current);
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        items[(index + step + items.length) % items.length]?.focus();
+      }
+    });
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('.boards-workspace-menu')) closeWorkspacePicker();
+    });
+    workspacePickerButton?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeWorkspacePicker();
+    });
     els.workspaceSelect?.addEventListener('change', () => {
       state.selectedWorkspaceId = els.workspaceSelect.value;
       state.board = null;
@@ -5238,11 +5468,16 @@
       });
     });
     els.itemCommentForm.addEventListener('submit', submitItemComment);
-    els.itemFileForm.addEventListener('submit', submitItemFile);
-    els.itemFileColumn.addEventListener('change', renderFileControls);
+    document.getElementById('addSubitemButton')?.addEventListener('click', openCreateSubitem);
     els.boardMembersList.addEventListener('click', (event) => {
       const revoke = event.target.closest('[data-revoke-member]');
       if (revoke) revokeBoardMember(revoke.dataset.revokeMember);
+    });
+    els.itemFileTypes.addEventListener('click', (event) => {
+      const typeFilter = event.target.closest('[data-file-type]');
+      if (!typeFilter) return;
+      state.itemFileTypeFilter = typeFilter.dataset.fileType;
+      renderItemFiles();
     });
     els.itemFilesList.addEventListener('click', (event) => {
       const history = event.target.closest('[data-file-history]');
@@ -5253,15 +5488,6 @@
         renderItemFiles();
         if (state.fileHistoryVisible[key] && !Array.isArray(state.fileVersions[key]) && !state.fileHistoryLoading[key]) loadFileHistory(fileId);
         return;
-      }
-      const newVersion = event.target.closest('[data-file-target]');
-      if (newVersion) {
-        const file = filesForItem(state.items.find((item) => String(item.id) === state.detailItemId) || { id: state.detailItemId, cells: {} })
-          .find((entry) => String(entry.file_id) === newVersion.dataset.fileTarget);
-        if (file?.column_id) els.itemFileColumn.value = String(file.column_id);
-        renderFileControls();
-        els.itemFileTarget.value = newVersion.dataset.fileTarget;
-        els.itemFileInput.focus();
       }
     });
     els.itemRelationForm.addEventListener('submit', addItemRelation);

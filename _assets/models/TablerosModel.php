@@ -693,9 +693,15 @@ class TablerosModel {
             }
             $comment['mentions'] = $mentionIds;
             $comment['sticker_ids'] = $stickerIds;
-            $this->createNotification((int)$file['created_by'], $userId, (int)$file['board_id'], (int)$file['item_id'], $fileId, null, $id, 'file.comment.created', ['file_name' => (string)($file['name'] ?? '')], 'file-comment:' . $id . ':uploader');
+            $notificationRecipients = [];
+            $uploaderId = (int)$file['created_by'];
+            if ($uploaderId > 0 && $uploaderId !== $userId) $notificationRecipients[$uploaderId] = 'file.comment.created';
             foreach ($recipients as $recipientId) {
-                $this->createNotification($recipientId, $userId, (int)$file['board_id'], (int)$file['item_id'], $fileId, null, $id, 'file.comment.mention', ['file_name' => (string)($file['name'] ?? '')], 'file-comment:' . $id . ':mention:' . $recipientId);
+                // A mention is the more useful signal when the same person also uploaded the file.
+                $notificationRecipients[$recipientId] = 'file.comment.mention';
+            }
+            foreach ($notificationRecipients as $recipientId => $eventType) {
+                $this->createNotification((int)$recipientId, $userId, (int)$file['board_id'], (int)$file['item_id'], $fileId, null, $id, $eventType, ['file_name' => (string)($file['name'] ?? '')], 'file-comment:' . $id . ':recipient:' . $recipientId);
             }
             return $comment;
         });
@@ -719,13 +725,38 @@ class TablerosModel {
     }
 
     public function getNotifications(int $userId): array {
-        $rows = $this->all("SELECT TOP (100) n.id, n.actor_user_id, COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS actor_display_name,
+        $rows = $this->all("SELECT TOP (200) n.id, n.actor_user_id, COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS actor_display_name,
                     n.board_id, n.item_id, n.file_id, n.comment_id, n.file_comment_id, n.event_type, n.payload_json, n.created_at, n.read_at
              FROM tb_notification n LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = n.actor_user_id
              WHERE n.user_id = ? ORDER BY n.created_at DESC, n.id DESC", [$userId]);
         $rows = array_values(array_filter($rows, fn(array $row): bool => !empty($row['board_id']) && $this->access->canViewBoard((int)$row['board_id'])));
         foreach ($rows as &$row) $row['payload'] = json_decode((string)($row['payload_json'] ?? '{}'), true) ?: [];
         unset($row);
+        $notificationRows = [];
+        $commentNotificationIndexes = [];
+        foreach ($rows as $row) {
+            $commentId = $row['file_comment_id'] ?? null;
+            $isFileCommentNotification = $commentId !== null && in_array($row['event_type'], ['file.comment.created', 'file.comment.mention'], true);
+            if (!$isFileCommentNotification) {
+                $notificationRows[] = $row;
+                continue;
+            }
+            $key = (string)$commentId;
+            if (!array_key_exists($key, $commentNotificationIndexes)) {
+                $commentNotificationIndexes[$key] = count($notificationRows);
+                $notificationRows[] = $row;
+            } else {
+                $existingIndex = $commentNotificationIndexes[$key];
+                $existing = $notificationRows[$existingIndex];
+                $rowIsUnread = empty($row['read_at']);
+                $existingIsUnread = empty($existing['read_at']);
+                if (($rowIsUnread && !$existingIsUnread)
+                    || ($rowIsUnread === $existingIsUnread && $row['event_type'] === 'file.comment.mention' && $existing['event_type'] !== 'file.comment.mention')) {
+                    $notificationRows[$existingIndex] = $row;
+                }
+            }
+        }
+        $rows = array_slice($notificationRows, 0, 100);
 
         $unreadBoards = $this->all('SELECT DISTINCT board_id FROM tb_notification WHERE user_id = ? AND read_at IS NULL AND board_id IS NOT NULL', [$userId]);
         $accessibleBoardIds = [];
@@ -737,7 +768,18 @@ class TablerosModel {
         if ($accessibleBoardIds) {
             $placeholders = implode(',', array_fill(0, count($accessibleBoardIds), '?'));
             $unreadCount = (int)($this->one(
-                "SELECT COUNT(*) AS total FROM tb_notification WHERE user_id = ? AND read_at IS NULL AND board_id IN ($placeholders)",
+                "SELECT COUNT(*) AS total FROM (
+                    SELECT CASE
+                        WHEN file_comment_id IS NOT NULL AND event_type IN ('file.comment.created', 'file.comment.mention') THEN 'file-comment:' + CAST(file_comment_id AS NVARCHAR(20))
+                        ELSE 'notification:' + CAST(id AS NVARCHAR(20))
+                    END AS notification_key
+                    FROM tb_notification
+                    WHERE user_id = ? AND read_at IS NULL AND board_id IN ($placeholders)
+                    GROUP BY CASE
+                        WHEN file_comment_id IS NOT NULL AND event_type IN ('file.comment.created', 'file.comment.mention') THEN 'file-comment:' + CAST(file_comment_id AS NVARCHAR(20))
+                        ELSE 'notification:' + CAST(id AS NVARCHAR(20))
+                    END
+                ) unread_notifications",
                 array_merge([$userId], $accessibleBoardIds)
             )['total'] ?? 0);
         }
@@ -745,7 +787,17 @@ class TablerosModel {
     }
 
     public function markNotificationRead(int $userId, int $notificationId): array {
-        $this->execute('UPDATE tb_notification SET read_at = SYSUTCDATETIME() WHERE id = ? AND user_id = ? AND read_at IS NULL', [$notificationId, $userId]);
+        $notification = $this->one('SELECT file_comment_id, event_type FROM tb_notification WHERE id = ? AND user_id = ?', [$notificationId, $userId]);
+        if ($notification && !empty($notification['file_comment_id']) && in_array($notification['event_type'], ['file.comment.created', 'file.comment.mention'], true)) {
+            $this->execute(
+                "UPDATE tb_notification SET read_at = SYSUTCDATETIME()
+                 WHERE user_id = ? AND read_at IS NULL AND file_comment_id = ?
+                   AND event_type IN ('file.comment.created', 'file.comment.mention')",
+                [$userId, $notification['file_comment_id']]
+            );
+        } else {
+            $this->execute('UPDATE tb_notification SET read_at = SYSUTCDATETIME() WHERE id = ? AND user_id = ? AND read_at IS NULL', [$notificationId, $userId]);
+        }
         return ['notification_id' => $notificationId, 'read' => true];
     }
 
@@ -1170,24 +1222,34 @@ class TablerosModel {
 
     public function createItem(int $boardId, int $userId, array $input): array {
         $groupId = $this->positiveInt($input['group_id'] ?? null, 'group_id');
-        $this->requireGroupOnBoard($groupId, $boardId);
         $name = $this->optionalString($input, 'name', 500) ?? '';
         $parentId = $this->optionalPositiveInt($input['parent_item_id'] ?? null, 'parent_item_id');
-        if ($parentId !== null) {
-            $this->requireItemOnBoard($parentId, $boardId);
-        }
-        $position = $this->nextSortOrder('tb_item', $boardId, 'group_id', $groupId);
-        $item = $this->insertRow(
-            'INSERT INTO tb_item (board_id, group_id, parent_item_id, name, sort_order, created_by, updated_by, created_at, updated_at)
-             OUTPUT INSERTED.id, INSERTED.version VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
-            [$boardId, $groupId, $parentId, $name, $position, $userId, $userId]
-        );
-        $this->writeActivity($boardId, (int)$item['id'], $userId, 'item.created', ['group_id' => $groupId, 'parent_item_id' => $parentId]);
-        return [
-            'id' => (int)$item['id'], 'board_id' => $boardId, 'group_id' => $groupId,
-            'parent_item_id' => $parentId, 'name' => $name, 'sort_order' => $position,
-            'version' => $this->versionToken($item['version'] ?? null),
-        ];
+        return $this->transaction(function () use ($boardId, $userId, $groupId, $name, $parentId): array {
+            if (!$this->one('SELECT id FROM tb_group WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$groupId, $boardId])) {
+                throw new TablerosApiException('validation', 'El grupo no pertenece a este tablero.', 422);
+            }
+            if ($parentId !== null) {
+                $parent = $this->one('SELECT id, group_id FROM tb_item WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$parentId, $boardId]);
+                if (!$parent) {
+                    throw new TablerosApiException('validation', 'El elemento relacionado no pertenece a este tablero.', 422);
+                }
+                if ((int)$parent['group_id'] !== $groupId) {
+                    throw new TablerosApiException('validation', 'El subelemento debe estar en el mismo grupo que su elemento principal.', 422);
+                }
+            }
+            $position = $this->nextSortOrder('tb_item', $boardId, 'group_id', $groupId);
+            $item = $this->insertRow(
+                'INSERT INTO tb_item (board_id, group_id, parent_item_id, name, sort_order, created_by, updated_by, created_at, updated_at)
+                 OUTPUT INSERTED.id, INSERTED.version VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$boardId, $groupId, $parentId, $name, $position, $userId, $userId]
+            );
+            $this->writeActivity($boardId, (int)$item['id'], $userId, 'item.created', ['group_id' => $groupId, 'parent_item_id' => $parentId]);
+            return [
+                'id' => (int)$item['id'], 'board_id' => $boardId, 'group_id' => $groupId,
+                'parent_item_id' => $parentId, 'name' => $name, 'sort_order' => $position,
+                'version' => $this->versionToken($item['version'] ?? null),
+            ];
+        });
     }
 
     public function updateItemName(int $boardId, int $userId, array $input): array {
@@ -1313,28 +1375,65 @@ class TablerosModel {
             throw new TablerosApiException('validation', 'El orden debe ser cero o mayor.', 422);
         }
         $this->requireGroupOnBoard($groupId, $boardId);
-        $item = $this->one('SELECT id, version FROM tb_item WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$itemId, $boardId]);
-        if (!$item) {
-            throw new TablerosApiException('not_found', 'No se encontró el elemento en este tablero.', 404);
-        }
-        if ($this->versionToken($item['version'] ?? null) !== $expectedVersion) {
-            throw new TablerosApiException('conflict', 'El elemento cambió. Recarga el tablero e inténtalo de nuevo.', 409);
-        }
-        if ($position === null) {
-            $position = $this->nextSortOrder('tb_item', $boardId, 'group_id', $groupId);
-        }
         return $this->transaction(function () use ($boardId, $userId, $itemId, $groupId, $position, $expectedVersion): array {
-            $updated = $this->returningOne(
-                'UPDATE tb_item SET group_id = ?, sort_order = ?, updated_by = ?, updated_at = GETDATE()
-                 OUTPUT INSERTED.version
-                WHERE id = ? AND board_id = ? AND version = CONVERT(VARBINARY(8), ?, 2) AND deleted_at IS NULL',
-                [$groupId, $position, $userId, $itemId, $boardId, $expectedVersion]
-            );
-            if (!$updated) {
+            // Lock the board's active item range so concurrent hierarchy changes cannot
+            // add or move descendants midway through this operation.
+            $rows = $this->all('SELECT id, parent_item_id, group_id, version FROM tb_item WITH (UPDLOCK, HOLDLOCK) WHERE board_id = ? AND deleted_at IS NULL', [$boardId]);
+            $byId = [];
+            foreach ($rows as $row) { $byId[(int)$row['id']] = $row; }
+            if (!isset($byId[$itemId])) {
+                throw new TablerosApiException('not_found', 'No se encontró el elemento en este tablero.', 404);
+            }
+            if ($this->versionToken($byId[$itemId]['version'] ?? null) !== $expectedVersion) {
                 throw new TablerosApiException('conflict', 'El elemento cambió. Recarga el tablero e inténtalo de nuevo.', 409);
             }
-            $this->writeActivity($boardId, $itemId, $userId, 'item.moved', ['group_id' => $groupId, 'sort_order' => $position]);
-            return ['id' => $itemId, 'group_id' => $groupId, 'sort_order' => $position, 'version' => $this->versionToken($updated['version'] ?? null)];
+            $parentId = $byId[$itemId]['parent_item_id'] === null ? null : (int)$byId[$itemId]['parent_item_id'];
+            if ($parentId !== null) {
+                if (!isset($byId[$parentId])) {
+                    throw new TablerosApiException('validation', 'El elemento principal no está disponible en este tablero.', 422);
+                }
+                if ((int)$byId[$parentId]['group_id'] !== $groupId) {
+                    throw new TablerosApiException('validation', 'Un subelemento debe permanecer en el mismo grupo que su elemento principal.', 422);
+                }
+            }
+            // Reconcile the complete subtree for roots and subtasks alike. Legacy
+            // rows may already contain descendants in a different group.
+            $descendants = [$itemId];
+            $seen = [$itemId => true];
+            $childrenByParent = [];
+            foreach ($rows as $row) {
+                if ($row['parent_item_id'] !== null) {
+                    $childrenByParent[(int)$row['parent_item_id']][] = (int)$row['id'];
+                }
+            }
+            for ($index = 0; $index < count($descendants); $index++) {
+                $currentId = $descendants[$index];
+                foreach ($childrenByParent[$currentId] ?? [] as $childId) {
+                    if (!isset($seen[$childId])) { $seen[$childId] = true; $descendants[] = $childId; }
+                }
+            }
+            if ($position === null) {
+                $position = $this->nextSortOrder('tb_item', $boardId, 'group_id', $groupId);
+            }
+            $placeholders = implode(',', array_fill(0, count($descendants), '?'));
+            $affected = $this->all(
+                'UPDATE tb_item SET group_id = ?, updated_by = ?, updated_at = GETDATE(), sort_order = CASE WHEN id = ? THEN ? ELSE sort_order END
+                 OUTPUT INSERTED.id, INSERTED.group_id, INSERTED.version
+                 WHERE board_id = ? AND id IN (' . $placeholders . ') AND deleted_at IS NULL',
+                [$groupId, $userId, $itemId, $position, $boardId, ...$descendants]
+            );
+            $affectedItems = [];
+            $rootVersion = null;
+            foreach ($affected as $row) {
+                $entry = ['id' => (int)$row['id'], 'group_id' => (int)$row['group_id'], 'version' => $this->versionToken($row['version'] ?? null)];
+                $affectedItems[] = $entry;
+                if ((int)$row['id'] === $itemId) { $rootVersion = $entry['version']; }
+            }
+            if ($rootVersion === null || count($affectedItems) !== count($descendants)) {
+                throw new TablerosApiException('conflict', 'El elemento cambió. Recarga el tablero e inténtalo de nuevo.', 409);
+            }
+            $this->writeActivity($boardId, $itemId, $userId, 'item.moved', ['group_id' => $groupId, 'sort_order' => $position, 'affected_count' => count($affectedItems)]);
+            return ['id' => $itemId, 'group_id' => $groupId, 'sort_order' => $position, 'version' => $rootVersion, 'affected_items' => $affectedItems];
         });
     }
 
@@ -1351,6 +1450,19 @@ class TablerosModel {
         }
 
         return $this->transaction(function () use ($boardId, $userId, $itemId, $parentId, $expectedVersion): array {
+            $item = $this->one('SELECT id, group_id FROM tb_item WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$itemId, $boardId]);
+            if (!$item) {
+                throw new TablerosApiException('validation', 'El elemento relacionado no pertenece a este tablero.', 422);
+            }
+            if ($parentId !== null) {
+                $parent = $this->one('SELECT id, group_id FROM tb_item WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$parentId, $boardId]);
+                if (!$parent) {
+                    throw new TablerosApiException('validation', 'El elemento relacionado no pertenece a este tablero.', 422);
+                }
+                if ((int)$item['group_id'] !== (int)$parent['group_id']) {
+                    throw new TablerosApiException('validation', 'El subelemento y su elemento principal deben estar en el mismo grupo.', 422);
+                }
+            }
             $cursor = $parentId;
             $visited = [];
             while ($cursor !== null) {
