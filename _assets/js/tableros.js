@@ -1782,18 +1782,10 @@
       wrap.setAttribute('aria-label', `Subelemento de ${parent?.name || 'elemento principal'}`);
       wrap.title = `Subelemento de ${parent?.name || 'elemento principal'}`;
     }
-    wrap.append(makeElement('span', 'boards-item-name-link', item.name || 'Elemento sin nombre'));
+    const name = createItemNameControl(item);
+    name.classList.add('boards-table-item-name-control');
+    wrap.append(name);
     if (canEditBoard()) {
-      const edit = makeElement('button', 'boards-item-name-edit', '');
-      edit.type = 'button';
-      edit.dataset.itemNameButton = String(item.id);
-      edit.setAttribute('aria-label', `Editar nombre: ${item.name || 'Elemento sin nombre'}`);
-      edit.title = 'Editar nombre';
-      const icon = makeElement('i', 'fa-solid fa-pen');
-      icon.setAttribute('aria-hidden', 'true');
-      edit.append(icon);
-      wrap.append(edit);
-
       const addSubitem = makeElement('button', 'boards-item-subtask-add', '');
       addSubitem.type = 'button';
       addSubitem.dataset.addSubitem = String(item.id);
@@ -5994,6 +5986,7 @@
         }
         const nameButton = event.target.closest('[data-item-name-button]');
         if (nameButton) {
+          event.stopPropagation();
           beginItemNameEdit(nameButton);
           return;
         }

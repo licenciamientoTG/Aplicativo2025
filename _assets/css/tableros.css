@@ -1166,10 +1166,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-item-name[draggable="true"]:active { cursor: grabbing; }
 .boards-item-row.is-drop-before td { box-shadow: inset 0 3px 0 #8baaff; }
 .boards-item-row.is-drop-after td { box-shadow: inset 0 -3px 0 #8baaff; }
-.boards-item-name-edit,
 .boards-item-subtask-add { display: inline-grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #aeb5d0; background: transparent; cursor: pointer; }
-.boards-item-name-edit:hover,
-.boards-item-name-edit:focus-visible,
 .boards-item-subtask-add:hover,
 .boards-item-subtask-add:focus-visible { border-color: #596184; color: #fff; background: #353a5a; outline: 2px solid #82a3ff; outline-offset: 1px; }
 .boards-item-row { cursor: pointer; }
