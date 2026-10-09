@@ -158,7 +158,7 @@
     var stylesReady = loadTransitionStylesheet();
     var timeoutId;
     var timeout = new Promise(function (_, reject) {
-      timeoutId = window.setTimeout(function () { reject(new Error('Mascot decode timed out')); }, 1200);
+      timeoutId = window.setTimeout(function () { reject(new Error('Mascot decode timed out')); }, 2000);
     });
 
     Promise.race([Promise.all([ready, stylesReady]), timeout]).then(function (prepared) {
