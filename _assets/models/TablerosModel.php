@@ -441,6 +441,154 @@ class TablerosModel {
         });
     }
 
+    public function getStickers(): array {
+        return $this->all(
+            "SELECT s.id, s.name, s.content_type, s.byte_size,
+                    COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name
+             FROM tb_user_sticker s LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = s.user_id
+             WHERE s.deleted_at IS NULL
+             ORDER BY CASE WHEN s.name = N'Sticker predeterminado' THEN 0 ELSE 1 END, s.created_at DESC, s.id DESC
+             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"
+        );
+    }
+
+    public function uploadSticker(int $userId, array $upload, $requestedName = null): array {
+        if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || empty($upload['tmp_name'])
+            || !is_uploaded_file((string)$upload['tmp_name'])) {
+            throw new TablerosApiException('validation', 'Selecciona una imagen válida.', 422);
+        }
+        $source = (string)$upload['tmp_name'];
+        $sourceSize = filesize($source);
+        if ($sourceSize === false || $sourceSize < 1 || $sourceSize > 2 * 1024 * 1024 || (int)($upload['size'] ?? 0) !== $sourceSize) {
+            throw new TablerosApiException('validation', 'La imagen debe pesar máximo 2 MB.', 422);
+        }
+        if ($requestedName !== null && !is_scalar($requestedName)) throw new TablerosApiException('validation', 'El nombre del sticker no es válido.', 422);
+        $name = trim((string)($requestedName ?? ''));
+        $name = basename(str_replace('\\', '/', $name));
+        $name = preg_replace('/[\\x00-\\x1F\\x7F]/u', '', $name) ?? '';
+        $name = trim($name);
+        if ($name === '') $name = 'Sticker';
+        if (preg_match('//u', $name) !== 1) throw new TablerosApiException('validation', 'El nombre del sticker no es válido.', 422);
+        $characters = preg_split('//u', $name, -1, PREG_SPLIT_NO_EMPTY);
+        if (!is_array($characters)) throw new TablerosApiException('validation', 'El nombre del sticker no es válido.', 422);
+        $name = implode('', array_slice($characters, 0, 80));
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($source);
+        $allowed = ['image/png' => IMAGETYPE_PNG, 'image/jpeg' => IMAGETYPE_JPEG, 'image/webp' => IMAGETYPE_WEBP];
+        $info = @getimagesize($source);
+        if (!is_array($info) || !isset($allowed[$mime]) || (int)$info[2] !== $allowed[$mime]
+            || (string)($info['mime'] ?? '') !== $mime) {
+            throw new TablerosApiException('validation', 'Solo se aceptan imágenes PNG, JPEG o WebP válidas.', 422);
+        }
+        $width = (int)$info[0]; $height = (int)$info[1];
+        if ($width < 1 || $height < 1 || $width > 4096 || $height > 4096 || $width * $height > 12000000) {
+            throw new TablerosApiException('validation', 'Las dimensiones de la imagen no son válidas.', 422);
+        }
+        if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
+            throw new TablerosApiException('server', 'El servidor necesita GD con soporte WebP para guardar stickers.', 500);
+        }
+        $bytes = file_get_contents($source);
+        $image = is_string($bytes) ? @imagecreatefromstring($bytes) : false;
+        unset($bytes);
+        if (!$image) throw new TablerosApiException('validation', 'No se pudo decodificar la imagen.', 422);
+        $output = tempnam(sys_get_temp_dir(), 'sticker-');
+        if ($output === false) { imagedestroy($image); throw new TablerosApiException('server', 'No se pudo preparar el sticker.', 500); }
+        try {
+            $targetWidth = min(512, $width); $targetHeight = min(512, $height);
+            $scale = min(512 / $width, 512 / $height, 1);
+            $targetWidth = max(1, (int)round($width * $scale)); $targetHeight = max(1, (int)round($height * $scale));
+            $resized = imagecreatetruecolor($targetWidth, $targetHeight);
+            if (!$resized) throw new TablerosApiException('server', 'No se pudo procesar el sticker.', 500);
+            imagealphablending($resized, false); imagesavealpha($resized, true);
+            $transparent = imagecolorallocatealpha($resized, 0, 0, 0, 127);
+            imagefilledrectangle($resized, 0, 0, $targetWidth, $targetHeight, $transparent);
+            imagecopyresampled($resized, $image, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
+            $encoded = false;
+            for ($quality = 82; $quality >= 50; $quality -= 8) {
+                if (!imagewebp($resized, $output, $quality)) break;
+                clearstatcache(true, $output);
+                if (filesize($output) <= 300 * 1024) { $encoded = true; break; }
+            }
+            imagedestroy($resized);
+            imagedestroy($image);
+            if (!$encoded) throw new TablerosApiException('validation', 'La imagen resultante supera 300 KB.', 422);
+            $size = (int)filesize($output);
+            $hash = hash_file('sha256', $output, true);
+            if (!is_string($hash)) throw new TablerosApiException('server', 'No se pudo verificar el sticker.', 500);
+            $useNas = $this->nasServiceEnabled();
+            $now = new DateTimeImmutable('now'); $objectHash = bin2hex(random_bytes(32));
+            $key = implode('/', ['stickers', (string)$userId, $now->format('Y'), $now->format('m'), substr($objectHash, 0, 2), $objectHash]);
+            $destination = null;
+            if ($useNas) $this->nasServiceRequest('PUT', $key, $output, $size, 'image/webp');
+            else $destination = $this->writeStickerLocal($key, $output);
+            try {
+                return $this->transaction(function () use ($userId, $key, $size, $hash, $useNas, $name): array {
+                    if (!$this->userIsActive($userId)) throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
+                    $this->all('SELECT id FROM tb_user_sticker WITH (UPDLOCK, HOLDLOCK) WHERE user_id = ?', [$userId]);
+                    $count = (int)($this->one('SELECT COUNT(*) AS total FROM tb_user_sticker WHERE user_id = ? AND deleted_at IS NULL', [$userId])['total'] ?? 0);
+                    if ($count >= 50) throw new TablerosApiException('conflict', 'Cada usuario puede tener hasta 50 stickers activos.', 409);
+                    $id = $this->insertId(
+                        "INSERT INTO tb_user_sticker (user_id, name, content_type, byte_size, sha256_hash, storage_provider, storage_container, storage_object_key, created_at)
+                         OUTPUT INSERTED.id VALUES (?, ?, 'image/webp', ?, CONVERT(VARBINARY(32), ?, 2), ?, ?, ?, GETDATE())",
+                        [$userId, $name, $size, bin2hex($hash), $useNas ? 'nas_service' : 'local', 'tableros', $key]
+                    );
+                    return ['id' => $id, 'name' => $name, 'content_type' => 'image/webp', 'byte_size' => $size, 'created_by_display_name' => $this->userDisplayName($userId)];
+                });
+            } catch (Throwable $e) {
+                if ($useNas) { try { $this->nasServiceRequest('DELETE', $key); } catch (Throwable $cleanup) { error_log('Tableros sticker cleanup failed: ' . $cleanup->getMessage()); } }
+                elseif ($destination !== null) @unlink($destination);
+                throw $e;
+            }
+        } finally {
+            if (is_file($output)) @unlink($output);
+        }
+    }
+
+    /** The controller authorizes the active user before calling this method. */
+    public function getStickerDownload(int $stickerId): array {
+        $row = $this->one(
+            "SELECT s.id, s.name, s.content_type, s.byte_size, s.sha256_hash, s.storage_provider, s.storage_container, s.storage_object_key,
+                    CONVERT(VARCHAR(64), s.sha256_hash, 2) AS sha256_hex
+             FROM tb_user_sticker s WHERE s.id = ? AND (s.deleted_at IS NULL OR EXISTS (SELECT 1 FROM tb_file_comment_sticker l WHERE l.sticker_id = s.id))",
+            [$stickerId]
+        );
+        if (!$row || !in_array((string)$row['storage_provider'], ['local', 'nas_service'], true) || $row['storage_container'] !== 'tableros'
+            || (string)$row['content_type'] !== 'image/webp') throw new TablerosApiException('not_found', 'No se encontró el sticker.', 404);
+        $key = (string)$row['storage_object_key'];
+        if ($row['storage_provider'] === 'nas_service') {
+            $path = tempnam(sys_get_temp_dir(), 'sticker-');
+            if ($path === false) throw new TablerosApiException('server', 'No se pudo preparar el sticker.', 500);
+            try {
+                $this->nasServiceRequest('GET', $key, null, null, null, $path, (int)$row['byte_size']);
+                $this->verifyStickerFile($path, $row);
+                return ['id' => (int)$row['id'], 'name' => (string)$row['name'], 'content_type' => 'image/webp', 'byte_size' => (int)$row['byte_size'], 'path' => $path, 'temporary' => true];
+            } catch (Throwable $e) { @unlink($path); throw $e; }
+        }
+        $path = $this->privateObjectPath($key);
+        $this->verifyStickerFile($path, $row);
+        return ['id' => (int)$row['id'], 'name' => (string)$row['name'], 'content_type' => 'image/webp', 'byte_size' => (int)$row['byte_size'], 'path' => $path, 'temporary' => false];
+    }
+
+    private function verifyStickerFile(string $path, array $row): void {
+        $size = filesize($path); $hash = hash_file('sha256', $path);
+        if ($size !== (int)$row['byte_size'] || !is_string($hash) || !hash_equals(strtolower((string)$row['sha256_hex']), strtolower($hash))) {
+            throw new TablerosApiException('server', 'El sticker almacenado no coincide con sus datos de integridad.', 500);
+        }
+    }
+
+    private function writeStickerLocal(string $key, string $source): string {
+        $root = $this->privateStorageRoot();
+        $path = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $key);
+        $dir = dirname($path);
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) throw new TablerosApiException('server', 'No se pudo preparar el almacenamiento privado.', 500);
+        if (!$this->pathIsWithin((string)realpath($dir), $root)) throw new TablerosApiException('server', 'Ruta de almacenamiento no válida.', 500);
+        $input = fopen($source, 'rb'); $output = @fopen($path, 'xb');
+        if (!is_resource($input) || !is_resource($output)) { if (is_resource($input)) fclose($input); if (is_resource($output)) fclose($output); @unlink($path); throw new TablerosApiException('server', 'No se pudo guardar el sticker.', 500); }
+        $copied = stream_copy_to_stream($input, $output); fclose($input); fclose($output); @chmod($path, 0600);
+        if ($copied !== filesize($source)) { @unlink($path); throw new TablerosApiException('server', 'No se pudo guardar el sticker completo.', 500); }
+        return $path;
+    }
+
     public function getFileComments(int $fileId): array {
         $file = $this->one('SELECT id, board_id, item_id FROM tb_file WHERE id = ? AND deleted_at IS NULL', [$fileId]);
         if (!$file) {
@@ -456,9 +604,32 @@ class TablerosModel {
              ORDER BY c.created_at, c.id",
             [$fileId]
         );
+        $commentIds = array_map(static fn(array $comment): int => (int)$comment['id'], $comments);
+        $stickerByComment = [];
+        if ($commentIds) {
+            $marks = implode(',', array_fill(0, count($commentIds), '?'));
+            $stickers = $this->all(
+                "SELECT l.file_comment_id, s.id, s.name, s.content_type, s.user_id AS created_by,
+                        COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name
+                 FROM tb_file_comment_sticker l
+                 INNER JOIN tb_user_sticker s ON s.id = l.sticker_id
+                 LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = s.user_id
+                 WHERE l.file_comment_id IN ($marks) ORDER BY l.created_at, s.id",
+                $commentIds
+            );
+            foreach ($stickers as $sticker) {
+                $stickerByComment[(string)$sticker['file_comment_id']][] = [
+                    'id' => (int)$sticker['id'], 'name' => (string)$sticker['name'],
+                    'created_by' => (int)$sticker['created_by'],
+                    'created_by_display_name' => (string)($sticker['created_by_display_name'] ?? ''),
+                    'url' => '/tableros_api/sticker_file/' . (int)$sticker['id'],
+                ];
+            }
+        }
         foreach ($comments as &$comment) {
             $comment['mentions'] = json_decode((string)($comment['mentions_json'] ?? '[]'), true) ?: [];
             unset($comment['mentions_json']);
+            $comment['stickers'] = $stickerByComment[(string)$comment['id']] ?? [];
             $comment['attachments'] = $this->all(
                 'SELECT f.id AS file_id, f.name, a.created_at FROM tb_file_comment_attachment a
                  INNER JOIN tb_file f ON f.id = a.file_id AND f.board_id = ? AND f.item_id = ? AND f.deleted_at IS NULL
@@ -471,7 +642,17 @@ class TablerosModel {
     }
 
     public function addFileComment(int $fileId, int $userId, array $input): array {
-        $body = $this->requiredString($input, 'body', 10000);
+        $stickerIds = $input['stickers'] ?? [];
+        if (!is_array($stickerIds) || count($stickerIds) > 20) {
+            throw new TablerosApiException('validation', 'La lista de stickers no es válida.', 422);
+        }
+        $stickerIds = array_values(array_unique(array_map(fn($id): int => $this->positiveInt($id, 'stickers'), $stickerIds)));
+        if (array_key_exists('body', $input) && $input['body'] !== null && !is_scalar($input['body'])) {
+            throw new TablerosApiException('validation', 'El campo body no es válido.', 422);
+        }
+        $body = isset($input['body']) && trim((string)$input['body']) !== ''
+            ? $this->requiredString($input, 'body', 10000) : '';
+        if ($body === '' && !$stickerIds) throw new TablerosApiException('validation', 'Escribe un comentario o agrega un sticker.', 422);
         $mentions = $input['mentions'] ?? [];
         if (!is_array($mentions) || count($mentions) > 100) {
             throw new TablerosApiException('validation', 'La lista de menciones no es válida.', 422);
@@ -479,10 +660,15 @@ class TablerosModel {
         $mentionIds = [];
         foreach ($mentions as $mention) $mentionIds[] = $this->positiveInt($mention, 'mentions');
         $mentionIds = array_values(array_unique($mentionIds));
-        return $this->transaction(function () use ($fileId, $userId, $body, $mentionIds): array {
+        return $this->transaction(function () use ($fileId, $userId, $body, $mentionIds, $stickerIds): array {
             $file = $this->one('SELECT id, board_id, item_id, name, created_by FROM tb_file WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$fileId]);
             if (!$file) {
                 throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+            }
+            if ($stickerIds) {
+                $marks = implode(',', array_fill(0, count($stickerIds), '?'));
+                $active = $this->all("SELECT id FROM tb_user_sticker WHERE id IN ($marks) AND deleted_at IS NULL", $stickerIds);
+                if (count($active) !== count($stickerIds)) throw new TablerosApiException('validation', 'Uno o más stickers ya no están disponibles.', 422);
             }
             $recipients = $this->validatedMentionRecipients((int)$file['board_id'], $mentionIds, $userId);
             $id = $this->insertId(
@@ -490,6 +676,9 @@ class TablerosModel {
                  OUTPUT INSERTED.id VALUES (?, ?, ?, ?, GETDATE(), GETDATE())',
                 [$fileId, $body, $userId, json_encode($mentionIds, JSON_UNESCAPED_UNICODE)]
             );
+            foreach ($stickerIds as $stickerId) {
+                $this->execute('INSERT INTO tb_file_comment_sticker (file_comment_id, sticker_id, created_by, created_at) VALUES (?, ?, ?, GETDATE())', [$id, $stickerId, $userId]);
+            }
             $comment = $this->one(
                 "SELECT c.id, c.file_id, c.body, c.created_by,
                         COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name,
@@ -503,6 +692,7 @@ class TablerosModel {
                 throw new RuntimeException('No se pudo recuperar el comentario recién creado.');
             }
             $comment['mentions'] = $mentionIds;
+            $comment['sticker_ids'] = $stickerIds;
             $this->createNotification((int)$file['created_by'], $userId, (int)$file['board_id'], (int)$file['item_id'], $fileId, null, $id, 'file.comment.created', ['file_name' => (string)($file['name'] ?? '')], 'file-comment:' . $id . ':uploader');
             foreach ($recipients as $recipientId) {
                 $this->createNotification($recipientId, $userId, (int)$file['board_id'], (int)$file['item_id'], $fileId, null, $id, 'file.comment.mention', ['file_name' => (string)($file['name'] ?? '')], 'file-comment:' . $id . ':mention:' . $recipientId);
@@ -2447,7 +2637,8 @@ class TablerosModel {
         // board/item/year/month/shard/hash to keep project assets organized.
         $legacyKey = (bool)preg_match('/^[a-f0-9]{64}$/', $objectKey);
         $hierarchicalKey = (bool)preg_match('~^[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}$~', $objectKey);
-        if (!$legacyKey && !$hierarchicalKey) {
+        $stickerKey = (bool)preg_match('~^stickers/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}$~', $objectKey);
+        if (!$legacyKey && !$hierarchicalKey && !$stickerKey) {
             throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
         }
         $root = $this->privateStorageRoot();
@@ -2500,7 +2691,7 @@ class TablerosModel {
             throw new TablerosApiException('server', 'El servicio de almacenamiento Tableros debe usar HTTPS; HTTP solo se permite en loopback.', 500);
         }
         if (!function_exists('curl_init')) throw new TablerosApiException('server', 'La extensión PHP cURL es necesaria para el almacenamiento Tableros.', 500);
-        if (!preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $objectKey)) {
+        if (!preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|stickers/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $objectKey)) {
             throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
         }
         $handle = curl_init($url . '?key=' . rawurlencode($objectKey));

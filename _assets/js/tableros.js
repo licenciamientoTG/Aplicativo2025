@@ -1313,8 +1313,11 @@
     input.className = 'boards-file-cell-input';
     input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
     input.setAttribute('aria-label', `Seleccionar archivo para ${item.name || 'elemento'}`);
-    const button = makeElement('button', 'boards-file-cell-add', files.length ? '＋ Adjuntar' : '＋ Subir archivo');
+    const button = makeElement('button', 'boards-file-cell-add');
     button.type = 'button';
+    button.innerHTML = '<i class="fa-solid fa-plus" aria-hidden="true"></i>';
+    button.title = files.length ? 'Adjuntar archivo' : 'Subir archivo';
+    button.setAttribute('aria-label', button.title);
     button.addEventListener('click', () => input.click());
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
@@ -1326,7 +1329,9 @@
         return;
       }
       button.disabled = true;
-      button.textContent = 'Subiendo…';
+      button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>';
+      button.title = 'Subiendo archivo…';
+      button.setAttribute('aria-label', button.title);
       try {
         await uploadFileToItem(item, column, file);
         renderActiveView();
@@ -1707,9 +1712,27 @@
         comments.forEach((comment) => {
           const article = makeElement('article', 'boards-preview-comment');
           const author = comment.created_by_display_name || comment.author_name || comment.user_name || comment.username || 'Usuario desconocido';
-          article.append(makeElement('strong', '', author));
-          if (comment.created_at) article.append(makeElement('time', '', displayDateTime(comment.created_at)));
+          const heading = makeElement('div', 'boards-preview-comment-heading');
+          heading.append(commentAvatar(author, comment.created_by_id || comment.user_id));
+          const authorDetails = makeElement('div', 'boards-preview-comment-author');
+          authorDetails.append(makeElement('strong', '', author));
+          if (comment.created_at) authorDetails.append(makeElement('time', '', displayDateTime(comment.created_at)));
+          heading.append(authorDetails);
+          article.append(heading);
           article.append(makeElement('p', '', comment.body || comment.comment || ''));
+          if (Array.isArray(comment.stickers) && comment.stickers.length) {
+            const stickers = makeElement('div', 'boards-preview-comment-stickers');
+            comment.stickers.forEach((sticker) => {
+              const stickerId = sticker?.id ?? sticker;
+              if (stickerId == null) return;
+              const image = document.createElement('img');
+              image.src = `${apiRoot}/sticker_file/${encodeURIComponent(stickerId)}`;
+              image.alt = sticker?.name || 'Sticker';
+              image.loading = 'lazy'; image.decoding = 'async';
+              stickers.append(image);
+            });
+            if (stickers.childElementCount) article.append(stickers);
+          }
           if (Array.isArray(comment.attachments) && comment.attachments.length) {
             const attachments = makeElement('div', 'boards-preview-comment-attachments');
             comment.attachments.forEach((attachment) => {
@@ -1730,22 +1753,32 @@
       const form = document.createElement('form');
       form.className = 'boards-preview-comment-form';
       const textarea = document.createElement('textarea');
-      textarea.rows = 3; textarea.maxLength = 10000; textarea.required = true;
+      textarea.rows = 3; textarea.maxLength = 10000;
       textarea.setAttribute('aria-label', 'Nuevo comentario'); textarea.placeholder = 'Escribe un comentario… Usa @ para mencionar a alguien.';
       const mentionList = makeElement('div', 'boards-preview-mention-list');
       mentionList.hidden = true;
       mentionList.setAttribute('role', 'listbox');
       mentionList.setAttribute('aria-label', 'Usuarios para mencionar');
       const selectedFiles = [];
+      const selectedStickers = [];
+      let stickerCatalog = null;
+      let stickerCatalogPromise = null;
       const fileInput = document.createElement('input');
       fileInput.type = 'file'; fileInput.multiple = true; fileInput.hidden = true;
       fileInput.setAttribute('aria-label', 'Archivos para adjuntar al comentario');
       const fileList = makeElement('div', 'boards-preview-comment-files');
+      const stickerList = makeElement('div', 'boards-preview-comment-stickers boards-preview-comment-sticker-pending');
+      const stickerPicker = makeElement('div', 'boards-preview-sticker-picker');
+      stickerPicker.hidden = true;
+      stickerPicker.setAttribute('role', 'listbox'); stickerPicker.setAttribute('aria-label', 'Stickers disponibles');
+      const stickerStatus = makeElement('span', 'boards-preview-sticker-status');
+      stickerStatus.setAttribute('role', 'status'); stickerStatus.setAttribute('aria-live', 'polite');
       const actions = makeElement('div', 'boards-preview-comment-actions');
       const emojiWrap = document.createElement('details');
       emojiWrap.className = 'boards-preview-emoji-picker';
-      const emojiToggle = makeElement('summary', '', '😊 Emoji');
-      emojiToggle.setAttribute('aria-label', 'Insertar emoji');
+      const emojiToggle = makeElement('summary', 'boards-preview-icon-button');
+      emojiToggle.innerHTML = '<i class="fa-regular fa-face-smile" aria-hidden="true"></i>';
+      emojiToggle.setAttribute('aria-label', 'Insertar emoji'); emojiToggle.title = 'Insertar emoji';
       const emojiOptions = makeElement('div', 'boards-preview-emoji-options');
       ['😀', '👍', '🎉', '❤️', '😂', '🙏', '🚀', '✅'].forEach((emoji) => {
         const button = makeElement('button', '', emoji); button.type = 'button';
@@ -1760,11 +1793,126 @@
         emojiOptions.append(button);
       });
       emojiWrap.append(emojiToggle, emojiOptions);
-      const attachButton = makeElement('button', 'boards-button-light', 'Adjuntar archivo'); attachButton.type = 'button';
+      const stickerWrap = document.createElement('div'); stickerWrap.className = 'boards-preview-sticker-wrap';
+      const stickerButton = makeElement('button', 'boards-preview-icon-button');
+      stickerButton.innerHTML = '<i class="fa-regular fa-face-grin-hearts" aria-hidden="true"></i>';
+      stickerButton.type = 'button'; stickerButton.title = 'Agregar sticker'; stickerButton.setAttribute('aria-label', 'Agregar sticker');
+      const stickerInput = document.createElement('input'); stickerInput.type = 'file'; stickerInput.accept = 'image/png,image/jpeg,image/webp'; stickerInput.hidden = true;
+      stickerInput.setAttribute('aria-label', 'Subir un sticker');
+      const defaultStickerButton = makeElement('button', 'boards-preview-sticker-option'); defaultStickerButton.type = 'button';
+      defaultStickerButton.setAttribute('aria-label', 'Agregar sticker predeterminado');
+      const defaultStickerImage = document.createElement('img');
+      defaultStickerImage.dataset.src = '/_assets/images/mascota-agujita.png';
+      defaultStickerImage.alt = ''; defaultStickerImage.loading = 'lazy'; defaultStickerImage.decoding = 'async';
+      defaultStickerButton.append(defaultStickerImage);
+      const stickerUploadButton = makeElement('button', 'boards-preview-sticker-upload');
+      stickerUploadButton.innerHTML = '<i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i> Subir sticker';
+      stickerUploadButton.type = 'button'; stickerUploadButton.addEventListener('click', () => { stickerInput.value = ''; stickerInput.click(); });
+      stickerPicker.append(stickerStatus, defaultStickerButton, stickerUploadButton);
+      stickerWrap.append(stickerButton, stickerPicker, stickerInput);
+      const attachButton = makeElement('button', 'boards-preview-icon-button');
+      attachButton.innerHTML = '<i class="fa-solid fa-paperclip" aria-hidden="true"></i>'; attachButton.type = 'button';
+      attachButton.title = 'Adjuntar archivo'; attachButton.setAttribute('aria-label', 'Adjuntar archivo');
       attachButton.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
       const submit = makeElement('button', 'boards-preview-submit', 'Comentar'); submit.type = 'submit';
-      actions.append(emojiWrap, attachButton, submit);
-      form.append(textarea, mentionList, fileInput, fileList, actions);
+      const renderSelectedStickers = () => {
+        stickerList.replaceChildren();
+        selectedStickers.forEach((entry, index) => {
+          const chip = makeElement('span', 'boards-preview-pending-sticker');
+          const image = document.createElement('img'); image.src = entry.localUrl || `${apiRoot}/sticker_file/${encodeURIComponent(entry.id)}`;
+          image.alt = entry.name; image.loading = 'lazy'; image.decoding = 'async';
+          const remove = makeElement('button');
+          remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+          remove.type = 'button'; remove.title = `Quitar ${entry.name}`; remove.setAttribute('aria-label', `Quitar ${entry.name}`);
+          remove.addEventListener('click', () => { selectedStickers.splice(index, 1); renderSelectedStickers(); });
+          chip.append(image, remove); stickerList.append(chip);
+        });
+        stickerList.hidden = !selectedStickers.length;
+      };
+      const uploadSticker = async (selectedFile, name = selectedFile.name) => {
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(selectedFile.type)) throw new Error('Selecciona una imagen PNG, JPEG o WebP.');
+        if (selectedFile.size > 2 * 1024 * 1024) throw new Error('La imagen debe pesar máximo 2 MB.');
+        stickerStatus.textContent = 'Subiendo sticker…';
+        stickerUploadButton.disabled = true;
+        try {
+          const payload = new FormData(); payload.set('file', selectedFile); payload.set('csrf_token', csrfToken); payload.set('name', name);
+          const uploaded = await multipartPost('/upload_sticker', payload);
+          const sticker = uploaded.data || {};
+          const id = sticker?.id ?? sticker?.sticker_id;
+          if (id == null) throw new Error('El servidor no devolvió el identificador del sticker.');
+          const savedSticker = { ...sticker, id, name: sticker.name || name };
+          if (!stickerCatalog) stickerCatalog = [];
+          if (!stickerCatalog.some((entry) => String(entry.id) === String(id))) stickerCatalog.unshift(savedSticker);
+          renderStickerOption(savedSticker);
+          selectSticker(savedSticker);
+          stickerStatus.textContent = 'Sticker agregado al comentario.';
+        } finally { stickerUploadButton.disabled = false; }
+      };
+      const selectSticker = (sticker) => {
+        if (sticker?.id == null || selectedStickers.some((entry) => String(entry.id) === String(sticker.id))) return;
+        selectedStickers.push({ id: sticker.id, name: sticker.name || 'Sticker' });
+        renderSelectedStickers();
+      };
+      const renderStickerOption = (sticker) => {
+        const existingOption = Array.from(stickerPicker.querySelectorAll('[data-sticker-id]'))
+          .some((option) => option.dataset.stickerId === String(sticker?.id));
+        if (sticker?.id == null || existingOption) return;
+        const option = makeElement('button', 'boards-preview-sticker-option'); option.type = 'button';
+        option.dataset.stickerId = String(sticker.id);
+        option.setAttribute('role', 'option'); option.setAttribute('aria-label', `Agregar ${sticker.name || 'sticker'}`);
+        const image = document.createElement('img'); image.src = `${apiRoot}/sticker_file/${encodeURIComponent(sticker.id)}`;
+        image.alt = sticker.name || 'Sticker'; image.loading = 'lazy'; image.decoding = 'async';
+        option.append(image);
+        option.addEventListener('click', () => selectSticker(sticker));
+        stickerPicker.insertBefore(option, stickerUploadButton);
+      };
+      const loadStickerCatalog = () => {
+        if (stickerCatalog) return Promise.resolve(stickerCatalog);
+        if (stickerCatalogPromise) return stickerCatalogPromise;
+        stickerStatus.textContent = 'Cargando stickers…';
+        stickerCatalogPromise = request('/stickers').then((result) => {
+          stickerCatalog = Array.isArray(result.data) ? result.data : [];
+          stickerCatalog.forEach(renderStickerOption);
+          stickerStatus.textContent = stickerCatalog.length ? '' : 'Aún no hay stickers compartidos.';
+          return stickerCatalog;
+        }).catch((error) => {
+          stickerStatus.textContent = errorMessage(error, 'No se pudieron cargar los stickers.');
+          return null;
+        }).finally(() => { stickerCatalogPromise = null; });
+        return stickerCatalogPromise;
+      };
+      stickerButton.addEventListener('click', () => {
+        stickerPicker.hidden = !stickerPicker.hidden;
+        stickerButton.setAttribute('aria-expanded', String(!stickerPicker.hidden));
+        if (!stickerPicker.hidden) {
+          if (!defaultStickerImage.hasAttribute('src')) defaultStickerImage.src = defaultStickerImage.dataset.src;
+          loadStickerCatalog();
+        }
+      });
+      defaultStickerButton.addEventListener('click', async () => {
+        if (defaultStickerButton.disabled) return;
+        defaultStickerButton.disabled = true;
+        try {
+          const catalog = await loadStickerCatalog();
+          if (!catalog) return;
+          const existing = catalog?.find((sticker) => sticker.name === 'Sticker predeterminado');
+          if (existing) {
+            selectSticker(existing);
+            stickerStatus.textContent = 'Sticker agregado al comentario.';
+            return;
+          }
+          const response = await fetch('/_assets/images/mascota-agujita.png');
+          if (!response.ok) throw new Error('No se pudo leer el sticker predeterminado.');
+          await uploadSticker(new File([await response.blob()], 'sticker-predeterminado.png', { type: 'image/png' }), 'Sticker predeterminado');
+        } catch (error) { stickerStatus.textContent = errorMessage(error, 'No se pudo agregar el sticker.'); }
+        finally { defaultStickerButton.disabled = false; }
+      });
+      stickerInput.addEventListener('change', async () => {
+        const selectedFile = stickerInput.files?.[0]; if (!selectedFile) return;
+        try { await uploadSticker(selectedFile, selectedFile.name); } catch (error) { stickerStatus.textContent = errorMessage(error, 'No se pudo subir el sticker.'); }
+      });
+      actions.append(emojiWrap, stickerWrap, attachButton, submit);
+      form.append(textarea, mentionList, fileInput, fileList, stickerList, actions);
       let mentionSearchTimer = 0;
       let mentionRequestId = 0;
       let mentionStart = -1;
@@ -1854,14 +2002,17 @@
       });
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const body = textarea.value.trim(); if (!body && pendingCommentId == null) return;
+        const body = textarea.value.trim(); if (!body && !selectedStickers.length && pendingCommentId == null) return;
         submit.disabled = true;
         try {
           if (pendingCommentId == null) {
             const mentions = Array.from(selectedMentions.entries())
               .filter(([, token]) => body.toLocaleLowerCase().includes(token.toLocaleLowerCase()))
               .map(([userId]) => userId);
-            const commentResult = await post('/add_file_comment', { file_id: file.file_id, body, mentions });
+            const commentResult = await post('/add_file_comment', {
+              file_id: file.file_id, body, mentions,
+              stickers: selectedStickers.map((sticker) => String(sticker.id))
+            });
             pendingCommentId = commentResult.data?.id ?? commentResult.data?.file_comment_id;
           }
           const commentId = pendingCommentId;
@@ -1887,6 +2038,8 @@
           }
           if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
           selectedFiles.splice(0, selectedFiles.length);
+          selectedStickers.splice(0, selectedStickers.length);
+          renderSelectedStickers();
           selectedMentions.clear();
           pendingCommentId = null;
           await renderFilePreviewPanel('comments');
@@ -2081,7 +2234,10 @@
     } else {
       state.itemComments.forEach((comment) => {
         const article = makeElement('article', 'boards-comment-entry');
-        const meta = makeElement('div', 'boards-detail-meta', `${comment.created_by_display_name || 'Usuario desconocido'} · ${displayDateTime(comment.created_at)}`);
+        const author = comment.created_by_display_name || 'Usuario desconocido';
+        const meta = makeElement('div', 'boards-comment-author-line');
+        meta.append(commentAvatar(author, comment.created_by_id || comment.user_id));
+        meta.append(makeElement('div', 'boards-detail-meta', `${author} · ${displayDateTime(comment.created_at)}`));
         const body = makeElement('p', 'boards-comment-body', comment.body || '');
         article.append(meta, body);
         els.itemCommentsList.append(article);
@@ -3366,6 +3522,19 @@
     if (className) element.className = className;
     if (text !== undefined && text !== null) element.textContent = String(text);
     return element;
+  }
+
+  function commentAvatar(name, id) {
+    const parts = String(name || 'Usuario').trim().split(/\s+/).filter(Boolean);
+    const initials = (parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}` : (parts[0] || '?').slice(0, 2)).toLocaleUpperCase('es-MX');
+    const palette = ['#6677d8', '#168f85', '#c07835', '#9564c7', '#d05e78', '#398db1'];
+    const key = String(id || name || 'Usuario');
+    const color = palette[Array.from(key).reduce((sum, char) => sum + char.charCodeAt(0), 0) % palette.length];
+    const avatar = makeElement('span', 'boards-comment-avatar', initials || '?');
+    avatar.style.setProperty('--person-color', color);
+    avatar.title = name || 'Usuario';
+    avatar.setAttribute('aria-label', `Autor: ${name || 'Usuario'}`);
+    return avatar;
   }
 
   function fieldSelect(labelText, setting, columns, selectedValue, emptyText = 'Selecciona una columna') {

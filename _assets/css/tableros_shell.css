@@ -1,5 +1,32 @@
 /* Standalone shell styles are loaded only by Tableros routes. */
+@view-transition { navigation: auto; }
+
 .tableros-shell-page { min-width: 320px; background: #111428; }
+html.tableros-transition-incoming,
+html.tableros-transition-incoming body { background: #111428; }
+.tableros-transition-mascot {
+  position: fixed;
+  z-index: 10001;
+  top: 50%;
+  left: 0;
+  width: auto;
+  height: min(82vh, 760px);
+  max-width: 34vw;
+  object-fit: contain;
+  pointer-events: none;
+  view-transition-name: tableros-mascot;
+}
+html.tableros-transition-incoming .tableros-transition-mascot { transform: translate3d(-45vw, -50%, 0); }
+html.tableros-transition-incoming::view-transition-old(root) {
+  z-index: 2;
+  animation: tableros-root-wipe .9s .1s cubic-bezier(.72, 0, .28, 1) both;
+}
+html.tableros-transition-incoming::view-transition-new(root) { z-index: 1; animation: none; }
+html.tableros-transition-incoming::view-transition-group(tableros-mascot) { z-index: 3; animation-duration: .9s; animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+@keyframes tableros-root-wipe {
+  from { clip-path: inset(0 0 0 0); }
+  to { clip-path: inset(0 100% 0 0); }
+}
 .tableros-shell { min-height: 100vh; }
 .tableros-shell-page .tableros-shell-sidebar,
 .tableros-shell-page .tableros-shell-sidebar .sidebar-content { background: #171a32 !important; }
@@ -62,4 +89,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .tableros-shell-link { transition: none; }
+  .tableros-transition-mascot { display: none !important; }
+  html.tableros-transition-incoming::view-transition-old(root), html.tableros-transition-incoming::view-transition-new(root), html.tableros-transition-incoming::view-transition-group(tableros-mascot) { animation: none !important; }
 }

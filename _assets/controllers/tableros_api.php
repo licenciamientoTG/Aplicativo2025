@@ -123,6 +123,47 @@ class tableros_api {
         });
     }
 
+    public function stickers(): void {
+        $this->handle('GET', function (int $userId): array {
+            return $this->model->getStickers();
+        });
+    }
+
+    public function upload_sticker(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            if (!isset($_FILES['file']) || !is_array($_FILES['file'])) {
+                throw new TablerosApiException('validation', 'Selecciona una imagen para subir.', 422);
+            }
+            return $this->model->uploadSticker($userId, $_FILES['file'], $input['name'] ?? null);
+        });
+    }
+
+    public function sticker_file($id): void {
+        try {
+            $userId = $this->currentUserId();
+            if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') throw new TablerosApiException('validation', 'Método HTTP no permitido.', 422);
+            $this->initializeServices();
+            if (!$this->access->userIsActive($userId) || !$this->access->hasGlobalPermission('access')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
+            }
+            $sticker = $this->model->getStickerDownload($this->positiveInt($id, 'sticker_id'));
+            header('Content-Type: image/webp');
+            header('Content-Length: ' . (int)$sticker['byte_size']);
+            header('Content-Disposition: ' . $this->contentDisposition((string)$sticker['name'] . '.webp', true));
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, max-age=3600');
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            readfile($sticker['path']);
+            if (!empty($sticker['temporary']) && is_file($sticker['path'])) @unlink($sticker['path']);
+            exit;
+        } catch (TablerosApiException $e) {
+            $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            error_log('Tableros sticker download error: ' . $e->getMessage());
+            $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al cargar el sticker.']);
+        }
+    }
+
     public function attach_comment_file(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $commentId = $this->positiveInt($input['file_comment_id'] ?? null, 'file_comment_id');

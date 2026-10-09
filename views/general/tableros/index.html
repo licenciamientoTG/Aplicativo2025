@@ -204,8 +204,17 @@
     <div class="boards-dialog-heading"><div><h3 id="createFolderTitle">Crear carpeta</h3><p>Las carpetas pueden anidarse hasta tres niveles.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
     <label class="boards-field-label" for="newFolderName">Nombre</label>
     <input class="form-control" id="newFolderName" name="name" maxlength="200" required autocomplete="off" placeholder="Ej. ARCO">
-    <label class="boards-field-label" for="newFolderColor">Color</label>
-    <select class="form-select" id="newFolderColor" name="color"><option value="#61d5a8">Verde</option><option value="#4f8ff7">Azul</option><option value="#f1a340">Naranja</option><option value="#c56be5">Violeta</option><option value="#ff5b93">Rosa</option><option value="#9aa4bf">Gris</option></select>
+    <fieldset class="boards-folder-colors">
+      <legend class="boards-field-label">Color</legend>
+      <div class="boards-folder-color-options">
+        <label class="boards-folder-color" title="Verde"><input type="radio" name="color" value="#61d5a8" aria-label="Verde"><span style="--folder-color: #61d5a8"></span></label>
+        <label class="boards-folder-color" title="Azul"><input type="radio" name="color" value="#4f8ff7" aria-label="Azul" checked><span style="--folder-color: #4f8ff7"></span></label>
+        <label class="boards-folder-color" title="Naranja"><input type="radio" name="color" value="#f1a340" aria-label="Naranja"><span style="--folder-color: #f1a340"></span></label>
+        <label class="boards-folder-color" title="Violeta"><input type="radio" name="color" value="#c56be5" aria-label="Violeta"><span style="--folder-color: #c56be5"></span></label>
+        <label class="boards-folder-color" title="Rosa"><input type="radio" name="color" value="#ff5b93" aria-label="Rosa"><span style="--folder-color: #ff5b93"></span></label>
+        <label class="boards-folder-color" title="Gris"><input type="radio" name="color" value="#9aa4bf" aria-label="Gris"><span style="--folder-color: #9aa4bf"></span></label>
+      </div>
+    </fieldset>
     <label class="boards-field-label" for="newFolderWorkspace">Espacio de trabajo</label>
     <select class="form-select" id="newFolderWorkspace" name="workspace_id" required></select>
     <label class="boards-field-label" for="newFolderParent">Carpeta superior <span>Opcional</span></label>

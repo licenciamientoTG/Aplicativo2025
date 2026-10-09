@@ -31,7 +31,8 @@ if (strlen($expectedToken) < 32 || !preg_match('/^Bearer\s+(.+)$/i', $authorizat
 $key = $_GET['key'] ?? '';
 $legacy = is_string($key) && preg_match('/^[a-f0-9]{64}$/', $key);
 $hierarchical = is_string($key) && preg_match('~^[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}$~', $key);
-if (!$legacy && !$hierarchical) respond(400, 'Invalid object key');
+$sticker = is_string($key) && preg_match('~^stickers/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}$~', $key);
+if (!$legacy && !$hierarchical && !$sticker) respond(400, 'Invalid object key');
 
 $root = trim((string)getenv('TABLEROS_STORAGE_ROOT'));
 if ($root === '' || !str_starts_with($root, '\\\\')) respond(500, 'Storage root is not configured');
