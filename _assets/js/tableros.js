@@ -2208,10 +2208,70 @@
     if (els.filePreviewPanel) els.filePreviewPanel.hidden = true;
     document.querySelectorAll('[data-preview-panel]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
     if (type.previewKind === 'image') {
+      const stage = makeElement('div', 'boards-preview-image-stage');
       const image = makeElement('img', 'boards-preview-image');
       image.src = fileEndpoint(file, true);
       image.alt = name;
-      els.filePreviewContent.append(image);
+      image.tabIndex = 0;
+      image.style.setProperty('--preview-zoom', '1');
+      image.style.setProperty('--preview-rotation', '0deg');
+      const toolbar = makeElement('div', 'boards-preview-image-toolbar');
+      toolbar.setAttribute('role', 'toolbar');
+      toolbar.setAttribute('aria-label', 'Acciones de imagen');
+      const addImageAction = (icon, label, action) => {
+        const button = makeElement('button', '', '');
+        button.type = 'button';
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        const glyph = makeElement('i', `fa-solid ${icon}`);
+        glyph.setAttribute('aria-hidden', 'true');
+        button.append(glyph);
+        button.addEventListener('click', action);
+        toolbar.append(button);
+        return button;
+      };
+      const updateImageTransform = () => {
+        image.style.setProperty('--preview-zoom', String(zoom));
+        image.style.setProperty('--preview-rotation', `${rotation}deg`);
+        const rotatedSideways = rotation % 180 !== 0;
+        image.style.maxWidth = rotatedSideways ? `${stage.clientHeight}px` : '100%';
+        image.style.maxHeight = rotatedSideways ? `${stage.clientWidth}px` : '100%';
+      };
+      let zoom = 1;
+      let rotation = 0;
+      addImageAction('fa-magnifying-glass-plus', 'Acercar imagen', () => { zoom = Math.min(zoom + 0.25, 3); updateImageTransform(); });
+      addImageAction('fa-magnifying-glass-minus', 'Alejar imagen', () => { zoom = Math.max(zoom - 0.25, 0.5); updateImageTransform(); });
+      addImageAction('fa-rotate-right', 'Girar 90 grados', () => { rotation = (rotation + 90) % 360; updateImageTransform(); });
+      addImageAction('fa-expand', 'Pantalla completa', () => {
+        if (stage.requestFullscreen) stage.requestFullscreen().catch(() => {});
+      });
+      addImageAction('fa-print', 'Imprimir imagen', () => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+        const printImage = printWindow.document.createElement('img');
+        printImage.src = fileEndpoint(file, true);
+        printImage.alt = name;
+        printImage.style.cssText = 'display:block;max-width:100%;max-height:100vh;margin:auto;object-fit:contain;';
+        printWindow.document.title = name;
+        printWindow.document.body.style.cssText = 'margin:0;display:grid;min-height:100vh;place-items:center;';
+        printWindow.document.body.append(printImage);
+        printImage.addEventListener('load', () => { printWindow.focus(); printWindow.print(); }, { once: true });
+      });
+      const download = addImageAction('fa-download', 'Descargar imagen', () => {
+        const link = document.createElement('a');
+        link.href = fileEndpoint(file);
+        link.download = name;
+        link.rel = 'noopener';
+        link.click();
+      });
+      download.classList.add('is-download');
+      stage.append(image, toolbar);
+      els.filePreviewContent.append(stage);
+      if (window.ResizeObserver) {
+        const imageStageObserver = new ResizeObserver(() => updateImageTransform());
+        imageStageObserver.observe(stage);
+        els.filePreviewDialog.addEventListener('close', () => imageStageObserver.disconnect(), { once: true });
+      }
     } else if (['pdf', 'text', 'spreadsheet'].includes(type.previewKind)) {
       const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
       els.filePreviewContent.append(loading);
