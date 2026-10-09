@@ -2,6 +2,7 @@
   'use strict';
 
   var destination = '/tableros/index';
+  var returnDestination = '/home/index';
   var transitionKey = 'tableros-transition-to';
   var mascotPath = '/_assets/images/mascota-agujita.webp';
   var fallbackMascotPath = '/_assets/images/mascota-agujita.png';
@@ -14,6 +15,7 @@
   var mascotReady = null;
   var loadedMascotPath = mascotPath;
   var incomingMascotPath = mascotPath;
+  var incomingDirection = 'forward';
   var transitionStylesheetReady = null;
   var navigationPending = false;
   var outgoingStylesheet = null;
@@ -27,12 +29,16 @@
       var markerParts = marker.split('|');
       var timestamp = Number(markerParts[0]);
       incomingMascotPath = markerParts[1] === 'png' ? fallbackMascotPath : mascotPath;
-      incoming = window.location.pathname.replace(/\/$/, '') === destination && Number.isFinite(timestamp) && Date.now() - timestamp >= 0 && Date.now() - timestamp < 8000;
+      incomingDirection = markerParts[2] === 'reverse' ? 'reverse' : 'forward';
+      var currentPath = window.location.pathname.replace(/\/$/, '');
+      var expectedPath = incomingDirection === 'reverse' ? returnDestination : destination;
+      incoming = currentPath === expectedPath && Number.isFinite(timestamp) && Date.now() - timestamp >= 0 && Date.now() - timestamp < 8000;
     }
   } catch (error) {
     // The page still loads normally when storage is unavailable.
   }
-  if (incoming) root.classList.add('tableros-transition-incoming');
+  var incomingClass = incomingDirection === 'reverse' ? 'aplicativo-transition-incoming' : 'tableros-transition-incoming';
+  if (incoming) root.classList.add(incomingClass);
 
   function preloadMascot() {
     if (mascotReady || !supportsTransitions) return mascotReady;
@@ -73,10 +79,10 @@
     return transitionStylesheetReady;
   }
 
-  function appendOutgoingMascot(image, stylesheet) {
+  function appendOutgoingMascot(image, stylesheet, direction) {
     outgoingStylesheet = stylesheet;
     outgoingMascot = image;
-    outgoingMascot.className = 'tableros-transition-mascot';
+    outgoingMascot.className = 'tableros-transition-mascot' + (direction === 'reverse' ? ' is-reversed' : '');
     outgoingMascot.alt = '';
     outgoingMascot.setAttribute('aria-hidden', 'true');
     document.body.appendChild(outgoingMascot);
@@ -99,15 +105,33 @@
     }
   }
 
+  function isAplicativoLink(link) {
+    if (!link || (link.target && link.target !== '_self') || link.hasAttribute('download') || !link.closest('.tableros-app-menu')) return false;
+    try {
+      var target = new URL(link.href, window.location.href);
+      return target.origin === window.location.origin && target.pathname.replace(/\/$/, '') === returnDestination && window.location.pathname.replace(/\/$/, '') === destination;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function transitionDirection(link) {
+    if (isTablerosLink(link)) return 'forward';
+    if (isAplicativoLink(link)) return 'reverse';
+    return '';
+  }
+
   if (incoming) {
     if (!supportsTransitions) {
-      root.classList.remove('tableros-transition-incoming');
+      root.classList.remove(incomingClass);
       return;
     }
 
     function activateIncomingMascot() {
-      var image = document.getElementById('tablerosTransitionMascot');
+      var imageId = incomingDirection === 'reverse' ? 'aplicativoReturnTransitionMascot' : 'tablerosTransitionMascot';
+      var image = document.getElementById(imageId);
       if (!image) return false;
+      image.className = 'tableros-transition-mascot' + (incomingDirection === 'reverse' ? ' is-reversed' : '');
       if (!image.getAttribute('src')) image.src = incomingMascotPath || image.getAttribute('data-transition-src') || mascotPath;
       image.hidden = false;
       return true;
@@ -122,9 +146,10 @@
     }
     window.setTimeout(function () {
       if (incomingObserver) incomingObserver.disconnect();
-      var image = document.getElementById('tablerosTransitionMascot');
+      var imageId = incomingDirection === 'reverse' ? 'aplicativoReturnTransitionMascot' : 'tablerosTransitionMascot';
+      var image = document.getElementById(imageId);
       if (image) image.remove();
-      root.classList.remove('tableros-transition-incoming');
+      root.classList.remove(incomingClass);
     }, 1200);
     return;
   }
@@ -140,24 +165,25 @@
     }
   });
 
-  // Warm only when the user points to or focuses the Tableros app tile.
+  // Warm the mascot when the user points to or focuses either module tile.
   document.addEventListener('pointerover', function (event) {
     var link = event.target.closest && event.target.closest('a[href]');
-    if (isTablerosLink(link)) preloadMascot();
+    if (transitionDirection(link)) preloadMascot();
   }, { passive: true });
   document.addEventListener('focusin', function (event) {
     var link = event.target.closest && event.target.closest('a[href]');
-    if (isTablerosLink(link)) preloadMascot();
+    if (transitionDirection(link)) preloadMascot();
   });
   document.addEventListener('touchstart', function (event) {
     var link = event.target.closest && event.target.closest('a[href]');
-    if (isTablerosLink(link)) preloadMascot();
+    if (transitionDirection(link)) preloadMascot();
   }, { passive: true });
 
   document.addEventListener('click', function (event) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     var link = event.target.closest && event.target.closest('a[href]');
-    if (!isTablerosLink(link)) return;
+    var direction = transitionDirection(link);
+    if (!direction) return;
     if (navigationPending) {
       event.preventDefault();
       return;
@@ -178,7 +204,7 @@
       var image = prepared[0];
       var stylesheet = prepared[1];
       try {
-        var marker = String(Date.now()) + '|' + (loadedMascotPath === fallbackMascotPath ? 'png' : 'webp');
+        var marker = String(Date.now()) + '|' + (loadedMascotPath === fallbackMascotPath ? 'png' : 'webp') + '|' + direction;
         sessionStorage.setItem(transitionKey, marker);
         window.setTimeout(function () {
           try {
@@ -190,7 +216,7 @@
         return;
       }
 
-      appendOutgoingMascot(image, stylesheet);
+      appendOutgoingMascot(image, stylesheet, direction);
       navigateWithFallback(targetUrl);
     }).catch(function () {
       window.clearTimeout(timeoutId);

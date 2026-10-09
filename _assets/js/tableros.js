@@ -2217,6 +2217,10 @@
       const image = makeElement('img', 'boards-preview-image');
       image.src = fileEndpoint(file, true);
       image.alt = name;
+      // Prevent the browser's native image drag (which shows a copy ghost)
+      // so pointer gestures can pan the zoomed preview instead.
+      image.draggable = false;
+      image.addEventListener('dragstart', (event) => event.preventDefault());
       image.tabIndex = 0;
       image.style.setProperty('--preview-zoom', '1');
       image.style.setProperty('--preview-rotation', '0deg');
@@ -2258,10 +2262,16 @@
         image.style.setProperty('--preview-rotation', `${rotation}deg`);
         image.classList.toggle('is-zoomed', zoom > 1);
         const rotatedSideways = rotation % 180 !== 0;
-        image.style.maxWidth = rotatedSideways ? `${stage.clientHeight}px` : '100%';
-        image.style.maxHeight = rotatedSideways ? `${stage.clientWidth}px` : '100%';
+        if (image.naturalWidth && image.naturalHeight && stage.clientWidth && stage.clientHeight) {
+          const fitWidth = rotatedSideways ? stage.clientHeight : stage.clientWidth;
+          const fitHeight = rotatedSideways ? stage.clientWidth : stage.clientHeight;
+          const fitScale = Math.min(1, fitWidth / image.naturalWidth, fitHeight / image.naturalHeight);
+          image.style.width = `${Math.floor(image.naturalWidth * fitScale)}px`;
+          image.style.height = `${Math.floor(image.naturalHeight * fitScale)}px`;
+        }
         updatePan();
       };
+      image.addEventListener('load', updateImageTransform);
       addImageAction('fa-magnifying-glass-plus', 'Acercar imagen', () => { zoom = Math.min(zoom + 0.25, 3); updateImageTransform(); });
       addImageAction('fa-magnifying-glass-minus', 'Alejar imagen', () => { zoom = Math.max(zoom - 0.25, 0.5); if (zoom <= 1) { panX = 0; panY = 0; } updateImageTransform(); });
       addImageAction('fa-rotate-right', 'Girar 90 grados', () => { rotation = (rotation + 90) % 360; panX = 0; panY = 0; updateImageTransform(); });
@@ -2309,6 +2319,7 @@
         imageStageObserver = new ResizeObserver(() => updateImageTransform());
         imageStageObserver.observe(stage);
       }
+      updateImageTransform();
     } else if (['pdf', 'text', 'spreadsheet'].includes(type.previewKind)) {
       const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
       els.filePreviewContent.append(loading);

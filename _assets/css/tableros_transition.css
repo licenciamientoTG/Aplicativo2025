@@ -14,3 +14,34 @@
   transform: translate3d(calc(100vw + 100%), -50%, 0);
   view-transition-name: tableros-mascot;
 }
+
+.tableros-transition-mascot.is-reversed {
+  transform: translate3d(-100%, -50%, 0) scaleX(-1);
+}
+
+html.aplicativo-transition-incoming { --tableros-sweep-duration: .9s; --tableros-sweep-easing: cubic-bezier(.72, 0, .28, 1); }
+html.aplicativo-transition-incoming .tableros-transition-mascot.is-reversed {
+  transform: translate3d(calc(100vw + 100%), -50%, 0) scaleX(-1);
+}
+html.aplicativo-transition-incoming::view-transition-old(root) {
+  z-index: 2;
+  animation: aplicativo-root-wipe var(--tableros-sweep-duration) var(--tableros-sweep-easing) both;
+}
+html.aplicativo-transition-incoming::view-transition-new(root) { z-index: 1; animation: none; }
+html.aplicativo-transition-incoming::view-transition-group(tableros-mascot) {
+  z-index: 3;
+  animation-duration: var(--tableros-sweep-duration);
+  animation-delay: 0s;
+  animation-timing-function: var(--tableros-sweep-easing);
+}
+@keyframes aplicativo-root-wipe {
+  from { clip-path: inset(0 0 0 0); }
+  to { clip-path: inset(0 0 0 100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tableros-transition-mascot { display: none !important; }
+  html.aplicativo-transition-incoming::view-transition-old(root),
+  html.aplicativo-transition-incoming::view-transition-new(root),
+  html.aplicativo-transition-incoming::view-transition-group(tableros-mascot) { animation: none !important; }
+}
