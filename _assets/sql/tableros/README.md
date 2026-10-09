@@ -10,6 +10,7 @@
 - `006_file_comments.sql` agrega comentarios asociados al archivo lógico para mostrarlos en el panel de vista previa. Es aditivo e idempotente; ejecutar después de `001_create_schema.sql`.
 - `007_comment_mentions_notifications.sql` agrega menciones opcionales a comentarios, vínculos de archivos adjuntos a comentarios y notificaciones dentro de la aplicación. Es aditivo e idempotente; ejecutar después de `006_file_comments.sql`.
 - `008_comment_stickers.sql` agrega el catálogo de stickers compartidos y sus asociaciones a comentarios de archivo. Es aditivo e idempotente; ejecutar después de `006_file_comments.sql`.
+- `010_allow_sticker_only_comments.sql` permite comentarios de archivo que contienen solamente stickers, quitando la restricción que exigía texto. Es idempotente y no modifica datos; ejecutar después de `006_file_comments.sql`.
 - La conexión de la aplicación a `tableros` reutiliza la configuración SQL existente sin cambiar la conexión compartida de los demás modelos.
 
 Después de desplegar el código, Sistemas debe asignar en `/it` los permisos **Tableros - Acceso**, **Tableros - Crear** y **Tableros - Administrar** a las personas correspondientes. El módulo no concede acceso automáticamente.
@@ -32,7 +33,7 @@ La importación de proyectos desde Monday no forma parte del módulo. Los proyec
 
 ## Orden de actualización
 
-En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql`, `005_file_scan_availability.sql`, `006_file_comments.sql`, `007_comment_mentions_notifications.sql` y `008_comment_stickers.sql`, en ese orden. Los scripts son idempotentes; `005` actualiza solamente estados `pending` a `unscanned`. En instalaciones nuevas, ejecutar `001_create_schema.sql`, `006_file_comments.sql`, `007_comment_mentions_notifications.sql` y `008_comment_stickers.sql` en ese orden.
+En instalaciones existentes, ejecutar `004_workspace_hierarchy.sql`, `005_file_scan_availability.sql`, `006_file_comments.sql`, `007_comment_mentions_notifications.sql`, `008_comment_stickers.sql` y `010_allow_sticker_only_comments.sql`, en ese orden. Los scripts son idempotentes; `005` actualiza solamente estados `pending` a `unscanned`. En instalaciones nuevas, ejecutar `001_create_schema.sql`, `006_file_comments.sql`, `007_comment_mentions_notifications.sql`, `008_comment_stickers.sql` y `010_allow_sticker_only_comments.sql` en ese orden. La aplicación valida que cada comentario tenga texto o al menos un sticker.
 
 `007` requiere que existan `tb_board`, `tb_item`, `tb_file`, `tb_comment` y `tb_file_comment`; no ejecuta cambios de datos existentes. Los IDs de usuario (`user_id` y `actor_user_id`) se guardan como enteros sin FK porque pertenecen a TG. La aplicación debe validar que cada archivo adjunto pertenezca al mismo tablero/elemento del comentario y que el usuario tenga acceso al archivo privado. Los vínculos sí tienen FKs locales a los registros de archivo y comentario.
 

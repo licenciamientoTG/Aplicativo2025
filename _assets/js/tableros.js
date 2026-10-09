@@ -35,6 +35,19 @@
 
   setupAppLauncher();
 
+  document.addEventListener('click', (event) => {
+    document.querySelectorAll('.boards-preview-emoji-picker[open]').forEach((emojiPicker) => {
+      if (!emojiPicker.contains(event.target)) emojiPicker.open = false;
+    });
+    document.querySelectorAll('.boards-preview-sticker-wrap').forEach((stickerWrap) => {
+      const stickerPicker = stickerWrap.querySelector('.boards-preview-sticker-picker');
+      if (stickerPicker && !stickerPicker.hidden && !stickerWrap.contains(event.target)) {
+        stickerPicker.hidden = true;
+        stickerWrap.querySelector('.boards-preview-icon-button')?.setAttribute('aria-expanded', 'false');
+      }
+    });
+  });
+
   const app = document.getElementById('tablerosApp');
   if (!app) return;
 
@@ -1825,7 +1838,7 @@
       emojiWrap.append(emojiToggle, emojiOptions);
       const stickerWrap = document.createElement('div'); stickerWrap.className = 'boards-preview-sticker-wrap';
       const stickerButton = makeElement('button', 'boards-preview-icon-button');
-      stickerButton.innerHTML = '<i class="fa-regular fa-face-grin-hearts" aria-hidden="true"></i>';
+      stickerButton.innerHTML = '<i class="fa-solid fa-sticky-note" aria-hidden="true"></i>';
       stickerButton.type = 'button'; stickerButton.title = 'Agregar sticker'; stickerButton.setAttribute('aria-label', 'Agregar sticker');
       const stickerInput = document.createElement('input'); stickerInput.type = 'file'; stickerInput.accept = 'image/png,image/jpeg,image/webp'; stickerInput.hidden = true;
       stickerInput.setAttribute('aria-label', 'Subir un sticker');

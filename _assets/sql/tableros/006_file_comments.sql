@@ -40,9 +40,7 @@ BEGIN
             FOREIGN KEY ([file_id]) REFERENCES dbo.tb_file ([id]),
         CONSTRAINT [FK_tb_file_comment_parent_file]
             FOREIGN KEY ([parent_comment_id], [file_id])
-            REFERENCES dbo.tb_file_comment ([id], [file_id]),
-        CONSTRAINT [CK_tb_file_comment_not_empty]
-            CHECK (DATALENGTH([body]) > 0)
+            REFERENCES dbo.tb_file_comment ([id], [file_id])
     );
 END;
 GO
