@@ -36,9 +36,15 @@ html.tableros-transition-incoming::view-transition-group(tableros-mascot) {
 .tableros-shell { min-height: 100vh; }
 .tableros-shell-page .tableros-shell-sidebar,
 .tableros-shell-page .tableros-shell-sidebar .sidebar-content { background: #171a32 !important; }
-.tableros-shell-sidebar { flex: 0 0 76px; width: 76px; max-width: 76px; min-width: 76px; margin-left: 0; border-right: 1px solid #343955; box-shadow: none; }
-.tableros-shell-sidebar.collapsed { margin-left: -76px; }
-.tableros-shell-sidebar .sidebar-content { height: 100vh; overflow: auto; padding: 14px 10px; }
+#sidebar.tableros-shell-sidebar { flex: 0 0 76px !important; width: 76px !important; max-width: 76px !important; min-width: 76px !important; margin-left: 0; border-right: 1px solid #343955; box-shadow: none; }
+#sidebar.tableros-shell-sidebar.collapsed { margin-left: -76px; }
+#sidebar.tableros-shell-sidebar .sidebar-content,
+#sidebar.tableros-shell-sidebar [data-simplebar] { width: 76px !important; max-width: 76px !important; min-width: 76px !important; height: 100vh; overflow: auto; padding: 14px 10px; }
+#sidebar.tableros-shell-sidebar .simplebar-wrapper,
+#sidebar.tableros-shell-sidebar .simplebar-mask,
+#sidebar.tableros-shell-sidebar .simplebar-offset,
+#sidebar.tableros-shell-sidebar .simplebar-content-wrapper,
+#sidebar.tableros-shell-sidebar .simplebar-content { width: 100% !important; min-width: 0 !important; }
 .tableros-shell-brand { display: flex; width: 48px; min-height: 48px; align-items: center; justify-content: center; margin: 0 auto; padding: 5px; overflow: hidden; }
 .tableros-shell-brand img { display: block; width: 36px; max-width: 100%; max-height: 36px; height: auto; object-fit: contain; }
 .tableros-shell-product { display: none; }
@@ -90,8 +96,8 @@ html.tableros-transition-incoming::view-transition-group(tableros-mascot) {
 .tableros-module-navbar .text-dark { color: #f0f2fa !important; }
 .tableros-shell-page .footer { margin-top: 12px; color: #aeb2ca; background: #171a32; }
 @media (max-width: 767.98px) {
-  .tableros-shell-sidebar { flex-basis: 76px; width: 76px; max-width: 76px; min-width: 76px; margin-left: 0; }
-  .tableros-shell-sidebar.collapsed { margin-left: -76px; }
+  #sidebar.tableros-shell-sidebar { flex-basis: 76px !important; width: 76px !important; max-width: 76px !important; min-width: 76px !important; margin-left: 0; }
+  #sidebar.tableros-shell-sidebar.collapsed { margin-left: -76px; }
   .tableros-shell-content { padding: 17px 15px 24px !important; }
   .tableros-navbar-context { gap: 5px; margin-left: 4px; font-size: .72rem; }
 }
