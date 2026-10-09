@@ -3,7 +3,7 @@
 
   var destination = '/tableros/index';
   var transitionKey = 'tableros-transition-to';
-  var mascotPath = '/_assets/images/mascota-agujita.png';
+  var mascotPath = '/_assets/images/mascota-agujita.webp';
   var script = document.currentScript;
   var transitionStylesheet = script && script.getAttribute('data-transition-stylesheet');
   var root = document.documentElement;

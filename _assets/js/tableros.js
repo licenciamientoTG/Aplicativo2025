@@ -1849,7 +1849,7 @@
       defaultStickerButton.hidden = true;
       defaultStickerButton.setAttribute('aria-label', 'Agregar sticker predeterminado');
       const defaultStickerImage = document.createElement('img');
-      defaultStickerImage.dataset.src = '/_assets/images/mascota-agujita.png';
+      defaultStickerImage.dataset.src = '/_assets/images/mascota-agujita.webp';
       defaultStickerImage.alt = ''; defaultStickerImage.loading = 'lazy'; defaultStickerImage.decoding = 'async';
       defaultStickerButton.append(defaultStickerImage);
       const stickerUploadButton = makeElement('button', 'boards-preview-sticker-upload');
