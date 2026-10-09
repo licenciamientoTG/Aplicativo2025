@@ -15,6 +15,19 @@
   var navigationPending = false;
   var outgoingStylesheet = null;
   var outgoingMascot = null;
+  var incoming = false;
+
+  try {
+    var marker = sessionStorage.getItem(transitionKey);
+    if (marker !== null) {
+      sessionStorage.removeItem(transitionKey);
+      var timestamp = Number(marker);
+      incoming = window.location.pathname.replace(/\/$/, '') === destination && Number.isFinite(timestamp) && Date.now() - timestamp >= 0 && Date.now() - timestamp < 8000;
+    }
+  } catch (error) {
+    // The page still loads normally when storage is unavailable.
+  }
+  if (incoming) root.classList.add('tableros-transition-incoming');
 
   function preloadMascot() {
     if (mascotReady || !supportsTransitions) return mascotReady;
@@ -74,24 +87,31 @@
     }
   }
 
-  if (root.classList.contains('tableros-transition-incoming')) {
-    var incomingMascot = document.getElementById('tablerosTransitionMascot');
-    if (!supportsTransitions || !document.body) {
+  if (incoming) {
+    if (!supportsTransitions) {
       root.classList.remove('tableros-transition-incoming');
-      if (incomingMascot) incomingMascot.remove();
       return;
     }
 
-    if (!incomingMascot) {
-      incomingMascot = document.createElement('img');
-      incomingMascot.className = 'tableros-transition-mascot';
-      incomingMascot.src = mascotPath;
-      incomingMascot.alt = '';
-      incomingMascot.setAttribute('aria-hidden', 'true');
-      document.body.appendChild(incomingMascot);
+    function activateIncomingMascot() {
+      var image = document.getElementById('tablerosTransitionMascot');
+      if (!image) return false;
+      if (!image.getAttribute('src')) image.src = image.getAttribute('data-transition-src') || mascotPath;
+      image.hidden = false;
+      return true;
+    }
+
+    var incomingObserver = null;
+    if (!activateIncomingMascot()) {
+      incomingObserver = new MutationObserver(function () {
+        if (activateIncomingMascot()) incomingObserver.disconnect();
+      });
+      incomingObserver.observe(document.documentElement, { childList: true, subtree: true });
     }
     window.setTimeout(function () {
-      incomingMascot.remove();
+      if (incomingObserver) incomingObserver.disconnect();
+      var image = document.getElementById('tablerosTransitionMascot');
+      if (image) image.remove();
       root.classList.remove('tableros-transition-incoming');
     }, 1200);
     return;
