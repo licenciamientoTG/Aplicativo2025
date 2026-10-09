@@ -177,6 +177,9 @@
     filterDraft: [],
     calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     collapsedGroups: new Set(),
+    summaryFunctions: {},
+    summaryPeople: new Map(),
+    summaryPeopleRequested: new Set(),
     selectedItemIds: new Set(),
     bulkMoveInFlight: false,
     inlineAddGroupId: '',
@@ -3581,7 +3584,7 @@
   }
 
   function createGroupSummaryRow(columns, groupItems) {
-    const summaryTypes = new Set(['status', 'file']);
+    const summaryTypes = new Set(['status', 'file', 'people', 'person', 'numbers', 'progress', 'timeline', 'tags', 'date']);
     if (!columns.some((column) => summaryTypes.has(columnType(column)))) return null;
     const row = makeElement('tr', 'boards-table-summary-row');
     row.append(makeElement('td', 'boards-table-summary-label'));
@@ -3625,17 +3628,139 @@
           cell.append(bar);
         }
       } else if (type === 'file') {
-        const totalFiles = groupItems.reduce((sum, item) => {
-          const value = getCellValue(item, column);
-          const files = Array.isArray(value) ? value : (Array.isArray(value?.files) ? value.files : (value && typeof value === 'object' && (value.file_id || value.id) ? [value] : []));
-          return sum + files.length;
-        }, 0);
-        cell.append(makeElement('span', 'boards-summary-count', `${totalFiles} ${totalFiles === 1 ? 'archivo' : 'archivos'}`));
+        const files = groupItems.flatMap((item) => filesForItem(item).filter((file) => String(file.column_id) === String(column.id)));
+        const count = makeElement('span', 'boards-summary-count', `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}`);
+        cell.append(count);
+        if (files.length) {
+          const download = makeElement('button', 'boards-summary-download');
+          download.type = 'button';
+          download.dataset.downloadGroupFiles = String(groupItems[0]?.group_id || '');
+          download.dataset.fileIds = files.map((file) => String(file.file_id)).join(',');
+          download.title = `Descargar ${files.length} ${files.length === 1 ? 'archivo' : 'archivos'} de ${column.name || 'esta columna'} en ZIP`;
+          download.setAttribute('aria-label', download.title);
+          download.innerHTML = '<i class="fa-solid fa-download" aria-hidden="true"></i><span>Descargar archivos</span>';
+          cell.append(download);
+        }
+      } else if (type === 'people' || type === 'person') {
+        const people = new Set(groupItems.flatMap((item) => selectedIds(getCellValue(item, column)).map(String)));
+        const list = makeElement('div', 'boards-summary-people');
+        Array.from(people).slice(0, 5).forEach((id) => {
+          const person = state.summaryPeople.get(id);
+          const name = person?.name || `Persona ${id}`;
+          const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('es-MX');
+          const avatar = makeElement('span', 'boards-summary-person', initials || id.slice(-2));
+          avatar.title = name;
+          avatar.setAttribute('aria-label', avatar.title);
+          list.append(avatar);
+        });
+        if (people.size > 5) list.append(makeElement('span', 'boards-summary-count', `+${people.size - 5}`));
+        list.append(makeElement('span', 'boards-summary-count', `${people.size} ${people.size === 1 ? 'persona' : 'personas'}`));
+        cell.append(list);
+      } else if (type === 'numbers') {
+        const values = groupItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
+        const selectedFunction = state.summaryFunctions[String(column.id)] || 'sum';
+        const select = makeElement('select', 'boards-summary-function');
+        select.dataset.summaryColumn = String(column.id);
+        [['sum', 'Suma'], ['average', 'Promedio'], ['median', 'Mediana'], ['min', 'Mínimo'], ['max', 'Máximo'], ['count', 'Conteo']].forEach(([value, label]) => {
+          const option = makeElement('option', '', label);
+          option.value = value;
+          select.append(option);
+        });
+        select.value = selectedFunction;
+        cell.append(select);
+        let result = '—';
+        if (values.length) {
+          const sorted = values.slice().sort((a, b) => a - b);
+          const middle = Math.floor(sorted.length / 2);
+          const results = {
+            sum: values.reduce((sum, value) => sum + value, 0),
+            average: values.reduce((sum, value) => sum + value, 0) / values.length,
+            median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2,
+            min: sorted[0], max: sorted[sorted.length - 1], count: values.length
+          };
+          result = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 }).format(results[selectedFunction] ?? results.sum);
+        }
+        cell.append(makeElement('span', 'boards-summary-count', result));
+      } else if (type === 'progress') {
+        const values = groupItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite).map((value) => Math.max(0, Math.min(100, value)));
+        const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+        const progress = makeElement('div', 'boards-summary-progress');
+        progress.setAttribute('role', 'img');
+        progress.setAttribute('aria-label', `${Math.round(average)}% de progreso promedio del grupo`);
+        const fill = makeElement('span', 'boards-summary-progress-fill');
+        fill.style.width = `${average}%`;
+        progress.append(fill);
+        cell.append(progress, makeElement('span', 'boards-summary-count', values.length ? `${Math.round(average)}% promedio` : '—'));
+      } else if (type === 'timeline' || type === 'date') {
+        const ranges = groupItems.map((item) => type === 'date'
+          ? { start: dateOnly(getCellValue(item, column)), end: dateOnly(getCellValue(item, column)) }
+          : dateRange(getCellValue(item, column))).filter((range) => range.start || range.end);
+        if (!ranges.length) cell.append(makeElement('span', 'boards-summary-count', '—'));
+        else {
+          const starts = ranges.map((range) => range.start || range.end).filter(Boolean).sort();
+          const ends = ranges.map((range) => range.end || range.start).filter(Boolean).sort();
+          const start = starts[0];
+          const end = ends[ends.length - 1];
+          cell.append(makeElement('span', 'boards-summary-count', `${formatDate(start, { day: 'numeric', month: 'short' })} – ${formatDate(end, { day: 'numeric', month: 'short' })}`));
+          const track = makeElement('div', 'boards-summary-progress');
+          const span = Math.max(1, new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`));
+          const elapsed = Math.max(0, Math.min(1, (Date.now() - new Date(`${start}T00:00:00`)) / span));
+          const fill = makeElement('span', 'boards-summary-progress-fill');
+          fill.style.width = `${Math.max(4, elapsed * 100)}%`;
+          track.append(fill);
+          cell.append(track);
+        }
+      } else if (type === 'tags') {
+        const tags = new Set(groupItems.flatMap((item) => {
+          const value = parseStoredValue(getCellValue(item, column));
+          if (Array.isArray(value)) return value.map((tag) => String(tag && typeof tag === 'object' ? (tag.label ?? tag.name ?? tag.value ?? '') : tag).trim()).filter(Boolean);
+          return String(value ?? '').split(',').map((tag) => tag.trim()).filter(Boolean);
+        }));
+        const list = makeElement('div', 'boards-summary-tags');
+        Array.from(tags).slice(0, 4).forEach((tag) => list.append(makeElement('span', 'boards-summary-tag', tag)));
+        if (tags.size > 4) list.append(makeElement('span', 'boards-summary-count', `+${tags.size - 4}`));
+        if (!tags.size) list.append(makeElement('span', 'boards-summary-count', '—'));
+        cell.append(list);
       }
       row.append(cell);
     });
     row.append(makeElement('td', 'boards-table-summary-spacer'));
     return row;
+  }
+
+  async function downloadFilesZip(button) {
+    const fileIds = String(button.dataset.fileIds || '').split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0);
+    if (!fileIds.length || !state.board?.id) return;
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>Preparando ZIP…</span>';
+    try {
+      const response = await fetch(`${apiRoot}/download_files_zip`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/zip, application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify({ csrf_token: csrfToken, board_id: state.board.id, file_ids: fileIds })
+      });
+      if (!response.ok) {
+        let error = {};
+        try { error = await response.json(); } catch (_) { /* The server may return a plain HTTP error. */ }
+        throw new Error(error.message || 'No se pudo preparar el archivo ZIP.');
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `archivos-tablero-${state.board.id}.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setNotice('La descarga ZIP está lista.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error, 'No se pudieron descargar los archivos.'), 'error');
+    } finally {
+      button.disabled = false;
+      button.innerHTML = original;
+    }
   }
 
   function renderTable() {
@@ -3788,7 +3913,34 @@
     els.boardTableContainer.append(table);
     els.boardTableStatus.hidden = state.groups.length > 0;
     els.boardTableStatus.textContent = state.groups.length ? '' : 'Agrega un grupo para organizar los elementos de este tablero.';
+    loadSummaryPeople();
     updateSelectionBar();
+  }
+
+  function loadSummaryPeople() {
+    const boardId = Number(state.board?.id);
+    if (!boardId) return;
+    const peopleColumns = state.columns.filter((column) => ['people', 'person'].includes(columnType(column)));
+    const assignedIds = Array.from(new Set(state.items.flatMap((item) => peopleColumns.flatMap((column) => selectedIds(getCellValue(item, column)).map(String)))));
+    const missing = assignedIds.filter((id) => !state.summaryPeople.has(id) && !state.summaryPeopleRequested.has(id));
+    if (!missing.length) return;
+    const batch = missing.slice(0, 100);
+    batch.forEach((id) => state.summaryPeopleRequested.add(id));
+    request(`/users?board_id=${encodeURIComponent(boardId)}&ids=${encodeURIComponent(batch.join(','))}`)
+      .then((result) => {
+        if (Number(state.board?.id) !== boardId) return;
+        (Array.isArray(result.data) ? result.data : []).forEach((person) => state.summaryPeople.set(String(person.id), person));
+        renderTable();
+      })
+      .catch(() => {});
+    if (missing.length > batch.length) {
+      const rest = missing.slice(batch.length);
+      window.setTimeout(() => {
+        if (Number(state.board?.id) !== boardId) return;
+        rest.forEach((id) => state.summaryPeopleRequested.delete(id));
+        loadSummaryPeople();
+      }, 0);
+    }
   }
 
   function updateItemCount(visibleCount) {
@@ -5288,6 +5440,13 @@
       button.querySelector('span').textContent = compact ? 'Espaciar' : 'Compactar';
     });
     els.boardTableContainer.addEventListener('click', (event) => {
+      const download = event.target.closest('[data-download-group-files]');
+      if (download) {
+        event.preventDefault();
+        event.stopPropagation();
+        downloadFilesZip(download);
+        return;
+      }
       const toggle = event.target.closest('[data-toggle-group]');
       if (toggle) {
         const id = toggle.dataset.toggleGroup;
@@ -5312,6 +5471,12 @@
       if (form.reportValidity()) submitInlineItem(form);
     });
     els.boardTableContainer.addEventListener('change', (event) => {
+      const summarySelect = event.target.closest('[data-summary-column]');
+      if (summarySelect) {
+        state.summaryFunctions[summarySelect.dataset.summaryColumn] = summarySelect.value;
+        renderTable();
+        return;
+      }
       const itemCheckbox = event.target.closest('[data-select-item]');
       if (itemCheckbox) {
         const id = itemCheckbox.dataset.selectItem;

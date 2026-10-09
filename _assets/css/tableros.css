@@ -236,6 +236,18 @@
 .boards-summary-segment:hover::after,
 .boards-summary-segment:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
 .boards-summary-count { display: block; color: #b8bfd8; font-size: .67rem; line-height: 1.1; }
+.boards-summary-download { position: absolute; z-index: 5; top: -39px; left: 50%; display: inline-flex; min-height: 35px; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid #4d526f; border-radius: 9px; color: #e1e5f4; background: #282b46; box-shadow: 0 4px 14px rgb(0 0 0 / 28%); font: inherit; font-size: .73rem; white-space: nowrap; opacity: 0; pointer-events: none; transform: translate(-50%, 4px); transition: opacity .12s ease, transform .12s ease; }
+.boards-table-summary-cell:hover .boards-summary-download,
+.boards-summary-download:focus-visible { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.boards-summary-download:hover { border-color: #8195df; color: #fff; background: #343a5a; }
+.boards-summary-download:disabled { cursor: wait; opacity: 1; pointer-events: auto; }
+.boards-summary-people { display: flex; align-items: center; justify-content: center; gap: 3px; }
+.boards-summary-person { display: inline-grid; width: 24px; height: 24px; place-items: center; border: 2px solid #30334f; border-radius: 50%; color: #f5f6fc; background: #6677d8; font-size: .6rem; font-weight: 700; }
+.boards-summary-function { max-width: 100%; margin-right: 6px; padding: 3px 5px; border: 1px solid #505575; border-radius: 4px; color: #e1e5f4; background: #292c49; font-size: .65rem; }
+.boards-summary-progress { width: 100%; height: 10px; overflow: hidden; border-radius: 999px; background: #798093; }
+.boards-summary-progress-fill { display: block; height: 100%; border-radius: inherit; background: #00c875; }
+.boards-summary-tags { display: flex; justify-content: center; flex-wrap: wrap; gap: 3px; }
+.boards-summary-tag { max-width: 72px; overflow: hidden; padding: 2px 5px; border-radius: 999px; color: #d8e5ff; background: #3a527f; font-size: .62rem; text-overflow: ellipsis; white-space: nowrap; }
 .boards-item-row:hover td,
 .boards-item-row:hover .boards-item-name { background: #f7fafb; }
 .boards-group-row td { position: relative; height: 42px; padding: 0 10px; border-right: 0; background: #edf3f5; }

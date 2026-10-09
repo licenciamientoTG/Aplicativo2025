@@ -244,6 +244,78 @@ class tableros_api {
         }
     }
 
+    public function download_files_zip(): void {
+        $archivePath = null;
+        $temporaryFiles = [];
+        try {
+            $userId = $this->currentUserId();
+            if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+                throw new TablerosApiException('validation', 'Método HTTP no permitido para esta operación.', 422);
+            }
+            $this->initializeServices();
+            if (!$this->access->userIsActive($userId) || !$this->access->hasGlobalPermission('access')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
+            }
+            $input = $this->readInput();
+            $this->verifyCsrf($input);
+            $boardId = $this->positiveInt($input['board_id'] ?? null, 'board_id');
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $rawIds = $input['file_ids'] ?? null;
+            if (!is_array($rawIds) || !$rawIds || count($rawIds) > 200) {
+                throw new TablerosApiException('validation', 'Selecciona entre 1 y 200 archivos para descargar.', 422);
+            }
+            if (!class_exists(ZipArchive::class)) {
+                throw new TablerosApiException('server', 'La descarga ZIP no está disponible en este servidor.', 500);
+            }
+            $fileIds = [];
+            foreach ($rawIds as $rawId) $fileIds[] = $this->positiveInt($rawId, 'file_id');
+            $fileIds = array_values(array_unique($fileIds));
+            if (!$fileIds) throw new TablerosApiException('validation', 'No hay archivos disponibles para descargar.', 422);
+
+            $archivePath = tempnam(sys_get_temp_dir(), 'tableros-zip-');
+            if ($archivePath === false) throw new TablerosApiException('server', 'No se pudo preparar el archivo ZIP.', 500);
+            $archive = new ZipArchive();
+            if ($archive->open($archivePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                throw new TablerosApiException('server', 'No se pudo crear el archivo ZIP.', 500);
+            }
+            try {
+                foreach ($fileIds as $fileId) {
+                    if ($this->model->getFileBoardId($fileId) !== $boardId) {
+                        throw new TablerosApiException('forbidden', 'Todos los archivos deben pertenecer al tablero actual.', 403);
+                    }
+                    $file = $this->model->getFileDownload($fileId);
+                    if (!empty($file['temporary'])) $temporaryFiles[] = $file['path'];
+                    $baseName = basename(str_replace('\\', '/', (string)$file['name']));
+                    $baseName = preg_replace('/[\\x00-\\x1F\\x7F\\\\\\/]+/u', '_', $baseName) ?: 'archivo-' . $fileId;
+                    $entryName = (int)$file['item_id'] . '-' . $fileId . '-' . $baseName;
+                    if (!$archive->addFile($file['path'], $entryName)) {
+                        throw new TablerosApiException('server', 'No se pudo agregar un archivo al ZIP.', 500);
+                    }
+                }
+            } catch (Throwable $e) {
+                $archive->close();
+                throw $e;
+            }
+            if (!$archive->close()) throw new TablerosApiException('server', 'No se pudo finalizar el archivo ZIP.', 500);
+            header('Content-Type: application/zip');
+            header('Content-Length: ' . (string)filesize($archivePath));
+            header('Content-Disposition: ' . $this->contentDisposition('archivos-tablero-' . $boardId . '.zip'));
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, no-store, max-age=0');
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            readfile($archivePath);
+        } catch (TablerosApiException $e) {
+            $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            error_log('Tableros ZIP download error: ' . $e->getMessage());
+            $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al preparar la descarga ZIP.']);
+        } finally {
+            foreach ($temporaryFiles as $path) if (is_file($path)) @unlink($path);
+            if ($archivePath !== null && is_file($archivePath)) @unlink($archivePath);
+        }
+        exit;
+    }
+
     public function preview_file($id): void {
         $file = null;
         $html = null;
