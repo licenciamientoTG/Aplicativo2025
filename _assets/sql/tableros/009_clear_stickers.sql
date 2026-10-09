@@ -2,9 +2,8 @@
     TotalGas Tableros - reset the sticker catalog
 
     This one-time data cleanup removes every sticker association and catalog
-    row. It preserves comment text, normal comment attachments, and all board
-    files. It does not delete sticker binaries from NAS; after this script
-    succeeds, clear only the NAS `stickers` folder separately.
+    row. It preserves comments, normal comment attachments, and all board
+    files. It deliberately leaves sticker binaries on NAS untouched.
 
     This operation is destructive and intended only for a deliberate reset.
 */

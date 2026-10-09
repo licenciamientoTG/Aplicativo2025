@@ -4905,6 +4905,13 @@
         if (editor && editor.dataset.valueKind !== 'timeline') saveCell(editor);
       });
       host.addEventListener('click', (event) => {
+        const dateEditor = event.target.closest('[data-cell-editor][type="date"]');
+        if (dateEditor) {
+          const bounds = dateEditor.getBoundingClientRect();
+          if (event.clientX >= bounds.right - 34) {
+            try { dateEditor.showPicker(); } catch (_) { /* The native indicator may have opened it already. */ }
+          }
+        }
         const nameButton = event.target.closest('[data-item-name-button]');
         if (nameButton) {
           beginItemNameEdit(nameButton);
