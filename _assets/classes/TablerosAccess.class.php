@@ -82,16 +82,50 @@ class TablerosAccess
         }
     }
 
+    /** Un usuario con permiso de acceso, creación o administración puede usar Tableros. */
+    public function userHasModuleAccess(int $userId): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+        try {
+            $stmt = $this->tgConnection()->prepare(
+                "SELECT TOP (1) 1
+                 FROM [TG].[dbo].[tg_permissions] p
+                 INNER JOIN [TG].[dbo].[tg_permissions_users] pu ON pu.permission_id = p.id
+                 WHERE pu.user_id = ? AND p.department = ? AND p.status = 1
+                   AND ((p.action = ? AND p.description = ?)
+                     OR (p.action = ? AND p.description = ?)
+                     OR (p.action = ? AND p.description = ?))"
+            );
+            $stmt->execute([$userId, 'General', 'read', 'Tableros - Acceso', 'create', 'Tableros - Crear', 'update', 'Tableros - Administrar']);
+            return (bool)$stmt->fetchColumn();
+        } catch (Throwable $e) {
+            error_log('TablerosAccess: no fue posible validar acceso al módulo para usuario: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     /** @return array<int, array{id:int,name:string,username:string,email:string}> */
-    public function activeUsers(string $search = ''): array
+    public function activeUsers(string $search = '', bool $requireModuleAccess = false): array
     {
         $search = mb_substr(trim($search), 0, 80, 'UTF-8');
-        $sql = 'SELECT TOP (30) Id, Nombre, Usuario, Correo
-                FROM [TG].[dbo].[Usuario]
-                WHERE Estatus = 1';
+        $sql = 'SELECT TOP (30) u.Id, u.Nombre, u.Usuario, u.Correo
+                FROM [TG].[dbo].[Usuario] u
+                WHERE u.Estatus = 1';
+        if ($requireModuleAccess) {
+            $sql .= " AND EXISTS (
+                SELECT 1 FROM [TG].[dbo].[tg_permissions] p
+                INNER JOIN [TG].[dbo].[tg_permissions_users] pu ON pu.permission_id = p.id
+                WHERE pu.user_id = u.Id AND p.department = 'General' AND p.status = 1
+                  AND ((p.action = 'read' AND p.description = 'Tableros - Acceso')
+                    OR (p.action = 'create' AND p.description = 'Tableros - Crear')
+                    OR (p.action = 'update' AND p.description = 'Tableros - Administrar'))
+            )";
+        }
         $params = [];
         if ($search !== '') {
-            $sql .= ' AND (Nombre LIKE ? OR Usuario LIKE ? OR Correo LIKE ?)';
+            $sql .= ' AND (u.Nombre LIKE ? OR u.Usuario LIKE ? OR u.Correo LIKE ?)';
             $term = '%' . $search . '%';
             $params = [$term, $term, $term];
         }

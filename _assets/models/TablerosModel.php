@@ -2073,8 +2073,8 @@ class TablerosModel {
             $normalized[$targetId] = $role;
         }
         foreach (array_keys($normalized) as $targetId) {
-            if (!$this->userIsActive((int)$targetId)) {
-                throw new TablerosApiException('validation', 'Todos los usuarios asignados deben estar activos en TG.', 422);
+            if (!$this->userIsActive((int)$targetId) || !$this->access->userHasModuleAccess((int)$targetId)) {
+                throw new TablerosApiException('validation', 'Todos los usuarios asignados deben estar activos y tener acceso al módulo Tableros.', 422);
             }
         }
 

@@ -107,7 +107,7 @@ class tableros_api {
                 $boardId = $this->positiveInt($_GET['board_id'], 'board_id');
                 if (filter_var($_GET['directory'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
                     $this->requireBoardRole($boardId, ['owner', 'designer']);
-                    return $this->model->activeUsers(is_string($query) ? $query : '');
+                    return $this->model->activeUsers(is_string($query) ? $query : '', true);
                 }
                 $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
                 $rawIds = $_GET['ids'] ?? '';
