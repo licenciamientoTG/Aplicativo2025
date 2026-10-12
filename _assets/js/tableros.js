@@ -309,6 +309,11 @@
     return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   }
 
+  function recycleEntityTypeLabel(type) {
+    const labels = { group: 'Grupo', item: 'Elemento' };
+    return labels[String(type || '').toLowerCase()] || String(type || 'Elemento');
+  }
+
   function populateTrashFilters(entries) {
     const typeSelect = document.getElementById('trashTypeFilter');
     const locationSelect = document.getElementById('trashLocationFilter');
@@ -316,7 +321,7 @@
     const previousLocation = locationSelect.value;
     const types = [...new Set(entries.map((entry) => String(entry.entity_type || entry.type || 'elemento')))].sort();
     const locations = [...new Set(entries.map(recycleLocation))].sort((a, b) => a.localeCompare(b, 'es-MX'));
-    typeSelect.replaceChildren(new Option('Todos los tipos', ''), ...types.map((type) => new Option(type, type)));
+    typeSelect.replaceChildren(new Option('Todos los tipos', ''), ...types.map((type) => new Option(recycleEntityTypeLabel(type), type)));
     locationSelect.replaceChildren(new Option('Todas las ubicaciones', ''), ...locations.map((location) => new Option(location, location)));
     if (types.includes(previousType)) typeSelect.value = previousType;
     if (locations.includes(previousLocation)) locationSelect.value = previousLocation;
@@ -347,9 +352,9 @@
       row.setAttribute('role', 'listitem');
       const type = entry.entity_type || entry.type || 'elemento';
       const id = state.recycleMode === 'trash' ? (entry.entry_id ?? entry.id) : (entry.entity_id ?? entry.id);
-      const titleText = entry.name || entry.entity_name || `${type} ${entry.entity_id ?? id}`;
+      const titleText = entry.name || entry.entity_name || `${recycleEntityTypeLabel(type)} ${entry.entity_id ?? id}`;
       row.append(makeElement('div', 'boards-recycle-entry-copy', titleText));
-      row.append(makeElement('small', 'boards-recycle-entry-type', type));
+      row.append(makeElement('small', 'boards-recycle-entry-type', recycleEntityTypeLabel(type)));
       if (isTrash) {
         const metadata = makeElement('div', 'boards-recycle-entry-metadata');
         metadata.append(
