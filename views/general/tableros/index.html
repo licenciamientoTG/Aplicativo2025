@@ -132,7 +132,6 @@
         <span id="boardRole" class="boards-role"></span>
         <button type="button" class="btn boards-button-light boards-icon-action" id="trashBoard" aria-label="Mover tablero a la papelera" title="Mover a la papelera"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
         <button type="button" class="btn boards-button-light boards-icon-action" id="archiveBoard" aria-label="Archivar tablero" title="Archivar"><i class="fa-solid fa-box-archive" aria-hidden="true"></i></button>
-        <button type="button" class="btn boards-button-light" id="openAutomations"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Automatizaciones</span></button>
         <button type="button" class="btn boards-button-light" id="openShareBoard"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Compartir</span></button>
       </div>
     </div>
@@ -383,24 +382,5 @@
   </div>
 </dialog>
 
-<dialog class="boards-dialog boards-automation-dialog" id="automationDialog" aria-labelledby="automationTitle">
-  <div class="boards-dialog-body">
-    <div class="boards-dialog-heading"><div><h3 id="automationTitle">Automatizaciones del tablero</h3><p>Reglas limitadas a los disparadores, filtros y acciones permitidos.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
-    <div id="automationListStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando automatizaciones…</div><p id="automationPermissionsNote" class="boards-field-help" hidden></p><div id="automationList" class="boards-automation-list"></div>
-    <section id="automationEditorPanel" class="boards-automation-editor" hidden>
-      <h4>Nueva automatización</h4>
-      <form id="automationForm">
-        <label class="boards-field-label" for="automationName">Nombre</label><input id="automationName" class="form-control" maxlength="200" required placeholder="Ej. Recordatorio de pendientes">
-        <label class="boards-field-label" for="automationTrigger">Disparador</label><select id="automationTrigger" class="form-select"><option value="manual">Ejecución manual</option><option value="schedule">Programada</option></select>
-        <div id="automationScheduleField" hidden><label class="boards-field-label" for="automationInterval">Frecuencia</label><select id="automationInterval" class="form-select"><option value="1">Cada minuto</option><option value="5">Cada 5 minutos</option><option value="10">Cada 10 minutos</option><option value="15">Cada 15 minutos</option><option value="30">Cada 30 minutos</option><option value="60">Cada hora</option><option value="120">Cada 2 horas</option><option value="360">Cada 6 horas</option><option value="720">Cada 12 horas</option><option value="1440">Cada día</option></select></div>
-        <h5>Condición</h5><label class="boards-field-label" for="automationFilterField">Campo</label><select id="automationFilterField" class="form-select"></select><div id="automationFilterValueFields"></div>
-        <h5>Acción</h5><label class="boards-field-label" for="automationActionType">Acción permitida</label><select id="automationActionType" class="form-select"><option value="set_status">Cambiar estado</option><option value="set_date">Establecer fecha</option><option value="reminder">Crear recordatorio</option></select><div id="automationActionFields"></div>
-        <small class="boards-field-help">Las reglas nuevas quedan en borrador; actívalas antes de ejecutarlas.</small>
-        <div class="boards-dialog-actions"><button class="btn boards-button-primary" type="submit">Crear automatización</button></div>
-      </form>
-    </section>
-    <section class="boards-automation-history"><div class="boards-automation-history-heading"><h4>Historial de ejecuciones</h4><button id="refreshAutomationRuns" class="boards-text-button" type="button">Actualizar</button></div><div id="automationRunsStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando historial…</div><div id="automationRunsList" class="boards-detail-list"></div></section>
-  </div>
-</dialog>
 {% endblock %}
 {% block myjs %}<script src="{{ js_v('tableros.js') }}"></script>{% endblock %}

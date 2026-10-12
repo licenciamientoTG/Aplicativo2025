@@ -100,7 +100,6 @@
     filePreviewType: document.getElementById('filePreviewType'),
     filePreviewContent: document.getElementById('filePreviewContent'),
     filePreviewPanel: document.getElementById('filePreviewPanel'),
-    automationDialog: document.getElementById('automationDialog'),
     createBoardForm: document.getElementById('createBoardForm'),
     createWorkspaceForm: document.getElementById('createWorkspaceForm'),
     createFolderForm: document.getElementById('createFolderForm'),
@@ -6118,34 +6117,10 @@
       }
     });
     setupFilePreviewRail();
-    [els.itemDetailsDialog, els.filePreviewDialog, els.automationDialog].forEach((dialog) => {
+    [els.itemDetailsDialog, els.filePreviewDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
-    });
-    document.getElementById('openAutomations').addEventListener('click', async () => {
-      renderAutomationFilterFields();
-      renderAutomationActionFields();
-      els.automationEditorPanel.hidden = !canManageAutomation();
-      els.automationPermissionsNote.hidden = canManageAutomation();
-      openDialog(els.automationDialog);
-      await loadAutomationData();
-    });
-    document.getElementById('automationTrigger').addEventListener('change', () => {
-      els.automationScheduleField.hidden = els.automationTrigger.value !== 'schedule';
-    });
-    els.automationFilterField.addEventListener('change', renderAutomationFilterFields);
-    els.automationActionType.addEventListener('change', renderAutomationActionFields);
-    els.automationForm.addEventListener('submit', createAutomation);
-    document.getElementById('refreshAutomationRuns').addEventListener('click', loadAutomationData);
-    els.automationList.addEventListener('click', (event) => {
-      const statusButton = event.target.closest('[data-automation-status]');
-      if (statusButton) {
-        updateAutomationStatus(statusButton.dataset.automationStatus, statusButton.dataset.statusAction, statusButton.dataset.version);
-        return;
-      }
-      const runButton = event.target.closest('[data-run-automation]');
-      if (runButton && !runButton.disabled) runAutomation(runButton.dataset.runAutomation);
     });
 
     [els.boardTableContainer, els.boardRendererArea].forEach((host) => {
