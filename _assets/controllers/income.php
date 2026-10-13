@@ -942,6 +942,7 @@ function invoice_client_desp(){
                     'Grupo'       => $vehicle['grp'],
                     'Descripcion' => $vehicle['den'],
                     'Status'      => $vehicle['est'],
+                    'Saldo'       => (float)($vehicle['Saldo'] ?? 0),
                 );
             }
         }
