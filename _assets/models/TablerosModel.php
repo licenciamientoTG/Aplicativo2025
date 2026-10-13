@@ -381,7 +381,7 @@ class TablerosModel {
     }
 
     private function removeStoredObject(string $provider, string $container, string $key): void {
-        if ($container !== 'tableros' || !preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $key)) {
+        if ($container !== 'tableros' || !preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|stickers/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $key)) {
             throw new RuntimeException('Invalid stored object reference');
         }
         if ($provider === 'nas_service') { $this->nasServiceRequest('DELETE', $key); return; }

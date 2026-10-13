@@ -777,6 +777,7 @@
     const access = document.getElementById('workspaceAccessLabel');
     const workspaceRoleLabels = { owner: 'Propietario', editor: 'Editor', viewer: 'Lector' };
     if (access) {
+      access.hidden = !workspace;
       access.replaceChildren();
       if (workspace) {
         const isOpen = String(workspace.visibility || '').toLowerCase() === 'open';

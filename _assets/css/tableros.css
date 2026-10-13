@@ -1334,6 +1334,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-navigator-section .boards-nav-actions button { display: grid; width: 27px; height: 27px; flex: 0 0 auto; place-items: center; border: 1px solid transparent; border-radius: 4px; color: #b7c9fa; background: transparent; }
 .boards-workspace-picker > button { width: 36px; height: 34px; border-color: #454a68; border-radius: 7px; }
 .boards-workspace-access { display: inline-flex; grid-column: 1; grid-row: 2; min-width: 0; align-items: center; justify-self: start; gap: 11px; padding: 4px 8px; border: 1px solid #3f4562; border-radius: 999px; color: #c1c9e2; background: #252943; line-height: 1; }
+.boards-workspace-access[hidden] { display: none; }
 .boards-workspace-access-icon { display: inline-grid; min-width: 18px; min-height: 20px; place-items: center; color: #c1c9e2; font-size: .75rem; cursor: help; }
 .boards-workspace-access-icon:hover { color: #fff; }
 .boards-workspace-picker > #manageWorkspaceMembers,
