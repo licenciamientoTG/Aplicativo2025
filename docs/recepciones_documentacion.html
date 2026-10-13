@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Recepciones de combustible — Documentación</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --lima: #A6CE39; --ambar: #b45309;
+    --rojo: #b91c1c; --morado: #7c3aed;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta);
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55;
+    font-size: 13px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--verde); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; font-size: 13px; }
+  h2 {
+    font-size: 17px; color: #fff; background: var(--verde);
+    padding: 6px 12px; border-radius: 4px; margin-top: 32px;
+    page-break-after: avoid;
+  }
+  h2.azul { background: var(--azul); }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--verde); page-break-after: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; page-break-inside: avoid; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  code, pre {
+    font-family: Consolas, "Courier New", monospace; font-size: 11.5px;
+    background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px;
+  }
+  code { padding: 1px 4px; }
+  pre { padding: 10px 12px; overflow-x: auto; line-height: 1.4; page-break-inside: avoid; }
+  .nota {
+    background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px;
+    margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid;
+  }
+  .ok { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .riesgo { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; }
+  li { margin-bottom: 3px; }
+  .chip { display: inline-block; background: var(--fondo); border: 1px solid var(--borde); border-radius: 10px; padding: 0 8px; font-size: 11px; color: var(--gris); }
+
+  /* ---- Diagramas de flujo (cajas verticales) ---- */
+  h2.ambar { background: var(--ambar); }
+  h2.verde { background: var(--verde); }
+
+  /* ---- Mapa comparativo hoy vs. con el sistema (dos columnas alineadas por paso) ---- */
+  .mapa { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; margin: 14px 0 18px; }
+  .mapa .caja { height: 100%; }
+  .mapa-titulo { text-align: center; font-weight: 700; font-size: 14px; padding: 6px; border-radius: 4px; margin-bottom: 8px; color: #fff; }
+  .mapa-titulo.hoy { background: #94a3b8; }
+  .mapa-titulo.nuevo { background: var(--verde); }
+  .caja .gana {
+    display: block; margin-top: 6px; padding: 4px 8px; font-size: 11.5px; line-height: 1.4;
+    background: #ecfdf5; color: #065f46; border-radius: 4px;
+  }
+  .diagrama { margin: 14px 0 22px; page-break-inside: avoid; }
+  .diagrama svg { display: block; width: 100%; height: auto; border: 1px solid var(--borde); border-radius: 0 0 6px 6px; }
+  .diagrama-titulo { font-weight: 700; font-size: 14px; padding: 6px 12px; color: #fff; border-radius: 6px 6px 0 0; }
+  .diagrama-titulo.hoy { background: #94a3b8; }
+  .diagrama-titulo.nuevo { background: var(--verde); }
+  .caja.destacada { border-width: 3px; box-shadow: 0 0 0 3px #fde68a; }
+  .caja .trazabilidad {
+    display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 10px;
+    background: #f59e0b; color: #fff; font-weight: 700; font-size: 12px;
+  }
+
+  /* ---- Etapas ---- */
+  .indice { background: var(--fondo); border: 1px solid var(--borde); border-radius: 6px; padding: 10px 14px; margin: 0 0 8px; }
+  .etapa {
+    margin: 40px 0 0; padding: 14px 16px; border-radius: 6px; font-size: 20px; font-weight: 700;
+    color: var(--verde); background: #ecfdf5; border: 2px solid var(--verde); text-align: center;
+  }
+  .etapa.tecnica { color: #334155; background: var(--fondo); border-color: #334155; page-break-before: always; }
+  .flujo { margin: 18px auto; max-width: 680px; }
+  .caja {
+    border: 2px solid var(--borde); border-radius: 8px; padding: 10px 14px 10px 52px;
+    position: relative; background: #fff; page-break-inside: avoid;
+  }
+  .caja .num {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .caja b { display: block; font-size: 13.5px; }
+  .caja small { color: var(--gris); display: block; line-height: 1.45; }
+  .caja.usuario  { border-color: var(--ambar); }  .caja.usuario .num  { background: var(--ambar); }
+  .caja.php      { border-color: var(--verde); }  .caja.php .num      { background: var(--verde); }
+  .caja.bd       { border-color: var(--morado); } .caja.bd .num       { background: var(--morado); }
+  .caja.api      { border-color: var(--azul); }   .caja.api .num      { background: var(--azul); }
+  .caja.est      { border-color: var(--rojo); }   .caja.est .num      { background: var(--rojo); }
+  .flecha { text-align: center; color: var(--gris); font-size: 18px; line-height: 1.1; padding: 2px 0; }
+  .flecha small { font-size: 10.5px; display: block; }
+  .leyenda { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin: 8px 0 4px; font-size: 11px; color: var(--gris); }
+  .leyenda span::before { content: "■ "; }
+  .l-usr::before  { color: var(--ambar); } .l-api::before { color: var(--azul); }
+  .l-php::before  { color: var(--verde); } .l-bd::before  { color: var(--morado); }
+  .l-est::before  { color: var(--rojo); }
+  .dos-col { display: flex; gap: 16px; align-items: flex-start; }
+  .dos-col > div { flex: 1; }
+  .malo  { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .bueno { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  @media print {
+    body { padding: 0; font-size: 11.5px; max-width: none; }
+    @page { size: A4; margin: 15mm 14mm; }
+    a { color: inherit; text-decoration: none; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* Saltos de página: cada bloque grande empieza en hoja nueva */
+    .salto { break-before: page; page-break-before: always; margin-top: 0; }
+    /* Nunca dejar un título solo al final de la hoja */
+    h1, h2, h3, .etapa, .mapa-titulo, .diagrama-titulo { break-after: avoid; page-break-after: avoid; }
+    /* No partir por la mitad: cajas, avisos, diagramas, filas de tabla */
+    .caja, .nota, .ok, .riesgo, .malo, .bueno, .dos-col, .diagrama, pre, tr, li { break-inside: avoid; page-break-inside: avoid; }
+    .flecha { break-after: avoid; page-break-after: avoid; }
+    /* Tablas largas sí pueden continuar en la hoja siguiente (fila completa) */
+    table { page-break-inside: auto; }
+    thead { display: table-header-group; }
+    /* Mapa comparativo más compacto para que quepa en una hoja */
+    .mapa { margin: 6px 0 8px; }
+    .mapa .caja { padding: 4px 8px 4px 40px; border-width: 1.5px; }
+    .mapa .caja .num { width: 22px; height: 22px; font-size: 12px; left: 9px; }
+    .mapa .caja b { font-size: 11.5px; }
+    .mapa .caja small, .mapa .caja .gana { font-size: 9.5px; line-height: 1.3; }
+    .mapa .caja .gana { margin-top: 3px; padding: 2px 6px; }
+    .mapa .caja .trazabilidad { margin-top: 3px; font-size: 10px; padding: 1px 8px; }
+    .mapa .flecha { font-size: 11px; line-height: 1; padding: 0; }
+    .mapa .flecha small { font-size: 9px; display: inline; }
+    .mapa-titulo { margin-bottom: 4px; padding: 4px; }
+    .diagrama svg { max-height: 235mm; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Recepciones de combustible</h1>
+<p class="subtitulo">Programación de Recepciones (Abastos) y Mis Recepciones (Estaciones) ·
+Última actualización: 12 de octubre de 2026</p>
+
+
+
+<h2>1. Qué es</h2>
+<p>
+Dos pantallas del aplicativo TotalGas que cubren los dos lados de una misma entrega de combustible:
+</p>
+<table>
+  <tr><th style="width:30%">Pantalla</th><th style="width:18%">Quién la usa</th><th>Para qué</th></tr>
+  <tr>
+    <td><b>Programación de Recepciones</b><br><span class="chip">Abastos → Programación de Recepciones</span></td>
+    <td>Abastos</td>
+    <td>Armar el plan de entregas de cada día (proveedor, terminal, estación, producto, litros,
+    hora, transportista) y ligar a cada entrega su factura.</td>
+  </tr>
+  <tr>
+    <td><b>Mis Recepciones</b><br><span class="chip">Menú → Recepciones</span></td>
+    <td>Cada estación</td>
+    <td>Ver lo que Abastos le programó, ver lo que realmente recibió, subir la remisión y la
+    carta porte, y descargar la factura (PDF y XML) para subirla a ControlGas.</td>
+  </tr>
+</table>
+
+<h2>2. Qué se quiere lograr</h2>
+<div class="ok">
+<b>Se logra trazabilidad completa de cada entrega sin agregar actividades ni tiempo</b> a Abastos
+ni a la estación. Cada quien sigue haciendo lo mismo que hoy; lo que cambia es <b>por dónde
+pasa</b>: en lugar de correos y capturas de pantalla, todo queda en el sistema. Cada documento
+queda pegado a su entrega y cualquiera puede ver en qué estado está, lo que da
+<b>confianza en dónde están y cómo están los archivos</b>.
+</div>
+<p>En concreto, se busca:</p>
+<ul>
+  <li><b>Un solo lugar</b> para el plan, las facturas, las remisiones y las cartas porte.</li>
+  <li><b>Saber en cualquier momento qué falta</b>: qué entrega no tiene factura, qué estación no ha
+  subido su remisión o carta porte, qué XML no se ha subido a ControlGas.</li>
+  <li><b>Que la estación siempre vea el plan vigente</b>, no una foto de la mañana.</li>
+  <li><b>Revisar la factura antes de mandarla</b>: que sea del proveedor correcto, a nombre de la
+  razón social de la estación y para esa estación.</li>
+  <li><b>Que la información no dependa del buzón de correo de una persona.</b></li>
+</ul>
+
+<h2 class="verde salto">3. Mapa del proceso: hoy vs. con el sistema</h2>
+<p>Los mismos pasos, en el mismo orden. A la izquierda cómo se hace hoy; a la derecha cómo se hará.</p>
+<div class="leyenda">
+  <span class="l-usr">Abastos</span>
+  <span class="l-est">Estación</span>
+  <span class="l-php">Lo hace el sistema</span>
+</div>
+
+<div class="mapa">
+  <div class="mapa-titulo hoy">Hoy (por correo)</div>
+  <div class="mapa-titulo nuevo">Con el sistema</div>
+
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Abastos arma el plan en Google Sheets (Drive)</b>
+    <small>Una hoja por día, con bloques por proveedor y terminal.</small>
+  </div>
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Abastos arma el plan en "Programación de Recepciones"</b>
+    <small>Un renglón por entrega.</small>
+    <span class="gana">✔ Mismo formato para todos los proveedores, cada entrega con su estado
+    (Programado, Modificado, Recibido, Cancelado) y se revisa si cabe en los tanques
+    (pestaña "Plan inventarios").</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja usuario"><span class="num">2</span>
+    <b>Diario manda una captura de pantalla a cada estación</b>
+    <small>Si el plan cambia después, la captura ya no corresponde.</small>
+  </div>
+  <div class="caja php"><span class="num">2</span>
+    <b>La estación ya lo ve en "Mis Recepciones"</b>
+    <small>Recuadro "Recepciones programadas".</small>
+    <span class="gana">✔ Ya no se manda captura. La estación siempre ve el plan vigente; un cambio
+    o cancelación se ve al momento.</span>
+  </div>
+
+  <div class="flecha">↓ <small>durante el día</small></div><div class="flecha">↓ <small>durante el día</small></div>
+
+  <div class="caja usuario"><span class="num">3</span>
+    <b>Llega la factura y Abastos la reenvía por correo a la estación</b>
+    <small>Al mismo tiempo programa el día siguiente.</small>
+  </div>
+  <div class="caja usuario"><span class="num">3</span>
+    <b>Llega la factura y Abastos la liga a la entrega (clip 📎)</b>
+    <small>El sistema la sugiere o se busca por folio. Al mismo tiempo programa el día siguiente,
+    en la misma pantalla.</small>
+    <span class="gana">✔ Se revisa que proveedor, razón social y estación sean correctos, y se ve
+    de un vistazo qué entregas ya tienen factura y cuáles no.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja est"><span class="num">4</span>
+    <b>La estación recibe el combustible y captura en ControlGas</b>
+  </div>
+  <div class="caja est"><span class="num">4</span>
+    <b>La estación recibe el combustible y captura en ControlGas</b>
+    <small>Igual que hoy.</small>
+    <span class="gana">✔ La recepción aparece sola en "Mis Recepciones".</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja est"><span class="num">5</span>
+    <b>Escanea carta porte y remisión y las manda por correo a Abastos</b>
+    <small>Quedan en buzones de correo, sin relación con la recepción.</small>
+  </div>
+  <div class="caja est destacada"><span class="num">5</span>
+    <b>Escanea carta porte y remisión y las sube en "Mis Recepciones"</b>
+    <small>Sobre esa misma recepción.</small>
+    <span class="trazabilidad">★ Esto nos da más trazabilidad</span>
+    <span class="gana">✔ Cada documento queda pegado a su recepción de ControlGas, en un solo
+    lugar, y Abastos ve cuáles faltan por estación sin revisar correos.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja est"><span class="num">6</span>
+    <b>Busca en su correo la factura y sube el XML a ControlGas</b>
+  </div>
+  <div class="caja est"><span class="num">6</span>
+    <b>Descarga el XML desde "Mis Recepciones" y lo sube a ControlGas</b>
+    <small>Botones PDF / XML junto a la entrega.</small>
+    <span class="gana">✔ No hay que buscar correos y se ve si el XML ya quedó en ControlGas.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja usuario"><span class="num">7</span>
+    <b>Para saber qué falta, revisar correo por correo</b>
+    <small>Facturas enviadas, remisiones y cartas porte quedan repartidas en buzones.</small>
+  </div>
+  <div class="caja php"><span class="num">7</span>
+    <b>Todos ven qué falta en pantalla</b>
+    <small>Entregas sin factura (clip gris), estaciones sin remisión o carta porte (resumen
+    "Sin documento") y si el XML ya quedó en ControlGas.</small>
+    <span class="gana">✔ La información no depende del buzón de una persona.</span>
+  </div>
+</div>
+
+<div class="riesgo">
+<b>Lo que hoy se pierde al hacerlo todo por correo, y el sistema resuelve:</b>
+<ul style="margin-bottom:0">
+  <li>No hay forma rápida de saber si a una estación ya se le mandó su factura, ni cuál.</li>
+  <li>La estación ve el plan como una foto del momento; los cambios posteriores no le llegan
+  salvo que le manden otra captura.</li>
+  <li>La carta porte y la remisión quedan en buzones de correo, sin relación con la recepción
+  capturada en ControlGas.</li>
+  <li>Depende de que la estación encuentre el correo correcto entre muchos.</li>
+  <li>Si alguien sale de vacaciones o cambia de puesto, la información se queda en su buzón.</li>
+</ul>
+</div>
+
+<h3 class="salto">3.1 Diagramas de flujo</h3>
+<p>La misma lógica del mapa anterior, dibujada como diagrama de flujo por carriles (quién hace
+cada paso). Simbología: <b>óvalo</b> = inicio/fin · <b>rectángulo</b> = actividad ·
+<b>rombo</b> = decisión · <b>hoja</b> = documento · <b>flecha punteada</b> = viaja por correo.</p>
+
+<div class="diagrama">
+  <div class="diagrama-titulo hoy">Hoy (por correo)</div>
+  <svg viewBox="0 0 840 880" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de flujo actual por correo">
+    <defs>
+      <marker id="fh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+      <marker id="fhc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+    </defs>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#0f172a">
+      <!-- Carriles -->
+      <rect x="0" y="0" width="420" height="880" fill="#fffbf5" stroke="#cbd5e1"/>
+      <rect x="420" y="0" width="420" height="880" fill="#fff6f6" stroke="#cbd5e1"/>
+      <rect x="0" y="0" width="420" height="34" fill="#b45309"/>
+      <rect x="420" y="0" width="420" height="34" fill="#b91c1c"/>
+      <text x="210" y="22" fill="#fff" font-weight="700" font-size="14">Abastos</text>
+      <text x="630" y="22" fill="#fff" font-weight="700" font-size="14">Estación</text>
+
+      <!-- Abastos -->
+      <rect x="150" y="64" width="120" height="40" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="210" y="88" font-weight="700">Inicio</text>
+      <line x1="210" y1="104" x2="210" y2="151" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="110" y="153" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="210" y="175">Arma el plan del día</text><text x="210" y="191">siguiente en Google Sheets</text>
+      <line x1="210" y1="205" x2="210" y2="246" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="110" y="248" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="210" y="270">Manda captura de pantalla</text><text x="210" y="286">a cada estación</text>
+      <line x1="310" y1="274" x2="528" y2="274" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fhc)"/>
+      <text x="420" y="266" font-size="10.5" fill="#64748b">📧 captura de pantalla</text>
+      <line x1="210" y1="300" x2="210" y2="327" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <polygon points="210,329 305,369 210,409 115,369" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="210" y="366">¿Llegó la</text><text x="210" y="382">factura?</text>
+      <polyline points="115,369 66,369 66,179 108,179" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+      <text x="96" y="362" font-size="11" font-weight="700">No</text>
+      <text x="56" y="274" font-size="10.5" fill="#64748b" transform="rotate(-90 56 274)">programa el día siguiente</text>
+      <line x1="210" y1="409" x2="210" y2="626" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+      <text x="222" y="428" font-size="11" font-weight="700">Sí</text>
+
+      <path d="M255 533 h150 v44 q-37.5 12 -75 0 t-75 0 z" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="330" y="550" font-size="11">Recibe carta porte y</text><text x="330" y="564" font-size="11">remisión en su correo</text>
+
+      <rect x="110" y="628" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="210" y="650">Reenvía la factura por</text><text x="210" y="666">correo a la estación</text>
+      <line x1="310" y1="654" x2="528" y2="654" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fhc)"/>
+      <text x="420" y="646" font-size="10.5" fill="#64748b">📧 factura</text>
+      <line x1="210" y1="680" x2="210" y2="721" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="110" y="723" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="210" y="745">Para saber qué falta:</text><text x="210" y="761">revisa correo por correo</text>
+
+      <!-- Estación -->
+      <path d="M530 248 h200 v44 q-50 12 -100 0 t-100 0 z" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="630" y="265">Recibe la captura</text><text x="630" y="280">(foto del plan)</text>
+      <line x1="630" y1="296" x2="630" y2="341" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="530" y="343" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="630" y="365">Recibe el combustible y</text><text x="630" y="381">captura en ControlGas</text>
+      <line x1="630" y1="395" x2="630" y2="436" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="530" y="438" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="630" y="460">Escanea carta porte</text><text x="630" y="476">y remisión</text>
+      <line x1="630" y1="490" x2="630" y2="531" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="530" y="533" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="630" y="555">Las manda por correo</text><text x="630" y="571">a Abastos</text>
+      <line x1="530" y1="559" x2="407" y2="559" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fhc)"/>
+      <text x="468" y="551" font-size="10.5" fill="#64748b">📧 documentos</text>
+      <line x1="630" y1="585" x2="630" y2="626" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="530" y="628" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="630" y="650">Busca la factura</text><text x="630" y="666">en su correo</text>
+      <line x1="630" y1="680" x2="630" y2="721" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="530" y="723" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="630" y="745">Descarga el XML y lo</text><text x="630" y="761">sube a ControlGas</text>
+      <line x1="630" y1="775" x2="630" y2="822" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="570" y="824" width="120" height="40" rx="20" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="630" y="848" font-weight="700">Fin</text>
+    </g>
+  </svg>
+</div>
+
+<div class="diagrama">
+  <div class="diagrama-titulo nuevo">Con el sistema</div>
+  <svg viewBox="0 0 840 790" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de flujo con el sistema">
+    <defs>
+      <marker id="fs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+    </defs>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#0f172a">
+      <!-- Carriles -->
+      <rect x="0" y="0" width="280" height="790" fill="#fffbf5" stroke="#cbd5e1"/>
+      <rect x="280" y="0" width="280" height="790" fill="#f0fdf6" stroke="#cbd5e1"/>
+      <rect x="560" y="0" width="280" height="790" fill="#fff6f6" stroke="#cbd5e1"/>
+      <rect x="0" y="0" width="280" height="34" fill="#b45309"/>
+      <rect x="280" y="0" width="280" height="34" fill="#009559"/>
+      <rect x="560" y="0" width="280" height="34" fill="#b91c1c"/>
+      <text x="140" y="22" fill="#fff" font-weight="700" font-size="14">Abastos</text>
+      <text x="420" y="22" fill="#fff" font-weight="700" font-size="14">Sistema</text>
+      <text x="700" y="22" fill="#fff" font-weight="700" font-size="14">Estación</text>
+
+      <!-- Abastos -->
+      <rect x="80" y="64" width="120" height="40" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="88" font-weight="700">Inicio</text>
+      <line x1="140" y1="104" x2="140" y2="151" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="40" y="153" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="175">Arma el plan en</text><text x="140" y="191">Programación de Recepciones</text>
+      <line x1="240" y1="179" x2="318" y2="179" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <line x1="140" y1="205" x2="140" y2="232" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <polygon points="140,234 235,274 140,314 45,274" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="271">¿Llegó la</text><text x="140" y="287">factura?</text>
+      <polyline points="45,274 20,274 20,179 38,179" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <text x="34" y="266" font-size="11" font-weight="700">No</text>
+      <text x="11" y="226" font-size="9.5" fill="#64748b" transform="rotate(-90 11 226)">día siguiente</text>
+      <line x1="140" y1="314" x2="140" y2="341" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <text x="152" y="331" font-size="11" font-weight="700">Sí</text>
+
+      <rect x="40" y="343" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="365">Liga la factura a la</text><text x="140" y="381">entrega con el clip 📎</text>
+      <line x1="240" y1="369" x2="323" y2="369" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <!-- Sistema -->
+      <rect x="320" y="153" width="200" height="52" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
+      <text x="420" y="175">Guarda cada entrega</text><text x="420" y="191">(estado Programado)</text>
+      <line x1="520" y1="179" x2="598" y2="179" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="320" y="248" width="200" height="52" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
+      <text x="420" y="270">La recepción aparece</text><text x="420" y="286">en Mis Recepciones</text>
+
+      <polygon points="420,329 515,369 420,409 325,369" fill="#fff" stroke="#009559" stroke-width="2"/>
+      <text x="420" y="358" font-size="11">¿Proveedor, razón</text><text x="420" y="372" font-size="11">social y estación</text><text x="420" y="386" font-size="11">correctos?</text>
+      <polyline points="420,329 420,318 180,318 180,341" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <text x="300" y="312" font-size="10" fill="#64748b"><tspan font-weight="700" fill="#0f172a">No:</tspan> muestra el motivo</text>
+      <line x1="420" y1="409" x2="420" y2="436" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <text x="432" y="426" font-size="11" font-weight="700">Sí</text>
+
+      <rect x="320" y="438" width="200" height="52" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
+      <text x="420" y="460">Factura ligada a la</text><text x="420" y="476">entrega (clip verde)</text>
+      <line x1="520" y1="464" x2="598" y2="464" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="320" y="628" width="200" height="52" rx="6" fill="#ecfdf5" stroke="#009559" stroke-width="2"/>
+      <text x="420" y="650" font-weight="700">Todos ven qué falta:</text><text x="420" y="666">factura, documentos, XML</text>
+      <line x1="420" y1="680" x2="420" y2="727" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="360" y="729" width="120" height="40" rx="20" fill="#fff" stroke="#009559" stroke-width="2"/>
+      <text x="420" y="753" font-weight="700">Fin</text>
+
+      <!-- Estación -->
+      <rect x="600" y="153" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="700" y="175">Ve el plan vigente</text><text x="700" y="191">en Mis Recepciones</text>
+      <line x1="700" y1="205" x2="700" y2="246" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="600" y="248" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="700" y="270">Recibe el combustible y</text><text x="700" y="286">captura en ControlGas</text>
+      <line x1="600" y1="274" x2="522" y2="274" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <line x1="700" y1="300" x2="700" y2="335" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="600" y="337" width="200" height="66" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="3"/>
+      <text x="700" y="357">Escanea y sube carta porte</text><text x="700" y="373">y remisión en Mis Recepciones</text>
+      <rect x="637" y="380" width="126" height="18" rx="9" fill="#f59e0b"/>
+      <text x="700" y="393" font-size="11" font-weight="700" fill="#fff">★ Más trazabilidad</text>
+      <line x1="700" y1="403" x2="700" y2="436" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="600" y="438" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="700" y="460">Descarga el XML desde</text><text x="700" y="476">Mis Recepciones</text>
+      <line x1="700" y1="490" x2="700" y2="531" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="600" y="533" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+      <text x="700" y="555">Sube el XML</text><text x="700" y="571">a ControlGas</text>
+      <polyline points="700,585 700,654 522,654" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+    </g>
+  </svg>
+</div>
+
+<h2>4. Qué cambia para cada quien</h2>
+<table>
+  <tr><th style="width:18%">Quién</th><th>Deja de hacer</th><th>Empieza a hacer</th></tr>
+  <tr>
+    <td><b>Abastos</b></td>
+    <td>Armar el plan en Google Sheets · mandar capturas de pantalla · reenviar facturas por correo.</td>
+    <td>Armar el plan en "Programación de Recepciones" · ligar cada factura con el clip 📎 ·
+    revisar qué falta desde el sistema.</td>
+  </tr>
+  <tr>
+    <td><b>Estación</b></td>
+    <td>Mandar carta porte y remisión por correo · buscar la factura en el correo.</td>
+    <td>Consultar su plan en "Mis Recepciones" · subir ahí carta porte y remisión · descargar ahí
+    el XML.</td>
+  </tr>
+</table>
+
+<div class="dos-col">
+  <div class="ok" style="margin:0">
+    <b>Sin carga extra</b>
+    <ul style="margin-bottom:0">
+      <li>Abastos sigue armando el plan y consiguiendo la factura, como hoy.</li>
+      <li>La estación sigue capturando en ControlGas, escaneando documentos y subiendo el XML, como hoy.</li>
+      <li>No se agregan actividades ni tiempo; al contrario, desaparece la captura de pantalla diaria
+      y ya no hay que buscar correos.</li>
+    </ul>
+  </div>
+  <div class="bueno">
+    <b>Lo que se gana</b>
+    <ul style="margin-bottom:0">
+      <li>Trazabilidad: cada archivo está en un solo lugar, ligado a su entrega.</li>
+      <li>Saber en cualquier momento qué falta: factura, remisión, carta porte, XML en ControlGas.</li>
+      <li>Revisión de la factura contra proveedor, razón social y estación.</li>
+      <li>La información no depende del buzón de una persona.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="nota">
+<b>Para que funcione:</b>
+<ul style="margin-bottom:0">
+  <li><b>Dejar el correo.</b> Si se siguen mandando facturas y documentos por correo además del
+  sistema, la información vuelve a quedar repartida y se pierde lo que se gana.</li>
+  <li><b>Capturar el plan directo en el sistema.</b> Hoy el plan todavía se arma en Google Sheets
+  y Sistemas lo carga después; mientras sea así, lo que ve la estación depende de que esa carga se
+  haga a tiempo.</li>
+  <li><b>Permisos.</b> Cada usuario de estación necesita su estación asignada y el permiso para
+  subir documentos; Abastos necesita el permiso de Programación.</li>
+</ul>
+</div>
+
+<div class="etapa tecnica">Etapa 2 — Documentación técnica</div>
+
+<div class="nota">
+Esta etapa junta lo que estaba repartido en los specs de diseño
+(<code>docs/superpowers/specs/2026-08-09-portal-estaciones-mis-recepciones-design.md</code>,
+<code>2026-08-10-mis-recepciones-rango-fechas-design.md</code>,
+<code>2026-09-05-programacion-recepciones-combustible-design.md</code> y
+<code>2026-09-07-factura-recepcion-combustible-design.md</code>) y agrega lo que se construyó
+después de esos specs (septiembre–octubre 2026). Los specs siguen siendo útiles para saber
+<i>por qué</i> se decidió algo; esta etapa describe <i>cómo funciona hoy</i>.
+Los diagramas técnicos están en la §15.
+</div>
+
+<h2>5. Las dos vistas</h2>
+<table>
+  <tr><th>Vista</th><th>Quién la usa</th><th>Qué resuelve</th></tr>
+  <tr>
+    <td><b>Programación de Recepciones</b><br><code>/supply/scheduling</code></td>
+    <td>Abastos (permiso 95)</td>
+    <td>Reemplaza el Excel mensual de Drive ("Programa &lt;Mes&gt; 2026.xlsx", una hoja por día).
+    Abastos captura día por día qué proveedor, desde qué terminal, qué producto y cuántos litros
+    le llegan a cada estación. Ahí mismo se liga la factura (CFDI PDF+XML) de cada recepción
+    y se revisa si cabe en los tanques (tab Plan inventarios).</td>
+  </tr>
+  <tr>
+    <td><b>Mis Recepciones</b><br><code>/station_portal/mis_recepciones</code></td>
+    <td>Estaciones (permiso 84) y supervisión (85 = todas las estaciones)</td>
+    <td>La estación ve lo que <b>realmente</b> recibió (ControlGas, <code>MovimientosTan</code>
+    tipo 3), sube la remisión y la carta porte escaneadas de cada descarga y descarga el
+    PDF/XML de la factura para subirlo a ControlGas. Arriba ve una tarjeta con lo que Abastos
+    le <b>programó</b> en ese mismo rango.</td>
+  </tr>
+</table>
+
+<h2>6. Cómo se ligan las dos vistas</h2>
+<p>La liga es <b>por estación y rango de fechas</b>, no por recepción individual:</p>
+<ul>
+  <li>Abastos captura en <code>/supply/scheduling</code> → fila en <code>TG.dbo.fuel_reception_schedule</code>
+  (con <code>station_code</code> = <code>TG.dbo.Estaciones.Codigo</code> y <code>fecha</code>).</li>
+  <li>Abastos liga la factura a esa fila → <code>TG.dbo.fuel_reception_invoices</code>
+  (<code>schedule_id</code> ↔ <code>FacturasRecibidas.Id</code>).</li>
+  <li>En Mis Recepciones, la tarjeta <b>"Recepciones programadas"</b>
+  (<code>station_portal::recepciones_programadas</code>) consulta
+  <code>FuelReceptionScheduleModel::get_by_station_range()</code> con la estación y el rango
+  que la estación está viendo, y muestra los botones <b>PDF / XML</b> de la factura ligada
+  (<code>station_portal::descargar_factura_programada/{schedule_id}/{pdf|xml}</code>).</li>
+</ul>
+<div class="riesgo">
+<b>No hay match automático entre "programado" y "recibido".</b> La tabla principal de Mis
+Recepciones (descargas reales de ControlGas, identificadas por <code>nrotrn</code>) y la tarjeta
+de programadas (identificadas por <code>schedule_id</code>) se muestran juntas pero <b>no están
+unidas fila a fila</b>. El estatus "Recibido" en <code>/supply/scheduling</code> lo marca Abastos
+a mano con un botón; no se calcula contra <code>MovimientosTan</code>.
+</div>
+<div class="nota">
+<b>Dos caminos distintos para la factura en el portal.</b>
+<ul style="margin-bottom:0">
+  <li><b>Tarjeta "Recepciones programadas"</b> → factura ligada en <code>/supply/scheduling</code>
+  (<code>fuel_reception_invoices</code>, por <code>schedule_id</code>).</li>
+  <li><b>Tabla principal, íconos de factura en Acciones</b> → factura ligada en
+  <code>/supply/petrotal_reconciliation</code> (<code>TG.dbo.FacturasMovimientosTanques</code>,
+  <code>TipoOperacion=1</code>, por <code>nrotrn</code>), vía
+  <code>descargar_factura_recepcion/{nrotrn}/{pdf|xml}?codgas=</code>.</li>
+</ul>
+Una misma descarga física puede tener factura por un camino, por el otro, o por ninguno.
+</div>
+
+<h2>7. Componentes</h2>
+<table>
+  <tr><th>Componente</th><th>Tecnología</th><th>Responsabilidad</th></tr>
+  <tr>
+    <td><b>Estaciones</b> (ControlGas)</td>
+    <td>SQL Server local por estación (linked servers)</td>
+    <td>Origen de las descargas reales: <code>MovimientosTan</code> con <code>tiptrn = 3</code>.
+    También de <code>DocumentosC.satuid</code> (el UUID que ya se subió a ControlGas).</td>
+  </tr>
+  <tr>
+    <td><b>ApiER</b></td>
+    <td>Django REST, <code>http://192.168.0.109:82</code></td>
+    <td><code>POST /api/get_recepciones_combustible_rango/</code> — recepciones de una estación
+    en un rango de fechas (seriales ControlGas). PHP lo llama una vez por estación; con
+    "(TODAS)" lo llama para las ~38 estaciones en paralelo (<code>curl_multi</code>).</td>
+  </tr>
+  <tr>
+    <td><b>AplicativoPhp</b></td>
+    <td>PHP MVC + Twig, IIS</td>
+    <td>Controladores <code>Supply</code> (endpoints <code>scheduling_*</code> en
+    <code>_assets/controllers/supply.php</code>) y <code>station_portal</code>
+    (<code>_assets/controllers/station_portal.php</code>).</td>
+  </tr>
+  <tr>
+    <td><b>Base central TG</b></td>
+    <td>SQL Server 192.168.0.6</td>
+    <td>Tablas de programación, catálogos, vínculo con factura y remisiones (ver §10).
+    <code>FacturasRecibidas</code> / <code>FacturasRecibidasConceptos</code>.</td>
+  </tr>
+  <tr>
+    <td><b>SG12</b></td>
+    <td>SQL Server 192.168.0.6</td>
+    <td><code>Proveedores</code> (nombre y RFC), <code>Gasolineras</code> → <code>Empresas</code>
+    (razón social y RFC dueña de cada estación).</td>
+  </tr>
+  <tr>
+    <td><b>Pipeline de correos</b></td>
+    <td>Python (<code>run_ciclo.py</code>, servidor 192.168.0.3)</td>
+    <td>Descarga los CFDI de los proveedores a <code>FacturasRecibidas</code> y resuelve
+    <code>EstacionCodgas</code>. De ahí salen las facturas <b>sugeridas</b> para cada recepción.
+    Los archivos viven en <code>C:\Software\TareasProgramadas\Facturas_proveedores\...</code>.</td>
+  </tr>
+</table>
+
+<h3>Archivos del código</h3>
+<table>
+  <tr><th>Capa</th><th>Programación (<code>/supply/scheduling</code>)</th><th>Mis Recepciones</th></tr>
+  <tr><td>Vista</td>
+    <td><code>views/supply/scheduling.html</code><br>
+    <code>views/supply/modals/frmProgramacionRecepcion.html</code><br>
+    <code>views/supply/modals/frmFacturaRecepcion.html</code><br>
+    <code>views/supply/modals/verFacturaRecepcion.html</code><br>
+    <code>views/supply/modals/facturaResultadosBusqueda.html</code></td>
+    <td><code>views/station_portal/mis_recepciones.html</code><br>
+    <code>views/station_portal/modals/remisiones_list.html</code></td></tr>
+  <tr><td>JS</td><td><code>_assets/js/scheduling.js</code></td><td><code>_assets/js/station_portal.js</code></td></tr>
+  <tr><td>Modelos</td>
+    <td><code>FuelReceptionScheduleModel</code>, <code>FuelReceptionInvoiceModel</code>,
+    <code>FuelTerminalsModel</code>, <code>FuelCarriersModel</code>,
+    <code>TanquesModel::get_tank_info_estacion()</code></td>
+    <td><code>RecepcionRemisionesModel</code>, <code>MovimientosTanModel</code>,
+    <code>PetrotalReconciliationModel</code>, <code>GasolinerasModel</code>,
+    <code>FuelReceptionScheduleModel</code> (lectura)</td></tr>
+  <tr><td>Menú</td>
+    <td>Abastos → "Programación de Recepciones" (<code>authorized(95)</code>)</td>
+    <td>"Recepciones" (<code>authorized(84)</code>), en Abastos y en el menú de estaciones</td></tr>
+</table>
+
+<h2>8. Permisos</h2>
+<table>
+  <tr><th>Id</th><th>Nombre</th><th>Qué habilita</th></tr>
+  <tr><td><b>95</b></td><td>Programación de recepciones</td>
+    <td>Todo <code>/supply/scheduling</code>: ver, capturar, editar, duplicar, cancelar, marcar
+    recibido, ligar/desligar factura, exportar, plan de inventarios, alta de terminal/transportista.</td></tr>
+  <tr><td><b>84</b></td><td>Ver Mis Recepciones (portal estaciones)</td>
+    <td>Entrar a la vista y consultar. Sin el 85, siempre se fuerza la estación de sesión
+    (<code>$_SESSION['tg_user']['IdEstacion']</code>), ignorando lo que mande el navegador.</td></tr>
+  <tr><td><b>85</b></td><td>Mis Recepciones: ver todas las estaciones</td>
+    <td>Selector de estación (incluida la opción "(TODAS)" = <code>codgas 0</code>) y el
+    resumen "Sin documento".</td></tr>
+  <tr><td><b>86</b></td><td>Mis Recepciones: subir y eliminar documentos</td>
+    <td>Subir remisión / carta porte y borrarlas. Desde el 2026-10-06 <b>subir también exige el 86</b>;
+    con solo el 84 la estación únicamente consulta.</td></tr>
+</table>
+
+<h2>9. Programación de Recepciones (<code>/supply/scheduling</code>)</h2>
+
+<h3>9.1 Pantalla</h3>
+<ul>
+  <li><b>Navegación por día.</b> Sin fecha en la URL abre <b>mañana</b> (Abastos programa con un
+  día de anticipación). Botones día anterior / siguiente, Actualizar, Exportar a Excel,
+  Copiar como Excel y <b>+ Agregar recepción</b>. URL directa: <code>/supply/scheduling/2026-10-13</code>.</li>
+  <li><b>Resumen por proveedor</b> (colapsable): litros, número de entregas, cuántas van
+  "Recibido" y desglose por producto, más una tarjeta "Total del día".</li>
+  <li><b>Filtro por proveedor</b>: 7 botones fijos (Premier Gas, Essa Fuel, Tesoro, Petrotal,
+  MGC, Enerey, AEMSA).</li>
+  <li><b>Tab "Agrupado por Terminal"</b>: una tarjeta por combinación Proveedor → Terminal
+  (16 combinaciones fijas tomadas de los Excel de julio y septiembre, ver
+  <code>GRUPOS_PROVEEDOR_TERMINAL</code> en <code>scheduling.js</code>). Cada tarjeta tiene un
+  "+" de captura rápida que precarga proveedor y terminal. Opción de ocultar grupos vacíos.</li>
+  <li><b>Tab "Agrupado por Estación"</b>: una tarjeta por estación, con buscador por nombre y
+  opción de ocultar estaciones sin recepción.</li>
+  <li><b>Tab "Plan inventarios"</b>: ver §9.5.</li>
+  <li><b>Columnas</b> 1 / 2 / 3 y <b>filtro Turno</b> (solo para recepciones capturadas por
+  turno, MGC). Las preferencias de columnas y "ocultar vacíos" se guardan en
+  <code>localStorage</code> (<code>scheduling_prefs</code>); turno y búsqueda no.</li>
+  <li><b>Orden de filas</b> dentro de cada grupo: hora → estación → producto → id (una línea
+  duplicada queda justo debajo de la original).</li>
+</ul>
+
+<h3>9.2 Campos de una recepción</h3>
+<table>
+  <tr><th>Campo</th><th>Obligatorio</th><th>Notas</th></tr>
+  <tr><td>Fecha</td><td>Sí</td><td><code>DATE</code>.</td></tr>
+  <tr><td>Hora / Turno</td><td>No</td><td><code>VARCHAR(10)</code>. Para <b>MGC (id 139)</b> el modal
+    cambia el campo de hora por un selector de turno <b>T1 / T2 / T3</b> (MGC reporta turno de
+    embarque, no hora) y se guarda tal cual en <code>hora</code>.</td></tr>
+  <tr><td>Proveedor</td><td>Sí</td><td>Solo los 7 de combustible (§9.6).</td></tr>
+  <tr><td>Terminal</td><td>Sí</td><td>Catálogo <code>fuel_terminals</code>; se puede dar de alta
+    desde el modal. "Sin terminal" para Petrotal y Essa Fuel (el proveedor es la terminal).</td></tr>
+  <tr><td>Estación</td><td>Sí</td><td><code>TG.dbo.Estaciones.Codigo</code>.</td></tr>
+  <tr><td>Producto</td><td>Sí</td><td><code>Regular</code>, <code>Premium</code>, <code>Diesel</code>
+    o <code>Mixta</code> (la mezcla, p. ej. "21/11", va en <code>mezcla</code>). Regla operativa
+    desde 2026-09-14: una Mixta se captura como <b>dos filas</b> (Regular + Premium).</td></tr>
+  <tr><td>Litros</td><td>Sí</td><td>Entero &gt; 0.</td></tr>
+  <tr><td>Transportista</td><td>No</td><td>Catálogo <code>fuel_carriers</code> (distinto del catálogo
+    regulatorio CRE). Columna oculta en tarjetas de AEMSA.</td></tr>
+  <tr><td>Referencia / Notas</td><td>No</td><td>Columnas ocultas en tarjetas de Premier Gas y Tesoro.</td></tr>
+</table>
+
+<h3>9.3 Estatus</h3>
+<table>
+  <tr><th>Estatus</th><th>Cuándo</th></tr>
+  <tr><td><code>Programado</code></td><td>Al crear o duplicar. También al desmarcar "Recibido".</td></tr>
+  <tr><td><code>Modificado</code></td><td>Al guardar cualquier edición.</td></tr>
+  <tr><td><code>Recibido</code></td><td>Abastos lo marca con el botón ✔ (toggle reversible). Manual, no se calcula.</td></tr>
+  <tr><td><code>Cancelado</code></td><td>Botón de bote de basura. No se borra la fila; deja de verse en
+    ambas vistas y ya no se puede editar, duplicar ni marcar.</td></tr>
+</table>
+
+<h3>9.4 Acciones por fila</h3>
+<p>Cinco botones: ✔ Recibido · Editar · Duplicar · 📎 Factura · Cancelar.</p>
+<ul>
+  <li><b>Duplicar</b> copia la línea en el mismo día como <code>Programado</code> y <b>sin factura</b>.
+  Uso típico: ControlGas registra una descarga doble; se duplica la de 30,000 L y se editan ambas a 15,000.</li>
+  <li><b>📎 Factura</b>: gris = sin factura, verde sólido = con factura. Ver §11.</li>
+</ul>
+
+<h3>9.5 Tab "Plan inventarios"</h3>
+<p>
+No carga sola: el botón <b>Buscar</b> consulta el inventario en tiempo real de las estaciones
+que tienen líneas visibles ese día (hasta 6 a la vez, cada tarjeta se dibuja al responder).
+Endpoint <code>/supply/scheduling_inventory_station?station_code=</code> →
+<code>TanquesModel::get_tank_info_estacion()</code> (usa <code>Servidor</code>/<code>BaseDatos</code>
+de <code>TG.dbo.Estaciones</code>). Hace <code>session_write_close()</code> para que PHP no
+atienda las peticiones de una en una.
+</p>
+<p>Por producto muestra: capacidad operativa, volumen actual, % de llenado, venta del mes,
+promedio diario, días de inventario (OK &gt; 3, Bajo &gt; 1, Crítico), espacio libre, litros
+programados, volumen después de descargar y la marca <b>"No cabe"</b> si lo programado excede
+el espacio libre.</p>
+<div class="nota">
+<code>vw_tank_info</code> trae una fila por <b>tanque</b>, pero la venta (<code>total_sales</code>,
+<code>average_daily_sales</code>) es por <b>producto</b> y viene repetida en cada tanque. Aquí se
+suman capacidad y volumen pero la venta se toma con <code>MAX</code>. La vista vieja
+<code>/supply/inventory</code> no lo hace y calcula mal los días de inventario en estaciones con
+dos o más tanques del mismo producto (no corregido). Colosio (199) no tiene servidor configurado.
+</div>
+
+<h3>9.6 Proveedores de combustible</h3>
+<table>
+  <tr><th>TG.Proveedores.id</th><th>Proveedor</th><th>Carpeta de adjuntos</th></tr>
+  <tr><td>138</td><td>Premier Gas</td><td><code>premiergas</code></td></tr>
+  <tr><td>123</td><td>Tesoro</td><td><code>tesoro</code></td></tr>
+  <tr><td>139</td><td>MGC México</td><td><code>mcg</code></td></tr>
+  <tr><td>150</td><td>Enerey</td><td><code>enerey</code></td></tr>
+  <tr><td>122</td><td>Petrotal</td><td><code>petrotal</code></td></tr>
+  <tr><td>163</td><td>AEMSA (Altos Energéticos Mexicanos)</td><td><code>aemsa</code></td></tr>
+  <tr><td>151</td><td>Essa Fuel</td><td><code>essafuel</code></td></tr>
+</table>
+<div class="nota">
+La lista está <b>escrita en el código en tres lugares</b>:
+<code>FuelReceptionScheduleModel::IDS_PROVEEDORES_COMBUSTIBLE</code>,
+<code>FuelReceptionInvoiceModel::CARPETA_POR_SUPPLIER_ID</code> y
+<code>PROVEEDORES_FILTRO</code> / <code>GRUPOS_PROVEEDOR_TERMINAL</code> en <code>scheduling.js</code>.
+Para agregar un proveedor hay que tocar los tres. El nombre del proveedor se lee de
+<code>SG12.dbo.Proveedores.den</code> (vía <code>id_control_gas</code>), no de <code>TG.dbo.Proveedores</code>.
+</div>
+
+<h3>9.7 Exportar / copiar</h3>
+<p>
+<b>Exportar a Excel</b> y <b>Copiar como Excel</b> sacan exactamente lo que está en pantalla
+(respetan proveedor, turno, búsqueda y "ocultar vacíos"). El JS arma las filas ya agrupadas y
+las manda por POST a <code>/supply/scheduling_export</code>, que solo construye el
+<code>.xlsx</code> (<code>programacion_recepciones_por_terminal_AAAA-MM-DD.xlsx</code> o
+<code>_por_estacion_</code>).
+</p>
+
+<h3>9.8 Carga masiva desde el Excel de Abastos</h3>
+<p>
+No hay botón de importar en la pantalla (se pospuso a pedido de Abastos). Julio 2026 se importó
+completo desde el Excel de Drive (1,151 filas). Desde septiembre, cuando Abastos pega la
+programación como texto, se genera un script por día y por bloque proveedor-terminal en
+<code>tools/</code> (p. ej. <code>import_scheduling_2026-10-09_mcg_ags.php</code>,
+<code>import_scheduling_2026-10-09_tesoro_petrotal.php</code>); las correcciones van en
+<code>fix_scheduling_*.php</code>.
+</p>
+
+<h2>10. Tablas</h2>
+
+<h3><code>TG.dbo.fuel_reception_schedule</code> — una fila por recepción programada</h3>
+<table>
+  <tr><th>Columna</th><th>Tipo</th><th>Notas</th></tr>
+  <tr><td><code>id</code></td><td>INT IDENTITY PK</td><td></td></tr>
+  <tr><td><code>fecha</code> / <code>hora</code></td><td>DATE / VARCHAR(10)</td><td>hora puede ser "HH:MM", "T1".."T3" (MGC) o NULL</td></tr>
+  <tr><td><code>supplier_id</code></td><td>INT</td><td>→ <code>TG.dbo.Proveedores.id</code></td></tr>
+  <tr><td><code>terminal_id</code></td><td>INT</td><td>→ <code>fuel_terminals.id</code></td></tr>
+  <tr><td><code>station_code</code></td><td>INT</td><td>→ <code>TG.dbo.Estaciones.Codigo</code></td></tr>
+  <tr><td><code>product</code> / <code>mezcla</code></td><td>VARCHAR(20)</td><td></td></tr>
+  <tr><td><code>litros</code></td><td>INT</td><td></td></tr>
+  <tr><td><code>carrier_id</code></td><td>INT NULL</td><td>→ <code>fuel_carriers.id</code></td></tr>
+  <tr><td><code>referencia</code> / <code>notas</code></td><td>VARCHAR(100) / VARCHAR(500)</td><td></td></tr>
+  <tr><td><code>estatus</code></td><td>VARCHAR(20)</td><td>Programado · Modificado · Recibido · Cancelado</td></tr>
+  <tr><td><code>created_by/at</code>, <code>updated_by/at</code></td><td></td><td>ver §13 (created_by queda en 0)</td></tr>
+</table>
+
+<h3>Catálogos</h3>
+<table>
+  <tr><th>Tabla</th><th>Columnas</th><th>Notas</th></tr>
+  <tr><td><code>TG.dbo.fuel_terminals</code></td><td>id, nombre, supplier_id (NULL), activo</td>
+    <td>Diaz Gas, Gaso Mex, Petrotal, Aguascalientes (8), San Miguel de Allende (9), Ahumada,
+    Servicio SYC, Sin terminal… Alta al vuelo desde el modal; si el nombre ya existe, reutiliza.</td></tr>
+  <tr><td><code>TG.dbo.fuel_carriers</code></td><td>id, nombre, activo</td><td>Transportista operativo. Alta al vuelo igual que terminal.</td></tr>
+</table>
+
+<h3><code>TG.dbo.fuel_reception_invoices</code> — vínculo recepción programada ↔ factura</h3>
+<table>
+  <tr><th>Columna</th><th>Notas</th></tr>
+  <tr><td><code>schedule_id</code></td><td>FK → <code>fuel_reception_schedule.id</code>, <b>UNIQUE</b> (<code>UQ_fri_schedule</code>): una recepción, una factura</td></tr>
+  <tr><td><code>invoice_id</code></td><td>FK → <code>FacturasRecibidas.Id</code>. No tiene UNIQUE en BD; que una factura no se ligue a dos recepciones lo valida el PHP</td></tr>
+  <tr><td><code>created_by</code>, <code>created_at</code></td><td></td></tr>
+</table>
+<p>DDL en <code>docs/sql/fuel_reception_invoices.sql</code>. Desligar hace <code>DELETE</code> físico de la fila.</p>
+
+<h3><code>TG.dbo.recepcion_remisiones</code> — documentos que sube la estación</h3>
+<table>
+  <tr><th>Columna</th><th>Notas</th></tr>
+  <tr><td><code>nrotrn</code>, <code>codgas</code>, <code>fchtrn</code></td><td>Identifican la descarga real en ControlGas (fecha en serial ControlGas)</td></tr>
+  <tr><td><code>tipo_documento</code></td><td><code>remision</code> o <code>carta_porte</code></td></tr>
+  <tr><td><code>file_path</code>, <code>file_extension</code>, <code>original_filename</code>, <code>file_size</code></td><td>Archivo en <code>_assets/uploads/recepcion_remisiones/AAAA/MM/{id}.{ext}</code></td></tr>
+  <tr><td><code>is_deleted</code>, <code>deleted_at</code>, <code>deleted_by</code></td><td>Borrado lógico; nunca se borra físico</td></tr>
+</table>
+
+<h2>11. Factura de una recepción programada</h2>
+<p>El botón 📎 abre <code>scheduling_invoice_modal</code>:</p>
+<ul>
+  <li><b>Si ya tiene factura</b> → <code>verFacturaRecepcion.html</code>: folio, emisor, total,
+  UUID, links PDF/XML (<code>scheduling_invoice_file</code>) y "Reemplazar factura" (desliga).</li>
+  <li><b>Si no tiene</b> → <code>frmFacturaRecepcion.html</code> con tres caminos:
+    <ol>
+      <li><b>Sugeridas</b> (<code>FuelReceptionInvoiceModel::sugerirFacturas</code>): facturas de
+      <code>FacturasRecibidas</code> del mismo RFC emisor, con <code>EstacionCodgas</code> = estación
+      de la recepción, fecha del CFDI entre un día antes y un día después, y que no estén ligadas a otra
+      recepción. Botón "Vincular esta".</li>
+      <li><b>Buscar por folio o UUID</b> (mín. 3 caracteres) entre las facturas del mismo
+      proveedor — para cuando llegó por correo pero no salió sugerida (otra fecha, sin estación
+      resuelta).</li>
+      <li><b>Subir PDF + XML</b> (máx. 10 MB c/u; el PDF se valida por MIME, el XML por extensión).</li>
+    </ol>
+  </li>
+</ul>
+
+<h3>11.1 Reglas que bloquean el vínculo</h3>
+<p>Las tres vías pasan por <code>Supply::validarFacturaParaRecepcion()</code>; si alguna falla,
+se muestra el mensaje exacto y no se guarda nada:</p>
+<ol>
+  <li>La recepción ya tiene factura (hay que desligar primero).</li>
+  <li>El RFC emisor no corresponde al proveedor de la recepción.</li>
+  <li>El RFC receptor no es la razón social dueña de la estación
+  (<code>SG12.Gasolineras.codemp → SG12.Empresas.rfc</code>).</li>
+  <li>La factura ya está ligada a otra recepción (dice cuál: fecha, estación, producto, litros).</li>
+  <li>La factura ya está registrada con un <code>EstacionCodgas</code> distinto.</li>
+</ol>
+<div class="nota">Una factura <b>nueva</b> (que no está en BD) no tiene <code>EstacionCodgas</code>,
+así que la regla 5 no aplica; solo se valida por emisor y receptor.</div>
+
+<h3>11.2 Qué pasa al subir PDF + XML</h3>
+<ol>
+  <li><code>parseCfdiXml()</code> lee el CFDI (tolera Addendas de cualquier proveedor desde el fix
+  del 2026-10-05). Si no se puede leer, se muestra el error en vez de un 500 mudo.</li>
+  <li>Se busca el UUID en <code>FacturasRecibidas</code>:
+    <ul>
+      <li><b>Ya existe y su PDF está en disco</b> → solo se liga (no se duplica).</li>
+      <li><b>Ya existe pero falta el archivo</b> → se guardan los archivos subidos en la misma fila.</li>
+      <li><b>No existe</b> → <code>insertarFactura()</code> inserta encabezado + conceptos en una transacción.</li>
+    </ul>
+  </li>
+  <li>Archivos: PDF en <code>procesadas/</code> y XML en <code>procesadasXml/</code> de la carpeta del
+  proveedor (<code>AttachmentsPath</code>), nombrados con el UUID en mayúsculas y guion bajo
+  (misma convención que el pipeline de correos). Se actualizan <code>RutaArchivo</code>,
+  <code>NombreArchivo</code>, <code>RutaXml</code>, <code>NombreXml</code>.</li>
+  <li>Se inserta el vínculo en <code>fuel_reception_invoices</code>.</li>
+</ol>
+
+<h3>11.3 Rutas de archivo</h3>
+<p>
+El pipeline de correos a veces guarda rutas <b>relativas</b> (<code>attachments\...</code>).
+Al descargar, si la ruta no empieza con letra de unidad se le antepone
+<code>C:\Software\TareasProgramadas\Facturas_proveedores\correoFacturas\</code>, y solo se sirven
+archivos bajo <code>C:\Software\TareasProgramadas\Facturas_proveedores\</code>.
+</p>
+
+<h2 class="azul">12. Mis Recepciones (<code>/station_portal/mis_recepciones</code>)</h2>
+
+<h3>12.1 Pantalla</h3>
+<ul>
+  <li><b>Filtros</b>: Desde / Hasta y Estación. Con permiso 85 hay selector (incluye "(TODAS)");
+  sin él se muestra el nombre fijo de la estación del usuario. Si el usuario no tiene estación
+  asignada ni permiso 85, entra pero ve un aviso fijo.</li>
+  <li><b>Tarjeta "Recepciones programadas"</b>: Fecha, Hora, (Estación si es "(TODAS)"),
+  Proveedor, Terminal, Producto, Litros y Documento (folio + emisor + UUID + botones PDF/XML si
+  Abastos ya ligó factura). Excluye las canceladas.</li>
+  <li><b>Tarjeta "Sin documento"</b> (solo permiso 85, colapsada): recepciones sin documento por
+  estación, con volumen y la fecha más antigua pendiente. Solo se calcula al abrirla.</li>
+  <li><b>Tabla "Mis Recepciones"</b> (DataTable con filtros por columna, Excel, columnas, filtros
+  "Sin documento" y "Sin carta porte"): Estación, Fecha, Hora, Tanque, Producto, Volumen recibido,
+  Documento, Referencia, UUID (el que ya está en ControlGas), Remisión, Carta porte, Acciones.</li>
+</ul>
+
+<h3>12.2 De dónde salen los datos</h3>
+<table>
+  <tr><th>Dato</th><th>Fuente</th></tr>
+  <tr><td>Recepciones reales</td><td>ApiER <code>get_recepciones_combustible_rango</code> → <code>MovimientosTan</code> (<code>tiptrn = 3</code>) de la estación</td></tr>
+  <tr><td>Conteo de remisiones / cartas porte</td><td><code>RecepcionRemisionesModel::get_counts_by_day()</code> (cacheado por estación + día)</td></tr>
+  <tr><td>Factura confirmada en Conciliación Petrotal</td><td><code>PetrotalReconciliationModel::asignaciones_directas_por_estacion()</code></td></tr>
+  <tr><td>Programadas + factura de Abastos</td><td><code>FuelReceptionScheduleModel::get_by_station_range()</code></td></tr>
+</table>
+
+<h3>12.3 Acciones por fila (tabla principal)</h3>
+<ul>
+  <li><b>Subir remisión</b> / <b>Subir carta porte</b> (permiso 86): PDF, JPG o PNG, máx. 10 MB.
+  Antes de aceptar el archivo se verifica que el <code>nrotrn</code> exista en esa estación ese día
+  (<code>MovimientosTanModel::sp_obtener_recepciones_combustible</code>). Con "(TODAS)" no se puede subir.</li>
+  <li><b>Ver documentos</b> (si hay alguno): lista remisiones y cartas porte; borrar requiere el 86
+  y, sin el 85, solo deja borrar documentos de la propia estación.</li>
+  <li><b>Factura PDF / XML</b>: solo si la recepción ya se confirmó en Conciliación Petrotal (ver §6).</li>
+</ul>
+
+<h3>12.4 Seguridad por estación</h3>
+<p>
+Todos los endpoints usan <code>station_portal::resolveCodgas()</code>: sin permiso 85 se usa
+<b>siempre</b> la <code>IdEstacion</code> de la sesión aunque el navegador mande otro
+<code>codgas</code>. Las descargas de factura no reciben el id de la factura, reciben el id de la
+recepción y el servidor resuelve el archivo y comprueba que la recepción sea de la estación del usuario.
+</p>
+
+<h2>13. Pendientes y problemas conocidos</h2>
+<div class="riesgo">
+<b><code>created_by</code> / <code>updated_by</code> quedan en 0.</b> <code>scheduling_add</code>,
+<code>scheduling_update</code>, <code>scheduling_cancel</code> y <code>scheduling_toggle_recibido</code>
+leen <code>$_SESSION['tg_user']['id']</code> (minúscula); la clave real es <code>['Id']</code>, como ya
+usan <code>scheduling_duplicate</code> y los endpoints de factura. Hoy no se sabe quién capturó,
+editó, canceló o marcó recibida una recepción.
+</div>
+<ul>
+  <li><b>Modo debug en producción</b>: <code>descargar_factura_programada</code> todavía acepta
+  <code>?debug</code> (agregado el 2026-09-14 para diagnosticar rutas). Requiere permiso 84, pero
+  muestra rutas del servidor. Quitar cuando se confirme resuelto.</li>
+  <li><b>"Recibido" es manual</b>: no se cruza con <code>MovimientosTan</code>. No hay match fila a
+  fila programado ↔ recibido (ver §6).</li>
+  <li><b>Dos tablas de vínculo con factura</b> (<code>fuel_reception_invoices</code> y
+  <code>FacturasMovimientosTanques</code>) sin relación entre sí.</li>
+  <li><b>Sugeridas depende de <code>EstacionCodgas</code></b>: si el pipeline de correos no resolvió
+  la estación de una factura, nunca aparece como sugerida (hay que buscarla por folio/UUID).</li>
+  <li><b>Proveedores fijos en código</b> en 3 lugares (§9.6).</li>
+  <li><b>Sin bitácora</b> de cambios en la programación (solo <code>updated_by/at</code> de la última edición).</li>
+  <li><b>Verificación en navegador</b> de subir factura con CFDI real de cada proveedor: pendiente
+  desde el merge (2026-09-08).</li>
+</ul>
+
+<h2>14. Endpoints</h2>
+<h3><code>Supply</code> (todos exigen permiso 95)</h3>
+<table>
+  <tr><th>Endpoint</th><th>Método</th><th>Qué hace</th></tr>
+  <tr><td><code>scheduling/{fecha?}</code></td><td>GET</td><td>Vista principal</td></tr>
+  <tr><td><code>scheduling_day_data</code></td><td>GET</td><td>Filas no canceladas del día + <code>invoice_id</code></td></tr>
+  <tr><td><code>scheduling_modal</code></td><td>POST</td><td>HTML del modal de captura/edición (precarga proveedor/terminal en captura rápida)</td></tr>
+  <tr><td><code>scheduling_add</code> / <code>scheduling_update</code></td><td>POST</td><td>Alta / edición (→ Modificado)</td></tr>
+  <tr><td><code>scheduling_duplicate</code></td><td>POST</td><td>Copia la línea en el mismo día</td></tr>
+  <tr><td><code>scheduling_cancel</code></td><td>POST</td><td>→ Cancelado</td></tr>
+  <tr><td><code>scheduling_toggle_recibido</code></td><td>POST</td><td>Recibido ↔ Programado</td></tr>
+  <tr><td><code>scheduling_export</code></td><td>POST</td><td>.xlsx de las filas que manda el JS</td></tr>
+  <tr><td><code>scheduling_inventory_station</code></td><td>GET</td><td>Inventario por producto de una estación</td></tr>
+  <tr><td><code>scheduling_invoice_modal</code></td><td>POST</td><td>Modal ver factura / subir-sugerir-buscar</td></tr>
+  <tr><td><code>scheduling_invoice_buscar</code></td><td>POST</td><td>HTML con resultados por folio/UUID</td></tr>
+  <tr><td><code>scheduling_invoice_vincular_sugerida</code></td><td>POST</td><td>Liga una factura existente (con validaciones)</td></tr>
+  <tr><td><code>scheduling_upload_invoice</code></td><td>POST multipart</td><td>Sube PDF+XML, registra y liga</td></tr>
+  <tr><td><code>scheduling_invoice_unlink</code></td><td>POST</td><td>Desliga (DELETE del vínculo)</td></tr>
+  <tr><td><code>scheduling_invoice_file</code></td><td>GET</td><td><code>?invoice_id=&amp;tipo=pdf|xml</code></td></tr>
+  <tr><td><code>scheduling_add_terminal</code> / <code>scheduling_add_carrier</code></td><td>POST</td><td>Alta al vuelo de catálogo</td></tr>
+</table>
+
+<h3><code>station_portal</code></h3>
+<table>
+  <tr><th>Endpoint</th><th>Permiso</th><th>Qué hace</th></tr>
+  <tr><td><code>mis_recepciones</code></td><td>84</td><td>Vista</td></tr>
+  <tr><td><code>datatables_recepciones</code></td><td>84</td><td>Recepciones reales del rango + conteos + factura Petrotal</td></tr>
+  <tr><td><code>recepciones_programadas</code></td><td>84</td><td>Lo programado por Abastos en el rango</td></tr>
+  <tr><td><code>resumen_sin_documento</code></td><td>84 + 85</td><td>Pendientes de documento por estación</td></tr>
+  <tr><td><code>upload_remision</code></td><td>84 + 86</td><td>Sube remisión o carta porte</td></tr>
+  <tr><td><code>remisiones_by_recepcion</code></td><td>84</td><td>HTML con los documentos de una descarga</td></tr>
+  <tr><td><code>delete_remision</code></td><td>86</td><td>Borrado lógico</td></tr>
+  <tr><td><code>view_remision/{id}</code></td><td>84</td><td>Muestra el archivo</td></tr>
+  <tr><td><code>descargar_factura_programada/{schedule_id}/{pdf|xml}</code></td><td>84</td><td>Factura ligada en Programación</td></tr>
+  <tr><td><code>descargar_factura_recepcion/{nrotrn}/{pdf|xml}?codgas=</code></td><td>84</td><td>Factura ligada en Conciliación Petrotal</td></tr>
+</table>
+
+<h2 class="azul">15. Diagramas de flujo</h2>
+<div class="leyenda">
+  <span class="l-usr">Abastos (permiso 95)</span>
+  <span class="l-est">Estación (permisos 84 / 86)</span>
+  <span class="l-php">AplicativoPhp</span>
+  <span class="l-api">ApiER / pipeline de correos / ControlGas</span>
+  <span class="l-bd">Base central TG</span>
+</div>
+
+<h3>15.1 Ciclo completo de una recepción</h3>
+<div class="flujo">
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Abastos programa la recepción (un día antes)</b>
+    <small><code>/supply/scheduling</code> abre en mañana. Captura proveedor, terminal, estación,
+    producto, litros, hora (o turno T1–T3 si es MGC), transportista, referencia.</small>
+  </div>
+  <div class="flecha">↓ <small>scheduling_add</small></div>
+  <div class="caja bd"><span class="num">2</span>
+    <b>TG: <code>fuel_reception_schedule</code> — estatus <code>Programado</code></b>
+    <small>Desde este momento la estación ya la ve en la tarjeta "Recepciones programadas" de Mis Recepciones.</small>
+  </div>
+  <div class="flecha">↓ <small>el proveedor carga y entrega</small></div>
+  <div class="caja api"><span class="num">3</span>
+    <b>La pipa descarga en la estación → ControlGas</b>
+    <small>Se registra la descarga en <code>MovimientosTan</code> (<code>tiptrn = 3</code>) con su
+    <code>nrotrn</code>, tanque y volumen recibido.</small>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja est"><span class="num">4</span>
+    <b>La estación sube remisión y carta porte</b>
+    <small>En Mis Recepciones (tabla principal), por cada descarga. PDF/JPG/PNG, máx. 10 MB.
+    Requiere permiso 86.</small>
+  </div>
+  <div class="flecha">↓ <small>en paralelo</small></div>
+  <div class="caja api"><span class="num">5</span>
+    <b>Llega la factura del proveedor por correo</b>
+    <small><code>run_ciclo.py</code> la guarda en <code>FacturasRecibidas</code> con su PDF/XML y
+    resuelve <code>EstacionCodgas</code>.</small>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja usuario"><span class="num">6</span>
+    <b>Abastos liga la factura a la recepción programada (📎)</b>
+    <small>Elige una sugerida, la busca por folio/UUID o sube PDF+XML (ver §15.2). Opcional: marca ✔ Recibido.</small>
+  </div>
+  <div class="flecha">↓ <small>fuel_reception_invoices</small></div>
+  <div class="caja est"><span class="num">7</span>
+    <b>La estación descarga PDF/XML y sube el XML a ControlGas</b>
+    <small>Botones PDF/XML en la tarjeta "Recepciones programadas". Cuando el CFDI queda en ControlGas,
+    la columna UUID de la tabla principal ya lo muestra (<code>DocumentosC.satuid</code>).</small>
+  </div>
+</div>
+<div class="nota">
+Los pasos 2 (programado) y 3 (recibido) <b>no se unen automáticamente</b>: la estación ve ambas
+cosas en la misma pantalla, una arriba de la otra, pero el sistema no sabe qué descarga
+corresponde a qué línea programada.
+</div>
+
+<h3>15.2 Ligar la factura a una recepción programada</h3>
+<div class="flujo">
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Clic en 📎 de la fila</b>
+    <small>Gris = sin factura. Verde sólido = ya tiene (abre vista de solo lectura con
+    "Reemplazar factura", que la desliga).</small>
+  </div>
+  <div class="flecha">↓ <small>scheduling_invoice_modal</small></div>
+  <div class="caja php"><span class="num">2</span>
+    <b>El modal ofrece tres caminos</b>
+    <small>
+      <b style="display:inline">a) Sugeridas</b>: mismo proveedor (RFC) + misma estación (<code>EstacionCodgas</code>) +
+      fecha del CFDI ±1 día + no ligadas a otra recepción.<br>
+      <b style="display:inline">b) Buscar</b> por folio o UUID entre las facturas del proveedor.<br>
+      <b style="display:inline">c) Subir PDF + XML</b>.
+    </small>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja php"><span class="num">3</span>
+    <b>Validaciones (las mismas para los tres caminos)</b>
+    <small>
+      ✗ la recepción ya tiene factura · ✗ el emisor no es el proveedor de la recepción ·
+      ✗ el receptor no es la razón social de la estación · ✗ la factura ya está en otra recepción ·
+      ✗ la factura está registrada con otra estación.<br>
+      Si falla una, se muestra el mensaje exacto y no se guarda nada.
+    </small>
+  </div>
+  <div class="flecha">↓ <small>solo en c) subir</small></div>
+  <div class="caja php"><span class="num">4</span>
+    <b>¿El UUID ya existe en <code>FacturasRecibidas</code>?</b>
+    <small>Sí, con archivo en disco → solo se liga.<br>
+    Sí, pero el archivo no está → se guardan los archivos subidos en esa misma fila.<br>
+    No → se inserta factura + conceptos y se guardan PDF (<code>procesadas/</code>) y XML
+    (<code>procesadasXml/</code>) en la carpeta del proveedor, con el UUID como nombre.</small>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja bd"><span class="num">5</span>
+    <b>TG: <code>fuel_reception_invoices</code> (schedule_id ↔ invoice_id)</b>
+    <small>Una recepción solo puede tener una factura (UNIQUE en BD).</small>
+  </div>
+</div>
+
+<h3>15.3 Mis Recepciones: consulta</h3>
+<div class="flujo">
+  <div class="caja est"><span class="num">1</span>
+    <b>La estación elige rango Desde / Hasta y presiona Buscar</b>
+    <small>Sin permiso 85: siempre su propia estación (de sesión). Con 85: selector, incluida "(TODAS)".</small>
+  </div>
+  <div class="flecha">↓ <small>dos consultas en paralelo desde el navegador</small></div>
+  <div class="dos-col">
+    <div>
+      <div class="caja php"><span class="num">2a</span>
+        <b><code>datatables_recepciones</code></b>
+        <small>PHP → ApiER <code>get_recepciones_combustible_rango</code> (una estación, o las ~38 en
+        paralelo si es "(TODAS)") → <code>MovimientosTan</code>. Agrega conteo de remisiones/cartas
+        porte y la factura confirmada en Conciliación Petrotal.</small>
+      </div>
+    </div>
+    <div>
+      <div class="caja bd"><span class="num">2b</span>
+        <b><code>recepciones_programadas</code></b>
+        <small><code>fuel_reception_schedule</code> de la estación y rango (sin canceladas) +
+        factura ligada por Abastos (<code>fuel_reception_invoices</code> →
+        <code>FacturasRecibidas</code>).</small>
+      </div>
+    </div>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja est"><span class="num">3</span>
+    <b>Pantalla</b>
+    <small>Arriba: tarjeta "Recepciones programadas" con PDF/XML. Abajo: tabla "Mis Recepciones"
+    (lo recibido) con subir/ver documentos. Con permiso 85, además la tarjeta "Sin documento"
+    (se calcula solo al abrirla).</small>
+  </div>
+</div>
+
+<h3>15.4 Mis Recepciones: subir remisión o carta porte</h3>
+<div class="flujo">
+  <div class="caja est"><span class="num">1</span>
+    <b>Botón ⬆ (remisión) o 🚚 (carta porte) en la fila</b>
+    <small>Solo aparecen con permiso 86. No disponible con "(TODAS)".</small>
+  </div>
+  <div class="flecha">↓ <small>upload_remision</small></div>
+  <div class="caja php"><span class="num">2</span>
+    <b>Validaciones</b>
+    <small>Tipo de documento válido · estación concreta del usuario · la descarga
+    (<code>nrotrn</code>) existe en esa estación ese día (consulta a ControlGas) ·
+    PDF/JPG/PNG · máx. 10 MB.</small>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja bd"><span class="num">3</span>
+    <b>TG: <code>recepcion_remisiones</code> + archivo en disco</b>
+    <small><code>_assets/uploads/recepcion_remisiones/AAAA/MM/{id}.{ext}</code>. Borrar es lógico
+    (<code>is_deleted</code>); sin permiso 85 solo se borran documentos de la propia estación.</small>
+  </div>
+</div>
+
+<h3>15.5 Plan inventarios (<code>/supply/scheduling</code>)</h3>
+<div class="flujo">
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Abastos abre el tab "Plan inventarios" y presiona Buscar</b>
+    <small>Solo se consultan las estaciones con líneas visibles ese día (respeta filtros).</small>
+  </div>
+  <div class="flecha">↓ <small>hasta 6 estaciones a la vez</small></div>
+  <div class="caja api"><span class="num">2</span>
+    <b><code>scheduling_inventory_station</code> → <code>vw_tank_info</code> de cada estación</b>
+    <small>Agrupa por producto: suma capacidad y volumen de los tanques, toma la venta una sola vez (MAX).</small>
+  </div>
+  <div class="flecha">↓ <small>cada tarjeta se dibuja al responder</small></div>
+  <div class="caja php"><span class="num">3</span>
+    <b>Cruce con lo programado</b>
+    <small>Días de inventario (OK &gt; 3 · Bajo &gt; 1 · Crítico), espacio libre, volumen después de
+    descargar y marca <b>"No cabe"</b> si los litros programados exceden el espacio libre.</small>
+  </div>
+</div>
+
+<h3>15.6 Estados de referencia</h3>
+<table>
+  <tr><th>Objeto</th><th>Estados</th><th>Quién lo cambia</th></tr>
+  <tr><td>Recepción programada</td><td>Programado → Modificado → Recibido · Cancelado</td><td>Abastos (manual)</td></tr>
+  <tr><td>📎 Factura en Programación</td><td>Gris (sin factura) · Verde sólido (ligada)</td><td>Abastos</td></tr>
+  <tr><td>Remisión / Carta porte</td><td>"Sin remisión" / "N subidas"</td><td>Estación (permiso 86)</td></tr>
+  <tr><td>UUID en Mis Recepciones</td><td>Vacío = el XML aún no está en ControlGas</td><td>Estación, al subir el XML a ControlGas</td></tr>
+</table>
+
+
+</body>
+</html>

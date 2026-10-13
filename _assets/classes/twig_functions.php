@@ -217,3 +217,12 @@ $twig->addFunction($text_to_int);
 $twig->addFunction($js_v);
 $twig->addFunction($css_v);
 
+// Quita el prefijo numérico que Estaciones.Nombre trae al inicio (ej. "38
+// PRAXEDIS" -> "PRAXEDIS"). Es solo de presentación: no toca el dato en BD,
+// así que cualquier vista puede usarlo sin afectar otras que necesiten el
+// nombre completo.
+$nombre_estacion_sin_codigo = new \Twig\TwigFunction('nombre_estacion_sin_codigo', function ($nombre) {
+    return preg_replace('/^\s*\d+\s+/', '', (string) $nombre);
+});
+$twig->addFunction($nombre_estacion_sin_codigo);
+

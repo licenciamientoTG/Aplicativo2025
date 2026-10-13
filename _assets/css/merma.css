@@ -365,6 +365,17 @@
 .merma-tabla.vc-tabla thead tr th,
 .merma-tabla.vc-tabla thead tr .col-fecha { top: 0; background: #f8fafc; }
 
+/* Scroll vertical propio para la tabla de ventas (vc-tabla): son hasta ~32
+   filas (días del mes) y el header sticky de arriba solo "flota" dentro de
+   un contenedor que realmente scrollee en Y — .merma-scroll por defecto es
+   overflow-y: visible (línea ~164) porque otras vistas dependen de que la
+   página entera haga el scroll vertical. Acá se fija una altura máxima y se
+   habilita overflow-y para que el header quede siempre visible mientras se
+   recorren los días, sin tocar el comportamiento de las demás tablas. */
+.merma-tabla-wrap:has(.merma-tabla.vc-tabla) .merma-scroll {
+    max-height: 70vh; overflow-y: auto;
+}
+
 /* Infografía plegable: explica cada fila del resumen (TOTAL, % MIX, etc.)
    debajo de la tabla. Colapsada por defecto (<details>) para no competir
    con el texto de "días con datos" que ya está ahí. */

@@ -81,7 +81,7 @@
         <div class="collapse" id="vc-zona-estaciones-{{ zonaClave }}">
             <div class="vc-zona-estaciones">
                 {% for e in zona.estaciones %}
-                <span class="vc-zona-chip">{{ e.Nombre }}</span>
+                <span class="vc-zona-chip">{{ nombre_estacion_sin_codigo(e.Nombre) }}</span>
                 {% else %}
                 <span class="text-muted small">Sin estaciones asignadas a esta zona.</span>
                 {% endfor %}
@@ -121,7 +121,7 @@
                                 <tr>
                                     <th class="col-fecha">DÍA</th>
                                     {% for e in zona.estaciones %}
-                                    <th>{{ e.Nombre }}</th>
+                                    <th>{{ nombre_estacion_sin_codigo(e.Nombre) }}</th>
                                     {% endfor %}
                                     <th class="th-grupo">TOTAL</th>
                                 </tr>

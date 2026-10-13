@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Propuesta Sidebar TotalGas</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2430;--muted:#5d6675;--line:#dfe3ea;--side:#1f2a3a;--side-ink:#cfd6e1;--accent:#0095DA;--ok:#009559;--warn:#c77700;--bad:#c0392b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a2029;--ink:#e6e9ee;--muted:#9aa3b2;--line:#2b3340;--side:#0c1118}}
+:root[data-theme="dark"]{--bg:#11151c;--card:#1a2029;--ink:#e6e9ee;--muted:#9aa3b2;--line:#2b3340;--side:#0c1118}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,Segoe UI,Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:1.7rem;margin:.2rem 0}h2{margin-top:2.2rem;border-bottom:2px solid var(--line);padding-bottom:.3rem}
+.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+code{background:rgba(127,127,127,.15);padding:1px 5px;border-radius:4px;font-size:.88em}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;padding:1px 7px;border-radius:10px;color:#fff}
+.t-bad{background:var(--bad)}.t-warn{background:var(--warn)}.t-ok{background:var(--ok)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.side{background:var(--side);color:var(--side-ink);border-radius:10px;padding:14px 0;font-size:.88rem}
+.side .h{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:#7f8ca0;padding:12px 18px 4px}
+.side .g{padding:5px 18px;font-weight:600;color:#fff}
+.side .i{padding:3px 18px 3px 34px}
+.side .search{margin:0 14px 8px;padding:7px 10px;border-radius:6px;background:#ffffff14;color:#9aa6b8}
+.side .fav{color:#ffd76a}
+.side .new{color:#7ee0a8}
+.side .dup{color:#ff9a8d;text-decoration:line-through}
+ol li,ul li{margin:.25rem 0}
+.side details{margin:0}.side summary{cursor:pointer;list-style:none}.side summary::-webkit-details-marker{display:none}
+.side details details{margin-left:0}.side .st{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#8fa0b8;margin:8px 0 2px}
+.rule{border-radius:8px;padding:12px 14px;border:1px solid var(--line)}.rule.rep{border-left:5px solid var(--accent)}.rule.her{border-left:5px solid var(--ok)}
+.mod{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 16px;margin:12px 0}.mod h3{margin:.3rem 0 .4rem;font-size:1.05rem}
+.mod .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 24px}.mod h4{margin:.4rem 0;font-size:.92rem}.mod ul{margin:0;padding-left:18px;font-size:.9rem}
+.mod .st2{list-style:none;margin-left:-18px;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:.5rem}
+code{overflow-wrap:anywhere}
+
+</style>
+</head>
+<body>
+<main>
+<h1>Propuesta de reorganización del sidebar</h1>
+<p class="muted">Análisis de <code>views/layouts/sidebar.html</code> (967 líneas, 12 secciones, ~170 enlaces) · 2026-10-12</p>
+
+<div style="background: linear-gradient(135deg, #004EA2, #0095DA); color: white; padding: 16px 20px; border-radius: 10px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+  <div>
+    <strong style="font-size: 1.1rem; display: block;">✨ Prototipo interactivo (versión anterior, organizada por proceso)</strong>
+    <span style="font-size: 0.88rem; opacity: 0.9;">Muestra el buscador y los acordeones. Su agrupación es la propuesta anterior; la vigente es la de este documento (por departamento, con Reportes y Herramientas).</span>
+  </div>
+  <a href="sidebar_propuesta_mejorada.html" style="background: white; color: #004EA2; font-weight: 700; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9rem;">Abrir Prototipo Interactivo ➔</a>
+</div>
+
+<h2>1. Diagnóstico</h2>
+<div class="card">
+<p>El menú está organizado <b>por departamento</b>, y algunos módulos ya tienen submenús “Reportes” y “Herramientas”, pero <b>la división no se respeta</b>: hay herramientas dentro de Reportes (Conciliar bancos y Subir estados de cuenta en Ingresos), reportes dentro de Herramientas (Listado de precios en Abastos, Estadístico de tickets en Administración), enlaces sueltos fuera de cualquier submenú (Análisis de compras, Programación, todo Tesorería y Operaciones) y grupos propios que no son ni uno ni otro (Pagos de Combustible, TG6, Cobranza). A eso se suman duplicados y submenús de más de 15 opciones.</p>
+</div>
+
+<h3>Duplicados</h3>
+<table>
+<tr><th></th><th>Enlace</th><th>Dónde aparece</th></tr>
+<tr><td><span class="tag t-bad">Alta</span></td><td>Sección completa <b>TG3-Operaciones</b></td><td>Repite casi 1:1 <b>Comercial › Reportes</b> (mismo permiso 62). Solo agrega “Venta Totales”.</td></tr>
+<tr><td><span class="tag t-bad">Alta</span></td><td><code>/operations/sales_day_turn</code></td><td>3 veces: TG3, Comercial, Operaciones › Reportes</td></tr>
+<tr><td><span class="tag t-bad">Alta</span></td><td><code>/station_portal/mis_recepciones</code></td><td>Abastos (“Recepciones”) y Operaciones (“Mis Recepciones”), mismo permiso 84</td></tr>
+<tr><td><span class="tag t-warn">Media</span></td><td><code>/income/control_dispatches</code></td><td>Ingresos › Reportes y Marketing › Herramientas</td></tr>
+<tr><td><span class="tag t-warn">Media</span></td><td><code>/income/anomalies</code></td><td>Dos veces en Ingresos con nombres distintos (“Despachos Facturados” / “Despachos facturados contado”)</td></tr>
+<tr><td><span class="tag t-warn">Media</span></td><td><code>/direction/historic_prices</code></td><td>Como submenú y como enlace suelto en Dirección (línea 451)</td></tr>
+<tr><td><span class="tag t-ok">Nombre</span></td><td>Movimientos bancos</td><td>Contabilidad (<code>/accounting/movimientos_bancos</code>, perm. 90) y Tesorería. <b>No es duplicado</b>: el de Contabilidad es consulta de solo lectura (sin carga de archivos). Solo necesita un nombre distinto.</td></tr>
+<tr><td><span class="tag t-warn">Media</span></td><td>Inventario / Mermas</td><td>Abastos (<code>/supply/inventarioMermas</code>) y Contabilidad (<code>/operations/inventories</code>) con nombre casi igual</td></tr>
+<tr><td><span class="tag t-ok">Baja</span></td><td>Tarjetas nexus</td><td>Línea duplicada literal en Marketing (655–656)</td></tr>
+</table>
+
+<h3>Ubicación y consistencia</h3>
+<ul>
+<li><b>Pagos de Combustible</b> vive dentro de Abastos y <b>no tiene permiso propio</b>: cualquiera con permiso 32 lo ve. Además “Proveedores” está metido dentro de pagos.</li>
+<li><b>Contabilidad › Reportes</b> tiene 15 opciones que mezclan pagos, compras, bancos, Petrotal y renegociación. <b>Ingresos › Reportes</b> tiene 16.</li>
+<li><b>Tipo de cambio</b> aparece en Tesorería pero apunta a <code>/administration/</code>; <b>Arqueo D2GO</b> es una sección suelta de un solo enlace.</li>
+<li>Encabezados con mayúsculas inconsistentes (“Reportes” vs “ABASTOS”), abreviaturas (“Vta Sem x Zona”), numeración con huecos (1…6, 8, 9) y etiquetas poco claras (“Pendiente (Nuevo)”, “test_v3”).</li>
+<li>Código muerto comentado en varias secciones.</li>
+<li>No hay búsqueda ni favoritos: con ~170 enlaces, el usuario depende de recordar en qué departamento quedó cada pantalla.</li>
+</ul>
+
+<h3>Uso real del menú (tg_page_visits, últimos 90 días)</h3>
+<div class="card">
+<p>Datos de <code>TG.dbo.tg_page_visits</code> del 2026-07-14 al 2026-10-12. Se cuentan las páginas principales; los modales y acciones internas del tabulador (<code>tab_process</code>, <code>deposit</code>, <code>wads</code>…) suman más de 450,000 visitas por sí solos.</p>
+<table>
+<tr><th>Enlace del menú</th><th>Visitas</th><th>Usuarios</th></tr>
+<tr><td>Operaciones › Tabulador</td><td>32,398</td><td>70</td></tr>
+<tr><td>Dashboard</td><td>9,995</td><td>119</td></tr>
+<tr><td>Ingresos › Comprobación tickets</td><td>4,429</td><td>6</td></tr>
+<tr><td>Abastos › Inventario de tanques</td><td>3,807</td><td>11</td></tr>
+<tr><td>Tesorería › Movimientos bancos</td><td>1,785</td><td>24</td></tr>
+<tr><td>Abastos › Lista de pagos</td><td>1,507</td><td>10</td></tr>
+<tr><td>Abastos › Análisis de merma diaria</td><td>1,023</td><td>7</td></tr>
+<tr><td>Abastos › Generación XML (Masivo)</td><td>1,015</td><td>6</td></tr>
+<tr><td>Ingresos › Conciliar bancos (<code>test_v3</code>)</td><td>856</td><td>13</td></tr>
+<tr><td>Abastos › Inventario/Mermas</td><td>607</td><td>18</td></tr>
+</table>
+<p><b>Lo que esto indica:</b></p>
+<ul>
+<li><b>El menú lo usan sobre todo las estaciones.</b> De 119 usuarios, unos 70 entran solo para el Tabulador y Clientes contado (34 usuarios). Para ellos, Operaciones debe ser el primer módulo y los “Más usados” resuelven casi todo.</li>
+<li><b>Comercial y TG3 casi no se usan:</b> Indicadores de venta 17 visitas, Venta mensual x turno 16, Venta semanal x zona 4, Venta totales 2. Quitar TG3 y dejar solo Comercial no afecta a nadie.</li>
+<li><b>Dirección se usa poco</b> (TG6 15, Valeras 6, Horas sin combustible 4–6). Puede ir más abajo.</li>
+<li><b>Sin ninguna visita en 90 días:</b> Ventas Kioskos (<code>/income/kioskos</code>), Tarjetas MasQueGas (<code>/marketing/mqg_cards</code>), Etiquetas inventarios (<code>/marketing/print_sticker</code>) y Petrotal CNE (<code>/petrotal/volumetricos</code>, <code>/petrotal/historial</code>; probablemente es nuevo). Antes de retirarlos, confirmar con las áreas.</li>
+<li><b>Con 1–5 visitas</b> (candidatos a revisar): Bitácora de ajustes, Monitor CFDISender, Configuración FIEL, PDF proveedor combustible, Venta totales, Factura global, Facturas timbradas, Comparador de volumétricos, Generación de etiquetas, Tarjetas nexus, Anticipos débito, Renegociación, Remisiones Petrotal.</li>
+</ul>
+</div>
+
+<h2>2. Propuesta: cada módulo dividido en Reportes y Herramientas</h2>
+<div class="card">
+<p>Se conservan los módulos por departamento (los usuarios ya saben dónde está su área). Dentro de cada módulo hay siempre los mismos dos submenús, con una regla única para decidir dónde va cada pantalla:</p>
+<div class="grid">
+<div class="rule rep"><b>📊 Reportes</b><br>La pantalla sirve para <b>consultar</b>: filtra, muestra, grafica o exporta. No cambia datos.<br><span class="muted">Ej.: Inventario de tanques, Antigüedad de saldos, TG6.</span></div>
+<div class="rule her"><b>🛠 Herramientas</b><br>La pantalla sirve para <b>hacer algo</b>: capturar, subir archivos, conciliar, autorizar, enviar, configurar o editar catálogos.<br><span class="muted">Ej.: Lista de pagos, Conciliar bancos, Programación de recepciones.</span></div>
+</div>
+<p style="margin-bottom:0">Se clasifica por el <b>propósito principal</b>: un reporte con un botón secundario (p. ej. Estado de resultados con “Subir utilidad”, Análisis de merma con carga de balance) sigue en Reportes.</p>
+</div>
+
+<h3>Reglas de forma</h3>
+<ul>
+<li><b>Nada suelto</b>: todo enlace vive dentro de Reportes o Herramientas. Si un módulo no tiene herramientas (Comercial, Dirección), solo muestra Reportes.</li>
+<li><b>Una sola ubicación por enlace.</b> Se elimina la sección TG3-Operaciones (es la misma que Comercial › Reportes).</li>
+<li><b>Subtítulos dentro del submenú</b> cuando pasa de ~8 opciones (Ingresos, Abastos). Son etiquetas, no otro nivel de colapso, así no cambia el CSS actual.</li>
+<li><b>Mismo ícono para todos</b>: <code>bar-chart-2</code> en Reportes y <code>tool</code> en Herramientas, para reconocerlos de un vistazo.</li>
+<li><b>Nombres completos</b> sin numeración ni abreviaturas (“Venta semanal por zona”, no “6. Vta Sem x Zona”).</li>
+<li><b>Orden de módulos por uso real</b>: Operaciones primero (70 usuarios de estación), luego Abastos, Ingresos, Tesorería, Contabilidad y el resto.</li>
+</ul>
+
+<h2>3. Así se vería</h2>
+<div class="grid">
+<div>
+<p class="muted">Haz clic en los módulos y submenús para abrirlos.</p>
+<div class="side">
+<div class="search">🔍 Buscar en el menú…</div>
+<div class="g">Dashboard</div>
+<div class="g fav">★ Más usados</div>
+
+<details open><summary class="h">Operaciones</summary>
+<details><summary class="g">📊 Reportes</summary>
+<div class="i">Ventas volumétricas · Ventas · Ventas por hora efectivo · Ventas por estación · Tanques · Monitor de tabuladores · Responsables · Islas · Reporte de incidencias · Incidencias de mi estación</div></details>
+<details open><summary class="g">🛠 Herramientas</summary>
+<div class="i">Tabulador · Clientes contado · Cambio de estación · Mis recepciones · Registrar incidencias · Configuración de incidencias</div></details>
+</details>
+
+<details><summary class="h">Abastos</summary>
+<details><summary class="g">📊 Reportes</summary>
+<div class="i"><span class="st">Inventario y merma</span>Inventario de tanques · Mermas por estación · Análisis de merma diaria · Inventario/Mermas · Ventas consolidado<span class="st">Compras</span>Análisis de compras · Listado de precios · Estado de facturas</div></details>
+<details><summary class="g">🛠 Herramientas</summary>
+<div class="i"><span class="st">Pagos a proveedores</span>Lista de pagos · Importar facturas · Notas de crédito y cargo · Comprobantes de pago · Proveedores<span class="st">Recepciones</span>Programación de recepciones · Conciliación Petrotal<span class="st">Precios y XML</span>Precios de combustibles · Precios XML · Generación XML (masivo) · Generación XML (nuevo)<span class="st">Catálogos CRE</span>Combustibles por estación · Proveedores de combustible · Transportistas</div></details>
+</details>
+
+<details><summary class="h">Ingresos</summary>
+<details><summary class="g">📊 Reportes</summary>
+<div class="i"><span class="st">Ventas</span>Ventas en dólares · Ventas de contado · Ventas por tarjeta · Ventas kioskos<span class="st">Despachos</span>Control de despachos · Duplicados · Crédito y débito · Diferencias crédito/débito · Por facturación · Facturados · Facturados contado · Facturados clientes crédito · Pendientes por facturar<span class="st">Facturas</span>Timbradas · Sin timbrar · Global · De contado · Relación facturas anticipo<span class="st">Clientes y saldos</span>Clientes · Vehículos · Antigüedad de saldos · Valores<span class="st">Conciliaciones</span>Dashboard bancos · Faltantes de efectivo · Diferencias de efectivo · Movimientos de efectivo</div></details>
+<details><summary class="g">🛠 Herramientas</summary>
+<div class="i"><span class="st">Conciliaciones</span>Conciliar bancos · Subir estados de cuenta · Conciliar efectivo · Papeletas<span class="st">Tickets y facturas</span>Comprobación de tickets · Generación de etiquetas · Expediente de facturas</div></details>
+</details>
+
+<details><summary class="h">Tesorería</summary>
+<details><summary class="g">🛠 Herramientas</summary>
+<div class="i">Movimientos bancos · Movimientos TDC · Cuentas bancarias · Tipo de cambio · <span class="new">Arqueos Dollar2Go</span></div></details>
+</details>
+
+<details><summary class="h">Contabilidad</summary>
+<details><summary class="g">📊 Reportes</summary>
+<div class="i"><span class="st">Estados y fiscal</span>Estado de resultados · Estímulo fiscal · Inventarios/Mermas contable · Comparador de volumétricos · XML vs ventas<span class="st">Compras y proveedores</span>Facturas · Facturas combustible · Facturas ControlGas · Compras de combustible · Pagos a proveedores · Pagos vs recepciones · Remisiones Petrotal<span class="st">Bancos y cobranza</span>Consulta de movimientos bancarios · Análisis de movimientos · Cobranza crédito<span class="st">Petrotal</span><span class="new">Historial de envíos CNE</span></div></details>
+<details><summary class="g">🛠 Herramientas</summary>
+<div class="i">PDF proveedor combustible · Renegociación con proveedores · <span class="new">Reporte CNE / Volumétricos · Configuración FIEL</span></div></details>
+</details>
+
+<details><summary class="h">Comercial</summary>
+<details><summary class="g">📊 Reportes</summary>
+<div class="i">Indicadores de venta · Venta mensual por turno · Ventas por día por turno · Venta por rubro · Venta de lubricantes · Venta semanal por zona · Venta totales · Mystery Shopper</div></details>
+</details>
+
+<details><summary class="h">Dirección</summary>
+<details><summary class="g">📊 Reportes</summary>
+<div class="i"><span class="st">Ventas</span>Ventas mensuales en dólares · TG6 · Consulta de consumo · Venta mensual por producto · Valeras<span class="st">Precios</span>Histórico de precios · Gráfico de precios<span class="st">Horas sin combustible</span>Histórico · Resumen mensual · Diario Máxima · Diario Super · Diario Diesel</div></details>
+</details>
+
+<details><summary class="h">Administración</summary>
+<details><summary class="g">📊 Reportes</summary>
+<div class="i">Relación Corporativo-Estaciones · Dashboard débito y crédito · Anticipos débito · Estadístico de tickets · Bitácora de ajustes</div></details>
+<details><summary class="g">🛠 Herramientas</summary>
+<div class="i">Lista de tickets · Cálculo mensual ECV</div></details>
+</details>
+
+<details><summary class="h">Marketing</summary>
+<details><summary class="g">🛠 Herramientas</summary>
+<div class="i">Tarjetas y engomados · Tarjetas nexus · Tarjetas MasQueGas · Etiquetas de inventario</div></details>
+</details>
+
+<details><summary class="h">Sistemas</summary>
+<details><summary class="g">📊 Reportes</summary>
+<div class="i">Dashboard de uso · Log de errores · Monitor CFDISender · Retardos</div></details>
+<details><summary class="g">🛠 Herramientas</summary>
+<div class="i">Usuarios · Permisos · Usuarios ControlGas · Llamadas SAT · Convertidor de fechas · Liberador de despachos · Marcar jarreo · Creador de estaciones</div></details>
+</details>
+</div>
+<p class="muted" style="font-size:.85rem">En verde: lo que hoy es una sección propia (Arqueo Dollar2Go, Petrotal) y pasa a vivir dentro de un módulo.</p>
+</div>
+
+<div>
+<h3 style="margin-top:0">Qué cambia respecto a hoy</h3>
+<table>
+<tr><th>Cambio</th><th>Detalle</th></tr>
+<tr><td>Se elimina</td><td>Sección <b>TG3-Operaciones</b>; “Venta totales” pasa a Comercial › Reportes</td></tr>
+<tr><td>Se elimina</td><td>Ventas x día x turno de Operaciones (se queda en Comercial)</td></tr>
+<tr><td>Se elimina</td><td>“Recepciones” de Abastos (se queda “Mis recepciones” en Operaciones)</td></tr>
+<tr><td>Se elimina</td><td>Control de despachos de Marketing (se queda en Ingresos)</td></tr>
+<tr><td>Se elimina</td><td>Histórico de precios suelto en Dirección, la segunda “Despachos facturados” y la línea repetida de Tarjetas nexus</td></tr>
+<tr><td>Reportes → Herramientas</td><td>Conciliar bancos, Subir estados de cuenta, Conciliar efectivo, Papeletas (Ingresos); Catálogos CRE (Abastos); PDF proveedor y Renegociación (Contabilidad)</td></tr>
+<tr><td>Herramientas → Reportes</td><td>Listado de precios (Abastos); Estadístico de tickets y Bitácora de ajustes (Administración); Dashboard de uso, Log de errores, Monitor CFDISender y Retardos (Sistemas)</td></tr>
+<tr><td>Sueltos → submenú</td><td>Análisis de compras, Inventario/Mermas (Reportes) y Conciliación Petrotal, Programación (Herramientas) en Abastos; todo Tesorería y Operaciones</td></tr>
+<tr><td>Pagos de combustible</td><td>Deja de ser grupo aparte: Lista de pagos, Importar facturas, NC, Comprobantes y Proveedores → Abastos › Herramientas; Estado de facturas → Abastos › Reportes</td></tr>
+<tr><td>Secciones absorbidas</td><td>Arqueo Dollar2Go → Tesorería › Herramientas; Petrotal → Contabilidad</td></tr>
+<tr><td>Renombrar</td><td>“Pendiente (Nuevo)” → Generación XML (nuevo); Movimientos bancos de Contabilidad → Consulta de movimientos bancarios; Inventarios/Mermas de Contabilidad → Inventarios/Mermas contable</td></tr>
+</table>
+</div>
+</div>
+
+<h2>4. Clasificación completa con permisos</h2>
+<p>Cada enlace conserva el permiso con el que se ve hoy (incluido el del submenú donde estaba). Un submenú se dibuja solo si el usuario puede ver al menos uno de sus enlaces, así nadie pierde ni gana acceso al moverlo. <span class="muted">Notación: <code>33</code> = <code>authorized(33)</code>; <code>46+61</code> = ambos permisos.</span></p>
+
+<div class="mod"><h3>Operaciones <span class="muted">· encabezado: 19, 101, 84 o permisos de terminales</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><ul>
+<li>Ventas volumétricas <code>37</code></li><li>Ventas <code>37+38</code></li><li>Ventas por hora efectivo <code>37</code></li><li>Ventas por estación <code>37+49</code></li><li>Tanques <code>37</code></li><li>Monitor de tabuladores <code>37</code></li><li>Responsables <code>37</code></li><li>Islas <code>37</code></li><li>Reporte de incidencias <code>terminal_inventory_report_access()</code></li><li>Incidencias de mi estación <code>terminal_inventory_station_report_access()</code></li></ul></div>
+<div><h4>🛠 Herramientas</h4><ul>
+<li>Tabulador <code>21</code></li><li>Clientes contado <code>21</code></li><li>Cambio de estación <code>101</code></li><li>Mis recepciones <code>84</code></li><li>Registrar incidencias <code>terminal_inventory_access()</code></li><li>Configuración de incidencias <code>terminal_inventory_report_access()</code></li></ul></div>
+</div></div>
+
+<div class="mod"><h3>Abastos <span class="muted">· encabezado: 32</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><ul>
+<li class="st2">Inventario y merma</li><li>Inventario de tanques <code>33</code></li><li>Mermas por estación <code>33</code></li><li>Análisis de merma diaria <code>33</code></li><li>Inventario/Mermas <code>32</code></li><li>Reporte de ventas consolidado <code>33</code></li>
+<li class="st2">Compras</li><li>Análisis de compras <code>32</code></li><li>Listado de precios <code>40</code></li><li>Estado de facturas <code>32</code> <span class="tag t-warn">ver nota</span></li></ul></div>
+<div><h4>🛠 Herramientas</h4><ul>
+<li class="st2">Pagos a proveedores</li><li>Lista de pagos <code>32</code> <span class="tag t-warn">ver nota</span></li><li>Importar facturas <code>32</code></li><li>Notas de crédito y cargo <code>32</code></li><li>Comprobantes de pago <code>32</code></li><li>Proveedores <code>32</code></li>
+<li class="st2">Recepciones</li><li>Programación de recepciones <code>95</code></li><li>Conciliación Petrotal <code>91</code></li>
+<li class="st2">Precios y XML</li><li>Precios de combustibles <code>40</code></li><li>Precios XML <code>40</code></li><li>Generación XML (masivo) <code>40</code></li><li>Generación XML (nuevo) <code>40</code></li>
+<li class="st2">Catálogos CRE</li><li>Combustibles por estación <code>33</code></li><li>Proveedores de combustible <code>33</code></li><li>Transportistas <code>33</code></li></ul></div>
+</div></div>
+
+<div class="mod"><h3>Ingresos <span class="muted">· encabezado: 13</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><ul>
+<li class="st2">Ventas</li><li>Ventas en dólares <code>14</code></li><li>Ventas de contado <code>14</code></li><li>Ventas por tarjeta <code>14</code></li><li>Ventas kioskos <code>14+34</code></li>
+<li class="st2">Despachos</li><li>Control de despachos <code>14</code></li><li>Despachos duplicados <code>14+15</code></li><li>Despachos crédito y débito <code>14+16</code></li><li>Diferencias crédito/débito <code>14+35</code></li><li>Despachos por facturación <code>14</code></li><li>Despachos facturados <code>14</code></li><li>Despachos facturados contado <code>14</code></li><li>Despachos facturados clientes crédito <code>14</code></li><li>Despachos pendientes por facturar <code>14+36</code></li>
+<li class="st2">Facturas</li><li>Facturas timbradas <code>14</code></li><li>Facturas sin timbrar <code>14</code></li><li>Factura global <code>14</code></li><li>Facturas de contado <code>14</code></li><li>Relación facturas anticipo <code>14</code></li>
+<li class="st2">Clientes y saldos</li><li>Clientes <code>14</code></li><li>Vehículos <code>14+31</code></li><li>Antigüedad de saldos <code>14</code></li><li>Valores <code>14</code></li>
+<li class="st2">Conciliaciones</li><li>Dashboard conciliación bancos <code>14</code></li><li>Faltantes de efectivo <code>14</code></li><li>Diferencias de efectivo <code>14</code></li><li>Movimientos de efectivo <code>14</code></li></ul></div>
+<div><h4>🛠 Herramientas</h4><ul>
+<li class="st2">Conciliaciones</li><li>Conciliar bancos <code>14</code></li><li>Subir estados de cuenta <code>14</code></li><li>Conciliar efectivo <code>14</code></li><li>Papeletas <code>14</code></li>
+<li class="st2">Tickets y facturas</li><li>Comprobación de tickets <code>53+52</code></li><li>Generación de etiquetas <code>53+52</code></li><li>Expediente de facturas <code>53+94</code></li></ul></div>
+</div></div>
+
+<div class="mod"><h3>Tesorería <span class="muted">· encabezado: 41, 73, 74, 79, 80, 87, 88, 89 o 92</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><p class="muted">Sin reportes por ahora. El concentrado de arqueos sigue entrando desde Arqueos.</p></div>
+<div><h4>🛠 Herramientas</h4><ul>
+<li>Movimientos bancos <code>80, 87, 89 o 92</code></li><li>Movimientos bancos TDC <code>88</code></li><li>Cuentas bancarias <code>79</code></li><li>Tipo de cambio <code>41</code></li><li>Arqueos Dollar2Go <code>73 o 74</code></li></ul></div>
+</div></div>
+
+<div class="mod"><h3>Contabilidad <span class="muted">· encabezado: 45 o 98</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><ul>
+<li class="st2">Estados y fiscal</li><li>Estado de resultados <code>46+61</code></li><li>Estímulo fiscal <code>46+47</code></li><li>Inventarios/Mermas contable <code>46+48</code></li><li>Comparador de volumétricos <code>46</code></li><li>XML vs ventas <code>46</code></li>
+<li class="st2">Compras y proveedores</li><li>Facturas <code>46+61</code></li><li>Facturas combustible <code>46</code></li><li>Facturas ControlGas <code>46</code></li><li>Compras de combustible <code>46</code></li><li>Pagos a proveedores <code>46</code></li><li>Pagos vs recepciones <code>46</code></li><li>Remisiones Petrotal <code>46</code></li>
+<li class="st2">Bancos y cobranza</li><li>Consulta de movimientos bancarios <code>46+90</code></li><li>Análisis de movimientos <code>45</code></li><li>Cobranza crédito <code>45</code></li>
+<li class="st2">Petrotal</li><li>Historial de envíos CNE <code>98</code></li></ul></div>
+<div><h4>🛠 Herramientas</h4><ul>
+<li>PDF proveedor combustible <code>46</code></li><li>Renegociación con proveedores <code>46</code></li><li>Reporte CNE / Volumétricos <code>98</code></li><li>Configuración FIEL <code>98+99</code></li></ul></div>
+</div></div>
+
+<div class="mod"><h3>Comercial <span class="muted">· encabezado: 62</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><ul>
+<li>Indicadores de venta <code>62</code></li><li>Venta mensual por turno <code>62</code></li><li>Ventas por día por turno <code>62</code> <span class="tag t-warn">ver nota</span></li><li>Venta por rubro <code>62</code></li><li>Venta de lubricantes <code>62</code></li><li>Venta semanal por zona <code>62</code></li><li>Venta totales <code>62</code></li><li>Mystery Shopper <code>62</code></li></ul></div>
+<div><h4>🛠 Herramientas</h4><p class="muted">Ninguna; el submenú no se dibuja.</p></div>
+</div></div>
+
+<div class="mod"><h3>Dirección <span class="muted">· encabezado: 43</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><ul>
+<li>Ventas mensuales en dólares · TG6 · Consulta de consumo · Venta mensual por producto · Valeras · Histórico de precios · Gráfico de precios · Horas sin combustible (histórico, resumen mensual, diario Máxima, Super y Diesel) <code>43</code></li></ul></div>
+<div><h4>🛠 Herramientas</h4><p class="muted">Ninguna; el submenú no se dibuja.</p></div>
+</div></div>
+
+<div class="mod"><h3>Administración <span class="muted">· encabezado: 7</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><ul>
+<li>Relación Corporativo-Estaciones <code>8</code></li><li>Dashboard débito y crédito <code>8</code></li><li>Anticipos débito <code>8</code></li><li>Estadístico de tickets <code>39</code></li><li>Bitácora de ajustes <code>65</code></li></ul></div>
+<div><h4>🛠 Herramientas</h4><ul>
+<li>Lista de tickets <code>39</code></li><li>Cálculo mensual ECV <code>39</code></li></ul></div>
+</div></div>
+
+<div class="mod"><h3>Marketing <span class="muted">· encabezado: 23</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><p class="muted">Ninguno.</p></div>
+<div><h4>🛠 Herramientas</h4><ul>
+<li>Tarjetas y engomados · Tarjetas nexus · Tarjetas MasQueGas · Etiquetas de inventario <code>24+26</code></li></ul></div>
+</div></div>
+
+<div class="mod"><h3>Sistemas <span class="muted">· encabezado: 3 o for_sistemas()</span></h3><div class="cols">
+<div><h4>📊 Reportes</h4><ul>
+<li>Dashboard de uso <code>for_sistemas()</code></li><li>Log de errores <code>for_sistemas()</code></li><li>Retardos <code>for_sistemas()</code></li><li>Monitor CFDISender <code>22</code></li></ul></div>
+<div><h4>🛠 Herramientas</h4><ul>
+<li>Usuarios <code>4</code></li><li>Permisos <code>5</code></li><li>Usuarios ControlGas <code>for_sistemas()</code></li><li>Llamadas SAT <code>for_sistemas()</code></li><li>Convertidor de fechas <code>22</code></li><li>Liberador de despachos <code>22</code></li><li>Marcar jarreo <code>22</code></li><li>Creador de estaciones <code>22</code></li></ul></div>
+</div></div>
+
+<h3>Notas de permisos a validar antes de implementar</h3>
+<ul>
+<li><b>Pagos a proveedores sin permiso propio.</b> Hoy cualquiera con permiso 32 ve Lista de pagos, Importar facturas, NC y Comprobantes. Se recomienda crear un permiso nuevo y asignarlo a quienes ya lo usan (10 usuarios en 90 días).</li>
+<li><b>Encabezado de Operaciones.</b> Hoy no incluye el permiso 84; un usuario con solo 84 veía “Recepciones” por Abastos. Al quitar el de Abastos hay que agregar <code>authorized(84)</code> al encabezado de Operaciones.</li>
+<li><b>Ventas por día por turno.</b> Hoy se ve con 62 (Comercial) o con 37 (Operaciones). Al dejarlo solo en Comercial, los usuarios con 37 y sin 62 lo pierden: revisar quiénes son o agregar 62 a esos usuarios.</li>
+<li><b>Control de despachos.</b> Hoy también se ve con 24+26 (Marketing). Al dejarlo solo en Ingresos, revisar usuarios de Marketing sin permiso 14.</li>
+</ul>
+
+<h2>5. Plan de implementación</h2>
+<ol>
+<li><b>Limpieza sin riesgo</b>: quitar TG3-Operaciones, duplicados literales y código comentado; renombrar sin numeración ni abreviaturas.</li>
+<li><b>Reacomodar cada módulo</b> en sus dos submenús según la sección 4, copiando la condición de permiso de cada enlace. IDs de collapse con el mismo patrón: <code>#abastos_reportes</code>, <code>#abastos_herramientas</code>.</li>
+<li><b>Validar permisos</b> de la lista anterior con un SELECT de usuarios por permiso antes de publicar.</li>
+<li><b>Buscador</b> sobre el menú (~40 líneas de JS, sin backend) que filtra enlaces y abre los submenús con coincidencias.</li>
+<li><b>Más usados</b>: top 5 del usuario desde <code>tg_page_visits</code> (últimos 30 días), cacheado en sesión.</li>
+<li><b>Opcional</b>: definir el menú como un arreglo PHP <code>[módulo → reportes[], herramientas[]]</code> y dibujarlo con un macro Twig. Agregar una pantalla nueva sería una línea y obligaría a elegir si es reporte o herramienta.</li>
+</ol>
+<p class="muted">Los enlaces sin visitas en 90 días (sección 1) se reubican igual; se confirma con cada área si se pueden retirar.</p>
+</main>
+</body>
+</html>
