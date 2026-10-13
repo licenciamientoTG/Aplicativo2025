@@ -340,7 +340,30 @@ let datatables_vehicles = $('#datatables_vehicles').DataTable({
         {'data': 'Vehículo'},
         {'data': 'Grupo'},
         {'data': 'Descripcion'},
-        {'data': 'Status'},
+        {
+            'data': 'Tipval', className: 'text-nowrap text-center',
+            render: function (v) {
+                switch (parseInt(v, 10)) {
+                    case 3: return 'Crédito';
+                    case 4: return 'Débito';
+                    default: return 'Otro';
+                }
+            }
+        },
+        {
+            'data': 'Status', className: 'text-nowrap text-center',
+            render: function (v) {
+                switch (parseInt(v, 10)) {
+                    case 1: return 'Habilitado';
+                    case 2: return 'Cargando';
+                    case 3: return 'Suspendido';
+                    case 4: return 'Uso interno';
+                    case 5: return 'Verificación pendiente';
+                    case 6: return 'Baja administrativa';
+                    default: return 'Valor Desconocido';
+                }
+            }
+        },
         {'data': 'Saldo', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end'},
     ],
     // rowId: 'Despacho',
@@ -364,7 +387,8 @@ $('#filtro-datatables_vehicles input').on('keyup  change clear', function () {
         .column(5).search($('#VEHICULO').val().trim())
         .column(6).search($('#GRUPO').val().trim())
         .column(7).search($('#DESCRIPCION').val().trim())
-        .column(8).search($('#STATUS').val().trim())
+        .column(8).search($('#TIPO').val().trim())
+        .column(9).search($('#STATUS').val().trim())
         .draw();
 });
 
