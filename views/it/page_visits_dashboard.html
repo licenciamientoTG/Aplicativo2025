@@ -257,23 +257,31 @@
             language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
             order: [],
             columnDefs: [{ orderable: false, targets: 0 }],
-            pageLength: 10
+            pageLength: 10,
+            dom: '<"top"Bf>rt<"bottom"lip><"clear">',
+            buttons: [
+                { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm' }
+            ]
         };
 
         $('#dt_top_pages').DataTable($.extend(true, {}, dtConfig, {
-            order: [[2, 'desc']]
+            order: [[2, 'desc']],
+            buttons: [{ extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Paginas_mas_visitadas' }]
         }));
 
         $('#dt_top_users').DataTable($.extend(true, {}, dtConfig, {
-            order: [[2, 'desc']]
+            order: [[2, 'desc']],
+            buttons: [{ extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Usuarios_mas_activos' }]
         }));
 
         $('#dt_pages_reach').DataTable($.extend(true, {}, dtConfig, {
-            order: [[2, 'desc']]
+            order: [[2, 'desc']],
+            buttons: [{ extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Paginas_con_mas_alcance' }]
         }));
 
         $('#dt_unused').DataTable($.extend(true, {}, dtConfig, {
-            order: [[3, 'desc']]
+            order: [[3, 'desc']],
+            buttons: [{ extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm', title: 'Paginas_sin_uso' }]
         }));
     });
 </script>

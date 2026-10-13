@@ -927,6 +927,8 @@ function invoice_client_desp(){
      * @throws Exception
      */
     function datatables_vehicles() : void {
+        ini_set('memory_limit', '1024M');
+        set_time_limit(300);
         $data = [];
         if ($vehicles = $this->vehiclesModel->get_vehicles()) {
             foreach ($vehicles as $vehicle) {
