@@ -61,7 +61,7 @@
 .boards-board-title { overflow: hidden; margin: 0; color: var(--boards-ink); font-size: 1.2rem; font-weight: 600; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
 .boards-board-description { max-width: 650px; margin: 4px 0 0; color: var(--boards-muted); font-size: .82rem; }
 .boards-board-meta { flex: 0 0 auto; gap: 9px; }
-.boards-role { padding: 5px 9px; border: 1px solid #d4e3e6; border-radius: 4px; color: #37605f; background: #f2f8f7; font-size: .73rem; font-weight: 600; }
+.boards-role, .boards-access-source { display: inline-grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; padding: 0; border: 1px solid #d4e3e6; border-radius: 20px; color: #37605f; background: #f2f8f7; font-size: .8rem; cursor: help; }
 
 .boards-viewbar { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 18px; border-top: 1px solid #e5ecef; border-bottom: 1px solid var(--boards-line); background: #fbfcfd; }
 .boards-view-tabs { display: flex; height: 44px; align-items: stretch; gap: 15px; }
@@ -779,7 +779,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-board-mark { flex-basis: 41px; width: 41px; height: 41px; border: 1px solid #53669c; border-radius: 10px; color: #bad0ff; background: #33436f; }
 .boards-board-title { color: #f4f4fb; font-size: 1.48rem; font-weight: 700; letter-spacing: -.035em; }
 .boards-board-description { margin-top: 4px; color: #a9acc5; }
-.boards-role { border-color: #4a5c91; border-radius: 20px; color: #c6d8ff; background: #303d68; }
+.boards-role { border-color: #4a5c91; color: #c6d8ff; background: #303d68; }
 .boards-viewbar { min-height: 47px; padding-inline: 19px; border-top: 0; border-bottom-color: #414463; background: #222540; }
 .boards-view-tabs { height: 47px; gap: 4px; min-width: 0; }
 .boards-view-tab { gap: 7px; padding-inline: 11px; border-bottom-width: 3px; color: #aeb1c9; font-size: .78rem; }
@@ -1371,4 +1371,4 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
   .boards-recycle-entry { grid-template-columns: minmax(0, 1fr); }
   .boards-recycle-entry-actions { grid-column: 1; grid-row: auto; justify-content: flex-start; }
 }
-.boards-access-source { padding: 4px 8px; border: 1px solid #4a506e; border-radius: 20px; color: #b9c7ee; background: #292e4c; font-size: .68rem; }
+.boards-access-source { border-color: #4a506e; color: #b9c7ee; background: #292e4c; }

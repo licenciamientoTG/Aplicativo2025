@@ -914,7 +914,7 @@
   }
 
   function accessSourceLabel(source) {
-    const labels = { direct: 'Invitación directa', direct_invitation: 'Invitación directa', board_member: 'Invitación directa', board_invitation: 'Invitación directa', workspace: 'Espacio de trabajo', workspace_member: 'Espacio de trabajo', workspace_membership: 'Espacio de trabajo', workspace_open: 'Espacio abierto', open_workspace: 'Espacio abierto', organization: 'Organización', admin: 'Administración', owner: 'Propietario' };
+    const labels = { direct: 'Invitación directa', direct_invitation: 'Invitación directa', board_member: 'Invitación directa', board_invitation: 'Invitación directa', workspace: 'Espacio de trabajo', workspace_member: 'Espacio de trabajo', workspace_membership: 'Espacio de trabajo', workspace_open: 'Espacio abierto', open_workspace: 'Espacio abierto', organization: 'Organización', admin: 'Administración', owner: 'Tablero creado por ti' };
     return labels[String(source || '').toLowerCase()] || (source ? String(source) : 'Acceso');
   }
 
@@ -925,11 +925,31 @@
     els.boardDescription.hidden = !board.description;
     const role = String(board.role || '').toLowerCase();
     const roleLabels = { owner: 'Propietario', designer: 'Diseñador', admin: 'Administrador', administrator: 'Administrador', editor: 'Editor', contributor: 'Colaborador', viewer: 'Lector' };
-    els.boardRole.textContent = roleLabels[role] || (board.role ? String(board.role) : 'Tablero');
-    els.boardRole.title = `Acceso: ${accessSourceLabel(board.access_source)}`;
-    els.boardRole.setAttribute('aria-label', `${els.boardRole.textContent}. Origen: ${accessSourceLabel(board.access_source)}`);
+    const roleIcons = { owner: 'fa-crown', designer: 'fa-pen-ruler', admin: 'fa-user-shield', administrator: 'fa-user-shield', editor: 'fa-pen-to-square', contributor: 'fa-user-pen', viewer: 'fa-eye' };
+    const roleLabel = roleLabels[role] || (board.role ? String(board.role) : 'Tablero');
+    const roleIcon = document.createElement('i');
+    roleIcon.className = `fa-solid ${roleIcons[role] || 'fa-user'}`;
+    roleIcon.setAttribute('aria-hidden', 'true');
+    els.boardRole.replaceChildren(roleIcon);
+    els.boardRole.title = `Rol en el tablero: ${roleLabel}`;
+    els.boardRole.setAttribute('aria-label', `Rol en el tablero: ${roleLabel}`);
     const sourceBadge = document.getElementById('boardAccessSource');
-    if (sourceBadge) sourceBadge.textContent = accessSourceLabel(board.access_source);
+    if (sourceBadge) {
+      const sourceLabel = accessSourceLabel(board.access_source);
+      const source = String(board.access_source || '').toLowerCase();
+      const sourceIcons = {
+        direct: 'fa-user-check', direct_invitation: 'fa-user-check', board_member: 'fa-user-check', board_invitation: 'fa-user-check',
+        workspace: 'fa-layer-group', workspace_member: 'fa-layer-group', workspace_membership: 'fa-layer-group',
+        workspace_open: 'fa-lock-open', open_workspace: 'fa-lock-open', organization: 'fa-building', admin: 'fa-shield-halved', owner: 'fa-key'
+      };
+      const sourceIcon = document.createElement('i');
+      sourceIcon.className = `fa-solid ${sourceIcons[source] || 'fa-circle-info'}`;
+      sourceIcon.setAttribute('aria-hidden', 'true');
+      sourceBadge.replaceChildren(sourceIcon);
+      sourceBadge.title = `Origen del acceso: ${sourceLabel}`;
+      sourceBadge.setAttribute('aria-label', `Origen del acceso: ${sourceLabel}`);
+      sourceBadge.hidden = !board.access_source;
+    }
     els.boardRole.hidden = !board.role;
     const edit = canEditBoard();
     const manage = canManageStructure();
