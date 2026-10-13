@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+    <urlCompression doStaticCompression="true" doDynamicCompression="true" />
+    <rewrite>
+      <rules>
+        <rule name="Block private Tableros files" stopProcessing="true">
+          <match url="^uploads/tableros(?:/.*)?$" ignoreCase="true" />
+          <action type="CustomResponse" statusCode="404" statusReason="Not Found" statusDescription="Not Found" />
+        </rule>
+        <rule name="DataStudio API rewrite" stopProcessing="true">
+          <match url="^DataStudio/([^/]+)/([^/]+)$" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+          </conditions>
+          <action type="Rewrite" url="DataStudio/index.php?version={R:1}&amp;report={R:2}" />
+        </rule>
+        <rule name="Rewrite to index.php" stopProcessing="true">
+          <match url="^(.*)$" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+          </conditions>
+          <action type="Rewrite" url="index.php?url={R:1}" />
+        </rule>
+      </rules>
+    </rewrite>
+    <staticContent>
+      <remove fileExtension=".xlsx" />
+      <mimeMap fileExtension=".xlsx" mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+      <remove fileExtension=".xls" />
+      <mimeMap fileExtension=".xls" mimeType="application/vnd.ms-excel" />
+      <remove fileExtension=".csv" />
+      <mimeMap fileExtension=".csv" mimeType="text/csv" />
+      <remove fileExtension=".wav" />
+      <mimeMap fileExtension=".wav" mimeType="audio/wav" />
+      <remove fileExtension=".ogg" />
+      <mimeMap fileExtension=".ogg" mimeType="audio/ogg" />
+      <!-- Tesseract.js fetches its local OCR models as binary static assets. -->
+      <remove fileExtension=".traineddata" />
+      <mimeMap fileExtension=".traineddata" mimeType="application/octet-stream" />
+    </staticContent>
+    <security>
+      <requestFiltering>
+        <requestLimits maxAllowedContentLength="209715200" />
+      </requestFiltering>
+    </security>
+  </system.webServer>
+</configuration>
