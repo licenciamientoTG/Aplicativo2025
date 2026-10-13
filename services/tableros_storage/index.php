@@ -84,8 +84,61 @@ if ($method === 'GET') {
     $realTarget = realpath($target);
     if ($realTarget === false || !pathIsWithin($realTarget, $canonicalRoot) || !is_file($realTarget) || !is_readable($realTarget)) respond(404, 'Object not found');
     $target = $realTarget;
+    $size = filesize($target);
+    $rangeHeader = (string)($_SERVER['HTTP_RANGE'] ?? '');
+    if ($rangeHeader !== '') {
+        if ($size === false || !preg_match('/^bytes=(\d*)-(\d*)$/', trim($rangeHeader), $matches)
+            || ($matches[1] === '' && $matches[2] === '') || $size <= 0) {
+            http_response_code(416);
+            header('Content-Range: bytes */' . (string)($size === false ? 0 : $size));
+            header('Content-Length: 0');
+            exit;
+        }
+        if ($matches[1] === '') {
+            $suffix = (int)$matches[2];
+            if ($suffix <= 0) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $size);
+                header('Content-Length: 0');
+                exit;
+            }
+            $start = max(0, $size - $suffix);
+            $end = $size - 1;
+        } else {
+            $start = (int)$matches[1];
+            $end = $matches[2] === '' ? $size - 1 : (int)$matches[2];
+            if ($start >= $size || $end < $start) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $size);
+                header('Content-Length: 0');
+                exit;
+            }
+            $end = min($end, $size - 1);
+        }
+        $length = $end - $start + 1;
+        $stream = @fopen($target, 'rb');
+        if (!is_resource($stream) || fseek($stream, $start) !== 0) {
+            if (is_resource($stream)) fclose($stream);
+            respond(500, 'Cannot seek storage object');
+        }
+        http_response_code(206);
+        header('Content-Type: application/octet-stream');
+        header('Accept-Ranges: bytes');
+        header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
+        header('Content-Length: ' . $length);
+        $remaining = $length;
+        while ($remaining > 0 && !feof($stream)) {
+            $chunk = fread($stream, min(1024 * 1024, $remaining));
+            if ($chunk === false || $chunk === '') break;
+            echo $chunk;
+            $remaining -= strlen($chunk);
+        }
+        fclose($stream);
+        exit;
+    }
     header('Content-Type: application/octet-stream');
-    header('Content-Length: ' . (string)filesize($target));
+    header('Content-Length: ' . (string)$size);
+    header('Accept-Ranges: bytes');
     readfile($target);
     exit;
 }

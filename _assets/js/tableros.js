@@ -265,7 +265,10 @@
     const archive = action === 'archive';
     const label = action === 'trash' ? 'Mover a la papelera' : archive ? 'Archivar' : ['restore', 'restore_archive'].includes(action) ? 'Restaurar' : 'Eliminar definitivamente';
     const permanent = action === 'permanent';
-    if (!await confirmAction(`${label} este elemento?`, { title: label, confirmLabel: label, danger: permanent || action === 'trash' })) return;
+    const folderNotice = entityType === 'folder'
+      ? `\n\nTambién se ${archive ? 'archivarán' : 'moverán a la papelera'} todas las subcarpetas, los tableros y todo su contenido.`
+      : '';
+    if (!await confirmAction(`${label} este elemento?${folderNotice}`, { title: label, confirmLabel: label, danger: permanent || action === 'trash' })) return;
     button.disabled = true;
     try {
       if (action === 'restore' || action === 'permanent') {
@@ -281,6 +284,8 @@
         if (entityType === 'board' && String(state.board?.id) === String(entityId)) {
           state.board = null;
           els.boardWorkspace.hidden = true;
+          await loadBoards();
+        } else if (entityType === 'folder') {
           await loadBoards();
         } else if (['item', 'subitem', 'group', 'column', 'file'].includes(entityType)) {
           await loadBoard(state.board?.id, true);
@@ -754,6 +759,25 @@
         addBoard.title = 'Crear tablero en esta carpeta'; addBoard.setAttribute('aria-label', `Crear tablero en ${folder.name}`);
         addBoard.append(makeElement('i', 'fa-solid fa-plus', ''));
         actions.append(addBoard); row.append(actions);
+      }
+      if (folder.can_trash || folder.can_archive) {
+        let actions = row.querySelector('.boards-nav-folder-actions');
+        if (!actions) {
+          actions = makeElement('span', 'boards-nav-folder-actions');
+          row.append(actions);
+        }
+        if (folder.can_trash) {
+        const trashFolder = recycleAction('Mover carpeta a la papelera', 'folder', folder.id, 'trash');
+        trashFolder.title = 'Mover carpeta y contenido a la papelera';
+        trashFolder.setAttribute('aria-label', `Mover carpeta ${folder.name} y todo su contenido a la papelera`);
+        actions.append(trashFolder);
+        }
+        if (folder.can_archive) {
+        const archiveFolder = recycleAction('Archivar carpeta', 'folder', folder.id, 'archive');
+        archiveFolder.title = 'Archivar carpeta y contenido';
+        archiveFolder.setAttribute('aria-label', `Archivar carpeta ${folder.name} y todo su contenido`);
+        actions.append(archiveFolder);
+        }
       }
       list.append(row);
       if (collapsed) return;
@@ -1765,7 +1789,7 @@
     const input = document.createElement('input');
     input.type = 'file';
     input.className = 'boards-file-cell-input';
-    input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+    input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
     input.setAttribute('aria-label', `Seleccionar archivo para ${item.name || 'elemento'}`);
     const button = makeElement('button', 'boards-file-cell-add');
     button.type = 'button';
@@ -2139,16 +2163,20 @@
     const name = String(file.name || file.original_name || '');
     const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
     const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(mime);
+    const videoMime = ['video/mp4', 'video/webm'].includes(mime);
+    const videoExtension = ['mp4', 'webm'].includes(extension);
     const spreadsheetExtension = ['xls', 'xlsx', 'xlsm'].includes(extension);
     const previewKind = imageMime ? 'image'
-      : (mime === 'application/pdf' ? 'pdf'
-        : (['text/plain', 'text/csv'].includes(mime) ? 'text'
-          : (spreadsheetExtension ? 'spreadsheet' : 'unsupported')));
+      : (videoMime || videoExtension ? 'video'
+        : (mime === 'application/pdf' ? 'pdf'
+          : (['text/plain', 'text/csv'].includes(mime) ? 'text'
+            : (spreadsheetExtension ? 'spreadsheet' : 'unsupported'))));
     const icon = previewKind === 'pdf' ? 'fa-file-pdf'
-      : (imageMime || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension) ? 'fa-file-image'
-        : (['doc', 'docx', 'odt'].includes(extension) ? 'fa-file-word'
-          : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
-            : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file'))));
+      : (previewKind === 'video' ? 'fa-file-video'
+        : (imageMime || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension) ? 'fa-file-image'
+          : (['doc', 'docx', 'odt'].includes(extension) ? 'fa-file-word'
+            : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
+              : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file')))));
     return { extension, mime, previewKind, icon };
   }
 
@@ -2198,6 +2226,12 @@
 
   function clearFilePreviewObjectUrl() {
     filePreviewRequest += 1;
+    const video = els.filePreviewContent?.querySelector('video');
+    if (video) {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    }
     if (filePreviewObjectUrl) URL.revokeObjectURL(filePreviewObjectUrl);
     filePreviewObjectUrl = '';
   }
@@ -2801,6 +2835,16 @@
         imageStageObserver.observe(stage);
       }
       updateImageTransform();
+    } else if (type.previewKind === 'video') {
+      const stage = makeElement('div', 'boards-preview-video-stage');
+      const video = makeElement('video', 'boards-preview-video');
+      video.controls = true;
+      video.playsInline = true;
+      video.preload = 'metadata';
+      video.setAttribute('aria-label', `Vista previa de ${name}`);
+      video.src = fileEndpoint(file, true);
+      stage.append(video);
+      els.filePreviewContent.append(stage);
     } else if (['pdf', 'text', 'spreadsheet'].includes(type.previewKind)) {
       const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
       els.filePreviewContent.append(loading);
@@ -2978,6 +3022,7 @@
   function fileCategory(file) {
     const mime = String(file.content_type || '').toLowerCase();
     const extension = String(file.name || '').split('.').pop().toLowerCase();
+    if (mime.startsWith('video/') || ['mp4', 'webm'].includes(extension)) return 'Videos';
     if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) return 'Imágenes';
     if (mime === 'application/pdf' || extension === 'pdf') return 'PDF';
     if (/word|document/.test(mime) || ['doc', 'docx', 'odt'].includes(extension)) return 'Documentos';
@@ -2998,7 +3043,7 @@
       setDetailStatus('itemFilesStatus', '0 archivos');
       return;
     }
-    const categories = ['PDF', 'Imágenes', 'Documentos', 'Hojas de cálculo', 'Presentaciones', 'Texto y datos', 'Otros archivos'];
+    const categories = ['PDF', 'Imágenes', 'Videos', 'Documentos', 'Hojas de cálculo', 'Presentaciones', 'Texto y datos', 'Otros archivos'];
     const grouped = new Map(categories.map((category) => [category, files.filter((file) => fileCategory(file) === category)]));
     const visibleCategories = categories.filter((category) => grouped.get(category).length);
     const allFilter = makeElement('button', 'boards-file-type-filter', 'Todos');
@@ -3387,8 +3432,8 @@
     if (file.size <= 0) return 'El archivo está vacío.';
     if (file.size > 500 * 1024 * 1024) return 'El archivo supera el límite de 500 MB.';
     const extension = String(file.name.split('.').pop() || '').toLowerCase();
-    const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
-    if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imagen, texto, CSV u Office.';
+    const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'webm', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+    if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imágenes, MP4, WebM, texto, CSV u Office.';
     return '';
   }
 
@@ -5880,7 +5925,7 @@
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
         team: 'La celda acepta texto o JSON; no hay catálogo de equipos disponible.',
-        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 500 MB; las imágenes conservan su formato original. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.',
+        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 500 MB; las imágenes conservan su formato original y los videos MP4/WebM se reproducen en la vista previa. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.',
         board_relation: 'La relación debe incluir un tablero o elemento al que tengas acceso.',
         subtasks: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.',
         dependency: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.'
@@ -6288,6 +6333,13 @@
       if (button) {
         els.boardSelect.value = button.dataset.navBoard;
         loadBoard(button.dataset.navBoard);
+        return;
+      }
+      const recycleFolder = event.target.closest('[data-recycle-type="folder"]');
+      if (recycleFolder) {
+        event.preventDefault();
+        event.stopPropagation();
+        runRecycleAction(recycleFolder);
         return;
       }
       const folderToggle = event.target.closest('[data-toggle-folder]');

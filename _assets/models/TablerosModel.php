@@ -112,6 +112,13 @@ class TablerosModel {
             $workspaceRoles[(string)$workspace['id']] = (string)($workspace['user_role'] ?? '');
             $workspaceVisibility[(string)$workspace['id']] = (string)($workspace['visibility'] ?? '');
         }
+        foreach ($folders as &$folder) {
+            $workspaceRole = $workspaceRoles[(string)$folder['workspace_id']] ?? '';
+            $isCreator = (int)($folder['created_by'] ?? 0) === $userId;
+            $folder['can_trash'] = $isAdmin || $workspaceRole === 'owner' || $isCreator;
+            $folder['can_archive'] = $isAdmin || in_array($workspaceRole, ['owner', 'editor'], true) || $isCreator;
+        }
+        unset($folder);
         $allowed = [];
         $markFolderPath = static function ($folder) use (&$allowed, $folderById): void {
             while ($folder) {
@@ -140,7 +147,7 @@ class TablerosModel {
         if (!in_array($type, ['workspace', 'folder', 'board', 'group', 'column', 'item', 'file'], true)) {
             throw new TablerosApiException('validation', 'El tipo de elemento no se puede eliminar.', 422);
         }
-        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['board', 'group', 'item'], true))) {
+        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['folder', 'board', 'group', 'item'], true))) {
             throw new TablerosApiException('validation', 'El tipo de elemento no se puede archivar.', 422);
         }
         $ids = $input['entity_ids'] ?? [$input['entity_id'] ?? null];
@@ -191,7 +198,8 @@ class TablerosModel {
                 if ($role === null || !in_array($role, $allowed, true)) throw new TablerosApiException('forbidden', 'No tienes permiso para eliminar este elemento.', 403);
             } elseif (!$boardId && !$this->access->hasGlobalPermission('admin')) {
                 $workspaceRole = $this->access->workspaceRole((int)$workspaceId);
-                if ($workspaceRole !== 'owner' && (int)($row['created_by'] ?? 0) !== $userId) throw new TablerosApiException('forbidden', 'Solo el propietario del espacio o un administrador puede eliminarlo.', 403);
+                $canManageFolderArchive = $kind === 'archive' && $type === 'folder' && $workspaceRole === 'editor';
+                if ($workspaceRole !== 'owner' && !$canManageFolderArchive && (int)($row['created_by'] ?? 0) !== $userId) throw new TablerosApiException('forbidden', 'Solo el propietario del espacio o un administrador puede eliminarlo.', 403);
             }
             $entryId = $this->insertId(
                 'INSERT INTO tb_trash_entry (entry_kind, entity_type, entity_id, entity_name, location, workspace_id, board_id, deleted_by, deleted_at, expires_at)
@@ -1477,7 +1485,7 @@ class TablerosModel {
     }
 
     /** The caller must authorize the returned board before streaming the path. */
-    public function getFileDownload(int $fileId, ?int $versionId = null): array {
+    public function getFileDownload(int $fileId, ?int $versionId = null, ?string $rangeHeader = null): array {
         $file = $this->one(
             'SELECT id, board_id, item_id, name, current_version_id FROM tb_file WHERE id = ? AND deleted_at IS NULL',
             [$fileId]
@@ -1501,11 +1509,30 @@ class TablerosModel {
         if (!in_array((string)$version['scan_status'], ['clean', 'unscanned'], true)) {
             throw new TablerosApiException('conflict', 'Esta versión no está disponible para descarga.', 409);
         }
+        $isVideo = in_array(strtolower((string)$version['content_type']), ['video/mp4', 'video/webm'], true);
+        if (!$isVideo) $rangeHeader = null;
+        $range = $rangeHeader === null ? null : $this->parseFileByteRange($rangeHeader, (int)$version['byte_size']);
+        $base = [
+            'file_id' => (int)$file['id'], 'board_id' => (int)$file['board_id'], 'item_id' => (int)$file['item_id'],
+            'version_id' => (int)$version['id'], 'version_number' => (int)$version['version_number'],
+            'name' => (string)$version['original_name'], 'content_type' => (string)$version['content_type'],
+            'byte_size' => (int)$version['byte_size'],
+        ];
+        if ($rangeHeader !== null && $range === false) return $base + ['range_unsatisfiable' => true];
         $key = (string)$version['storage_object_key'];
         if ((string)$version['storage_provider'] === 'nas_service') {
             $tempPath = tempnam(sys_get_temp_dir(), 'tableros-');
             if ($tempPath === false) throw new TablerosApiException('server', 'No se pudo preparar la descarga del archivo.', 500);
             try {
+                if ($range !== null) {
+                    [$rangeStart, $rangeEnd] = $range;
+                    $this->nasServiceRequest('GET', $key, null, null, null, $tempPath, $rangeEnd - $rangeStart + 1, [$rangeStart, $rangeEnd], (int)$version['byte_size']);
+                    $actualSize = filesize($tempPath);
+                    if ($actualSize !== $rangeEnd - $rangeStart + 1) {
+                        throw new TablerosApiException('server', 'El rango recibido del almacenamiento no coincide con lo solicitado.', 502);
+                    }
+                    return $base + ['path' => $tempPath, 'temporary' => true, 'range' => $range];
+                }
                 $this->nasServiceRequest('GET', $key, null, null, null, $tempPath, (int)$version['byte_size']);
                 $actualSize = filesize($tempPath);
                 $actualHash = hash_file('sha256', $tempPath);
@@ -1513,24 +1540,29 @@ class TablerosModel {
                     || !hash_equals(strtolower((string)$version['sha256_hex']), strtolower($actualHash))) {
                     throw new TablerosApiException('server', 'El archivo almacenado no coincide con sus datos de integridad.', 500);
                 }
-                return [
-                    'file_id' => (int)$file['id'], 'board_id' => (int)$file['board_id'], 'item_id' => (int)$file['item_id'],
-                    'version_id' => (int)$version['id'], 'version_number' => (int)$version['version_number'],
-                    'name' => (string)$version['original_name'], 'content_type' => (string)$version['content_type'],
-                    'byte_size' => (int)$version['byte_size'], 'path' => $tempPath, 'temporary' => true,
-                ];
+                return $base + ['path' => $tempPath, 'temporary' => true];
             } catch (Throwable $e) { @unlink($tempPath); throw $e; }
         }
         $path = $this->privateObjectPath($key);
         if (!is_file($path) || !is_readable($path)) {
             throw new TablerosApiException('not_found', 'El archivo no está disponible en el almacenamiento privado.', 404);
         }
-        return [
-            'file_id' => (int)$file['id'], 'board_id' => (int)$file['board_id'], 'item_id' => (int)$file['item_id'],
-            'version_id' => (int)$version['id'], 'version_number' => (int)$version['version_number'],
-            'name' => (string)$version['original_name'], 'content_type' => (string)$version['content_type'],
-            'byte_size' => (int)$version['byte_size'], 'path' => $path,
-        ];
+        return $base + ['path' => $path, 'range' => $range];
+    }
+
+    /** Returns [start, end] or false for malformed/unsatisfiable single byte ranges. */
+    private function parseFileByteRange(string $header, int $size) {
+        if ($size <= 0 || !preg_match('/^bytes=(\d*)-(\d*)$/', trim($header), $matches)
+            || ($matches[1] === '' && $matches[2] === '')) return false;
+        if ($matches[1] === '') {
+            $suffix = (int)$matches[2];
+            if ($suffix <= 0) return false;
+            return [max(0, $size - $suffix), $size - 1];
+        }
+        $start = (int)$matches[1];
+        $end = $matches[2] === '' ? $size - 1 : (int)$matches[2];
+        if ($start >= $size || $end < $start) return false;
+        return [$start, min($end, $size - 1)];
     }
 
     public function createBoard(int $userId, array $input): array {
@@ -3185,6 +3217,8 @@ class TablerosModel {
             'jpeg' => ['image/jpeg'],
             'gif' => ['image/gif'],
             'webp' => ['image/webp'],
+            'mp4' => ['video/mp4'],
+            'webm' => ['video/webm'],
             'txt' => ['text/plain'],
             'csv' => ['text/csv', 'text/plain', 'application/vnd.ms-excel'],
             'doc' => ['application/msword', 'application/x-ole-storage'],
@@ -3288,7 +3322,7 @@ class TablerosModel {
     }
 
     /** Authenticated server-to-server request. The browser never receives this token. */
-    private function nasServiceRequest(string $method, string $objectKey, ?string $uploadPath = null, ?int $size = null, ?string $contentType = null, ?string $downloadPath = null, ?int $downloadLimit = null): string {
+    private function nasServiceRequest(string $method, string $objectKey, ?string $uploadPath = null, ?int $size = null, ?string $contentType = null, ?string $downloadPath = null, ?int $downloadLimit = null, ?array $downloadRange = null, ?int $expectedTotalSize = null): string {
         $url = rtrim((string)getenv('TABLEROS_STORAGE_SERVICE_URL'), '/');
         $token = (string)getenv('TABLEROS_STORAGE_SERVICE_TOKEN');
         if ($url === '' || strlen($token) < 32) throw new TablerosApiException('server', 'Falta configurar el servicio de almacenamiento Tableros con un token de al menos 32 caracteres.', 500);
@@ -3306,6 +3340,8 @@ class TablerosModel {
         if ($handle === false) throw new TablerosApiException('server', 'No se pudo iniciar la conexión al almacenamiento Tableros.', 500);
         $headers = ['Authorization: Bearer ' . $token];
         $output = null;
+        $responseContentRange = null;
+        $written = 0;
         try {
             curl_setopt($handle, CURLOPT_CUSTOMREQUEST, $method);
             curl_setopt($handle, CURLOPT_HTTPHEADER, $headers);
@@ -3323,9 +3359,13 @@ class TablerosModel {
                 curl_setopt($handle, CURLOPT_INFILESIZE, $size);
             } else $input = null;
             if ($method === 'GET') {
+                if ($downloadRange !== null) {
+                    [$rangeStart, $rangeEnd] = $downloadRange;
+                    $headers[] = 'Range: bytes=' . $rangeStart . '-' . $rangeEnd;
+                    curl_setopt($handle, CURLOPT_HTTPHEADER, $headers);
+                }
                 $output = fopen((string)$downloadPath, 'wb');
                 if (!is_resource($output)) throw new TablerosApiException('server', 'No se pudo preparar la descarga temporal.', 500);
-                $written = 0;
                 curl_setopt($handle, CURLOPT_WRITEFUNCTION, static function ($curl, string $chunk) use ($output, &$written, $downloadLimit): int {
                     $length = strlen($chunk);
                     if ($downloadLimit === null || $length > $downloadLimit - $written) return 0;
@@ -3334,6 +3374,10 @@ class TablerosModel {
                     $written += $count;
                     return $count;
                 });
+                curl_setopt($handle, CURLOPT_HEADERFUNCTION, static function ($curl, string $line) use (&$responseContentRange): int {
+                    if (stripos($line, 'Content-Range:') === 0) $responseContentRange = trim(substr($line, strlen('Content-Range:')));
+                    return strlen($line);
+                });
             } else curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
             $response = curl_exec($handle);
             $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
@@ -3341,6 +3385,14 @@ class TablerosModel {
             if (is_resource($output)) { fclose($output); $output = null; }
             if ($response === false || $status < 200 || $status >= 300) {
                 throw new TablerosApiException('server', 'El servicio de almacenamiento Tableros no pudo completar la operación.', 502);
+            }
+            if ($method === 'GET' && $downloadRange !== null) {
+                [$rangeStart, $rangeEnd] = $downloadRange;
+                $expectedRange = 'bytes ' . $rangeStart . '-' . $rangeEnd . '/' . (int)$expectedTotalSize;
+                if ($status !== 206 || $responseContentRange !== $expectedRange
+                    || $written !== $rangeEnd - $rangeStart + 1) {
+                    throw new TablerosApiException('server', 'El servicio de almacenamiento devolvió un rango incompleto o no válido.', 502);
+                }
             }
             return is_string($response) ? $response : '';
         } finally {

@@ -289,6 +289,7 @@ class tableros_api {
     }
 
     public function download_file($id): void {
+        $file = null;
         try {
             $userId = $this->currentUserId();
             if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
@@ -302,23 +303,51 @@ class tableros_api {
             $boardId = $this->model->getFileBoardId($fileId);
             $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
-            $file = $this->model->getFileDownload($fileId, $versionId);
+            $rangeHeader = ($_GET['preview'] ?? '') === '1' && isset($_SERVER['HTTP_RANGE'])
+                ? (string)$_SERVER['HTTP_RANGE'] : null;
+            $file = $this->model->getFileDownload($fileId, $versionId, $rangeHeader);
+            $contentType = strtolower((string)$file['content_type']);
+            $isVideo = in_array($contentType, ['video/mp4', 'video/webm'], true);
+            $previewableTypes = ['application/pdf', 'image/webp', 'image/jpeg', 'image/png', 'image/gif', 'text/plain', 'text/csv', 'video/mp4', 'video/webm'];
+            $inlinePreview = ($_GET['preview'] ?? '') === '1' && in_array($contentType, $previewableTypes, true);
+            $byteSize = (int)$file['byte_size'];
+            $range = $isVideo && $inlinePreview
+                ? (!empty($file['range_unsatisfiable']) ? false : ($file['range'] ?? null)) : null;
+            if ($isVideo && $inlinePreview && $range === false) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $byteSize);
+                header('Accept-Ranges: bytes');
+                header('Content-Length: 0');
+                header('X-Content-Type-Options: nosniff');
+                if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+                if (!empty($file['temporary']) && is_file($file['path'])) @unlink($file['path']);
+                exit;
+            }
             header('Content-Type: ' . $file['content_type']);
-            header('Content-Length: ' . (int)$file['byte_size']);
-            $previewableTypes = ['application/pdf', 'image/webp', 'image/jpeg', 'image/png', 'image/gif', 'text/plain', 'text/csv'];
-            $inlinePreview = ($_GET['preview'] ?? '') === '1' && in_array(strtolower((string)$file['content_type']), $previewableTypes, true);
             header('Content-Disposition: ' . $this->contentDisposition((string)$file['name'], $inlinePreview));
             header('X-Content-Type-Options: nosniff');
             header('Cache-Control: private, no-store, max-age=0');
+            if ($isVideo && $inlinePreview) header('Accept-Ranges: bytes');
             if (session_status() === PHP_SESSION_ACTIVE) {
                 session_write_close();
             }
-            readfile($file['path']);
+            if ($range !== null) {
+                [$start, $end] = $range;
+                http_response_code(206);
+                header('Content-Range: bytes ' . $start . '-' . $end . '/' . $byteSize);
+                header('Content-Length: ' . ($end - $start + 1));
+                $this->streamFileRange((string)$file['path'], $start, $end - $start + 1);
+            } else {
+                header('Content-Length: ' . $byteSize);
+                readfile($file['path']);
+            }
             if (!empty($file['temporary']) && is_file($file['path'])) @unlink($file['path']);
             exit;
         } catch (TablerosApiException $e) {
+            if (is_array($file) && !empty($file['temporary']) && is_file((string)$file['path'])) @unlink((string)$file['path']);
             $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
         } catch (Throwable $e) {
+            if (is_array($file) && !empty($file['temporary']) && is_file((string)$file['path'])) @unlink((string)$file['path']);
             error_log('Tableros file download error: ' . $e->getMessage());
             $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al descargar el archivo.']);
         }
@@ -674,6 +703,26 @@ class tableros_api {
             $this->requireBoardRole($boardId, ['owner', 'designer']);
             return $this->model->shareBoard($boardId, $userId, $input);
         });
+    }
+
+    /** Streams at most the requested byte count without buffering the complete media file. */
+    private function streamFileRange(string $path, int $start, int $length): void {
+        $stream = @fopen($path, 'rb');
+        if (!is_resource($stream) || fseek($stream, $start) !== 0) {
+            if (is_resource($stream)) fclose($stream);
+            throw new TablerosApiException('server', 'No se pudo leer el rango solicitado del archivo.', 500);
+        }
+        try {
+            $remaining = $length;
+            while ($remaining > 0 && !feof($stream)) {
+                $chunk = fread($stream, min(1024 * 1024, $remaining));
+                if ($chunk === false || $chunk === '') break;
+                echo $chunk;
+                $remaining -= strlen($chunk);
+            }
+        } finally {
+            fclose($stream);
+        }
     }
 
     public function update_board_visibility(): void {
