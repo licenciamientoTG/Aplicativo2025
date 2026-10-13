@@ -5044,22 +5044,67 @@
       const header = makeElement('header', 'boards-kanban-lane-heading');
       header.append(makeElement('span', 'boards-kanban-marker'), makeElement('h3', '', lane.name), makeElement('span', 'boards-kanban-count', laneItems.length));
       const cardList = makeElement('div', 'boards-kanban-cards');
+      cardList.dataset.kanbanLane = lane.key;
+      cardList.dataset.kanbanColumn = column ? String(column.id) : '';
       if (!laneItems.length) cardList.append(makeElement('p', 'boards-kanban-empty', 'Sin elementos'));
       laneItems.forEach((item) => {
         const card = makeElement('article', 'boards-kanban-card');
+        card.dataset.kanbanItem = String(item.id);
+        card.draggable = canEditBoard() && item.parent_item_id == null;
         card.append(createItemNameControl(item, 'boards-kanban-card-title'));
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
         if (column && group) card.append(makeElement('p', 'boards-kanban-card-group', group.name));
         const fields = makeElement('dl', 'boards-kanban-card-fields');
-        orderedColumns().forEach((field) => {
+        const visibleFields = orderedColumns().filter((field) => {
           if (column && String(field.id) === String(column.id)) return;
           const value = getCellValue(item, field);
-          if (value === null || value === '') return;
+          return value !== null && value !== '' && columnType(field) !== 'file';
+        }).slice(0, 3);
+        visibleFields.forEach((field) => {
+          const value = getCellValue(item, field);
           const entry = makeElement('div', 'boards-kanban-card-field');
           entry.append(makeElement('dt', '', field.name || 'Dato'), makeElement('dd', '', stringifyValue(value)));
           fields.append(entry);
         });
         if (fields.childElementCount) card.append(fields);
+        const files = filesForItem(item);
+        if (files.length) {
+          const evidence = makeElement('div', 'boards-kanban-evidence');
+          evidence.setAttribute('aria-label', `Evidencia y archivos: ${files.length}`);
+          files.slice(0, 3).forEach((file) => {
+            const safeToPreview = ['clean', 'unscanned'].includes(String(file.scan_status || '').toLowerCase());
+            const chip = makeElement('button', 'boards-kanban-file');
+            chip.type = 'button';
+            chip.title = safeToPreview ? `Vista previa: ${file.name || 'Archivo'}` : `${file.name || 'Archivo'} · vista previa no disponible`;
+            chip.setAttribute('aria-label', chip.title);
+            chip.disabled = !safeToPreview;
+            const info = fileTypeInfo(file);
+            if (info.previewKind === 'image' && safeToPreview) {
+              const thumbnail = document.createElement('img');
+              thumbnail.src = fileEndpoint(file, true);
+              thumbnail.alt = '';
+              thumbnail.loading = 'lazy';
+              thumbnail.addEventListener('error', () => {
+                thumbnail.remove();
+                chip.classList.add('has-file-icon');
+                const fallbackIcon = makeElement('i', `fa-solid ${info.icon}`, '');
+                fallbackIcon.setAttribute('aria-hidden', 'true');
+                chip.prepend(fallbackIcon);
+              }, { once: true });
+              chip.append(thumbnail);
+            }
+            if (!chip.childElementCount) {
+              const icon = makeElement('i', `fa-solid ${info.icon}`, '');
+              icon.setAttribute('aria-hidden', 'true');
+              chip.append(icon);
+            }
+            chip.append(makeElement('span', '', file.name || 'Archivo'));
+            if (safeToPreview) chip.addEventListener('click', () => openFilePreview(file, item));
+            evidence.append(chip);
+          });
+          if (files.length > 3) evidence.append(makeElement('span', 'boards-kanban-file-more', `+${files.length - 3}`));
+          card.append(evidence);
+        }
         const moveControl = makeElement('div', 'boards-kanban-card-action');
         if (column && ['status', 'dropdown'].includes(columnType(column))) {
           moveControl.append(makeElement('span', '', 'Estado'));
@@ -5076,7 +5121,67 @@
       board.append(laneElement);
     });
     els.boardRendererArea.append(board);
+    board.addEventListener('dragstart', (event) => {
+      const card = event.target.closest('[data-kanban-item]');
+      if (!card || !card.draggable) { event.preventDefault(); return; }
+      state.draggedItemId = card.dataset.kanbanItem;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', state.draggedItemId);
+      card.classList.add('is-dragging');
+    });
+    board.addEventListener('dragover', (event) => {
+      const lane = event.target.closest('[data-kanban-lane]');
+      if (!lane || !state.draggedItemId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      lane.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
+    });
+    board.addEventListener('dragleave', (event) => {
+      const lane = event.target.closest('[data-kanban-lane]');
+      if (lane && (!event.relatedTarget || !lane.contains(event.relatedTarget))) lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+    });
+    board.addEventListener('drop', async (event) => {
+      const lane = event.target.closest('[data-kanban-lane]');
+      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
+      if (!lane || !item) return;
+      event.preventDefault();
+      lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+      state.suppressItemClickUntil = Date.now() + 800;
+      const targetColumn = lane.dataset.kanbanColumn
+        ? state.columns.find((candidate) => String(candidate.id) === lane.dataset.kanbanColumn)
+        : null;
+      if (targetColumn) await updateItemCell(item, targetColumn, lane.dataset.kanbanLane);
+      else await moveItemToGroup(item, lane.dataset.kanbanLane);
+    });
+    board.addEventListener('dragend', () => {
+      state.draggedItemId = '';
+      board.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => element.classList.remove('is-dragging', 'is-drop-target'));
+    });
     updateItemCount(items.length);
+  }
+
+  async function updateItemCell(item, column, value) {
+    if (!item || !column || !canEditBoard()) return;
+    const previous = getCellValue(item, column);
+    if (String(previous ?? '') === String(value ?? '')) return;
+    try {
+      const result = await post('/update_cell', {
+        board_id: state.board.id,
+        item_id: item.id,
+        column_id: column.id,
+        value,
+        version: item.version
+      });
+      item.version = result.data?.version ?? item.version;
+      if (!item.cells) item.cells = {};
+      item.cells[String(column.id)] = value;
+      renderActiveView();
+      setNotice('Elemento actualizado.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error, 'No se pudo actualizar el elemento.'), 'error');
+      if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
+      else renderActiveView();
+    }
   }
 
   function renderPanel() {
