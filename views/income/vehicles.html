@@ -3,6 +3,76 @@
 {% block mycss %}{% endblock %}
 {% block menutitle %}Vehículos{% endblock %}
 {% block content %}
+<div class="row">
+    <div class="col-sm-6 col-xl-3 d-flex">
+        <div class="card shadow flex-fill">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Total vehículos</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="stat text-primary">
+                            <i data-feather="truck"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="mt-1 mb-0" id="stat-vehiculos-total">0</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3 d-flex">
+        <div class="card shadow flex-fill">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Crédito</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="stat text-info">
+                            <i data-feather="credit-card"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="mt-1 mb-0" id="stat-vehiculos-credito">0</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3 d-flex">
+        <div class="card shadow flex-fill">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Débito</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="stat text-success">
+                            <i data-feather="dollar-sign"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="mt-1 mb-0" id="stat-vehiculos-debito">0</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3 d-flex">
+        <div class="card shadow flex-fill">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Suspendidos</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="stat text-danger">
+                            <i data-feather="alert-triangle"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="mt-1 mb-0" id="stat-vehiculos-suspendidos">0</h2>
+            </div>
+        </div>
+    </div>
+</div>
 <div class="card">
     <div class="card-header pb-0">
         <div class="card-actions float-end">
