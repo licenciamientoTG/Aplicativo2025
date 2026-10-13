@@ -55,6 +55,7 @@
   const csrfToken = app.dataset.csrfToken || '';
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
+  const pageMode = app.dataset.pageMode || 'boards';
   let noticeTimer = 0;
   let filePreviewObjectUrl = '';
   let filePreviewRequest = 0;
@@ -67,6 +68,10 @@
     workspaceSelect: document.getElementById('workspaceSelect'),
     boardLoading: document.getElementById('boardLoading'),
     boardNotice: document.getElementById('boardNotice'),
+    boardVisibilityManager: document.getElementById('boardVisibilityManager'),
+    boardVisibilityStatus: document.getElementById('boardVisibilityStatus'),
+    boardVisibilityList: document.getElementById('boardVisibilityList'),
+    boardVisibilityEmpty: document.getElementById('boardVisibilityEmpty'),
     boardsEmpty: document.getElementById('boardsEmpty'),
     boardsEmptyText: document.getElementById('boardsEmptyText'),
     boardWorkspace: document.getElementById('boardWorkspace'),
@@ -801,6 +806,7 @@
     showLoading(true);
     els.boardWorkspace.hidden = true;
     els.boardsEmpty.hidden = true;
+    if (els.boardVisibilityManager) els.boardVisibilityManager.hidden = pageMode !== 'manage';
     try {
       const structureResult = await request('/structure');
       const structure = structureResult.data || {};
@@ -809,6 +815,11 @@
       state.folders = Array.isArray(structure.folders) ? structure.folders : [];
       state.selectedWorkspaceId = String(state.boards[0]?.workspace_id || state.workspaces[0]?.id || '');
       renderBoardOptions();
+      if (pageMode === 'manage') {
+        renderBoardVisibilityManager();
+        showLoading(false);
+        return;
+      }
       const routeId = getRouteBoardId();
       const requestedId = app.dataset.initialBoardId || routeId;
       const target = state.boards.find((board) => String(board.id) === String(requestedId)) || state.boards[0];
@@ -822,9 +833,122 @@
       }
     } catch (error) {
       showLoading(false);
+      if (pageMode === 'manage') {
+        els.boardVisibilityStatus.textContent = errorMessage(error, 'No se pudieron cargar los tableros que puedes administrar.');
+        els.boardVisibilityList.replaceChildren();
+        els.boardVisibilityEmpty.hidden = true;
+        return;
+      }
       els.boardSelect.disabled = true;
       setNotice(errorMessage(error, 'No se pudieron cargar los tableros.'), 'error');
       showEmptyState();
+    }
+  }
+
+  const boardVisibilityOptions = [
+    ['private', 'Privado · solo personas invitadas'],
+    ['workspace', 'Espacio de trabajo · personas con acceso al espacio'],
+    ['organization', 'Organización · usuarios internos con acceso a Tableros']
+  ];
+
+  function renderBoardVisibilityManager() {
+    const manageableBoards = state.boards.filter((board) => {
+      const role = String(board.role || board.user_role || '').toLowerCase();
+      return role === 'owner' || role === 'designer';
+    });
+    const list = els.boardVisibilityList;
+    list.replaceChildren();
+    els.boardVisibilityEmpty.hidden = manageableBoards.length > 0;
+    if (!manageableBoards.length) {
+      els.boardVisibilityStatus.textContent = '';
+      return;
+    }
+    els.boardVisibilityStatus.textContent = `${manageableBoards.length} tablero${manageableBoards.length === 1 ? '' : 's'} que puedes administrar.`;
+    manageableBoards.forEach((board) => {
+      const row = document.createElement('article');
+      row.className = 'boards-visibility-row';
+      row.setAttribute('role', 'listitem');
+      const identity = document.createElement('div');
+      identity.className = 'boards-visibility-identity';
+      const title = document.createElement('h4');
+      title.textContent = board.name || 'Tablero sin nombre';
+      const workspace = document.createElement('p');
+      workspace.textContent = board.workspace_name || 'Espacio de trabajo';
+      identity.append(title, workspace);
+
+      const control = document.createElement('div');
+      control.className = 'boards-visibility-control';
+      const label = document.createElement('label');
+      label.className = 'boards-field-label';
+      const selectId = `boardVisibility-${String(board.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+      label.htmlFor = selectId;
+      label.textContent = 'Visibilidad';
+      const select = document.createElement('select');
+      select.id = selectId;
+      select.className = 'form-select';
+      select.dataset.boardVisibilitySelect = String(board.id);
+      boardVisibilityOptions.forEach(([value, text]) => select.add(new Option(text, value)));
+      select.value = boardVisibilityOptions.some(([value]) => value === board.visibility) ? board.visibility : 'private';
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn boards-button-primary';
+      save.dataset.saveBoardVisibility = String(board.id);
+      save.disabled = select.value === board.visibility;
+      save.textContent = 'Guardar';
+      control.append(label, select, save);
+      row.append(identity, control);
+      list.append(row);
+    });
+  }
+
+  function boardVisibilityImpact(visibility) {
+    if (visibility === 'workspace') return 'Las personas con acceso al espacio de trabajo podrán acceder al tablero con el nivel que les corresponda.';
+    if (visibility === 'organization') return 'Los usuarios internos con acceso al módulo Tableros podrán consultar el tablero. Las invitaciones directas conservarán el rol asignado.';
+    return 'Se quitará el acceso heredado del espacio o de la organización. Las invitaciones directas permanecerán.';
+  }
+
+  async function saveBoardVisibility(boardId, button) {
+    const select = [...els.boardVisibilityList.querySelectorAll('[data-board-visibility-select]')].find((entry) => entry.dataset.boardVisibilitySelect === String(boardId));
+    const board = state.boards.find((entry) => String(entry.id) === String(boardId));
+    if (!select || !board || select.value === board.visibility) return;
+    const visibility = select.value;
+    const visibilityLabel = boardVisibilityOptions.find(([value]) => value === visibility)?.[1] || visibility;
+    const confirmed = window.confirm(`Cambiar la visibilidad de «${board.name || 'Tablero'}» a «${visibilityLabel}»?\n\n${boardVisibilityImpact(visibility)}\n\nLas invitaciones directas se conservan. ¿Deseas continuar?`);
+    if (!confirmed) {
+      select.value = board.visibility;
+      button.disabled = true;
+      return;
+    }
+    select.disabled = true;
+    button.disabled = true;
+    button.textContent = 'Guardando…';
+    els.boardVisibilityStatus.textContent = `Guardando la visibilidad de ${board.name || 'el tablero'}…`;
+    try {
+      await post('/update_board_visibility', { board_id: board.id, visibility });
+      board.visibility = visibility;
+      if (state.board && String(state.board.id) === String(boardId)) state.board.visibility = visibility;
+      renderBoardNav();
+      let refreshError = null;
+      try {
+        const result = await request('/structure');
+        const structure = result.data || {};
+        state.boards = Array.isArray(structure.boards) ? structure.boards : [];
+        state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
+        state.folders = Array.isArray(structure.folders) ? structure.folders : [];
+        state.selectedWorkspaceId = String(state.selectedWorkspaceId || state.boards[0]?.workspace_id || '');
+      } catch (error) { refreshError = error; }
+      renderBoardOptions();
+      renderBoardNav();
+      renderBoardVisibilityManager();
+      els.boardVisibilityStatus.textContent = refreshError
+        ? `Visibilidad actualizada para ${board.name || 'el tablero'}, pero no se pudo recargar la lista: ${errorMessage(refreshError)}`
+        : `Visibilidad actualizada para ${board.name || 'el tablero'}.`;
+    } catch (error) {
+      select.disabled = false;
+      select.value = board.visibility;
+      button.disabled = true;
+      button.textContent = 'Guardar';
+      els.boardVisibilityStatus.textContent = errorMessage(error, 'No se pudo actualizar la visibilidad del tablero.');
     }
   }
 
@@ -6377,6 +6501,17 @@
   }
 
   function setupExtendedEvents() {
+    els.boardVisibilityList?.addEventListener('change', (event) => {
+      const select = event.target.closest('[data-board-visibility-select]');
+      if (!select) return;
+      const board = state.boards.find((entry) => String(entry.id) === select.dataset.boardVisibilitySelect);
+      const save = [...els.boardVisibilityList.querySelectorAll('[data-save-board-visibility]')].find((button) => button.dataset.saveBoardVisibility === select.dataset.boardVisibilitySelect);
+      if (save) save.disabled = !board || select.value === board.visibility;
+    });
+    els.boardVisibilityList?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-save-board-visibility]');
+      if (button) saveBoardVisibility(button.dataset.saveBoardVisibility, button);
+    });
     els.filePreviewDialog.addEventListener('close', () => {
       clearFilePreviewObjectUrl();
       if (imageStageObserver) {

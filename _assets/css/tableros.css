@@ -748,6 +748,29 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-page-title { color: #f4f4fb; font-size: 1.31rem; font-weight: 700; letter-spacing: -.025em; }
 .boards-page-intro { margin-top: 2px; color: #a3a7bf; font-size: .79rem; }
 .boards-picker-wrap { min-width: 0; }
+.boards-app[data-page-mode="manage"] .boards-main { display: none; }
+.boards-visibility-manager { padding: 18px; border: 1px solid #393c5b; border-radius: 10px; background: #222540; }
+.boards-visibility-intro { margin-bottom: 14px; }
+.boards-visibility-intro h3 { margin: 0 0 5px; color: #f1f1fa; font-size: 1rem; font-weight: 650; }
+.boards-visibility-intro p { max-width: 760px; margin: 0; color: #a9acc5; font-size: .8rem; line-height: 1.5; }
+.boards-visibility-list { display: grid; gap: 9px; }
+.boards-visibility-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 14px; border: 1px solid #393c5b; border-radius: 7px; background: #1a1d36; }
+.boards-visibility-identity { min-width: 0; }
+.boards-visibility-identity h4 { overflow: hidden; margin: 0; color: #f1f1fa; font-size: .88rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.boards-visibility-identity p { margin: 4px 0 0; color: #a9acc5; font-size: .74rem; }
+.boards-visibility-control { display: grid; flex: 0 1 470px; grid-template-columns: minmax(180px, 1fr) auto; align-items: end; gap: 8px; }
+.boards-visibility-control .boards-field-label { grid-column: 1 / -1; margin: 0; }
+.boards-visibility-control .form-select { min-height: 36px; border-color: #484c6b; color: #f1f1fa; background-color: #252844; font-size: .76rem; }
+.boards-visibility-empty { margin-top: 10px; padding: 34px 20px; border: 1px dashed #484c6b; border-radius: 7px; color: #a9acc5; text-align: center; }
+.boards-visibility-empty > i { color: #8faeff; font-size: 1.35rem; }
+.boards-visibility-empty h4 { margin: 10px 0 5px; color: #f1f1fa; font-size: .92rem; }
+.boards-visibility-empty p { margin: 0; font-size: .78rem; }
+.boards-visibility-manager .boards-detail-status { margin-bottom: 8px; }
+@media (max-width: 767.98px) {
+  .boards-visibility-manager { padding: 13px; }
+  .boards-visibility-row { align-items: stretch; flex-direction: column; gap: 11px; }
+  .boards-visibility-control { flex-basis: auto; }
+}
 .boards-picker-wrap .form-select,
 .boards-saved-view-controls .form-select,
 .boards-view-field .form-select,

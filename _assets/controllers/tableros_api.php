@@ -676,6 +676,14 @@ class tableros_api {
         });
     }
 
+    public function update_board_visibility(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            return $this->model->updateBoardVisibility($boardId, $userId, $input);
+        });
+    }
+
     public function members(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');

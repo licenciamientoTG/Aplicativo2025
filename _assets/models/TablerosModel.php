@@ -2268,6 +2268,47 @@ class TablerosModel {
         });
     }
 
+    public function updateBoardVisibility(int $boardId, int $userId, array $input): array {
+        if (!is_string($input['visibility'] ?? null)) {
+            throw new TablerosApiException('validation', 'La visibilidad del tablero no es válida.', 422);
+        }
+        $visibility = strtolower(trim($input['visibility']));
+        if (!in_array($visibility, ['private', 'workspace', 'organization'], true)) {
+            throw new TablerosApiException('validation', 'La visibilidad del tablero no está permitida.', 422);
+        }
+
+        return $this->transaction(function () use ($boardId, $userId, $visibility): array {
+            $board = $this->one(
+                'SELECT created_by, visibility FROM tb_board WITH (UPDLOCK, HOLDLOCK)
+                 WHERE id = ? AND deleted_at IS NULL',
+                [$boardId]
+            );
+            if (!$board) {
+                throw new TablerosApiException('not_found', 'No se encontró el tablero.', 404);
+            }
+            $member = $this->one(
+                'SELECT TOP (1) role FROM tb_board_member WITH (UPDLOCK, HOLDLOCK)
+                 WHERE board_id = ? AND user_id = ? AND deleted_at IS NULL ORDER BY id DESC',
+                [$boardId, $userId]
+            );
+            $isOwner = (int)$board['created_by'] === $userId;
+            $isDesigner = strtolower((string)($member['role'] ?? '')) === 'designer';
+            $isAdmin = $this->access->hasGlobalPermission('admin');
+            if (!$isOwner && !$isDesigner && !$isAdmin) {
+                throw new TablerosApiException('forbidden', 'Solo el propietario o un diseñador puede cambiar la visibilidad del tablero.', 403);
+            }
+            $previousVisibility = (string)$board['visibility'];
+            if ($previousVisibility !== $visibility) {
+                $this->execute('UPDATE tb_board SET visibility = ?, updated_at = GETDATE() WHERE id = ?', [$visibility, $boardId]);
+                $this->writeActivity($boardId, null, $userId, 'board.visibility_changed', [
+                    'from' => $previousVisibility,
+                    'to' => $visibility,
+                ]);
+            }
+            return ['id' => $boardId, 'visibility' => $visibility];
+        });
+    }
+
     public function createView(int $boardId, int $userId, array $input): array {
         $name = $this->requiredString($input, 'name', 120);
         if (!is_string($input['view_type'] ?? 'table')) {

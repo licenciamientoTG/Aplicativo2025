@@ -10,7 +10,8 @@
       </a>
       <div class="tableros-shell-product" aria-label="Módulo Tableros"><span>Tableros</span></div>
       <nav class="tableros-shell-nav">
-        <a class="tableros-shell-link is-active" href="/tableros/index" aria-label="Tableros" title="Tableros"><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>Tableros</span></a>
+        <a class="tableros-shell-link{% if not manage_boards|default(false) %} is-active{% endif %}" href="/tableros/index" aria-label="Tableros" title="Tableros"{% if not manage_boards|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>Tableros</span></a>
+        <a class="tableros-shell-link{% if manage_boards|default(false) %} is-active{% endif %}" href="/tableros/manage" aria-label="Gestionar tableros" title="Gestionar tableros"{% if manage_boards|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Gestionar tableros</span></a>
       </nav>
     </div>
   </aside>
@@ -40,16 +41,17 @@
   data-csrf-token="{{ csrf_token|e('html_attr') }}"
   data-can-create="{{ can_create ? '1' : '0' }}"
   data-can-admin="{{ can_admin ? '1' : '0' }}"
-  data-initial-board-id="{{ initial_board_id|default('')|e('html_attr') }}">
+  data-initial-board-id="{{ initial_board_id|default('')|e('html_attr') }}"
+  data-page-mode="{{ manage_boards|default(false) ? 'manage' : 'boards' }}">
   <header class="boards-page-heading">
     <div class="boards-page-identity">
       <span class="boards-page-icon" aria-hidden="true"><i class="fa-solid fa-table-cells-large"></i></span>
       <div>
-        <h2 class="boards-page-title">Tableros de trabajo</h2>
-        <p class="boards-page-intro">Organiza el trabajo y sigue cada avance en un solo lugar.</p>
+        <h2 class="boards-page-title">{{ manage_boards|default(false) ? 'Gestionar tableros' : 'Tableros de trabajo' }}</h2>
+        <p class="boards-page-intro">{{ manage_boards|default(false) ? 'Administra quién puede encontrar y consultar tus tableros.' : 'Organiza el trabajo y sigue cada avance en un solo lugar.' }}</p>
       </div>
     </div>
-    <div class="boards-picker-wrap">
+    <div class="boards-picker-wrap"{% if manage_boards|default(false) %} hidden{% endif %}>
       <label class="visually-hidden" for="boardSelect">Seleccionar tablero</label>
       <select id="boardSelect" class="form-select" aria-label="Seleccionar tablero" disabled hidden>
         <option value="">Cargando tableros…</option>
@@ -57,6 +59,20 @@
       {% if can_create %}<button type="button" class="btn boards-button-primary" id="openCreateBoard">Nuevo tablero</button>{% endif %}
     </div>
   </header>
+
+  <section id="boardVisibilityManager" class="boards-visibility-manager" aria-labelledby="boardVisibilityTitle" hidden>
+    <div class="boards-visibility-intro">
+      <h3 id="boardVisibilityTitle">Visibilidad de tableros</h3>
+      <p>La visibilidad controla el acceso heredado. Las invitaciones directas a un tablero se conservan aunque cambies esta opción.</p>
+    </div>
+    <div id="boardVisibilityStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando tableros que puedes administrar…</div>
+    <div id="boardVisibilityList" class="boards-visibility-list" role="list" aria-label="Tableros que puedes administrar"></div>
+    <div id="boardVisibilityEmpty" class="boards-visibility-empty" hidden>
+      <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i>
+      <h4>No hay tableros para administrar</h4>
+      <p>Solo aparecen aquí los tableros en los que tienes el rol de propietario o diseñador.</p>
+    </div>
+  </section>
 
   <div class="boards-main">
     <aside id="boardNavigator" class="boards-navigator" aria-label="Navegación de tableros">
