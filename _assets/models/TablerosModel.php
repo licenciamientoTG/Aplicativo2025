@@ -990,63 +990,31 @@ class TablerosModel {
         if ($width < 1 || $height < 1 || $width > 4096 || $height > 4096 || $width * $height > 12000000) {
             throw new TablerosApiException('validation', 'Las dimensiones de la imagen no son válidas.', 422);
         }
-        if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
-            throw new TablerosApiException('server', 'El servidor necesita GD con soporte WebP para guardar stickers.', 500);
-        }
-        $bytes = file_get_contents($source);
-        $image = is_string($bytes) ? @imagecreatefromstring($bytes) : false;
-        unset($bytes);
-        if (!$image) throw new TablerosApiException('validation', 'No se pudo decodificar la imagen.', 422);
-        $output = tempnam(sys_get_temp_dir(), 'sticker-');
-        if ($output === false) { imagedestroy($image); throw new TablerosApiException('server', 'No se pudo preparar el sticker.', 500); }
+        $hash = hash_file('sha256', $source, true);
+        if (!is_string($hash)) throw new TablerosApiException('server', 'No se pudo verificar el sticker.', 500);
+        $useNas = $this->nasServiceEnabled();
+        $now = new DateTimeImmutable('now'); $objectHash = bin2hex(random_bytes(32));
+        $key = implode('/', ['stickers', (string)$userId, $now->format('Y'), $now->format('m'), substr($objectHash, 0, 2), $objectHash]);
+        $destination = null;
+        if ($useNas) $this->nasServiceRequest('PUT', $key, $source, $sourceSize, $mime);
+        else $destination = $this->writeStickerLocal($key, $source);
         try {
-            $targetWidth = min(512, $width); $targetHeight = min(512, $height);
-            $scale = min(512 / $width, 512 / $height, 1);
-            $targetWidth = max(1, (int)round($width * $scale)); $targetHeight = max(1, (int)round($height * $scale));
-            $resized = imagecreatetruecolor($targetWidth, $targetHeight);
-            if (!$resized) throw new TablerosApiException('server', 'No se pudo procesar el sticker.', 500);
-            imagealphablending($resized, false); imagesavealpha($resized, true);
-            $transparent = imagecolorallocatealpha($resized, 0, 0, 0, 127);
-            imagefilledrectangle($resized, 0, 0, $targetWidth, $targetHeight, $transparent);
-            imagecopyresampled($resized, $image, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
-            $encoded = false;
-            for ($quality = 82; $quality >= 50; $quality -= 8) {
-                if (!imagewebp($resized, $output, $quality)) break;
-                clearstatcache(true, $output);
-                if (filesize($output) <= 300 * 1024) { $encoded = true; break; }
-            }
-            imagedestroy($resized);
-            imagedestroy($image);
-            if (!$encoded) throw new TablerosApiException('validation', 'La imagen resultante supera 300 KB.', 422);
-            $size = (int)filesize($output);
-            $hash = hash_file('sha256', $output, true);
-            if (!is_string($hash)) throw new TablerosApiException('server', 'No se pudo verificar el sticker.', 500);
-            $useNas = $this->nasServiceEnabled();
-            $now = new DateTimeImmutable('now'); $objectHash = bin2hex(random_bytes(32));
-            $key = implode('/', ['stickers', (string)$userId, $now->format('Y'), $now->format('m'), substr($objectHash, 0, 2), $objectHash]);
-            $destination = null;
-            if ($useNas) $this->nasServiceRequest('PUT', $key, $output, $size, 'image/webp');
-            else $destination = $this->writeStickerLocal($key, $output);
-            try {
-                return $this->transaction(function () use ($userId, $key, $size, $hash, $useNas, $name): array {
-                    if (!$this->userIsActive($userId)) throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
-                    $this->all('SELECT id FROM tb_user_sticker WITH (UPDLOCK, HOLDLOCK) WHERE user_id = ?', [$userId]);
-                    $count = (int)($this->one('SELECT COUNT(*) AS total FROM tb_user_sticker WHERE user_id = ? AND deleted_at IS NULL', [$userId])['total'] ?? 0);
-                    if ($count >= 50) throw new TablerosApiException('conflict', 'Cada usuario puede tener hasta 50 stickers activos.', 409);
-                    $id = $this->insertId(
-                        "INSERT INTO tb_user_sticker (user_id, name, content_type, byte_size, sha256_hash, storage_provider, storage_container, storage_object_key, created_at)
-                         OUTPUT INSERTED.id VALUES (?, ?, 'image/webp', ?, CONVERT(VARBINARY(32), ?, 2), ?, ?, ?, GETDATE())",
-                        [$userId, $name, $size, bin2hex($hash), $useNas ? 'nas_service' : 'local', 'tableros', $key]
-                    );
-                    return ['id' => $id, 'name' => $name, 'content_type' => 'image/webp', 'byte_size' => $size, 'created_by_display_name' => $this->userDisplayName($userId)];
-                });
-            } catch (Throwable $e) {
-                if ($useNas) { try { $this->nasServiceRequest('DELETE', $key); } catch (Throwable $cleanup) { error_log('Tableros sticker cleanup failed: ' . $cleanup->getMessage()); } }
-                elseif ($destination !== null) @unlink($destination);
-                throw $e;
-            }
-        } finally {
-            if (is_file($output)) @unlink($output);
+            return $this->transaction(function () use ($userId, $key, $sourceSize, $hash, $useNas, $name, $mime): array {
+                if (!$this->userIsActive($userId)) throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
+                $this->all('SELECT id FROM tb_user_sticker WITH (UPDLOCK, HOLDLOCK) WHERE user_id = ?', [$userId]);
+                $count = (int)($this->one('SELECT COUNT(*) AS total FROM tb_user_sticker WHERE user_id = ? AND deleted_at IS NULL', [$userId])['total'] ?? 0);
+                if ($count >= 50) throw new TablerosApiException('conflict', 'Cada usuario puede tener hasta 50 stickers activos.', 409);
+                $id = $this->insertId(
+                    "INSERT INTO tb_user_sticker (user_id, name, content_type, byte_size, sha256_hash, storage_provider, storage_container, storage_object_key, created_at)
+                     OUTPUT INSERTED.id VALUES (?, ?, ?, ?, CONVERT(VARBINARY(32), ?, 2), ?, ?, ?, GETDATE())",
+                    [$userId, $name, $mime, $sourceSize, bin2hex($hash), $useNas ? 'nas_service' : 'local', 'tableros', $key]
+                );
+                return ['id' => $id, 'name' => $name, 'content_type' => $mime, 'byte_size' => $sourceSize, 'created_by_display_name' => $this->userDisplayName($userId)];
+            });
+        } catch (Throwable $e) {
+            if ($useNas) { try { $this->nasServiceRequest('DELETE', $key); } catch (Throwable $cleanup) { error_log('Tableros sticker cleanup failed: ' . $cleanup->getMessage()); } }
+            elseif ($destination !== null) @unlink($destination);
+            throw $e;
         }
     }
 
@@ -1058,8 +1026,10 @@ class TablerosModel {
              FROM tb_user_sticker s WHERE s.id = ? AND (s.deleted_at IS NULL OR EXISTS (SELECT 1 FROM tb_file_comment_sticker l WHERE l.sticker_id = s.id))",
             [$stickerId]
         );
+        $contentType = (string)($row['content_type'] ?? '');
         if (!$row || !in_array((string)$row['storage_provider'], ['local', 'nas_service'], true) || $row['storage_container'] !== 'tableros'
-            || (string)$row['content_type'] !== 'image/webp') throw new TablerosApiException('not_found', 'No se encontró el sticker.', 404);
+            || !in_array($contentType, ['image/png', 'image/jpeg', 'image/webp'], true)) throw new TablerosApiException('not_found', 'No se encontró el sticker.', 404);
+        $extension = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'][$contentType];
         $key = (string)$row['storage_object_key'];
         if ($row['storage_provider'] === 'nas_service') {
             $path = tempnam(sys_get_temp_dir(), 'sticker-');
@@ -1067,12 +1037,12 @@ class TablerosModel {
             try {
                 $this->nasServiceRequest('GET', $key, null, null, null, $path, (int)$row['byte_size']);
                 $this->verifyStickerFile($path, $row);
-                return ['id' => (int)$row['id'], 'name' => (string)$row['name'], 'content_type' => 'image/webp', 'byte_size' => (int)$row['byte_size'], 'path' => $path, 'temporary' => true];
+                return ['id' => (int)$row['id'], 'name' => (string)$row['name'], 'extension' => $extension, 'content_type' => $contentType, 'byte_size' => (int)$row['byte_size'], 'path' => $path, 'temporary' => true];
             } catch (Throwable $e) { @unlink($path); throw $e; }
         }
         $path = $this->privateObjectPath($key);
         $this->verifyStickerFile($path, $row);
-        return ['id' => (int)$row['id'], 'name' => (string)$row['name'], 'content_type' => 'image/webp', 'byte_size' => (int)$row['byte_size'], 'path' => $path, 'temporary' => false];
+        return ['id' => (int)$row['id'], 'name' => (string)$row['name'], 'extension' => $extension, 'content_type' => $contentType, 'byte_size' => (int)$row['byte_size'], 'path' => $path, 'temporary' => false];
     }
 
     private function verifyStickerFile(string $path, array $row): void {
@@ -1349,22 +1319,13 @@ class TablerosModel {
         }
         $size = (int)($upload['size'] ?? 0);
         $actualSize = filesize((string)$upload['tmp_name']);
-        if ($size <= 0 || $actualSize === false || $actualSize !== $size || $size > 100 * 1024 * 1024) {
-            throw new TablerosApiException('validation', 'El archivo debe pesar entre 1 byte y 100 MB.', 422);
+        if ($size <= 0 || $actualSize === false || $actualSize !== $size || $size > 500 * 1024 * 1024) {
+            throw new TablerosApiException('validation', 'El archivo debe pesar entre 1 byte y 500 MB.', 422);
         }
-        $convertedImagePath = null;
-        try {
         $originalName = $this->safeFilename((string)($upload['name'] ?? 'archivo'));
         [$extension, $contentType] = $this->validateUploadedFile((string)$upload['tmp_name'], $originalName);
         $processingPath = (string)$upload['tmp_name'];
-        if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
-            $converted = $this->convertImageToWebp($processingPath, $extension, $originalName);
-            $processingPath = $converted['path'];
-            $convertedImagePath = $processingPath;
-            $originalName = $converted['name'];
-            $size = $converted['size'];
-            $contentType = 'image/webp';
-        }
+        // Board attachments retain their original bytes, filename, and detected MIME type.
         $scanStatus = 'unscanned';
         $scannedAt = null;
         $useNasService = $this->nasServiceEnabled();
@@ -1485,9 +1446,6 @@ class TablerosModel {
                 try { $this->nasServiceRequest('DELETE', $objectKey); } catch (Throwable $cleanupError) { error_log('Tableros NAS cleanup failed: ' . $cleanupError->getMessage()); }
             } elseif ($destination !== null) @unlink($destination);
             throw $e;
-        }
-        } finally {
-            if (is_string($convertedImagePath) && is_file($convertedImagePath)) @unlink($convertedImagePath);
         }
     }
 
@@ -3216,73 +3174,6 @@ class TablerosModel {
             $name = $this->textSlice($stem, $budget) . ($extension !== '' ? '.' . $extension : '');
         }
         return $name;
-    }
-
-    /** Convert supported raster uploads to WebP and remove their source metadata. */
-    private function convertImageToWebp(string $sourcePath, string $extension, string $originalName): array {
-        if (!function_exists('imagewebp')) {
-            throw new TablerosApiException('server', 'El servidor PHP no tiene soporte WebP en GD.', 500);
-        }
-        $imageInfo = @getimagesize($sourcePath);
-        if (!is_array($imageInfo) || empty($imageInfo[0]) || empty($imageInfo[1])) {
-            throw new TablerosApiException('validation', 'No se pudo leer la imagen para convertirla.', 422);
-        }
-        $pixels = (int)$imageInfo[0] * (int)$imageInfo[1];
-        $memoryLimit = $this->iniBytes((string)ini_get('memory_limit'));
-        $estimatedMemory = $pixels * 8;
-        if ($pixels <= 0 || ($memoryLimit > 0 && $estimatedMemory > max(0, $memoryLimit - memory_get_usage(true) - 16 * 1024 * 1024))) {
-            throw new TablerosApiException('validation', 'La resolución de la imagen excede la memoria disponible para convertirla.', 422);
-        }
-        $loader = [
-            'jpg' => 'imagecreatefromjpeg', 'jpeg' => 'imagecreatefromjpeg',
-            'png' => 'imagecreatefrompng', 'gif' => 'imagecreatefromgif', 'webp' => 'imagecreatefromwebp',
-        ][$extension] ?? null;
-        if ($loader === null || !function_exists($loader)) {
-            throw new TablerosApiException('server', 'El servidor PHP no puede leer este formato de imagen.', 500);
-        }
-        $image = @$loader($sourcePath);
-        if (!$image instanceof GdImage) {
-            throw new TablerosApiException('validation', 'La imagen está dañada o no se pudo decodificar.', 422);
-        }
-        $outputPath = tempnam(sys_get_temp_dir(), 'tg-image-');
-        if (!is_string($outputPath)) {
-            imagedestroy($image);
-            throw new TablerosApiException('server', 'No se pudo preparar la conversión WebP.', 500);
-        }
-        try {
-            imagealphablending($image, false);
-            imagesavealpha($image, true);
-            $quality = in_array($extension, ['png', 'gif'], true) ? 100 : 82;
-            if (!@imagewebp($image, $outputPath, $quality)) {
-                throw new TablerosApiException('server', 'No se pudo convertir la imagen a WebP.', 500);
-            }
-            $outputSize = filesize($outputPath);
-            $outputMime = (new finfo(FILEINFO_MIME_TYPE))->file($outputPath);
-            if (is_int($outputSize) && $outputSize > 100 * 1024 * 1024) {
-                throw new TablerosApiException('validation', 'La imagen convertida supera el límite de 100 MB.', 422);
-            }
-            if (!is_int($outputSize) || $outputSize <= 0 || $outputMime !== 'image/webp') {
-                throw new TablerosApiException('server', 'La conversión WebP produjo un archivo inválido o demasiado grande.', 500);
-            }
-            $webpName = $this->safeFilename(pathinfo($originalName, PATHINFO_FILENAME) . '.webp');
-            return ['path' => $outputPath, 'size' => $outputSize, 'name' => $webpName];
-        } catch (Throwable $e) {
-            @unlink($outputPath);
-            throw $e;
-        } finally {
-            imagedestroy($image);
-        }
-    }
-
-    private function iniBytes(string $value): int {
-        $value = trim($value);
-        if ($value === '' || $value === '-1') return 0;
-        $number = (float)$value;
-        $unit = strtolower(substr($value, -1));
-        if ($unit === 'g') $number *= 1024;
-        if ($unit === 'g' || $unit === 'm') $number *= 1024;
-        if ($unit === 'g' || $unit === 'm' || $unit === 'k') $number *= 1024;
-        return (int)$number;
     }
 
     private function validateUploadedFile(string $tmpPath, string $originalName): array {

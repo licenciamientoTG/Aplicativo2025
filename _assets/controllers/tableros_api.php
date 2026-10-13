@@ -227,9 +227,9 @@ class tableros_api {
                 throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
             }
             $sticker = $this->model->getStickerDownload($this->positiveInt($id, 'sticker_id'));
-            header('Content-Type: image/webp');
+            header('Content-Type: ' . (string)$sticker['content_type']);
             header('Content-Length: ' . (int)$sticker['byte_size']);
-            header('Content-Disposition: ' . $this->contentDisposition((string)$sticker['name'] . '.webp', true));
+            header('Content-Disposition: ' . $this->contentDisposition((string)$sticker['name'] . '.' . (string)$sticker['extension'], true));
             header('X-Content-Type-Options: nosniff');
             header('Cache-Control: private, max-age=3600');
             if (session_status() === PHP_SESSION_ACTIVE) session_write_close();

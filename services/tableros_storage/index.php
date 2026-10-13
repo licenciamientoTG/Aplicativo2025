@@ -44,8 +44,9 @@ $target = $canonicalRoot . DIRECTORY_SEPARATOR . $relative;
 $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
 if ($method === 'PUT') {
+    $maxUploadBytes = 500 * 1024 * 1024;
     $length = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
-    if ($length < 1 || $length > 100 * 1024 * 1024) respond(413, 'Upload must be between 1 byte and 100 MB');
+    if ($length < 1 || $length > $maxUploadBytes) respond(413, 'Upload must be between 1 byte and 500 MiB');
     $directory = dirname($target);
     if (!is_dir($directory) && !@mkdir($directory, 0700, true) && !is_dir($directory)) respond(500, 'Cannot create storage directory');
     $canonicalDirectory = realpath($directory);
@@ -71,10 +72,10 @@ if ($method === 'PUT') {
         @unlink($temp);
         respond(500, 'Cannot open storage stream');
     }
-    $written = stream_copy_to_stream($source, $destination, 100 * 1024 * 1024 + 1);
+    $written = stream_copy_to_stream($source, $destination, $maxUploadBytes + 1);
     fclose($source);
     fclose($destination);
-    if ($written !== $length || $written > 100 * 1024 * 1024) { @unlink($temp); respond(400, 'Upload length mismatch'); }
+    if ($written !== $length || $written > $maxUploadBytes) { @unlink($temp); respond(400, 'Upload length mismatch'); }
     if (file_exists($target) || !@rename($temp, $target)) { @unlink($temp); respond(409, 'Object already exists or cannot be committed'); }
     respond(201);
 }

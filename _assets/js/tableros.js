@@ -773,6 +773,7 @@
     if (!selector || !label || !options) return;
     const selected = selector.selectedOptions[0];
     label.textContent = selected?.textContent || 'Sin espacios de trabajo';
+    selector.closest('.boards-workspace-picker')?.classList.toggle('is-empty', state.workspaces.length === 0);
     const workspace = state.workspaces.find((entry) => String(entry.id) === String(selector.value));
     const access = document.getElementById('workspaceAccessLabel');
     const workspaceRoleLabels = { owner: 'Propietario', editor: 'Editor', viewer: 'Lector' };
@@ -3384,7 +3385,7 @@
   function fileUploadValidationMessage(file) {
     if (!(file instanceof File)) return 'Selecciona un archivo válido.';
     if (file.size <= 0) return 'El archivo está vacío.';
-    if (file.size > 100 * 1024 * 1024) return 'El archivo supera el límite de 100 MB.';
+    if (file.size > 500 * 1024 * 1024) return 'El archivo supera el límite de 500 MB.';
     const extension = String(file.name.split('.').pop() || '').toLowerCase();
     const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
     if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imagen, texto, CSV u Office.';
@@ -5879,7 +5880,7 @@
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
         team: 'La celda acepta texto o JSON; no hay catálogo de equipos disponible.',
-        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 100 MB; las imágenes se convierten a WebP. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.',
+        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 500 MB; las imágenes conservan su formato original. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.',
         board_relation: 'La relación debe incluir un tablero o elemento al que tengas acceso.',
         subtasks: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.',
         dependency: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.'
