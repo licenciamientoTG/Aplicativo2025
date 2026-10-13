@@ -1148,6 +1148,14 @@
     return ['#579bfc', '#00c875', '#fdab3d', '#a25ddc', '#ff5ac4', '#00c875', '#9aadbd'][index % 7];
   }
 
+  function kanbanStatusColor(label, fallbackColor, index = 0) {
+    const normalized = String(label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-MX');
+    if (/(listo|hecho|completad|terminad|finalizad|aprobado|publicad|colocado|entregado)/.test(normalized)) return '#00c875';
+    if (/(proceso|progreso|curso|trabajando|ejecucion)/.test(normalized)) return '#f5c451';
+    if (/(pendiente|por hacer|nuevo|sin iniciar)/.test(normalized)) return '#8b91a7';
+    return safeGroupColor(fallbackColor || statusLabelColor(label, index));
+  }
+
   function statusTone(column, value) {
     const stored = String(value ?? '').trim();
     const option = parseOptions(column.options).find((entry) => entry.value === stored);
@@ -5021,13 +5029,18 @@
     if (!column) {
       lanes = state.groups.map((group) => ({ key: String(group.id), name: group.name || 'Grupo sin nombre', color: group.color, group }));
     } else {
-      const values = parseOptions(column.options).map((option) => option.value);
+      const options = parseOptions(column.options);
+      const values = options.map((option) => option.value);
       items.forEach((item) => {
         const value = stringifyValue(getCellValue(item, column));
         if (value && !values.includes(value)) values.push(value);
       });
       if (items.some((item) => !stringifyValue(getCellValue(item, column)))) values.push('');
-      lanes = values.map((value, index) => ({ key: value, name: value || 'Sin estado', color: ['#0f766e', '#3574a5', '#8a5ca6', '#bb7a2a', '#b64f57'][index % 5] }));
+      lanes = values.map((value, index) => {
+        const option = options.find((entry) => entry.value === value);
+        const name = option?.label || value || 'Sin estado';
+        return { key: value, name, color: kanbanStatusColor(name, option?.color, index) };
+      });
     }
     if (!lanes.length) {
       renderEmptyRenderer(column ? 'No hay valores para mostrar' : 'No hay grupos para mostrar', column
@@ -5051,6 +5064,7 @@
         const card = makeElement('article', 'boards-kanban-card');
         card.dataset.kanbanItem = String(item.id);
         card.draggable = canEditBoard() && item.parent_item_id == null;
+        if (column && ['status', 'dropdown'].includes(columnType(column))) card.style.setProperty('--kanban-status-color', safeGroupColor(lane.color));
         card.append(createItemNameControl(item, 'boards-kanban-card-title'));
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
         if (column && group) card.append(makeElement('p', 'boards-kanban-card-group', group.name));
@@ -5058,6 +5072,12 @@
         const visibleFields = orderedColumns().filter((field) => {
           if (column && String(field.id) === String(column.id)) return;
           const value = getCellValue(item, field);
+          if (['people', 'person'].includes(columnType(field))) {
+            const parsedValue = parseStoredValue(value);
+            if (parsedValue == null || parsedValue === ''
+              || (Array.isArray(parsedValue) && parsedValue.length === 0)
+              || (typeof parsedValue === 'object' && !Array.isArray(parsedValue) && Object.keys(parsedValue).length === 0)) return false;
+          }
           return value !== null && value !== '' && columnType(field) !== 'file';
         }).slice(0, 3);
         visibleFields.forEach((field) => {
@@ -5068,17 +5088,23 @@
         });
         if (fields.childElementCount) card.append(fields);
         const files = filesForItem(item);
-        if (files.length) {
+        orderedColumns().filter((field) => columnType(field) === 'file').forEach((field) => {
+          const fieldFiles = files.filter((file) => String(file.column_id || '') === String(field.id));
+          if (!fieldFiles.length) return;
           const evidence = makeElement('div', 'boards-kanban-evidence');
-          evidence.setAttribute('aria-label', `Evidencia y archivos: ${files.length}`);
-          files.slice(0, 3).forEach((file) => {
+          evidence.append(makeElement('span', 'boards-kanban-evidence-label', field.name || 'Archivos'));
+          const previews = makeElement('div', 'boards-kanban-evidence-items');
+          const images = fieldFiles.filter((file) => fileTypeInfo(file).previewKind === 'image');
+          const shownImages = new Set(images.slice(0, 3));
+          const visibleFiles = fieldFiles.filter((file) => fileTypeInfo(file).previewKind !== 'image' || shownImages.has(file));
+          visibleFiles.forEach((file) => {
             const safeToPreview = ['clean', 'unscanned'].includes(String(file.scan_status || '').toLowerCase());
-            const chip = makeElement('button', 'boards-kanban-file');
-            chip.type = 'button';
-            chip.title = safeToPreview ? `Vista previa: ${file.name || 'Archivo'}` : `${file.name || 'Archivo'} · vista previa no disponible`;
-            chip.setAttribute('aria-label', chip.title);
-            chip.disabled = !safeToPreview;
             const info = fileTypeInfo(file);
+            const chip = makeElement('button', `boards-kanban-file${info.previewKind === 'image' && safeToPreview ? ' has-thumbnail' : ''}`);
+            chip.type = 'button';
+            chip.title = file.name || file.original_name || 'Archivo';
+            chip.setAttribute('aria-label', `${field.name || 'Archivo'}: ${chip.title}`);
+            chip.disabled = !safeToPreview;
             if (info.previewKind === 'image' && safeToPreview) {
               const thumbnail = document.createElement('img');
               thumbnail.src = fileEndpoint(file, true);
@@ -5086,25 +5112,24 @@
               thumbnail.loading = 'lazy';
               thumbnail.addEventListener('error', () => {
                 thumbnail.remove();
-                chip.classList.add('has-file-icon');
-                const fallbackIcon = makeElement('i', `fa-solid ${info.icon}`, '');
-                fallbackIcon.setAttribute('aria-hidden', 'true');
-                chip.prepend(fallbackIcon);
+                chip.classList.remove('has-thumbnail');
+                const icon = makeElement('i', `fa-solid ${info.icon}`, '');
+                icon.setAttribute('aria-hidden', 'true');
+                chip.append(icon);
               }, { once: true });
               chip.append(thumbnail);
-            }
-            if (!chip.childElementCount) {
+            } else {
               const icon = makeElement('i', `fa-solid ${info.icon}`, '');
               icon.setAttribute('aria-hidden', 'true');
               chip.append(icon);
             }
-            chip.append(makeElement('span', '', file.name || 'Archivo'));
             if (safeToPreview) chip.addEventListener('click', () => openFilePreview(file, item));
-            evidence.append(chip);
+            previews.append(chip);
           });
-          if (files.length > 3) evidence.append(makeElement('span', 'boards-kanban-file-more', `+${files.length - 3}`));
+          if (images.length > 3) previews.append(makeElement('span', 'boards-kanban-file-more', `+${images.length - 3}`));
+          evidence.append(previews);
           card.append(evidence);
-        }
+        });
         const moveControl = makeElement('div', 'boards-kanban-card-action');
         if (column && ['status', 'dropdown'].includes(columnType(column))) {
           moveControl.append(makeElement('span', '', 'Estado'));
