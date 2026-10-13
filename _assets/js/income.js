@@ -321,6 +321,7 @@ let datatables_vehicles = $('#datatables_vehicles').DataTable({
         {'data': 'Grupo'},
         {'data': 'Descripcion'},
         {'data': 'Status'},
+        {'data': 'Saldo', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end'},
     ],
     // rowId: 'Despacho',
     createdRow: function (row, data, dataIndex) {
