@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Propuesta de Reorganización Sidebar - TotalGas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --tg-blue: #004EA2;
+      --tg-blue-hover: #003875;
+      --tg-cyan: #0095DA;
+      --tg-green: #009559;
+      --tg-yellow: #A6CE39;
+      --tg-danger: #e63946;
+      --tg-warning: #f59e0b;
+      --dark-sidebar: #0f172a;
+      --dark-sidebar-sub: #1e293b;
+      --dark-nav-hover: #334155;
+      --text-sidebar: #cbd5e1;
+      --text-muted: #94a3b8;
+      --bg-page: #f1f5f9;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --text-main: #0f172a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* CONTENEDOR PRINCIPAL */
+    .app-layout {
+      display: flex;
+      width: 100%;
+      min-height: 100vh;
+    }
+
+    /* SIDEBAR INTERACTIVO */
+    aside.interactive-sidebar {
+      width: 290px;
+      min-width: 290px;
+      background: var(--dark-sidebar);
+      color: var(--text-sidebar);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    aside.interactive-sidebar.collapsed {
+      width: 72px;
+      min-width: 72px;
+    }
+
+    .sidebar-header {
+      padding: 18px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: #fff;
+      text-decoration: none;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .brand-badge {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--tg-blue), var(--tg-cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: white;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+
+    .collapse-btn {
+      background: #1e293b;
+      border: none;
+      color: var(--text-muted);
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .collapse-btn:hover { background: var(--tg-blue); color: white; }
+
+    /* BUSCADOR DEL SIDEBAR */
+    .search-box-container {
+      padding: 12px 14px 6px;
+    }
+    .sidebar-search {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: #fff;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .sidebar-search:focus { border-color: var(--tg-cyan); }
+    .sidebar-search::placeholder { color: #64748b; }
+
+    /* CONTENEDOR DE NAVEGACION */
+    .sidebar-nav-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 10px 10px 24px;
+    }
+    .sidebar-nav-scroll::-webkit-scrollbar { width: 5px; }
+    .sidebar-nav-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+    /* HEADER DE CATEGORIA */
+    .category-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      padding: 14px 12px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* ITEM PRINCIPAL CON ACCORDION */
+    .nav-group {
+      margin-bottom: 4px;
+    }
+
+    .nav-item-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 12px;
+      background: transparent;
+      border: none;
+      color: var(--text-sidebar);
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: left;
+    }
+
+    .nav-item-btn:hover {
+      background: var(--dark-sidebar-sub);
+      color: #fff;
+    }
+
+    .nav-item-btn.active {
+      background: rgba(0, 78, 162, 0.35);
+      color: #fff;
+      border-left: 3px solid var(--tg-cyan);
+    }
+
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .nav-icon {
+      font-size: 1.05rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      color: #94a3b8;
+    }
+
+    .nav-arrow {
+      font-size: 0.75rem;
+      color: #64748b;
+      transition: transform 0.2s ease;
+    }
+    .nav-group.open .nav-arrow { transform: rotate(90deg); }
+
+    /* SUBMENU */
+    .nav-sublist {
+      list-style: none;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.25s cubic-bezier(0, 1, 0, 1);
+      padding-left: 34px;
+    }
+    .nav-group.open .nav-sublist {
+      max-height: 800px;
+      transition: max-height 0.3s ease-in-out;
+    }
+
+    .sub-item-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.82rem;
+      border-radius: 6px;
+      margin-top: 1px;
+      transition: all 0.15s;
+    }
+    .sub-item-link:hover {
+      color: #fff;
+      background: #1e293b;
+      padding-left: 14px;
+    }
+
+    .badge-count {
+      background: #334155;
+      color: #cbd5e1;
+      font-size: 0.68rem;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .badge-pill {
+      font-size: 0.65rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-pill.new { background: rgba(0, 149, 89, 0.25); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
+    .badge-pill.opt { background: rgba(0, 149, 218, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+
+    /* FOOTER SIDEBAR */
+    .sidebar-footer {
+      padding: 12px 14px;
+      border-top: 1px solid #1e293b;
+      font-size: 0.75rem;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* CONTENIDO PRINCIPAL */
+    .main-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* HEADER SUPERIOR */
+    .top-navbar {
+      background: #fff;
+      border-bottom: 1px solid var(--card-border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 90;
+    }
+    .top-title h1 {
+      font-size: 1.25rem;
+      color: var(--tg-blue);
+      font-weight: 700;
+    }
+    .top-title p {
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+
+    .tab-pills {
+      display: flex;
+      background: #f1f5f9;
+      padding: 4px;
+      border-radius: 10px;
+      gap: 4px;
+    }
+    .tab-pill {
+      border: none;
+      background: transparent;
+      padding: 7px 14px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: #64748b;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-pill.active {
+      background: #fff;
+      color: var(--tg-blue);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+
+    /* SECCIONES DE CONTENIDO */
+    .content-area {
+      padding: 28px;
+      max-width: 1300px;
+    }
+
+    .view-pane { display: none; }
+    .view-pane.active { display: block; }
+
+    /* TARJETAS DE RESUMEN KPI */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: #fff;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--tg-blue);
+    }
+    .kpi-card.warn::before { background: var(--tg-warning); }
+    .kpi-card.danger::before { background: var(--tg-danger); }
+    .kpi-card.success::before { background: var(--tg-green); }
+
+    .kpi-label { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; }
+    .kpi-val { font-size: 1.8rem; font-weight: 700; color: #0f172a; margin-top: 4px; }
+    .kpi-desc { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
+
+    /* TABLAS Y AUDITORIA */
+    .card-block {
+      background: #fff;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 22px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+    }
+    table.data-table th {
+      background: #f8fafc;
+      color: #475569;
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--card-border);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    table.data-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--card-border);
+      color: #334155;
+      vertical-align: middle;
+    }
+    table.data-table tr:hover td { background: #f8fafc; }
+
+    .badge-tag {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      display: inline-block;
+    }
+    .badge-tag.dup { background: #fee2e2; color: #991b1b; }
+    .badge-tag.moved { background: #e0f2fe; color: #0369a1; }
+    .badge-tag.rename { background: #fef3c7; color: #92400e; }
+    .badge-tag.fixed { background: #dcfce7; color: #166534; }
+
+    code.url-tag {
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.76rem;
+    }
+
+    /* FILTROS EN TABLA */
+    .filter-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .filter-input {
+      padding: 6px 12px;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      font-size: 0.82rem;
+      outline: none;
+    }
+    .filter-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--card-border);
+      background: #f8fafc;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      color: #475569;
+    }
+    .filter-btn.active {
+      background: var(--tg-blue);
+      color: white;
+      border-color: var(--tg-blue);
+    }
+
+    /* GUIA CODE PREVIEW */
+    pre.code-preview {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.8rem;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    /* COMPARADOR ANTES Y DESPUES */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .compare-col {
+      background: #fff;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .compare-header {
+      font-weight: 700;
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+      border-bottom: 2px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    @media (max-width: 900px) {
+      .compare-grid { grid-template-columns: 1fr; }
+      aside.interactive-sidebar { position: fixed; left: -290px; }
+      aside.interactive-sidebar.mobile-open { left: 0; }
+    }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  
+  <!-- SIDEBAR INTERACTIVO COMPLETO CON LA NUEVA PROPUESTA -->
+  <aside class="interactive-sidebar" id="mainSidebar">
+    <div class="sidebar-header">
+      <a href="#" class="brand-logo">
+        <div class="brand-badge">TG</div>
+        <span>TotalGas Portal</span>
+      </a>
+      <button class="collapse-btn" id="toggleCollapseBtn" title="Contraer / Expandir Sidebar">◀</button>
+    </div>
+
+    <!-- Buscador en tiempo real de todo el menú -->
+    <div class="search-box-container">
+      <input type="text" id="menuSearch" class="sidebar-search" placeholder="🔍 Buscar módulo o reporte...">
+    </div>
+
+    <div class="sidebar-nav-scroll" id="sidebarNav">
+      
+      <!-- FAVORITOS Y ACCESOS RAPIDOS -->
+      <div class="category-title">
+        <span>Accesos Frecuentes</span>
+        <span class="badge-count">Top</span>
+      </div>
+
+      <div class="nav-group" data-tags="dashboard inicio">
+        <a href="#/home/index" class="nav-item-btn active">
+          <div class="nav-left">
+            <span class="nav-icon">📊</span>
+            <span>Dashboard Principal</span>
+          </div>
+        </a>
+      </div>
+
+      <!-- 1. VENTAS Y COMERCIAL -->
+      <div class="category-title"><span>1. Comercial y Ventas</span></div>
+
+      <div class="nav-group open" data-tags="ventas indicadores corte turno rubro totales">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">📈</span>
+            <span>Ventas y Rendimiento</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/commercial/sales_indicators" class="sub-item-link"><span>Indicadores de Venta</span></a></li>
+          <li><a href="#/commercial/sale_month_turn" class="sub-item-link"><span>Venta Mensual x Turno</span></a></li>
+          <li><a href="#/operations/sales_day_turn" class="sub-item-link"><span>Ventas x Día x Turno</span> <span class="badge-pill opt">Unificado</span></a></li>
+          <li><a href="#/commercial/sales_global_total" class="sub-item-link"><span>Ventas Globales Totales</span></a></li>
+          <li><a href="#/commercial/sale_week_zone" class="sub-item-link"><span>Venta Semanal x Zona</span></a></li>
+          <li><a href="#/operations/sales_stations" class="sub-item-link"><span>Ventas por Estación</span></a></li>
+          <li><a href="#/commercial/mystery_shopper" class="sub-item-link"><span>Mystery Shopper</span></a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group" data-tags="formas pago rubro lubricantes tarjeta dolares contado kiosko">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">💳</span>
+            <span>Venta por Modalidad</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/commercial/sale_type_payment" class="sub-item-link"><span>Venta por Rubro</span></a></li>
+          <li><a href="#/commercial/sale_lubricants" class="sub-item-link"><span>Venta de Lubricantes</span></a></li>
+          <li><a href="#/income/salesxcard" class="sub-item-link"><span>Ventas con Tarjeta</span></a></li>
+          <li><a href="#/income/cash_sales" class="sub-item-link"><span>Ventas de Contado</span></a></li>
+          <li><a href="#/income/dolar_sales" class="sub-item-link"><span>Ventas en Dólares</span></a></li>
+          <li><a href="#/income/kioskos" class="sub-item-link"><span>Ventas en Kioskos</span></a></li>
+        </ul>
+      </div>
+
+      <!-- 2. COMBUSTIBLE Y ABASTOS -->
+      <div class="category-title"><span>2. Combustible y Abastos</span></div>
+
+      <div class="nav-group" data-tags="inventario tanques mermas analisis diario consolidado">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">⛽</span>
+            <span>Inventarios y Mermas</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/supply/inventory" class="sub-item-link"><span>Inventario de Tanques</span></a></li>
+          <li><a href="#/supply/inventarioMermas" class="sub-item-link"><span>Inventario y Mermas General</span></a></li>
+          <li><a href="#/supply/tgr01" class="sub-item-link"><span>Mermas por Estación</span></a></li>
+          <li><a href="#/merma/analisis" class="sub-item-link"><span>Análisis de Merma Diaria</span></a></li>
+          <li><a href="#/merma/ventas" class="sub-item-link"><span>Ventas Consolidado</span></a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group" data-tags="recepciones pedidos programacion compras petrotal transportistas">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">🚛</span>
+            <span>Logística y Recepciones</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/station_portal/mis_recepciones" class="sub-item-link"><span>Portal de Recepciones</span> <span class="badge-pill opt">Única</span></a></li>
+          <li><a href="#/supply/scheduling" class="sub-item-link"><span>Programación de Recepciones</span></a></li>
+          <li><a href="#/supply/purchase_analysis" class="sub-item-link"><span>Análisis de Compras</span></a></li>
+          <li><a href="#/supply/petrotal_reconciliation" class="sub-item-link"><span>Conciliación Petrotal</span></a></li>
+          <li><a href="#/supply/creCarriers" class="sub-item-link"><span>Catálogo Transportistas</span></a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group" data-tags="precios combustible xml histórico horas sin combustible graficos">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">💲</span>
+            <span>Precios y CRE</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/supply/fuel_prices" class="sub-item-link"><span>Precios de Combustibles</span></a></li>
+          <li><a href="#/supply/price_list" class="sub-item-link"><span>Listado de Precios</span></a></li>
+          <li><a href="#/direction/historic_prices" class="sub-item-link"><span>Histórico y Gráficos</span></a></li>
+          <li><a href="#/direction/shortage_hours" class="sub-item-link"><span>Horas Sin Combustible</span></a></li>
+          <li><a href="#/supply/prices_xml" class="sub-item-link"><span>Generador Precios XML</span></a></li>
+        </ul>
+      </div>
+
+      <!-- 3. CUENTAS POR PAGAR (PROVEEDORES) -->
+      <div class="category-title"><span>3. Cuentas por Pagar</span></div>
+
+      <div class="nav-group" data-tags="pagos proveedores facturas notas credito comprobantes estado">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">🤝</span>
+            <span>Gestión de Proveedores</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/payment/payment_list" class="sub-item-link"><span>Programación de Pagos</span></a></li>
+          <li><a href="#/payment/all_payments" class="sub-item-link"><span>Comprobantes de Pago</span></a></li>
+          <li><a href="#/payment/invoices_due" class="sub-item-link"><span>Estado de Facturas</span></a></li>
+          <li><a href="#/payment/credit_notes" class="sub-item-link"><span>Notas de Crédito y Cargo</span></a></li>
+          <li><a href="#/payment/import_invoices" class="sub-item-link"><span>Importar Facturas</span></a></li>
+          <li><a href="#/supply/providers" class="sub-item-link"><span>Catálogo de Proveedores</span></a></li>
+          <li><a href="#/accounting/renegociacion" class="sub-item-link"><span>Renegociación Proveedores</span></a></li>
+        </ul>
+      </div>
+
+      <!-- 4. FACTURACIÓN Y CLIENTES -->
+      <div class="category-title"><span>4. Facturación y Clientes</span></div>
+
+      <div class="nav-group" data-tags="facturas timbradas sin timbrar global contado anticipo expediente">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">🧾</span>
+            <span>Emisión y Facturas</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/income/stamped_invoices" class="sub-item-link"><span>Facturas Timbradas</span></a></li>
+          <li><a href="#/income/invoice_unstamped" class="sub-item-link"><span>Facturas sin Timbrar</span></a></li>
+          <li><a href="#/income/overall_invoice" class="sub-item-link"><span>Factura Global</span></a></li>
+          <li><a href="#/income/cash_invoices" class="sub-item-link"><span>Facturas de Contado</span></a></li>
+          <li><a href="#/income/relation_invoice_advance" class="sub-item-link"><span>Facturas con Anticipo</span></a></li>
+          <li><a href="#/income/expediente_facturas" class="sub-item-link"><span>Expediente de Facturas</span></a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group" data-tags="despachos control facturados pendientes duplicados diferencias credito debito">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">⛽</span>
+            <span>Control de Despachos</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/income/control_dispatches" class="sub-item-link"><span>Control de Despachos</span></a></li>
+          <li><a href="#/income/invoiced_dispatched" class="sub-item-link"><span>Despachos Facturados</span></a></li>
+          <li><a href="#/income/pending_dispatches" class="sub-item-link"><span>Despachos Pendientes</span></a></li>
+          <li><a href="#/income/duplicate_dispatches" class="sub-item-link"><span>Despachos Duplicados</span></a></li>
+          <li><a href="#/income/credit_debit_dispatches" class="sub-item-link"><span>Despachos Crédito / Débito</span></a></li>
+          <li><a href="#/income/diffs" class="sub-item-link"><span>Diferencias C/D</span></a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group" data-tags="clientes vehiculos credito cobranza saldos antiguedad valeras">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">👥</span>
+            <span>Clientes y Cartera</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/income/clients" class="sub-item-link"><span>Padrón de Clientes</span></a></li>
+          <li><a href="#/income/vehicles" class="sub-item-link"><span>Vehículos Registrados</span></a></li>
+          <li><a href="#/income/balance_age" class="sub-item-link"><span>Antigüedad de Saldos</span></a></li>
+          <li><a href="#/accounting/analysis_movement" class="sub-item-link"><span>Cobranza Crédito</span></a></li>
+          <li><a href="#/administration/dashboard_debit_credit" class="sub-item-link"><span>Dashboard Débito y Crédito</span></a></li>
+          <li><a href="#/direction/valeras" class="sub-item-link"><span>Control de Valeras</span></a></li>
+        </ul>
+      </div>
+
+      <!-- 5. TESORERÍA Y BANCOS -->
+      <div class="category-title"><span>5. Tesorería y Bancos</span></div>
+
+      <div class="nav-group" data-tags="conciliacion bancos efectivo papeletas faltantes diferencias movimientos cuentas">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">🏦</span>
+            <span>Conciliaciones y Bancos</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/income/test_v3" class="sub-item-link"><span>Conciliación Bancaria</span></a></li>
+          <li><a href="#/income/summary_v3" class="sub-item-link"><span>Dashboard Bancos</span></a></li>
+          <li><a href="#/tesoreria/bank_accounts" class="sub-item-link"><span>Cuentas Bancarias</span></a></li>
+          <li><a href="#/tesoreria/movimientos_bancos" class="sub-item-link"><span>Movimientos Bancarios</span></a></li>
+          <li><a href="#/tesoreria/movimientos_bancos_cheques" class="sub-item-link"><span>Movimientos TDC</span></a></li>
+          <li><a href="#/income/cash_reconciliation_triple" class="sub-item-link"><span>Conciliación Efectivo</span></a></li>
+          <li><a href="#/income/cash_reconciliation_papers" class="sub-item-link"><span>Papeletas de Depósito</span></a></li>
+          <li><a href="#/arqueo" class="sub-item-link"><span>Arqueos Dollar2Go</span> <span class="badge-pill opt">Integrado</span></a></li>
+          <li><a href="#/administration/exchange_rate" class="sub-item-link"><span>Tipo de Cambio</span></a></li>
+        </ul>
+      </div>
+
+      <!-- 6. OPERACIONES EN ESTACIÓN -->
+      <div class="category-title"><span>6. Operaciones en Estación</span></div>
+
+      <div class="nav-group" data-tags="estaciones tabulador turno responsables cambio estacion terminales incidencias">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">⛽</span>
+            <span>Turnos e Islas</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/operations/tabulator" class="sub-item-link"><span>Tabulador Operativo</span></a></li>
+          <li><a href="#/operations/monitor" class="sub-item-link"><span>Monitor Tabuladores</span></a></li>
+          <li><a href="#/operations/responsables" class="sub-item-link"><span>Responsables de Turno</span></a></li>
+          <li><a href="#/operations/islands" class="sub-item-link"><span>Gestión de Islas</span></a></li>
+          <li><a href="#/operations/station_transfer" class="sub-item-link"><span>Cambio de Estación</span></a></li>
+          <li><a href="#/operations/terminal_inventory" class="sub-item-link"><span>Incidencias de Terminales</span></a></li>
+        </ul>
+      </div>
+
+      <!-- 7. FISCAL Y CONTABILIDAD -->
+      <div class="category-title"><span>7. Fiscal y Contabilidad</span></div>
+
+      <div class="nav-group" data-tags="contabilidad balance estado resultados estimulo fiscal cne petrotal fiel sat volumetrico">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">⚖️</span>
+            <span>Fiscal y Auditoría</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/accounting/income_statement" class="sub-item-link"><span>Estado de Resultados</span></a></li>
+          <li><a href="#/accounting/tax_stimulus" class="sub-item-link"><span>Estímulo Fiscal</span></a></li>
+          <li><a href="#/accounting/volumetrics_comparator" class="sub-item-link"><span>Comparador Volumétricos</span></a></li>
+          <li><a href="#/accounting/xml_vs_ventas" class="sub-item-link"><span>XML vs Ventas</span></a></li>
+          <li><a href="#/petrotal/volumetricos" class="sub-item-link"><span>Petrotal: Reporte CNE</span></a></li>
+          <li><a href="#/petrotal/historial" class="sub-item-link"><span>Historial de Envíos</span></a></li>
+          <li><a href="#/petrotal/configuracion_fiel" class="sub-item-link"><span>Configuración FIEL</span></a></li>
+        </ul>
+      </div>
+
+      <!-- 8. SISTEMAS Y ADMINISTRACIÓN -->
+      <div class="category-title"><span>8. Administración y TI</span></div>
+
+      <div class="nav-group" data-tags="tickets usuarios permisos monitoreo cfdi sat errores log ajustes bitacora marketing">
+        <button class="nav-item-btn" onclick="toggleNavGroup(this)">
+          <div class="nav-left">
+            <span class="nav-icon">⚙️</span>
+            <span>Configuración y TI</span>
+          </div>
+          <span class="nav-arrow">▶</span>
+        </button>
+        <ul class="nav-sublist">
+          <li><a href="#/administration/list_tickets" class="sub-item-link"><span>Mesa de Tickets</span></a></li>
+          <li><a href="#/it/users" class="sub-item-link"><span>Control de Usuarios</span></a></li>
+          <li><a href="#/it/permissions" class="sub-item-link"><span>Matriz de Permisos</span></a></li>
+          <li><a href="#/it/page_visits_dashboard" class="sub-item-link"><span>Dashboard de Uso</span></a></li>
+          <li><a href="#/it/CFDISender_monitor" class="sub-item-link"><span>Monitor CFDISender</span></a></li>
+          <li><a href="#/it/llamadas_sat" class="sub-item-link"><span>Llamadas SAT</span></a></li>
+          <li><a href="#/it/error_log" class="sub-item-link"><span>Log de Errores</span></a></li>
+          <li><a href="#/marketing/client_cards" class="sub-item-link"><span>Tarjetas y Engomados</span></a></li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="sidebar-footer">
+      <span>TotalGas v2.5</span>
+      <span style="color:#22c55e;">● En línea</span>
+    </div>
+  </aside>
+
+  <!-- CONTENEDOR DERECHO: DOCUMENTO DE ANALISIS Y PROPUESTA -->
+  <div class="main-wrapper">
+    <header class="top-navbar">
+      <div class="top-title">
+        <h1>Análisis y Propuesta de Reorganización del Sidebar</h1>
+        <p>Optimización de Arquitectura de Información · TotalGas 2026</p>
+      </div>
+
+      <div class="tab-pills">
+        <button class="tab-pill active" onclick="switchTab('resumen', this)">📋 Diagnóstico</button>
+        <button class="tab-pill" onclick="switchTab('matriz', this)">🔍 Matriz de Cambios</button>
+        <button class="tab-pill" onclick="switchTab('comparativa', this)">⚖️ Antes vs Después</button>
+        <button class="tab-pill" onclick="switchTab('codigo', this)">💻 Guía de Código Twig</button>
+      </div>
+    </header>
+
+    <div class="content-area">
+
+      <!-- PESTAÑA 1: DIAGNÓSTICO -->
+      <div id="tab-resumen" class="view-pane active">
+        
+        <div class="kpi-grid">
+          <div class="kpi-card danger">
+            <div class="kpi-label">Líneas en Sidebar</div>
+            <div class="kpi-val">968</div>
+            <div class="kpi-desc">Archivo monolítico y de difícil mantenimiento</div>
+          </div>
+          <div class="kpi-card warn">
+            <div class="kpi-label">Duplicados Críticos</div>
+            <div class="kpi-val">8 Enlaces</div>
+            <div class="kpi-desc">Mismo reporte repetido hasta en 3 secciones distintas</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Secciones Previas</div>
+            <div class="kpi-val">12</div>
+            <div class="kpi-desc">Organizadas por departamentos aislados</div>
+          </div>
+          <div class="kpi-card success">
+            <div class="kpi-label">Nueva Arquitectura</div>
+            <div class="kpi-val">8 Módulos</div>
+            <div class="kpi-desc">Agrupados por flujo natural de negocio</div>
+          </div>
+        </div>
+
+        <div class="card-block">
+          <div class="card-title">🚨 Principales Problemas Detectados en el Sidebar Actual</div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Problema</th>
+                <th>Impacto UX</th>
+                <th>Ejemplo Real en el Código</th>
+                <th>Solución Propuesta</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge-tag dup">Duplicidad Alta</span></td>
+                <td>Confusión de usuarios, pérdida de tiempo y reportes inconsistentes.</td>
+                <td><code>/operations/sales_day_turn</code> aparece en <b>TG3-Operaciones</b>, <b>Comercial</b> y <b>Operaciones</b>.</td>
+                <td>Mantener una sola ruta centralizada en <b>Comercial y Ventas</b> con permisos compartidos.</td>
+              </tr>
+              <tr>
+                <td><span class="badge-tag dup">Módulo Espejo</span></td>
+                <td>Redundancia del 90% del menú.</td>
+                <td>El encabezado <b>TG3-Operaciones</b> (permiso 62) es una copia casi idéntica de <b>Comercial › Reportes</b> (mismo permiso 62).</td>
+                <td>Eliminar TG3 como módulo separado y consolidar todo en <b>Ventas y Comercial</b>.</td>
+              </tr>
+              <tr>
+                <td><span class="badge-tag moved">Dispersión de Combustible</span></td>
+                <td>El usuario navega 4 menús para una sola operación.</td>
+                <td>Inventarios en Abastos, análisis en Contabilidad, horas sin gas en Dirección y compras en Contabilidad.</td>
+                <td>Crear el pilar unificado <b>Combustible y Abastos</b> con submenús temáticos.</td>
+              </tr>
+              <tr>
+                <td><span class="badge-tag rename">Nomenclatura Débil</span></td>
+                <td>Enlaces crípticos o técnicos.</td>
+                <td>Rutas como <code>/income/test_v3</code> ("Conciliar"), <code>/supply/bulkUpload2</code> ("Pendiente (Nuevo)") o abreviaturas como "Vta Sem x Zona".</td>
+                <td>Nombres claros orientados a la función real: "Conciliación Bancaria", "Carga Masiva XML", etc.</td>
+              </tr>
+              <tr>
+                <td><span class="badge-tag fixed">Submenús Genéricos</span></td>
+                <td>Fatiga visual. El usuario ve "Reportes" y "Herramientas" repetido 7 veces.</td>
+                <td>Abastos tiene Reportes/Herramientas, Administración tiene Reportes/Herramientas, etc.</td>
+                <td>Submenús específicos: "Inventarios", "Logística y Recepciones", "Precios y CRE".</td>
+              </tr>
+              <tr>
+                <td><span class="badge-tag fixed">Ausencia de Buscador</span></td>
+                <td>Con ~140 enlaces, encontrar una pantalla requiere memorizar la ruta interna.</td>
+                <td>El usuario debe recordar si "Facturas ControlGas" está en Ingresos o Contabilidad.</td>
+                <td>Buscador reactivo en la cabecera del sidebar con filtro instantáneo en JS.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card-block">
+          <div class="card-title">💡 Principios del Nuevo Diseño</div>
+          <p style="font-size:0.9rem; color:#475569; line-height: 1.6; margin-bottom: 12px;">
+            1. <b>Organización por Proceso:</b> Los usuarios no piensan en "controladores de Symfony o PHP", piensan en sus tareas diarias: vender, cuadrar inventario, conciliar bancos o pagar a proveedores.<br>
+            2. <b>Respeto a los Permisos:</b> La nueva estructura conserva al 100% las directivas <code>authorized(id)</code> existentes. Si un usuario no tiene permiso, la opción o el grupo simplemente no se renderiza.<br>
+            3. <b>Profundidad Controlada:</b> Máximo 2 niveles de anidación (Grupo ▸ Submenú) con acordeones auto-excluyentes o fluidos.<br>
+            4. <b>Buscador en el Sidebar:</b> Permite escribir palabras clave (ej. "tarjeta", "merma", "arqueo") y abre de inmediato la sección correspondiente.
+          </p>
+        </div>
+
+      </div>
+
+      <!-- PESTAÑA 2: MATRIZ DE CAMBIOS -->
+      <div id="tab-matriz" class="view-pane">
+        <div class="card-block">
+          <div class="card-title">
+            <span>Auditoría de Enlaces y Reubicación</span>
+            <div class="filter-bar">
+              <input type="text" id="matrixSearch" class="filter-input" placeholder="Filtrar por ruta o nombre..." oninput="filterMatrix()">
+              <button class="filter-btn active" onclick="setMatrixFilter('all', this)">Todos</button>
+              <button class="filter-btn" onclick="setMatrixFilter('dup', this)">Duplicados</button>
+              <button class="filter-btn" onclick="setMatrixFilter('moved', this)">Reubicados</button>
+              <button class="filter-btn" onclick="setMatrixFilter('rename', this)">Renombrados</button>
+            </div>
+          </div>
+
+          <table class="data-table" id="matrixTable">
+            <thead>
+              <tr>
+                <th>Estado</th>
+                <th>Nombre en Pantalla</th>
+                <th>Ruta (URL)</th>
+                <th>Ubicación Anterior</th>
+                <th>Nueva Ubicación Recomendada</th>
+                <th>Permiso</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-type="dup">
+                <td><span class="badge-tag dup">Duplicado x3</span></td>
+                <td>Ventas x Día x Turno</td>
+                <td><code class="url-tag">/operations/sales_day_turn</code></td>
+                <td>TG3 / Comercial / Operaciones</td>
+                <td><b>1. Comercial y Ventas</b> ▸ Ventas y Rendimiento</td>
+                <td><code>62 / 37</code></td>
+              </tr>
+              <tr data-type="dup">
+                <td><span class="badge-tag dup">Duplicado x2</span></td>
+                <td>Mis Recepciones</td>
+                <td><code class="url-tag">/station_portal/mis_recepciones</code></td>
+                <td>Abastos y Operaciones</td>
+                <td><b>2. Combustible y Abastos</b> ▸ Logística y Recepciones</td>
+                <td><code>authorized(84)</code></td>
+              </tr>
+              <tr data-type="dup">
+                <td><span class="badge-tag dup">Duplicado x2</span></td>
+                <td>Control de Despachos</td>
+                <td><code class="url-tag">/income/control_dispatches</code></td>
+                <td>Ingresos y Marketing</td>
+                <td><b>4. Facturación</b> ▸ Control de Despachos</td>
+                <td><code>14 / 26</code></td>
+              </tr>
+              <tr data-type="dup">
+                <td><span class="badge-tag dup">Duplicado x2</span></td>
+                <td>Tarjetas Nexus</td>
+                <td><code class="url-tag">/marketing/client_cards_nexus</code></td>
+                <td>Marketing (2 veces repetido literal)</td>
+                <td><b>8. Administración</b> ▸ Tarjetas y Engomados</td>
+                <td><code>authorized(26)</code></td>
+              </tr>
+              <tr data-type="moved">
+                <td><span class="badge-tag moved">Reubicado</span></td>
+                <td>Arqueos Dollar2Go</td>
+                <td><code class="url-tag">/arqueo</code></td>
+                <td>Sección suelta de 1 solo item</td>
+                <td><b>5. Tesorería y Bancos</b> ▸ Conciliaciones</td>
+                <td><code>73 / 74</code></td>
+              </tr>
+              <tr data-type="moved">
+                <td><span class="badge-tag moved">Reubicado</span></td>
+                <td>Tipo de Cambio</td>
+                <td><code class="url-tag">/administration/exchange_rate</code></td>
+                <td>Tesorería (apuntaba a admin)</td>
+                <td><b>5. Tesorería y Bancos</b></td>
+                <td><code>authorized(41)</code></td>
+              </tr>
+              <tr data-type="moved">
+                <td><span class="badge-tag moved">Reubicado</span></td>
+                <td>Petrotal CNE / FIEL</td>
+                <td><code class="url-tag">/petrotal/*</code></td>
+                <td>Sección separada al final</td>
+                <td><b>7. Fiscal y Contabilidad</b> ▸ Petrotal CNE</td>
+                <td><code>98 / 99</code></td>
+              </tr>
+              <tr data-type="moved">
+                <td><span class="badge-tag moved">Reubicado</span></td>
+                <td>Pagos de Combustible</td>
+                <td><code class="url-tag">/payment/payment_list</code></td>
+                <td>Metido dentro de Abastos</td>
+                <td><b>3. Cuentas por Pagar</b> ▸ Gestión Proveedores</td>
+                <td><code>Nuevo perm.</code></td>
+              </tr>
+              <tr data-type="rename">
+                <td><span class="badge-tag rename">Renombrado</span></td>
+                <td>Conciliar (Bancos)</td>
+                <td><code class="url-tag">/income/test_v3</code></td>
+                <td>Ingresos ▸ Conciliaciones bancos</td>
+                <td><b>5. Tesorería</b> ▸ Conciliación Bancaria</td>
+                <td><code>authorized(14)</code></td>
+              </tr>
+              <tr data-type="rename">
+                <td><span class="badge-tag rename">Renombrado</span></td>
+                <td>Dashboard Bancos</td>
+                <td><code class="url-tag">/income/summary_v3</code></td>
+                <td>Ingresos ▸ Conciliaciones bancos</td>
+                <td><b>5. Tesorería</b> ▸ Dashboard Bancos</td>
+                <td><code>authorized(14)</code></td>
+              </tr>
+              <tr data-type="rename">
+                <td><span class="badge-tag rename">Renombrado</span></td>
+                <td>Pendiente (Nuevo)</td>
+                <td><code class="url-tag">/supply/bulkUpload2</code></td>
+                <td>Abastos ▸ Herramientas</td>
+                <td><b>2. Combustible</b> ▸ Carga Masiva (V2)</td>
+                <td><code>authorized(40)</code></td>
+              </tr>
+              <tr data-type="rename">
+                <td><span class="badge-tag rename">Renombrado</span></td>
+                <td>Vta Sem x Zona</td>
+                <td><code class="url-tag">/commercial/sale_week_zone</code></td>
+                <td>Comercial ▸ Reportes</td>
+                <td><b>1. Comercial</b> ▸ Venta Semanal x Zona</td>
+                <td><code>authorized(62)</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PESTAÑA 3: COMPARATIVA ANTES VS DESPUES -->
+      <div id="tab-comparativa" class="view-pane">
+        <div class="compare-grid">
+          
+          <div class="compare-col">
+            <div class="compare-header" style="color: #dc2626;">
+              <span>Estructura Anterior (12 Divisiones)</span>
+              <span>968 líneas</span>
+            </div>
+            <ul style="font-size:0.85rem; line-height: 1.8; color: #475569; padding-left: 20px;">
+              <li><b>Dashboard</b></li>
+              <li><b>Reportes (TG3-Operaciones)</b> <span class="badge-tag dup">Duplica Comercial</span></li>
+              <li><b>ABASTOS</b> (Mezcla Tanques, XML, Proveedores, Pagos y Recepciones)</li>
+              <li><b>ADMINISTRACIÓN</b> (Reportes, Anticipos Débito, Tickets, ECV)</li>
+              <li><b>ARQUEO DOLLAR2GO</b> <span class="badge-tag moved">1 solo link suelto</span></li>
+              <li><b>COMERCIAL</b> (Repite TG3)</li>
+              <li><b>CONTABILIDAD</b> (Lista de 15 reportes no clasificados)</li>
+              <li><b>DIRECCIÓN</b> (Venta dólares, TG6, Precios, Horas sin gas)</li>
+              <li><b>INGRESOS</b> (Reportes x16, Facturas x10, Conciliaciones x8)</li>
+              <li><b>MARKETING</b> (Tarjetas + enlace repetido de control despachos)</li>
+              <li><b>OPERACIONES</b> (Tabuladores, Turnos, Incidencias, Reportes x10)</li>
+              <li><b>PETROTAL</b> (CNE y FIEL aislados al fondo)</li>
+              <li><b>TESORERÍA</b> (Movimientos bancos y cuentas)</li>
+              <li><b>SISTEMAS</b> (Herramientas, Usuarios, Permisos)</li>
+            </ul>
+          </div>
+
+          <div class="compare-col">
+            <div class="compare-header" style="color: var(--tg-blue);">
+              <span>Nueva Estructura Propuesta (8 Módulos)</span>
+              <span>Procesos Claros</span>
+            </div>
+            <ul style="font-size:0.85rem; line-height: 1.8; color: #1e293b; padding-left: 20px;">
+              <li><b>Panel General</b> (Dashboard + Top 5 Más Usados)</li>
+              <li><b>1. Comercial y Ventas</b>
+                <div style="font-size:0.78rem; color:#64748b;">• Ventas y Rendimiento · Venta por Modalidad / Rubro · Mystery Shopper</div>
+              </li>
+              <li><b>2. Combustible y Abastos</b>
+                <div style="font-size:0.78rem; color:#64748b;">• Inventario y Mermas · Logística y Recepciones · Precios y CRE</div>
+              </li>
+              <li><b>3. Cuentas por Pagar</b>
+                <div style="font-size:0.78rem; color:#64748b;">• Programación de Pagos · Facturas Proveedor · Catálogo y Renegociación</div>
+              </li>
+              <li><b>4. Facturación y Clientes</b>
+                <div style="font-size:0.78rem; color:#64748b;">• Emisión y Timbrado · Despachos · Clientes, Cartera y Valeras</div>
+              </li>
+              <li><b>5. Tesorería y Bancos</b>
+                <div style="font-size:0.78rem; color:#64748b;">• Conciliaciones Bancarias y Efectivo · Arqueos D2GO · Cuentas</div>
+              </li>
+              <li><b>6. Operaciones en Estación</b>
+                <div style="font-size:0.78rem; color:#64748b;">• Turnos, Tabuladores e Islas · Incidencias de Terminales</div>
+              </li>
+              <li><b>7. Fiscal y Contabilidad</b>
+                <div style="font-size:0.78rem; color:#64748b;">• Estados Financieros · Estímulo Fiscal · CNE Petrotal y FIEL</div>
+              </li>
+              <li><b>8. Administración y TI</b>
+                <div style="font-size:0.78rem; color:#64748b;">• Mesa de Tickets · Usuarios y Permisos · Monitoreo y SAT</div>
+              </li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- PESTAÑA 4: GUÍA TÉCNICA Y TWIG -->
+      <div id="tab-codigo" class="view-pane">
+        <div class="card-block">
+          <div class="card-title">🛠️ Plan de Implementación Seguro (Paso a Paso)</div>
+          <ol style="font-size:0.88rem; color:#475569; line-height: 1.8; margin-left: 20px; margin-bottom: 20px;">
+            <li><b>Fase 1 (Limpieza Segura):</b> Quitar las líneas comentadas muertas y duplicados literales (ej. segunda línea de <code>client_cards_nexus</code>).</li>
+            <li><b>Fase 2 (Búsqueda en Vivo en JS):</b> Integrar el script de búsqueda rápida (~35 líneas de JS) en `sidebar.html` sin tocar backend.</li>
+            <li><b>Fase 3 (Reagrupación de Plantilla Twig):</b> Reorganizar los <code>&lt;li class="sidebar-item"&gt;</code> conservando exactamente las condiciones <code>{% if authorized(X) %}</code> originales para que nadie pierda acceso.</li>
+            <li><b>Fase 4 (Permiso Independiente para Pagos):</b> Asignar un ID de permiso exclusivo para Pagos de Combustible en la base de datos (evitando que cualquiera con permiso 32 de Abastos vea pagos).</li>
+          </ol>
+
+          <div class="card-title">Snippet Recomendado para el Buscador JS</div>
+          <pre class="code-preview">// Buscador Reactivo para el sidebar (pegar en sidebar.html)
+document.getElementById('sidebarSearchInput')?.addEventListener('input', function(e) {
+  const term = e.target.value.toLowerCase().trim();
+  const groups = document.querySelectorAll('.sidebar-nav .sidebar-item');
+  
+  groups.forEach(item => {
+    const text = item.textContent.toLowerCase();
+    const hasMatch = term === '' || text.includes(term);
+    item.style.display = hasMatch ? '' : 'none';
+    
+    // Si hay coincidencia y tiene submenú colapsado, desplegarlo
+    const dropdown = item.querySelector('.sidebar-dropdown');
+    if (dropdown && term !== '' && hasMatch) {
+      dropdown.classList.add('show');
+    }
+  });
+});</pre>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // Control de pestañas superiores
+  function switchTab(tabId, btn) {
+    document.querySelectorAll('.view-pane').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-pill').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  // Acordeón interactivo del sidebar
+  function toggleNavGroup(btn) {
+    const group = btn.closest('.nav-group');
+    const wasOpen = group.classList.contains('open');
+    group.classList.toggle('open', !wasOpen);
+  }
+
+  // Toggle de colapso del sidebar (modo compacto)
+  const sidebar = document.getElementById('mainSidebar');
+  const toggleBtn = document.getElementById('toggleCollapseBtn');
+  toggleBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('collapsed');
+    toggleBtn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+  });
+
+  // Buscador interactivo en vivo del sidebar
+  const searchInput = document.getElementById('menuSearch');
+  searchInput.addEventListener('input', function(e) {
+    const val = e.target.value.toLowerCase().trim();
+    const groups = document.querySelectorAll('#sidebarNav .nav-group');
+    const categories = document.querySelectorAll('#sidebarNav .category-title');
+
+    groups.forEach(group => {
+      const text = group.textContent.toLowerCase();
+      const tags = group.getAttribute('data-tags') || '';
+      const matches = val === '' || text.includes(val) || tags.includes(val);
+      
+      group.style.display = matches ? 'block' : 'none';
+      if (matches && val.length > 1) {
+        group.classList.add('open');
+      }
+    });
+
+    categories.forEach(cat => {
+      cat.style.display = val === '' ? 'flex' : 'none';
+    });
+  });
+
+  // Filtros de la tabla matriz
+  function setMatrixFilter(filterType, btn) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    const rows = document.querySelectorAll('#matrixTable tbody tr');
+    rows.forEach(row => {
+      const rowType = row.getAttribute('data-type');
+      if (filterType === 'all' || rowType === filterType) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+
+  function filterMatrix() {
+    const q = document.getElementById('matrixSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('#matrixTable tbody tr');
+    rows.forEach(row => {
+      const match = row.textContent.toLowerCase().includes(q);
+      row.style.display = match ? '' : 'none';
+    });
+  }
+</script>
+</body>
+</html>
