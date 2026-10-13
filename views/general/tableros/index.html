@@ -149,6 +149,7 @@
       <div class="boards-board-meta">
         <span id="boardRole" class="boards-role"></span>
         <span id="boardAccessSource" class="boards-access-source" aria-label="Origen del acceso"></span>
+        <button type="button" class="btn boards-button-light" id="openDuplicateBoard" hidden><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Duplicar</span></button>
         <button type="button" class="btn boards-button-light boards-icon-action" id="trashBoard" aria-label="Mover tablero a la papelera" title="Mover a la papelera"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
         <button type="button" class="btn boards-button-light boards-icon-action" id="archiveBoard" aria-label="Archivar tablero" title="Archivar"><i class="fa-solid fa-box-archive" aria-hidden="true"></i></button>
         <button type="button" class="btn boards-button-light" id="openShareBoard"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Compartir</span></button>
@@ -244,6 +245,23 @@
     <label class="boards-field-label" for="newBoardVisibility">Visibilidad del tablero</label>
     <select class="form-select" id="newBoardVisibility" name="visibility"><option value="private">Privado · solo personas invitadas</option><option value="workspace">Personas con acceso al espacio</option><option value="organization">Toda la organización · solo lectura</option></select>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Crear tablero</button></div>
+  </form>
+</dialog>
+
+<dialog class="boards-dialog" id="duplicateBoardDialog" aria-labelledby="duplicateBoardTitle">
+  <form id="duplicateBoardForm">
+    <div class="boards-dialog-heading"><div><h3 id="duplicateBoardTitle">Duplicar tablero</h3><p>Crea una copia y elige qué información incluir.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="duplicateBoardName">Nombre del tablero</label>
+    <input class="form-control" id="duplicateBoardName" name="name" maxlength="120" required autocomplete="off">
+    <label class="boards-field-label" for="duplicateBoardMode">Qué quieres copiar</label>
+    <select class="form-select" id="duplicateBoardMode" name="mode">
+      <option value="structure">Solo estructura de tablero</option>
+      <option value="items">Estructura de tablero y elementos</option>
+      <option value="updates">Estructura, elementos y actualizaciones</option>
+    </select>
+    <small class="boards-field-help" id="duplicateBoardModeHelp">Se copiarán grupos y columnas, sin elementos.</small>
+    <label class="boards-checkbox-label" for="duplicateBoardSubscribers"><input type="checkbox" id="duplicateBoardSubscribers" name="keep_subscribers" value="1"><span>Mantener los suscriptores del tablero</span></label>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Duplicar tablero</button></div>
   </form>
 </dialog>
 

@@ -705,6 +705,17 @@ class tableros_api {
         });
     }
 
+    public function duplicate_board(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            if (!$this->access->hasGlobalPermission('create')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
+            }
+            return $this->model->duplicateBoard($boardId, $userId, $input);
+        });
+    }
+
     /** Streams at most the requested byte count without buffering the complete media file. */
     private function streamFileRange(string $path, int $start, int $length): void {
         $stream = @fopen($path, 'rb');

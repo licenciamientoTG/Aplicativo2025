@@ -1607,6 +1607,141 @@ class TablerosModel {
         });
     }
 
+    /** Clone a board with new IDs. No files, relations, dependencies, or automation state are copied. */
+    public function duplicateBoard(int $sourceBoardId, int $userId, array $input): array {
+        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
+        if (!$this->userIsActive($userId)) throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
+        $name = $this->requiredString($input, 'name', 120);
+        $mode = strtolower(trim((string)($input['mode'] ?? '')));
+        if (!in_array($mode, ['structure', 'items', 'updates'], true)) {
+            throw new TablerosApiException('validation', 'El modo de duplicación no es válido.', 422);
+        }
+        $keepSubscribers = $this->booleanInput($input, 'keep_subscribers', false);
+
+        return $this->transaction(function () use ($sourceBoardId, $userId, $name, $mode, $keepSubscribers): array {
+            $source = $this->one('SELECT * FROM tb_board WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$sourceBoardId]);
+            if (!$source) throw new TablerosApiException('not_found', 'No se encontró el tablero.', 404);
+
+            // Keep the source location where the actor can create there; otherwise use one of their own workspaces.
+            $workspaceId = (int)$source['workspace_id'];
+            $workspaceRole = $this->access->workspaceRole($workspaceId);
+            if ($workspaceRole === null) {
+                $ownWorkspace = $this->one("SELECT TOP (1) id FROM tb_workspace WHERE created_by = ? AND workspace_type = 'workspace' AND deleted_at IS NULL ORDER BY id", [$userId]);
+                if (!$ownWorkspace) throw new TablerosApiException('forbidden', 'No tienes un espacio de trabajo disponible para crear el tablero.', 403);
+                $workspaceId = (int)$ownWorkspace['id'];
+            }
+            $workspace = $this->one("SELECT id FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
+            if (!$workspace || $this->access->workspaceRole($workspaceId) === null) {
+                throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo destino.', 403);
+            }
+            $folderId = null;
+            if ($workspaceId === (int)$source['workspace_id'] && !empty($source['folder_id'])) {
+                $folder = $this->one('SELECT id, created_by FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', [(int)$source['folder_id'], $workspaceId]);
+                $role = $this->access->workspaceRole($workspaceId);
+                if ($folder && ((int)($folder['created_by'] ?? 0) === $userId || $role === 'owner' || $folder['created_by'] === null)) {
+                    $folderId = (int)$folder['id'];
+                }
+            }
+            $boardId = $this->insertId(
+                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, created_by, created_at, updated_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$workspaceId, $folderId, $name, $source['description'] ?? null, 'private', $userId]
+            );
+
+            $groupMap = [];
+            foreach ($this->all('SELECT id, name, color, sort_order FROM tb_group WHERE board_id = ? AND deleted_at IS NULL ORDER BY sort_order, id', [$sourceBoardId]) as $group) {
+                $groupMap[(string)$group['id']] = $this->insertId(
+                    'INSERT INTO tb_group (board_id, name, color, sort_order, created_by, created_at, updated_at) OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                    [$boardId, $group['name'], $group['color'], $group['sort_order'], $userId]
+                );
+            }
+            $columnMap = [];
+            foreach ($this->all('SELECT id, name, type, options_json, required, sort_order, enforce_unique FROM tb_column WHERE board_id = ? AND deleted_at IS NULL ORDER BY sort_order, id', [$sourceBoardId]) as $column) {
+                $columnMap[(string)$column['id']] = $this->insertId(
+                    'INSERT INTO tb_column (board_id, name, type, options_json, required, sort_order, enforce_unique, created_by, created_at, updated_at) OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                    [$boardId, $column['name'], $column['type'], $column['options_json'], $column['required'], $column['sort_order'], $column['enforce_unique'], $userId]
+                );
+            }
+
+            $itemMap = [];
+            if ($mode !== 'structure') {
+                $items = $this->all('SELECT id, group_id, parent_item_id, name, sort_order FROM tb_item WHERE board_id = ? AND deleted_at IS NULL ORDER BY group_id, sort_order, id', [$sourceBoardId]);
+                // Topologically insert hierarchy so parent foreign keys always target the new board.
+                $pending = $items;
+                while ($pending) {
+                    $progress = false;
+                    foreach ($pending as $index => $item) {
+                        $parentId = $item['parent_item_id'] === null ? null : ($itemMap[(string)$item['parent_item_id']] ?? null);
+                        if ($item['parent_item_id'] !== null && $parentId === null) continue;
+                        $groupId = $groupMap[(string)$item['group_id']] ?? null;
+                        if ($groupId === null) throw new RuntimeException('Source item has no active group.');
+                        $itemMap[(string)$item['id']] = $this->insertId(
+                            'INSERT INTO tb_item (board_id, group_id, parent_item_id, name, sort_order, created_by, updated_by, created_at, updated_at) OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                            [$boardId, $groupId, $parentId, $item['name'], $item['sort_order'], $userId, $userId]
+                        );
+                        unset($pending[$index]);
+                        $progress = true;
+                    }
+                    if (!$progress) throw new RuntimeException('Source item hierarchy is invalid or cyclic.');
+                }
+            }
+
+            if ($mode === 'updates' && $itemMap) {
+                // Copy scalar cell payloads only. Reference-bearing/special fields are intentionally blank.
+                $excludedTypes = ['people', 'person', 'team', 'file', 'board_relation', 'subtasks', 'dependency'];
+                $cells = $this->all(
+                    'SELECT c.item_id, c.column_id, c.value_text, c.value_number, c.value_date, c.value_datetime, c.value_boolean, c.value_json, CONVERT(VARCHAR(64), c.unique_value_hash, 2) AS unique_hash_hex, col.type
+                     FROM tb_cell c INNER JOIN tb_column col ON col.id = c.column_id AND col.board_id = c.board_id
+                     WHERE c.board_id = ? AND c.deleted_at IS NULL AND col.deleted_at IS NULL', [$sourceBoardId]
+                );
+                foreach ($cells as $cell) {
+                    if (in_array((string)$cell['type'], $excludedTypes, true)) continue;
+                    $newItem = $itemMap[(string)$cell['item_id']] ?? null;
+                    $newColumn = $columnMap[(string)$cell['column_id']] ?? null;
+                    if ($newItem === null || $newColumn === null) continue;
+                    $valueNumber = $cell['value_number'];
+                    $uniqueHash = $cell['unique_hash_hex'];
+                    if ((string)$cell['type'] === 'item_id') {
+                        $valueNumber = $itemMap[(string)(int)$valueNumber] ?? null;
+                        if ($valueNumber === null) continue;
+                        if ($uniqueHash !== null) $uniqueHash = $this->canonicalValueHash('item_id', (int)$valueNumber);
+                    }
+                    $this->execute(
+                        'INSERT INTO tb_cell (item_id, column_id, board_id, value_text, value_number, value_date, value_datetime, value_boolean, value_json, unique_value_hash, created_by, updated_by, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CONVERT(VARBINARY(32), ?, 2), ?, ?, GETDATE())',
+                        [$newItem, $newColumn, $boardId, $cell['value_text'], $valueNumber, $cell['value_date'], $cell['value_datetime'], $cell['value_boolean'], $cell['value_json'], $uniqueHash, $userId, $userId]
+                    );
+                }
+                $comments = $this->all('SELECT id, item_id, parent_comment_id, body FROM tb_comment WHERE board_id = ? AND deleted_at IS NULL ORDER BY created_at, id', [$sourceBoardId]);
+                $commentMap = [];
+                $pendingComments = $comments;
+                while ($pendingComments) {
+                    $progress = false;
+                    foreach ($pendingComments as $index => $comment) {
+                        $newItem = $itemMap[(string)$comment['item_id']] ?? null;
+                        $parent = $comment['parent_comment_id'] === null ? null : ($commentMap[(string)$comment['parent_comment_id']] ?? null);
+                        if ($newItem === null || ($comment['parent_comment_id'] !== null && $parent === null)) continue;
+                        $commentMap[(string)$comment['id']] = $this->insertId(
+                            'INSERT INTO tb_comment (board_id, item_id, parent_comment_id, body, created_by, updated_by, created_at, updated_at) OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                            [$boardId, $newItem, $parent, $comment['body'], $userId, $userId]
+                        );
+                        unset($pendingComments[$index]);
+                        $progress = true;
+                    }
+                    if (!$progress) throw new RuntimeException('Source comment thread is invalid.');
+                }
+            }
+
+            if ($keepSubscribers) {
+                foreach ($this->all("SELECT user_id, role FROM tb_board_member WHERE board_id = ? AND deleted_at IS NULL AND user_id <> ?", [$sourceBoardId, $userId]) as $member) {
+                    $this->execute('INSERT INTO tb_board_member (board_id, user_id, role, invited_by, created_at, updated_at) VALUES (?, ?, ?, ?, GETDATE(), GETDATE())', [$boardId, $member['user_id'], $member['role'], $userId]);
+                }
+            }
+            $this->writeActivity($boardId, null, $userId, 'board.created', ['name' => $name, 'source_board_id' => $sourceBoardId, 'duplicate_mode' => $mode]);
+            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $source['description'] ?? null, 'visibility' => 'private', 'role' => 'owner'];
+        });
+    }
+
     public function createGroup(int $boardId, int $userId, array $input): array {
         $name = $this->requiredString($input, 'name', 120);
         $color = $this->optionalString($input, 'color', 32);

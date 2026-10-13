@@ -78,6 +78,8 @@
     boardName: document.getElementById('boardName'),
     boardDescription: document.getElementById('boardDescription'),
     boardRole: document.getElementById('boardRole'),
+    duplicateBoardDialog: document.getElementById('duplicateBoardDialog'),
+    duplicateBoardForm: document.getElementById('duplicateBoardForm'),
     boardSearch: document.getElementById('boardSearch'),
     boardItemCount: document.getElementById('boardItemCount'),
     boardTableContainer: document.getElementById('boardTableContainer'),
@@ -1139,6 +1141,8 @@
     document.getElementById('openCreateColumn').hidden = !manage;
     document.getElementById('trashBoard').hidden = !canShareBoard();
     document.getElementById('archiveBoard').hidden = !canShareBoard();
+    const duplicateButton = document.getElementById('openDuplicateBoard');
+    if (duplicateButton) duplicateButton.hidden = !canCreateBoard || !['owner', 'designer'].includes(role);
     const shareButton = document.getElementById('openShareBoard');
     if (shareButton) shareButton.hidden = !canShareBoard();
     const sharedViewOption = document.getElementById('sharedViewOption');
@@ -5732,7 +5736,7 @@
     document.querySelectorAll('[data-close-dialog]').forEach((button) => {
       button.addEventListener('click', () => closeDialog(button.closest('dialog')));
     });
-    [els.createBoardDialog, els.createWorkspaceDialog, els.workspaceMembersDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog, els.confirmDialog].forEach((dialog) => {
+    [els.createBoardDialog, els.duplicateBoardDialog, els.createWorkspaceDialog, els.workspaceMembersDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog, els.confirmDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
@@ -5844,6 +5848,45 @@
       document.getElementById('savedViewName').value = '';
       document.getElementById('savedViewShared').checked = false;
       openDialog(els.saveViewDialog);
+    });
+
+    document.getElementById('openDuplicateBoard')?.addEventListener('click', () => {
+      const role = String(state.board?.role || '').toLowerCase();
+      if (!canCreateBoard || !['owner', 'designer'].includes(role) || !state.board?.id) return;
+      document.getElementById('duplicateBoardName').value = `Duplicado de ${state.board.name || 'tablero'}`;
+      document.getElementById('duplicateBoardMode').value = 'structure';
+      document.getElementById('duplicateBoardSubscribers').checked = false;
+      document.getElementById('duplicateBoardModeHelp').textContent = 'Se copiarán grupos y columnas, sin elementos.';
+      openDialog(els.duplicateBoardDialog);
+    });
+    document.getElementById('duplicateBoardMode')?.addEventListener('change', (event) => {
+      const help = document.getElementById('duplicateBoardModeHelp');
+      if (help) help.textContent = event.target.value === 'items'
+        ? 'Se copiarán los nombres y la jerarquía de los elementos; los valores de las columnas quedarán vacíos.'
+        : event.target.value === 'updates'
+          ? 'Se copiarán los elementos, sus valores y las actualizaciones.'
+          : 'Se copiarán grupos y columnas, sin elementos.';
+    });
+
+    dialogSubmit(els.duplicateBoardForm, async (formData) => {
+      const role = String(state.board?.role || '').toLowerCase();
+      if (!canCreateBoard || !['owner', 'designer'].includes(role)) throw new Error('Solo el propietario o un diseñador puede duplicar este tablero.');
+      const result = await post('/duplicate_board', {
+        board_id: state.board.id,
+        name: getFormValue(formData, 'name'),
+        mode: getFormValue(formData, 'mode') || 'structure',
+        keep_subscribers: formData.get('keep_subscribers') === '1'
+      });
+      const board = result.data || result;
+      if (!board.id) throw new Error('El servidor no devolvió el tablero duplicado.');
+      closeDialog(els.duplicateBoardDialog);
+      await loadBoards();
+      const duplicated = state.boards.find((candidate) => String(candidate.id) === String(board.id)) || board;
+      if (!state.boards.some((candidate) => String(candidate.id) === String(board.id))) state.boards.push(duplicated);
+      renderBoardOptions();
+      els.boardSelect.value = String(board.id);
+      await loadBoard(board.id);
+      setNotice('Tablero duplicado.', 'success');
     });
 
     dialogSubmit(els.createBoardForm, async (formData) => {
