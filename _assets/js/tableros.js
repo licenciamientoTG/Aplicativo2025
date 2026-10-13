@@ -5065,6 +5065,7 @@
         : 'Crea un grupo o elige una columna de estado para organizar las tarjetas.');
       return;
     }
+    board.style.setProperty('--kanban-lane-count', String(lanes.length));
     lanes.forEach((lane) => {
       const laneItems = items.filter((item) => column
         ? stringifyValue(getCellValue(item, column)) === lane.key
