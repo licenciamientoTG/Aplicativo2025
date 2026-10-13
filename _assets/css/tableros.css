@@ -552,6 +552,14 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-workspace-option > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .boards-workspace-picker > button[hidden] { display: none; }
 .boards-workspace-members-dialog { width: min(620px, calc(100% - 24px)); max-height: min(88vh, 780px); }
+.boards-confirm-dialog { width: min(460px, calc(100% - 28px)); }
+.boards-confirm-dialog .boards-dialog-body { display: grid; gap: 14px; }
+.boards-confirm-dialog .boards-dialog-heading { margin: 0; }
+.boards-confirm-message { display: grid; gap: 9px; color: #c9cde0; font-size: .85rem; line-height: 1.55; }
+.boards-confirm-message p { margin: 0; }
+.boards-confirm-dialog .boards-dialog-actions { margin: 0; padding-top: 2px; }
+.boards-confirm-dialog .boards-button-primary.boards-confirm-danger { border-color: #d85269; color: #fff; background: #b93b51; }
+.boards-confirm-dialog .boards-button-primary.boards-confirm-danger:hover { border-color: #ed7185; background: #cf465e; }
 .boards-workspace-members-dialog .boards-dialog-body { display: grid; gap: 13px; }
 .boards-workspace-owner { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid #4b5273; border-radius: 6px; color: #e9ebf7; background: #292d49; font-size: .78rem; }
 .boards-workspace-owner[hidden] { display: none; }

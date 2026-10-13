@@ -105,6 +105,11 @@
     workspaceMembersList: document.getElementById('workspaceMembersList'),
     workspaceMembersStatus: document.getElementById('workspaceMembersStatus'),
     workspaceMembersOwner: document.getElementById('workspaceMembersOwner'),
+    confirmDialog: document.getElementById('boardsConfirmDialog'),
+    confirmTitle: document.getElementById('boardsConfirmTitle'),
+    confirmMessage: document.getElementById('boardsConfirmMessage'),
+    confirmCancel: document.getElementById('boardsConfirmCancel'),
+    confirmAccept: document.getElementById('boardsConfirmAccept'),
     saveViewDialog: document.getElementById('saveViewDialog'),
     itemDetailsDialog: document.getElementById('itemDetailsDialog'),
     filePreviewDialog: document.getElementById('filePreviewDialog'),
@@ -259,7 +264,8 @@
     const { recycleAction: action, recycleType: entityType, recycleId: entityId, recycleBoard: boardId } = button.dataset;
     const archive = action === 'archive';
     const label = action === 'trash' ? 'Mover a la papelera' : archive ? 'Archivar' : ['restore', 'restore_archive'].includes(action) ? 'Restaurar' : 'Eliminar definitivamente';
-    if (!window.confirm(`${label} este elemento?`)) return;
+    const permanent = action === 'permanent';
+    if (!await confirmAction(`${label} este elemento?`, { title: label, confirmLabel: label, danger: permanent || action === 'trash' })) return;
     button.disabled = true;
     try {
       if (action === 'restore' || action === 'permanent') {
@@ -453,6 +459,31 @@
     if (!dialog) return;
     if (typeof dialog.close === 'function') dialog.close();
     else dialog.removeAttribute('open');
+  }
+
+  function confirmAction(message, { title = 'Confirmar acción', confirmLabel = 'Continuar', danger = false } = {}) {
+    const dialog = els.confirmDialog;
+    if (!dialog || dialog.open) return Promise.resolve(false);
+    els.confirmTitle.textContent = title;
+    els.confirmAccept.textContent = confirmLabel;
+    els.confirmAccept.classList.toggle('boards-confirm-danger', danger);
+    const paragraphs = String(message).split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+    els.confirmMessage.replaceChildren(...paragraphs.map((paragraph) => makeElement('p', '', paragraph)));
+    dialog.returnValue = '';
+    return new Promise((resolve) => {
+      const cancel = () => dialog.close('cancel');
+      const accept = () => dialog.close('confirm');
+      dialog.addEventListener('close', () => {
+        els.confirmCancel.removeEventListener('click', cancel);
+        els.confirmAccept.removeEventListener('click', accept);
+        resolve(dialog.returnValue === 'confirm');
+      }, { once: true });
+      els.confirmCancel.addEventListener('click', cancel);
+      els.confirmAccept.addEventListener('click', accept);
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+      els.confirmCancel.focus();
+    });
   }
 
   function dialogSubmit(form, callback) {
@@ -913,7 +944,7 @@
     if (!select || !board || select.value === board.visibility) return;
     const visibility = select.value;
     const visibilityLabel = boardVisibilityOptions.find(([value]) => value === visibility)?.[1] || visibility;
-    const confirmed = window.confirm(`Cambiar la visibilidad de «${board.name || 'Tablero'}» a «${visibilityLabel}»?\n\n${boardVisibilityImpact(visibility)}\n\nLas invitaciones directas se conservan. ¿Deseas continuar?`);
+    const confirmed = await confirmAction(`¿Cambiar la visibilidad de «${board.name || 'Tablero'}» a «${visibilityLabel}»?\n\n${boardVisibilityImpact(visibility)}\n\nLas invitaciones directas se conservan.`, { title: 'Cambiar visibilidad', confirmLabel: 'Guardar cambio' });
     if (!confirmed) {
       select.value = board.visibility;
       button.disabled = true;
@@ -5477,7 +5508,7 @@
   async function trashSelectedItems() {
     if (state.bulkMoveInFlight || !canEditBoard() || !state.board || !state.selectedItemIds.size) return;
     const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)) && item.parent_item_id == null);
-    if (!selected.length || !window.confirm(`Mover ${selected.length} elemento(s) seleccionado(s) y sus subelementos a la papelera?`)) return;
+    if (!selected.length || !await confirmAction(`Se moverán ${selected.length} elemento(s) seleccionado(s) y sus subelementos a la papelera.`, { title: 'Mover elementos a la papelera', confirmLabel: 'Mover a papelera', danger: true })) return;
     const button = document.getElementById('bulkTrashItems');
     button.disabled = true;
     try {
@@ -5506,7 +5537,7 @@
     document.querySelectorAll('[data-close-dialog]').forEach((button) => {
       button.addEventListener('click', () => closeDialog(button.closest('dialog')));
     });
-    [els.createBoardDialog, els.createWorkspaceDialog, els.workspaceMembersDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog].forEach((dialog) => {
+    [els.createBoardDialog, els.createWorkspaceDialog, els.workspaceMembersDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog, els.confirmDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
@@ -5891,7 +5922,7 @@
         : `No se reporta otro acceso para ${directoryName} después de retirar la invitación directa.`;
       residualNotice.hidden = false;
     }
-    if (!window.confirm(`¿Retirar la invitación directa de ${directoryName}?${remaining}`)) return;
+    if (!await confirmAction(`¿Retirar la invitación directa de ${directoryName}?${remaining}`, { title: 'Retirar invitación', confirmLabel: 'Retirar acceso', danger: true })) return;
     try {
       await post('/revoke_member', { board_id: state.board.id, user_id: userId });
       await loadBoardMembers();
@@ -5952,7 +5983,7 @@
         revoke.type = 'button';
         revoke.setAttribute('aria-label', `Retirar a ${displayName} del espacio`);
         revoke.addEventListener('click', async () => {
-          if (!window.confirm(`¿Retirar a ${displayName} de este espacio? Los tableros compartidos directamente seguirán disponibles.`)) return;
+          if (!await confirmAction(`¿Retirar a ${displayName} de este espacio? Los tableros compartidos directamente seguirán disponibles.`, { title: 'Retirar del espacio', confirmLabel: 'Retirar persona', danger: true })) return;
           revoke.disabled = true;
           try {
             await post('/revoke_workspace_member', { workspace_id: workspace.id, user_id: member.user_id });
