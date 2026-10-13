@@ -111,7 +111,8 @@ class ClientesVehiculosModel extends Model{
             t1.den,
             t1.est,
             t1.debsdo Saldo,
-            t2.den Cliente
+            t2.den Cliente,
+            t2.tipval Tipval
         FROM
             [SG12].[dbo].[ClientesVehiculos] t1 WITH (NOLOCK)
             LEFT JOIN Clientes t2 WITH (NOLOCK) ON t1.codcli = t2.cod;';

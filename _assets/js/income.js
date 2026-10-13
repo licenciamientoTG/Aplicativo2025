@@ -251,6 +251,22 @@ $('.refresh_datatables_credit_debit').on('click', function () {
 
 
 
+// Mini dashboard del listado de vehículos: tipval 3 = Crédito, 4 = Débito
+// (mismo criterio que el resto de la app, ver ClientesModel). est 3 = Suspendido.
+function pintarEstadisticasVehiculos(rows) {
+    let total = rows.length;
+    let credito = 0, debito = 0, suspendidos = 0;
+    rows.forEach(function (row) {
+        if (parseInt(row.Tipval, 10) === 3) credito++;
+        if (parseInt(row.Tipval, 10) === 4) debito++;
+        if (parseInt(row.Status, 10) === 3) suspendidos++;
+    });
+    $('#stat-vehiculos-total').text(total.toLocaleString('es-MX'));
+    $('#stat-vehiculos-credito').text(credito.toLocaleString('es-MX'));
+    $('#stat-vehiculos-debito').text(debito.toLocaleString('es-MX'));
+    $('#stat-vehiculos-suspendidos').text(suspendidos.toLocaleString('es-MX'));
+}
+
 // Table de Despachos de Crédito y Débito
 let datatables_vehicles = $('#datatables_vehicles').DataTable({
     colReorder: true,
@@ -295,6 +311,10 @@ let datatables_vehicles = $('#datatables_vehicles').DataTable({
     ajax: {
         // data: {'from': $('#datatables_vehicles').data('from'), 'until': $('#datatables_vehicles').data('until'), 'codgas': $('#datatables_vehicles').data('codgas')},
         url: '/income/datatables_vehicles',
+        dataSrc: function (json) {
+            pintarEstadisticasVehiculos(json.data || []);
+            return json.data || [];
+        },
         error: function() {
             $('#datatables_vehicles').waitMe('hide');
             alertify.myAlert(
