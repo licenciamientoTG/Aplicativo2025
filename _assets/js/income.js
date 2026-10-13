@@ -251,6 +251,22 @@ $('.refresh_datatables_credit_debit').on('click', function () {
 
 
 
+// Mini dashboard del listado de vehículos: tipval 3 = Crédito, 4 = Débito
+// (mismo criterio que el resto de la app, ver ClientesModel). est 3 = Suspendido.
+function pintarEstadisticasVehiculos(rows) {
+    let total = rows.length;
+    let credito = 0, debito = 0, suspendidos = 0;
+    rows.forEach(function (row) {
+        if (parseInt(row.Tipval, 10) === 3) credito++;
+        if (parseInt(row.Tipval, 10) === 4) debito++;
+        if (parseInt(row.Status, 10) === 3) suspendidos++;
+    });
+    $('#stat-vehiculos-total').text(total.toLocaleString('es-MX'));
+    $('#stat-vehiculos-credito').text(credito.toLocaleString('es-MX'));
+    $('#stat-vehiculos-debito').text(debito.toLocaleString('es-MX'));
+    $('#stat-vehiculos-suspendidos').text(suspendidos.toLocaleString('es-MX'));
+}
+
 // Table de Despachos de Crédito y Débito
 let datatables_vehicles = $('#datatables_vehicles').DataTable({
     colReorder: true,
@@ -295,6 +311,10 @@ let datatables_vehicles = $('#datatables_vehicles').DataTable({
     ajax: {
         // data: {'from': $('#datatables_vehicles').data('from'), 'until': $('#datatables_vehicles').data('until'), 'codgas': $('#datatables_vehicles').data('codgas')},
         url: '/income/datatables_vehicles',
+        dataSrc: function (json) {
+            pintarEstadisticasVehiculos(json.data || []);
+            return json.data || [];
+        },
         error: function() {
             $('#datatables_vehicles').waitMe('hide');
             alertify.myAlert(
@@ -320,7 +340,31 @@ let datatables_vehicles = $('#datatables_vehicles').DataTable({
         {'data': 'Vehículo'},
         {'data': 'Grupo'},
         {'data': 'Descripcion'},
-        {'data': 'Status'},
+        {
+            'data': 'Tipval', className: 'text-nowrap text-center',
+            render: function (v) {
+                switch (parseInt(v, 10)) {
+                    case 3: return 'Crédito';
+                    case 4: return 'Débito';
+                    default: return 'Otro';
+                }
+            }
+        },
+        {
+            'data': 'Status', className: 'text-nowrap text-center',
+            render: function (v) {
+                switch (parseInt(v, 10)) {
+                    case 1: return 'Habilitado';
+                    case 2: return 'Cargando';
+                    case 3: return 'Suspendido';
+                    case 4: return 'Uso interno';
+                    case 5: return 'Verificación pendiente';
+                    case 6: return 'Baja administrativa';
+                    default: return 'Valor Desconocido';
+                }
+            }
+        },
+        {'data': 'Saldo', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end'},
     ],
     // rowId: 'Despacho',
     createdRow: function (row, data, dataIndex) {
@@ -343,7 +387,8 @@ $('#filtro-datatables_vehicles input').on('keyup  change clear', function () {
         .column(5).search($('#VEHICULO').val().trim())
         .column(6).search($('#GRUPO').val().trim())
         .column(7).search($('#DESCRIPCION').val().trim())
-        .column(8).search($('#STATUS').val().trim())
+        .column(8).search($('#TIPO').val().trim())
+        .column(9).search($('#STATUS').val().trim())
         .draw();
 });
 

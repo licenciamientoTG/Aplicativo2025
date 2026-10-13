@@ -55,6 +55,7 @@
   const csrfToken = app.dataset.csrfToken || '';
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
+  const pageMode = app.dataset.pageMode || 'boards';
   let noticeTimer = 0;
   let filePreviewObjectUrl = '';
   let filePreviewRequest = 0;
@@ -67,12 +68,18 @@
     workspaceSelect: document.getElementById('workspaceSelect'),
     boardLoading: document.getElementById('boardLoading'),
     boardNotice: document.getElementById('boardNotice'),
+    boardVisibilityManager: document.getElementById('boardVisibilityManager'),
+    boardVisibilityStatus: document.getElementById('boardVisibilityStatus'),
+    boardVisibilityList: document.getElementById('boardVisibilityList'),
+    boardVisibilityEmpty: document.getElementById('boardVisibilityEmpty'),
     boardsEmpty: document.getElementById('boardsEmpty'),
     boardsEmptyText: document.getElementById('boardsEmptyText'),
     boardWorkspace: document.getElementById('boardWorkspace'),
     boardName: document.getElementById('boardName'),
     boardDescription: document.getElementById('boardDescription'),
     boardRole: document.getElementById('boardRole'),
+    duplicateBoardDialog: document.getElementById('duplicateBoardDialog'),
+    duplicateBoardForm: document.getElementById('duplicateBoardForm'),
     boardSearch: document.getElementById('boardSearch'),
     boardItemCount: document.getElementById('boardItemCount'),
     boardTableContainer: document.getElementById('boardTableContainer'),
@@ -92,6 +99,19 @@
     manageLabelsDialog: document.getElementById('manageLabelsDialog'),
     createItemDialog: document.getElementById('createItemDialog'),
     shareBoardDialog: document.getElementById('shareBoardDialog'),
+    workspaceMembersDialog: document.getElementById('workspaceMembersDialog'),
+    workspaceMemberForm: document.getElementById('workspaceMemberForm'),
+    workspaceMemberSearch: document.getElementById('workspaceMemberSearch'),
+    workspaceMemberUserId: document.getElementById('workspaceMemberUserId'),
+    workspaceMemberResults: document.getElementById('workspaceMemberResults'),
+    workspaceMembersList: document.getElementById('workspaceMembersList'),
+    workspaceMembersStatus: document.getElementById('workspaceMembersStatus'),
+    workspaceMembersOwner: document.getElementById('workspaceMembersOwner'),
+    confirmDialog: document.getElementById('boardsConfirmDialog'),
+    confirmTitle: document.getElementById('boardsConfirmTitle'),
+    confirmMessage: document.getElementById('boardsConfirmMessage'),
+    confirmCancel: document.getElementById('boardsConfirmCancel'),
+    confirmAccept: document.getElementById('boardsConfirmAccept'),
     saveViewDialog: document.getElementById('saveViewDialog'),
     itemDetailsDialog: document.getElementById('itemDetailsDialog'),
     filePreviewDialog: document.getElementById('filePreviewDialog'),
@@ -100,7 +120,6 @@
     filePreviewType: document.getElementById('filePreviewType'),
     filePreviewContent: document.getElementById('filePreviewContent'),
     filePreviewPanel: document.getElementById('filePreviewPanel'),
-    automationDialog: document.getElementById('automationDialog'),
     createBoardForm: document.getElementById('createBoardForm'),
     createWorkspaceForm: document.getElementById('createWorkspaceForm'),
     createFolderForm: document.getElementById('createFolderForm'),
@@ -129,10 +148,7 @@
     itemCommentForm: document.getElementById('itemCommentForm'),
     itemFilesList: document.getElementById('itemFilesList'),
     itemFilesStatus: document.getElementById('itemFilesStatus'),
-    itemFileForm: document.getElementById('itemFileForm'),
-    itemFileColumn: document.getElementById('itemFileColumn'),
-    itemFileTarget: document.getElementById('itemFileTarget'),
-    itemFileInput: document.getElementById('itemFileInput'),
+    itemFileTypes: document.getElementById('itemFileTypes'),
     itemRelationsList: document.getElementById('itemRelationsList'),
     itemRelationsStatus: document.getElementById('itemRelationsStatus'),
     itemRelationForm: document.getElementById('itemRelationForm'),
@@ -180,6 +196,12 @@
     filterDraft: [],
     calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     collapsedGroups: new Set(),
+    draggedItemId: '',
+    draggedItemIds: [],
+    suppressItemClickUntil: 0,
+    summaryFunctions: {},
+    summaryPeople: new Map(),
+    summaryPeopleRequested: new Set(),
     selectedItemIds: new Set(),
     bulkMoveInFlight: false,
     inlineAddGroupId: '',
@@ -187,8 +209,10 @@
     userSearchTimer: null,
     activeDetailRequest: 0,
     detailItemId: '',
+    createParentId: '',
     itemComments: [],
     itemActivity: [],
+    itemFileTypeFilter: 'all',
     itemRelations: [],
     itemDependencies: [],
     automations: [],
@@ -199,7 +223,10 @@
     fileHistoryVisible: {},
     fileHistoryLoading: {},
     fileHistoryErrors: {},
-    boardMembers: []
+    boardMembers: [],
+    workspaceMembers: [],
+    recycleMode: '',
+    recycleEntries: []
   };
   let shareUserSearchRequest = 0;
   let selectedShareUser = null;
@@ -220,6 +247,163 @@
     }
   }
 
+  function recycleAction(label, entityType, entityId, operation, boardId = state.board?.id) {
+    const iconActions = ['trash', 'archive', 'permanent'];
+    const button = makeElement('button', 'boards-text-button boards-recycle-action', iconActions.includes(operation) ? '' : label);
+    button.type = 'button';
+    button.dataset.recycleAction = operation;
+    button.dataset.recycleType = entityType;
+    button.dataset.recycleId = String(entityId);
+    if (boardId != null) button.dataset.recycleBoard = String(boardId);
+    button.setAttribute('aria-label', `${label}: ${entityType} ${entityId}`);
+    button.title = label;
+    if (operation === 'archive') button.innerHTML = '<i class="fa-solid fa-box-archive" aria-hidden="true"></i>';
+    else if (iconActions.includes(operation)) button.innerHTML = '<i class="fa-solid fa-trash-can" aria-hidden="true"></i>';
+    return button;
+  }
+
+  async function runRecycleAction(button) {
+    const { recycleAction: action, recycleType: entityType, recycleId: entityId, recycleBoard: boardId } = button.dataset;
+    const archive = action === 'archive';
+    const label = action === 'trash' ? 'Mover a la papelera' : archive ? 'Archivar' : ['restore', 'restore_archive'].includes(action) ? 'Restaurar' : 'Eliminar definitivamente';
+    const permanent = action === 'permanent';
+    const folderNotice = entityType === 'folder'
+      ? `\n\nTambién se ${archive ? 'archivarán' : 'moverán a la papelera'} todas las subcarpetas, los tableros y todo su contenido.`
+      : '';
+    if (!await confirmAction(`${label} este elemento?${folderNotice}`, { title: label, confirmLabel: label, danger: permanent || action === 'trash' })) return;
+    button.disabled = true;
+    try {
+      if (action === 'restore' || action === 'permanent') {
+        const endpoint = action === 'restore' ? '/restore_trash' : '/permanently_delete_trash';
+        await post(endpoint, { entry_id: entityId });
+      } else if (action === 'restore_archive') {
+        await post('/restore_archive', { entry_id: button.dataset.recycleEntry || entityId });
+      } else {
+        const payload = { entity_type: entityType, entity_id: entityId, ...(boardId ? { board_id: boardId } : {}) };
+        await post(archive ? '/archive' : '/trash', payload);
+      }
+      if (action === 'trash' || archive) {
+        if (entityType === 'board' && String(state.board?.id) === String(entityId)) {
+          state.board = null;
+          els.boardWorkspace.hidden = true;
+          await loadBoards();
+        } else if (entityType === 'folder') {
+          await loadBoards();
+        } else if (['item', 'subitem', 'group', 'column', 'file'].includes(entityType)) {
+          await loadBoard(state.board?.id, true);
+        }
+      }
+      if (state.recycleMode) await loadRecycleView(state.recycleMode);
+      setNotice(`${label} correctamente.`, 'success');
+    } catch (error) {
+      setNotice(errorMessage(error), 'error');
+    } finally { button.disabled = false; }
+  }
+
+  async function loadRecycleView(mode) {
+    state.recycleMode = mode;
+    els.boardWorkspace.hidden = true;
+    els.boardsEmpty.hidden = true;
+    const section = document.getElementById('trashArchiveView');
+    const list = document.getElementById('trashArchiveList');
+    const status = document.getElementById('trashArchiveStatus');
+    const title = document.getElementById('trashArchiveTitle');
+    const description = document.getElementById('trashArchiveDescription');
+    document.getElementById('trashFilters').hidden = mode !== 'trash';
+    title.textContent = mode === 'trash' ? 'Papelera' : 'Archivados';
+    description.textContent = mode === 'trash' ? 'Los elementos eliminados se pueden restaurar o eliminar definitivamente.' : 'Los elementos archivados se pueden restaurar.';
+    section.hidden = false;
+    list.replaceChildren();
+    status.textContent = 'Cargando elementos…';
+    try {
+      const workspaceId = state.selectedWorkspaceId ? `?workspace_id=${encodeURIComponent(state.selectedWorkspaceId)}` : '';
+      const result = await request(`/${mode}${workspaceId}`);
+      const entries = Array.isArray(result.data) ? result.data : (Array.isArray(result.data?.entries) ? result.data.entries : []);
+      state.recycleEntries = entries;
+      if (mode === 'trash') populateTrashFilters(entries);
+      renderRecycleEntries();
+    } catch (error) { status.textContent = errorMessage(error, 'No se pudieron cargar los elementos.'); }
+  }
+
+  function recycleLocation(entry) {
+    return String(entry.location || [entry.board_name, entry.workspace_name].filter(Boolean).join(' · ') || entry.workspace_name || 'Ubicación no disponible');
+  }
+
+  function formatRecycleDate(value) {
+    if (!value) return 'No disponible';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  }
+
+  function recycleEntityTypeLabel(type) {
+    const labels = { group: 'Grupo', item: 'Elemento' };
+    return labels[String(type || '').toLowerCase()] || String(type || 'Elemento');
+  }
+
+  function populateTrashFilters(entries) {
+    const typeSelect = document.getElementById('trashTypeFilter');
+    const locationSelect = document.getElementById('trashLocationFilter');
+    const previousType = typeSelect.value;
+    const previousLocation = locationSelect.value;
+    const types = [...new Set(entries.map((entry) => String(entry.entity_type || entry.type || 'elemento')))].sort();
+    const locations = [...new Set(entries.map(recycleLocation))].sort((a, b) => a.localeCompare(b, 'es-MX'));
+    typeSelect.replaceChildren(new Option('Todos los tipos', ''), ...types.map((type) => new Option(recycleEntityTypeLabel(type), type)));
+    locationSelect.replaceChildren(new Option('Todas las ubicaciones', ''), ...locations.map((location) => new Option(location, location)));
+    if (types.includes(previousType)) typeSelect.value = previousType;
+    if (locations.includes(previousLocation)) locationSelect.value = previousLocation;
+  }
+
+  function renderRecycleEntries() {
+    const list = document.getElementById('trashArchiveList');
+    const status = document.getElementById('trashArchiveStatus');
+    const isTrash = state.recycleMode === 'trash';
+    const typeFilter = isTrash ? document.getElementById('trashTypeFilter').value : '';
+    const locationFilter = isTrash ? document.getElementById('trashLocationFilter').value : '';
+    const dateFilter = isTrash ? document.getElementById('trashDateFilter').value : '';
+    const entries = state.recycleEntries.filter((entry) => {
+      const type = String(entry.entity_type || entry.type || 'elemento');
+      if (typeFilter && type !== typeFilter) return false;
+      if (locationFilter && recycleLocation(entry) !== locationFilter) return false;
+      if (dateFilter) {
+        const deletedAt = new Date(entry.deleted_at);
+        if (Number.isNaN(deletedAt.getTime())) return false;
+        const deletedDate = `${deletedAt.getFullYear()}-${String(deletedAt.getMonth() + 1).padStart(2, '0')}-${String(deletedAt.getDate()).padStart(2, '0')}`;
+        if (deletedDate !== dateFilter) return false;
+      }
+      return true;
+    });
+    list.replaceChildren();
+    entries.forEach((entry) => {
+      const row = makeElement('article', 'boards-recycle-entry');
+      row.setAttribute('role', 'listitem');
+      const type = entry.entity_type || entry.type || 'elemento';
+      const id = state.recycleMode === 'trash' ? (entry.entry_id ?? entry.id) : (entry.entity_id ?? entry.id);
+      const titleText = entry.name || entry.entity_name || `${recycleEntityTypeLabel(type)} ${entry.entity_id ?? id}`;
+      row.append(makeElement('div', 'boards-recycle-entry-copy', titleText));
+      row.append(makeElement('small', 'boards-recycle-entry-type', recycleEntityTypeLabel(type)));
+      if (isTrash) {
+        const metadata = makeElement('div', 'boards-recycle-entry-metadata');
+        metadata.append(
+          makeElement('span', '', `Ubicación: ${recycleLocation(entry)}`),
+          makeElement('span', '', `Eliminado por: ${entry.deleted_by_name || 'No disponible'}`),
+          makeElement('span', '', `Eliminado: ${formatRecycleDate(entry.deleted_at)}`),
+          makeElement('span', '', `Expira: ${formatRecycleDate(entry.expires_at)}`)
+        );
+        row.append(metadata);
+      } else if (entry.board_name || entry.workspace_name) {
+        row.append(makeElement('small', 'boards-recycle-entry-location', recycleLocation(entry)));
+      }
+      const actions = makeElement('div', 'boards-recycle-entry-actions');
+      const restore = recycleAction('Restaurar', type, id, isTrash ? 'restore' : 'restore_archive', entry.board_id);
+      restore.dataset.recycleEntry = String(entry.entry_id ?? entry.id);
+      actions.append(restore);
+      if (isTrash) actions.append(recycleAction('Eliminar definitivamente', type, id, 'permanent'));
+      row.append(actions);
+      list.append(row);
+    });
+    status.textContent = entries.length ? `${entries.length} de ${state.recycleEntries.length} elemento${state.recycleEntries.length === 1 ? '' : 's'}.` : 'No hay elementos que coincidan con estos filtros.';
+  }
+
   function clearNotice() {
     window.clearTimeout(noticeTimer);
     noticeTimer = 0;
@@ -233,6 +417,7 @@
 
   async function request(path, options = {}) {
     const response = await fetch(`${apiRoot}${path}`, {
+      cache: 'no-store',
       credentials: 'same-origin',
       headers: {
         Accept: 'application/json',
@@ -269,11 +454,11 @@
     els.boardLoading.lastElementChild.textContent = message;
   }
 
-  function openDialog(dialog) {
+  function openDialog(dialog, preferredFocus = null) {
     if (!dialog) return;
     if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
     else dialog.setAttribute('open', '');
-    const field = dialog.querySelector('input:not([type="hidden"]), select, textarea');
+    const field = preferredFocus || dialog.querySelector('input:not([type="hidden"]), select, textarea');
     if (field) window.setTimeout(() => field.focus(), 0);
   }
 
@@ -281,6 +466,31 @@
     if (!dialog) return;
     if (typeof dialog.close === 'function') dialog.close();
     else dialog.removeAttribute('open');
+  }
+
+  function confirmAction(message, { title = 'Confirmar acción', confirmLabel = 'Continuar', danger = false } = {}) {
+    const dialog = els.confirmDialog;
+    if (!dialog || dialog.open) return Promise.resolve(false);
+    els.confirmTitle.textContent = title;
+    els.confirmAccept.textContent = confirmLabel;
+    els.confirmAccept.classList.toggle('boards-confirm-danger', danger);
+    const paragraphs = String(message).split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+    els.confirmMessage.replaceChildren(...paragraphs.map((paragraph) => makeElement('p', '', paragraph)));
+    dialog.returnValue = '';
+    return new Promise((resolve) => {
+      const cancel = () => dialog.close('cancel');
+      const accept = () => dialog.close('confirm');
+      dialog.addEventListener('close', () => {
+        els.confirmCancel.removeEventListener('click', cancel);
+        els.confirmAccept.removeEventListener('click', accept);
+        resolve(dialog.returnValue === 'confirm');
+      }, { once: true });
+      els.confirmCancel.addEventListener('click', cancel);
+      els.confirmAccept.addEventListener('click', accept);
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+      els.confirmCancel.focus();
+    });
   }
 
   function dialogSubmit(form, callback) {
@@ -475,6 +685,7 @@
       });
       selector.value = state.selectedWorkspaceId;
       if (selector.value) state.selectedWorkspaceId = selector.value;
+      renderWorkspacePicker();
     }
     list.replaceChildren();
     const workspaceId = String(state.selectedWorkspaceId || '');
@@ -551,6 +762,25 @@
         addBoard.append(makeElement('i', 'fa-solid fa-plus', ''));
         actions.append(addBoard); row.append(actions);
       }
+      if (folder.can_trash || folder.can_archive) {
+        let actions = row.querySelector('.boards-nav-folder-actions');
+        if (!actions) {
+          actions = makeElement('span', 'boards-nav-folder-actions');
+          row.append(actions);
+        }
+        if (folder.can_trash) {
+        const trashFolder = recycleAction('Mover carpeta a la papelera', 'folder', folder.id, 'trash');
+        trashFolder.title = 'Mover carpeta y contenido a la papelera';
+        trashFolder.setAttribute('aria-label', `Mover carpeta ${folder.name} y todo su contenido a la papelera`);
+        actions.append(trashFolder);
+        }
+        if (folder.can_archive) {
+        const archiveFolder = recycleAction('Archivar carpeta', 'folder', folder.id, 'archive');
+        archiveFolder.title = 'Archivar carpeta y contenido';
+        archiveFolder.setAttribute('aria-label', `Archivar carpeta ${folder.name} y todo su contenido`);
+        actions.append(archiveFolder);
+        }
+      }
       list.append(row);
       if (collapsed) return;
       folder.boards.filter((board) => matchesText(board.name)).forEach((board) => renderBoard(board, depth + 1));
@@ -562,10 +792,80 @@
     populateWorkspaceSelectors();
   }
 
+  function renderWorkspacePicker() {
+    const selector = document.getElementById('workspaceSelect');
+    const label = document.getElementById('workspacePickerLabel');
+    const options = document.getElementById('workspacePickerOptions');
+    if (!selector || !label || !options) return;
+    const selected = selector.selectedOptions[0];
+    label.textContent = selected?.textContent || 'Sin espacios de trabajo';
+    selector.closest('.boards-workspace-picker')?.classList.toggle('is-empty', state.workspaces.length === 0);
+    const workspace = state.workspaces.find((entry) => String(entry.id) === String(selector.value));
+    const access = document.getElementById('workspaceAccessLabel');
+    const workspaceRoleLabels = { owner: 'Propietario', editor: 'Editor', viewer: 'Lector' };
+    if (access) {
+      access.hidden = !workspace;
+      access.replaceChildren();
+      if (workspace) {
+        const isOpen = String(workspace.visibility || '').toLowerCase() === 'open';
+        const visibilityLabel = isOpen ? 'Espacio abierto' : 'Espacio cerrado';
+        const accessIcon = document.createElement('span');
+        accessIcon.className = 'boards-workspace-access-icon';
+        accessIcon.title = visibilityLabel;
+        accessIcon.setAttribute('role', 'img');
+        accessIcon.setAttribute('aria-label', visibilityLabel);
+        accessIcon.innerHTML = `<i class="fa-solid ${isOpen ? 'fa-lock-open' : 'fa-lock'}" aria-hidden="true"></i>`;
+        access.append(accessIcon);
+        const role = String(workspace.user_role || '').toLowerCase();
+        const roleLabel = workspaceRoleLabels[role];
+        if (roleLabel) {
+          const roleIcons = { owner: 'fa-crown', editor: 'fa-pen-to-square', viewer: 'fa-eye' };
+          const roleIcon = document.createElement('span');
+          roleIcon.className = 'boards-workspace-access-icon';
+          roleIcon.title = roleLabel;
+          roleIcon.setAttribute('role', 'img');
+          roleIcon.setAttribute('aria-label', roleLabel);
+          roleIcon.innerHTML = `<i class="fa-solid ${roleIcons[role]}" aria-hidden="true"></i>`;
+          access.append(roleIcon);
+        }
+      }
+    }
+    const manageMembers = document.getElementById('manageWorkspaceMembers');
+    if (manageMembers) manageMembers.hidden = !(workspace && workspace.can_manage_members);
+    options.replaceChildren();
+    state.workspaces.forEach((workspace) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'boards-workspace-option';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(String(workspace.id) === String(selector.value)));
+      option.dataset.workspaceId = String(workspace.id);
+      option.title = workspace.name || 'Espacio sin nombre';
+      option.innerHTML = '<i class="fa-solid fa-layer-group" aria-hidden="true"></i>';
+      const name = document.createElement('span');
+      name.textContent = workspace.name || 'Espacio sin nombre';
+      option.append(name);
+      options.append(option);
+    });
+    const button = document.getElementById('workspacePickerButton');
+    if (button) button.disabled = state.workspaces.length === 0;
+  }
+
+  function closeWorkspacePicker() {
+    const button = document.getElementById('workspacePickerButton');
+    const options = document.getElementById('workspacePickerOptions');
+    const menu = button?.closest('.boards-workspace-menu');
+    if (!button || !options || !menu) return;
+    options.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    menu.classList.remove('is-open');
+  }
+
   async function loadBoards() {
     showLoading(true);
     els.boardWorkspace.hidden = true;
     els.boardsEmpty.hidden = true;
+    if (els.boardVisibilityManager) els.boardVisibilityManager.hidden = pageMode !== 'manage';
     try {
       const structureResult = await request('/structure');
       const structure = structureResult.data || {};
@@ -574,21 +874,140 @@
       state.folders = Array.isArray(structure.folders) ? structure.folders : [];
       state.selectedWorkspaceId = String(state.boards[0]?.workspace_id || state.workspaces[0]?.id || '');
       renderBoardOptions();
+      if (pageMode === 'manage') {
+        renderBoardVisibilityManager();
+        showLoading(false);
+        return;
+      }
       const routeId = getRouteBoardId();
       const requestedId = app.dataset.initialBoardId || routeId;
       const target = state.boards.find((board) => String(board.id) === String(requestedId)) || state.boards[0];
       if (target) {
         els.boardSelect.value = String(target.id);
         await loadBoard(target.id, true);
+        openNotificationFileTarget(target.id);
       } else {
         showLoading(false);
         showEmptyState();
       }
     } catch (error) {
       showLoading(false);
+      if (pageMode === 'manage') {
+        els.boardVisibilityStatus.textContent = errorMessage(error, 'No se pudieron cargar los tableros que puedes administrar.');
+        els.boardVisibilityList.replaceChildren();
+        els.boardVisibilityEmpty.hidden = true;
+        return;
+      }
       els.boardSelect.disabled = true;
       setNotice(errorMessage(error, 'No se pudieron cargar los tableros.'), 'error');
       showEmptyState();
+    }
+  }
+
+  const boardVisibilityOptions = [
+    ['private', 'Privado · solo personas invitadas'],
+    ['workspace', 'Espacio de trabajo · personas con acceso al espacio'],
+    ['organization', 'Organización · usuarios internos con acceso a Tableros']
+  ];
+
+  function renderBoardVisibilityManager() {
+    const manageableBoards = state.boards.filter((board) => {
+      const role = String(board.role || board.user_role || '').toLowerCase();
+      return role === 'owner' || role === 'designer';
+    });
+    const list = els.boardVisibilityList;
+    list.replaceChildren();
+    els.boardVisibilityEmpty.hidden = manageableBoards.length > 0;
+    if (!manageableBoards.length) {
+      els.boardVisibilityStatus.textContent = '';
+      return;
+    }
+    els.boardVisibilityStatus.textContent = `${manageableBoards.length} tablero${manageableBoards.length === 1 ? '' : 's'} que puedes administrar.`;
+    manageableBoards.forEach((board) => {
+      const row = document.createElement('article');
+      row.className = 'boards-visibility-row';
+      row.setAttribute('role', 'listitem');
+      const identity = document.createElement('div');
+      identity.className = 'boards-visibility-identity';
+      const title = document.createElement('h4');
+      title.textContent = board.name || 'Tablero sin nombre';
+      const workspace = document.createElement('p');
+      workspace.textContent = board.workspace_name || 'Espacio de trabajo';
+      identity.append(title, workspace);
+
+      const control = document.createElement('div');
+      control.className = 'boards-visibility-control';
+      const label = document.createElement('label');
+      label.className = 'boards-field-label';
+      const selectId = `boardVisibility-${String(board.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+      label.htmlFor = selectId;
+      label.textContent = 'Visibilidad';
+      const select = document.createElement('select');
+      select.id = selectId;
+      select.className = 'form-select';
+      select.dataset.boardVisibilitySelect = String(board.id);
+      boardVisibilityOptions.forEach(([value, text]) => select.add(new Option(text, value)));
+      select.value = boardVisibilityOptions.some(([value]) => value === board.visibility) ? board.visibility : 'private';
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn boards-button-primary';
+      save.dataset.saveBoardVisibility = String(board.id);
+      save.disabled = select.value === board.visibility;
+      save.textContent = 'Guardar';
+      control.append(label, select, save);
+      row.append(identity, control);
+      list.append(row);
+    });
+  }
+
+  function boardVisibilityImpact(visibility) {
+    if (visibility === 'workspace') return 'Las personas con acceso al espacio de trabajo podrán acceder al tablero con el nivel que les corresponda.';
+    if (visibility === 'organization') return 'Los usuarios internos con acceso al módulo Tableros podrán consultar el tablero. Las invitaciones directas conservarán el rol asignado.';
+    return 'Se quitará el acceso heredado del espacio o de la organización. Las invitaciones directas permanecerán.';
+  }
+
+  async function saveBoardVisibility(boardId, button) {
+    const select = [...els.boardVisibilityList.querySelectorAll('[data-board-visibility-select]')].find((entry) => entry.dataset.boardVisibilitySelect === String(boardId));
+    const board = state.boards.find((entry) => String(entry.id) === String(boardId));
+    if (!select || !board || select.value === board.visibility) return;
+    const visibility = select.value;
+    const visibilityLabel = boardVisibilityOptions.find(([value]) => value === visibility)?.[1] || visibility;
+    const confirmed = await confirmAction(`¿Cambiar la visibilidad de «${board.name || 'Tablero'}» a «${visibilityLabel}»?\n\n${boardVisibilityImpact(visibility)}\n\nLas invitaciones directas se conservan.`, { title: 'Cambiar visibilidad', confirmLabel: 'Guardar cambio' });
+    if (!confirmed) {
+      select.value = board.visibility;
+      button.disabled = true;
+      return;
+    }
+    select.disabled = true;
+    button.disabled = true;
+    button.textContent = 'Guardando…';
+    els.boardVisibilityStatus.textContent = `Guardando la visibilidad de ${board.name || 'el tablero'}…`;
+    try {
+      await post('/update_board_visibility', { board_id: board.id, visibility });
+      board.visibility = visibility;
+      if (state.board && String(state.board.id) === String(boardId)) state.board.visibility = visibility;
+      renderBoardNav();
+      let refreshError = null;
+      try {
+        const result = await request('/structure');
+        const structure = result.data || {};
+        state.boards = Array.isArray(structure.boards) ? structure.boards : [];
+        state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
+        state.folders = Array.isArray(structure.folders) ? structure.folders : [];
+        state.selectedWorkspaceId = String(state.selectedWorkspaceId || state.boards[0]?.workspace_id || '');
+      } catch (error) { refreshError = error; }
+      renderBoardOptions();
+      renderBoardNav();
+      renderBoardVisibilityManager();
+      els.boardVisibilityStatus.textContent = refreshError
+        ? `Visibilidad actualizada para ${board.name || 'el tablero'}, pero no se pudo recargar la lista: ${errorMessage(refreshError)}`
+        : `Visibilidad actualizada para ${board.name || 'el tablero'}.`;
+    } catch (error) {
+      select.disabled = false;
+      select.value = board.visibility;
+      button.disabled = true;
+      button.textContent = 'Guardar';
+      els.boardVisibilityStatus.textContent = errorMessage(error, 'No se pudo actualizar la visibilidad del tablero.');
     }
   }
 
@@ -607,6 +1026,8 @@
   }
 
   async function loadBoard(id, skipRoute = false) {
+    document.getElementById('trashArchiveView').hidden = true;
+    state.recycleMode = '';
     if (!id) {
       state.board = null;
       showLoading(false);
@@ -667,7 +1088,17 @@
   function canManageStructure() {
     const role = String(state.board?.role || '').toLowerCase();
     if (!role) return canAdmin;
-    return ['owner', 'designer', 'admin', 'administrator'].includes(role);
+    return ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
+  }
+
+  function canShareBoard() {
+    const role = String(state.board?.role || '').toLowerCase();
+    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
+  }
+
+  function accessSourceLabel(source) {
+    const labels = { direct: 'Invitación directa', direct_invitation: 'Invitación directa', board_member: 'Invitación directa', board_invitation: 'Invitación directa', workspace: 'Espacio de trabajo', workspace_member: 'Espacio de trabajo', workspace_membership: 'Espacio de trabajo', workspace_open: 'Espacio abierto', open_workspace: 'Espacio abierto', organization: 'Organización', admin: 'Administración', owner: 'Tablero creado por ti' };
+    return labels[String(source || '').toLowerCase()] || (source ? String(source) : 'Acceso');
   }
 
   function renderWorkspace() {
@@ -676,18 +1107,46 @@
     els.boardDescription.textContent = board.description || '';
     els.boardDescription.hidden = !board.description;
     const role = String(board.role || '').toLowerCase();
-    const roleLabels = { owner: 'Propietario', designer: 'Diseñador', admin: 'Administrador', administrator: 'Administrador', editor: 'Puede editar', viewer: 'Solo lectura' };
-    els.boardRole.textContent = roleLabels[role] || (board.role ? String(board.role) : 'Tablero');
+    const roleLabels = { owner: 'Propietario', designer: 'Diseñador', admin: 'Administrador', administrator: 'Administrador', editor: 'Editor', contributor: 'Colaborador', viewer: 'Lector' };
+    const roleIcons = { owner: 'fa-crown', designer: 'fa-pen-ruler', admin: 'fa-user-shield', administrator: 'fa-user-shield', editor: 'fa-pen-to-square', contributor: 'fa-user-pen', viewer: 'fa-eye' };
+    const roleLabel = roleLabels[role] || (board.role ? String(board.role) : 'Tablero');
+    const roleIcon = document.createElement('i');
+    roleIcon.className = `fa-solid ${roleIcons[role] || 'fa-user'}`;
+    roleIcon.setAttribute('aria-hidden', 'true');
+    els.boardRole.replaceChildren(roleIcon);
+    els.boardRole.title = `Rol en el tablero: ${roleLabel}`;
+    els.boardRole.setAttribute('aria-label', `Rol en el tablero: ${roleLabel}`);
+    const sourceBadge = document.getElementById('boardAccessSource');
+    if (sourceBadge) {
+      const sourceLabel = accessSourceLabel(board.access_source);
+      const source = String(board.access_source || '').toLowerCase();
+      const sourceIcons = {
+        direct: 'fa-user-check', direct_invitation: 'fa-user-check', board_member: 'fa-user-check', board_invitation: 'fa-user-check',
+        workspace: 'fa-layer-group', workspace_member: 'fa-layer-group', workspace_membership: 'fa-layer-group',
+        workspace_open: 'fa-lock-open', open_workspace: 'fa-lock-open', organization: 'fa-building', admin: 'fa-shield-halved', owner: 'fa-key'
+      };
+      const sourceIcon = document.createElement('i');
+      sourceIcon.className = `fa-solid ${sourceIcons[source] || 'fa-circle-info'}`;
+      sourceIcon.setAttribute('aria-hidden', 'true');
+      sourceBadge.replaceChildren(sourceIcon);
+      sourceBadge.title = `Origen del acceso: ${sourceLabel}`;
+      sourceBadge.setAttribute('aria-label', `Origen del acceso: ${sourceLabel}`);
+      sourceBadge.hidden = !board.access_source;
+    }
     els.boardRole.hidden = !board.role;
     const edit = canEditBoard();
     const manage = canManageStructure();
     document.getElementById('openCreateItem').hidden = !edit;
     document.getElementById('openCreateGroup').hidden = !manage;
     document.getElementById('openCreateColumn').hidden = !manage;
+    document.getElementById('trashBoard').hidden = !canShareBoard();
+    document.getElementById('archiveBoard').hidden = !canShareBoard();
+    const duplicateButton = document.getElementById('openDuplicateBoard');
+    if (duplicateButton) duplicateButton.hidden = !canCreateBoard || !['owner', 'designer'].includes(role);
     const shareButton = document.getElementById('openShareBoard');
-    if (shareButton) shareButton.hidden = !manage;
+    if (shareButton) shareButton.hidden = !canShareBoard();
     const sharedViewOption = document.getElementById('sharedViewOption');
-    if (sharedViewOption) sharedViewOption.classList.toggle('d-none', !manage);
+    if (sharedViewOption) sharedViewOption.classList.toggle('d-none', !canShareBoard());
     renderColumnControls();
     renderSavedViews();
     renderFilterPanel();
@@ -717,6 +1176,14 @@
     if (/(diseno|creativ|boceto)/.test(normalized)) return '#a25ddc';
     if (/(pendiente|por hacer|nuevo|sin iniciar)/.test(normalized)) return '#c4c4c4';
     return ['#579bfc', '#00c875', '#fdab3d', '#a25ddc', '#ff5ac4', '#00c875', '#9aadbd'][index % 7];
+  }
+
+  function kanbanStatusColor(label, fallbackColor, index = 0) {
+    const normalized = String(label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-MX');
+    if (/(listo|hecho|completad|terminad|finalizad|aprobado|publicad|colocado|entregado)/.test(normalized)) return '#00c875';
+    if (/(proceso|progreso|curso|trabajando|ejecucion)/.test(normalized)) return '#f5c451';
+    if (/(pendiente|por hacer|nuevo|sin iniciar)/.test(normalized)) return '#8b91a7';
+    return safeGroupColor(fallbackColor || statusLabelColor(label, index));
   }
 
   function statusTone(column, value) {
@@ -809,6 +1276,7 @@
         labelsButton.setAttribute('aria-label', `Editar etiquetas y colores de ${column.name || 'columna'}`);
         actions.append(labelsButton);
       }
+      if (canManageStructure()) actions.append(recycleAction('Eliminar columna', 'column', column.id, 'trash', state.board?.id));
       row.append(label, actions);
       list.append(row);
     });
@@ -1325,7 +1793,7 @@
     const input = document.createElement('input');
     input.type = 'file';
     input.className = 'boards-file-cell-input';
-    input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+    input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
     input.setAttribute('aria-label', `Seleccionar archivo para ${item.name || 'elemento'}`);
     const button = makeElement('button', 'boards-file-cell-add');
     button.type = 'button';
@@ -1579,18 +2047,29 @@
   }
 
   function createTableItemName(item) {
-    const wrap = makeElement('div', 'boards-table-item-name-wrap');
-    wrap.append(makeElement('span', 'boards-item-name-link', item.name || 'Elemento sin nombre'));
+    const isChild = item.parent_item_id != null;
+    const wrap = makeElement('div', `boards-table-item-name-wrap${isChild ? ' is-child' : ''}`);
+    if (isChild) {
+      const parent = state.items.find((candidate) => String(candidate.id) === String(item.parent_item_id));
+      wrap.setAttribute('aria-label', `Subelemento de ${parent?.name || 'elemento principal'}`);
+      wrap.title = `Subelemento de ${parent?.name || 'elemento principal'}`;
+    }
+    const name = createItemNameControl(item);
+    name.classList.add('boards-table-item-name-control');
+    wrap.append(name);
     if (canEditBoard()) {
-      const edit = makeElement('button', 'boards-item-name-edit', '');
-      edit.type = 'button';
-      edit.dataset.itemNameButton = String(item.id);
-      edit.setAttribute('aria-label', `Editar nombre: ${item.name || 'Elemento sin nombre'}`);
-      edit.title = 'Editar nombre';
-      const icon = makeElement('i', 'fa-solid fa-pen');
-      icon.setAttribute('aria-hidden', 'true');
-      edit.append(icon);
-      wrap.append(edit);
+      const addSubitem = makeElement('button', 'boards-item-subtask-add', '');
+      addSubitem.type = 'button';
+      addSubitem.dataset.addSubitem = String(item.id);
+      addSubitem.setAttribute('aria-label', `Agregar subelemento a ${item.name || 'elemento'}`);
+      addSubitem.title = 'Agregar subelemento';
+      const addIcon = makeElement('i', 'fa-solid fa-plus');
+      addIcon.setAttribute('aria-hidden', 'true');
+      addSubitem.append(addIcon);
+      wrap.append(addSubitem);
+      const itemType = isChild ? 'subitem' : 'item';
+      wrap.append(recycleAction(isChild ? 'Eliminar subelemento' : 'Eliminar elemento', itemType, item.id, 'trash', state.board?.id));
+      wrap.append(recycleAction(isChild ? 'Archivar subelemento' : 'Archivar elemento', itemType, item.id, 'archive', state.board?.id));
     }
     return wrap;
   }
@@ -1608,24 +2087,14 @@
     input.className = 'boards-item-name-input';
     input.value = item.name || '';
     input.maxLength = 500;
-    input.required = true;
     input.setAttribute('aria-label', 'Nuevo nombre del elemento');
-    const actions = makeElement('span', 'boards-item-name-actions');
-    const save = makeElement('button', 'boards-item-name-save', 'Guardar');
-    save.type = 'submit';
-    const cancel = makeElement('button', 'boards-item-name-cancel', 'Cancelar');
-    cancel.type = 'button';
-    cancel.dataset.cancelNameEdit = '1';
-    actions.append(save, cancel);
-    form.append(input, actions);
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      if (!form.reportValidity()) return;
+    form.append(input);
+    const saveName = async () => {
+      if (form.dataset.saving === '1') return;
       const name = input.value.trim();
-      if (!name) return;
-      if (name === item.name) { renderActiveView(); return; }
-      const controls = Array.from(form.querySelectorAll('input, button'));
-      controls.forEach((control) => { control.disabled = true; });
+      if (!name || name === item.name) { renderActiveView(); return; }
+      form.dataset.saving = '1';
+      input.disabled = true;
       try {
         const result = await post('/update_item_name', {
           board_id: state.board.id,
@@ -1640,16 +2109,27 @@
       } catch (error) {
         setNotice(errorMessage(error, 'No se pudo actualizar el nombre.'), 'error');
         if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
-        else controls.forEach((control) => { control.disabled = false; });
+        else {
+          delete form.dataset.saving;
+          input.disabled = false;
+          input.focus();
+          input.select();
+        }
       }
+    };
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      input.blur();
     });
+    input.addEventListener('blur', saveName);
     button.replaceWith(form);
     input.focus();
     input.select();
   }
 
   function canManageAutomation() {
-    return canManageStructure();
+    const role = String(state.board?.role || '').toLowerCase();
+    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
   }
 
   function displayDateTime(value) {
@@ -1687,17 +2167,50 @@
     const name = String(file.name || file.original_name || '');
     const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
     const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(mime);
+    const videoMime = ['video/mp4', 'video/webm'].includes(mime);
+    const videoExtension = ['mp4', 'webm'].includes(extension);
     const spreadsheetExtension = ['xls', 'xlsx', 'xlsm'].includes(extension);
     const previewKind = imageMime ? 'image'
-      : (mime === 'application/pdf' ? 'pdf'
-        : (['text/plain', 'text/csv'].includes(mime) ? 'text'
-          : (spreadsheetExtension ? 'spreadsheet' : 'unsupported')));
+      : (videoMime || videoExtension ? 'video'
+        : (mime === 'application/pdf' ? 'pdf'
+          : (['text/plain', 'text/csv'].includes(mime) ? 'text'
+            : (spreadsheetExtension ? 'spreadsheet' : 'unsupported'))));
     const icon = previewKind === 'pdf' ? 'fa-file-pdf'
-      : (imageMime || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension) ? 'fa-file-image'
-        : (['doc', 'docx', 'odt'].includes(extension) ? 'fa-file-word'
-          : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
-            : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file'))));
+      : (previewKind === 'video' ? 'fa-file-video'
+        : (imageMime || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension) ? 'fa-file-image'
+          : (['doc', 'docx', 'odt'].includes(extension) ? 'fa-file-word'
+            : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
+              : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file')))));
     return { extension, mime, previewKind, icon };
+  }
+
+  function openNotificationFileTarget(boardId) {
+    const params = new URLSearchParams(window.location.search);
+    const fileId = params.get('notification_file_id');
+    if (!fileId || !/^[0-9]+$/.test(fileId) || !state.board || String(state.board.id) !== String(boardId)) return;
+
+    const requestedItemId = params.get('notification_item_id');
+    const items = requestedItemId
+      ? state.items.filter((item) => String(item.id) === requestedItemId)
+      : state.items;
+    let match = null;
+    for (const item of items) {
+      const file = filesForItem(item).find((entry) => String(entry.file_id) === fileId);
+      if (file) { match = { item, file }; break; }
+    }
+
+    if (match && fileTypeInfo(match.file).previewKind === 'image') {
+      openFilePreview(match.file, match.item).then(() => {
+        const commentsButton = [...document.querySelectorAll('[data-preview-panel]')]
+          .find((button) => button.dataset.previewPanel === 'comments');
+        if (commentsButton && !commentsButton.disabled) commentsButton.click();
+      });
+    }
+
+    // Treat notification parameters as a one-time handoff without dropping other URL state.
+    ['notification_file_id', 'notification_item_id', 'notification_comment_id'].forEach((key) => params.delete(key));
+    const remainingQuery = params.toString();
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}${window.location.hash}`);
   }
 
   function fileEndpoint(file, preview = false) {
@@ -1717,6 +2230,12 @@
 
   function clearFilePreviewObjectUrl() {
     filePreviewRequest += 1;
+    const video = els.filePreviewContent?.querySelector('video');
+    if (video) {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    }
     if (filePreviewObjectUrl) URL.revokeObjectURL(filePreviewObjectUrl);
     filePreviewObjectUrl = '';
   }
@@ -2217,6 +2736,10 @@
       const image = makeElement('img', 'boards-preview-image');
       image.src = fileEndpoint(file, true);
       image.alt = name;
+      // Prevent the browser's native image drag (which shows a copy ghost)
+      // so pointer gestures can pan the zoomed preview instead.
+      image.draggable = false;
+      image.addEventListener('dragstart', (event) => event.preventDefault());
       image.tabIndex = 0;
       image.style.setProperty('--preview-zoom', '1');
       image.style.setProperty('--preview-rotation', '0deg');
@@ -2258,10 +2781,16 @@
         image.style.setProperty('--preview-rotation', `${rotation}deg`);
         image.classList.toggle('is-zoomed', zoom > 1);
         const rotatedSideways = rotation % 180 !== 0;
-        image.style.maxWidth = rotatedSideways ? `${stage.clientHeight}px` : '100%';
-        image.style.maxHeight = rotatedSideways ? `${stage.clientWidth}px` : '100%';
+        if (image.naturalWidth && image.naturalHeight && stage.clientWidth && stage.clientHeight) {
+          const fitWidth = rotatedSideways ? stage.clientHeight : stage.clientWidth;
+          const fitHeight = rotatedSideways ? stage.clientWidth : stage.clientHeight;
+          const fitScale = Math.min(1, fitWidth / image.naturalWidth, fitHeight / image.naturalHeight);
+          image.style.width = `${Math.floor(image.naturalWidth * fitScale)}px`;
+          image.style.height = `${Math.floor(image.naturalHeight * fitScale)}px`;
+        }
         updatePan();
       };
+      image.addEventListener('load', updateImageTransform);
       addImageAction('fa-magnifying-glass-plus', 'Acercar imagen', () => { zoom = Math.min(zoom + 0.25, 3); updateImageTransform(); });
       addImageAction('fa-magnifying-glass-minus', 'Alejar imagen', () => { zoom = Math.max(zoom - 0.25, 0.5); if (zoom <= 1) { panX = 0; panY = 0; } updateImageTransform(); });
       addImageAction('fa-rotate-right', 'Girar 90 grados', () => { rotation = (rotation + 90) % 360; panX = 0; panY = 0; updateImageTransform(); });
@@ -2309,6 +2838,17 @@
         imageStageObserver = new ResizeObserver(() => updateImageTransform());
         imageStageObserver.observe(stage);
       }
+      updateImageTransform();
+    } else if (type.previewKind === 'video') {
+      const stage = makeElement('div', 'boards-preview-video-stage');
+      const video = makeElement('video', 'boards-preview-video');
+      video.controls = true;
+      video.playsInline = true;
+      video.preload = 'metadata';
+      video.setAttribute('aria-label', `Vista previa de ${name}`);
+      video.src = fileEndpoint(file, true);
+      stage.append(video);
+      els.filePreviewContent.append(stage);
     } else if (['pdf', 'text', 'spreadsheet'].includes(type.previewKind)) {
       const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
       els.filePreviewContent.append(loading);
@@ -2407,17 +2947,20 @@
     if (!state.itemActivity.length) {
       els.itemActivityList.append(makeElement('p', 'boards-detail-empty', 'Todavía no hay actividad para este elemento.'));
     } else {
-      const labels = {
-        'comment.created': 'Agregó un comentario', 'item.name_changed': 'Cambió el nombre', 'item.moved': 'Movió el elemento',
-        'file.uploaded': 'Subió una versión de archivo', 'relation.created': 'Agregó una relación', 'relation.deleted': 'Quitó una relación',
-        'dependency.created': 'Agregó una dependencia', 'dependency.deleted': 'Quitó una dependencia',
-        'subtask.parent_changed': 'Cambió el elemento principal'
-      };
       state.itemActivity.forEach((event) => {
         const entry = makeElement('article', 'boards-activity-entry');
-        entry.append(makeElement('strong', '', labels[event.event_type] || String(event.event_type || 'Actualización')));
-        const payload = event.payload && typeof event.payload === 'object' ? stringifyValue(event.payload) : '';
-        if (payload && payload !== '{}') entry.append(makeElement('p', 'boards-activity-payload', payload));
+        const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+        const activity = activityDescription(event, payload);
+        entry.append(makeElement('strong', '', activity.title));
+        if (activity.details.length) {
+          const details = makeElement('dl', 'boards-activity-details');
+          activity.details.forEach(([label, value]) => {
+            const line = makeElement('div', 'boards-activity-detail');
+            line.append(makeElement('dt', '', label), makeElement('dd', '', value));
+            details.append(line);
+          });
+          entry.append(details);
+        }
         const actorName = event.actor_display_name || (event.actor_user_id ? 'Usuario desconocido' : 'Sistema');
         entry.append(makeElement('div', 'boards-detail-meta', `${actorName} · ${displayDateTime(event.created_at)}`));
         els.itemActivityList.append(entry);
@@ -2426,13 +2969,112 @@
     setDetailStatus('itemActivityStatus', `${state.itemActivity.length} ${state.itemActivity.length === 1 ? 'evento' : 'eventos'}`);
   }
 
+  function activityDescription(event, payload) {
+    const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
+    const column = state.columns.find((candidate) => String(candidate.id) === String(payload.column_id));
+    const target = (id) => state.items.find((candidate) => String(candidate.id) === String(id))?.name || (id ? `Elemento #${id}` : 'Sin elemento');
+    const details = [];
+    const add = (label, value) => { if (value !== '' && value !== null && value !== undefined) details.push([label, String(value)]); };
+    const type = String(event.event_type || '');
+    const labels = {
+      'comment.created': 'Agregó un comentario', 'item.name_changed': 'Cambió el nombre del elemento', 'item.moved': 'Movió el elemento',
+      'file.uploaded': 'Subió una versión de archivo', 'relation.created': 'Agregó una relación', 'relation.deleted': 'Quitó una relación',
+      'dependency.created': 'Agregó una dependencia', 'dependency.deleted': 'Quitó una dependencia',
+      'subtask.parent_changed': 'Cambió el elemento principal', 'cell.updated': 'Actualizó un campo'
+    };
+    if (type === 'cell.updated') {
+      add('Campo', column?.name || `Columna #${payload.column_id || '?'}`);
+      if (item && column) {
+        let value = getCellValue(item, column);
+        if (columnType(column) === 'file') {
+          const attached = filesForItem(item).filter((file) => String(file.column_id || '') === String(column.id));
+          value = attached.length ? attached.map((file) => file.name || 'Archivo sin nombre').join(', ') : 'Sin archivos';
+        } else if (['status', 'dropdown'].includes(columnType(column)) && value !== null && value !== undefined) {
+          const option = parseOptions(column.options).find((entry) => String(entry.value) === String(value));
+          if (option) value = option.label || option.value;
+        } else if (Array.isArray(value)) value = value.map((entry) => entry?.name || entry?.label || entry).join(', ');
+        add('Valor actual', value === null || value === undefined || value === '' ? 'Vacío' : stringifyValue(value));
+      }
+    } else if (type === 'item.name_changed') add('Nombre', payload.name || item?.name);
+    else if (type === 'item.moved') {
+      const group = state.groups.find((candidate) => String(candidate.id) === String(payload.group_id));
+      add('Grupo', group?.name || (payload.group_id ? `Grupo #${payload.group_id}` : ''));
+    } else if (type === 'file.uploaded') {
+      add('Archivo', payload.name);
+      if (payload.version_number) add('Versión', `v${payload.version_number}`);
+      if (payload.byte_size !== undefined) add('Tamaño', formatBytes(payload.byte_size));
+    } else if (type === 'comment.created') {
+      const comment = state.itemComments.find((candidate) => String(candidate.id) === String(payload.comment_id));
+      if (comment?.body) add('Comentario', comment.body);
+    } else if (type.startsWith('relation.')) {
+      if (payload.relation_type) add('Tipo', payload.relation_type);
+      if (payload.target_item_id) add('Elemento relacionado', target(payload.target_item_id));
+    } else if (type.startsWith('dependency.')) {
+      if (payload.dependency_type) add('Tipo', payload.dependency_type.replaceAll('_', ' '));
+      if (payload.successor_item_id) add('Depende de', target(payload.successor_item_id));
+    } else if (type === 'subtask.parent_changed') add('Elemento principal', target(payload.parent_item_id));
+    else {
+      const humanKeys = { column_id: 'Columna', group_id: 'Grupo', sort_order: 'Posición', parent_item_id: 'Elemento principal', dependency_type: 'Tipo', name: 'Nombre' };
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== null && value !== '' && typeof value !== 'object') add(humanKeys[key] || key.replaceAll('_', ' '), value);
+      });
+    }
+    const title = labels[type] || String(type || 'Actualización').replace(/[._]/g, ' ');
+    return { title, details };
+  }
+
+  function fileCategory(file) {
+    const mime = String(file.content_type || '').toLowerCase();
+    const extension = String(file.name || '').split('.').pop().toLowerCase();
+    if (mime.startsWith('video/') || ['mp4', 'webm'].includes(extension)) return 'Videos';
+    if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) return 'Imágenes';
+    if (mime === 'application/pdf' || extension === 'pdf') return 'PDF';
+    if (/word|document/.test(mime) || ['doc', 'docx', 'odt'].includes(extension)) return 'Documentos';
+    if (/spreadsheet|excel/.test(mime) || ['xls', 'xlsx', 'csv'].includes(extension)) return 'Hojas de cálculo';
+    if (/presentation|powerpoint/.test(mime) || ['ppt', 'pptx'].includes(extension)) return 'Presentaciones';
+    if (mime.startsWith('text/') || ['txt', 'md', 'json', 'xml'].includes(extension)) return 'Texto y datos';
+    return 'Otros archivos';
+  }
+
   function renderItemFiles() {
     const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
     els.itemFilesList.replaceChildren();
+    els.itemFileTypes.replaceChildren();
     if (!item) return;
     const files = filesForItem(item);
-    if (!files.length) els.itemFilesList.append(makeElement('p', 'boards-detail-empty', 'No hay archivos adjuntos todavía.'));
-    files.forEach((file) => {
+    if (!files.length) {
+      els.itemFilesList.append(makeElement('p', 'boards-detail-empty', 'No hay archivos vinculados a este elemento.'));
+      setDetailStatus('itemFilesStatus', '0 archivos');
+      return;
+    }
+    const categories = ['PDF', 'Imágenes', 'Videos', 'Documentos', 'Hojas de cálculo', 'Presentaciones', 'Texto y datos', 'Otros archivos'];
+    const grouped = new Map(categories.map((category) => [category, files.filter((file) => fileCategory(file) === category)]));
+    const visibleCategories = categories.filter((category) => grouped.get(category).length);
+    const allFilter = makeElement('button', 'boards-file-type-filter', 'Todos');
+    allFilter.type = 'button';
+    allFilter.dataset.fileType = 'all';
+    allFilter.classList.toggle('is-active', state.itemFileTypeFilter === 'all');
+    allFilter.append(makeElement('span', '', String(files.length)));
+    els.itemFileTypes.append(allFilter);
+    visibleCategories.forEach((category) => {
+      const filter = makeElement('button', 'boards-file-type-filter', category);
+      filter.type = 'button';
+      filter.dataset.fileType = category;
+      filter.classList.toggle('is-active', state.itemFileTypeFilter === category);
+      filter.append(makeElement('span', '', String(grouped.get(category).length)));
+      els.itemFileTypes.append(filter);
+    });
+    const selectedCategory = visibleCategories.includes(state.itemFileTypeFilter) ? state.itemFileTypeFilter : 'all';
+    state.itemFileTypeFilter = selectedCategory;
+    els.itemFileTypes.querySelectorAll('[data-file-type]').forEach((filter) => filter.classList.toggle('is-active', filter.dataset.fileType === selectedCategory));
+    const categoriesToShow = selectedCategory === 'all' ? visibleCategories : [selectedCategory];
+    categoriesToShow.forEach((category) => {
+      const section = makeElement('section', 'boards-file-category');
+      const heading = makeElement('h5', 'boards-file-category-heading', category);
+      heading.append(makeElement('span', '', String(grouped.get(category).length)));
+      section.append(heading);
+      const list = makeElement('div', 'boards-file-category-list');
+      grouped.get(category).forEach((file) => {
       const row = makeElement('article', 'boards-file-entry');
       const heading = makeElement('div', 'boards-file-entry-heading');
       heading.append(makeElement('strong', '', file.name || 'Archivo sin nombre'));
@@ -2441,11 +3083,16 @@
       const versionLabel = currentVersion?.version_number ? `v${currentVersion.version_number}` : (file.version_number ? `v${file.version_number}` : 'Versión actual');
       heading.append(makeElement('span', 'boards-file-version-label', versionLabel));
       const actions = makeElement('div', 'boards-detail-actions');
+      if (canEditBoard()) {
+        actions.append(recycleAction('Eliminar archivo', 'file', file.file_id, 'trash', state.board?.id));
+      }
       const referenceScanStatus = String(file.scan_status || '').toLowerCase();
       const provisionalStatus = ['pending', 'quarantined', 'failed', 'unscanned', 'clean'].includes(referenceScanStatus) ? referenceScanStatus : 'unknown';
       const scanStatus = String(currentVersion?.scan_status || provisionalStatus || 'unknown').toLowerCase();
-      const scanLabels = { clean: 'Disponible', unscanned: 'Sin análisis antivirus', pending: 'Analizando', quarantined: 'Amenaza detectada', failed: 'No se pudo analizar', unknown: 'Estado sin verificar' };
-      heading.append(makeElement('span', `boards-file-scan-status is-${scanStatus}`, scanLabels[scanStatus] || scanStatus));
+      const scanLabels = { clean: 'Disponible', pending: 'Analizando', quarantined: 'Amenaza detectada', failed: 'No se pudo analizar', unknown: 'Estado sin verificar' };
+      if (scanStatus !== 'unscanned') {
+        heading.append(makeElement('span', `boards-file-scan-status is-${scanStatus}`, scanLabels[scanStatus] || scanStatus));
+      }
       if (['clean', 'unscanned'].includes(scanStatus)) {
         const preview = makeElement('button', 'boards-text-button', 'Vista previa');
         preview.type = 'button';
@@ -2464,12 +3111,6 @@
       history.type = 'button';
       history.dataset.fileHistory = String(file.file_id);
       actions.append(history);
-      if (canEditBoard()) {
-        const newVersion = makeElement('button', 'boards-text-button', 'Nueva versión');
-        newVersion.type = 'button';
-        newVersion.dataset.fileTarget = String(file.file_id);
-        actions.append(newVersion);
-      }
       row.append(heading, makeElement('div', 'boards-detail-meta', `${file.content_type || 'Tipo desconocido'} · ${formatBytes(file.byte_size)}`), actions);
       if (state.fileHistoryVisible[String(file.file_id)]) {
         const versionList = makeElement('div', 'boards-file-history');
@@ -2507,9 +3148,12 @@
         }
         row.append(versionList);
       }
-      els.itemFilesList.append(row);
+      list.append(row);
+      });
+      section.append(list);
+      els.itemFilesList.append(section);
     });
-    setDetailStatus('itemFilesStatus', files.length ? `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}` : 'La lista se toma de las referencias guardadas en las celdas de archivo.');
+    setDetailStatus('itemFilesStatus', `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}`);
   }
 
   function formatBytes(bytes) {
@@ -2518,38 +3162,6 @@
     if (size < 1024) return `${size} B`;
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  function renderFileControls() {
-    const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
-    const fileColumns = state.columns.filter((column) => columnType(column) === 'file');
-    const previousColumn = els.itemFileColumn.value;
-    els.itemFileColumn.replaceChildren();
-    fileColumns.forEach((column) => {
-      const option = makeElement('option', '', column.name || 'Archivo');
-      option.value = String(column.id);
-      els.itemFileColumn.append(option);
-    });
-    if (fileColumns.some((column) => String(column.id) === previousColumn)) els.itemFileColumn.value = previousColumn;
-    els.itemFileForm.hidden = !canEditBoard();
-    els.itemFileColumn.disabled = !canEditBoard() || fileColumns.length === 0;
-    els.itemFileTarget.disabled = !canEditBoard() || fileColumns.length === 0;
-    els.itemFileInput.disabled = !canEditBoard() || fileColumns.length === 0;
-    els.itemFileForm.querySelector('[type="submit"]').disabled = !canEditBoard() || fileColumns.length === 0;
-    els.itemFileForm.querySelector('.boards-field-help').textContent = fileColumns.length
-      ? 'Máximo 100 MB. Las imágenes se convierten a WebP. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.'
-      : 'Agrega una columna de tipo Archivo para adjuntar y consultar archivos desde el tablero.';
-    const selectedColumnId = els.itemFileColumn.value || String(fileColumns[0]?.id || '');
-    const existing = item ? filesForItem(item).filter((file) => String(file.column_id || '') === selectedColumnId) : [];
-    const selectedFile = els.itemFileTarget.value;
-    els.itemFileTarget.replaceChildren(makeElement('option', '', 'Crear archivo nuevo'));
-    els.itemFileTarget.firstElementChild.value = '';
-    existing.forEach((file) => {
-      const option = makeElement('option', '', `${file.name || 'Archivo'} · v${file.version_number || 'actual'}`);
-      option.value = String(file.file_id);
-      els.itemFileTarget.append(option);
-    });
-    if (existing.some((file) => String(file.file_id) === selectedFile)) els.itemFileTarget.value = selectedFile;
   }
 
   function renderRelationTargetBoards() {
@@ -2653,15 +3265,23 @@
     const parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
     els.itemParentSelect.replaceChildren(makeElement('option', '', 'Sin elemento principal'));
     els.itemParentSelect.firstElementChild.value = '';
+    const mismatchedParent = state.items.find((candidate) => String(candidate.id) === parentId && String(candidate.group_id) !== String(item.group_id));
     state.items.forEach((candidate) => {
       if (String(candidate.id) === state.detailItemId) return;
+      if (String(candidate.group_id) !== String(item.group_id) && String(candidate.id) !== parentId) return;
       const option = makeElement('option', '', candidate.name || `Elemento #${candidate.id}`);
       option.value = String(candidate.id);
+      if (String(candidate.group_id) !== String(item.group_id)) option.textContent += ' · otro grupo (relación existente)';
       els.itemParentSelect.append(option);
     });
     els.itemParentSelect.value = parentId;
     els.itemParentSelect.disabled = !editable;
     document.getElementById('saveItemParent').hidden = !editable;
+    const parentWarning = document.getElementById('itemParentWarning');
+    if (parentWarning) {
+      parentWarning.hidden = !mismatchedParent;
+      parentWarning.textContent = mismatchedParent ? 'El elemento principal actual pertenece a otro grupo. Selecciona “Sin elemento principal” para quitar esta relación.' : '';
+    }
     const children = state.items.filter((candidate) => String(candidate.parent_item_id ?? '') === state.detailItemId);
     if (!children.length) els.itemSubtasksList.append(makeElement('p', 'boards-detail-empty', 'No hay subelementos todavía.'));
     else children.forEach((child) => els.itemSubtasksList.append(makeElement('div', 'boards-relation-entry', child.name || `Elemento #${child.id}`)));
@@ -2671,7 +3291,6 @@
   function renderItemDetails() {
     renderComments();
     renderItemFiles();
-    renderFileControls();
     renderItemRelations();
     renderActivity();
   }
@@ -2696,7 +3315,6 @@
     setDetailStatus('itemFilesStatus', 'Leyendo referencias de archivo…');
     setDetailStatus('itemRelationsStatus', 'Cargando relaciones y dependencias…');
     setDetailStatus('itemActivityStatus', 'Cargando actividad…');
-    renderFileControls();
     renderRelationTargetBoards();
     els.relationTargetBoard.value = String(state.board.id);
     loadRelationTargetItems(String(state.board.id));
@@ -2813,6 +3431,16 @@
     }
   }
 
+  function fileUploadValidationMessage(file) {
+    if (!(file instanceof File)) return 'Selecciona un archivo válido.';
+    if (file.size <= 0) return 'El archivo está vacío.';
+    if (file.size > 500 * 1024 * 1024) return 'El archivo supera el límite de 500 MB.';
+    const extension = String(file.name.split('.').pop() || '').toLowerCase();
+    const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'webm', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+    if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imágenes, MP4, WebM, texto, CSV u Office.';
+    return '';
+  }
+
   async function uploadFileToItem(item, column, file, targetFileId = '') {
     if (!canEditBoard()) throw new Error('No tienes permiso para adjuntar archivos.');
     if (!item || !column || columnType(column) !== 'file' || !file) throw new Error('Selecciona un archivo y una columna válida.');
@@ -2851,48 +3479,6 @@
     }
     state.fileVersions[String(reference.file_id)] = undefined;
     return reference;
-  }
-
-  function fileUploadValidationMessage(file) {
-    if (!(file instanceof File)) return 'Selecciona un archivo válido.';
-    if (file.size <= 0) return 'El archivo está vacío.';
-    if (file.size > 100 * 1024 * 1024) return 'El archivo supera el límite de 100 MB.';
-    const extension = String(file.name.split('.').pop() || '').toLowerCase();
-    const allowedExtensions = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
-    if (!allowedExtensions.has(extension)) return 'Tipo de archivo no permitido. Usa PDF, imagen, texto, CSV u Office.';
-    return '';
-  }
-
-  async function submitItemFile(event) {
-    event.preventDefault();
-    if (!canEditBoard()) return;
-    const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
-    const file = els.itemFileInput.files?.[0];
-    const columnId = els.itemFileColumn.value;
-    if (!item || !file || !columnId) return;
-    const column = state.columns.find((candidate) => String(candidate.id) === columnId && columnType(candidate) === 'file');
-    if (!column) return;
-    const targetFileId = els.itemFileTarget.value;
-    const button = els.itemFileForm.querySelector('[type="submit"]');
-    button.disabled = true;
-    button.textContent = 'Subiendo…';
-    try {
-      const reference = await uploadFileToItem(item, column, file, targetFileId);
-      els.itemFileForm.reset();
-      renderFileControls();
-      renderItemFiles();
-      await loadFileHistory(reference.file_id);
-      setNotice('Archivo subido y vinculado al elemento.', 'success');
-      const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
-      const activity = await request(`/activity?${params.toString()}`);
-      state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
-      renderActivity();
-    } catch (error) {
-      setNotice(errorMessage(error, 'No se pudo subir el archivo.'), 'error');
-    } finally {
-      button.disabled = !canEditBoard() || !els.itemFileColumn.value;
-      button.textContent = 'Subir archivo';
-    }
   }
 
   async function addItemRelation(event) {
@@ -3357,11 +3943,37 @@
     return state.items.filter((item) => itemMatchesSearch(item, query) && state.filters.every((filter) => compareFilter(item, filter)));
   }
 
+  function orderItemsByHierarchy(items) {
+    const childrenByParent = new Map();
+    const visibleIds = new Set(items.map((item) => String(item.id)));
+    items.forEach((item) => {
+      if (item.parent_item_id == null) return;
+      const parentId = String(item.parent_item_id);
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId).push(item);
+    });
+
+    const ordered = [];
+    const visited = new Set();
+    const appendWithChildren = (item) => {
+      const id = String(item.id);
+      if (visited.has(id)) return;
+      visited.add(id);
+      ordered.push(item);
+      (childrenByParent.get(id) || []).forEach(appendWithChildren);
+    };
+
+    items.filter((item) => item.parent_item_id == null || !visibleIds.has(String(item.parent_item_id)))
+      .forEach(appendWithChildren);
+    items.forEach(appendWithChildren);
+    return ordered;
+  }
+
   function createGroupRow(group, itemCount, columnCount) {
     const row = document.createElement('tr');
     row.className = 'boards-group-row';
     const cell = document.createElement('td');
-    cell.colSpan = columnCount + 3;
+    cell.colSpan = columnCount + 2;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
@@ -3403,6 +4015,8 @@
       label.textContent = 'Agregar';
       add.append(icon, label);
       meta.append(add);
+      meta.append(recycleAction('Eliminar grupo', 'group', group.id, 'trash', state.board?.id));
+      meta.append(recycleAction('Archivar grupo', 'group', group.id, 'archive', state.board?.id));
     }
     groupWrap.append(meta);
     cell.append(groupWrap);
@@ -3416,16 +4030,26 @@
     select.dataset.moveEditor = '1';
     select.dataset.itemId = String(item.id);
     select.dataset.currentGroup = String(item.group_id ?? '');
-    select.setAttribute('aria-label', `Mover ${item.name || 'elemento'} a otro grupo`);
+    const isChild = item.parent_item_id != null;
+    const parentItem = isChild ? state.items.find((candidate) => String(candidate.id) === String(item.parent_item_id)) : null;
+    const hasGroupMismatch = Boolean(parentItem && String(parentItem.group_id) !== String(item.group_id));
+    select.setAttribute('aria-label', isChild
+      ? (hasGroupMismatch ? `Reparar el grupo de ${item.name || 'el subelemento'} para igualarlo con su elemento principal` : `No se puede mover ${item.name || 'el subelemento'} a otro grupo mientras tenga un elemento principal`)
+      : `Mover ${item.name || 'elemento'} y sus subelementos a otro grupo`);
+    if (!isChild) select.title = 'Mover este elemento también mueve sus subelementos.';
+    if (isChild) select.title = hasGroupMismatch
+      ? 'Esta relación heredada usa grupos distintos. Repara moviendo el subelemento al grupo de su elemento principal.'
+      : 'Quita primero la relación con el elemento principal para moverlo a otro grupo.';
     const current = document.createElement('option');
     current.value = String(item.group_id ?? '');
     current.textContent = 'Mover…';
     select.append(current);
     state.groups.forEach((group) => {
+      if (isChild && (!hasGroupMismatch || String(group.id) !== String(parentItem.group_id))) return;
       if (String(group.id) === String(item.group_id)) return;
       const option = document.createElement('option');
       option.value = String(group.id);
-      option.textContent = `Mover a ${group.name || 'grupo'}`;
+      option.textContent = isChild ? `Reparar: mover al grupo de ${group.name || 'su elemento principal'}` : `Mover a ${group.name || 'grupo'}`;
       select.append(option);
     });
     select.disabled = !canEditBoard() || state.groups.length < 2;
@@ -3442,6 +4066,193 @@
     icon.setAttribute('aria-hidden', 'true');
     button.append(icon);
     return button;
+  }
+
+  function createGroupSummaryRow(columns, groupItems) {
+    const summaryTypes = new Set(['status', 'file', 'people', 'person', 'numbers', 'progress', 'timeline', 'tags', 'date']);
+    if (!columns.some((column) => summaryTypes.has(columnType(column)))) return null;
+    const summaryItems = groupItems.filter((item) => item.parent_item_id == null);
+    const row = makeElement('tr', 'boards-table-summary-row');
+    row.append(makeElement('td', 'boards-table-summary-label'));
+    row.append(makeElement('td', 'boards-table-summary-spacer'));
+    columns.forEach((column) => {
+      const cell = makeElement('td', 'boards-table-summary-cell');
+      const type = columnType(column);
+      if (type === 'status') {
+        const options = parseOptions(column.options);
+        const counts = new Map(options.map((option) => [String(option.value), 0]));
+        let filled = 0;
+        summaryItems.forEach((item) => {
+          const value = getCellValue(item, column);
+          if (value === null || value === undefined || String(value) === '') return;
+          const key = String(value);
+          counts.set(key, (counts.get(key) || 0) + 1);
+          filled += 1;
+        });
+        if (!filled) {
+          cell.append(makeElement('span', 'boards-summary-count', '—'));
+        } else {
+          const summaryOptions = options.slice();
+          counts.forEach((count, value) => {
+            if (count && !summaryOptions.some((option) => String(option.value) === value)) {
+              summaryOptions.push({ value, label: value, color: '#8792a2' });
+            }
+          });
+          const bar = makeElement('div', 'boards-summary-bar');
+          bar.setAttribute('role', 'img');
+          bar.setAttribute('aria-label', `Distribución de ${column.name || 'estado'}: ${Array.from(counts).filter(([, count]) => count).map(([value, count]) => `${summaryOptions.find((option) => String(option.value) === value)?.label || value}: ${count} de ${summaryItems.length}, ${summaryItems.length ? ((count / summaryItems.length) * 100).toFixed(1) : '0.0'}%`).join(', ')}`);
+          summaryOptions.forEach((option) => {
+            const count = counts.get(String(option.value)) || 0;
+            if (!count) return;
+            const segment = makeElement('span', 'boards-summary-segment');
+            segment.style.width = `${(count / (summaryItems.length || 1)) * 100}%`;
+            segment.style.backgroundColor = option.color || '#8792a2';
+            segment.title = `${option.label || option.value} ${count}/${summaryItems.length}  ${summaryItems.length ? ((count / summaryItems.length) * 100).toFixed(1) : '0.0'}%`;
+            segment.dataset.tooltip = segment.title;
+            bar.append(segment);
+          });
+          cell.append(bar);
+        }
+      } else if (type === 'file') {
+        const files = summaryItems.flatMap((item) => filesForItem(item).filter((file) => String(file.column_id) === String(column.id)));
+        const count = makeElement('span', 'boards-summary-count', `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}`);
+        cell.append(count);
+        if (files.length) {
+          const download = makeElement('button', 'boards-summary-download');
+          download.type = 'button';
+          download.dataset.downloadGroupFiles = String(summaryItems[0]?.group_id || '');
+          download.dataset.fileIds = files.map((file) => String(file.file_id)).join(',');
+          download.title = `Descargar ${files.length} ${files.length === 1 ? 'archivo' : 'archivos'} de ${column.name || 'esta columna'} en ZIP`;
+          download.setAttribute('aria-label', download.title);
+          download.innerHTML = '<i class="fa-solid fa-download" aria-hidden="true"></i><span>Descargar archivos</span>';
+          cell.append(download);
+        }
+      } else if (type === 'people' || type === 'person') {
+        const people = new Set(summaryItems.flatMap((item) => selectedIds(getCellValue(item, column)).map(String)));
+        const list = makeElement('div', 'boards-summary-people');
+        Array.from(people).slice(0, 5).forEach((id) => {
+          const person = state.summaryPeople.get(id);
+          const name = person?.name || `Persona ${id}`;
+          const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('es-MX');
+          const avatar = makeElement('span', 'boards-summary-person', initials || id.slice(-2));
+          avatar.title = name;
+          avatar.setAttribute('aria-label', avatar.title);
+          list.append(avatar);
+        });
+        if (people.size > 5) list.append(makeElement('span', 'boards-summary-count', `+${people.size - 5}`));
+        list.append(makeElement('span', 'boards-summary-count', `${people.size} ${people.size === 1 ? 'persona' : 'personas'}`));
+        cell.append(list);
+      } else if (type === 'numbers') {
+        const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
+        const selectedFunction = state.summaryFunctions[String(column.id)] || 'sum';
+        const select = makeElement('select', 'boards-summary-function');
+        select.dataset.summaryColumn = String(column.id);
+        [['sum', 'Suma'], ['average', 'Promedio'], ['median', 'Mediana'], ['min', 'Mínimo'], ['max', 'Máximo'], ['count', 'Conteo']].forEach(([value, label]) => {
+          const option = makeElement('option', '', label);
+          option.value = value;
+          select.append(option);
+        });
+        select.value = selectedFunction;
+        cell.append(select);
+        let result = '—';
+        if (values.length) {
+          const sorted = values.slice().sort((a, b) => a - b);
+          const middle = Math.floor(sorted.length / 2);
+          const results = {
+            sum: values.reduce((sum, value) => sum + value, 0),
+            average: values.reduce((sum, value) => sum + value, 0) / values.length,
+            median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2,
+            min: sorted[0], max: sorted[sorted.length - 1], count: values.length
+          };
+          result = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 }).format(results[selectedFunction] ?? results.sum);
+        }
+        cell.append(makeElement('span', 'boards-summary-count', result));
+      } else if (type === 'progress') {
+        const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite).map((value) => Math.max(0, Math.min(100, value)));
+        const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+        const progress = makeElement('div', 'boards-summary-progress');
+        progress.setAttribute('role', 'img');
+        progress.setAttribute('aria-label', `${Math.round(average)}% de progreso promedio del grupo`);
+        const fill = makeElement('span', 'boards-summary-progress-fill');
+        fill.style.width = `${average}%`;
+        progress.append(fill);
+        cell.append(progress, makeElement('span', 'boards-summary-count', values.length ? `${Math.round(average)}% promedio` : '—'));
+      } else if (type === 'timeline' || type === 'date') {
+        const ranges = summaryItems.map((item) => type === 'date'
+          ? { start: dateOnly(getCellValue(item, column)), end: dateOnly(getCellValue(item, column)) }
+          : dateRange(getCellValue(item, column))).filter((range) => range.start || range.end);
+        if (!ranges.length) cell.append(makeElement('span', 'boards-summary-count', '—'));
+        else {
+          const starts = ranges.map((range) => range.start || range.end).filter(Boolean).sort();
+          const ends = ranges.map((range) => range.end || range.start).filter(Boolean).sort();
+          const start = starts[0];
+          const end = ends[ends.length - 1];
+          const rangeLabel = `${formatDate(start, { day: 'numeric', month: 'short' })} – ${formatDate(end, { day: 'numeric', month: 'short' })}`;
+          if (type === 'date') {
+            const summary = makeElement('span', 'boards-summary-count', `${ranges.length} ${ranges.length === 1 ? 'fecha' : 'fechas'} · ${rangeLabel}`);
+            summary.title = `Rango de fechas con valor: ${rangeLabel}`;
+            cell.append(summary);
+          } else {
+            cell.append(makeElement('span', 'boards-summary-count', rangeLabel));
+            const track = makeElement('div', 'boards-summary-progress');
+            const span = Math.max(1, new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`));
+            const elapsed = Math.max(0, Math.min(1, (Date.now() - new Date(`${start}T00:00:00`)) / span));
+            const fill = makeElement('span', 'boards-summary-progress-fill');
+            fill.style.width = `${Math.max(4, elapsed * 100)}%`;
+            track.append(fill);
+            cell.append(track);
+          }
+        }
+      } else if (type === 'tags') {
+        const tags = new Set(summaryItems.flatMap((item) => {
+          const value = parseStoredValue(getCellValue(item, column));
+          if (Array.isArray(value)) return value.map((tag) => String(tag && typeof tag === 'object' ? (tag.label ?? tag.name ?? tag.value ?? '') : tag).trim()).filter(Boolean);
+          return String(value ?? '').split(',').map((tag) => tag.trim()).filter(Boolean);
+        }));
+        const list = makeElement('div', 'boards-summary-tags');
+        Array.from(tags).slice(0, 4).forEach((tag) => list.append(makeElement('span', 'boards-summary-tag', tag)));
+        if (tags.size > 4) list.append(makeElement('span', 'boards-summary-count', `+${tags.size - 4}`));
+        if (!tags.size) list.append(makeElement('span', 'boards-summary-count', '—'));
+        cell.append(list);
+      }
+      row.append(cell);
+    });
+    return row;
+  }
+
+  async function downloadFilesZip(button) {
+    const fileIds = String(button.dataset.fileIds || '').split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0);
+    if (!fileIds.length || !state.board?.id) return;
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>Preparando ZIP…</span>';
+    try {
+      const response = await fetch(`${apiRoot}/download_files_zip`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/zip, application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify({ csrf_token: csrfToken, board_id: state.board.id, file_ids: fileIds })
+      });
+      if (!response.ok) {
+        let error = {};
+        try { error = await response.json(); } catch (_) { /* The server may return a plain HTTP error. */ }
+        throw new Error(error.message || 'No se pudo preparar el archivo ZIP.');
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `archivos-tablero-${state.board.id}.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setNotice('La descarga ZIP está lista.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error, 'No se pudieron descargar los archivos.'), 'error');
+    } finally {
+      button.disabled = false;
+      button.innerHTML = original;
+    }
   }
 
   function renderTable() {
@@ -3479,18 +4290,18 @@
         if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
         row.append(th);
       });
-      const moveHead = makeElement('th', 'boards-move-head', 'Mover');
-      moveHead.scope = 'col';
-      row.append(moveHead);
       return row;
     };
 
     state.groups.forEach((group) => {
-      const groupItems = filteredItems.filter((item) => String(item.group_id) === String(group.id));
+      const groupItems = orderItemsByHierarchy(filteredItems.filter((item) => String(item.group_id) === String(group.id)));
       const tbody = document.createElement('tbody');
       tbody.className = 'boards-group-body';
+      tbody.dataset.groupBody = String(group.id);
       tbody.append(createGroupRow(group, groupItems.length, columns.length));
       if (state.collapsedGroups.has(String(group.id))) {
+        const summaryRow = createGroupSummaryRow(columns, groupItems);
+        if (summaryRow) tbody.append(summaryRow);
         table.append(tbody);
         return;
       }
@@ -3499,16 +4310,28 @@
         if (query || state.filters.length || !canEditBoard()) {
           const emptyRow = makeElement('tr', 'boards-empty-group-row');
           const emptyCell = makeElement('td', '', query || state.filters.length ? 'No hay coincidencias en este grupo.' : 'Este grupo todavía no tiene elementos.');
-          emptyCell.colSpan = columns.length + 3;
+          emptyCell.colSpan = columns.length + 2;
           emptyRow.append(emptyCell);
           tbody.append(emptyRow);
         }
       }
+      const visibleItemIds = new Set(groupItems.map((item) => String(item.id)));
+      const childrenByParent = new Map();
       groupItems.forEach((item) => {
+        const parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
+        if (!parentId || !visibleItemIds.has(parentId)) return;
+        if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+        childrenByParent.get(parentId).push(item);
+      });
+      const renderItemRow = (item) => {
         const row = document.createElement('tr');
-        row.className = 'boards-item-row';
-        row.tabIndex = 0;
+        const isChild = item.parent_item_id != null;
+        row.className = `boards-item-row${isChild ? ' is-child-row' : ''}${childrenByParent.has(String(item.id)) ? ' has-child-rows' : ''}`;
+        row.dataset.itemRow = '1';
         row.dataset.openItemDetails = String(item.id);
+        if (isChild) row.dataset.parentItemId = String(item.parent_item_id);
+        row.tabIndex = 0;
+        row.draggable = false;
         row.setAttribute('aria-label', `Abrir detalles de ${item.name || 'elemento'}`);
         row.style.setProperty('--group-color', safeGroupColor(group.color));
         const selectCell = makeElement('td', 'boards-select-cell');
@@ -3524,10 +4347,12 @@
         const nameCell = document.createElement('th');
         nameCell.scope = 'row';
         nameCell.className = 'boards-item-name';
+        nameCell.draggable = canEditBoard() && item.parent_item_id == null;
         nameCell.append(createTableItemName(item));
         row.append(nameCell);
         columns.forEach((column) => {
           const cell = document.createElement('td');
+          if (columnType(column) === 'date') cell.classList.add('boards-date-cell');
           if (['status', 'dropdown'].includes(columnType(column))) cell.dataset.statusTone = statusTone(column, getCellValue(item, column));
           if (columnType(column) === 'status') {
             const chosen = parseOptions(column.options).find((entry) => entry.value === String(getCellValue(item, column) ?? ''));
@@ -3536,16 +4361,71 @@
           cell.append(createCellEditor(item, column, getCellValue(item, column)));
           row.append(cell);
         });
-        const moveCell = document.createElement('td');
-        moveCell.className = 'boards-move-cell';
-        moveCell.append(createMoveEditor(item));
-        row.append(moveCell);
-        tbody.append(row);
+        return row;
+      };
+      const makeChildPanel = (parent, children) => {
+        const panelRow = makeElement('tr', 'boards-subitems-panel-row');
+        const panelCell = document.createElement('td');
+        panelCell.colSpan = columns.length + 2;
+        const panel = makeElement('div', 'boards-subitems-panel');
+        panel.setAttribute('role', 'group');
+        panel.setAttribute('aria-label', `Subelementos de ${parent.name || 'elemento'}`);
+        const innerScroll = makeElement('div', 'boards-subitems-scroll');
+        const innerTable = document.createElement('table');
+        innerTable.className = 'boards-table boards-subitems-table';
+        innerTable.setAttribute('aria-label', `Subelementos de ${parent.name || 'elemento'}`);
+        const head = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        const selectHead = makeElement('th', 'boards-select-head');
+        selectHead.scope = 'col';
+        headRow.append(selectHead);
+        const itemHead = makeElement('th', 'boards-item-head', 'Elemento');
+        itemHead.scope = 'col';
+        headRow.append(itemHead);
+        columns.forEach((column) => {
+          const th = makeElement('th', '', column.name || 'Columna');
+          th.scope = 'col';
+          if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
+          headRow.append(th);
+        });
+        head.append(headRow);
+        innerTable.append(head);
+        const childBody = document.createElement('tbody');
+        children.forEach((child) => {
+          childBody.append(renderItemRow(child));
+          const grandchildren = childrenByParent.get(String(child.id)) || [];
+          if (grandchildren.length) childBody.append(makeChildPanel(child, grandchildren));
+        });
+        if (canEditBoard()) {
+          const addRow = makeElement('tr', 'boards-subitem-add-row');
+          const addCell = document.createElement('td');
+          addCell.colSpan = columns.length + 2;
+          const add = makeElement('button', 'boards-subitem-add', 'Agregar subelemento');
+          add.type = 'button';
+          add.dataset.addSubitem = String(parent.id);
+          add.prepend(makeElement('i', 'fa-solid fa-plus'));
+          addCell.append(add);
+          addRow.append(addCell);
+          childBody.append(addRow);
+        }
+        innerTable.append(childBody);
+        innerScroll.append(innerTable);
+        panel.append(innerScroll);
+        panelCell.append(panel);
+        panelRow.append(panelCell);
+        return panelRow;
+      };
+      groupItems.forEach((item) => {
+        const parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
+        if (parentId && visibleItemIds.has(parentId)) return;
+        tbody.append(renderItemRow(item));
+        const children = childrenByParent.get(String(item.id)) || [];
+        if (children.length) tbody.append(makeChildPanel(item, children));
       });
       if (canEditBoard() && !query && !state.filters.length) {
         const addRow = makeElement('tr', 'boards-add-row');
         const addCell = document.createElement('td');
-        addCell.colSpan = columns.length + 3;
+        addCell.colSpan = columns.length + 2;
         if (state.inlineAddGroupId === String(group.id)) {
           const form = makeElement('form', 'boards-inline-add-form');
           form.dataset.inlineAddForm = String(group.id);
@@ -3573,6 +4453,8 @@
         addRow.append(addCell);
         tbody.append(addRow);
       }
+      const summaryRow = createGroupSummaryRow(columns, groupItems);
+      if (summaryRow) tbody.append(summaryRow);
       table.append(tbody);
     });
 
@@ -3580,7 +4462,7 @@
       const tbody = document.createElement('tbody');
       const emptyRow = document.createElement('tr');
       const emptyCell = document.createElement('td');
-      emptyCell.colSpan = columns.length + 3;
+      emptyCell.colSpan = columns.length + 2;
       emptyCell.className = 'boards-table-empty';
       emptyCell.textContent = canManageStructure() ? 'Crea un grupo para empezar a agregar elementos.' : 'Este tablero todavía no tiene grupos.';
       emptyRow.append(emptyCell);
@@ -3588,9 +4470,42 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    requestAnimationFrame(() => {
+      table.querySelectorAll('td[data-status-tone] .boards-status-select').forEach((select) => {
+        const cell = select.closest('td');
+        if (cell) select.style.height = `${cell.getBoundingClientRect().height}px`;
+      });
+    });
     els.boardTableStatus.hidden = state.groups.length > 0;
     els.boardTableStatus.textContent = state.groups.length ? '' : 'Agrega un grupo para organizar los elementos de este tablero.';
+    loadSummaryPeople();
     updateSelectionBar();
+  }
+
+  function loadSummaryPeople() {
+    const boardId = Number(state.board?.id);
+    if (!boardId) return;
+    const peopleColumns = state.columns.filter((column) => ['people', 'person'].includes(columnType(column)));
+    const assignedIds = Array.from(new Set(state.items.flatMap((item) => peopleColumns.flatMap((column) => selectedIds(getCellValue(item, column)).map(String)))));
+    const missing = assignedIds.filter((id) => !state.summaryPeople.has(id) && !state.summaryPeopleRequested.has(id));
+    if (!missing.length) return;
+    const batch = missing.slice(0, 100);
+    batch.forEach((id) => state.summaryPeopleRequested.add(id));
+    request(`/users?board_id=${encodeURIComponent(boardId)}&ids=${encodeURIComponent(batch.join(','))}`)
+      .then((result) => {
+        if (Number(state.board?.id) !== boardId) return;
+        (Array.isArray(result.data) ? result.data : []).forEach((person) => state.summaryPeople.set(String(person.id), person));
+        renderTable();
+      })
+      .catch(() => {});
+    if (missing.length > batch.length) {
+      const rest = missing.slice(batch.length);
+      window.setTimeout(() => {
+        if (Number(state.board?.id) !== boardId) return;
+        rest.forEach((id) => state.summaryPeopleRequested.delete(id));
+        loadSummaryPeople();
+      }, 0);
+    }
   }
 
   function updateItemCount(visibleCount) {
@@ -3611,6 +4526,19 @@
     const validIds = new Set(state.items.map((item) => String(item.id)));
     state.selectedItemIds.forEach((id) => { if (!validIds.has(id)) state.selectedItemIds.delete(id); });
     const total = state.selectedItemIds.size;
+    const selectedItems = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    const selectedRoots = new Set(selectedItems.filter((item) => item.parent_item_id == null).map((item) => String(item.id)));
+    const itemsById = new Map(state.items.map((item) => [String(item.id), item]));
+    const blockedChildren = selectedItems.filter((item) => {
+      let parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
+      const visited = new Set();
+      while (parentId && !visited.has(parentId)) {
+        if (selectedRoots.has(parentId)) return false;
+        visited.add(parentId);
+        parentId = itemsById.get(parentId)?.parent_item_id == null ? '' : String(itemsById.get(parentId).parent_item_id);
+      }
+      return Boolean(item.parent_item_id != null);
+    });
     bar.hidden = total === 0 || !canEditBoard();
     count.textContent = `${total} ${total === 1 ? 'elemento seleccionado' : 'elementos seleccionados'}`;
     const previous = target.value;
@@ -3624,9 +4552,12 @@
       target.append(option);
     });
     if (state.groups.some((group) => String(group.id) === previous)) target.value = previous;
-    move.disabled = state.bulkMoveInFlight || !target.value || !total;
+    move.disabled = state.bulkMoveInFlight || !target.value || !total || blockedChildren.length > 0;
+    move.title = blockedChildren.length ? 'Quita la relación principal antes de mover un subelemento por separado.' : 'Mover elementos raíz también mueve sus subelementos.';
     target.disabled = state.bulkMoveInFlight;
     document.getElementById('clearSelection').disabled = state.bulkMoveInFlight;
+    const bulkDelete = document.getElementById('bulkTrashItems');
+    if (bulkDelete) bulkDelete.disabled = state.bulkMoveInFlight || !total || blockedChildren.length > 0;
     els.boardTableContainer.querySelectorAll('[data-select-item], [data-select-group]').forEach((checkbox) => { checkbox.disabled = state.bulkMoveInFlight; });
     els.boardTableContainer.querySelectorAll('[data-select-group]').forEach((checkbox) => {
       const groupItems = getFilteredItems().filter((item) => String(item.group_id) === checkbox.dataset.selectGroup);
@@ -3938,6 +4869,7 @@
     state.activeSavedViewId = String(view.id);
     state.activeViewType = normalizeViewType(view.view_type);
     state.viewConfig = config && typeof config === 'object' ? { ...config } : {};
+    state.viewConfig.item_size = ['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double';
     normalizeColumnViewConfig();
     state.filters = Array.isArray(state.viewConfig.filters) ? state.viewConfig.filters.map((filter) => ({ ...filter })) : [];
     state.filterDraft = state.filters.map((filter) => ({ ...filter }));
@@ -3954,6 +4886,7 @@
       timeline_start_column_id: state.viewConfig.timeline_start_column_id || '',
       timeline_end_column_id: state.viewConfig.timeline_end_column_id || '',
       kanban_column_id: state.viewConfig.kanban_column_id || 'groups',
+      item_size: ['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double',
       panel_column_id: state.viewConfig.panel_column_id || '',
       column_order: orderedColumns(true).map((column) => String(column.id)),
       hidden_column_ids: state.viewConfig.hidden_column_ids.slice()
@@ -3970,6 +4903,7 @@
   function renderActiveView() {
     const type = normalizeViewType(state.activeViewType);
     state.activeViewType = type;
+    applyBoardItemSize(state.viewConfig.item_size || 'double');
     updateItemCount(getFilteredItems().length);
     document.querySelectorAll('.boards-view-tab[data-view-type]').forEach((button) => {
       const active = button.dataset.viewType === type;
@@ -3994,6 +4928,20 @@
     else if (type === 'timeline') renderTimeline();
     else if (type === 'kanban') renderKanban();
     else renderPanel();
+  }
+
+  function applyBoardItemSize(size) {
+    const normalized = ['simple', 'double', 'triple'].includes(size) ? size : 'double';
+    state.viewConfig.item_size = normalized;
+    app.dataset.itemSize = normalized;
+    const label = document.getElementById('boardItemSizeLabel');
+    if (label) label.textContent = normalized === 'simple' ? 'Simple' : (normalized === 'triple' ? 'Triple' : 'Doble');
+    document.querySelectorAll('[data-board-item-size]').forEach((button) => {
+      const selected = button.dataset.boardItemSize === normalized;
+      button.classList.toggle('is-selected', selected);
+      if (selected) button.setAttribute('aria-pressed', 'true');
+      else button.setAttribute('aria-pressed', 'false');
+    });
   }
 
   function renderEmptyRenderer(title, description) {
@@ -4063,7 +5011,10 @@
       cell.append(number);
       (events.get(dateKey) || []).forEach((item) => {
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
-        const event = createItemNameControl(item, 'boards-calendar-event');
+        const event = makeElement('button', 'boards-calendar-event', item.name || 'Elemento sin nombre');
+        event.type = 'button';
+        event.dataset.openItemDetails = String(item.id);
+        event.setAttribute('aria-label', `Ver detalles: ${item.name || 'Elemento sin nombre'}`);
         event.title = `${item.name || 'Elemento'} · ${group?.name || 'Sin grupo'}`;
         event.style.setProperty('--group-color', safeGroupColor(group?.color));
         cell.append(event);
@@ -4146,13 +5097,18 @@
     if (!column) {
       lanes = state.groups.map((group) => ({ key: String(group.id), name: group.name || 'Grupo sin nombre', color: group.color, group }));
     } else {
-      const values = parseOptions(column.options).map((option) => option.value);
+      const options = parseOptions(column.options);
+      const values = options.map((option) => option.value);
       items.forEach((item) => {
         const value = stringifyValue(getCellValue(item, column));
         if (value && !values.includes(value)) values.push(value);
       });
       if (items.some((item) => !stringifyValue(getCellValue(item, column)))) values.push('');
-      lanes = values.map((value, index) => ({ key: value, name: value || 'Sin estado', color: ['#0f766e', '#3574a5', '#8a5ca6', '#bb7a2a', '#b64f57'][index % 5] }));
+      lanes = values.map((value, index) => {
+        const option = options.find((entry) => entry.value === value);
+        const name = option?.label || value || 'Sin estado';
+        return { key: value, name, color: kanbanStatusColor(name, option?.color, index) };
+      });
     }
     if (!lanes.length) {
       renderEmptyRenderer(column ? 'No hay valores para mostrar' : 'No hay grupos para mostrar', column
@@ -4160,6 +5116,7 @@
         : 'Crea un grupo o elige una columna de estado para organizar las tarjetas.');
       return;
     }
+    board.style.setProperty('--kanban-lane-count', String(lanes.length));
     lanes.forEach((lane) => {
       const laneItems = items.filter((item) => column
         ? stringifyValue(getCellValue(item, column)) === lane.key
@@ -4169,22 +5126,79 @@
       const header = makeElement('header', 'boards-kanban-lane-heading');
       header.append(makeElement('span', 'boards-kanban-marker'), makeElement('h3', '', lane.name), makeElement('span', 'boards-kanban-count', laneItems.length));
       const cardList = makeElement('div', 'boards-kanban-cards');
+      cardList.dataset.kanbanLane = lane.key;
+      cardList.dataset.kanbanColumn = column ? String(column.id) : '';
       if (!laneItems.length) cardList.append(makeElement('p', 'boards-kanban-empty', 'Sin elementos'));
       laneItems.forEach((item) => {
         const card = makeElement('article', 'boards-kanban-card');
+        card.dataset.kanbanItem = String(item.id);
+        card.draggable = canEditBoard() && item.parent_item_id == null;
+        if (column && ['status', 'dropdown'].includes(columnType(column))) card.style.setProperty('--kanban-status-color', safeGroupColor(lane.color));
         card.append(createItemNameControl(item, 'boards-kanban-card-title'));
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
         if (column && group) card.append(makeElement('p', 'boards-kanban-card-group', group.name));
         const fields = makeElement('dl', 'boards-kanban-card-fields');
-        orderedColumns().forEach((field) => {
+        const visibleFields = orderedColumns().filter((field) => {
           if (column && String(field.id) === String(column.id)) return;
           const value = getCellValue(item, field);
-          if (value === null || value === '') return;
+          if (['people', 'person'].includes(columnType(field))) {
+            const parsedValue = parseStoredValue(value);
+            if (parsedValue == null || parsedValue === ''
+              || (Array.isArray(parsedValue) && parsedValue.length === 0)
+              || (typeof parsedValue === 'object' && !Array.isArray(parsedValue) && Object.keys(parsedValue).length === 0)) return false;
+          }
+          return value !== null && value !== '' && columnType(field) !== 'file';
+        }).slice(0, 3);
+        visibleFields.forEach((field) => {
+          const value = getCellValue(item, field);
           const entry = makeElement('div', 'boards-kanban-card-field');
           entry.append(makeElement('dt', '', field.name || 'Dato'), makeElement('dd', '', stringifyValue(value)));
           fields.append(entry);
         });
         if (fields.childElementCount) card.append(fields);
+        const files = filesForItem(item);
+        orderedColumns().filter((field) => columnType(field) === 'file').forEach((field) => {
+          const fieldFiles = files.filter((file) => String(file.column_id || '') === String(field.id));
+          if (!fieldFiles.length) return;
+          const evidence = makeElement('div', 'boards-kanban-evidence');
+          evidence.append(makeElement('span', 'boards-kanban-evidence-label', field.name || 'Archivos'));
+          const previews = makeElement('div', 'boards-kanban-evidence-items');
+          const images = fieldFiles.filter((file) => fileTypeInfo(file).previewKind === 'image');
+          const shownImages = new Set(images.slice(0, 3));
+          const visibleFiles = fieldFiles.filter((file) => fileTypeInfo(file).previewKind !== 'image' || shownImages.has(file));
+          visibleFiles.forEach((file) => {
+            const safeToPreview = ['clean', 'unscanned'].includes(String(file.scan_status || '').toLowerCase());
+            const info = fileTypeInfo(file);
+            const chip = makeElement('button', `boards-kanban-file${info.previewKind === 'image' && safeToPreview ? ' has-thumbnail' : ''}`);
+            chip.type = 'button';
+            chip.title = file.name || file.original_name || 'Archivo';
+            chip.setAttribute('aria-label', `${field.name || 'Archivo'}: ${chip.title}`);
+            chip.disabled = !safeToPreview;
+            if (info.previewKind === 'image' && safeToPreview) {
+              const thumbnail = document.createElement('img');
+              thumbnail.src = fileEndpoint(file, true);
+              thumbnail.alt = '';
+              thumbnail.loading = 'lazy';
+              thumbnail.addEventListener('error', () => {
+                thumbnail.remove();
+                chip.classList.remove('has-thumbnail');
+                const icon = makeElement('i', `fa-solid ${info.icon}`, '');
+                icon.setAttribute('aria-hidden', 'true');
+                chip.append(icon);
+              }, { once: true });
+              chip.append(thumbnail);
+            } else {
+              const icon = makeElement('i', `fa-solid ${info.icon}`, '');
+              icon.setAttribute('aria-hidden', 'true');
+              chip.append(icon);
+            }
+            if (safeToPreview) chip.addEventListener('click', () => openFilePreview(file, item));
+            previews.append(chip);
+          });
+          if (images.length > 3) previews.append(makeElement('span', 'boards-kanban-file-more', `+${images.length - 3}`));
+          evidence.append(previews);
+          card.append(evidence);
+        });
         const moveControl = makeElement('div', 'boards-kanban-card-action');
         if (column && ['status', 'dropdown'].includes(columnType(column))) {
           moveControl.append(makeElement('span', '', 'Estado'));
@@ -4201,7 +5215,67 @@
       board.append(laneElement);
     });
     els.boardRendererArea.append(board);
+    board.addEventListener('dragstart', (event) => {
+      const card = event.target.closest('[data-kanban-item]');
+      if (!card || !card.draggable) { event.preventDefault(); return; }
+      state.draggedItemId = card.dataset.kanbanItem;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', state.draggedItemId);
+      card.classList.add('is-dragging');
+    });
+    board.addEventListener('dragover', (event) => {
+      const lane = event.target.closest('[data-kanban-lane]');
+      if (!lane || !state.draggedItemId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      lane.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
+    });
+    board.addEventListener('dragleave', (event) => {
+      const lane = event.target.closest('[data-kanban-lane]');
+      if (lane && (!event.relatedTarget || !lane.contains(event.relatedTarget))) lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+    });
+    board.addEventListener('drop', async (event) => {
+      const lane = event.target.closest('[data-kanban-lane]');
+      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
+      if (!lane || !item) return;
+      event.preventDefault();
+      lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+      state.suppressItemClickUntil = Date.now() + 800;
+      const targetColumn = lane.dataset.kanbanColumn
+        ? state.columns.find((candidate) => String(candidate.id) === lane.dataset.kanbanColumn)
+        : null;
+      if (targetColumn) await updateItemCell(item, targetColumn, lane.dataset.kanbanLane);
+      else await moveItemToGroup(item, lane.dataset.kanbanLane);
+    });
+    board.addEventListener('dragend', () => {
+      state.draggedItemId = '';
+      board.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => element.classList.remove('is-dragging', 'is-drop-target'));
+    });
     updateItemCount(items.length);
+  }
+
+  async function updateItemCell(item, column, value) {
+    if (!item || !column || !canEditBoard()) return;
+    const previous = getCellValue(item, column);
+    if (String(previous ?? '') === String(value ?? '')) return;
+    try {
+      const result = await post('/update_cell', {
+        board_id: state.board.id,
+        item_id: item.id,
+        column_id: column.id,
+        value,
+        version: item.version
+      });
+      item.version = result.data?.version ?? item.version;
+      if (!item.cells) item.cells = {};
+      item.cells[String(column.id)] = value;
+      renderActiveView();
+      setNotice('Elemento actualizado.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error, 'No se pudo actualizar el elemento.'), 'error');
+      if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
+      else renderActiveView();
+    }
   }
 
   function renderPanel() {
@@ -4242,7 +5316,8 @@
     if (statusColumn) {
       const statusSection = makeElement('section', 'boards-panel-breakdown');
       statusSection.append(makeElement('h4', '', `Elementos por ${statusColumn.name || 'estado'}`));
-      const values = parseOptions(statusColumn.options).map((option) => option.value);
+      const statusOptions = parseOptions(statusColumn.options);
+      const values = statusOptions.map((option) => option.value);
       items.forEach((item) => {
         const value = stringifyValue(getCellValue(item, statusColumn));
         if (value && !values.includes(value)) values.push(value);
@@ -4253,11 +5328,13 @@
       const maxCount = Math.max(1, ...statusCounts.map((entry) => entry.count));
       statusCounts.forEach((entry, index) => {
         const row = makeElement('div', 'boards-panel-bar-row');
-        const label = makeElement('span', 'boards-panel-bar-label', entry.value || 'Sin estado');
+        const statusOption = statusOptions.find((option) => option.value === entry.value);
+        const statusLabel = statusOption?.label || entry.value;
+        const label = makeElement('span', 'boards-panel-bar-label', statusLabel || 'Sin estado');
         const track = makeElement('span', 'boards-panel-bar-track');
         const bar = makeElement('span', 'boards-panel-bar');
         bar.style.width = `${(entry.count / maxCount) * 100}%`;
-        bar.style.setProperty('--group-color', ['#0f766e', '#3574a5', '#8a5ca6', '#bb7a2a', '#b64f57'][index % 5]);
+        bar.style.setProperty('--group-color', safeGroupColor(statusOption?.color || statusLabelColor(statusLabel, index)));
         track.append(bar);
         row.append(label, track, makeElement('strong', 'boards-panel-bar-count', entry.count));
         statusSection.append(row);
@@ -4297,8 +5374,51 @@
       input?.focus();
       return;
     }
+    state.createParentId = '';
+    document.getElementById('createItemTitle').textContent = 'Agregar elemento';
+    document.querySelector('#createItemForm .boards-dialog-heading p').textContent = 'Después de crearlo, puedes editar el nombre desde el tablero.';
+    document.querySelector('#createItemForm button[type="submit"]').textContent = 'Agregar elemento';
+    els.newItemGroup.disabled = false;
     refreshGroupOptions(groupId);
     openDialog(els.createItemDialog);
+  }
+
+  function resetCreateItemMode() {
+    state.createParentId = '';
+    els.newItemGroup.disabled = false;
+    document.getElementById('createItemTitle').textContent = 'Agregar elemento';
+    document.querySelector('#createItemForm .boards-dialog-heading p').textContent = 'Después de crearlo, puedes editar el nombre desde el tablero.';
+    document.querySelector('#createItemForm button[type="submit"]').textContent = 'Agregar elemento';
+  }
+
+  function openCreateSubitem(parentId = state.detailItemId) {
+    const parent = state.items.find((item) => String(item.id) === String(parentId));
+    if (!parent || !canEditBoard()) return;
+    state.createParentId = String(parent.id);
+    refreshGroupOptions(parent.group_id);
+    els.newItemGroup.value = String(parent.group_id);
+    els.newItemGroup.disabled = true;
+    document.getElementById('createItemTitle').textContent = 'Agregar subelemento';
+    document.querySelector('#createItemForm .boards-dialog-heading p').textContent = `Se agregará dentro del grupo de “${parent.name || 'este elemento'}”.`;
+    document.querySelector('#createItemForm button[type="submit"]').textContent = 'Agregar subelemento';
+    if (els.itemDetailsDialog.open) closeDialog(els.itemDetailsDialog);
+    openDialog(els.createItemDialog);
+  }
+
+  function applyAffectedItems(affectedItems, fallbackItem, groupId, responseVersion) {
+    const affected = Array.isArray(affectedItems) ? affectedItems : null;
+    if (!affected) return false;
+    affected.forEach((updated) => {
+      const item = state.items.find((candidate) => String(candidate.id) === String(updated.id));
+      if (!item) return;
+      if (updated.group_id !== undefined) item.group_id = updated.group_id;
+      if (updated.version !== undefined) item.version = updated.version;
+    });
+    if (fallbackItem && !affected.some((entry) => String(entry.id) === String(fallbackItem.id))) {
+      fallbackItem.group_id = groupId;
+      fallbackItem.version = responseVersion ?? fallbackItem.version;
+    }
+    return true;
   }
 
   async function submitInlineItem(form) {
@@ -4419,7 +5539,8 @@
           }
         }
       }
-      if (state.activeViewType !== 'table' || els.boardSearch.value.trim() || state.filters.length) renderActiveView();
+      if ((editedColumn && ['status', 'dropdown'].includes(columnType(editedColumn)))
+        || state.activeViewType !== 'table' || els.boardSearch.value.trim() || state.filters.length) renderActiveView();
     } catch (error) {
       editor.classList.add('has-error');
       setNotice(errorMessage(error, 'No se pudo guardar el cambio.'), 'error');
@@ -4438,23 +5559,93 @@
     if (!item || !groupId || String(item.group_id) === String(groupId)) return;
     select.disabled = true;
     try {
-      const result = await post('/move_item', {
+      await moveItemToGroup(item, groupId);
+    } finally {
+      if (document.contains(select)) {
+        select.value = String(item.group_id);
+        select.disabled = false;
+      }
+    }
+  }
+
+  async function moveItemToGroup(item, groupId, sortOrder = null, movingItems = [item]) {
+    if (!item || !groupId || !canEditBoard()) return;
+    if (String(item.group_id) === String(groupId) && sortOrder === null) return;
+    let movedCount = 0;
+    try {
+      if (Number.isInteger(sortOrder) && sortOrder >= 0) {
+        const orderedItems = movingItems.slice().sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+        const reordering = orderedItems.every((candidate) => String(candidate.group_id) === String(groupId));
+        const sequence = reordering ? orderedItems.slice().reverse() : orderedItems;
+        for (const candidate of sequence) {
+          const originalIndex = orderedItems.findIndex((entry) => String(entry.id) === String(candidate.id));
+          await post('/move_item', {
+            board_id: state.board.id,
+            item_id: candidate.id,
+            group_id: groupId,
+            sort_order: sortOrder + originalIndex,
+            version: candidate.version
+          });
+          movedCount += 1;
+        }
+        await loadBoard(state.board.id, true);
+        const reordered = orderedItems.every((candidate) => String(candidate.group_id) === String(groupId));
+        const message = orderedItems.length > 1
+          ? (reordered ? `${orderedItems.length} elementos reordenados en el grupo.` : `${orderedItems.length} elementos movidos al grupo.`)
+          : (reordered ? 'Elemento reordenado dentro del grupo.' : 'Elemento y subelementos movidos al grupo y posición seleccionados.');
+        setNotice(message, 'success');
+        return;
+      }
+      const payload = {
         board_id: state.board.id,
         item_id: item.id,
         group_id: groupId,
         version: item.version
-      });
+      };
+      const result = await post('/move_item', payload);
       item.group_id = groupId;
       item.version = result.data?.version ?? item.version;
+      const hasAffected = applyAffectedItems(result.data?.affected_items, item, groupId, result.data?.version);
+      if (!hasAffected) {
+        await loadBoard(state.board.id, true);
+        setNotice('Elemento y subelementos movidos. Se actualizaron los datos del tablero.', 'success');
+        return;
+      }
       renderActiveView();
-      setNotice('Elemento movido al grupo seleccionado.', 'success');
+      setNotice('Elemento y sus subelementos movidos al grupo seleccionado.', 'success');
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo mover el elemento.'), 'error');
-      if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
-      else select.value = select.dataset.currentGroup;
-    } finally {
-      if (document.contains(select)) select.disabled = false;
+      if (movedCount || error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
     }
+  }
+
+  function rootBoardItem(item) {
+    let current = item;
+    const visited = new Set();
+    while (current?.parent_item_id != null && !visited.has(String(current.id))) {
+      visited.add(String(current.id));
+      current = state.items.find((candidate) => String(candidate.id) === String(current.parent_item_id));
+      if (!current) return item;
+    }
+    return current || item;
+  }
+
+  function itemDropPosition(draggedItems, targetGroupId, targetRow, pointerY) {
+    const draggedRoots = draggedItems.map(rootBoardItem);
+    const draggedRootIds = new Set(draggedRoots.map((item) => String(item.id)));
+    const roots = state.items
+      .filter((item) => String(item.group_id) === String(targetGroupId) && item.parent_item_id == null && !draggedRootIds.has(String(item.id)))
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+    if (!targetRow) return roots.length;
+    const targetItem = state.items.find((item) => String(item.id) === targetRow.dataset.openItemDetails);
+    if (!targetItem) return roots.length;
+    const targetRoot = rootBoardItem(targetItem);
+    if (draggedRootIds.has(String(targetRoot.id))) return null;
+    let index = roots.findIndex((item) => String(item.id) === String(targetRoot.id));
+    if (index < 0) return roots.length;
+    const rect = targetRow.getBoundingClientRect();
+    if (pointerY > rect.top + rect.height / 2) index += 1;
+    return index;
   }
 
   async function moveSelectedItems() {
@@ -4463,9 +5654,10 @@
     const groupId = target?.value || '';
     if (state.bulkMoveInFlight || !groupId || !canEditBoard() || !state.board || !state.selectedItemIds.size) return;
     const boardId = state.board.id;
-    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)) && item.parent_item_id == null);
     let moved = 0;
     let failed = 0;
+    let needsReload = false;
     state.bulkMoveInFlight = true;
     button.disabled = true;
     updateSelectionBar();
@@ -4484,14 +5676,21 @@
             version: item.version
           });
           if (!state.board || String(state.board.id) !== String(boardId)) break;
-          item.group_id = groupId;
-          item.version = result.data?.version ?? item.version;
+          if (!applyAffectedItems(result.data?.affected_items, item, groupId, result.data?.version)) {
+            needsReload = true;
+            state.selectedItemIds.clear();
+            moved += 1;
+            break;
+          }
+          (result.data?.affected_items || []).forEach((affected) => state.selectedItemIds.delete(String(affected.id)));
           state.selectedItemIds.delete(String(item.id));
           moved += 1;
         } catch (error) {
           failed += 1;
         }
       }
+      if (!state.board || String(state.board.id) !== String(boardId)) return;
+      if (needsReload) await loadBoard(boardId, true);
       if (!state.board || String(state.board.id) !== String(boardId)) return;
       renderActiveView();
       if (failed) {
@@ -4505,22 +5704,105 @@
     }
   }
 
+  async function trashSelectedItems() {
+    if (state.bulkMoveInFlight || !canEditBoard() || !state.board || !state.selectedItemIds.size) return;
+    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)) && item.parent_item_id == null);
+    if (!selected.length || !await confirmAction(`Se moverán ${selected.length} elemento(s) seleccionado(s) y sus subelementos a la papelera.`, { title: 'Mover elementos a la papelera', confirmLabel: 'Mover a papelera', danger: true })) return;
+    const button = document.getElementById('bulkTrashItems');
+    button.disabled = true;
+    try {
+      await post('/trash', { entity_type: 'item', entity_ids: selected.map((item) => item.id), board_id: state.board.id });
+      state.selectedItemIds.clear();
+      await loadBoard(state.board.id, true);
+      setNotice('Elementos movidos a la papelera.', 'success');
+    } catch (error) { setNotice(errorMessage(error), 'error'); }
+    finally { updateSelectionBar(); }
+  }
+
   function getFormValue(formData, name) {
     return String(formData.get(name) || '').trim();
   }
 
   function setupDialogs() {
+    document.addEventListener('click', (event) => {
+      const action = event.target.closest('[data-recycle-action]');
+      if (!action) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runRecycleAction(action);
+    });
+    els.createItemDialog.addEventListener('close', resetCreateItemMode);
+    els.createItemDialog.addEventListener('cancel', resetCreateItemMode);
     document.querySelectorAll('[data-close-dialog]').forEach((button) => {
       button.addEventListener('click', () => closeDialog(button.closest('dialog')));
     });
-    [els.createBoardDialog, els.createWorkspaceDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog].forEach((dialog) => {
+    [els.createBoardDialog, els.duplicateBoardDialog, els.createWorkspaceDialog, els.workspaceMembersDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog, els.confirmDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
     });
     document.getElementById('openCreateBoard')?.addEventListener('click', () => openCreateBoard(state.board?.workspace_id || state.selectedWorkspaceId, state.board?.folder_id || ''));
+    document.getElementById('openTrashView')?.addEventListener('click', () => loadRecycleView('trash'));
+    document.getElementById('openArchiveView')?.addEventListener('click', () => loadRecycleView('archive'));
+    ['trashTypeFilter', 'trashLocationFilter', 'trashDateFilter'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', renderRecycleEntries);
+    });
+    document.getElementById('clearTrashFilters')?.addEventListener('click', () => {
+      document.getElementById('trashTypeFilter').value = '';
+      document.getElementById('trashLocationFilter').value = '';
+      document.getElementById('trashDateFilter').value = '';
+      renderRecycleEntries();
+    });
+    document.getElementById('closeTrashArchiveView')?.addEventListener('click', () => {
+      document.getElementById('trashArchiveView').hidden = true;
+      state.recycleMode = '';
+      if (state.board) els.boardWorkspace.hidden = false;
+      else showEmptyState();
+    });
+    document.getElementById('trashBoard')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const button = event.currentTarget;
+      button.dataset.recycleAction = 'trash'; button.dataset.recycleType = 'board'; button.dataset.recycleId = String(state.board?.id || '');
+      runRecycleAction(button);
+    });
+    document.getElementById('archiveBoard')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const button = event.currentTarget;
+      button.dataset.recycleAction = 'archive'; button.dataset.recycleType = 'board'; button.dataset.recycleId = String(state.board?.id || '');
+      runRecycleAction(button);
+    });
     document.getElementById('emptyCreateBoard')?.addEventListener('click', () => openCreateBoard());
     document.getElementById('navCreateWorkspace')?.addEventListener('click', () => openDialog(els.createWorkspaceDialog));
+    document.getElementById('manageWorkspaceMembers')?.addEventListener('click', async () => {
+      if (!selectedWorkspace()?.can_manage_members) return;
+      const workspace = selectedWorkspace();
+      document.getElementById('workspaceMembersTitle').textContent = `Miembros de ${workspace.name || 'este espacio'}`;
+      openDialog(els.workspaceMembersDialog, document.getElementById('workspaceMembersTitle'));
+      await loadWorkspaceMembers();
+    });
+    els.workspaceMemberForm?.addEventListener('submit', addWorkspaceMember);
+    els.workspaceMemberSearch?.addEventListener('input', () => {
+      els.workspaceMemberUserId.value = '';
+      els.workspaceMemberSearch.classList.remove('has-selection');
+      const query = els.workspaceMemberSearch.value.trim();
+      window.clearTimeout(state.userSearchTimer);
+      if (!query) { els.workspaceMemberResults.hidden = true; els.workspaceMemberSearch.setAttribute('aria-expanded', 'false'); return; }
+      state.userSearchTimer = window.setTimeout(() => searchWorkspaceUsers(query), 220);
+    });
+    els.workspaceMemberSearch?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        shareUserSearchRequest += 1;
+        els.workspaceMemberResults.hidden = true;
+        els.workspaceMemberSearch.setAttribute('aria-expanded', 'false');
+        els.workspaceMemberSearch.removeAttribute('aria-busy');
+      }
+      if (event.key === 'ArrowDown' && !els.workspaceMemberResults.hidden) {
+        event.preventDefault(); els.workspaceMemberResults.querySelector('button')?.focus();
+      }
+    });
+    els.workspaceMemberResults?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { els.workspaceMemberResults.hidden = true; els.workspaceMemberSearch.focus(); }
+    });
     document.getElementById('navCreateFolder')?.addEventListener('click', () => openCreateFolder());
     document.getElementById('openCreateGroup').addEventListener('click', () => {
       if (canManageStructure()) openDialog(els.createGroupDialog);
@@ -4566,6 +5848,45 @@
       document.getElementById('savedViewName').value = '';
       document.getElementById('savedViewShared').checked = false;
       openDialog(els.saveViewDialog);
+    });
+
+    document.getElementById('openDuplicateBoard')?.addEventListener('click', () => {
+      const role = String(state.board?.role || '').toLowerCase();
+      if (!canCreateBoard || !['owner', 'designer'].includes(role) || !state.board?.id) return;
+      document.getElementById('duplicateBoardName').value = `Duplicado de ${state.board.name || 'tablero'}`;
+      document.getElementById('duplicateBoardMode').value = 'structure';
+      document.getElementById('duplicateBoardSubscribers').checked = false;
+      document.getElementById('duplicateBoardModeHelp').textContent = 'Se copiarán grupos y columnas, sin elementos.';
+      openDialog(els.duplicateBoardDialog);
+    });
+    document.getElementById('duplicateBoardMode')?.addEventListener('change', (event) => {
+      const help = document.getElementById('duplicateBoardModeHelp');
+      if (help) help.textContent = event.target.value === 'items'
+        ? 'Se copiarán los nombres y la jerarquía de los elementos; los valores de las columnas quedarán vacíos.'
+        : event.target.value === 'updates'
+          ? 'Se copiarán los elementos, sus valores y las actualizaciones.'
+          : 'Se copiarán grupos y columnas, sin elementos.';
+    });
+
+    dialogSubmit(els.duplicateBoardForm, async (formData) => {
+      const role = String(state.board?.role || '').toLowerCase();
+      if (!canCreateBoard || !['owner', 'designer'].includes(role)) throw new Error('Solo el propietario o un diseñador puede duplicar este tablero.');
+      const result = await post('/duplicate_board', {
+        board_id: state.board.id,
+        name: getFormValue(formData, 'name'),
+        mode: getFormValue(formData, 'mode') || 'structure',
+        keep_subscribers: formData.get('keep_subscribers') === '1'
+      });
+      const board = result.data || result;
+      if (!board.id) throw new Error('El servidor no devolvió el tablero duplicado.');
+      closeDialog(els.duplicateBoardDialog);
+      await loadBoards();
+      const duplicated = state.boards.find((candidate) => String(candidate.id) === String(board.id)) || board;
+      if (!state.boards.some((candidate) => String(candidate.id) === String(board.id))) state.boards.push(duplicated);
+      renderBoardOptions();
+      els.boardSelect.value = String(board.id);
+      await loadBoard(board.id);
+      setNotice('Tablero duplicado.', 'success');
     });
 
     dialogSubmit(els.createBoardForm, async (formData) => {
@@ -4647,7 +5968,7 @@
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
         team: 'La celda acepta texto o JSON; no hay catálogo de equipos disponible.',
-        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 100 MB; las imágenes se convierten a WebP. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.',
+        file: 'Adjunta archivos desde la celda o desde Detalles. Máximo 500 MB; las imágenes conservan su formato original y los videos MP4/WebM se reproducen en la vista previa. Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.',
         board_relation: 'La relación debe incluir un tablero o elemento al que tengas acceso.',
         subtasks: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.',
         dependency: 'Usa una lista u objeto JSON con IDs de elementos del mismo tablero.'
@@ -4683,22 +6004,25 @@
     dialogSubmit(els.createItemForm, async (formData) => {
       if (!canEditBoard()) throw new Error('No tienes permiso para editar este tablero.');
       const name = getFormValue(formData, 'name');
-      const groupId = getFormValue(formData, 'group_id');
-      const result = await post('/create_item', { board_id: state.board.id, group_id: groupId, name });
+      const groupId = els.newItemGroup.value;
+      const parentId = state.createParentId;
+      const result = await post('/create_item', { board_id: state.board.id, group_id: groupId, name, ...(parentId ? { parent_item_id: parentId } : {}) });
       const item = result.data || {};
       if (!item.id || item.version == null) {
         await loadBoard(state.board.id, true);
         throw new Error('No se pudo confirmar la versión del elemento. Se actualizaron los datos del tablero.');
       }
-      state.items.push({ ...item, name, group_id: groupId, sort_order: item.sort_order ?? state.items.length, cells: item.cells || {} });
+      state.items.push({ ...item, name, group_id: groupId, ...(parentId ? { parent_item_id: item.parent_item_id ?? parentId } : {}), sort_order: item.sort_order ?? state.items.length, cells: item.cells || {} });
       state.items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+      state.createParentId = '';
+      els.newItemGroup.disabled = false;
       closeDialog(els.createItemDialog);
       renderActiveView();
       setNotice('Elemento agregado.', 'success');
     });
 
     dialogSubmit(els.shareBoardForm, async (formData) => {
-      if (!canManageStructure()) throw new Error('Se requiere permiso de administración para compartir este tablero.');
+      if (!canShareBoard()) throw new Error('Se requiere permiso de diseño para compartir este tablero.');
       const userId = getFormValue(formData, 'user_id');
       const role = getFormValue(formData, 'role');
       if (!userId) throw new Error('Selecciona una persona del equipo.');
@@ -4712,7 +6036,7 @@
       const name = getFormValue(formData, 'name');
       const viewType = normalizeViewType(getFormValue(formData, 'view_type'));
       const isShared = Boolean(formData.get('is_shared'));
-      if (isShared && !canManageStructure()) throw new Error('Solo el propietario o una persona diseñadora puede compartir vistas.');
+      if (isShared && !canShareBoard()) throw new Error('Solo el propietario o una persona diseñadora puede compartir vistas.');
       const result = await post('/create_view', {
         board_id: state.board.id,
         name,
@@ -4800,9 +6124,14 @@
         details.append(makeElement('strong', '', displayName));
         if (member.username && member.username !== displayName) details.append(makeElement('span', '', member.username));
         else if (member.email) details.append(makeElement('span', '', member.email));
-        const roleLabels = { owner: 'Propietario', designer: 'Diseñador', editor: 'Puede editar', viewer: 'Solo lectura' };
+        const roleLabels = { owner: 'Propietario', designer: 'Diseñador', editor: 'Editor', contributor: 'Colaborador', viewer: 'Lector' };
         row.append(details, makeElement('span', 'boards-member-role', roleLabels[String(member.role || '').toLowerCase()] || String(member.role || 'Acceso')));
-        if (!member.isOwner && canManageStructure()) {
+        if (member.access_source) row.append(makeElement('span', 'boards-member-source', accessSourceLabel(member.access_source)));
+        if (member.residual_access) {
+          const residual = member.residual_access;
+          row.append(makeElement('span', 'boards-member-source', `Si se retira la invitación: ${residual.role || 'lector'} por ${accessSourceLabel(residual.source)}`));
+        }
+        if (!member.isOwner && canShareBoard()) {
           const revoke = makeElement('button', 'boards-text-button is-danger', 'Retirar acceso');
           revoke.type = 'button';
           revoke.dataset.revokeMember = id;
@@ -4819,20 +6148,214 @@
   }
 
   async function revokeBoardMember(userId) {
-    if (!canManageStructure()) return;
+    if (!canShareBoard()) return;
     const member = state.boardMembers.find((entry) => String(entry.user_id) === String(userId));
     const directoryName = member?.name || member?.username || 'usuario de TG';
-    if (!window.confirm(`¿Retirar el acceso de ${directoryName} a este tablero?`)) return;
+    const residual = member?.residual_access;
+    const remaining = residual ? ` Seguirá teniendo acceso como ${residual.role || 'miembro'} por ${accessSourceLabel(residual.source)}.` : ' No se reporta otro acceso heredado.';
+    const residualNotice = document.getElementById('boardResidualAccessNotice');
+    if (residualNotice) {
+      residualNotice.textContent = residual
+        ? `${directoryName} conservará acceso como ${residual.role || 'miembro'} por ${accessSourceLabel(residual.source)} después de retirar la invitación directa.`
+        : `No se reporta otro acceso para ${directoryName} después de retirar la invitación directa.`;
+      residualNotice.hidden = false;
+    }
+    if (!await confirmAction(`¿Retirar la invitación directa de ${directoryName}?${remaining}`, { title: 'Retirar invitación', confirmLabel: 'Retirar acceso', danger: true })) return;
     try {
       await post('/revoke_member', { board_id: state.board.id, user_id: userId });
       await loadBoardMembers();
       await loadBoards();
-      setNotice('Acceso retirado.', 'success');
+      setNotice(residual ? `Invitación directa retirada. ${directoryName} conserva acceso por ${accessSourceLabel(residual.source)}.` : `Invitación directa retirada de ${directoryName}.`, 'success');
     } catch (error) { setNotice(errorMessage(error, 'No se pudo retirar el acceso.'), 'error'); }
+  }
+
+  function selectedWorkspace() {
+    return state.workspaces.find((workspace) => String(workspace.id) === String(state.selectedWorkspaceId));
+  }
+
+  async function loadWorkspaceMembers() {
+    const workspace = selectedWorkspace();
+    if (!workspace?.can_manage_members) return;
+    els.workspaceMembersStatus.textContent = 'Cargando miembros…';
+    els.workspaceMembersList.replaceChildren();
+    els.workspaceMembersOwner.replaceChildren();
+    els.workspaceMembersOwner.hidden = true;
+    els.workspaceMembersOwner.dataset.userId = '';
+    try {
+      const result = await request(`/workspace_members?workspace_id=${encodeURIComponent(workspace.id)}`);
+      const data = result.data || {};
+      state.workspaceMembers = Array.isArray(data.members) ? data.members : [];
+      if (data.owner) {
+        els.workspaceMembersOwner.hidden = false;
+        els.workspaceMembersOwner.dataset.userId = String(data.owner.user_id ?? data.owner.id ?? '');
+        const ownerName = data.owner.name || data.owner.username || 'Propietario del espacio';
+        els.workspaceMembersOwner.append(makeElement('strong', '', ownerName), makeElement('span', '', 'Propietario del espacio'));
+      } else els.workspaceMembersOwner.dataset.userId = '';
+      state.workspaceMembers.forEach((member) => {
+        const row = makeElement('div', 'boards-member-row boards-workspace-member-row');
+        row.setAttribute('role', 'listitem');
+        const details = makeElement('div', 'boards-member-person');
+        const displayName = member.name || member.username || 'Usuario de TG';
+        details.append(makeElement('strong', '', displayName));
+        if (member.username && member.username !== displayName) details.append(makeElement('span', '', member.username));
+        const role = document.createElement('select');
+        role.className = 'form-select boards-workspace-role-select';
+        role.setAttribute('aria-label', `Función de ${displayName}`);
+        [['viewer', 'Lector'], ['editor', 'Editor']].forEach(([value, label]) => {
+          const option = makeElement('option', '', label); option.value = value; role.append(option);
+        });
+        role.value = member.role === 'editor' ? 'editor' : 'viewer';
+        role.addEventListener('change', async () => {
+          role.disabled = true;
+          try {
+            await post('/update_workspace_member', { workspace_id: workspace.id, user_id: member.user_id, role: role.value });
+            setNotice(`Función de ${displayName} actualizada.`, 'success');
+            await loadWorkspaceMembers();
+          } catch (error) {
+            setNotice(errorMessage(error, 'No se pudo cambiar la función.'), 'error');
+            role.value = member.role === 'editor' ? 'editor' : 'viewer';
+            role.disabled = false;
+          }
+        });
+        const revoke = makeElement('button', 'boards-text-button is-danger', 'Retirar');
+        revoke.type = 'button';
+        revoke.setAttribute('aria-label', `Retirar a ${displayName} del espacio`);
+        revoke.addEventListener('click', async () => {
+          if (!await confirmAction(`¿Retirar a ${displayName} de este espacio? Los tableros compartidos directamente seguirán disponibles.`, { title: 'Retirar del espacio', confirmLabel: 'Retirar persona', danger: true })) return;
+          revoke.disabled = true;
+          try {
+            await post('/revoke_workspace_member', { workspace_id: workspace.id, user_id: member.user_id });
+            setNotice(`${displayName} fue retirado del espacio.`, 'success');
+            await loadWorkspaceMembers();
+            await refreshStructurePreservingBoard();
+          } catch (error) { revoke.disabled = false; setNotice(errorMessage(error, 'No se pudo retirar a la persona.'), 'error'); }
+        });
+        row.append(details, role, revoke);
+        els.workspaceMembersList.append(row);
+      });
+      els.workspaceMembersStatus.textContent = state.workspaceMembers.length ? `${state.workspaceMembers.length} miembros` : 'Este espacio no tiene miembros adicionales.';
+    } catch (error) {
+      els.workspaceMembersStatus.textContent = errorMessage(error, 'No se pudieron cargar los miembros del espacio.');
+      els.workspaceMembersList.append(makeElement('p', 'boards-detail-empty', 'La lista de miembros no está disponible.'));
+    }
+  }
+
+  async function refreshStructurePreservingBoard() {
+    const result = await request('/structure');
+    const structure = result.data || {};
+    state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
+    state.boards = Array.isArray(structure.boards) ? structure.boards : [];
+    state.folders = Array.isArray(structure.folders) ? structure.folders : [];
+    renderBoardNav();
+    renderBoardOptions();
+  }
+
+  async function searchWorkspaceUsers(query) {
+    const dialog = els.workspaceMembersDialog;
+    const requestId = ++shareUserSearchRequest;
+    const params = new URLSearchParams({ q: query, workspace_id: String(state.selectedWorkspaceId || ''), directory: '1' });
+    els.workspaceMemberResults.hidden = false;
+    els.workspaceMemberResults.replaceChildren(makeElement('div', 'boards-share-user-empty', 'Buscando personas…'));
+    els.workspaceMemberSearch.setAttribute('aria-busy', 'true');
+    try {
+      const result = await request(`/users?${params.toString()}`);
+      if (requestId !== shareUserSearchRequest || !dialog.open) return;
+      const currentIds = new Set(state.workspaceMembers.map((member) => String(member.user_id)));
+      const workspaceOwner = els.workspaceMembersOwner.dataset.userId || '';
+      if (workspaceOwner) currentIds.add(String(workspaceOwner));
+      const users = (Array.isArray(result.data) ? result.data : []).filter((user) => user && user.id != null && !currentIds.has(String(user.id)));
+      els.workspaceMemberResults.replaceChildren();
+      if (!users.length) els.workspaceMemberResults.append(makeElement('div', 'boards-share-user-empty', query ? 'No hay usuarios activos de TG que coincidan.' : 'Escribe un nombre para buscar usuarios activos de TG.'));
+      users.forEach((user) => {
+        const option = makeElement('button', 'boards-share-user-option');
+        option.type = 'button'; option.setAttribute('role', 'option');
+        option.append(makeElement('span', 'boards-share-user-avatar', String(user.name || user.username || '?').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()));
+        const copy = makeElement('span', 'boards-share-user-copy');
+        copy.append(makeElement('strong', '', user.name || user.username || 'Persona'));
+        if (user.username) copy.append(makeElement('small', '', user.username));
+        option.append(copy);
+        option.addEventListener('click', () => {
+          shareUserSearchRequest += 1;
+          els.workspaceMemberUserId.value = String(user.id);
+          els.workspaceMemberSearch.value = user.name || user.username || '';
+          els.workspaceMemberSearch.setAttribute('aria-expanded', 'false');
+          els.workspaceMemberResults.hidden = true;
+          els.workspaceMemberSearch.classList.add('has-selection');
+        });
+        els.workspaceMemberResults.append(option);
+      });
+      els.workspaceMemberSearch.setAttribute('aria-expanded', 'true');
+    } catch (error) {
+      if (requestId === shareUserSearchRequest) {
+        els.workspaceMemberResults.replaceChildren(makeElement('div', 'boards-share-user-empty', errorMessage(error, 'No se pudo buscar personas.')));
+        els.workspaceMemberSearch.setAttribute('aria-expanded', 'true');
+      }
+    } finally {
+      if (requestId === shareUserSearchRequest) els.workspaceMemberSearch.removeAttribute('aria-busy');
+    }
+  }
+
+  async function addWorkspaceMember(event) {
+    event.preventDefault();
+    const workspace = selectedWorkspace();
+    const userId = els.workspaceMemberUserId.value;
+    const role = document.getElementById('workspaceMemberRole').value;
+    if (!workspace?.can_manage_members || !userId) return;
+    const submit = els.workspaceMemberForm.querySelector('[type="submit"]');
+    submit.disabled = true;
+    els.workspaceMembersStatus.textContent = 'Agregando miembro…';
+    try {
+      await post('/share_workspace', { workspace_id: workspace.id, user_id: userId, role });
+      els.workspaceMemberForm.reset();
+      els.workspaceMemberUserId.value = '';
+      els.workspaceMemberSearch.classList.remove('has-selection');
+      setNotice('Miembro agregado al espacio.', 'success');
+      await loadWorkspaceMembers();
+      await refreshStructurePreservingBoard();
+    } catch (error) {
+      els.workspaceMembersStatus.textContent = errorMessage(error, 'No se pudo agregar al miembro.');
+    } finally { submit.disabled = false; }
   }
 
   function attachEvents() {
     document.getElementById('boardNavSearch')?.addEventListener('input', renderBoardNav);
+    const workspacePickerButton = document.getElementById('workspacePickerButton');
+    const workspacePickerOptions = document.getElementById('workspacePickerOptions');
+    workspacePickerButton?.addEventListener('click', () => {
+      const opening = workspacePickerOptions?.hidden;
+      if (!workspacePickerOptions) return;
+      workspacePickerOptions.hidden = !opening;
+      workspacePickerButton.setAttribute('aria-expanded', String(Boolean(opening)));
+      workspacePickerButton.closest('.boards-workspace-menu')?.classList.toggle('is-open', Boolean(opening));
+      if (opening) workspacePickerOptions.querySelector('[aria-selected="true"]')?.focus();
+    });
+    workspacePickerOptions?.addEventListener('click', (event) => {
+      const option = event.target.closest('[data-workspace-id]');
+      if (!option || !els.workspaceSelect) return;
+      els.workspaceSelect.value = option.dataset.workspaceId;
+      closeWorkspacePicker();
+      els.workspaceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      workspacePickerButton?.focus();
+    });
+    workspacePickerOptions?.addEventListener('keydown', (event) => {
+      const current = event.target.closest('[data-workspace-id]');
+      if (event.key === 'Escape') {
+        closeWorkspacePicker();
+        workspacePickerButton?.focus();
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const items = [...workspacePickerOptions.querySelectorAll('[data-workspace-id]')];
+        const index = items.indexOf(current);
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        items[(index + step + items.length) % items.length]?.focus();
+      }
+    });
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('.boards-workspace-menu')) closeWorkspacePicker();
+    });
+    workspacePickerButton?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeWorkspacePicker();
+    });
     els.workspaceSelect?.addEventListener('change', () => {
       state.selectedWorkspaceId = els.workspaceSelect.value;
       state.board = null;
@@ -4853,6 +6376,13 @@
       if (button) {
         els.boardSelect.value = button.dataset.navBoard;
         loadBoard(button.dataset.navBoard);
+        return;
+      }
+      const recycleFolder = event.target.closest('[data-recycle-type="folder"]');
+      if (recycleFolder) {
+        event.preventDefault();
+        event.stopPropagation();
+        runRecycleAction(recycleFolder);
         return;
       }
       const folderToggle = event.target.closest('[data-toggle-folder]');
@@ -4966,14 +6496,35 @@
         if (column) openLabelsEditor(column);
       }
     });
-    document.getElementById('toggleBoardDensity').addEventListener('click', (event) => {
-      const button = event.currentTarget;
-      const compact = button.getAttribute('aria-pressed') !== 'true';
-      button.setAttribute('aria-pressed', compact ? 'true' : 'false');
-      app.classList.toggle('is-compact', compact);
-      button.querySelector('span').textContent = compact ? 'Espaciar' : 'Compactar';
+    const itemSizeToggle = document.getElementById('toggleBoardItemSize');
+    const itemSizeMenu = document.getElementById('boardItemSizeMenu');
+    itemSizeToggle.addEventListener('click', () => {
+      const opening = itemSizeMenu.hidden;
+      itemSizeMenu.hidden = !opening;
+      itemSizeToggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    });
+    itemSizeMenu.addEventListener('click', (event) => {
+      const option = event.target.closest('[data-board-item-size]');
+      if (!option) return;
+      applyBoardItemSize(option.dataset.boardItemSize);
+      itemSizeMenu.hidden = true;
+      itemSizeToggle.setAttribute('aria-expanded', 'false');
+      markViewModified();
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('.boards-item-size-control')) {
+        itemSizeMenu.hidden = true;
+        itemSizeToggle.setAttribute('aria-expanded', 'false');
+      }
     });
     els.boardTableContainer.addEventListener('click', (event) => {
+      const download = event.target.closest('[data-download-group-files]');
+      if (download) {
+        event.preventDefault();
+        event.stopPropagation();
+        downloadFilesZip(download);
+        return;
+      }
       const toggle = event.target.closest('[data-toggle-group]');
       if (toggle) {
         const id = toggle.dataset.toggleGroup;
@@ -4991,6 +6542,79 @@
         renderTable();
       }
     });
+    els.boardTableContainer.addEventListener('dragstart', (event) => {
+      const row = event.target.closest('[data-item-row]');
+      const nameField = event.target.closest('.boards-item-name');
+      const control = event.target.closest('button, a, input, select, textarea, [contenteditable="true"]');
+      const item = row ? state.items.find((candidate) => String(candidate.id) === row.dataset.openItemDetails) : null;
+      if (!row || !nameField || control || !item || item.parent_item_id != null || !canEditBoard()) {
+        event.preventDefault();
+        return;
+      }
+      state.draggedItemId = String(item.id);
+      let movingItems = [item];
+      if (state.selectedItemIds.has(String(item.id))) {
+        const groupOrder = new Map(state.groups.map((group, index) => [String(group.id), index]));
+        const selectedRoots = state.items
+          .filter((candidate) => candidate.parent_item_id == null
+            && state.selectedItemIds.has(String(candidate.id)))
+          .sort((a, b) => (groupOrder.get(String(a.group_id)) ?? 0) - (groupOrder.get(String(b.group_id)) ?? 0)
+            || Number(a.sort_order || 0) - Number(b.sort_order || 0)
+            || Number(a.id) - Number(b.id));
+        if (selectedRoots.length > 1) movingItems = selectedRoots;
+      }
+      state.draggedItemIds = movingItems.map((candidate) => String(candidate.id));
+      movingItems.forEach((candidate) => {
+        const selectedRow = els.boardTableContainer.querySelector(`[data-item-row][data-open-item-details="${candidate.id}"]`);
+        selectedRow?.classList.add('is-dragging');
+      });
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(item.id));
+    });
+    els.boardTableContainer.addEventListener('dragover', (event) => {
+      if (!state.draggedItemId) return;
+      const body = event.target.closest('[data-group-body]');
+      const draggedItems = state.draggedItemIds.map((id) => state.items.find((candidate) => String(candidate.id) === id)).filter(Boolean);
+      const item = draggedItems[0];
+      const targetRow = event.target.closest('[data-item-row]');
+      if (!body || !item) return;
+      if (targetRow && String(targetRow.dataset.openItemDetails) === String(item.id)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      els.boardTableContainer.querySelectorAll('.is-drop-target, .is-drop-before, .is-drop-after').forEach((target) => target.classList.remove('is-drop-target', 'is-drop-before', 'is-drop-after'));
+      if (targetRow) {
+        const position = itemDropPosition(draggedItems, body.dataset.groupBody, targetRow, event.clientY);
+        if (position === null) return;
+        const rect = targetRow.getBoundingClientRect();
+        targetRow.classList.add(event.clientY > rect.top + rect.height / 2 ? 'is-drop-after' : 'is-drop-before');
+      } else {
+        body.classList.add('is-drop-target');
+      }
+    });
+    els.boardTableContainer.addEventListener('dragleave', (event) => {
+      const body = event.target.closest('[data-group-body]');
+      if (body && (!event.relatedTarget || !body.contains(event.relatedTarget))) body.classList.remove('is-drop-target');
+    });
+    els.boardTableContainer.addEventListener('drop', (event) => {
+      const body = event.target.closest('[data-group-body]');
+      if (!state.draggedItemId || !body) return;
+      const draggedItems = state.draggedItemIds.map((id) => state.items.find((candidate) => String(candidate.id) === id)).filter(Boolean);
+      const item = draggedItems[0];
+      const targetRow = event.target.closest('[data-item-row]');
+      if (!item) return;
+      const sortOrder = itemDropPosition(draggedItems, body.dataset.groupBody, targetRow, event.clientY);
+      if (sortOrder === null) return;
+      event.preventDefault();
+      body.classList.remove('is-drop-target');
+      targetRow?.classList.remove('is-drop-before', 'is-drop-after');
+      state.suppressItemClickUntil = Date.now() + 800;
+      moveItemToGroup(item, body.dataset.groupBody, sortOrder, draggedItems);
+    });
+    els.boardTableContainer.addEventListener('dragend', () => {
+      state.draggedItemId = '';
+      state.draggedItemIds = [];
+      els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target, .is-drop-before, .is-drop-after').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
+    });
     els.boardTableContainer.addEventListener('submit', (event) => {
       const form = event.target.closest('[data-inline-add-form]');
       if (!form) return;
@@ -4998,6 +6622,12 @@
       if (form.reportValidity()) submitInlineItem(form);
     });
     els.boardTableContainer.addEventListener('change', (event) => {
+      const summarySelect = event.target.closest('[data-summary-column]');
+      if (summarySelect) {
+        state.summaryFunctions[summarySelect.dataset.summaryColumn] = summarySelect.value;
+        renderTable();
+        return;
+      }
       const itemCheckbox = event.target.closest('[data-select-item]');
       if (itemCheckbox) {
         const id = itemCheckbox.dataset.selectItem;
@@ -5022,6 +6652,7 @@
     });
     document.getElementById('bulkMoveGroup')?.addEventListener('change', updateSelectionBar);
     document.getElementById('bulkMoveItems')?.addEventListener('click', moveSelectedItems);
+    document.getElementById('bulkTrashItems')?.addEventListener('click', trashSelectedItems);
     document.getElementById('clearSelection')?.addEventListener('click', () => {
       state.selectedItemIds.clear();
       els.boardTableContainer.querySelectorAll('[data-select-item]').forEach((checkbox) => { checkbox.checked = false; });
@@ -5042,14 +6673,24 @@
         if (editor && !editor.contains(event.relatedTarget)) saveCell(editor);
       });
       host.addEventListener('click', (event) => {
-        const nameButton = event.target.closest('[data-item-name-button]');
-        if (nameButton) {
-          beginItemNameEdit(nameButton);
+        const statusCell = event.target.closest('td[data-status-tone]');
+        const statusSelect = statusCell?.querySelector('select.boards-status-select');
+        if (statusSelect && !event.target.closest('select.boards-status-select')) {
+          event.stopPropagation();
+          statusSelect.focus();
+          if (typeof statusSelect.showPicker === 'function') statusSelect.showPicker();
+          else statusSelect.click();
           return;
         }
-        const cancelName = event.target.closest('[data-cancel-name-edit]');
-        if (cancelName) {
-          renderActiveView();
+        const addSubitem = event.target.closest('[data-add-subitem]');
+        if (addSubitem) {
+          openCreateSubitem(addSubitem.dataset.addSubitem);
+          return;
+        }
+        const nameButton = event.target.closest('[data-item-name-button]');
+        if (nameButton) {
+          event.stopPropagation();
+          beginItemNameEdit(nameButton);
           return;
         }
         const save = event.target.closest('[data-save-cell]');
@@ -5150,6 +6791,17 @@
   }
 
   function setupExtendedEvents() {
+    els.boardVisibilityList?.addEventListener('change', (event) => {
+      const select = event.target.closest('[data-board-visibility-select]');
+      if (!select) return;
+      const board = state.boards.find((entry) => String(entry.id) === select.dataset.boardVisibilitySelect);
+      const save = [...els.boardVisibilityList.querySelectorAll('[data-save-board-visibility]')].find((button) => button.dataset.saveBoardVisibility === select.dataset.boardVisibilitySelect);
+      if (save) save.disabled = !board || select.value === board.visibility;
+    });
+    els.boardVisibilityList?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-save-board-visibility]');
+      if (button) saveBoardVisibility(button.dataset.saveBoardVisibility, button);
+    });
     els.filePreviewDialog.addEventListener('close', () => {
       clearFilePreviewObjectUrl();
       if (imageStageObserver) {
@@ -5158,34 +6810,10 @@
       }
     });
     setupFilePreviewRail();
-    [els.itemDetailsDialog, els.filePreviewDialog, els.automationDialog].forEach((dialog) => {
+    [els.itemDetailsDialog, els.filePreviewDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
-    });
-    document.getElementById('openAutomations').addEventListener('click', async () => {
-      renderAutomationFilterFields();
-      renderAutomationActionFields();
-      els.automationEditorPanel.hidden = !canManageAutomation();
-      els.automationPermissionsNote.hidden = canManageAutomation();
-      openDialog(els.automationDialog);
-      await loadAutomationData();
-    });
-    document.getElementById('automationTrigger').addEventListener('change', () => {
-      els.automationScheduleField.hidden = els.automationTrigger.value !== 'schedule';
-    });
-    els.automationFilterField.addEventListener('change', renderAutomationFilterFields);
-    els.automationActionType.addEventListener('change', renderAutomationActionFields);
-    els.automationForm.addEventListener('submit', createAutomation);
-    document.getElementById('refreshAutomationRuns').addEventListener('click', loadAutomationData);
-    els.automationList.addEventListener('click', (event) => {
-      const statusButton = event.target.closest('[data-automation-status]');
-      if (statusButton) {
-        updateAutomationStatus(statusButton.dataset.automationStatus, statusButton.dataset.statusAction, statusButton.dataset.version);
-        return;
-      }
-      const runButton = event.target.closest('[data-run-automation]');
-      if (runButton && !runButton.disabled) runAutomation(runButton.dataset.runAutomation);
     });
 
     [els.boardTableContainer, els.boardRendererArea].forEach((host) => {
@@ -5193,6 +6821,10 @@
         const details = event.target.closest('[data-open-item-details]');
         if (!details) return;
         if (details.matches('.boards-item-row')) {
+          if (Date.now() < state.suppressItemClickUntil) {
+            state.suppressItemClickUntil = 0;
+            return;
+          }
           if (event.target.closest('button, a, input, select, textarea, [contenteditable], [role="button"], [data-cell-editor], .boards-item-name-form')) return;
           details.focus();
           openItemDetails(details.dataset.openItemDetails);
@@ -5227,11 +6859,15 @@
       });
     });
     els.itemCommentForm.addEventListener('submit', submitItemComment);
-    els.itemFileForm.addEventListener('submit', submitItemFile);
-    els.itemFileColumn.addEventListener('change', renderFileControls);
     els.boardMembersList.addEventListener('click', (event) => {
       const revoke = event.target.closest('[data-revoke-member]');
       if (revoke) revokeBoardMember(revoke.dataset.revokeMember);
+    });
+    els.itemFileTypes.addEventListener('click', (event) => {
+      const typeFilter = event.target.closest('[data-file-type]');
+      if (!typeFilter) return;
+      state.itemFileTypeFilter = typeFilter.dataset.fileType;
+      renderItemFiles();
     });
     els.itemFilesList.addEventListener('click', (event) => {
       const history = event.target.closest('[data-file-history]');
@@ -5242,15 +6878,6 @@
         renderItemFiles();
         if (state.fileHistoryVisible[key] && !Array.isArray(state.fileVersions[key]) && !state.fileHistoryLoading[key]) loadFileHistory(fileId);
         return;
-      }
-      const newVersion = event.target.closest('[data-file-target]');
-      if (newVersion) {
-        const file = filesForItem(state.items.find((item) => String(item.id) === state.detailItemId) || { id: state.detailItemId, cells: {} })
-          .find((entry) => String(entry.file_id) === newVersion.dataset.fileTarget);
-        if (file?.column_id) els.itemFileColumn.value = String(file.column_id);
-        renderFileControls();
-        els.itemFileTarget.value = newVersion.dataset.fileTarget;
-        els.itemFileInput.focus();
       }
     });
     els.itemRelationForm.addEventListener('submit', addItemRelation);

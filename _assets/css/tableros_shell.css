@@ -63,6 +63,8 @@ html.tableros-transition-incoming::view-transition-group(tableros-mascot) {
 .tableros-navbar-context { display: flex; align-items: center; gap: 9px; margin-left: 12px; color: #8d94ae; font-size: .82rem; font-weight: 550; }
 .tableros-navbar-context i { color: #626985; font-size: .6rem; }
 .tableros-navbar-context strong { color: #f0f2fa; font-weight: 650; }
+.tableros-navbar-context .tableros-navbar-current { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.05; }
+.tableros-navbar-current small { margin-top: 3px; color: #9298aa; font-size: .62rem; font-weight: 500; letter-spacing: .04em; }
 .tableros-shell-content { min-height: calc(100vh - 125px); padding: 21px 26px 30px !important; background: #111428; }
 .tableros-shell-content .boards-page-heading { margin-bottom: 18px; }
 .tableros-app-launcher > .nav-icon { display: grid; width: 42px; height: 42px; place-items: center; color: #d2d7e8; }
@@ -76,6 +78,7 @@ html.tableros-transition-incoming::view-transition-group(tableros-mascot) {
 .tableros-app-tile:hover, .tableros-app-tile.is-current { color: #fff; background: #303653; }
 .tableros-app-tile > span { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; color: #c6d5ff; background: #354673; font-size: 1.1rem; }
 .tableros-app-tile strong { font-size: .77rem; font-weight: 600; }
+.tableros-app-tile-beta { margin-top: -7px; color: #9298aa; font-size: .62rem; line-height: 1; }
 .tableros-module-navbar .nav-link, .tableros-module-navbar .nav-icon { color: #d2d7e8; }
 .tableros-module-navbar .dropdown-menu { border-color: #3c4261; background: #20243d; }
 .tableros-module-navbar #notificationsDropdown > .dropdown-menu { width: min(360px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: min(70vh, 520px); flex-direction: column; overflow: hidden; border: 1px solid #3c4261; border-radius: 11px; background: #20243d; box-shadow: 0 14px 36px rgb(0 0 0 / 34%); }

@@ -93,16 +93,29 @@ class ClientesVehiculosModel extends Model{
      * @throws Exception
      */
     function get_vehicles() : array|false {
+        // Antes seleccionaba t1.* (~80 columnas) para una tabla sin WHERE ni
+        // paginación; con la flota de las 40+ estaciones esto agota los 512M
+        // de memory_limit en el fetchAll. Solo se listan las columnas que
+        // datatables_vehicles() realmente usa.
+        // WITH (NOLOCK) porque es un listado de solo lectura sobre toda la
+        // flota: evita bloqueos/espera contra las tablas transaccionales
+        // mientras se capturan despachos, igual que en el resto de reportes
+        // de este modelo.
         $query = 'SELECT
-            t1.*,
-            CASE
-                WHEN t1.nip IS NULL OR t1.nip = 0 THEN 0
-                ELSE t1.nip - 12345678
-            END AS nip_decrypted,
-            t2.den Cliente
+            t1.codcli,
+            t1.nroveh,
+            t1.tar,
+            t1.plc,
+            t1.nroeco,
+            t1.grp,
+            t1.den,
+            t1.est,
+            t1.debsdo Saldo,
+            t2.den Cliente,
+            t2.tipval Tipval
         FROM
-            [SG12].[dbo].[ClientesVehiculos] t1
-            LEFT JOIN Clientes t2 ON t1.codcli = t2.cod;';
+            [SG12].[dbo].[ClientesVehiculos] t1 WITH (NOLOCK)
+            LEFT JOIN Clientes t2 WITH (NOLOCK) ON t1.codcli = t2.cod;';
         return ($this->sql->select($query)) ?: false ;
     }
 

@@ -77,3 +77,10 @@
     font-weight: 600;
     text-align: center;
 }
+
+.app-launcher-tile-beta {
+    margin-top: -7px;
+    color: #9298aa;
+    font-size: .62rem;
+    line-height: 1;
+}

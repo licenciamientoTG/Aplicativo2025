@@ -4,6 +4,10 @@ The application uses SQL Server through PDO `sqlsrv`: central `TG`, secondary
 `SG12`, and station databases accessed through linked servers. Database changes
 may affect 40+ station operations.
 
+- Whenever providing SQL for this project, make it directly executable in
+  DBeaver. Do not use the `GO` batch separator; separate statements with
+  semicolons and account for DBeaver's SQL Server execution behavior.
+
 - Inspect existing SQL/model usage before proposing changes. Parameterize values
   and preserve transaction boundaries.
 - For schema or data changes, provide a forward migration, compatibility impact,

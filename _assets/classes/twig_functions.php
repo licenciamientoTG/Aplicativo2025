@@ -103,7 +103,7 @@ $foradmin = new \Twig\TwigFunction('foradmin', function () {
 
 // Función para restringir vista a usuarios específicos del área de Sistemas
 $for_sistemas = new \Twig\TwigFunction('for_sistemas', function () {
-    $allowed = [6382, 6371, 6177, 6296, 6274];
+    $allowed = [9, 6382, 6371, 6177, 6296, 6274];
     return in_array((int)$_SESSION['tg_user']["Id"], $allowed);
 });
 

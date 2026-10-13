@@ -27,6 +27,78 @@ class tableros_api {
         });
     }
 
+    public function workspace_members(): void {
+        $this->handle('GET', function (int $userId): array {
+            $workspaceId = $this->positiveInt($_GET['workspace_id'] ?? null, 'workspace_id');
+            $this->requireWorkspaceManager($workspaceId);
+            return $this->model->getWorkspaceMembers($workspaceId);
+        });
+    }
+
+    public function share_workspace(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            $this->requireWorkspaceManager($workspaceId);
+            return $this->model->shareWorkspace($workspaceId, $userId, $input);
+        });
+    }
+
+    public function update_workspace_member(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            $this->requireWorkspaceManager($workspaceId);
+            return $this->model->updateWorkspaceMember($workspaceId, $userId, $input);
+        });
+    }
+
+    public function revoke_workspace_member(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            $this->requireWorkspaceManager($workspaceId);
+            return $this->model->revokeWorkspaceMember($workspaceId, $userId, $input);
+        });
+    }
+
+    public function trash(): void {
+        if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+            $this->handle('GET', function (int $userId): array {
+                $workspaceId = isset($_GET['workspace_id']) ? $this->positiveInt($_GET['workspace_id'], 'workspace_id') : null;
+                return $this->model->getTrashEntries($userId, $this->access->hasGlobalPermission('admin'), $workspaceId, 'trash');
+            });
+            return;
+        }
+        $this->handle('POST', function (int $userId, array $input): array { return $this->model->trashEntity($userId, $input, 'trash'); });
+    }
+
+    public function restore_trash(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            return $this->model->restoreTrashEntry($userId, $this->access->hasGlobalPermission('admin'), $this->positiveInt($input['entry_id'] ?? null, 'entry_id'), 'trash');
+        });
+    }
+
+    public function permanently_delete_trash(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            return $this->model->requestPermanentTrashDelete($userId, $this->access->hasGlobalPermission('admin'), $this->positiveInt($input['entry_id'] ?? null, 'entry_id'));
+        });
+    }
+
+    public function archive(): void {
+        if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+            $this->handle('GET', function (int $userId): array {
+                $workspaceId = isset($_GET['workspace_id']) ? $this->positiveInt($_GET['workspace_id'], 'workspace_id') : null;
+                return $this->model->getTrashEntries($userId, $this->access->hasGlobalPermission('admin'), $workspaceId, 'archive');
+            });
+            return;
+        }
+        $this->handle('POST', function (int $userId, array $input): array { return $this->model->trashEntity($userId, $input, 'archive'); });
+    }
+
+    public function restore_archive(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            return $this->model->restoreTrashEntry($userId, $this->access->hasGlobalPermission('admin'), $this->positiveInt($input['entry_id'] ?? null, 'entry_id'), 'archive');
+        });
+    }
+
     public function create_workspace(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             if (!$this->access->hasGlobalPermission('create')) {
@@ -53,9 +125,12 @@ class tableros_api {
     public function board($id): void {
         $this->handle('GET', function (int $userId) use ($id): array {
             $boardId = $this->positiveInt($id, 'board_id');
-            $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $data = $this->model->getBoardData($boardId, $userId);
             $data['board']['role'] = $role;
+            $access = $this->access->boardAccess($boardId);
+            $data['board']['access_source'] = $access['source'] ?? null;
+            if (($access['source'] ?? null) === 'admin') $this->model->auditAdminBoardOpen($userId, $boardId);
             return $data;
         });
     }
@@ -67,21 +142,26 @@ class tableros_api {
                 $boardId = $this->positiveInt($_GET['board_id'], 'board_id');
                 if (filter_var($_GET['directory'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
                     $this->requireBoardRole($boardId, ['owner', 'designer']);
-                    return $this->model->activeUsers(is_string($query) ? $query : '');
+                    return $this->model->activeUsers(is_string($query) ? $query : '', true);
                 }
-                $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+                $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
                 $rawIds = $_GET['ids'] ?? '';
                 $ids = is_string($rawIds) ? array_slice(array_filter(array_map('intval', explode(',', $rawIds)), static fn(int $id): bool => $id > 0), 0, 100) : [];
                 return $this->access->activeUsersForBoard($boardId, is_string($query) ? $query : '', $ids);
             }
-            return $this->model->activeUsers(is_string($query) ? $query : '');
+            if (isset($_GET['workspace_id']) && filter_var($_GET['directory'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                $workspaceId = $this->positiveInt($_GET['workspace_id'], 'workspace_id');
+                $this->requireWorkspaceManager($workspaceId);
+                return $this->access->activeUsersForWorkspace($workspaceId, is_string($query) ? $query : '');
+            }
+            return $this->model->activeUsers(is_string($query) ? $query : '', true);
         });
     }
 
     public function activity(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $itemId = isset($_GET['item_id']) ? $this->positiveInt($_GET['item_id'], 'item_id') : null;
             $limit = isset($_GET['limit']) ? $this->positiveInt($_GET['limit'], 'limit') : 100;
             return $this->model->getActivity($boardId, $itemId, $limit);
@@ -92,7 +172,7 @@ class tableros_api {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
             $itemId = $this->positiveInt($_GET['item_id'] ?? null, 'item_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getComments($boardId, $itemId);
         });
     }
@@ -100,7 +180,7 @@ class tableros_api {
     public function add_comment(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addComment($boardId, $userId, $input);
         });
     }
@@ -109,7 +189,7 @@ class tableros_api {
         $this->handle('GET', function (int $userId) use ($id): array {
             $fileId = $this->positiveInt($id, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getFileComments($fileId);
         });
     }
@@ -118,7 +198,7 @@ class tableros_api {
         $this->handle('POST', function (int $userId, array $input): array {
             $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addFileComment($fileId, $userId, $input);
         });
     }
@@ -147,9 +227,9 @@ class tableros_api {
                 throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
             }
             $sticker = $this->model->getStickerDownload($this->positiveInt($id, 'sticker_id'));
-            header('Content-Type: image/webp');
+            header('Content-Type: ' . (string)$sticker['content_type']);
             header('Content-Length: ' . (int)$sticker['byte_size']);
-            header('Content-Disposition: ' . $this->contentDisposition((string)$sticker['name'] . '.webp', true));
+            header('Content-Disposition: ' . $this->contentDisposition((string)$sticker['name'] . '.' . (string)$sticker['extension'], true));
             header('X-Content-Type-Options: nosniff');
             header('Cache-Control: private, max-age=3600');
             if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
@@ -169,7 +249,7 @@ class tableros_api {
             $commentId = $this->positiveInt($input['file_comment_id'] ?? null, 'file_comment_id');
             $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
             $boardId = $this->model->getFileCommentBoardId($commentId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             $this->model->attachCommentFile($commentId, $fileId);
             return ['file_comment_id' => $commentId, 'file_id' => $fileId];
         });
@@ -191,7 +271,7 @@ class tableros_api {
     public function upload_file(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             if (!isset($_FILES['file']) || !is_array($_FILES['file'])) {
                 throw new TablerosApiException('validation', 'Selecciona un archivo para subir.', 422);
             }
@@ -203,12 +283,13 @@ class tableros_api {
         $this->handle('GET', function (int $userId) use ($id): array {
             $fileId = $this->positiveInt($id, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getFileVersions($boardId, $fileId);
         });
     }
 
     public function download_file($id): void {
+        $file = null;
         try {
             $userId = $this->currentUserId();
             if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
@@ -220,28 +301,128 @@ class tableros_api {
             }
             $fileId = $this->positiveInt($id, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
-            $file = $this->model->getFileDownload($fileId, $versionId);
+            $rangeHeader = ($_GET['preview'] ?? '') === '1' && isset($_SERVER['HTTP_RANGE'])
+                ? (string)$_SERVER['HTTP_RANGE'] : null;
+            $file = $this->model->getFileDownload($fileId, $versionId, $rangeHeader);
+            $contentType = strtolower((string)$file['content_type']);
+            $isVideo = in_array($contentType, ['video/mp4', 'video/webm'], true);
+            $previewableTypes = ['application/pdf', 'image/webp', 'image/jpeg', 'image/png', 'image/gif', 'text/plain', 'text/csv', 'video/mp4', 'video/webm'];
+            $inlinePreview = ($_GET['preview'] ?? '') === '1' && in_array($contentType, $previewableTypes, true);
+            $byteSize = (int)$file['byte_size'];
+            $range = $isVideo && $inlinePreview
+                ? (!empty($file['range_unsatisfiable']) ? false : ($file['range'] ?? null)) : null;
+            if ($isVideo && $inlinePreview && $range === false) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $byteSize);
+                header('Accept-Ranges: bytes');
+                header('Content-Length: 0');
+                header('X-Content-Type-Options: nosniff');
+                if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+                if (!empty($file['temporary']) && is_file($file['path'])) @unlink($file['path']);
+                exit;
+            }
             header('Content-Type: ' . $file['content_type']);
-            header('Content-Length: ' . (int)$file['byte_size']);
-            $previewableTypes = ['application/pdf', 'image/webp', 'image/jpeg', 'image/png', 'image/gif', 'text/plain', 'text/csv'];
-            $inlinePreview = ($_GET['preview'] ?? '') === '1' && in_array(strtolower((string)$file['content_type']), $previewableTypes, true);
             header('Content-Disposition: ' . $this->contentDisposition((string)$file['name'], $inlinePreview));
             header('X-Content-Type-Options: nosniff');
             header('Cache-Control: private, no-store, max-age=0');
+            if ($isVideo && $inlinePreview) header('Accept-Ranges: bytes');
             if (session_status() === PHP_SESSION_ACTIVE) {
                 session_write_close();
             }
-            readfile($file['path']);
+            if ($range !== null) {
+                [$start, $end] = $range;
+                http_response_code(206);
+                header('Content-Range: bytes ' . $start . '-' . $end . '/' . $byteSize);
+                header('Content-Length: ' . ($end - $start + 1));
+                $this->streamFileRange((string)$file['path'], $start, $end - $start + 1);
+            } else {
+                header('Content-Length: ' . $byteSize);
+                readfile($file['path']);
+            }
             if (!empty($file['temporary']) && is_file($file['path'])) @unlink($file['path']);
             exit;
         } catch (TablerosApiException $e) {
+            if (is_array($file) && !empty($file['temporary']) && is_file((string)$file['path'])) @unlink((string)$file['path']);
             $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
         } catch (Throwable $e) {
+            if (is_array($file) && !empty($file['temporary']) && is_file((string)$file['path'])) @unlink((string)$file['path']);
             error_log('Tableros file download error: ' . $e->getMessage());
             $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al descargar el archivo.']);
         }
+    }
+
+    public function download_files_zip(): void {
+        $archivePath = null;
+        $temporaryFiles = [];
+        try {
+            $userId = $this->currentUserId();
+            if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+                throw new TablerosApiException('validation', 'Método HTTP no permitido para esta operación.', 422);
+            }
+            $this->initializeServices();
+            if (!$this->access->userIsActive($userId) || !$this->access->hasGlobalPermission('access')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
+            }
+            $input = $this->readInput();
+            $this->verifyCsrf($input);
+            $boardId = $this->positiveInt($input['board_id'] ?? null, 'board_id');
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
+            $rawIds = $input['file_ids'] ?? null;
+            if (!is_array($rawIds) || !$rawIds || count($rawIds) > 200) {
+                throw new TablerosApiException('validation', 'Selecciona entre 1 y 200 archivos para descargar.', 422);
+            }
+            if (!class_exists(ZipArchive::class)) {
+                throw new TablerosApiException('server', 'La descarga ZIP no está disponible en este servidor.', 500);
+            }
+            $fileIds = [];
+            foreach ($rawIds as $rawId) $fileIds[] = $this->positiveInt($rawId, 'file_id');
+            $fileIds = array_values(array_unique($fileIds));
+            if (!$fileIds) throw new TablerosApiException('validation', 'No hay archivos disponibles para descargar.', 422);
+
+            $archivePath = tempnam(sys_get_temp_dir(), 'tableros-zip-');
+            if ($archivePath === false) throw new TablerosApiException('server', 'No se pudo preparar el archivo ZIP.', 500);
+            $archive = new ZipArchive();
+            if ($archive->open($archivePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                throw new TablerosApiException('server', 'No se pudo crear el archivo ZIP.', 500);
+            }
+            try {
+                foreach ($fileIds as $fileId) {
+                    if ($this->model->getFileBoardId($fileId) !== $boardId) {
+                        throw new TablerosApiException('forbidden', 'Todos los archivos deben pertenecer al tablero actual.', 403);
+                    }
+                    $file = $this->model->getFileDownload($fileId);
+                    if (!empty($file['temporary'])) $temporaryFiles[] = $file['path'];
+                    $baseName = basename(str_replace('\\', '/', (string)$file['name']));
+                    $baseName = preg_replace('/[\\x00-\\x1F\\x7F\\\\\\/]+/u', '_', $baseName) ?: 'archivo-' . $fileId;
+                    $entryName = (int)$file['item_id'] . '-' . $fileId . '-' . $baseName;
+                    if (!$archive->addFile($file['path'], $entryName)) {
+                        throw new TablerosApiException('server', 'No se pudo agregar un archivo al ZIP.', 500);
+                    }
+                }
+            } catch (Throwable $e) {
+                $archive->close();
+                throw $e;
+            }
+            if (!$archive->close()) throw new TablerosApiException('server', 'No se pudo finalizar el archivo ZIP.', 500);
+            header('Content-Type: application/zip');
+            header('Content-Length: ' . (string)filesize($archivePath));
+            header('Content-Disposition: ' . $this->contentDisposition('archivos-tablero-' . $boardId . '.zip'));
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, no-store, max-age=0');
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            readfile($archivePath);
+        } catch (TablerosApiException $e) {
+            $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            error_log('Tableros ZIP download error: ' . $e->getMessage());
+            $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al preparar la descarga ZIP.']);
+        } finally {
+            foreach ($temporaryFiles as $path) if (is_file($path)) @unlink($path);
+            if ($archivePath !== null && is_file($archivePath)) @unlink($archivePath);
+        }
+        exit;
     }
 
     public function preview_file($id): void {
@@ -259,7 +440,7 @@ class tableros_api {
 
             $fileId = $this->positiveInt($id, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
             $file = $this->model->getFileDownload($fileId, $versionId);
             $extension = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
@@ -328,7 +509,7 @@ class tableros_api {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
             $itemId = $this->positiveInt($_GET['item_id'] ?? null, 'item_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getRelations($boardId, $itemId);
         });
     }
@@ -336,7 +517,7 @@ class tableros_api {
     public function add_relation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addRelation($boardId, $userId, $input);
         });
     }
@@ -344,7 +525,7 @@ class tableros_api {
     public function remove_relation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->removeRelation($boardId, $userId, $input);
         });
     }
@@ -352,7 +533,7 @@ class tableros_api {
     public function dependencies(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $itemId = isset($_GET['item_id']) ? $this->positiveInt($_GET['item_id'], 'item_id') : null;
             return $this->model->getDependencies($boardId, $itemId);
         });
@@ -361,7 +542,7 @@ class tableros_api {
     public function add_dependency(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addDependency($boardId, $userId, $input);
         });
     }
@@ -369,7 +550,7 @@ class tableros_api {
     public function remove_dependency(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->removeDependency($boardId, $userId, $input);
         });
     }
@@ -377,7 +558,7 @@ class tableros_api {
     public function set_subtask(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->setSubtask($boardId, $userId, $input);
         });
     }
@@ -385,7 +566,7 @@ class tableros_api {
     public function automations(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getAutomations($boardId);
         });
     }
@@ -433,7 +614,7 @@ class tableros_api {
     public function automation_runs(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $automationId = isset($_GET['automation_id']) ? $this->positiveInt($_GET['automation_id'], 'automation_id') : null;
             return $this->model->getAutomationRuns($boardId, $automationId);
         });
@@ -450,7 +631,7 @@ class tableros_api {
     public function update_item_name(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->updateItemName($boardId, $userId, $input);
         });
     }
@@ -471,7 +652,7 @@ class tableros_api {
     public function create_group(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->createGroup($boardId, $userId, $input);
         });
     }
@@ -479,7 +660,7 @@ class tableros_api {
     public function create_column(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->createColumn($boardId, $userId, $input);
         });
     }
@@ -487,7 +668,7 @@ class tableros_api {
     public function update_column_options(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->updateColumnOptions($boardId, $userId, $input);
         });
     }
@@ -495,7 +676,7 @@ class tableros_api {
     public function create_item(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->createItem($boardId, $userId, $input);
         });
     }
@@ -503,7 +684,7 @@ class tableros_api {
     public function update_cell(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->updateCell($boardId, $userId, $input);
         });
     }
@@ -511,7 +692,7 @@ class tableros_api {
     public function move_item(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->moveItem($boardId, $userId, $input);
         });
     }
@@ -524,10 +705,49 @@ class tableros_api {
         });
     }
 
+    public function duplicate_board(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            if (!$this->access->hasGlobalPermission('create')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
+            }
+            return $this->model->duplicateBoard($boardId, $userId, $input);
+        });
+    }
+
+    /** Streams at most the requested byte count without buffering the complete media file. */
+    private function streamFileRange(string $path, int $start, int $length): void {
+        $stream = @fopen($path, 'rb');
+        if (!is_resource($stream) || fseek($stream, $start) !== 0) {
+            if (is_resource($stream)) fclose($stream);
+            throw new TablerosApiException('server', 'No se pudo leer el rango solicitado del archivo.', 500);
+        }
+        try {
+            $remaining = $length;
+            while ($remaining > 0 && !feof($stream)) {
+                $chunk = fread($stream, min(1024 * 1024, $remaining));
+                if ($chunk === false || $chunk === '') break;
+                echo $chunk;
+                $remaining -= strlen($chunk);
+            }
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    public function update_board_visibility(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            return $this->model->updateBoardVisibility($boardId, $userId, $input);
+        });
+    }
+
     public function members(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getBoardMembers($boardId);
         });
     }
@@ -543,7 +763,7 @@ class tableros_api {
     public function create_view(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             if (filter_var($input['is_shared'] ?? false, FILTER_VALIDATE_BOOLEAN)
                 && !in_array($role, ['owner', 'designer'], true)) {
                 throw new TablerosApiException('forbidden', 'Solo el propietario o un diseñador puede compartir una vista.', 403);
@@ -555,6 +775,10 @@ class tableros_api {
     /** Run a handler after checking authentication, module access, verb and CSRF. */
     private function handle(string $method, callable $callback): void {
         header('Content-Type: application/json; charset=utf-8');
+        // Every API response is user- and state-specific. In particular, a
+        // board reload after trashing an item must not reuse a cached GET.
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
         try {
             $userId = $this->currentUserId();
             if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== $method) {
@@ -623,6 +847,12 @@ class tableros_api {
             throw new TablerosApiException('forbidden', 'No tienes el rol necesario en este tablero.', 403);
         }
         return $role;
+    }
+
+    private function requireWorkspaceManager(int $workspaceId): void {
+        if (!$this->model->getWorkspace($workspaceId)) throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
+        $role = $this->access->workspaceRole($workspaceId);
+        if ($role !== 'owner') throw new TablerosApiException('forbidden', 'Solo el propietario del espacio o un administrador puede administrar sus miembros.', 403);
     }
 
     private function bodyBoardId(array $input): int {

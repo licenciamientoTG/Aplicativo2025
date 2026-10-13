@@ -3,6 +3,76 @@
 {% block mycss %}{% endblock %}
 {% block menutitle %}Vehículos{% endblock %}
 {% block content %}
+<div class="row">
+    <div class="col-sm-6 col-xl-3 d-flex">
+        <div class="card shadow flex-fill">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Total vehículos</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="stat text-primary">
+                            <i data-feather="truck"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="mt-1 mb-0" id="stat-vehiculos-total">0</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3 d-flex">
+        <div class="card shadow flex-fill">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Crédito</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="stat text-info">
+                            <i data-feather="credit-card"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="mt-1 mb-0" id="stat-vehiculos-credito">0</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3 d-flex">
+        <div class="card shadow flex-fill">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Débito</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="stat text-success">
+                            <i data-feather="dollar-sign"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="mt-1 mb-0" id="stat-vehiculos-debito">0</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3 d-flex">
+        <div class="card shadow flex-fill">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Suspendidos</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="stat text-danger">
+                            <i data-feather="alert-triangle"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="mt-1 mb-0" id="stat-vehiculos-suspendidos">0</h2>
+            </div>
+        </div>
+    </div>
+</div>
 <div class="card">
     <div class="card-header pb-0">
         <div class="card-actions float-end">
@@ -34,6 +104,7 @@
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VEHICULO" placeholder="Vehículo"></div>
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="GRUPO" placeholder="Grupo"></div>
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESCRIPCION" placeholder="Descripcion"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO" placeholder="Tipo"></div>
                 <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="Status"></div>
                 <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
             </div>
@@ -50,7 +121,9 @@
                     <th>VEHICULO</th>
                     <th>GRUPO</th>
                     <th>DESCRIPCION</th>
+                    <th>TIPO</th>
                     <th>STATUS</th>
+                    <th>SALDO</th>
                 </tr>
             </thead>
             <tbody>
@@ -65,7 +138,9 @@
                     <th>VEHICULO</th>
                     <th>GRUPO</th>
                     <th>DESCRIPCION</th>
+                    <th>TIPO</th>
                     <th>STATUS</th>
+                    <th>SALDO</th>
                 </tr>
             </tfoot>
         </table>

@@ -50,7 +50,17 @@
   function boardHref(item) {
     const boardId = item.board_id ?? item.related_board_id;
     if (boardId == null || !/^[A-Za-z0-9_-]+$/.test(String(boardId))) return '';
-    return `/tableros/board/${encodeURIComponent(String(boardId))}`;
+    const url = new URL(`/tableros/board/${encodeURIComponent(String(boardId))}`, window.location.origin);
+    const payload = item.payload && typeof item.payload === 'object' ? item.payload : {};
+    if (['file.comment.mention', 'file.comment.created'].includes(item.event_type)) {
+      const fileId = item.file_id ?? item.related_file_id ?? payload.file_id ?? payload.fileId;
+      const itemId = item.item_id ?? item.related_item_id ?? payload.item_id ?? payload.itemId;
+      const commentId = item.file_comment_id ?? item.comment_id ?? payload.file_comment_id ?? payload.comment_id ?? payload.commentId;
+      if (fileId != null && /^[0-9]+$/.test(String(fileId))) url.searchParams.set('notification_file_id', String(fileId));
+      if (itemId != null && /^[0-9]+$/.test(String(itemId))) url.searchParams.set('notification_item_id', String(itemId));
+      if (commentId != null && /^[0-9]+$/.test(String(commentId))) url.searchParams.set('notification_comment_id', String(commentId));
+    }
+    return `${url.pathname}${url.search}`;
   }
 
   function updateUnread(count) {

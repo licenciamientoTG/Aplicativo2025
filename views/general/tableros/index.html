@@ -10,7 +10,8 @@
       </a>
       <div class="tableros-shell-product" aria-label="Módulo Tableros"><span>Tableros</span></div>
       <nav class="tableros-shell-nav">
-        <a class="tableros-shell-link is-active" href="/tableros/index" aria-label="Tableros" title="Tableros"><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>Tableros</span></a>
+        <a class="tableros-shell-link{% if not manage_boards|default(false) %} is-active{% endif %}" href="/tableros/index" aria-label="Tableros" title="Tableros"{% if not manage_boards|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>Tableros</span></a>
+        <a class="tableros-shell-link{% if manage_boards|default(false) %} is-active{% endif %}" href="/tableros/manage" aria-label="Gestionar tableros" title="Gestionar tableros"{% if manage_boards|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Gestionar tableros</span></a>
       </nav>
     </div>
   </aside>
@@ -40,16 +41,17 @@
   data-csrf-token="{{ csrf_token|e('html_attr') }}"
   data-can-create="{{ can_create ? '1' : '0' }}"
   data-can-admin="{{ can_admin ? '1' : '0' }}"
-  data-initial-board-id="{{ initial_board_id|default('')|e('html_attr') }}">
+  data-initial-board-id="{{ initial_board_id|default('')|e('html_attr') }}"
+  data-page-mode="{{ manage_boards|default(false) ? 'manage' : 'boards' }}">
   <header class="boards-page-heading">
     <div class="boards-page-identity">
       <span class="boards-page-icon" aria-hidden="true"><i class="fa-solid fa-table-cells-large"></i></span>
       <div>
-        <h2 class="boards-page-title">Tableros de trabajo</h2>
-        <p class="boards-page-intro">Organiza el trabajo y sigue cada avance en un solo lugar.</p>
+        <h2 class="boards-page-title">{{ manage_boards|default(false) ? 'Gestionar tableros' : 'Tableros de trabajo' }}</h2>
+        <p class="boards-page-intro">{{ manage_boards|default(false) ? 'Administra quién puede encontrar y consultar tus tableros.' : 'Organiza el trabajo y sigue cada avance en un solo lugar.' }}</p>
       </div>
     </div>
-    <div class="boards-picker-wrap">
+    <div class="boards-picker-wrap"{% if manage_boards|default(false) %} hidden{% endif %}>
       <label class="visually-hidden" for="boardSelect">Seleccionar tablero</label>
       <select id="boardSelect" class="form-select" aria-label="Seleccionar tablero" disabled hidden>
         <option value="">Cargando tableros…</option>
@@ -58,12 +60,36 @@
     </div>
   </header>
 
+  <section id="boardVisibilityManager" class="boards-visibility-manager" aria-labelledby="boardVisibilityTitle" hidden>
+    <div class="boards-visibility-intro">
+      <h3 id="boardVisibilityTitle">Visibilidad de tableros</h3>
+      <p>La visibilidad controla el acceso heredado. Las invitaciones directas a un tablero se conservan aunque cambies esta opción.</p>
+    </div>
+    <div id="boardVisibilityStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando tableros que puedes administrar…</div>
+    <div id="boardVisibilityList" class="boards-visibility-list" role="list" aria-label="Tableros que puedes administrar"></div>
+    <div id="boardVisibilityEmpty" class="boards-visibility-empty" hidden>
+      <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i>
+      <h4>No hay tableros para administrar</h4>
+      <p>Solo aparecen aquí los tableros en los que tienes el rol de propietario o diseñador.</p>
+    </div>
+  </section>
+
   <div class="boards-main">
     <aside id="boardNavigator" class="boards-navigator" aria-label="Navegación de tableros">
       <div class="boards-navigator-heading">
         <span>Espacios de trabajo</span>
         <div class="boards-workspace-picker">
-          <select id="workspaceSelect" class="form-select" aria-label="Seleccionar espacio de trabajo"></select>
+          <select id="workspaceSelect" class="boards-workspace-value" aria-hidden="true" tabindex="-1"></select>
+          <div class="boards-workspace-menu">
+            <button id="workspacePickerButton" class="boards-workspace-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="workspacePickerOptions">
+              <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+              <span id="workspacePickerLabel">Cargando espacios…</span>
+              <i class="fa-solid fa-chevron-down boards-workspace-chevron" aria-hidden="true"></i>
+            </button>
+            <div id="workspacePickerOptions" class="boards-workspace-options" role="listbox" aria-label="Espacios de trabajo" hidden></div>
+          </div>
+          <span id="workspaceAccessLabel" class="boards-workspace-access" aria-live="polite"></span>
+          <button id="manageWorkspaceMembers" type="button" aria-label="Administrar miembros del espacio" title="Administrar miembros del espacio" hidden><i class="fa-solid fa-user-group" aria-hidden="true"></i></button>
           {% if can_create %}<button id="navCreateWorkspace" type="button" aria-label="Crear espacio de trabajo" title="Crear espacio de trabajo"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>{% endif %}
         </div>
       </div>
@@ -77,6 +103,10 @@
         {% if can_create %}<span class="boards-nav-actions"><button id="navCreateFolder" type="button" aria-label="Crear carpeta" title="Crear carpeta"><i class="fa-regular fa-folder" aria-hidden="true"></i></button><button id="navCreateBoard" type="button" aria-label="Crear tablero" title="Crear tablero"><i class="fa-solid fa-table-cells" aria-hidden="true"></i></button></span>{% endif %}
       </div>
       <nav id="boardNavList" class="boards-nav-list" aria-label="Tus tableros"></nav>
+      <div class="boards-nav-archive" role="group" aria-label="Elementos eliminados y archivados">
+        <button type="button" class="boards-nav-board" id="openTrashView"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Papelera</span></button>
+        <button type="button" class="boards-nav-board" id="openArchiveView"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Archivados</span></button>
+      </div>
     </aside>
     <div class="boards-main-content">
 
@@ -92,6 +122,21 @@
     {% if can_create %}<button type="button" class="btn boards-button-primary" id="emptyCreateBoard">Crear primer tablero</button>{% endif %}
   </section>
 
+  <section id="trashArchiveView" class="boards-recycle-view" aria-labelledby="trashArchiveTitle" hidden>
+    <header class="boards-recycle-heading">
+      <div><h3 id="trashArchiveTitle">Papelera</h3><p id="trashArchiveDescription">Los elementos eliminados se pueden restaurar o eliminar definitivamente.</p></div>
+      <button type="button" class="btn boards-button-light" id="closeTrashArchiveView">Volver al tablero</button>
+    </header>
+    <div id="trashFilters" class="boards-trash-filters" role="group" aria-label="Filtrar elementos de la papelera" hidden>
+      <label>Tipo de elemento<select id="trashTypeFilter" class="form-select"><option value="">Todos los tipos</option></select></label>
+      <label>Tablero o espacio<select id="trashLocationFilter" class="form-select"><option value="">Todas las ubicaciones</option></select></label>
+      <label>Fecha de eliminación<input id="trashDateFilter" class="form-control" type="date"></label>
+      <button id="clearTrashFilters" type="button" class="btn boards-button-light">Limpiar filtros</button>
+    </div>
+    <div id="trashArchiveStatus" class="boards-detail-status" role="status" aria-live="polite"></div>
+    <div id="trashArchiveList" class="boards-recycle-list" role="list"></div>
+  </section>
+
   <section id="boardWorkspace" class="boards-workspace" aria-labelledby="boardName" hidden>
     <div class="boards-board-heading">
       <div class="boards-board-title-wrap">
@@ -103,7 +148,10 @@
       </div>
       <div class="boards-board-meta">
         <span id="boardRole" class="boards-role"></span>
-        <button type="button" class="btn boards-button-light" id="openAutomations"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Automatizaciones</span></button>
+        <span id="boardAccessSource" class="boards-access-source" aria-label="Origen del acceso"></span>
+        <button type="button" class="btn boards-button-light" id="openDuplicateBoard" hidden><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Duplicar</span></button>
+        <button type="button" class="btn boards-button-light boards-icon-action" id="trashBoard" aria-label="Mover tablero a la papelera" title="Mover a la papelera"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
+        <button type="button" class="btn boards-button-light boards-icon-action" id="archiveBoard" aria-label="Archivar tablero" title="Archivar"><i class="fa-solid fa-box-archive" aria-hidden="true"></i></button>
         <button type="button" class="btn boards-button-light" id="openShareBoard"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Compartir</span></button>
       </div>
     </div>
@@ -136,7 +184,16 @@
         <span id="boardItemCount" class="boards-item-count"></span>
         <button type="button" class="btn boards-button-light" id="toggleBoardFilters" aria-expanded="false" aria-controls="boardFiltersPanel"><i class="fa-solid fa-filter" aria-hidden="true"></i><span>Filtros</span><span id="boardFilterCount" class="boards-filter-count" hidden></span></button>
         <button type="button" class="btn boards-button-light" id="toggleColumnControls" aria-expanded="false" aria-controls="columnControlsPanel"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Columnas</span></button>
-        <button type="button" class="btn boards-button-light" id="toggleBoardDensity" aria-pressed="false"><i class="fa-solid fa-arrows-up-down" aria-hidden="true"></i><span>Compactar</span></button>
+        <div class="boards-item-size-control">
+          <button type="button" class="btn boards-button-light" id="toggleBoardItemSize" aria-expanded="false" aria-controls="boardItemSizeMenu">
+            <i class="fa-solid fa-arrows-up-down" aria-hidden="true"></i><span>Tamaño del elemento</span><span id="boardItemSizeLabel">Doble</span>
+          </button>
+          <div id="boardItemSizeMenu" class="boards-item-size-menu" role="group" aria-label="Tamaño del elemento" hidden>
+            <button type="button" data-board-item-size="simple"><i class="fa-solid fa-align-justify" aria-hidden="true"></i><span>Simple</span></button>
+            <button type="button" data-board-item-size="double"><i class="fa-solid fa-list" aria-hidden="true"></i><span>Doble</span></button>
+            <button type="button" data-board-item-size="triple"><i class="fa-solid fa-bars" aria-hidden="true"></i><span>Triple</span></button>
+          </div>
+        </div>
         <button type="button" class="btn boards-button-light" id="openCreateColumn"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Agregar columna</span></button>
         <button type="button" class="btn boards-button-primary" id="openCreateItem"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Agregar elemento</span></button>
       </div>
@@ -146,7 +203,9 @@
       <span id="boardSelectionCount" class="boards-selection-count" aria-live="polite"></span>
       <label class="visually-hidden" for="bulkMoveGroup">Mover seleccionados a</label>
       <select id="bulkMoveGroup" class="form-select" aria-label="Mover seleccionados a"></select>
+      <span class="boards-field-help">Mover un elemento principal también mueve sus subelementos.</span>
       <button id="bulkMoveItems" class="btn boards-button-primary" type="button"><i class="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i><span>Mover</span></button>
+      <button id="bulkTrashItems" class="btn boards-button-light" type="button"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Eliminar seleccionados</span></button>
       <button id="clearSelection" class="btn boards-button-light" type="button">Cancelar selección</button>
     </div>
 
@@ -184,8 +243,25 @@
     <label class="boards-field-label" for="newBoardFolder">Carpeta <span>Opcional</span></label>
     <select class="form-select" id="newBoardFolder" name="folder_id"><option value="">Sin carpeta</option></select>
     <label class="boards-field-label" for="newBoardVisibility">Visibilidad del tablero</label>
-    <select class="form-select" id="newBoardVisibility" name="visibility"><option value="private">Privado · solo personas invitadas</option><option value="workspace">Visible para el espacio</option></select>
+    <select class="form-select" id="newBoardVisibility" name="visibility"><option value="private">Privado · solo personas invitadas</option><option value="workspace">Personas con acceso al espacio</option><option value="organization">Toda la organización · solo lectura</option></select>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Crear tablero</button></div>
+  </form>
+</dialog>
+
+<dialog class="boards-dialog" id="duplicateBoardDialog" aria-labelledby="duplicateBoardTitle">
+  <form id="duplicateBoardForm">
+    <div class="boards-dialog-heading"><div><h3 id="duplicateBoardTitle">Duplicar tablero</h3><p>Crea una copia y elige qué información incluir.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <label class="boards-field-label" for="duplicateBoardName">Nombre del tablero</label>
+    <input class="form-control" id="duplicateBoardName" name="name" maxlength="120" required autocomplete="off">
+    <label class="boards-field-label" for="duplicateBoardMode">Qué quieres copiar</label>
+    <select class="form-select" id="duplicateBoardMode" name="mode">
+      <option value="structure">Solo estructura de tablero</option>
+      <option value="items">Estructura de tablero y elementos</option>
+      <option value="updates">Estructura, elementos y actualizaciones</option>
+    </select>
+    <small class="boards-field-help" id="duplicateBoardModeHelp">Se copiarán grupos y columnas, sin elementos.</small>
+    <label class="boards-checkbox-label" for="duplicateBoardSubscribers"><input type="checkbox" id="duplicateBoardSubscribers" name="keep_subscribers" value="1"><span>Mantener los suscriptores del tablero</span></label>
+    <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Duplicar tablero</button></div>
   </form>
 </dialog>
 
@@ -195,9 +271,28 @@
     <label class="boards-field-label" for="newWorkspaceName">Nombre</label>
     <input class="form-control" id="newWorkspaceName" name="name" maxlength="200" required autocomplete="off" placeholder="Ej. Marketing">
     <label class="boards-field-label" for="newWorkspaceVisibility">Acceso del espacio</label>
-    <select class="form-select" id="newWorkspaceVisibility" name="visibility"><option value="private">Privado</option><option value="workspace">Visible para el equipo</option></select>
+    <select class="form-select" id="newWorkspaceVisibility" name="visibility"><option value="closed">Cerrado · solo miembros</option><option value="open">Abierto · visible para usuarios con acceso a tableros</option></select>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Crear espacio</button></div>
   </form>
+</dialog>
+
+<dialog class="boards-dialog boards-workspace-members-dialog" id="workspaceMembersDialog" aria-labelledby="workspaceMembersTitle" aria-describedby="workspaceMembersDescription" aria-modal="true">
+  <div class="boards-dialog-body">
+    <div class="boards-dialog-heading"><div><h3 id="workspaceMembersTitle" tabindex="-1">Miembros del espacio</h3><p id="workspaceMembersDescription">Administra quién accede al espacio y su función.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar miembros del espacio">&times;</button></div>
+    <div class="boards-workspace-owner" id="workspaceMembersOwner" hidden></div>
+    <form id="workspaceMemberForm" class="boards-workspace-invite-form">
+      <label class="boards-field-label" for="workspaceMemberSearch">Agregar persona de TG</label>
+      <div class="boards-share-person-picker">
+        <input class="form-control" id="workspaceMemberSearch" type="search" autocomplete="off" placeholder="Busca por nombre o usuario" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="workspaceMemberResults">
+        <input id="workspaceMemberUserId" name="user_id" type="hidden">
+        <div class="boards-share-user-results" id="workspaceMemberResults" role="listbox" aria-label="Personas de TG" hidden></div>
+      </div>
+      <label class="boards-field-label" for="workspaceMemberRole">Función</label>
+      <div class="boards-workspace-invite-actions"><select class="form-select" id="workspaceMemberRole" name="role"><option value="viewer">Lector del espacio</option><option value="editor">Editor del espacio</option></select><button type="submit" class="btn boards-button-primary">Agregar</button></div>
+    </form>
+    <div id="workspaceMembersStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando miembros…</div>
+    <div id="workspaceMembersList" class="boards-member-list" role="list" aria-label="Miembros del espacio"></div>
+  </div>
 </dialog>
 
 <dialog class="boards-dialog" id="createFolderDialog" aria-labelledby="createFolderTitle">
@@ -281,7 +376,7 @@
 
 <dialog class="boards-dialog" id="shareBoardDialog" aria-labelledby="shareBoardTitle">
   <form id="shareBoardForm">
-    <div class="boards-dialog-heading"><div><h3 id="shareBoardTitle">Compartir tablero</h3><p>Busca una cuenta activa de TG. Al compartir, tendrá acceso a este tablero y podrá ser responsable aquí.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <div class="boards-dialog-heading"><div><h3 id="shareBoardTitle">Compartir tablero</h3><p>Busca una cuenta activa de TG y elige su acceso directo al tablero.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
     <label class="boards-field-label" for="shareUserSearch">Persona</label>
     <div class="boards-share-person-picker">
       <input class="form-control" id="shareUserSearch" type="search" autocomplete="off" placeholder="Busca por nombre o usuario" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="shareUserResults">
@@ -290,7 +385,9 @@
       <div class="boards-share-user-results" id="shareUserResults" role="listbox" hidden></div>
     </div>
     <label class="boards-field-label" for="shareRole">Permiso</label>
-    <select class="form-select" id="shareRole" name="role"><option value="viewer">Solo lectura</option><option value="editor">Puede editar</option><option value="designer">Puede editar y configurar</option></select>
+    <select class="form-select" id="shareRole" name="role"><option value="viewer">Lector · solo lectura</option><option value="contributor">Colaborador · contenido y comentarios</option><option value="editor">Editor · estructura y contenido</option><option value="designer">Diseñador · puede compartir y configurar</option></select>
+    <div class="boards-field-help">Editores no pueden compartir ni administrar automatizaciones. Colaboradores solo editan contenido y comentarios.</div>
+    <div id="boardResidualAccessNotice" class="boards-access-warning" role="status" aria-live="polite" hidden></div>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Compartir tablero</button></div>
   </form>
   <section class="boards-member-section" aria-labelledby="boardMembersTitle">
@@ -311,6 +408,14 @@
   </form>
 </dialog>
 
+<dialog class="boards-dialog boards-confirm-dialog" id="boardsConfirmDialog" aria-labelledby="boardsConfirmTitle" aria-describedby="boardsConfirmMessage">
+  <div class="boards-dialog-body">
+    <div class="boards-dialog-heading"><div><h3 id="boardsConfirmTitle">Confirmar acción</h3><p id="boardsConfirmDescription">Revisa el cambio antes de continuar.</p></div></div>
+    <div id="boardsConfirmMessage" class="boards-confirm-message"></div>
+    <div class="boards-dialog-actions"><button type="button" id="boardsConfirmCancel" class="btn boards-button-light">Cancelar</button><button type="button" id="boardsConfirmAccept" class="btn boards-button-primary">Continuar</button></div>
+  </div>
+</dialog>
+
 <dialog class="boards-dialog boards-details-dialog" id="itemDetailsDialog" aria-labelledby="itemDetailsTitle">
   <div class="boards-dialog-body">
     <div class="boards-details-header"><div class="boards-dialog-heading"><div><h3 id="itemDetailsTitle">Detalles del elemento</h3><p id="itemDetailsSubtitle">Comentarios, archivos y relaciones del elemento.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
@@ -323,9 +428,9 @@
     <div class="boards-details-content">
       <div class="boards-details-panel" id="itemDetailsPanelUpdates" role="tabpanel" aria-labelledby="itemDetailsTabUpdates" tabindex="0">
       <section class="boards-detail-section"><h4>Comentarios</h4><div id="itemCommentStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando comentarios…</div><div id="itemCommentsList" class="boards-detail-list"></div><form id="itemCommentForm" class="boards-comment-form"><label class="boards-field-label" for="itemCommentBody">Agregar comentario</label><textarea id="itemCommentBody" class="form-control" rows="3" maxlength="10000" required placeholder="Escribe una actualización para el equipo"></textarea><div class="boards-dialog-actions"><button class="btn boards-button-primary" type="submit">Comentar</button></div></form></section></div>
-      <div class="boards-details-panel" id="itemDetailsPanelFiles" role="tabpanel" aria-labelledby="itemDetailsTabFiles" tabindex="0" hidden><section class="boards-detail-section"><h4>Archivos</h4><div id="itemFilesStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando archivos…</div><p class="boards-file-review-note">Los archivos quedan disponibles inmediatamente y no se analizan con antivirus.</p><div id="itemFilesList" class="boards-detail-list"></div><form id="itemFileForm" class="boards-file-form"><label class="boards-field-label" for="itemFileColumn">Columna de archivo</label><select id="itemFileColumn" class="form-select" required></select><label class="boards-field-label" for="itemFileTarget">Archivo</label><select id="itemFileTarget" class="form-select"><option value="">Crear archivo nuevo</option></select><label class="boards-field-label" for="itemFileInput">Archivo nuevo o versión</label><input id="itemFileInput" class="form-control" type="file" required><small class="boards-field-help">Máximo 100 MB. Las imágenes se convierten a WebP. Para consultar archivos después, se guarda su referencia en la celda de archivo.</small><div class="boards-dialog-actions"><button class="btn boards-button-primary" type="submit">Subir archivo</button></div></form></section></div>
+      <div class="boards-details-panel" id="itemDetailsPanelFiles" role="tabpanel" aria-labelledby="itemDetailsTabFiles" tabindex="0" hidden><section class="boards-detail-section"><div class="boards-file-browser-heading"><div><h4>Archivos</h4><p>Consulta los documentos vinculados a este elemento.</p></div><div id="itemFilesStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando archivos…</div></div><div id="itemFileTypes" class="boards-file-type-filters" role="group" aria-label="Filtrar archivos por tipo"></div><div id="itemFilesList" class="boards-detail-list"></div></section></div>
       <div class="boards-details-panel" id="itemDetailsPanelDetails" role="tabpanel" aria-labelledby="itemDetailsTabDetails" tabindex="0" hidden><section class="boards-detail-section"><h4>Relaciones y dependencias</h4><div id="itemRelationsStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando relaciones…</div><div id="itemRelationsList" class="boards-detail-list"></div><form id="itemRelationForm" class="boards-compact-form"><label class="boards-field-label" for="relationTargetBoard">Tablero relacionado</label><select id="relationTargetBoard" class="form-select"></select><label class="boards-field-label" for="relationTargetItem">Elemento relacionado</label><select id="relationTargetItem" class="form-select" required></select><label class="boards-field-label" for="relationType">Tipo de relación</label><select id="relationType" class="form-select"><option value="related">Relacionado</option><option value="blocks">Bloquea</option><option value="blocked_by">Bloqueado por</option><option value="duplicate">Duplicado</option><option value="connects">Conecta</option></select><div class="boards-dialog-actions"><button class="btn boards-button-light" type="submit">Agregar relación</button></div></form><div id="itemDependenciesList" class="boards-detail-list"></div><form id="itemDependencyForm" class="boards-compact-form"><label class="boards-field-label" for="dependencyTargetItem">Dependencia con</label><select id="dependencyTargetItem" class="form-select" required></select><label class="boards-field-label" for="dependencyDirection">Dirección</label><select id="dependencyDirection" class="form-select"><option value="depends">Este elemento depende del seleccionado</option><option value="blocks">Este elemento va antes del seleccionado</option></select><label class="boards-field-label" for="dependencyType">Tipo</label><select id="dependencyType" class="form-select"><option value="finish_to_start">Fin a inicio</option><option value="start_to_start">Inicio a inicio</option><option value="finish_to_finish">Fin a fin</option><option value="start_to_finish">Inicio a fin</option></select><label class="boards-field-label" for="dependencyLag">Desfase (minutos) <span>Opcional</span></label><input id="dependencyLag" class="form-control" type="number" min="-525600" max="525600" step="1" value="0"><div class="boards-dialog-actions"><button class="btn boards-button-light" type="submit">Agregar dependencia</button></div></form></section>
-      <section class="boards-detail-section"><h4>Subelementos</h4><p class="boards-field-help">Cambia el elemento principal. No se permiten ciclos en la jerarquía.</p><label class="boards-field-label" for="itemParentSelect">Elemento principal</label><select id="itemParentSelect" class="form-select"></select><div class="boards-dialog-actions"><button id="saveItemParent" class="btn boards-button-light" type="button">Guardar relación</button></div><div id="itemSubtasksList" class="boards-detail-list"></div></section></div>
+      <section class="boards-detail-section"><h4>Subelementos</h4><p class="boards-field-help">Cambia el elemento principal. No se permiten ciclos en la jerarquía.</p><label class="boards-field-label" for="itemParentSelect">Elemento principal</label><div id="itemParentWarning" class="alert alert-warning" role="status" hidden></div><select id="itemParentSelect" class="form-select"></select><div class="boards-dialog-actions"><button id="saveItemParent" class="btn boards-button-light" type="button">Guardar relación</button></div><div id="itemSubtasksList" class="boards-detail-list"></div></section></div>
       <div class="boards-details-panel" id="itemDetailsPanelActivity" role="tabpanel" aria-labelledby="itemDetailsTabActivity" tabindex="0" hidden><section class="boards-detail-section boards-detail-section-wide"><h4>Actividad</h4><div id="itemActivityStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando actividad…</div><div id="itemActivityList" class="boards-detail-list"></div></section></div>
     </div>
   </div>
@@ -352,24 +457,5 @@
   </div>
 </dialog>
 
-<dialog class="boards-dialog boards-automation-dialog" id="automationDialog" aria-labelledby="automationTitle">
-  <div class="boards-dialog-body">
-    <div class="boards-dialog-heading"><div><h3 id="automationTitle">Automatizaciones del tablero</h3><p>Reglas limitadas a los disparadores, filtros y acciones permitidos.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
-    <div id="automationListStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando automatizaciones…</div><p id="automationPermissionsNote" class="boards-field-help" hidden></p><div id="automationList" class="boards-automation-list"></div>
-    <section id="automationEditorPanel" class="boards-automation-editor" hidden>
-      <h4>Nueva automatización</h4>
-      <form id="automationForm">
-        <label class="boards-field-label" for="automationName">Nombre</label><input id="automationName" class="form-control" maxlength="200" required placeholder="Ej. Recordatorio de pendientes">
-        <label class="boards-field-label" for="automationTrigger">Disparador</label><select id="automationTrigger" class="form-select"><option value="manual">Ejecución manual</option><option value="schedule">Programada</option></select>
-        <div id="automationScheduleField" hidden><label class="boards-field-label" for="automationInterval">Frecuencia</label><select id="automationInterval" class="form-select"><option value="1">Cada minuto</option><option value="5">Cada 5 minutos</option><option value="10">Cada 10 minutos</option><option value="15">Cada 15 minutos</option><option value="30">Cada 30 minutos</option><option value="60">Cada hora</option><option value="120">Cada 2 horas</option><option value="360">Cada 6 horas</option><option value="720">Cada 12 horas</option><option value="1440">Cada día</option></select></div>
-        <h5>Condición</h5><label class="boards-field-label" for="automationFilterField">Campo</label><select id="automationFilterField" class="form-select"></select><div id="automationFilterValueFields"></div>
-        <h5>Acción</h5><label class="boards-field-label" for="automationActionType">Acción permitida</label><select id="automationActionType" class="form-select"><option value="set_status">Cambiar estado</option><option value="set_date">Establecer fecha</option><option value="reminder">Crear recordatorio</option></select><div id="automationActionFields"></div>
-        <small class="boards-field-help">Las reglas nuevas quedan en borrador; actívalas antes de ejecutarlas.</small>
-        <div class="boards-dialog-actions"><button class="btn boards-button-primary" type="submit">Crear automatización</button></div>
-      </form>
-    </section>
-    <section class="boards-automation-history"><div class="boards-automation-history-heading"><h4>Historial de ejecuciones</h4><button id="refreshAutomationRuns" class="boards-text-button" type="button">Actualizar</button></div><div id="automationRunsStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando historial…</div><div id="automationRunsList" class="boards-detail-list"></div></section>
-  </div>
-</dialog>
 {% endblock %}
 {% block myjs %}<script src="{{ js_v('tableros.js') }}"></script>{% endblock %}
