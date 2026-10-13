@@ -183,7 +183,16 @@
         <span id="boardItemCount" class="boards-item-count"></span>
         <button type="button" class="btn boards-button-light" id="toggleBoardFilters" aria-expanded="false" aria-controls="boardFiltersPanel"><i class="fa-solid fa-filter" aria-hidden="true"></i><span>Filtros</span><span id="boardFilterCount" class="boards-filter-count" hidden></span></button>
         <button type="button" class="btn boards-button-light" id="toggleColumnControls" aria-expanded="false" aria-controls="columnControlsPanel"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Columnas</span></button>
-        <button type="button" class="btn boards-button-light" id="toggleBoardDensity" aria-pressed="false"><i class="fa-solid fa-arrows-up-down" aria-hidden="true"></i><span>Compactar</span></button>
+        <div class="boards-item-size-control">
+          <button type="button" class="btn boards-button-light" id="toggleBoardItemSize" aria-expanded="false" aria-controls="boardItemSizeMenu">
+            <i class="fa-solid fa-arrows-up-down" aria-hidden="true"></i><span>Tamaño del elemento</span><span id="boardItemSizeLabel">Doble</span>
+          </button>
+          <div id="boardItemSizeMenu" class="boards-item-size-menu" role="group" aria-label="Tamaño del elemento" hidden>
+            <button type="button" data-board-item-size="simple"><i class="fa-solid fa-align-justify" aria-hidden="true"></i><span>Simple</span></button>
+            <button type="button" data-board-item-size="double"><i class="fa-solid fa-list" aria-hidden="true"></i><span>Doble</span></button>
+            <button type="button" data-board-item-size="triple"><i class="fa-solid fa-bars" aria-hidden="true"></i><span>Triple</span></button>
+          </div>
+        </div>
         <button type="button" class="btn boards-button-light" id="openCreateColumn"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Agregar columna</span></button>
         <button type="button" class="btn boards-button-primary" id="openCreateItem"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Agregar elemento</span></button>
       </div>

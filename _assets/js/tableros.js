@@ -4818,6 +4818,7 @@
     state.activeSavedViewId = String(view.id);
     state.activeViewType = normalizeViewType(view.view_type);
     state.viewConfig = config && typeof config === 'object' ? { ...config } : {};
+    state.viewConfig.item_size = ['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double';
     normalizeColumnViewConfig();
     state.filters = Array.isArray(state.viewConfig.filters) ? state.viewConfig.filters.map((filter) => ({ ...filter })) : [];
     state.filterDraft = state.filters.map((filter) => ({ ...filter }));
@@ -4834,6 +4835,7 @@
       timeline_start_column_id: state.viewConfig.timeline_start_column_id || '',
       timeline_end_column_id: state.viewConfig.timeline_end_column_id || '',
       kanban_column_id: state.viewConfig.kanban_column_id || 'groups',
+      item_size: ['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double',
       panel_column_id: state.viewConfig.panel_column_id || '',
       column_order: orderedColumns(true).map((column) => String(column.id)),
       hidden_column_ids: state.viewConfig.hidden_column_ids.slice()
@@ -4850,6 +4852,7 @@
   function renderActiveView() {
     const type = normalizeViewType(state.activeViewType);
     state.activeViewType = type;
+    applyBoardItemSize(state.viewConfig.item_size || 'double');
     updateItemCount(getFilteredItems().length);
     document.querySelectorAll('.boards-view-tab[data-view-type]').forEach((button) => {
       const active = button.dataset.viewType === type;
@@ -4874,6 +4877,20 @@
     else if (type === 'timeline') renderTimeline();
     else if (type === 'kanban') renderKanban();
     else renderPanel();
+  }
+
+  function applyBoardItemSize(size) {
+    const normalized = ['simple', 'double', 'triple'].includes(size) ? size : 'double';
+    state.viewConfig.item_size = normalized;
+    app.dataset.itemSize = normalized;
+    const label = document.getElementById('boardItemSizeLabel');
+    if (label) label.textContent = normalized === 'simple' ? 'Simple' : (normalized === 'triple' ? 'Triple' : 'Doble');
+    document.querySelectorAll('[data-board-item-size]').forEach((button) => {
+      const selected = button.dataset.boardItemSize === normalized;
+      button.classList.toggle('is-selected', selected);
+      if (selected) button.setAttribute('aria-pressed', 'true');
+      else button.setAttribute('aria-pressed', 'false');
+    });
   }
 
   function renderEmptyRenderer(title, description) {
@@ -6381,12 +6398,26 @@
         if (column) openLabelsEditor(column);
       }
     });
-    document.getElementById('toggleBoardDensity').addEventListener('click', (event) => {
-      const button = event.currentTarget;
-      const compact = button.getAttribute('aria-pressed') !== 'true';
-      button.setAttribute('aria-pressed', compact ? 'true' : 'false');
-      app.classList.toggle('is-compact', compact);
-      button.querySelector('span').textContent = compact ? 'Espaciar' : 'Compactar';
+    const itemSizeToggle = document.getElementById('toggleBoardItemSize');
+    const itemSizeMenu = document.getElementById('boardItemSizeMenu');
+    itemSizeToggle.addEventListener('click', () => {
+      const opening = itemSizeMenu.hidden;
+      itemSizeMenu.hidden = !opening;
+      itemSizeToggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    });
+    itemSizeMenu.addEventListener('click', (event) => {
+      const option = event.target.closest('[data-board-item-size]');
+      if (!option) return;
+      applyBoardItemSize(option.dataset.boardItemSize);
+      itemSizeMenu.hidden = true;
+      itemSizeToggle.setAttribute('aria-expanded', 'false');
+      markViewModified();
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('.boards-item-size-control')) {
+        itemSizeMenu.hidden = true;
+        itemSizeToggle.setAttribute('aria-expanded', 'false');
+      }
     });
     els.boardTableContainer.addEventListener('click', (event) => {
       const download = event.target.closest('[data-download-group-files]');
