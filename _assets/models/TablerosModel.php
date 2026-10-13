@@ -646,8 +646,8 @@ class TablerosModel {
              INNER JOIN [TG].[dbo].[Usuario] u ON u.Id = m.user_id AND u.Estatus = 1
              WHERE m.workspace_id = ? AND m.deleted_at IS NULL AND m.user_id <> ?
                AND EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] p INNER JOIN [TG].[dbo].[tg_permissions_users] pu ON pu.permission_id = p.id
-                           WHERE pu.user_id = m.user_id AND p.department = \'General\' AND p.status = 1
-                             AND ((p.action=\'read\' AND p.description=\'Tableros - Acceso\') OR (p.action=\'create\' AND p.description=\'Tableros - Crear\') OR (p.action=\'update\' AND p.description=\'Tableros - Administrar\')))
+                           WHERE pu.user_id = m.user_id AND p.department = 'General' AND p.status = 1
+                             AND ((p.action='read' AND p.description='Tableros - Acceso') OR (p.action='create' AND p.description='Tableros - Crear') OR (p.action='update' AND p.description='Tableros - Administrar')))
              ORDER BY CASE WHEN m.role='owner' THEN 0 ELSE 1 END, name, m.user_id",
             [$workspaceId, (int)$workspace['created_by']]
         );

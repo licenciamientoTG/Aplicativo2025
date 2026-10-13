@@ -436,11 +436,11 @@
     els.boardLoading.lastElementChild.textContent = message;
   }
 
-  function openDialog(dialog) {
+  function openDialog(dialog, preferredFocus = null) {
     if (!dialog) return;
     if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
     else dialog.setAttribute('open', '');
-    const field = dialog.querySelector('input:not([type="hidden"]), select, textarea');
+    const field = preferredFocus || dialog.querySelector('input:not([type="hidden"]), select, textarea');
     if (field) window.setTimeout(() => field.focus(), 0);
   }
 
@@ -740,13 +740,32 @@
     const workspace = state.workspaces.find((entry) => String(entry.id) === String(selector.value));
     const access = document.getElementById('workspaceAccessLabel');
     const workspaceRoleLabels = { owner: 'Propietario', editor: 'Editor', viewer: 'Lector' };
-    const getWorkspaceAccessLabel = (entry) => {
-      if (!entry) return '';
-      const visibility = String(entry.visibility || '').toLowerCase() === 'open' ? 'Abierto' : 'Cerrado';
-      const role = workspaceRoleLabels[String(entry.user_role || '').toLowerCase()];
-      return role ? `${visibility} · ${role}` : visibility;
-    };
-    if (access) access.textContent = getWorkspaceAccessLabel(workspace);
+    if (access) {
+      access.replaceChildren();
+      if (workspace) {
+        const isOpen = String(workspace.visibility || '').toLowerCase() === 'open';
+        const visibilityLabel = isOpen ? 'Espacio abierto' : 'Espacio cerrado';
+        const accessIcon = document.createElement('span');
+        accessIcon.className = 'boards-workspace-access-icon';
+        accessIcon.title = visibilityLabel;
+        accessIcon.setAttribute('role', 'img');
+        accessIcon.setAttribute('aria-label', visibilityLabel);
+        accessIcon.innerHTML = `<i class="fa-solid ${isOpen ? 'fa-lock-open' : 'fa-lock'}" aria-hidden="true"></i>`;
+        access.append(accessIcon);
+        const role = String(workspace.user_role || '').toLowerCase();
+        const roleLabel = workspaceRoleLabels[role];
+        if (roleLabel) {
+          const roleIcons = { owner: 'fa-crown', editor: 'fa-pen-to-square', viewer: 'fa-eye' };
+          const roleIcon = document.createElement('span');
+          roleIcon.className = 'boards-workspace-access-icon';
+          roleIcon.title = roleLabel;
+          roleIcon.setAttribute('role', 'img');
+          roleIcon.setAttribute('aria-label', roleLabel);
+          roleIcon.innerHTML = `<i class="fa-solid ${roleIcons[role]}" aria-hidden="true"></i>`;
+          access.append(roleIcon);
+        }
+      }
+    }
     const manageMembers = document.getElementById('manageWorkspaceMembers');
     if (manageMembers) manageMembers.hidden = !(workspace && workspace.can_manage_members);
     options.replaceChildren();
@@ -757,12 +776,11 @@
       option.setAttribute('role', 'option');
       option.setAttribute('aria-selected', String(String(workspace.id) === String(selector.value)));
       option.dataset.workspaceId = String(workspace.id);
+      option.title = workspace.name || 'Espacio sin nombre';
       option.innerHTML = '<i class="fa-solid fa-layer-group" aria-hidden="true"></i>';
       const name = document.createElement('span');
       name.textContent = workspace.name || 'Espacio sin nombre';
-      const visibility = document.createElement('small');
-      visibility.textContent = getWorkspaceAccessLabel(workspace);
-      option.append(name, visibility);
+      option.append(name);
       options.append(option);
     });
     const button = document.getElementById('workspacePickerButton');
@@ -5385,13 +5403,10 @@
       if (!selectedWorkspace()?.can_manage_members) return;
       const workspace = selectedWorkspace();
       document.getElementById('workspaceMembersTitle').textContent = `Miembros de ${workspace.name || 'este espacio'}`;
-      openDialog(els.workspaceMembersDialog);
+      openDialog(els.workspaceMembersDialog, document.getElementById('workspaceMembersTitle'));
       await loadWorkspaceMembers();
     });
     els.workspaceMemberForm?.addEventListener('submit', addWorkspaceMember);
-    els.workspaceMemberSearch?.addEventListener('focus', () => {
-      if (!els.workspaceMemberSearch.value.trim()) searchWorkspaceUsers('');
-    });
     els.workspaceMemberSearch?.addEventListener('input', () => {
       els.workspaceMemberUserId.value = '';
       els.workspaceMemberSearch.classList.remove('has-selection');
@@ -5751,11 +5766,14 @@
     els.workspaceMembersStatus.textContent = 'Cargando miembros…';
     els.workspaceMembersList.replaceChildren();
     els.workspaceMembersOwner.replaceChildren();
+    els.workspaceMembersOwner.hidden = true;
+    els.workspaceMembersOwner.dataset.userId = '';
     try {
       const result = await request(`/workspace_members?workspace_id=${encodeURIComponent(workspace.id)}`);
       const data = result.data || {};
       state.workspaceMembers = Array.isArray(data.members) ? data.members : [];
       if (data.owner) {
+        els.workspaceMembersOwner.hidden = false;
         els.workspaceMembersOwner.dataset.userId = String(data.owner.user_id ?? data.owner.id ?? '');
         const ownerName = data.owner.name || data.owner.username || 'Propietario del espacio';
         els.workspaceMembersOwner.append(makeElement('strong', '', ownerName), makeElement('span', '', 'Propietario del espacio'));
