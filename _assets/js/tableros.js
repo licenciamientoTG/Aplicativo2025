@@ -92,6 +92,14 @@
     manageLabelsDialog: document.getElementById('manageLabelsDialog'),
     createItemDialog: document.getElementById('createItemDialog'),
     shareBoardDialog: document.getElementById('shareBoardDialog'),
+    workspaceMembersDialog: document.getElementById('workspaceMembersDialog'),
+    workspaceMemberForm: document.getElementById('workspaceMemberForm'),
+    workspaceMemberSearch: document.getElementById('workspaceMemberSearch'),
+    workspaceMemberUserId: document.getElementById('workspaceMemberUserId'),
+    workspaceMemberResults: document.getElementById('workspaceMemberResults'),
+    workspaceMembersList: document.getElementById('workspaceMembersList'),
+    workspaceMembersStatus: document.getElementById('workspaceMembersStatus'),
+    workspaceMembersOwner: document.getElementById('workspaceMembersOwner'),
     saveViewDialog: document.getElementById('saveViewDialog'),
     itemDetailsDialog: document.getElementById('itemDetailsDialog'),
     filePreviewDialog: document.getElementById('filePreviewDialog'),
@@ -204,6 +212,7 @@
     fileHistoryLoading: {},
     fileHistoryErrors: {},
     boardMembers: [],
+    workspaceMembers: [],
     recycleMode: '',
     recycleEntries: []
   };
@@ -728,6 +737,18 @@
     if (!selector || !label || !options) return;
     const selected = selector.selectedOptions[0];
     label.textContent = selected?.textContent || 'Sin espacios de trabajo';
+    const workspace = state.workspaces.find((entry) => String(entry.id) === String(selector.value));
+    const access = document.getElementById('workspaceAccessLabel');
+    const workspaceRoleLabels = { owner: 'Propietario', editor: 'Editor', viewer: 'Lector' };
+    const getWorkspaceAccessLabel = (entry) => {
+      if (!entry) return '';
+      const visibility = String(entry.visibility || '').toLowerCase() === 'open' ? 'Abierto' : 'Cerrado';
+      const role = workspaceRoleLabels[String(entry.user_role || '').toLowerCase()];
+      return role ? `${visibility} · ${role}` : visibility;
+    };
+    if (access) access.textContent = getWorkspaceAccessLabel(workspace);
+    const manageMembers = document.getElementById('manageWorkspaceMembers');
+    if (manageMembers) manageMembers.hidden = !(workspace && workspace.can_manage_members);
     options.replaceChildren();
     state.workspaces.forEach((workspace) => {
       const option = document.createElement('button');
@@ -739,7 +760,9 @@
       option.innerHTML = '<i class="fa-solid fa-layer-group" aria-hidden="true"></i>';
       const name = document.createElement('span');
       name.textContent = workspace.name || 'Espacio sin nombre';
-      option.append(name);
+      const visibility = document.createElement('small');
+      visibility.textContent = getWorkspaceAccessLabel(workspace);
+      option.append(name, visibility);
       options.append(option);
     });
     const button = document.getElementById('workspacePickerButton');
@@ -864,7 +887,17 @@
   function canManageStructure() {
     const role = String(state.board?.role || '').toLowerCase();
     if (!role) return canAdmin;
-    return ['owner', 'designer', 'admin', 'administrator'].includes(role);
+    return ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
+  }
+
+  function canShareBoard() {
+    const role = String(state.board?.role || '').toLowerCase();
+    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
+  }
+
+  function accessSourceLabel(source) {
+    const labels = { direct: 'Invitación directa', direct_invitation: 'Invitación directa', board_member: 'Invitación directa', board_invitation: 'Invitación directa', workspace: 'Espacio de trabajo', workspace_member: 'Espacio de trabajo', workspace_membership: 'Espacio de trabajo', workspace_open: 'Espacio abierto', open_workspace: 'Espacio abierto', organization: 'Organización', admin: 'Administración', owner: 'Propietario' };
+    return labels[String(source || '').toLowerCase()] || (source ? String(source) : 'Acceso');
   }
 
   function renderWorkspace() {
@@ -873,20 +906,24 @@
     els.boardDescription.textContent = board.description || '';
     els.boardDescription.hidden = !board.description;
     const role = String(board.role || '').toLowerCase();
-    const roleLabels = { owner: 'Propietario', designer: 'Diseñador', admin: 'Administrador', administrator: 'Administrador', editor: 'Puede editar', viewer: 'Solo lectura' };
+    const roleLabels = { owner: 'Propietario', designer: 'Diseñador', admin: 'Administrador', administrator: 'Administrador', editor: 'Editor', contributor: 'Colaborador', viewer: 'Lector' };
     els.boardRole.textContent = roleLabels[role] || (board.role ? String(board.role) : 'Tablero');
+    els.boardRole.title = `Acceso: ${accessSourceLabel(board.access_source)}`;
+    els.boardRole.setAttribute('aria-label', `${els.boardRole.textContent}. Origen: ${accessSourceLabel(board.access_source)}`);
+    const sourceBadge = document.getElementById('boardAccessSource');
+    if (sourceBadge) sourceBadge.textContent = accessSourceLabel(board.access_source);
     els.boardRole.hidden = !board.role;
     const edit = canEditBoard();
     const manage = canManageStructure();
     document.getElementById('openCreateItem').hidden = !edit;
     document.getElementById('openCreateGroup').hidden = !manage;
     document.getElementById('openCreateColumn').hidden = !manage;
-    document.getElementById('trashBoard').hidden = !manage;
-    document.getElementById('archiveBoard').hidden = !manage;
+    document.getElementById('trashBoard').hidden = !canShareBoard();
+    document.getElementById('archiveBoard').hidden = !canShareBoard();
     const shareButton = document.getElementById('openShareBoard');
-    if (shareButton) shareButton.hidden = !manage;
+    if (shareButton) shareButton.hidden = !canShareBoard();
     const sharedViewOption = document.getElementById('sharedViewOption');
-    if (sharedViewOption) sharedViewOption.classList.toggle('d-none', !manage);
+    if (sharedViewOption) sharedViewOption.classList.toggle('d-none', !canShareBoard());
     renderColumnControls();
     renderSavedViews();
     renderFilterPanel();
@@ -1860,7 +1897,8 @@
   }
 
   function canManageAutomation() {
-    return canManageStructure();
+    const role = String(state.board?.role || '').toLowerCase();
+    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
   }
 
   function displayDateTime(value) {
@@ -5306,7 +5344,7 @@
     document.querySelectorAll('[data-close-dialog]').forEach((button) => {
       button.addEventListener('click', () => closeDialog(button.closest('dialog')));
     });
-    [els.createBoardDialog, els.createWorkspaceDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog].forEach((dialog) => {
+    [els.createBoardDialog, els.createWorkspaceDialog, els.workspaceMembersDialog, els.createFolderDialog, els.createGroupDialog, els.createColumnDialog, els.manageLabelsDialog, els.createItemDialog, els.shareBoardDialog, els.saveViewDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) closeDialog(dialog);
       });
@@ -5343,6 +5381,39 @@
     });
     document.getElementById('emptyCreateBoard')?.addEventListener('click', () => openCreateBoard());
     document.getElementById('navCreateWorkspace')?.addEventListener('click', () => openDialog(els.createWorkspaceDialog));
+    document.getElementById('manageWorkspaceMembers')?.addEventListener('click', async () => {
+      if (!selectedWorkspace()?.can_manage_members) return;
+      const workspace = selectedWorkspace();
+      document.getElementById('workspaceMembersTitle').textContent = `Miembros de ${workspace.name || 'este espacio'}`;
+      openDialog(els.workspaceMembersDialog);
+      await loadWorkspaceMembers();
+    });
+    els.workspaceMemberForm?.addEventListener('submit', addWorkspaceMember);
+    els.workspaceMemberSearch?.addEventListener('focus', () => {
+      if (!els.workspaceMemberSearch.value.trim()) searchWorkspaceUsers('');
+    });
+    els.workspaceMemberSearch?.addEventListener('input', () => {
+      els.workspaceMemberUserId.value = '';
+      els.workspaceMemberSearch.classList.remove('has-selection');
+      const query = els.workspaceMemberSearch.value.trim();
+      window.clearTimeout(state.userSearchTimer);
+      if (!query) { els.workspaceMemberResults.hidden = true; els.workspaceMemberSearch.setAttribute('aria-expanded', 'false'); return; }
+      state.userSearchTimer = window.setTimeout(() => searchWorkspaceUsers(query), 220);
+    });
+    els.workspaceMemberSearch?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        shareUserSearchRequest += 1;
+        els.workspaceMemberResults.hidden = true;
+        els.workspaceMemberSearch.setAttribute('aria-expanded', 'false');
+        els.workspaceMemberSearch.removeAttribute('aria-busy');
+      }
+      if (event.key === 'ArrowDown' && !els.workspaceMemberResults.hidden) {
+        event.preventDefault(); els.workspaceMemberResults.querySelector('button')?.focus();
+      }
+    });
+    els.workspaceMemberResults?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { els.workspaceMemberResults.hidden = true; els.workspaceMemberSearch.focus(); }
+    });
     document.getElementById('navCreateFolder')?.addEventListener('click', () => openCreateFolder());
     document.getElementById('openCreateGroup').addEventListener('click', () => {
       if (canManageStructure()) openDialog(els.createGroupDialog);
@@ -5523,7 +5594,7 @@
     });
 
     dialogSubmit(els.shareBoardForm, async (formData) => {
-      if (!canManageStructure()) throw new Error('Se requiere permiso de administración para compartir este tablero.');
+      if (!canShareBoard()) throw new Error('Se requiere permiso de diseño para compartir este tablero.');
       const userId = getFormValue(formData, 'user_id');
       const role = getFormValue(formData, 'role');
       if (!userId) throw new Error('Selecciona una persona del equipo.');
@@ -5537,7 +5608,7 @@
       const name = getFormValue(formData, 'name');
       const viewType = normalizeViewType(getFormValue(formData, 'view_type'));
       const isShared = Boolean(formData.get('is_shared'));
-      if (isShared && !canManageStructure()) throw new Error('Solo el propietario o una persona diseñadora puede compartir vistas.');
+      if (isShared && !canShareBoard()) throw new Error('Solo el propietario o una persona diseñadora puede compartir vistas.');
       const result = await post('/create_view', {
         board_id: state.board.id,
         name,
@@ -5625,9 +5696,14 @@
         details.append(makeElement('strong', '', displayName));
         if (member.username && member.username !== displayName) details.append(makeElement('span', '', member.username));
         else if (member.email) details.append(makeElement('span', '', member.email));
-        const roleLabels = { owner: 'Propietario', designer: 'Diseñador', editor: 'Puede editar', viewer: 'Solo lectura' };
+        const roleLabels = { owner: 'Propietario', designer: 'Diseñador', editor: 'Editor', contributor: 'Colaborador', viewer: 'Lector' };
         row.append(details, makeElement('span', 'boards-member-role', roleLabels[String(member.role || '').toLowerCase()] || String(member.role || 'Acceso')));
-        if (!member.isOwner && canManageStructure()) {
+        if (member.access_source) row.append(makeElement('span', 'boards-member-source', accessSourceLabel(member.access_source)));
+        if (member.residual_access) {
+          const residual = member.residual_access;
+          row.append(makeElement('span', 'boards-member-source', `Si se retira la invitación: ${residual.role || 'lector'} por ${accessSourceLabel(residual.source)}`));
+        }
+        if (!member.isOwner && canShareBoard()) {
           const revoke = makeElement('button', 'boards-text-button is-danger', 'Retirar acceso');
           revoke.type = 'button';
           revoke.dataset.revokeMember = id;
@@ -5644,16 +5720,170 @@
   }
 
   async function revokeBoardMember(userId) {
-    if (!canManageStructure()) return;
+    if (!canShareBoard()) return;
     const member = state.boardMembers.find((entry) => String(entry.user_id) === String(userId));
     const directoryName = member?.name || member?.username || 'usuario de TG';
-    if (!window.confirm(`¿Retirar el acceso de ${directoryName} a este tablero?`)) return;
+    const residual = member?.residual_access;
+    const remaining = residual ? ` Seguirá teniendo acceso como ${residual.role || 'miembro'} por ${accessSourceLabel(residual.source)}.` : ' No se reporta otro acceso heredado.';
+    const residualNotice = document.getElementById('boardResidualAccessNotice');
+    if (residualNotice) {
+      residualNotice.textContent = residual
+        ? `${directoryName} conservará acceso como ${residual.role || 'miembro'} por ${accessSourceLabel(residual.source)} después de retirar la invitación directa.`
+        : `No se reporta otro acceso para ${directoryName} después de retirar la invitación directa.`;
+      residualNotice.hidden = false;
+    }
+    if (!window.confirm(`¿Retirar la invitación directa de ${directoryName}?${remaining}`)) return;
     try {
       await post('/revoke_member', { board_id: state.board.id, user_id: userId });
       await loadBoardMembers();
       await loadBoards();
-      setNotice('Acceso retirado.', 'success');
+      setNotice(residual ? `Invitación directa retirada. ${directoryName} conserva acceso por ${accessSourceLabel(residual.source)}.` : `Invitación directa retirada de ${directoryName}.`, 'success');
     } catch (error) { setNotice(errorMessage(error, 'No se pudo retirar el acceso.'), 'error'); }
+  }
+
+  function selectedWorkspace() {
+    return state.workspaces.find((workspace) => String(workspace.id) === String(state.selectedWorkspaceId));
+  }
+
+  async function loadWorkspaceMembers() {
+    const workspace = selectedWorkspace();
+    if (!workspace?.can_manage_members) return;
+    els.workspaceMembersStatus.textContent = 'Cargando miembros…';
+    els.workspaceMembersList.replaceChildren();
+    els.workspaceMembersOwner.replaceChildren();
+    try {
+      const result = await request(`/workspace_members?workspace_id=${encodeURIComponent(workspace.id)}`);
+      const data = result.data || {};
+      state.workspaceMembers = Array.isArray(data.members) ? data.members : [];
+      if (data.owner) {
+        els.workspaceMembersOwner.dataset.userId = String(data.owner.user_id ?? data.owner.id ?? '');
+        const ownerName = data.owner.name || data.owner.username || 'Propietario del espacio';
+        els.workspaceMembersOwner.append(makeElement('strong', '', ownerName), makeElement('span', '', 'Propietario del espacio'));
+      } else els.workspaceMembersOwner.dataset.userId = '';
+      state.workspaceMembers.forEach((member) => {
+        const row = makeElement('div', 'boards-member-row boards-workspace-member-row');
+        row.setAttribute('role', 'listitem');
+        const details = makeElement('div', 'boards-member-person');
+        const displayName = member.name || member.username || 'Usuario de TG';
+        details.append(makeElement('strong', '', displayName));
+        if (member.username && member.username !== displayName) details.append(makeElement('span', '', member.username));
+        const role = document.createElement('select');
+        role.className = 'form-select boards-workspace-role-select';
+        role.setAttribute('aria-label', `Función de ${displayName}`);
+        [['viewer', 'Lector'], ['editor', 'Editor']].forEach(([value, label]) => {
+          const option = makeElement('option', '', label); option.value = value; role.append(option);
+        });
+        role.value = member.role === 'editor' ? 'editor' : 'viewer';
+        role.addEventListener('change', async () => {
+          role.disabled = true;
+          try {
+            await post('/update_workspace_member', { workspace_id: workspace.id, user_id: member.user_id, role: role.value });
+            setNotice(`Función de ${displayName} actualizada.`, 'success');
+            await loadWorkspaceMembers();
+          } catch (error) {
+            setNotice(errorMessage(error, 'No se pudo cambiar la función.'), 'error');
+            role.value = member.role === 'editor' ? 'editor' : 'viewer';
+            role.disabled = false;
+          }
+        });
+        const revoke = makeElement('button', 'boards-text-button is-danger', 'Retirar');
+        revoke.type = 'button';
+        revoke.setAttribute('aria-label', `Retirar a ${displayName} del espacio`);
+        revoke.addEventListener('click', async () => {
+          if (!window.confirm(`¿Retirar a ${displayName} de este espacio? Los tableros compartidos directamente seguirán disponibles.`)) return;
+          revoke.disabled = true;
+          try {
+            await post('/revoke_workspace_member', { workspace_id: workspace.id, user_id: member.user_id });
+            setNotice(`${displayName} fue retirado del espacio.`, 'success');
+            await loadWorkspaceMembers();
+            await refreshStructurePreservingBoard();
+          } catch (error) { revoke.disabled = false; setNotice(errorMessage(error, 'No se pudo retirar a la persona.'), 'error'); }
+        });
+        row.append(details, role, revoke);
+        els.workspaceMembersList.append(row);
+      });
+      els.workspaceMembersStatus.textContent = state.workspaceMembers.length ? `${state.workspaceMembers.length} miembros` : 'Este espacio no tiene miembros adicionales.';
+    } catch (error) {
+      els.workspaceMembersStatus.textContent = errorMessage(error, 'No se pudieron cargar los miembros del espacio.');
+      els.workspaceMembersList.append(makeElement('p', 'boards-detail-empty', 'La lista de miembros no está disponible.'));
+    }
+  }
+
+  async function refreshStructurePreservingBoard() {
+    const result = await request('/structure');
+    const structure = result.data || {};
+    state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
+    state.boards = Array.isArray(structure.boards) ? structure.boards : [];
+    state.folders = Array.isArray(structure.folders) ? structure.folders : [];
+    renderBoardNav();
+    renderBoardOptions();
+  }
+
+  async function searchWorkspaceUsers(query) {
+    const dialog = els.workspaceMembersDialog;
+    const requestId = ++shareUserSearchRequest;
+    const params = new URLSearchParams({ q: query, workspace_id: String(state.selectedWorkspaceId || ''), directory: '1' });
+    els.workspaceMemberResults.hidden = false;
+    els.workspaceMemberResults.replaceChildren(makeElement('div', 'boards-share-user-empty', 'Buscando personas…'));
+    els.workspaceMemberSearch.setAttribute('aria-busy', 'true');
+    try {
+      const result = await request(`/users?${params.toString()}`);
+      if (requestId !== shareUserSearchRequest || !dialog.open) return;
+      const currentIds = new Set(state.workspaceMembers.map((member) => String(member.user_id)));
+      const workspaceOwner = els.workspaceMembersOwner.dataset.userId || '';
+      if (workspaceOwner) currentIds.add(String(workspaceOwner));
+      const users = (Array.isArray(result.data) ? result.data : []).filter((user) => user && user.id != null && !currentIds.has(String(user.id)));
+      els.workspaceMemberResults.replaceChildren();
+      if (!users.length) els.workspaceMemberResults.append(makeElement('div', 'boards-share-user-empty', query ? 'No hay usuarios activos de TG que coincidan.' : 'Escribe un nombre para buscar usuarios activos de TG.'));
+      users.forEach((user) => {
+        const option = makeElement('button', 'boards-share-user-option');
+        option.type = 'button'; option.setAttribute('role', 'option');
+        option.append(makeElement('span', 'boards-share-user-avatar', String(user.name || user.username || '?').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()));
+        const copy = makeElement('span', 'boards-share-user-copy');
+        copy.append(makeElement('strong', '', user.name || user.username || 'Persona'));
+        if (user.username) copy.append(makeElement('small', '', user.username));
+        option.append(copy);
+        option.addEventListener('click', () => {
+          shareUserSearchRequest += 1;
+          els.workspaceMemberUserId.value = String(user.id);
+          els.workspaceMemberSearch.value = user.name || user.username || '';
+          els.workspaceMemberSearch.setAttribute('aria-expanded', 'false');
+          els.workspaceMemberResults.hidden = true;
+          els.workspaceMemberSearch.classList.add('has-selection');
+        });
+        els.workspaceMemberResults.append(option);
+      });
+      els.workspaceMemberSearch.setAttribute('aria-expanded', 'true');
+    } catch (error) {
+      if (requestId === shareUserSearchRequest) {
+        els.workspaceMemberResults.replaceChildren(makeElement('div', 'boards-share-user-empty', errorMessage(error, 'No se pudo buscar personas.')));
+        els.workspaceMemberSearch.setAttribute('aria-expanded', 'true');
+      }
+    } finally {
+      if (requestId === shareUserSearchRequest) els.workspaceMemberSearch.removeAttribute('aria-busy');
+    }
+  }
+
+  async function addWorkspaceMember(event) {
+    event.preventDefault();
+    const workspace = selectedWorkspace();
+    const userId = els.workspaceMemberUserId.value;
+    const role = document.getElementById('workspaceMemberRole').value;
+    if (!workspace?.can_manage_members || !userId) return;
+    const submit = els.workspaceMemberForm.querySelector('[type="submit"]');
+    submit.disabled = true;
+    els.workspaceMembersStatus.textContent = 'Agregando miembro…';
+    try {
+      await post('/share_workspace', { workspace_id: workspace.id, user_id: userId, role });
+      els.workspaceMemberForm.reset();
+      els.workspaceMemberUserId.value = '';
+      els.workspaceMemberSearch.classList.remove('has-selection');
+      setNotice('Miembro agregado al espacio.', 'success');
+      await loadWorkspaceMembers();
+      await refreshStructurePreservingBoard();
+    } catch (error) {
+      els.workspaceMembersStatus.textContent = errorMessage(error, 'No se pudo agregar al miembro.');
+    } finally { submit.disabled = false; }
   }
 
   function attachEvents() {

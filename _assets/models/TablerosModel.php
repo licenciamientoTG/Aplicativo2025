@@ -41,9 +41,16 @@ class TablerosModel {
                         CASE WHEN b.created_by = ? THEN 'owner'
                             WHEN ? = 1 THEN 'designer'
                             WHEN m.role IS NOT NULL THEN m.role
-                            WHEN wm.role = 'owner' AND b.visibility IN ('workspace', 'public') THEN 'owner'
-                            WHEN wm.role IN ('editor', 'viewer') AND b.visibility IN ('workspace', 'public') THEN wm.role
-                            WHEN b.visibility = 'public' OR (b.visibility = 'workspace' AND w.visibility IN ('workspace', 'public')) THEN 'viewer' END AS user_role
+                            WHEN wm.role IN ('owner','editor') AND b.visibility = 'workspace' THEN 'editor'
+                            WHEN wm.role = 'viewer' AND b.visibility = 'workspace' THEN 'viewer'
+                            WHEN b.visibility = 'workspace' AND w.visibility = 'open' THEN 'viewer'
+                            WHEN b.visibility = 'organization' THEN 'viewer' END AS user_role,
+                        CASE WHEN b.created_by = ? THEN 'owner'
+                            WHEN m.role IS NOT NULL THEN 'board_invitation'
+                            WHEN wm.role IS NOT NULL AND b.visibility = 'workspace' THEN 'workspace_membership'
+                            WHEN b.visibility = 'workspace' AND w.visibility = 'open' THEN 'open_workspace'
+                            WHEN b.visibility = 'organization' THEN 'organization'
+                            WHEN ? = 1 THEN 'admin' END AS access_source
                 FROM tb_board b
                 INNER JOIN tb_workspace w ON w.id = b.workspace_id AND w.deleted_at IS NULL
                 LEFT JOIN tb_folder f ON f.id = b.folder_id AND f.workspace_id = b.workspace_id AND f.deleted_at IS NULL
@@ -51,10 +58,10 @@ class TablerosModel {
                 LEFT JOIN tb_workspace_member wm ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.deleted_at IS NULL
                 WHERE b.deleted_at IS NULL
                   AND (b.created_by = ? OR m.user_id = ? OR ? = 1
-                       OR b.visibility = 'public'
-                       OR (b.visibility = 'workspace' AND (wm.user_id = ? OR w.visibility IN ('workspace', 'public'))))
+                       OR b.visibility = 'organization'
+                       OR (b.visibility = 'workspace' AND (wm.user_id = ? OR w.visibility = 'open')))
                 ORDER BY w.name, f.name, b.name, b.id";
-        return $this->all($sql, [$userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $userId, $isAdmin ? 1 : 0, $userId]);
+        return $this->all($sql, [$userId, $isAdmin ? 1 : 0, $userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $userId, $isAdmin ? 1 : 0, $userId]);
     }
 
     /** Flat hierarchy payload; the client builds the nested folder tree. */
@@ -63,13 +70,16 @@ class TablerosModel {
             "SELECT w.id, w.name, w.description, w.visibility, w.created_by,
                     CASE WHEN w.created_by = ? THEN 'owner' WHEN ? = 1 THEN 'owner'
                          WHEN wm.role IS NOT NULL THEN wm.role
-                         WHEN w.visibility IN ('workspace', 'public') THEN 'viewer' END AS user_role
+                         WHEN w.visibility = 'open' THEN 'viewer' END AS user_role,
+                    CASE WHEN w.created_by = ? THEN 'owner' WHEN wm.role IS NOT NULL THEN 'workspace_membership'
+                         WHEN w.visibility = 'open' THEN 'open_workspace' WHEN ? = 1 THEN 'admin' END AS access_source,
+                    CASE WHEN w.created_by = ? OR ? = 1 OR wm.role = 'owner' THEN 1 ELSE 0 END AS can_manage_members
              FROM tb_workspace w
              LEFT JOIN tb_workspace_member wm ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.deleted_at IS NULL
              WHERE w.workspace_type = 'workspace' AND w.deleted_at IS NULL
-               AND (w.created_by = ? OR wm.user_id = ? OR w.visibility IN ('workspace', 'public') OR ? = 1)
+               AND (w.created_by = ? OR wm.user_id = ? OR w.visibility = 'open' OR ? = 1)
              ORDER BY w.name, w.id",
-            [$userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $isAdmin ? 1 : 0]
+            [$userId, $isAdmin ? 1 : 0, $userId, $isAdmin ? 1 : 0, $userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $isAdmin ? 1 : 0]
         );
         $boards = $this->getBoards($userId, $isAdmin);
         $workspaceIds = array_fill_keys(array_map(static fn($workspace) => (string)$workspace['id'], $workspaces), true);
@@ -79,7 +89,7 @@ class TablerosModel {
                 $workspaces[] = [
                     'id' => (int)$board['workspace_id'], 'name' => (string)$board['workspace_name'],
                     'description' => '', 'visibility' => (string)$board['workspace_visibility'],
-                    'created_by' => null, 'user_role' => $board['user_role'], 'shared_only' => true
+                    'created_by' => null, 'user_role' => $board['user_role'], 'access_source' => $board['access_source'], 'can_manage_members' => false, 'shared_only' => true
                 ];
                 $workspaceIds[$workspaceId] = true;
             }
@@ -112,7 +122,7 @@ class TablerosModel {
         foreach ($folders as $folder) {
             if ((int)($folder['created_by'] ?? 0) === $userId
                 || ($workspaceRoles[(string)$folder['workspace_id']] ?? '') === 'owner'
-                || ($folder['created_by'] === null && in_array($workspaceVisibility[(string)$folder['workspace_id']] ?? '', ['workspace', 'public'], true))) {
+                || ($folder['created_by'] === null && ($workspaceVisibility[(string)$folder['workspace_id']] ?? '') === 'open')) {
                 $markFolderPath($folder);
             }
         }
@@ -175,7 +185,10 @@ class TablerosModel {
             } elseif ($type === 'workspace') $location = 'Espacios de trabajo';
             if ($boardId && !$this->access->hasGlobalPermission('admin')) {
                 $role = $this->access->boardRole($boardId);
-                if ($role === null || !in_array($role, ['owner', 'designer', 'editor'], true)) throw new TablerosApiException('forbidden', 'No tienes permiso para eliminar este elemento.', 403);
+                $allowed = in_array($type, ['item', 'file'], true)
+                    ? ['owner', 'designer', 'editor', 'contributor']
+                    : ['owner', 'designer', 'editor'];
+                if ($role === null || !in_array($role, $allowed, true)) throw new TablerosApiException('forbidden', 'No tienes permiso para eliminar este elemento.', 403);
             } elseif (!$boardId && !$this->access->hasGlobalPermission('admin')) {
                 $workspaceRole = $this->access->workspaceRole((int)$workspaceId);
                 if ($workspaceRole !== 'owner' && (int)($row['created_by'] ?? 0) !== $userId) throw new TablerosApiException('forbidden', 'Solo el propietario del espacio o un administrador puede eliminarlo.', 403);
@@ -186,6 +199,7 @@ class TablerosModel {
                 [$kind, $type, $id, (string)$row[$nameCol], $location, $workspaceId, $boardId, $userId, $kind]
             );
             $this->markEntityBundle($entryId, $type, $id, $boardId, $workspaceId);
+            $this->auditAccess($userId, 'admin.entity_trashed', $type, $id, ['kind' => $kind]);
             return ['id' => $entryId, 'entity_type' => $type, 'entity_id' => $id, 'entity_name' => (string)$row[$nameCol], 'entry_kind' => $kind];
         });
     }
@@ -308,6 +322,7 @@ class TablerosModel {
                 $this->execute("UPDATE $table SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL", [(int)$entity['entity_id']]);
             }
             $this->execute('UPDATE tb_trash_entry SET restored_at = SYSUTCDATETIME() WHERE id = ?', [$entryId]);
+            $this->auditAccess($userId, 'admin.entity_restored', (string)$entry['entity_type'], (int)$entry['entity_id'], ['kind' => $kind]);
             return ['entry_id' => $entryId, 'restored' => true];
         });
     }
@@ -315,6 +330,7 @@ class TablerosModel {
     public function requestPermanentTrashDelete(int $userId, bool $isAdmin, int $entryId): array {
         $entry = $this->trashEntryForActor($entryId, $userId, $isAdmin, 'trash');
         $this->execute('UPDATE tb_trash_entry SET purge_requested_at = COALESCE(purge_requested_at, SYSUTCDATETIME()) WHERE id = ?', [$entryId]);
+        $this->auditAccess($userId, 'admin.purge_requested', (string)$entry['entity_type'], (int)$entry['entity_id']);
         return ['entry_id' => $entryId, 'purge_queued' => true];
     }
 
@@ -458,10 +474,17 @@ class TablerosModel {
                 LEFT JOIN tb_workspace w ON w.id = b.workspace_id WHERE b.id = ?', [$userId, $userId, (int)$entry['board_id']]);
             if (!$row) return false;
             if ((int)($row['created_by'] ?? 0) === $userId) return true;
-            if ($entry['entity_type'] === 'board') return strtolower((string)($row['workspace_role'] ?? '')) === 'owner';
-            if (in_array(strtolower((string)($row['board_role'] ?? '')), ['owner','designer','editor'], true)) return true;
+            if ($entry['entity_type'] === 'board') {
+                // Match the current delete rule: board owners/designers/editors
+                // may restore boards they deleted, and workspace owners/editors
+                // inherit that ability only when the board inherits workspace access.
+                if (in_array(strtolower((string)($row['board_role'] ?? '')), ['owner', 'designer', 'editor'], true)) return true;
+                return in_array(strtolower((string)($row['workspace_role'] ?? '')), ['owner', 'editor'], true)
+                    && strtolower((string)$row['visibility']) === 'workspace';
+            }
+            if (in_array(strtolower((string)($row['board_role'] ?? '')), ['owner','designer','editor','contributor'], true)) return true;
             return in_array(strtolower((string)($row['workspace_role'] ?? '')), ['owner','editor'], true)
-                && in_array(strtolower((string)$row['visibility']), ['workspace','public'], true);
+                && strtolower((string)$row['visibility']) === 'workspace';
         }
         $workspaceId = (int)($entry['workspace_id'] ?? 0);
         if ($workspaceId <= 0) return false;
@@ -478,13 +501,14 @@ class TablerosModel {
     }
 
     public function createWorkspace(int $userId, array $input): array {
+        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear espacios de trabajo.', 403);
         if (!$this->userIsActive($userId)) {
             throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         }
         $name = $this->requiredString($input, 'name', 200);
         $description = $this->optionalString($input, 'description', 1000);
-        $visibility = strtolower(trim((string)($input['visibility'] ?? 'private')));
-        if (!in_array($visibility, ['private', 'workspace', 'public'], true)) {
+        $visibility = strtolower(trim((string)($input['visibility'] ?? 'closed')));
+        if (!in_array($visibility, ['open', 'closed'], true)) {
             throw new TablerosApiException('validation', 'La visibilidad del espacio no es válida.', 422);
         }
         return $this->transaction(function () use ($userId, $name, $description, $visibility): array {
@@ -504,6 +528,7 @@ class TablerosModel {
     }
 
     public function createFolder(int $userId, array $input): array {
+        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear carpetas.', 403);
         if (!$this->userIsActive($userId)) {
             throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         }
@@ -513,6 +538,7 @@ class TablerosModel {
             $workspaceId = $defaultWorkspace ? (int)$defaultWorkspace['id'] : 0;
         }
         if ($workspaceId <= 0) throw new TablerosApiException('validation', 'Selecciona un espacio de trabajo.', 422);
+        if ($this->access->workspaceRole($workspaceId) === null) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
         $parentFolderId = $this->optionalPositiveInt($input['parent_folder_id'] ?? null, 'parent_folder_id');
         $name = $this->requiredString($input, 'name', 200);
         $color = $this->optionalString($input, 'color', 32);
@@ -557,10 +583,20 @@ class TablerosModel {
         return $this->one('SELECT * FROM tb_board WHERE id = ? AND deleted_at IS NULL', [$boardId]);
     }
 
+    public function getWorkspace(int $workspaceId): ?array {
+        return $this->one("SELECT * FROM tb_workspace WHERE id=? AND workspace_type='workspace' AND deleted_at IS NULL", [$workspaceId]);
+    }
+
+    public function auditAdminBoardOpen(int $actorId, int $boardId): void {
+        $this->auditAccess($actorId, 'board.admin_opened', 'board', $boardId, null, true);
+    }
+
     public function getBoardMembers(int $boardId): array {
         $board = $this->one(
-            'SELECT b.created_by, u.Nombre AS name, u.Usuario AS username, u.Correo AS email
+            'SELECT b.created_by, b.workspace_id, b.visibility, w.visibility AS workspace_visibility,
+                    u.Nombre AS name, u.Usuario AS username, u.Correo AS email
              FROM tb_board b
+             INNER JOIN tb_workspace w ON w.id = b.workspace_id AND w.deleted_at IS NULL
              LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = b.created_by
              WHERE b.id = ? AND b.deleted_at IS NULL',
             [$boardId]
@@ -573,10 +609,21 @@ class TablerosModel {
                     u.Nombre AS name, u.Usuario AS username, u.Correo AS email
              FROM tb_board_member m
              LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = m.user_id
+             INNER JOIN [TG].[dbo].[Usuario] active_user ON active_user.Id = m.user_id AND active_user.Estatus = 1
              WHERE m.board_id = ? AND m.deleted_at IS NULL AND m.user_id <> ?
+               AND EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] p INNER JOIN [TG].[dbo].[tg_permissions_users] pu ON pu.permission_id=p.id
+                           WHERE pu.user_id=m.user_id AND p.department=\'General\' AND p.status=1
+                             AND ((p.action=\'read\' AND p.description=\'Tableros - Acceso\') OR (p.action=\'create\' AND p.description=\'Tableros - Crear\') OR (p.action=\'update\' AND p.description=\'Tableros - Administrar\')))
              ORDER BY m.created_at, m.id',
             [$boardId, (int)$board['created_by']]
         );
+        foreach ($members as &$member) {
+            $member['residual_access'] = null;
+            // Direct invitations are represented separately. Workspace/open/organization grants remain after revocation.
+            $residual = $this->residualBoardAccess($boardId, (int)$member['user_id']);
+            if ($residual !== null) $member['residual_access'] = $residual;
+        }
+        unset($member);
         return [
             'board_id' => $boardId,
             'owner' => [
@@ -588,7 +635,111 @@ class TablerosModel {
         ];
     }
 
+    public function getWorkspaceMembers(int $workspaceId): array {
+        $this->requireWorkspaceManager($workspaceId);
+        $workspace = $this->one('SELECT w.id, w.created_by, u.Nombre AS name, u.Usuario AS username FROM tb_workspace w LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = w.created_by WHERE w.id = ? AND w.workspace_type = ? AND w.deleted_at IS NULL', [$workspaceId, 'workspace']);
+        if (!$workspace) throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
+        $members = $this->all(
+            "SELECT m.user_id, COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), u.Usuario) AS name,
+                    u.Usuario AS username, m.role
+             FROM tb_workspace_member m
+             INNER JOIN [TG].[dbo].[Usuario] u ON u.Id = m.user_id AND u.Estatus = 1
+             WHERE m.workspace_id = ? AND m.deleted_at IS NULL AND m.user_id <> ?
+               AND EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] p INNER JOIN [TG].[dbo].[tg_permissions_users] pu ON pu.permission_id = p.id
+                           WHERE pu.user_id = m.user_id AND p.department = \'General\' AND p.status = 1
+                             AND ((p.action=\'read\' AND p.description=\'Tableros - Acceso\') OR (p.action=\'create\' AND p.description=\'Tableros - Crear\') OR (p.action=\'update\' AND p.description=\'Tableros - Administrar\')))
+             ORDER BY CASE WHEN m.role='owner' THEN 0 ELSE 1 END, name, m.user_id",
+            [$workspaceId, (int)$workspace['created_by']]
+        );
+        return ['workspace_id' => $workspaceId, 'owner' => ['user_id' => (int)$workspace['created_by'], 'name' => trim((string)($workspace['name'] ?? '')) ?: (string)($workspace['username'] ?? ''), 'username' => (string)($workspace['username'] ?? ''), 'role' => 'owner'], 'members' => $members];
+    }
+
+    public function shareWorkspace(int $workspaceId, int $actorId, array $input): array {
+        $this->requireWorkspaceManager($workspaceId);
+        $targetId = $this->positiveInt($input['user_id'] ?? null, 'user_id');
+        $role = strtolower(trim((string)($input['role'] ?? '')));
+        if (!in_array($role, ['owner','editor','viewer'], true)) throw new TablerosApiException('validation', 'El rol del espacio no es válido.', 422);
+        $this->assertWorkspaceTarget($targetId);
+        return $this->transaction(function () use ($workspaceId, $actorId, $targetId, $role): array {
+            $workspace = $this->one('SELECT created_by FROM tb_workspace WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND workspace_type = ? AND deleted_at IS NULL', [$workspaceId, 'workspace']);
+            if (!$workspace) throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
+            if ((int)$workspace['created_by'] === $targetId) throw new TablerosApiException('validation', 'El creador conserva el rol propietario.', 422);
+            $old = $this->one('SELECT TOP (1) id FROM tb_workspace_member WITH (UPDLOCK, HOLDLOCK) WHERE workspace_id=? AND user_id=? ORDER BY id DESC', [$workspaceId,$targetId]);
+            if ($old) $this->execute('UPDATE tb_workspace_member SET role=?, invited_by=?, updated_at=GETDATE(), deleted_at=NULL WHERE id=?', [$role,$actorId,$old['id']]);
+            else $this->execute('INSERT INTO tb_workspace_member (workspace_id,user_id,role,invited_by,created_at,updated_at) VALUES (?,?,?,?,GETDATE(),GETDATE())', [$workspaceId,$targetId,$role,$actorId]);
+            $this->auditAccess($actorId, 'workspace.member_added', 'workspace', $workspaceId, ['user_id'=>$targetId,'role'=>$role]);
+            return ['workspace_id'=>$workspaceId,'user_id'=>$targetId,'role'=>$role];
+        });
+    }
+
+    public function updateWorkspaceMember(int $workspaceId, int $actorId, array $input): array {
+        $this->requireWorkspaceManager($workspaceId);
+        $targetId = $this->positiveInt($input['user_id'] ?? null, 'user_id');
+        $this->assertWorkspaceTarget($targetId);
+        $role = strtolower(trim((string)($input['role'] ?? '')));
+        if (!in_array($role, ['owner','editor','viewer'], true)) throw new TablerosApiException('validation', 'El rol del espacio no es válido.', 422);
+        return $this->transaction(function () use ($workspaceId,$actorId,$targetId,$role): array {
+            $workspace = $this->one('SELECT created_by FROM tb_workspace WITH (UPDLOCK, HOLDLOCK) WHERE id=? AND workspace_type=? AND deleted_at IS NULL', [$workspaceId,'workspace']);
+            if (!$workspace) throw new TablerosApiException('not_found','No se encontró el espacio de trabajo.',404);
+            if ((int)$workspace['created_by'] === $targetId && $role !== 'owner') throw new TablerosApiException('validation','El creador debe conservar el rol propietario.',422);
+            $member = $this->one('SELECT id,role FROM tb_workspace_member WITH (UPDLOCK,HOLDLOCK) WHERE workspace_id=? AND user_id=? AND deleted_at IS NULL',[$workspaceId,$targetId]);
+            if (!$member) throw new TablerosApiException('not_found','No se encontró el miembro activo.',404);
+            if ($member['role']==='owner' && $role!=='owner' && (int)($this->one("SELECT COUNT(*) AS n FROM tb_workspace_member WHERE workspace_id=? AND role='owner' AND deleted_at IS NULL",[$workspaceId])['n'] ?? 0) <= 1) throw new TablerosApiException('validation','No se puede quitar al último propietario.',422);
+            $this->execute('UPDATE tb_workspace_member SET role=?,updated_at=GETDATE() WHERE id=?',[$role,$member['id']]);
+            $this->auditAccess($actorId,'workspace.member_role_changed','workspace',$workspaceId,['user_id'=>$targetId,'role'=>$role]);
+            return ['workspace_id'=>$workspaceId,'user_id'=>$targetId,'role'=>$role];
+        });
+    }
+
+    public function revokeWorkspaceMember(int $workspaceId, int $actorId, array $input): array {
+        $this->requireWorkspaceManager($workspaceId);
+        $targetId = $this->positiveInt($input['user_id'] ?? null, 'user_id');
+        return $this->transaction(function () use ($workspaceId,$actorId,$targetId): array {
+            $workspace = $this->one('SELECT created_by FROM tb_workspace WITH (UPDLOCK,HOLDLOCK) WHERE id=? AND workspace_type=? AND deleted_at IS NULL',[$workspaceId,'workspace']);
+            if (!$workspace) throw new TablerosApiException('not_found','No se encontró el espacio de trabajo.',404);
+            if ((int)$workspace['created_by'] === $targetId) throw new TablerosApiException('validation','No se puede revocar al creador del espacio.',422);
+            $member = $this->one('SELECT id,role FROM tb_workspace_member WITH (UPDLOCK,HOLDLOCK) WHERE workspace_id=? AND user_id=? AND deleted_at IS NULL',[$workspaceId,$targetId]);
+            if (!$member) throw new TablerosApiException('not_found','No se encontró el miembro activo.',404);
+            if ($member['role']==='owner' && (int)($this->one("SELECT COUNT(*) AS n FROM tb_workspace_member WHERE workspace_id=? AND role='owner' AND deleted_at IS NULL",[$workspaceId])['n'] ?? 0) <= 1) throw new TablerosApiException('validation','No se puede revocar al último propietario.',422);
+            $this->execute('UPDATE tb_workspace_member SET deleted_at=GETDATE(),updated_at=GETDATE() WHERE id=?',[$member['id']]);
+            $this->auditAccess($actorId,'workspace.member_revoked','workspace',$workspaceId,['user_id'=>$targetId]);
+            return ['workspace_id'=>$workspaceId,'user_id'=>$targetId,'revoked'=>true];
+        });
+    }
+
+    private function assertWorkspaceTarget(int $userId): void {
+        if (!$this->userIsActive($userId) || !$this->access->userHasModuleAccess($userId)) throw new TablerosApiException('validation','El usuario debe tener una cuenta activa y acceso al módulo Tableros.',422);
+    }
+
+    private function requireWorkspaceManager(int $workspaceId): void {
+        if (!$this->getWorkspace($workspaceId)) throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
+        if ($this->access->workspaceRole($workspaceId) !== 'owner') throw new TablerosApiException('forbidden', 'Solo el propietario del espacio o un administrador puede administrar sus miembros.', 403);
+    }
+
+    private function requireBoardAllowed(int $boardId, array $roles): void {
+        $role = $this->access->boardRole($boardId);
+        if ($role === null || !in_array($role, $roles, true)) throw new TablerosApiException('forbidden', 'No tienes el rol necesario en este tablero.', 403);
+    }
+
+    private function residualBoardAccess(int $boardId, int $userId): ?array {
+        $row = $this->one('SELECT b.visibility,w.visibility AS workspace_visibility,wm.role AS workspace_role FROM tb_board b INNER JOIN tb_workspace w ON w.id=b.workspace_id LEFT JOIN tb_workspace_member wm ON wm.workspace_id=w.id AND wm.user_id=? AND wm.deleted_at IS NULL WHERE b.id=? AND b.deleted_at IS NULL',[$userId,$boardId]);
+        if (!$row) return null;
+        if ($row['visibility']==='workspace' && in_array($row['workspace_role'] ?? '',['owner','editor','viewer'],true)) return ['role'=>in_array($row['workspace_role'],['owner','editor'],true)?'editor':'viewer','source'=>'workspace_membership'];
+        if ($row['visibility']==='workspace' && $row['workspace_visibility']==='open') return ['role'=>'viewer','source'=>'open_workspace'];
+        if ($row['visibility']==='organization') return ['role'=>'viewer','source'=>'organization'];
+        return null;
+    }
+
+    private function auditAccess(int $actorId, string $action, string $resourceType, ?int $resourceId, ?array $metadata = null, bool $force = false): void {
+        if (!$force && !$this->access->hasGlobalPermission('admin')) return;
+        $identity = session_id() !== '' ? session_id() : 'user-' . $actorId;
+        $json = $metadata === null ? null : json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->execute('INSERT INTO dbo.tb_access_audit (identity_key,actor_user_id,[action],resource_type,resource_id,metadata_json) VALUES (?,?,?,?,?,?)',
+            [substr($identity, 0, 200), $actorId, $action, $resourceType, $resourceId, $json]);
+    }
+
     public function revokeBoardMember(int $boardId, int $actorId, array $input): array {
+        $this->requireBoardAllowed($boardId, ['owner','designer']);
         $targetUserId = $this->positiveInt($input['user_id'] ?? null, 'user_id');
         return $this->transaction(function () use ($boardId, $actorId, $targetUserId): array {
             $board = $this->one(
@@ -613,6 +764,7 @@ class TablerosModel {
                 'UPDATE tb_board_member SET deleted_at = GETDATE(), updated_at = GETDATE() WHERE id = ? AND deleted_at IS NULL',
                 [(int)$member['id']]
             );
+            $this->auditAccess($actorId, 'board.member_revoked', 'board', $boardId, ['user_id' => $targetUserId]);
             $this->writeActivity($boardId, null, $actorId, 'board.member_revoked', ['user_id' => $targetUserId]);
             return ['board_id' => $boardId, 'user_id' => $targetUserId, 'revoked' => true];
         });
@@ -1424,6 +1576,7 @@ class TablerosModel {
     }
 
     public function createBoard(int $userId, array $input): array {
+        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
         if (!$this->userIsActive($userId)) {
             throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         }
@@ -1432,11 +1585,12 @@ class TablerosModel {
         $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
         $folderId = $this->optionalPositiveInt($input['folder_id'] ?? null, 'folder_id');
         $visibility = strtolower(trim((string)($input['visibility'] ?? 'private')));
-        if (!in_array($visibility, ['private', 'workspace', 'public'], true)) {
+        if (!in_array($visibility, ['private', 'workspace', 'organization'], true)) {
             throw new TablerosApiException('validation', 'La visibilidad del tablero no es válida.', 422);
         }
 
         return $this->transaction(function () use ($userId, $name, $description, $workspaceId, $folderId, $visibility): array {
+            if ($this->access->workspaceRole($workspaceId) === null) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
             $workspace = $this->one("SELECT id, visibility FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
             if (!$workspace) {
                 throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
@@ -2047,6 +2201,7 @@ class TablerosModel {
     }
 
     public function shareBoard(int $boardId, int $userId, array $input): array {
+        $this->requireBoardAllowed($boardId, ['owner','designer']);
         $members = $input['members'] ?? null;
         if ($members === null && isset($input['user_id'])) {
             $members = [['user_id' => $input['user_id'], 'role' => $input['role'] ?? 'viewer']];
@@ -2064,7 +2219,7 @@ class TablerosModel {
                 throw new TablerosApiException('validation', 'El rol de miembro no es válido.', 422);
             }
             $role = strtolower(trim((string)($member['role'] ?? 'viewer')));
-            if (!in_array($role, ['designer', 'editor', 'viewer'], true)) {
+            if (!in_array($role, ['designer', 'editor', 'contributor', 'viewer'], true)) {
                 throw new TablerosApiException('validation', 'El rol de miembro no está permitido.', 422);
             }
             if ($targetId === $userId) {
@@ -2103,6 +2258,7 @@ class TablerosModel {
                 if (!$wasActiveMember) {
                     $this->createNotification((int)$targetId, $userId, $boardId, null, null, null, null, 'board.member.added', ['board_name' => (string)$board['name'], 'role' => $role], 'board-member:' . $boardId . ':' . $targetId . ':' . bin2hex(random_bytes(8)));
                 }
+                $this->auditAccess($userId, 'board.member_shared', 'board', $boardId, ['user_id' => (int)$targetId, 'role' => $role]);
             }
             $this->writeActivity($boardId, null, $userId, 'board.shared', ['user_ids' => array_map('intval', array_keys($normalized))]);
             return ['board_id' => $boardId, 'members' => array_map(
@@ -2545,12 +2701,12 @@ class TablerosModel {
                AND (u.Id = b.created_by
                     OR EXISTS (SELECT 1 FROM dbo.tb_board_member bm
                                WHERE bm.board_id = b.id AND bm.user_id = u.Id AND bm.deleted_at IS NULL)
-                    OR b.visibility = \'public\'
+                    OR b.visibility = \'organization\'
                     OR (b.visibility = \'workspace\' AND (
                         u.Id = w.created_by
                         OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
                                    WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
-                        OR w.visibility IN (\'workspace\', \'public\'))))',
+                        OR w.visibility = \'open\'))))',
             [$boardId, $userId]
         ) !== null;
     }
@@ -2978,6 +3134,9 @@ class TablerosModel {
              VALUES (?, ?, ?, ?, ?, GETDATE())',
             [$boardId, $itemId, $actorId, $eventType, $json]
         );
+        if ($actorId !== null && !str_starts_with($eventType, 'board.member_') && $eventType !== 'board.shared' && $this->access->hasGlobalPermission('admin')) {
+            $this->auditAccess($actorId, 'admin.mutation', 'board', $boardId, ['event_type' => $eventType]);
+        }
     }
 
     private function pathExists(array $graph, int $start, int $target): bool {

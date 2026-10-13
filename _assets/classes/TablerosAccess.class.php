@@ -160,12 +160,18 @@ class TablerosAccess
                   AND (u.Id = b.created_by
                        OR EXISTS (SELECT 1 FROM dbo.tb_board_member bm
                                   WHERE bm.board_id = b.id AND bm.user_id = u.Id AND bm.deleted_at IS NULL)
-                       OR b.visibility = \'public\'
+                       OR b.visibility = \'organization\'
                        OR (b.visibility = \'workspace\' AND (
                            u.Id = w.created_by
                            OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
                                       WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
-                           OR w.visibility IN (\'workspace\', \'public\'))))';
+                           OR w.visibility = \'open\')))
+                  AND EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] p
+                              INNER JOIN [TG].[dbo].[tg_permissions_users] pu ON pu.permission_id=p.id
+                              WHERE pu.user_id=u.Id AND p.department=\'General\' AND p.status=1
+                                AND ((p.action=\'read\' AND p.description=\'Tableros - Acceso\')
+                                  OR (p.action=\'create\' AND p.description=\'Tableros - Crear\')
+                                  OR (p.action=\'update\' AND p.description=\'Tableros - Administrar\')))';
         $params = [$boardId];
         $matches = [];
         if ($search !== '') {
@@ -194,8 +200,40 @@ class TablerosAccess
         }
     }
 
-    /** Devuelve owner, designer, editor, viewer o null si no tiene acceso. */
-    public function boardRole(int $boardId): ?string
+    /** Active module users who may be invited to this workspace. */
+    public function activeUsersForWorkspace(int $workspaceId, string $search = ''): array
+    {
+        $search = mb_substr(trim($search), 0, 80, 'UTF-8');
+        $sql = "SELECT TOP (30) u.Id, u.Nombre, u.Usuario
+                FROM [TG].[dbo].[Usuario] u
+                WHERE u.Estatus=1
+                  AND EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] p
+                              INNER JOIN [TG].[dbo].[tg_permissions_users] pu ON pu.permission_id=p.id
+                              WHERE pu.user_id=u.Id AND p.department='General' AND p.status=1
+                                AND ((p.action='read' AND p.description='Tableros - Acceso')
+                                  OR (p.action='create' AND p.description='Tableros - Crear')
+                                  OR (p.action='update' AND p.description='Tableros - Administrar')))
+                  AND NOT EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm WHERE wm.workspace_id=? AND wm.user_id=u.Id AND wm.deleted_at IS NULL)
+                  AND NOT EXISTS (SELECT 1 FROM dbo.tb_workspace w WHERE w.id=? AND w.created_by=u.Id AND w.deleted_at IS NULL)";
+        $params = [$workspaceId, $workspaceId];
+        if ($search !== '') {
+            $sql .= ' AND (u.Nombre LIKE ? OR u.Usuario LIKE ?)';
+            $term = '%' . $search . '%';
+            $params[] = $term; $params[] = $term;
+        }
+        $sql .= ' ORDER BY u.Nombre,u.Usuario,u.Id';
+        try {
+            $stmt = $this->boardConnection()->prepare($sql);
+            $stmt->execute($params);
+            return array_map(static fn(array $row): array => ['id'=>(int)$row['Id'],'name'=>trim((string)($row['Nombre'] ?? '')) ?: (string)($row['Usuario'] ?? ''),'username'=>(string)($row['Usuario'] ?? '')], $stmt->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Throwable $e) {
+            error_log('TablerosAccess: no fue posible listar candidatos de espacio: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /** Resolve the canonical effective board role and the source that granted it. */
+    public function boardAccess(int $boardId): ?array
     {
         $userId = $this->currentUserId();
         if ($boardId <= 0 || $userId <= 0) {
@@ -220,33 +258,35 @@ class TablerosAccess
                 return null;
             }
             if ((int)$row['created_by'] === $userId) {
-                return 'owner';
+                return ['role' => 'owner', 'source' => 'owner'];
             }
-            if ($this->hasGlobalPermission('admin')) {
-                return 'designer';
-            }
-
             $role = strtolower((string)($row['board_role'] ?? ''));
-            if (in_array($role, ['designer', 'editor', 'viewer'], true)) {
-                return $role;
-            }
+            $natural = null;
+            if (in_array($role, ['designer', 'editor', 'contributor', 'viewer'], true)) $natural = ['role' => $role, 'source' => 'board_invitation'];
             $workspaceRole = strtolower((string)($row['workspace_role'] ?? ''));
-            if (in_array($workspaceRole, ['owner', 'editor', 'viewer'], true)
-                && in_array(strtolower((string)$row['visibility']), ['workspace', 'public'], true)) {
-                return $workspaceRole === 'owner' ? 'owner' : $workspaceRole;
+            $boardVisibility = strtolower((string)$row['visibility']);
+            $workspaceVisibility = strtolower((string)$row['workspace_visibility']);
+            if ($natural === null && $boardVisibility === 'workspace' && in_array($workspaceRole, ['owner', 'editor', 'viewer'], true)) {
+                $natural = ['role' => in_array($workspaceRole, ['owner', 'editor'], true) ? 'editor' : 'viewer', 'source' => 'workspace_membership'];
             }
-            if (strtolower((string)$row['visibility']) === 'public') {
-                return 'viewer';
+            if ($natural === null && $boardVisibility === 'workspace' && $workspaceVisibility === 'open') {
+                $natural = ['role' => 'viewer', 'source' => 'open_workspace'];
             }
-            if (in_array(strtolower((string)$row['visibility']), ['workspace', 'public'], true)
-                && in_array(strtolower((string)$row['workspace_visibility']), ['workspace', 'public'], true)) {
-                return 'viewer';
+            if ($natural === null && $boardVisibility === 'organization') {
+                $natural = ['role' => 'viewer', 'source' => 'organization'];
             }
-            return null;
+            if ($this->hasGlobalPermission('admin')) return ['role' => 'designer', 'source' => $natural['source'] ?? 'admin'];
+            return $natural;
         } catch (Throwable $e) {
             error_log('TablerosAccess: no fue posible validar acceso al tablero: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /** Backwards-compatible role-only accessor. */
+    public function boardRole(int $boardId): ?string
+    {
+        return $this->boardAccess($boardId)['role'] ?? null;
     }
 
     public function canViewBoard(int $boardId): bool
@@ -275,17 +315,14 @@ class TablerosAccess
             if (!$row) {
                 return null;
             }
-            if ($this->hasGlobalPermission('admin')) {
-                return 'owner';
-            }
-            if ((int)($row['created_by'] ?? 0) === $userId) {
-                return 'owner';
-            }
+            if ((int)($row['created_by'] ?? 0) === $userId) return 'owner';
+            if ($this->hasGlobalPermission('admin')) return 'owner';
             $role = strtolower((string)($row['role'] ?? ''));
             if (in_array($role, ['owner', 'editor', 'viewer'], true)) {
                 return $role;
             }
-            return in_array(strtolower((string)$row['visibility']), ['workspace', 'public'], true) ? 'viewer' : null;
+            if (strtolower((string)$row['visibility']) === 'open') return 'viewer';
+            return $this->hasGlobalPermission('admin') ? 'owner' : null;
         } catch (Throwable $e) {
             error_log('TablerosAccess: no fue posible validar acceso al espacio de trabajo: ' . $e->getMessage());
             return null;

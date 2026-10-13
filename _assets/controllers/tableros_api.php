@@ -27,6 +27,38 @@ class tableros_api {
         });
     }
 
+    public function workspace_members(): void {
+        $this->handle('GET', function (int $userId): array {
+            $workspaceId = $this->positiveInt($_GET['workspace_id'] ?? null, 'workspace_id');
+            $this->requireWorkspaceManager($workspaceId);
+            return $this->model->getWorkspaceMembers($workspaceId);
+        });
+    }
+
+    public function share_workspace(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            $this->requireWorkspaceManager($workspaceId);
+            return $this->model->shareWorkspace($workspaceId, $userId, $input);
+        });
+    }
+
+    public function update_workspace_member(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            $this->requireWorkspaceManager($workspaceId);
+            return $this->model->updateWorkspaceMember($workspaceId, $userId, $input);
+        });
+    }
+
+    public function revoke_workspace_member(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            $this->requireWorkspaceManager($workspaceId);
+            return $this->model->revokeWorkspaceMember($workspaceId, $userId, $input);
+        });
+    }
+
     public function trash(): void {
         if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
             $this->handle('GET', function (int $userId): array {
@@ -93,9 +125,12 @@ class tableros_api {
     public function board($id): void {
         $this->handle('GET', function (int $userId) use ($id): array {
             $boardId = $this->positiveInt($id, 'board_id');
-            $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $data = $this->model->getBoardData($boardId, $userId);
             $data['board']['role'] = $role;
+            $access = $this->access->boardAccess($boardId);
+            $data['board']['access_source'] = $access['source'] ?? null;
+            if (($access['source'] ?? null) === 'admin') $this->model->auditAdminBoardOpen($userId, $boardId);
             return $data;
         });
     }
@@ -109,19 +144,24 @@ class tableros_api {
                     $this->requireBoardRole($boardId, ['owner', 'designer']);
                     return $this->model->activeUsers(is_string($query) ? $query : '', true);
                 }
-                $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+                $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
                 $rawIds = $_GET['ids'] ?? '';
                 $ids = is_string($rawIds) ? array_slice(array_filter(array_map('intval', explode(',', $rawIds)), static fn(int $id): bool => $id > 0), 0, 100) : [];
                 return $this->access->activeUsersForBoard($boardId, is_string($query) ? $query : '', $ids);
             }
-            return $this->model->activeUsers(is_string($query) ? $query : '');
+            if (isset($_GET['workspace_id']) && filter_var($_GET['directory'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                $workspaceId = $this->positiveInt($_GET['workspace_id'], 'workspace_id');
+                $this->requireWorkspaceManager($workspaceId);
+                return $this->access->activeUsersForWorkspace($workspaceId, is_string($query) ? $query : '');
+            }
+            return $this->model->activeUsers(is_string($query) ? $query : '', true);
         });
     }
 
     public function activity(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $itemId = isset($_GET['item_id']) ? $this->positiveInt($_GET['item_id'], 'item_id') : null;
             $limit = isset($_GET['limit']) ? $this->positiveInt($_GET['limit'], 'limit') : 100;
             return $this->model->getActivity($boardId, $itemId, $limit);
@@ -132,7 +172,7 @@ class tableros_api {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
             $itemId = $this->positiveInt($_GET['item_id'] ?? null, 'item_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getComments($boardId, $itemId);
         });
     }
@@ -140,7 +180,7 @@ class tableros_api {
     public function add_comment(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addComment($boardId, $userId, $input);
         });
     }
@@ -149,7 +189,7 @@ class tableros_api {
         $this->handle('GET', function (int $userId) use ($id): array {
             $fileId = $this->positiveInt($id, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getFileComments($fileId);
         });
     }
@@ -158,7 +198,7 @@ class tableros_api {
         $this->handle('POST', function (int $userId, array $input): array {
             $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addFileComment($fileId, $userId, $input);
         });
     }
@@ -209,7 +249,7 @@ class tableros_api {
             $commentId = $this->positiveInt($input['file_comment_id'] ?? null, 'file_comment_id');
             $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
             $boardId = $this->model->getFileCommentBoardId($commentId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             $this->model->attachCommentFile($commentId, $fileId);
             return ['file_comment_id' => $commentId, 'file_id' => $fileId];
         });
@@ -231,7 +271,7 @@ class tableros_api {
     public function upload_file(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             if (!isset($_FILES['file']) || !is_array($_FILES['file'])) {
                 throw new TablerosApiException('validation', 'Selecciona un archivo para subir.', 422);
             }
@@ -243,7 +283,7 @@ class tableros_api {
         $this->handle('GET', function (int $userId) use ($id): array {
             $fileId = $this->positiveInt($id, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getFileVersions($boardId, $fileId);
         });
     }
@@ -260,7 +300,7 @@ class tableros_api {
             }
             $fileId = $this->positiveInt($id, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
             $file = $this->model->getFileDownload($fileId, $versionId);
             header('Content-Type: ' . $file['content_type']);
@@ -299,7 +339,7 @@ class tableros_api {
             $input = $this->readInput();
             $this->verifyCsrf($input);
             $boardId = $this->positiveInt($input['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $rawIds = $input['file_ids'] ?? null;
             if (!is_array($rawIds) || !$rawIds || count($rawIds) > 200) {
                 throw new TablerosApiException('validation', 'Selecciona entre 1 y 200 archivos para descargar.', 422);
@@ -371,7 +411,7 @@ class tableros_api {
 
             $fileId = $this->positiveInt($id, 'file_id');
             $boardId = $this->model->getFileBoardId($fileId);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
             $file = $this->model->getFileDownload($fileId, $versionId);
             $extension = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
@@ -440,7 +480,7 @@ class tableros_api {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
             $itemId = $this->positiveInt($_GET['item_id'] ?? null, 'item_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getRelations($boardId, $itemId);
         });
     }
@@ -448,7 +488,7 @@ class tableros_api {
     public function add_relation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addRelation($boardId, $userId, $input);
         });
     }
@@ -456,7 +496,7 @@ class tableros_api {
     public function remove_relation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->removeRelation($boardId, $userId, $input);
         });
     }
@@ -464,7 +504,7 @@ class tableros_api {
     public function dependencies(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $itemId = isset($_GET['item_id']) ? $this->positiveInt($_GET['item_id'], 'item_id') : null;
             return $this->model->getDependencies($boardId, $itemId);
         });
@@ -473,7 +513,7 @@ class tableros_api {
     public function add_dependency(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addDependency($boardId, $userId, $input);
         });
     }
@@ -481,7 +521,7 @@ class tableros_api {
     public function remove_dependency(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->removeDependency($boardId, $userId, $input);
         });
     }
@@ -489,7 +529,7 @@ class tableros_api {
     public function set_subtask(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->setSubtask($boardId, $userId, $input);
         });
     }
@@ -497,7 +537,7 @@ class tableros_api {
     public function automations(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getAutomations($boardId);
         });
     }
@@ -545,7 +585,7 @@ class tableros_api {
     public function automation_runs(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             $automationId = isset($_GET['automation_id']) ? $this->positiveInt($_GET['automation_id'], 'automation_id') : null;
             return $this->model->getAutomationRuns($boardId, $automationId);
         });
@@ -562,7 +602,7 @@ class tableros_api {
     public function update_item_name(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->updateItemName($boardId, $userId, $input);
         });
     }
@@ -583,7 +623,7 @@ class tableros_api {
     public function create_group(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->createGroup($boardId, $userId, $input);
         });
     }
@@ -591,7 +631,7 @@ class tableros_api {
     public function create_column(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->createColumn($boardId, $userId, $input);
         });
     }
@@ -599,7 +639,7 @@ class tableros_api {
     public function update_column_options(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->updateColumnOptions($boardId, $userId, $input);
         });
     }
@@ -607,7 +647,7 @@ class tableros_api {
     public function create_item(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->createItem($boardId, $userId, $input);
         });
     }
@@ -615,7 +655,7 @@ class tableros_api {
     public function update_cell(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->updateCell($boardId, $userId, $input);
         });
     }
@@ -623,7 +663,7 @@ class tableros_api {
     public function move_item(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->moveItem($boardId, $userId, $input);
         });
     }
@@ -639,7 +679,7 @@ class tableros_api {
     public function members(): void {
         $this->handle('GET', function (int $userId): array {
             $boardId = $this->positiveInt($_GET['board_id'] ?? null, 'board_id');
-            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             return $this->model->getBoardMembers($boardId);
         });
     }
@@ -655,7 +695,7 @@ class tableros_api {
     public function create_view(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'viewer']);
+            $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             if (filter_var($input['is_shared'] ?? false, FILTER_VALIDATE_BOOLEAN)
                 && !in_array($role, ['owner', 'designer'], true)) {
                 throw new TablerosApiException('forbidden', 'Solo el propietario o un diseñador puede compartir una vista.', 403);
@@ -739,6 +779,12 @@ class tableros_api {
             throw new TablerosApiException('forbidden', 'No tienes el rol necesario en este tablero.', 403);
         }
         return $role;
+    }
+
+    private function requireWorkspaceManager(int $workspaceId): void {
+        if (!$this->model->getWorkspace($workspaceId)) throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
+        $role = $this->access->workspaceRole($workspaceId);
+        if ($role !== 'owner') throw new TablerosApiException('forbidden', 'Solo el propietario del espacio o un administrador puede administrar sus miembros.', 403);
     }
 
     private function bodyBoardId(array $input): int {

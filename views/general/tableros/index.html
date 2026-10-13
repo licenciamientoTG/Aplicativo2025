@@ -72,6 +72,8 @@
             </button>
             <div id="workspacePickerOptions" class="boards-workspace-options" role="listbox" aria-label="Espacios de trabajo" hidden></div>
           </div>
+          <span id="workspaceAccessLabel" class="boards-workspace-access" aria-live="polite"></span>
+          <button id="manageWorkspaceMembers" type="button" aria-label="Administrar miembros del espacio" title="Administrar miembros del espacio" hidden><i class="fa-solid fa-user-group" aria-hidden="true"></i></button>
           {% if can_create %}<button id="navCreateWorkspace" type="button" aria-label="Crear espacio de trabajo" title="Crear espacio de trabajo"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>{% endif %}
         </div>
       </div>
@@ -130,6 +132,7 @@
       </div>
       <div class="boards-board-meta">
         <span id="boardRole" class="boards-role"></span>
+        <span id="boardAccessSource" class="boards-access-source" aria-label="Origen del acceso"></span>
         <button type="button" class="btn boards-button-light boards-icon-action" id="trashBoard" aria-label="Mover tablero a la papelera" title="Mover a la papelera"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
         <button type="button" class="btn boards-button-light boards-icon-action" id="archiveBoard" aria-label="Archivar tablero" title="Archivar"><i class="fa-solid fa-box-archive" aria-hidden="true"></i></button>
         <button type="button" class="btn boards-button-light" id="openShareBoard"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Compartir</span></button>
@@ -214,7 +217,7 @@
     <label class="boards-field-label" for="newBoardFolder">Carpeta <span>Opcional</span></label>
     <select class="form-select" id="newBoardFolder" name="folder_id"><option value="">Sin carpeta</option></select>
     <label class="boards-field-label" for="newBoardVisibility">Visibilidad del tablero</label>
-    <select class="form-select" id="newBoardVisibility" name="visibility"><option value="private">Privado · solo personas invitadas</option><option value="workspace">Visible para el espacio</option></select>
+    <select class="form-select" id="newBoardVisibility" name="visibility"><option value="private">Privado · solo personas invitadas</option><option value="workspace">Personas con acceso al espacio</option><option value="organization">Toda la organización · solo lectura</option></select>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Crear tablero</button></div>
   </form>
 </dialog>
@@ -225,9 +228,28 @@
     <label class="boards-field-label" for="newWorkspaceName">Nombre</label>
     <input class="form-control" id="newWorkspaceName" name="name" maxlength="200" required autocomplete="off" placeholder="Ej. Marketing">
     <label class="boards-field-label" for="newWorkspaceVisibility">Acceso del espacio</label>
-    <select class="form-select" id="newWorkspaceVisibility" name="visibility"><option value="private">Privado</option><option value="workspace">Visible para el equipo</option></select>
+    <select class="form-select" id="newWorkspaceVisibility" name="visibility"><option value="closed">Cerrado · solo miembros</option><option value="open">Abierto · visible para usuarios activos como lectores</option></select>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Crear espacio</button></div>
   </form>
+</dialog>
+
+<dialog class="boards-dialog boards-workspace-members-dialog" id="workspaceMembersDialog" aria-labelledby="workspaceMembersTitle" aria-describedby="workspaceMembersDescription" aria-modal="true">
+  <div class="boards-dialog-body">
+    <div class="boards-dialog-heading"><div><h3 id="workspaceMembersTitle">Miembros del espacio</h3><p id="workspaceMembersDescription">Administra quién accede al espacio y su función.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar miembros del espacio">&times;</button></div>
+    <div class="boards-workspace-owner" id="workspaceMembersOwner"></div>
+    <form id="workspaceMemberForm" class="boards-workspace-invite-form">
+      <label class="boards-field-label" for="workspaceMemberSearch">Agregar persona de TG</label>
+      <div class="boards-share-person-picker">
+        <input class="form-control" id="workspaceMemberSearch" type="search" autocomplete="off" placeholder="Busca por nombre o usuario" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="workspaceMemberResults">
+        <input id="workspaceMemberUserId" name="user_id" type="hidden">
+        <div class="boards-share-user-results" id="workspaceMemberResults" role="listbox" aria-label="Personas de TG" hidden></div>
+      </div>
+      <label class="boards-field-label" for="workspaceMemberRole">Función</label>
+      <div class="boards-workspace-invite-actions"><select class="form-select" id="workspaceMemberRole" name="role"><option value="viewer">Lector del espacio</option><option value="editor">Editor del espacio</option></select><button type="submit" class="btn boards-button-primary">Agregar</button></div>
+    </form>
+    <div id="workspaceMembersStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando miembros…</div>
+    <div id="workspaceMembersList" class="boards-member-list" role="list" aria-label="Miembros del espacio"></div>
+  </div>
 </dialog>
 
 <dialog class="boards-dialog" id="createFolderDialog" aria-labelledby="createFolderTitle">
@@ -311,7 +333,7 @@
 
 <dialog class="boards-dialog" id="shareBoardDialog" aria-labelledby="shareBoardTitle">
   <form id="shareBoardForm">
-    <div class="boards-dialog-heading"><div><h3 id="shareBoardTitle">Compartir tablero</h3><p>Busca una cuenta activa de TG. Al compartir, tendrá acceso a este tablero y podrá ser responsable aquí.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
+    <div class="boards-dialog-heading"><div><h3 id="shareBoardTitle">Compartir tablero</h3><p>Busca una cuenta activa de TG y elige su acceso directo al tablero.</p></div><button type="button" class="boards-dialog-close" data-close-dialog aria-label="Cerrar">&times;</button></div>
     <label class="boards-field-label" for="shareUserSearch">Persona</label>
     <div class="boards-share-person-picker">
       <input class="form-control" id="shareUserSearch" type="search" autocomplete="off" placeholder="Busca por nombre o usuario" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="shareUserResults">
@@ -320,7 +342,9 @@
       <div class="boards-share-user-results" id="shareUserResults" role="listbox" hidden></div>
     </div>
     <label class="boards-field-label" for="shareRole">Permiso</label>
-    <select class="form-select" id="shareRole" name="role"><option value="viewer">Solo lectura</option><option value="editor">Puede editar</option><option value="designer">Puede editar y configurar</option></select>
+    <select class="form-select" id="shareRole" name="role"><option value="viewer">Lector · solo lectura</option><option value="contributor">Colaborador · contenido y comentarios</option><option value="editor">Editor · estructura y contenido</option><option value="designer">Diseñador · puede compartir y configurar</option></select>
+    <div class="boards-field-help">Editores no pueden compartir ni administrar automatizaciones. Colaboradores solo editan contenido y comentarios.</div>
+    <div id="boardResidualAccessNotice" class="boards-access-warning" role="status" aria-live="polite" hidden></div>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Compartir tablero</button></div>
   </form>
   <section class="boards-member-section" aria-labelledby="boardMembersTitle">

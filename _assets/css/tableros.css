@@ -545,6 +545,34 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
   .boards-preview-rail button { min-width: 52px; min-height: 48px; }
   .boards-preview-panel { width: 100%; max-height: 34dvh; flex: 0 0 auto; padding: 12px; border-top: 1px solid #363a56; border-left: 0; }
 }
+
+/* Workspace membership and effective-access cues. */
+.boards-workspace-access { flex: 0 0 auto; color: #aeb8d5; font-size: .62rem; font-weight: 600; }
+.boards-workspace-option { justify-content: flex-start; }
+.boards-workspace-option > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.boards-workspace-option > small { flex: 0 0 auto; color: #aeb8d5; font-size: .65rem; }
+.boards-workspace-picker > button[hidden] { display: none; }
+.boards-workspace-members-dialog { width: min(620px, calc(100% - 24px)); max-height: min(88vh, 780px); }
+.boards-workspace-members-dialog .boards-dialog-body { display: grid; gap: 13px; }
+.boards-workspace-owner { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid #4b5273; border-radius: 6px; color: #e9ebf7; background: #292d49; font-size: .78rem; }
+.boards-workspace-owner span { color: #aeb2ca; }
+.boards-workspace-invite-form { display: grid; gap: 7px; padding: 12px; border: 1px solid #414663; border-radius: 7px; background: #252943; }
+.boards-workspace-invite-actions { display: flex; gap: 8px; }
+.boards-workspace-invite-actions select { flex: 1; }
+.boards-workspace-member-row { align-items: center; }
+.boards-workspace-role-select { width: auto; min-width: 105px; min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
+.boards-member-source { color: #9ca7c5; font-size: .68rem; }
+.boards-access-warning { margin: 9px 0; padding: 9px 11px; border: 1px solid #8a7144; border-radius: 6px; color: #f0dcae; background: #3b3427; font-size: .76rem; line-height: 1.45; }
+.boards-access-warning[hidden] { display: none; }
+@media (max-width: 560px) {
+  .boards-workspace-picker { flex-wrap: wrap; }
+  .boards-workspace-menu { flex-basis: calc(100% - 48px); }
+  .boards-workspace-access { order: 3; margin-left: 3px; }
+  .boards-workspace-members-dialog { width: calc(100% - 12px); max-height: calc(100dvh - 12px); }
+  .boards-workspace-invite-actions { flex-direction: column; }
+  .boards-workspace-role-select { width: 100%; }
+  .boards-workspace-member-row { align-items: flex-start; flex-wrap: wrap; }
+}
 @media (min-width: 601px) and (max-width: 900px) {
   .boards-preview-panel { width: 280px; flex-basis: 280px; }
 }
@@ -1340,3 +1368,4 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
   .boards-recycle-entry { grid-template-columns: minmax(0, 1fr); }
   .boards-recycle-entry-actions { grid-column: 1; grid-row: auto; justify-content: flex-start; }
 }
+.boards-access-source { padding: 4px 8px; border: 1px solid #4a506e; border-radius: 20px; color: #b9c7ee; background: #292e4c; font-size: .68rem; }
