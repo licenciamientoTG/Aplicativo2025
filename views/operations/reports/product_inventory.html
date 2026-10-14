@@ -133,11 +133,40 @@
                         <th>STATUS</th>
                         <th>EXISTENCIA</th>
                         <th>ÚLTIMO MOV.</th>
+                        <th>ACCIONES</th>
                     </tr>
                     </thead>
                     <tbody>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="productHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Historial de Consumo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2"><strong id="historyProducto"></strong> &mdash; <span id="historyEstacion" class="text-muted"></span></p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped w-100" id="product_history_table">
+                        <thead>
+                        <tr>
+                            <th>PERIODO</th>
+                            <th>FECHA</th>
+                            <th>ENTRADAS</th>
+                            <th>SALIDAS</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -199,6 +228,16 @@ $(document).ready(function() {
             {'data': 'STATUS'},
             {'data': 'EXISTENCIA'},
             {'data': 'ULTIMOMOV'},
+            {
+                'data': null,
+                'orderable': false,
+                'className': 'text-center',
+                'render': function (data, type, row) {
+                    return '<button type="button" class="btn btn-sm btn-outline-primary btn-ver-historial" data-codprd="' + row.CODPRD + '" data-codgas="' + row.CODGAS + '" title="Ver historial de consumo">' +
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-activity align-middle"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>' +
+                        '</button>';
+                }
+            },
         ],
         drawCallback: function () {
             $('.table-responsive').removeClass('loading');
@@ -222,6 +261,38 @@ $(document).ready(function() {
 
     $('.refresh_product_inventory_table, #filtro-product_inventory_table .refresh').on('click', function () {
         product_inventory_table.ajax.reload();
+    });
+
+    $('#product_inventory_table tbody').on('click', '.btn-ver-historial', function () {
+        let codprd = $(this).data('codprd');
+        let codgas = $(this).data('codgas');
+        let rowData = product_inventory_table.row($(this).closest('tr')).data();
+
+        $('#historyProducto').text(rowData.PRODUCTO);
+        $('#historyEstacion').text(rowData.ESTACION);
+
+        let $tbody = $('#product_history_table tbody');
+        $tbody.html('<tr><td colspan="4" class="text-center">Cargando...</td></tr>');
+        $('#productHistoryModal').modal('show');
+
+        $.getJSON('/operations/product_inventory_history/' + codprd + '/' + codgas, function (json) {
+            let rows = json.data || [];
+            if (!rows.length) {
+                $tbody.html('<tr><td colspan="4" class="text-center">Sin movimientos registrados.</td></tr>');
+                return;
+            }
+            $tbody.empty();
+            rows.forEach(function (r) {
+                $tbody.append($('<tr>').append(
+                    $('<td>').text(r.PERIODO),
+                    $('<td>').text(r.FECHA),
+                    $('<td>').text(r.ENTRADAS),
+                    $('<td>').text(r.SALIDAS)
+                ));
+            });
+        }).fail(function () {
+            $tbody.html('<tr><td colspan="4" class="text-center text-danger">No fue posible cargar el historial.</td></tr>');
+        });
     });
 
     // Exportar a Excel: se genera server-side (PhpSpreadsheet) a partir de

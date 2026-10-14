@@ -1622,6 +1622,7 @@ class Operations{
                     'UNIDAD'     => $row['Unidad'],
                     'STATUS'     => $row['Status'],
                     'CODPRD'     => $row['codprd'],
+                    'CODGAS'     => $row['codgas'],
                     'EXISTENCIA' => number_format((float)$row['Existencia'], 2, '.', ','),
                     'EXISTENCIA_RAW' => (float)$row['Existencia'],
                     'ULTIMOMOV'  => $row['UltimoMov'],
@@ -1629,6 +1630,27 @@ class Operations{
             }
         }
         json_output(array("data" => $data));
+    }
+
+    function product_inventory_history($codprd, $codgas): void {
+        $data = [];
+        $meta = [];
+        if ($rows = $this->stockModel->get_product_history((int)$codprd, (int)$codgas)) {
+            foreach ($rows as $row) {
+                $data[] = [
+                    'PERIODO'  => $row['percon'],
+                    'FECHA'    => $row['Fecha'],
+                    'ENTRADAS' => number_format((float)$row['ingstk'], 2, '.', ','),
+                    'SALIDAS'  => number_format((float)$row['salstk'], 2, '.', ','),
+                ];
+            }
+            $meta = [
+                'producto' => $rows[0]['Producto'],
+                'unidad'   => $rows[0]['Unidad'],
+                'status'   => $rows[0]['Status'],
+            ];
+        }
+        json_output(array("data" => $data, "meta" => $meta));
     }
 
     /**

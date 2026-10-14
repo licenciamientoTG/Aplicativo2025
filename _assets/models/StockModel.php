@@ -32,4 +32,33 @@ class StockModel extends Model {
 
         return $this->sql->select($query, $params) ?: false;
     }
+
+    /**
+     * Historial de movimientos de stock (entradas/salidas por período) de un
+     * producto en una estación.
+     * @return array|false
+     */
+    function get_product_history($codprd, $codgas): array|false {
+        $query = "SELECT TOP (1000)
+                s.[codprd]
+                , TRIM(p.den)                                             AS Producto
+                , TRIM(p.uni)                                             AS Unidad
+                , CASE p.hab
+                      WHEN 1 THEN 'Activo'
+                      WHEN 0 THEN 'Inactivo'
+                      ELSE 'Desconocido'
+                  END                                                     AS [Status]
+                , s.[codgas]
+                , s.[percon]
+                , CONVERT(VARCHAR(10), CAST(s.ultmov AS DATETIME) - 1, 23) AS Fecha
+                , s.[ingstk]
+                , s.[salstk]
+            FROM [SG12].[dbo].[Stock] AS s
+            LEFT JOIN [SG12].[dbo].[Productos] AS p ON p.cod = s.codprd
+            WHERE s.codprd = ?
+              AND s.codgas = ?
+            ORDER BY s.percon DESC";
+
+        return $this->sql->select($query, [$codprd, $codgas]) ?: false;
+    }
 }
