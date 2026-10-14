@@ -170,6 +170,61 @@ class Supply
         json_output(array("data" => $data));
     }
 
+    /**
+     * Exporta a Excel exactamente lo que el usuario está viendo en
+     * /supply/inventory (respeta los filtros de la tabla) -- el JS ya
+     * tiene las filas resueltas en texto plano, así que este endpoint
+     * solo construye el .xlsx a partir de filas ya armadas.
+     *
+     * Se genera server-side con PhpSpreadsheet (mismo patrón que
+     * scheduling_export()) en vez de usar el botón "excel" de
+     * DataTables: ese botón construye el .xlsx a mano en JS y es frágil
+     * con datos complejos (truena o entrega el archivo vacío).
+     */
+    public function inventory_export(): void
+    {
+        $filasJson = $_POST['filas'] ?? '[]';
+        $filas = json_decode($filasJson, true);
+        if (!is_array($filas)) {
+            http_response_code(400);
+            echo 'Datos inválidos';
+            return;
+        }
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Inventario');
+
+        $encabezados = ['ESTACIÓN', 'PRODUCTO', 'STATUS', 'CAP. OPERATIVA', 'VOLUMEN ACTUAL', 'PORCENTAJE'];
+        $sheet->fromArray($encabezados, null, 'A1');
+        $sheet->getStyle('A1:F1')->getFont()->setBold(true);
+
+        $row = 2;
+        foreach ($filas as $f) {
+            $sheet->fromArray([
+                $f['estacion'] ?? '',
+                $f['producto'] ?? '',
+                $f['status'] ?? '',
+                (float)($f['cap'] ?? 0),
+                $f['volumen'] ?? '',
+                $f['porcentaje'] ?? '',
+            ], null, "A{$row}");
+            $row++;
+        }
+        foreach (range('A', 'F') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $archivo = 'inventario_tanques_' . date('Y-m-d_His') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment;filename=\"{$archivo}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
     private function groupByStation($array): array
     {
         $groupedArray = [];
