@@ -34,7 +34,7 @@
                             </svg>
                         </a>
                         <div class="dropdown-menu dropdown-menu-end">
-                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                            <a class="dropdown-item" href="#" id="exportExcelInventory"><i data-feather="file-text"></i> Exportar a Excel</a>
                             <a class="dropdown-item refresh_inventory_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
                         </div>
                     </div>
@@ -99,10 +99,6 @@
             dom: '<"top"Bf>rt<"bottom"lip>',
             pageLength: 100,
             buttons: [
-                {
-                    extend: 'excel',
-                    className: 'd-none',
-                },
                 {
                     extend: 'pdf', // Agrega el botón de exportación a PDF
                     className: 'd-none',
@@ -188,6 +184,45 @@
             inventory_table.clear().draw();
             inventory_table.ajax.reload();
             $('#inventory_table').waitMe('hide');
+        });
+
+        // Exportar a Excel: se genera server-side (PhpSpreadsheet) a partir de
+        // las filas que el usuario ve (respeta los filtros de la tabla), en vez
+        // de usar el botón "excel" de DataTables -- ese arma el .xlsx a mano en
+        // JS y resultó frágil (truena o entrega el archivo vacío con nuestras
+        // columnas). Mismo patrón que exportarExcel() en scheduling.js: form
+        // oculto + submit real, porque la respuesta es un binario, no JSON.
+        $('#exportExcelInventory').on('click', function (e) {
+            e.preventDefault();
+            let filas = inventory_table.rows({ search: 'applied' }).data().toArray().map(function (row) {
+                return {
+                    estacion: row.ESTACION,
+                    producto: row.PRODUCTO_TEXT,
+                    status: row.TANQUE_STATUS,
+                    cap: row.CAP,
+                    volumen: row.VOLUMEN,
+                    porcentaje: row.PORCENTAJE_TEXT
+                };
+            });
+            if (!filas.length) {
+                alertify.myAlert('<div class="text-center"><p>No hay registros que exportar con los filtros actuales.</p></div>');
+                return;
+            }
+
+            let form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/supply/inventory_export';
+            form.style.display = 'none';
+
+            let input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'filas';
+            input.value = JSON.stringify(filas);
+            form.appendChild(input);
+
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
         });
     });
 </script>
