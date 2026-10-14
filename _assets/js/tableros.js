@@ -2192,14 +2192,19 @@
     const mime = String(file.content_type || '').toLowerCase().split(';')[0].trim();
     const name = String(file.name || file.original_name || '');
     const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-    const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(mime);
-    const videoMime = ['video/mp4', 'video/webm'].includes(mime);
+    const inferredMime = ({
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+      pdf: 'application/pdf', mp4: 'video/mp4', webm: 'video/webm', txt: 'text/plain', csv: 'text/csv'
+    })[extension] || '';
+    const effectiveMime = mime || inferredMime;
+    const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(effectiveMime);
+    const videoMime = ['video/mp4', 'video/webm'].includes(effectiveMime);
     const videoExtension = ['mp4', 'webm'].includes(extension);
     const spreadsheetExtension = ['xls', 'xlsx', 'xlsm'].includes(extension);
     const previewKind = imageMime ? 'image'
       : (videoMime || videoExtension ? 'video'
-        : (mime === 'application/pdf' ? 'pdf'
-          : (['text/plain', 'text/csv'].includes(mime) ? 'text'
+        : (effectiveMime === 'application/pdf' ? 'pdf'
+          : (['text/plain', 'text/csv'].includes(effectiveMime) ? 'text'
             : (spreadsheetExtension ? 'spreadsheet' : 'unsupported'))));
     const icon = previewKind === 'pdf' ? 'fa-file-pdf'
       : (previewKind === 'video' ? 'fa-file-video'
@@ -2207,7 +2212,49 @@
           : (['doc', 'docx', 'odt'].includes(extension) ? 'fa-file-word'
             : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
               : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file')))));
-    return { extension, mime, previewKind, icon };
+    return { extension, mime: effectiveMime, previewKind, icon };
+  }
+
+  async function fetchStoredFileBlob(file, preview = false) {
+    const response = await fetch(fileEndpoint(file, preview), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json, */*' }
+    });
+    const blob = await response.blob();
+    const responseType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!response.ok || /(?:application\/json|\+json|text\/html)/i.test(responseType)) {
+      let message = `Error del servidor (HTTP ${response.status}).`;
+      try {
+        const payload = JSON.parse(await blob.text());
+        message = payload.error?.message || payload.message || message;
+      } catch (error) {
+        // Keep the HTTP fallback when the server did not return JSON.
+      }
+      throw new Error(message);
+    }
+    if (!blob.size) throw new Error('El servidor devolvió un archivo vacío.');
+    return blob;
+  }
+
+  async function downloadStoredFile(file) {
+    const blob = await fetchStoredFileBlob(file);
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = String(file.name || file.original_name || 'archivo');
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }
+
+  function startFileDownload(file) {
+    downloadStoredFile(file).catch((error) => {
+      const message = errorMessage(error, 'No se pudo descargar el archivo.');
+      setNotice(message, 'error');
+      if (els.filePreviewDialog?.open) showFilePreviewError(message);
+    });
   }
 
   function openNotificationFileTarget(boardId) {
@@ -2325,9 +2372,10 @@
           if (Array.isArray(comment.attachments) && comment.attachments.length) {
             const attachments = makeElement('div', 'boards-preview-comment-attachments');
             comment.attachments.forEach((attachment) => {
-              const link = makeElement('a', '', attachment.name || `Archivo ${attachment.file_id}`);
-              link.href = fileEndpoint({ file_id: attachment.file_id });
-              link.target = '_blank'; link.rel = 'noopener noreferrer';
+              const attachedFile = { file_id: attachment.file_id, name: attachment.name || `Archivo ${attachment.file_id}` };
+              const link = makeElement('a', '', attachedFile.name);
+              link.href = fileEndpoint(attachedFile);
+              link.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(attachedFile); });
               attachments.append(link);
             });
             article.append(attachments);
@@ -2760,7 +2808,6 @@
     if (type.previewKind === 'image') {
       const stage = makeElement('div', 'boards-preview-image-stage');
       const image = makeElement('img', 'boards-preview-image');
-      image.src = fileEndpoint(file, true);
       image.alt = name;
       // Prevent the browser's native image drag (which shows a copy ghost)
       // so pointer gestures can pan the zoomed preview instead.
@@ -2817,6 +2864,13 @@
         updatePan();
       };
       image.addEventListener('load', updateImageTransform);
+      fetchStoredFileBlob(file, true).then((blob) => {
+        if (previewRequest !== filePreviewRequest) return;
+        filePreviewObjectUrl = URL.createObjectURL(blob);
+        image.src = filePreviewObjectUrl;
+      }).catch((error) => {
+        if (previewRequest === filePreviewRequest) showFilePreviewError(errorMessage(error, 'No se pudo cargar la imagen.'));
+      });
       addImageAction('fa-magnifying-glass-plus', 'Acercar imagen', () => { zoom = Math.min(zoom + 0.25, 3); updateImageTransform(); });
       addImageAction('fa-magnifying-glass-minus', 'Alejar imagen', () => { zoom = Math.max(zoom - 0.25, 0.5); if (zoom <= 1) { panX = 0; panY = 0; } updateImageTransform(); });
       addImageAction('fa-rotate-right', 'Girar 90 grados', () => { rotation = (rotation + 90) % 360; panX = 0; panY = 0; updateImageTransform(); });
@@ -2836,11 +2890,7 @@
         printImage.addEventListener('load', () => { printWindow.focus(); printWindow.print(); }, { once: true });
       });
       const download = addImageAction('fa-download', 'Descargar imagen', () => {
-        const link = document.createElement('a');
-        link.href = fileEndpoint(file);
-        link.download = name;
-        link.rel = 'noopener';
-        link.click();
+        startFileDownload(file);
       });
       download.classList.add('is-download');
       image.addEventListener('pointerdown', (event) => {
@@ -2932,6 +2982,7 @@
       const download = makeElement('a', 'boards-button-primary boards-preview-download', 'Descargar archivo');
       download.href = fileEndpoint(file);
       download.setAttribute('download', '');
+      download.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(file); });
       fallback.append(download);
       els.filePreviewContent.append(fallback);
     }
@@ -3127,6 +3178,7 @@
         const download = makeElement('a', 'boards-text-button', 'Descargar');
         download.href = fileEndpoint(file);
         download.setAttribute('download', '');
+        download.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(file); });
         actions.append(download);
       } else {
         const blocked = makeElement('span', 'boards-file-download-blocked', 'Descarga bloqueada');
@@ -3165,6 +3217,10 @@
               const query = new URLSearchParams({ version_id: String(entry.id) });
               versionDownload.href = `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}?${query.toString()}`;
               versionDownload.setAttribute('download', '');
+              versionDownload.addEventListener('click', (event) => {
+                event.preventDefault();
+                startFileDownload({ ...file, version_id: entry.id, name: entry.original_name || file.name });
+              });
             } else {
               versionDownload = makeElement('span', 'boards-file-download-blocked', 'Descarga bloqueada');
             }
