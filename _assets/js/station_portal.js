@@ -341,10 +341,8 @@ function cargarRecepcionesProgramadas() {
                     <thead>
                         <tr>
                             <th>Fecha</th>
-                            <th>Hora</th>
                             ${verTodas ? '<th>Estación</th>' : ''}
                             <th>Proveedor</th>
-                            <th>Terminal</th>
                             <th>Producto</th>
                             <th>Litros</th>
                             <th>Documento</th>
@@ -379,10 +377,8 @@ function cargarRecepcionesProgramadas() {
                 html += `
                     <tr>
                         <td>${escProgramadas(f.fecha)}</td>
-                        <td>${escProgramadas(f.hora) || '<span class="text-muted">—</span>'}</td>
                         ${verTodas ? `<td>${escProgramadas(f.station_nombre) || '<span class="text-muted">—</span>'}</td>` : ''}
                         <td>${escProgramadas(f.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
-                        <td>${escProgramadas(f.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
                         <td>${producto}</td>
                         <td>${Number(f.litros).toLocaleString('es-MX')}</td>
                         <td>${celdaDocumento}</td>
