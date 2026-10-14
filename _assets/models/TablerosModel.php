@@ -420,11 +420,12 @@ class TablerosModel {
 
     private function removeThumbnailForOriginal(string $provider, string $key): void {
         if (str_starts_with($key, 'stickers/')) return;
-        try {
-            $thumbnailKey = $this->thumbnailObjectKey($key);
-            $this->deleteStoredObject($thumbnailKey, $provider === 'nas_service');
-        } catch (TablerosApiException $e) {
-            if ($e->apiCode !== 'not_found') throw $e;
+        foreach ([$this->thumbnailObjectKey($key), $this->imagePreviewObjectKey($key)] as $derivativeKey) {
+            try {
+                $this->deleteStoredObject($derivativeKey, $provider === 'nas_service');
+            } catch (TablerosApiException $e) {
+                if ($e->apiCode !== 'not_found') throw $e;
+            }
         }
     }
 
@@ -1617,6 +1618,70 @@ class TablerosModel {
         }
     }
 
+    /** Returns a cached, larger WebP derivative for the full image viewer. */
+    public function getFileImagePreview(int $fileId, ?int $versionId = null): array {
+        $file = $this->one('SELECT id, board_id, item_id, name, current_version_id FROM tb_file WHERE id = ? AND deleted_at IS NULL', [$fileId]);
+        if (!$file) throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+        $wantedVersion = $versionId ?? (int)$file['current_version_id'];
+        $row = $this->one(
+            'SELECT id AS version_id, file_id, version_number, original_name, content_type, byte_size, storage_provider, storage_container, storage_object_key, scan_status
+             FROM tb_file_version WHERE id = ? AND file_id = ? AND deleted_at IS NULL',
+            [$wantedVersion, $fileId]
+        );
+        if (!$row || !in_array((string)$row['storage_provider'], ['local', 'nas_service'], true) || (string)$row['storage_container'] !== 'tableros') {
+            throw new TablerosApiException('not_found', 'No se encontró la versión del archivo.', 404);
+        }
+        if (!in_array((string)$row['scan_status'], ['clean', 'unscanned'], true)) throw new TablerosApiException('conflict', 'Esta versión no está disponible para vista previa.', 409);
+        if (!in_array(strtolower((string)$row['content_type']), ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) throw new TablerosApiException('validation', 'Este archivo no es una imagen compatible.', 415);
+        $key = (string)$row['storage_object_key'];
+        $previewKey = $this->imagePreviewObjectKey($key);
+        $useNas = (string)$row['storage_provider'] === 'nas_service';
+        $cachedPath = $this->readStoredThumbnail($previewKey, $useNas, 20 * 1024 * 1024);
+        if ($cachedPath !== null) return ['path' => $cachedPath, 'temporary' => $useNas, 'content_type' => 'image/webp', 'byte_size' => (int)filesize($cachedPath)];
+
+        $original = $this->getFileDownload($fileId, $wantedVersion);
+        try {
+            $previewPath = $this->ensureStoredImagePreview((string)$original['path'], $previewKey, $useNas);
+            return ['path' => $previewPath, 'temporary' => $useNas, 'content_type' => 'image/webp', 'byte_size' => (int)filesize($previewPath)];
+        } finally {
+            if (!empty($original['temporary']) && is_file((string)$original['path'])) @unlink((string)$original['path']);
+        }
+    }
+
+    private function imagePreviewObjectKey(string $originalKey): string {
+        if (preg_match('/^[a-f0-9]{64}$/', $originalKey)) {
+            $hash = hash('sha256', 'tableros-image-preview-webp-v1:' . $originalKey);
+            return '1/1/1970/01/' . substr($hash, 0, 2) . '/' . $hash;
+        }
+        if (!preg_match('~^([1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2]))/[a-f0-9]{2}/[a-f0-9]{64}$~', $originalKey, $m)) {
+            throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+        }
+        $hash = hash('sha256', 'tableros-image-preview-webp-v1:' . $originalKey);
+        return $m[1] . '/' . substr($hash, 0, 2) . '/' . $hash;
+    }
+
+    private function ensureStoredImagePreview(string $sourcePath, string $previewKey, bool $useNas): string {
+        $lockPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'tableros-preview-' . hash('sha256', $previewKey) . '.lock';
+        $lock = @fopen($lockPath, 'c');
+        if (!is_resource($lock)) throw new TablerosApiException('server', 'No se pudo bloquear la generación de vista previa.', 500);
+        if (!flock($lock, LOCK_EX)) { fclose($lock); throw new TablerosApiException('server', 'No se pudo bloquear la generación de vista previa.', 500); }
+        try {
+            $existing = $this->readStoredThumbnail($previewKey, $useNas, 20 * 1024 * 1024);
+            if ($existing !== null) return $existing;
+            $webp = $this->makeWebpImagePreview($sourcePath);
+            if ($webp === null) throw new TablerosApiException('server', 'La generación de vista previa WebP no está disponible en este servidor.', 503);
+            try {
+                if ($useNas) $this->nasServiceRequest('PUT', $previewKey, $webp, (int)filesize($webp), 'image/webp');
+                else $this->writePrivateObject($previewKey, $webp);
+            } catch (Throwable $writeError) {
+                $existing = $this->readStoredThumbnail($previewKey, $useNas, 20 * 1024 * 1024);
+                if ($existing === null) throw $writeError;
+                return $existing;
+            } finally { @unlink($webp); }
+            return $this->readStoredThumbnail($previewKey, $useNas, 20 * 1024 * 1024) ?? throw new TablerosApiException('server', 'No se pudo leer la vista previa guardada.', 500);
+        } finally { flock($lock, LOCK_UN); fclose($lock); }
+    }
+
     private function thumbnailObjectKey(string $originalKey): string {
         // Keep legacy hash-only originals addressable while deriving a key that
         // still matches the hierarchical format accepted by storage services.
@@ -1654,7 +1719,7 @@ class TablerosModel {
         } finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
-    private function readStoredThumbnail(string $key, bool $useNas): ?string {
+    private function readStoredThumbnail(string $key, bool $useNas, int $maxBytes = 2 * 1024 * 1024): ?string {
         if (!$useNas) {
             try {
                 $path = $this->privateObjectPath($key);
@@ -1667,7 +1732,7 @@ class TablerosModel {
         $path = tempnam(sys_get_temp_dir(), 'tableros-thumb-');
         if ($path === false) return null;
         try {
-            $this->nasServiceRequest('GET', $key, null, null, null, $path, 2 * 1024 * 1024);
+            $this->nasServiceRequest('GET', $key, null, null, null, $path, $maxBytes);
             return $path;
         } catch (TablerosApiException $e) {
             @unlink($path);
@@ -1682,6 +1747,14 @@ class TablerosModel {
     }
 
     private function makeWebpThumbnail(string $sourcePath): ?string {
+        return $this->makeWebpDerivative($sourcePath, 320, 72, 'tableros-webp-');
+    }
+
+    private function makeWebpImagePreview(string $sourcePath): ?string {
+        return $this->makeWebpDerivative($sourcePath, 1920, 82, 'tableros-preview-webp-');
+    }
+
+    private function makeWebpDerivative(string $sourcePath, int $maxEdge, int $quality, string $tempPrefix): ?string {
         if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) return null;
         $sourceSize = @filesize($sourcePath);
         if ($sourceSize === false || $sourceSize <= 0 || $sourceSize > 50 * 1024 * 1024) return null;
@@ -1695,15 +1768,15 @@ class TablerosModel {
         if (!$image) return null;
         $width = imagesx($image); $height = imagesy($image);
         if ($width < 1 || $height < 1) { imagedestroy($image); return null; }
-        $scale = min(1, 320 / max($width, $height));
+        $scale = min(1, $maxEdge / max($width, $height));
         $newWidth = max(1, (int)round($width * $scale)); $newHeight = max(1, (int)round($height * $scale));
         $thumb = imagecreatetruecolor($newWidth, $newHeight);
         if (!$thumb) { imagedestroy($image); return null; }
         imagealphablending($thumb, false); imagesavealpha($thumb, true);
         $transparent = imagecolorallocatealpha($thumb, 0, 0, 0, 127); imagefilledrectangle($thumb, 0, 0, $newWidth, $newHeight, $transparent);
         imagecopyresampled($thumb, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-        $path = tempnam(sys_get_temp_dir(), 'tableros-webp-');
-        $ok = $path !== false && @imagewebp($thumb, $path, 72);
+        $path = tempnam(sys_get_temp_dir(), $tempPrefix);
+        $ok = $path !== false && @imagewebp($thumb, $path, $quality);
         imagedestroy($image); imagedestroy($thumb);
         if (!$ok) { if ($path !== false) @unlink($path); return null; }
         return $path;

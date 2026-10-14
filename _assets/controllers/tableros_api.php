@@ -383,6 +383,36 @@ class tableros_api {
         }
     }
 
+    public function preview_image_file($id): void {
+        $preview = null;
+        try {
+            $userId = $this->currentUserId();
+            if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') throw new TablerosApiException('validation', 'Método HTTP no permitido para esta operación.', 422);
+            $this->initializeServices();
+            if (!$this->access->userIsActive($userId) || !$this->access->hasGlobalPermission('access')) throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
+            $fileId = $this->positiveInt($id, 'file_id');
+            $boardId = $this->model->getFileBoardId($fileId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
+            $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
+            $preview = $this->model->getFileImagePreview($fileId, $versionId);
+            header('Content-Type: image/webp');
+            header('Content-Length: ' . (int)$preview['byte_size']);
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, max-age=900');
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            readfile($preview['path']);
+            if (!empty($preview['temporary']) && is_file($preview['path'])) @unlink($preview['path']);
+            exit;
+        } catch (TablerosApiException $e) {
+            if (is_array($preview) && !empty($preview['temporary']) && is_file((string)$preview['path'])) @unlink((string)$preview['path']);
+            $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            if (is_array($preview) && !empty($preview['temporary']) && is_file((string)$preview['path'])) @unlink((string)$preview['path']);
+            error_log('Tableros image preview error: ' . $e->getMessage());
+            $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al cargar la vista previa.']);
+        }
+    }
+
     public function download_files_zip(): void {
         $archivePath = null;
         $temporaryFiles = [];

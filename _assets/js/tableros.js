@@ -2312,6 +2312,37 @@
     return `${apiRoot}/thumbnail_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
   }
 
+  function imagePreviewEndpoint(file) {
+    const query = new URLSearchParams();
+    if (file.version_id) query.set('version_id', String(file.version_id));
+    const suffix = query.toString();
+    return `${apiRoot}/preview_image_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  async function fetchImagePreviewBlob(file) {
+    const response = await fetch(imagePreviewEndpoint(file), {
+      credentials: 'same-origin',
+      headers: { Accept: 'image/webp, image/*, application/json, */*' }
+    });
+    const blob = await response.blob();
+    const responseType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!response.ok || /(?:application\/json|\+json|text\/html)/i.test(responseType)) {
+      let message = `Error del servidor (HTTP ${response.status}).`;
+      try {
+        const payload = JSON.parse(await blob.text());
+        message = payload.error?.message || payload.message || message;
+      } catch (error) {
+        // Keep the HTTP fallback when the server did not return JSON.
+      }
+      throw new Error(message);
+    }
+    if (!blob.size) throw new Error('El servidor devolvió un archivo vacío.');
+    if (['', 'application/octet-stream', 'binary/octet-stream'].includes(responseType)) {
+      return blob.slice(0, blob.size, 'image/webp');
+    }
+    return blob;
+  }
+
   function spreadsheetPreviewEndpoint(file) {
     const query = new URLSearchParams();
     if (file.version_id) query.set('version_id', String(file.version_id));
@@ -2882,7 +2913,7 @@
         updatePan();
       };
       image.addEventListener('load', updateImageTransform);
-      fetchStoredFileBlob(file, true).then((blob) => {
+      fetchImagePreviewBlob(file).then((blob) => {
         if (previewRequest !== filePreviewRequest) return;
         filePreviewObjectUrl = URL.createObjectURL(blob);
         image.src = filePreviewObjectUrl;
