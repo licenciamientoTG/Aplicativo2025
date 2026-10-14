@@ -2196,7 +2196,10 @@
       jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
       pdf: 'application/pdf', mp4: 'video/mp4', webm: 'video/webm', txt: 'text/plain', csv: 'text/csv'
     })[extension] || '';
-    const effectiveMime = mime || inferredMime;
+    // Monday exports often label binary attachments as application/octet-stream.
+    // Prefer the filename's known type in that case so images and PDFs preview correctly.
+    const genericMime = ['', 'application/octet-stream', 'binary/octet-stream'].includes(mime);
+    const effectiveMime = genericMime ? (inferredMime || mime) : mime;
     const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(effectiveMime);
     const videoMime = ['video/mp4', 'video/webm'].includes(effectiveMime);
     const videoExtension = ['mp4', 'webm'].includes(extension);
@@ -2213,6 +2216,14 @@
             : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
               : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file')))));
     return { extension, mime: effectiveMime, previewKind, icon };
+  }
+
+  function inferStoredFileBlobType(file, blob, responseType) {
+    const declaredType = String(responseType || '').toLowerCase().split(';')[0].trim();
+    if (!['', 'application/octet-stream', 'binary/octet-stream'].includes(declaredType)) return blob;
+    const inferredType = fileTypeInfo(file).mime;
+    if (!inferredType || ['application/octet-stream', 'binary/octet-stream'].includes(inferredType)) return blob;
+    return blob.slice(0, blob.size, inferredType);
   }
 
   async function fetchStoredFileBlob(file, preview = false) {
@@ -2233,7 +2244,7 @@
       throw new Error(message);
     }
     if (!blob.size) throw new Error('El servidor devolvió un archivo vacío.');
-    return blob;
+    return inferStoredFileBlobType(file, blob, responseType);
   }
 
   async function downloadStoredFile(file) {
@@ -2934,7 +2945,7 @@
           credentials: 'same-origin',
           headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : (type.previewKind === 'spreadsheet' ? 'text/html, application/json' : 'text/plain, text/csv, application/json') }
         });
-        const blob = await response.blob();
+        let blob = await response.blob();
         if (!response.ok || /(?:application\/json|\+json)/i.test(response.headers.get('content-type') || '')) {
           let message = `Error del servidor (HTTP ${response.status}).`;
           try {
@@ -2945,6 +2956,7 @@
           }
           throw new Error(message);
         }
+        blob = inferStoredFileBlobType(file, blob, response.headers.get('content-type') || '');
         if (previewRequest !== filePreviewRequest) return;
         if (type.previewKind === 'spreadsheet') {
           filePreviewObjectUrl = URL.createObjectURL(blob);
