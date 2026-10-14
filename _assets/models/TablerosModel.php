@@ -1757,29 +1757,61 @@ class TablerosModel {
     private function makeWebpDerivative(string $sourcePath, int $maxEdge, int $quality, string $tempPrefix): ?string {
         if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) return null;
         $sourceSize = @filesize($sourcePath);
-        if ($sourceSize === false || $sourceSize <= 0 || $sourceSize > 50 * 1024 * 1024) return null;
-        $bytes = @file_get_contents($sourcePath, false, null, 0, 50 * 1024 * 1024 + 1);
-        if (!is_string($bytes) || $bytes === '') return null;
-        $info = @getimagesizefromstring($bytes);
-        if (!is_array($info) || !in_array((string)($info['mime'] ?? ''), ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) return null;
-        $sourceWidth = (int)($info[0] ?? 0); $sourceHeight = (int)($info[1] ?? 0);
-        if ($sourceWidth < 1 || $sourceHeight < 1 || $sourceWidth > 40000 || $sourceHeight > 40000 || $sourceWidth * $sourceHeight > 40000000) return null;
-        $image = @imagecreatefromstring($bytes);
-        if (!$image) return null;
-        $width = imagesx($image); $height = imagesy($image);
-        if ($width < 1 || $height < 1) { imagedestroy($image); return null; }
-        $scale = min(1, $maxEdge / max($width, $height));
-        $newWidth = max(1, (int)round($width * $scale)); $newHeight = max(1, (int)round($height * $scale));
-        $thumb = imagecreatetruecolor($newWidth, $newHeight);
-        if (!$thumb) { imagedestroy($image); return null; }
-        imagealphablending($thumb, false); imagesavealpha($thumb, true);
-        $transparent = imagecolorallocatealpha($thumb, 0, 0, 0, 127); imagefilledrectangle($thumb, 0, 0, $newWidth, $newHeight, $transparent);
-        imagecopyresampled($thumb, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-        $path = tempnam(sys_get_temp_dir(), $tempPrefix);
-        $ok = $path !== false && @imagewebp($thumb, $path, $quality);
-        imagedestroy($image); imagedestroy($thumb);
-        if (!$ok) { if ($path !== false) @unlink($path); return null; }
-        return $path;
+        if ($sourceSize === false || $sourceSize <= 0) throw new TablerosApiException('validation', 'No se pudo leer la imagen original.', 422);
+        if ($sourceSize > 50 * 1024 * 1024) throw new TablerosApiException('validation', 'La imagen supera el límite de 50 MiB para generar derivados.', 413);
+
+        // All workers on this host share this lock, so only one large GD decode runs at a time.
+        $lock = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'tableros-webp-decode.lock', 'c');
+        if (!is_resource($lock)) throw new TablerosApiException('server', 'No se pudo bloquear la generación de imágenes.', 500);
+        if (!flock($lock, LOCK_EX)) { fclose($lock); throw new TablerosApiException('server', 'No se pudo bloquear la generación de imágenes.', 500); }
+        $image = null; $thumb = null; $path = false; $success = false;
+        try {
+            $bytes = @file_get_contents($sourcePath, false, null, 0, 50 * 1024 * 1024 + 1);
+            if (!is_string($bytes) || $bytes === '') throw new TablerosApiException('validation', 'No se pudo leer la imagen original.', 422);
+            if (strlen($bytes) > 50 * 1024 * 1024) throw new TablerosApiException('validation', 'La imagen supera el límite de 50 MiB para generar derivados.', 413);
+            $info = @getimagesizefromstring($bytes);
+            if (!is_array($info) || !in_array((string)($info['mime'] ?? ''), ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
+                throw new TablerosApiException('validation', 'La imagen original está dañada o no es compatible.', 422);
+            }
+            $sourceWidth = (int)($info[0] ?? 0); $sourceHeight = (int)($info[1] ?? 0);
+            if ($sourceWidth < 1 || $sourceHeight < 1 || $sourceWidth > 50000 || $sourceHeight > 50000) {
+                throw new TablerosApiException('validation', 'Las dimensiones de la imagen no son compatibles.', 422);
+            }
+            $pixels = $sourceWidth * $sourceHeight;
+            // Leave room above the confirmed 92 MP source, while the memory estimate
+            // below keeps each full-resolution GD decode within the worker limit.
+            if ($pixels > 150000000) throw new TablerosApiException('validation', 'La imagen supera el límite de 150 megapíxeles para generar derivados.', 413);
+
+            $memoryLimit = trim((string)ini_get('memory_limit'));
+            $limitBytes = -1;
+            if (preg_match('/^([0-9]+)\s*([KMG])?B?$/i', $memoryLimit, $match)) {
+                $limitBytes = (int)$match[1] * match (strtoupper($match[2] ?? '')) { 'G' => 1073741824, 'M' => 1048576, 'K' => 1024, default => 1 };
+            }
+            $estimatedBytes = memory_get_usage(true) + $sourceSize + ($pixels * 5) + (64 * 1024 * 1024);
+            if ($limitBytes > 0 && $estimatedBytes > $limitBytes) {
+                throw new TablerosApiException('validation', 'La imagen requiere más memoria que la disponible para generar derivados.', 413);
+            }
+
+            $image = @imagecreatefromstring($bytes);
+            if (!$image) throw new TablerosApiException('validation', 'La imagen original está dañada o no se puede decodificar.', 422);
+            $width = imagesx($image); $height = imagesy($image);
+            $scale = min(1, $maxEdge / max($width, $height));
+            $newWidth = max(1, (int)round($width * $scale)); $newHeight = max(1, (int)round($height * $scale));
+            $thumb = @imagecreatetruecolor($newWidth, $newHeight);
+            if (!$thumb) return null;
+            imagealphablending($thumb, false); imagesavealpha($thumb, true);
+            $transparent = imagecolorallocatealpha($thumb, 0, 0, 0, 127); imagefilledrectangle($thumb, 0, 0, $newWidth, $newHeight, $transparent);
+            imagecopyresampled($thumb, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+            $path = tempnam(sys_get_temp_dir(), $tempPrefix);
+            if ($path === false || !@imagewebp($thumb, $path, $quality)) return null;
+            $success = true;
+            return $path;
+        } finally {
+            if ($image) imagedestroy($image);
+            if ($thumb) imagedestroy($thumb);
+            if ($path !== false && !$success) @unlink($path);
+            flock($lock, LOCK_UN); fclose($lock);
+        }
     }
 
     private function writePrivateObject(string $key, string $source): void {
