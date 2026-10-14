@@ -129,6 +129,8 @@
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_ULTIMOMOV" placeholder="Último Mov."></div>
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_BARCODE_CORP" placeholder="Barcode Corp."></div>
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_BARCODE_ESTACION" placeholder="Barcode Estación"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_CODEXT_CORP" placeholder="Cód. Ext. Corp."></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_CODEXT_ESTACION" placeholder="Cód. Ext. Estación"></div>
                         <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
                     </div>
                 </div>
@@ -143,6 +145,8 @@
                         <th>ÚLTIMO MOV.</th>
                         <th>BARCODE CORP.</th>
                         <th>BARCODE ESTACIÓN</th>
+                        <th>CÓD. EXT. CORP.</th>
+                        <th>CÓD. EXT. ESTACIÓN</th>
                         <th>ACCIONES</th>
                     </tr>
                     </thead>
@@ -261,6 +265,20 @@ $(document).ready(function() {
                     return data;
                 }
             },
+            {'data': 'CODEXT_CORP'},
+            {
+                'data': 'CODEXT_ESTACION',
+                'render': function (data, type, row) {
+                    if (type !== 'display') return data;
+                    if (row.CODEXT_MATCH === false) {
+                        return '<span class="text-danger fw-bold" title="No coincide con el código externo corporativo">' + data + '</span>';
+                    }
+                    if (row.CODEXT_MATCH === null) {
+                        return '<span class="text-muted fst-italic" title="No fue posible consultar la estación">' + data + '</span>';
+                    }
+                    return data;
+                }
+            },
             {
                 'data': null,
                 'orderable': false,
@@ -292,6 +310,8 @@ $(document).ready(function() {
             .column(5).search($('#F_ULTIMOMOV').val().trim())
             .column(6).search($('#F_BARCODE_CORP').val().trim())
             .column(7).search($('#F_BARCODE_ESTACION').val().trim())
+            .column(8).search($('#F_CODEXT_CORP').val().trim())
+            .column(9).search($('#F_CODEXT_ESTACION').val().trim())
             .draw();
     });
 
@@ -352,7 +372,9 @@ $(document).ready(function() {
                 existencia: row.EXISTENCIA_RAW,
                 ultimomov: row.ULTIMOMOV,
                 barcode_corp: row.BARCODE_CORP,
-                barcode_estacion: row.BARCODE_ESTACION
+                barcode_estacion: row.BARCODE_ESTACION,
+                codext_corp: row.CODEXT_CORP,
+                codext_estacion: row.CODEXT_ESTACION
             };
         });
         if (!filas.length) {

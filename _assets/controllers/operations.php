@@ -1616,13 +1616,16 @@ class Operations{
         $data = [];
         if ($rows = $this->stockModel->get_product_inventory($codgas)) {
             $estaciones = array_values(array_unique(array_map(fn($row) => (int)$row['codgas'], $rows)));
-            $barcodesEstacion = $this->stockModel->get_station_barcodes($estaciones);
+            $camposEstacion = $this->stockModel->get_station_product_fields($estaciones);
 
             foreach ($rows as $row) {
                 $codgasRow = (int)$row['codgas'];
                 $codprdRow = (int)$row['codprd'];
                 $barcodeCorp = trim((string)($row['BarcodeCorp'] ?? ''));
-                $barcodeEstacion = $barcodesEstacion[$codgasRow][$codprdRow] ?? null;
+                $codextCorp = trim((string)($row['CodextCorp'] ?? ''));
+                $campos = $camposEstacion[$codgasRow][$codprdRow] ?? null;
+                $barcodeEstacion = $campos['codbar'] ?? null;
+                $codextEstacion = $campos['codext'] ?? null;
 
                 $data[] = [
                     'ESTACION'   => $row['Estacion'],
@@ -1636,7 +1639,10 @@ class Operations{
                     'ULTIMOMOV'  => $row['UltimoMov'],
                     'BARCODE_CORP'     => $barcodeCorp,
                     'BARCODE_ESTACION' => $barcodeEstacion ?? 'Sin conexión',
-                    'BARCODE_MATCH'    => $barcodeEstacion === null ? null : ($barcodeEstacion === $barcodeCorp),
+                    'BARCODE_MATCH'    => $campos === null ? null : ($barcodeEstacion === $barcodeCorp),
+                    'CODEXT_CORP'      => $codextCorp,
+                    'CODEXT_ESTACION'  => $codextEstacion ?? 'Sin conexión',
+                    'CODEXT_MATCH'     => $campos === null ? null : ($codextEstacion === $codextCorp),
                 ];
             }
         }
@@ -1705,9 +1711,9 @@ class Operations{
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Inventario Productos');
 
-        $encabezados = ['ESTACIÓN', 'PRODUCTO', 'UNIDAD', 'STATUS', 'EXISTENCIA', 'ÚLTIMO MOVIMIENTO', 'BARCODE CORPORATIVO', 'BARCODE ESTACIÓN'];
+        $encabezados = ['ESTACIÓN', 'PRODUCTO', 'UNIDAD', 'STATUS', 'EXISTENCIA', 'ÚLTIMO MOVIMIENTO', 'BARCODE CORPORATIVO', 'BARCODE ESTACIÓN', 'CÓDIGO EXT. CORPORATIVO', 'CÓDIGO EXT. ESTACIÓN'];
         $sheet->fromArray($encabezados, null, 'A1');
-        $sheet->getStyle('A1:H1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:J1')->getFont()->setBold(true);
 
         $row = 2;
         foreach ($filas as $f) {
@@ -1720,10 +1726,12 @@ class Operations{
                 $f['ultimomov'] ?? '',
                 $f['barcode_corp'] ?? '',
                 $f['barcode_estacion'] ?? '',
+                $f['codext_corp'] ?? '',
+                $f['codext_estacion'] ?? '',
             ], null, "A{$row}");
             $row++;
         }
-        foreach (range('A', 'H') as $col) {
+        foreach (range('A', 'J') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 

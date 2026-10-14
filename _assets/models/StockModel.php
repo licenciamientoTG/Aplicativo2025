@@ -18,7 +18,8 @@ class StockModel extends Model {
                 END                                                                     AS [Status],
                 ROUND(SUM(ISNULL(s.ingstk, 0) - ISNULL(s.salstk, 0)), 2)                AS Existencia,
                 CONVERT(varchar(10), DATEADD(day, MAX(s.ultmov) - 1, '1900-01-01'), 23) AS UltimoMov,
-                MAX(TRIM(p.codbar))                                                     AS BarcodeCorp
+                MAX(TRIM(p.codbar))                                                     AS BarcodeCorp,
+                MAX(TRIM(p.codext))                                                     AS CodextCorp
             FROM SG12.dbo.Stock AS s
             JOIN SG12.dbo.Productos AS p ON p.cod = s.codprd
             LEFT JOIN SG12.dbo.Gasolineras AS g ON g.cod = s.codgas
@@ -64,36 +65,47 @@ class StockModel extends Model {
     }
 
     /**
-     * Código de barras (codbar) reportado por la propia base de cada estación
-     * vía linked server, para comparar contra el catálogo corporativo
-     * (SG12.dbo.Productos, que puede ir desfasado de lo que hay en estación).
-     * Las estaciones sin ping se omiten en vez de esperar el timeout del
-     * linked server (mismo patrón que CreProductsByStationsModel::getProductsByStations).
+     * Código de barras (codbar) y código externo (codext) reportados por la
+     * propia base de cada estación vía linked server, para comparar contra el
+     * catálogo corporativo (SG12.dbo.Productos, que puede ir desfasado de lo
+     * que hay en estación).
+     *
+     * Se valida conectividad con fsockopen() al puerto 1433 (mismo patrón que
+     * DespachosModel::sp_obtener_diferencias_por_valor) en vez de ping/exec():
+     * exec() suele estar deshabilitado en PHP de producción y, aunque no lo
+     * estuviera, muchas redes bloquean ICMP aunque el puerto SQL sí esté
+     * abierto, lo que haría fallar el chequeo para estaciones que sí están
+     * disponibles.
+     *
+     * Cada estación se consulta en una sentencia aparte (no un solo UNION
+     * ALL): si se combinaran en una sola consulta, una sola estación caída
+     * tira la sentencia completa y deja sin resultado a todas las demás.
      *
      * @param int[] $codgasList
-     * @return array<int, array<int, string>> codgas => [codprd => codbar]
+     * @return array<int, array<int, array{codbar: string, codext: string}>> codgas => [codprd => campos]
      */
-    function get_station_barcodes(array $codgasList): array {
-        $queryParts = [];
+    function get_station_product_fields(array $codgasList): array {
+        $map = [];
         foreach ($codgasList as $codgas) {
             $codgas = (int)$codgas;
             if (empty($this->linked_server[$codgas]) || empty($this->short_databases[$codgas])) continue;
 
             $ip = trim($this->linked_server[$codgas], '[]');
-            $output = [];
-            if (!exec("ping -n 1 " . escapeshellarg($ip), $output, $status) || $status !== 0) continue;
+            $connection = @fsockopen($ip, 1433, $errno, $errstr, 5);
+            if (!$connection) continue;
+            fclose($connection);
 
-            $queryParts[] = "SELECT {$codgas} AS codgas, oq.cod AS codprd, oq.codbar
-                FROM OPENQUERY({$this->linked_server[$codgas]}, 'SELECT cod, codbar FROM {$this->short_databases[$codgas]}.[Productos]') AS oq";
-        }
-        if (empty($queryParts)) return [];
+            $query = "SELECT cod, codbar, codext
+                FROM OPENQUERY({$this->linked_server[$codgas]}, 'SELECT cod, codbar, codext FROM {$this->short_databases[$codgas]}.[Productos]')";
+            $rows = $this->sql->selectSafe($query);
+            if ($rows === false) continue;
 
-        $rows = $this->sql->selectSafe(implode(" UNION ALL ", $queryParts));
-        if ($rows === false) return [];
-
-        $map = [];
-        foreach ($rows as $row) {
-            $map[(int)$row['codgas']][(int)$row['codprd']] = trim((string)($row['codbar'] ?? ''));
+            foreach ($rows as $row) {
+                $map[$codgas][(int)$row['cod']] = [
+                    'codbar' => trim((string)($row['codbar'] ?? '')),
+                    'codext' => trim((string)($row['codext'] ?? '')),
+                ];
+            }
         }
         return $map;
     }
