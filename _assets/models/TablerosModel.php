@@ -1411,14 +1411,17 @@ class TablerosModel {
             $thumbnailKey = $this->thumbnailObjectKey($objectKey);
             try {
                 $this->createStoredThumbnail($processingPath, $objectKey, $thumbnailKey, $useNasService);
-            } catch (Throwable $thumbnailError) {
-                error_log('Tableros image thumbnail generation skipped: ' . $thumbnailError->getMessage());
-            }
-            $previewKey = $this->imagePreviewObjectKey($objectKey);
-            try {
+                $previewKey = $this->imagePreviewObjectKey($objectKey);
                 $this->createStoredImagePreview($processingPath, $previewKey, $useNasService);
-            } catch (Throwable $previewError) {
-                error_log('Tableros image preview generation skipped: ' . $previewError->getMessage());
+            } catch (Throwable $derivativeError) {
+                foreach ([$thumbnailKey, $previewKey] as $derivativeKey) {
+                    if ($derivativeKey === null) continue;
+                    try { $this->deleteStoredObject($derivativeKey, $useNasService); } catch (Throwable $cleanupError) { error_log('Tableros image derivative cleanup failed: ' . $cleanupError->getMessage()); }
+                }
+                if ($useNasService) {
+                    try { $this->nasServiceRequest('DELETE', $objectKey); } catch (Throwable $cleanupError) { error_log('Tableros NAS cleanup failed: ' . $cleanupError->getMessage()); }
+                } elseif ($destination !== null) @unlink($destination);
+                throw $derivativeError;
             }
         }
         $sourceHash = hash_file('sha256', $processingPath, true);
@@ -1599,7 +1602,7 @@ class TablerosModel {
         return $base + ['path' => $path, 'range' => $range];
     }
 
-    /** Returns a cached WebP derivative, creating it lazily from an authorized original as needed. */
+    /** Returns the WebP thumbnail created during upload/import. */
     public function getFileThumbnail(int $fileId, ?int $versionId = null): array {
         $file = $this->one('SELECT id, board_id, item_id, name, current_version_id FROM tb_file WHERE id = ? AND deleted_at IS NULL', [$fileId]);
         if (!$file) throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
@@ -1621,15 +1624,7 @@ class TablerosModel {
         $useNas = (string)$row['storage_provider'] === 'nas_service';
         $cachedPath = $this->readStoredThumbnail($thumbKey, $useNas);
         if ($cachedPath !== null) return ['path' => $cachedPath, 'temporary' => $useNas, 'content_type' => 'image/webp', 'byte_size' => (int)filesize($cachedPath)];
-
-        $original = $this->getFileDownload($fileId, $wantedVersion);
-        try {
-            $key = (string)$row['storage_object_key'];
-            $thumbPath = $this->ensureStoredThumbnail((string)$original['path'], $key, $thumbKey, $useNas);
-            return ['path' => $thumbPath, 'temporary' => $useNas, 'content_type' => 'image/webp', 'byte_size' => (int)filesize($thumbPath)];
-        } finally {
-            if (!empty($original['temporary']) && is_file((string)$original['path'])) @unlink((string)$original['path']);
-        }
+        throw new TablerosApiException('not_found', 'La miniatura WebP no existe; debe regenerarse al importar o volver a cargar el archivo.', 404);
     }
 
     /** Returns a cached, larger WebP derivative for the full image viewer. */
@@ -1652,14 +1647,7 @@ class TablerosModel {
         $useNas = (string)$row['storage_provider'] === 'nas_service';
         $cachedPath = $this->readStoredThumbnail($previewKey, $useNas, 20 * 1024 * 1024);
         if ($cachedPath !== null) return ['path' => $cachedPath, 'temporary' => $useNas, 'content_type' => 'image/webp', 'byte_size' => (int)filesize($cachedPath)];
-
-        $original = $this->getFileDownload($fileId, $wantedVersion);
-        try {
-            $previewPath = $this->ensureStoredImagePreview((string)$original['path'], $previewKey, $useNas);
-            return ['path' => $previewPath, 'temporary' => $useNas, 'content_type' => 'image/webp', 'byte_size' => (int)filesize($previewPath)];
-        } finally {
-            if (!empty($original['temporary']) && is_file((string)$original['path'])) @unlink((string)$original['path']);
-        }
+        throw new TablerosApiException('not_found', 'La vista previa WebP no existe; debe regenerarse al importar o volver a cargar el archivo.', 404);
     }
 
     private function imagePreviewObjectKey(string $originalKey): string {
@@ -1795,7 +1783,7 @@ class TablerosModel {
                 throw new TablerosApiException('validation', 'Las dimensiones de la imagen no son compatibles.', 422);
             }
             $pixels = $sourceWidth * $sourceHeight;
-            if ($pixels > 150000000) throw new TablerosApiException('validation', 'La imagen supera el límite de 150 megapíxeles para generar derivados.', 413);
+            if ($pixels > 300000000) throw new TablerosApiException('validation', 'La imagen supera el límite de 300 megapíxeles para generar derivados.', 413);
 
             $memoryLimit = trim((string)ini_get('memory_limit'));
             $limitBytes = -1;
