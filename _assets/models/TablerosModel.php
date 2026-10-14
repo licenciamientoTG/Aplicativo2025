@@ -392,7 +392,12 @@ class TablerosModel {
         if ($container !== 'tableros' || !preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|stickers/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $key)) {
             throw new RuntimeException('Invalid stored object reference');
         }
-        if ($provider === 'nas_service') { $this->nasServiceRequest('DELETE', $key); return; }
+        if ($provider === 'nas_service') {
+            try { $this->nasServiceRequest('DELETE', $key); }
+            catch (TablerosApiException $e) { if ($e->apiCode !== 'not_found') throw $e; }
+            $this->removeThumbnailForOriginal($provider, $key);
+            return;
+        }
         if ($provider !== 'local') throw new RuntimeException('Unknown storage provider');
         $root = $this->privateStorageRoot();
         $relative = preg_match('/^[a-f0-9]{64}$/', $key) ? substr($key, 0, 2) . DIRECTORY_SEPARATOR . $key : str_replace('/', DIRECTORY_SEPARATOR, $key);
@@ -404,10 +409,23 @@ class TablerosModel {
             $previousRealRoot = realpath($previousRoot);
             $previousRealPath = realpath($previousPath);
             if ($previousRealRoot !== false && $previousRealPath !== false && $this->pathIsWithin($previousRealPath, $previousRealRoot)
-                && is_file($previousRealPath) && @unlink($previousRealPath)) return;
+                && is_file($previousRealPath) && @unlink($previousRealPath)) {
+                $this->removeThumbnailForOriginal($provider, $key);
+                return;
+            }
         }
-        if ($realPath === false) return;
-        if (!$this->pathIsWithin($realPath, $root) || !is_file($realPath) || !@unlink($realPath)) throw new RuntimeException('Could not remove local object');
+        if ($realPath !== false && (!$this->pathIsWithin($realPath, $root) || !is_file($realPath) || !@unlink($realPath))) throw new RuntimeException('Could not remove local object');
+        $this->removeThumbnailForOriginal($provider, $key);
+    }
+
+    private function removeThumbnailForOriginal(string $provider, string $key): void {
+        if (str_starts_with($key, 'stickers/')) return;
+        try {
+            $thumbnailKey = $this->thumbnailObjectKey($key);
+            $this->deleteStoredObject($thumbnailKey, $provider === 'nas_service');
+        } catch (TablerosApiException $e) {
+            if ($e->apiCode !== 'not_found') throw $e;
+        }
     }
 
     private function hardDeleteTrashBundle(int $entryId): void {
@@ -1386,6 +1404,15 @@ class TablerosModel {
         }
         @chmod($destination, 0600);
         }
+        $thumbnailKey = null;
+        if (str_starts_with($contentType, 'image/')) {
+            $thumbnailKey = $this->thumbnailObjectKey($objectKey);
+            try {
+                $this->createStoredThumbnail($processingPath, $objectKey, $thumbnailKey, $useNasService);
+            } catch (Throwable $thumbnailError) {
+                error_log('Tableros image thumbnail generation skipped: ' . $thumbnailError->getMessage());
+            }
+        }
         $sourceHash = hash_file('sha256', $processingPath, true);
         if ($sourceHash === false) {
             if ($useNasService) $this->nasServiceRequest('DELETE', $objectKey);
@@ -1454,6 +1481,9 @@ class TablerosModel {
             });
             return $result;
         } catch (Throwable $e) {
+            if ($thumbnailKey !== null) {
+                try { $this->deleteStoredObject($thumbnailKey, $useNasService); } catch (Throwable $cleanupError) { error_log('Tableros thumbnail cleanup failed: ' . $cleanupError->getMessage()); }
+            }
             if ($useNasService) {
                 try { $this->nasServiceRequest('DELETE', $objectKey); } catch (Throwable $cleanupError) { error_log('Tableros NAS cleanup failed: ' . $cleanupError->getMessage()); }
             } elseif ($destination !== null) @unlink($destination);
@@ -1552,6 +1582,169 @@ class TablerosModel {
             throw new TablerosApiException('not_found', 'El archivo no está disponible en el almacenamiento privado.', 404);
         }
         return $base + ['path' => $path, 'range' => $range];
+    }
+
+    /** Returns a cached WebP derivative, creating it lazily from an authorized original as needed. */
+    public function getFileThumbnail(int $fileId, ?int $versionId = null): array {
+        $file = $this->one('SELECT id, board_id, item_id, name, current_version_id FROM tb_file WHERE id = ? AND deleted_at IS NULL', [$fileId]);
+        if (!$file) throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+        $wantedVersion = $versionId ?? (int)$file['current_version_id'];
+        $row = $this->one(
+            'SELECT id AS version_id, file_id, version_number, original_name, content_type, byte_size, storage_provider, storage_container, storage_object_key, scan_status,
+                    CONVERT(VARCHAR(64), sha256_hash, 2) AS sha256_hex
+             FROM tb_file_version WHERE id = ? AND file_id = ? AND deleted_at IS NULL',
+            [$wantedVersion, $fileId]
+        );
+        if (!$row || !in_array((string)$row['storage_provider'], ['local', 'nas_service'], true) || (string)$row['storage_container'] !== 'tableros') {
+            throw new TablerosApiException('not_found', 'No se encontró la versión del archivo.', 404);
+        }
+        if (!in_array((string)$row['scan_status'], ['clean', 'unscanned'], true)) throw new TablerosApiException('conflict', 'Esta versión no está disponible para miniatura.', 409);
+        $type = strtolower((string)$row['content_type']);
+        if (!in_array($type, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) throw new TablerosApiException('validation', 'Este archivo no es una imagen compatible.', 415);
+        $key = (string)$row['storage_object_key'];
+        $thumbKey = $this->thumbnailObjectKey($key);
+        $useNas = (string)$row['storage_provider'] === 'nas_service';
+        $cachedPath = $this->readStoredThumbnail($thumbKey, $useNas);
+        if ($cachedPath !== null) return ['path' => $cachedPath, 'temporary' => $useNas, 'content_type' => 'image/webp', 'byte_size' => (int)filesize($cachedPath)];
+
+        $original = $this->getFileDownload($fileId, $wantedVersion);
+        try {
+            $key = (string)$row['storage_object_key'];
+            $thumbPath = $this->ensureStoredThumbnail((string)$original['path'], $key, $thumbKey, $useNas);
+            return ['path' => $thumbPath, 'temporary' => $useNas, 'content_type' => 'image/webp', 'byte_size' => (int)filesize($thumbPath)];
+        } finally {
+            if (!empty($original['temporary']) && is_file((string)$original['path'])) @unlink((string)$original['path']);
+        }
+    }
+
+    private function thumbnailObjectKey(string $originalKey): string {
+        // Keep legacy hash-only originals addressable while deriving a key that
+        // still matches the hierarchical format accepted by storage services.
+        if (preg_match('/^[a-f0-9]{64}$/', $originalKey)) {
+            $hash = hash('sha256', 'tableros-thumbnail-webp-v1:' . $originalKey);
+            return '1/1/1970/01/' . substr($hash, 0, 2) . '/' . $hash;
+        }
+        if (!preg_match('~^([1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2]))/[a-f0-9]{2}/[a-f0-9]{64}$~', $originalKey, $m)) {
+            throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+        }
+        $hash = hash('sha256', 'tableros-thumbnail-webp-v1:' . $originalKey);
+        return $m[1] . '/' . substr($hash, 0, 2) . '/' . $hash;
+    }
+
+    private function ensureStoredThumbnail(string $sourcePath, string $originalKey, string $thumbnailKey, bool $useNas): string {
+        $lockPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'tableros-thumb-' . hash('sha256', $thumbnailKey) . '.lock';
+        $lock = @fopen($lockPath, 'c');
+        if (!is_resource($lock)) throw new TablerosApiException('server', 'No se pudo bloquear la generación de miniatura.', 500);
+        if (!flock($lock, LOCK_EX)) { fclose($lock); throw new TablerosApiException('server', 'No se pudo bloquear la generación de miniatura.', 500); }
+        try {
+            $existing = $this->readStoredThumbnail($thumbnailKey, $useNas);
+            if ($existing !== null) return $existing;
+            $webp = $this->makeWebpThumbnail($sourcePath);
+            if ($webp === null) throw new TablerosApiException('server', 'La generación de miniaturas WebP no está disponible en este servidor.', 503);
+            try {
+                if ($useNas) $this->nasServiceRequest('PUT', $thumbnailKey, $webp, (int)filesize($webp), 'image/webp');
+                else $this->writePrivateObject($thumbnailKey, $webp);
+            } catch (Throwable $writeError) {
+                // Another worker may have won the deterministic-key race.
+                $existing = $this->readStoredThumbnail($thumbnailKey, $useNas);
+                if ($existing === null) throw $writeError;
+                return $existing;
+            } finally { @unlink($webp); }
+            return $this->readStoredThumbnail($thumbnailKey, $useNas) ?? throw new TablerosApiException('server', 'No se pudo leer la miniatura guardada.', 500);
+        } finally { flock($lock, LOCK_UN); fclose($lock); }
+    }
+
+    private function readStoredThumbnail(string $key, bool $useNas): ?string {
+        if (!$useNas) {
+            try {
+                $path = $this->privateObjectPath($key);
+                return is_file($path) && is_readable($path) ? $path : null;
+            } catch (TablerosApiException $e) {
+                if ($e->apiCode === 'not_found') return null;
+                throw $e;
+            }
+        }
+        $path = tempnam(sys_get_temp_dir(), 'tableros-thumb-');
+        if ($path === false) return null;
+        try {
+            $this->nasServiceRequest('GET', $key, null, null, null, $path, 2 * 1024 * 1024);
+            return $path;
+        } catch (TablerosApiException $e) {
+            @unlink($path);
+            if ($e->apiCode === 'not_found') return null;
+            throw $e;
+        } catch (Throwable $e) { @unlink($path); throw $e; }
+    }
+
+    private function createStoredThumbnail(string $sourcePath, string $originalKey, string $thumbnailKey, bool $useNas): void {
+        $path = $this->ensureStoredThumbnail($sourcePath, $originalKey, $thumbnailKey, $useNas);
+        if ($useNas && is_file($path)) @unlink($path);
+    }
+
+    private function makeWebpThumbnail(string $sourcePath): ?string {
+        if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) return null;
+        $sourceSize = @filesize($sourcePath);
+        if ($sourceSize === false || $sourceSize <= 0 || $sourceSize > 50 * 1024 * 1024) return null;
+        $bytes = @file_get_contents($sourcePath, false, null, 0, 50 * 1024 * 1024 + 1);
+        if (!is_string($bytes) || $bytes === '') return null;
+        $info = @getimagesizefromstring($bytes);
+        if (!is_array($info) || !in_array((string)($info['mime'] ?? ''), ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) return null;
+        $sourceWidth = (int)($info[0] ?? 0); $sourceHeight = (int)($info[1] ?? 0);
+        if ($sourceWidth < 1 || $sourceHeight < 1 || $sourceWidth > 40000 || $sourceHeight > 40000 || $sourceWidth * $sourceHeight > 40000000) return null;
+        $image = @imagecreatefromstring($bytes);
+        if (!$image) return null;
+        $width = imagesx($image); $height = imagesy($image);
+        if ($width < 1 || $height < 1) { imagedestroy($image); return null; }
+        $scale = min(1, 320 / max($width, $height));
+        $newWidth = max(1, (int)round($width * $scale)); $newHeight = max(1, (int)round($height * $scale));
+        $thumb = imagecreatetruecolor($newWidth, $newHeight);
+        if (!$thumb) { imagedestroy($image); return null; }
+        imagealphablending($thumb, false); imagesavealpha($thumb, true);
+        $transparent = imagecolorallocatealpha($thumb, 0, 0, 0, 127); imagefilledrectangle($thumb, 0, 0, $newWidth, $newHeight, $transparent);
+        imagecopyresampled($thumb, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+        $path = tempnam(sys_get_temp_dir(), 'tableros-webp-');
+        $ok = $path !== false && @imagewebp($thumb, $path, 72);
+        imagedestroy($image); imagedestroy($thumb);
+        if (!$ok) { if ($path !== false) @unlink($path); return null; }
+        return $path;
+    }
+
+    private function writePrivateObject(string $key, string $source): void {
+        $validKey = (bool)preg_match('~^(?:[1-9][0-9]*/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|stickers/[1-9][0-9]*/[0-9]{4}/(?:0[1-9]|1[0-2])/[a-f0-9]{2}/[a-f0-9]{64}|[a-f0-9]{64})$~', $key);
+        if (!$validKey) throw new TablerosApiException('not_found', 'No se encontró el archivo.', 404);
+        $root = $this->privateStorageRoot();
+        $dir = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, dirname($key));
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) throw new TablerosApiException('server', 'No se pudo preparar el almacenamiento privado de miniaturas.', 500);
+        $realDir = realpath($dir);
+        if ($realDir === false || !$this->pathIsWithin($realDir, $root) || !is_writable($realDir)) {
+            throw new TablerosApiException('server', 'La ruta de miniaturas no es segura o no permite escritura.', 500);
+        }
+        $destination = $realDir . DIRECTORY_SEPARATOR . basename(str_replace('/', DIRECTORY_SEPARATOR, $key));
+        if (is_link($destination)) throw new TablerosApiException('server', 'La ruta de miniaturas contiene un enlace no permitido.', 500);
+        if (is_file($destination)) return;
+        $temp = $realDir . DIRECTORY_SEPARATOR . '.thumb-' . bin2hex(random_bytes(12)) . '.tmp';
+        $input = @fopen($source, 'rb');
+        $output = @fopen($temp, 'xb');
+        if (!is_resource($input) || !is_resource($output)) {
+            if (is_resource($input)) fclose($input);
+            if (is_resource($output)) fclose($output);
+            @unlink($temp);
+            throw new TablerosApiException('server', 'No se pudo preparar la escritura de miniatura.', 500);
+        }
+        $copied = stream_copy_to_stream($input, $output);
+        fclose($input); fclose($output);
+        if ($copied === false || $copied <= 0) { @unlink($temp); throw new TablerosApiException('server', 'No se pudo escribir la miniatura.', 500); }
+        @chmod($temp, 0600);
+        if (!@rename($temp, $destination)) {
+            @unlink($temp);
+            if (is_link($destination)) throw new TablerosApiException('server', 'La ruta de miniaturas contiene un enlace no permitido.', 500);
+            if (!is_file($destination)) throw new TablerosApiException('server', 'No se pudo guardar la miniatura.', 500);
+        }
+    }
+
+    private function deleteStoredObject(string $key, bool $useNas): void {
+        if ($useNas) $this->nasServiceRequest('DELETE', $key);
+        else { $path = $this->privateObjectPath($key); if (is_file($path)) @unlink($path); }
     }
 
     /** Returns [start, end] or false for malformed/unsatisfiable single byte ranges. */
@@ -3586,6 +3779,8 @@ class TablerosModel {
             if (is_resource($input)) fclose($input);
             if (is_resource($output)) { fclose($output); $output = null; }
             if ($response === false || $status < 200 || $status >= 300) {
+                if ($response !== false && $status === 404) throw new TablerosApiException('not_found', 'No se encontró el objeto en el almacenamiento Tableros.', 404);
+                if ($response !== false && $status === 409) throw new TablerosApiException('conflict', 'El objeto ya existe en el almacenamiento Tableros.', 409);
                 throw new TablerosApiException('server', 'El servicio de almacenamiento Tableros no pudo completar la operación.', 502);
             }
             if ($method === 'GET' && $downloadRange !== null) {

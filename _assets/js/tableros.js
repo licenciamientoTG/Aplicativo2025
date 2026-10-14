@@ -1795,7 +1795,7 @@
       if (typeInfo.previewKind === 'image' && downloadable) {
         icon.classList.add('has-thumbnail');
         const thumbnail = document.createElement('img');
-        thumbnail.src = fileEndpoint(file, true);
+        thumbnail.src = thumbnailFileEndpoint(file);
         thumbnail.alt = `Vista previa de ${file.name || 'imagen'}`;
         thumbnail.addEventListener('error', () => {
           thumbnail.remove();
@@ -2305,6 +2305,13 @@
     return `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
   }
 
+  function thumbnailFileEndpoint(file) {
+    const query = new URLSearchParams();
+    if (file.version_id) query.set('version_id', String(file.version_id));
+    const suffix = query.toString();
+    return `${apiRoot}/thumbnail_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
   function spreadsheetPreviewEndpoint(file) {
     const query = new URLSearchParams();
     if (file.version_id) query.set('version_id', String(file.version_id));
@@ -2758,7 +2765,7 @@
       if (!images.length) panel.append(makeElement('p', 'boards-preview-panel-status', 'No hay otras imágenes en este elemento.'));
       images.forEach((imageFile) => {
         const button = makeElement('button', 'boards-preview-gallery-item'); button.type = 'button';
-        const thumbnail = document.createElement('img'); thumbnail.src = fileEndpoint(imageFile, true); thumbnail.alt = '';
+        const thumbnail = document.createElement('img'); thumbnail.src = thumbnailFileEndpoint(imageFile); thumbnail.alt = '';
         button.append(thumbnail, makeElement('span', '', imageFile.name || imageFile.original_name || 'Imagen'));
         button.setAttribute('aria-current', String(imageFile.file_id) === String(file.file_id) ? 'true' : 'false');
         button.addEventListener('click', () => openFilePreview(imageFile, activePreviewItem));
@@ -5270,7 +5277,7 @@
             chip.disabled = !safeToPreview;
             if (info.previewKind === 'image' && safeToPreview) {
               const thumbnail = document.createElement('img');
-              thumbnail.src = fileEndpoint(file, true);
+              thumbnail.src = thumbnailFileEndpoint(file);
               thumbnail.alt = '';
               thumbnail.loading = 'lazy';
               thumbnail.addEventListener('error', () => {
