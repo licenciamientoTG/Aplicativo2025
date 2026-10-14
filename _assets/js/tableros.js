@@ -1795,7 +1795,7 @@
       if (typeInfo.previewKind === 'image' && downloadable) {
         icon.classList.add('has-thumbnail');
         const thumbnail = document.createElement('img');
-        thumbnail.src = fileEndpoint(file, true);
+        thumbnail.src = thumbnailFileEndpoint(file);
         thumbnail.alt = `Vista previa de ${file.name || 'imagen'}`;
         thumbnail.addEventListener('error', () => {
           thumbnail.remove();
@@ -2196,7 +2196,10 @@
       jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
       pdf: 'application/pdf', mp4: 'video/mp4', webm: 'video/webm', txt: 'text/plain', csv: 'text/csv'
     })[extension] || '';
-    const effectiveMime = mime || inferredMime;
+    // Monday exports often label binary attachments as application/octet-stream.
+    // Prefer the filename's known type in that case so images and PDFs preview correctly.
+    const genericMime = ['', 'application/octet-stream', 'binary/octet-stream'].includes(mime);
+    const effectiveMime = genericMime ? (inferredMime || mime) : mime;
     const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(effectiveMime);
     const videoMime = ['video/mp4', 'video/webm'].includes(effectiveMime);
     const videoExtension = ['mp4', 'webm'].includes(extension);
@@ -2213,6 +2216,14 @@
             : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
               : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file')))));
     return { extension, mime: effectiveMime, previewKind, icon };
+  }
+
+  function inferStoredFileBlobType(file, blob, responseType) {
+    const declaredType = String(responseType || '').toLowerCase().split(';')[0].trim();
+    if (!['', 'application/octet-stream', 'binary/octet-stream'].includes(declaredType)) return blob;
+    const inferredType = fileTypeInfo(file).mime;
+    if (!inferredType || ['application/octet-stream', 'binary/octet-stream'].includes(inferredType)) return blob;
+    return blob.slice(0, blob.size, inferredType);
   }
 
   async function fetchStoredFileBlob(file, preview = false) {
@@ -2233,7 +2244,7 @@
       throw new Error(message);
     }
     if (!blob.size) throw new Error('El servidor devolvió un archivo vacío.');
-    return blob;
+    return inferStoredFileBlobType(file, blob, responseType);
   }
 
   async function downloadStoredFile(file) {
@@ -2292,6 +2303,44 @@
     if (preview) query.set('preview', '1');
     const suffix = query.toString();
     return `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  function thumbnailFileEndpoint(file) {
+    const query = new URLSearchParams();
+    if (file.version_id) query.set('version_id', String(file.version_id));
+    const suffix = query.toString();
+    return `${apiRoot}/thumbnail_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  function imagePreviewEndpoint(file) {
+    const query = new URLSearchParams();
+    if (file.version_id) query.set('version_id', String(file.version_id));
+    const suffix = query.toString();
+    return `${apiRoot}/preview_image_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  async function fetchImagePreviewBlob(file) {
+    const response = await fetch(imagePreviewEndpoint(file), {
+      credentials: 'same-origin',
+      headers: { Accept: 'image/webp, image/*, application/json, */*' }
+    });
+    const blob = await response.blob();
+    const responseType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!response.ok || /(?:application\/json|\+json|text\/html)/i.test(responseType)) {
+      let message = `Error del servidor (HTTP ${response.status}).`;
+      try {
+        const payload = JSON.parse(await blob.text());
+        message = payload.error?.message || payload.message || message;
+      } catch (error) {
+        // Keep the HTTP fallback when the server did not return JSON.
+      }
+      throw new Error(message);
+    }
+    if (!blob.size) throw new Error('El servidor devolvió un archivo vacío.');
+    if (['', 'application/octet-stream', 'binary/octet-stream'].includes(responseType)) {
+      return blob.slice(0, blob.size, 'image/webp');
+    }
+    return blob;
   }
 
   function spreadsheetPreviewEndpoint(file) {
@@ -2747,7 +2796,7 @@
       if (!images.length) panel.append(makeElement('p', 'boards-preview-panel-status', 'No hay otras imágenes en este elemento.'));
       images.forEach((imageFile) => {
         const button = makeElement('button', 'boards-preview-gallery-item'); button.type = 'button';
-        const thumbnail = document.createElement('img'); thumbnail.src = fileEndpoint(imageFile, true); thumbnail.alt = '';
+        const thumbnail = document.createElement('img'); thumbnail.src = thumbnailFileEndpoint(imageFile); thumbnail.alt = '';
         button.append(thumbnail, makeElement('span', '', imageFile.name || imageFile.original_name || 'Imagen'));
         button.setAttribute('aria-current', String(imageFile.file_id) === String(file.file_id) ? 'true' : 'false');
         button.addEventListener('click', () => openFilePreview(imageFile, activePreviewItem));
@@ -2864,7 +2913,7 @@
         updatePan();
       };
       image.addEventListener('load', updateImageTransform);
-      fetchStoredFileBlob(file, true).then((blob) => {
+      fetchImagePreviewBlob(file).then((blob) => {
         if (previewRequest !== filePreviewRequest) return;
         filePreviewObjectUrl = URL.createObjectURL(blob);
         image.src = filePreviewObjectUrl;
@@ -2934,7 +2983,7 @@
           credentials: 'same-origin',
           headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : (type.previewKind === 'spreadsheet' ? 'text/html, application/json' : 'text/plain, text/csv, application/json') }
         });
-        const blob = await response.blob();
+        let blob = await response.blob();
         if (!response.ok || /(?:application\/json|\+json)/i.test(response.headers.get('content-type') || '')) {
           let message = `Error del servidor (HTTP ${response.status}).`;
           try {
@@ -2945,6 +2994,7 @@
           }
           throw new Error(message);
         }
+        blob = inferStoredFileBlobType(file, blob, response.headers.get('content-type') || '');
         if (previewRequest !== filePreviewRequest) return;
         if (type.previewKind === 'spreadsheet') {
           filePreviewObjectUrl = URL.createObjectURL(blob);
@@ -5258,7 +5308,7 @@
             chip.disabled = !safeToPreview;
             if (info.previewKind === 'image' && safeToPreview) {
               const thumbnail = document.createElement('img');
-              thumbnail.src = fileEndpoint(file, true);
+              thumbnail.src = thumbnailFileEndpoint(file);
               thumbnail.alt = '';
               thumbnail.loading = 'lazy';
               thumbnail.addEventListener('error', () => {
