@@ -165,6 +165,17 @@
                         </thead>
                         <tbody>
                         </tbody>
+                        <tfoot>
+                        <tr class="fw-bold table-active">
+                            <td colspan="2" class="text-end">TOTAL</td>
+                            <td id="historyTotalEntradas"></td>
+                            <td id="historyTotalSalidas"></td>
+                        </tr>
+                        <tr class="fw-bold">
+                            <td colspan="3" class="text-end">NETO (Entradas - Salidas del historial completo)</td>
+                            <td id="historyNeto"></td>
+                        </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>
@@ -273,10 +284,15 @@ $(document).ready(function() {
 
         let $tbody = $('#product_history_table tbody');
         $tbody.html('<tr><td colspan="4" class="text-center">Cargando...</td></tr>');
+        $('#historyTotalEntradas, #historyTotalSalidas, #historyNeto').text('');
         $('#productHistoryModal').modal('show');
 
         $.getJSON('/operations/product_inventory_history/' + codprd + '/' + codgas, function (json) {
             let rows = json.data || [];
+            let meta = json.meta || {};
+            $('#historyTotalEntradas').text(meta.total_entradas || '0.00');
+            $('#historyTotalSalidas').text(meta.total_salidas || '0.00');
+            $('#historyNeto').text(meta.neto || '0.00');
             if (!rows.length) {
                 $tbody.html('<tr><td colspan="4" class="text-center">Sin movimientos registrados.</td></tr>');
                 return;
@@ -292,6 +308,7 @@ $(document).ready(function() {
             });
         }).fail(function () {
             $tbody.html('<tr><td colspan="4" class="text-center text-danger">No fue posible cargar el historial.</td></tr>');
+            $('#historyTotalEntradas, #historyTotalSalidas, #historyNeto').text('0.00');
         });
     });
 

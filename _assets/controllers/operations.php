@@ -1635,19 +1635,28 @@ class Operations{
     function product_inventory_history($codprd, $codgas): void {
         $data = [];
         $meta = [];
+        $totalEntradas = 0.0;
+        $totalSalidas = 0.0;
         if ($rows = $this->stockModel->get_product_history((int)$codprd, (int)$codgas)) {
             foreach ($rows as $row) {
+                $entradas = (float)$row['ingstk'];
+                $salidas = (float)$row['salstk'];
+                $totalEntradas += $entradas;
+                $totalSalidas += $salidas;
                 $data[] = [
                     'PERIODO'  => $row['percon'],
                     'FECHA'    => $row['Fecha'],
-                    'ENTRADAS' => number_format((float)$row['ingstk'], 2, '.', ','),
-                    'SALIDAS'  => number_format((float)$row['salstk'], 2, '.', ','),
+                    'ENTRADAS' => number_format($entradas, 2, '.', ','),
+                    'SALIDAS'  => number_format($salidas, 2, '.', ','),
                 ];
             }
             $meta = [
-                'producto' => $rows[0]['Producto'],
-                'unidad'   => $rows[0]['Unidad'],
-                'status'   => $rows[0]['Status'],
+                'producto'        => $rows[0]['Producto'],
+                'unidad'          => $rows[0]['Unidad'],
+                'status'          => $rows[0]['Status'],
+                'total_entradas'  => number_format($totalEntradas, 2, '.', ','),
+                'total_salidas'   => number_format($totalSalidas, 2, '.', ','),
+                'neto'            => number_format($totalEntradas - $totalSalidas, 2, '.', ','),
             ];
         }
         json_output(array("data" => $data, "meta" => $meta));
