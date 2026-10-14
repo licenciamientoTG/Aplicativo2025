@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Rentabilidad mensual para el RESUMEN DIRECCIÓN de /merma/ventas. Todo sale
+ * Rentabilidad mensual para el DASHBOARD de /merma/ventas. Todo sale
  * de las copias consolidadas de ControlGas en SG12 (mismo servidor que TG,
  * sin OPENQUERY a estaciones), así que el mes completo se resuelve en ~1 s:
  *

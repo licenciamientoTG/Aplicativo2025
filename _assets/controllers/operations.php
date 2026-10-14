@@ -1,6 +1,8 @@
 <?php
 
 use JetBrains\PhpStorm\NoReturn;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 require_once('./_assets/classes/code128.php');
 
@@ -32,6 +34,7 @@ class Operations{
     public ClientesModel $clientesModel;
     public TerminalInventoryModel $terminalInventoryModel;
     public StationTransferModel $stationTransferModel;
+    public StockModel $stockModel;
     private ?array $terminalSettingsCache = null;
     private ?array $terminalValerasCache = null;
 
@@ -67,6 +70,7 @@ class Operations{
         $this->clientesModel                = new ClientesModel();
         $this->terminalInventoryModel       = new TerminalInventoryModel();
         $this->stationTransferModel          = new StationTransferModel();
+        $this->stockModel                    = new StockModel();
 
     }
 
@@ -1599,6 +1603,146 @@ class Operations{
     function sales_day_turn(){
         echo $this->twig->render($this->route . 'reports/sales_day_turn.html');
 
+    }
+
+    function product_inventory(): void {
+        $stations = $this->gasolinerasModel->get_active_stations();
+        $codgas = isset($_GET['codgas']) ? (int)$_GET['codgas'] : 0;
+        echo $this->twig->render($this->route . 'reports/product_inventory.html', compact('stations', 'codgas'));
+    }
+
+    function product_inventory_table($codgas = 0): void {
+        $codgas = empty($codgas) ? null : (int)$codgas;
+        $data = [];
+        if ($rows = $this->stockModel->get_product_inventory($codgas)) {
+            $estaciones = array_values(array_unique(array_map(fn($row) => (int)$row['codgas'], $rows)));
+            $camposEstacion = $this->stockModel->get_station_product_fields($estaciones);
+
+            foreach ($rows as $row) {
+                $codgasRow = (int)$row['codgas'];
+                $codprdRow = (int)$row['codprd'];
+                $barcodeCorp = trim((string)($row['BarcodeCorp'] ?? ''));
+                $codextCorp = trim((string)($row['CodextCorp'] ?? ''));
+                $campos = $camposEstacion[$codgasRow][$codprdRow] ?? null;
+                $barcodeEstacion = $campos['codbar'] ?? null;
+                $codextEstacion = $campos['codext'] ?? null;
+
+                $data[] = [
+                    'ESTACION'   => $row['Estacion'],
+                    'PRODUCTO'   => $row['Producto'],
+                    'UNIDAD'     => $row['Unidad'],
+                    'STATUS'     => $row['Status'],
+                    'CODPRD'     => $row['codprd'],
+                    'CODGAS'     => $row['codgas'],
+                    'EXISTENCIA' => number_format((float)$row['Existencia'], 2, '.', ','),
+                    'EXISTENCIA_RAW' => (float)$row['Existencia'],
+                    'ULTIMOMOV'  => $row['UltimoMov'],
+                    'BARCODE_CORP'     => $barcodeCorp,
+                    'BARCODE_ESTACION' => $barcodeEstacion ?? 'Sin conexión',
+                    'BARCODE_MATCH'    => $campos === null ? null : ($barcodeEstacion === $barcodeCorp),
+                    'CODEXT_CORP'      => $codextCorp,
+                    'CODEXT_ESTACION'  => $codextEstacion ?? 'Sin conexión',
+                    'CODEXT_MATCH'     => $campos === null ? null : ($codextEstacion === $codextCorp),
+                ];
+            }
+        }
+        json_output(array("data" => $data));
+    }
+
+    function product_inventory_history($codprd, $codgas): void {
+        $data = [];
+        $meta = [];
+        $totalEntradas = 0.0;
+        $totalSalidas = 0.0;
+        if ($rows = $this->stockModel->get_product_history((int)$codprd, (int)$codgas)) {
+            // $rows viene ordenado por percon DESC (más reciente primero). Para
+            // el neto acumulado necesitamos recorrer en orden cronológico
+            // (más antiguo primero) y luego devolver cada fila con su saldo
+            // acumulado a esa fecha, respetando el orden original DESC.
+            $cronologico = array_reverse($rows);
+            $acumulado = 0.0;
+            foreach ($cronologico as &$row) {
+                $acumulado += (float)$row['ingstk'] - (float)$row['salstk'];
+                $row['_neto_acumulado'] = $acumulado;
+            }
+            unset($row);
+            $rows = array_reverse($cronologico);
+
+            foreach ($rows as $row) {
+                $entradas = (float)$row['ingstk'];
+                $salidas = (float)$row['salstk'];
+                $totalEntradas += $entradas;
+                $totalSalidas += $salidas;
+                $data[] = [
+                    'PERIODO'  => $row['percon'],
+                    'FECHA'    => $row['Fecha'],
+                    'ENTRADAS' => number_format($entradas, 2, '.', ','),
+                    'SALIDAS'  => number_format($salidas, 2, '.', ','),
+                    'NETO'     => number_format($row['_neto_acumulado'], 2, '.', ','),
+                ];
+            }
+            $meta = [
+                'producto'        => $rows[0]['Producto'],
+                'unidad'          => $rows[0]['Unidad'],
+                'status'          => $rows[0]['Status'],
+                'total_entradas'  => number_format($totalEntradas, 2, '.', ','),
+                'total_salidas'   => number_format($totalSalidas, 2, '.', ','),
+                'neto'            => number_format($totalEntradas - $totalSalidas, 2, '.', ','),
+            ];
+        }
+        json_output(array("data" => $data, "meta" => $meta));
+    }
+
+    /**
+     * Exporta a Excel exactamente lo que el usuario está viendo en
+     * /operations/product_inventory (respeta los filtros de la tabla),
+     * mismo patrón que inventory_export() en supply.php.
+     */
+    public function product_inventory_export(): void {
+        $filasJson = $_POST['filas'] ?? '[]';
+        $filas = json_decode($filasJson, true);
+        if (!is_array($filas)) {
+            http_response_code(400);
+            echo 'Datos inválidos';
+            return;
+        }
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Inventario Productos');
+
+        $encabezados = ['ESTACIÓN', 'PRODUCTO', 'UNIDAD', 'STATUS', 'EXISTENCIA', 'ÚLTIMO MOVIMIENTO', 'BARCODE CORPORATIVO', 'BARCODE ESTACIÓN', 'CÓDIGO EXT. CORPORATIVO', 'CÓDIGO EXT. ESTACIÓN'];
+        $sheet->fromArray($encabezados, null, 'A1');
+        $sheet->getStyle('A1:J1')->getFont()->setBold(true);
+
+        $row = 2;
+        foreach ($filas as $f) {
+            $sheet->fromArray([
+                $f['estacion'] ?? '',
+                $f['producto'] ?? '',
+                $f['unidad'] ?? '',
+                $f['status'] ?? '',
+                (float)($f['existencia'] ?? 0),
+                $f['ultimomov'] ?? '',
+                $f['barcode_corp'] ?? '',
+                $f['barcode_estacion'] ?? '',
+                $f['codext_corp'] ?? '',
+                $f['codext_estacion'] ?? '',
+            ], null, "A{$row}");
+            $row++;
+        }
+        foreach (range('A', 'J') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $archivo = 'inventario_productos_' . date('Y-m-d_His') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment;filename=\"{$archivo}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
     }
 
     function sales_stations() : void {

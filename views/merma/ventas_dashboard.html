@@ -1,5 +1,5 @@
 {#
-  RESUMEN DIRECCIÓN de /merma/ventas. Se incluye desde ventas.html; recibe
+  DASHBOARD de /merma/ventas. Se incluye desde ventas.html; recibe
   `dashboard` (VentasDashboard::construir), `mes`, `anio` y `meses`.
 #}
 {% set k = dashboard.kpis %}
@@ -21,8 +21,32 @@
 {% import 'views/merma/ventas_ayuda.html' as ayuda %}
 
 <div class="vc-zona-header">
-    <h5 class="vc-zona-titulo mb-0">Resumen de dirección — {{ meses[mes - 1]|capitalize }} {{ anio }}</h5>
+    <h5 class="vc-zona-titulo mb-0">Dashboard — {{ meses[mes - 1]|capitalize }} {{ anio }}</h5>
     <span class="small text-muted">{{ k.dias_con_datos }} de {{ k.dias_del_mes }} días con datos · todas las zonas</span>
+</div>
+
+{# ---------- Análisis IA (prototipo) ---------- #}
+<div class="vd-panel vd-ia mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+        {# Contraído por defecto: el título abre/cierra; el botón queda siempre visible #}
+        <a class="vd-panel-titulo vd-ia-toggle mb-0 collapsed" data-bs-toggle="collapse" href="#analisis_ia_cuerpo"
+           role="button" aria-expanded="false" aria-controls="analisis_ia_cuerpo">
+            <i class="fas fa-chevron-right vd-ia-chevron"></i>
+            <i class="fas fa-robot"></i> Análisis IA (Gemini)
+            <span id="analisis_ia_pie" class="small text-muted fw-normal ms-2">{{ analisisIaPie ? '· ' ~ analisisIaPie : '' }}</span>
+        </a>
+        <button type="button" class="btn btn-sm btn-merma-sync" id="btn_analisis_ia"
+                data-anio="{{ anio }}" data-mes="{{ mes }}">
+            <i class="fas fa-magic"></i> {{ analisisIa ? 'Regenerar análisis' : 'Generar análisis' }}
+        </button>
+    </div>
+    <div class="collapse" id="analisis_ia_cuerpo">
+        <div id="analisis_ia_texto" class="vd-ia-texto mt-2"
+             data-texto="{{ analisisIa ? analisisIa.texto : '' }}">
+            {% if not analisisIa %}<p class="text-muted small mb-0">Aún no hay análisis para este mes.</p>{% endif %}
+        </div>
+        <div class="small text-muted fst-italic mt-2">Análisis automático generado por IA — validar cifras contra el reporte.</div>
+    </div>
 </div>
 
 {# ---------- Indicadores principales ---------- #}

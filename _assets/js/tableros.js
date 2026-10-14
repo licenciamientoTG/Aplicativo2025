@@ -72,6 +72,10 @@
     boardVisibilityStatus: document.getElementById('boardVisibilityStatus'),
     boardVisibilityList: document.getElementById('boardVisibilityList'),
     boardVisibilityEmpty: document.getElementById('boardVisibilityEmpty'),
+    manageBoardSelect: document.getElementById('manageBoardSelect'),
+    openManageBoardShare: document.getElementById('openManageBoardShare'),
+    manageBoardMembersList: document.getElementById('manageBoardMembersList'),
+    manageBoardMembersStatus: document.getElementById('manageBoardMembersStatus'),
     boardsEmpty: document.getElementById('boardsEmpty'),
     boardsEmptyText: document.getElementById('boardsEmptyText'),
     boardWorkspace: document.getElementById('boardWorkspace'),
@@ -229,6 +233,7 @@
     recycleEntries: []
   };
   let shareUserSearchRequest = 0;
+  let boardMembersRequest = 0;
   let selectedShareUser = null;
 
   function setNotice(message, type = 'error') {
@@ -876,6 +881,19 @@
       renderBoardOptions();
       if (pageMode === 'manage') {
         renderBoardVisibilityManager();
+        const manageable = getManageableBoards();
+        const requestedManageId = els.manageBoardSelect?.value;
+        const selected = manageable.find((board) => String(board.id) === String(requestedManageId)) || manageable[0];
+        if (selected) {
+          els.manageBoardSelect.value = String(selected.id);
+          await selectManageBoard(selected.id);
+        } else {
+          state.board = null;
+          state.boardMembers = [];
+          if (els.openManageBoardShare) els.openManageBoardShare.disabled = true;
+          if (els.manageBoardMembersStatus) els.manageBoardMembersStatus.textContent = 'No hay tableros que puedas administrar.';
+          els.manageBoardMembersList?.replaceChildren();
+        }
         showLoading(false);
         return;
       }
@@ -910,11 +928,19 @@
     ['organization', 'Organización · usuarios internos con acceso a Tableros']
   ];
 
+  function getManageableBoards() {
+    return state.boards.filter((board) => ['owner', 'designer'].includes(String(board.role || board.user_role || '').toLowerCase()));
+  }
+
   function renderBoardVisibilityManager() {
-    const manageableBoards = state.boards.filter((board) => {
-      const role = String(board.role || board.user_role || '').toLowerCase();
-      return role === 'owner' || role === 'designer';
-    });
+    const manageableBoards = getManageableBoards();
+    if (els.manageBoardSelect) {
+      const previous = els.manageBoardSelect.value;
+      els.manageBoardSelect.replaceChildren(new Option(manageableBoards.length ? 'Selecciona un tablero' : 'No hay tableros', ''));
+      manageableBoards.forEach((board) => els.manageBoardSelect.add(new Option(board.name || 'Tablero sin nombre', String(board.id))));
+      els.manageBoardSelect.disabled = manageableBoards.length === 0;
+      if (manageableBoards.some((board) => String(board.id) === previous)) els.manageBoardSelect.value = previous;
+    }
     const list = els.boardVisibilityList;
     list.replaceChildren();
     els.boardVisibilityEmpty.hidden = manageableBoards.length > 0;
@@ -1769,7 +1795,7 @@
       if (typeInfo.previewKind === 'image' && downloadable) {
         icon.classList.add('has-thumbnail');
         const thumbnail = document.createElement('img');
-        thumbnail.src = fileEndpoint(file, true);
+        thumbnail.src = thumbnailFileEndpoint(file);
         thumbnail.alt = `Vista previa de ${file.name || 'imagen'}`;
         thumbnail.addEventListener('error', () => {
           thumbnail.remove();
@@ -2166,14 +2192,22 @@
     const mime = String(file.content_type || '').toLowerCase().split(';')[0].trim();
     const name = String(file.name || file.original_name || '');
     const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-    const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(mime);
-    const videoMime = ['video/mp4', 'video/webm'].includes(mime);
+    const inferredMime = ({
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+      pdf: 'application/pdf', mp4: 'video/mp4', webm: 'video/webm', txt: 'text/plain', csv: 'text/csv'
+    })[extension] || '';
+    // Monday exports often label binary attachments as application/octet-stream.
+    // Prefer the filename's known type in that case so images and PDFs preview correctly.
+    const genericMime = ['', 'application/octet-stream', 'binary/octet-stream'].includes(mime);
+    const effectiveMime = genericMime ? (inferredMime || mime) : mime;
+    const imageMime = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'].includes(effectiveMime);
+    const videoMime = ['video/mp4', 'video/webm'].includes(effectiveMime);
     const videoExtension = ['mp4', 'webm'].includes(extension);
     const spreadsheetExtension = ['xls', 'xlsx', 'xlsm'].includes(extension);
     const previewKind = imageMime ? 'image'
       : (videoMime || videoExtension ? 'video'
-        : (mime === 'application/pdf' ? 'pdf'
-          : (['text/plain', 'text/csv'].includes(mime) ? 'text'
+        : (effectiveMime === 'application/pdf' ? 'pdf'
+          : (['text/plain', 'text/csv'].includes(effectiveMime) ? 'text'
             : (spreadsheetExtension ? 'spreadsheet' : 'unsupported'))));
     const icon = previewKind === 'pdf' ? 'fa-file-pdf'
       : (previewKind === 'video' ? 'fa-file-video'
@@ -2181,7 +2215,57 @@
           : (['doc', 'docx', 'odt'].includes(extension) ? 'fa-file-word'
             : (['xls', 'xlsx', 'csv'].includes(extension) ? 'fa-file-excel'
               : (['ppt', 'pptx'].includes(extension) ? 'fa-file-powerpoint' : 'fa-file')))));
-    return { extension, mime, previewKind, icon };
+    return { extension, mime: effectiveMime, previewKind, icon };
+  }
+
+  function inferStoredFileBlobType(file, blob, responseType) {
+    const declaredType = String(responseType || '').toLowerCase().split(';')[0].trim();
+    if (!['', 'application/octet-stream', 'binary/octet-stream'].includes(declaredType)) return blob;
+    const inferredType = fileTypeInfo(file).mime;
+    if (!inferredType || ['application/octet-stream', 'binary/octet-stream'].includes(inferredType)) return blob;
+    return blob.slice(0, blob.size, inferredType);
+  }
+
+  async function fetchStoredFileBlob(file, preview = false) {
+    const response = await fetch(fileEndpoint(file, preview), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json, */*' }
+    });
+    const blob = await response.blob();
+    const responseType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!response.ok || /(?:application\/json|\+json|text\/html)/i.test(responseType)) {
+      let message = `Error del servidor (HTTP ${response.status}).`;
+      try {
+        const payload = JSON.parse(await blob.text());
+        message = payload.error?.message || payload.message || message;
+      } catch (error) {
+        // Keep the HTTP fallback when the server did not return JSON.
+      }
+      throw new Error(message);
+    }
+    if (!blob.size) throw new Error('El servidor devolvió un archivo vacío.');
+    return inferStoredFileBlobType(file, blob, responseType);
+  }
+
+  async function downloadStoredFile(file) {
+    const blob = await fetchStoredFileBlob(file);
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = String(file.name || file.original_name || 'archivo');
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }
+
+  function startFileDownload(file) {
+    downloadStoredFile(file).catch((error) => {
+      const message = errorMessage(error, 'No se pudo descargar el archivo.');
+      setNotice(message, 'error');
+      if (els.filePreviewDialog?.open) showFilePreviewError(message);
+    });
   }
 
   function openNotificationFileTarget(boardId) {
@@ -2219,6 +2303,44 @@
     if (preview) query.set('preview', '1');
     const suffix = query.toString();
     return `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  function thumbnailFileEndpoint(file) {
+    const query = new URLSearchParams();
+    if (file.version_id) query.set('version_id', String(file.version_id));
+    const suffix = query.toString();
+    return `${apiRoot}/thumbnail_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  function imagePreviewEndpoint(file) {
+    const query = new URLSearchParams();
+    if (file.version_id) query.set('version_id', String(file.version_id));
+    const suffix = query.toString();
+    return `${apiRoot}/preview_image_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+  }
+
+  async function fetchImagePreviewBlob(file) {
+    const response = await fetch(imagePreviewEndpoint(file), {
+      credentials: 'same-origin',
+      headers: { Accept: 'image/webp, image/*, application/json, */*' }
+    });
+    const blob = await response.blob();
+    const responseType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!response.ok || /(?:application\/json|\+json|text\/html)/i.test(responseType)) {
+      let message = `Error del servidor (HTTP ${response.status}).`;
+      try {
+        const payload = JSON.parse(await blob.text());
+        message = payload.error?.message || payload.message || message;
+      } catch (error) {
+        // Keep the HTTP fallback when the server did not return JSON.
+      }
+      throw new Error(message);
+    }
+    if (!blob.size) throw new Error('El servidor devolvió un archivo vacío.');
+    if (['', 'application/octet-stream', 'binary/octet-stream'].includes(responseType)) {
+      return blob.slice(0, blob.size, 'image/webp');
+    }
+    return blob;
   }
 
   function spreadsheetPreviewEndpoint(file) {
@@ -2299,9 +2421,10 @@
           if (Array.isArray(comment.attachments) && comment.attachments.length) {
             const attachments = makeElement('div', 'boards-preview-comment-attachments');
             comment.attachments.forEach((attachment) => {
-              const link = makeElement('a', '', attachment.name || `Archivo ${attachment.file_id}`);
-              link.href = fileEndpoint({ file_id: attachment.file_id });
-              link.target = '_blank'; link.rel = 'noopener noreferrer';
+              const attachedFile = { file_id: attachment.file_id, name: attachment.name || `Archivo ${attachment.file_id}` };
+              const link = makeElement('a', '', attachedFile.name);
+              link.href = fileEndpoint(attachedFile);
+              link.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(attachedFile); });
               attachments.append(link);
             });
             article.append(attachments);
@@ -2673,7 +2796,7 @@
       if (!images.length) panel.append(makeElement('p', 'boards-preview-panel-status', 'No hay otras imágenes en este elemento.'));
       images.forEach((imageFile) => {
         const button = makeElement('button', 'boards-preview-gallery-item'); button.type = 'button';
-        const thumbnail = document.createElement('img'); thumbnail.src = fileEndpoint(imageFile, true); thumbnail.alt = '';
+        const thumbnail = document.createElement('img'); thumbnail.src = thumbnailFileEndpoint(imageFile); thumbnail.alt = '';
         button.append(thumbnail, makeElement('span', '', imageFile.name || imageFile.original_name || 'Imagen'));
         button.setAttribute('aria-current', String(imageFile.file_id) === String(file.file_id) ? 'true' : 'false');
         button.addEventListener('click', () => openFilePreview(imageFile, activePreviewItem));
@@ -2734,7 +2857,6 @@
     if (type.previewKind === 'image') {
       const stage = makeElement('div', 'boards-preview-image-stage');
       const image = makeElement('img', 'boards-preview-image');
-      image.src = fileEndpoint(file, true);
       image.alt = name;
       // Prevent the browser's native image drag (which shows a copy ghost)
       // so pointer gestures can pan the zoomed preview instead.
@@ -2791,6 +2913,13 @@
         updatePan();
       };
       image.addEventListener('load', updateImageTransform);
+      fetchImagePreviewBlob(file).then((blob) => {
+        if (previewRequest !== filePreviewRequest) return;
+        filePreviewObjectUrl = URL.createObjectURL(blob);
+        image.src = filePreviewObjectUrl;
+      }).catch((error) => {
+        if (previewRequest === filePreviewRequest) showFilePreviewError(errorMessage(error, 'No se pudo cargar la imagen.'));
+      });
       addImageAction('fa-magnifying-glass-plus', 'Acercar imagen', () => { zoom = Math.min(zoom + 0.25, 3); updateImageTransform(); });
       addImageAction('fa-magnifying-glass-minus', 'Alejar imagen', () => { zoom = Math.max(zoom - 0.25, 0.5); if (zoom <= 1) { panX = 0; panY = 0; } updateImageTransform(); });
       addImageAction('fa-rotate-right', 'Girar 90 grados', () => { rotation = (rotation + 90) % 360; panX = 0; panY = 0; updateImageTransform(); });
@@ -2810,11 +2939,7 @@
         printImage.addEventListener('load', () => { printWindow.focus(); printWindow.print(); }, { once: true });
       });
       const download = addImageAction('fa-download', 'Descargar imagen', () => {
-        const link = document.createElement('a');
-        link.href = fileEndpoint(file);
-        link.download = name;
-        link.rel = 'noopener';
-        link.click();
+        startFileDownload(file);
       });
       download.classList.add('is-download');
       image.addEventListener('pointerdown', (event) => {
@@ -2858,7 +2983,7 @@
           credentials: 'same-origin',
           headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : (type.previewKind === 'spreadsheet' ? 'text/html, application/json' : 'text/plain, text/csv, application/json') }
         });
-        const blob = await response.blob();
+        let blob = await response.blob();
         if (!response.ok || /(?:application\/json|\+json)/i.test(response.headers.get('content-type') || '')) {
           let message = `Error del servidor (HTTP ${response.status}).`;
           try {
@@ -2869,6 +2994,7 @@
           }
           throw new Error(message);
         }
+        blob = inferStoredFileBlobType(file, blob, response.headers.get('content-type') || '');
         if (previewRequest !== filePreviewRequest) return;
         if (type.previewKind === 'spreadsheet') {
           filePreviewObjectUrl = URL.createObjectURL(blob);
@@ -2906,6 +3032,7 @@
       const download = makeElement('a', 'boards-button-primary boards-preview-download', 'Descargar archivo');
       download.href = fileEndpoint(file);
       download.setAttribute('download', '');
+      download.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(file); });
       fallback.append(download);
       els.filePreviewContent.append(fallback);
     }
@@ -3101,6 +3228,7 @@
         const download = makeElement('a', 'boards-text-button', 'Descargar');
         download.href = fileEndpoint(file);
         download.setAttribute('download', '');
+        download.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(file); });
         actions.append(download);
       } else {
         const blocked = makeElement('span', 'boards-file-download-blocked', 'Descarga bloqueada');
@@ -3139,6 +3267,10 @@
               const query = new URLSearchParams({ version_id: String(entry.id) });
               versionDownload.href = `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}?${query.toString()}`;
               versionDownload.setAttribute('download', '');
+              versionDownload.addEventListener('click', (event) => {
+                event.preventDefault();
+                startFileDownload({ ...file, version_id: entry.id, name: entry.original_name || file.name });
+              });
             } else {
               versionDownload = makeElement('span', 'boards-file-download-blocked', 'Descarga bloqueada');
             }
@@ -5176,7 +5308,7 @@
             chip.disabled = !safeToPreview;
             if (info.previewKind === 'image' && safeToPreview) {
               const thumbnail = document.createElement('img');
-              thumbnail.src = fileEndpoint(file, true);
+              thumbnail.src = thumbnailFileEndpoint(file);
               thumbnail.alt = '';
               thumbnail.loading = 'lazy';
               thumbnail.addEventListener('error', () => {
@@ -5843,6 +5975,17 @@
       await loadBoardMembers();
       await searchUsers('');
     });
+    els.openManageBoardShare?.addEventListener('click', async () => {
+      if (!state.board || !canShareBoard()) return;
+      els.shareUserSearch.value = '';
+      els.shareUserSelect.value = '';
+      selectedShareUser = null;
+      els.clearShareUser.hidden = true;
+      els.shareUserResults.replaceChildren();
+      openDialog(els.shareBoardDialog);
+      await loadBoardMembers();
+      await searchUsers('');
+    });
     document.getElementById('openSaveView').addEventListener('click', () => {
       document.getElementById('savedViewType').value = state.activeViewType;
       document.getElementById('savedViewName').value = '';
@@ -6066,7 +6209,9 @@
     try {
       const result = await request(`/users?${params.toString()}`);
       if (requestId !== shareUserSearchRequest || !els.shareBoardDialog.open) return;
-      const users = Array.isArray(result.data) ? result.data : [];
+      const users = (Array.isArray(result.data) ? result.data : []).filter((user) =>
+        !state.boardMembers.some((member) => String(member.user_id) === String(user.id))
+      );
       els.shareUserResults.replaceChildren();
       if (!users.length) {
         els.shareUserResults.append(makeElement('div', 'boards-share-user-empty', query ? 'No hay usuarios activos de TG que coincidan.' : 'Escribe un nombre para buscar usuarios activos de TG.'));
@@ -6108,17 +6253,23 @@
 
   async function loadBoardMembers() {
     if (!state.board) return;
+    const boardId = String(state.board.id);
+    const requestId = ++boardMembersRequest;
     setDetailStatus('boardMembersStatus', 'Cargando personas…');
+    setDetailStatus('manageBoardMembersStatus', 'Cargando personas…');
     els.boardMembersList.replaceChildren();
+    els.manageBoardMembersList?.replaceChildren();
     try {
-      const params = new URLSearchParams({ board_id: String(state.board.id) });
+      const params = new URLSearchParams({ board_id: boardId });
       const result = await request(`/members?${params.toString()}`);
+      if (requestId !== boardMembersRequest || String(state.board?.id || '') !== boardId) return;
       const data = result.data || {};
       state.boardMembers = Array.isArray(data.members) ? data.members : [];
       const entries = [{ ...data.owner, role: 'owner', isOwner: true }, ...state.boardMembers];
       entries.forEach((member) => {
         const id = String(member.user_id ?? '');
         const row = makeElement('div', 'boards-member-row');
+        row.setAttribute('role', 'listitem');
         const details = makeElement('div', 'boards-member-person');
         const displayName = member.name || member.username || 'Usuario de TG';
         details.append(makeElement('strong', '', displayName));
@@ -6132,6 +6283,13 @@
           row.append(makeElement('span', 'boards-member-source', `Si se retira la invitación: ${residual.role || 'lector'} por ${accessSourceLabel(residual.source)}`));
         }
         if (!member.isOwner && canShareBoard()) {
+          const roleSelect = document.createElement('select');
+          roleSelect.className = 'form-select boards-member-role-select';
+          roleSelect.dataset.updateMemberRole = id;
+          roleSelect.setAttribute('aria-label', `Cambiar función de ${displayName}`);
+          [['viewer', 'Lector'], ['contributor', 'Colaborador'], ['editor', 'Editor'], ['designer', 'Diseñador']].forEach(([value, label]) => roleSelect.add(new Option(label, value)));
+          roleSelect.value = ['viewer', 'contributor', 'editor', 'designer'].includes(String(member.role || '').toLowerCase()) ? String(member.role).toLowerCase() : 'viewer';
+          row.append(roleSelect);
           const revoke = makeElement('button', 'boards-text-button is-danger', 'Retirar acceso');
           revoke.type = 'button';
           revoke.dataset.revokeMember = id;
@@ -6139,11 +6297,18 @@
           row.append(revoke);
         }
         els.boardMembersList.append(row);
+        els.manageBoardMembersList?.append(row.cloneNode(true));
       });
-      setDetailStatus('boardMembersStatus', `${entries.length} ${entries.length === 1 ? 'persona' : 'personas'} con acceso`);
+      const message = `${entries.length} ${entries.length === 1 ? 'persona' : 'personas'} con acceso`;
+      setDetailStatus('boardMembersStatus', message);
+      setDetailStatus('manageBoardMembersStatus', message);
     } catch (error) {
-      setDetailStatus('boardMembersStatus', errorMessage(error, 'No se pudo cargar la lista de acceso.'), true);
+      if (requestId !== boardMembersRequest || String(state.board?.id || '') !== boardId) return;
+      const message = errorMessage(error, 'No se pudo cargar la lista de acceso.');
+      setDetailStatus('boardMembersStatus', message, true);
+      setDetailStatus('manageBoardMembersStatus', message, true);
       els.boardMembersList.append(makeElement('p', 'boards-detail-empty', 'La lista de personas no está disponible.'));
+      els.manageBoardMembersList?.append(makeElement('p', 'boards-detail-empty', 'La lista de personas no está disponible.'));
     }
   }
 
@@ -6167,6 +6332,36 @@
       await loadBoards();
       setNotice(residual ? `Invitación directa retirada. ${directoryName} conserva acceso por ${accessSourceLabel(residual.source)}.` : `Invitación directa retirada de ${directoryName}.`, 'success');
     } catch (error) { setNotice(errorMessage(error, 'No se pudo retirar el acceso.'), 'error'); }
+  }
+
+  async function selectManageBoard(boardId) {
+    const board = getManageableBoards().find((entry) => String(entry.id) === String(boardId));
+    state.board = board || null;
+    state.boardMembers = [];
+    if (els.openManageBoardShare) els.openManageBoardShare.disabled = !board;
+    if (!board) {
+      els.manageBoardMembersList?.replaceChildren();
+      if (els.manageBoardMembersStatus) els.manageBoardMembersStatus.textContent = 'Selecciona un tablero.';
+      return;
+    }
+    await loadBoardMembers();
+  }
+
+  async function updateBoardMemberRole(userId, role, select) {
+    if (!canShareBoard() || !state.board) return;
+    const member = state.boardMembers.find((entry) => String(entry.user_id) === String(userId));
+    if (!member || String(member.role).toLowerCase() === role) return;
+    select.disabled = true;
+    setDetailStatus('boardMembersStatus', `Guardando función de ${member.name || member.username || 'la persona'}…`);
+    setDetailStatus('manageBoardMembersStatus', `Guardando función de ${member.name || member.username || 'la persona'}…`);
+    try {
+      await post('/share_board', { board_id: state.board.id, user_id: userId, role });
+      await loadBoardMembers();
+      setNotice('Función actualizada.', 'success');
+    } catch (error) {
+      await loadBoardMembers();
+      setNotice(errorMessage(error, 'No se pudo actualizar la función.'), 'error');
+    }
   }
 
   function selectedWorkspace() {
@@ -6791,6 +6986,7 @@
   }
 
   function setupExtendedEvents() {
+    els.manageBoardSelect?.addEventListener('change', () => selectManageBoard(els.manageBoardSelect.value));
     els.boardVisibilityList?.addEventListener('change', (event) => {
       const select = event.target.closest('[data-board-visibility-select]');
       if (!select) return;
@@ -6859,9 +7055,15 @@
       });
     });
     els.itemCommentForm.addEventListener('submit', submitItemComment);
-    els.boardMembersList.addEventListener('click', (event) => {
-      const revoke = event.target.closest('[data-revoke-member]');
-      if (revoke) revokeBoardMember(revoke.dataset.revokeMember);
+    [els.boardMembersList, els.manageBoardMembersList].forEach((list) => {
+      list?.addEventListener('click', (event) => {
+        const revoke = event.target.closest('[data-revoke-member]');
+        if (revoke) revokeBoardMember(revoke.dataset.revokeMember);
+      });
+      list?.addEventListener('change', (event) => {
+        const select = event.target.closest('[data-update-member-role]');
+        if (select) updateBoardMemberRole(select.dataset.updateMemberRole, select.value, select);
+      });
     });
     els.itemFileTypes.addEventListener('click', (event) => {
       const typeFilter = event.target.closest('[data-file-type]');

@@ -634,6 +634,41 @@ class station_portal
         exit;
     }
 
+    // Manual de usuario para estaciones (subir remisión y carta porte). Se
+    // muestra en un iframe del modal de ayuda de Mis Recepciones. La fuente
+    // es docs/manual_estaciones_recepciones.html; sus capturas (img/...) se
+    // incrustan como data URI porque, servido desde esta ruta, las rutas
+    // relativas del HTML apuntarían a /station_portal/img/.
+    public function manual(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            http_response_code(403);
+            echo "Acceso denegado";
+            exit;
+        }
+
+        $docsDir = realpath(__DIR__ . '/../../docs');
+        $html = $docsDir ? @file_get_contents($docsDir . '/manual_estaciones_recepciones.html') : false;
+        if ($html === false) {
+            http_response_code(404);
+            echo "Manual no disponible";
+            exit;
+        }
+
+        $imgDir = realpath($docsDir . '/img/manual_recepciones');
+        $html = preg_replace_callback('#src="img/manual_recepciones/([A-Za-z0-9_\-]+\.png)"#', function ($m) use ($imgDir) {
+            $path = $imgDir ? $imgDir . DIRECTORY_SEPARATOR . $m[1] : null;
+            if (!$path || !is_readable($path)) {
+                return $m[0];
+            }
+            return 'src="data:image/png;base64,' . base64_encode(file_get_contents($path)) . '"';
+        }, $html);
+
+        header('Content-Type: text/html; charset=utf-8');
+        echo $html;
+        exit;
+    }
+
     // Descarga el PDF o XML de la factura del proveedor real ligada a una
     // recepción (TG.dbo.FacturasMovimientosTanques, TipoOperacion=1) — solo
     // existe el botón en el frontend cuando esa liga ya fue confirmada desde

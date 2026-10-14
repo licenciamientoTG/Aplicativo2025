@@ -773,3 +773,19 @@ async function eliminarRemision($btn, id) {
         alertify.myAlert('<div class="text-danger text-center"><p>Error al eliminar el documento.</p></div>');
     }
 }
+
+// ---- Manual de usuario (ícono junto al título) ----
+// El iframe se carga solo la primera vez que se abre el modal, para no pedir
+// el manual (con sus capturas incrustadas) en cada carga de la página.
+$('#btnManualRecepciones').on('click', function () {
+    bootstrap.Tooltip.getInstance(this)?.hide();
+    const iframe = document.getElementById('iframeManualRecepciones');
+    if (!iframe.getAttribute('src')) {
+        iframe.setAttribute('src', '/station_portal/manual');
+    }
+    $('#modalManualRecepciones').modal('show');
+});
+
+$('#btnManualRecepciones').each(function () {
+    bootstrap.Tooltip.getOrCreateInstance(this);
+});

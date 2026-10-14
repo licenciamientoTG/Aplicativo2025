@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Merma y ventas de combustible — Documentación</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --lima: #A6CE39; --ambar: #b45309;
+    --rojo: #b91c1c; --morado: #7c3aed;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta);
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55;
+    font-size: 13px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--verde); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; font-size: 13px; }
+  h2 {
+    font-size: 17px; color: #fff; background: var(--verde);
+    padding: 6px 12px; border-radius: 4px; margin-top: 32px;
+    page-break-after: avoid;
+  }
+  h2.azul { background: var(--azul); }
+  h2.ambar { background: var(--ambar); }
+  h2.verde { background: var(--verde); }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--verde); page-break-after: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; page-break-inside: avoid; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  code, pre {
+    font-family: Consolas, "Courier New", monospace; font-size: 11.5px;
+    background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px;
+  }
+  code { padding: 1px 4px; }
+  pre { padding: 10px 12px; overflow-x: auto; line-height: 1.4; page-break-inside: avoid; }
+  .nota {
+    background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px;
+    margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid;
+  }
+  .ok { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .riesgo { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; }
+  li { margin-bottom: 3px; }
+  .chip { display: inline-block; background: var(--fondo); border: 1px solid var(--borde); border-radius: 10px; padding: 0 8px; font-size: 11px; color: var(--gris); }
+
+  /* ---- Mapa comparativo hoy vs. con el sistema ---- */
+  .mapa { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; margin: 14px 0 18px; }
+  .mapa .caja { height: 100%; }
+  .mapa-titulo { text-align: center; font-weight: 700; font-size: 14px; padding: 6px; border-radius: 4px; margin-bottom: 8px; color: #fff; }
+  .mapa-titulo.hoy { background: #94a3b8; }
+  .mapa-titulo.nuevo { background: var(--verde); }
+  .caja .gana {
+    display: block; margin-top: 6px; padding: 4px 8px; font-size: 11.5px; line-height: 1.4;
+    background: #ecfdf5; color: #065f46; border-radius: 4px;
+  }
+  .diagrama { margin: 14px 0 22px; page-break-inside: avoid; }
+  .diagrama svg { display: block; width: 100%; height: auto; border: 1px solid var(--borde); border-radius: 0 0 6px 6px; }
+  .diagrama-titulo { font-weight: 700; font-size: 14px; padding: 6px 12px; color: #fff; border-radius: 6px 6px 0 0; }
+  .diagrama-titulo.hoy { background: #94a3b8; }
+  .diagrama-titulo.nuevo { background: var(--verde); }
+  /* Antes y Con el sistema lado a lado (col-6 cada uno); se sale del ancho del texto para que se lean */
+  .diagramas-par {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;
+    width: min(1500px, calc(100vw - 32px)); position: relative; left: 50%; transform: translateX(-50%);
+    margin: 14px 0 22px;
+  }
+  .diagramas-par .diagrama { margin: 0; }
+  @media (max-width: 900px) { .diagramas-par { grid-template-columns: 1fr; } }
+  .caja.destacada { border-width: 3px; box-shadow: 0 0 0 3px #fde68a; }
+  .caja .trazabilidad {
+    display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 10px;
+    background: #f59e0b; color: #fff; font-weight: 700; font-size: 12px;
+  }
+
+  /* ---- Etapas ---- */
+  .etapa {
+    margin: 40px 0 0; padding: 14px 16px; border-radius: 6px; font-size: 20px; font-weight: 700;
+    color: var(--verde); background: #ecfdf5; border: 2px solid var(--verde); text-align: center;
+  }
+  .etapa.tecnica { color: #334155; background: var(--fondo); border-color: #334155; page-break-before: always; }
+  .flujo { margin: 18px auto; max-width: 680px; }
+  .caja {
+    border: 2px solid var(--borde); border-radius: 8px; padding: 10px 14px 10px 52px;
+    position: relative; background: #fff; page-break-inside: avoid;
+  }
+  .caja .num {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .caja b { display: block; font-size: 13.5px; }
+  .caja small { color: var(--gris); display: block; line-height: 1.45; }
+  .caja.usuario  { border-color: var(--ambar); }  .caja.usuario .num  { background: var(--ambar); }
+  .caja.php      { border-color: var(--verde); }  .caja.php .num      { background: var(--verde); }
+  .caja.bd       { border-color: var(--morado); } .caja.bd .num       { background: var(--morado); }
+  .caja.api      { border-color: var(--azul); }   .caja.api .num      { background: var(--azul); }
+  .caja.est      { border-color: var(--rojo); }   .caja.est .num      { background: var(--rojo); }
+  .caja.dir      { border-color: var(--azul); }   .caja.dir .num      { background: var(--azul); }
+  .flecha { text-align: center; color: var(--gris); font-size: 18px; line-height: 1.1; padding: 2px 0; }
+  .flecha small { font-size: 10.5px; display: block; }
+  .leyenda { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin: 8px 0 4px; font-size: 11px; color: var(--gris); }
+  .leyenda span::before { content: "■ "; }
+  .l-usr::before  { color: var(--ambar); } .l-api::before { color: var(--azul); }
+  .l-php::before  { color: var(--verde); } .l-bd::before  { color: var(--morado); }
+  .l-est::before  { color: var(--rojo); }  .l-dir::before { color: var(--azul); }
+  .dos-col { display: flex; gap: 16px; align-items: flex-start; }
+  .dos-col > div { flex: 1; }
+  .malo  { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .bueno { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  @media print {
+    body { padding: 0; font-size: 11.5px; max-width: none; }
+    @page { size: A4; margin: 15mm 14mm; }
+    a { color: inherit; text-decoration: none; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .salto { break-before: page; page-break-before: always; margin-top: 0; }
+    h1, h2, h3, .etapa, .mapa-titulo, .diagrama-titulo { break-after: avoid; page-break-after: avoid; }
+    .caja, .nota, .ok, .riesgo, .malo, .bueno, .dos-col, .diagrama, pre, tr, li { break-inside: avoid; page-break-inside: avoid; }
+    .flecha { break-after: avoid; page-break-after: avoid; }
+    table { page-break-inside: auto; }
+    thead { display: table-header-group; }
+    .mapa { margin: 6px 0 8px; }
+    .mapa .caja { padding: 4px 8px 4px 40px; border-width: 1.5px; }
+    .mapa .caja .num { width: 22px; height: 22px; font-size: 12px; left: 9px; }
+    .mapa .caja b { font-size: 11.5px; }
+    .mapa .caja small, .mapa .caja .gana { font-size: 9.5px; line-height: 1.3; }
+    .mapa .caja .gana { margin-top: 3px; padding: 2px 6px; }
+    .mapa .caja .trazabilidad { margin-top: 3px; font-size: 10px; padding: 1px 8px; }
+    .mapa .flecha { font-size: 11px; line-height: 1; padding: 0; }
+    .mapa .flecha small { font-size: 9px; display: inline; }
+    .mapa-titulo { margin-bottom: 4px; padding: 4px; }
+    .diagrama svg { max-height: 235mm; }
+    .diagramas-par { width: 100%; left: 0; transform: none; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Merma y ventas de combustible</h1>
+<p class="subtitulo">Análisis de Merma Diaria y Reporte de Ventas Consolidado (Abastos / Dirección) ·
+Última actualización: 14 de octubre de 2026</p>
+
+<div class="etapa">Etapa 1 — Qué es y qué cambia</div>
+
+<h2>1. Qué es</h2>
+<p>
+Son dos pantallas del aplicativo TotalGas que salen <b>del mismo registro de inventarios por turno</b>
+de todas las estaciones. Una revisa cuánto combustible no cuadra (merma) y la otra cuánto se vendió
+contra la meta. Funcionan como un solo proceso: los litros vendidos que usa el reporte de ventas son
+los mismos que usa el análisis de merma.
+</p>
+<table>
+  <tr><th style="width:30%">Pantalla</th><th style="width:18%">Quién la usa</th><th>Para qué</th></tr>
+  <tr>
+    <td><b>Análisis de merma diaria</b><br><span class="chip">Abastos → Reportes → Análisis de merma diaria</span></td>
+    <td>Abastos</td>
+    <td>Ver por estación la diferencia entre lo que hay en los tanques y lo que debería haber
+    (inicial + compras − ventas), turno por turno y en el mes. Detectar y corregir lecturas de tanque
+    imposibles o compras mal capturadas. Revisar qué estaciones están dentro de la norma de merma (0.5%).</td>
+  </tr>
+  <tr>
+    <td><b>Reporte de ventas consolidado</b><br><span class="chip">Abastos → Reportes → Reporte de ventas consolidado</span></td>
+    <td>Dirección, Comercial y Abastos</td>
+    <td>Ver los litros vendidos por día y estación de cada zona y producto, contra el presupuesto, el mes
+    anterior y el mismo mes del año pasado. Abre con un <b>Dashboard</b> que junta ventas,
+    compras, merma y rentabilidad del mes.</td>
+  </tr>
+</table>
+
+<h2>2. Qué se quiere lograr</h2>
+<div class="ok">
+<b>Merma y ventas se leen de una sola fuente, todos los días, sin exportar ni copiar archivos.</b>
+El trabajo de revisar la merma y de presentar las ventas es el mismo de antes. Lo que cambia es que
+los números ya están en el sistema cada mañana. Cada corrección queda registrada con quién la hizo,
+cuándo y con qué evidencia, y Dirección consulta el resultado directamente en el aplicativo.
+</div>
+<p>En concreto, se busca:</p>
+<ul>
+  <li><b>Que merma y ventas den siempre el mismo número</b>, porque salen del mismo registro.</li>
+  <li><b>Información al día</b>: el sistema se actualiza solo cada mañana con el mes en curso.</li>
+  <li><b>Trazabilidad de las correcciones</b>: cada lectura de tanque corregida y cada compra excluida
+  queda en bitácora, con su evidencia.</li>
+  <li><b>Detectar a tiempo</b> lecturas imposibles, días sin datos y compras duplicadas, en lugar de
+  descubrirlas al cerrar el mes.</li>
+  <li><b>Histórico consultable</b> de meses y años anteriores sin buscar archivos.</li>
+  <li><b>Un dashboard</b> con avance contra presupuesto, crecimiento, merma y margen del mes.</li>
+</ul>
+
+<h2 class="verde salto">3. Mapa del proceso: antes vs. con el sistema</h2>
+<p>Los mismos pasos, en el mismo orden. A la izquierda cómo se hacía con los libros de Excel; a la
+derecha cómo se hace en el sistema.</p>
+<div class="leyenda">
+  <span class="l-usr">Abastos</span>
+  <span class="l-dir">Dirección</span>
+  <span class="l-php">Lo hace el sistema</span>
+</div>
+
+<div class="mapa">
+  <div class="mapa-titulo hoy">Antes (libros de Excel)</div>
+  <div class="mapa-titulo nuevo">Con el sistema</div>
+
+  <div class="caja usuario"><span class="num">1</span>
+    <b>Abastos exporta "Mermas por estación" (tgr01) a Excel</b>
+    <small>Cada vez que quiere actualizar el mes.</small>
+  </div>
+  <div class="caja php"><span class="num">1</span>
+    <b>El sistema trae los datos solo cada mañana</b>
+    <small>A las 7:00 sincroniza el mes en curso de todas las estaciones. También hay un botón
+    "Actualizar datos" para cualquier rango.</small>
+    <span class="gana">✔ Las ~37 estaciones en paralelo en menos de un minuto, sin exportar nada.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja usuario"><span class="num">2</span>
+    <b>Corre la macro del libro amarillo (Formato&lt;Mes&gt;.xlsm)</b>
+    <small>La macro reparte el export en una hoja por estación y las fórmulas encadenan cada turno con
+    el anterior.</small>
+  </div>
+  <div class="caja php"><span class="num">2</span>
+    <b>El encadenado del libro amarillo se calcula solo</b>
+    <small>El detalle de cada estación es la misma hoja: día × turno, por producto.</small>
+    <span class="gana">✔ La misma regla del libro amarillo, aplicada igual a todas las estaciones y
+    encadenada entre meses. Un turno sin datos se rellena como se hacía a mano.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja usuario"><span class="num">3</span>
+    <b>Revisa diferencias raras y las corrige en ControlGas</b>
+    <small>Entra al ControlGas de la estación, corrige y vuelve a exportar y a correr la macro.</small>
+  </div>
+  <div class="caja usuario destacada"><span class="num">3</span>
+    <b>Corrige desde el aplicativo, con evidencia</b>
+    <small>Las lecturas imposibles salen en rojo. Se corrige el corte del tanque y se adjunta la
+    evidencia, o se excluye una compra duplicada. El día se recalcula solo.</small>
+    <span class="trazabilidad">★ Esto nos da trazabilidad</span>
+    <span class="gana">✔ Queda quién corrigió, cuándo, el valor anterior y la evidencia. "Validar
+    compras" encuentra compras sin descarga física.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja usuario"><span class="num">4</span>
+    <b>Praxedis y Colosio se capturan a mano desde sus PDF</b>
+    <small>Estas dos estaciones no se pueden consultar en línea.</small>
+  </div>
+  <div class="caja usuario"><span class="num">4</span>
+    <b>Se suben los PDF y el sistema los lee</b>
+    <small>Vista previa antes de guardar: qué días son nuevos, cuáles se sobrescriben y cuáles vienen
+    repetidos.</small>
+    <span class="gana">✔ Sin teclear cifras; un PDF puede traer uno o varios días.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja usuario"><span class="num">5</span>
+    <b>Hoja MERMA MENSUAL: concentrado por estación</b>
+  </div>
+  <div class="caja php"><span class="num">5</span>
+    <b>"Análisis de merma diaria" con dashboard de norma</b>
+    <small>Merma por producto, venta y % de merma de cada estación en el rango que se elija.</small>
+    <span class="gana">✔ Cuántas estaciones están dentro de la norma de 0.5%, las 5 peores y aviso de
+    días sin datos o lecturas imposibles.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja usuario"><span class="num">6</span>
+    <b>El libro de ventas (VETS X EST…) toma los litros del libro amarillo</b>
+    <small>Por referencias externas entre archivos; un libro por zona (MARCA Y PROTS, TSA AGS, ZONA 3).</small>
+  </div>
+  <div class="caja php"><span class="num">6</span>
+    <b>"Reporte de ventas consolidado" lee el mismo registro</b>
+    <small>Las tres zonas y los cinco productos en una pantalla, con el presupuesto de Incentivos y un
+    histórico por año.</small>
+    <span class="gana">✔ Ventas y merma no pueden dar cifras distintas, y no depende de tener otro
+    archivo abierto.</span>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <div class="caja usuario"><span class="num">7</span>
+    <b>Los libros circulan como archivo</b>
+    <small>Por correo o carpetas compartidas.</small>
+  </div>
+  <div class="caja dir"><span class="num">7</span>
+    <b>Se consulta el Dashboard</b>
+    <small>Avance vs presupuesto, crecimiento, ritmo diario, zonas, merma y rentabilidad del mes.</small>
+    <span class="gana">✔ Siempre la versión del día. Si alguien necesita el archivo, "Exportar a Excel"
+    genera el mismo libro con valores.</span>
+  </div>
+</div>
+
+<div class="riesgo">
+<b>Lo que se perdía con los libros de Excel, y el sistema resuelve:</b>
+<ul style="margin-bottom:0">
+  <li>Export e importación manual cada vez que se quería actualizar el mes.</li>
+  <li>Un archivo por mes: sin histórico consultable ni registro de quién actualizó y cuándo.</li>
+  <li>Fórmulas frágiles: una fila movida o un turno sin datos rompía el encadenado del mes.</li>
+  <li>Lecturas de tanque imposibles (miles de millones de litros) aparecían como merma sin explicación.</li>
+  <li>El libro de ventas dependía del libro amarillo por referencias externas.</li>
+  <li>Las correcciones no dejaban rastro: no se sabía qué valor se cambió ni por qué.</li>
+</ul>
+</div>
+
+<h3 class="salto">3.1 Diagramas de flujo</h3>
+<p>La misma lógica del mapa, dibujada como diagrama de flujo por carriles (quién hace cada paso).
+Simbología: <b>óvalo</b> = inicio/fin · <b>rectángulo</b> = actividad · <b>rombo</b> = decisión ·
+<b>hoja</b> = archivo · <b>flecha punteada</b> = viaja como archivo.</p>
+
+<div class="diagramas-par">
+<div class="diagrama">
+  <div class="diagrama-titulo hoy">Antes (libros de Excel)</div>
+  <svg viewBox="0 0 840 760" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de flujo anterior con libros de Excel">
+    <defs>
+      <marker id="fh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+      <marker id="fhc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+    </defs>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#0f172a">
+      <rect x="0" y="0" width="560" height="760" fill="#fffbf5" stroke="#cbd5e1"/>
+      <rect x="560" y="0" width="280" height="760" fill="#f0f9ff" stroke="#cbd5e1"/>
+      <rect x="0" y="0" width="560" height="34" fill="#b45309"/>
+      <rect x="560" y="0" width="280" height="34" fill="#0095DA"/>
+      <text x="280" y="22" fill="#fff" font-weight="700" font-size="14">Abastos</text>
+      <text x="700" y="22" fill="#fff" font-weight="700" font-size="14">Dirección</text>
+
+      <rect x="80" y="54" width="120" height="40" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="78" font-weight="700">Inicio</text>
+      <line x1="140" y1="94" x2="140" y2="119" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="40" y="121" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="143">Exporta tgr01</text><text x="140" y="159">a Excel</text>
+      <line x1="140" y1="173" x2="140" y2="198" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="40" y="200" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="222">Corre la macro del</text><text x="140" y="238">libro amarillo</text>
+      <line x1="140" y1="252" x2="140" y2="277" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <polygon points="140,279 235,319 140,359 45,319" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="315">¿Diferencias</text><text x="140" y="331">raras?</text>
+      <line x1="235" y1="319" x2="318" y2="319" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+      <text x="262" y="311" font-size="11" font-weight="700">Sí</text>
+      <line x1="140" y1="359" x2="140" y2="398" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+      <text x="152" y="380" font-size="11" font-weight="700">No</text>
+
+      <rect x="320" y="293" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="420" y="315">Corrige directamente</text><text x="420" y="331">en ControlGas</text>
+      <polyline points="420,293 420,147 242,147" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+      <text x="432" y="220" font-size="10.5" fill="#64748b" text-anchor="start">vuelve a</text>
+      <text x="432" y="234" font-size="10.5" fill="#64748b" text-anchor="start">exportar</text>
+
+      <rect x="40" y="400" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="422">Captura Praxedis y</text><text x="140" y="438">Colosio desde PDF</text>
+      <line x1="140" y1="452" x2="140" y2="477" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="40" y="479" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="501">Arma la hoja</text><text x="140" y="517">MERMA MENSUAL</text>
+      <line x1="140" y1="531" x2="140" y2="556" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="40" y="558" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="140" y="580">Abre los libros de ventas</text><text x="140" y="596">(referencias externas)</text>
+      <line x1="240" y1="584" x2="318" y2="584" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <path d="M320 560 h200 v46 q-50 12 -100 0 t-100 0 z" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="420" y="578" font-size="11">Libros VETS X EST…</text><text x="420" y="593" font-size="11">uno por zona</text>
+      <line x1="520" y1="584" x2="598" y2="584" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fhc)"/>
+      <text x="560" y="576" font-size="10.5" fill="#64748b">📧 archivo</text>
+
+      <rect x="600" y="558" width="200" height="52" rx="6" fill="#fff" stroke="#0095DA" stroke-width="2"/>
+      <text x="700" y="580">Recibe y revisa</text><text x="700" y="596">los libros</text>
+      <line x1="700" y1="610" x2="700" y2="660" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+
+      <rect x="640" y="662" width="120" height="40" rx="20" fill="#fff" stroke="#0095DA" stroke-width="2"/>
+      <text x="700" y="686" font-weight="700">Fin</text>
+    </g>
+  </svg>
+</div>
+
+<div class="diagrama">
+  <div class="diagrama-titulo nuevo">Con el sistema</div>
+  <svg viewBox="0 0 840 760" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de flujo con el sistema">
+    <defs>
+      <marker id="fs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+    </defs>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#0f172a">
+      <rect x="0" y="0" width="280" height="760" fill="#f0fdf6" stroke="#cbd5e1"/>
+      <rect x="280" y="0" width="280" height="760" fill="#fffbf5" stroke="#cbd5e1"/>
+      <rect x="560" y="0" width="280" height="760" fill="#f0f9ff" stroke="#cbd5e1"/>
+      <rect x="0" y="0" width="280" height="34" fill="#009559"/>
+      <rect x="280" y="0" width="280" height="34" fill="#b45309"/>
+      <rect x="560" y="0" width="280" height="34" fill="#0095DA"/>
+      <text x="140" y="22" fill="#fff" font-weight="700" font-size="14">Sistema</text>
+      <text x="420" y="22" fill="#fff" font-weight="700" font-size="14">Abastos</text>
+      <text x="700" y="22" fill="#fff" font-weight="700" font-size="14">Dirección</text>
+
+      <!-- Sistema -->
+      <rect x="80" y="54" width="120" height="40" rx="20" fill="#fff" stroke="#009559" stroke-width="2"/>
+      <text x="140" y="78" font-weight="700">7:00 a.m.</text>
+      <line x1="140" y1="94" x2="140" y2="119" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="40" y="121" width="200" height="52" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
+      <text x="140" y="143">Trae el mes en curso</text><text x="140" y="159">de todas las estaciones</text>
+      <line x1="140" y1="173" x2="140" y2="198" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="40" y="200" width="200" height="52" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
+      <text x="140" y="222">Calcula el encadenado</text><text x="140" y="238">del libro amarillo</text>
+      <line x1="240" y1="226" x2="318" y2="226" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <line x1="140" y1="252" x2="140" y2="489" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="40" y="491" width="200" height="66" rx="6" fill="#ecfdf5" stroke="#009559" stroke-width="2"/>
+      <text x="140" y="513" font-weight="700">Un solo registro</text><text x="140" y="529">alimenta merma, ventas</text><text x="140" y="545">y Dashboard</text>
+      <line x1="240" y1="524" x2="598" y2="524" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <!-- Abastos -->
+      <rect x="320" y="200" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="420" y="222">Revisa el Análisis</text><text x="420" y="238">de merma</text>
+      <line x1="420" y1="252" x2="420" y2="277" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <polygon points="420,279 515,319 420,359 325,319" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="420" y="308" font-size="11">¿Lectura imposible</text><text x="420" y="322" font-size="11">o compra</text><text x="420" y="336" font-size="11">duplicada?</text>
+      <line x1="420" y1="359" x2="420" y2="384" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <text x="432" y="376" font-size="11" font-weight="700">Sí</text>
+      <polyline points="515,319 545,319 545,505 242,505" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <text x="530" y="311" font-size="11" font-weight="700">No</text>
+
+      <rect x="320" y="386" width="200" height="66" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="3"/>
+      <text x="420" y="406">Corrige el corte o excluye</text><text x="420" y="422">la compra, con evidencia</text>
+      <rect x="357" y="429" width="126" height="18" rx="9" fill="#f59e0b"/>
+      <text x="420" y="442" font-size="11" font-weight="700" fill="#fff">★ Trazabilidad</text>
+      <polyline points="320,419 290,419 290,240 242,240" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+      <text x="300" y="330" font-size="9.5" fill="#64748b" transform="rotate(-90 300 330)">recalcula el día</text>
+
+      <rect x="320" y="580" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="420" y="602">Sube PDF de Praxedis</text><text x="420" y="618">y Colosio (cuando llegan)</text>
+      <polyline points="320,606 140,606 140,559" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <!-- Dirección -->
+      <rect x="600" y="498" width="200" height="52" rx="6" fill="#fff" stroke="#0095DA" stroke-width="2"/>
+      <text x="700" y="520">Consulta el Dashboard</text><text x="700" y="536">y las ventas</text>
+      <line x1="700" y1="550" x2="700" y2="598" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+
+      <rect x="640" y="600" width="120" height="40" rx="20" fill="#fff" stroke="#0095DA" stroke-width="2"/>
+      <text x="700" y="624" font-weight="700">Fin</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<h2>4. Qué cambia para cada quien</h2>
+<table>
+  <tr><th style="width:18%">Quién</th><th>Deja de hacer</th><th>Empieza a hacer</th></tr>
+  <tr>
+    <td><b>Abastos</b></td>
+    <td>Exportar tgr01 · correr la macro del libro amarillo · capturar a mano Praxedis y Colosio ·
+    armar MERMA MENSUAL · actualizar y mandar los libros de ventas.</td>
+    <td>Revisar el Análisis de merma · corregir lecturas o excluir compras desde el detalle, con
+    evidencia · subir los PDF de Praxedis y Colosio.</td>
+  </tr>
+  <tr>
+    <td><b>Dirección / Comercial</b></td>
+    <td>Esperar y abrir los libros de ventas.</td>
+    <td>Consultar el Dashboard y el Reporte de ventas consolidado en el aplicativo.</td>
+  </tr>
+  <tr>
+    <td><b>Estaciones</b></td>
+    <td colspan="2">Siguen operando y capturando en ControlGas igual que hoy. Cuando Abastos corrige un
+    corte de tanque desde el aplicativo, la corrección se escribe directamente en ControlGas de la
+    estación.</td>
+  </tr>
+</table>
+
+<div class="dos-col">
+  <div class="ok" style="margin:0">
+    <b>Sin carga extra</b>
+    <ul style="margin-bottom:0">
+      <li>Abastos sigue revisando la merma y corrigiendo lo que no cuadra, como hoy.</li>
+      <li>Las estaciones siguen capturando en ControlGas, como hoy.</li>
+      <li>Desaparecen el export, la macro, la captura de los PDF y el armado de los libros.</li>
+    </ul>
+  </div>
+  <div class="bueno">
+    <b>Lo que se gana</b>
+    <ul style="margin-bottom:0">
+      <li>Merma y ventas con el mismo número, actualizados cada mañana.</li>
+      <li>Bitácora y evidencia de cada corrección.</li>
+      <li>Histórico de meses y años sin buscar archivos.</li>
+      <li>Dashboard con presupuesto, crecimiento, merma y margen.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="nota">
+<b>Para que funcione:</b>
+<ul style="margin-bottom:0">
+  <li><b>Corregir en el sistema, no en una copia de Excel.</b> Si se corrige solo en un archivo, el
+  sistema no lo ve y los dos números vuelven a separarse.</li>
+  <li><b>Subir los PDF de Praxedis y Colosio.</b> Esas dos estaciones no se consultan en línea: sin
+  sus PDF quedan sin datos en merma y en ventas.</li>
+  <li><b>Presupuesto cargado.</b> El avance vs presupuesto sale de la meta que carga el área de
+  Incentivos; si el mes no está cargado, esas filas salen vacías.</li>
+  <li><b>Permisos.</b> Ver las pantallas requiere el permiso 33; corregir cortes y compras, el 83.</li>
+</ul>
+</div>
+
+<div class="etapa tecnica">Etapa 2 — Documentación técnica</div>
+
+<div class="nota">
+Esta etapa reemplaza a <code>docs/merma_documentacion_tecnica.html</code> y
+<code>docs/merma_flujo_datos.html</code> (julio–agosto 2026) y agrega lo construido después:
+corrección de cortes con evidencia, validar/excluir compras, carga de PDF de Praxedis y Colosio,
+reporte de ventas por zona, Dashboard y rentabilidad. Los specs en
+<code>docs/superpowers/specs/</code> (2026-07-13, 07-16, 07-28, 08-04, 08-06, 08-07, 09-08) siguen
+siendo útiles para saber <i>por qué</i> se decidió algo; esta etapa describe <i>cómo funciona hoy</i>.
+</div>
+
+<h2>5. Las vistas</h2>
+<table>
+  <tr><th style="width:30%">Vista</th><th>Qué resuelve</th></tr>
+  <tr>
+    <td><b>Análisis de merma diaria</b><br><code>/merma/analisis</code></td>
+    <td>Reemplaza la hoja MERMA MENSUAL del libro amarillo (<code>Formato&lt;Mes&gt;&lt;Año&gt;.xlsm</code>).
+    Resumen por estación en un rango <code>desde</code>/<code>hasta</code>, sincronización y carga de PDF.</td>
+  </tr>
+  <tr>
+    <td><b>Detalle por estación</b><br><code>/merma/detalle/{codgas}</code></td>
+    <td>Reemplaza la hoja de cada estación del libro amarillo. Día × turno por producto, corrección
+    de cortes físicos, validar compras, bitácora de cambios.</td>
+  </tr>
+  <tr>
+    <td><b>Reporte de ventas consolidado</b><br><code>/merma/ventas</code></td>
+    <td>Reemplaza los libros <code>VETS X EST X MARCA Y PROTS &lt;Mes&gt;&lt;Año&gt;.xlsm</code> (y sus
+    equivalentes de TSA AGS y ZONA 3). Pestaña Dashboard + una pestaña por zona con cinco
+    productos y un histórico.</td>
+  </tr>
+</table>
+
+<h2>6. Cómo se ligan</h2>
+<p>Las tres vistas leen la misma tabla, <code>TG.dbo.merma_diaria</code> (una fila por fecha,
+estación, producto y turno):</p>
+<ul>
+  <li><b>Merma</b> usa <code>diferencia</code> (físico − contable), <code>inv_fisico</code>,
+  <code>compras</code> y <code>ventas_reales</code>.</li>
+  <li><b>Ventas</b> usa solo <code>ventas_reales</code> (el "VR" del libro amarillo), agregado por día y
+  estación (<code>MermaDiariaModel::get_ventas_mes()</code>).</li>
+  <li><b>Dashboard</b> usa ambas: ventas de <code>VentasConsolidado</code> y compras/merma de
+  <code>get_resumen_rango()</code>, con la misma norma (<code>Merma::MERMA_NORMA = 0.5</code>) y el
+  mismo precio por litro (<code>merma_mes_config</code>) que el Análisis.</li>
+  <li><b>Rentabilidad</b> (dentro del Dashboard) es la única parte que lee otra fuente:
+  SG12 (pesos de venta y costo de compra) y <code>FacturasRecibidas</code>. La diferencia de
+  inventario que valoriza sí sale de <code>merma_diaria</code>.</li>
+</ul>
+<div class="ok">
+Como todo sale del mismo snapshot, <b>corregir un corte o excluir una compra cambia a la vez la merma,
+las ventas y el resumen</b>. Una estación sin sincronizar falta en las tres vistas al mismo tiempo.
+</div>
+
+<h3>6.1 Recorrido de la información</h3>
+<div class="leyenda">
+  <span class="l-est">Estación (ControlGas)</span>
+  <span class="l-api">ApiER (Python)</span>
+  <span class="l-php">AplicativoPhp</span>
+  <span class="l-bd">Base central TG</span>
+</div>
+<div class="flujo">
+  <div class="caja est"><span class="num">1</span>
+    <b>Estación — SQL Server local de ControlGas</b>
+    <small><code>Ventas</code> (litros por isla/turno), <code>StockReal</code> (cortes físicos por tanque
+    y turno), <code>Movimientos</code> (compras). Fechas en serial ControlGas (días desde 1899-12-31).
+    Praxedis (40) y Colosio (199) no están aquí: llegan por PDF (§13).</small>
+  </div>
+  <div class="flecha">↓ <small>OPENQUERY por linked server, una consulta por estación, en paralelo</small></div>
+  <div class="caja api"><span class="num">2</span>
+    <b>ApiER — <code>POST /api/inventarios_turnos/</code></b>
+    <small>ThreadPool de 40 hilos. Une Ventas + StockReal + Movimientos por fecha/producto/turno y
+    convierte a fecha operativa. Responde <code>{resultados:[{Codigo,Nombre,filas}], errores, duracion_seg}</code>.</small>
+  </div>
+  <div class="flecha">↓ <small>JSON por cURL (timeout 300 s)</small></div>
+  <div class="caja php"><span class="num">3</span>
+    <b><code>Merma::runSync()</code></b>
+    <small>Lo disparan el cron de las 7:00, "Actualizar datos", "Re-sincronizar estación" o una
+    corrección. Salta Praxedis y Colosio.</small>
+  </div>
+  <div class="flecha">↓ <small>DELETE del rango + INSERT, transacción por estación</small></div>
+  <div class="caja bd"><span class="num">4</span>
+    <b><code>replace_station_range()</code> → <code>TG.dbo.merma_diaria</code></b>
+    <small>Después del insert: <code>aplicar_exclusiones()</code> (compras excluidas a mano),
+    <code>rellenar_turnos_faltantes()</code> y <code>recalc_contable()</code> sobre toda la historia de
+    la estación.</small>
+  </div>
+  <div class="flecha">↓ <small>SELECT agregados por familia</small></div>
+  <div class="caja php"><span class="num">5</span>
+    <b>Vistas: análisis, detalle, ventas, Dashboard</b>
+  </div>
+</div>
+
+<h2>7. Componentes</h2>
+<table>
+  <tr><th>Componente</th><th>Tecnología</th><th>Responsabilidad</th></tr>
+  <tr><td><b>Estaciones</b> (ControlGas)</td><td>SQL Server local (linked servers)</td>
+    <td>Origen de ventas, cortes físicos y compras. La corrección de cortes escribe aquí.</td></tr>
+  <tr><td><b>ApiER</b></td><td>Django REST, <code>http://192.168.0.109:82</code></td>
+    <td><code>POST /api/inventarios_turnos/</code> — función <code>get_inventarios_turnos_estacion</code>
+    en <code>api/modelos/inventarios_estaciones.py</code>. Deploy manual por SFTP.</td></tr>
+  <tr><td><b>AplicativoPhp</b></td><td>PHP MVC + Twig, IIS</td>
+    <td>Controlador <code>Merma</code>; orquesta el sync, guarda el snapshot y presenta las vistas.</td></tr>
+  <tr><td><b>Base central TG</b></td><td>SQL Server 192.168.0.6</td>
+    <td>Snapshot y tablas de apoyo (§17).</td></tr>
+  <tr><td><b>SG12</b></td><td>SQL Server 192.168.0.6</td>
+    <td>Copia consolidada de ControlGas: <code>Ventas</code>, <code>Movimientos</code>,
+    <code>DocumentosC</code>, <code>Documentos</code> — solo para Rentabilidad. Réplica de
+    <code>StockReal</code> que también se corrige.</td></tr>
+  <tr><td><b>hrms</b></td><td>SQL Server</td>
+    <td><code>hrms.dbo.incentives_presupuestoventa</code> — presupuesto de litros por estación y familia
+    (lo carga Incentivos), vía <code>IncentivesPresupuestoModel::getPresupuesto()</code>.</td></tr>
+  <tr><td><b>Cron</b></td><td>Task Scheduler en 192.168.0.3</td>
+    <td>Tarea <code>sya_merma_diaria</code>, diario ~07:00: <code>php cron/merma_sync_diario.php</code>
+    con "Iniciar en" = <code>C:\inetpub\wwwroot\TG_PHP</code> (clon git de producción).</td></tr>
+</table>
+
+<h3>Archivos del código</h3>
+<table>
+  <tr><th>Capa</th><th>Merma (análisis + detalle)</th><th>Ventas</th></tr>
+  <tr><td>Controlador</td><td colspan="2"><code>_assets/controllers/merma.php</code> (un solo controlador para las tres vistas)</td></tr>
+  <tr><td>Vistas</td>
+    <td><code>views/merma/analisis.html</code><br><code>views/merma/detalle.html</code><br>
+    <code>views/merma/modals/cambios_fisico.html</code></td>
+    <td><code>views/merma/ventas.html</code><br><code>ventas_dashboard.html</code> (Dashboard)<br>
+    <code>ventas_rentabilidad.html</code> (AJAX)<br><code>ventas_historico.html</code> (AJAX)<br>
+    <code>ventas_ayuda.html</code> (macro del ícono "?")</td></tr>
+  <tr><td>JS / CSS</td><td><code>_assets/js/merma.js</code> · <code>_assets/css/merma.css</code></td>
+    <td><code>_assets/js/merma_ventas.js</code> · <code>_assets/js/merma_rentabilidad.js</code> (ECharts 5.4.3) ·
+    <code>merma.css</code></td></tr>
+  <tr><td>Modelos</td><td><code>MermaDiariaModel</code>, <code>MermaFisicoEvidenciaModel</code></td>
+    <td><code>MermaDiariaModel</code> (ventas), <code>IncentivesPresupuestoModel</code>,
+    <code>VentasRentabilidadModel</code></td></tr>
+  <tr><td>Clases de cálculo</td>
+    <td><code>BalanceProductoPdfParser</code> (Praxedis), <code>VentasPeriodoInventarioPdfParser</code> (Colosio)</td>
+    <td><code>VentasConsolidado</code>, <code>VentasDashboard</code>, <code>VentasRentabilidad</code>
+    (cálculo puro, sin BD)</td></tr>
+  <tr><td>Cron</td><td colspan="2"><code>cron/merma_sync_diario.php</code> · <code>docs/sql/merma_cron.md</code></td></tr>
+  <tr><td>SQL</td><td colspan="2"><code>docs/sql/merma_schema.sql</code>, <code>merma_fisico_log.sql</code>,
+    <code>merma_fisico_evidencia.sql</code>, <code>merma_compras_excluidas.sql</code></td></tr>
+</table>
+
+<h2>8. Permisos</h2>
+<table>
+  <tr><th>Id</th><th>Constante</th><th>Qué habilita</th></tr>
+  <tr><td><b>33</b></td><td><code>PERM_VER</code></td>
+    <td>Las tres vistas, sincronizar, ver bitácora de cambios, validar compras, carga de PDF de
+    Praxedis/Colosio, exportar a Excel, guardar captura manual y precio.</td></tr>
+  <tr><td><b>83</b></td><td><code>PERM_CORREGIR</code></td>
+    <td>Corregir cortes físicos (uno o en lote), excluir/incluir compras, subir/ver/eliminar evidencia.
+    Sin este permiso el detalle se ve pero las celdas no son editables.</td></tr>
+</table>
+<p>El cron no usa sesión: corre por CLI (<code>PHP_SAPI === 'cli'</code>). <code>/merma/sync</code>
+también acepta <code>cron_token = CRON_SECRET</code>, pero la ruta HTTP no sirve para tareas programadas
+porque <code>index.php</code> exige sesión antes de despachar.</p>
+
+<h2 class="azul">9. Sincronización</h2>
+<h3>9.1 Flujo</h3>
+<ol>
+  <li>Disparo: cron 07:00 (día 1 del mes → ayer, todas las estaciones), botón <b>Actualizar datos</b>
+  (rango y estación elegidos; tope 40 días), <b>Re-sincronizar estación</b> en el detalle (el rango que
+  se ve más el día anterior) o una corrección/exclusión (solo ese día).</li>
+  <li><code>runSync()</code> llama a ApiER. Si <code>codgas</code> es 40 o 199 responde
+  "se cargan desde PDF" sin llamar (<code>CODGAS_CARGA_MANUAL</code>).</li>
+  <li>Por cada estación <b>que respondió</b>: <code>replace_station_range()</code> = DELETE del rango +
+  INSERT en transacción. Las caídas conservan su snapshot anterior. Praxedis/Colosio se saltan aunque
+  ApiER las regrese (antes del fix del 2026-09-28, ApiER las regresaba con 0 filas y el cron borraba lo
+  cargado por PDF).</li>
+  <li>Tras el insert: <code>aplicar_exclusiones()</code> descuenta los litros de compras excluidas a mano;
+  <code>rellenar_turnos_faltantes()</code> crea los turnos ausentes (ventas 0, compras 0, físico NULL);
+  <code>recalc_contable()</code> recalcula inicial/contable/diferencia de toda la historia de la estación.</li>
+  <li>Se registra en <code>merma_sync_log</code> (origen <code>cron</code> / <code>manual</code> /
+  <code>correccion</code> / <code>exclusion</code>). La vista de análisis muestra "Última actualización".</li>
+</ol>
+<div class="ok">
+<b>El sync reemplaza el rango completo.</b> Si una lectura se corrige en ControlGas, la corrección llega
+sola en la siguiente sincronización. No hay merge ni acumulación.
+</div>
+
+<h3>9.2 La consulta en la estación (ApiER)</h3>
+<ul>
+  <li><b>Universo</b> de fecha/producto/turno = UNIÓN de Ventas + StockReal + Movimientos (antes solo
+  Ventas: un turno con compra pero sin venta desaparecía). La rama de StockReal exige
+  <code>can &gt; 0</code> en algún momento para no traer tanques fantasma.</li>
+  <li><b>Turnos</b>: StockReal y Movimientos por decena, <code>nrotur / 10</code>: 1→11, 2→21, otro→41
+  (cubre variantes como <code>nrotur = 22</code>). Ventas conserva su regla (30/31→41).</li>
+  <li><b>Fecha operativa</b> = <code>fch − 1</code>: el corte del turno nocturno se registra al día siguiente.</li>
+  <li><b>Tanques inhabilitados</b>: Gemela Grande (codgas 2) tanque 78 se excluye en ApiER y en PHP
+  (<code>MermaDiariaModel::TANQUES_INHABILITADOS</code>, que aplica al modal de corrección). Para otra
+  estación hay que agregarla en los dos lados y resincronizar el rango.</li>
+</ul>
+
+<h2 class="azul">10. Reglas de negocio</h2>
+<h3>10.1 El día en curso nunca entra</h3>
+<p>Los turnos de hoy están incompletos. Todo se topa en <b>ayer</b>: filtros (<code>max = ayer</code> y
+el servidor recorta aunque venga por URL), defaults (del 1° del mes de ayer a ayer — el día 1 eso es el
+mes anterior completo), re-sync, cron y el mes por defecto de ventas.</p>
+
+<h3>10.2 Regla del libro amarillo (encadenado)</h3>
+<pre>inv_inicial(turno n)  = último físico válido anterior   -- cruza días y meses
+inv_contable(turno n) = inicial − ventas + compras
+diferencia(turno n)   = inv_fisico(turno n) − inv_contable(turno n)</pre>
+<ul>
+  <li>Implementado con CTEs en <code>recalc_contable()</code>: una racha de físicos no nulos; el turno
+  rellenado repite el físico del anterior, igual que se hacía a mano en el libro.</li>
+  <li>Si no hay físico válido antes, las tres columnas quedan NULL y la vista muestra <b>s/d</b>.</li>
+  <li>Por esta regla el detalle <b>no cuadra turno por turno</b> con <code>/supply/tgr01</code> (que usa
+  el mismo turno del día anterior). El total del periodo sí converge.</li>
+</ul>
+
+<h3>10.3 Lecturas físicas corruptas</h3>
+<table>
+  <tr><th>Aspecto</th><th>Comportamiento</th></tr>
+  <tr><td>Rango plausible</td><td><code>INV_FISICO_MIN = 100</code> a <code>INV_FISICO_MAX = 1,000,000</code> litros.
+    Fuera de rango (incluido 0) = corrupta.</td></tr>
+  <tr><td>Guardado</td><td>El valor crudo <b>sí</b> se guarda en <code>inv_fisico</code>, para verlo y corregirlo.</td></tr>
+  <tr><td>Cálculo</td><td>No encadena: su diferencia y la del turno siguiente quedan s/d. No contamina totales.</td></tr>
+  <tr><td>Vista</td><td>Detalle: rojo, notación científica, ⚠. Análisis: triángulo rojo con los días afectados.</td></tr>
+  <tr><td>Inv. inicial del mes</td><td><code>get_inv_inicial_mes()</code> toma el último físico <b>válido</b> antes del día 1.</td></tr>
+</table>
+<div class="nota">
+<b>Antes de suponer un error:</b> si el modal de corrección (que consulta la estación en vivo) muestra un
+valor distinto al de la tabla (snapshot), es un snapshot viejo — se corrigió en ControlGas después del sync.
+Se resuelve con "Re-sincronizar estación", sin tocar código.
+</div>
+
+<h3>10.4 Familias de producto</h3>
+<table>
+  <tr><th>Familia</th><th>codprd</th><th>Nombre en ventas</th><th>Color</th></tr>
+  <tr><td>MAXIMA</td><td>1, 179, 192</td><td>REGULAR</td><td>verde <code>#009559</code></td></tr>
+  <tr><td>SUPER</td><td>2, 180, 193</td><td>PREMIUM</td><td>azul <code>#0095DA</code></td></tr>
+  <tr><td>DIESEL</td><td>3, 181</td><td>DIESEL</td><td>ámbar</td></tr>
+</table>
+
+<h2>11. Análisis de merma (<code>/merma/analisis</code>)</h2>
+<h3>11.1 Pantalla</h3>
+<ul>
+  <li><b>Filtros</b>: Desde / Hasta (máx. ayer) y Buscar. Acepta los links viejos <code>?anio=&amp;mes=</code>.</li>
+  <li><b>Botones</b>: Actualizar datos (modal de rango + estación; Praxedis y Colosio no se ofrecen),
+  Cargar Balance PDF (Praxedis), Cargar Ventas Periodo (Colosio). Debajo, "Última actualización" (último
+  sync exitoso).</li>
+  <li><b>Dashboard de norma</b> (colapsable): "Dentro de norma X / Y" (estaciones con % merma ≤ 0.5),
+  lista de las que están en norma y las 5 peores. Cada nombre abre el detalle con el mismo rango.</li>
+  <li><b>Tabla</b>: por estación, merma del periodo en litros MAXIMA / SUPER / DIESEL / TOTAL, VTA TOTAL y
+  % MERMA (merma / venta). Totales al pie. Exportar a Excel con el botón de la tabla (DataTables).</li>
+  <li><b>Avisos por estación</b>: ícono de días sin datos en el rango y triángulo rojo de lecturas corruptas.</li>
+</ul>
+<div class="nota">
+La captura manual de <b>merma s/d y comentarios</b> por estación/mes (<code>merma_manual</code>,
+<code>/merma/guardar_manual</code>) sigue en el backend pero se quitó de la tabla el 2026-07-16. El
+<b>precio por litro</b> (<code>merma_mes_config</code>) ya no tiene campo en pantalla: ver §20.
+</div>
+
+<h2>12. Detalle por estación (<code>/merma/detalle/{codgas}</code>)</h2>
+<h3>12.1 Pantalla</h3>
+<ul>
+  <li><b>Filtros</b>: rango desde/hasta (o <code>anio</code>/<code>mes</code>). Botones Resumen (vuelve al
+  análisis con el mismo rango), Validar compras, Cambios y Re-sincronizar estación (en Praxedis: Cargar
+  Balance PDF).</li>
+  <li><b>KPIs</b> por familia: Inv. inicial del mes, Compras, Venta, Merma, % merma; y el total del periodo.</li>
+  <li><b>Tab Diario</b> (como el Análisis de Mermas de ControlGas): una fila por día con Inicial, Compras,
+  Ventas, Contable, Físico, Merma y %. Merma del día = suma de diferencias de sus turnos; físico = último
+  corte válido del día. Clic en el día despliega sus turnos.</li>
+  <li><b>Tab Desglosado</b> (la hoja del libro amarillo): fecha × turno con VR, COMPRAS, INV. CONT.,
+  INV. FÍSICO, DIF. y ACUM. por familia; FECHA/TURNO congeladas; total de compras al pie.</li>
+</ul>
+
+<h3>12.2 Corregir un corte físico (permiso 83)</h3>
+<ol>
+  <li>Solo son editables las celdas de físico <b>corruptas</b> o <b>ya corregidas</b> antes (marcadas con "!").</li>
+  <li>El modal lee en vivo las filas de <code>StockReal</code> de la estación para ese día (llave
+  <code>fch, codgas, codprd, nrotur, codtan</code>) y muestra por tanque: valor actual, <b>sugerido</b>
+  (= último físico válido − ventas + compras del turno, calculado del snapshot), historial de los últimos
+  5 cortes de cada tanque y el campo de evidencia.</li>
+  <li><b>Sugerido por tanque</b> (retro): solo Satélite (codgas 24), la única estación confirmada con 2
+  tanques por producto. Se calcula desde el turno siguiente ya válido y se reparte por el peso de cada
+  tanque; es una aproximación.</li>
+  <li>Al guardar (<code>corregir_fisico_lote</code>): <code>UPDATE OPENQUERY(...) SET can=?, logfch=GETDATE()</code>
+  en la estación, y el mismo UPDATE en <code>SG12.dbo.StockReal</code> (si la réplica no tiene la fila se
+  avisa sin fallar). Bitácora en <code>merma_fisico_log</code>. Se resincroniza el día <b>una sola vez</b>
+  al final del lote.</li>
+  <li>No se envuelve en transacción: MSDTC está deshabilitado (error 7391).</li>
+</ol>
+
+<h3>12.3 Evidencia</h3>
+<p>PDF, JPG o PNG de hasta 10 MB en <code>_assets/uploads/merma_evidencia/AAAA/MM/</code>, tabla
+<code>merma_fisico_evidencia</code>. Se liga a la <b>celda</b> (<code>codgas, fecha, codprd, turno</code>),
+no a una corrección concreta, porque una celda puede corregirse varias veces. Ícono 📎 junto a la celda.
+Al consultar se resuelve por familia y por turnos crudos (un archivo subido con codprd 179 / turno 40 se
+encuentra desde la celda MAXIMA / 41). El borrado es lógico (soft-delete); el archivo queda en disco.</p>
+
+<h3>12.4 Validar y excluir compras</h3>
+<ul>
+  <li><b>Validar compras</b> cruza cada documento de compra del rango contra la descarga física de
+  <code>MovimientosTan</code> en la estación (<code>tiptrn=3</code> = litros medidos por la sonda;
+  <code>tiptrn=4</code> = aplicación del documento con el mismo <code>nrotrn</code>). Una compra sin
+  aplicación o con desviación mayor a 10% se marca. Desviaciones de 1–3% son normales.</li>
+  <li><b>Excluir</b> (permiso 83, con motivo) guarda el documento en <code>merma_compras_excluidas</code>;
+  <code>aplicar_exclusiones()</code> descuenta esos litros del snapshot en cada sync. <b>Solo afecta TG</b>;
+  ControlGas queda intacto. <b>Incluir</b> lo revierte. Ambos resincronizan el día.</li>
+  <li>Es un detector, no un filtro automático: filtrar solo rompería la paridad con ControlGas y fallaría
+  cuando la telemetría se cae.</li>
+</ul>
+
+<h3>12.5 Cambios</h3>
+<p>El botón <b>Cambios</b> abre la bitácora de correcciones (<code>merma_fisico_log</code>) de la estación
+en el rango: quién, cuándo, tanque, valor anterior y nuevo.</p>
+
+<h2>13. Praxedis y Colosio: carga por PDF</h2>
+<table>
+  <tr><th></th><th>Praxedis (codgas 40)</th><th>Colosio (codgas 199)</th></tr>
+  <tr><td>Por qué</td><td>No responde por linked server.</td><td>Repsol, Aguascalientes: TotalGas la administra pero no está en ControlGas.</td></tr>
+  <tr><td>Reporte</td><td>"Balance de Producto" de ControlGas</td><td>"Ventas Periodo Inventario"</td></tr>
+  <tr><td>Parser</td><td><code>BalanceProductoPdfParser</code> (pdftotext)</td><td><code>VentasPeriodoInventarioPdfParser</code></td></tr>
+  <tr><td>Días por PDF</td><td>Uno o un rango (una fila por día)</td><td>Uno</td></tr>
+  <tr><td>Endpoints</td><td><code>preview_balance_praxedis</code> / <code>guardar_balance_praxedis</code></td>
+    <td><code>preview_colosio_pdf</code> / <code>guardar_colosio_pdf</code></td></tr>
+</table>
+<ul>
+  <li><b>Preview</b>: no guarda. Marca cada día como Nuevo, Se sobrescribirá (ya tiene datos) o
+  Duplicado (otro archivo del lote ya trae esa fecha; se conserva el primero).</li>
+  <li><b>Guardado</b>: turno sintético 41 (los reportes no traen turnos), en orden ascendente de fecha.
+  Si no hay físico previo, el día anterior se <b>siembra</b> con el "Inv Inicial"/"Inicio" del propio PDF
+  para que el encadenado no tome un dato de semanas atrás.</li>
+  <li>Límite: <code>max_file_uploads</code> de PHP (20 por defecto) por carga.</li>
+  <li>Detalles del parser: pdftotext pone <code>\f</code> pegado al título cuando la sección empieza en
+  página nueva (se normaliza a <code>\n</code>; antes Diesel caía como SUPER). Si un rango declara una
+  "Fecha Hasta" sin fila, sale como advertencia y esa fecha no se toca. Si falta la línea "Estación",
+  se acepta con advertencia.</li>
+</ul>
+
+<h2 class="azul">14. Reporte de ventas consolidado (<code>/merma/ventas</code>)</h2>
+<h3>14.1 Pantalla</h3>
+<ul>
+  <li><b>Filtros</b>: Mes y Año (últimos 3 años). Default = mes de ayer. Botón <b>Exportar a Excel</b>.</li>
+  <li><b>Pestañas</b>: DASHBOARD (abierta por defecto, §15) + una por zona.</li>
+  <li>Cada zona tiene un ícono ⓘ con sus estaciones y seis subpestañas: LITROS DE COMBUSTIBLE, REGULAR +
+  PREMIUM, REGULAR, PREMIUM, DIESEL e HISTÓRICO.</li>
+  <li>Aviso amarillo si el mes no tiene presupuesto cargado.</li>
+</ul>
+
+<h3>14.2 Zonas</h3>
+<p>Por <code>TG.dbo.Estaciones.ZonaConso</code> (<code>VentasConsolidado::ZONAS</code>):</p>
+<table>
+  <tr><th>Zona</th><th>ZonaConso</th><th>Libro que reemplaza</th></tr>
+  <tr><td>MARCA Y PROTS</td><td>0, 1 o NULL</td><td>VETS X EST X MARCA Y PROTS</td></tr>
+  <tr><td>TSA AGS</td><td>2</td><td>TSA AGS</td></tr>
+  <tr><td>ZONA 3</td><td>3</td><td>ZONA3</td></tr>
+</table>
+<p>Las columnas son todas las estaciones de la zona en orden corporativo
+(<code>get_estaciones_ordenadas()</code>), no la lista fija del Excel. Los nombres se muestran sin el
+número de estación.</p>
+
+<h3>14.3 Tabla de cada producto</h3>
+<p>Una fila por día del mes (celda = litros vendidos, — si no hay dato) y nueve filas de resumen
+(<code>VentasConsolidado::construir()</code>):</p>
+<table>
+  <tr><th>Fila</th><th>Cálculo</th></tr>
+  <tr><td>TOTAL</td><td>Suma del mes.</td></tr>
+  <tr><td>% MIX</td><td>Total de la estación / total del grupo.</td></tr>
+  <tr><td>PROY. MENSUAL</td><td>TOTAL ÷ días con datos × días del mes. "Días con datos" es uno solo para
+  todo el reporte (fechas con algún registro), como la celda C299 del Excel.</td></tr>
+  <tr><td>PRESUPUESTO</td><td>Meta de <code>incentives_presupuestoventa</code>, sumando las familias de la pestaña.</td></tr>
+  <tr><td>DIFERENCIA</td><td>PROY − PRESUPUESTO. El total es la suma de las celdas visibles.</td></tr>
+  <tr><td>% PRESUPUESTO</td><td>PROY / PRESUPUESTO − 1. El total usa la proyección solo de estaciones con
+  presupuesto. Encima de la tabla: "Avance vs presupuesto" = 100 + este valor.</td></tr>
+  <tr><td>VS SEMANA PREVIA</td><td>Últimos 7 días con dato / los 7 anteriores − 1 (requiere 14 días).</td></tr>
+  <tr><td>% M.A.</td><td>PROY / total del mes anterior − 1.</td></tr>
+  <tr><td>% A.A.</td><td>PROY / total del mismo mes del año anterior − 1.</td></tr>
+</table>
+
+<h3>14.4 Histórico</h3>
+<p>Se carga por AJAX (<code>/merma/ventas_historico?desde&amp;hasta&amp;prod&amp;zona</code>) para no chocar
+con el selector de mes. Rango de años desde el primero que existe en <code>merma_diaria</code>. Una fila
+por mes con el TOTAL de cada año arriba y los meses de más reciente a más viejo. <b>Un mes no
+sincronizado vale 0</b> (decisión del usuario); por eso se muestra la leyenda "Con datos: X de Y meses".</p>
+
+<h3>14.5 Exportar a Excel</h3>
+<p><code>/merma/ventas_excel?anio&amp;mes&amp;zona&amp;desde&amp;hasta&amp;prod</code>: .xlsx de la <b>zona activa</b>
+con las cinco hojas del libro original más HISTÓRICO, con <b>valores</b> (sin fórmulas ni referencias
+externas) y la leyenda de cobertura del histórico. Archivo <code>ventas_{zona}_{AAAA}_{MM}.xlsx</code>.</p>
+
+<h2 class="azul">15. Dashboard</h2>
+<p><code>VentasDashboard::construir()</code>: no consulta la BD, todo sale del mismo contexto que las
+pestañas por zona, así que no puede contradecirlas. Cada tarjeta tiene un ícono "?" con su explicación.</p>
+<table>
+  <tr><th style="width:28%">Bloque</th><th>Contenido</th></tr>
+  <tr><td>KPIs</td><td>Litros vendidos (y proyección) · Avance vs presupuesto · Vs mismo mes año anterior
+  (número grande = <b>mismas estaciones</b>: excluye las que no vendieron el año pasado, p. ej. Picachos,
+  Colosio) · Vs mes anterior y última semana vs la previa · Ritmo diario (actual, el del presupuesto y el
+  necesario en los días que faltan) · Merma vs ventas.</td></tr>
+  <tr><td>Por zona</td><td>Litros, avance, Vs A.A., Vs M.A., compras y % merma de cada zona.</td></tr>
+  <tr><td>Mezcla de producto</td><td>Regular / Premium / Diesel: litros, % mix, avance, Vs A.A.</td></tr>
+  <tr><td>Venta diaria</td><td>Barras por día con la línea del ritmo del presupuesto.</td></tr>
+  <tr><td>Estaciones</td><td>Las 5 mejores y 5 peores en avance vs presupuesto y en crecimiento A.A., y
+  cuántas van bajo presupuesto.</td></tr>
+  <tr><td>Compras y merma</td><td>Litros comprados, vendidos, compras − ventas, merma (litros y %), merma
+  valorizada (litros × precio del mes), estaciones dentro de norma y las 5 con mayor merma (link al detalle).</td></tr>
+  <tr><td>Rentabilidad</td><td>Se carga por AJAX (§16).</td></tr>
+</table>
+
+<h2 class="azul">16. Rentabilidad</h2>
+<p><code>/merma/ventas_rentabilidad?anio&amp;mes</code> → <code>VentasRentabilidadModel::get_mes()</code> (~1 s,
+sin OPENQUERY) → <code>VentasRentabilidad::construir()</code>. <b>Todo en pesos con IVA</b> (pedido del
+usuario 2026-10-07).</p>
+<h3>16.1 Fuentes</h3>
+<table>
+  <tr><th>Dato</th><th>Origen</th></tr>
+  <tr><td>Venta</td><td><code>SG12.Ventas.mtoven</code> (precio de bomba, IVA incluido). Renglones con $/L
+  fuera de 10–40 se revaloran (caso Clara 05-oct: $1.69 M por 616 L).</td></tr>
+  <tr><td>Costo</td><td><code>SG12.Movimientos</code> tip 11 (recepciones) <code>can × pre</code>, sin IVA y con
+  IEPS (validado 1:1 contra el SubTotal del CFDI), × (1 + tasa IVA de la estación).</td></tr>
+  <tr><td>Tasa IVA</td><td>8% frontera / 16% resto, deducida de <code>Documentos</code> de compra de los
+  últimos 120 días.</td></tr>
+  <tr><td>Factura / proveedor</td><td><code>DocumentosC.satuid</code> → <code>TG.dbo.FacturasRecibidas.UUID</code>
+  (Total, EmisorNombre). Sin satuid o sin CFDI = "Sin factura ligada".</td></tr>
+  <tr><td>Descuentos</td><td>Notas de crédito (CFDI tipo E) de esos proveedores en el mes, Importe + impuesto,
+  sin aplicaciones de anticipo.</td></tr>
+  <tr><td>Diferencia de inventario</td><td><code>merma_diaria</code> (la misma del Análisis), valorada al costo de la estación.</td></tr>
+</table>
+<h3>16.2 Cálculo</h3>
+<pre>costo de lo vendido = litros vendidos × costo promedio por litro comprado en el mes (estación y familia)
+margen bruto        = venta − costo de lo vendido + estímulo fronterizo
+margen ajustado     = margen bruto + descuentos de proveedor ± diferencia de inventario al costo</pre>
+<ul>
+  <li><b>Recepciones sin precio</b> (<code>pre = 0</code>, normal en el mes en curso hasta capturar la factura)
+  no entran al costo promedio; se reportan aparte. Si una estación no tiene ninguna recepción con precio
+  de una familia, usa el promedio global y se marca "costo estimado".</li>
+  <li><b>Estímulo fronterizo</b> (<code>VentasRentabilidad::ESTIMULO_FRONTERA</code>): Regular $3.410/L,
+  Premium $2.860/L, Diesel $0, × litros vendidos en estaciones con IVA 8%. Sin IVA. Montos fijos en código
+  (decisión 2026-10-06).</li>
+  <li><b>Sobrecosto de proveedor</b>: contra el más barato de la misma zona + producto + tasa IVA, tomando
+  como referencia solo proveedores con ≥ 5% del volumen. Es un techo teórico.</li>
+  <li><b>Gráficas</b> (ECharts): $/L por proveedor y producto, dona de litros, precio de venta vs compra
+  diario (hasta 6 estaciones), dispersión volumen vs margen, cascada venta → margen ajustado.</li>
+  <li>Praxedis y Colosio no están en SG12: quedan sin rentabilidad.</li>
+</ul>
+
+<h2>17. Tablas</h2>
+<h3><code>TG.dbo.merma_diaria</code> — snapshot</h3>
+<table>
+  <tr><th>Columna</th><th>Descripción</th></tr>
+  <tr><td><code>fecha, codgas, codprd, turno</code></td><td>Llave lógica (UNIQUE). Fecha operativa; turnos 11/21/41.</td></tr>
+  <tr><td><code>ventas_reales</code></td><td>Litros vendidos (VR). Lo único que usa el reporte de ventas.</td></tr>
+  <tr><td><code>inv_fisico</code></td><td>Suma de cortes de los tanques del producto. Se guarda crudo.</td></tr>
+  <tr><td><code>compras</code></td><td>Litros recibidos, ya descontadas las compras excluidas.</td></tr>
+  <tr><td><code>inv_inicial, inv_contable, diferencia</code></td><td>Calculadas por <code>recalc_contable()</code>.</td></tr>
+  <tr><td><code>updated_at</code></td><td>Último sync que escribió la fila.</td></tr>
+</table>
+<h3>Tablas de apoyo (TG)</h3>
+<table>
+  <tr><th>Tabla</th><th>Para qué</th><th>Script</th></tr>
+  <tr><td><code>merma_sync_log</code></td><td>Cada sincronización: origen, usuario, rango, OK/error, detalle, duración.</td><td><code>merma_schema.sql</code></td></tr>
+  <tr><td><code>merma_mes_config</code></td><td>Precio por litro del mes (default 18.99 si no hay fila).</td><td><code>merma_schema.sql</code></td></tr>
+  <tr><td><code>merma_manual</code></td><td>Merma s/d y comentarios por estación/mes (sin UI hoy).</td><td><code>merma_schema.sql</code></td></tr>
+  <tr><td><code>merma_fisico_log</code></td><td>Bitácora de correcciones de cortes físicos.</td><td><code>merma_fisico_log.sql</code></td></tr>
+  <tr><td><code>merma_fisico_evidencia</code></td><td>Archivos de evidencia por celda (soft-delete).</td><td><code>merma_fisico_evidencia.sql</code></td></tr>
+  <tr><td><code>merma_compras_excluidas</code></td><td>Documentos de compra excluidos del reporte (solo TG).</td><td><code>merma_compras_excluidas.sql</code></td></tr>
+</table>
+<p>Fuera de TG: <code>hrms.dbo.incentives_presupuestoventa</code> (presupuesto),
+<code>TG.dbo.Estaciones</code> (<code>ZonaConso</code>, orden), SG12 y <code>FacturasRecibidas</code> (rentabilidad).</p>
+
+<h2>18. Endpoints</h2>
+<table>
+  <tr><th>Ruta</th><th>Tipo</th><th>Permiso</th><th>Qué hace</th></tr>
+  <tr><td><code>analisis</code></td><td>GET vista</td><td>33</td><td>Resumen por estación.</td></tr>
+  <tr><td><code>detalle/{codgas}</code></td><td>GET vista</td><td>33</td><td>Día × turno de una estación.</td></tr>
+  <tr><td><code>ventas</code></td><td>GET vista</td><td>33</td><td>Reporte consolidado + Dashboard.</td></tr>
+  <tr><td><code>ventas_rentabilidad</code></td><td>GET parcial</td><td>33</td><td>HTML de la sección Rentabilidad.</td></tr>
+  <tr><td><code>ventas_historico</code></td><td>GET parcial</td><td>33</td><td>HTML de la tabla histórica.</td></tr>
+  <tr><td><code>ventas_excel</code></td><td>GET .xlsx</td><td>33</td><td>Exporta la zona activa.</td></tr>
+  <tr><td><code>sync</code></td><td>POST JSON</td><td>33 o cron_token</td><td>Sincroniza rango (máx. 40 días).</td></tr>
+  <tr><td><code>sync_diario</code></td><td>CLI</td><td>cron</td><td>Mes en curso; exit 1 si alguna estación falló.</td></tr>
+  <tr><td><code>cortes_fisicos</code></td><td>POST JSON</td><td>83</td><td>Filas de StockReal en vivo + sugeridos + historial.</td></tr>
+  <tr><td><code>corregir_fisico</code> / <code>corregir_fisico_lote</code></td><td>POST JSON</td><td>83</td><td>Corrige en estación + SG12 y resincroniza el día.</td></tr>
+  <tr><td><code>cambios_fisico</code></td><td>POST parcial</td><td>33</td><td>Bitácora de correcciones.</td></tr>
+  <tr><td><code>compras_recepcion</code></td><td>POST JSON</td><td>33</td><td>Validar compras.</td></tr>
+  <tr><td><code>excluir_compra</code> / <code>incluir_compra</code></td><td>POST JSON</td><td>83</td><td>Excluye/incluye y resincroniza el día.</td></tr>
+  <tr><td><code>evidencia_fisico</code> / <code>subir_evidencia_fisico</code> / <code>eliminar_evidencia_fisico</code></td><td>POST JSON</td><td>83</td><td>Evidencia de una celda.</td></tr>
+  <tr><td><code>view_evidencia_fisico/{id}</code></td><td>GET archivo</td><td>83</td><td>Sirve el archivo (valida que esté bajo la carpeta de uploads).</td></tr>
+  <tr><td><code>preview_balance_praxedis</code> / <code>guardar_balance_praxedis</code></td><td>POST JSON</td><td>33</td><td>Carga PDF Praxedis.</td></tr>
+  <tr><td><code>preview_colosio_pdf</code> / <code>guardar_colosio_pdf</code></td><td>POST JSON</td><td>33</td><td>Carga PDF Colosio.</td></tr>
+  <tr><td><code>guardar_manual</code> / <code>guardar_precio</code></td><td>POST JSON</td><td>33</td><td>Captura manual y precio (sin UI hoy).</td></tr>
+</table>
+
+<h2>19. Operación y solución de problemas</h2>
+<table>
+  <tr><th>Síntoma</th><th>Causa probable / acción</th></tr>
+  <tr><td>"No se pudo contactar ApiER" / "Respuesta inesperada"</td><td>Servicio Django caído, red, o deploy de ApiER pendiente. Ver <code>merma_sync_log</code>.</td></tr>
+  <tr><td>Estación en "con error"</td><td>Linked server caído; conserva su snapshot. Reintentar.</td></tr>
+  <tr><td>El cron sale con exit 1</td><td>Al menos una estación falló (degradación, no falla total).</td></tr>
+  <tr><td>Diferencias de millones</td><td>Lectura corrupta: no debe entrar a totales. Si entra, resincronizar el rango.</td></tr>
+  <tr><td>Modal y tabla muestran físicos distintos</td><td>Snapshot viejo. "Re-sincronizar estación".</td></tr>
+  <tr><td>Diferencia grande en un turno y la contraria en el siguiente</td><td>Corte tomado antes de que terminara la descarga. Sumar el día completo: si cuadra, no es error del sistema.</td></tr>
+  <tr><td>Detalle no cuadra con tgr01 turno a turno</td><td>Esperado (§10.2).</td></tr>
+  <tr><td>Praxedis o Colosio vacíos en ventas</td><td>Faltan sus PDF del periodo.</td></tr>
+  <tr><td>Histórico con meses en cero</td><td>Mes no sincronizado (ver leyenda). Sincronizar el mes por bloques de ≤ 40 días.</td></tr>
+  <tr><td>Filas de presupuesto vacías</td><td>Incentivos no ha cargado el mes en <code>incentives_presupuestoventa</code>.</td></tr>
+  <tr><td>Cambios en <code>merma.php</code> no se reflejan en el cron</td><td>El cron corre la copia de producción (<code>TG_PHP</code>): hacer push y <code>git pull</code> en el servidor.</td></tr>
+</table>
+
+<h2>20. Pendientes y problemas conocidos</h2>
+<ul>
+  <li><b>Signo de la merma — por confirmar.</b> <code>diferencia</code> = físico − contable: negativo es
+  faltante. El dashboard de norma cuenta "dentro de norma" a toda estación con % ≤ 0.5, así que un faltante
+  grande (−3%) sale en norma, y "peores" ordena del % más positivo al menos. La cascada de rentabilidad
+  trata el positivo como sobrante (suma). Hay que definir con Abastos si la norma se evalúa sobre el
+  valor absoluto o solo sobre faltantes.</li>
+  <li><b>Estímulo fronterizo — por confirmar con Contabilidad.</b> Hoy se suma aparte. Los comentarios de
+  <code>VentasRentabilidadModel</code> y la ayuda "Por proveedor" todavía dicen que ya viene en la factura;
+  hay que alinear el texto con la decisión final. Los montos están fijos en código y SHCP los cambia cada
+  semana: candidato a tabla de captura por vigencia.</li>
+  <li><b>Precio por litro sin pantalla.</b> El endpoint <code>guardar_precio</code> existe pero no hay campo en
+  la vista; la merma valorizada usa 18.99 salvo que haya fila en <code>merma_mes_config</code>.</li>
+  <li><b>Comentario desactualizado</b> en <code>Merma::ventas()</code>: dice que el presupuesto sale de
+  <code>TGV2.dbo.Budget</code>; hoy sale de <code>hrms.dbo.incentives_presupuestoventa</code>.</li>
+  <li><b>Leyenda de % M.A.</b> en la vista dice "mismos días transcurridos", pero el cálculo compara la
+  proyección contra el mes anterior completo.</li>
+  <li><b>Sugerido retro por tanque</b> solo existe para Satélite (codgas 24).</li>
+  <li><b>Lerdo</b> (codgas 5): 90 L de diferencia del 08-ago-2026 sin investigar (auditoría vs libro amarillo).</li>
+</ul>
+
+<p style="color:var(--gris); font-size:11.5px; margin-top:28px;">
+Documentación interna de TotalGas · Reemplaza "Análisis de Merma Diaria — Documentación técnica" y
+"Análisis de Merma Diaria — Flujo de datos" · Al cambiar cualquiera de las tres vistas, actualizar este archivo.
+</p>
+
+</body>
+</html>

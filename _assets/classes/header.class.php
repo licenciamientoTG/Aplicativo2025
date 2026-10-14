@@ -60,6 +60,18 @@ define('DEFAULT_ERROR_CONTROLLER', 'error');
 // la FIEL de Petrotal en PetrotalFielConfig). AES-256-CBC vía openssl_*,
 // nativo de PHP, sin dependencias nuevas.
 define('PETROTAL_FIEL_ENCRYPTION_KEY', 'TG_Petrotal_FIEL_2026_ChangeMe!');
+// IA (Gemini) para el análisis ejecutivo de /merma/ventas. La llave real NO
+// se versiona: vive en _assets/classes/gemini_local_config.php (gitignored),
+// que debe hacer define('GEMINI_API_KEY', '...') antes de llegar aquí.
+// Sin ese archivo, queda vacía y el botón responde "falta configurar".
+$gemini_local_config = __DIR__ . DS . 'gemini_local_config.php';
+if (is_file($gemini_local_config)) {
+    require_once $gemini_local_config;
+}
+if (!defined('GEMINI_API_KEY')) {
+    define('GEMINI_API_KEY', '');
+}
+define('GEMINI_MODEL', 'gemini-3.5-flash-lite'); // 3.8-flash: más capaz, pero hoy (14-10-2026) daba "high demand"
 // Cargamos el archivo autoload.php
 require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
 

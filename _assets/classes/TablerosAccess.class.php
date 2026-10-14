@@ -107,20 +107,23 @@ class TablerosAccess
     }
 
     /** @return array<int, array{id:int,name:string,username:string,email:string}> */
-    public function activeUsers(string $search = '', bool $requireModuleAccess = false): array
+    public function activeUsers(string $search = '', bool $requireModuleAccess = false, bool $explicitAccessOnly = false): array
     {
         $search = mb_substr(trim($search), 0, 80, 'UTF-8');
         $sql = 'SELECT TOP (30) u.Id, u.Nombre, u.Usuario, u.Correo
                 FROM [TG].[dbo].[Usuario] u
                 WHERE u.Estatus = 1';
         if ($requireModuleAccess) {
+            $permissionFilter = $explicitAccessOnly
+                ? "p.action = 'read' AND p.description = 'Tableros - Acceso'"
+                : "((p.action = 'read' AND p.description = 'Tableros - Acceso')
+                    OR (p.action = 'create' AND p.description = 'Tableros - Crear')
+                    OR (p.action = 'update' AND p.description = 'Tableros - Administrar'))";
             $sql .= " AND EXISTS (
                 SELECT 1 FROM [TG].[dbo].[tg_permissions] p
                 INNER JOIN [TG].[dbo].[tg_permissions_users] pu ON pu.permission_id = p.id
                 WHERE pu.user_id = u.Id AND p.department = 'General' AND p.status = 1
-                  AND ((p.action = 'read' AND p.description = 'Tableros - Acceso')
-                    OR (p.action = 'create' AND p.description = 'Tableros - Crear')
-                    OR (p.action = 'update' AND p.description = 'Tableros - Administrar'))
+                  AND $permissionFilter
             )";
         }
         $params = [];

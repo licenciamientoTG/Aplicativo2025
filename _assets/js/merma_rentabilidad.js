@@ -1,5 +1,5 @@
 /**
- * Gráficas de la sección Rentabilidad del RESUMEN DIRECCIÓN (/merma/ventas).
+ * Gráficas de la sección Rentabilidad del DASHBOARD (/merma/ventas).
  * La sección llega por AJAX (merma_ventas.js); al inyectarla se llama
  * initRentabilidad(). Los datos vienen en atributos data-* del parcial
  * views/merma/ventas_rentabilidad.html.

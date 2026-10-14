@@ -142,7 +142,7 @@ class tableros_api {
                 $boardId = $this->positiveInt($_GET['board_id'], 'board_id');
                 if (filter_var($_GET['directory'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
                     $this->requireBoardRole($boardId, ['owner', 'designer']);
-                    return $this->model->activeUsers(is_string($query) ? $query : '', true);
+                    return $this->model->activeUsersWithDashboardAccess(is_string($query) ? $query : '');
                 }
                 $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
                 $rawIds = $_GET['ids'] ?? '';
@@ -350,6 +350,66 @@ class tableros_api {
             if (is_array($file) && !empty($file['temporary']) && is_file((string)$file['path'])) @unlink((string)$file['path']);
             error_log('Tableros file download error: ' . $e->getMessage());
             $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al descargar el archivo.']);
+        }
+    }
+
+    public function thumbnail_file($id): void {
+        $thumbnail = null;
+        try {
+            $userId = $this->currentUserId();
+            if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') throw new TablerosApiException('validation', 'Método HTTP no permitido para esta operación.', 422);
+            $this->initializeServices();
+            if (!$this->access->userIsActive($userId) || !$this->access->hasGlobalPermission('access')) throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
+            $fileId = $this->positiveInt($id, 'file_id');
+            $boardId = $this->model->getFileBoardId($fileId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
+            $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
+            $thumbnail = $this->model->getFileThumbnail($fileId, $versionId);
+            header('Content-Type: image/webp');
+            header('Content-Length: ' . (int)$thumbnail['byte_size']);
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, max-age=900');
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            readfile($thumbnail['path']);
+            if (!empty($thumbnail['temporary']) && is_file($thumbnail['path'])) @unlink($thumbnail['path']);
+            exit;
+        } catch (TablerosApiException $e) {
+            if (is_array($thumbnail) && !empty($thumbnail['temporary']) && is_file((string)$thumbnail['path'])) @unlink((string)$thumbnail['path']);
+            $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            if (is_array($thumbnail) && !empty($thumbnail['temporary']) && is_file((string)$thumbnail['path'])) @unlink((string)$thumbnail['path']);
+            error_log('Tableros thumbnail error: ' . $e->getMessage());
+            $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al cargar la miniatura.']);
+        }
+    }
+
+    public function preview_image_file($id): void {
+        $preview = null;
+        try {
+            $userId = $this->currentUserId();
+            if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') throw new TablerosApiException('validation', 'Método HTTP no permitido para esta operación.', 422);
+            $this->initializeServices();
+            if (!$this->access->userIsActive($userId) || !$this->access->hasGlobalPermission('access')) throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
+            $fileId = $this->positiveInt($id, 'file_id');
+            $boardId = $this->model->getFileBoardId($fileId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
+            $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
+            $preview = $this->model->getFileImagePreview($fileId, $versionId);
+            header('Content-Type: image/webp');
+            header('Content-Length: ' . (int)$preview['byte_size']);
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, max-age=900');
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            readfile($preview['path']);
+            if (!empty($preview['temporary']) && is_file($preview['path'])) @unlink($preview['path']);
+            exit;
+        } catch (TablerosApiException $e) {
+            if (is_array($preview) && !empty($preview['temporary']) && is_file((string)$preview['path'])) @unlink((string)$preview['path']);
+            $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            if (is_array($preview) && !empty($preview['temporary']) && is_file((string)$preview['path'])) @unlink((string)$preview['path']);
+            error_log('Tableros image preview error: ' . $e->getMessage());
+            $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al cargar la vista previa.']);
         }
     }
 

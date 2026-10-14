@@ -1,8 +1,8 @@
 <?php
 
 /**
- * Pestaña RESUMEN DIRECCIÓN de /merma/ventas: consolida las tres zonas en
- * los indicadores que un director lee primero (avance vs. presupuesto,
+ * Pestaña DASHBOARD de /merma/ventas: consolida las tres zonas en
+ * * los indicadores principales (avance vs. presupuesto,
  * crecimiento real vs. año anterior, zonas, estaciones a vigilar, mezcla de
  * producto) y los cruza con compras y merma del mismo snapshot
  * (merma_diaria).

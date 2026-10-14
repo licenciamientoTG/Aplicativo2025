@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Sección "Rentabilidad" del RESUMEN DIRECCIÓN de /merma/ventas. Recibe lo
+ * Sección "Rentabilidad" del DASHBOARD de /merma/ventas. Recibe lo
  * que trae VentasRentabilidadModel::get_mes() y arma: margen bruto por
  * estación, zona y producto; desglose por proveedor (con sobrecosto contra
  * el mejor precio de la zona); serie diaria de precio de venta vs costo; y

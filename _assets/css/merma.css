@@ -375,6 +375,11 @@
 .merma-tabla-wrap:has(.merma-tabla.vc-tabla) .merma-scroll {
     max-height: 70vh; overflow-y: auto;
 }
+/* Mismo scroll propio para analisis.html (#merma_table, ~40 estaciones):
+   encabezados de dos niveles fijos arriba y TOTALES fijo abajo. */
+.merma-tabla-wrap:has(#merma_table) .merma-scroll {
+    max-height: 85vh; overflow-y: auto;
+}
 
 /* Infografía plegable: explica cada fila del resumen (TOTAL, % MIX, etc.)
    debajo de la tabla. Colapsada por defecto (<details>) para no competir
@@ -433,7 +438,7 @@
     padding: .1rem .6rem; font-size: .8rem; color: #334155;
 }
 
-/* RESUMEN DIRECCIÓN de /merma/ventas */
+/* DASHBOARD de /merma/ventas */
 .vd-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
 .vd-kpi, .vd-panel {
     background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem;
@@ -465,7 +470,7 @@
 .vd-merma-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem 1rem; }
 .vd-merma-num { font-size: 1.15rem; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
 
-/* Íconos de ayuda (?) de las cards del RESUMEN DIRECCIÓN */
+/* Íconos de ayuda (?) de las cards del DASHBOARD */
 .vd-ayuda {
     background: none; border: 0; padding: 0 .2rem; margin-left: .2rem;
     color: #94a3b8; font-size: .8rem; line-height: 1; cursor: pointer; vertical-align: baseline;
@@ -485,7 +490,7 @@
 }
 .vd-ayuda-cerrar:hover { color: #334155; }
 
-/* Panel "Compras y merma" del RESUMEN DIRECCIÓN: tarjetas + lista de mayor merma */
+/* Panel "Compras y merma" del DASHBOARD: tarjetas + lista de mayor merma */
 .vd-cm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .65rem; }
 .vd-cm-tile {
     display: flex; align-items: flex-start; gap: .7rem;
@@ -621,3 +626,13 @@
     content: ''; position: absolute; left: 10px; top: 1px; width: 8px; height: 8px; border-radius: 50%; background: #334155;
 }
 .vr-pe-margen::before { top: 2px; height: 7px; border-top-width: 2.5px; background: rgba(51,65,85,.15); }
+
+/* Análisis IA (Gemini) en el DASHBOARD de /merma/ventas */
+.vd-ia { border: 1px solid #cbd5e1; border-left: 4px solid #0095DA; border-radius: .5rem; background: #fff; }
+.vd-ia-texto { font-size: .9rem; color: #1e293b; }
+.vd-ia-h { font-weight: 700; color: #00713f; margin: .75rem 0 .35rem; }
+.vd-ia-h:first-child { margin-top: 0; }
+.vd-ia-toggle { cursor: pointer; text-decoration: none; }
+.vd-ia-toggle:hover { color: #0f172a; }
+.vd-ia-chevron { color: #64748b !important; font-size: .75em; transition: transform .15s ease-out; }
+.vd-ia-toggle:not(.collapsed) .vd-ia-chevron { transform: rotate(90deg); }

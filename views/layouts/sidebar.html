@@ -673,7 +673,8 @@
 
       {% endif %}
 
-      {% if authorized(19) or authorized(101) or terminal_inventory_access() or terminal_inventory_report_access() or terminal_inventory_station_report_access() %}
+      {% if authorized(19) or authorized(101) or terminal_inventory_access() or terminal_inventory_report_access() or
+      terminal_inventory_station_report_access() %}
       <li class="sidebar-header">OPERACIONES</li>
       {% if authorized(21) %}
       <li class="sidebar-item">
@@ -705,7 +706,8 @@
         </a>
       </li>
       {% endif %}
-      {% if terminal_inventory_access() or terminal_inventory_report_access() or terminal_inventory_station_report_access() %}
+      {% if terminal_inventory_access() or terminal_inventory_report_access() or
+      terminal_inventory_station_report_access() %}
       <li class="sidebar-item">
         <a data-bs-target="#terminal_inventory_menu" data-bs-toggle="collapse" class="sidebar-link collapsed"
           aria-expanded="false">
@@ -779,6 +781,9 @@
           <li class="sidebar-item">
             <a class="sidebar-link" href="/operations/tank_volume">Tanques</a>
           </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/product_inventory">Inventario de Productos</a>
+          </li>
         </ul>
       </li>
       {% endif %}
@@ -808,7 +813,8 @@
       {% endif %}
       {% endif %}
 
-      {% if authorized(41) or authorized(79) or authorized(80) or authorized(87) or authorized(88) or authorized(89) or authorized(92) %} {# Ver módulo de Tesorería #}
+      {% if authorized(41) or authorized(79) or authorized(80) or authorized(87) or authorized(88) or authorized(89) or
+      authorized(92) %} {# Ver módulo de Tesorería #}
       <li class="sidebar-header">TESORERÍA</li>
       {% if authorized(80) or authorized(87) or authorized(89) or authorized(92) %}
       <li class="sidebar-item">

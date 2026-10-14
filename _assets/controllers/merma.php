@@ -21,7 +21,7 @@ class Merma
 {
     private const PERM_VER      = 33;  // Ver sección de Reportes (Abastos)
     private const PERM_CORREGIR = 83;  // Corregir físico y compras (Merma)
-    private const MERMA_NORMA   = 0.5; // % de merma permitido (Análisis y Resumen Dirección)
+    private const MERMA_NORMA   = 0.5; // % de merma permitido (Análisis y Dashboard)
     private const API_URL  = 'http://192.168.0.109:82/api/inventarios_turnos/';
     private const CODGAS_PRAXEDIS = 40;
     private const CODGAS_COLOSIO  = 199;
@@ -103,7 +103,8 @@ class Merma
             $faltantes = array_values(array_diff($diasEsperados, $fechas[$cod] ?? []));
             $fila = [
                 'codgas'      => $cod,
-                'nombre'      => $est['Nombre'],
+                // Los nombres traen el número de estación al inicio ("38 PRAXEDIS")
+                'nombre'      => preg_replace('/^\d+\s*/', '', trim($est['Nombre'])),
                 'cveest'      => $est['cveest'] ?? null,
                 'maxima'      => $r['merma_maxima'] ?? null,
                 'super'       => $r['merma_super'] ?? null,
@@ -328,6 +329,8 @@ class Merma
         // o el selector ofrecería un año que el propio validador reescribe.
         $anioMinHist = max(2020, $anioMinHist);
 
+        $analisisIa = (new MermaVentasAnalisisIaModel())->get_ultimo($anio, $mes);
+
         echo $this->twig->render($this->route . 'ventas.html', $reporte + [
             'anios'  => range($anioAyer, $anioAyer - 2),
             'meses'  => ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
@@ -337,21 +340,233 @@ class Merma
             'histDesde' => max($anioMinHist, $anioAyer - 2),
             'histHasta' => $anioAyer,
             'histProds' => VentasConsolidado::PESTANAS,
+            'analisisIa'    => $analisisIa,
+            'analisisIaPie' => self::pieAnalisisIa($analisisIa),
         ]);
     }
 
     /**
-     * RESUMEN DIRECCIÓN: ventas consolidadas + compras y merma del mismo mes,
+     * Botón "Generar análisis" del DASHBOARD: manda a Gemini los mismos
+     * números del dashboard del mes y guarda el resumen ejecutivo (uno por
+     * día; regenerar el mismo día lo reemplaza). Prototipo para dirección.
+     */
+    public function ventas_analisis_generar(): void
+    {
+        if (!authorized(self::PERM_VER)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $anio = (int) ($_POST['anio'] ?? 0);
+        $mes  = (int) ($_POST['mes'] ?? 0);
+        if ($mes < 1 || $mes > 12 || $anio < 2020 || $anio > 2100) {
+            json_output(['success' => false, 'message' => 'Mes o año inválido']);
+            return;
+        }
+
+        $reporte = $this->armarReporte($anio, $mes);
+        // Estaciones con venta anómala (errores de captura pendientes de
+        // corregir) se sacan del contexto ANTES de armar el dashboard, para
+        // que no inflen totales, avance, crecimiento ni merma de la red.
+        // Solo afecta lo que se manda a la IA; el dashboard en pantalla no cambia.
+        [$ctxIa, $excluidas] = self::excluirVentasAnomalas($reporte['ctx']);
+        // Merma no creíble: se excluye SOLO su merma (sus ventas sí cuentan)
+        [$sinMerma, $excluidasMerma] = $this->detectarMermaAnomala($ctxIa['estaciones'], $anio, $mes);
+        $dashboard = $this->armarDashboard($ctxIa, $anio, $mes, $sinMerma);
+        $meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                  'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+        $instrucciones = 'Eres analista comercial de TotalGas, cadena de gasolineras en México. '
+            . 'Escribe un resumen ejecutivo para la dirección, en español, claro y breve (máximo 400 palabras). '
+            . 'Usa SOLO las cifras del JSON; no inventes datos ni causas que no se deduzcan de ellos. '
+            . 'Formato: markdown simple, únicamente encabezados "## ", viñetas "- " y **negritas**; sin tablas. '
+            . 'Secciones exactas, en este orden: "## Posibles errores de datos", "## Panorama del mes", '
+            . '"## Estaciones destacadas", "## Estaciones a vigilar", "## Merma". '
+            . 'Litros SIN decimales y con separador de miles; porcentajes con 1 decimal. '
+            . 'EXCLUIDAS: "excluidas_por_venta_anomala" lista estaciones que el sistema YA quitó de todos los '
+            . 'totales y rankings por tener ventas no creíbles (probable error de captura). Menciónalas SOLO en '
+            . '"## Posibles errores de datos" (nombre, litros y motivo) y aclara que no se consideran en el análisis; '
+            . 'no las uses en ninguna otra sección. '
+            . '"merma_excluida_por_anomala" lista estaciones cuya MERMA el sistema ya quitó de los totales de merma '
+            . '(su % no es creíble: probable error de inventario o compras), pero cuyas ventas SÍ cuentan. '
+            . 'Menciónalas en "## Posibles errores de datos" (nombre, % y litros de merma) y en "## Merma" aclara que '
+            . 'el % de la red se calculó sin ellas; no las cuentes como fuera de norma ni las rankees por merma. '
+            . 'VALIDACIÓN ADICIONAL de las estaciones que sí vienen en los datos: considera sospechosa una estación si '
+            . 'avance > 150% o < 40%; o aa > +100% o < -60% (sin contar estaciones nuevas). '
+            . 'Lístala también en "## Posibles errores de datos" con la cifra anómala, y no la presentes como '
+            . 'destacada ni a vigilar por desempeño. Si no hay ninguna anomalía, escribe "- Sin anomalías detectadas.". '
+            . 'No recalcules totales tú mismo. '
+            . 'Un aa enorme en una estación con poca historia (o de carga manual como Praxedis y Colosio) indica '
+            . 'falta de datos del año anterior, no crecimiento real. '
+            . 'Glosario del JSON: avance = proyección al cierre / presupuesto x 100 (100 = en meta); '
+            . 'aa = % de cambio vs mismo mes del año anterior; aa_mismas = igual pero sin estaciones nuevas; '
+            . 'ma = % vs mes anterior; proy = proyección de litros al cierre del mes; '
+            . 'merma.pct = merma / venta x 100, la norma permitida es merma.norma; merma.valor en pesos.';
+
+        $prompt = 'Mes analizado: ' . $meses[$mes - 1] . ' ' . $anio . ".\n"
+            . "Datos del dashboard (JSON):\n"
+            . json_encode(self::compactarParaIa($dashboard + [
+                'excluidas_por_venta_anomala' => $excluidas,
+                'merma_excluida_por_anomala'  => $excluidasMerma,
+            ]),
+                          JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        $r = GeminiClient::generar($instrucciones, $prompt);
+        if (!$r['success']) {
+            json_output(['success' => false, 'message' => $r['message']]);
+            return;
+        }
+
+        $usuario = (int) ($_SESSION['tg_user']['Id'] ?? 0);
+        $model   = new MermaVentasAnalisisIaModel();
+        if (!$model->guardar($anio, $mes, $r['texto'], GEMINI_MODEL, $usuario)) {
+            json_output(['success' => false, 'message' => 'Se generó el análisis pero no se pudo guardar (¿ya se creó la tabla merma_ventas_analisis_ia?)']);
+            return;
+        }
+        $ultimo = $model->get_ultimo($anio, $mes);
+        json_output([
+            'success' => true,
+            'texto'   => $r['texto'],
+            'pie'     => self::pieAnalisisIa($ultimo),
+        ]);
+    }
+
+    /** Una estación vende más que VENTA_ANOMALA_RED × la mediana de la red en el mes. */
+    private const VENTA_ANOMALA_RED = 4;
+    /** Un día de una estación vende más que VENTA_ANOMALA_DIA × su propia mediana diaria. */
+    private const VENTA_ANOMALA_DIA = 5;
+
+    /**
+     * Separa las estaciones con venta no creíble (ej. un día capturado en
+     * millones de litros) del contexto del dashboard.
+     *
+     * @return array{0: array, 1: array} [ctx sin esas estaciones, lista de excluidas con motivo]
+     */
+    private static function excluirVentasAnomalas(array $ctx): array
+    {
+        $porEstacion = []; // codgas => [fecha => litros del día]
+        foreach ($ctx['ventas'] as $fecha => $filas) {
+            foreach ($filas as $cod => $f) {
+                $litros = (float) ($f['maxima'] ?? 0) + (float) ($f['super'] ?? 0) + (float) ($f['diesel'] ?? 0);
+                if ($litros != 0.0) $porEstacion[(int) $cod][$fecha] = $litros;
+            }
+        }
+        $totales = array_map('array_sum', $porEstacion);
+        $medianaRed = self::mediana(array_values($totales));
+
+        $motivos = [];
+        foreach ($porEstacion as $cod => $dias) {
+            if ($medianaRed > 0 && $totales[$cod] > self::VENTA_ANOMALA_RED * $medianaRed) {
+                $motivos[$cod][] = sprintf('venta del mes %s veces la mediana de la red',
+                    number_format($totales[$cod] / $medianaRed, 1));
+            }
+            $medianaDia = count($dias) >= 5 ? self::mediana(array_values($dias)) : 0;
+            if ($medianaDia > 0) {
+                foreach ($dias as $fecha => $litros) {
+                    if ($litros > self::VENTA_ANOMALA_DIA * $medianaDia) {
+                        $motivos[$cod][] = sprintf('el %s vendió %s litros (%s veces su día normal)',
+                            $fecha, number_format($litros, 0, '.', ','), number_format($litros / $medianaDia, 1));
+                    }
+                }
+            }
+        }
+
+        $excluidas = [];
+        foreach ($ctx['estaciones'] as $e) {
+            $cod = (int) $e['Codigo'];
+            if (!isset($motivos[$cod])) continue;
+            $excluidas[] = [
+                'nombre' => $e['Nombre'],
+                'litros' => round($totales[$cod]),
+                'motivo' => implode('; ', $motivos[$cod]),
+            ];
+        }
+        $ctx['estaciones'] = array_values(array_filter(
+            $ctx['estaciones'], fn($e) => !isset($motivos[(int) $e['Codigo']])));
+        return [$ctx, $excluidas];
+    }
+
+    /** |merma / venta| arriba de este % se considera error de datos, no merma real. */
+    private const MERMA_ANOMALA_PCT = 5.0;
+
+    /**
+     * Estaciones cuya merma del mes no es creíble (fuera de ±MERMA_ANOMALA_PCT).
+     *
+     * @return array{0: int[], 1: array} [codgas a excluir de la merma, lista para la IA]
+     */
+    private function detectarMermaAnomala(array $estaciones, int $anio, int $mes): array
+    {
+        $desde = sprintf('%04d-%02d-01', $anio, $mes);
+        $hasta = min(date('Y-m-t', mktime(0, 0, 0, $mes, 1, $anio)), date('Y-m-d', strtotime('yesterday')));
+        $resumen = $this->mermaModel->get_resumen_rango($desde, $hasta);
+
+        $codigos = [];
+        $lista   = [];
+        foreach ($estaciones as $e) {
+            $cod = (int) $e['Codigo'];
+            $r = $resumen[$cod] ?? null;
+            if (!$r || $r['merma_total'] === null || !(float) $r['venta_total']) continue;
+            $pct = (float) $r['merma_total'] / (float) $r['venta_total'] * 100;
+            if (abs($pct) <= self::MERMA_ANOMALA_PCT) continue;
+            $codigos[] = $cod;
+            $lista[] = [
+                'nombre'       => $e['Nombre'],
+                'merma_pct'    => round($pct, 1),
+                'merma_litros' => round((float) $r['merma_total']),
+            ];
+        }
+        return [$codigos, $lista];
+    }
+
+    private static function mediana(array $v): float
+    {
+        if (!$v) return 0.0;
+        sort($v);
+        $n = count($v);
+        return $n % 2 ? (float) $v[intdiv($n, 2)] : ($v[$n / 2 - 1] + $v[$n / 2]) / 2;
+    }
+
+    /** "Generado el 14-10-2026 10:32 por X · gemini-2.5-flash" (mismo texto que la vista). */
+    private static function pieAnalisisIa(?array $a): string
+    {
+        if (!$a) return '';
+        return 'Generado el ' . date('d-m-Y H:i', strtotime($a['creado_en']))
+            . ' por ' . ($a['usuario_nombre'] ?? 'usuario ' . $a['usuario'])
+            . ' · ' . $a['modelo'];
+    }
+
+    /**
+     * Quita codgas, redondea y limpia el número inicial de los nombres
+     * ("38 PRAXEDIS" → "PRAXEDIS") para mandarle a la IA menos tokens.
+     */
+    private static function compactarParaIa($v)
+    {
+        if (is_array($v)) {
+            $out = [];
+            foreach ($v as $k => $x) {
+                if ($k === 'codgas' || $k === 'clave') continue;
+                $out[$k] = $k === 'nombre' && is_string($x)
+                    ? preg_replace('/^\d+\s*/', '', trim($x))
+                    : self::compactarParaIa($x);
+            }
+            return $out;
+        }
+        return is_float($v) ? round($v, 2) : $v;
+    }
+
+    /**
+     * DASHBOARD: ventas consolidadas + compras y merma del mismo mes,
      * con la misma norma y el mismo precio de valorización que el Análisis
      * de merma, para que ambas pantallas den el mismo número.
      */
-    private function armarDashboard(array $ctx, int $anio, int $mes): array
+    private function armarDashboard(array $ctx, int $anio, int $mes, array $excluirMerma = []): array
     {
         $desde = sprintf('%04d-%02d-01', $anio, $mes);
         $hasta = min(date('Y-m-t', mktime(0, 0, 0, $mes, 1, $anio)), date('Y-m-d', strtotime('yesterday')));
 
         $merma = [];
         foreach ($this->mermaModel->get_resumen_rango($desde, $hasta) as $cod => $r) {
+            // Análisis IA: estaciones con merma no creíble no entran a los totales de merma
+            if (in_array($cod, $excluirMerma, true)) continue;
             $merma[$cod] = [
                 'merma'   => $r['merma_total'] === null ? null : (float) $r['merma_total'],
                 'venta'   => $r['venta_total'] === null ? null : (float) $r['venta_total'],
@@ -367,7 +582,7 @@ class Merma
     }
 
     /**
-     * Sección "Rentabilidad" del RESUMEN DIRECCIÓN. Se pide por AJAX después
+     * Sección "Rentabilidad" del DASHBOARD. Se pide por AJAX después
      * de pintar la página para que su consulta a SG12 no retrase el resto
      * del reporte. Devuelve solo el HTML de la sección.
      */
@@ -708,7 +923,7 @@ class Merma
         }
 
         // Contexto completo (todas las estaciones, cada una con su zona) para
-        // el RESUMEN DIRECCIÓN, que consolida las tres zonas.
+        // el DASHBOARD, que consolida las tres zonas.
         $ctxBase['estaciones'] = array_map(
             fn($e) => $e + ['zona' => VentasConsolidado::clasificarZona($e['ZonaConso'])],
             $estaciones

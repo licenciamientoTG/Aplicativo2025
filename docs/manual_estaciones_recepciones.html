@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual: subir remisión y carta porte</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --ambar: #b45309; --rojo: #b91c1c;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta); background: #fff;
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55;
+    font-size: 13.5px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--verde); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; font-size: 13px; }
+  h2 {
+    font-size: 17px; color: #fff; background: var(--verde);
+    padding: 6px 12px; border-radius: 4px; margin-top: 32px;
+  }
+  h2.azul { background: var(--azul); }
+  h2.ambar { background: var(--ambar); }
+  h3 { font-size: 14.5px; margin: 20px 0 6px; color: var(--verde); }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12.5px; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 6px 9px; vertical-align: top; }
+  .nota { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .ok { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .riesgo { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  .indice { background: var(--fondo); border: 1px solid var(--borde); border-radius: 6px; padding: 10px 14px; margin: 0 0 8px; }
+
+  /* Resumen rápido: pasos en tarjetas */
+  .pasos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0 18px; }
+  .paso {
+    border: 2px solid var(--verde); border-radius: 8px; padding: 10px 12px 10px 48px;
+    position: relative; background: #fff;
+  }
+  .paso .num {
+    position: absolute; left: 10px; top: 12px; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--verde); color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .paso b { display: block; }
+  .paso small { color: var(--gris); display: block; line-height: 1.4; }
+
+  /* Paso con número grande junto al título */
+  .titulo-paso { display: flex; align-items: center; gap: 10px; margin: 26px 0 8px; }
+  .titulo-paso .num {
+    width: 34px; height: 34px; border-radius: 50%; background: var(--verde); color: #fff;
+    font-weight: 700; font-size: 17px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .titulo-paso h2 { margin: 0; flex: 1; }
+
+  /* Capturas */
+  figure { margin: 12px 0 18px; }
+  figure img {
+    display: block; max-width: 100%; height: auto; margin: 0 auto;
+    border: 1px solid var(--borde); border-radius: 6px; box-shadow: 0 2px 6px rgba(15, 23, 42, .08);
+  }
+  figure.chica img { max-width: 360px; }
+  figure.media img { max-width: 560px; }
+  figcaption { text-align: center; color: var(--gris); font-size: 12px; margin-top: 6px; }
+  .fig-num { font-weight: 700; color: var(--tinta); }
+
+  /* Dos capturas lado a lado */
+  .par { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .par figure { margin: 8px 0; }
+
+  /* Botón dibujado en el texto */
+  .btn {
+    display: inline-block; padding: 0 7px; border: 1px solid var(--borde); border-radius: 4px;
+    background: var(--fondo); font-weight: 600; font-size: 12px; white-space: nowrap;
+  }
+  .btn.azul { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .etq { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 12px; white-space: nowrap; }
+  .etq.verde { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+  .etq.amarilla { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+
+  @media (max-width: 640px) {
+    body { padding: 20px 16px; }
+    .pasos, .par { grid-template-columns: 1fr; }
+    figure.chica img, figure.media img { max-width: 100%; }
+  }
+  @media print {
+    body { padding: 0; font-size: 12px; max-width: none; }
+    @page { size: A4; margin: 14mm 14mm; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .salto { break-before: page; page-break-before: always; }
+    h1, h2, h3, .titulo-paso { break-after: avoid; page-break-after: avoid; }
+    figure, .nota, .ok, .riesgo, .paso, .par, tr, li { break-inside: avoid; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Manual: subir remisión y carta porte</h1>
+<p class="subtitulo">Para el personal de estación · Pantalla <b>Mis Recepciones</b> del aplicativo TotalGas ·
+Última actualización: 14 de octubre de 2026</p>
+
+<div class="indice">
+<b>Contenido</b>
+<ol style="margin-bottom:0">
+  <li>Antes de empezar</li>
+  <li>Resumen rápido</li>
+  <li>Paso a paso: entrar, buscar, subir la remisión, subir la carta porte y revisar</li>
+  <li>Si subiste un archivo equivocado</li>
+  <li>Mensajes del sistema y qué hacer</li>
+  <li>Preguntas frecuentes</li>
+</ol>
+</div>
+
+<h2>1. Antes de empezar</h2>
+<p>Cada vez que llega una pipa y se descarga combustible, la estación debe subir al sistema
+<b>dos documentos</b> de esa descarga:</p>
+<ul>
+  <li><b>La remisión</b> que entrega el transportista.</li>
+  <li><b>La carta porte</b> del viaje.</li>
+</ul>
+
+<p><b>Necesitas:</b></p>
+<ul>
+  <li>Tu usuario y contraseña del aplicativo TotalGas, con tu estación asignada.</li>
+  <li>La remisión y la carta porte <b>escaneadas o fotografiadas</b>, en <b>PDF, JPG o PNG</b>, de
+  <b>10 MB como máximo</b> cada una.</li>
+  <li>Que la descarga ya esté registrada en ControlGas. La lista de descargas sale de ahí.</li>
+</ul>
+
+<div class="nota">
+<b>Consejo para escanear o tomar la foto:</b> que se lea completo (folio, litros, placas, firmas),
+derecho y sin sombras. Si la remisión tiene varias hojas, júntalas en un solo PDF. Ponerle al archivo el
+número de remisión o de BOL (por ejemplo <i>bol 451309990.pdf</i>) ayuda a encontrarlo después.
+</div>
+
+<h2>2. Resumen rápido</h2>
+<div class="pasos">
+  <div class="paso"><span class="num">1</span><b>Entra a Mis Recepciones</b><small>Menú lateral → Operaciones.</small></div>
+  <div class="paso"><span class="num">2</span><b>Elige las fechas y presiona Buscar</b><small>Aparecen las descargas de tu estación.</small></div>
+  <div class="paso"><span class="num">3</span><b>Ubica la descarga</b><small>Por fecha, hora, tanque y litros.</small></div>
+  <div class="paso"><span class="num">4</span><b>Sube la remisión</b><small>Botón de la flecha hacia arriba.</small></div>
+  <div class="paso"><span class="num">5</span><b>Sube la carta porte</b><small>Botón del camión.</small></div>
+  <div class="paso"><span class="num">6</span><b>Revisa que diga "1 subida"</b><small>En las columnas REMISIÓN y CARTA PORTE.</small></div>
+</div>
+
+<div class="titulo-paso salto"><span class="num">1</span><h2>Entra a Mis Recepciones</h2></div>
+<p>Inicia sesión en el aplicativo. En el menú de la izquierda, dentro de <b>OPERACIONES</b>, haz clic en
+<b>Mis Recepciones</b> (ícono de camión).</p>
+<figure class="chica">
+  <img src="img/manual_recepciones/01_menu.png" alt="Menú lateral con la opción Mis Recepciones">
+  <figcaption><span class="fig-num">Figura 1.</span> Opción "Mis Recepciones" en el menú.</figcaption>
+</figure>
+<div class="nota">
+Si no ves la opción en el menú, tu usuario todavía no tiene acceso. Pide a Sistemas que te lo active.
+</div>
+
+<div class="titulo-paso"><span class="num">2</span><h2>Elige las fechas y presiona Buscar</h2></div>
+<ol>
+  <li>En <b>Desde</b> y <b>Hasta</b> elige el día o los días que quieres revisar. Al entrar, las dos
+  fechas vienen con el día de hoy.</li>
+  <li>La <b>Estación</b> ya aparece fija con el nombre de tu estación; no tienes que elegirla.</li>
+  <li>Presiona <span class="btn azul">Buscar</span>.</li>
+</ol>
+<figure>
+  <img src="img/manual_recepciones/02_filtros.png" alt="Filtros de búsqueda y recepciones programadas">
+  <figcaption><span class="fig-num">Figura 2.</span> Filtros de búsqueda y, debajo, las recepciones que Abastos programó para tu estación.</figcaption>
+</figure>
+<p>Arriba aparece la tarjeta <b>Recepciones programadas</b>: lo que Abastos te programó para esas fechas
+(proveedor, terminal, producto y litros). Cuando ya llegó la factura, ahí mismo puedes descargar su
+<span class="btn">PDF</span> y su <span class="btn">XML</span>.</p>
+
+<div class="titulo-paso salto"><span class="num">3</span><h2>Ubica la descarga en la tabla</h2></div>
+<p>Más abajo está la tabla <b>Mis Recepciones</b>, con una fila por cada descarga que registró
+ControlGas. Identifica la que vas a documentar por su <b>fecha</b>, <b>hora</b>, <b>tanque</b>,
+<b>producto</b> y <b>volumen recibido</b>.</p>
+<figure>
+  <img src="img/manual_recepciones/03_tabla.png" alt="Tabla Mis Recepciones">
+  <figcaption><span class="fig-num">Figura 3.</span> Tabla de descargas. Las dos últimas columnas de datos dicen si ya se subieron los documentos.</figcaption>
+</figure>
+
+<div class="par">
+  <div>
+    <h3>Cómo saber qué falta</h3>
+    <p>Las columnas <b>REMISIÓN</b> y <b>CARTA PORTE</b> te lo dicen:</p>
+    <ul>
+      <li><span class="etq verde">1 subida</span> — ya está el documento. Si subiste más de uno dirá
+      "2 subidas", "3 subidas", etc.</li>
+      <li><span class="etq amarilla">Sin remisión</span> / <span class="etq amarilla">Sin carta porte</span>
+      — falta subirlo.</li>
+    </ul>
+  </div>
+  <figure>
+    <img src="img/manual_recepciones/04b_columnas.png" alt="Columnas Remisión y Carta porte">
+    <figcaption><span class="fig-num">Figura 4.</span> En este ejemplo falta la carta porte de las dos descargas.</figcaption>
+  </figure>
+</div>
+
+<div class="titulo-paso salto"><span class="num">4</span><h2>Sube la remisión</h2></div>
+<p>En la columna <b>ACCIONES</b>, al final de la fila de la descarga, hay tres botones:</p>
+<div class="par">
+  <figure>
+    <img src="img/manual_recepciones/04_acciones.png" alt="Botones de acciones: subir remisión, subir carta porte, ver documentos">
+    <figcaption><span class="fig-num">Figura 5.</span> Botones de la columna ACCIONES.</figcaption>
+  </figure>
+  <table>
+    <tr><th style="width:30%">Botón</th><th>Qué hace</th></tr>
+    <tr><td><b>⬆ Flecha</b></td><td>Subir la <b>remisión</b>.</td></tr>
+    <tr><td><b>🚚 Camión</b></td><td>Subir la <b>carta porte</b>.</td></tr>
+    <tr><td><b>👁 Ojo</b></td><td>Ver los documentos ya subidos. Solo aparece cuando la descarga ya tiene alguno.</td></tr>
+  </table>
+</div>
+
+<ol>
+  <li>Haz clic en la <b>flecha hacia arriba</b>. Se abre la ventana azul <b>Subir remisión</b>.</li>
+  <li><b>Revisa el recuadro gris</b>: estación, fecha y hora, tanque, producto y volumen. Deben ser los
+  de la descarga a la que corresponde tu remisión. Si no coinciden, presiona <span class="btn">Cancelar</span>
+  y elige la fila correcta.</li>
+  <li>Arrastra el archivo al recuadro punteado, o haz clic en <b>"haz clic para seleccionarlo"</b> y búscalo
+  en tu computadora.</li>
+</ol>
+<div class="par">
+  <figure>
+    <img src="img/manual_recepciones/05_subir_remision.png" alt="Ventana Subir remisión vacía">
+    <figcaption><span class="fig-num">Figura 6.</span> Ventana "Subir remisión" antes de elegir el archivo.</figcaption>
+  </figure>
+  <figure>
+    <img src="img/manual_recepciones/06_archivo_elegido.png" alt="Ventana Subir remisión con el archivo elegido">
+    <figcaption><span class="fig-num">Figura 7.</span> Con el archivo elegido: nombre, tamaño y botón Subir activo.</figcaption>
+  </figure>
+</div>
+<ol start="4">
+  <li>Revisa que el nombre del archivo sea el correcto. Si te equivocaste, quítalo con la
+  <b style="color:#dc2626">✕</b> roja y elige otro.</li>
+  <li>Presiona <span class="btn azul">Subir</span>. Mientras se sube dice "Subiendo…".</li>
+  <li>La ventana se cierra sola, aparece el mensaje verde <b>"Remisión subida correctamente"</b> y la
+  columna REMISIÓN cambia a <span class="etq verde">1 subida</span>.</li>
+</ol>
+<div class="nota">
+El botón <b>Subir</b> se ve deslavado y no responde mientras no hayas elegido un archivo. Es normal.
+</div>
+
+<div class="titulo-paso salto"><span class="num">5</span><h2>Sube la carta porte</h2></div>
+<p>Es igual que la remisión, pero con el <b>botón del camión</b>. La ventana se llama
+<b>Subir carta porte</b> y es de color <b>celeste</b>, para que no las confundas.</p>
+<figure class="media">
+  <img src="img/manual_recepciones/07_subir_carta_porte.png" alt="Ventana Subir carta porte">
+  <figcaption><span class="fig-num">Figura 8.</span> Ventana "Subir carta porte" (celeste).</figcaption>
+</figure>
+<ol>
+  <li>Revisa los datos de la descarga en el recuadro gris.</li>
+  <li>Arrastra o elige el archivo de la carta porte.</li>
+  <li>Presiona <span class="btn azul">Subir</span>. Verás <b>"Carta porte subida correctamente"</b> y la
+  columna CARTA PORTE dirá <span class="etq verde">1 subida</span>.</li>
+</ol>
+<div class="riesgo">
+<b>Fíjate en el color antes de subir:</b> <span style="color:#2563eb;font-weight:700">azul = remisión</span>,
+<span style="color:#0891b2;font-weight:700">celeste = carta porte</span>. Si subes la carta porte en la
+ventana azul quedará guardada como remisión y tendrás que eliminarla y volver a subirla.
+</div>
+
+<div class="titulo-paso salto"><span class="num">6</span><h2>Revisa lo que subiste</h2></div>
+<p>Haz clic en el <b>ojo</b> de la fila. Se abre <b>Documentos de la recepción</b> con dos listas,
+<b>Remisiones</b> y <b>Cartas porte</b>. De cada archivo se ve quién lo subió y cuándo. Haz clic en el
+nombre del archivo para abrirlo en otra pestaña y comprobar que se lee bien.</p>
+<figure class="media">
+  <img src="img/manual_recepciones/08_documentos.png" alt="Ventana Documentos de la recepción">
+  <figcaption><span class="fig-num">Figura 9.</span> Esta descarga ya tiene su remisión, pero le falta la carta porte.</figcaption>
+</figure>
+<div class="ok">
+<b>Listo</b> cuando la fila dice <span class="etq verde">1 subida</span> en REMISIÓN <b>y</b> en CARTA PORTE.
+</div>
+
+<h2 class="ambar">Si subiste un archivo equivocado</h2>
+<p>No se puede reemplazar un archivo; se elimina el equivocado y se sube el bueno.</p>
+<ol>
+  <li>Haz clic en el <b>ojo</b> de la fila.</li>
+  <li>Junto al archivo equivocado, presiona <span class="btn" style="background:#dc2626;border-color:#dc2626;color:#fff">Eliminar</span>.</li>
+  <li>El sistema pregunta si estás seguro. Presiona <b>ELIMINAR</b> para confirmar, o <b>CANCELAR</b> si
+  te arrepentiste.</li>
+  <li>Sube el archivo correcto con la flecha o el camión, como en los pasos 4 y 5.</li>
+</ol>
+<figure class="media">
+  <img src="img/manual_recepciones/09_eliminar.png" alt="Confirmación para eliminar un documento">
+  <figcaption><span class="fig-num">Figura 10.</span> Confirmación antes de eliminar.</figcaption>
+</figure>
+<div class="nota">
+Al eliminar, el archivo deja de aparecer en la descarga, pero el sistema guarda quién lo eliminó y cuándo.
+</div>
+
+<h2 class="azul">Mensajes del sistema y qué hacer</h2>
+<table>
+  <tr><th style="width:42%">Mensaje</th><th>Qué significa y qué hacer</th></tr>
+  <tr><td>Tipo de archivo no permitido. Usa PDF, JPG o PNG.</td>
+      <td>Elegiste otro tipo de archivo (Word, Excel, HEIC del iPhone…). Guárdalo o escanéalo como PDF,
+      o toma una captura en JPG/PNG.</td></tr>
+  <tr><td>El archivo excede el tamaño máximo de 10 MB.</td>
+      <td>El archivo pesa demasiado. Escanéalo con menor resolución o en blanco y negro, o súbelo como foto JPG.</td></tr>
+  <tr><td>Selecciona ambas fechas. / La fecha "Desde" no puede ser posterior a "Hasta".</td>
+      <td>Revisa las fechas de búsqueda: deben estar las dos y "Desde" debe ser igual o anterior a "Hasta".</td></tr>
+  <tr><td>Recuadro amarillo: "Tu usuario no tiene una estación asignada…"</td>
+      <td>Tu usuario no está ligado a tu estación. Pide a Sistemas que te la asignen.</td></tr>
+  <tr><td>No aparecen los botones de flecha y camión.</td>
+      <td>Tu usuario solo puede consultar. Pide a Sistemas el permiso para subir documentos.</td></tr>
+  <tr><td>No tienes permiso para subir documentos.</td>
+      <td>Igual que el anterior: pide el permiso a Sistemas.</td></tr>
+  <tr><td>La recepción no existe o no pertenece a esta estación.</td>
+      <td>La descarga cambió en ControlGas mientras tenías la pantalla abierta. Presiona
+      <span class="btn azul">Buscar</span> otra vez e inténtalo de nuevo. Si sigue, avisa a Abastos.</td></tr>
+  <tr><td>Error al subir el archivo. Intenta nuevamente.</td>
+      <td>Se cortó la conexión. Revisa el internet y vuelve a presionar Subir.</td></tr>
+  <tr><td>Error al registrar el documento… / Error al guardar el archivo…</td>
+      <td>Falla del servidor. Intenta más tarde y, si se repite, avisa a Sistemas.</td></tr>
+  <tr><td>No se pudieron cargar las recepciones. Intente nuevamente.</td>
+      <td>No se pudo consultar ControlGas en ese momento. Espera un momento y presiona Buscar otra vez.</td></tr>
+</table>
+
+<h2>Preguntas frecuentes</h2>
+
+<h3>No aparece la descarga que acabo de recibir.</h3>
+<p>La tabla muestra las descargas que ya están registradas en ControlGas. Si todavía no se registra ahí,
+no aparece y no se le pueden subir documentos. Revisa también que las fechas de búsqueda incluyan el día
+de la descarga.</p>
+
+<h3>¿Puedo subir más de un archivo a la misma descarga?</h3>
+<p>Sí. Por ejemplo, si la remisión viene en dos fotos, súbelas una por una; la columna dirá "2 subidas".
+Aun así, es mejor juntarlas en un solo PDF.</p>
+
+<h3>Una pipa descargó en dos tanques. ¿Subo los documentos dos veces?</h3>
+<p>Cada tanque aparece como una fila distinta. Sube la remisión y la carta porte en cada fila de esa
+descarga para que ninguna quede en amarillo.</p>
+
+<h3>¿Qué significa "Sin XML" en la columna UUID?</h3>
+<p>Que la compra de esa descarga todavía no tiene el XML de la factura cargado en ControlGas. No tiene que
+ver con la remisión ni con la carta porte.</p>
+
+</body>
+</html>

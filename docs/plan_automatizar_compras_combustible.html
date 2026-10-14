@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Automatizar compras de combustible</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --ambar: #b45309; --rojo: #b91c1c; --morado: #7c3aed;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta); margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55; font-size: 13px; background: #fff; }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--verde); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; }
+  h2 { font-size: 17px; color: #fff; background: var(--verde); padding: 6px 12px; border-radius: 4px; margin-top: 32px; }
+  h2.azul { background: var(--azul); } h2.ambar { background: var(--ambar); } h2.rojo { background: var(--rojo); }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--verde); }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font-family: Consolas, monospace; font-size: 11.5px; background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 4px; }
+  .nota { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .ok { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .riesgo { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; } li { margin-bottom: 3px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+  .kpi { border: 1px solid var(--borde); border-radius: 6px; padding: 10px 12px; }
+  .kpi b { display: block; font-size: 22px; color: var(--verde); line-height: 1.2; }
+  .kpi small { color: var(--gris); }
+  .chip { display: inline-block; font-size: 11px; font-weight: 700; color: #fff; border-radius: 10px; padding: 0 8px; white-space: nowrap; }
+  .c-ya { background: var(--verde); } .c-ajuste { background: var(--azul); } .c-nuevo { background: var(--morado); } .c-diaria { background: var(--ambar); } .c-calc { background: #94a3b8; }
+  .mapa { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; row-gap: 6px; margin: 14px 0 18px; }
+  .mapa-titulo { text-align: center; font-weight: 700; padding: 6px; border-radius: 4px; color: #fff; }
+  .mapa-titulo.hoy { background: #94a3b8; } .mapa-titulo.nuevo { background: var(--verde); }
+  .caja { border: 2px solid var(--borde); border-radius: 8px; padding: 8px 12px; }
+  .caja b { display: block; } .caja small { color: var(--gris); display: block; line-height: 1.45; }
+  .caja.usr { border-color: var(--ambar); } .caja.sis { border-color: var(--verde); } .caja.est { border-color: var(--rojo); }
+  .caja .gana { display: block; margin-top: 6px; padding: 4px 8px; font-size: 11.5px; background: #ecfdf5; color: #065f46; border-radius: 4px; }
+  .fase { border: 2px solid var(--borde); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  .fase > b { font-size: 14px; }
+  @media (max-width: 700px) { .kpis { grid-template-columns: 1fr 1fr; } .mapa { grid-template-columns: 1fr; } body { padding: 16px; } }
+  @media print { body { padding: 0; font-size: 11.5px; max-width: none; } @page { size: A4; margin: 15mm 14mm; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .caja, .fase, tr, .nota, .ok, .riesgo { break-inside: avoid; } }
+</style>
+</head>
+<body>
+
+<h1>Automatizar el Excel de compras de combustible</h1>
+<p class="subtitulo">Análisis de <code>COMPRAS 2026.xlsx</code> (Abastos) y plan para llenarlo desde el sistema ·
+Parte del proyecto de pago a proveedores · 14 de octubre de 2026</p>
+
+<h2>1. Qué es el archivo</h2>
+<p>La hoja <b>COMPRAS</b> es un registro con un renglón por factura de combustible: 13,684 renglones en lo
+que va de 2026, unos <b>1,550 al mes</b> (septiembre: 1,598). Cada renglón tiene 64 columnas: unas 22 se
+teclean en todos los renglones, otras 8 solo en algunos (fletes, Petrotal), y el resto son fórmulas de análisis (precio por litro, utilidad, diferencia contra lo cotizado y
+contra la TAR de PEMEX, IEPS, utilidad de Petrotal).</p>
+<p>Las demás hojas salen de esa: tablas dinámicas de deuda por estación y zona (Deuda Comb DG, Zona 3,
+Picachos, Ventanas, TSA, PAGOS1.1), litros facturados, GLOBAL, RESUMEN y ANEXOS. Aparte hay registros
+manuales de <b>falsos fletes</b>, <b>moratorios</b> y <b>notas de crédito</b>, y catálogos (IEPS, estímulo,
+destinos MGC, costo de almacenaje).</p>
+
+<div class="kpis">
+  <div class="kpi"><b>3–5 h</b><small>al día bajando facturas y remisiones y llenando renglones (5 h los lunes)</small></div>
+  <div class="kpi"><b>≈ 80 h</b><small>al mes, cerca de la mitad de la jornada</small></div>
+  <div class="kpi"><b>≈ 1,550</b><small>renglones al mes</small></div>
+  <div class="kpi"><b>≈ 22</b><small>datos tecleados por renglón (≈ 34,000 al mes)</small></div>
+</div>
+
+<h2 class="azul">2. Hallazgo: casi todo ya está en el sistema</h2>
+<p>Crucé los 1,598 renglones de septiembre contra las facturas que el sistema ya descarga del correo
+(<code>FacturasRecibidas</code>, con PDF y XML) y contra el módulo de pagos:</p>
+<table>
+  <tr><th>Cruce</th><th class="n">Resultado</th></tr>
+  <tr><td>Renglones cuya factura ya está en el sistema</td><td class="n"><b>1,583 de 1,598 (99.1%)</b></td></tr>
+  <tr><td>Con el mismo monto que tecleó Abastos</td><td class="n">1,577 de 1,583</td></tr>
+  <tr><td>Con los mismos litros</td><td class="n">1,576 de 1,583</td></tr>
+  <tr><td>Que además ya están en una requisición de pago</td><td class="n">1,346</td></tr>
+  <tr><td>No están: Repsol / Colosio (no llega al buzón), y 8 de Premier, AEMSA y Tesoro</td><td class="n">15</td></tr>
+</table>
+<div class="ok">
+<b>La factura ya trae lo que se teclea:</b> folio, fecha, proveedor, razón social, producto, litros,
+monto e IVA. El vencimiento ya se calcula con la regla de días de crédito, y el pago programado y el
+pagado ya están en el módulo de pagos. Abastos está copiando a mano datos que el sistema ya tiene.
+</div>
+
+<h3>Problemas que encontró el cruce</h3>
+<table>
+  <tr><th>Qué</th><th>Detalle</th></tr>
+  <tr><td><b>"Pendientes de capturar en ControlGas" siempre da 0</b></td><td>La columna "LITROS CAPTURADOS EN CONTROL GAS" es una fórmula que copia los litros de la factura, así que nunca hay pendientes. En realidad, <b>96 facturas de septiembre</b> todavía no están subidas a ControlGas (Tesoro 51, Petrotal 15, AEMSA 12, MGC 9, Premier 9).</td></tr>
+  <tr><td>Estación como texto</td><td>175 renglones de septiembre tienen el nombre ("TRAVEL CENTER", "HNOS", "PRAXEDIS") en lugar del número; las tablas dinámicas por estación no los cuentan igual.</td></tr>
+  <tr><td>Columna con otro dato</td><td>"F/FACTURA PETROTAL" casi siempre trae la razón social (DIAZ, GASOMEX…) en lugar del folio.</td></tr>
+  <tr><td class="n" style="text-align:left"><b>Folio de MGC recortado en el sistema</b></td><td>Desde el 23 de septiembre MGC usa folios de 7 dígitos (3000405) y la importación guarda solo 6 (<code>000405</code>). La factura sí está (mismo UUID, monto y litros), pero buscarla por folio falla, y el folio puede chocar con uno viejo. <b>Hay que corregirlo en la importación</b> antes de llenar el Excel desde el sistema.</td></tr>
+</table>
+
+<h2>3. De dónde saldría cada columna</h2>
+<p><span class="chip c-ya">Ya existe</span> el dato ya está en el sistema ·
+<span class="chip c-ajuste">Ajuste</span> está, falta completar o corregir ·
+<span class="chip c-nuevo">Nuevo</span> hay que construirlo ·
+<span class="chip c-diaria">Captura diaria</span> una vez al día, no por renglón ·
+<span class="chip c-calc">Cálculo</span> hoy es fórmula y la haría el sistema</p>
+<table>
+  <tr><th>Columnas del Excel (tecleadas)</th><th>Fuente en el sistema</th><th></th></tr>
+  <tr><td>Número de factura, monto, litros, % IVA, proveedor, proveedor que factura, razón social, producto, mes, año</td><td>Factura descargada del correo (XML): Folio, Total, Cantidad, tasa, Emisor, Receptor, ClaveProdServ</td><td><span class="chip c-ya">Ya existe</span></td></tr>
+  <tr><td>Número de estación</td><td><code>EstacionCodgas</code> de la factura. Hoy se resuelve solo para MGC y Tesoro; faltan Premier, AEMSA y Petrotal (258 de septiembre)</td><td><span class="chip c-ajuste">Ajuste</span></td></tr>
+  <tr><td>Vencimiento</td><td>Fecha de factura + días de crédito del proveedor, ajustado a día hábil (regla ya usada en pagos)</td><td><span class="chip c-ya">Ya existe</span></td></tr>
+  <tr><td>Pago programado, monto pagado</td><td>Módulo de pagos (requisición, fecha programada, monto pagado)</td><td><span class="chip c-ya">Ya existe</span></td></tr>
+  <tr><td>Fecha de descarga</td><td>Recepción en ControlGas (<code>MovimientosTan</code>), que ya muestra "Mis Recepciones"</td><td><span class="chip c-ajuste">Ajuste</span></td></tr>
+  <tr><td>BOL / número de embarque</td><td>Campo Remisión de la factura: ya viene en 796 de 1,583 (Tesoro y otros); para el resto, la remisión que sube la estación</td><td><span class="chip c-ajuste">Ajuste</span></td></tr>
+  <tr><td>Transportista, placas</td><td>Programación de recepciones (transportista) y remisión/carta porte que sube la estación en Mis Recepciones</td><td><span class="chip c-nuevo">Nuevo</span></td></tr>
+  <tr><td>Precio de venta en estación</td><td><code>TG.dbo.FuelPrices</code> (precio por estación y producto, se carga solo cada día)</td><td><span class="chip c-ya">Ya existe</span></td></tr>
+  <tr><td>Precio cotizado por el proveedor, precio TAR PEMEX</td><td>Hoy se teclea en cada renglón. Pasaría a una tabla de precios por día × proveedor × terminal × producto, y el renglón lo toma de ahí</td><td><span class="chip c-diaria">Captura diaria</span></td></tr>
+  <tr><td>Factura Petrotal (folio, monto, precio a cliente final)</td><td>Facturas de Petrotal en el sistema + conciliación Petrotal (<code>/supply/petrotal_reconciliation</code>)</td><td><span class="chip c-ajuste">Ajuste</span></td></tr>
+  <tr><td>Factura de flete, monto carta porte, razón social y fecha de pago del flete (≈ 10% de renglones)</td><td>Las facturas de flete de Petrotal (VPET…) no llegan hoy al sistema</td><td><span class="chip c-nuevo">Nuevo</span></td></tr>
+  <tr><td>Observaciones</td><td>Campo libre en la pantalla</td><td><span class="chip c-ya">Ya existe</span></td></tr>
+  <tr><td>Precio por litro, diferencias, utilidad, IEPS, estímulo, utilidad Petrotal, litros pendientes</td><td>Cálculo en el sistema. Rentabilidad del Dashboard de ventas ya calcula margen, estímulo y precio por proveedor</td><td><span class="chip c-calc">Cálculo</span></td></tr>
+</table>
+<p>De los ≈ 22 datos tecleados por renglón, <b>≈ 14 ya existen</b>, ≈ 5 necesitan un ajuste, el precio
+cotizado y la TAR pasan a captura diaria, y solo los datos de flete (10% de renglones) requieren algo nuevo.</p>
+
+<h2>4. Cómo quedaría</h2>
+<div class="mapa">
+  <div class="mapa-titulo hoy">Hoy</div>
+  <div class="mapa-titulo nuevo">Con el sistema</div>
+
+  <div class="caja usr"><b>Baja facturas del correo y de portales (Tesoro, ABC)</b><small>Todos los días; los lunes, el fin de semana completo.</small></div>
+  <div class="caja sis"><b>El sistema ya las descarga</b><small>PDF + XML a <code>FacturasRecibidas</code>, varias veces al día.</small><span class="gana">✔ 99% de las facturas de septiembre ya estaban.</span></div>
+
+  <div class="caja usr"><b>Baja remisiones y cartas porte</b><small>Por correo, de cada estación.</small></div>
+  <div class="caja est"><b>La estación las sube en "Mis Recepciones"</b><small>Ya construido; pegadas a su descarga.</small><span class="gana">✔ Abastos solo revisa cuáles faltan.</span></div>
+
+  <div class="caja usr"><b>Llena ≈ 22 datos por renglón, ≈ 75 renglones al día</b></div>
+  <div class="caja sis"><b>El renglón se arma solo</b><small>Factura + recepción + pago + precio de venta.</small><span class="gana">✔ Abastos completa solo lo que falte (transportista, flete).</span></div>
+
+  <div class="caja usr"><b>Teclea precio cotizado y TAR en cada renglón</b></div>
+  <div class="caja usr"><b>Captura la lista de precios una vez al día</b><small>Por proveedor, terminal y producto.</small><span class="gana">✔ Alerta si una factura viene arriba de lo cotizado.</span></div>
+
+  <div class="caja usr"><b>Tablas dinámicas de deuda, litros y resumen</b></div>
+  <div class="caja sis"><b>Pantallas que ya existen</b><small>Estado de facturas (deuda por proveedor), Dashboard (margen), Mis Recepciones (qué falta en ControlGas).</small><span class="gana">✔ "Pendiente de subir a ControlGas" real, no una fórmula.</span></div>
+</div>
+
+<h2>5. Plan por fases</h2>
+
+<div class="fase">
+  <b>Fase 0 — Corregir lo que bloquea</b> <span class="chip c-ajuste">Ajuste</span>
+  <ul>
+    <li><b>Folio de MGC de 7 dígitos</b>: corregir la importación para que guarde el folio completo, y
+    reparar las facturas importadas desde el 23-sep (se puede tomar del XML ya archivado).</li>
+    <li><b>Estación de Premier, AEMSA y Petrotal</b>: agregar sus códigos a <code>EstacionesCodigosExternos</code>,
+    como se hizo con Tesoro.</li>
+    <li><b>Repsol / Colosio</b> (≈ 7 facturas al mes): definir si llegan al buzón o se suben a mano.</li>
+  </ul>
+</div>
+
+<div class="fase">
+  <b>Fase 1 — Pantalla "Compras de combustible" con el renglón armado</b> <span class="chip c-nuevo">Nuevo</span>
+  <ul>
+    <li>Un renglón por factura con las columnas del Excel: factura (XML), estación, vencimiento, pago
+    programado y pagado (módulo de pagos), precio de venta (<code>FuelPrices</code>) y si ya está en
+    ControlGas (real, por UUID).</li>
+    <li>Campos editables solo para lo que no existe: transportista, placas, flete, observaciones.</li>
+    <li><b>Exportar a Excel con las mismas columnas</b> de la hoja COMPRAS, para que las tablas dinámicas y
+    los análisis de Abastos sigan funcionando durante la transición.</li>
+    <li>Octubre en paralelo: se compara cada semana el Excel contra la pantalla.</li>
+  </ul>
+  <small>Con esto desaparece la mayor parte de las 3–5 h diarias.</small>
+</div>
+
+<div class="fase">
+  <b>Fase 2 — Precios del día</b> <span class="chip c-diaria">Captura diaria</span>
+  <ul>
+    <li>Tabla de precio cotizado por día × proveedor × terminal × producto, y precio TAR PEMEX.</li>
+    <li>Cada factura se compara sola contra lo cotizado y contra la TAR: alerta de sobreprecio.</li>
+  </ul>
+</div>
+
+<div class="fase">
+  <b>Fase 3 — Datos de la descarga y fletes</b> <span class="chip c-nuevo">Nuevo</span>
+  <ul>
+    <li>Transportista desde Programación de recepciones. Para eso hay que usarla diario: en septiembre
+    tiene 220 renglones contra ≈ 1,600 facturas.</li>
+    <li>Placas y BOL desde la remisión/carta porte que sube la estación.</li>
+    <li>Facturas de flete de Petrotal al buzón del sistema, ligadas a la descarga.</li>
+  </ul>
+</div>
+
+<div class="fase">
+  <b>Fase 4 — Análisis y retiro del Excel</b>
+  <ul>
+    <li>Deuda por estación y zona → Estado de facturas (<code>/payment/invoices_due</code>).</li>
+    <li>Utilidad por litro, estímulo, precio por proveedor → Rentabilidad del Dashboard (<code>/merma/ventas</code>).</li>
+    <li>Notas de crédito → carga masiva de NC (ya existe). Falsos fletes → ya llegan como CFDI a
+    <code>FacturasRecibidas</code>. Moratorios → por definir.</li>
+    <li>Utilidad Petrotal → reporte de márgenes Petrotal.</li>
+  </ul>
+</div>
+
+<h2>6. Qué se ahorra</h2>
+<table>
+  <tr><th>Actividad</th><th class="n">Hoy</th><th>Con el sistema</th></tr>
+  <tr><td>Bajar facturas y remisiones y llenar los renglones</td><td class="n">3–4 h al día, 5 h los lunes<br><b>≈ 80 h al mes</b></td><td>Revisar la pantalla y completar lo que falte (transportista, fletes): ≈ 30–45 min al día</td></tr>
+  <tr><td>Precio cotizado y TAR</td><td class="n">dentro de lo anterior, por renglón</td><td>Una captura al día: ≈ 10 min</td></tr>
+  <tr><td><b>Ahorro estimado</b></td><td class="n"><b>≈ 55–65 h al mes</b></td><td>Lo que se libera es casi la mitad de la jornada de una persona</td></tr>
+</table>
+<div class="nota">
+Las 3–5 h diarias las dio Abastos. El tiempo "con el sistema" es una estimación mía; se confirma en el mes en paralelo.
+</div>
+<p>Además del tiempo:</p>
+<ul>
+  <li><b>Saber de verdad qué falta subir a ControlGas</b>: hoy la columna siempre dice 0; en septiembre eran 96 facturas.</li>
+  <li><b>Sin errores de dedo</b> en monto, litros o estación.</li>
+  <li><b>El mismo dato para compras, pagos y merma</b>: la factura que se registra es la que se paga y la que se cruza con la descarga.</li>
+  <li><b>No depende de una persona</b> ni de su buzón.</li>
+</ul>
+
+<h2 class="ambar">7. Por confirmar con Abastos</h2>
+<ol>
+  <li>¿De dónde sale hoy el precio cotizado: lista diaria del proveedor por correo, portal, WhatsApp?</li>
+  <li>¿La TAR de PEMEX se toma diaria o semanal, y de dónde?</li>
+  <li>¿Qué análisis se hacen con las tablas dinámicas, para asegurar que la pantalla o el export los cubra?</li>
+  <li>Moratorios: ¿cómo se detectan y se registran hoy?</li>
+</ol>
+
+<p style="color:var(--gris); font-size:11.5px; margin-top:28px;">
+Fuente: <code>COMPRAS 2026.xlsx</code> (hoja COMPRAS, valores guardados), <code>TG.dbo.FacturasRecibidas</code>,
+<code>payment_request_invoices</code> y <code>SG12.dbo.DocumentosC</code>, septiembre 2026, consultados el 14-oct-2026.
+</p>
+
+</body>
+</html>

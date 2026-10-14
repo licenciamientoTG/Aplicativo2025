@@ -8,7 +8,7 @@
  */
 $(function () {
     var cargadas = {};   // zonaClave -> bool, para no recargar el histórico de una zona ya vista
-    // El RESUMEN DIRECCIÓN no tiene data-zona: mientras está abierto, el
+    // El DASHBOARD no tiene data-zona: mientras está abierto, el
     // Excel exporta la última zona vista (o MARCA Y PROTS por defecto).
     var zonaActiva = $('.merma-tabs-zona .nav-link.active').data('zona') || 'marca_prots';
 
@@ -111,7 +111,7 @@ $(function () {
 });
 
 /**
- * RESUMEN DIRECCIÓN: barras con la venta de cada día del mes contra la línea
+ * DASHBOARD: barras con la venta de cada día del mes contra la línea
  * del ritmo diario que pide el presupuesto (presupuesto / días del mes).
  */
 function graficaDiaria() {
@@ -166,7 +166,7 @@ function graficaDiaria() {
 }
 
 /**
- * Íconos (?) de las cards del RESUMEN DIRECCIÓN: un clic abre una burbuja
+ * Íconos (?) de las cards del DASHBOARD: un clic abre una burbuja
  * con la explicación bajo el ícono; otro clic, Esc o un clic fuera la
  * cierran. Delegado en document porque la sección de Rentabilidad llega
  * por AJAX después de cargar la página.
@@ -202,4 +202,69 @@ $(function () {
     $(document).on('click', cerrar);
     $(document).on('keydown', function (e) { if (e.key === 'Escape') cerrar(); });
     $('.merma-tabs-zona .nav-link').on('show.bs.tab', cerrar);
+});
+
+/**
+ * Análisis IA (Gemini) del DASHBOARD. El modelo devuelve markdown simple
+ * (## encabezados, - viñetas, **negritas**); se escapa TODO el HTML primero
+ * y solo después se aplican esas tres reglas, para que nada del texto de la
+ * IA se interprete como HTML.
+ */
+$(function () {
+    var $btn   = $('#btn_analisis_ia');
+    var $texto = $('#analisis_ia_texto');
+    var $pie   = $('#analisis_ia_pie');
+    if (!$btn.length) return;
+
+    function esc(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function renderMarkdown(md) {
+        var html = '', enLista = false;
+        md.split(/\r?\n/).forEach(function (linea) {
+            var l = esc(linea.trim()).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            var vineta = /^[-*]\s+/.test(l);
+            if (enLista && !vineta) { html += '</ul>'; enLista = false; }
+            if (/^#{1,6}\s+/.test(l)) {
+                html += '<h6 class="vd-ia-h">' + l.replace(/^#{1,6}\s+/, '') + '</h6>';
+            } else if (vineta) {
+                if (!enLista) { html += '<ul class="mb-2">'; enLista = true; }
+                html += '<li>' + l.replace(/^[-*]\s+/, '') + '</li>';
+            } else if (l !== '') {
+                html += '<p class="mb-2">' + l + '</p>';
+            }
+        });
+        if (enLista) html += '</ul>';
+        return html;
+    }
+
+    var inicial = $texto.attr('data-texto');
+    if (inicial) $texto.html(renderMarkdown(inicial));
+
+    $btn.on('click', function () {
+        var etiqueta = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generando…');
+        $.post('/merma/ventas_analisis_generar', { anio: $btn.data('anio'), mes: $btn.data('mes') }, null, 'json')
+            .done(function (r) {
+                if (r && r.success) {
+                    $texto.html(renderMarkdown(r.texto));
+                    $pie.text(r.pie ? '· ' + r.pie : '');
+                    // Recién generado: se abre para que se vea el resultado
+                    bootstrap.Collapse.getOrCreateInstance(document.getElementById('analisis_ia_cuerpo')).show();
+                    etiqueta = '<i class="fas fa-magic"></i> Regenerar análisis';
+                } else {
+                    $texto.prepend('<div class="alert alert-danger py-1 small">' + esc((r && r.message) || 'Error desconocido') + '</div>');
+                    bootstrap.Collapse.getOrCreateInstance(document.getElementById('analisis_ia_cuerpo')).show();
+                }
+            })
+            .fail(function () {
+                $texto.prepend('<div class="alert alert-danger py-1 small">No se pudo generar el análisis (error de red o del servidor).</div>');
+                bootstrap.Collapse.getOrCreateInstance(document.getElementById('analisis_ia_cuerpo')).show();
+            })
+            .always(function () {
+                $btn.prop('disabled', false).html(etiqueta);
+            });
+    });
 });
