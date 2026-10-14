@@ -1,6 +1,8 @@
 <?php
 
 use JetBrains\PhpStorm\NoReturn;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 require_once('./_assets/classes/code128.php');
 
@@ -32,6 +34,7 @@ class Operations{
     public ClientesModel $clientesModel;
     public TerminalInventoryModel $terminalInventoryModel;
     public StationTransferModel $stationTransferModel;
+    public StockModel $stockModel;
     private ?array $terminalSettingsCache = null;
     private ?array $terminalValerasCache = null;
 
@@ -67,6 +70,7 @@ class Operations{
         $this->clientesModel                = new ClientesModel();
         $this->terminalInventoryModel       = new TerminalInventoryModel();
         $this->stationTransferModel          = new StationTransferModel();
+        $this->stockModel                    = new StockModel();
 
     }
 
@@ -1599,6 +1603,80 @@ class Operations{
     function sales_day_turn(){
         echo $this->twig->render($this->route . 'reports/sales_day_turn.html');
 
+    }
+
+    function product_inventory(): void {
+        $stations = $this->gasolinerasModel->get_active_stations();
+        $codgas = isset($_GET['codgas']) ? (int)$_GET['codgas'] : 0;
+        echo $this->twig->render($this->route . 'reports/product_inventory.html', compact('stations', 'codgas'));
+    }
+
+    function product_inventory_table($codgas = 0): void {
+        $codgas = empty($codgas) ? null : (int)$codgas;
+        $data = [];
+        if ($rows = $this->stockModel->get_product_inventory($codgas)) {
+            foreach ($rows as $row) {
+                $data[] = [
+                    'ESTACION'   => $row['Estacion'],
+                    'PRODUCTO'   => $row['Producto'],
+                    'UNIDAD'     => $row['Unidad'],
+                    'STATUS'     => $row['Status'],
+                    'CODPRD'     => $row['codprd'],
+                    'EXISTENCIA' => number_format((float)$row['Existencia'], 2, '.', ','),
+                    'EXISTENCIA_RAW' => (float)$row['Existencia'],
+                    'ULTIMOMOV'  => $row['UltimoMov'],
+                ];
+            }
+        }
+        json_output(array("data" => $data));
+    }
+
+    /**
+     * Exporta a Excel exactamente lo que el usuario está viendo en
+     * /operations/product_inventory (respeta los filtros de la tabla),
+     * mismo patrón que inventory_export() en supply.php.
+     */
+    public function product_inventory_export(): void {
+        $filasJson = $_POST['filas'] ?? '[]';
+        $filas = json_decode($filasJson, true);
+        if (!is_array($filas)) {
+            http_response_code(400);
+            echo 'Datos inválidos';
+            return;
+        }
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Inventario Productos');
+
+        $encabezados = ['ESTACIÓN', 'PRODUCTO', 'UNIDAD', 'STATUS', 'EXISTENCIA', 'ÚLTIMO MOVIMIENTO'];
+        $sheet->fromArray($encabezados, null, 'A1');
+        $sheet->getStyle('A1:F1')->getFont()->setBold(true);
+
+        $row = 2;
+        foreach ($filas as $f) {
+            $sheet->fromArray([
+                $f['estacion'] ?? '',
+                $f['producto'] ?? '',
+                $f['unidad'] ?? '',
+                $f['status'] ?? '',
+                (float)($f['existencia'] ?? 0),
+                $f['ultimomov'] ?? '',
+            ], null, "A{$row}");
+            $row++;
+        }
+        foreach (range('A', 'F') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $archivo = 'inventario_productos_' . date('Y-m-d_His') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment;filename=\"{$archivo}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
     }
 
     function sales_stations() : void {
