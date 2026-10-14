@@ -177,6 +177,7 @@ $(document).ready(function() {
                 return json.data;
             },
             error: function() {
+                $('.table-responsive').removeClass('loading');
                 alertify.myAlert(
                     `<div class="container text-center text-danger">
                 <h4 class="mt-2 text-danger">¡Error!</h4>
@@ -199,7 +200,7 @@ $(document).ready(function() {
             {'data': 'EXISTENCIA'},
             {'data': 'ULTIMOMOV'},
         ],
-        initComplete: function () {
+        drawCallback: function () {
             $('.table-responsive').removeClass('loading');
         }
     });
