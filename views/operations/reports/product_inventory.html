@@ -118,7 +118,13 @@
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_ESTACION" placeholder="Estación"></div>
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_PRODUCTO" placeholder="Producto"></div>
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_UNIDAD" placeholder="Unidad"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_STATUS" placeholder="Status"></div>
+                        <div class="col p-1">
+                            <select class="form-control form-control-sm" style="margin-left: 3px" id="F_STATUS">
+                                <option value="">Status (Todos)</option>
+                                <option value="Activo">Activo</option>
+                                <option value="Inactivo">Inactivo</option>
+                            </select>
+                        </div>
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_EXISTENCIA" placeholder="Existencia"></div>
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_ULTIMOMOV" placeholder="Último Mov."></div>
                         <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
@@ -257,12 +263,13 @@ $(document).ready(function() {
         product_inventory_table.ajax.url('/operations/product_inventory_table/' + ($('#codgas').val() || 0)).load();
     });
 
-    $('#filtro-product_inventory_table input').on('keyup change clear', function () {
+    $('#filtro-product_inventory_table input, #filtro-product_inventory_table select').on('keyup change clear', function () {
+        let status = $('#F_STATUS').val().trim();
         product_inventory_table
             .column(0).search($('#F_ESTACION').val().trim())
             .column(1).search($('#F_PRODUCTO').val().trim())
             .column(2).search($('#F_UNIDAD').val().trim())
-            .column(3).search($('#F_STATUS').val().trim())
+            .column(3).search(status ? '^' + status + '$' : '', true, false)
             .column(4).search($('#F_EXISTENCIA').val().trim())
             .column(5).search($('#F_ULTIMOMOV').val().trim())
             .draw();
