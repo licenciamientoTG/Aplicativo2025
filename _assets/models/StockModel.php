@@ -24,7 +24,7 @@ class StockModel extends Model {
             JOIN SG12.dbo.Productos AS p ON p.cod = s.codprd
             LEFT JOIN SG12.dbo.Gasolineras AS g ON g.cod = s.codgas
             WHERE s.tipalm <> 1
-                AND s.codgas NOT IN (199,40,5)
+                AND s.codgas NOT IN (4,20,40,199)
               AND s.codprd NOT IN (1, 2, 3, 179, 180, 181, 192, 193)";
         $params = [];
         if (!empty($codgas)) {
