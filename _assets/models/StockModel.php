@@ -19,10 +19,17 @@ class StockModel extends Model {
                 ROUND(SUM(ISNULL(s.ingstk, 0) - ISNULL(s.salstk, 0)), 2)                AS Existencia,
                 CONVERT(varchar(10), DATEADD(day, MAX(s.ultmov) - 1, '1900-01-01'), 23) AS UltimoMov,
                 MAX(TRIM(p.codbar))                                                     AS BarcodeCorp,
-                MAX(TRIM(p.codext))                                                     AS CodextCorp
+                MAX(TRIM(p.codext))                                                     AS CodextCorp,
+                MAX(prc.pre)                                                            AS PrecioCorp
             FROM SG12.dbo.Stock AS s
             JOIN SG12.dbo.Productos AS p ON p.cod = s.codprd
             LEFT JOIN SG12.dbo.Gasolineras AS g ON g.cod = s.codgas
+            OUTER APPLY (
+                SELECT TOP 1 pre
+                FROM SG12.dbo.Precios AS pr
+                WHERE pr.codprd = s.codprd AND pr.codgas = s.codgas
+                ORDER BY pr.fch DESC, pr.hra DESC
+            ) AS prc
             WHERE s.tipalm <> 1
                 AND s.codgas NOT IN (4,20,40,199)
               AND s.codprd NOT IN (1, 2, 3, 179, 180, 181, 192, 193)";
@@ -66,10 +73,16 @@ class StockModel extends Model {
     }
 
     /**
-     * Código de barras (codbar) y código externo (codext) reportados por la
+     * Código de barras (codbar), código externo (codext) y último precio
+     * (pre, de la propia tabla Precios de la estación) reportados por la
      * propia base de cada estación vía linked server, para comparar contra el
-     * catálogo corporativo (SG12.dbo.Productos, que puede ir desfasado de lo
-     * que hay en estación).
+     * catálogo/histórico corporativo (SG12.dbo.Productos / SG12.dbo.Precios,
+     * que pueden ir desfasados de lo que hay en estación).
+     *
+     * El último precio se obtiene con TOP 1 ORDER BY fch DESC, hra DESC
+     * (misma lógica que PrecioCorp en get_product_inventory), ejecutado del
+     * lado remoto dentro del propio OPENQUERY para no sumar otro viaje de
+     * red por estación.
      *
      * Se valida conectividad con fsockopen() al puerto 1433 (mismo patrón que
      * DespachosModel::sp_obtener_diferencias_por_valor) en vez de ping/exec():
@@ -83,7 +96,7 @@ class StockModel extends Model {
      * tira la sentencia completa y deja sin resultado a todas las demás.
      *
      * @param int[] $codgasList
-     * @return array<int, array<int, array{codbar: string, codext: string}>> codgas => [codprd => campos]
+     * @return array<int, array<int, array{codbar: string, codext: string, precio: ?float}>> codgas => [codprd => campos]
      */
     function get_station_product_fields(array $codgasList): array {
         $map = [];
@@ -96,8 +109,15 @@ class StockModel extends Model {
             if (!$connection) continue;
             fclose($connection);
 
-            $query = "SELECT cod, codbar, codext
-                FROM OPENQUERY({$this->linked_server[$codgas]}, 'SELECT cod, codbar, codext FROM {$this->short_databases[$codgas]}.[Productos]')";
+            $query = "SELECT cod, codbar, codext, pre
+                FROM OPENQUERY({$this->linked_server[$codgas]}, 'SELECT p.cod, p.codbar, p.codext, prc.pre
+                    FROM {$this->short_databases[$codgas]}.[Productos] p
+                    OUTER APPLY (
+                        SELECT TOP 1 pre
+                        FROM {$this->short_databases[$codgas]}.[Precios] pr
+                        WHERE pr.codprd = p.cod AND pr.codgas = {$codgas}
+                        ORDER BY pr.fch DESC, pr.hra DESC
+                    ) AS prc')";
             $rows = $this->sql->selectSafe($query);
             if ($rows === false) continue;
 
@@ -105,6 +125,7 @@ class StockModel extends Model {
                 $map[$codgas][(int)$row['cod']] = [
                     'codbar' => trim((string)($row['codbar'] ?? '')),
                     'codext' => trim((string)($row['codext'] ?? '')),
+                    'precio' => isset($row['pre']) ? (float)$row['pre'] : null,
                 ];
             }
         }

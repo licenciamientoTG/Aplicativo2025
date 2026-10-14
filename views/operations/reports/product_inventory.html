@@ -131,6 +131,8 @@
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_BARCODE_ESTACION" placeholder="Barcode Estación"></div>
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_CODEXT_CORP" placeholder="Cód. Ext. Corp."></div>
                         <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_CODEXT_ESTACION" placeholder="Cód. Ext. Estación"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_PRECIO_CORP" placeholder="Precio Corp."></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="F_PRECIO_ESTACION" placeholder="Precio Estación"></div>
                         <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
                     </div>
                 </div>
@@ -147,6 +149,8 @@
                         <th>BARCODE ESTACIÓN</th>
                         <th>CÓD. EXT. CORP.</th>
                         <th>CÓD. EXT. ESTACIÓN</th>
+                        <th>PRECIO CORP.</th>
+                        <th>PRECIO ESTACIÓN</th>
                         <th>ACCIONES</th>
                     </tr>
                     </thead>
@@ -279,6 +283,20 @@ $(document).ready(function() {
                     return data;
                 }
             },
+            {'data': 'PRECIO_CORP'},
+            {
+                'data': 'PRECIO_ESTACION',
+                'render': function (data, type, row) {
+                    if (type !== 'display') return data;
+                    if (row.PRECIO_MATCH === false) {
+                        return '<span class="text-danger fw-bold" title="No coincide con el precio corporativo">' + data + '</span>';
+                    }
+                    if (row.PRECIO_MATCH === null) {
+                        return '<span class="text-muted fst-italic" title="No fue posible comparar (sin conexión o sin precio registrado)">' + data + '</span>';
+                    }
+                    return data;
+                }
+            },
             {
                 'data': null,
                 'orderable': false,
@@ -312,6 +330,8 @@ $(document).ready(function() {
             .column(7).search($('#F_BARCODE_ESTACION').val().trim())
             .column(8).search($('#F_CODEXT_CORP').val().trim())
             .column(9).search($('#F_CODEXT_ESTACION').val().trim())
+            .column(10).search($('#F_PRECIO_CORP').val().trim())
+            .column(11).search($('#F_PRECIO_ESTACION').val().trim())
             .draw();
     });
 
@@ -374,7 +394,9 @@ $(document).ready(function() {
                 barcode_corp: row.BARCODE_CORP,
                 barcode_estacion: row.BARCODE_ESTACION,
                 codext_corp: row.CODEXT_CORP,
-                codext_estacion: row.CODEXT_ESTACION
+                codext_estacion: row.CODEXT_ESTACION,
+                precio_corp: row.PRECIO_CORP,
+                precio_estacion: row.PRECIO_ESTACION
             };
         });
         if (!filas.length) {
