@@ -1406,6 +1406,7 @@ class TablerosModel {
         @chmod($destination, 0600);
         }
         $thumbnailKey = null;
+        $previewKey = null;
         if (str_starts_with($contentType, 'image/')) {
             $thumbnailKey = $this->thumbnailObjectKey($objectKey);
             try {
@@ -1413,9 +1414,19 @@ class TablerosModel {
             } catch (Throwable $thumbnailError) {
                 error_log('Tableros image thumbnail generation skipped: ' . $thumbnailError->getMessage());
             }
+            $previewKey = $this->imagePreviewObjectKey($objectKey);
+            try {
+                $this->createStoredImagePreview($processingPath, $previewKey, $useNasService);
+            } catch (Throwable $previewError) {
+                error_log('Tableros image preview generation skipped: ' . $previewError->getMessage());
+            }
         }
         $sourceHash = hash_file('sha256', $processingPath, true);
         if ($sourceHash === false) {
+            foreach ([$thumbnailKey, $previewKey] as $derivativeKey) {
+                if ($derivativeKey === null) continue;
+                try { $this->deleteStoredObject($derivativeKey, $useNasService); } catch (Throwable $cleanupError) { error_log('Tableros image derivative cleanup failed: ' . $cleanupError->getMessage()); }
+            }
             if ($useNasService) $this->nasServiceRequest('DELETE', $objectKey);
             elseif ($destination !== null) @unlink($destination);
             throw new TablerosApiException('server', 'No se pudo verificar el archivo cargado.', 500);
@@ -1484,6 +1495,9 @@ class TablerosModel {
         } catch (Throwable $e) {
             if ($thumbnailKey !== null) {
                 try { $this->deleteStoredObject($thumbnailKey, $useNasService); } catch (Throwable $cleanupError) { error_log('Tableros thumbnail cleanup failed: ' . $cleanupError->getMessage()); }
+            }
+            if ($previewKey !== null) {
+                try { $this->deleteStoredObject($previewKey, $useNasService); } catch (Throwable $cleanupError) { error_log('Tableros preview cleanup failed: ' . $cleanupError->getMessage()); }
             }
             if ($useNasService) {
                 try { $this->nasServiceRequest('DELETE', $objectKey); } catch (Throwable $cleanupError) { error_log('Tableros NAS cleanup failed: ' . $cleanupError->getMessage()); }
@@ -1746,6 +1760,11 @@ class TablerosModel {
         if ($useNas && is_file($path)) @unlink($path);
     }
 
+    private function createStoredImagePreview(string $sourcePath, string $previewKey, bool $useNas): void {
+        $path = $this->ensureStoredImagePreview($sourcePath, $previewKey, $useNas);
+        if ($useNas && is_file($path)) @unlink($path);
+    }
+
     private function makeWebpThumbnail(string $sourcePath): ?string {
         return $this->makeWebpDerivative($sourcePath, 320, 72, 'tableros-webp-');
     }
@@ -1755,21 +1774,19 @@ class TablerosModel {
     }
 
     private function makeWebpDerivative(string $sourcePath, int $maxEdge, int $quality, string $tempPrefix): ?string {
-        if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) return null;
+        if (!function_exists('imagewebp')) return null;
         $sourceSize = @filesize($sourcePath);
         if ($sourceSize === false || $sourceSize <= 0) throw new TablerosApiException('validation', 'No se pudo leer la imagen original.', 422);
-        if ($sourceSize > 50 * 1024 * 1024) throw new TablerosApiException('validation', 'La imagen supera el límite de 50 MiB para generar derivados.', 413);
+        if ($sourceSize > 500 * 1024 * 1024) throw new TablerosApiException('validation', 'La imagen supera el límite de 500 MiB para generar derivados.', 413);
 
         // All workers on this host share this lock, so only one large GD decode runs at a time.
         $lock = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'tableros-webp-decode.lock', 'c');
         if (!is_resource($lock)) throw new TablerosApiException('server', 'No se pudo bloquear la generación de imágenes.', 500);
         if (!flock($lock, LOCK_EX)) { fclose($lock); throw new TablerosApiException('server', 'No se pudo bloquear la generación de imágenes.', 500); }
         $image = null; $thumb = null; $path = false; $success = false;
+        $previousMemoryLimit = (string)ini_get('memory_limit');
         try {
-            $bytes = @file_get_contents($sourcePath, false, null, 0, 50 * 1024 * 1024 + 1);
-            if (!is_string($bytes) || $bytes === '') throw new TablerosApiException('validation', 'No se pudo leer la imagen original.', 422);
-            if (strlen($bytes) > 50 * 1024 * 1024) throw new TablerosApiException('validation', 'La imagen supera el límite de 50 MiB para generar derivados.', 413);
-            $info = @getimagesizefromstring($bytes);
+            $info = @getimagesize($sourcePath);
             if (!is_array($info) || !in_array((string)($info['mime'] ?? ''), ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
                 throw new TablerosApiException('validation', 'La imagen original está dañada o no es compatible.', 422);
             }
@@ -1778,8 +1795,6 @@ class TablerosModel {
                 throw new TablerosApiException('validation', 'Las dimensiones de la imagen no son compatibles.', 422);
             }
             $pixels = $sourceWidth * $sourceHeight;
-            // Leave room above the confirmed 92 MP source, while the memory estimate
-            // below keeps each full-resolution GD decode within the worker limit.
             if ($pixels > 150000000) throw new TablerosApiException('validation', 'La imagen supera el límite de 150 megapíxeles para generar derivados.', 413);
 
             $memoryLimit = trim((string)ini_get('memory_limit'));
@@ -1787,12 +1802,30 @@ class TablerosModel {
             if (preg_match('/^([0-9]+)\s*([KMG])?B?$/i', $memoryLimit, $match)) {
                 $limitBytes = (int)$match[1] * match (strtoupper($match[2] ?? '')) { 'G' => 1073741824, 'M' => 1048576, 'K' => 1024, default => 1 };
             }
-            $estimatedBytes = memory_get_usage(true) + $sourceSize + ($pixels * 5) + (64 * 1024 * 1024);
+            // Decoding directly from the file avoids holding a second full copy of
+            // the compressed input in PHP memory. Raise IIS's 512 MiB worker limit
+            // for this serialized operation, with a 2 GiB per-worker hard ceiling.
+            $estimatedBytes = memory_get_usage(true) + ($pixels * 6) + (128 * 1024 * 1024);
+            $safeCeiling = 2 * 1024 * 1024 * 1024;
+            if ($estimatedBytes > $safeCeiling) {
+                throw new TablerosApiException('validation', 'La imagen requiere más memoria que el límite seguro para generar derivados.', 413);
+            }
             if ($limitBytes > 0 && $estimatedBytes > $limitBytes) {
-                throw new TablerosApiException('validation', 'La imagen requiere más memoria que la disponible para generar derivados.', 413);
+                $newLimit = (int)(ceil($estimatedBytes / (1024 * 1024) / 256) * 256) . 'M';
+                if (@ini_set('memory_limit', $newLimit) === false) {
+                    throw new TablerosApiException('validation', 'No se pudo ampliar la memoria disponible para generar derivados.', 413);
+                }
             }
 
-            $image = @imagecreatefromstring($bytes);
+            $decoder = match ((string)$info['mime']) {
+                'image/jpeg' => 'imagecreatefromjpeg',
+                'image/png' => 'imagecreatefrompng',
+                'image/gif' => 'imagecreatefromgif',
+                'image/webp' => 'imagecreatefromwebp',
+                default => null,
+            };
+            if ($decoder === null || !function_exists($decoder)) return null;
+            $image = @$decoder($sourcePath);
             if (!$image) throw new TablerosApiException('validation', 'La imagen original está dañada o no se puede decodificar.', 422);
             $width = imagesx($image); $height = imagesy($image);
             $scale = min(1, $maxEdge / max($width, $height));
@@ -1810,6 +1843,7 @@ class TablerosModel {
             if ($image) imagedestroy($image);
             if ($thumb) imagedestroy($thumb);
             if ($path !== false && !$success) @unlink($path);
+            if ($previousMemoryLimit !== '') @ini_set('memory_limit', $previousMemoryLimit);
             flock($lock, LOCK_UN); fclose($lock);
         }
     }
