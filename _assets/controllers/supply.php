@@ -154,13 +154,16 @@ class Supply
                 $data[] = [
                     'ESTACION' => $inventory['station_name'],
                     'PRODUCTO' => $producto,
+                    'PRODUCTO_TEXT' => $inventory['product_name'], // texto plano para exportar a Excel
                     'CAP' => $inventory['CapacidadOpe'],
                     'VOLUMEN' => number_format($inventory['current_volume'], 2, '.', ','),
                     'PORCENTAJE' => $porcent,
+                    'PORCENTAJE_TEXT' => number_format($porcent_data, 2, '.', ',') . '%', // texto plano para exportar a Excel
                     'VENTA' => is_null($inventory['total_sales']) ? 0 : number_format($inventory['total_sales'], 2, '.', ','), // $inventory['total_sales'],
                     'PROMEDIO' => is_null($inventory['average_daily_sales']) ? 0 : number_format($inventory['average_daily_sales'], 2, '.', ','), // $inventory['average_daily_sales'],
                     'DIASINV' => number_format($inventory['diasinv'], 1),
                     'STATUS' => $inventory['status'],
+                    'TANQUE_STATUS' => $tanque_activo ? 'Activo' : 'Inactivo', // Activo/Inactivo del tanque, para exportar a Excel
                 ];
             }
         }

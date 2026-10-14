@@ -102,6 +102,23 @@
                 {
                     extend: 'excel',
                     className: 'd-none',
+                    title: 'Inventario de tanques',
+                    customizeData: function (data) {
+                        // Reporte curado: solo las columnas que pide el usuario, con
+                        // texto plano (sin HTML/SVG) tomado de los datos crudos de cada fila.
+                        data.header = ['ESTACIÓN', 'PRODUCTO', 'STATUS', 'CAP. OPERATIVA', 'VOLUMEN ACTUAL', 'PORCENTAJE'];
+                        data.body = inventory_table.rows({ search: 'applied' }).data().toArray().map(function (row) {
+                            return [
+                                row.ESTACION,
+                                row.PRODUCTO_TEXT,
+                                row.TANQUE_STATUS,
+                                row.CAP,
+                                row.VOLUMEN,
+                                row.PORCENTAJE_TEXT
+                            ];
+                        });
+                        data.footer = [];
+                    }
                 },
                 {
                     extend: 'pdf', // Agrega el botón de exportación a PDF
