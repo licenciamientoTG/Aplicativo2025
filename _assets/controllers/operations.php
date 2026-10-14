@@ -1638,6 +1638,19 @@ class Operations{
         $totalEntradas = 0.0;
         $totalSalidas = 0.0;
         if ($rows = $this->stockModel->get_product_history((int)$codprd, (int)$codgas)) {
+            // $rows viene ordenado por percon DESC (más reciente primero). Para
+            // el neto acumulado necesitamos recorrer en orden cronológico
+            // (más antiguo primero) y luego devolver cada fila con su saldo
+            // acumulado a esa fecha, respetando el orden original DESC.
+            $cronologico = array_reverse($rows);
+            $acumulado = 0.0;
+            foreach ($cronologico as &$row) {
+                $acumulado += (float)$row['ingstk'] - (float)$row['salstk'];
+                $row['_neto_acumulado'] = $acumulado;
+            }
+            unset($row);
+            $rows = array_reverse($cronologico);
+
             foreach ($rows as $row) {
                 $entradas = (float)$row['ingstk'];
                 $salidas = (float)$row['salstk'];
@@ -1648,6 +1661,7 @@ class Operations{
                     'FECHA'    => $row['Fecha'],
                     'ENTRADAS' => number_format($entradas, 2, '.', ','),
                     'SALIDAS'  => number_format($salidas, 2, '.', ','),
+                    'NETO'     => number_format($row['_neto_acumulado'], 2, '.', ','),
                 ];
             }
             $meta = [

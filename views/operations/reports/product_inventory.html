@@ -161,6 +161,7 @@
                             <th>FECHA</th>
                             <th>ENTRADAS</th>
                             <th>SALIDAS</th>
+                            <th>NETO</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -170,9 +171,6 @@
                             <td colspan="2" class="text-end">TOTAL</td>
                             <td id="historyTotalEntradas"></td>
                             <td id="historyTotalSalidas"></td>
-                        </tr>
-                        <tr class="fw-bold">
-                            <td colspan="3" class="text-end">NETO (Entradas - Salidas del historial completo)</td>
                             <td id="historyNeto"></td>
                         </tr>
                         </tfoot>
@@ -283,7 +281,7 @@ $(document).ready(function() {
         $('#historyEstacion').text(rowData.ESTACION);
 
         let $tbody = $('#product_history_table tbody');
-        $tbody.html('<tr><td colspan="4" class="text-center">Cargando...</td></tr>');
+        $tbody.html('<tr><td colspan="5" class="text-center">Cargando...</td></tr>');
         $('#historyTotalEntradas, #historyTotalSalidas, #historyNeto').text('');
         $('#productHistoryModal').modal('show');
 
@@ -294,7 +292,7 @@ $(document).ready(function() {
             $('#historyTotalSalidas').text(meta.total_salidas || '0.00');
             $('#historyNeto').text(meta.neto || '0.00');
             if (!rows.length) {
-                $tbody.html('<tr><td colspan="4" class="text-center">Sin movimientos registrados.</td></tr>');
+                $tbody.html('<tr><td colspan="5" class="text-center">Sin movimientos registrados.</td></tr>');
                 return;
             }
             $tbody.empty();
@@ -303,11 +301,12 @@ $(document).ready(function() {
                     $('<td>').text(r.PERIODO),
                     $('<td>').text(r.FECHA),
                     $('<td>').text(r.ENTRADAS),
-                    $('<td>').text(r.SALIDAS)
+                    $('<td>').text(r.SALIDAS),
+                    $('<td>').text(r.NETO)
                 ));
             });
         }).fail(function () {
-            $tbody.html('<tr><td colspan="4" class="text-center text-danger">No fue posible cargar el historial.</td></tr>');
+            $tbody.html('<tr><td colspan="5" class="text-center text-danger">No fue posible cargar el historial.</td></tr>');
             $('#historyTotalEntradas, #historyTotalSalidas, #historyNeto').text('0.00');
         });
     });
