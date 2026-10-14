@@ -17,7 +17,8 @@ class StockModel extends Model {
                     ELSE 'Desconocido'
                 END                                                                     AS [Status],
                 ROUND(SUM(ISNULL(s.ingstk, 0) - ISNULL(s.salstk, 0)), 2)                AS Existencia,
-                CONVERT(varchar(10), DATEADD(day, MAX(s.ultmov) - 1, '1900-01-01'), 23) AS UltimoMov
+                CONVERT(varchar(10), DATEADD(day, MAX(s.ultmov) - 1, '1900-01-01'), 23) AS UltimoMov,
+                MAX(TRIM(p.codbar))                                                     AS BarcodeCorp
             FROM SG12.dbo.Stock AS s
             JOIN SG12.dbo.Productos AS p ON p.cod = s.codprd
             LEFT JOIN SG12.dbo.Gasolineras AS g ON g.cod = s.codgas
@@ -60,5 +61,40 @@ class StockModel extends Model {
             ORDER BY s.percon DESC";
 
         return $this->sql->select($query, [$codprd, $codgas]) ?: false;
+    }
+
+    /**
+     * Código de barras (codbar) reportado por la propia base de cada estación
+     * vía linked server, para comparar contra el catálogo corporativo
+     * (SG12.dbo.Productos, que puede ir desfasado de lo que hay en estación).
+     * Las estaciones sin ping se omiten en vez de esperar el timeout del
+     * linked server (mismo patrón que CreProductsByStationsModel::getProductsByStations).
+     *
+     * @param int[] $codgasList
+     * @return array<int, array<int, string>> codgas => [codprd => codbar]
+     */
+    function get_station_barcodes(array $codgasList): array {
+        $queryParts = [];
+        foreach ($codgasList as $codgas) {
+            $codgas = (int)$codgas;
+            if (empty($this->linked_server[$codgas]) || empty($this->short_databases[$codgas])) continue;
+
+            $ip = trim($this->linked_server[$codgas], '[]');
+            $output = [];
+            if (!exec("ping -n 1 " . escapeshellarg($ip), $output, $status) || $status !== 0) continue;
+
+            $queryParts[] = "SELECT {$codgas} AS codgas, oq.cod AS codprd, oq.codbar
+                FROM OPENQUERY({$this->linked_server[$codgas]}, 'SELECT cod, codbar FROM {$this->short_databases[$codgas]}.[Productos]') AS oq";
+        }
+        if (empty($queryParts)) return [];
+
+        $rows = $this->sql->selectSafe(implode(" UNION ALL ", $queryParts));
+        if ($rows === false) return [];
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[(int)$row['codgas']][(int)$row['codprd']] = trim((string)($row['codbar'] ?? ''));
+        }
+        return $map;
     }
 }

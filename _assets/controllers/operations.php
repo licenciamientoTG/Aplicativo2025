@@ -1615,7 +1615,15 @@ class Operations{
         $codgas = empty($codgas) ? null : (int)$codgas;
         $data = [];
         if ($rows = $this->stockModel->get_product_inventory($codgas)) {
+            $estaciones = array_values(array_unique(array_map(fn($row) => (int)$row['codgas'], $rows)));
+            $barcodesEstacion = $this->stockModel->get_station_barcodes($estaciones);
+
             foreach ($rows as $row) {
+                $codgasRow = (int)$row['codgas'];
+                $codprdRow = (int)$row['codprd'];
+                $barcodeCorp = trim((string)($row['BarcodeCorp'] ?? ''));
+                $barcodeEstacion = $barcodesEstacion[$codgasRow][$codprdRow] ?? null;
+
                 $data[] = [
                     'ESTACION'   => $row['Estacion'],
                     'PRODUCTO'   => $row['Producto'],
@@ -1626,6 +1634,9 @@ class Operations{
                     'EXISTENCIA' => number_format((float)$row['Existencia'], 2, '.', ','),
                     'EXISTENCIA_RAW' => (float)$row['Existencia'],
                     'ULTIMOMOV'  => $row['UltimoMov'],
+                    'BARCODE_CORP'     => $barcodeCorp,
+                    'BARCODE_ESTACION' => $barcodeEstacion ?? 'Sin conexión',
+                    'BARCODE_MATCH'    => $barcodeEstacion === null ? null : ($barcodeEstacion === $barcodeCorp),
                 ];
             }
         }
@@ -1694,9 +1705,9 @@ class Operations{
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Inventario Productos');
 
-        $encabezados = ['ESTACIÓN', 'PRODUCTO', 'UNIDAD', 'STATUS', 'EXISTENCIA', 'ÚLTIMO MOVIMIENTO'];
+        $encabezados = ['ESTACIÓN', 'PRODUCTO', 'UNIDAD', 'STATUS', 'EXISTENCIA', 'ÚLTIMO MOVIMIENTO', 'BARCODE CORPORATIVO', 'BARCODE ESTACIÓN'];
         $sheet->fromArray($encabezados, null, 'A1');
-        $sheet->getStyle('A1:F1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:H1')->getFont()->setBold(true);
 
         $row = 2;
         foreach ($filas as $f) {
@@ -1707,10 +1718,12 @@ class Operations{
                 $f['status'] ?? '',
                 (float)($f['existencia'] ?? 0),
                 $f['ultimomov'] ?? '',
+                $f['barcode_corp'] ?? '',
+                $f['barcode_estacion'] ?? '',
             ], null, "A{$row}");
             $row++;
         }
-        foreach (range('A', 'F') as $col) {
+        foreach (range('A', 'H') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
