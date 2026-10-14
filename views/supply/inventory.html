@@ -117,7 +117,10 @@
                                 row.PORCENTAJE_TEXT
                             ];
                         });
-                        data.footer = [];
+                        // null (no []): un array vacío es "truthy" y hace que
+                        // buttons.html5.js intente leer data.footer[col].length
+                        // al calcular el ancho de columnas, y truena.
+                        data.footer = null;
                     }
                 },
                 {
