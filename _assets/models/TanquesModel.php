@@ -38,7 +38,8 @@ class TanquesModel extends Model{
     function get_inventory() : array|false {
         ini_set('memory_limit', '256M');
         ini_set('max_execution_time', 300);
-        return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_inventarios_tanques_tiempo_real]');
+        $inventories = $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_inventarios_tanques_tiempo_real]');
+        return $this->merge_tanque_info($inventories);
     }
 
     function get_inventory_by_codgas($station_id) : array | false {
@@ -47,7 +48,37 @@ class TanquesModel extends Model{
 
         $query = "SELECT * FROM OPENQUERY({$this->linked_server[$station_id]}, 'SELECT * FROM {$this->short_databases[$station_id]}.[vw_tank_info]')";
 
-        return $this->sql->select($query);
+        $inventories = $this->sql->select($query);
+        return $this->merge_tanque_info($inventories, $station_id);
+    }
+
+    /**
+     * sp_obtener_inventarios_tanques_tiempo_real / vw_tank_info no traen cod/den/est
+     * del tanque (viven en SG12.dbo.Tanques, replica central). tank_id/station_id
+     * de esas fuentes corresponden a Tanques.cod/codgas, así que se cruzan en PHP.
+     */
+    private function merge_tanque_info($inventories, $station_id = null) : array|false {
+        if (!$inventories) {
+            return $inventories;
+        }
+        $query = "SELECT cod, den, est, codgas FROM SG12.dbo.Tanques";
+        $params = [];
+        if ($station_id !== null) {
+            $query .= " WHERE codgas = ?";
+            $params[] = $station_id;
+        }
+        $tanques = $this->sql->select($query, $params);
+        $lookup = [];
+        foreach ($tanques as $tanque) {
+            $lookup[$tanque['codgas'] . '_' . $tanque['cod']] = $tanque;
+        }
+        foreach ($inventories as &$inventory) {
+            $tanque = $lookup[$inventory['station_id'] . '_' . $inventory['tank_id']] ?? null;
+            $inventory['tanque_cod'] = $tanque['cod'] ?? $inventory['tank_id'];
+            $inventory['tanque_den'] = $tanque['den'] ?? null;
+            $inventory['tanque_est'] = $tanque['est'] ?? null;
+        }
+        return $inventories;
     }
 
     /**

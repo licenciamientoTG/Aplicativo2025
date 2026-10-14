@@ -139,9 +139,21 @@ class Supply
                     $inventory['diasinv'] = 0;
                     $inventory['status'] = 'N/A';
                 }
+                $tanque_activo = ($inventory['tanque_est'] ?? 0) == 0;
+                $producto = "
+                    <div class=\"d-flex flex-column\">
+                        <span class=\"fw-semibold\">" . htmlspecialchars($inventory['product_name']) . "</span>
+                        <span class=\"small text-muted mt-1\">
+                            CodTanque: <strong>" . htmlspecialchars($inventory['tanque_cod'] ?? $inventory['tank_id']) . "</strong>
+                            &nbsp;-&nbsp;" . htmlspecialchars($inventory['tanque_den'] ?? '') . "
+                            &nbsp;-&nbsp;Status:
+                            <span class=\"badge bg-" . ($tanque_activo ? 'success' : 'secondary') . "-light text-" . ($tanque_activo ? 'success' : 'secondary') . "\">" . ($tanque_activo ? 'Activo' : 'Inactivo') . "</span>
+                        </span>
+                    </div>
+                ";
                 $data[] = [
                     'ESTACION' => $inventory['station_name'],
-                    'PRODUCTO' => $inventory['product_name'],
+                    'PRODUCTO' => $producto,
                     'CAP' => $inventory['CapacidadOpe'],
                     'VOLUMEN' => number_format($inventory['current_volume'], 2, '.', ','),
                     'PORCENTAJE' => $porcent,
