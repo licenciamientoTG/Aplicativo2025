@@ -792,10 +792,20 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-visibility-empty h4 { margin: 10px 0 5px; color: #f1f1fa; font-size: .92rem; }
 .boards-visibility-empty p { margin: 0; font-size: .78rem; }
 .boards-visibility-manager .boards-detail-status { margin-bottom: 8px; }
+.boards-manage-members { margin-top: 22px; padding-top: 19px; border-top: 1px solid #393c5b; }
+.boards-manage-members-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.boards-manage-members-heading h3 { margin: 0 0 4px; color: #f1f1fa; font-size: 1rem; font-weight: 650; }
+.boards-manage-members-heading p { margin: 0; color: #a9acc5; font-size: .78rem; }
+.boards-manage-members-controls { display: flex; min-width: min(430px, 55%); gap: 8px; }
+.boards-manage-members-controls .form-select { min-width: 0; min-height: 36px; border-color: #484c6b; color: #f1f1fa; background-color: #252844; font-size: .76rem; }
+.boards-manage-members-controls .btn { flex: 0 0 auto; }
+.boards-member-role-select { width: auto; min-width: 125px; min-height: 34px; padding-top: 4px; padding-bottom: 4px; border-color: #484c6b; color: #edeef8; background-color: #292c49; font-size: .73rem; }
 @media (max-width: 767.98px) {
   .boards-visibility-manager { padding: 13px; }
   .boards-visibility-row { align-items: stretch; flex-direction: column; gap: 11px; }
   .boards-visibility-control { flex-basis: auto; }
+  .boards-manage-members-heading { align-items: stretch; flex-direction: column; gap: 10px; }
+  .boards-manage-members-controls { min-width: 0; }
 }
 .boards-picker-wrap .form-select,
 .boards-saved-view-controls .form-select,

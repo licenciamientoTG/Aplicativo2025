@@ -885,6 +885,10 @@ class TablerosModel {
         return $this->access->activeUsers($search);
     }
 
+    public function activeUsersWithDashboardAccess(string $search = ''): array {
+        return $this->access->activeUsers($search, true, true);
+    }
+
     public function userIsActive(int $userId): bool {
         return $this->access->userIsActive($userId);
     }
@@ -1935,9 +1939,7 @@ class TablerosModel {
             $value = $this->validateCellValue((string)$column['type'], $input['value'], $this->decodeJson($column['options_json'] ?? null, []));
             if (in_array((string)$column['type'], ['people', 'person'], true)) {
                 foreach ($value as $assignedUserId) {
-                    if (!$this->userHasBoardAccess((int)$assignedUserId, $boardId)) {
-                        throw new TablerosApiException('validation', 'Solo puedes asignar personas con acceso al espacio de trabajo.', 422);
-                    }
+                    $this->ensureAssignedUserBoardAccess((int)$assignedUserId, $boardId, $itemId, $userId);
                 }
             }
             $this->validateCellReferences((string)$column['type'], $value, $boardId, $itemId, $columnId);
@@ -2875,6 +2877,71 @@ class TablerosModel {
                         OR w.visibility = \'open\'))))',
             [$boardId, $userId]
         ) !== null;
+    }
+
+    private function ensureAssignedUserBoardAccess(int $targetUserId, int $boardId, int $itemId, ?int $actorId): void {
+        if (!$this->userIsActive($targetUserId) || !$this->access->userHasModuleAccess($targetUserId)) {
+            throw new TablerosApiException('validation', 'Las personas asignadas deben tener una cuenta activa y acceso al módulo Tableros.', 422);
+        }
+        if ($this->userHasBoardAccess($targetUserId, $boardId)) {
+            return;
+        }
+
+        // The caller is already inside updateCell's transaction. Lock the board/member
+        // key so concurrent assignments cannot create duplicate direct memberships.
+        $board = $this->one(
+            'SELECT created_by, name FROM tb_board WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL',
+            [$boardId]
+        );
+        if (!$board) {
+            throw new TablerosApiException('not_found', 'No se encontró el tablero.', 404);
+        }
+        if ((int)$board['created_by'] === $targetUserId || $this->userHasBoardAccess($targetUserId, $boardId)) {
+            return;
+        }
+
+        $existing = $this->one(
+            'SELECT TOP (1) id, role FROM tb_board_member WITH (UPDLOCK, HOLDLOCK)
+             WHERE board_id = ? AND user_id = ? ORDER BY id DESC',
+            [$boardId, $targetUserId]
+        );
+        if ($existing) {
+            // Item assignment grants reader access only. Do not restore a revoked elevated role.
+            $this->execute(
+                'UPDATE tb_board_member SET role = ?, invited_by = ?, updated_at = GETDATE(), deleted_at = NULL WHERE id = ?',
+                ['viewer', $actorId, $existing['id']]
+            );
+            $role = 'viewer';
+        } else {
+            $this->execute(
+                'INSERT INTO tb_board_member (board_id, user_id, role, invited_by, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$boardId, $targetUserId, 'viewer', $actorId]
+            );
+            $role = 'viewer';
+        }
+
+        $auditActorId = $actorId ?? (int)$board['created_by'];
+        $accessMetadata = [
+            'user_id' => $targetUserId,
+            'role' => $role,
+            'source' => 'item_assignment',
+            'item_id' => $itemId,
+        ];
+        $this->createNotification(
+            $targetUserId,
+            $auditActorId,
+            $boardId,
+            $itemId,
+            null,
+            null,
+            null,
+            'board.member.added',
+            ['board_name' => (string)$board['name'], 'role' => $role, 'source' => 'item_assignment', 'item_id' => $itemId],
+            'board-member-assignment:' . $boardId . ':' . $targetUserId . ':' . bin2hex(random_bytes(8))
+        );
+        $this->auditAccess($auditActorId, 'board.member_shared', 'board', $boardId, $accessMetadata);
+        $this->writeActivity($boardId, $itemId, $auditActorId, 'board.member_shared', $accessMetadata);
     }
 
     private function cellStorage(string $type, $value): array {

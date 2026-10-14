@@ -72,6 +72,18 @@
       <h4>No hay tableros para administrar</h4>
       <p>Solo aparecen aquí los tableros en los que tienes el rol de propietario o diseñador.</p>
     </div>
+    <section class="boards-manage-members" aria-labelledby="manageBoardMembersTitle">
+      <div class="boards-manage-members-heading">
+        <div><h3 id="manageBoardMembersTitle">Miembros del tablero</h3><p>Administra las invitaciones directas del tablero seleccionado.</p></div>
+        <div class="boards-manage-members-controls">
+          <label class="visually-hidden" for="manageBoardSelect">Seleccionar tablero para administrar miembros</label>
+          <select id="manageBoardSelect" class="form-select" aria-label="Seleccionar tablero para administrar miembros" disabled><option value="">Cargando tableros…</option></select>
+          <button type="button" class="btn boards-button-primary" id="openManageBoardShare" disabled><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Agregar persona</span></button>
+        </div>
+      </div>
+      <div id="manageBoardMembersStatus" class="boards-detail-status" role="status" aria-live="polite">Selecciona un tablero.</div>
+      <div id="manageBoardMembersList" class="boards-member-list" role="list" aria-label="Miembros directos del tablero"></div>
+    </section>
   </section>
 
   <div class="boards-main">
@@ -392,7 +404,7 @@
   </form>
   <section class="boards-member-section" aria-labelledby="boardMembersTitle">
     <div class="boards-automation-history-heading"><h4 id="boardMembersTitle">Personas con acceso</h4><span id="boardMembersStatus" class="boards-detail-status" role="status" aria-live="polite">Cargando…</span></div>
-    <div id="boardMembersList" class="boards-member-list"></div>
+    <div id="boardMembersList" class="boards-member-list" role="list"></div>
   </section>
 </dialog>
 
