@@ -1654,10 +1654,55 @@ class Operations{
                     'PRECIO_CORP'      => $precioCorp !== null ? number_format($precioCorp, 2) : 'N/D',
                     'PRECIO_ESTACION'  => $campos === null ? 'Sin conexión' : ($precioEstacion !== null ? number_format($precioEstacion, 2) : 'N/D'),
                     'PRECIO_MATCH'     => $precioMatch,
+                    'STATION_REACHABLE' => $campos !== null,
                 ];
             }
         }
         json_output(array("data" => $data));
+    }
+
+    /**
+     * Corrige codbar/codext de un producto para que coincidan en el catálogo
+     * corporativo (SG12.dbo.Productos, global) y en la copia local de la
+     * estación. Exige que ambos lados se envíen iguales (el precio no se
+     * toca desde aquí).
+     */
+    function product_inventory_update_codes(): void {
+        if (!authorized(37)) { http_response_code(403); json_output(['success' => false, 'message' => 'Sin autorización.']); return; }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { http_response_code(405); json_output(['success' => false, 'message' => 'Método no permitido.']); return; }
+
+        $codprd = (int)($_POST['codprd'] ?? 0);
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        $barcodeCorp = trim((string)($_POST['barcode_corp'] ?? ''));
+        $barcodeEstacion = trim((string)($_POST['barcode_estacion'] ?? ''));
+        $codextCorp = trim((string)($_POST['codext_corp'] ?? ''));
+        $codextEstacion = trim((string)($_POST['codext_estacion'] ?? ''));
+
+        if ($codprd <= 0 || $codgas <= 0) {
+            json_output(['success' => false, 'message' => 'Producto o estación inválidos.']);
+            return;
+        }
+        if ($barcodeCorp !== $barcodeEstacion) {
+            json_output(['success' => false, 'message' => 'El código de barras debe ser igual en ambos lados.']);
+            return;
+        }
+        if ($codextCorp !== $codextEstacion) {
+            json_output(['success' => false, 'message' => 'El código externo debe ser igual en ambos lados.']);
+            return;
+        }
+
+        $resultado = $this->stockModel->update_product_codes($codprd, $codgas, $barcodeCorp, $codextCorp);
+
+        if (!$resultado['central']) {
+            json_output(['success' => false, 'message' => 'No se pudo actualizar el catálogo corporativo.']);
+            return;
+        }
+        if (!$resultado['station']) {
+            json_output(['success' => false, 'message' => 'Se actualizó el catálogo corporativo, pero no se pudo conectar con la estación. Vuelve a intentarlo cuando esté disponible.']);
+            return;
+        }
+
+        json_output(['success' => true, 'message' => 'Códigos actualizados correctamente.']);
     }
 
     function product_inventory_history($codprd, $codgas): void {
