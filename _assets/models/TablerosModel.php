@@ -147,7 +147,7 @@ class TablerosModel {
         if (!in_array($type, ['workspace', 'folder', 'board', 'group', 'column', 'item', 'file'], true)) {
             throw new TablerosApiException('validation', 'El tipo de elemento no se puede eliminar.', 422);
         }
-        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['folder', 'board', 'group', 'item'], true))) {
+        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['workspace', 'folder', 'board', 'group', 'item'], true))) {
             throw new TablerosApiException('validation', 'El tipo de elemento no se puede archivar.', 422);
         }
         $ids = $input['entity_ids'] ?? [$input['entity_id'] ?? null];
@@ -171,6 +171,9 @@ class TablerosModel {
             [$table, $pk, $nameCol] = $config;
             $row = $this->one("SELECT * FROM $table WITH (UPDLOCK, HOLDLOCK) WHERE $pk = ? AND deleted_at IS NULL", [$id]);
             if (!$row) throw new TablerosApiException('not_found', 'No se encontró el elemento activo.', 404);
+            if ($type === 'workspace' && strtolower((string)($row['workspace_type'] ?? '')) !== 'workspace') {
+                throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo activo.', 404);
+            }
             $boardId = isset($row['board_id']) ? (int)$row['board_id'] : null;
             $workspaceId = isset($row['workspace_id']) ? (int)$row['workspace_id'] : null;
             if ($type === 'workspace') $workspaceId = $id;
@@ -515,10 +518,21 @@ class TablerosModel {
         }
         $workspaceId = (int)($entry['workspace_id'] ?? 0);
         if ($workspaceId <= 0) return false;
-        $member = $this->one('SELECT w.created_by, wm.role FROM tb_workspace w LEFT JOIN tb_workspace_member wm ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.deleted_at IS NULL WHERE w.id = ?', [$userId, $workspaceId]);
+        $member = $this->one("SELECT w.created_by, wm.role FROM tb_workspace w LEFT JOIN tb_workspace_member wm ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.deleted_at IS NULL WHERE w.id = ? AND w.workspace_type = 'workspace'", [$userId, $workspaceId]);
         if (!$member) return false;
         if ((int)($member['created_by'] ?? 0) === $userId) return true;
-        if ($entry['entity_type'] === 'workspace') return strtolower((string)($member['role'] ?? '')) === 'owner';
+        if ($entry['entity_type'] === 'workspace') {
+            if (strtolower((string)($member['role'] ?? '')) === 'owner') return true;
+            // Workspace cascades soft-delete membership rows. Consult the saved
+            // manifest so only an owner at archive time can still see/restore it.
+            return (bool)$this->one(
+                "SELECT TOP (1) e.entity_id FROM tb_trash_entity e
+                 INNER JOIN tb_workspace_member wm ON wm.id = e.entity_id
+                 WHERE e.entry_id = ? AND e.table_name = 'tb_workspace_member'
+                   AND wm.workspace_id = ? AND wm.user_id = ? AND wm.role = 'owner'",
+                [(int)$entry['id'], $workspaceId, $userId]
+            );
+        }
         if (in_array(strtolower((string)($member['role'] ?? '')), ['owner','editor'], true)) return true;
         if ($entry['entity_type'] === 'folder') {
             $folder = $this->one('SELECT created_by FROM tb_folder WHERE id = ?', [(int)$entry['entity_id']]);
@@ -1345,7 +1359,9 @@ class TablerosModel {
         if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || empty($upload['tmp_name'])) {
             throw new TablerosApiException('validation', 'No se recibió un archivo válido.', 422);
         }
-        if (!is_uploaded_file((string)$upload['tmp_name'])) {
+        $cliImportKey = $upload['_tableros_import_object_key'] ?? null;
+        $trustedCliImport = PHP_SAPI === 'cli' && is_string($cliImportKey) && $cliImportKey !== '';
+        if (!is_uploaded_file((string)$upload['tmp_name']) && !$trustedCliImport) {
             throw new TablerosApiException('validation', 'El archivo no proviene de una carga HTTP válida.', 422);
         }
         $size = (int)($upload['size'] ?? 0);
@@ -1363,17 +1379,30 @@ class TablerosModel {
         $storageRoot = $useNasService ? null : $this->privateStorageRoot();
         $now = new DateTimeImmutable('now');
         $objectHash = bin2hex(random_bytes(32));
-        $objectKey = implode('/', [
-            (string)$boardId,
-            (string)$itemId,
-            $now->format('Y'),
-            $now->format('m'),
-            substr($objectHash, 0, 2),
-            $objectHash,
-        ]);
+        $objectKey = implode('/', [(string)$boardId, (string)$itemId, $now->format('Y'), $now->format('m'), substr($objectHash, 0, 2), $objectHash]);
+        if ($trustedCliImport) {
+            if (!preg_match('~^' . preg_quote((string)$boardId, '~') . '/' . preg_quote((string)$itemId, '~') . '/[0-9]{4}/(?:0[1-9]|1[0-2])/([a-f0-9]{2})/([a-f0-9]{64})$~', $cliImportKey, $keyMatch)
+                || $keyMatch[1] !== substr($keyMatch[2], 0, 2)) {
+                throw new TablerosApiException('validation', 'La clave determinista del archivo importado no es válida.', 422);
+            }
+            $objectKey = $cliImportKey;
+            $objectHash = $keyMatch[2];
+        }
         $destination = null;
         if ($useNasService) {
-            $this->nasServiceRequest('PUT', $objectKey, $processingPath, $size, $contentType);
+            try {
+                $this->nasServiceRequest('PUT', $objectKey, $processingPath, $size, $contentType);
+            } catch (TablerosApiException $putError) {
+                if (!$trustedCliImport || $putError->apiCode !== 'conflict') throw $putError;
+                $existing = tempnam(sys_get_temp_dir(), 'tableros-import-verify-');
+                if ($existing === false) throw new TablerosApiException('server', 'No se pudo verificar el archivo importado existente.', 500);
+                try {
+                    $this->nasServiceRequest('GET', $objectKey, null, null, null, $existing, 500 * 1024 * 1024);
+                    if (filesize($existing) !== $size || !hash_equals((string)hash_file('sha256', $processingPath), (string)hash_file('sha256', $existing))) {
+                        throw new TablerosApiException('conflict', 'La clave idempotente del archivo ya contiene bytes distintos.', 409);
+                    }
+                } finally { @unlink($existing); }
+            }
         } else {
         $storageDir = $storageRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, dirname($objectKey));
         if (!is_dir($storageDir) && !@mkdir($storageDir, 0700, true) && !is_dir($storageDir)) {
@@ -1389,16 +1418,22 @@ class TablerosModel {
         }
         $destination = $storageRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $objectKey);
         $target = @fopen($destination, 'xb');
+        if (!is_resource($target) && $trustedCliImport && is_file($destination)) {
+            if (filesize($destination) !== $size || !hash_equals((string)hash_file('sha256', $processingPath), (string)hash_file('sha256', $destination))) {
+                throw new TablerosApiException('conflict', 'La clave idempotente local ya contiene bytes distintos.', 409);
+            }
+            $target = false;
+        }
         $source = @fopen($processingPath, 'rb');
-        if (!is_resource($target) || !is_resource($source)) {
+        if (($target !== false && !is_resource($target)) || !is_resource($source)) {
             if (is_resource($target)) fclose($target);
             if (is_resource($source)) fclose($source);
             @unlink($destination);
             throw new TablerosApiException('server', 'No se pudo guardar el archivo en almacenamiento privado.', 500);
         }
-        $copied = stream_copy_to_stream($source, $target);
+        $copied = $target === false ? $size : stream_copy_to_stream($source, $target);
         fclose($source);
-        fclose($target);
+        if (is_resource($target)) fclose($target);
         if ($copied !== $size) {
             @unlink($destination);
             throw new TablerosApiException('server', 'No se pudo guardar el archivo completo.', 500);
@@ -1418,9 +1453,9 @@ class TablerosModel {
                     if ($derivativeKey === null) continue;
                     try { $this->deleteStoredObject($derivativeKey, $useNasService); } catch (Throwable $cleanupError) { error_log('Tableros image derivative cleanup failed: ' . $cleanupError->getMessage()); }
                 }
-                if ($useNasService) {
+                if ($useNasService && !$trustedCliImport) {
                     try { $this->nasServiceRequest('DELETE', $objectKey); } catch (Throwable $cleanupError) { error_log('Tableros NAS cleanup failed: ' . $cleanupError->getMessage()); }
-                } elseif ($destination !== null) @unlink($destination);
+                } elseif (!$useNasService && !$trustedCliImport && $destination !== null) @unlink($destination);
                 throw $derivativeError;
             }
         }
@@ -1502,9 +1537,9 @@ class TablerosModel {
             if ($previewKey !== null) {
                 try { $this->deleteStoredObject($previewKey, $useNasService); } catch (Throwable $cleanupError) { error_log('Tableros preview cleanup failed: ' . $cleanupError->getMessage()); }
             }
-            if ($useNasService) {
+            if ($useNasService && !$trustedCliImport) {
                 try { $this->nasServiceRequest('DELETE', $objectKey); } catch (Throwable $cleanupError) { error_log('Tableros NAS cleanup failed: ' . $cleanupError->getMessage()); }
-            } elseif ($destination !== null) @unlink($destination);
+            } elseif (!$useNasService && !$trustedCliImport && $destination !== null) @unlink($destination);
             throw $e;
         }
     }

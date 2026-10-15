@@ -28,6 +28,14 @@ class Tableros
         $this->render(null, true);
     }
 
+    public function manage_workspaces(): void
+    {
+        if (!$this->requireAccess()) {
+            return;
+        }
+        $this->render(null, false, true);
+    }
+
     public function board($id): void
     {
         if (!$this->requireAccess()) {
@@ -57,7 +65,7 @@ class Tableros
         return false;
     }
 
-    private function render(?int $boardId, bool $manageBoards = false): void
+    private function render(?int $boardId, bool $manageBoards = false, bool $manageWorkspaces = false): void
     {
         if (empty($_SESSION['tableros_csrf'])) {
             $_SESSION['tableros_csrf'] = bin2hex(random_bytes(32));
@@ -68,6 +76,7 @@ class Tableros
             'can_admin'        => $this->access->hasGlobalPermission('admin'),
             'initial_board_id' => $boardId,
             'manage_boards'    => $manageBoards,
+            'manage_workspaces' => $manageWorkspaces,
         ]);
     }
 

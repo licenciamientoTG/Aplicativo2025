@@ -1,0 +1,24 @@
+{
+  "source_account_id": "runtime-resolved-from-Monday",
+  "boards": {
+    "9149354961": {
+      "local_id": 11,
+      "reviewed": true,
+      "reconciled_entities": false,
+      "evidence": {
+        "source_groups": 4,
+        "local_groups": 4,
+        "source_items": 19,
+        "local_items": 19,
+        "source_custom_columns": 6,
+        "local_columns": 6,
+        "source_assets": 13,
+        "local_files": 13,
+        "matching_group_titles_and_order": true,
+        "matching_item_titles_and_group_order": true,
+        "matching_custom_column_titles_and_order": true,
+        "limitations": "Los IDs individuales de grupos/items/adjuntos no están asociados en DB; el board local se conserva intacto y requiere conciliación fina de celdas/bytes."
+      }
+    }
+  }
+}

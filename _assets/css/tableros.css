@@ -775,6 +775,13 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-page-intro { margin-top: 2px; color: #a3a7bf; font-size: .79rem; }
 .boards-picker-wrap { min-width: 0; }
 .boards-app[data-page-mode="manage"] .boards-main { display: none; }
+.boards-app[data-page-mode="manage_workspaces"] .boards-main { display: none; }
+.boards-workspace-management { max-width: 1040px; }
+.boards-workspace-management-row { align-items: center; }
+.boards-workspace-management-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.boards-workspace-delete { border-color: #704452; color: #ffc1ca; background: #362330; }
+.boards-workspace-delete:hover, .boards-workspace-delete:focus-visible { border-color: #a85a6c; color: #fff; background: #57303e; }
+.boards-workspace-management .boards-detail-status { margin-bottom: 8px; }
 .boards-visibility-manager { padding: 18px; border: 1px solid #393c5b; border-radius: 10px; background: #222540; }
 .boards-visibility-intro { margin-bottom: 14px; }
 .boards-visibility-intro h3 { margin: 0 0 5px; color: #f1f1fa; font-size: 1rem; font-weight: 650; }
@@ -803,6 +810,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 @media (max-width: 767.98px) {
   .boards-visibility-manager { padding: 13px; }
   .boards-visibility-row { align-items: stretch; flex-direction: column; gap: 11px; }
+  .boards-workspace-management-actions { flex-wrap: wrap; }
   .boards-visibility-control { flex-basis: auto; }
   .boards-manage-members-heading { align-items: stretch; flex-direction: column; gap: 10px; }
   .boards-manage-members-controls { min-width: 0; }
