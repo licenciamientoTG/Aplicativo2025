@@ -20,6 +20,26 @@ class Router {
         'path' => '.+',
     ];
 
+    /** Vacía las rutas registradas (lo usan las pruebas). */
+    public static function reset(): void {
+        self::$routes = [];
+        self::$named  = [];
+    }
+
+    /** Todas las definiciones registradas, alias incluidos (para herramientas). */
+    public static function routes(): array {
+        return self::$routes;
+    }
+
+    /** Rutas con nombre, listas para serializar a JSON y usar desde JS. */
+    public static function export(): array {
+        $out = [];
+        foreach (self::$named as $name => $def) {
+            $out[$name] = ['pattern' => $def['pattern'], 'params' => $def['params']];
+        }
+        return $out;
+    }
+
     public static function load(array $definitions): void {
         foreach (self::flatten($definitions) as $def) {
             $def['regex'] = self::compile($def['pattern'], $def['params']);
@@ -100,9 +120,22 @@ class Router {
                     $def[$key] = $key === 'methods' ? array_map('strtoupper', $value) : $value;
                 }
             }
-            $def['pattern'] = self::normalize($prefix . $def['pattern']);
-            $def['params']  = self::paramTypes($def['pattern']);
+            $def['pattern']   = self::normalize($prefix . $def['pattern']);
+            $def['params']    = self::paramTypes($def['pattern']);
+            $def['is_alias']  = false;
+            $def['canonical_params'] = array_keys($def['params']);
             $out[] = $def;
+
+            // Cada alias es la misma ruta bajo una URL absoluta (normalmente la URL vieja).
+            foreach ($def['alias'] as $aliasPattern) {
+                $alias = $def;
+                $alias['pattern']  = self::normalize($aliasPattern);
+                $alias['params']   = self::paramTypes($alias['pattern']);
+                $alias['name']     = null;
+                $alias['alias']    = [];
+                $alias['is_alias'] = true;
+                $out[] = $alias;
+            }
         }
         return $out;
     }
@@ -141,8 +174,9 @@ class Router {
  *   methods    verbos permitidos (vacío = todos)
  *   permission id de permiso requerido (authorized($id)); 403 si falta
  *   public     true = no requiere sesión
+ *   alias      URLs viejas absolutas que apuntan a este mismo método (mismos parámetros)
  */
-function route(string $pattern, array $handler, ?string $name = null, array $methods = [], ?int $permission = null, bool $public = false): array {
+function route(string $pattern, array $handler, ?string $name = null, array $methods = [], ?int $permission = null, bool $public = false, array $alias = []): array {
     return [
         'pattern'    => $pattern,
         'handler'    => $handler,
@@ -150,6 +184,7 @@ function route(string $pattern, array $handler, ?string $name = null, array $met
         'methods'    => array_map('strtoupper', $methods),
         'permission' => $permission,
         'public'     => $public,
+        'alias'      => $alias,
     ];
 }
 
