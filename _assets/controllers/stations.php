@@ -24,7 +24,7 @@ class Stations{
             echo $this->twig->render($this->route . 'index.html', compact('tabulators', 'post'));
         } else {
             $tab_id = $_POST['tab_id'];
-            $tabulator = $tabulatorModel->sp_obtener_info_tabulador($tab_id);
+            $tabulator = $tabulatorModel->get_tabulator($tab_id);
             $bombas = $bombasModel->get_pumps_by_station($tabulator['CodigoEstacion']);
             $post = 1;
 
