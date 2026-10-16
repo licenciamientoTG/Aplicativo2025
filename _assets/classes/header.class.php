@@ -55,6 +55,8 @@ define('MAIL_ALLOWED_DOMAIN', 'totalgas.com');
 define('CRON_SECRET', 'TG_CRON_2024');
 define('DEFAULT_CONTROLLER', 'home');
 define('DEFAULT_METHOD', 'index');
+// true = lo que no esté en routes.php se resuelve por /controlador/método (convención antigua)
+define('ROUTER_LEGACY_FALLBACK', true);
 define('DEFAULT_ERROR_CONTROLLER', 'error');
 // Clave de cifrado simétrico para secretos guardados en BD (ej. password de
 // la FIEL de Petrotal en PetrotalFielConfig). AES-256-CBC vía openssl_*,

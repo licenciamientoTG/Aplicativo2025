@@ -170,6 +170,11 @@ $css_v = new \Twig\TwigFunction('css_v', function ($file) {
     return CSS . $relative . ($version ? '?v=' . $version : '');
 });
 
+// url('stations.readings') / url('supply.payment', {id: 15}) — equivalente a reverse() de Django
+$twig->addFunction(new \Twig\TwigFunction('url', function (string $name, array $params = []) {
+    return Router::reverse($name, $params);
+}));
+
 $twig->addFunction($datetimeDiffDays);
 $twig->addFunction($datetimeDiffHours);
 $twig->addFunction($strpad);

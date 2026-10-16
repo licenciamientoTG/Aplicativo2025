@@ -131,4 +131,38 @@ class StockModel extends Model {
         }
         return $map;
     }
+
+    /**
+     * Corrige codbar/codext de un producto tanto en el catálogo corporativo
+     * (SG12.dbo.Productos, global — un renglón por producto, sin codgas) como
+     * en la copia local de una estación específica vía linked server. Mismo
+     * patrón de doble escritura que PreciosModel::update_price().
+     *
+     * Se usa updateSafe() en vez de update() en ambos casos: una estación
+     * caída no debe tirar la petición completa (update() hace die() ante
+     * cualquier error de conexión), sino permitir reportar al controlador que
+     * el catálogo corporativo sí quedó actualizado aunque la estación no.
+     *
+     * @return array{central: bool, station: bool}
+     */
+    function update_product_codes(int $codprd, int $codgas, string $codbar, string $codext): array {
+        if (empty($this->databases[$codgas])) {
+            return ['central' => false, 'station' => false];
+        }
+
+        $central = $this->sql->updateSafe(
+            "UPDATE [SG12].[dbo].[Productos] SET [codbar] = ?, [codext] = ? WHERE [cod] = ?",
+            [$codbar, $codext, $codprd]
+        );
+
+        $station = $this->sql->updateSafe(
+            "UPDATE {$this->databases[$codgas]}.[Productos] SET [codbar] = ?, [codext] = ? WHERE [cod] = ?",
+            [$codbar, $codext, $codprd]
+        );
+
+        return [
+            'central' => $central !== false,
+            'station' => $station !== false,
+        ];
+    }
 }

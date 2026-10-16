@@ -198,6 +198,56 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="editCodesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Corregir códigos</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <form id="frmEditCodes">
+                <div class="modal-body">
+                    <p class="mb-3"><strong id="editCodesProducto"></strong> &mdash; <span id="editCodesEstacion" class="text-muted"></span></p>
+                    <input type="hidden" id="editCodesCodprd">
+                    <input type="hidden" id="editCodesCodgas">
+
+                    <label class="form-label mb-1">Código de barras</label>
+                    <div class="row g-2 mb-3">
+                        <div class="col">
+                            <input type="text" class="form-control" id="editBarcodeCorp" placeholder="Corporativo">
+                            <div class="form-text">Corporativo</div>
+                        </div>
+                        <div class="col">
+                            <input type="text" class="form-control" id="editBarcodeEstacion" placeholder="Estación">
+                            <div class="form-text">Estación</div>
+                        </div>
+                    </div>
+
+                    <label class="form-label mb-1">Código externo</label>
+                    <div class="row g-2 mb-2">
+                        <div class="col">
+                            <input type="text" class="form-control" id="editCodextCorp" placeholder="Corporativo">
+                            <div class="form-text">Corporativo</div>
+                        </div>
+                        <div class="col">
+                            <input type="text" class="form-control" id="editCodextEstacion" placeholder="Estación">
+                            <div class="form-text">Estación</div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning py-2 mb-0 d-none" id="editCodesWarning">
+                        El código de barras y el código externo deben quedar iguales en ambos lados para poder guardar.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="editCodesSubmit" disabled>Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block myjs %}
 <script src="{{ js_v('operations.js') }}"></script>
@@ -302,8 +352,13 @@ $(document).ready(function() {
                 'orderable': false,
                 'className': 'text-center',
                 'render': function (data, type, row) {
+                    let disabledAttr = row.STATION_REACHABLE ? '' : ' disabled';
+                    let editTitle = row.STATION_REACHABLE ? 'Corregir códigos' : 'Sin conexión con la estación';
                     return '<button type="button" class="btn btn-sm btn-outline-primary btn-ver-historial" data-codprd="' + row.CODPRD + '" data-codgas="' + row.CODGAS + '" title="Ver historial de consumo">' +
                         '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-activity align-middle"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>' +
+                        '</button> ' +
+                        '<button type="button" class="btn btn-sm btn-outline-warning btn-editar-codigos"' + disabledAttr + ' title="' + editTitle + '">' +
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>' +
                         '</button>';
                 }
             },
@@ -375,6 +430,60 @@ $(document).ready(function() {
         }).fail(function () {
             $tbody.html('<tr><td colspan="5" class="text-center text-danger">No fue posible cargar el historial.</td></tr>');
             $('#historyTotalEntradas, #historyTotalSalidas, #historyNeto').text('0.00');
+        });
+    });
+
+    function validateEditCodes() {
+        let barcodeMatch = $('#editBarcodeCorp').val().trim() === $('#editBarcodeEstacion').val().trim();
+        let codextMatch = $('#editCodextCorp').val().trim() === $('#editCodextEstacion').val().trim();
+        let valid = barcodeMatch && codextMatch;
+        $('#editCodesSubmit').prop('disabled', !valid);
+        $('#editCodesWarning').toggleClass('d-none', valid);
+        return valid;
+    }
+
+    $('#product_inventory_table tbody').on('click', '.btn-editar-codigos', function () {
+        if ($(this).prop('disabled')) return;
+        let rowData = product_inventory_table.row($(this).closest('tr')).data();
+
+        $('#editCodesProducto').text(rowData.PRODUCTO);
+        $('#editCodesEstacion').text(rowData.ESTACION);
+        $('#editCodesCodprd').val(rowData.CODPRD);
+        $('#editCodesCodgas').val(rowData.CODGAS);
+        $('#editBarcodeCorp').val(rowData.BARCODE_CORP);
+        $('#editBarcodeEstacion').val(rowData.BARCODE_ESTACION);
+        $('#editCodextCorp').val(rowData.CODEXT_CORP);
+        $('#editCodextEstacion').val(rowData.CODEXT_ESTACION);
+        validateEditCodes();
+
+        $('#editCodesModal').modal('show');
+    });
+
+    $('#editCodesModal').on('input', '#editBarcodeCorp, #editBarcodeEstacion, #editCodextCorp, #editCodextEstacion', validateEditCodes);
+
+    $('#frmEditCodes').on('submit', function (e) {
+        e.preventDefault();
+        if (!validateEditCodes()) return;
+
+        $('#editCodesSubmit').prop('disabled', true);
+
+        $.post('/operations/product_inventory_update_codes', {
+            codprd: $('#editCodesCodprd').val(),
+            codgas: $('#editCodesCodgas').val(),
+            barcode_corp: $('#editBarcodeCorp').val().trim(),
+            barcode_estacion: $('#editBarcodeEstacion').val().trim(),
+            codext_corp: $('#editCodextCorp').val().trim(),
+            codext_estacion: $('#editCodextEstacion').val().trim()
+        }, function (resp) {
+            if (resp.success) {
+                $('#editCodesModal').modal('hide');
+                product_inventory_table.ajax.reload(null, false);
+            }
+            alertify.myAlert('<div class="text-center ' + (resp.success ? '' : 'text-danger') + '"><p>' + resp.message + '</p></div>');
+            validateEditCodes();
+        }, 'json').fail(function () {
+            alertify.myAlert('<div class="text-center text-danger"><p>No fue posible guardar los cambios.</p></div>');
+            validateEditCodes();
         });
     });
 

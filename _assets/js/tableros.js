@@ -69,6 +69,10 @@
     boardLoading: document.getElementById('boardLoading'),
     boardNotice: document.getElementById('boardNotice'),
     boardVisibilityManager: document.getElementById('boardVisibilityManager'),
+    workspaceManagement: document.getElementById('workspaceManagement'),
+    workspaceManagementStatus: document.getElementById('workspaceManagementStatus'),
+    workspaceManagementList: document.getElementById('workspaceManagementList'),
+    workspaceManagementEmpty: document.getElementById('workspaceManagementEmpty'),
     boardVisibilityStatus: document.getElementById('boardVisibilityStatus'),
     boardVisibilityList: document.getElementById('boardVisibilityList'),
     boardVisibilityEmpty: document.getElementById('boardVisibilityEmpty'),
@@ -321,7 +325,7 @@
     list.replaceChildren();
     status.textContent = 'Cargando elementos…';
     try {
-      const workspaceId = state.selectedWorkspaceId ? `?workspace_id=${encodeURIComponent(state.selectedWorkspaceId)}` : '';
+      const workspaceId = mode === 'trash' && state.selectedWorkspaceId ? `?workspace_id=${encodeURIComponent(state.selectedWorkspaceId)}` : '';
       const result = await request(`/${mode}${workspaceId}`);
       const entries = Array.isArray(result.data) ? result.data : (Array.isArray(result.data?.entries) ? result.data.entries : []);
       state.recycleEntries = entries;
@@ -879,6 +883,12 @@
       state.folders = Array.isArray(structure.folders) ? structure.folders : [];
       state.selectedWorkspaceId = String(state.boards[0]?.workspace_id || state.workspaces[0]?.id || '');
       renderBoardOptions();
+      if (pageMode === 'manage_workspaces') {
+        els.workspaceManagement.hidden = false;
+        renderWorkspaceManagement();
+        showLoading(false);
+        return;
+      }
       if (pageMode === 'manage') {
         renderBoardVisibilityManager();
         const manageable = getManageableBoards();
@@ -910,6 +920,13 @@
       }
     } catch (error) {
       showLoading(false);
+      if (pageMode === 'manage_workspaces') {
+        els.workspaceManagement.hidden = false;
+        els.workspaceManagementStatus.textContent = errorMessage(error, 'No se pudieron cargar los espacios de trabajo.');
+        els.workspaceManagementList.replaceChildren();
+        els.workspaceManagementEmpty.hidden = true;
+        return;
+      }
       if (pageMode === 'manage') {
         els.boardVisibilityStatus.textContent = errorMessage(error, 'No se pudieron cargar los tableros que puedes administrar.');
         els.boardVisibilityList.replaceChildren();
@@ -919,6 +936,98 @@
       els.boardSelect.disabled = true;
       setNotice(errorMessage(error, 'No se pudieron cargar los tableros.'), 'error');
       showEmptyState();
+    }
+  }
+
+  function getManageableWorkspaces() {
+    return state.workspaces.filter((workspace) => {
+      if (canAdmin) return true;
+      const sharedOnly = workspace.shared_only === true || ['1', 'true'].includes(String(workspace.shared_only || '').toLowerCase());
+      if (sharedOnly) return false;
+      return String(workspace.user_role || '').toLowerCase() === 'owner';
+    });
+  }
+
+  function renderWorkspaceManagement() {
+    if (!els.workspaceManagementList) return;
+    const workspaces = getManageableWorkspaces();
+    const list = els.workspaceManagementList;
+    list.replaceChildren();
+    els.workspaceManagementEmpty.hidden = workspaces.length > 0;
+    if (!workspaces.length) {
+      els.workspaceManagementStatus.textContent = 'No hay espacios de trabajo que puedas administrar.';
+      return;
+    }
+    els.workspaceManagementStatus.textContent = `${workspaces.length} espacio${workspaces.length === 1 ? '' : 's'} de trabajo que puedes administrar.`;
+    workspaces.forEach((workspace) => {
+      const row = document.createElement('article');
+      row.className = 'boards-visibility-row boards-workspace-management-row';
+      row.setAttribute('role', 'listitem');
+      const identity = document.createElement('div');
+      identity.className = 'boards-visibility-identity';
+      const title = document.createElement('h4');
+      title.textContent = workspace.name || 'Espacio sin nombre';
+      const details = document.createElement('p');
+      const visibility = String(workspace.visibility || '').toLowerCase() === 'open' ? 'Abierto' : 'Cerrado';
+      details.textContent = [workspace.description, visibility].filter(Boolean).join(' · ');
+      identity.append(title, details);
+
+      const actions = document.createElement('div');
+      actions.className = 'boards-workspace-management-actions';
+      const archive = document.createElement('button');
+      archive.type = 'button';
+      archive.className = 'btn boards-button-light';
+      archive.dataset.workspaceAction = 'archive';
+      archive.dataset.workspaceId = String(workspace.id);
+      archive.textContent = 'Archivar';
+      archive.setAttribute('aria-label', `Archivar ${workspace.name || 'espacio de trabajo'}`);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn boards-button-light boards-workspace-delete';
+      remove.dataset.workspaceAction = 'trash';
+      remove.dataset.workspaceId = String(workspace.id);
+      remove.textContent = 'Eliminar';
+      remove.setAttribute('aria-label', `Eliminar ${workspace.name || 'espacio de trabajo'}`);
+      actions.append(archive, remove);
+      row.append(identity, actions);
+      list.append(row);
+    });
+  }
+
+  async function runWorkspaceManagementAction(button) {
+    const workspace = state.workspaces.find((entry) => String(entry.id) === button.dataset.workspaceId);
+    const action = button.dataset.workspaceAction;
+    if (!workspace || !['archive', 'trash'].includes(action)) return;
+    const name = workspace.name || 'este espacio de trabajo';
+    const archive = action === 'archive';
+    const confirmed = await confirmAction(archive
+      ? `¿Archivar «${name}»?\n\nEl espacio y su contenido dejarán de aparecer en tus espacios activos. Podrás restaurarlo desde Archivados.`
+      : `¿Eliminar «${name}»?\n\nEl espacio, sus carpetas, tableros y contenido se moverán a la papelera. Podrás recuperarlos durante 30 días; después se eliminarán definitivamente.`,
+    { title: archive ? 'Archivar espacio' : 'Eliminar espacio', confirmLabel: archive ? 'Archivar' : 'Eliminar espacio', danger: !archive });
+    if (!confirmed) return;
+
+    button.disabled = true;
+    els.workspaceManagementStatus.textContent = `${archive ? 'Archivando' : 'Eliminando'} ${name}…`;
+    try {
+      await post(archive ? '/archive' : '/trash', { entity_type: 'workspace', entity_id: workspace.id });
+      state.workspaces = state.workspaces.filter((entry) => String(entry.id) !== String(workspace.id));
+      renderWorkspaceManagement();
+      try {
+        const result = await request('/structure');
+        const structure = result.data || {};
+        state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
+        state.boards = Array.isArray(structure.boards) ? structure.boards : [];
+        state.folders = Array.isArray(structure.folders) ? structure.folders : [];
+        renderWorkspaceManagement();
+        els.workspaceManagementStatus.textContent = archive
+          ? `«${name}» se archivó correctamente. Puedes restaurarlo desde Archivados en Tableros.`
+          : `«${name}» se movió a la papelera. Puedes recuperarlo durante 30 días.`;
+      } catch (refreshError) {
+        els.workspaceManagementStatus.textContent = `${archive ? 'El espacio se archivó' : 'El espacio se movió a la papelera'}, pero no se pudo actualizar la lista. ${errorMessage(refreshError)}`;
+      }
+    } catch (error) {
+      button.disabled = false;
+      els.workspaceManagementStatus.textContent = errorMessage(error, 'No se pudo completar la acción.');
     }
   }
 
@@ -6986,6 +7095,10 @@
   }
 
   function setupExtendedEvents() {
+    els.workspaceManagementList?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-workspace-action]');
+      if (button) runWorkspaceManagementAction(button);
+    });
     els.manageBoardSelect?.addEventListener('change', () => selectManageBoard(els.manageBoardSelect.value));
     els.boardVisibilityList?.addEventListener('change', (event) => {
       const select = event.target.closest('[data-board-visibility-select]');
