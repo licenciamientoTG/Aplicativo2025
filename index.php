@@ -20,9 +20,16 @@ require '_assets/classes/header.class.php';
 require '_assets/classes/twig_functions.php';  // aquí se inicializa $twig
 require '_assets/classes/php_functions.php';
 require '_assets/controllers/errors.php';
+require '_assets/classes/Router.class.php';
+Router::load(require 'routes.php');
+
+// Ruta del router explícito (si la hay); se evalúa antes del login para respetar public: true
+$routePath  = $_GET['url'] ?? ltrim($currentPath, '/');
+$routeMatch = Router::match($routePath, $_SERVER['REQUEST_METHOD']);
+$routeIsPublic = isset($routeMatch['route']) && $routeMatch['route']['public'];
 
 // Si no hay sesión y la ruta NO está en el whitelist, forzamos login
-if (!isset($_SESSION['tg_user']) && !in_array($currentPath, $publicRoutes)) {
+if (!isset($_SESSION['tg_user']) && !$routeIsPublic && !in_array($currentPath, $publicRoutes)) {
     // Las peticiones AJAX (DataTables, $.ajax, fetch con Accept json) reciben
     // 401 con JSON en lugar del HTML del login con status 200: así el JS puede
     // detectar la sesión expirada y redirigir, en vez de mostrar el error
@@ -65,6 +72,53 @@ if (isset($_SESSION['tg_user'])) {
 // Instanciamos manejador de errores
 $error = new Errors();
 
+// Autoload de clases, controladores y modelos
+spl_autoload_register(function($class) {
+    if (file_exists(CLASSES . $class . '.class.php')) {
+        require CLASSES . $class . '.class.php';
+    }
+    if (file_exists(CONTROLLERS . strtolower($class) . '.php')) {
+        require CONTROLLERS . strtolower($class) . '.php';
+    }
+    if (file_exists(MODELS . $class . '.php')) {
+        require MODELS . $class . '.php';
+    }
+});
+
+// 1) Router explícito (routes.php)
+if ($routeMatch !== null) {
+    if (isset($routeMatch['error'])) {
+        http_response_code($routeMatch['error']);
+        header('Allow: ' . implode(', ', $routeMatch['allowed']));
+        echo 'Método no permitido';
+        exit;
+    }
+
+    $def = $routeMatch['route'];
+    if ($def['permission'] !== null && !authorized($def['permission'])) {
+        http_response_code(403);
+        echo 'No tienes permiso para acceder a esta sección';
+        exit;
+    }
+
+    [$class, $method] = $def['handler'];
+    $controller = strtolower($class);
+    define('CONTROLLER', $controller . DS);
+    $twig->addGlobal('CONTROLLER', $controller);
+    $twig->trackController = $controller;
+    $twig->trackMethod     = $method;
+
+    $controllerInstance = new $class($twig);
+    call_user_func_array([$controllerInstance, $method], $routeMatch['args']);
+    exit;
+}
+
+// 2) Convención antigua /controlador/método/params
+if (!ROUTER_LEGACY_FALLBACK) {
+    $error->get404();
+    exit;
+}
+
 // Procesamos la URL para saber controlador y método
 $url = $_GET['url'] ?? '';
 $url = filter_var($url, FILTER_SANITIZE_URL);
@@ -92,19 +146,6 @@ if (!preg_match('/^[a-z][a-z0-9_]*$/', $controller)) {
     $error->get404();
     exit;
 }
-
-// Autoload de clases, controladores y modelos
-spl_autoload_register(function($class) {
-    if (file_exists(CLASSES . $class . '.class.php')) {
-        require CLASSES . $class . '.class.php';
-    }
-    if (file_exists(CONTROLLERS . strtolower($class) . '.php')) {
-        require CONTROLLERS . strtolower($class) . '.php';
-    }
-    if (file_exists(MODELS . $class . '.php')) {
-        require MODELS . $class . '.php';
-    }
-});
 
 // Si existe el archivo del controlador, lo ejecutamos; si no, 404
 if (file_exists(CONTROLLERS . $controller . '.php')) {
