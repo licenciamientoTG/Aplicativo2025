@@ -18,4 +18,10 @@ check('ROUTES antes de route_url.js', $pos('window.ROUTES') < $pos("js_v('route_
 check('route_url.js antes de tableros_transition.js', $pos("js_v('route_url.js')") < $pos("js_v('tableros_transition.js')"));
 check('ROUTES conserva el default para páginas sin sesión', str_contains($html, "routes_json|default('{}')|raw"));
 
+// ROUTES no puede quedar dentro de un {% if %} del <head>: todas las páginas lo necesitan.
+$head = substr($html, 0, (int)$pos('</head>'));
+$beforeRoutes = substr($head, 0, (int)$pos('window.ROUTES'));
+check('ROUTES fuera de cualquier {% if %} del head',
+    preg_match_all('/\{%-?\s*if\b/', $beforeRoutes) === preg_match_all('/\{%-?\s*endif\b/', $beforeRoutes));
+
 finish();
