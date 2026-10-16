@@ -101,6 +101,7 @@ Tomadas con los datos reales de los controladores:
 - **Observación del log:** un alias se retira tras **2 semanas sin hits** en `legacy-hits` (aplica en la Fase 5).
 - **Por módulo**, antes de escribir código se presenta la tabla URL nueva / nombre / verbos / parámetros / alias y se aprueba (el plan de cada fase la trae ya propuesta).
 - Los enlaces del menú (`views/layouts/sidebar.html`) de un módulo migrado también pasan a `url()`.
+- **El inventario de cada módulo busca, además de `/modulo/metodo`:** enlaces a la raíz del módulo (`href="/arqueo"`), URLs relativas (`action="graph_prices"`), URLs armadas con globales de Twig (`{{ APP_NAME ~ CONTROLLER }}/metodo`), redirecciones PHP y formularios que hacen POST a su propia URL (la ruta debe aceptar POST). Los cinco casos aparecieron entre la Fase 1 y el bloque 3 de la Fase 2.
 
 ## 8. Fuera de alcance
 
