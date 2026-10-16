@@ -88,6 +88,49 @@
     </div>
 </div>
 {% endif %}
+{% if facturasNuevas %}
+{# Facturas que Abastos ligó a recepciones programadas desde la última visita.
+   Al entrar ya quedaron marcadas como vistas (se apaga el badge), por eso se
+   listan aquí: incluye las de días anteriores, que no salen en la búsqueda del día. #}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-success alert-dismissible mb-3" role="alert">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i data-feather="bell" class="flex-shrink-0"></i>
+                <strong>Abastos ligó {{ facturasNuevas|length }} factura{{ facturasNuevas|length == 1 ? '' : 's' }} nueva{{ facturasNuevas|length == 1 ? '' : 's' }} a tus recepciones programadas desde tu última visita.</strong>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 bg-transparent">
+                    <thead>
+                        <tr><th>Fecha recepción</th><th>Producto</th><th>Litros</th><th>Factura</th><th>Ligada</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for f in facturasNuevas %}
+                        <tr>
+                            <td>{{ f.fecha }}</td>
+                            <td>{{ f.product }}{% if f.mezcla %} ({{ f.mezcla }}){% endif %}</td>
+                            <td>{{ f.litros|number_format(0, '.', ',') }}</td>
+                            <td>
+                                {{ [f.invoice_serie, f.invoice_folio]|filter(v => v)|join(' ') ?: '—' }}
+                                {% if f.invoice_proveedor %}<div class="text-muted small">{{ f.invoice_proveedor }}</div>{% endif %}
+                            </td>
+                            <td class="text-nowrap">{{ f.linked_at }}</td>
+                            <td class="text-nowrap">
+                                <div class="btn-group btn-group-sm">
+                                    <a class="btn btn-outline-success" href="/station_portal/descargar_factura_programada/{{ f.id }}/pdf">PDF</a>
+                                    <a class="btn btn-outline-success" href="/station_portal/descargar_factura_programada/{{ f.id }}/xml">XML</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    </div>
+</div>
+{% endif %}
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -178,7 +221,7 @@
                 <h5 class="card-title mb-0">Mis Recepciones</h5>
             </div>
             <div class="card-body h-100 table-responsive">
-                <table id="datatables_mis_recepciones" class="table table-sm w-100" data-codgas="{{ tg_user['IdEstacion'] }}" data-can-delete="{{ canDelete ? '1' : '0' }}">
+                <table id="datatables_mis_recepciones" class="table table-sm w-100" data-codgas="{{ tg_user['IdEstacion'] }}" data-can-delete="{{ canDelete ? '1' : '0' }}" data-auto-buscar="{{ autoBuscar ? '1' : '0' }}">
                     <thead>
                         <tr>
                             <th>ESTACIÓN</th>

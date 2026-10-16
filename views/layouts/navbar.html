@@ -79,6 +79,18 @@
                     </a>
                 </div>
             </li>
+            {% if authorized(84) and tg_user['IdEstacion']|default(0) > 0 %}
+            {# Alerta de Mis Recepciones: oculta hasta que station_portal_alertas.js
+               confirme que hay facturas ligadas nuevas para la estación. #}
+            <li class="nav-item" id="navAlertaRecepciones" hidden>
+                <a class="nav-icon" href="/station_portal/mis_recepciones" aria-label="Facturas nuevas en Mis Recepciones">
+                    <div class="position-relative">
+                        <i class="align-middle" data-feather="truck"></i>
+                        <span class="indicator js-alerta-recepciones" hidden></span>
+                    </div>
+                </a>
+            </li>
+            {% endif %}
             <li class="nav-item dropdown" id="notificationsDropdown" data-csrf-token="{{ tableros_csrf|default('')|e('html_attr') }}">
                 <a class="nav-icon dropdown-toggle" href="#" id="alertsDropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notificaciones">
                     <div class="position-relative">

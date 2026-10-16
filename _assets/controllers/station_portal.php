@@ -8,6 +8,7 @@ class station_portal
     public GasolinerasModel $gasolinerasModel;
     public PetrotalReconciliationModel $petrotalReconciliationModel;
     public FuelReceptionScheduleModel $fuelReceptionScheduleModel;
+    public StationPortalAlertModel $stationPortalAlertModel;
 
     const PERM_VER              = 84; // "Ver Mis Recepciones (portal estaciones)"
     const PERM_TODAS_ESTACIONES = 85; // "Mis Recepciones: ver todas las estaciones"
@@ -24,6 +25,35 @@ class station_portal
         $this->gasolinerasModel = new GasolinerasModel();
         $this->petrotalReconciliationModel = new PetrotalReconciliationModel();
         $this->fuelReceptionScheduleModel = new FuelReceptionScheduleModel();
+        $this->stationPortalAlertModel = new StationPortalAlertModel();
+    }
+
+    /**
+     * Estación asignada al usuario (UsuarioEstacion, cargada en sesión al
+     * login) o null. Las alertas de facturas ligadas son solo para estos
+     * usuarios -- a diferencia de resolveCodgas(), aquí nunca se usa el
+     * codgas del request.
+     */
+    private function estacionAsignada(): ?int
+    {
+        $id = (int)($_SESSION['tg_user']['IdEstacion'] ?? 0);
+        return $id > 0 ? $id : null;
+    }
+
+    /**
+     * Badge del header y sidebar: cuántas facturas ligó Abastos a recepciones
+     * programadas de la estación del usuario desde su última visita a Mis
+     * Recepciones. Lo pide station_portal_alertas.js en cada página.
+     */
+    public function alertas(): void
+    {
+        $estacion = $this->estacionAsignada();
+        if (!authorized(self::PERM_VER) || $estacion === null) {
+            json_output(['total' => 0]);
+            return;
+        }
+        $userId = (int)$_SESSION['tg_user']['Id'];
+        json_output(['total' => count($this->stationPortalAlertModel->get_nuevas($userId, $estacion))]);
     }
 
     /**
@@ -93,8 +123,24 @@ class station_portal
             $estacionFija = $rows ? ($rows[0]['abr'] ?? $rows[0]['den'] ?? null) : null;
         }
 
+        // Facturas que Abastos ligó desde la última visita: se muestran en un
+        // aviso arriba de los filtros y, al entrar, la alerta queda vista
+        // (el badge del header/sidebar se apaga). Se leen ANTES de marcar.
+        $facturasNuevas = [];
+        $estacionAsignada = $this->estacionAsignada();
+        if ($estacionAsignada !== null) {
+            $userId = (int)$_SESSION['tg_user']['Id'];
+            $facturasNuevas = $this->stationPortalAlertModel->get_nuevas($userId, $estacionAsignada);
+            $this->stationPortalAlertModel->mark_seen($userId);
+        }
+
+        // Sin selector de estación (sin permiso 85) la búsqueda del día se
+        // dispara sola al entrar; con selector, el usuario elige primero.
+        $autoBuscar = !$showStationSelect && !$sinEstacionAsignada;
+
         echo $this->twig->render($this->route . 'mis_recepciones.html', compact(
-            'stations', 'showStationSelect', 'canDelete', 'sinEstacionAsignada', 'estacionFija'
+            'stations', 'showStationSelect', 'canDelete', 'sinEstacionAsignada', 'estacionFija',
+            'facturasNuevas', 'autoBuscar'
         ));
     }
 
