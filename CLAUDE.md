@@ -46,12 +46,37 @@ Example: `/supply/add_payment` → `Supply::add_payment()`
 |------|---------|
 | `index.php` | Front controller — routing, auth check, Twig init |
 | `router.php` | Routes static assets vs dynamic requests for PHP built-in server |
+| `routes.php` + `routes/*.php` | Rutas explícitas (estilo Django), un archivo por controlador |
+| `_assets/classes/Router.class.php` | Router: `route()`, `group()`, `url()` en Twig, `routeUrl()` en JS |
+| `tools/routes.php` | `list` / `lint` / `legacy-hits` de rutas |
 | `_assets/classes/header.class.php` | App constants, DB credentials, base URL, timezone |
 | `_assets/classes/common/MySqlPdoHandler.class.php` | Singleton DB connection — `::getInstance()` |
 | `_assets/models/Model.php` | Base model — all domain models extend this |
 | `_assets/classes/twig_functions.php` | Custom Twig extension functions |
 | `_assets/classes/php_functions.php` | Global utility functions (included everywhere) |
 | `_assets/includes/validate.inc.php` | Login POST handler, session creation |
+
+### Routing
+
+`index.php` tries the explicit router first (`routes.php` → `routes/*.php`) and falls back to `/controller/method/params` only while `ROUTER_LEGACY_FALLBACK` (header.class.php) is `true`.
+
+```php
+// routes/supply.php
+return [
+    group('supply/', [
+        route('payments/<int:id>/', [Supply::class, 'show_payment'],
+            name: 'supply.payment', methods: ['GET'], permission: 112,
+            alias: ['supply/show_payment/<int:id>']),   // URL vieja, mismo método
+    ]),
+];
+```
+
+- Converters: `<int:x>` (cast to int), `<str:x>` (default), `<slug:x>`, `<path:x>` (may contain `/`).
+- `alias` URLs are absolute, must declare the same params in the same order, and are logged to `logs/legacy_routes.log`.
+- Links: `{{ url('supply.payment', {id: 15}) }}` in Twig, `routeUrl('supply.payment', {id: 15})` in JS (never hardcode migrated URLs).
+- Files in `routes/` load alphabetically and the first match wins. Inside a file, declare specific routes (`pay/new/`) before general ones (`pay/<str:id>/`); `tools/routes.php lint` reports any route shadowed by an earlier one.
+- Checks: `php tools/routes.php lint` (conflicts, missing handlers, unknown `url('x')` names), `php tools/routes.php list`, `php tools/routes.php legacy-hits`.
+- Tests (no framework): `php tests/RouterTest.php`, `php tests/RouteLogTest.php`, `php tests/RouteUsageTest.php`, `php tests/ErrorsTest.php`, `node tests/route_url_test.js`.
 
 ### Database
 
@@ -104,4 +129,4 @@ $this->db->beginTransaction() / commit() / rollBack()
 1. Create/update model in `_assets/models/` extending `Model`
 2. Add method to the relevant controller in `_assets/controllers/`
 3. Create Twig template in `views/[controller]/[method].html`
-4. If new controller needed, add routing case in `index.php`
+4. Declare the route in `routes/{controller}.php` (see "Routing" below); controllers not yet migrated still resolve through the old `/controller/method` convention while `ROUTER_LEGACY_FALLBACK` is true
