@@ -40,6 +40,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_debit" type="button">Edo. Cuenta Débito</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#anticipos_debit" type="button">Anticipos Débito</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_debit_foto" type="button">Estado de Cuenta Foto</button>
     </li>
 </ul>
@@ -646,6 +649,62 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
     </div>
 
+    {# ── TAB: ANTICIPOS DÉBITO ── #}
+    <div class="tab-pane" id="anticipos_debit" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-2 mb-2">
+                    <div class="col-12 col-md-4">
+                        <label class="col-form-label-sm">Cliente</label>
+                        <select class="selectpicker" id="cliente_anticipos_debit" data-live-search="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
+                            <option value="0" selected>— Todos los clientes —</option>
+                            {% for c in clientes_debit %}
+                            <option value="{{ c.cod }}">{{ c.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Desde</label>
+                        <input type="date" class="form-control form-control-sm" id="from_anticipos_debit" value="{{ 'now'|date('Y-m-01') }}">
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Hasta</label>
+                        <input type="date" class="form-control form-control-sm" id="until_anticipos_debit" value="{{ 'now'|date('Y-m-d') }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-auto">
+                        <button id="btn_anticipos_debit" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Facturas de Anticipo — Clientes Débito</h5>
+                <small class="text-muted">Facturas de anticipo ("Anticipo del bien o servicio") del periodo, sin canceladas. Misma fuente que el detalle de Anticipos en Edo. Cuenta Débito.</small>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="anticipos_debit_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Código</th><th>Cliente</th><th>RFC</th><th>Fecha</th><th>Factura</th>
+                            <th>Estación</th><th>Subtotal</th><th>IVA</th><th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
     {# ── TAB 7: ESTADO DE CUENTA FOTO ── #}
     <div class="tab-pane" id="edo_debit_foto" role="tabpanel">
         <div class="card">
@@ -984,6 +1043,11 @@ $('#btn_edo_credit').on('click', function () {
 });
 $('#btn_edo_debit').on('click', function () {
     account_statement_table('debit');
+});
+
+// ── Anticipos Débito ──
+$('#btn_anticipos_debit').on('click', function () {
+    anticipos_debit_table();
 });
 
 // ── Estado de Cuenta Foto ──

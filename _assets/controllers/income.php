@@ -518,6 +518,20 @@ public function balance_age()
         json_output(['data' => $rows ?: []]);
     }
 
+    /** Reporte de anticipos de clientes débito. POST /income/debit_anticipos_table (codcli=0 → todos). */
+    public function debit_anticipos_table() : void {
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        $from   = $this->createDateTime($_POST['from']  ?? date('Y-m-01'));
+        $until  = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+
+        $rows = $this->clientesModel->get_debit_anticipos_report(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $codcli
+        );
+        json_output(['data' => $rows ?: []]);
+    }
+
     public function client_overdue_table() : void {
         $codcli = (int)($_POST['codcli'] ?? 0);
         if ($codcli <= 0) {

@@ -2950,6 +2950,78 @@ function edo_debit_drill(drill, codcli, cliente) {
     });
 }
 
+// ── Anticipos Débito (reporte de facturas de anticipo) ──────────────────────
+
+function anticipos_debit_table() {
+    if ($.fn.DataTable.isDataTable('#anticipos_debit_table')) {
+        $('#anticipos_debit_table').DataTable().destroy();
+        $('#anticipos_debit_table thead .filter').remove();
+    }
+
+    $('#anticipos_debit_table thead').prepend($('#anticipos_debit_table thead tr').clone().addClass('filter'));
+    $('#anticipos_debit_table thead tr.filter th').each(function (index) {
+        var col = $('#anticipos_debit_table thead th').length / 2;
+        if (index < col) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#anticipos_debit_table thead tr.filter th input').on('keyup change', function () {
+        $('#anticipos_debit_table').DataTable()
+            .column($(this).parent().index())
+            .search(this.value).draw();
+    });
+
+    var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
+    var moneyCols = [6, 7, 8];
+
+    $('#anticipos_debit_table').DataTable({
+        ordering: true,
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        ajax: {
+            method: 'POST',
+            url: '/income/debit_anticipos_table',
+            timeout: 120000,
+            data: function (d) {
+                d.codcli = $('#cliente_anticipos_debit').val() || 0;
+                d.from   = $('#from_anticipos_debit').val();
+                d.until  = $('#until_anticipos_debit').val();
+            },
+            dataSrc: function (json) { return json.data || []; },
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No se pudo consultar el reporte.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        columns: [
+            { data: 'codcli' },
+            { data: 'Cliente',  className: 'text-nowrap' },
+            { data: 'RFC',      className: 'text-nowrap' },
+            { data: 'Fecha',    className: 'text-center text-nowrap' },
+            { data: 'Factura',  className: 'text-nowrap' },
+            { data: 'Estacion', className: 'text-nowrap' },
+            { data: 'Subtotal', render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'IVA',      render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'Total',    render: numFmt, className: 'text-nowrap text-end' },
+        ],
+        deferRender: true,
+        initComplete: function () { $('.table-responsive').removeClass('loading'); },
+        footerCallback: function () {
+            var api = this.api();
+            moneyCols.forEach(function (idx) {
+                var total = api.column(idx, { search: 'applied' }).data()
+                    .reduce(function (a, b) { return (parseFloat(a) || 0) + (parseFloat(b) || 0); }, 0);
+                $(api.column(idx).footer()).html('$' + total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            });
+        }
+    });
+}
+
 // ── Estado de Cuenta Foto (snapshot diario, tab aislado) ────────────────────
 
 function debit_snapshot_table() {

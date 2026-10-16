@@ -102,7 +102,7 @@
             <div class="table-responsive">
                 <table class="table table-sm mb-0 bg-transparent">
                     <thead>
-                        <tr><th>Fecha recepción</th><th>Producto</th><th>Litros</th><th>Factura</th><th>Ligada</th><th></th></tr>
+                        <tr><th>Fecha recepción</th><th>Producto</th><th>Litros</th><th>Factura</th><th>Ligada</th></tr>
                     </thead>
                     <tbody>
                         {% for f in facturasNuevas %}
@@ -115,12 +115,6 @@
                                 {% if f.invoice_proveedor %}<div class="text-muted small">{{ f.invoice_proveedor }}</div>{% endif %}
                             </td>
                             <td class="text-nowrap">{{ f.linked_at }}</td>
-                            <td class="text-nowrap">
-                                <div class="btn-group btn-group-sm">
-                                    <a class="btn btn-outline-success" href="/station_portal/descargar_factura_programada/{{ f.id }}/pdf">PDF</a>
-                                    <a class="btn btn-outline-success" href="/station_portal/descargar_factura_programada/{{ f.id }}/xml">XML</a>
-                                </div>
-                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
