@@ -59,7 +59,7 @@ group('supply/', [ ...rutas... ], ['permission' => 112]);   // el grupo hereda o
 
 ## 5. Fases
 
-Tamaño medido el 2026-10-16: unos **560 métodos públicos** en 22 controladores; `income` (115), `it` (79), `payment` (71), `tableros_api` (64) y `accounting` (45) concentran más de la mitad. Hay más de 1,400 referencias a URLs en `views/` y `_assets/js/`.
+Tamaño medido el 2026-10-16 (corregido el mismo día): unos **985 métodos accesibles por URL** en 22 controladores (sin contar `__construct`). La primera medición (~560) solo contaba los métodos con `public` explícito; en PHP un método sin modificador también es público y el fallback lo expone. Los más grandes: `income` (206), `operations` (131), `payment` (100), `supply` (84), `it` (78), `accounting` (70), `tableros_api` (63) y `administration` (61). Avance al cerrar el bloque 3 de la Fase 2: ~128 métodos resueltos (≈13 %), 107 rutas con nombre. Hay más de 1,400 referencias a URLs en `views/` y `_assets/js/`.
 
 | Fase | Alcance | Prueba antes de seguir |
 |---|---|---|
