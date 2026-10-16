@@ -150,6 +150,9 @@
 	<script src="https://files.bpcontent.cloud/2025/04/03/21/20250403215229-297IVV6E.js"></script> -->
 	<script src="{{ js_v('main.js') }}"></script>
 	<script src="{{ js_v('tableros_notifications.js') }}"></script>
+	{% if authorized(84) and tg_user['IdEstacion']|default(0) > 0 %}
+	<script src="{{ js_v('station_portal_alertas.js') }}"></script>
+	{% endif %}
 	
 	{% block myjs %}{% endblock %}
 

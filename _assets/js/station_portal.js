@@ -785,3 +785,9 @@ $('#btnManualRecepciones').on('click', function () {
 $('#btnManualRecepciones').each(function () {
     bootstrap.Tooltip.getOrCreateInstance(this);
 });
+
+// Sin selector de estación (sin permiso de todas las estaciones) la vista
+// carga sola la búsqueda del día al entrar; las fechas ya vienen en hoy.
+if ($('#datatables_mis_recepciones').data('auto-buscar') == 1) {
+    $('#btnBuscarRecepciones').trigger('click');
+}
