@@ -1395,7 +1395,7 @@ function actualizarTodo() {
     // Llamadas en paralelo — renderizado único al final para que todos los datos estén disponibles
     Promise.all([
         fetchCG(estid, year, month),
-        fetchTesoreria(eid, year, month),
+        fetchTesoreria(eid, year, month, estid, afil),
         fetchTx(eid, afil, year, month),
         fetchConciliadas(estid, eid, afil, year, month),
         fetchTransitos(estid, eid, afil),
@@ -1508,17 +1508,23 @@ async function fetchCG(estid, year, month) {
 }
 
 // ── FETCH TESORERÍA (mismos endpoints que V2, mismo filtro por afiliación) ──
-async function fetchTesoreria(eid, year, month) {
+async function fetchTesoreria(eid, year, month, stationId, affiliation) {
     const url = ENTITY_CONFIG[eid];
     if (!url) { tesData = []; renderTes(); return; }
 
     try {
-        const r    = await fetch(`${url}?year=${year}&month=${month}`);
+        const params = new URLSearchParams({
+            year: String(year),
+            month: String(month),
+            station_id: String(stationId),
+            afiliacion: String(affiliation)
+        });
+        const r    = await fetch(`${url}?${params.toString()}`);
         const json = await r.json();
         const raw  = (json.status === 'success') ? (json.data || []) : [];
 
         // Filtrar por afiliación — soporta valores combinados "A / B" en currentRule
-        const afilRaw   = currentRule ? String(currentRule.afiliacion).trim() : '';
+        const afilRaw   = String(affiliation || '').trim();
         const afilParts = afilRaw.split(/[,\/]+/).map(s => s.trim()).filter(s => s !== '');
 
         // Agrupar por fecha para manejar afiliaciones múltiples (ej. "A / B" → varias filas por día)
