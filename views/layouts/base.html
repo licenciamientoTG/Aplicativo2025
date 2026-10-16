@@ -13,6 +13,8 @@
 	<link href="/_assets/css/app.css" rel="stylesheet">
 	<link href="/_assets/css/light.css" rel="stylesheet">
 	<link href="{{ css_v('app_launcher.css') }}" rel="stylesheet">
+	<script>window.ROUTES = {{ routes_json|default('{}')|raw }};</script>
+	<script src="{{ js_v('route_url.js') }}"></script>
 	{% if tableros_access('access') %}
 	<script src="{{ js_v('tableros_transition.js') }}" data-transition-stylesheet="{{ css_v('tableros_transition.css')|e('html_attr') }}"></script>
 	{% endif %}
@@ -105,8 +107,6 @@
 	</div>
 	{% endblock %}
 
-	<script>window.ROUTES = {{ routes_json|default('{}')|raw }};</script>
-	<script src="{{ js_v('route_url.js') }}"></script>
 	<script src="{{ js_v('app.js') }}"></script>
 
 	<!--   Core JS Files   -->

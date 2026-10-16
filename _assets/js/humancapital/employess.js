@@ -40,7 +40,7 @@ var datatables_employees = $('#datatables_employees').DataTable({
     ],
     ajax: {
         method: 'POST',
-        url: '/humancapital/datatables_employees',
+        url: routeUrl('humancapital.datatables_employees'),
         error: function() {
             $('div#loader').addClass('d-none');
             alertify.myAlert(
@@ -110,7 +110,7 @@ async function upload_file_rh() {
     formData.append('file_to_upload', file);
 
     try {
-        const response = await fetch('/humancapital/import_file_reporte_empleados', {
+        const response = await fetch(routeUrl('humancapital.import_file_reporte_empleados'), {
             method: 'POST',
             body: formData
         });

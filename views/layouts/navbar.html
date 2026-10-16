@@ -51,7 +51,7 @@
                 <div class="dropdown-menu dropdown-menu-end app-launcher-menu" aria-labelledby="appLauncher">
                     <div class="app-launcher-title">Aplicaciones</div>
                     {% if tableros_access('access') %}
-                    <a class="app-launcher-tile" href="/tableros/index">
+                    <a class="app-launcher-tile" href="{{ url('tableros.index') }}">
                         <span><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i></span>
                         <strong>Tableros</strong>
                         <small class="app-launcher-tile-beta">beta</small>
