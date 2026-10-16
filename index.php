@@ -91,6 +91,10 @@ if ($routeMatch !== null) {
         exit;
     }
 
+    if ($def['is_alias']) {
+        RouteLog::write(ROOT . 'logs' . DS . 'legacy_routes.log', 'alias', $_SERVER['REQUEST_METHOD'], $routePath);
+    }
+
     [$class, $method] = $def['handler'];
     $controller = strtolower($class);
     define('CONTROLLER', $controller . DS);
@@ -108,6 +112,8 @@ if (!ROUTER_LEGACY_FALLBACK) {
     $error->get404();
     exit;
 }
+
+RouteLog::write(ROOT . 'logs' . DS . 'legacy_routes.log', 'fallback', $_SERVER['REQUEST_METHOD'], $routePath);
 
 // Procesamos la URL para saber controlador y método
 $url = $_GET['url'] ?? '';
