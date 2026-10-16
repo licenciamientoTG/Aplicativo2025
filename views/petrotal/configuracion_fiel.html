@@ -14,7 +14,7 @@
       </div>
       {% endif %}
 
-      <form action="/petrotal/guardar_fiel" method="POST" enctype="multipart/form-data">
+      <form action="{{ url('petrotal.guardar_fiel') }}" method="POST" enctype="multipart/form-data">
         <div class="mb-3">
           <label class="form-label">Archivo .cer</label>
           <input type="file" name="cerFile" class="form-control" accept=".cer" required>

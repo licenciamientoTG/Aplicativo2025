@@ -27,10 +27,10 @@
             <td>{{ envio.FechaEnvio ?? '-' }}</td>
             <td>
               {% if envio.RutaJson %}
-              <a href="/petrotal/descargar_json/{{ envio.Id }}" class="btn btn-sm btn-outline-secondary">JSON</a>
+              <a href="{{ url('petrotal.descargar_json', {id: envio.Id}) }}" class="btn btn-sm btn-outline-secondary">JSON</a>
               {% endif %}
               {% if envio.RutaAcuse %}
-              <a href="/petrotal/descargar_acuse/{{ envio.Id }}" class="btn btn-sm btn-outline-primary">Acuse</a>
+              <a href="{{ url('petrotal.descargar_acuse', {id: envio.Id}) }}" class="btn btn-sm btn-outline-primary">Acuse</a>
               {% endif %}
             </td>
           </tr>

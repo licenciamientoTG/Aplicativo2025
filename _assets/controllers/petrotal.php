@@ -200,14 +200,14 @@ class Petrotal {
     public function guardar_fiel() {
         if (!authorized(99)) {
             setFlashMessage('error', 'No autorizado.');
-            redirect('/petrotal/configuracion_fiel');
+            redirect(Router::reverse('petrotal.configuracion_fiel'));
             return;
         }
 
         $password = $_POST['password'] ?? '';
         if (!$password) {
             setFlashMessage('error', 'Falta el password de la llave privada.');
-            redirect('/petrotal/configuracion_fiel');
+            redirect(Router::reverse('petrotal.configuracion_fiel'));
             return;
         }
 
@@ -220,7 +220,7 @@ class Petrotal {
         $keyOk = isset($_FILES['keyFile']) && $_FILES['keyFile']['error'] === UPLOAD_ERR_OK;
         if (!$cerOk || !$keyOk) {
             setFlashMessage('error', 'Faltan los archivos .cer y/o .key.');
-            redirect('/petrotal/configuracion_fiel');
+            redirect(Router::reverse('petrotal.configuracion_fiel'));
             return;
         }
 
@@ -228,7 +228,7 @@ class Petrotal {
         $extKey = strtolower(pathinfo($_FILES['keyFile']['name'], PATHINFO_EXTENSION));
         if ($extCer !== 'cer' || $extKey !== 'key') {
             setFlashMessage('error', 'El archivo de certificado debe ser .cer y el de llave .key.');
-            redirect('/petrotal/configuracion_fiel');
+            redirect(Router::reverse('petrotal.configuracion_fiel'));
             return;
         }
 
@@ -237,7 +237,7 @@ class Petrotal {
 
         if (!move_uploaded_file($_FILES['cerFile']['tmp_name'], $rutaCer) || !move_uploaded_file($_FILES['keyFile']['tmp_name'], $rutaKey)) {
             setFlashMessage('error', 'Error al guardar los archivos subidos.');
-            redirect('/petrotal/configuracion_fiel');
+            redirect(Router::reverse('petrotal.configuracion_fiel'));
             return;
         }
 
@@ -245,7 +245,7 @@ class Petrotal {
         $guardado = $this->petrotalFielModel->guardar_config($rutaCer, $rutaKey, $password, $usuarioId);
 
         setFlashMessage($guardado ? 'success' : 'error', $guardado ? 'FIEL guardada correctamente.' : 'Error al guardar la configuración en base de datos.');
-        redirect('/petrotal/configuracion_fiel');
+        redirect(Router::reverse('petrotal.configuracion_fiel'));
     }
 
     public function historial() {
