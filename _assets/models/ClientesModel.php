@@ -1140,7 +1140,7 @@ public function get_client_anticipos(int $from, int $until, int $codcli) : array
  * Reporte de facturas de anticipo de clientes de débito en el periodo.
  * $codcli = 0 → todos los clientes débito. Mismos criterios que get_client_anticipos().
  */
-public function get_debit_anticipos_report(int $from, int $until, int $codcli = 0) : array|false {
+public function get_debit_anticipos_report(int $from, int $until, int $codcli = 0, int $empresa = 0) : array|false {
     $query = "
         SELECT
             C.cod AS codcli,
@@ -1149,6 +1149,7 @@ public function get_debit_anticipos_report(int $from, int $until, int $codcli = 
             CONVERT(varchar(10), DATEADD(DAY, t1.fch - 1, '19000101'), 23) AS Fecha,
             t1.nro AS Factura,
             G.den AS Estacion,
+            ISNULL(EMP.den, '(Sin razón social)') AS RazonSocial,
             CAST(SUM(t2.mtoori)/100.0 AS decimal(18,2)) AS Subtotal,
             CAST(SUM(t2.mtoiva)/100.0 AS decimal(18,2)) AS IVA,
             CAST(SUM(t2.mtoori + t2.mtoiva)/100.0 AS decimal(18,2)) AS Total
@@ -1157,16 +1158,28 @@ public function get_debit_anticipos_report(int $from, int $until, int $codcli = 
           ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
         JOIN [SG12].dbo.Clientes C WITH (NOLOCK) ON C.cod = t2.codopr
         LEFT JOIN [SG12].dbo.Gasolineras G ON t1.codgas = G.cod
+        LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+        LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
         WHERE C.tipval = 4
           AND (? = 0 OR t2.codopr = ?)
+          AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
           AND t1.fch BETWEEN ? AND ?
           AND t2.mtoiva > 0
           AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
           AND t2.mto > 100
           AND ISNULL(t1.flgcon, 0) <> 141   -- excluir facturas de anticipo canceladas
-        GROUP BY C.cod, C.den, C.rfc, t1.fch, t1.nro, G.den
+        GROUP BY C.cod, C.den, C.rfc, t1.fch, t1.nro, G.den, EMP.den
         ORDER BY C.den, t1.fch, t1.nro";
-    return $this->sql->select($query, [$codcli, $codcli, $from, $until]) ?: false;
+    return $this->sql->select($query, [$codcli, $codcli, $empresa, $empresa, $empresa, $from, $until]) ?: false;
+}
+
+/** Razones sociales (SG12.dbo.Empresas) que tienen estaciones asignadas, para filtros. */
+public function get_station_companies() : array {
+    return $this->sql->select("
+        SELECT EMP.cod, EMP.den
+        FROM [SG12].dbo.Empresas EMP WITH (NOLOCK)
+        WHERE EXISTS (SELECT 1 FROM [TG].dbo.Estaciones E WITH (NOLOCK) WHERE E.codemp = EMP.cod AND E.Codigo <> 0)
+        ORDER BY EMP.den", []) ?: [];
 }
 
 /** Saldo inicial (anticipos menos consumos previos al periodo) y bolsa oficial de un cliente de débito. */

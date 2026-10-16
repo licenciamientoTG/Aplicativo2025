@@ -215,7 +215,8 @@ class Income{
             // $gasolineras    = $this->clientesModel->get_gasolineras();
             $clientes_debit = $this->clientesModel->get_debit_clients_list();
             $clientes_credit = $this->clientesModel->get_credit_clients_list();
-            echo $this->twig->render($this->route . 'clients.html', compact('clientes_debit','clientes_credit'));
+            $empresas = $this->clientesModel->get_station_companies();
+            echo $this->twig->render($this->route . 'clients.html', compact('clientes_debit','clientes_credit','empresas'));
         }
     }
 
@@ -527,7 +528,8 @@ public function balance_age()
         $rows = $this->clientesModel->get_debit_anticipos_report(
             dateToInt($from->format('Y-m-d')),
             dateToInt($until->format('Y-m-d')),
-            $codcli
+            $codcli,
+            (int)($_POST['empresa'] ?? 0)
         );
         json_output(['data' => $rows ?: []]);
     }

@@ -12,6 +12,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     padding: 10px 18px; border-bottom: 1px solid #dee2e6;
     background-color: #3485a8 !important; color: #fff !important;
 }
+.anticipos-toggle[aria-expanded="false"] .fa-chevron-up { transform: rotate(180deg); }
+.anticipos-toggle .fa-chevron-up { transition: transform .2s; }
+.anticipos-loader { color: #0095DA; }
 </style>
 {% endblock %}
 {% block menutitle %}Clientes{% endblock %}
@@ -669,6 +672,16 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <div class="card-body">
                         <div class="row g-2 mb-2">
                             <div class="col-auto">
+                                <label class="col-form-label-sm">Razón social</label>
+                                <select class="form-control form-control-sm" id="empresa_anticipos_all">
+                                    <option value="0">Todas</option>
+                                    {% for e in empresas %}
+                                    <option value="{{ e.cod }}">{{ e.den }}</option>
+                                    {% endfor %}
+                                    <option value="-1">(Sin razón social)</option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
                                 <label class="col-form-label-sm">Desde</label>
                                 <input type="date" class="form-control form-control-sm" id="from_anticipos_all" value="{{ 'now'|date('Y-m-01') }}">
                             </div>
@@ -686,6 +699,43 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         </div>
                     </div>
                 </div>
+                <div id="anticipos_all_loader" class="anticipos-loader text-center py-4" style="display:none;">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <div class="mt-2">Cargando anticipos…</div>
+                </div>
+                <div class="card" id="anticipos_dashboard_card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0"><i class="fas fa-chart-pie"></i> Dashboard</h5>
+                        <a href="#anticipos_dashboard_body" data-bs-toggle="collapse" role="button" aria-expanded="true"
+                           aria-controls="anticipos_dashboard_body" class="text-decoration-none anticipos-toggle" title="Mostrar / ocultar">
+                            <i class="fas fa-chevron-up"></i>
+                        </a>
+                    </div>
+                    <div class="collapse show" id="anticipos_dashboard_body">
+                        <div class="card-body">
+                            <div id="anticipos_dashboard_empty" class="text-center text-muted py-3">Consulta un periodo para ver el dashboard.</div>
+                            <div id="anticipos_dashboard_content" style="display:none;">
+                                <div class="row g-2 mb-3" id="anticipos_kpis"></div>
+                                <h6 class="text-muted mb-2">Por razón social</h6>
+                                <div class="row" id="anticipos_all_cards"></div>
+                                <div class="row mt-2">
+                                    <div class="col-12 col-lg-4 mb-3">
+                                        <h6 class="text-muted">Distribución por razón social</h6>
+                                        <div style="position:relative;height:300px;"><canvas id="anticipos_chart_dona"></canvas></div>
+                                    </div>
+                                    <div class="col-12 col-lg-4 mb-3">
+                                        <h6 class="text-muted">Top 10 clientes por monto</h6>
+                                        <div style="position:relative;height:300px;"><canvas id="anticipos_chart_top"></canvas></div>
+                                    </div>
+                                    <div class="col-12 col-lg-4 mb-3">
+                                        <h6 class="text-muted">Anticipos por día</h6>
+                                        <div style="position:relative;height:300px;"><canvas id="anticipos_chart_dias"></canvas></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="card">
                     <div class="card-header">
                         <h5 class="card-title">Facturas de Anticipo — Todos los Clientes Débito</h5>
@@ -696,13 +746,13 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <thead>
                                 <tr>
                                     <th>Código</th><th>Cliente</th><th>RFC</th><th>Fecha</th><th>Factura</th>
-                                    <th>Estación</th><th>Subtotal</th><th>IVA</th><th>Total</th>
+                                    <th>Estación</th><th>Razón social</th><th>Subtotal</th><th>IVA</th><th>Total</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
                             <tfoot>
                                 <tr>
-                                    <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                                    <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -741,6 +791,10 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         </div>
                     </div>
                 </div>
+                <div id="anticipos_cli_loader" class="anticipos-loader text-center py-4" style="display:none;">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <div class="mt-2">Cargando anticipos…</div>
+                </div>
                 <div class="card">
                     <div class="card-header"><h5 class="card-title">Facturas de Anticipo — Por Cliente</h5></div>
                     <div class="card-body table-responsive">
@@ -748,13 +802,13 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <thead>
                                 <tr>
                                     <th>Código</th><th>Cliente</th><th>RFC</th><th>Fecha</th><th>Factura</th>
-                                    <th>Estación</th><th>Subtotal</th><th>IVA</th><th>Total</th>
+                                    <th>Estación</th><th>Razón social</th><th>Subtotal</th><th>IVA</th><th>Total</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
                             <tfoot>
                                 <tr>
-                                    <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                                    <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -1063,6 +1117,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 {% endblock %}
 
 {% block myjs %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="{{ js_v('income.js') }}"></script>
 <script>
 // ── Débito list ──

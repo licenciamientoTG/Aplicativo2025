@@ -2952,6 +2952,153 @@ function edo_debit_drill(drill, codcli, cliente) {
 
 // ── Anticipos Débito (reporte de facturas de anticipo) ──────────────────────
 
+// ── Dashboard de anticipos (todas las razones sociales) ─────────────────────
+// Se calcula en el navegador con las filas visibles de la tabla (respeta los filtros por columna).
+var anticiposCharts = {};
+var ANTICIPOS_PALETTE = ['#0095DA', '#009559', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#64748B', '#A3A3A3'];
+
+function anticipos_money(v) {
+    return '$' + (v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function anticipos_short(v) {
+    if (v >= 1e6) { return '$' + (v / 1e6).toFixed(1).replace(/\.0$/, '') + ' M'; }
+    if (v >= 1e3) { return '$' + (v / 1e3).toFixed(0) + ' k'; }
+    return '$' + v;
+}
+
+function anticipos_chart(id, config) {
+    if (anticiposCharts[id]) { anticiposCharts[id].destroy(); delete anticiposCharts[id]; }
+    var el = document.getElementById(id);
+    if (!el || typeof Chart === 'undefined') { return; }
+    Chart.defaults.color = getComputedStyle(document.body).color;
+    anticiposCharts[id] = new Chart(el, config);
+}
+
+function anticipos_dashboard_render(api) {
+    var rows = api.rows({ search: 'applied' }).data().toArray();
+    var $cards = $('#anticipos_all_cards').empty();
+    var $kpis  = $('#anticipos_kpis').empty();
+
+    if (!rows.length) {
+        $('#anticipos_dashboard_content').hide();
+        $('#anticipos_dashboard_empty').text('Sin anticipos en el periodo / filtros seleccionados.').show();
+        Object.keys(anticiposCharts).forEach(function (k) { anticiposCharts[k].destroy(); delete anticiposCharts[k]; });
+        return;
+    }
+    $('#anticipos_dashboard_empty').hide();
+    $('#anticipos_dashboard_content').show();
+
+    var rs = {}, cli = {}, dias = {}, totalSum = 0, max = null;
+    rows.forEach(function (r) {
+        var t = parseFloat(r.Total) || 0;
+        var k = r.RazonSocial || '(Sin razón social)';
+        var g = rs[k] || (rs[k] = { n: 0, sum: 0 });
+        g.n++; g.sum += t;
+        var c = cli[r.codcli] || (cli[r.codcli] = { name: r.Cliente, sum: 0 });
+        c.sum += t;
+        dias[r.Fecha] = (dias[r.Fecha] || 0) + t;
+        totalSum += t;
+        if (!max || t > max.t) { max = { t: t, cliente: r.Cliente }; }
+    });
+    var rsList  = Object.keys(rs).sort(function (a, b) { return rs[b].sum - rs[a].sum; });
+    var cliList = Object.keys(cli).sort(function (a, b) { return cli[b].sum - cli[a].sum; });
+    var nCli    = cliList.length;
+
+    // KPIs
+    var kpi = function (label, value, sub, accent) {
+        var $c = $('<div class="col-6 col-md-4 col-xl-2"></div>');
+        var $b = $('<div class="card h-100 mb-0"><div class="card-body py-2"></div></div>').appendTo($c).find('.card-body');
+        if (accent) { $b.parent().css('border-left', '4px solid ' + accent); }
+        $('<small class="text-muted d-block text-truncate"></small>').text(label).appendTo($b);
+        $('<h5 class="mb-0 text-truncate"></h5>').text(value).attr('title', value).appendTo($b);
+        $('<small class="text-muted d-block text-truncate"></small>').text(sub || ' ').attr('title', sub || '').appendTo($b);
+        $kpis.append($c);
+    };
+    kpi('Total anticipado', anticipos_money(totalSum), 'en el periodo', '#0095DA');
+    kpi('Facturas', rows.length.toLocaleString('es-MX'), rsList.length + ' razones sociales', '#009559');
+    kpi('Clientes con anticipo', nCli.toLocaleString('es-MX'), 'clientes distintos', '#8B5CF6');
+    kpi('Anticipo promedio', anticipos_money(totalSum / rows.length), 'por factura', '#F59E0B');
+    kpi('Anticipo mayor', anticipos_money(max.t), max.cliente, '#EF4444');
+    kpi('Razón social líder', (rs[rsList[0]].sum / totalSum * 100).toFixed(1) + '%', rsList[0], '#14B8A6');
+
+    // Cards por razón social
+    var card = function (title, n, sum, pct, color) {
+        var $c = $('<div class="col-12 col-sm-6 col-lg-4 col-xl-3 mb-2"></div>');
+        var $b = $('<div class="card h-100 mb-0"><div class="card-body py-2"></div></div>').appendTo($c).find('.card-body');
+        $b.parent().css('border-left', '4px solid ' + color);
+        $('<small class="text-muted d-block text-truncate"></small>').attr('title', title).text(title).appendTo($b);
+        $('<h5 class="mb-0"></h5>').text(anticipos_money(sum)).appendTo($b);
+        $('<small class="text-muted"></small>').text(n + (n === 1 ? ' factura' : ' facturas') + ' · ' + pct.toFixed(1) + '%').appendTo($b);
+        $cards.append($c);
+    };
+    rsList.forEach(function (k, i) {
+        card(k, rs[k].n, rs[k].sum, rs[k].sum / totalSum * 100, ANTICIPOS_PALETTE[Math.min(i, ANTICIPOS_PALETTE.length - 1)]);
+    });
+
+    // Dona: monto por razón social (top 8 + Otras)
+    var dLabels = [], dData = [];
+    rsList.forEach(function (k, i) {
+        if (i < 8) { dLabels.push(k); dData.push(rs[k].sum); }
+        else if (i === 8) { dLabels.push('Otras'); dData.push(rs[k].sum); }
+        else { dData[8] += rs[k].sum; }
+    });
+    anticipos_chart('anticipos_chart_dona', {
+        type: 'doughnut',
+        data: { labels: dLabels, datasets: [{ data: dData, backgroundColor: ANTICIPOS_PALETTE, borderWidth: 1 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false, cutout: '60%',
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
+                tooltip: { callbacks: { label: function (ctx) {
+                    return ' ' + ctx.label + ': ' + anticipos_money(ctx.parsed) + ' (' + (ctx.parsed / totalSum * 100).toFixed(1) + '%)';
+                } } }
+            }
+        }
+    });
+
+    // Top 10 clientes
+    var top = cliList.slice(0, 10);
+    anticipos_chart('anticipos_chart_top', {
+        type: 'bar',
+        data: {
+            labels: top.map(function (k) { var n = cli[k].name || ''; return n.length > 24 ? n.substr(0, 23) + '…' : n; }),
+            datasets: [{ data: top.map(function (k) { return cli[k].sum; }), backgroundColor: '#0095DA' }]
+        },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: {
+                title: function (items) { return cli[top[items[0].dataIndex]].name; },
+                label: function (ctx) { return ' ' + anticipos_money(ctx.parsed.x); }
+            } } },
+            scales: { x: { ticks: { callback: anticipos_short } }, y: { ticks: { font: { size: 10 } } } }
+        }
+    });
+
+    // Anticipos por día
+    var fechas = Object.keys(dias).sort();
+    anticipos_chart('anticipos_chart_dias', {
+        type: 'bar',
+        data: { labels: fechas.map(function (f) { return f.substr(8, 2) + '/' + f.substr(5, 2); }),
+                datasets: [{ data: fechas.map(function (f) { return dias[f]; }), backgroundColor: '#009559' }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: {
+                title: function (items) { return fechas[items[0].dataIndex]; },
+                label: function (ctx) { return ' ' + anticipos_money(ctx.parsed.y); }
+            } } },
+            scales: { y: { ticks: { callback: anticipos_short } }, x: { ticks: { maxRotation: 60, font: { size: 10 } } } }
+        }
+    });
+}
+
+// Loader visible (bloque + botón) mientras carga la consulta de anticipos.
+function anticipos_loading(mode, on) {
+    $('#anticipos_' + mode + '_loader').toggle(!!on);
+    $('#btn_anticipos_' + mode).prop('disabled', !!on)
+        .html(on ? '<i class="fas fa-spinner fa-spin"></i> Consultando…' : '<i class="fas fa-search"></i> Consultar');
+}
+
 function anticipos_debit_table(mode) {
     // mode 'all' = todos los clientes por fecha; 'cli' = un cliente (obligatorio)
     var tbl = '#anticipos_' + mode + '_table';
@@ -2982,7 +3129,13 @@ function anticipos_debit_table(mode) {
     });
 
     var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
-    var moneyCols = [6, 7, 8];
+    var moneyCols = [7, 8, 9];
+
+    if (mode === 'all') {
+        $(tbl).off('draw.dt.cards').on('draw.dt.cards', function () {
+            anticipos_dashboard_render($(tbl).DataTable());
+        });
+    }
 
     $(tbl).DataTable({
         ordering: true,
@@ -2997,15 +3150,17 @@ function anticipos_debit_table(mode) {
             timeout: 120000,
             data: function (d) {
                 d.codcli = codcli;
+                d.empresa = mode === 'all' ? (parseInt($('#empresa_anticipos_all').val(), 10) || 0) : 0;
                 d.from   = $('#from_anticipos_' + mode).val();
                 d.until  = $('#until_anticipos_' + mode).val();
             },
             dataSrc: function (json) { return json.data || []; },
             error: function () {
-                $('.table-responsive').removeClass('loading');
+                anticipos_loading(mode, false);
                 alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No se pudo consultar el reporte.</p></div>');
             },
-            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+            beforeSend: function () { anticipos_loading(mode, true); },
+            complete: function () { anticipos_loading(mode, false); }
         },
         columns: [
             { data: 'codcli' },
@@ -3014,12 +3169,13 @@ function anticipos_debit_table(mode) {
             { data: 'Fecha',    className: 'text-center text-nowrap' },
             { data: 'Factura',  className: 'text-nowrap' },
             { data: 'Estacion', className: 'text-nowrap' },
+            { data: 'RazonSocial', className: 'text-nowrap' },
             { data: 'Subtotal', render: numFmt, className: 'text-nowrap text-end' },
             { data: 'IVA',      render: numFmt, className: 'text-nowrap text-end' },
             { data: 'Total',    render: numFmt, className: 'text-nowrap text-end' },
         ],
         deferRender: true,
-        initComplete: function () { $('.table-responsive').removeClass('loading'); },
+        initComplete: function () { anticipos_loading(mode, false); },
         footerCallback: function () {
             var api = this.api();
             moneyCols.forEach(function (idx) {
