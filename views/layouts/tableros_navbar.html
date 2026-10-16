@@ -7,7 +7,7 @@
         <a class="nav-icon dropdown-toggle" href="#" id="tablerosLauncher" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Abrir aplicaciones"><i class="fa-solid fa-grip" aria-hidden="true"></i></a>
         <div class="dropdown-menu dropdown-menu-end tableros-app-menu" aria-labelledby="tablerosLauncher">
           <div class="tableros-app-menu-title">Aplicaciones</div>
-          {% if tableros_access('access') %}<a class="tableros-app-tile is-current" href="/tableros/index"><span><i class="fa-solid fa-table-cells-large"></i></span><strong>Tableros</strong><small class="tableros-app-tile-beta">beta</small></a>{% endif %}
+          {% if tableros_access('access') %}<a class="tableros-app-tile is-current" href="{{ url('tableros.index') }}"><span><i class="fa-solid fa-table-cells-large"></i></span><strong>Tableros</strong><small class="tableros-app-tile-beta">beta</small></a>{% endif %}
           <a class="tableros-app-tile" href="/home/index"><span><i class="fa-solid fa-house"></i></span><strong>Aplicativo</strong></a>
           <a class="tableros-app-tile" href="https://totalgas.mojohelpdesk.com/" target="_blank" rel="noopener"><span><i class="fa-solid fa-headset"></i></span><strong>Mojo Helpdesk</strong></a>
           <a class="tableros-app-tile" href="https://proveedores.totalgasonline.net/" target="_blank" rel="noopener"><span><i class="fa-solid fa-building" aria-hidden="true"></i></span><strong>Portal de proveedores</strong></a>

@@ -14,6 +14,12 @@ Router::load(require __DIR__ . '/../routes.php');
 $rows = [
     // xml: la URL no cambia (generatexml no tiene '_'), sin alias
     ['xml.generatexml', ['GET'], 'xml/generatexml', ['Xml', 'generatexml'], [], [], null],
+
+    // tableros: '/tableros' es el alias de index (tableros.js hacía pushState a esa URL)
+    ['tableros.index', ['GET'], 'tableros/index', ['Tableros', 'index'], [], [], 'tableros/'],
+    ['tableros.manage', ['GET'], 'tableros/manage', ['Tableros', 'manage'], [], [], null],
+    ['tableros.manage_workspaces', ['GET'], 'tableros/manage-workspaces', ['Tableros', 'manage_workspaces'], [], [], 'TABLEROS/Manage_Workspaces'],
+    ['tableros.board', ['GET'], 'tableros/board/15', ['Tableros', 'board'], ['15'], ['id' => '15'], null],
 ];
 
 foreach ($rows as [$name, $verbs, $url, $handler, $args, $params, $alias]) {

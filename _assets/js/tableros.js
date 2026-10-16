@@ -533,7 +533,7 @@
   }
 
   function updateBoardRoute(id, replace = false) {
-    const path = id ? `/tableros/board/${encodeURIComponent(id)}` : '/tableros';
+    const path = id ? routeUrl('tableros.board', { id: id }) : routeUrl('tableros.index');
     if (window.location.pathname === path) return;
     window.history[replace ? 'replaceState' : 'pushState']({ boardId: id }, '', path);
   }
