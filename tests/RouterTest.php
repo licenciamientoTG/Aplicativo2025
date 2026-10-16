@@ -186,4 +186,14 @@ check('lint handlers: faltan parámetros', count(array_filter($p, fn($t) => str_
 check('lint handlers: sobran parámetros', count(array_filter($p, fn($t) => str_contains($t, 'FxPriv::ninguno') && str_contains($t, 'acepta'))) === 1);
 check('lint handlers: ruta correcta no da problema', count(array_filter($p, fn($t) => str_contains($t, 'r6'))) === 0);
 
+// --- routes.php real (carga routes/*.php) ---
+Router::reset();
+Router::load(require __DIR__ . '/../routes.php');
+check('routes.php: home registrada', Router::match('', 'GET') !== null);
+check('routes.php: stations.readings acepta GET y POST',
+    Router::match('stations/readings', 'GET') !== null && Router::match('stations/readings', 'POST') !== null);
+check('routes.php: stations.readings rechaza PUT', (Router::match('stations/readings', 'PUT')['error'] ?? 0) === 405);
+check('routes.php: reverse stations.readings', Router::reverse('stations.readings') === '/stations/readings');
+check('routes.php: lint limpio (sin revisar handlers)', Router::lint() === []);
+
 finish();

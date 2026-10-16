@@ -73,17 +73,7 @@ if (isset($_SESSION['tg_user'])) {
 $error = new Errors();
 
 // Autoload de clases, controladores y modelos
-spl_autoload_register(function($class) {
-    if (file_exists(CLASSES . $class . '.class.php')) {
-        require CLASSES . $class . '.class.php';
-    }
-    if (file_exists(CONTROLLERS . strtolower($class) . '.php')) {
-        require CONTROLLERS . strtolower($class) . '.php';
-    }
-    if (file_exists(MODELS . $class . '.php')) {
-        require MODELS . $class . '.php';
-    }
-});
+require '_assets/classes/autoload.php';
 
 // 1) Router explícito (routes.php)
 if ($routeMatch !== null) {
