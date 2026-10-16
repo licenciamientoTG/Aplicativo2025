@@ -1,7 +1,7 @@
 # Migración al router explícito (estilo Django) — diseño
 
 **Fecha:** 2026-10-16
-**Estado:** Fase 0 implementada y en `main` (commit `4041cbe2`); su checklist manual con sesión sigue pendiente. Fase 1 implementada en la rama `router-fase-1` (rutas de `xml`, `tableros`, `humancapital` y `marketing`; `errors` sin rutas por D11), con su checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-1.md`. Fase 2, bloque 1 (`petrotal` + `arqueo`) planificado: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-1.md`. Plan de la Fase 0: `docs/superpowers/plans/2026-10-16-router-fase-0.md`.
+**Estado:** Fase 0 implementada y en `main` (commit `4041cbe2`); su checklist manual con sesión sigue pendiente. Fase 1 implementada en la rama `router-fase-1` (rutas de `xml`, `tableros`, `humancapital` y `marketing`; `errors` sin rutas por D11), con su checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-1.md`. Fase 2, bloque 1 (`petrotal` + `arqueo`) implementado en la rama `router-fase-2-bloque-1`, checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-1.md`. Plan de la Fase 0: `docs/superpowers/plans/2026-10-16-router-fase-0.md`.
 **Ya implementado:** el router base (`_assets/classes/Router.class.php`, `routes.php`, función Twig `url()`), commits `90d58f0f` y `b774d567`, con `stations` y `home` migrados como ejemplo.
 
 ## 1. Problema
