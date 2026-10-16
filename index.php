@@ -67,6 +67,7 @@ if (isset($_SESSION['tg_user'])) {
         $_SESSION['tableros_csrf'] = bin2hex(random_bytes(32));
     }
     $twig->addGlobal('tableros_csrf', $_SESSION['tableros_csrf']);
+    $twig->addGlobal('routes_json', json_encode((object)Router::export(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES));
 }
 
 // Instanciamos manejador de errores
