@@ -1,7 +1,7 @@
 # Migración al router explícito (estilo Django) — diseño
 
 **Fecha:** 2026-10-16
-**Estado:** Fase 0 planificada, **no ejecutada**. Plan: `docs/superpowers/plans/2026-10-16-router-fase-0.md`.
+**Estado:** Fase 0 implementada y en `main` (commit `4041cbe2`); su checklist manual con sesión sigue pendiente. Fase 1 diseñada (sección 7), plan: `docs/superpowers/plans/2026-10-16-router-fase-1.md`. Plan de la Fase 0: `docs/superpowers/plans/2026-10-16-router-fase-0.md`.
 **Ya implementado:** el router base (`_assets/classes/Router.class.php`, `routes.php`, función Twig `url()`), commits `90d58f0f` y `b774d567`, con `stations` y `home` migrados como ejemplo.
 
 ## 1. Problema
@@ -49,6 +49,12 @@ group('supply/', [ ...rutas... ], ['permission' => 112]);   // el grupo hereda o
 | D5 | El **404 real** reemplaza al `var_dump`: estado 404, página HTML sencilla o JSON para peticiones AJAX. | El comportamiento anterior respondía 200 con un volcado de texto; el JS no podía distinguir un error. |
 | D6 | Las rutas con nombre usan `modulo.accion` (`supply.payment`). Los parámetros van en la URL cuando identifican un recurso (`<int:id>`). | Convención simple y mecánica. El estilo exacto de las URLs nuevas se define en la Fase 1 (ver sección 7). |
 | D7 | Se migra **por módulo**, empezando por los más chicos, y se observa el log unos días antes de pasar al siguiente. | Sin framework de pruebas ni ambiente de staging garantizado, la red de seguridad es ir poco a poco. |
+| D8 | **URLs en estilo acción y kebab-case** para toda la migración: el método `print_card` queda en `/marketing/print-card/<card>/<codcli>`. Un método = una URL; camelCase también pasa a kebab (`findClientForm` → `find-client-form`, decisión del ejecutor). (Decidido por el responsable el 2026-10-16.) | Migración mecánica, encaja con controladores escritos como acciones; las ganancias del router (tipos, verbos, nombres, alias) no dependen del estilo. |
+| D9 | **Todavía no se agrega `permission:` a las rutas.** El acceso queda como hoy (menú de `sidebar.html` y los chequeos propios de cada controlador). (Decidido por el responsable el 2026-10-16.) | Cerrar el hueco de permisos cambia quién puede entrar; se decide aparte. |
+| D10 | El **nombre de ruta** es `modulo.metodo` con el nombre del método tal cual (`marketing.print_card`). | Del nombre se llega al método sin buscar. |
+| D11 | **Solo llevan ruta los métodos que usa alguna vista o JS** (o un enlace externo conocido). Las funciones internas que hoy son públicas por accidente no reciben ruta nueva; siguen alcanzables por el fallback hasta la Fase 5. | No se publican a propósito métodos que nunca debieron ser URLs. |
+| D12 | **Verbos según el uso real** (formularios, `$.post`, `fetch` con `method`). Si el uso no es claro: `['GET', 'POST']`. | Restringir de más rompería pantallas sin aviso. |
+| D13 | **`<int:x>` solo si el código trata el valor como número**; si hay duda, `<str:x>`. Ojo: el fallback viejo pasaba toda la URL a minúsculas y la ruta nueva no; se revisa método por método si un parámetro depende de eso. | Evita 404 por un tipo demasiado estricto y cambios silenciosos de valor. |
 
 ## 5. Fases
 
@@ -57,8 +63,8 @@ Tamaño medido el 2026-10-16: unos **560 métodos públicos** en 22 controladore
 | Fase | Alcance | Prueba antes de seguir |
 |---|---|---|
 | **0** | Infraestructura: alias, `Router::lint()`, `routes/` por módulo, `RouteLog`, 404 real, `routeUrl()` + `window.ROUTES`, `tools/routes.php`. **No migra controladores.** | Pruebas automáticas + checklist manual (ver el plan de la Fase 0) |
-| **1** | Módulos chicos: `administration`, `marketing`, `humancapital`, `tableros`, `xml`, `errors` (`stations` y `home` ya están). Aquí se fijan las convenciones de URL, verbos y permisos. | Recorrer a mano las pantallas de cada módulo; `lint` limpio; log sin sorpresas |
-| **2** | Medianos: `petrotal`, `direction`, `commercial`, `station_portal`, `arqueo`, `tableros_api` (API JSON: verbos estrictos y errores en JSON). | Igual |
+| **1** | Módulos chicos: `xml`, `errors`, `tableros`, `humancapital`, `marketing`, en ese orden y un commit por módulo (`stations` y `home` ya están). Unos 25 métodos. | Recorrer a mano las pantallas de cada módulo; `lint` limpio; log sin sorpresas |
+| **2** | Medianos: `administration` (~58 métodos accesibles por URL, en bloques), `petrotal`, `direction`, `commercial`, `station_portal`, `arqueo`, `tableros_api` (API JSON: verbos estrictos y errores en JSON). | Igual |
 | **3** | Grandes: `merma`, `tesoreria`, `operations`, `supply`, `accounting`, en bloques de 15 a 20 métodos por commit. | Igual |
 | **4** | Gigantes: `payment` (71), `it` (79), `income` (115), por bloques funcionales, con una semana de observación del log entre bloques. | Igual |
 | **5** | Retirar lo viejo: quitar los alias que ya no aparecen en el log y poner `ROUTER_LEGACY_FALLBACK = false`. | `legacy-hits` vacío durante el periodo acordado |
@@ -84,13 +90,16 @@ Tamaño medido el 2026-10-16: unos **560 métodos públicos** en 22 controladore
 | Peticiones AJAX que esperaban 200 y ahora reciben 404 (D5) | Solo ocurre con URLs que de todos modos no existían; se revisa en el checklist de cada fase |
 | No hay framework de pruebas ni staging garantizado | Pruebas en scripts PHP/Node sin dependencias (`tests/`) + checklist manual por fase |
 
-## 7. Pendiente de decidir (Fase 1)
+## 7. Decisiones de la Fase 1 (2026-10-16)
 
-Estas decisiones se toman con datos reales del primer módulo, no antes:
+Tomadas con los datos reales de los controladores:
 
-- **Estilo de las URLs nuevas:** ¿se traducen al español o se mantienen en inglés como los controladores? ¿Estilo recurso (`/supply/payments/15/`) o estilo acción (`/supply/show-payment/15/`)? Propuesta inicial: inglés, recurso cuando hay un id, kebab-case.
-- **Permisos por ruta:** de dónde sacar el id correcto de cada método (hoy cada método consulta `authorized()` por su cuenta).
-- **Cuánto tiempo observar el log** antes de retirar un alias (propuesta: 2 semanas sin hits).
+- **Hallazgo:** en PHP un método sin modificador es público. `administration` tiene ~58 métodos alcanzables por URL (incluidas funciones internas como `getMondayFromWeek`), por eso pasó a la Fase 2. Ningún controlador de la Fase 1 llama a `authorized()`; el único control es el menú (`sidebar.html`), salvo `tableros`, que tiene su propio `requireAccess()`.
+- **Estilo de URL:** acción + kebab-case, en inglés como los controladores (D8).
+- **Permisos por ruta:** pospuesto (D9). Cuando se retome, la fuente natural es el `authorized(n)` de la sección del menú que enlaza cada pantalla.
+- **Observación del log:** un alias se retira tras **2 semanas sin hits** en `legacy-hits` (aplica en la Fase 5).
+- **Por módulo**, antes de escribir código se presenta la tabla URL nueva / nombre / verbos / parámetros / alias y se aprueba (el plan de cada fase la trae ya propuesta).
+- Los enlaces del menú (`views/layouts/sidebar.html`) de un módulo migrado también pasan a `url()`.
 
 ## 8. Fuera de alcance
 
