@@ -1,7 +1,7 @@
 # Migración al router explícito (estilo Django) — diseño
 
 **Fecha:** 2026-10-16
-**Estado:** Fase 0 implementada y en `main` (commit `4041cbe2`); su checklist manual con sesión sigue pendiente. Fase 1 implementada en la rama `router-fase-1` (rutas de `xml`, `tableros`, `humancapital` y `marketing`; `errors` sin rutas por D11), con su checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-1.md`. Plan de la Fase 0: `docs/superpowers/plans/2026-10-16-router-fase-0.md`.
+**Estado:** Fase 0 implementada y en `main` (commit `4041cbe2`); su checklist manual con sesión sigue pendiente. Fase 1 implementada en la rama `router-fase-1` (rutas de `xml`, `tableros`, `humancapital` y `marketing`; `errors` sin rutas por D11), con su checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-1.md`. Fase 2, bloque 1 (`petrotal` + `arqueo`) planificado: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-1.md`. Plan de la Fase 0: `docs/superpowers/plans/2026-10-16-router-fase-0.md`.
 **Ya implementado:** el router base (`_assets/classes/Router.class.php`, `routes.php`, función Twig `url()`), commits `90d58f0f` y `b774d567`, con `stations` y `home` migrados como ejemplo.
 
 ## 1. Problema
@@ -54,6 +54,7 @@ group('supply/', [ ...rutas... ], ['permission' => 112]);   // el grupo hereda o
 | D10 | El **nombre de ruta** es `modulo.metodo` con el nombre del método tal cual (`marketing.print_card`). | Del nombre se llega al método sin buscar. |
 | D11 | **Solo llevan ruta los métodos que usa alguna vista o JS** (o un enlace externo conocido). Las funciones internas que hoy son públicas por accidente no reciben ruta nueva; siguen alcanzables por el fallback hasta la Fase 5. | No se publican a propósito métodos que nunca debieron ser URLs. |
 | D12 | **Verbos según el uso real** (formularios, `$.post`, `fetch` con `method`). Si el uso no es claro: `['GET', 'POST']`. | Restringir de más rompería pantallas sin aviso. |
+| D14 | Las **redirecciones en PHP** hacia un módulo migrado (`redirect('/petrotal/configuracion_fiel')`) también pasan a `Router::reverse('petrotal.configuracion_fiel')`, y el `routeUrl()` escrito dentro de `<script>` en vistas Twig también lo revisa `lint`. (Decisión del ejecutor, 2026-10-16.) | Son URLs escritas a mano igual que las de las vistas; sin esto quedarían fuera del linter. |
 | D13 | **`<int:x>` solo si el código trata el valor como número**; si hay duda, `<str:x>`. Ojo: el fallback viejo pasaba toda la URL a minúsculas y la ruta nueva no; se revisa método por método si un parámetro depende de eso. | Evita 404 por un tipo demasiado estricto y cambios silenciosos de valor. |
 
 ## 5. Fases
@@ -64,7 +65,7 @@ Tamaño medido el 2026-10-16: unos **560 métodos públicos** en 22 controladore
 |---|---|---|
 | **0** | Infraestructura: alias, `Router::lint()`, `routes/` por módulo, `RouteLog`, 404 real, `routeUrl()` + `window.ROUTES`, `tools/routes.php`. **No migra controladores.** | Pruebas automáticas + checklist manual (ver el plan de la Fase 0) |
 | **1** | Módulos chicos: `xml`, `errors`, `tableros`, `humancapital`, `marketing`, en ese orden y un commit por módulo (`stations` y `home` ya están). Unos 25 métodos. | Recorrer a mano las pantallas de cada módulo; `lint` limpio; log sin sorpresas |
-| **2** | Medianos: `administration` (~58 métodos accesibles por URL, en bloques), `petrotal`, `direction`, `commercial`, `station_portal`, `arqueo`, `tableros_api` (API JSON: verbos estrictos y errores en JSON). | Igual |
+| **2** | Medianos, ~240 métodos accesibles, **un plan por bloque**: (1) `petrotal` + `arqueo`; (2) `commercial`; (3) `direction`; (4) `administration` (62, en sub-bloques); (5) `tableros_api` (API JSON: verbos estrictos y errores en JSON); (6) `station_portal` al final, porque otro desarrollador lo está modificando activamente (2026-10-16). | Igual |
 | **3** | Grandes: `merma`, `tesoreria`, `operations`, `supply`, `accounting`, en bloques de 15 a 20 métodos por commit. | Igual |
 | **4** | Gigantes: `payment` (71), `it` (79), `income` (115), por bloques funcionales, con una semana de observación del log entre bloques. | Igual |
 | **5** | Retirar lo viejo: quitar los alias que ya no aparecen en el log y poner `ROUTER_LEGACY_FALLBACK = false`. | `legacy-hits` vacío durante el periodo acordado |
