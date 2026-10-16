@@ -2,8 +2,8 @@
  * routeUrl(name, params): equivalente en JS de url() de Twig.
  * Usa window.ROUTES, que base.html publica desde Router::export().
  *
- *   routeUrl('stations.readings')        -> '/stations/readings'
- *   routeUrl('supply.payment', {id: 15}) -> '/supply/payments/15'
+ *   routeUrl('stations.readings')  -> '/stations/readings'
+ *   Con parámetros: routeUrl(nombre, {id: 15}) llena <int:id> con 15
  */
 (function (global) {
     var TYPES = {
