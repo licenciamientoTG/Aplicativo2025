@@ -99,6 +99,90 @@ class Router {
         return '/' . self::normalize($url);
     }
 
+    /**
+     * Revisa las rutas registradas y devuelve la lista de problemas (vacía = todo bien).
+     * Con $checkHandlers también verifica clase, método y número de parámetros.
+     */
+    public static function lint(bool $checkHandlers = false): array {
+        $problems = [];
+        $names    = [];
+        $seen     = [];
+        $earlier  = [];
+
+        foreach (self::$routes as $def) {
+            $label = ($def['is_alias'] ? 'alias /' : 'ruta /') . $def['pattern'];
+
+            if (!$def['is_alias'] && $def['name'] !== null) {
+                if (isset($names[$def['name']])) {
+                    $problems[] = "Nombre duplicado '{$def['name']}': {$names[$def['name']]} y $label";
+                }
+                $names[$def['name']] = $label;
+            }
+
+            if ($def['is_alias'] && array_keys($def['params']) !== $def['canonical_params']) {
+                $problems[] = "$label: el alias debe tener los mismos parámetros y en el mismo orden que la ruta principal ("
+                    . implode(', ', $def['canonical_params']) . ')';
+            }
+
+            // Dos rutas con la misma forma (ignorando tipos de parámetro) y verbos que se cruzan: la segunda queda muerta.
+            $signature = preg_replace('/<(?:\w+:)?\w+>/', '<>', $def['pattern']);
+            foreach ($seen[$signature] ?? [] as [$otherLabel, $otherMethods]) {
+                if (!$def['methods'] || !$otherMethods || array_intersect($def['methods'], $otherMethods)) {
+                    $problems[] = "Conflicto: $label y $otherLabel resuelven la misma URL";
+                }
+            }
+            $seen[$signature][] = [$label, $def['methods']];
+
+            // Una ruta anterior (de forma distinta) que ya atrapa esta URL la deja inalcanzable.
+            // Se prueba con una URL de ejemplo: int => 1, path => x/y, el resto => x.
+            $sample = preg_replace_callback('/<(?:(\w+):)?\w+>/', fn($m) => match ($m[1] ?? 'str') {
+                'int'   => '1',
+                'path'  => 'x/y',
+                default => 'x',
+            }, $def['pattern']);
+            foreach ($earlier as [$prevLabel, $prev, $prevSignature]) {
+                $overlap = !$def['methods'] || !$prev['methods'] || array_intersect($def['methods'], $prev['methods']);
+                if ($prevSignature !== $signature && $overlap && preg_match($prev['regex'], $sample)) {
+                    $problems[] = "$label queda tapada por $prevLabel (declárala antes)";
+                    break;
+                }
+            }
+            $earlier[] = [$label, $def, $signature];
+
+            if ($checkHandlers) {
+                array_push($problems, ...self::lintHandler($def, $label));
+            }
+        }
+
+        return $problems;
+    }
+
+    private static function lintHandler(array $def, string $label): array {
+        [$class, $method] = $def['handler'];
+
+        if (!class_exists($class)) {
+            return ["$label: la clase '$class' no existe"];
+        }
+        if (!method_exists($class, $method)) {
+            return ["$label: $class::$method() no existe"];
+        }
+
+        $ref = new ReflectionMethod($class, $method);
+        if (!$ref->isPublic()) {
+            return ["$label: $class::$method() no es público"];
+        }
+
+        $problems = [];
+        $given = count($def['params']);
+        if ($given < $ref->getNumberOfRequiredParameters()) {
+            $problems[] = "$label: $class::$method() requiere {$ref->getNumberOfRequiredParameters()} parámetro(s) y la ruta entrega $given";
+        }
+        if (!$ref->isVariadic() && $given > $ref->getNumberOfParameters()) {
+            $problems[] = "$label: $class::$method() acepta {$ref->getNumberOfParameters()} parámetro(s) y la ruta entrega $given";
+        }
+        return $problems;
+    }
+
     private static function normalize(string $path): string {
         return trim($path, '/');
     }
