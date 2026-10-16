@@ -18,7 +18,7 @@ $(document).ready(function () {
         ],
         ajax: {
             method: 'POST',
-            url: '/direction/monthly_summary_shortge_table',
+            url: routeUrl('direction.monthly_summary_shortge_table'),
             error: function() {
                 $('#monthly_summary_shortge_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -112,7 +112,7 @@ $(document).ready(function () {
         ],
         ajax: {
             method: 'POST',
-            url: '/direction/daily_summary_shortge_table',
+            url: routeUrl('direction.daily_summary_shortge_table'),
             data: {
                 'id_producto': $('#daily_summary_shortge_table').data('id_producto'),
             },

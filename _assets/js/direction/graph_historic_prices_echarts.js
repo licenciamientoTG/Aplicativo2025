@@ -104,7 +104,7 @@ async function graph_week_echarts(domId, product) {
     var untilDate = document.getElementById('until').value;
 
     try {
-        var response = await fetch('/direction/week_graph', {
+        var response = await fetch(routeUrl('direction.week_graph'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             credentials: 'include',
@@ -129,7 +129,7 @@ async function graph_month_echarts(domId, product) {
     var untilDate = document.getElementById('until').value;
 
     try {
-        var response = await fetch('/direction/graph_month', {
+        var response = await fetch(routeUrl('direction.graph_month'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             credentials: 'include',

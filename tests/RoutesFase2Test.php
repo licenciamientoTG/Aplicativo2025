@@ -71,7 +71,45 @@ $rows = [
     ['commercial.sales_global_table', ['POST'], 'commercial/sales-global-table', ['Commercial', 'sales_global_table'], [], [], 'commercial/sales_global_table'],
     ['commercial.import_file_budget', ['POST'], 'commercial/import-file-budget', ['Commercial', 'import_file_budget'], [], [], 'commercial/import_file_budget'],
     ['commercial.download_format_budget', ['GET'], 'commercial/download-format-budget', ['Commercial', 'download_format_budget'], [], [], 'commercial/download_format_budget'],
+
+    // direction: pantallas (historic_prices y consumption_customer_credit reciben POST de sus formularios)
+    ['direction.tg6', ['GET'], 'direction/tg6', ['Direction', 'tg6'], [], [], null],
+    ['direction.consult_consumption', ['GET'], 'direction/consult-consumption', ['Direction', 'consult_consumption'], [], [], 'direction/consult_consumption'],
+    ['direction.tg6_product', ['GET'], 'direction/tg6-product', ['Direction', 'tg6_product'], [], [], 'Direction/TG6_Product/'],
+    ['direction.valeras', ['GET'], 'direction/valeras', ['Direction', 'valeras'], [], [], null],
+    ['direction.monthly_dollar_sales_report', ['GET'], 'direction/monthly-dollar-sales-report', ['Direction', 'monthly_dollar_sales_report'], [], [], 'direction/monthly_dollar_sales_report'],
+    ['direction.historic_shortage', ['GET'], 'direction/historic-shortage', ['Direction', 'historic_shortage'], [], [], 'direction/historic_shortage'],
+    ['direction.monthly_summary_shortge', ['GET'], 'direction/monthly-summary-shortge', ['Direction', 'monthly_summary_shortge'], [], [], 'direction/monthly_summary_shortge'],
+    ['direction.daily_summary_shortge', ['GET'], 'direction/daily-summary-shortge/2', ['Direction', 'daily_summary_shortge'], ['2'], ['id_producto' => '2'], 'direction/daily_summary_shortge/2'],
+    ['direction.graph_prices', ['GET'], 'direction/graph-prices', ['Direction', 'graph_prices'], [], [], 'direction/graph_prices'],
+    ['direction.historic_prices', ['GET', 'POST'], 'direction/historic-prices', ['Direction', 'historic_prices'], [], [], 'direction/historic_prices'],
+    ['direction.consumption_customer_credit', ['GET', 'POST'], 'direction/consumption-customer-credit', ['Direction', 'consumption_customer_credit'], [], [], 'direction/consumption_customer_credit'],
+    // direction: llamadas JS (POST salvo download_format y excel_tg6)
+    ['direction.monthly_dollar_sales_report_table', ['POST'], 'direction/monthly-dollar-sales-report-table', ['Direction', 'monthly_dollar_sales_report_table'], [], [], 'direction/monthly_dollar_sales_report_table'],
+    ['direction.cumsumption_credit_table', ['POST'], 'direction/cumsumption-credit-table', ['Direction', 'cumsumption_credit_table'], [], [], 'direction/cumsumption_credit_table'],
+    ['direction.historic_price_table', ['POST'], 'direction/historic-price-table', ['Direction', 'historic_price_table'], [], [], 'direction/historic_price_table'],
+    ['direction.download_format', ['GET'], 'direction/download-format', ['Direction', 'download_format'], [], [], 'direction/download_format'],
+    ['direction.import_file_historic_price', ['POST'], 'direction/import-file-historic-price', ['Direction', 'import_file_historic_price'], [], [], 'direction/import_file_historic_price'],
+    ['direction.import_file_historic_price_horizontal', ['POST'], 'direction/import-file-historic-price-horizontal', ['Direction', 'import_file_historic_price_horizontal'], [], [], 'direction/import_file_historic_price_horizontal'],
+    ['direction.historic_shortage_table', ['POST'], 'direction/historic-shortage-table', ['Direction', 'historic_shortage_table'], [], [], 'direction/historic_shortage_table'],
+    ['direction.SaveHoursShortage', ['POST'], 'direction/save-hours-shortage', ['Direction', 'SaveHoursShortage'], [], [], 'direction/SaveHoursShortage'],
+    ['direction.delete_shortage', ['POST'], 'direction/delete-shortage', ['Direction', 'delete_shortage'], [], [], 'direction/delete_shortage'],
+    ['direction.credit_debit_product_table', ['POST'], 'direction/credit-debit-product-table', ['Direction', 'credit_debit_product_table'], [], [], 'direction/credit_debit_product_table'],
+    ['direction.comsumption_credit_client_table', ['POST'], 'direction/comsumption-credit-client-table', ['Direction', 'comsumption_credit_client_table'], [], [], 'direction/comsumption_credit_client_table'],
+    ['direction.comsumption_credit_count_table', ['POST'], 'direction/comsumption-credit-count-table', ['Direction', 'comsumption_credit_count_table'], [], [], 'direction/comsumption_credit_count_table'],
+    ['direction.Vta_vs_meta_canvas', ['POST'], 'direction/vta-vs-meta-canvas', ['Direction', 'Vta_vs_meta_canvas'], [], [], 'direction/Vta_vs_meta_canvas'],
+    ['direction.valeras_table', ['POST'], 'direction/valeras-table', ['Direction', 'valeras_table'], [], [], 'direction/valeras_table'],
+    ['direction.excel_tg6', ['GET'], 'direction/excel-tg6', ['Direction', 'excel_tg6'], [], [], 'direction/excel_tg6'],
+    ['direction.monthly_summary_shortge_table', ['POST'], 'direction/monthly-summary-shortge-table', ['Direction', 'monthly_summary_shortge_table'], [], [], 'direction/monthly_summary_shortge_table'],
+    ['direction.daily_summary_shortge_table', ['POST'], 'direction/daily-summary-shortge-table', ['Direction', 'daily_summary_shortge_table'], [], [], 'direction/daily_summary_shortge_table'],
+    ['direction.week_graph', ['POST'], 'direction/week-graph', ['Direction', 'week_graph'], [], [], 'direction/week_graph'],
+    ['direction.graph_month', ['POST'], 'direction/graph-month', ['Direction', 'graph_month'], [], [], 'direction/graph_month'],
+    ['direction.historic_price_table_pivot2', ['POST'], 'direction/historic-price-table-pivot2', ['Direction', 'historic_price_table_pivot2'], [], [], 'direction/historic_price_table_pivot2'],
 ];
+
+// Review Focus 4: el id de producto es str (el controlador no lo castea)
+check('direction: daily_summary_shortge acepta un id con letras',
+    (Router::match('direction/daily-summary-shortge/ABC', 'GET')['args'] ?? null) === ['ABC']);
 
 check_routes($rows);
 

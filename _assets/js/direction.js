@@ -30,7 +30,7 @@ let monthly_dollar_sales_report_table = $('#monthly_dollar_sales_report_table').
     ],
     ajax: {
         method: 'POST',
-        url: '/direction/monthly_dollar_sales_report_table',
+        url: routeUrl('direction.monthly_dollar_sales_report_table'),
         error: function() {
             $('#monthly_dollar_sales_report_table').waitMe('hide');
             $('.table-responsive').removeClass('loading');
@@ -277,7 +277,7 @@ let cumsumption_credit_table = $('#cumsumption_credit_table').DataTable({
     ajax: {
         method: 'POST',
         data: {'year': $('#cumsumption_credit_table').data('year')},
-        url: '/direction/cumsumption_credit_table',
+        url: routeUrl('direction.cumsumption_credit_table'),
         error: function() {
             $('#cumsumption_credit_table').waitMe('hide');
             alertify.myAlert(
@@ -376,7 +376,7 @@ let historic_price_table = $('#historic_price_table').DataTable({
             'until': $('input#until').val(),
 
         },
-        url: '/direction/historic_price_table',
+        url: routeUrl('direction.historic_price_table'),
         error: function() {
             $('#historic_price_table').waitMe('hide');
             $('.table-responsive').removeClass('loading');
@@ -430,7 +430,7 @@ $('.refresh_historic_price_table').on('click', function () {
     $('#historic_price_table').waitMe('hide');
 });
 function download_format(){
-    fetch('/direction/download_format')
+    fetch(routeUrl('direction.download_format'))
     .then(response => {
         if (!response.ok) {
             throw new Error('Error en la descarga del archivo');
@@ -466,7 +466,7 @@ function download_format(){
 //     formData.append('file_to_upload', file);
 
 //     try {
-//         const response = await fetch('/direction/import_file_historic_price', {
+//         const response = await fetch(routeUrl('direction.import_file_historic_price'), {
 //             method: 'POST',
 //             body: formData
 //         });
@@ -504,7 +504,7 @@ async function upload_file() {
     formData.append('file_to_upload', file);
 
     try {
-        const response = await fetch('/direction/import_file_historic_price_horizontal', {  // ← CAMBIO AQUÍ
+        const response = await fetch(routeUrl('direction.import_file_historic_price_horizontal'), {  // ← CAMBIO AQUÍ
             method: 'POST',
             body: formData
         });
@@ -570,7 +570,7 @@ let historic_shortage_table = $('#historic_shortage_table').DataTable({
     ],
     ajax: {
         method: 'POST',
-        url: '/direction/historic_shortage_table',
+        url: routeUrl('direction.historic_shortage_table'),
         error: function() {
             $('#historic_shortage_table').waitMe('hide');
             $('.table-responsive').removeClass('loading');
@@ -649,7 +649,7 @@ async function SaveHoursShortage(){
         $('#form_add_hours').addClass('loading');
         form_add_hours = document.getElementById('form_add_hours');
         var formData = new FormData(form_add_hours);
-        let response = await fetch('/direction/SaveHoursShortage', {
+        let response = await fetch(routeUrl('direction.SaveHoursShortage'), {
             method: 'POST',
             body: formData
         });
@@ -690,7 +690,7 @@ async function delete_shortage(id_desabasto) {
         if (result.isConfirmed) {
             try {
                 // Realiza la petición fetch con POST
-                const response = await fetch('/direction/delete_shortage', {
+                const response = await fetch(routeUrl('direction.delete_shortage'), {
                     method: 'POST',
                     headers: {
                         'Accept': 'application/json, text/javascript, */*',
