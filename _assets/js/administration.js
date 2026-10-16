@@ -2396,7 +2396,7 @@ let datatables_anticipos = $('#datatables_anticipos').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_anticipos/' + $('input#from').val() + '/' + $('input#until').val(),
+        url: tableRouteUrl('#datatables_anticipos', 'administration.datatables_anticipos', { from: $('input#from').val(), until: $('input#until').val() }),
         type: 'POST',
         error: function() {
             $('#datatables_anticipos').waitMe('hide');
@@ -2507,7 +2507,7 @@ let datatables_customer_anticipos = $('#datatables_customer_anticipos').DataTabl
         }
     ],
     ajax: {
-        url: '/administration/datatables_customer_anticipos/' + $('input#from').val() + '/' + $('input#until').val(),
+        url: tableRouteUrl('#datatables_customer_anticipos', 'administration.datatables_customer_anticipos', { from: $('input#from').val(), until: $('input#until').val() }),
         type: 'POST',
         error: function() {
             $('#datatables_customer_anticipos').waitMe('hide');
@@ -2728,7 +2728,7 @@ let datatables_customer_anticipos2 = $('#datatables_customer_anticipos2').DataTa
         }
     ],
     ajax: {
-        url: '/administration/datatables_customer_anticipos2/' + $('input#percent').val() + '/' + $('input#from').val() + '/' + $('input#until').val(),
+        url: tableRouteUrl('#datatables_customer_anticipos2', 'administration.datatables_customer_anticipos2', { percent: $('input#percent').val(), from: $('input#from').val(), until: $('input#until').val() }),
         type: 'POST',
         error: function() {
             $('#datatables_customer_anticipos2').waitMe('hide');
@@ -2808,7 +2808,7 @@ let datatables_customer_advances_details = $('#datatables_customer_advances_deta
         }
     ],
     ajax: {
-        url: '/administration/datatables_customer_advances_details/' + $('input#codcli').val() + '/' + $('input#from').val() + '/' + $('input#until').val(),
+        url: tableRouteUrl('#datatables_customer_advances_details', 'administration.datatables_customer_advances_details', { codcli: $('input#codcli').val(), from: $('input#from').val(), until: $('input#until').val() }),
         type: 'POST',
         error: function() {
             $('#datatables_customer_advances_details').waitMe('hide');

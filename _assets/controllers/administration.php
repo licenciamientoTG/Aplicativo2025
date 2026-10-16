@@ -1794,7 +1794,7 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
         $data = [];
         if ($anticipos = $this->documentosModel->get_anticipos_customer($from, $until)) {
             foreach ($anticipos as $anticipo) {
-                $actions = '<a href="/administration/get_advance_clients_details/'. $anticipo['cod'] .'/'. $from .'/'. $until .'" target="_blank" class="btn btn-sm btn-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
+                $actions = '<a href="' . Router::reverse('administration.get_advance_clients_details', ['codcli' => $anticipo['cod'], 'from' => $from, 'until' => $until]) . '" target="_blank" class="btn btn-sm btn-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
                 $data[] = array(
                     'CODCLIENTE'     => $anticipo['cod'],
                     'CLIENTE'        => $anticipo['Cliente'],
@@ -1835,7 +1835,7 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
         $data = [];
         if ($anticipos) {
             foreach ($anticipos as $anticipo) {
-                $actions = '<a href="/administration/get_advance_clients_details/'. $anticipo['cod'] .'/'. $from .'/'. $until .'" target="_blank" class="btn btn-sm btn-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
+                $actions = '<a href="' . Router::reverse('administration.get_advance_clients_details', ['codcli' => $anticipo['cod'], 'from' => $from, 'until' => $until]) . '" target="_blank" class="btn btn-sm btn-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
                 $data[] = array(
                     'CODCLIENTE' => $anticipo['cod'],
                     'CLIENTE'    => $anticipo['Cliente'],

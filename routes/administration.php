@@ -29,5 +29,18 @@ return [
         route('porcent-estacion-info/', [Administration::class, 'porcent_estacion_info'], name: 'administration.porcent_estacion_info', methods: ['POST'], alias: ['administration/porcent_estacion_info']),
         route('porcent-estacion-facturados-info/', [Administration::class, 'porcent_estacion_facturados_info'], name: 'administration.porcent_estacion_facturados_info', methods: ['POST'], alias: ['administration/porcent_estacion_facturados_info']),
         route('porcent-facturas-info/', [Administration::class, 'porcent_facturas_info'], name: 'administration.porcent_facturas_info', methods: ['POST'], alias: ['administration/porcent_facturas_info']),
+
+        // 4b: anticipos y débito/crédito. percent <int> (se compara con == 80); codcli <str> (viene de la base).
+        // datatables_customer_advances no tiene ruta: el método no existe y su tabla no está en ninguna vista.
+        route('dashboard-debit-credit/', [Administration::class, 'dashboard_debit_credit'], name: 'administration.dashboard_debit_credit', methods: ['GET'], alias: ['administration/dashboard_debit_credit']),
+        route('in-process/', [Administration::class, 'in_process'], name: 'administration.in_process', methods: ['GET'], alias: ['administration/in_process']),
+        route('search-credit-and-debits-clients/', [Administration::class, 'search_credit_and_debits_clients'], name: 'administration.search_credit_and_debits_clients', methods: ['GET'], alias: ['administration/search_credit_and_debits_clients']),
+        route('get-advances/<str:from>/<str:until>/', [Administration::class, 'get_advances'], name: 'administration.get_advances', methods: ['GET'], alias: ['administration/get_advances/<str:from>/<str:until>']),
+        route('get-advance-clients/<int:percent>/<str:from>/<str:until>/', [Administration::class, 'get_advance_clients'], name: 'administration.get_advance_clients', methods: ['GET'], alias: ['administration/get_advance_clients/<int:percent>/<str:from>/<str:until>']),
+        route('get-advance-clients-details/<str:codcli>/<str:from>/<str:until>/', [Administration::class, 'get_advance_clients_details'], name: 'administration.get_advance_clients_details', methods: ['GET'], alias: ['administration/get_advance_clients_details/<str:codcli>/<str:from>/<str:until>']),
+        route('datatables-anticipos/<str:from>/<str:until>/', [Administration::class, 'datatables_anticipos'], name: 'administration.datatables_anticipos', methods: ['POST'], alias: ['administration/datatables_anticipos/<str:from>/<str:until>']),
+        route('datatables-customer-anticipos/<str:from>/<str:until>/', [Administration::class, 'datatables_customer_anticipos'], name: 'administration.datatables_customer_anticipos', methods: ['POST'], alias: ['administration/datatables_customer_anticipos/<str:from>/<str:until>']),
+        route('datatables-customer-anticipos2/<int:percent>/<str:from>/<str:until>/', [Administration::class, 'datatables_customer_anticipos2'], name: 'administration.datatables_customer_anticipos2', methods: ['POST'], alias: ['administration/datatables_customer_anticipos2/<int:percent>/<str:from>/<str:until>']),
+        route('datatables-customer-advances-details/<str:codcli>/<str:from>/<str:until>/', [Administration::class, 'datatables_customer_advances_details'], name: 'administration.datatables_customer_advances_details', methods: ['POST'], alias: ['administration/datatables_customer_advances_details/<str:codcli>/<str:from>/<str:until>']),
     ]),
 ];

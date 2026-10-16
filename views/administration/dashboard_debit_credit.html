@@ -355,7 +355,7 @@
         $('.container-fluid').addClass('loading');
         // Vamos a popular el select #cliente con los clientes que tenemos en la base de datos
         $.ajax({
-            url: '/administration/search_credit_and_debits_clients',
+            url: '{{ url("administration.search_credit_and_debits_clients") }}',
             type: 'GET',
             dataType: 'json',
             success: function(data) {
