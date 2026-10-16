@@ -2952,22 +2952,31 @@ function edo_debit_drill(drill, codcli, cliente) {
 
 // ── Anticipos Débito (reporte de facturas de anticipo) ──────────────────────
 
-function anticipos_debit_table() {
-    if ($.fn.DataTable.isDataTable('#anticipos_debit_table')) {
-        $('#anticipos_debit_table').DataTable().destroy();
-        $('#anticipos_debit_table thead .filter').remove();
+function anticipos_debit_table(mode) {
+    // mode 'all' = todos los clientes por fecha; 'cli' = un cliente (obligatorio)
+    var tbl = '#anticipos_' + mode + '_table';
+    var codcli = mode === 'cli' ? parseInt($('#cliente_anticipos_cli').val(), 10) || 0 : 0;
+
+    if (mode === 'cli' && codcli <= 0) {
+        alertify.myAlert('<div class="text-center text-warning"><h4>Falta el cliente</h4><p>Selecciona un cliente para consultar.</p></div>');
+        return;
     }
 
-    $('#anticipos_debit_table thead').prepend($('#anticipos_debit_table thead tr').clone().addClass('filter'));
-    $('#anticipos_debit_table thead tr.filter th').each(function (index) {
-        var col = $('#anticipos_debit_table thead th').length / 2;
+    if ($.fn.DataTable.isDataTable(tbl)) {
+        $(tbl).DataTable().destroy();
+        $(tbl + ' thead .filter').remove();
+    }
+
+    $(tbl + ' thead').prepend($(tbl + ' thead tr').clone().addClass('filter'));
+    $(tbl + ' thead tr.filter th').each(function (index) {
+        var col = $(tbl + ' thead th').length / 2;
         if (index < col) {
             var title = $(this).text();
             $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
         }
     });
-    $('#anticipos_debit_table thead tr.filter th input').on('keyup change', function () {
-        $('#anticipos_debit_table').DataTable()
+    $(tbl + ' thead tr.filter th input').on('keyup change', function () {
+        $(tbl).DataTable()
             .column($(this).parent().index())
             .search(this.value).draw();
     });
@@ -2975,7 +2984,7 @@ function anticipos_debit_table() {
     var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
     var moneyCols = [6, 7, 8];
 
-    $('#anticipos_debit_table').DataTable({
+    $(tbl).DataTable({
         ordering: true,
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
@@ -2987,9 +2996,9 @@ function anticipos_debit_table() {
             url: '/income/debit_anticipos_table',
             timeout: 120000,
             data: function (d) {
-                d.codcli = $('#cliente_anticipos_debit').val() || 0;
-                d.from   = $('#from_anticipos_debit').val();
-                d.until  = $('#until_anticipos_debit').val();
+                d.codcli = codcli;
+                d.from   = $('#from_anticipos_' + mode).val();
+                d.until  = $('#until_anticipos_' + mode).val();
             },
             dataSrc: function (json) { return json.data || []; },
             error: function () {
