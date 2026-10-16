@@ -41,6 +41,36 @@ $rows = [
     ['arqueo.ver_imagen_concentrado', ['GET'], 'arqueo/ver-imagen-concentrado/3', ['Arqueo', 'ver_imagen_concentrado'], [3], ['imagen_id' => 3], 'arqueo/ver_imagen_concentrado/3'],
     ['arqueo.eliminar_imagen_concentrado', ['POST'], 'arqueo/eliminar-imagen-concentrado', ['Arqueo', 'eliminar_imagen_concentrado'], [], [], 'arqueo/eliminar_imagen_concentrado'],
     ['arqueo.exportar_cajas', ['GET'], 'arqueo/exportar-cajas/7', ['Arqueo', 'exportar_cajas'], [7], ['sesion_id' => 7], 'arqueo/exportar_cajas/7'],
+
+    // commercial: pantallas del menú (GET; sale_lubricants también POST porque lee $_POST)
+    ['commercial.sales_indicators', ['GET'], 'commercial/sales-indicators', ['Commercial', 'sales_indicators'], [], [], 'Commercial/Sales_Indicators/'],
+    ['commercial.sale_month_turn', ['GET'], 'commercial/sale-month-turn', ['Commercial', 'sale_month_turn'], [], [], 'commercial/sale_month_turn'],
+    ['commercial.sale_type_payment', ['GET'], 'commercial/sale-type-payment', ['Commercial', 'sale_type_payment'], [], [], 'commercial/sale_type_payment'],
+    ['commercial.sale_lubricants', ['GET', 'POST'], 'commercial/sale-lubricants', ['Commercial', 'sale_lubricants'], [], [], 'commercial/sale_lubricants'],
+    ['commercial.sale_week_zone', ['GET'], 'commercial/sale-week-zone', ['Commercial', 'sale_week_zone'], [], [], 'commercial/sale_week_zone'],
+    ['commercial.sales_global_total', ['GET'], 'commercial/sales-global-total', ['Commercial', 'sales_global_total'], [], [], 'commercial/sales_global_total'],
+    ['commercial.mystery_shopper', ['GET'], 'commercial/mystery-shopper', ['Commercial', 'mystery_shopper'], [], [], 'commercial/mystery_shopper'],
+    // commercial: llamadas de commercial.js (POST; la descarga del formato es GET)
+    ['commercial.mistery_shopper_table', ['POST'], 'commercial/mistery-shopper-table', ['Commercial', 'mistery_shopper_table'], [], [], 'commercial/mistery_shopper_table'],
+    ['commercial.import_file_mystery_shopper', ['POST'], 'commercial/import-file-mystery-shopper', ['Commercial', 'import_file_mystery_shopper'], [], [], 'commercial/import_file_mystery_shopper'],
+    ['commercial.lubricants_table', ['POST'], 'commercial/lubricants-table', ['Commercial', 'lubricants_table'], [], [], 'commercial/lubricants_table'],
+    ['commercial.lubricants_table_month', ['POST'], 'commercial/lubricants-table-month', ['Commercial', 'lubricants_table_month'], [], [], 'commercial/lubricants_table_month'],
+    ['commercial.lubricants_table_day', ['POST'], 'commercial/lubricants-table-day', ['Commercial', 'lubricants_table_day'], [], [], 'commercial/lubricants_table_day'],
+    ['commercial.lubricants_table_base', ['POST'], 'commercial/lubricants-table-base', ['Commercial', 'lubricants_table_base'], [], [], 'commercial/lubricants_table_base'],
+    ['commercial.sales_type_payment_table', ['POST'], 'commercial/sales-type-payment-table', ['Commercial', 'sales_type_payment_table'], [], [], 'commercial/sales_type_payment_table'],
+    ['commercial.mounth_group_table', ['POST'], 'commercial/mounth-group-table', ['Commercial', 'mounth_group_table'], [], [], 'commercial/mounth_group_table'],
+    ['commercial.mounth_company_table', ['POST'], 'commercial/mounth-company-table', ['Commercial', 'mounth_company_table'], [], [], 'commercial/mounth_company_table'],
+    ['commercial.mounth_company_table2', ['POST'], 'commercial/mounth-company-table2', ['Commercial', 'mounth_company_table2'], [], [], 'commercial/mounth_company_table2'],
+    ['commercial.mounth_estation_table', ['POST'], 'commercial/mounth-estation-table', ['Commercial', 'mounth_estation_table'], [], [], 'commercial/mounth_estation_table'],
+    ['commercial.mounth_estation_eventos', ['POST'], 'commercial/mounth-estation-eventos', ['Commercial', 'mounth_estation_eventos'], [], [], 'commercial/mounth_estation_eventos'],
+    ['commercial.differencesInfoModal', ['POST'], 'commercial/differences-info-modal', ['Commercial', 'differencesInfoModal'], [], [], 'commercial/differencesInfoModal'],
+    ['commercial.sale_month_turn_table', ['POST'], 'commercial/sale-month-turn-table', ['Commercial', 'sale_month_turn_table'], [], [], 'commercial/sale_month_turn_table'],
+    ['commercial.sale_month_turn_base_table', ['POST'], 'commercial/sale-month-turn-base-table', ['Commercial', 'sale_month_turn_base_table'], [], [], 'commercial/sale_month_turn_base_table'],
+    ['commercial.sale_week_zone_table', ['POST'], 'commercial/sale-week-zone-table', ['Commercial', 'sale_week_zone_table'], [], [], 'commercial/sale_week_zone_table'],
+    ['commercial.sales_indicators_table', ['POST'], 'commercial/sales-indicators-table', ['Commercial', 'sales_indicators_table'], [], [], 'commercial/sales_indicators_table'],
+    ['commercial.sales_global_table', ['POST'], 'commercial/sales-global-table', ['Commercial', 'sales_global_table'], [], [], 'commercial/sales_global_table'],
+    ['commercial.import_file_budget', ['POST'], 'commercial/import-file-budget', ['Commercial', 'import_file_budget'], [], [], 'commercial/import_file_budget'],
+    ['commercial.download_format_budget', ['GET'], 'commercial/download-format-budget', ['Commercial', 'download_format_budget'], [], [], 'commercial/download_format_budget'],
 ];
 
 check_routes($rows);
