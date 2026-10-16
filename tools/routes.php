@@ -59,6 +59,7 @@ switch ($command) {
 
         $scan = [
             ['views', 'html', 'inTwig'],
+            ['views', 'html', 'inJs'],      // routeUrl() dentro de <script> en vistas (D14)
             ['_assets/js', 'js', 'inJs'],
         ];
         foreach ($scan as [$dir, $ext, $method]) {

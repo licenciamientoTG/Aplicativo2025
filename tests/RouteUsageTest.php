@@ -26,6 +26,7 @@ el.style.background = "url('x.png')";
 JS;
 check('JS: encuentra routeUrl()', RouteUsage::inJs($js) === ['stations.readings', 'supply.payment']);
 check('JS: ignora url() de CSS', !in_array('x.png', RouteUsage::inJs($js), true));
+check('JS inline en vista: encuentra routeUrl()', RouteUsage::inJs('<script>fetch(routeUrl("arqueo.x"))</script>') === ['arqueo.x']);
 check('sin usos => []', RouteUsage::inTwig('<p>hola</p>') === [] && RouteUsage::inJs('var a=1;') === []);
 
 finish();
