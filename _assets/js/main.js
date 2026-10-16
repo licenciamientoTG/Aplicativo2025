@@ -94,7 +94,7 @@ async function porcent_estacion_info() {
     var estacion_desp = document.getElementById('estacion_desp').value;
     
     try {
-        const response = await fetch('/administration/porcent_estacion_info', {
+        const response = await fetch(routeUrl('administration.porcent_estacion_info'), {
             method: 'POST',
             headers: {
                 'Accept': 'application/json, text/javascript, */*',
@@ -174,7 +174,7 @@ async function porcent_estacion_facturados_info() {
     var until_desp = document.getElementById('until_desp2').value;
     var estacion_desp = document.getElementById('estacion_desp2').value;
     try {
-        const response = await fetch('/administration/porcent_estacion_facturados_info', {
+        const response = await fetch(routeUrl('administration.porcent_estacion_facturados_info'), {
             method: 'POST',
             headers: {
                 'Accept': 'application/json, text/javascript, */*',
@@ -261,7 +261,7 @@ async function porcent_facturas_info() {
     try {
         var contenedor = document.getElementById('cards_facturas');
         contenedor.innerHTML = '';
-        const response = await fetch('/administration/porcent_facturas_info', {
+        const response = await fetch(routeUrl('administration.porcent_facturas_info'), {
             method: 'POST',
             headers: {
                 'Accept': 'application/json, text/javascript, */*',

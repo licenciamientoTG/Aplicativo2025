@@ -112,7 +112,7 @@
         // Ordenado por fecha descendente
         order: [[0, 'desc']],
         ajax: {
-            url: '/administration/tablaAuditoria/{{ from }}/{{ until }}/{{ station_selected }}',
+            url: '{{ url("administration.tablaAuditoria", {from: from, until: until, codgas: station_selected}) }}',
             error: function() {
                 $('#tablaAuditoria').waitMe('hide');
                 alertify.myAlert(
@@ -172,7 +172,7 @@
         // Ordenado por fecha descendente
         order: [[0, 'desc']],
         ajax: {
-            url: '/administration/tablaTickets/{{ from }}/{{ until }}/{{ station_selected }}',
+            url: '{{ url("administration.tablaTickets", {from: from, until: until, codgas: station_selected}) }}',
             error: function() {
                 $('#tablaTickets').waitMe('hide');
                 alertify.myAlert(

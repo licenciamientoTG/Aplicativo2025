@@ -70,12 +70,18 @@ $("#download_info").on("click", function() {
     let from = $('#from').val();
     let until = $('#until').val();
 
+    // routeUrl() no acepta parámetros vacíos: sin fechas no se consulta
+    if (!from || !until) {
+        alertify.myAlert('Selecciona el rango de fechas');
+        return;
+    }
+
     datatables_monthly_dispatches.clear().draw();
 
 
     $.ajax({
         method: 'POST',
-        url: '/administration/datatables_monthly_dispatches/2/' + from + '/' + until,
+        url: routeUrl('administration.datatables_monthly_dispatches', { codgas: 2, from: from, until: until }),
         success: function(data) {
             // Actualiza los datos del DataTable con los nuevos datos
             datatables_monthly_dispatches.rows.add(data.data).draw();
@@ -95,7 +101,7 @@ $("#download_info").on("click", function() {
 
     $.ajax({
         method: 'POST',
-        url: '/administration/datatables_monthly_dispatches/3/' + from + '/' + until,
+        url: routeUrl('administration.datatables_monthly_dispatches', { codgas: 3, from: from, until: until }),
         success: function(data) {
             // Actualiza los datos del DataTable con los nuevos datos
             datatables_monthly_dispatches.rows.add(data.data).draw();
@@ -1341,7 +1347,7 @@ let datatable_exchange_rate = $('#datatable_exchange_rate').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatable_exchange_rate',
+        url: routeUrl('administration.datatable_exchange_rate'),
         type: 'POST',
         dataSrc: function (json) {
             if (json.disconnected && json.disconnected.length > 0) {
@@ -1415,7 +1421,7 @@ function update_exchange(station_name, fecha_y_hora, exchange, unique_id) {
 
             // Ahora vamos a enviar el unique_id y el valor a la base de datos por medio de ajax
             $.ajax({
-                url: '/administration/update_exchange',
+                url: routeUrl('administration.update_exchange'),
                 type: 'POST',
                 data: {
                     'unique_id': unique_id,
@@ -1466,7 +1472,7 @@ function delete_exchange(unique_id) {
 
     // Ahora vamos a enviar el unique_id a la base de datos por medio de ajax
     $.ajax({
-        url: '/administration/delete_exchange',
+        url: routeUrl('administration.delete_exchange'),
         type: 'POST',
         data: {
             'unique_id': unique_id
@@ -2390,7 +2396,7 @@ let datatables_anticipos = $('#datatables_anticipos').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_anticipos/' + $('input#from').val() + '/' + $('input#until').val(),
+        url: tableRouteUrl('#datatables_anticipos', 'administration.datatables_anticipos', { from: $('input#from').val(), until: $('input#until').val() }),
         type: 'POST',
         error: function() {
             $('#datatables_anticipos').waitMe('hide');
@@ -2501,7 +2507,7 @@ let datatables_customer_anticipos = $('#datatables_customer_anticipos').DataTabl
         }
     ],
     ajax: {
-        url: '/administration/datatables_customer_anticipos/' + $('input#from').val() + '/' + $('input#until').val(),
+        url: tableRouteUrl('#datatables_customer_anticipos', 'administration.datatables_customer_anticipos', { from: $('input#from').val(), until: $('input#until').val() }),
         type: 'POST',
         error: function() {
             $('#datatables_customer_anticipos').waitMe('hide');
@@ -2722,7 +2728,7 @@ let datatables_customer_anticipos2 = $('#datatables_customer_anticipos2').DataTa
         }
     ],
     ajax: {
-        url: '/administration/datatables_customer_anticipos2/' + $('input#percent').val() + '/' + $('input#from').val() + '/' + $('input#until').val(),
+        url: tableRouteUrl('#datatables_customer_anticipos2', 'administration.datatables_customer_anticipos2', { percent: $('input#percent').val(), from: $('input#from').val(), until: $('input#until').val() }),
         type: 'POST',
         error: function() {
             $('#datatables_customer_anticipos2').waitMe('hide');
@@ -2802,7 +2808,7 @@ let datatables_customer_advances_details = $('#datatables_customer_advances_deta
         }
     ],
     ajax: {
-        url: '/administration/datatables_customer_advances_details/' + $('input#codcli').val() + '/' + $('input#from').val() + '/' + $('input#until').val(),
+        url: tableRouteUrl('#datatables_customer_advances_details', 'administration.datatables_customer_advances_details', { codcli: $('input#codcli').val(), from: $('input#from').val(), until: $('input#until').val() }),
         type: 'POST',
         error: function() {
             $('#datatables_customer_advances_details').waitMe('hide');

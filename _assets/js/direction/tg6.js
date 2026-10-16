@@ -68,7 +68,7 @@ async function credit_debit_product_table(){
                 'untilDate':untilDate,
                 'tipo':tipo,
             },
-            url: '/direction/credit_debit_product_table',
+            url: routeUrl('direction.credit_debit_product_table'),
             timeout: 600000, 
             error: function() {
                 $('#credit_debit_product_table').waitMe('hide');
@@ -216,7 +216,7 @@ async function initConsumptionCreditClientTable(CreditClientColumns) {
 
         ajax: {
             method: 'POST',
-            url: '/direction/comsumption_credit_client_table',
+            url: routeUrl('direction.comsumption_credit_client_table'),
             data:{'type':'28'},
             dataSrc: 'data',
             error: function(data) {
@@ -301,7 +301,7 @@ async function initConsumptionDebitTable(DebColumns) {
 
         ajax: {
             method: 'POST',
-            url: '/direction/comsumption_credit_count_table',
+            url: routeUrl('direction.comsumption_credit_count_table'),
             data:{'type':'127'},
             dataSrc: 'data',
             error: function(data) {
@@ -384,7 +384,7 @@ async function initConsumptionDebitTable(DebColumns) {
         },
         ajax: {
             method: 'POST',
-            url: '/direction/comsumption_credit_count_table',
+            url: routeUrl('direction.comsumption_credit_count_table'),
             data:{'type':'28'},
             dataSrc: 'data',
             error: function() {
@@ -452,7 +452,7 @@ async function initConsumptionDebitTable(DebColumns) {
 
 async function vta_vs_meta_canvas(ctx) {
     try {
-        const response = await fetch('/direction/Vta_vs_meta_canvas', {
+        const response = await fetch(routeUrl('direction.Vta_vs_meta_canvas'), {
             method: 'POST',
             headers: {
                 'Accept': 'application/json, text/javascript, */*',
@@ -652,7 +652,7 @@ async function valeras_table() {
 
     $.ajax({
         method: 'POST',
-        url: '/direction/valeras_table',
+        url: routeUrl('direction.valeras_table'),
         data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
         dataType: 'json',
         timeout: 600000
@@ -771,7 +771,7 @@ async function valeras_base_table() {
 
     $.ajax({
         method: 'POST',
-        url: '/direction/valeras_table',
+        url: routeUrl('direction.valeras_table'),
         data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
         dataType: 'json',
         timeout: 600000
@@ -870,7 +870,7 @@ async function valeras_conc_table() {
 
     $.ajax({
         method: 'POST',
-        url: '/direction/valeras_table',
+        url: routeUrl('direction.valeras_table'),
         data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
         dataType: 'json',
         timeout: 600000
@@ -1013,7 +1013,7 @@ async function valeras_graph() {
 
     $.ajax({
         method: 'POST',
-        url: '/direction/valeras_table',
+        url: routeUrl('direction.valeras_table'),
         data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
         dataType: 'json',
         timeout: 600000
@@ -1202,7 +1202,7 @@ function downloadExcel() {
     // Mostrar el indicador de carga
     $('.tab-pane').addClass('loading');
 
-    fetch('/direction/excel_tg6', {
+    fetch(routeUrl('direction.excel_tg6'), {
         method: 'GET'
     })
     .then(response => response.blob()) // Obtener el archivo en formato blob

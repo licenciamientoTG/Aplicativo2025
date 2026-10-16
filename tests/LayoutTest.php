@@ -16,6 +16,9 @@ check('ROUTES se define una sola vez', substr_count($html, 'window.ROUTES') === 
 check('route_url.js se carga una sola vez', substr_count($html, "js_v('route_url.js')") === 1);
 check('ROUTES antes de route_url.js', $pos('window.ROUTES') < $pos("js_v('route_url.js')"));
 check('route_url.js antes de tableros_transition.js', $pos("js_v('route_url.js')") < $pos("js_v('tableros_transition.js')"));
+check('table_route_url.js se carga una sola vez', substr_count($html, "js_v('table_route_url.js')") === 1);
+check('table_route_url.js después de route_url.js', $pos("js_v('route_url.js')") < $pos("js_v('table_route_url.js')"));
+check('table_route_url.js antes de tableros_transition.js', $pos("js_v('table_route_url.js')") < $pos("js_v('tableros_transition.js')"));
 check('ROUTES conserva el default para páginas sin sesión', str_contains($html, "routes_json|default('{}')|raw"));
 
 // ROUTES no puede quedar dentro de un {% if %} del <head>: todas las páginas lo necesitan.
@@ -23,5 +26,8 @@ $head = substr($html, 0, (int)$pos('</head>'));
 $beforeRoutes = substr($head, 0, (int)$pos('window.ROUTES'));
 check('ROUTES fuera de cualquier {% if %} del head',
     preg_match_all('/\{%-?\s*if\b/', $beforeRoutes) === preg_match_all('/\{%-?\s*endif\b/', $beforeRoutes));
+$beforeHelper = substr($head, 0, (int)$pos("js_v('table_route_url.js')"));
+check('table_route_url.js fuera de cualquier {% if %} del head',
+    preg_match_all('/\{%-?\s*if\b/', $beforeHelper) === preg_match_all('/\{%-?\s*endif\b/', $beforeHelper));
 
 finish();

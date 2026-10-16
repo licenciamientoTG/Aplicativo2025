@@ -1,7 +1,7 @@
 # Migración al router explícito (estilo Django) — diseño
 
 **Fecha:** 2026-10-16
-**Estado:** Fase 0 implementada y en `main` (commit `4041cbe2`); su checklist manual con sesión sigue pendiente. Fase 1 implementada en la rama `router-fase-1` (rutas de `xml`, `tableros`, `humancapital` y `marketing`; `errors` sin rutas por D11), con su checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-1.md`. Fase 2, bloque 1 (`petrotal` + `arqueo`) implementado en la rama `router-fase-2-bloque-1`, checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-1.md`. Plan de la Fase 0: `docs/superpowers/plans/2026-10-16-router-fase-0.md`.
+**Estado:** Fase 0 implementada y en `main` (commit `4041cbe2`); su checklist manual con sesión sigue pendiente. Fase 1 implementada en la rama `router-fase-1` (rutas de `xml`, `tableros`, `humancapital` y `marketing`; `errors` sin rutas por D11), con su checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-1.md`. Fase 2, bloque 1 (`petrotal` + `arqueo`) implementado en la rama `router-fase-2-bloque-1`, checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-1.md`. Bloque 2 (`commercial`) implementado en la rama `router-fase-2-bloque-2`, checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-2.md`. Bloque 3 (`direction`) implementado en la rama `router-fase-2-bloque-3`, checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-3.md`. Sub-bloque 4a (`administration`, varios: 16 métodos) implementado en la rama `router-fase-2-bloque-4a`, checklist manual pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-4a.md`. Sub-bloque 4b (anticipos y débito/crédito: 10 métodos) implementado en la rama `router-fase-2-bloque-4b`, con el helper `tableRouteUrl()` (`_assets/js/table_route_url.js`) para tablas que se inicializan en todas las páginas que cargan su JS; checklist pendiente; plan: `docs/superpowers/plans/2026-10-16-router-fase-2-bloque-4b.md`. Pendiente de `administration`: 4c (tickets de Mojo). Plan de la Fase 0: `docs/superpowers/plans/2026-10-16-router-fase-0.md`.
 **Ya implementado:** el router base (`_assets/classes/Router.class.php`, `routes.php`, función Twig `url()`), commits `90d58f0f` y `b774d567`, con `stations` y `home` migrados como ejemplo.
 
 ## 1. Problema
@@ -59,7 +59,7 @@ group('supply/', [ ...rutas... ], ['permission' => 112]);   // el grupo hereda o
 
 ## 5. Fases
 
-Tamaño medido el 2026-10-16: unos **560 métodos públicos** en 22 controladores; `income` (115), `it` (79), `payment` (71), `tableros_api` (64) y `accounting` (45) concentran más de la mitad. Hay más de 1,400 referencias a URLs en `views/` y `_assets/js/`.
+Tamaño medido el 2026-10-16 (corregido el mismo día): unos **985 métodos accesibles por URL** en 22 controladores (sin contar `__construct`). La primera medición (~560) solo contaba los métodos con `public` explícito; en PHP un método sin modificador también es público y el fallback lo expone. Los más grandes: `income` (206), `operations` (131), `payment` (100), `supply` (84), `it` (78), `accounting` (70), `tableros_api` (63) y `administration` (61). Avance al cerrar el bloque 3 de la Fase 2: ~128 métodos resueltos (≈13 %), 107 rutas con nombre. Hay más de 1,400 referencias a URLs en `views/` y `_assets/js/`.
 
 | Fase | Alcance | Prueba antes de seguir |
 |---|---|---|
@@ -101,6 +101,7 @@ Tomadas con los datos reales de los controladores:
 - **Observación del log:** un alias se retira tras **2 semanas sin hits** en `legacy-hits` (aplica en la Fase 5).
 - **Por módulo**, antes de escribir código se presenta la tabla URL nueva / nombre / verbos / parámetros / alias y se aprueba (el plan de cada fase la trae ya propuesta).
 - Los enlaces del menú (`views/layouts/sidebar.html`) de un módulo migrado también pasan a `url()`.
+- **El inventario de cada módulo busca, además de `/modulo/metodo`:** enlaces a la raíz del módulo (`href="/arqueo"`), URLs relativas (`action="graph_prices"`), URLs armadas con globales de Twig (`{{ APP_NAME ~ CONTROLLER }}/metodo`), redirecciones PHP y formularios que hacen POST a su propia URL (la ruta debe aceptar POST). Los cinco casos aparecieron entre la Fase 1 y el bloque 3 de la Fase 2.
 
 ## 8. Fuera de alcance
 

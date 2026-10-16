@@ -70,7 +70,7 @@
                                         {{ item.CantidadDeRegistros | number_format(0, '.', ',') }}
                                     </td>
                                     <td>
-                                        <a href="/administration/get_advances/{{ item.DiaInicialDelMes }}/{{ item.DiaFinalDelMes }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-arrow-right align-middle me-2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
+                                        <a href="{{ url('administration.get_advances', {from: item.DiaInicialDelMes, until: item.DiaFinalDelMes}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-arrow-right align-middle me-2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
                                     </td>
                                 </tr>
                                 {% set total_registros = total_registros + item.CantidadDeRegistros %}
@@ -213,7 +213,7 @@
                                                     <span class="text-muted">Clientes en el periodo</span>
                                                 </div>
                                                 <div class="d-flex justify-content-end">
-                                                    <a href="/administration/get_advance_clients/80/{{ from }}/{{ until }}" target="_blank" class="text-right">Ver detalles -></a>
+                                                    {% if from and until %}<a href="{{ url('administration.get_advance_clients', {percent: 80, from: from, until: until}) }}" target="_blank" class="text-right">Ver detalles -></a>{% endif %}
                                                 </div>
                                             </div>
                                         </div>
@@ -238,7 +238,7 @@
                                                     <span class="text-muted">Clientes en el periodo</span>
                                                 </div>
                                                 <div class="d-flex justify-content-end">
-                                                    <a href="/administration/get_advance_clients/20/{{ from }}/{{ until }}" target="_blank" class="text-right">Ver detalles -></a>
+                                                    {% if from and until %}<a href="{{ url('administration.get_advance_clients', {percent: 20, from: from, until: until}) }}" target="_blank" class="text-right">Ver detalles -></a>{% endif %}
                                                 </div>
                                             </div>
                                         </div>
@@ -421,7 +421,7 @@
                 }
             ],
             ajax: {
-                url: '/administration/datatables_customer_anticipos/' + $('input#from').val() + '/' + $('input#until').val(),
+                url: tableRouteUrl('#datatables_customer_anticipos', 'administration.datatables_customer_anticipos', { from: $('input#from').val(), until: $('input#until').val() }),
                 type: 'POST',
                 error: function() {
                     $('#datatables_customer_anticipos').waitMe('hide');

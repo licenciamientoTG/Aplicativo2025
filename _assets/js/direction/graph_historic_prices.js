@@ -46,7 +46,7 @@ async function graph_week(ctx,product,legendPosition) {
 
 
     try {
-        var response = await fetch('/direction/week_graph', {
+        var response = await fetch(routeUrl('direction.week_graph'), {
             method: 'POST',
             headers: {
                 'Accept': 'application/json, text/javascript, */*',
@@ -145,7 +145,7 @@ async function graph_month(ctx,product,legendPosition) {
     var untilDate = document.getElementById('until').value;
 
     try {
-        var response = await fetch('/direction/graph_month', {
+        var response = await fetch(routeUrl('direction.graph_month'), {
             method: 'POST',
             headers: {
                 'Accept': 'application/json, text/javascript, */*',
@@ -422,7 +422,7 @@ async function historic_price_table_pivot(){
                 'fromDate':fromDate,
                 'untilDate':untilDate
             },
-            url: '/direction/historic_price_table_pivot2',
+            url: routeUrl('direction.historic_price_table_pivot2'),
             error: function() {
                 $('#historic_price_table_pivot').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -526,7 +526,7 @@ async function historic_price_super_table_pivot(){
                 'fromDate':fromDate,
                 'untilDate':untilDate
             },
-            url: '/direction/historic_price_table_pivot2',
+            url: routeUrl('direction.historic_price_table_pivot2'),
             error: function() {
                 $('#historic_price_super_table_pivot').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -630,7 +630,7 @@ async function historic_price_diesel_table_pivot(){
                 'fromDate':fromDate,
                 'untilDate':untilDate
             },
-            url: '/direction/historic_price_table_pivot2',
+            url: routeUrl('direction.historic_price_table_pivot2'),
             error: function() {
                 $('#historic_price_diesel_table_pivot').waitMe('hide');
                 $('.table-responsive').removeClass('loading');

@@ -1794,7 +1794,7 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
         $data = [];
         if ($anticipos = $this->documentosModel->get_anticipos_customer($from, $until)) {
             foreach ($anticipos as $anticipo) {
-                $actions = '<a href="/administration/get_advance_clients_details/'. $anticipo['cod'] .'/'. $from .'/'. $until .'" target="_blank" class="btn btn-sm btn-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
+                $actions = '<a href="' . Router::reverse('administration.get_advance_clients_details', ['codcli' => $anticipo['cod'], 'from' => $from, 'until' => $until]) . '" target="_blank" class="btn btn-sm btn-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
                 $data[] = array(
                     'CODCLIENTE'     => $anticipo['cod'],
                     'CLIENTE'        => $anticipo['Cliente'],
@@ -1835,7 +1835,7 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
         $data = [];
         if ($anticipos) {
             foreach ($anticipos as $anticipo) {
-                $actions = '<a href="/administration/get_advance_clients_details/'. $anticipo['cod'] .'/'. $from .'/'. $until .'" target="_blank" class="btn btn-sm btn-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
+                $actions = '<a href="' . Router::reverse('administration.get_advance_clients_details', ['codcli' => $anticipo['cod'], 'from' => $from, 'until' => $until]) . '" target="_blank" class="btn btn-sm btn-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
                 $data[] = array(
                     'CODCLIENTE' => $anticipo['cod'],
                     'CLIENTE'    => $anticipo['Cliente'],
@@ -1990,9 +1990,11 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
     }
 
     function binnacle_adjustments() {
-        $from = (isset($_GET['from'])) ? $_GET['from'] : date('Y-m-d', strtotime('-3 months')) ;
-        $until = (isset($_GET['until'])) ? $_GET['until'] : date('Y-m-d') ;
-        $station_selected = (isset($_GET['station_selected'])) ? $_GET['station_selected'] : 0 ;
+        // !empty y no isset: un filtro enviado con la fecha vacía usa el valor por defecto
+        // (url() de la vista no acepta parámetros vacíos)
+        $from = (!empty($_GET['from'])) ? $_GET['from'] : date('Y-m-d', strtotime('-3 months')) ;
+        $until = (!empty($_GET['until'])) ? $_GET['until'] : date('Y-m-d') ;
+        $station_selected = (!empty($_GET['station_selected'])) ? $_GET['station_selected'] : 0 ;
         $stations = $this->estacionesModel->get_actives_stations();
 
         echo $this->twig->render($this->route . 'binnacle_adjustments.html', compact('from','until','stations','station_selected'));

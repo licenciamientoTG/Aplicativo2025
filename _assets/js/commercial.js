@@ -31,7 +31,7 @@ async function mistery_shopper_table(){
                 'untilDate':untilDate,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/mistery_shopper_table',
+            url: routeUrl('commercial.mistery_shopper_table'),
             error: function() {
                 $('#mistery_shopper_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -156,7 +156,7 @@ async function lubricants_table(){
                 'untilDate':untilDate,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/lubricants_table',
+            url: routeUrl('commercial.lubricants_table'),
             error: function() {
                 $('#lubricants_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -311,7 +311,7 @@ async function sales_type_payment_table(){
                 'total':0,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/sales_type_payment_table',
+            url: routeUrl('commercial.sales_type_payment_table'),
             error: function() {
                 $('#sales_type_payment_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -442,7 +442,7 @@ async function sales_type_payment_totals_table(){
                 'total':1,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/sales_type_payment_table',
+            url: routeUrl('commercial.sales_type_payment_table'),
             error: function() {
                 $('#sales_type_payment_totals_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -549,7 +549,7 @@ async function mounth_group_table(){
                 'total':0,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/mounth_group_table',
+            url: routeUrl('commercial.mounth_group_table'),
             error: function() {
                 $('#mounth_group_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -904,7 +904,7 @@ async function upload_file_mystery() {
     formData.append('date_mystery', date_mystery);
 
     try {
-        const response = await fetch('/commercial/import_file_mystery_shopper', {
+        const response = await fetch(routeUrl('commercial.import_file_mystery_shopper'), {
             method: 'POST',
             body: formData
         });
@@ -992,7 +992,7 @@ async function sale_month_turn_table(){
                 'total':total,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/sale_month_turn_table',
+            url: routeUrl('commercial.sale_month_turn_table'),
             error: function() {
                 $('#sale_month_turn_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -1221,7 +1221,7 @@ async function sale_month_turn_table_no_total(){
                 'total':total,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/sale_month_turn_table',
+            url: routeUrl('commercial.sale_month_turn_table'),
                 error: function() {
                 $('#sale_month_turn_table_no_total').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -1374,7 +1374,7 @@ async function sale_month_turn_base_table(){
                 'untilDate':untilDate,
                 'zona':zona
             },
-            url: '/commercial/sale_month_turn_base_table',
+            url: routeUrl('commercial.sale_month_turn_base_table'),
             error: function() {
                 $('#sale_month_turn_base_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -1455,7 +1455,7 @@ async function sale_week_zone_table(){
                 'untilDate':untilDate,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/sale_week_zone_table',
+            url: routeUrl('commercial.sale_week_zone_table'),
             error: function() {
                 $('#sale_week_zone_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -1594,7 +1594,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     'zona':zona,
                     'dinamicColumns': dynamicColumns
                 },
-                url: '/commercial/sales_indicators_table',
+                url: routeUrl('commercial.sales_indicators_table'),
                 error: function() {
                     $('#sales_indicators_table').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
@@ -1730,7 +1730,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     'zona':zona,
                     'dinamicColumns': dynamicColumns
                 },
-                url: '/commercial/sales_indicators_table',
+                url: routeUrl('commercial.sales_indicators_table'),
                 error: function() {
                     $('#sales_indicators_totals_table').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
@@ -1976,7 +1976,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     'untilDate':untilDate,
                     'dinamicColumns': dynamicColumns
                 },
-                url: '/commercial/lubricants_table_month',
+                url: routeUrl('commercial.lubricants_table_month'),
                 error: function() {
                     alert("Error al obtener datos");
                 }
@@ -2082,7 +2082,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     'untilDate': untilDate,
                     'dinamicColumns': dynamicColumns
                 },
-                url: '/commercial/lubricants_table_day',
+                url: routeUrl('commercial.lubricants_table_day'),
                 error: function() {
                     $('#lubricants_table_day').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
@@ -2196,7 +2196,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     'fromDate': fromDate,
                     'untilDate': untilDate
                 },
-                url: '/commercial/lubricants_table_base',
+                url: routeUrl('commercial.lubricants_table_base'),
                 error: function() {
                     alertify.myAlert(
                         `<div class="container text-center text-danger">
@@ -2275,7 +2275,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     'total':0,
                     'dinamicColumns': dynamicColumns
                 },
-                url: '/commercial/mounth_company_table',
+                url: routeUrl('commercial.mounth_company_table'),
                 error: function() {
                     $('#mounth_company_table').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
@@ -2363,7 +2363,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         var lastYearUntil = subtracYear(untilDate);
         var dynamicColumns = getMounthCompanyColumns(lastYearFrom, lastYearUntil,'mounth_company_table');
         try {
-            const response = await fetch('/commercial/mounth_company_table2', {
+            const response = await fetch(routeUrl('commercial.mounth_company_table2'), {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json, text/javascript, */*',
@@ -2803,7 +2803,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     'total':0,
                     'dinamicColumns': dynamicColumns
                 },
-                url: '/commercial/mounth_estation_table',
+                url: routeUrl('commercial.mounth_estation_table'),
                 error: function() {
                     $('#mounth_estation_table').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
@@ -2899,7 +2899,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         $(ESTATION_CONTAINERS.join(',')).addClass('loading');
         try {
             const [jsonData, currentEventos, previousEventos] = await Promise.all([
-                fetch('/commercial/mounth_estation_table', {
+                fetch(routeUrl('commercial.mounth_estation_table'), {
                     method: 'POST',
                     headers: {
                         'Accept': 'application/json, text/javascript, */*',
@@ -3007,7 +3007,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     async function differencesInfoModal() {
         try {
             $('#differencesInfoModal').modal('show');
-            const response = await fetch('/commercial/differencesInfoModal', {
+            const response = await fetch(routeUrl('commercial.differencesInfoModal'), {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json, text/javascript, */*',
@@ -3025,7 +3025,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     // Trae monto y # de transacciones por Estacion + MedioPago desde Despachos (VentasModel::getMounthEstationEventos)
     async function fetchMounthEstationEventos(fromDate, untilDate, estation) {
         try {
-            const response = await fetch('/commercial/mounth_estation_eventos', {
+            const response = await fetch(routeUrl('commercial.mounth_estation_eventos'), {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json, text/javascript, */*',
@@ -3064,7 +3064,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         formData.append('date_budget', date_budget);
     
         try {
-            const response = await fetch('/commercial/import_file_budget', {
+            const response = await fetch(routeUrl('commercial.import_file_budget'), {
                 method: 'POST',
                 body: formData
             });
@@ -3098,7 +3098,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     
     }
     function download_format_budget(){
-        fetch('/commercial/download_format_budget')
+        fetch(routeUrl('commercial.download_format_budget'))
         .then(response => {
             if (!response.ok) {
                 throw new Error('Error en la descarga del archivo');
@@ -3166,7 +3166,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     'untilDate':untilDate,
                     'zona':zona
                 },
-                url: '/commercial/sales_global_table',
+                url: routeUrl('commercial.sales_global_table'),
                 error: function() {
                     $('#sales_global_table').waitMe('hide');
                     $('.table-responsive').removeClass('loading');
