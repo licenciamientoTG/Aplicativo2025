@@ -31,7 +31,7 @@ function crearSesion() {
     toastr.warning("Nombre y fecha son obligatorios.");
     return;
   }
-  ajaxJson("/arqueo/crear_sesion", { nombre: nombre, fecha: fecha }).then((res) => {
+  ajaxJson(routeUrl('arqueo.crear_sesion'), { nombre: nombre, fecha: fecha }).then((res) => {
     if (res.success) {
       toastr.success("Arqueo programado.");
       setTimeout(() => location.reload(), 800);
@@ -46,7 +46,7 @@ function abrirSesion(id) {
     "Abrir arqueo",
     "¿Abrir este arqueo para que los auditores capturen?",
     () => {
-      ajaxJson("/arqueo/abrir/" + id, {}).then((res) => {
+      ajaxJson(routeUrl('arqueo.abrir', { sesion_id: id }), {}).then((res) => {
         if (res.success) {
           toastr.success("Arqueo abierto.");
           setTimeout(() => location.reload(), 600);
@@ -64,7 +64,7 @@ function cerrarSesion(id) {
     "Cerrar arqueo",
     "Al cerrar, el arqueo queda inmutable. ¿Continuar?",
     () => {
-      ajaxJson("/arqueo/cerrar/" + id, {}).then((res) => {
+      ajaxJson(routeUrl('arqueo.cerrar', { sesion_id: id }), {}).then((res) => {
         if (res.success) {
           toastr.success("Arqueo cerrado.");
           setTimeout(() => location.reload(), 600);
@@ -259,7 +259,7 @@ function guardarCaja() {
     vales: vales,
   };
 
-  ajaxJson("/arqueo/guardar_caja/" + cajaId, payload).then((res) => {
+  ajaxJson(routeUrl('arqueo.guardar_caja', { caja_id: cajaId }), payload).then((res) => {
     if (res.success) {
       toastr.success("Arqueo guardado.");
       // La caja ya tiene captura guardada: desbloquear el botón Imprimir.

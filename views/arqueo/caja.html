@@ -88,12 +88,12 @@
     <span>
         {# Se bloquea solo mientras la caja no tenga captura guardada; al guardar
            por AJAX el JS quita data-bloqueado sin necesidad de recargar. #}
-        <a href="/arqueo/imprimir_caja/{{ caja.id }}" target="_blank" id="btn_imprimir"
+        <a href="{{ url('arqueo.imprimir_caja', {caja_id: caja.id}) }}" target="_blank" id="btn_imprimir"
            class="btn btn-outline-secondary small" style="border-radius:15px;" title="Imprime lo último guardado"
            {% if caja.estado == 'pendiente' %}data-bloqueado="1"{% endif %}>
             <i class="fas fa-print"></i> Imprimir
         </a>
-        <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+        <a href="{{ url('arqueo.index') }}" class="btn btn-primary text-light small" style="border-radius:15px;">
             <i class="fas fa-backward"></i> Regresar
         </a>
     </span>

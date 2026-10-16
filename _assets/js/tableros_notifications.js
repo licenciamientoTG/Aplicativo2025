@@ -50,7 +50,7 @@
   function boardHref(item) {
     const boardId = item.board_id ?? item.related_board_id;
     if (boardId == null || !/^[A-Za-z0-9_-]+$/.test(String(boardId))) return '';
-    const url = new URL(`/tableros/board/${encodeURIComponent(String(boardId))}`, window.location.origin);
+    const url = new URL(routeUrl('tableros.board', { id: String(boardId) }), window.location.origin);
     const payload = item.payload && typeof item.payload === 'object' ? item.payload : {};
     if (['file.comment.mention', 'file.comment.created'].includes(item.event_type)) {
       const fileId = item.file_id ?? item.related_file_id ?? payload.file_id ?? payload.fileId;

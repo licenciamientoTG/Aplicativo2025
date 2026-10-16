@@ -71,10 +71,10 @@
 <div style="display:flex; justify-content:space-between; align-items:center;">
     <span>Concentrado — {{ sesion.nombre }} ({{ sesion.fecha|date('d/m/Y') }})</span>
     <span>
-        <a href="/arqueo/auditoria/{{ sesion.id }}" class="btn btn-outline-light small" style="border-radius:15px; border-color:#fff;">
+        <a href="{{ url('arqueo.auditoria', {sesion_id: sesion.id}) }}" class="btn btn-outline-light small" style="border-radius:15px; border-color:#fff;">
             <i class="fas fa-history"></i> Auditoría
         </a>
-        <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+        <a href="{{ url('arqueo.index') }}" class="btn btn-primary text-light small" style="border-radius:15px;">
             <i class="fas fa-backward"></i> Regresar
         </a>
     </span>
@@ -456,7 +456,7 @@
     payload[campo] = nuevo;
 
     $td.find('.icono-guardar').removeClass('fa-check').addClass('fa-spinner fa-spin');
-    fetch('/arqueo/guardar_concentrado_extra', {
+    fetch('{{ url('arqueo.guardar_concentrado_extra') }}', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
       body: JSON.stringify(payload)
@@ -548,7 +548,7 @@
       utilidad: parseFloat(document.getElementById('mx_utilidad').value) || 0,
       actualizar_base: document.getElementById('mx_actualizar_base').checked,
     };
-    fetch('/arqueo/guardar_concentrado_extra', {
+    fetch('{{ url('arqueo.guardar_concentrado_extra') }}', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
       body: JSON.stringify(payload)
@@ -574,7 +574,7 @@
   }
 
   function cargarImagenes() {
-    fetch('/arqueo/imagenes_concentrado?sesion_id={{ sesion.id }}&sucursal_id=' + imgSucursalId, {
+    fetch('{{ url('arqueo.imagenes_concentrado') }}?sesion_id={{ sesion.id }}&sucursal_id=' + imgSucursalId, {
       headers: {'X-Requested-With': 'XMLHttpRequest'}
     })
       .then(r => r.json())
@@ -590,7 +590,9 @@
     const $galeria = $('#galeria_imagenes').empty();
     $('#galeria_vacia').toggle(imagenes.length === 0);
     imagenes.forEach(function (img) {
-      const url = '/arqueo/ver_imagen_concentrado/' + img.id;
+      // routeUrl lanza con un id no numérico: se salta esa imagen y se pintan las demás
+      if (!/^[0-9]+$/.test(String(img.id))) return;
+      const url = routeUrl('arqueo.ver_imagen_concentrado', { imagen_id: img.id });
       $galeria.append(
         '<div class="galeria-item">' +
           '<a href="' + url + '" target="_blank" title="' + escHtml(img.original_filename) + '">' +
@@ -626,7 +628,7 @@
     const $btn = $('#btn_subir_imagenes').prop('disabled', true);
     $btn.find('i').removeClass('fa-upload').addClass('fa-spinner fa-spin');
 
-    fetch('/arqueo/subir_imagen_concentrado', {
+    fetch('{{ url('arqueo.subir_imagen_concentrado') }}', {
       method: 'POST',
       headers: {'X-Requested-With': 'XMLHttpRequest'},
       body: fd
@@ -646,7 +648,7 @@
 
   function eliminarImagen(imagenId) {
     if (!confirm('¿Eliminar esta imagen?')) return;
-    fetch('/arqueo/eliminar_imagen_concentrado', {
+    fetch('{{ url('arqueo.eliminar_imagen_concentrado') }}', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
       body: JSON.stringify({ imagen_id: imagenId })

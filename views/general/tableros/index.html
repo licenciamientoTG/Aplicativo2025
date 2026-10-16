@@ -5,14 +5,14 @@
 <div class="wrapper tableros-shell">
   <aside id="sidebar" class="sidebar js-sidebar tableros-shell-sidebar" aria-label="Navegación de Tableros">
     <div class="sidebar-content js-simplebar">
-      <a class="tableros-shell-brand" href="/tableros/index" aria-label="Tableros TotalGas">
+      <a class="tableros-shell-brand" href="{{ url('tableros.index') }}" aria-label="Tableros TotalGas">
         <img src="{{ IMAGES }}logos/Logo.png" alt="TotalGas">
       </a>
       <div class="tableros-shell-product" aria-label="Módulo Tableros"><span>Tableros</span></div>
       <nav class="tableros-shell-nav">
-        <a class="tableros-shell-link{% if not manage_boards|default(false) and not manage_workspaces|default(false) %} is-active{% endif %}" href="/tableros/index" aria-label="Tableros" title="Tableros"{% if not manage_boards|default(false) and not manage_workspaces|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>Tableros</span></a>
-        <a class="tableros-shell-link{% if manage_boards|default(false) %} is-active{% endif %}" href="/tableros/manage" aria-label="Gestionar tableros" title="Gestionar tableros"{% if manage_boards|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Gestionar tableros</span></a>
-        <a class="tableros-shell-link{% if manage_workspaces|default(false) %} is-active{% endif %}" href="/tableros/manage_workspaces" aria-label="Gestionar espacios de trabajo" title="Gestionar espacios de trabajo"{% if manage_workspaces|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>Gestionar espacios</span></a>
+        <a class="tableros-shell-link{% if not manage_boards|default(false) and not manage_workspaces|default(false) %} is-active{% endif %}" href="{{ url('tableros.index') }}" aria-label="Tableros" title="Tableros"{% if not manage_boards|default(false) and not manage_workspaces|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>Tableros</span></a>
+        <a class="tableros-shell-link{% if manage_boards|default(false) %} is-active{% endif %}" href="{{ url('tableros.manage') }}" aria-label="Gestionar tableros" title="Gestionar tableros"{% if manage_boards|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Gestionar tableros</span></a>
+        <a class="tableros-shell-link{% if manage_workspaces|default(false) %} is-active{% endif %}" href="{{ url('tableros.manage_workspaces') }}" aria-label="Gestionar espacios de trabajo" title="Gestionar espacios de trabajo"{% if manage_workspaces|default(false) %} aria-current="page"{% endif %}><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>Gestionar espacios</span></a>
       </nav>
     </div>
   </aside>

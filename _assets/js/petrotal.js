@@ -53,7 +53,7 @@ $(function () {
       return;
     }
 
-    $.get('/petrotal/preview_json', { desde: desde, hasta: hasta })
+    $.get(routeUrl('petrotal.preview_json'), { desde: desde, hasta: hasta })
       .done(function (respuesta) {
         if (respuesta.error) {
           alert(respuesta.error);
@@ -74,7 +74,7 @@ $(function () {
 
   $('#btn_generar_json').on('click', function () {
     if (!ultimoReporte) return;
-    $.post('/petrotal/generar_json', {
+    $.post(routeUrl('petrotal.generar_json'), {
       desde: $('#periodo_desde').val(),
       hasta: $('#periodo_hasta').val(),
     })
@@ -96,7 +96,7 @@ $(function () {
     if (!envioId) return;
     if (!confirm('¿Enviar este reporte a la CNE? Esta acción intentará el envío real.')) return;
 
-    $.post('/petrotal/enviar_reporte', { envio_id: envioId })
+    $.post(routeUrl('petrotal.enviar_reporte'), { envio_id: envioId })
       .done(function (respuesta) {
         if (respuesta.ok) {
           alert('Reporte enviado. Folio de acuse: ' + (respuesta.folio_acuse || '(pendiente)'));

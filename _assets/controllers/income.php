@@ -518,6 +518,20 @@ public function balance_age()
         json_output(['data' => $rows ?: []]);
     }
 
+    /** Reporte de anticipos de clientes débito. POST /income/debit_anticipos_table (codcli=0 → todos). */
+    public function debit_anticipos_table() : void {
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        $from   = $this->createDateTime($_POST['from']  ?? date('Y-m-01'));
+        $until  = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+
+        $rows = $this->clientesModel->get_debit_anticipos_report(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $codcli
+        );
+        json_output(['data' => $rows ?: []]);
+    }
+
     public function client_overdue_table() : void {
         $codcli = (int)($_POST['codcli'] ?? 0);
         if ($codcli <= 0) {
@@ -762,33 +776,6 @@ public function balance_age()
             }
         }
         json_output(array("data" => $data));
-    }
-
-    function cash_invoices(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'cash_invoices.html');
-        }
-    }
-
-    function cash_invoices_table(){
-        ini_set('memory_limit', '512M');
-        set_time_limit(300);
-
-        $data  = [];
-        $from  = dateToInt($_POST['from']);
-        $until = dateToInt($_POST['until']);
-
-        if ($rows = $this->despachosModel->cash_invoices_advance($from, $until)) {
-            foreach ($rows as $r) {
-                $data[] = [
-                    'codcli'       => $r['codcli'],
-                    'cliente'      => $r['den'],
-                    'n_despachos'  => (int)$r['n_despachos'],
-                    'monto'        => (float)$r['monto'],
-                ];
-            }
-        }
-        json_output(['data' => $data]);
     }
 
 function invoice_client_desp(){
@@ -1188,6 +1175,8 @@ public function anomalies_clients_visual()
     $yearStr = date("Y", strtotime($fechaTargetInicio));
     $fechaVisualFin = $yearStr . '-12-31';
 
+    // El modelo ya no envía cabeceras HTTP: la respuesta JSON la declara el controlador.
+    header('Content-Type: application/json');
     try {
         $data = $this->despachosModel->get_anomalies_visual_data(
             $fechaTargetInicio, 

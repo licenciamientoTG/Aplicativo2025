@@ -2257,141 +2257,6 @@ function debit_dashboard_table(){
     });
 }
 
-////////////////////////
-
-// let cashTable = null;
-
-// $(function () {
-//   cashTable = $('#cash_invoices_table').DataTable({
-//     responsive: true,
-//     destroy: true,
-//     columns: [
-//       { data: 'codcli' },
-//       { data: 'cliente' },
-//       {
-//         data: 'monto',
-//         render: d => Number(d).toLocaleString(undefined, {
-//           minimumFractionDigits: 2,
-//           maximumFractionDigits: 2
-//         })
-//       }
-//     ]
-//   });
-// });
-
-// function setLoading(isLoading) {
-//   const $btn = $('#search_cash_invoices_table');
-//   $btn.prop('disabled', isLoading);
-//   $btn.text(isLoading ? 'Cargando…' : 'Generar Reporte');
-// }
-
-// window.cash_invoices_table = async function () {
-//   const from  = $('#from').val();
-//   const until = $('#until').val();
-
-//   setLoading(true);
-//   try {
-//     const res = await $.ajax({
-//       url: '/income/cash_invoices_table',
-//       method: 'POST',
-//       dataType: 'json',
-//       data: {
-//         from,
-//         until,
-//       }
-//     });
-
-
-//     if (!res || typeof res !== 'object' || !Array.isArray(res.data)) {
-//       console.error('Respuesta inesperada:', res);
-//       alert('Respuesta inesperada del servidor. Revisa la consola.');
-//       return;
-//     }
-
-//     cashTable.clear().rows.add(res.data).draw();
-//   } catch (jqXHR) {
-//     console.group('cash_invoices_table AJAX error');
-//     console.error('status:', jqXHR.status);
-//     console.error('statusText:', jqXHR.statusText);
-//     console.error('responseText:', jqXHR.responseText);
-//     console.error('responseJSON:', jqXHR.responseJSON);
-//     console.groupEnd();
-
-//     let msg = 'No se pudo generar el reporte.';
-//     if (jqXHR.responseJSON?.error) msg += ` ${jqXHR.responseJSON.error}`;
-//     alert(msg);
-//   } finally {
-//     setLoading(false);
-//   }
-// };
-
-async function cash_invoices_table(){
-    if ($.fn.DataTable.isDataTable('#cash_invoices_table')) {
-        $('#cash_invoices_table').DataTable().destroy();
-        $('#cash_invoices_table thead .filter').remove();
-    }
-    const from  = $('#from').val();
-    const until = $('#until').val();
-
-    $('#cash_invoices_table thead').prepend($('#cash_invoices_table thead tr').clone().addClass('filter'));
-    $('#cash_invoices_table thead tr.filter th').each(function (index) {
-        const col = $('#cash_invoices_table thead th').length/2;
-        if (index < col ) {
-            const title = $(this).text();
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" '+ title +'" />');
-        }
-    });
-    $('#cash_invoices_table thead tr.filter th input').on('keyup change', function () {
-        const index = $(this).parent().index();
-        const table = $('#cash_invoices_table').DataTable();
-        table.column(index).search(this.value).draw();
-    });
-
-    let dt = $('#cash_invoices_table').DataTable({
-        order: [3, "desc"], // ahora Monto es la columna 3
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        buttons: [
-            { extend: 'excel', className: 'btn btn-success', text: ' Excel' }
-        ],
-        ajax: {
-            method: 'POST',
-            data: { from, until },
-            url: '/income/cash_invoices_table',
-            timeout: 600000,
-            error: function() {
-                $('#cash_invoices_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
-                alertify.myAlert(`
-                    <div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>
-                `);
-            },
-            beforeSend: function() { $('.table-responsive').addClass('loading'); }
-        },
-        columns: [
-            { data: 'codcli',      className:'text-nowrap' },
-            { data: 'cliente' },
-            { data: 'n_despachos', render: $.fn.dataTable.render.number(',','.',0), className: 'text-center' },
-            { data: 'monto',       render: $.fn.dataTable.render.number(',','.',2) }
-        ],
-        deferRender: true,
-        createdRow: function (row, data, dataIndex) {},
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-        },
-        footerCallback: function (row, data, start, end, display) {}
-    });
-}
-
 $('#dispatches_table_2').DataTable({
     order: [2, "desc"],  // Ordenar por Fecha de Transacción de manera descendente
     scrollY: '400px',
@@ -3082,6 +2947,87 @@ function edo_debit_drill(drill, codcli, cliente) {
         $('#modal_edo_drill_table tfoot').html(cfg.total(rows));
     }, 'json').fail(function () {
         $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + cfg.headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
+    });
+}
+
+// ── Anticipos Débito (reporte de facturas de anticipo) ──────────────────────
+
+function anticipos_debit_table(mode) {
+    // mode 'all' = todos los clientes por fecha; 'cli' = un cliente (obligatorio)
+    var tbl = '#anticipos_' + mode + '_table';
+    var codcli = mode === 'cli' ? parseInt($('#cliente_anticipos_cli').val(), 10) || 0 : 0;
+
+    if (mode === 'cli' && codcli <= 0) {
+        alertify.myAlert('<div class="text-center text-warning"><h4>Falta el cliente</h4><p>Selecciona un cliente para consultar.</p></div>');
+        return;
+    }
+
+    if ($.fn.DataTable.isDataTable(tbl)) {
+        $(tbl).DataTable().destroy();
+        $(tbl + ' thead .filter').remove();
+    }
+
+    $(tbl + ' thead').prepend($(tbl + ' thead tr').clone().addClass('filter'));
+    $(tbl + ' thead tr.filter th').each(function (index) {
+        var col = $(tbl + ' thead th').length / 2;
+        if (index < col) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $(tbl + ' thead tr.filter th input').on('keyup change', function () {
+        $(tbl).DataTable()
+            .column($(this).parent().index())
+            .search(this.value).draw();
+    });
+
+    var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
+    var moneyCols = [6, 7, 8];
+
+    $(tbl).DataTable({
+        ordering: true,
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        ajax: {
+            method: 'POST',
+            url: '/income/debit_anticipos_table',
+            timeout: 120000,
+            data: function (d) {
+                d.codcli = codcli;
+                d.from   = $('#from_anticipos_' + mode).val();
+                d.until  = $('#until_anticipos_' + mode).val();
+            },
+            dataSrc: function (json) { return json.data || []; },
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No se pudo consultar el reporte.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        columns: [
+            { data: 'codcli' },
+            { data: 'Cliente',  className: 'text-nowrap' },
+            { data: 'RFC',      className: 'text-nowrap' },
+            { data: 'Fecha',    className: 'text-center text-nowrap' },
+            { data: 'Factura',  className: 'text-nowrap' },
+            { data: 'Estacion', className: 'text-nowrap' },
+            { data: 'Subtotal', render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'IVA',      render: numFmt, className: 'text-nowrap text-end' },
+            { data: 'Total',    render: numFmt, className: 'text-nowrap text-end' },
+        ],
+        deferRender: true,
+        initComplete: function () { $('.table-responsive').removeClass('loading'); },
+        footerCallback: function () {
+            var api = this.api();
+            moneyCols.forEach(function (idx) {
+                var total = api.column(idx, { search: 'applied' }).data()
+                    .reduce(function (a, b) { return (parseFloat(a) || 0) + (parseFloat(b) || 0); }, 0);
+                $(api.column(idx).footer()).html('$' + total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            });
+        }
     });
 }
 

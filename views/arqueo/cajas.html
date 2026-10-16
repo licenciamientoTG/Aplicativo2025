@@ -17,11 +17,11 @@
     <span>Cajas — {{ sesion.nombre }} ({{ sesion.fecha|date('d/m/Y') }})</span>
     <span>
         {% if es_admin %}
-        <a href="/arqueo/exportar_cajas/{{ sesion.id }}" class="btn btn-success text-light small" style="border-radius:15px;">
+        <a href="{{ url('arqueo.exportar_cajas', {sesion_id: sesion.id}) }}" class="btn btn-success text-light small" style="border-radius:15px;">
             <i class="fas fa-file-excel"></i> Descargar Excel
         </a>
         {% endif %}
-        <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+        <a href="{{ url('arqueo.index') }}" class="btn btn-primary text-light small" style="border-radius:15px;">
             <i class="fas fa-backward"></i> Regresar
         </a>
     </span>
@@ -88,7 +88,7 @@
             {{ c.estado == 'completado' ? (c.resultado_final|number_format(2,'.',',')) : '—' }}
           </td>
           <td class="text-end">
-            <a href="/arqueo/caja/{{ c.id }}" class="btn btn-sm {{ sesion.estado == 'cerrado' ? 'btn-outline-secondary' : 'btn-primary' }}">
+            <a href="{{ url('arqueo.caja', {caja_id: c.id}) }}" class="btn btn-sm {{ sesion.estado == 'cerrado' ? 'btn-outline-secondary' : 'btn-primary' }}">
               {% if sesion.estado == 'cerrado' %}
                 <i class="fas fa-eye"></i> Ver
               {% elseif c.estado == 'completado' %}
@@ -114,7 +114,7 @@
     var anterior = sel.getAttribute('data-anterior') ?? String(sel.value);
     var userId = parseInt(sel.value, 10) || 0;
     $sel.closest('.bootstrap-select').find('.dropdown-toggle').prop('disabled', true);
-    fetch('/arqueo/asignar_caja', {
+    fetch('{{ url('arqueo.asignar_caja') }}', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
       body: JSON.stringify({ caja_id: parseInt(sel.getAttribute('data-caja-id'), 10), user_id: userId })

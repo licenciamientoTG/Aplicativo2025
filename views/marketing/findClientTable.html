@@ -69,11 +69,17 @@
                                     Acciones
                                 </button>
                                 <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item" href="/marketing/print_card/{{ vehicle.Tarjeta }}/{{ vehicle.cod }}" target="_blank">Imprimir tarjeta</a></li>
-                                    <li><a class="dropdown-item" href="/marketing/print_card_2/{{ vehicle.Tarjeta }}/{{ vehicle.cod }}" target="_blank">Imprimir tarjeta (+QueGas)</a></li>
-                                    <li><a class="dropdown-item" href="/marketing/print_uber_card/{{ vehicle.Tarjeta }}/{{ vehicle.cod }}" target="_blank">Imprimir tarjeta (Uber)</a></li>
+                                    {# url() lanza si falta un parámetro: sin la guarda, un vehículo sin tarjeta rompería toda la tabla #}
+                                    {% if vehicle.Tarjeta is not empty and vehicle.cod is not empty %}
+                                    {% set card_params = {card: vehicle.Tarjeta, codcli: vehicle.cod} %}
+                                    <li><a class="dropdown-item" href="{{ url('marketing.print_card', card_params) }}" target="_blank">Imprimir tarjeta</a></li>
+                                    <li><a class="dropdown-item" href="{{ url('marketing.print_card_2', card_params) }}" target="_blank">Imprimir tarjeta (+QueGas)</a></li>
+                                    <li><a class="dropdown-item" href="{{ url('marketing.print_uber_card', card_params) }}" target="_blank">Imprimir tarjeta (Uber)</a></li>
                                     <!-- <li><a class="dropdown-item" href="/marketing/print_sticker/{{ vehicle.Tarjeta }}/{{ vehicle.cod }}" target="_blank">Imprimir engomado</a></li> -->
-                                    <li><a class="dropdown-item" href="/marketing/print_sticker_2/{{ vehicle.Tarjeta }}/{{ vehicle.cod }}" target="_blank">Imprimir engomado</a></li>
+                                    <li><a class="dropdown-item" href="{{ url('marketing.print_sticker_2', card_params) }}" target="_blank">Imprimir engomado</a></li>
+                                    {% else %}
+                                    <li><span class="dropdown-item disabled">Sin tarjeta asignada</span></li>
+                                    {% endif %}
                                 </ul>
                             </div>
                         </td>
@@ -143,7 +149,11 @@
                                     Acciones
                                 </button>
                                 <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item" href="/marketing/print_driver_card/{{ driver.codcli }}/{{ driver.nrocho }}" target="_blank">Imprimir tarjeta</a></li>
+                                    {% if driver.codcli is not empty and driver.nrocho is not empty %}
+                                    <li><a class="dropdown-item" href="{{ url('marketing.print_driver_card', {codcli: driver.codcli, nrocho: driver.nrocho}) }}" target="_blank">Imprimir tarjeta</a></li>
+                                    {% else %}
+                                    <li><span class="dropdown-item disabled">Sin datos del chofer</span></li>
+                                    {% endif %}
                                 </ul>
                             </div>
                         </td>
@@ -179,7 +189,7 @@
                 <h1 class="modal-title fs-5" id="stickerModalLabel">Política de engomados y tarjetas</h1>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form action="/marketing/stickerModal" method="post">
+            <form action="{{ url('marketing.stickerModal') }}" method="post">
                 <div class="modal-body">
                     <p>Por favor, seleccione los vehiculos por categoria: </p>
                     <div class="card-body table-responsive">

@@ -99,7 +99,7 @@
         <div class="card-body">
             <div class="row">
                 <div class="col">
-                    <form action="/xml/generatexml" method="get" target="_blank">
+                    <form action="{{ url('xml.generatexml') }}" method="get" target="_blank">
                         <input type="hidden" name="from" value="{{ from }}">
                         <input type="hidden" name="codgas" value="{{ codgas_string }}">
                         <input type="hidden" name="companyDenominacion" value="{{ companyRfc }}">

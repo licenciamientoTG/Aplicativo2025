@@ -165,6 +165,7 @@
         <a class="sidebar-link" href="/station_portal/mis_recepciones">
           <i data-feather="truck"></i>
           <span class="align-middle">Recepciones</span>
+          {% if tg_user['IdEstacion']|default(0) > 0 %}<span class="badge bg-danger ms-1 js-alerta-recepciones" hidden></span>{% endif %}
         </a>
       </li>
       {% endif %}
@@ -254,7 +255,7 @@
       {% if authorized(73) or authorized(74) %}
       <li class="sidebar-header">ARQUEO DOLLAR2GO</li>
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/arqueo">
+        <a class="sidebar-link" href="{{ url('arqueo.index') }}">
           <i data-feather="dollar-sign"></i>
           <span class="align-middle">Arqueos</span>
         </a>
@@ -606,9 +607,6 @@
             </a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/income/cash_invoices">Facturas de Contado</a>
-          </li>
-          <li class="sidebar-item">
             <a class="sidebar-link" href="/income/stamped_invoices">Facturas timbradas</a>
           </li>
         </ul>
@@ -651,20 +649,20 @@
         {% if authorized(26) %}
         <ul id="marketing_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/client_cards">Tarjetas y engomados</a>
-            <a class="sidebar-link" href="/marketing/client_cards_nexus">Tarjetas nexus</a>
-            <a class="sidebar-link" href="/marketing/client_cards_nexus">Tarjetas nexus</a>
+            <a class="sidebar-link" href="{{ url('marketing.client_cards') }}">Tarjetas y engomados</a>
+            <a class="sidebar-link" href="{{ url('marketing.client_cards_nexus') }}">Tarjetas nexus</a>
+            <a class="sidebar-link" href="{{ url('marketing.client_cards_nexus') }}">Tarjetas nexus</a>
           </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/control_dispatches">Control de Despachos
             </a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/mqg_cards">Tarjetas MasQueGas</a>
+            <a class="sidebar-link" href="{{ url('marketing.mqg_cards') }}">Tarjetas MasQueGas</a>
           </li>
 
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/print_sticker/station/1/2/">Etiquetas inventarios</a>
+            <a class="sidebar-link" href="{{ url('marketing.print_sticker', {station: 'station', from: '1', until: '2'}) }}">Etiquetas inventarios</a>
           </li>
         </ul>
         {% endif %}
@@ -688,6 +686,7 @@
         <a class="sidebar-link" href="/station_portal/mis_recepciones">
           <i data-feather="truck"></i>
           <span class="align-middle">Mis Recepciones</span>
+          {% if tg_user['IdEstacion']|default(0) > 0 %}<span class="badge bg-danger ms-1 js-alerta-recepciones" hidden></span>{% endif %}
         </a>
       </li>
       {% endif %} {% if authorized(21) %}
@@ -792,20 +791,20 @@
       {% if authorized(98) %}
       <li class="sidebar-header">PETROTAL</li>
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/petrotal/volumetricos">
+        <a class="sidebar-link" href="{{ url('petrotal.volumetricos') }}">
           <i data-feather="upload-cloud"></i>
           <span class="align-middle">Reporte CNE / Volumétricos</span>
         </a>
       </li>
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/petrotal/historial">
+        <a class="sidebar-link" href="{{ url('petrotal.historial') }}">
           <i data-feather="archive"></i>
           <span class="align-middle">Historial de envíos</span>
         </a>
       </li>
       {% if authorized(99) %}
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/petrotal/configuracion_fiel">
+        <a class="sidebar-link" href="{{ url('petrotal.configuracion_fiel') }}">
           <i data-feather="key"></i>
           <span class="align-middle">Configuración FIEL</span>
         </a>

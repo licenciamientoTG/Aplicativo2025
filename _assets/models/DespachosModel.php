@@ -1,26 +1,129 @@
 <?php
-class DespachosModel extends Model{
-    public $id;
-    public $name;
-    public $lastname;
-    public $image;
-    public $username;
-    public $password;
-    public $type;
-    public $active;
-    public $updated_at;
-    public $created_at;
-    public $short_databases;
-    public $linked_server;
+declare(strict_types=1);
+
+/**
+ * DespachosModel — acceso a datos de despachos (tabla [SG12].[dbo].[Despachos]
+ * del servidor central y las copias locales de cada estación).
+ *
+ * Organización del archivo (cada sección tiene su banner):
+ *   1. Utilidades internas (resolución de estación, validaciones)
+ *   2. Consulta puntual de despachos
+ *   3. Liberación / marcado de despachos (escrituras)
+ *   4. Tabulador y corte de turno
+ *   5. Despachos de crédito/débito (liberación y verificación)
+ *   6. Reporte "Control de Despachos" (corporativo y por estación)
+ *   7. Ventas por estación / hora, dashboards
+ *   8. Facturación global y CFDI
+ *   9. Detección de anomalías de facturación por cliente
+ *
+ * Convenciones del esquema (importante para leer el SQL):
+ *  - fchtrn / fchcor / fch son ENTEROS: (días desde 1900-01-01) + 1. La fecha
+ *    real es DATEADD(day, -1, x). Desde PHP se obtienen con dateToInt().
+ *  - hratrn es hhmm (p. ej. 1405 = 14:05).
+ *  - nrotur: turno*10 + subcorte (11, 21, 31, 41).
+ *  - La llave de Despachos es (nrotrn, codgas): nrotrn por sí solo NO es único
+ *    entre estaciones. Toda deduplicación o JOIN debe incluir codgas.
+ *  - fchcor = fecha del corte (la que usan tabulador y liberación);
+ *    fchtrn = fecha del despacho (la que usan los reportes de facturación).
+ *
+ * Tipado: el archivo usa strict_types, pero los controladores no, así que
+ * "5" llega como 5 sin problema; un valor no numérico ('', 'abc', null) en un
+ * parámetro int lanza TypeError en lugar de generar SQL roto. Todo valor que
+ * se interpola en SQL es int (por tipo), pasa por DespachosSql::listaEnteros()
+ * / nombreSeguro(), o va como parámetro `?`.
+ *
+ * @phpstan-type Row array<string,mixed>
+ * @phpstan-type Rows list<array<string,mixed>>
+ */
+class DespachosModel extends Model
+{
+    // =====================================================================
+    // 1. UTILIDADES INTERNAS
+    // =====================================================================
 
     /**
-     * @param $codgas
-     * @param $from
-     * @param $until
-     * @return array|false
-     * @throws Exception
+     * Nombre de cuatro partes de la base de una estación: [ip].[bd].[dbo].
+     * Se usa para leer/escribir la copia local vía linked server.
+     *
+     * @throws InvalidArgumentException si la estación no está configurada.
      */
-    public function get_rows($codgas, $from, $until) : array|false {
+    private function stationDb(int $codgas): string
+    {
+        return $this->databases[$codgas]
+            ?? throw new InvalidArgumentException("La estación $codgas no tiene base configurada.");
+    }
+
+    /**
+     * Linked server de una estación: [ip]. Para OPENQUERY.
+     *
+     * @throws InvalidArgumentException si la estación no está configurada.
+     */
+    private function linkedServer(int $codgas): string
+    {
+        return $this->linked_server[$codgas]
+            ?? throw new InvalidArgumentException("La estación $codgas no tiene linked server configurado.");
+    }
+
+    /**
+     * Base de la estación sin servidor: [bd].[dbo]. Es el nombre que se usa
+     * DENTRO del texto de un OPENQUERY (ya estamos "parados" en el servidor remoto).
+     *
+     * @throws InvalidArgumentException si la estación no está configurada.
+     */
+    private function shortDb(int $codgas): string
+    {
+        return $this->short_databases[$codgas]
+            ?? throw new InvalidArgumentException("La estación $codgas no tiene base corta configurada.");
+    }
+
+    /**
+     * Ejecuta un SELECT y normaliza "sin resultados" a false (contrato histórico
+     * de este modelo: array con filas o false).
+     *
+     * @param list<mixed> $params
+     * @return list<array<string,mixed>>|false
+     */
+    private function fetchAll(string $query, array $params = []): array|false
+    {
+        return $this->sql->select($query, $params) ?: false;
+    }
+
+    /**
+     * Turno anterior y siguiente dentro de la secuencia 11 → 21 → 31 → 41 → 11.
+     *
+     * @return array{previous:int,next:int}
+     * @throws InvalidArgumentException si $turno no es un turno válido.
+     */
+    private function neighbourShifts(int $turno): array
+    {
+        $shifts = DespachosSql::TURNOS;
+        $index  = array_search($turno, $shifts, true);
+        if ($index === false) {
+            throw new InvalidArgumentException("Turno inválido: $turno.");
+        }
+        $n = count($shifts);
+        return [
+            'previous' => $shifts[($index + $n - 1) % $n],
+            'next'     => $shifts[($index + 1) % $n],
+        ];
+    }
+
+    // =====================================================================
+    // 2. CONSULTA PUNTUAL DE DESPACHOS
+    // =====================================================================
+
+    /**
+     * Despachos de una estación en un rango de fechas de corte.
+     *
+     * OJO: filtra con CAST sobre la columna, por lo que no usa índice por fecha.
+     * Pendiente de migrar a comparar enteros (dateToInt) cuando el llamador lo permita.
+     *
+     * @param string $from  Fecha 'Y-m-d' (inclusive).
+     * @param string $until Fecha 'Y-m-d' (inclusive).
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_rows(int $codgas, string $from, string $until): array|false
+    {
         $query = 'SELECT
                         t5.abr,
                         t1.nrotrn,
@@ -49,30 +152,661 @@ class DespachosModel extends Model{
                     CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) BETWEEN ? AND ?
                     AND t1.codgas = ?
                     ;';
-        $params = [$from, $until, $codgas];
-        return ($this->sql->select($query,$params)) ?: false ;
+        return $this->fetchAll($query, [$from, $until, $codgas]);
     }
 
     /**
-     * @param $dispatches_date
-     * @param $until
-     * @param $interval
-     * @param $codgas
-     * @param $clientName
-     * @return array|false
-     * @throws Exception
+     * Un despacho de la copia LOCAL de una estación (por nrotrn).
+     *
+     * @return array<string,mixed>|false Fila completa o false si no existe.
      */
-    function sp_obtener_despachos_duplicados($dispatches_date, $until, $interval, $codgas, $clientName) : array|false {
-        $params = [$dispatches_date, $until, $interval, $codgas, $clientName];
-        return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_despachos_duplicados]', $params) ?: false;
+    public function get_dispatch(int $codest, int $nrotrn): array|false
+    {
+        $rs = $this->sql->select("SELECT * FROM {$this->stationDb($codest)}.[Despachos] WHERE nrotrn = ?;", [$nrotrn]);
+        return $rs ? $rs[0] : false;
     }
 
     /**
-     * @param $todayInt
-     * @return array|false
-     * @throws Exception
+     * Igual que get_dispatch() pero con los parámetros en el orden (despacho, estación).
+     *
+     * @return array<string,mixed>|false
      */
-    function get_today_sales($todayInt) : array|false {
+    public function get_dispatch_by_transaction(int $dispatch, int $codest): array|false
+    {
+        return $this->get_dispatch($codest, $dispatch);
+    }
+
+    /**
+     * Busca un despacho central por nrotrn + fecha de corte, SIN estación.
+     * Devuelve la fila solo si es única; si no existe o es ambigua devuelve false.
+     *
+     * @return array<string,mixed>|false
+     */
+    public function get_dispatch_by_nrotrn_and_date(int $nrotrn, int $fchcor): array|false
+    {
+        $data = $this->sql->select(
+            'SELECT t1.*, t2.tipval, t3.abr Estacion
+               FROM [SG12].[dbo].[Despachos] t1
+               LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
+               LEFT JOIN [SG12].[dbo].[Gasolineras] t3 ON t1.codgas = t3.cod
+              WHERE t1.nrotrn = ? AND t1.fchcor = ?;',
+            [$nrotrn, $fchcor]
+        );
+        return count($data) === 1 ? $data[0] : false;
+    }
+
+    /**
+     * Despacho central (con hora 'hh:mm' y tipo de cliente) para validarlo
+     * antes de liberarlo.
+     *
+     * @return list<array<string,mixed>> Lista vacía si no existe.
+     */
+    public function check_dispatch(int $nrotrn, int $codgas, int $fecha): array
+    {
+        $query = "SELECT
+                    t1.*,
+                    CONVERT(VARCHAR(5), DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)), 108) AS hora_formateada,
+                    t2.tipval
+                FROM [SG12].[dbo].[Despachos] t1 LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
+                WHERE t1.nrotrn = ? AND t1.codgas = ? AND t1.fchcor = ?;";
+        return $this->sql->select($query, [$nrotrn, $codgas, $fecha]);
+    }
+
+    /** ¿Ya existe el despacho en despachos_liberados? */
+    public function check_dispatch_released(int $nrotrn, int $codgas): bool
+    {
+        return (bool) $this->sql->select(
+            'SELECT 1 AS existe FROM [TG].[dbo].[despachos_liberados] WHERE nrotrn = ? AND codgas = ?;',
+            [$nrotrn, $codgas]
+        );
+    }
+
+    /**
+     * Datos de un despacho en la copia local de la estación, con su cliente
+     * (para la pantalla de liberación de TI).
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_to_release(int $nrotrn, int $codgas): array|false
+    {
+        $db = $this->stationDb($codgas);
+        $query = "SELECT
+                    t1.nrotrn, t1.fchtrn, t1.can, t1.mto, t1.nrofac, t1.gasfac, t1.satuid, t1.satrfc, t1.logfch, t2.abr AS station, t1.codcli, t3.den AS cliente
+                FROM $db.[Despachos] t1
+                    LEFT JOIN $db.[Gasolineras] t2 ON t1.codgas = t2.cod
+                    LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
+                WHERE t1.nrotrn = ?;";
+        return $this->fetchAll($query, [$nrotrn]);
+    }
+
+    // =====================================================================
+    // 3. LIBERACIÓN / MARCADO DE DESPACHOS (ESCRITURAS)
+    // =====================================================================
+
+    /**
+     * Libera en bloque los despachos de la copia local de una estación que
+     * quedaron "a medias" (RFC sin UUID, o RFC genérico sin factura): limpia
+     * UUID, RFC, cliente y factura para que puedan volver a facturarse.
+     *
+     * Solo toca la base de la estación, no el central.
+     */
+    public function release_dispatches(int $from, int $until, int $codgas): bool
+    {
+        $query = "UPDATE {$this->stationDb($codgas)}.[Despachos]
+                    SET satuid = NULL, satrfc = NULL, codcli = 0, gasfac = 0, nrofac = 0
+                    WHERE
+                        (fchtrn BETWEEN ? AND ?) AND
+                        (
+                            (satuid IS NULL AND satrfc IS NOT NULL)
+                            OR
+                            (satrfc LIKE 'XAXX010101000' AND satuid = '' AND nrofac = 0)
+                            OR
+                            (satrfc IS NOT NULL AND satuid = '' AND nrofac = 0)
+                            OR
+                            (satrfc = 'XAXX010101000' AND nrofac = 0)
+                        );";
+        return (bool) $this->sql->update($query, [$from, $until]);
+    }
+
+    /**
+     * Libera UN despacho: limpia UUID, RFC, cliente y factura.
+     *
+     * @param int $central 1 = actualiza la tabla del servidor central (por nrotrn+codgas);
+     *                     cualquier otro valor = actualiza la copia local de la estación.
+     */
+    public function release_dispatch(int $nrotrn, int $codgas, int $central = 0): bool
+    {
+        $set = 'SET satuid = NULL, satrfc = NULL, codcli = 0, gasfac = 0, nrofac = 0';
+
+        if ($central === 1) {
+            $query  = "UPDATE [SG12].[dbo].[Despachos] $set WHERE nrotrn = ? AND codgas = ?;";
+            $params = [$nrotrn, $codgas];
+        } else {
+            $query  = "UPDATE {$this->stationDb($codgas)}.[Despachos] $set WHERE nrotrn = ?;";
+            $params = [$nrotrn];
+        }
+        return (bool) $this->sql->update($query, $params);
+    }
+
+    /**
+     * Despachos de una estación y fecha de corte sin factura, candidatos a
+     * marcarse como jarreo.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_dispatches_to_mark_jarreo(int $codgas, int $fecha): array|false
+    {
+        $db = $this->stationDb($codgas);
+        $query = "SELECT
+                    t1.nrotrn, t1.fchtrn, t1.nrobom, t1.can, t1.mto, t1.nrofac, t1.tiptrn, t2.abr AS station
+                FROM $db.[Despachos] t1
+                    LEFT JOIN $db.[Gasolineras] t2 ON t1.codgas = t2.cod
+                WHERE
+                    t1.fchcor = ?
+                    AND (t1.nrofac IS NULL OR t1.nrofac = 0);";
+        return $this->fetchAll($query, [$fecha]);
+    }
+
+    /**
+     * Cambia el tipo de transacción (jarreo = 74) en la estación y en el central
+     * DENTRO DE UNA TRANSACCIÓN: o se aplican las dos escrituras o ninguna.
+     *
+     * La escritura a la estación cruza un linked server, así que SQL Server la
+     * promueve a transacción DISTRIBUIDA: requiere MSDTC habilitado en el central
+     * y en la estación, y XACT_ABORT ON (se activa aquí). Si MSDTC no está
+     * disponible, la escritura remota falla, se hace rollback y devuelve false.
+     *
+     * Devuelve false (y deja todo como estaba) si cualquiera de las dos escrituras
+     * falla o no encuentra el despacho.
+     */
+    public function mark_dispatch_as_jarreo(int $nrotrn, int $codgas, int $tiptrn = DespachosSql::TIPTRN_JARREO): bool
+    {
+        $station = $this->stationDb($codgas); // valida la estación antes de abrir la transacción
+
+        $pdo = $this->sql->getConnection();
+        $ownsTransaction = !$pdo->inTransaction(); // si el llamador ya abrió una, nos unimos a ella
+        if ($ownsTransaction) {
+            $this->sql->beginTransaction();
+        }
+
+        try {
+            // Directo por PDO::exec (no por consulta preparada): un SET dentro de un
+            // lote preparado se revierte al terminar el lote.
+            $pdo->exec('SET XACT_ABORT ON');
+
+            $stationRows = $this->sql->updateSafe("UPDATE $station.[Despachos] SET tiptrn = ? WHERE nrotrn = ?;", [$tiptrn, $nrotrn]);
+            $centralRows = $stationRows
+                ? $this->sql->updateSafe('UPDATE [SG12].[dbo].[Despachos] SET tiptrn = ? WHERE nrotrn = ? AND codgas = ?;', [$tiptrn, $nrotrn, $codgas])
+                : false;
+
+            if (!$stationRows || !$centralRows) {
+                throw new RuntimeException("No se pudo actualizar el despacho $nrotrn de la estación $codgas en ambos servidores.");
+            }
+        } catch (Throwable $e) {
+            error_log('mark_dispatch_as_jarreo: ' . $e->getMessage());
+            if ($ownsTransaction) {
+                try {
+                    $this->sql->rollBack();
+                } catch (Throwable) {
+                    // Con XACT_ABORT ON el servidor puede haber revertido ya la transacción.
+                }
+            }
+            return false;
+        } finally {
+            $pdo->exec('SET XACT_ABORT OFF');
+        }
+
+        if ($ownsTransaction) {
+            $this->sql->commit();
+        }
+        return true;
+    }
+
+    /** Revierte el jarreo (tiptrn = 0, venta normal). */
+    public function unmark_dispatch_as_jarreo(int $nrotrn, int $codgas): bool
+    {
+        return $this->mark_dispatch_as_jarreo($nrotrn, $codgas, DespachosSql::TIPTRN_EFECTIVO);
+    }
+
+    /** Quita RFC y tarjeta de un despacho en la copia LOCAL de la estación. */
+    public function dismark_dispatch_station(int $codest, int $nrotrn): bool
+    {
+        return (bool) $this->sql->update(
+            "UPDATE {$this->stationDb($codest)}.[Despachos] SET rut = NULL, tar = 0 WHERE nrotrn = ?;",
+            [$nrotrn]
+        );
+    }
+
+    /** Quita RFC y tarjeta de un despacho en el CENTRAL. */
+    public function dismark_dispatch_central(int $codest, int $nrotrn): bool
+    {
+        return (bool) $this->sql->update(
+            'UPDATE [SG12].[dbo].[Despachos] SET rut = NULL, tar = 0 WHERE nrotrn = ? AND codgas = ?;',
+            [$nrotrn, $codest]
+        );
+    }
+
+    /**
+     * Registra en [TG].[despachos_liberados] que un despacho de crédito/débito
+     * ya fue liberado por el usuario en sesión.
+     *
+     * @param array<string,mixed> $dispatch Fila de check_dispatch() (incluye hora_formateada y tipval).
+     * @return bool true si se insertó el registro.
+     */
+    public function release_dispatch_TG(array $dispatch): bool
+    {
+        $query = 'INSERT INTO [TG].[dbo].[despachos_liberados] ([nrotrn],[codgas],[codisl],[nrotur],[codcli],[tipval],[codprd],[can],[mto],[codemp],[fchtrn],[fchcor],[hratrn]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?);';
+        $params = [
+            $dispatch['nrotrn'], $dispatch['codgas'], $dispatch['codisl'], $dispatch['nrotur'], $dispatch['codcli'],
+            $dispatch['tipval'] ?? 0,
+            $dispatch['codprd'], $dispatch['can'], $dispatch['mto'],
+            $_SESSION['tg_user']['Id'],
+            $dispatch['fchtrn'], $dispatch['fchcor'], $dispatch['hora_formateada'],
+        ];
+        return (bool) $this->sql->insert($query, $params);
+    }
+
+    /** Guarda la nota de un despacho liberado. */
+    public function save_notes(int $id, string $notes): bool
+    {
+        return (bool) $this->sql->update('UPDATE [TG].[dbo].[despachos_liberados] SET [notes] = ? WHERE id = ?', [$notes, $id]);
+    }
+
+    // =====================================================================
+    // 4. TABULADOR Y CORTE DE TURNO
+    // =====================================================================
+
+    /**
+     * Venta de combustible de un turno (sin jarreos), leída de la estación vía OPENQUERY.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_turn_sales(int $codgas, int $fchtrn, int $nrotur): array|false
+    {
+        $linked = $this->linkedServer($codgas);
+        $short  = $this->shortDb($codgas);
+        $query = "SELECT * FROM OPENQUERY($linked, 'SELECT
+                    CAST(SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END) AS DECIMAL(10, 2)) AS Monto,  -- Descartamos los jarreos
+                    CAST(SUM(can) AS DECIMAL(10, 3)) AS Volumen,
+                    CASE
+                    WHEN codprd IN (179,192) THEN ''T-Maxima Regular''
+                    WHEN codprd IN (180,193) THEN ''T-Super Premium''
+                    WHEN codprd = 181 THEN ''Diesel Automotriz''
+                    END AS Producto
+                FROM $short.[Despachos]
+                WHERE codprd IN (179,180,181,192,193)
+                    AND fchcor = $fchtrn AND nrotur = $nrotur
+                GROUP BY codprd
+                ORDER BY codprd;')";
+        return $this->fetchAll($query);
+    }
+
+    /**
+     * Jarreos (muestras de calibración) de un turno, leídos de la estación.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_jarreos(int $codgas, int $tabDate, int $turno): array|false
+    {
+        $linked = $this->linkedServer($codgas);
+        $short  = $this->shortDb($codgas);
+        $query = "SELECT * FROM OPENQUERY($linked, 'SELECT TOP 100 d.nrotrn AS Transaccion
+                        , d.codgas AS Gasolinera
+                        , CONVERT(VARCHAR, CAST(d.fchcor as DATETIME) -1, 23) AS Fecha
+                        , SUBSTRING(CONVERT(CHAR(5), d.hratrn + 10000), 2, 2) + '':'' + SUBSTRING(CONVERT(CHAR(5), d.hratrn + 10000), 4, 2) Hora
+                        , d.nrotur AS Turno
+                        , d.nrobom AS Bomba
+                        , d.codprd AS Producto
+                        , LTRIM(p.den) AS Descripcion
+                        , ROUND(d.can, 3) AS Cantidad
+                        , d.mto AS Total
+                    FROM $short.Despachos d(NOLOCK)
+                        INNER JOIN $short.Productos p(NOLOCK) ON d.codprd = p.cod
+                    WHERE
+                        d.codgas = $codgas
+                        AND d.fchcor = $tabDate
+                        AND d.tiptrn IN(65, 74)
+                        AND d.nrotur = $turno
+                    ORDER BY nrotrn DESC;')";
+        return $this->fetchAll($query);
+    }
+
+    /**
+     * Despachos por marcar en un turno (copia local vía OPENQUERY): solo los
+     * que NO son de cliente crédito/débito y tienen monto.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function sp_obtener_despachos_para_marcar(int $CodigoEstacion, int $date, int $turno): array|false
+    {
+        $linked = $this->linkedServer($CodigoEstacion);
+        $short  = $this->shortDb($CodigoEstacion);
+        $query = "
+        SELECT * FROM OPENQUERY($linked, 'SELECT
+			CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) AS Fecha,
+			t1.nrotrn AS Despacho,
+			t1.nrobom AS Posicion,
+			t2.den AS Producto,
+			t1.pre AS Precio,
+			CAST(t1.mto AS DECIMAL(10, 2)) AS Monto,
+			CAST(t1.can AS DECIMAL(10, 3)) AS Volumen,
+			t1.nrocte AS Nota,
+			t1.nrofac AS Factura,
+			t1.satuid AS UUID,
+			t3.den AS Cliente,
+			t3.cod AS Codigo,
+			t1.nroveh AS Vehiculo,
+			t1.tiptrn,
+			t1.nrotur,
+			t5.den AS Isla,
+			t1.nrobom AS Bomba,
+			t1.codgas,
+			t1.tar,
+			t1.nrofac,
+			t3.tipval,
+			t6.trxmsg,
+			t1.satuid,
+			t6.trxcod,
+			t7.den Valor
+		FROM
+			$short.[Despachos] t1
+		LEFT JOIN
+			$short.[Productos] t2 ON t1.codprd = t2.cod
+		LEFT JOIN
+			$short.[Clientes] t3 ON t1.codcli = t3.cod
+		LEFT JOIN
+			$short.[Bombas] t4 ON t1.codgas = t4.codgas AND t1.graprd = t4.graprd AND t1.nrobom = t4.nro
+		LEFT JOIN
+			$short.[Islas] t5 ON t4.codgas = t5.codgas AND t4.codisl = t5.cod
+		LEFT JOIN (
+            SELECT
+                mt1.codbco,
+                mt1.nrotrn,
+                mt1.trxmsg,
+                mt1.trxcod
+            FROM
+                $short.[MovimientosTar] mt1
+            WHERE
+                NOT EXISTS (
+                    SELECT 1
+                    FROM $short.[MovimientosTar] mt2
+                    WHERE mt1.nrotrn = mt2.nrotrn
+                    AND (mt2.fchmov > mt1.fchmov OR (mt2.fchmov = mt1.fchmov AND mt2.fchlog > mt1.fchlog))
+                )
+        ) t6 ON t1.nrotrn = t6.nrotrn
+		LEFT JOIN
+			$short.[Valores] t7 ON t6.codbco = t7.cod
+		WHERE
+			t1.codgas = $CodigoEstacion
+			AND t1.fchcor = $date
+			AND t1.nrotur = $turno
+			AND (t1.tiptrn IN (0, 49, 53, 51) OR (t1.tiptrn = 51 AND t1.codcli = 0))
+			AND (t3.tipval IS NULL OR t3.tipval NOT IN (3, 4))
+			AND t1.mto > 0
+		-- AND t1.nrofac < 1
+		ORDER BY
+			t1.nrotrn DESC;');
+        ";
+        return $this->fetchAll($query);
+    }
+
+    /**
+     * Marca un despacho contra un tabulador OneGoal (stored procedure).
+     *
+     * @param array<string,mixed> $tabular     Fila del tabulador (Id, TipoCambio, Usuario, CodigoEstacion, Turno).
+     * @param array<string,mixed> $dispatch    Fila de get_dispatch() (codisl, mto, nrotrn).
+     * @param array<string,mixed> $CodigoValor Botón de valor (ValorButt_Num, ValorButt_Id, ValorButt_CodigoTar).
+     * @param string|int|null     $CodigoTar   Tarjeta capturada.
+     * @param string|int|null     $CodigoRut   RFC/rut capturado.
+     * @return bool true si el SP actualizó el despacho (devuelve 1), false si no.
+     */
+    public function sp_marcar_despacho_onegoal(array $tabular, array $dispatch, array $CodigoValor, string|int|null $CodigoTar, string|int|null $CodigoRut): bool
+    {
+        return (bool) $this->sql->executeStoredProcedure('[TG].[dbo].[sp_marcar_despacho_onegoal]', [
+            'TabulatorId'        => $tabular['Id'],
+            'IslaId'             => $dispatch['codisl'],
+            'ValorButtNum'       => $CodigoValor['ValorButt_Num'],
+            'Monto'              => $dispatch['mto'],
+            'TipoCambio'         => $tabular['TipoCambio'],
+            'Usuario'            => $tabular['Usuario'],
+            'CodigoEstacion'     => $tabular['CodigoEstacion'],
+            'Turno'              => $tabular['Turno'],
+            'IdUsuario'          => $_SESSION['tg_user']['Id'],
+            'CodigoValor'        => $CodigoValor['ValorButt_Id'],
+            'ValorButtCodigoTar' => $CodigoValor['ValorButt_CodigoTar'],
+            'CodigoTar'          => $CodigoTar,
+            'CodigoRut'          => $CodigoRut,
+            'DatabaseName'       => $this->stationDb((int) $tabular['CodigoEstacion']),
+            'nrotrn'             => $dispatch['nrotrn'],
+            'Resultado'          => 0,
+        ]);
+    }
+
+    /**
+     * Despachos de crédito (tipval 3) en un rango de horas de un corte, con la
+     * hora del despacho anterior del mismo cliente (para detectar repetidos).
+     * Lee de la copia LOCAL de la estación (e incluye la isla).
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_credit_dispatches_tabular(int $fchtrn, int $hratrn_init, int $hratrn_final, int $codgas): array|false
+    {
+        return $this->fetchAll($this->tabularDispatchesSql($this->stationDb($codgas), 3, true), [$fchtrn, $hratrn_init, $hratrn_final, $codgas]);
+    }
+
+    /**
+     * Despachos de débito (tipval 4) en un rango de horas de un corte. Igual que
+     * el de crédito: lee de la copia LOCAL de la estación e incluye la isla.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_debit_dispatches_tabular(int $fchtrn, int $hratrn_init, int $hratrn_final, int $codgas): array|false
+    {
+        return $this->fetchAll($this->tabularDispatchesSql($this->stationDb($codgas), 4, true), [$fchtrn, $hratrn_init, $hratrn_final, $codgas]);
+    }
+
+    /**
+     * SQL común de los despachos de crédito/débito del tabulador.
+     *
+     * @param string $db        Prefijo de base (p. ej. '[SG12].[dbo]' o '[ip].[bd].[dbo]').
+     * @param int    $tipval    3 = crédito, 4 = débito.
+     * @param bool   $conIsla   true => agrega Islas.den como "Isla".
+     */
+    private function tabularDispatchesSql(string $db, int $tipval, bool $conIsla): string
+    {
+        $isla     = $conIsla ? ",\n                t7.den Isla" : '';
+        $joinIsla = $conIsla ? "\n                LEFT JOIN $db.[Islas]  t7 ON t1.codisl = t7.cod" : '';
+
+        return "
+            SELECT
+                t1.nrotrn Despacho,
+                t1.nrofac Factura,
+                t1.satuid UUID,
+                t1.satrfc AS RFC,
+                t1.codcli,
+                t2.den AS Cliente,
+                CASE t2.tipval
+                    WHEN 3 THEN N'Crédito'
+                    WHEN 4 THEN N'Débito'
+                    ELSE 'Otro'
+                END AS Tipo,
+                t1.can,
+                CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS hora_formateada,
+                CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
+                t1.mto,
+                t3.abr,
+                t3.den Producto,
+                t1.hratrn,
+                ROW_NUMBER() OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS rn,
+                LAG(t1.hratrn, 1, NULL) OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS hora_anterior,
+                t4.abr Estacion,
+                t5.tar Tarjeta,
+                t5.grp Grupo,
+                t5.den Descripcion,
+                t5.plc Placas,
+                t1.nrobom Bomba,
+                t6.pos Posicion,
+                t1.rut$isla
+            FROM
+                $db.[Despachos] t1
+                LEFT JOIN $db.[Clientes] t2 ON t1.codcli = t2.cod
+                LEFT JOIN $db.[Productos] t3 ON t1.codprd = t3.cod
+                LEFT JOIN $db.[Gasolineras] t4 ON t1.codgas = t4.cod
+                LEFT JOIN $db.[ClientesVehiculos] t5 ON t1.codcli = t5.codcli AND t1.nroveh = t5.nroveh
+                LEFT JOIN $db.[Bombas] t6 ON t1.codgas = t6.codgas AND t1.graprd = t6.graprd AND t1.nrobom = t6.nro$joinIsla
+            WHERE
+                t1.fchcor = ?
+                AND t1.hratrn BETWEEN ? AND ?
+                AND t1.codprd IN (179,180,181,192,193)
+                AND t1.codgas = ?
+                AND t2.tipval = $tipval
+        ";
+    }
+
+    /**
+     * Despachos de una isla y fecha de corte para cuadrar contra ValesR
+     * (marcados por isla y turno). Solo clientes crédito/débito.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_mark_dispatches_by_island_shift(int $fch, int $CodigoEstacion): array|false
+    {
+        $query = "SELECT
+                    CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
+                    CAST(DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, CAST('00:00' AS TIME))) AS TIME) AS Hora,
+                    t1.nrotrn Despacho,
+                    t1.nrobom Posicion,
+                    CASE
+                        WHEN t1.codprd IN (179,192) THEN 'T-Maxima Regular'
+                        WHEN t1.codprd IN (180,193) THEN 'T-Super Premium'
+                        WHEN t1.codprd = 181 THEN 'Diesel Automotriz'
+                    END AS Producto,
+                    t1.pre Precio,
+                    CAST(t1.mto AS DECIMAL(10, 2)) AS Monto,
+                    CAST(t1.can AS DECIMAL(10, 3)) AS Volumen,
+                    t1.nrocte Nota,
+                    t1.nrofac Factura,
+                    t1.satuid UUID,
+                    t3.den Cliente,
+                    t3.cod Codigo,
+                    t1.nroveh Vehiculo,
+                    t1.tiptrn,
+                    t1.nrotur,
+                    (t1.nrotur / 10) AS turno,
+                    (t1.nrotur % 10) AS subcorte,
+                    t5.den Isla,
+                    t1.nrobom Bomba,
+                    t1.codgas,
+                    t1.tar,
+                    t1.nrofac,
+                    t3.tipval,
+                    CASE
+                        WHEN t3.tipval = 3 THEN N'Crédito'
+                        WHEN t3.tipval = 4 THEN N'Débito'
+                    END Tipo,
+                    CASE
+                        WHEN t6.Despacho IS NOT NULL AND t1.mto = t6.mto THEN 1
+                        ELSE 0
+                    END AS CoincidenciaEncontrada,
+                t8.den Valor,
+                t9.abr Estacion
+                FROM [SG12].[dbo].[Despachos] t1
+                    LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
+                    LEFT JOIN [SG12].[dbo].[Islas] t5 ON t1.codisl = t5.cod
+                    LEFT JOIN (SELECT DISTINCT ABS(t1.sec) Despacho, mto FROM [SG12].[dbo].[ValesR] t1 WHERE t1.codgas = $CodigoEstacion AND t1.codval IN (28,127,145) AND t1.fch = $fch) t6 ON t1.nrotrn = t6.Despacho
+                    LEFT JOIN [SG12].[dbo].[MovimientosTar] t7 ON t1.nrotrn = t7.nrotrn AND t7.codgas = $CodigoEstacion
+                    LEFT JOIN [SG12].[dbo].[Valores] t8 ON t7.codbco = t8.cod
+                    LEFT JOIN [SG12].[dbo].[Gasolineras] t9 ON t1.codgas = t9.cod
+                WHERE
+                    t1.fchcor = $fch
+                    AND t3.tipval IN (3,4)
+                AND t1.codgas = $CodigoEstacion
+                AND t1.mto > 0
+                ORDER BY t1.nrotrn DESC;";
+        return $this->fetchAll($query);
+    }
+
+    // =====================================================================
+    // 4b. DIFERENCIAS, DUPLICADOS Y LEALTAD
+    // =====================================================================
+
+    /**
+     * Despachos duplicados (mismo cliente en una ventana de tiempo) — stored procedure.
+     *
+     * @param int              $dispatches_date Fecha inicial (entero de fecha).
+     * @param int              $until           Fecha final (entero de fecha).
+     * @param int|string|false $interval        Intervalo en minutos, o false si no se filtra.
+     * @param int              $codgas          Estación (0 = todas).
+     * @param int|string       $clientName      Nombre (o parte) del cliente; 0 = todos.
+     * @return list<array<string,mixed>>|false
+     */
+    public function sp_obtener_despachos_duplicados(int $dispatches_date, int $until, int|string|false $interval, int $codgas, int|string $clientName): array|false
+    {
+        return $this->sql->executeStoredProcedure(
+            '[TG].[dbo].[sp_obtener_despachos_duplicados]',
+            [$dispatches_date, $until, $interval, $codgas, $clientName]
+        ) ?: false;
+    }
+
+    /**
+     * Diferencias por valor de pago entre corte y despachos (stored procedure).
+     *
+     * Con $codgas = 0 consulta TODAS las estaciones activas, pero antes verifica
+     * por socket que su SQL Server (puerto 1433) responda, para no colgar el SP
+     * con una estación caída. Cada estación caída cuesta hasta 5 s de timeout.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function sp_obtener_diferencias_por_valor(int $from, int $until, int $codgas): array|false
+    {
+        if ($codgas === 0) {
+            $codigos = $this->reachableStationCodes();
+            if ($codigos === null) {
+                return false;
+            }
+            $stations = implode(',', $codigos);
+        } else {
+            $stations = (string) $codgas;
+        }
+
+        set_time_limit(0);
+        ini_set('memory_limit', '256M');
+        ini_set('max_execution_time', '300');
+
+        return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_diferencias]', [$from, $until, $stations]) ?: false;
+    }
+
+    /**
+     * Códigos de las estaciones cuyo SQL Server responde en el puerto 1433.
+     *
+     * @return list<int>|null null si no hay estaciones configuradas en [TG].[Estaciones].
+     */
+    private function reachableStationCodes(): ?array
+    {
+        $stations = $this->sql->select('SELECT Codigo, Servidor FROM [TG].dbo.Estaciones WHERE Codigo NOT IN (0,4,20)', []);
+        if (!$stations) {
+            return null;
+        }
+
+        $reachable = [];
+        foreach ($stations as $station) {
+            $connection = @fsockopen((string) $station['Servidor'], 1433, $errno, $errstr, 5);
+            if ($connection) {
+                $reachable[] = (int) $station['Codigo'];
+                fclose($connection);
+            }
+        }
+        return $reachable;
+    }
+
+    /**
+     * Venta del día (monto y litros) de los 3 combustibles principales, todas las estaciones.
+     *
+     * @param int $todayInt Fecha de hoy como entero de fecha.
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_today_sales(int $todayInt): array|false
+    {
         $query = 'SELECT
                     CAST(SUM(mto) AS DECIMAL(18, 2)) AS Monto,
                     CAST(SUM(can) AS DECIMAL(18, 3)) AS Volumen,
@@ -87,35 +821,41 @@ class DespachosModel extends Model{
                 GROUP BY codprd
                 ORDER BY codprd;';
 
-        return $this->sql->select($query, [$todayInt]) ?: false;
+        return $this->fetchAll($query, [$todayInt]);
     }
 
-    function get_turn_sales($codgas, $fchtrn, $nrotur) : array|false {
-        $query = "SELECT * FROM OPENQUERY({$this->linked_server[$codgas]}, 'SELECT
-                    CAST(SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END) AS DECIMAL(10, 2)) AS Monto,  -- Descartamos los jarreos
-                    CAST(SUM(can) AS DECIMAL(10, 3)) AS Volumen,
-                    CASE
-                    WHEN codprd IN (179,192) THEN ''T-Maxima Regular''
-                    WHEN codprd IN (180,193) THEN ''T-Super Premium''
-                    WHEN codprd = 181 THEN ''Diesel Automotriz''
-                    END AS Producto
-                FROM {$this->short_databases[$codgas]}.[Despachos]
-                WHERE codprd IN (179,180,181,192,193)
-                    AND fchcor = {$fchtrn} AND nrotur = {$nrotur}
-                GROUP BY codprd
-                ORDER BY codprd;')";
-        return $this->sql->select($query, []) ?: false;
-    }
+    // =====================================================================
+    // 5. DESPACHOS DE CRÉDITO / DÉBITO: VERIFICACIÓN Y LIBERACIÓN
+    // =====================================================================
 
     /**
-     * @param $from
-     * @param $until
-     * @param $codgas
-     * @param $client
-     * @return array|false
-     * @throws Exception
+     * Despachos de clientes crédito/débito de un periodo, con la hora del
+     * despacho anterior del mismo cliente.
+     *
+     * @param int        $from   Fecha inicial (entero de fecha).
+     * @param int        $until  Fecha final (entero de fecha).
+     * @param int        $codgas Estación (0 = todas).
+     * @param string|int $client Nombre (o parte) del cliente; '0' / '' = todos.
+     * @param int        $tipval 0 = crédito y débito, 3 = solo crédito, 4 = solo débito.
+     * @return list<array<string,mixed>>|false
      */
-    function get_credit_and_debit_dispatches($from, $until, $codgas, $client, $tipval) : array|false {
+    public function get_credit_and_debit_dispatches(int $from, int $until, int $codgas, string|int $client, int $tipval): array|false
+    {
+        $client = trim((string) $client);
+        $params = [];
+
+        $whereCodgas = $codgas !== 0 ? "AND t1.codgas = $codgas" : '';
+        $whereTipval = match ($tipval) {
+            0       => 'AND t2.tipval IN (3, 4)',
+            3, 4    => "AND t2.tipval = $tipval",
+            default => 'AND 1 = 0', // tipo de cliente desconocido: sin resultados
+        };
+        $whereClient = '';
+        if ($client !== '' && $client !== '0') {
+            $whereClient = 'AND t2.den LIKE ?';
+            $params[]    = '%' . $client . '%';
+        }
+
         $query = "
         SELECT
             t1.nrotrn Despacho,
@@ -154,634 +894,33 @@ class DespachosModel extends Model{
             LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t5 ON t1.codcli = t5.codcli AND t1.nroveh = t5.nroveh
             LEFT JOIN [SG12].[dbo].[Bombas] t6 ON t1.codgas = t6.codgas AND t1.graprd = t6.graprd AND t1.nrobom = t6.nro
         WHERE
-            t1.fchtrn BETWEEN {$from} AND {$until}
+            t1.fchtrn BETWEEN $from AND $until
             AND t1.codcli > 0
-            AND ({$codgas} = '0' OR t1.codgas = {$codgas})
-            AND ({$client} = '0' OR t2.den LIKE '%{$client}%')
-            AND (
-                {$tipval} = 0 AND t2.tipval IN (3, 4) OR 
-                {$tipval} IN (3, 4) AND t2.tipval = {$tipval}
-            )
+            $whereCodgas
+            $whereTipval
+            $whereClient
         ";
 
-        return $this->sql->select($query) ?: false;
+        return $this->fetchAll($query, $params);
     }
 
     /**
-     * @param $from
-     * @param $until
-     * @param $codgas
-     * @return array|false
-     * @throws Exception
+     * Despachos pendientes (o ya aplicados) de facturar de clientes crédito/débito.
+     *
+     * @param int          $type   3 = crédito, 4 = débito, otro = ambos.
+     * @param string|false $status 'pendiente' => sin factura (nrofac = 0); cualquier otro => con factura.
+     * @return list<array<string,mixed>>|false
      */
-    function get_to_release($nrotrn, $codgas) : array|false {
-        // Definir los datos
-        $query = "SELECT
-                    t1.nrotrn, t1.fchtrn, t1.can, t1.mto, t1.nrofac, t1.gasfac, t1.satuid, t1.satrfc, t1.logfch, t2.abr AS station, t1.codcli, t3.den AS cliente
-                FROM {$this->databases[$codgas]}.[Despachos] t1
-                    LEFT JOIN {$this->databases[$codgas]}.[Gasolineras] t2 ON t1.codgas = t2.cod
-                    LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
-                WHERE t1.nrotrn = ?;";
-        $params = [$nrotrn];
-        return $this->sql->select($query, $params) ?: false;
-    }
+    public function get_pending_dispatches_for_invoice(int $from, int $until, int $type, string|false $status): array|false
+    {
+        $whereStatus = $status === 'pendiente' ? 'AND t1.nrofac = 0' : 'AND t1.nrofac != 0';
+        $whereType   = match ($type) {
+            4       => 'AND t2.tipval = 4',
+            3       => 'AND t2.tipval = 3',
+            default => 'AND t2.tipval IN (4, 3)',
+        };
 
-    /**
-     * @param $from
-     * @param $until
-     * @param $codgas
-     * @return bool
-     * @throws Exception
-     */
-    function release_dispatches($from, $until, $codgas) : bool {
-        $query = "UPDATE {$this->databases[$codgas]}.[Despachos]
-                    SET satuid = NULL, satrfc = NULL, codcli = 0, gasfac = 0, nrofac = 0
-                    WHERE
-                        (fchtrn BETWEEN ? AND ?) AND
-                        (
-                            (satuid IS NULL AND satrfc IS NOT NULL)
-                            OR
-                            (satrfc LIKE 'XAXX010101000' AND satuid = '' AND nrofac = 0)
-                            OR
-                            (satrfc IS NOT NULL AND satuid = '' AND nrofac = 0)
-                            OR
-                            (satrfc = 'XAXX010101000' AND nrofac = 0)
-                        );";
-        $params = [$from, $until];
-        return (bool)$this->sql->update($query, $params);
-    }
-
-    function release_dispatch($nrotrn, $codgas, int $central = 0) : bool {
-        if ($central == 1) {
-            $query = "UPDATE [SG12].[dbo].[Despachos] SET satuid = NULL, satrfc = NULL WHERE nrotrn = ? AND codgas = ?;";
-            $params = [$nrotrn, $codgas];
-            $this->sql->update($query, $params);
-
-            $query = "UPDATE [SG12].[dbo].[Despachos] SET codcli = 0 WHERE nrotrn = ? AND codgas = ?;";
-            $params = [$nrotrn, $codgas];
-            $this->sql->update($query, $params);
-
-            $query = "UPDATE [SG12].[dbo].[Despachos] SET gasfac = 0, nrofac = 0 WHERE nrotrn = ? AND codgas = ?;";
-            $params = [$nrotrn, $codgas];
-            return (bool)$this->sql->update($query, $params);
-        } else {
-            $query = "UPDATE {$this->databases[$codgas]}.[Despachos] SET satuid = NULL, satrfc = NULL WHERE nrotrn = ?;";
-            $params = [$nrotrn];
-            $this->sql->update($query, $params);
-
-            $query = "UPDATE {$this->databases[$codgas]}.[Despachos] SET codcli = 0 WHERE nrotrn = ?;";
-            $params = [$nrotrn];
-            $this->sql->update($query, $params);
-
-            $query = "UPDATE {$this->databases[$codgas]}.[Despachos] SET gasfac = 0, nrofac = 0 WHERE nrotrn = ?;";
-            $params = [$nrotrn];
-            return (bool)$this->sql->update($query, $params);
-        }
-    }
-
-    /**
-     * @param $codgas
-     * @param $fecha
-     * @return array|false
-     * @throws Exception
-     */
-    function get_dispatches_to_mark_jarreo($codgas, $fecha) : array|false {
-        
-        $query = "SELECT
-                    t1.nrotrn, t1.fchtrn, t1.nrobom, t1.can, t1.mto, t1.nrofac, t1.tiptrn, t2.abr AS station
-                FROM {$this->databases[$codgas]}.[Despachos] t1
-                    LEFT JOIN {$this->databases[$codgas]}.[Gasolineras] t2 ON t1.codgas = t2.cod
-                WHERE
-                    t1.fchcor = ?
-                    AND (t1.nrofac IS NULL OR t1.nrofac = 0);";
-        $params = [$fecha];
-        return $this->sql->select($query, $params) ?: false;
-    }
-
-    /**
-     * @param $nrotrn
-     * @param $codgas
-     * @param int $tiptrn
-     * @return bool
-     * @throws Exception
-     */
-    function mark_dispatch_as_jarreo($nrotrn, $codgas, int $tiptrn = 74) : bool {
-        $query = "UPDATE {$this->databases[$codgas]}.[Despachos] SET tiptrn = ? WHERE nrotrn = ?;";
-        $params = [$tiptrn, $nrotrn];
-        $this->sql->update($query, $params);
-
-        $query = "UPDATE [SG12].[dbo].[Despachos] SET tiptrn = ? WHERE nrotrn = ? AND codgas = ?;";
-        $params = [$tiptrn, $nrotrn, $codgas];
-        return (bool)$this->sql->update($query, $params);
-    }
-
-    /**
-     * @param $nrotrn
-     * @param $codgas
-     * @return bool
-     * @throws Exception
-     */
-    function unmark_dispatch_as_jarreo($nrotrn, $codgas) : bool {
-        return $this->mark_dispatch_as_jarreo($nrotrn, $codgas, 0);
-    }
-
-    /**
-     * @param $codgas
-     * @param $tabDate
-     * @return array|false
-     * @throws Exception
-     */
-    function get_jarreos($codgas, $tabDate, $turno) : array|false {
-        $query = "SELECT * FROM OPENQUERY({$this->linked_server[$codgas]}, 'SELECT TOP 100 d.nrotrn AS Transaccion
-                        , d.codgas AS Gasolinera
-                        , CONVERT(VARCHAR, CAST(d.fchcor as DATETIME) -1, 23) AS Fecha
-                        , SUBSTRING(CONVERT(CHAR(5), d.hratrn + 10000), 2, 2) + '':'' + SUBSTRING(CONVERT(CHAR(5), d.hratrn + 10000), 4, 2) Hora
-                        , d.nrotur AS Turno
-                        , d.nrobom AS Bomba
-                        , d.codprd AS Producto
-                        , LTRIM(p.den) AS Descripcion
-                        , ROUND(d.can, 3) AS Cantidad
-                        , d.mto AS Total
-                    FROM {$this->short_databases[$codgas]}.Despachos d(NOLOCK)
-                        INNER JOIN {$this->short_databases[$codgas]}.Productos p(NOLOCK) ON d.codprd = p.cod
-                    WHERE
-                        d.codgas = {$codgas}
-                        AND d.fchcor = {$tabDate}
-                        AND d.tiptrn IN(65, 74)
-                        AND d.nrotur = {$turno}
-                    ORDER BY nrotrn DESC;')";
-        return $this->sql->select($query, []) ?: false;
-    }
-
-    /**
-     * @param $CodigoEstacion
-     * @param $date
-     * @return array|false
-     * @throws Exception
-     */
-    function get_dispatches_by_station($CodigoEstacion, $date) : array|false {
-        $query = "SELECT
-                    CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
-                    t1.nrotrn Despacho,
-                    t1.nrobom Posicion,
-                    CASE
-                        WHEN t1.codprd IN (179,192) THEN 'T-Maxima Regular'
-                        WHEN t1.codprd  IN (180,193) THEN 'T-Super Premium'
-                        WHEN t1.codprd = 181 THEN 'Diesel Automotriz'
-                    END AS Producto,
-                    t1.pre Precio,
-                    CAST(t1.mto AS DECIMAL(10, 2)) AS Monto,
-                    CAST(t1.can AS DECIMAL(10, 3)) AS Volumen,
-                    t1.nrocte Nota,
-                    t1.nrofac Factura,
-                    t1.satuid UUID,
-                    t3.den Cliente,
-                    t3.cod Codigo,
-                    t1.nroveh Vehiculo,
-                    t1.tiptrn,
-                    t1.nrotur,
-                    t1.nrobom Bomba
-                FROM {$this->databases[$CodigoEstacion]}.[Despachos] t1
-                    LEFT JOIN [SG12].[dbo].[Productos] 	 t2 ON t1.codprd = t2.cod
-                    LEFT JOIN [SG12].[dbo].[Clientes] 	 t3 ON t1.codcli = t3.cod
-                WHERE
-                    t1.codgas = ?
-                    AND t1.fchcor = ?
-                ORDER BY t1.nrotrn DESC;";
-        $params = [$CodigoEstacion, $date];
-        return ($this->sql->select($query, $params)) ?: false ;
-    }
-
-    /**
-     * @param $CodigoEstacion
-     * @param $date
-     * @param $turno
-     * @return array|false
-     * @throws Exception
-     *///////////tabulador
-    function sp_obtener_despachos_para_marcar($CodigoEstacion, $date, $turno) : array|false {
         $query = "
-        SELECT * FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, 'SELECT
-			CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) AS Fecha,
-			t1.nrotrn AS Despacho,
-			t1.nrobom AS Posicion,
-			t2.den AS Producto,
-			t1.pre AS Precio,
-			CAST(t1.mto AS DECIMAL(10, 2)) AS Monto,
-			CAST(t1.can AS DECIMAL(10, 3)) AS Volumen,
-			t1.nrocte AS Nota,
-			t1.nrofac AS Factura,
-			t1.satuid AS UUID,
-			t3.den AS Cliente,
-			t3.cod AS Codigo,
-			t1.nroveh AS Vehiculo,
-			t1.tiptrn,
-			t1.nrotur,
-			t5.den AS Isla,
-			t1.nrobom AS Bomba,
-			t1.codgas,
-			t1.tar,
-			t1.nrofac,
-			t3.tipval,
-			t6.trxmsg,
-			t1.satuid,
-			t6.trxcod,
-			t7.den Valor
-		FROM
-			{$this->short_databases[$CodigoEstacion]}.[Despachos] t1
-		LEFT JOIN
-			{$this->short_databases[$CodigoEstacion]}.[Productos] t2 ON t1.codprd = t2.cod
-		LEFT JOIN
-			{$this->short_databases[$CodigoEstacion]}.[Clientes] t3 ON t1.codcli = t3.cod
-		LEFT JOIN
-			{$this->short_databases[$CodigoEstacion]}.[Bombas] t4 ON t1.codgas = t4.codgas AND t1.graprd = t4.graprd AND t1.nrobom = t4.nro
-		LEFT JOIN
-			{$this->short_databases[$CodigoEstacion]}.[Islas] t5 ON t4.codgas = t5.codgas AND t4.codisl = t5.cod
-		LEFT JOIN (
-            SELECT
-                mt1.codbco,
-                mt1.nrotrn,
-                mt1.trxmsg,
-                mt1.trxcod
-            FROM
-                {$this->short_databases[$CodigoEstacion]}.[MovimientosTar] mt1
-            WHERE
-                NOT EXISTS (
-                    SELECT 1
-                    FROM {$this->short_databases[$CodigoEstacion]}.[MovimientosTar] mt2
-                    WHERE mt1.nrotrn = mt2.nrotrn
-                    AND (mt2.fchmov > mt1.fchmov OR (mt2.fchmov = mt1.fchmov AND mt2.fchlog > mt1.fchlog))
-                )
-        ) t6 ON t1.nrotrn = t6.nrotrn
-		LEFT JOIN
-			{$this->short_databases[$CodigoEstacion]}.[Valores] t7 ON t6.codbco = t7.cod
-		WHERE
-			t1.codgas = {$CodigoEstacion}
-			AND t1.fchcor = {$date}
-			AND t1.nrotur = {$turno}
-			AND (t1.tiptrn IN (0, 49, 53, 51) OR (t1.tiptrn = 51 AND t1.codcli = 0)) 
-			AND (t3.tipval IS NULL OR t3.tipval NOT IN (3, 4))
-			AND t1.mto > 0
-		-- AND t1.nrofac < 1
-		ORDER BY
-			t1.nrotrn DESC;');
-        ";
-      
-        return $this->sql->select($query, []) ?: false;
-    }
-
-    /**
-     * @param $codest
-     * @param $nrotrn
-     * @return array|false
-     * @throws Exception
-     */
-    function get_dispatch($codest, $nrotrn) : array|false {
-        return ($rs = $this->sql->select("SELECT * FROM {$this->databases[$codest]}.[Despachos] WHERE nrotrn = ?;", [$nrotrn])) ? $rs[0] : false ;
-    }
-
-    /**
-     * @param $tabular
-     * @param $dispatch
-     * @param $CodigoValor
-     * @param $CodigoTar
-     * @param $CodigoRut
-     * @return bool
-     * @throws Exception
-     */
-    function sp_marcar_despacho_onegoal($tabular, $dispatch, $CodigoValor, $CodigoTar, $CodigoRut) : bool {
-        // El siguiente SP returno 1 si el despacho fue actualizado, 0 si no
-        return (bool)$this->sql->executeStoredProcedure('[TG].[dbo].[sp_marcar_despacho_onegoal]', array(
-            'TabulatorId'        => $tabular['Id'],
-            'IslaId'             => $dispatch['codisl'],
-            'ValorButtNum'       => $CodigoValor['ValorButt_Num'],
-            'Monto'              => $dispatch['mto'],
-            'TipoCambio'         => $tabular['TipoCambio'],
-            'Usuario'            => $tabular['Usuario'],
-            'CodigoEstacion'     => $tabular['CodigoEstacion'],
-            'Turno'              => $tabular['Turno'],
-            'IdUsuario'          => $_SESSION['tg_user']['Id'],
-            'CodigoValor'        => $CodigoValor['ValorButt_Id'],
-            'ValorButtCodigoTar' => $CodigoValor['ValorButt_CodigoTar'],
-            'CodigoTar'          => $CodigoTar,
-            'CodigoRut'          => $CodigoRut,
-            'DatabaseName'       => $this->databases[$tabular['CodigoEstacion']],
-            'nrotrn'             => $dispatch['nrotrn'],
-            'Resultado'          => 0));
-    }
-
-    /**
-     * @param $fchtrn
-     * @param $hratrn_init
-     * @param $hratrn_final
-     * @param $codgas
-     * @return array|false
-     * @throws Exception
-     */
-    function get_credit_dispatches_tabular($fchtrn, $hratrn_init, $hratrn_final, $codgas) : array | false {
-        $query = '
-            SELECT
-                t1.nrotrn Despacho,
-                t1.nrofac Factura,
-                t1.satuid UUID,
-                t1.satrfc AS RFC,
-                t1.codcli,
-                t2.den AS Cliente,
-                CASE t2.tipval
-                    WHEN 3 THEN N\'Crédito\'
-                    WHEN 4 THEN N\'Débito\'
-                    ELSE \'Otro\'
-                END AS Tipo,
-                t1.can,
-                CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS hora_formateada,
-                CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
-                t1.mto,
-                t3.abr,
-                t3.den Producto,
-                t1.hratrn,
-                ROW_NUMBER() OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS rn,
-                LAG(t1.hratrn, 1, NULL) OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS hora_anterior,
-                t4.abr Estacion,
-                t5.tar Tarjeta,
-                t5.grp Grupo,
-                t5.den Descripcion,
-                t5.plc Placas,
-                t1.nrobom Bomba,
-                t6.pos Posicion,
-                t1.rut
-            FROM
-                [SG12].[dbo].[Despachos] t1
-                LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
-                LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.codprd = t3.cod
-                LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
-                LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t5 ON t1.codcli = t5.codcli AND t1.nroveh = t5.nroveh
-                LEFT JOIN [SG12].[dbo].[Bombas] t6 ON t1.codgas = t6.codgas AND t1.graprd = t6.graprd AND t1.nrobom = t6.nro
-            WHERE
-                t1.fchcor = ?
-                AND t1.hratrn BETWEEN ? AND ?
-                AND t1.codprd IN (179,180,181,192,193)
-                AND t1.codgas = ?
-                AND t2.tipval = 3
-        ';
-
-        $params = [$fchtrn, $hratrn_init, $hratrn_final, $codgas];
-        return ($rs = $this->sql->select($query, $params)) ? $rs : false ;
-    }
-
-    /**
-     * @param $fchtrn
-     * @param $hratrn_init
-     * @param $hratrn_final
-     * @param $codgas
-     * @return array|false
-     * @throws Exception
-     */
-    function get_debit_dispatches_tabular($fchtrn, $hratrn_init, $hratrn_final, $codgas) : array | false {
-        $query = "
-            SELECT
-                t1.nrotrn Despacho,
-                t1.nrofac Factura,
-                t1.satuid UUID,
-                t1.satrfc AS RFC,
-                t1.codcli,
-                t2.den AS Cliente,
-                CASE t2.tipval
-                    WHEN 3 THEN N'Crédito'
-                    WHEN 4 THEN N'Débito'
-                    ELSE 'Otro'
-                END AS Tipo,
-                t1.can,
-                CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS hora_formateada,
-                CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
-                t1.mto,
-                t3.abr,
-                t3.den Producto,
-                t1.hratrn,
-                ROW_NUMBER() OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS rn,
-                LAG(t1.hratrn, 1, NULL) OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS hora_anterior,
-                t4.abr Estacion,
-                t5.tar Tarjeta,
-                t5.grp Grupo,
-                t5.den Descripcion,
-                t5.plc Placas,
-                t1.nrobom Bomba,
-                t6.pos Posicion,
-                t1.rut,
-                t7.den Isla
-            FROM
-                {$this->databases[$codgas]}.[Despachos] t1
-                LEFT JOIN {$this->databases[$codgas]}.[Clientes] t2 ON t1.codcli = t2.cod
-                LEFT JOIN {$this->databases[$codgas]}.[Productos] t3 ON t1.codprd = t3.cod
-                LEFT JOIN {$this->databases[$codgas]}.[Gasolineras] t4 ON t1.codgas = t4.cod
-                LEFT JOIN {$this->databases[$codgas]}.[ClientesVehiculos] t5 ON t1.codcli = t5.codcli AND t1.nroveh = t5.nroveh
-                LEFT JOIN {$this->databases[$codgas]}.[Bombas] t6 ON t1.codgas = t6.codgas AND t1.graprd = t6.graprd AND t1.nrobom = t6.nro
-                LEFT JOIN {$this->databases[$codgas]}.[Islas]  t7 ON t1.codisl = t7.cod
-            WHERE
-                t1.fchcor = ?
-                AND t1.hratrn BETWEEN ? AND ?
-                AND t1.codprd IN (179,180,181,192,193)
-                AND t1.codgas = ?
-                AND t2.tipval = 4
-        ";
-
-        $params = [$fchtrn, $hratrn_init, $hratrn_final, $codgas];
-        return ($rs = $this->sql->select($query, $params)) ? $rs : false ;
-    }
-
-    /**
-     * @return array|false
-     * @throws Exception
-     */
-    function get_today_loyalty_dispatches() : array | false {
-        $query = "SELECT 
-                        CASE WHEN ProductoId = 179 OR ProductoId = 180 THEN 'TAX_ID' END document_type
-                        ,t.ClienteRazonSocial AS document_number
-                        ,t.DespachoMonto AS amount,
-                        est.place_uid AS place_uid --falta agregar este dato
-                        ,t.ProductoDescripcion AS description
-                        ,CASE WHEN ProductoId = 179 OR ProductoId = 180 THEN 'LITERS' END unit_measure
-                        ,t.DespachoLitros AS quantity
-                        ,t.DespachoId AS DespachoID
-                    FROM [TG].[dbo].[DespachosLealtad]  t
-                        INNER JOIN [TG].[dbo].[Estaciones] est on t.EstacionId = est.Codigo
-                    WHERE (t.procesado = 0 OR t.procesado = 'NULL' )
-                        AND t.ClienteRazonSocial != 'NULL' 
-                        -- AND CAST(t.DespachoFecha AS DATE) = CAST(GETDATE() AS DATE)
-                        AND CAST(t.DespachoFecha AS DATE) = CAST(GETDATE() - 1 AS DATE)
-
-        ";
-        return ($this->sql->select($query)) ?: false;
-    }
-
-    /**
-     * @return array|false
-     * @throws Exception
-     */
-    function get_pendings_loyalty_dispatches() : array | false {
-        $query = "DECLARE @fecha_inicio INT = DATEDIFF(dd, 0, getdate()) +1;
-                SELECT 
-                    nrotrn AS IdDespacho,
-                    CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fchtrn - 1, 103), 103) AS Fecha,
-                    nrotur AS Turno,
-                    mto AS Monto,
-                    can AS Litros,
-                    codprd AS Producto,
-                    p.den AS ProductoDesc,
-                    codgas AS Estacion,
-                    g.abr AS EstacionDesc,
-                    d.codcli AS CodCliente,
-                    c.den AS Cliente,
-                    c.pto AS Puntos,
-                    c.rfc AS RazonSocial
-                FROM [SG12].[dbo].Despachos d
-                    INNER JOIN [SG12].[dbo].Productos p ON d.codprd = p.cod 
-                    INNER JOIN [SG12].[dbo].Gasolineras g ON d.codgas = g.cod 
-                    INNER JOIN [SG12].[dbo].Clientes c ON d.codcli = c.cod
-                WHERE 
-                    d.fchtrn = @fecha_inicio
-                    AND d.codcli > 0
-                    AND c.pto = 1
-                    AND P.cod != 4
-                    AND nrotrn >= 0
-                ORDER BY nrotrn DESC
-                ";
-        return $this->sql->select($query) ?: false;
-    }
-
-    /**
-     * @param $dispatch
-     * @param $codest
-     * @return array|false
-     * @throws Exception
-     */
-    function get_dispatch_by_transaction($dispatch, $codest) : array | false {
-        $query = "SELECT * FROM {$this->databases[$codest]}.[Despachos] WHERE nrotrn = ?;";
-        $params = [$dispatch];
-        return ($rs = $this->sql->select($query, $params)) ? $rs[0] : false ;
-    }
-
-    function dismark_dispatch_station($codest, $nrotrn) : bool {
-        $query = "UPDATE {$this->databases[$codest]}.[Despachos] SET rut = NULL, tar = 0 WHERE nrotrn = ?;";
-        $params = [$nrotrn];
-        return (bool)$this->sql->update($query, $params);
-    }
-
-    function dismark_dispatch_central($codest, $nrotrn) : bool {
-        $query = "UPDATE [SG12].[dbo].[Despachos] SET rut = NULL, tar = 0 WHERE nrotrn = ? AND codgas = ?;";
-        $params = [$nrotrn, $codest];
-        return (bool)$this->sql->update($query, $params);
-    }
-
-    function sp_obtener_diferencias_por_valor($from, $until, $codgas) : array|false {
-
-        if ($codgas == 0) {
-            $query = "SELECT Codigo, Servidor FROM [TG].dbo.Estaciones WHERE Codigo NOT IN (0,4,20)";
-            $stations = $this->sql->select($query, []);
-            if (!$stations) {
-                return false;
-            } else {
-                $connected_stations = [];
-
-                foreach ($stations as $station) {
-                    $codigo = $station['Codigo'];
-                    $servidor = $station['Servidor'];
-
-                    // Verificar conexión al puerto 1433 (SQL Server)
-                    $connection = @fsockopen($servidor, 1433, $errno, $errstr, 5); // 5 segundos timeout
-
-                    if ($connection) {
-                        // Conexión exitosa
-                        $connected_stations[] = $codigo;
-                        fclose($connection);
-                    }
-                }
-
-                // Convertir array de códigos a string separado por comas
-                $result_string = implode(',', $connected_stations);
-            }
-        } else {
-            $result_string = $codgas;
-        }
-        set_time_limit(0);
-        ini_set('memory_limit', '256M');
-        ini_set('max_execution_time', 300);
-        $params = [$from, $until, $result_string];
-        return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_diferencias]', $params) ?: false;
-    }
-
-    function get_mark_dispatches_by_island_shift($fch,$CodigoEstacion) : array|false {
-        $query = "SELECT
-                    CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
-                    CAST(DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, CAST('00:00' AS TIME))) AS TIME) AS Hora,
-                    t1.nrotrn Despacho,
-                    t1.nrobom Posicion,
-                    CASE
-                        WHEN t1.codprd IN (179,192) THEN 'T-Maxima Regular'
-                        WHEN t1.codprd IN (180,193) THEN 'T-Super Premium'
-                        WHEN t1.codprd = 181 THEN 'Diesel Automotriz'
-                    END AS Producto,
-                    t1.pre Precio,
-                    CAST(t1.mto AS DECIMAL(10, 2)) AS Monto,
-                    CAST(t1.can AS DECIMAL(10, 3)) AS Volumen,
-                    t1.nrocte Nota,
-                    t1.nrofac Factura,
-                    t1.satuid UUID,
-                    t3.den Cliente,
-                    t3.cod Codigo,
-                    t1.nroveh Vehiculo,
-                    t1.tiptrn,
-                    t1.nrotur,
-                    (t1.nrotur / 10) AS turno,
-                    (t1.nrotur % 10) AS subcorte,
-                    t5.den Isla,
-                    t1.nrobom Bomba,
-                    t1.codgas,
-                    t1.tar,
-                    t1.nrofac,
-                    t3.tipval,
-                    CASE
-                        WHEN t3.tipval = 3 THEN N'Crédito'
-                        WHEN t3.tipval = 4 THEN N'Débito'
-                    END Tipo,
-                    CASE 
-                        WHEN t6.Despacho IS NOT NULL AND t1.mto = t6.mto THEN 1
-                        ELSE 0 
-                    END AS CoincidenciaEncontrada,
-                t8.den Valor,
-                t9.abr Estacion
-                FROM [SG12].[dbo].[Despachos] t1
-                    LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
-                    LEFT JOIN [SG12].[dbo].[Islas] t5 ON t1.codisl = t5.cod
-                    LEFT JOIN (SELECT DISTINCT ABS(t1.sec) Despacho, mto FROM [SG12].[dbo].[ValesR] t1 WHERE t1.codgas = $CodigoEstacion AND t1.codval IN (28,127,145) AND t1.fch = $fch) t6 ON t1.nrotrn = t6.Despacho
-                    LEFT JOIN [SG12].[dbo].[MovimientosTar] t7 ON t1.nrotrn = t7.nrotrn AND t7.codgas = $CodigoEstacion
-                    LEFT JOIN [SG12].[dbo].[Valores] t8 ON t7.codbco = t8.cod
-                    LEFT JOIN [SG12].[dbo].[Gasolineras] t9 ON t1.codgas = t9.cod
-                WHERE
-                    t1.fchcor = $fch
-                    AND t3.tipval IN (3,4)
-                AND t1.codgas = $CodigoEstacion
-                AND t1.mto > 0
-                ORDER BY t1.nrotrn DESC;";
-        return ($this->sql->select($query, [])) ?: false ;
-    }
-
-    function get_pending_dispatches_for_invoice($from, $until, int $type, $status) : array|false {
-       
-        $stringStatus = '';
-
-        if($status == 'pendiente'){
-            $stringStatus = 'AND t1.nrofac = 0';
-        }else{
-            $stringStatus = 'AND t1.nrofac != 0';
-        }
-        $stringType = ' and t2.tipval in (4,3)';
-        if ($type == 4) {
-            $stringType = ' and t2.tipval =4';
-        } else if ($type == 3) {
-            $stringType = 'and t2.tipval =3';
-        }
-        $query = "
-            DECLARE @tipo INT = $type;
             WITH ValuesTable AS (
                     SELECT
                             CONVERT(DATE, DATEADD(DAY, -1, t1.fchtrn)) AS Fecha,
@@ -805,469 +944,283 @@ class DespachosModel extends Model{
                             LEFT JOIN [SG12].[dbo].[Productos] t4 ON t1.codprd = t4.cod
                         WHERE
                             t1.fchtrn BETWEEN $from AND $until
-                            and t1.mto != 0
-                            and t1.can != 0
-                           $stringType
-                            $stringStatus
+                            AND t1.mto != 0
+                            AND t1.can != 0
+                            $whereType
+                            $whereStatus
             )
-            select * from  ValuesTable order by Fecha desc;
+            SELECT * FROM ValuesTable ORDER BY Fecha DESC;
             ";
-        return ($this->sql->select($query, [])) ?: false ;
+        return $this->fetchAll($query);
     }
 
-    function control_dispatches($from, $until, $codgas) :array|false {
-        $query = "
-            SELECT
-                t1.nrotrn Despacho,
-                t1.nrofac Factura,
-                t1.satuid UUID,
-                t1.satrfc AS RFC,
-                t1.codcli,
-                t2.den AS Cliente,
-                CASE t2.tipval
-                    WHEN 3 THEN N'Crédito'
-                    WHEN 4 THEN N'Débito'
-                    ELSE 'Otro'
-                END AS Tipo,
-                t1.can,
-                CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS hora_formateada,
-                CAST(CONVERT(VARCHAR(100), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
-                t1.mto,
-                t3.abr,
-                t3.den Producto,
-                t1.hratrn,
-                ROW_NUMBER() OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS rn,
-                LAG(t1.hratrn, 1, NULL) OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS hora_anterior,
-                t4.abr Estacion,
-                t5.tar Tarjeta,
-                t5.grp Grupo,
-                t5.den Descripcion,
-                t5.plc Placas,
-                t1.nrobom Bomba,
-                t6.pos Posicion,
-                t1.rut
-            FROM
-                [SG12].[dbo].[Despachos] t1
-                LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
-                LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.codprd = t3.cod
-                LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
-                LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t5 ON t1.codcli = t5.codcli AND t1.nroveh = t5.nroveh
-                LEFT JOIN [SG12].[dbo].[Bombas] t6 ON t1.codgas = t6.codgas AND t1.graprd = t6.graprd AND t1.nrobom = t6.nro
-            WHERE
-                t1.fchtrn BETWEEN ? AND ? AND t1.tiptrn NOT IN (65,74) AND nrotrn > 0 AND t1.codgas = ? ORDER BY t1.nrotrn
-        ";
-        $params = [$from, $until, $codgas];
-        return ($this->sql->select($query, $params)) ?: false ;
-    }
-
-    function control_dispatches2($from, $until, $codgas,$uuid,$tipo_cliente,$billed) :array|false {
-        $from  = (int) $from;
-        $until = (int) $until;
-        // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
-        $mov_from  = $from - 1;
-        $mov_until = $until + 1;
-        $uuid_true = " AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)";
-        $uuid_false = " AND  t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53";
-
-
-        $billed_true = " AND (t3.nro is not null or t1.nrofac !=0)";
-        $billed_false = " AND  t3.nro is null and t1.nrofac =0 ";
-        $where = "";
-        $where = $codgas != 0 ? "AND t1.codgas = $codgas" : "";
-        $where .= ($uuid != 0) ? ($uuid == 1 ? $uuid_false : ($uuid == 2 ? $uuid_true : "")): "";
-        $where .= ($billed != 0) ? ($billed == 1 ? $billed_false : ($billed == 2 ? $billed_true : "")): "";
-        if (!empty($tipo_cliente)) {
-            $where .= " AND 
-                        CASE 
-                            WHEN t10.codval = 28 THEN 'cliente_credito'
-                            WHEN t10.codval = 127 THEN 'cliente_debito'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'monedero'
-                            WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'contado'
-                            WHEN t3.codopr = 21701354 THEN 'factura_global'
-                            ELSE 'N/A'
-                        END = '$tipo_cliente'";
-        }
-
-        $params = [$from, $until, ];
-        $query = "WITH CTE AS (
-                    SELECT
-                    CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha, 
-                    CAST(CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS TIME(0)) AS hora_formateada,
-                    SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1)  as 'turno',
-                    t1.nrotrn as 'despacho',
-                    t8.den as 'producto',
-                    t6.abr as 'estacion',
-                    t7.den as 'empresa',
-                    t2.den as 'cliente_des',
-                    t5.den as 'cliente_fac',
-                    t1.can as 'cantidad',
-                    t1.mto as 'importe',
-                    t1.pre as 'precio',
-                    t1.gasfac,
-                    t1.nrofac,
-                    CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS 'despachador',
-                    CASE 
-                        WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-
-                        ELSE CAST(t3.nro AS VARCHAR(10)) 
-                    END AS 'factura',
-                    CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS 'FechaFactura',
-                    CASE 
-                        WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        ELSE CAST(t1.nrofac AS VARCHAR(10)) 
-                    END AS 'factura_desp',
-                    case 
-                    when t1.satuid is not null Then t1.satuid 
-                    else t3.satuid
-                    end as 'UUID',
-                    t3.satuid as 'UUID_fac',
-                    t1.satuid as 'UUID_dep',
-                    t1.rut,
-                    t13.den as 'denominacion',
-                    t1.codcli as 'codigo_cliente',
-                    t10.codval,
-                    t2.tipval,
-                    CASE
-                        WHEN t13.den in (' Tarjeta EfectiCard',
-                                        ' SMARTBT - EFECTIVALE',
-                                        ' Tarjeta TicketCar',
-                                        ' Vale Efectivale',
-                                        'Ultra Gas',
-                                        ' Tarjeta Inburgas',
-                                        ' Vale Edenred',
-                                        ' Tarjetas Sodexo (Pluxee)',
-                                        'Mobil FleetPro',
-                                        ' SMARTBT - SODEXO WIZEO',
-                                        ' Vale Sodexo') THEN 'Monedero'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                        WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                        WHEN t10.codval = 127 THEN 'Cliente Débito'
-                        WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                        WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                        else 'N/A'
-                    END as 'tipo_cliente_aplicativo',
-                    CASE 
-                        WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                        WHEN t10.codval = 127 THEN 'Cliente Débito'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                        WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                        WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                        else 'N/A'
-                    END as 'tipo_cliente',
-                    t14.den as 'efectos_c',
-                    t11.nroveh as 'vehiculo',
-                    t11.plc as 'placas',
-                    t3.txtref,
-                    t3.tipref,
-                    CASE
-                        WHEN t3.tipref = 4 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Credito'
-                        WHEN t3.tipref = 28 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Debito'
-                        WHEN t3.tipref = 1 AND t1.logmsk IN (2, 3) THEN 'Efectivo'
-                    END AS 'tipo_pago',
-                    CASE
-                        WHEN t1.tiptrn = 51 AND t1.gasfac != 2 THEN 'Tarjeta Credito'
-                        WHEN t1.tiptrn = 52 AND t1.gasfac != 2 THEN 'Tarjeta Debito'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Efectivale'
-                        WHEN t1.tiptrn = 0 THEN 'Efectivo'
-                    END AS 'tipo_pago_despacho',
-                    t1.tiptrn,
-                    t6.cvecli,
-                    ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
-                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                    LEFT JOIN [SG12].[dbo].Clientes t2 on t1.codcli = t2.cod
-                    LEFT JOIN [SG12].[dbo].DocumentosC t3 on t1.nrofac = t3.nro and t1.codgas = t3.codgas
-                    LEFT JOIN [SG12].[dbo].Clientes t5 on t3.codopr = t5.cod
-                    LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
-                    LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
-                    LEFT JOIN [SG12].[dbo].[Productos] t8 on t1.codprd = t8.cod
-                    LEFT JOIN [SG12].[dbo].[Responsables] t9 on t1.codres = t9.cod
-                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
-                    LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
-                    /* LEFT JOIN [SG12].[dbo].MovimientosTar t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas and t12.mto != 0 and t12.tipmov != 97 and t12.tipmov != 86 */
-                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov !=97  and mto != 0 and fchmov BETWEEN $mov_from AND $mov_until group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
-                    LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod
-                    LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
-                        Where
-                        t1.mto != 0 and
-                        t1.tiptrn  not in (65,74) and
-                        t1.fchtrn BETWEEN  $from and  $until  {$where}
-                        )
-            SELECT *
-                FROM CTE WITH (NOLOCK)
-                WHERE rn = 1
-                ORDER BY fecha, hora_formateada;";
-        try {
-            return ($rs=$this->sql->select($query,array())) ? $rs : false ;
-
-        } catch (Exception $e) {
-            echo "Error al ejecutar la consulta: " . $e->getMessage();
-            return false;
-        }
-    }
+    // =====================================================================
+    // 6. REPORTE "CONTROL DE DESPACHOS"
+    //    6a. Corporativo (servidor central, tabla [SG12].[dbo].[Despachos])
+    // =====================================================================
 
     /**
-     * Construye el WHERE de filtros del reporte (estación, timbrado, facturado,
-     * tipo de cliente) replicando exactamente la lógica de control_dispatches2.
+     * Construye "WITH CTE AS (...)" del reporte corporativo: un renglón por
+     * despacho con cliente, factura, UUID, tipo de cliente, forma de pago, etc.
+     *
+     * Reglas que conviene saber:
+     *  - El LEFT JOIN a MovimientosTar/Valores (banco) y a ClientesVehiculos puede
+     *    multiplicar renglones; por eso se numera con ROW_NUMBER y los
+     *    consumidores filtran `rn = 1`. La partición es (nrotrn, codgas):
+     *    nrotrn solo NO es único entre estaciones (PK = nrotrn + codgas).
+     *  - MovimientosTar se filtra con ±1 día de margen porque los movimientos de
+     *    tarjeta cerca de la medianoche pueden quedar con fecha distinta al despacho.
+     *
+     * @param string      $where         Filtros ya validados (DespachosSql::filtrosReporte()).
+     * @param string      $periodMode    'dispatch' = periodo por fecha del despacho;
+     *                                   'invoice'  = periodo por fecha de la factura (exige DocumentosC).
+     * @param int|null    $dispatchFrom  Acota además por fecha de despacho (solo con ambos extremos).
+     * @param int|null    $dispatchUntil
      */
-    private function dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed) : string {
-        $uuid_true   = " AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)";
-        $uuid_false  = " AND  t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53";
-        $billed_true = " AND (t3.nro is not null or t1.nrofac !=0)";
-        $billed_false= " AND  t3.nro is null and t1.nrofac =0 ";
+    private function dispatchesCte(int $from, int $until, string $where, string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null): string
+    {
+        $movFrom  = $from - 1;
+        $movUntil = $until + 1;
 
-        $codgas = (int) $codgas;
-        $where  = $codgas != 0 ? "AND t1.codgas = $codgas" : "";
-        $where .= ($uuid != 0)   ? ($uuid == 1 ? $uuid_false : ($uuid == 2 ? $uuid_true : "")) : "";
-        $where .= ($billed != 0) ? ($billed == 1 ? $billed_false : ($billed == 2 ? $billed_true : "")) : "";
-        if (!empty($tipo_cliente)) {
-            $tc = preg_replace('/[^a-z_]/', '', (string)$tipo_cliente); // whitelist
-            $where .= " AND
-                        CASE
-                            WHEN t10.codval = 28 THEN 'cliente_credito'
-                            WHEN t10.codval = 127 THEN 'cliente_debito'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'monedero'
-                            WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'contado'
-                            WHEN t3.codopr = 21701354 THEN 'factura_global'
-                            ELSE 'N/A'
-                        END = '$tc'";
-        }
-        return $where;
-    }
-
-    /**
-     * Devuelve la cláusula "WITH CTE AS (...)" usada por el reporte de despachos.
-     * Es un espejo del CTE de control_dispatches2() para poder reutilizarlo en
-     * consultas paginadas y agregadas sin traer todo el detalle a memoria.
-     * $from/$until son enteros (dateToInt) y $where viene de dispatchesWhere().
-     */
-    private function dispatchesCTE($from, $until, $where, string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : string {
-        $from  = (int) $from;
-        $until = (int) $until;
-        // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
-        $mov_from  = $from - 1;
-        $mov_until = $until + 1;
-        // El modo factura se usa por el reporte de facturación.  La relación
-        // con DocumentosC es obligatoria y el periodo se aplica a su fecha,
-        // no a la fecha del despacho.
         $periodWhere = $periodMode === 'invoice'
             ? "t3.nro IS NOT NULL AND t3.fch BETWEEN $from AND $until"
             : "t1.fchtrn BETWEEN $from AND $until";
         $dispatchWhere = $dispatchFrom !== null && $dispatchUntil !== null
-            ? ' AND t1.fchtrn BETWEEN ' . (int) $dispatchFrom . ' AND ' . (int) $dispatchUntil
+            ? " AND t1.fchtrn BETWEEN $dispatchFrom AND $dispatchUntil"
             : '';
+
+        $fecha          = DespachosSql::fechaIso('t1.fchtrn');
+        $hora           = DespachosSql::horaTime();
+        $folioFactura   = DespachosSql::folio('t3.nro');
+        $folioDespacho  = DespachosSql::folio('t1.nrofac');
+        $tipoCliente    = DespachosSql::tipoCliente();
+        $tipoAplicativo = DespachosSql::tipoCliente(false, true);
+        $pagoFactura    = DespachosSql::pagoFactura();
+        $pagoDespacho   = DespachosSql::pagoDespacho();
 
         return "WITH CTE AS (
                     SELECT
-                    CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
-                    CAST(CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS TIME(0)) AS hora_formateada,
-                    SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1)  as 'turno',
-                    t1.nrotrn as 'despacho',
-                    t8.den as 'producto',
-                    t6.abr as 'estacion',
-                    t7.den as 'empresa',
-                    t2.den as 'cliente_des',
-                    t5.den as 'cliente_fac',
-                    t1.can as 'cantidad',
-                    t1.mto as 'importe',
-                    t1.pre as 'precio',
+                    $fecha AS fecha,
+                    $hora AS hora_formateada,
+                    SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1) AS turno,
+                    t1.nrotrn AS despacho,
+                    t8.den AS producto,
+                    t6.abr AS estacion,
+                    t7.den AS empresa,
+                    t2.den AS cliente_des,
+                    t5.den AS cliente_fac,
+                    t1.can AS cantidad,
+                    t1.mto AS importe,
+                    t1.pre AS precio,
                     t1.gasfac,
                     t1.nrofac,
-                    CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS 'despachador',
-                    CASE
-                        WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        ELSE CAST(t3.nro AS VARCHAR(10))
-                    END AS 'factura',
-                    CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS 'FechaFactura',
-                    CASE
-                        WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        ELSE CAST(t1.nrofac AS VARCHAR(10))
-                    END AS 'factura_desp',
-                    case
-                    when t1.satuid is not null Then t1.satuid
-                    else t3.satuid
-                    end as 'UUID',
-                    t3.satuid as 'UUID_fac',
-                    t1.satuid as 'UUID_dep',
+                    CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS despachador,
+                    $folioFactura AS factura,
+                    CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS FechaFactura,
+                    $folioDespacho AS factura_desp,
+                    CASE WHEN t1.satuid IS NOT NULL THEN t1.satuid ELSE t3.satuid END AS UUID,
+                    t3.satuid AS UUID_fac,
+                    t1.satuid AS UUID_dep,
                     t1.rut,
-                    t13.den as 'denominacion',
-                    t1.codcli as 'codigo_cliente',
+                    t13.den AS denominacion,
+                    t1.codcli AS codigo_cliente,
                     t10.codval,
                     t2.tipval,
-                    CASE
-                        WHEN t13.den in (' Tarjeta EfectiCard',
-                                        ' SMARTBT - EFECTIVALE',
-                                        ' Tarjeta TicketCar',
-                                        ' Vale Efectivale',
-                                        'Ultra Gas',
-                                        ' Tarjeta Inburgas',
-                                        ' Vale Edenred',
-                                        ' Tarjetas Sodexo (Pluxee)',
-                                        'Mobil FleetPro',
-                                        ' SMARTBT - SODEXO WIZEO',
-                                        ' Vale Sodexo') THEN 'Monedero'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                        WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                        WHEN t10.codval = 127 THEN 'Cliente Débito'
-                        WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                        WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                        else 'N/A'
-                    END as 'tipo_cliente_aplicativo',
-                    CASE
-                        WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                        WHEN t10.codval = 127 THEN 'Cliente Débito'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                        WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                        WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                        else 'N/A'
-                    END as 'tipo_cliente',
-                    t14.den as 'efectos_c',
-                    t11.nroveh as 'vehiculo',
-                    t11.plc as 'placas',
+                    $tipoAplicativo AS tipo_cliente_aplicativo,
+                    $tipoCliente AS tipo_cliente,
+                    t14.den AS efectos_c,
+                    t11.nroveh AS vehiculo,
+                    t11.plc AS placas,
                     t3.txtref,
                     t3.tipref,
-                    CASE
-                        WHEN t3.tipref = 4 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Credito'
-                        WHEN t3.tipref = 28 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Debito'
-                        WHEN t3.tipref = 1 AND t1.logmsk IN (2, 3) THEN 'Efectivo'
-                    END AS 'tipo_pago',
-                    CASE
-                        WHEN t1.tiptrn = 51 AND t1.gasfac != 2 THEN 'Tarjeta Credito'
-                        WHEN t1.tiptrn = 52 AND t1.gasfac != 2 THEN 'Tarjeta Debito'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Efectivale'
-                        WHEN t1.tiptrn = 0 THEN 'Efectivo'
-                    END AS 'tipo_pago_despacho',
+                    $pagoFactura AS tipo_pago,
+                    $pagoDespacho AS tipo_pago_despacho,
                     t1.tiptrn,
                     t6.cvecli,
-                    ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
+                    ROW_NUMBER() OVER(PARTITION BY t1.nrotrn, t1.codgas ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
                     FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                    LEFT JOIN [SG12].[dbo].Clientes t2 on t1.codcli = t2.cod
-                    LEFT JOIN [SG12].[dbo].DocumentosC t3 on t1.nrofac = t3.nro and t1.codgas = t3.codgas
-                    LEFT JOIN [SG12].[dbo].Clientes t5 on t3.codopr = t5.cod
+                    LEFT JOIN [SG12].[dbo].Clientes t2 ON t1.codcli = t2.cod
+                    LEFT JOIN [SG12].[dbo].DocumentosC t3 ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
+                    LEFT JOIN [SG12].[dbo].Clientes t5 ON t3.codopr = t5.cod
                     LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
                     LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
-                    LEFT JOIN [SG12].[dbo].[Productos] t8 on t1.codprd = t8.cod
-                    LEFT JOIN [SG12].[dbo].[Responsables] t9 on t1.codres = t9.cod
-                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
-                    LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
-                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov !=97  and mto != 0 and fchmov BETWEEN $mov_from AND $mov_until group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
-                    LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod
-                    LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
-                        Where
-                        t1.mto != 0 and
-                        t1.tiptrn  not in (65,74) and
-                        $periodWhere$dispatchWhere {$where}
-                        )";
+                    LEFT JOIN [SG12].[dbo].[Productos] t8 ON t1.codprd = t8.cod
+                    LEFT JOIN [SG12].[dbo].[Responsables] t9 ON t1.codres = t9.cod
+                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli AND t10.codest != -1 AND t10.codval IN (127, 28)
+                    LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 ON t1.codcli = t11.codcli AND t1.nroveh = t11.nroveh
+                    LEFT JOIN (
+                        SELECT nrotrn, SUM(mto) AS mto, codbco, codgas
+                        FROM [SG12].[dbo].MovimientosTar WITH (NOLOCK)
+                        WHERE tipmov != 86 AND tipmov != 97 AND mto != 0 AND fchmov BETWEEN $movFrom AND $movUntil
+                        GROUP BY nrotrn, codgas, codbco
+                    ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas
+                    LEFT JOIN [SG12].[dbo].Valores t13 ON t12.codbco = t13.cod
+                    LEFT JOIN [SG12].[dbo].[EfectosC] t14 ON t3.tip = t14.tipope AND t3.subope = t14.subope
+                    WHERE
+                        t1.mto != 0 AND
+                        t1.tiptrn NOT IN (65, 74) AND
+                        $periodWhere$dispatchWhere $where
+                )";
     }
 
     /**
-     * Versión paginada (server-side) del reporte de despachos corporativo.
-     * Pagina en SQL Server con OFFSET/FETCH para no traer todo el dataset a
-     * memoria. Devuelve ['data','recordsTotal','recordsFiltered'].
+     * Reporte completo (sin paginar) de despachos del corporativo.
      *
-     * @param array $columnSearches  ['clave_columna' => 'texto', ...]
-     * @param string $globalSearch   búsqueda global de DataTables
+     * @param int        $from         Fecha inicial (entero de fecha).
+     * @param int        $until        Fecha final (entero de fecha).
+     * @param int        $codgas       Estación (0 = todas).
+     * @param int        $uuid         0 = todos, 1 = sin timbrar, 2 = timbrados.
+     * @param string|int $tipo_cliente Slug ('cliente_credito', 'cliente_debito', 'monedero',
+     *                                 'contado', 'factura_global'); 0 / '' = todos.
+     * @param int        $billed       0 = todos, 1 = sin facturar, 2 = facturados.
+     * @return list<array<string,mixed>>|false
      */
-    private function dispatchesPaginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                         $start, $length, $orderColKey, $orderDir,
-                                         array $columnSearches = [], string $globalSearch = '',
-                                         string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
-        // Whitelist columna -> expresión SQL (sobre las columnas que expone el CTE).
-        // Las columnas "coalesce" se buscan/ordenan igual que se muestran.
-        $colExpr = [
-            'fecha'                   => 'fecha',
-            'hora_formateada'         => 'hora_formateada',
-            'turno'                   => 'turno',
-            'despacho'                => 'despacho',
-            'producto'                => 'producto',
-            'estacion'                => 'estacion',
-            'empresa'                 => 'empresa',
-            'cliente_fac'             => 'COALESCE(cliente_fac, cliente_des)',
-            'cantidad'                => 'cantidad',
-            'importe'                 => 'importe',
-            'precio'                  => 'precio',
-            'despachador'             => 'despachador',
-            'tipo_pago'               => 'COALESCE(tipo_pago, tipo_pago_despacho)',
-            'factura'                 => 'COALESCE(factura, factura_desp)',
-            'FechaFactura'            => 'FechaFactura',
-            'UUID'                    => 'UUID',
-            'txtref'                  => 'txtref',
-            'rut'                     => 'rut',
-            'denominacion'            => 'denominacion',
-            'codigo_cliente'          => 'codigo_cliente',
-            'tipo_cliente'            => 'tipo_cliente',
-            'tipo_cliente_aplicativo' => 'tipo_cliente_aplicativo',
-            'vehiculo'                => 'vehiculo',
-            'placas'                  => 'placas',
-        ];
+    public function control_dispatches2(int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed): array|false
+    {
+        $where = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
+        $cte   = $this->dispatchesCte($from, $until, $where);
 
-        $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
+        return $this->fetchAll("$cte
+            SELECT *
+            FROM CTE WITH (NOLOCK)
+            WHERE rn = 1
+            ORDER BY fecha, hora_formateada;");
+    }
 
-        // recordsTotal: total sin búsqueda DataTables (parámetros del reporte ya aplicados en el CTE).
-        $totalRow = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1", []);
+    /**
+     * Igual que control_dispatches2() pero agrega los datos del CFDI en el
+     * portal de facturación (TGV2.dbo.Facturas: Folio, UUID_sat, FechaTimbrado)
+     * y NO incluye despachador, vehículo ni placas.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function control_dispatches_invoiced(int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed): array|false
+    {
+        $where = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
+
+        $movFrom        = $from - 1;
+        $movUntil       = $until + 1;
+        $fecha          = DespachosSql::fechaIso('t1.fchtrn');
+        $hora           = DespachosSql::horaTime();
+        $folioFactura   = DespachosSql::folio('t3.nro');
+        $folioDespacho  = DespachosSql::folio('t1.nrofac');
+        $tipoCliente    = DespachosSql::tipoCliente();
+        $tipoAplicativo = DespachosSql::tipoCliente(false, true);
+        $pagoFactura    = DespachosSql::pagoFactura();
+        $pagoDespacho   = DespachosSql::pagoDespacho();
+
+        $query = "WITH CTE AS (
+                    SELECT
+                        $fecha AS fecha,
+                        $hora AS hora_formateada,
+                        SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1) AS turno,
+                        t1.nrotrn AS despacho,
+                        t8.den AS producto,
+                        t6.abr AS estacion,
+                        t7.den AS empresa,
+                        t2.den AS cliente_des,
+                        t5.den AS cliente_fac,
+                        t1.can AS cantidad,
+                        t1.mto AS importe,
+                        t1.pre AS precio,
+                        t1.gasfac,
+                        t1.nrofac,
+                        $folioFactura AS factura,
+                        $folioDespacho AS factura_desp,
+                        t15.Folio,
+                        CASE WHEN t1.satuid IS NOT NULL THEN t1.satuid ELSE t3.satuid END AS UUID,
+                        t15.UUID AS UUID_sat,
+                        t3.satuid AS UUID_fac,
+                        t1.satuid AS UUID_dep,
+                        t1.rut,
+                        t13.den AS denominacion,
+                        t1.codcli AS codigo_cliente,
+                        t10.codval,
+                        t2.tipval,
+                        $tipoAplicativo AS tipo_cliente_aplicativo,
+                        $tipoCliente AS tipo_cliente,
+                        t14.den AS efectos_c,
+                        t3.txtref,
+                        t3.tipref,
+                        $pagoFactura AS tipo_pago,
+                        $pagoDespacho AS tipo_pago_despacho,
+                        t1.tiptrn,
+                        t6.cvecli,
+                        t15.FechaTimbrado,
+                        ROW_NUMBER() OVER(PARTITION BY t1.nrotrn, t1.codgas ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
+                        FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                        LEFT JOIN [SG12].[dbo].Clientes t2 ON t1.codcli = t2.cod
+                        LEFT JOIN [SG12].[dbo].DocumentosC t3 ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
+                        LEFT JOIN [SG12].[dbo].Clientes t5 ON t3.codopr = t5.cod
+                        LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
+                        LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
+                        LEFT JOIN [SG12].[dbo].[Productos] t8 ON t1.codprd = t8.cod
+                        LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli AND t10.codest != -1 AND t10.codval IN (127, 28)
+                        LEFT JOIN (
+                            SELECT nrotrn, SUM(mto) AS mto, codbco, codgas
+                            FROM [SG12].[dbo].MovimientosTar WITH (NOLOCK)
+                            WHERE tipmov != 86 AND tipmov != 97 AND mto != 0 AND fchmov BETWEEN $movFrom AND $movUntil
+                            GROUP BY nrotrn, codgas, codbco
+                        ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas
+                        LEFT JOIN [SG12].[dbo].Valores t13 ON t12.codbco = t13.cod
+                        LEFT JOIN [SG12].[dbo].[EfectosC] t14 ON t3.tip = t14.tipope AND t3.subope = t14.subope
+                        LEFT JOIN TGV2.dbo.Facturas t15 ON t1.satuid = t15.UUID
+                    WHERE
+                        t1.mto != 0 AND
+                        t1.tiptrn NOT IN (65, 74) AND
+                        t1.fchtrn BETWEEN ? AND ? $where
+                )
+            SELECT *
+            FROM CTE
+            WHERE rn = 1
+            ORDER BY fecha, hora_formateada;";
+
+        return $this->fetchAll($query, [$from, $until]);
+    }
+
+    /**
+     * Reporte corporativo paginado en el servidor (OFFSET/FETCH) para no traer
+     * todo el dataset a memoria.
+     *
+     * @param array<string,mixed> $columnSearches Búsqueda por columna ['clave' => 'texto'].
+     * @param string              $periodMode     'dispatch' o 'invoice' (ver dispatchesCte()).
+     * @return array{data:list<array<string,mixed>>,recordsTotal:int,recordsFiltered:int}
+     */
+    private function dispatchesPaginated(
+        int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed,
+        int $start, int $length, string $orderColKey, string $orderDir,
+        array $columnSearches = [], string $globalSearch = '',
+        string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null
+    ): array {
+        $columns = DespachosSql::COLUMNAS_REPORTE;
+        $where   = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
+        $cte     = $this->dispatchesCte($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
+
+        // recordsTotal: sin la búsqueda de DataTables (los filtros del reporte ya van en el CTE).
+        $totalRow     = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1", []);
         $recordsTotal = (int) ($totalRow[0]['c'] ?? 0);
 
-        // Construir WHERE de búsqueda (parametrizado) para columnas y búsqueda global.
-        $searchWhere = '';
-        $params = [];
-        foreach ($columnSearches as $key => $val) {
-            if ($val !== '' && isset($colExpr[$key])) {
-                $searchWhere .= " AND CAST(" . $colExpr[$key] . " AS NVARCHAR(MAX)) LIKE ?";
-                $params[] = '%' . $val . '%';
-            }
-        }
-        if ($globalSearch !== '') {
-            $ors = [];
-            foreach ($colExpr as $expr) {
-                $ors[] = "CAST($expr AS NVARCHAR(MAX)) LIKE ?";
-                $params[] = '%' . $globalSearch . '%';
-            }
-            if (!empty($ors)) {
-                $searchWhere .= " AND (" . implode(' OR ', $ors) . ")";
-            }
-        }
+        [$searchWhere, $params] = DespachosSql::busqueda($columns, $columnSearches, $globalSearch);
 
-        // recordsFiltered.
         if ($searchWhere === '') {
             $recordsFiltered = $recordsTotal;
         } else {
-            $fRow = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere", $params);
-            $recordsFiltered = (int) ($fRow[0]['c'] ?? 0);
+            $filteredRow     = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere", $params);
+            $recordsFiltered = (int) ($filteredRow[0]['c'] ?? 0);
         }
 
-        // Orden seguro (whitelist) + desempate estable por despacho.
-        $orderExpr = $colExpr[$orderColKey] ?? 'fecha';
-        $orderDir  = strtolower($orderDir) === 'desc' ? 'DESC' : 'ASC';
+        [$orderExpr, $orderDirection] = DespachosSql::orden($columns, $orderColKey, $orderDir);
 
-        // OFFSET/FETCH con enteros casteados (sin parámetros para evitar problemas de tipo en sqlsrv).
-        $start  = max(0, (int) $start);
-        $length = (int) $length;
-        if ($length <= 0) { $length = 1000; } // nunca traer "todos"
+        // OFFSET/FETCH con enteros ya validados (sin parámetros: evita problemas de tipo en sqlsrv).
+        $start  = max(0, $start);
+        $length = $length > 0 ? $length : 1000; // nunca traer "todos"
 
-        $dataQuery = "$cte SELECT * FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere
-                      ORDER BY $orderExpr $orderDir, despacho ASC
-                      OFFSET $start ROWS FETCH NEXT $length ROWS ONLY";
-        $data = $this->sql->select($dataQuery, $params);
+        $data = $this->sql->select(
+            "$cte SELECT * FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere
+             ORDER BY $orderExpr $orderDirection, despacho ASC
+             OFFSET $start ROWS FETCH NEXT $length ROWS ONLY",
+            $params
+        );
 
         return [
             'data'            => $data ?: [],
@@ -1276,9 +1229,17 @@ class DespachosModel extends Model{
         ];
     }
 
-    function control_dispatches2_paginated($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                           $start, $length, $orderColKey, $orderDir,
-                                           array $columnSearches = [], string $globalSearch = '') : array {
+    /**
+     * Reporte "Control de Despachos" paginado (periodo por fecha de despacho).
+     *
+     * @param array<string,mixed> $columnSearches
+     * @return array{data:list<array<string,mixed>>,recordsTotal:int,recordsFiltered:int}
+     */
+    public function control_dispatches2_paginated(
+        int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed,
+        int $start, int $length, string $orderColKey, string $orderDir,
+        array $columnSearches = [], string $globalSearch = ''
+    ): array {
         return $this->dispatchesPaginated(
             $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
             $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch
@@ -1286,90 +1247,51 @@ class DespachosModel extends Model{
     }
 
     /**
-     * Reporte independiente por fecha de factura. Siempre exige la relación
-     * real con DocumentosC y conserva exactamente las columnas del reporte de
-     * Control Despachos.
+     * Reporte independiente por FECHA DE FACTURA. Siempre exige la relación
+     * real con DocumentosC (solo despachos facturados) y conserva las columnas
+     * del reporte de Control de Despachos.
+     *
+     * @param array<string,mixed> $columnSearches
+     * @return array{data:list<array<string,mixed>>,recordsTotal:int,recordsFiltered:int}
      */
-    function control_dispatches_by_billing_paginated($from, $until, $codgas, $uuid, $tipo_cliente,
-                                                      $start, $length, $orderColKey, $orderDir,
-                                                      array $columnSearches = [], string $globalSearch = '',
-                                                      ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
+    public function control_dispatches_by_billing_paginated(
+        int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente,
+        int $start, int $length, string $orderColKey, string $orderDir,
+        array $columnSearches = [], string $globalSearch = '',
+        ?int $dispatchFrom = null, ?int $dispatchUntil = null
+    ): array {
         return $this->dispatchesPaginated(
             $from, $until, $codgas, $uuid, $tipo_cliente, 2,
-            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice', $dispatchFrom, $dispatchUntil
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch,
+            'invoice', $dispatchFrom, $dispatchUntil
         );
     }
 
     /**
-     * Igual que control_dispatches2_paginated pero sin OFFSET/FETCH: recorre
-     * TODAS las filas que cumplen los mismos filtros de reporte + búsquedas de
-     * columna/globales. Devuelve un Generator que entrega las filas UNA POR UNA
-     * directo del cursor de SQL Server, sin materializar el dataset completo en
-     * memoria, para que la exportación a Excel pueda escribir en streaming sin
-     * límite de registros (ver export_dispatches_excel en el controller).
+     * Igual que dispatchesPaginated() pero sin OFFSET/FETCH: entrega TODAS las
+     * filas una por una desde el cursor de SQL Server (memoria constante), para
+     * exportar a Excel en streaming sin límite de registros.
+     *
+     * @param array<string,mixed> $columnSearches
+     * @return Generator<int,array<string,mixed>>
      */
-    private function streamDispatchesAll($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                         $orderColKey, $orderDir,
-                                         array $columnSearches = [], string $globalSearch = '',
-                                         string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
-        $colExpr = [
-            'fecha'                   => 'fecha',
-            'hora_formateada'         => 'hora_formateada',
-            'turno'                   => 'turno',
-            'despacho'                => 'despacho',
-            'producto'                => 'producto',
-            'estacion'                => 'estacion',
-            'empresa'                 => 'empresa',
-            'cliente_fac'             => 'COALESCE(cliente_fac, cliente_des)',
-            'cantidad'                => 'cantidad',
-            'importe'                 => 'importe',
-            'precio'                  => 'precio',
-            'despachador'             => 'despachador',
-            'tipo_pago'               => 'COALESCE(tipo_pago, tipo_pago_despacho)',
-            'factura'                 => 'COALESCE(factura, factura_desp)',
-            'FechaFactura'            => 'FechaFactura',
-            'UUID'                    => 'UUID',
-            'txtref'                  => 'txtref',
-            'rut'                     => 'rut',
-            'denominacion'            => 'denominacion',
-            'codigo_cliente'          => 'codigo_cliente',
-            'tipo_cliente'            => 'tipo_cliente',
-            'tipo_cliente_aplicativo' => 'tipo_cliente_aplicativo',
-            'vehiculo'                => 'vehiculo',
-            'placas'                  => 'placas',
-        ];
+    private function streamDispatchesAll(
+        int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed,
+        string $orderColKey, string $orderDir,
+        array $columnSearches = [], string $globalSearch = '',
+        string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null
+    ): Generator {
+        $columns = DespachosSql::COLUMNAS_REPORTE;
+        $where   = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
+        $cte     = $this->dispatchesCte($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
 
-        $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
+        [$searchWhere, $params]       = DespachosSql::busqueda($columns, $columnSearches, $globalSearch);
+        [$orderExpr, $orderDirection] = DespachosSql::orden($columns, $orderColKey, $orderDir);
 
-        $searchWhere = '';
-        $params = [];
-        foreach ($columnSearches as $key => $val) {
-            if ($val !== '' && isset($colExpr[$key])) {
-                $searchWhere .= " AND CAST(" . $colExpr[$key] . " AS NVARCHAR(MAX)) LIKE ?";
-                $params[] = '%' . $val . '%';
-            }
-        }
-        if ($globalSearch !== '') {
-            $ors = [];
-            foreach ($colExpr as $expr) {
-                $ors[] = "CAST($expr AS NVARCHAR(MAX)) LIKE ?";
-                $params[] = '%' . $globalSearch . '%';
-            }
-            if (!empty($ors)) {
-                $searchWhere .= " AND (" . implode(' OR ', $ors) . ")";
-            }
-        }
-
-        $orderExpr = $colExpr[$orderColKey] ?? 'fecha';
-        $orderDir  = strtolower($orderDir) === 'desc' ? 'DESC' : 'ASC';
-
-        $dataQuery = "$cte SELECT * FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere
-                      ORDER BY $orderExpr $orderDir, despacho ASC";
-
-        // Cursor forward-only de sqlsrv: las filas viajan del servidor conforme
-        // se consumen, así el uso de memoria en PHP es constante.
-        $stmt = $this->sql->getConnection()->prepare($dataQuery);
+        $stmt = $this->sql->getConnection()->prepare(
+            "$cte SELECT * FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere
+             ORDER BY $orderExpr $orderDirection, despacho ASC"
+        );
         $stmt->execute($params);
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             yield $row;
@@ -1377,215 +1299,49 @@ class DespachosModel extends Model{
         $stmt->closeCursor();
     }
 
-    function stream_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                     $orderColKey, $orderDir,
-                                     array $columnSearches = [], string $globalSearch = '') : Generator {
+    /**
+     * @param array<string,mixed> $columnSearches
+     * @return Generator<int,array<string,mixed>>
+     */
+    public function stream_dispatches2_all(
+        int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed,
+        string $orderColKey, string $orderDir,
+        array $columnSearches = [], string $globalSearch = ''
+    ): Generator {
         return $this->streamDispatchesAll(
             $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
             $orderColKey, $orderDir, $columnSearches, $globalSearch
         );
     }
 
-    function stream_dispatches_by_billing_all($from, $until, $codgas, $uuid, $tipo_cliente,
-                                               $orderColKey, $orderDir,
-                                               array $columnSearches = [], string $globalSearch = '',
-                                               ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
+    /**
+     * @param array<string,mixed> $columnSearches
+     * @return Generator<int,array<string,mixed>>
+     */
+    public function stream_dispatches_by_billing_all(
+        int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente,
+        string $orderColKey, string $orderDir,
+        array $columnSearches = [], string $globalSearch = '',
+        ?int $dispatchFrom = null, ?int $dispatchUntil = null
+    ): Generator {
         return $this->streamDispatchesAll(
             $from, $until, $codgas, $uuid, $tipo_cliente, 2,
-            $orderColKey, $orderDir, $columnSearches, $globalSearch, 'invoice', $dispatchFrom, $dispatchUntil
+            $orderColKey, $orderDir, $columnSearches, $globalSearch,
+            'invoice', $dispatchFrom, $dispatchUntil
         );
-    }
-
-    /*
-     * Consulta local de "Despachos por facturación".  No reutiliza
-     * control_dispatches_est_sql: aquella consulta está deliberadamente basada
-     * en la fecha del despacho.  Aquí DocumentosC es obligatorio y el período
-     * se aplica, con parámetros PDO, a la fecha de la factura.
-     */
-    private function stationBillingSql($uuid, $tipoCliente, $orderColKey, $orderDir,
-                                       array $columnSearches = [], string $globalSearch = '',
-                                       ?int $dispatchFrom = null, ?int $dispatchUntil = null) : array {
-        $columns = [
-            'fecha'=>'fecha', 'hora_formateada'=>'hora_formateada', 'turno'=>'turno', 'despacho'=>'despacho',
-            'producto'=>'producto', 'estacion'=>'estacion', 'empresa'=>'empresa', 'cliente_fac'=>'cliente_fac',
-            'cantidad'=>'cantidad', 'importe'=>'importe', 'precio'=>'precio', 'despachador'=>'despachador',
-            'tipo_pago'=>'tipo_pago', 'factura'=>'factura', 'FechaFactura'=>'FechaFactura', 'UUID'=>'[UUID]',
-            'txtref'=>'txtref', 'rut'=>'rut', 'denominacion'=>'denominacion', 'codigo_cliente'=>'codigo_cliente',
-            'tipo_cliente'=>'tipo_cliente', 'tipo_cliente_aplicativo'=>'tipo_cliente_aplicativo', 'vehiculo'=>'vehiculo', 'placas'=>'placas'
-        ];
-        $uuidWhere = $uuid == 1 ? ' AND t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53'
-            : ($uuid == 2 ? ' AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)' : '');
-        $typeWhere = '';
-        $typeParams = [];
-        if ($tipoCliente !== 0 && $tipoCliente !== '0') {
-            $map = ['cliente_credito'=>'Cliente Crédito', 'cliente_debito'=>'Cliente Débito', 'monedero'=>'Monedero', 'contado'=>'Contado', 'factura_global'=>'Factura Global'];
-            if (isset($map[$tipoCliente])) { $typeWhere = ' AND tipo_cliente = ?'; $typeParams[] = $map[$tipoCliente]; }
-        }
-        $dispatchWhere = $dispatchFrom !== null && $dispatchUntil !== null
-            ? ' AND t1.fchtrn BETWEEN ' . (int) $dispatchFrom . ' AND ' . (int) $dispatchUntil
-            : '';
-        $cte = "WITH CTE AS (
-            SELECT CONVERT(VARCHAR(10), DATEADD(day,-1,t1.fchtrn),23) fecha,
-                CONVERT(VARCHAR(5),CONVERT(TIME,DATEADD(MINUTE,t1.hratrn % 100,DATEADD(HOUR,t1.hratrn / 100,0)))) hora_formateada,
-                SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)),1,1) turno, t1.nrotrn despacho, t8.den producto,
-                t6.abr estacion, t7.den empresa, ISNULL(t5.den,t2.den) cliente_fac, t1.can cantidad, t1.mto importe, t1.pre precio,
-                CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END despachador,
-                CASE WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z '+SUBSTRING(CAST(t3.nro AS VARCHAR(10)),4,10)
-                     WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T '+SUBSTRING(CAST(t3.nro AS VARCHAR(10)),4,10)
-                     WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K '+SUBSTRING(CAST(t3.nro AS VARCHAR(10)),4,10)
-                     WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C '+SUBSTRING(CAST(t3.nro AS VARCHAR(10)),4,10)
-                     ELSE CAST(t3.nro AS VARCHAR(10)) END factura,
-                CONVERT(DATE,DATEADD(DAY,-1,t3.fch)) FechaFactura,
-                ISNULL(CASE WHEN t1.satuid IS NOT NULL THEN t1.satuid ELSE t3.satuid END,'.') [UUID], t3.txtref, t1.rut, t13.den denominacion,
-                CASE WHEN t1.codcli < 0 THEN '' ELSE CAST(t1.codcli AS VARCHAR(20)) END codigo_cliente,
-                CASE WHEN t10.codval=28 THEN 'Cliente Crédito' WHEN t10.codval=127 THEN 'Cliente Débito'
-                     WHEN t1.tiptrn=53 AND t1.gasfac != 2 THEN 'Monedero' WHEN t3.codopr=21701354 THEN 'Factura Global'
-                     WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'Contado' ELSE 'N/A' END tipo_cliente,
-                CASE WHEN t13.den IN (' Tarjeta EfectiCard',' SMARTBT - EFECTIVALE',' Tarjeta TicketCar',' Vale Efectivale','Ultra Gas',' Tarjeta Inburgas',' Vale Edenred',' Tarjetas Sodexo (Pluxee)','Mobil FleetPro',' SMARTBT - SODEXO WIZEO',' Vale Sodexo') THEN 'Monedero'
-                     WHEN t1.tiptrn=53 AND t1.gasfac != 2 THEN 'Monedero' WHEN t10.codval=28 THEN 'Cliente Crédito' WHEN t10.codval=127 THEN 'Cliente Débito'
-                     WHEN t3.codopr=21701354 THEN 'Factura Global' WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'Contado' ELSE 'N/A' END tipo_cliente_aplicativo,
-                t11.nroveh vehiculo, t11.plc placas,
-                COALESCE(CASE WHEN t3.tipref=4 AND t1.logmsk IN (2,3) THEN 'Tarjeta Credito' WHEN t3.tipref=28 AND t1.logmsk IN (2,3) THEN 'Tarjeta Debito' WHEN t3.tipref=1 AND t1.logmsk IN (2,3) THEN 'Efectivo' END,
-                         CASE WHEN t1.tiptrn=51 AND t1.gasfac != 2 THEN 'Tarjeta Credito' WHEN t1.tiptrn=52 AND t1.gasfac != 2 THEN 'Tarjeta Debito' WHEN t1.tiptrn=53 AND t1.gasfac != 2 THEN 'Efectivale' WHEN t1.tiptrn=0 THEN 'Efectivo' END) tipo_pago,
-                ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn,t1.hratrn) rn
-            FROM Despachos t1 WITH (NOLOCK)
-            INNER JOIN DocumentosC t3 ON t1.nrofac=t3.nro AND t1.codgas=t3.codgas
-            LEFT JOIN Clientes t2 WITH (NOLOCK) ON t1.codcli=t2.cod LEFT JOIN Clientes t5 WITH (NOLOCK) ON t3.codopr=t5.cod
-            LEFT JOIN Gasolineras t6 WITH (NOLOCK) ON t1.codgas=t6.cod LEFT JOIN Empresas t7 WITH (NOLOCK) ON t6.codemp=t7.cod
-            LEFT JOIN Productos t8 WITH (NOLOCK) ON t1.codprd=t8.cod LEFT JOIN Responsables t9 WITH (NOLOCK) ON t1.codres=t9.cod
-            LEFT JOIN ClientesValores t10 WITH (NOLOCK) ON t1.codcli=t10.codcli AND t10.codest!=-1 AND t10.codval IN (127,28)
-            LEFT JOIN ClientesVehiculos t11 WITH (NOLOCK) ON t1.codcli=t11.codcli AND t1.nroveh=t11.nroveh
-            LEFT JOIN (SELECT nrotrn,SUM(mto) mto,codbco,codgas FROM MovimientosTar WITH (NOLOCK) WHERE tipmov NOT IN (86,97) AND mto!=0 GROUP BY nrotrn,codgas,codbco) t12 ON t1.nrotrn=t12.nrotrn AND t1.codgas=t12.codgas
-            LEFT JOIN Valores t13 WITH (NOLOCK) ON t12.codbco=t13.cod
-            WHERE t1.mto != 0 AND t1.tiptrn NOT IN (65,74) AND t3.fch BETWEEN ? AND ?$dispatchWhere $uuidWhere
-        )";
-        $search = '';
-        $searchParams = [];
-        foreach ($columnSearches as $key=>$value) if ($value !== '' && isset($columns[$key])) { $search .= ' AND CAST('.$columns[$key].' AS NVARCHAR(MAX)) LIKE ?'; $searchParams[]='%'.$value.'%'; }
-        if ($globalSearch !== '') { $parts=[]; foreach ($columns as $column) { $parts[]='CAST('.$column.' AS NVARCHAR(MAX)) LIKE ?'; $searchParams[]='%'.$globalSearch.'%'; } $search .= ' AND ('.implode(' OR ',$parts).')'; }
-        $order = $columns[$orderColKey] ?? 'fecha';
-        return [$cte, $typeWhere, $typeParams, $search, $searchParams, $order, strtolower($orderDir)==='desc' ? 'DESC' : 'ASC'];
-    }
-
-    private function stationPdo(array $station, ?float $deadline=null) : PDO {
-        // Un servidor fuera de línea no debe consumir el tiempo de toda la
-        // consulta consolidada. El límite de consulta, cuando sqlsrv lo
-        // soporta, también permite aislar una estación lenta.
-        // No iniciar el login (hasta 3 s) sin espacio para una consulta mínima
-        // y el cierre de la respuesta.
-        if ($deadline !== null && ($deadline - microtime(true)) <= 7) {
-            throw new RuntimeException('Station query deadline reached');
-        }
-        $dsn = "sqlsrv:Server={$station['servidor']};Database={$station['base_datos']};TrustServerCertificate=yes;LoginTimeout=3";
-        $pdo = new PDO($dsn, $station['usuario'], $station['contra']);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $this->stationQueryTimeout($pdo, $deadline);
-        $pdo->exec('SET NOCOUNT ON');
-        return $pdo;
-    }
-
-    /** Ajusta cada operación directa al margen que queda antes del deadline. */
-    private function stationQueryTimeout(PDO $pdo, ?float $deadline) : void {
-        if ($deadline === null) {
-            if (defined('PDO::SQLSRV_ATTR_QUERY_TIMEOUT')) {
-                $pdo->setAttribute(constant('PDO::SQLSRV_ATTR_QUERY_TIMEOUT'), 30);
-            }
-            return;
-        }
-        // Tres segundos quedan reservados para cerrar cursores y serializar la
-        // respuesta. No se inicia trabajo remoto si ya no cabe en ese margen.
-        $remaining = (int) floor($deadline - microtime(true));
-        if ($remaining <= 4) throw new RuntimeException('Station query deadline reached');
-        if (defined('PDO::SQLSRV_ATTR_QUERY_TIMEOUT')) {
-            $pdo->setAttribute(constant('PDO::SQLSRV_ATTR_QUERY_TIMEOUT'), min(30, max(1, $remaining - 3)));
-        }
-    }
-
-    /** Paginación directa por estación; todas las estaciones se combinan con cursores k-way. */
-    function dispatches_by_billing_stations_paginated($from, $until, array $stations, $uuid, $tipoCliente, $start, $length, $orderColKey, $orderDir, array $columnSearches=[], string $globalSearch='', ?int $dispatchFrom = null, ?int $dispatchUntil = null, ?float $deadline=null) : array {
-        $start=max(0,(int)$start); $length=min(100,max(1,(int)$length));
-        if (count($stations)>1 && $start > 100000) return ['data'=>[],'recordsTotal'=>0,'recordsFiltered'=>0,'stationErrors'=>[],'error'=>'El desplazamiento solicitado es demasiado grande para la consulta por estaciones. Aplique filtros para continuar.'];
-        [$cte,$typeWhere,$typeParams,$search,$searchParams,$order,$direction]=$this->stationBillingSql($uuid,$tipoCliente,$orderColKey,$orderDir,$columnSearches,$globalSearch,$dispatchFrom,$dispatchUntil);
-        $total=0; $filtered=0; $rows=[]; $errors=[]; $successes=0; $availableStations=[];
-        $deadline = $deadline ?? (microtime(true) + 285);
-        foreach ($stations as $station) {
-            if (count($stations)>1 && microtime(true) >= $deadline) { $errors[]=$station['estacion_nombre'] ?? 'Estación'; continue; }
-            try {
-                $pdo=$this->stationPdo($station, count($stations)>1 ? $deadline : null);
-                $this->stationQueryTimeout($pdo, count($stations)>1 ? $deadline : null); $stmt=$pdo->prepare("$cte SELECT COUNT(*) c FROM CTE WHERE rn=1 $typeWhere"); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams)); $total+=(int)$stmt->fetchColumn(); $stmt->closeCursor();
-                $filteredQuery="$cte SELECT COUNT(*) c FROM CTE WHERE rn=1 $typeWhere $search"; $this->stationQueryTimeout($pdo, count($stations)>1 ? $deadline : null); $stmt=$pdo->prepare($filteredQuery); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams)); $filtered+=(int)$stmt->fetchColumn(); $stmt->closeCursor();
-                $pdo=null; $successes++; $availableStations[]=$station;
-            } catch (Throwable $e) { error_log('dispatches_by_billing_station failed station '.(int)($station['codigo']??0)); $errors[]=$station['estacion_nombre'] ?? 'Estación'; }
-        }
-        if ($successes===0) return ['data'=>[],'recordsTotal'=>0,'recordsFiltered'=>0,'stationErrors'=>$errors,'error'=>'No se pudo consultar ninguna estación.'];
-        if (count($stations)===1) {
-            $station=$stations[0];
-            try { $pdo=$this->stationPdo($station); $query="$cte SELECT * FROM CTE WHERE rn=1 $typeWhere $search ORDER BY $order $direction, despacho ASC OFFSET $start ROWS FETCH NEXT $length ROWS ONLY"; $stmt=$pdo->prepare($query); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams)); while($row=$stmt->fetch(PDO::FETCH_ASSOC)) $rows[]=$row; $stmt->closeCursor(); }
-            catch (Throwable $e) { error_log('dispatches_by_billing_station data failed station '.(int)($station['codigo']??0)); $errors[]=$station['estacion_nombre'] ?? 'Estación'; }
-            return ['data'=>$rows,'recordsTotal'=>$total,'recordsFiltered'=>$filtered,'stationErrors'=>$errors];
-        }
-
-        // Un cursor por estación, una sola fila retenida de cada cursor. Así el
-        // merge global conserva el orden sin materializar start + length por
-        // estación; sólo el desplazamiento profundo tiene el límite explícito.
-        $active=[]; $timedOut=false;
-        foreach ($availableStations as $station) {
-            if (microtime(true) >= $deadline) { $timedOut=true; break; }
-            try {
-                $pdo=$this->stationPdo($station, $deadline);
-                $this->stationQueryTimeout($pdo, $deadline); $stmt=$pdo->prepare("$cte SELECT * FROM CTE WHERE rn=1 $typeWhere $search ORDER BY $order $direction, despacho ASC");
-                $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams));
-                $row=$stmt->fetch(PDO::FETCH_ASSOC);
-                if ($row !== false) $active[]=['pdo'=>$pdo,'stmt'=>$stmt,'row'=>$row,'station'=>$station];
-                else { $stmt->closeCursor(); $pdo=null; }
-            } catch (Throwable $e) { error_log('dispatches_by_billing_station cursor failed station '.(int)($station['codigo']??0)); $errors[]=$station['estacion_nombre'] ?? 'Estación'; }
-        }
-        $sortKey=trim($order, '[]'); $seen=0;
-        try {
-            while ($active && count($rows)<$length) {
-                if (microtime(true) >= $deadline) { $timedOut=true; break; }
-                $next=0;
-                for ($i=1,$n=count($active);$i<$n;$i++) {
-                    $a=$active[$i]['row']; $b=$active[$next]['row']; $v=($a[$sortKey]??'')<=>($b[$sortKey]??'');
-                    if ($v!==0) { if ($direction==='DESC') $v=-$v; }
-                    else { $v=($a['despacho']??0)<=>($b['despacho']??0); if ($v===0) $v=(($a['estacion'] ?? $active[$i]['station']['estacion_nombre'] ?? '')<=>($b['estacion'] ?? $active[$next]['station']['estacion_nombre'] ?? '')); }
-                    if ($v<0) $next=$i;
-                }
-                $item=&$active[$next]; $row=$item['row'];
-                if ($seen++ >= $start) $rows[]=$row;
-                try { $nextRow=$item['stmt']->fetch(PDO::FETCH_ASSOC); }
-                catch (Throwable $e) { error_log('dispatches_by_billing_station fetch failed station '.(int)($item['station']['codigo']??0)); $errors[]=$item['station']['estacion_nombre'] ?? 'Estación'; $nextRow=false; }
-                if ($nextRow === false) { $item['stmt']->closeCursor(); $item['pdo']=null; array_splice($active,$next,1); }
-                else $item['row']=$nextRow;
-                unset($item);
-            }
-        } finally {
-            foreach ($active as $item) { try { $item['stmt']->closeCursor(); } catch (Throwable $e) {} $item['pdo']=null; }
-        }
-        $result=['data'=>$rows,'recordsTotal'=>$total,'recordsFiltered'=>$filtered,'stationErrors'=>array_values(array_unique($errors))];
-        if ($timedOut) $result['error']='La consulta alcanzó el límite de tiempo; se muestran resultados parciales.';
-        return $result;
-    }
-
-    /** Exporta estación por estación para no retener el conjunto completo en memoria. */
-    function stream_dispatches_by_billing_stations($from, $until, array $stations, $uuid, $tipoCliente, $orderColKey, $orderDir, array $columnSearches=[], string $globalSearch='', ?int $dispatchFrom = null, ?int $dispatchUntil = null) : Generator {
-        [$cte,$typeWhere,$typeParams,$search,$searchParams,$order,$direction]=$this->stationBillingSql($uuid,$tipoCliente,$orderColKey,$orderDir,$columnSearches,$globalSearch,$dispatchFrom,$dispatchUntil);
-        $ok=0;
-        foreach ($stations as $station) {
-            try { $pdo=$this->stationPdo($station); $stmt=$pdo->prepare("$cte SELECT * FROM CTE WHERE rn=1 $typeWhere $search ORDER BY $order $direction, despacho ASC"); $stmt->execute(array_merge([(int)$from,(int)$until],$typeParams,$searchParams)); $ok++; while($row=$stmt->fetch(PDO::FETCH_ASSOC)) yield $row; $stmt->closeCursor(); $pdo=null; }
-            catch (Throwable $e) { error_log('dispatches_by_billing_station export failed station '.(int)($station['codigo']??0)); }
-        }
-        if ($ok===0) throw new RuntimeException('No station was available');
     }
 
     /**
      * Resumen ligero de Factura Global (codigo_cliente = 21701354) agrupado por
-     * tipo de pago y número de factura. Reemplaza el cálculo que antes hacía el
-     * front recorriendo TODO el detalle (agruparPorFactura).
+     * forma de pago y número de factura. Reemplaza el cálculo que antes hacía el
+     * front recorriendo TODO el detalle.
+     *
+     * @return list<array<string,mixed>>
      */
-    function factura_global_summary($from, $until, $codgas, $uuid, $tipo_cliente, $billed) : array {
-        $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where);
+    public function factura_global_summary(int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed): array
+    {
+        $where = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
+        $cte   = $this->dispatchesCte($from, $until, $where);
         $query = "$cte
                   SELECT
                       COALESCE(tipo_pago, tipo_pago_despacho) AS tipo_pago,
@@ -1593,375 +1349,698 @@ class DespachosModel extends Model{
                       COUNT(*)                                AS numero_f,
                       MIN(txtref)                             AS txtref
                   FROM CTE WITH (NOLOCK)
-                  WHERE rn = 1 AND codigo_cliente = 21701354
+                  WHERE rn = 1 AND codigo_cliente = " . DespachosSql::CODOPR_FACTURA_GLOBAL . "
                   GROUP BY COALESCE(tipo_pago, tipo_pago_despacho), COALESCE(factura, factura_desp)";
         return $this->sql->select($query, []) ?: [];
     }
 
-    function pivot_dispatches($from, $until, $codgas){
-        $where = "";
-        $codgas != 0 ? $where = "and t1.codgas = $codgas" : $where = "";
-        $params = [$from, $until, ];
-        $query="SELECT *,
-                    ISNULL([cliente_credito], 0) + 
-                    ISNULL([cliente_debito], 0) + 
-                    ISNULL([monedero], 0) + 
-                    ISNULL([contado], 0) + 
-                    ISNULL([factura_global], 0) + 
+    /**
+     * Importe por estación y tipo de cliente (pivot), sin detalle.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function pivot_dispatches(int $from, int $until, int $codgas): array|false
+    {
+        return $this->fetchAll(
+            $this->pivotTipoClienteSql(false, $codgas),
+            [$from, $until]
+        );
+    }
+
+    /**
+     * Igual que pivot_dispatches() pero desglosado por día (agrega codgas y fecha).
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function pivot_daily_dispatches_table(int $from, int $until, int $codgas): array|false
+    {
+        return $this->fetchAll(
+            $this->pivotTipoClienteSql(true, $codgas),
+            [$from, $until]
+        );
+    }
+
+    /**
+     * SQL común de los pivots por tipo de cliente. Los parámetros `?` son
+     * (desde, hasta) como enteros de fecha.
+     *
+     * @param bool $porDia true => agrega codgas y fecha al detalle y ordena por estación y fecha.
+     */
+    private function pivotTipoClienteSql(bool $porDia, int $codgas): string
+    {
+        $tipoCliente = DespachosSql::tipoCliente(true);
+        $whereCodgas = $codgas !== 0 ? "AND t1.codgas = $codgas" : '';
+        $extra       = $porDia ? ",\n                        t1.codgas,\n                        " . DespachosSql::fechaIso('t1.fchtrn') . ' AS fecha' : '';
+        $orderBy     = $porDia ? 'estacion, fecha' : 'estacion';
+
+        // El pivot solo necesita Despachos, DocumentosC (para distinguir factura
+        // global), Gasolineras (nombre) y ClientesValores (crédito/débito).
+        return "SELECT *,
+                    ISNULL([cliente_credito], 0) +
+                    ISNULL([cliente_debito], 0) +
+                    ISNULL([monedero], 0) +
+                    ISNULL([contado], 0) +
+                    ISNULL([factura_global], 0) +
                     ISNULL([N/A], 0) AS total
                 FROM (
                     SELECT
-                        t6.abr AS estacion,
-                        CASE
-                            WHEN t10.codval = 28 THEN 'cliente_credito'
-                            WHEN t10.codval = 127 THEN 'cliente_debito'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'monedero'
-                            WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'contado'
-                            --WHEN t3.tip = 3 AND t3.subope = -1 THEN 'contado'
-                            WHEN t3.codopr = 21701354 THEN 'factura_global'
-                            ELSE 'N/A'
-                        END AS tipo_cliente,
+                        t6.abr AS estacion$extra,
+                        $tipoCliente AS tipo_cliente,
                         t1.mto AS importe
-                     FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                    --LEFT JOIN [SG12].[dbo].Clientes t2 on t1.codcli = t2.cod
-                    LEFT JOIN [SG12].[dbo].DocumentosC t3 on t1.nrofac = t3.nro and t1.codgas = t3.codgas
-                    --LEFT JOIN [SG12].[dbo].Clientes t5 on t3.codopr = t5.cod
+                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                    LEFT JOIN [SG12].[dbo].DocumentosC t3 ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
                     LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
-                    --LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
-                    --LEFT JOIN [SG12].[dbo].[Productos] t8 on t1.codprd = t8.cod
-                    --LEFT JOIN [SG12].[dbo].[Responsables] t9 on t1.codres = t9.cod
-                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
+                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli AND t10.codest != -1 AND t10.codval IN (127, 28)
                     WHERE
-                    	t1.tiptrn  not in (65,74) and 
-                        t1.fchtrn BETWEEN ? AND ? {$where}
-                    ) AS SourceTable
-                    PIVOT (
-                        SUM(importe)
-                        FOR tipo_cliente IN ([cliente_credito], [cliente_debito], [monedero], [contado], [factura_global], [N/A])
-                    ) AS PivotTable
-                    ORDER BY estacion;";
-
-
-        return ($this->sql->select($query, $params)) ?: false ;
-    }
-    function pivot_daily_dispatches_table($from, $until, $codgas){
-        $where = "";
-        $codgas != 0 ? $where = "and t1.codgas = $codgas" : $where = "";
-        $params = [$from, $until, ];
-        $query="SELECT *,
-                    ISNULL([cliente_credito], 0) + 
-                    ISNULL([cliente_debito], 0) + 
-                    ISNULL([monedero], 0) + 
-                    ISNULL([contado], 0) + 
-                    ISNULL([factura_global], 0) + 
-                    ISNULL([N/A], 0) AS total
-                FROM (
-                    SELECT
-                        t6.abr AS estacion,
-                        t1.codgas,
-                        CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
-                        CASE
-                            WHEN t10.codval = 28 THEN 'cliente_credito'
-                            WHEN t10.codval = 127 THEN 'cliente_debito'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'monedero'
-                            WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'contado'
-                            --WHEN t3.tip = 3 AND t3.subope = -1 THEN 'contado'
-                            WHEN t3.codopr = 21701354 THEN 'factura_global'
-                            ELSE 'N/A'
-                        END AS tipo_cliente,
-                        t1.mto AS importe
-                     FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                    LEFT JOIN [SG12].[dbo].Clientes t2 on t1.codcli = t2.cod
-                    LEFT JOIN [SG12].[dbo].DocumentosC t3 on t1.nrofac = t3.nro and t1.codgas = t3.codgas
-                    LEFT JOIN [SG12].[dbo].Clientes t5 on t3.codopr = t5.cod
-                    LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
-                    LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
-                    LEFT JOIN [SG12].[dbo].[Productos] t8 on t1.codprd = t8.cod
-                    LEFT JOIN [SG12].[dbo].[Responsables] t9 on t1.codres = t9.cod
-                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
-                    WHERE 
-                    t1.tiptrn  not in (65,74) and 
-                        t1.fchtrn BETWEEN ? AND ? {$where}
-                    ) AS SourceTable
-                    PIVOT (
-                        SUM(importe)
-                        FOR tipo_cliente IN ([cliente_credito], [cliente_debito], [monedero], [contado], [factura_global], [N/A])
-                    ) AS PivotTable
-                    ORDER BY estacion,fecha;";
-        return ($this->sql->select($query, $params)) ?: false ;
+                        t1.tiptrn NOT IN (65, 74) AND
+                        t1.fchtrn BETWEEN ? AND ? $whereCodgas
+                ) AS SourceTable
+                PIVOT (
+                    SUM(importe)
+                    FOR tipo_cliente IN ([cliente_credito], [cliente_debito], [monedero], [contado], [factura_global], [N/A])
+                ) AS PivotTable
+                ORDER BY $orderBy;";
     }
 
+    // =====================================================================
+    //    6b. Por estación (SQL Server local de cada estación)
+    // =====================================================================
 
-    function sp_obtener_total_productos($tabId) {
-        return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_total_productos_tabulador]', [$tabId]) ?: 0;
-    }
+    /**
+     * Query de despachos de UNA estación con todas las transformaciones resueltas
+     * en SQL y SOLO las 24 columnas que consume el DataTable.
+     *
+     * @param string $prefix Antepone "[BD].[dbo]." a las tablas cuando corre vía linked
+     *                       server (OPENQUERY); vacío si la conexión ya está parada en la
+     *                       base de la estación.
+     * @param int    $uuid   0 = todos, 1 = sin timbrar, otro valor = timbrados.
+     * @param int    $billed 0 = todos, 1 = sin facturar, otro valor = facturados.
+     */
+    private function stationDispatchesSql(int $from, int $until, int $uuid, int $billed, string $prefix = ''): string
+    {
+        $movFrom  = $from - 1;
+        $movUntil = $until + 1;
 
-    function get_dashboard_debit_credit($from, $until, $clients) : array|false {
-        $query = "
-        -- Declaramos las variables de rango para la fecha
-        DECLARE @from INT = '{$from}';
-        DECLARE @until INT = '{$until}';
-        DECLARE @clients VARCHAR(MAX) = '{$clients}';
-        -- CTE (Common Table Expression) para agrupar y sumar datos relevantes
-        WITH Clientes AS (
+        // Aquí cualquier valor distinto de 0/1 se trata como "sí" (comportamiento histórico de esta pantalla).
+        $uuidCondition   = $uuid   !== 0 ? DespachosSql::filtroTimbrado($uuid === 1 ? 1 : 2)  : '';
+        $billedCondition = $billed !== 0 ? DespachosSql::filtroFacturado($billed === 1 ? 1 : 2) : '';
+
+        $fecha          = DespachosSql::fechaIso('t1.fchtrn');
+        $hora           = DespachosSql::horaTexto();
+        $factura        = DespachosSql::folioFinal();
+        $tipoCliente    = DespachosSql::tipoCliente();
+        $tipoAplicativo = DespachosSql::tipoCliente(false, true);
+        $pago           = DespachosSql::pagoFinal();
+
+        return "
+            SELECT fecha, hora_formateada, turno, despacho, producto, estacion, empresa,
+                   cliente_fac, cantidad, importe, precio, despachador, tipo_pago, factura,
+                   FechaFactura, [UUID], txtref, rut, denominacion, codigo_cliente,
+                   tipo_cliente, tipo_cliente_aplicativo, vehiculo, placas
+            FROM (
             SELECT
-                t2.den Clientes, -- Nombre del cliente
-                SUM(t1.mto) MontosTotales, -- Suma total de los montos
-                SUM(t1.can) VolumenesTotales, -- Suma total de los volúmenes
-                COUNT(*) TotalRegistros, -- Conteo total de registros
-                CASE
-                    WHEN t2.tipval = 3 THEN N'Crédito' -- Asigna Crédito si tipval es 3
-                    WHEN t2.tipval = 4 THEN N'Débito' -- Asigna Débito si tipval es 4
-                END Tipos
-            FROM
-                [SG12].[dbo].[Despachos] t1 WITH (NOLOCK) -- Tabla de despachos con NOLOCK para evitar bloqueos
-                INNER JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod -- Unión con la tabla de clientes
-                LEFT JOIN [SG12].[dbo].[Gasolineras] t3 ON t1.codgas = t3.cod -- Unión opcional con la tabla de gasolineras
-            WHERE
-                t1.fchcor BETWEEN @from AND @until -- Rango de fechas
-                AND t2.tipval IN (3, 4) -- Filtra por tipos de valor 3 (Crédito) o 4 (Débito)
-                AND t1.mto > 0 -- Filtra registros con monto mayor a 0
-                AND t1.can > 0 -- Filtra registros con cantidad mayor a 0
-                AND (@clients = '0' OR t1.codcli IN ({$clients})) -- Filtra por clientes específicos
-            GROUP BY t2.den, t2.tipval -- Agrupa por nombre de cliente y tipo de transacción
-        )
-        -- Selección final con cálculos adicionales
-        SELECT
-            Clientes, -- Nombre del cliente
-            Tipos, -- Tipo de transacción (Crédito o Débito)
-            VolumenesTotales, -- Suma total de los volúmenes
-            -- Acumulado de VolumenesTotales dentro de cada tipo, ordenado por MontosTotales descendente
-            SUM(VolumenesTotales) OVER (PARTITION BY Tipos ORDER BY MontosTotales DESC) AcumuladoVolumenesTotales,
-            TotalRegistros, -- Conteo total de registros
-            -- Acumulado de TotalRegistros dentro de cada tipo, ordenado por MontosTotales descendente
-            SUM(TotalRegistros) OVER (PARTITION BY Tipos ORDER BY MontosTotales DESC) AcumuladoRegistros,
-            MontosTotales, -- Suma total de los montos
-            -- Acumulado de MontosTotales dentro de cada tipo, ordenado por MontosTotales descendente
-            SUM(MontosTotales) OVER (PARTITION BY Tipos ORDER BY MontosTotales DESC) TotalesGenerales,
-            -- Porcentaje de MontosTotales respecto al total de MontosTotales dentro de cada tipo
-            (MontosTotales / SUM(MontosTotales) OVER (PARTITION BY Tipos)) * 100 Porcentaje,
-            -- Porcentaje acumulado de MontosTotales dentro de cada tipo, ordenado por MontosTotales descendente
-            (SUM(MontosTotales) OVER (PARTITION BY Tipos ORDER BY MontosTotales DESC) / SUM(MontosTotales) OVER (PARTITION BY Tipos)) * 100 Acumulado
-        FROM
-            Clientes -- Utiliza el CTE Clientes
-        ORDER BY
-            MontosTotales DESC; -- Ordena por tipo de transacción y montos totales descendente
+                $fecha AS fecha,
+                $hora AS hora_formateada,
+                SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1) AS turno,
+                t1.nrotrn AS despacho,
+                t8.den AS producto,
+                t6.abr AS estacion,
+                t7.den AS empresa,
+                ISNULL(t5.den, t2.den) AS cliente_fac,
+                t1.can AS cantidad,
+                t1.mto AS importe,
+                t1.pre AS precio,
+                CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS despachador,
+                $factura AS factura,
+                CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS FechaFactura,
+                ISNULL(CASE WHEN t1.satuid IS NOT NULL THEN t1.satuid ELSE t3.satuid END, '.') AS [UUID],
+                t3.txtref,
+                t1.rut,
+                t13.den AS denominacion,
+                CASE WHEN t1.codcli < 0 THEN '' ELSE CAST(t1.codcli AS VARCHAR(20)) END AS codigo_cliente,
+                $tipoCliente AS tipo_cliente,
+                $tipoAplicativo AS tipo_cliente_aplicativo,
+                t11.nroveh AS vehiculo,
+                t11.plc AS placas,
+                $pago AS tipo_pago,
+                ROW_NUMBER() OVER(PARTITION BY t1.nrotrn, t1.codgas ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
+            FROM {$prefix}Despachos t1 WITH (NOLOCK)
+            LEFT JOIN {$prefix}Clientes t2 WITH (NOLOCK) ON t1.codcli = t2.cod
+            LEFT JOIN {$prefix}DocumentosC t3 WITH (NOLOCK) ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
+            LEFT JOIN {$prefix}Clientes t5 WITH (NOLOCK) ON t3.codopr = t5.cod
+            LEFT JOIN {$prefix}Gasolineras t6 WITH (NOLOCK) ON t1.codgas = t6.cod
+            LEFT JOIN {$prefix}Empresas t7 WITH (NOLOCK) ON t6.codemp = t7.cod
+            LEFT JOIN {$prefix}Productos t8 WITH (NOLOCK) ON t1.codprd = t8.cod
+            LEFT JOIN {$prefix}Responsables t9 WITH (NOLOCK) ON t1.codres = t9.cod
+            LEFT JOIN {$prefix}ClientesValores t10 WITH (NOLOCK) ON t1.codcli = t10.codcli AND t10.codest != -1 AND t10.codval IN (127, 28)
+            LEFT JOIN {$prefix}ClientesVehiculos t11 WITH (NOLOCK) ON t1.codcli = t11.codcli AND t1.nroveh = t11.nroveh
+            LEFT JOIN (
+                SELECT nrotrn, SUM(mto) AS mto, codbco, codgas
+                FROM {$prefix}MovimientosTar WITH (NOLOCK)
+                WHERE tipmov != 86 AND tipmov != 97 AND mto != 0 AND fchmov BETWEEN $movFrom AND $movUntil
+                GROUP BY nrotrn, codgas, codbco
+            ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas
+            LEFT JOIN {$prefix}Valores t13 WITH (NOLOCK) ON t12.codbco = t13.cod
+            WHERE t1.fchtrn BETWEEN $from AND $until
+              AND t1.mto != 0
+              AND t1.tiptrn NOT IN (65, 74)
+              $uuidCondition
+              $billedCondition
+            ) AS q WHERE q.rn = 1
         ";
-
-        return ($this->sql->select($query, [])) ?: false ;
     }
 
+    /**
+     * Consulta despachos conectándose DIRECTAMENTE al SQL Server de la estación
+     * (sin API intermedio ni linked server/OPENQUERY).
+     *
+     * @param array<string,mixed> $station Fila de estación: servidor, base_datos, usuario, contra.
+     * @return list<array<string,mixed>>
+     * @throws PDOException si la estación no responde; el llamador decide el respaldo.
+     */
+    public function control_dispatches_est_direct(int $from, int $until, int $uuid, int $billed, array $station): array
+    {
+        $dsn = "sqlsrv:Server={$station['servidor']};Database={$station['base_datos']};TrustServerCertificate=yes;LoginTimeout=10";
+        $pdo = new PDO($dsn, (string) $station['usuario'], (string) $station['contra']);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('SET NOCOUNT ON');
 
-    function get_graph1($from, $until, $clients) {
-        $query = "
-            DECLARE @from INT = '{$from}';
-            DECLARE @until INT = '{$until}';
-            DECLARE @clients VARCHAR(MAX) = '{$clients}';
-            SELECT
-                 YEAR(d)                 AS [Year],
-                    MONTH(d) AS [Month],
-                    DATENAME(MONTH, d) AS [MonthName],
-                SUM(CASE WHEN t2.tipval = 3 THEN t1.mto ELSE 0 END) AS MontosDebito,
-                SUM(CASE WHEN t2.tipval = 4 THEN t1.mto ELSE 0 END) AS MontosCredito
-            FROM
-                [SG12].[dbo].[Despachos] t1
-            INNER JOIN
-                SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
-                CROSS APPLY (SELECT DATEADD(DAY, TRY_CONVERT(INT, t1.fchcor), '1899-12-30')) AS x(d)
-
-            WHERE
-                t2.tipval IN (3, 4) AND
-                t1.fchcor BETWEEN @from AND @until
-                AND (@clients = '0' OR t1.codcli IN ({$clients}))
-           GROUP BY YEAR(d), MONTH(d), DATENAME(MONTH, d)
-            ORDER BY YEAR(d), MONTH(d);
-        ";
-        return ($this->sql->select($query, [])) ?: false ;
+        $stmt = $pdo->query($this->stationDispatchesSql($from, $until, $uuid, $billed));
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->closeCursor();
+        return $rows;
     }
 
-    function get_saldos_islas($CodigoEstacion, $FechaTabular, $Turno, $Islands, $tabId) {
-
-        $shifts = [11, 21, 31, 41];
-        $index = array_search($Turno, $shifts);
-
-        $previous_shift = $shifts[($index + count($shifts) - 1) % count($shifts)];
-
-        if ($previous_shift == 41) {
-            $fch = $FechaTabular - 1;
-        } else {
-            $fch = $FechaTabular;
+    /**
+     * Mismo resultado que control_dispatches_est_direct() pero vía linked server
+     * (OPENQUERY) desde el central; sirve de respaldo cuando la conexión directa
+     * falla. Con varias estaciones las une con UNION ALL.
+     *
+     * $codgas y $tipo_cliente se conservan en la firma por compatibilidad: el
+     * endpoint siempre manda $tipo_cliente = 0 y la estación sale de $estations.
+     *
+     * @param list<array<string,mixed>>|array<string,mixed> $estations Lista de estaciones (o una sola fila).
+     * @return list<array<string,mixed>>|false
+     */
+    public function control_dispatches_est(int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed, array $estations): array|false
+    {
+        // Tolerar que llegue una sola fila de estación (assoc) en lugar de una lista.
+        if (isset($estations['servidor'])) {
+            $estations = [$estations];
         }
 
-        $nrotur = $previous_shift;
-        $next_date = $FechaTabular;
-        $next_shift = $Turno;
+        $union = [];
+        foreach ($estations as $station) {
+            if (empty($station['servidor']) || empty($station['base_datos'])) {
+                continue;
+            }
+            $server   = DespachosSql::nombreSeguro((string) $station['servidor']);
+            $database = DespachosSql::nombreSeguro((string) $station['base_datos']);
 
-        $query = "
-            WITH IslasRemotas AS ( -- Paso 1: Obtener Islas del Servidor Remoto y Ventas Reportadas
-                SELECT den, cod AS codisl
-                FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, 'SELECT den, cod FROM {$this->short_databases[$CodigoEstacion]}.[Islas] WHERE codgas = {$CodigoEstacion};')
-            ),
-            
-            VentasReportadas AS ( -- Paso 2: Consulta de Ventas Reportadas Agrupadas por Isla
-                SELECT
-                    codisl,
-                    SUM(Total) AS TotalVentasReportadas
-                FROM (
-                    SELECT
-                        t1.codisl,
-                        COALESCE(CAST(SUM(t1.mto) AS FLOAT), 0) AS Total
-                    FROM {$this->databases[$CodigoEstacion]}.[MovimientosTar] t1
-                    LEFT JOIN {$this->databases[$CodigoEstacion]}.[Islas] t2 ON t1.codisl = t2.cod
-                    WHERE
-                        t1.fchmov = {$FechaTabular} AND
-                        t1.codgas = {$CodigoEstacion} AND
-                        t1.nrotur = {$Turno} AND
-                        t1.codisl IN ({$Islands}) AND
-                        NOT (t1.codbco = 0 AND t1.tiptar IN (84, 68, 67, 72))
-                    GROUP BY
-                        t1.codisl
-            
-                    UNION ALL
-            
-                    SELECT
-                        t1.codisl,
-                        COALESCE(CAST(SUM(t1.mto) AS FLOAT), 0) AS Total
-                    FROM {$this->databases[$CodigoEstacion]}.[Despachos] t1
-                    LEFT JOIN {$this->databases[$CodigoEstacion]}.[Clientes] t2 ON t1.codcli = t2.cod
-                    LEFT JOIN {$this->databases[$CodigoEstacion]}.[Islas] t4 ON t1.codisl = t4.cod
-                    WHERE
-                        t1.fchtrn = {$FechaTabular} AND
-                        t1.codgas = {$CodigoEstacion} AND
-                        t1.nrotur = {$Turno} AND
-                        t1.codisl IN ({$Islands}) AND
-                        t2.tipval IN (3, 4)
-                    GROUP BY
-                        t1.codisl
-            
-                    UNION ALL
-            
-                    SELECT
-                        t1.Isla AS codisl,
-                        COALESCE(SUM(t1.Monto), 0) AS Total
-                    FROM [TG].[dbo].[TabuladorDetalle] t1
-                    RIGHT JOIN [SG12].[dbo].[Islas] t2 ON t1.Isla = t2.cod
-                    WHERE
-                        t1.Id = {$tabId} AND
-                        t1.CodigoValor IN (6, 192) AND
-                        t1.Isla IN ({$Islands})
-                    GROUP BY
-                        t1.Isla
-                ) AS combined
-                GROUP BY
-                    codisl
-            ),
-            
-            VentasTotales AS ( -- Paso 3: Consulta de Ventas Totales Agrupadas por Isla
-                SELECT
-                    codisl,
-                    SUM(finalAmount) AS TotalVentas
-                FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, '
-                    SELECT
-                        COALESCE(t2.amount, 0) AS finalAmount,
-                        t2.codisl
-                    FROM
-                        {$this->short_databases[$CodigoEstacion]}.[Medicion] t1
-                        LEFT JOIN (
-                            SELECT nrobom, COALESCE(SUM(can), 0) AS volume, COALESCE(SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END), 0) AS amount, codprd, codisl
-                            FROM {$this->short_databases[$CodigoEstacion]}.[Despachos]
-                            WHERE
-                                fchcor = {$next_date}
-                                AND nrotur = {$next_shift}
-                                AND codprd IN (1,2,3,179,180,181,192,193)
-                                AND codisl IN ({$Islands})
-                            GROUP BY nrobom, codprd, codisl
-                        ) t2 ON t1.nrobom = t2.nrobom AND t1.codprd = t2.codprd
-                    WHERE
-                        t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND t1.codisl IN ({$Islands})
-                        
-                    UNION ALL
-                    
-                    SELECT
-                        COALESCE(t1.mto, 0) AS finalAmount, 
-                        t1.codisl
-                    FROM {$this->short_databases[$CodigoEstacion]}.[Despachos] t1
-                    WHERE t1.fchcor = {$next_date} AND t1.nrotur = {$next_shift} AND t1.codisl IN ({$Islands}) AND t1.codprd NOT IN (0,179,180,181,192,193)
-                ') AS SubQuery
-                WHERE codisl IS NOT NULL
-                GROUP BY codisl
-            )
-            
-            SELECT -- Paso 4: Combinar las CTEs y Calcular la Diferencia
-                ir.codisl,
-                ir.den Isla,
-                COALESCE(vr.TotalVentasReportadas, 0) AS TotalVentasReportadas,
-                COALESCE(vt.TotalVentas, 0) AS TotalVentas,
-                COALESCE(vr.TotalVentasReportadas, 0) - COALESCE(vt.TotalVentas, 0) AS Diferencia
-            FROM IslasRemotas ir
-            LEFT JOIN VentasReportadas vr ON ir.codisl = vr.codisl
-            LEFT JOIN VentasTotales vt ON ir.codisl = vt.codisl
-            ORDER BY ir.codisl;
-        ";
-        return ($this->sql->select($query, [])) ?: false ;
+            // OPENQUERY recibe el query como literal (máx. 8,000 caracteres): se
+            // compactan los espacios y se duplican las comillas simples. rn = 1 se
+            // filtra DENTRO del OPENQUERY para que los renglones repetidos por los
+            // joins no viajen por la red.
+            $inner = $this->stationDispatchesSql($from, $until, $uuid, $billed, "[$database].[dbo].");
+            $inner = trim((string) preg_replace('/\s+/', ' ', $inner));
+            $union[] = "SELECT * FROM OPENQUERY([$server], '" . str_replace("'", "''", $inner) . "')";
+        }
+        if ($union === []) {
+            return false;
+        }
+
+        return $this->fetchAll(implode(' UNION ALL ', $union));
     }
 
-    function get_tab_process_data($CodigoEstacion, $FechaTabular, $Turno, $Islands, $tabId) {
-        $shifts = [11, 21, 31, 41];
-        $index = array_search($Turno, $shifts);
-        $previous_shift = $shifts[($index + count($shifts) - 1) % count($shifts)];
-        $fch = ($previous_shift == 41) ? $FechaTabular - 1 : $FechaTabular;
-        $nrotur = $previous_shift;
+    /**
+     * Reporte "por facturación" para UNA estación (consulta local): DocumentosC es
+     * obligatorio y el periodo se aplica, con parámetros PDO, a la FECHA DE LA
+     * FACTURA. No reutiliza stationDispatchesSql() porque aquella está basada en la
+     * fecha del despacho.
+     *
+     * Parámetros posicionales del CTE: (fechaFacturaDesde, fechaFacturaHasta); después
+     * de él van los de $typeParams y $searchParams, en ese orden.
+     *
+     * @param array<string,mixed> $columnSearches
+     * @return array{cte:string,typeWhere:string,typeParams:list<string>,search:string,searchParams:list<string>,order:string,direction:string}
+     */
+    private function stationBillingSql(int $uuid, string|int $tipoCliente, string $orderColKey, string $orderDir, array $columnSearches = [], string $globalSearch = '', ?int $dispatchFrom = null, ?int $dispatchUntil = null): array
+    {
+        $columns = DespachosSql::COLUMNAS_ESTACION;
+
+        $uuidWhere = DespachosSql::filtroTimbrado($uuid);
+
+        $typeWhere  = '';
+        $typeParams = [];
+        $label = DespachosSql::etiquetaTipoCliente($tipoCliente);
+        if ($label !== null && (string) $tipoCliente !== '0') {
+            $typeWhere    = ' AND tipo_cliente = ?';
+            $typeParams[] = $label;
+        }
+
+        $dispatchWhere = $dispatchFrom !== null && $dispatchUntil !== null
+            ? " AND t1.fchtrn BETWEEN $dispatchFrom AND $dispatchUntil"
+            : '';
+
+        $fecha          = DespachosSql::fechaIso('t1.fchtrn');
+        $hora           = DespachosSql::horaTexto();
+        $folio          = DespachosSql::folio('t3.nro');
+        $tipoClienteSql = DespachosSql::tipoCliente();
+        $tipoAplicativo = DespachosSql::tipoCliente(false, true);
+        $pago           = DespachosSql::pagoFinal();
+
+        $cte = "WITH CTE AS (
+            SELECT $fecha AS fecha,
+                $hora AS hora_formateada,
+                SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1) AS turno,
+                t1.nrotrn AS despacho,
+                t8.den AS producto,
+                t6.abr AS estacion,
+                t7.den AS empresa,
+                ISNULL(t5.den, t2.den) AS cliente_fac,
+                t1.can AS cantidad,
+                t1.mto AS importe,
+                t1.pre AS precio,
+                CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS despachador,
+                $folio AS factura,
+                CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS FechaFactura,
+                ISNULL(CASE WHEN t1.satuid IS NOT NULL THEN t1.satuid ELSE t3.satuid END, '.') AS [UUID],
+                t3.txtref,
+                t1.rut,
+                t13.den AS denominacion,
+                CASE WHEN t1.codcli < 0 THEN '' ELSE CAST(t1.codcli AS VARCHAR(20)) END AS codigo_cliente,
+                $tipoClienteSql AS tipo_cliente,
+                $tipoAplicativo AS tipo_cliente_aplicativo,
+                t11.nroveh AS vehiculo,
+                t11.plc AS placas,
+                $pago AS tipo_pago,
+                ROW_NUMBER() OVER(PARTITION BY t1.nrotrn, t1.codgas ORDER BY t1.fchtrn, t1.hratrn) AS rn
+            FROM Despachos t1 WITH (NOLOCK)
+            INNER JOIN DocumentosC t3 ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
+            LEFT JOIN Clientes t2 WITH (NOLOCK) ON t1.codcli = t2.cod
+            LEFT JOIN Clientes t5 WITH (NOLOCK) ON t3.codopr = t5.cod
+            LEFT JOIN Gasolineras t6 WITH (NOLOCK) ON t1.codgas = t6.cod
+            LEFT JOIN Empresas t7 WITH (NOLOCK) ON t6.codemp = t7.cod
+            LEFT JOIN Productos t8 WITH (NOLOCK) ON t1.codprd = t8.cod
+            LEFT JOIN Responsables t9 WITH (NOLOCK) ON t1.codres = t9.cod
+            LEFT JOIN ClientesValores t10 WITH (NOLOCK) ON t1.codcli = t10.codcli AND t10.codest != -1 AND t10.codval IN (127, 28)
+            LEFT JOIN ClientesVehiculos t11 WITH (NOLOCK) ON t1.codcli = t11.codcli AND t1.nroveh = t11.nroveh
+            LEFT JOIN (
+                SELECT nrotrn, SUM(mto) AS mto, codbco, codgas
+                FROM MovimientosTar WITH (NOLOCK)
+                WHERE tipmov NOT IN (86, 97) AND mto != 0
+                GROUP BY nrotrn, codgas, codbco
+            ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas
+            LEFT JOIN Valores t13 WITH (NOLOCK) ON t12.codbco = t13.cod
+            WHERE t1.mto != 0 AND t1.tiptrn NOT IN (65, 74) AND t3.fch BETWEEN ? AND ?$dispatchWhere $uuidWhere
+        )";
+
+        [$search, $searchParams] = DespachosSql::busqueda($columns, $columnSearches, $globalSearch);
+        [$order, $direction]     = DespachosSql::orden($columns, $orderColKey, $orderDir);
+
+        return [
+            'cte'          => $cte,
+            'typeWhere'    => $typeWhere,
+            'typeParams'   => $typeParams,
+            'search'       => $search,
+            'searchParams' => $searchParams,
+            'order'        => $order,
+            'direction'    => $direction,
+        ];
+    }
+
+    /**
+     * Abre una conexión directa al SQL Server de una estación. (protected: las pruebas
+     * la sustituyen por una conexión simulada.)
+     *
+     * @param array<string,mixed> $station Fila de estación: servidor, base_datos, usuario, contra.
+     * @param float|null          $deadline Instante límite (microtime) de toda la consulta consolidada.
+     *                                      Un servidor fuera de línea no debe consumir el tiempo de las demás.
+     * @throws RuntimeException si ya no queda tiempo para iniciar el login.
+     */
+    protected function stationPdo(array $station, ?float $deadline = null): PDO
+    {
+        // No iniciar el login (hasta 3 s) sin espacio para una consulta mínima y el cierre de la respuesta.
+        if ($deadline !== null && ($deadline - microtime(true)) <= 7) {
+            throw new RuntimeException('Station query deadline reached');
+        }
+        $dsn = "sqlsrv:Server={$station['servidor']};Database={$station['base_datos']};TrustServerCertificate=yes;LoginTimeout=3";
+        $pdo = new PDO($dsn, (string) $station['usuario'], (string) $station['contra']);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->stationQueryTimeout($pdo, $deadline);
+        $pdo->exec('SET NOCOUNT ON');
+        return $pdo;
+    }
+
+    /**
+     * Ajusta el timeout de cada operación al margen que queda antes del deadline
+     * (sin deadline: 30 s). Cuando sqlsrv no soporta el atributo no hace nada.
+     *
+     * @throws RuntimeException si ya no cabe trabajo remoto en el margen.
+     */
+    protected function stationQueryTimeout(PDO $pdo, ?float $deadline): void
+    {
+        if ($deadline === null) {
+            if (defined('PDO::SQLSRV_ATTR_QUERY_TIMEOUT')) {
+                $pdo->setAttribute(constant('PDO::SQLSRV_ATTR_QUERY_TIMEOUT'), 30);
+            }
+            return;
+        }
+        // Tres segundos quedan reservados para cerrar cursores y serializar la respuesta.
+        $remaining = (int) floor($deadline - microtime(true));
+        if ($remaining <= 4) {
+            throw new RuntimeException('Station query deadline reached');
+        }
+        if (defined('PDO::SQLSRV_ATTR_QUERY_TIMEOUT')) {
+            $pdo->setAttribute(constant('PDO::SQLSRV_ATTR_QUERY_TIMEOUT'), min(30, max(1, $remaining - 3)));
+        }
+    }
+
+    /**
+     * Nombre legible de una estación para mensajes de error al usuario.
+     *
+     * @param array<string,mixed> $station
+     */
+    private static function stationLabel(array $station): string
+    {
+        return (string) ($station['estacion_nombre'] ?? 'Estación');
+    }
+
+    /**
+     * Reporte "por facturación" paginado, consultando directo cada estación.
+     *
+     * - 1 estación: pagina en SQL (OFFSET/FETCH).
+     * - Varias: recorre un cursor por estación y las combina con un merge k-way
+     *   reteniendo UNA fila por cursor, así no materializa start+length por
+     *   estación. Por eso el desplazamiento profundo tiene un límite explícito.
+     * - Una estación caída no tira el reporte: se omite y se reporta en stationErrors.
+     *
+     * @param list<array<string,mixed>> $stations
+     * @param array<string,mixed>       $columnSearches
+     * @return array{data:list<array<string,mixed>>,recordsTotal:int,recordsFiltered:int,stationErrors:list<string>,error?:string}
+     */
+    public function dispatches_by_billing_stations_paginated(
+        int $from, int $until, array $stations, int $uuid, string|int $tipoCliente,
+        int $start, int $length, string $orderColKey, string $orderDir,
+        array $columnSearches = [], string $globalSearch = '',
+        ?int $dispatchFrom = null, ?int $dispatchUntil = null, ?float $deadline = null
+    ): array {
+        $start  = max(0, $start);
+        $length = min(100, max(1, $length));
+        $multi  = count($stations) > 1;
+
+        if ($multi && $start > 100000) {
+            return [
+                'data' => [], 'recordsTotal' => 0, 'recordsFiltered' => 0, 'stationErrors' => [],
+                'error' => 'El desplazamiento solicitado es demasiado grande para la consulta por estaciones. Aplique filtros para continuar.',
+            ];
+        }
+
+        $q = $this->stationBillingSql($uuid, $tipoCliente, $orderColKey, $orderDir, $columnSearches, $globalSearch, $dispatchFrom, $dispatchUntil);
+        $cte = $q['cte'];
+        $baseParams = array_merge([$from, $until], $q['typeParams']);
+        $searchParams = array_merge($baseParams, $q['searchParams']);
+
+        $deadline ??= microtime(true) + 285;
+        $stationDeadline = $multi ? $deadline : null;
+
+        // --- Fase 1: totales (todas las estaciones; las que fallan se omiten) ---
+        $total = 0;
+        $filtered = 0;
+        $errors = [];
+        $availableStations = [];
+        foreach ($stations as $station) {
+            if ($multi && microtime(true) >= $deadline) {
+                $errors[] = self::stationLabel($station);
+                continue;
+            }
+            try {
+                $pdo = $this->stationPdo($station, $stationDeadline);
+
+                $this->stationQueryTimeout($pdo, $stationDeadline);
+                $stmt = $pdo->prepare("$cte SELECT COUNT(*) c FROM CTE WHERE rn=1 {$q['typeWhere']}");
+                $stmt->execute($baseParams);
+                $total += (int) $stmt->fetchColumn();
+                $stmt->closeCursor();
+
+                $this->stationQueryTimeout($pdo, $stationDeadline);
+                $stmt = $pdo->prepare("$cte SELECT COUNT(*) c FROM CTE WHERE rn=1 {$q['typeWhere']} {$q['search']}");
+                $stmt->execute($searchParams);
+                $filtered += (int) $stmt->fetchColumn();
+                $stmt->closeCursor();
+
+                $pdo = null;
+                $availableStations[] = $station;
+            } catch (Throwable $e) {
+                error_log('dispatches_by_billing_station failed station ' . (int) ($station['codigo'] ?? 0));
+                $errors[] = self::stationLabel($station);
+            }
+        }
+
+        if ($availableStations === []) {
+            return [
+                'data' => [], 'recordsTotal' => 0, 'recordsFiltered' => 0, 'stationErrors' => $errors,
+                'error' => 'No se pudo consultar ninguna estación.',
+            ];
+        }
+
+        $orderBy = "{$q['order']} {$q['direction']}, despacho ASC";
+
+        // --- Fase 2a: una sola estación => paginación en SQL ---
+        if (!$multi) {
+            $station = $stations[0];
+            $rows = [];
+            try {
+                $pdo  = $this->stationPdo($station);
+                $stmt = $pdo->prepare("$cte SELECT * FROM CTE WHERE rn=1 {$q['typeWhere']} {$q['search']} ORDER BY $orderBy OFFSET $start ROWS FETCH NEXT $length ROWS ONLY");
+                $stmt->execute($searchParams);
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $rows[] = $row;
+                }
+                $stmt->closeCursor();
+            } catch (Throwable $e) {
+                error_log('dispatches_by_billing_station data failed station ' . (int) ($station['codigo'] ?? 0));
+                $errors[] = self::stationLabel($station);
+            }
+            return ['data' => $rows, 'recordsTotal' => $total, 'recordsFiltered' => $filtered, 'stationErrors' => $errors];
+        }
+
+        // --- Fase 2b: varias estaciones => merge k-way de cursores ---
+        $active   = [];
+        $timedOut = false;
+        foreach ($availableStations as $station) {
+            if (microtime(true) >= $deadline) {
+                $timedOut = true;
+                break;
+            }
+            try {
+                $pdo = $this->stationPdo($station, $deadline);
+                $this->stationQueryTimeout($pdo, $deadline);
+                $stmt = $pdo->prepare("$cte SELECT * FROM CTE WHERE rn=1 {$q['typeWhere']} {$q['search']} ORDER BY $orderBy");
+                $stmt->execute($searchParams);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row !== false) {
+                    $active[] = ['pdo' => $pdo, 'stmt' => $stmt, 'row' => $row, 'station' => $station];
+                } else {
+                    $stmt->closeCursor();
+                }
+            } catch (Throwable $e) {
+                error_log('dispatches_by_billing_station cursor failed station ' . (int) ($station['codigo'] ?? 0));
+                $errors[] = self::stationLabel($station);
+            }
+        }
+
+        $rows    = [];
+        $seen    = 0;
+        $sortKey = trim($q['order'], '[]');
+        try {
+            while ($active !== [] && count($rows) < $length) {
+                if (microtime(true) >= $deadline) {
+                    $timedOut = true;
+                    break;
+                }
+
+                // Cursor cuya fila actual es la siguiente en el orden global.
+                $next = 0;
+                for ($i = 1, $n = count($active); $i < $n; $i++) {
+                    if ($this->compareStationRows($active[$i], $active[$next], $sortKey, $q['direction']) < 0) {
+                        $next = $i;
+                    }
+                }
+
+                if ($seen++ >= $start) {
+                    $rows[] = $active[$next]['row'];
+                }
+
+                try {
+                    $nextRow = $active[$next]['stmt']->fetch(PDO::FETCH_ASSOC);
+                } catch (Throwable $e) {
+                    error_log('dispatches_by_billing_station fetch failed station ' . (int) ($active[$next]['station']['codigo'] ?? 0));
+                    $errors[] = self::stationLabel($active[$next]['station']);
+                    $nextRow  = false;
+                }
+
+                if ($nextRow === false) {
+                    $active[$next]['stmt']->closeCursor();
+                    array_splice($active, $next, 1);
+                } else {
+                    $active[$next]['row'] = $nextRow;
+                }
+            }
+        } finally {
+            foreach ($active as $item) {
+                try {
+                    $item['stmt']->closeCursor();
+                } catch (Throwable $e) {
+                    // Cursor ya cerrado o conexión caída: nada que liberar.
+                }
+            }
+        }
+
+        $result = ['data' => $rows, 'recordsTotal' => $total, 'recordsFiltered' => $filtered, 'stationErrors' => array_values(array_unique($errors))];
+        if ($timedOut) {
+            $result['error'] = 'La consulta alcanzó el límite de tiempo; se muestran resultados parciales.';
+        }
+        return $result;
+    }
+
+    /**
+     * Compara las filas actuales de dos cursores para el merge k-way.
+     * Orden: columna pedida (asc/desc), luego despacho ASC, luego nombre de estación.
+     *
+     * @param array{row:array<string,mixed>,station:array<string,mixed>} $a
+     * @param array{row:array<string,mixed>,station:array<string,mixed>} $b
+     * @return int <0 si $a va antes que $b.
+     */
+    private function compareStationRows(array $a, array $b, string $sortKey, string $direction): int
+    {
+        $result = ($a['row'][$sortKey] ?? '') <=> ($b['row'][$sortKey] ?? '');
+        if ($result !== 0) {
+            return $direction === 'DESC' ? -$result : $result;
+        }
+
+        $result = ($a['row']['despacho'] ?? 0) <=> ($b['row']['despacho'] ?? 0);
+        if ($result !== 0) {
+            return $result;
+        }
+
+        return ($a['row']['estacion'] ?? $a['station']['estacion_nombre'] ?? '')
+           <=> ($b['row']['estacion'] ?? $b['station']['estacion_nombre'] ?? '');
+    }
+
+    /**
+     * Exporta el reporte "por facturación" estación por estación, en streaming,
+     * para no retener el conjunto completo en memoria.
+     *
+     * @param list<array<string,mixed>> $stations
+     * @param array<string,mixed>       $columnSearches
+     * @return Generator<int,array<string,mixed>>
+     * @throws RuntimeException si ninguna estación pudo consultarse.
+     */
+    public function stream_dispatches_by_billing_stations(
+        int $from, int $until, array $stations, int $uuid, string|int $tipoCliente,
+        string $orderColKey, string $orderDir,
+        array $columnSearches = [], string $globalSearch = '',
+        ?int $dispatchFrom = null, ?int $dispatchUntil = null
+    ): Generator {
+        $q = $this->stationBillingSql($uuid, $tipoCliente, $orderColKey, $orderDir, $columnSearches, $globalSearch, $dispatchFrom, $dispatchUntil);
+        $params = array_merge([$from, $until], $q['typeParams'], $q['searchParams']);
+        $query  = "{$q['cte']} SELECT * FROM CTE WHERE rn=1 {$q['typeWhere']} {$q['search']} ORDER BY {$q['order']} {$q['direction']}, despacho ASC";
+
+        $ok = 0;
+        foreach ($stations as $station) {
+            try {
+                $pdo  = $this->stationPdo($station);
+                $stmt = $pdo->prepare($query);
+                $stmt->execute($params);
+                $ok++;
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    yield $row;
+                }
+                $stmt->closeCursor();
+                $pdo = null;
+            } catch (Throwable $e) {
+                error_log('dispatches_by_billing_station export failed station ' . (int) ($station['codigo'] ?? 0));
+            }
+        }
+        if ($ok === 0) {
+            throw new RuntimeException('No station was available');
+        }
+    }
+
+    // =====================================================================
+    // 4c. SALDOS POR ISLA (TABULADOR)
+    // =====================================================================
+
+    /**
+     * Todo lo que necesita la pantalla de proceso del tabulador en UNA ida a la
+     * base: saldos por isla, jarreos del turno e islas aún sin asignar.
+     *
+     * @param int              $Turno   Turno actual (11, 21, 31 o 41).
+     * @param array|string|int $Islands Códigos de isla (array o "1,2,3").
+     * @return array{saldos:list<array<string,mixed>>|false,samplings:list<array<string,mixed>>|false,islands:list<array<string,mixed>>|false}
+     * @throws InvalidArgumentException si el turno o la lista de islas no son válidos.
+     */
+    public function get_tab_process_data(int $CodigoEstacion, int $FechaTabular, int $Turno, array|string|int $Islands, int $tabId): array
+    {
+        $linked  = $this->linkedServer($CodigoEstacion);
+        $short   = $this->shortDb($CodigoEstacion);
+        $db      = $this->stationDb($CodigoEstacion);
+        $islands = DespachosSql::listaEnteros($Islands);
+
+        $nrotur = $this->neighbourShifts($Turno)['previous'];
+        $fch    = $nrotur === 41 ? $FechaTabular - 1 : $FechaTabular;
 
         $query = "
             -- Resultado 1: saldos por isla
             WITH IslasRemotas AS (
                 SELECT den, cod AS codisl
-                FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, 'SELECT den, cod FROM {$this->short_databases[$CodigoEstacion]}.[Islas] WHERE codgas = {$CodigoEstacion};')
+                FROM OPENQUERY({$linked}, 'SELECT den, cod FROM {$short}.[Islas] WHERE codgas = {$CodigoEstacion};')
             ),
             DatosRemotos AS (
                 SELECT codisl, Amount, Tipo
-                FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, '
+                FROM OPENQUERY({$linked}, '
                     SELECT codisl, CAST(SUM(mto) AS FLOAT) AS Amount, ''reportadas'' AS Tipo
-                    FROM {$this->short_databases[$CodigoEstacion]}.[MovimientosTar]
+                    FROM {$short}.[MovimientosTar]
                     WHERE fchmov = {$FechaTabular} AND codgas = {$CodigoEstacion} AND nrotur = {$Turno}
-                        AND codisl IN ({$Islands})
+                        AND codisl IN ({$islands})
                         AND NOT (codbco = 0 AND tiptar IN (84, 68, 67, 72))
                     GROUP BY codisl
 
                     UNION ALL
 
                     SELECT t1.codisl, CAST(SUM(t1.mto) AS FLOAT) AS Amount, ''reportadas'' AS Tipo
-                    FROM {$this->short_databases[$CodigoEstacion]}.[Despachos] t1
-                    INNER JOIN {$this->short_databases[$CodigoEstacion]}.[Clientes] t2 ON t1.codcli = t2.cod
+                    FROM {$short}.[Despachos] t1
+                    INNER JOIN {$short}.[Clientes] t2 ON t1.codcli = t2.cod
                     WHERE t1.fchtrn = {$FechaTabular} AND t1.codgas = {$CodigoEstacion} AND t1.nrotur = {$Turno}
-                        AND t1.codisl IN ({$Islands})
+                        AND t1.codisl IN ({$islands})
                         AND t2.tipval IN (3, 4)
                     GROUP BY t1.codisl
 
                     UNION ALL
 
                     SELECT t2.codisl, COALESCE(t2.amount, 0) AS Amount, ''totales'' AS Tipo
-                    FROM {$this->short_databases[$CodigoEstacion]}.[Medicion] t1
+                    FROM {$short}.[Medicion] t1
                     LEFT JOIN (
                         SELECT nrobom, COALESCE(SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END), 0) AS amount, codprd, codisl
-                        FROM {$this->short_databases[$CodigoEstacion]}.[Despachos]
+                        FROM {$short}.[Despachos]
                         WHERE fchcor = {$FechaTabular} AND nrotur = {$Turno}
-                            AND codprd IN (1,2,3,179,180,181,192,193) AND codisl IN ({$Islands})
+                            AND codprd IN (1,2,3,179,180,181,192,193) AND codisl IN ({$islands})
                         GROUP BY nrobom, codprd, codisl
                     ) t2 ON t1.nrobom = t2.nrobom AND t1.codprd = t2.codprd
-                    WHERE t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND t1.codisl IN ({$Islands})
+                    WHERE t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND t1.codisl IN ({$islands})
 
                     UNION ALL
 
                     SELECT codisl, COALESCE(mto, 0) AS Amount, ''totales'' AS Tipo
-                    FROM {$this->short_databases[$CodigoEstacion]}.[Despachos]
+                    FROM {$short}.[Despachos]
                     WHERE fchcor = {$FechaTabular} AND nrotur = {$Turno}
-                        AND codisl IN ({$Islands}) AND codprd NOT IN (0,179,180,181,192,193)
+                        AND codisl IN ({$islands}) AND codprd NOT IN (0,179,180,181,192,193)
 
                     UNION ALL
 
                     SELECT 0 AS codisl, CAST(SUM(mto) AS FLOAT) AS Amount, ''productos'' AS Tipo
-                    FROM {$this->short_databases[$CodigoEstacion]}.[Despachos]
+                    FROM {$short}.[Despachos]
                     WHERE fchtrn = {$FechaTabular} AND codgas = {$CodigoEstacion} AND nrotur = {$Turno}
                         AND codprd NOT IN (0, 179, 180, 181)
                 ') AS RemoteRows
@@ -1973,7 +2052,7 @@ class DespachosModel extends Model{
                     UNION ALL
                     SELECT t1.Isla AS codisl, COALESCE(SUM(t1.Monto), 0) AS Amount
                     FROM [TG].[dbo].[TabuladorDetalle] t1
-                    WHERE t1.Id = {$tabId} AND t1.CodigoValor IN (6, 192) AND t1.Isla IN ({$Islands})
+                    WHERE t1.Id = {$tabId} AND t1.CodigoValor IN (6, 192) AND t1.Isla IN ({$islands})
                     GROUP BY t1.Isla
                 ) AS combined
                 GROUP BY codisl
@@ -2000,7 +2079,7 @@ class DespachosModel extends Model{
             ORDER BY ir.codisl;
 
             -- Resultado 2: jarreos (muestras de turno)
-            SELECT * FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, 'SELECT TOP 100 d.nrotrn AS Transaccion
+            SELECT * FROM OPENQUERY({$linked}, 'SELECT TOP 100 d.nrotrn AS Transaccion
                 , d.codgas AS Gasolinera
                 , CONVERT(VARCHAR, CAST(d.fchcor as DATETIME) -1, 23) AS Fecha
                 , SUBSTRING(CONVERT(CHAR(5), d.hratrn + 10000), 2, 2) + '':'' + SUBSTRING(CONVERT(CHAR(5), d.hratrn + 10000), 4, 2) Hora
@@ -2010,41 +2089,45 @@ class DespachosModel extends Model{
                 , LTRIM(p.den) AS Descripcion
                 , ROUND(d.can, 3) AS Cantidad
                 , d.mto AS Total
-            FROM {$this->short_databases[$CodigoEstacion]}.Despachos d(NOLOCK)
-                INNER JOIN {$this->short_databases[$CodigoEstacion]}.Productos p(NOLOCK) ON d.codprd = p.cod
+            FROM {$short}.Despachos d(NOLOCK)
+                INNER JOIN {$short}.Productos p(NOLOCK) ON d.codprd = p.cod
             WHERE d.codgas = {$CodigoEstacion} AND d.fchcor = {$FechaTabular}
                 AND d.tiptrn IN(65, 74) AND d.nrotur = {$Turno}
             ORDER BY nrotrn DESC;');
 
             -- Resultado 3: islas disponibles (sin asignación en este tabulador)
             SELECT t1.cod, t1.den Isla, t1.codgas
-            FROM {$this->databases[$CodigoEstacion]}.[Islas] t1
+            FROM {$db}.[Islas] t1
             LEFT JOIN (SELECT Isla FROM [TG].[dbo].[Asignaciones] WHERE IdTabulador = {$tabId}) t2 ON t1.cod = t2.Isla
             WHERE t1.codgas = {$CodigoEstacion} AND t2.Isla IS NULL;
         ";
 
         $results = $this->sql->selectMultiple($query, []);
         return [
-            'saldos'    => $results[0] ?: false,
-            'samplings' => $results[1] ?: false,
-            'islands'   => $results[2] ?: false,
+            'saldos'    => ($results[0] ?? []) ?: false,
+            'samplings' => ($results[1] ?? []) ?: false,
+            'islands'   => ($results[2] ?? []) ?: false,
         ];
     }
 
-    function get_saldos_isla($CodigoEstacion, $fch, $nrotur, $Island, $FechaTabular, $Turno, $tabId) {
+    /**
+     * Saldo de UNA isla (misma lógica que get_tab_process_data pero a nivel isla),
+     * para recalcular una sola fila de la pantalla.
+     *
+     * @param int $fch    Fecha del corte ANTERIOR (entero de fecha).
+     * @param int $nrotur Turno ANTERIOR (11, 21, 31 o 41).
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_saldos_isla(int $CodigoEstacion, int $fch, int $nrotur, int $Island, int $FechaTabular, int $Turno, int $tabId): array|false
+    {
+        $linked = $this->linkedServer($CodigoEstacion);
+        $short  = $this->shortDb($CodigoEstacion);
 
-        $shifts = [11, 21, 31, 41];
-        $index = array_search($nrotur, $shifts);
+        // El turno siguiente al del corte; si cruza a las 11 es el día siguiente.
+        $next_shift = $this->neighbourShifts($nrotur)['next'];
+        $next_date  = $next_shift === 11 ? $fch + 1 : $fch;
 
-        $next_shift = $shifts[($index + count($shifts) + 1) % count($shifts)];
-
-        if ($next_shift == 11) {
-            $next_date = ($fch + 1);
-        } else {
-            $next_date = $fch;
-        }
-
-        $islaEspecifica = $Island; // Aquí pones el valor de la isla específica
+        $islaEspecifica = $Island;
         $query = "
             WITH VentasReportadas AS ( -- Paso 1: Consulta de Ventas Reportadas Agrupadas por Isla
                 SELECT
@@ -2054,12 +2137,12 @@ class DespachosModel extends Model{
                     SELECT
                         t1.codisl,
                         COALESCE(CAST(SUM(t1.mto) AS FLOAT), 0) AS Total
-                    FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, '
+                    FROM OPENQUERY({$linked}, '
                         SELECT
                             t1.codisl,
                             t1.mto
-                        FROM {$this->short_databases[$CodigoEstacion]}.[MovimientosTar] t1
-                        LEFT JOIN {$this->short_databases[$CodigoEstacion]}.[Islas] t2 ON t1.codisl = t2.cod
+                        FROM {$short}.[MovimientosTar] t1
+                        LEFT JOIN {$short}.[Islas] t2 ON t1.codisl = t2.cod
                         WHERE
                             t1.fchmov = {$FechaTabular} AND
                             t1.codgas = {$CodigoEstacion} AND
@@ -2075,13 +2158,13 @@ class DespachosModel extends Model{
                     SELECT
                         t1.codisl,
                         COALESCE(CAST(SUM(t1.mto) AS FLOAT), 0) AS Total
-                    FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, '
+                    FROM OPENQUERY({$linked}, '
                         SELECT
                             t1.codisl,
                             t1.mto
-                        FROM {$this->short_databases[$CodigoEstacion]}.[Despachos] t1
-                        LEFT JOIN {$this->short_databases[$CodigoEstacion]}.[Clientes] t2 ON t1.codcli = t2.cod
-                        LEFT JOIN {$this->short_databases[$CodigoEstacion]}.[Islas] t4 ON t1.codisl = t4.cod
+                        FROM {$short}.[Despachos] t1
+                        LEFT JOIN {$short}.[Clientes] t2 ON t1.codcli = t2.cod
+                        LEFT JOIN {$short}.[Islas] t4 ON t1.codisl = t4.cod
                         WHERE
                             t1.fchtrn = {$FechaTabular} AND
                             t1.codgas = {$CodigoEstacion} AND
@@ -2115,15 +2198,15 @@ class DespachosModel extends Model{
                 SELECT
                     codisl,
                     SUM(finalAmount) AS TotalVentas
-                FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, '
+                FROM OPENQUERY({$linked}, '
                     SELECT
                         COALESCE(t2.amount, 0) AS finalAmount,
                         t2.codisl
                     FROM
-                        {$this->short_databases[$CodigoEstacion]}.[Medicion] t1
+                        {$short}.[Medicion] t1
                         LEFT JOIN (
                             SELECT nrobom, COALESCE(SUM(can), 0) AS volume, COALESCE(SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END), 0) AS amount, codprd, codisl
-                            FROM {$this->short_databases[$CodigoEstacion]}.[Despachos]
+                            FROM {$short}.[Despachos]
                             WHERE
                                 fchcor = {$next_date}
                                 AND nrotur = {$next_shift}
@@ -2139,7 +2222,7 @@ class DespachosModel extends Model{
                     SELECT
                         COALESCE(t1.mto, 0) AS finalAmount,
                         t1.codisl
-                    FROM {$this->short_databases[$CodigoEstacion]}.[Despachos] t1
+                    FROM {$short}.[Despachos] t1
                     WHERE t1.fchcor = {$next_date} AND t1.nrotur = {$next_shift} AND t1.codisl = {$islaEspecifica} AND t1.codprd NOT IN (0,179,180,181,192,193)
                 ') AS SubQuery
                 WHERE codisl IS NOT NULL
@@ -2154,198 +2237,66 @@ class DespachosModel extends Model{
                 COALESCE(vr.TotalVentasReportadas, 0) - COALESCE(vt.TotalVentas, 0) AS Diferencia
             FROM (
                 SELECT '{$islaEspecifica}' AS codisl, den
-                FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, 'SELECT den, cod FROM {$this->short_databases[$CodigoEstacion]}.[Islas] WHERE codgas = {$CodigoEstacion} AND cod = {$islaEspecifica};')
+                FROM OPENQUERY({$linked}, 'SELECT den, cod FROM {$short}.[Islas] WHERE codgas = {$CodigoEstacion} AND cod = {$islaEspecifica};')
             ) ir
             LEFT JOIN VentasReportadas vr ON ir.codisl = vr.codisl
             LEFT JOIN VentasTotales vt ON ir.codisl = vt.codisl
             ORDER BY ir.codisl;
         ";
-
-        return ($this->sql->select($query, [])) ?: false ;
+        return $this->fetchAll($query);
     }
 
-    function get_sales_stations($from, $until, $codgas, $codprd) : array | false {
-        if ($codprd == 0) {
-            $whereProducto = "AND t1.codprd IN (179,180,181,192,193)";
-        } else {
-            $whereProducto = "AND t1.codprd = {$codprd}";
-        }
-        if ($codgas == 0) {
-            $codgas = " "; // Lista de gasolineras si codgas es 0
-        } else {
-            $codgas = "and t1.codgas = {$codgas}"; // Solo la gasolinera específica
-        }
+    // =====================================================================
+    // 5b. DESPACHOS CRÉDITO / DÉBITO: PENDIENTES Y LIBERADOS
+    // =====================================================================
 
-    
-
-
-        $query = "
-        DECLARE @from INT = {$from};
-        DECLARE @until INT = {$until};
-                
-        WITH Datos AS (
-            SELECT
-                CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) -1, 23) AS VARCHAR(10)) AS Fecha,
-                t1.fchcor AS FechaCompleta, -- Agregar la fecha completa
-                t4.cod AS CodigoGasolinera, -- Agregar el código de la gasolinera
-                t4.abr AS Gasolinera,
-                t2.cod AS CodigoProducto, -- Agregar el código del producto
-                t2.den AS Producto,
-                COUNT(*) AS TotalDespachos,
-                SUM(t1.can) AS Volumen,
-                ROUND(SUM(t1.mto), 2) AS Importe,
-                ROUND(SUM(CASE WHEN t3.tipval = 3 THEN t1.can ELSE 0 END), 3) AS Credito,
-                ROUND(SUM(CASE WHEN t3.tipval = 4 THEN t1.can ELSE 0 END), 3) AS Debito,
-                MIN(CASE WHEN t1.pre > 0 AND t1.codprd IN (179, 180, 181, 192, 193) THEN t1.pre ELSE NULL END) AS precio_minimo,
-                MAX(CASE WHEN t1.pre > 0 AND t1.codprd IN (179, 180, 181, 192, 193) THEN t1.pre ELSE NULL END) AS precio_maximo
-            FROM
-                Despachos t1
-                LEFT JOIN Productos t2 ON t1.codprd = t2.cod
-                LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
-                LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
-            WHERE
-                t1.fchcor BETWEEN @from AND @until
-                {$whereProducto}
-                {$codgas}
-            GROUP BY
-                t1.fchcor, t1.codgas, t4.abr, t4.cod, t2.cod, t2.den
-        )
-        
-        SELECT
-            Fecha,
-            LTRIM(Gasolinera) AS Gasolinera,
-            CodigoProducto,
-            CodigoGasolinera,
-            FechaCompleta,
-            LTRIM(Producto) AS Producto,
-            TotalDespachos,
-            ROUND(Volumen, 3) AS Volumen,
-            CASE 
-                WHEN ROUND(precio_minimo, 2) < ROUND(precio_maximo, 2) THEN CONCAT(precio_minimo, ' - ', precio_maximo)
-                ELSE CAST(precio_maximo AS VARCHAR)
-            END AS Precio,
-            Importe,
-            Credito,
-            Debito
-        FROM
-            Datos
-        ORDER BY Fecha ASC, Gasolinera DESC OPTION (RECOMPILE);;";
-
-    
-        
-
-        return ($this->sql->select($query, [])) ?: false ;
+    /**
+     * Despachos de crédito del día/turno con su estado de liberación (y quién
+     * los verificó). Lee del central.
+     *
+     * @param string $from  Fecha del corte ('Y-m-d' o cualquier formato que acepte dateToInt()).
+     * @param int    $shift 0 = todos los turnos; 1..4 = turno.
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_credit_dispatches_to_release(string $from, int $codgas, int $shift): array|false
+    {
+        return $this->dispatchesToRelease(DespachosSql::TIPVAL_CREDITO, $from, $codgas, $shift);
     }
 
-    function get_sales_details($fch, $codgas, $prd) : array | false {
-        $query = "
-        DECLARE @from INT = {$fch};
-        DECLARE @codgas INT = {$codgas};
-        DECLARE @codprd INT = {$prd}; -- Aquí defines la variable @codprd
-        
-        SELECT
-                CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) -1, 23) AS VARCHAR(10)) AS Fecha,
-                t1.fchcor AS FechaCompleta, -- Agregar la fecha completa
-                t4.cod AS CodigoGasolinera, -- Agregar el código de la gasolinera
-                t4.abr AS Gasolinera,
-                t2.cod AS CodigoProducto, -- Agregar el código del producto
-                t2.den AS Producto,
-                t1.can AS Volumen,
-                ROUND(t1.mto, 2) AS Importe,
-                t1.pre Precio,
-                CASE
-                    WHEN t3.tipval = 3 THEN 'Crédito'
-                    WHEN t3.tipval = 4 THEN 'Débito'
-                    ELSE 'Otro'
-                END AS Tipo
-            FROM
-                Despachos t1
-                LEFT JOIN Productos t2 ON t1.codprd = t2.cod
-                LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
-                LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
-            WHERE
-                t1.fchcor = @from
-                AND t1.codgas = @codgas
-                AND t1.codprd = @codprd
-        ";
-
-        return ($this->sql->select($query, [])) ?: false ;
+    /**
+     * Igual que get_credit_dispatches_to_release() para clientes de débito.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_debit_dispatches_to_release(string $from, int $codgas, int $shift): array|false
+    {
+        return $this->dispatchesToRelease(DespachosSql::TIPVAL_DEBITO, $from, $codgas, $shift);
     }
 
-    function get_credit_dispatches_to_release($from, $codgas, $shift) : array|false {
-
-        $Fecha = dateToInt($from);
+    /**
+     * Despachos de un tipo de cliente (3 crédito / 4 débito) del corte, con su
+     * registro de liberación si existe.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    private function dispatchesToRelease(int $tipval, string $from, int $codgas, int $shift): array|false
+    {
         $query = "
-        DECLARE @Fecha INT = {$Fecha};
-        DECLARE @shift INT = {$shift};
+        DECLARE @Fecha INT = ?;
+        DECLARE @shift INT = ?;
         SELECT
             t5.id,
             t1.nrotrn Despacho,
-			t4.abr Estacion,
-			t7.den Isla,
+            t4.abr Estacion,
+            t7.den Isla,
             t1.codcli,
             t2.den AS Cliente,
             t1.can Volumen,
-			t1.mto Monto,
-			COALESCE(t5.notes, '--') AS notes,
-			CASE t2.tipval
-                WHEN 3 THEN N'Crédito'
-                WHEN 4 THEN N'Débito'
-            END AS Tipo,
-            CONVERT(VARCHAR(5), DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)), 108) AS hora_formateada,
-            CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
-            (t1.nrotur / 10) AS turno,
-            t3.abr,
-            t3.den Producto,
-	        COALESCE(Nombre, 'Sin verificar') AS Verificador,
-	        CASE 
-                WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t5.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t5.created_at AS DATE)) > 2 
-                THEN 1 
-                ELSE 0 
-            END AS incidencia,
+            t1.mto Monto,
+            t1.nroveh,
             t1.rut,
-            t1.nroveh
-        FROM
-            [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-            LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
-            LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.codprd = t3.cod
-            LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
-            LEFT JOIN [TG].[dbo].[despachos_liberados] t5 ON t1.codgas = t5.codgas AND t1.nrotrn = t5.nrotrn
-	        LEFT JOIN [TG].[dbo].[Usuario] t6 ON t5.codemp = t6.Id
-	        LEFT JOIN [SG12].[dbo].[Islas] t7 ON t1.codisl = t7.cod
-        WHERE
-            t1.fchcor = @Fecha
-            AND t1.codcli > 0
-            AND t2.tipval IN (3)
-            AND t1.codgas = {$codgas}
-            AND (
-                @shift = 0 
-                OR t1.nrotur BETWEEN (@shift * 10) AND ((@shift * 10) + 9)
-            )
-            AND t1.mto > 0
-        ";
-        return ($this->sql->select($query, [])) ?: false ;
-    }
-
-    function get_debit_dispatches_to_release($from, $codgas, $shift) : array|false {
-
-        $Fecha = dateToInt($from);
-        $query = "
-        DECLARE @Fecha INT = {$Fecha};
-        DECLARE @shift INT = {$shift};
-        SELECT
-            t5.id,
-            t1.nrotrn Despacho,
-			t4.abr Estacion,
-			t7.den Isla,
-            t1.codcli,
-            t2.den AS Cliente,
-            t1.can Volumen,
-			t1.mto Monto,
-			t1.nroveh,
-			t1.rut,
-			COALESCE(t5.notes, '--') AS notes,
-			CASE t2.tipval
+            COALESCE(t5.notes, '--') AS notes,
+            CASE t2.tipval
                 WHEN 3 THEN N'Crédito'
                 WHEN 4 THEN N'Débito'
             END AS Tipo,
@@ -2354,11 +2305,11 @@ class DespachosModel extends Model{
             (t1.nrotur / 10) AS turno,
             t3.abr,
             t3.den Producto,
-	        COALESCE(Nombre, 'Sin verificar') AS Verificador,
-	        CASE 
-                WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t5.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t5.created_at AS DATE)) > 2 
-                THEN 1 
-                ELSE 0 
+            COALESCE(Nombre, 'Sin verificar') AS Verificador,
+            CASE
+                WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t5.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t5.created_at AS DATE)) > 2
+                THEN 1
+                ELSE 0
             END AS incidencia
         FROM
             [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
@@ -2366,29 +2317,36 @@ class DespachosModel extends Model{
             LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.codprd = t3.cod
             LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
             LEFT JOIN [TG].[dbo].[despachos_liberados] t5 ON t1.codgas = t5.codgas AND t1.nrotrn = t5.nrotrn
-	        LEFT JOIN [TG].[dbo].[Usuario] t6 ON t5.codemp = t6.Id
-	        LEFT JOIN [SG12].[dbo].[Islas] t7 ON t1.codisl = t7.cod
+            LEFT JOIN [TG].[dbo].[Usuario] t6 ON t5.codemp = t6.Id
+            LEFT JOIN [SG12].[dbo].[Islas] t7 ON t1.codisl = t7.cod
         WHERE
             t1.fchcor = @Fecha
             AND t1.codcli > 0
-            AND t2.tipval IN (4)
-            AND t1.codgas = {$codgas}
+            AND t2.tipval IN ($tipval)
+            AND t1.codgas = ?
             AND (
-                @shift = 0 OR
-                t1.nrotur BETWEEN (@shift * 10) AND ((@shift * 10) + 9)
+                @shift = 0
+                OR t1.nrotur BETWEEN (@shift * 10) AND ((@shift * 10) + 9)
             )
-            AND t1.mto > 0;
+            AND t1.mto > 0
         ";
-        return ($this->sql->select($query, [])) ?: false ;
+        return $this->fetchAll($query, [dateToInt($from), $shift, $codgas]);
     }
 
-    function get_credit_and_debit_dispatches_released($from, $codgas, $shift, $dispatch_type) : array|false {
+    /**
+     * Despachos YA liberados del día/turno (leídos de [TG].[despachos_liberados]).
+     *
+     * @param string $from          Fecha del corte (formato que acepte dateToInt()).
+     * @param int    $shift         0 = todos los turnos; 1..4 = turno.
+     * @param string|null $dispatch_type 'Payworks' => tipval 0; cualquier otro (o null) => crédito y débito.
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_credit_and_debit_dispatches_released(string $from, int $codgas, int $shift, ?string $dispatch_type): array|false
+    {
+        $tipvals = $dispatch_type === 'Payworks' ? '0' : '3, 4';
 
-        $dispatch_type = ($dispatch_type == 'Payworks') ? '0' : '3, 4';
-
-        $Fecha = dateToInt($from);
-        $query = "DECLARE @Fecha INT = {$Fecha};
-                  DECLARE @shift INT = {$shift};
+        $query = "DECLARE @Fecha INT = ?;
+                  DECLARE @shift INT = ?;
                   SELECT
                     t1.id,
                     t1.nrotrn Despacho,
@@ -2409,10 +2367,10 @@ class DespachosModel extends Model{
                     t3.abr,
                     t3.den Producto,
                     COALESCE(t5.Nombre, 'Sin verificar') AS Verificador,
-                    CASE 
-                        WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t1.created_at AS DATE)) > 2 
-                        THEN 1 
-                        ELSE 0 
+                    CASE
+                        WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t1.created_at AS DATE)) > 2
+                        THEN 1
+                        ELSE 0
                     END AS incidencia
                   FROM
                     [TG].[dbo].[despachos_liberados] t1
@@ -2423,22 +2381,49 @@ class DespachosModel extends Model{
                     LEFT JOIN [SG12].[dbo].[Islas] t7 ON t1.codisl = t7.cod
                   WHERE
                     fchcor = @Fecha AND
-                    t1.codgas = {$codgas} AND
+                    t1.codgas = ? AND
                     (
-                        @shift = 0 
+                        @shift = 0
                         OR t1.nrotur BETWEEN (@shift * 10) AND ((@shift * 10) + 9)
                     )
-                    AND t1.tipval IN ({$dispatch_type})
+                    AND t1.tipval IN ($tipvals)
                   ;";
-
-
-        return ($this->sql->select($query, [])) ?: false ;
+        return $this->fetchAll($query, [dateToInt($from), $shift, $codgas]);
     }
 
-    function get_credit_dispatches_just_to_release($from, $codgas, $shift) : array|false {
-        $Fecha = dateToInt($from);
-        $query = "DECLARE @Fecha INT = {$Fecha};
-                  DECLARE @shift INT = {$shift};
+    /**
+     * Despachos de crédito del corte que AÚN no se han liberado (sin registro
+     * en [TG].[despachos_liberados]).
+     *
+     * @param string $from  Fecha del corte (formato que acepte dateToInt()).
+     * @param int    $shift 0 = todos los turnos; 1..4 = turno.
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_credit_dispatches_just_to_release(string $from, int $codgas, int $shift): array|false
+    {
+        return $this->dispatchesJustToRelease(DespachosSql::TIPVAL_CREDITO, $from, $codgas, $shift);
+    }
+
+    /**
+     * Igual que get_credit_dispatches_just_to_release() para clientes de débito.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_debit_dispatches_just_to_release(string $from, int $codgas, int $shift): array|false
+    {
+        return $this->dispatchesJustToRelease(DespachosSql::TIPVAL_DEBITO, $from, $codgas, $shift);
+    }
+
+    /**
+     * Despachos de un tipo de cliente (3 crédito / 4 débito) del corte SIN registro
+     * de liberación. Anti-join contra [TG].[despachos_liberados] por (nrotrn, codgas).
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    private function dispatchesJustToRelease(int $tipval, string $from, int $codgas, int $shift): array|false
+    {
+        $query = "DECLARE @Fecha INT = ?;
+                  DECLARE @shift INT = ?;
                   SELECT
                     t2.id,
                     t1.nrotrn Despacho,
@@ -2458,14 +2443,14 @@ class DespachosModel extends Model{
                     (t1.nrotur / 10) AS turno,
                     t5.abr,
                     t5.den Producto,
-                    'Sin verificar' AS Verificador, 
-                    CASE 
-                        WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t2.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t2.created_at AS DATE)) > 2 
-                        THEN 1 
-                        ELSE 0 
+                    'Sin verificar' AS Verificador,
+                    CASE
+                        WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t2.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t2.created_at AS DATE)) > 2
+                        THEN 1
+                        ELSE 0
                     END AS incidencia
                   FROM SG12.dbo.Despachos t1
-                    LEFT JOIN (SELECT * FROM [TG].[dbo].[despachos_liberados] WHERE fchcor = @Fecha AND codgas = {$codgas}) t2 ON t1.nrotrn = t2.nrotrn AND t1.codgas = t2.codgas
+                    LEFT JOIN (SELECT * FROM [TG].[dbo].[despachos_liberados] WHERE fchcor = @Fecha AND codgas = ?) t2 ON t1.nrotrn = t2.nrotrn AND t1.codgas = t2.codgas
                     LEFT JOIN SG12.dbo.Clientes t3 ON t1.codcli = t3.cod
                     LEFT JOIN SG12.dbo.Gasolineras t4 ON t1.codgas = t4.cod
                     LEFT JOIN SG12.dbo.Productos t5 ON t1.codprd = t5.cod
@@ -2475,131 +2460,84 @@ class DespachosModel extends Model{
                     t2.nrotrn IS NULL
                     AND t2.codgas IS NULL
                     AND t1.fchcor = @Fecha
-                    AND t1.codgas = {$codgas}
+                    AND t1.codgas = ?
                     AND (
-                        @shift = 0 
+                        @shift = 0
                         OR t1.nrotur BETWEEN (@shift * 10) AND ((@shift * 10) + 9)
                     )
                     AND t1.codcli > 0
-                    AND t3.tipval IN (3)
+                    AND t3.tipval IN ($tipval)
                     AND t1.mto > 0
-                  ORDER BY t1.nrotrn ASC;
-                    ;";
-        return ($this->sql->select($query, [])) ?: false ;
+                  ORDER BY t1.nrotrn ASC;";
+        return $this->fetchAll($query, [dateToInt($from), $shift, $codgas, $codgas]);
     }
 
-    function get_debit_dispatches_just_to_release($from, $codgas, $shift) : array|false {
-        $Fecha = dateToInt($from);
-        $query = "DECLARE @Fecha INT = {$Fecha};
-                  DECLARE @Shift INT = {$shift};
+    /**
+     * Despachos de crédito/débito del día (todas las estaciones) que aún no se han liberado.
+     *
+     * @param int $from Fecha de corte (entero de fecha).
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_all_dispatches_just_to_release(int $from): array|false
+    {
+        $query = "DECLARE @Fecha INT = ?;
                   SELECT
-                    t2.id,
-                    t1.nrotrn Despacho,
-                    t4.abr Estacion,
-                    t7.den Isla,
-                    t1.codcli,
-                    t6.den AS Cliente,
-                    t1.can Volumen,
-                    t1.mto Monto,
-                    COALESCE(t2.notes, '--') AS notes,
-                    CASE t6.tipval
+                    dl.id,
+                    d.nrotrn AS Despacho,
+                    g.abr AS Estacion,
+                    i.den AS Isla,
+                    d.codcli,
+                    c.den AS Cliente,
+                    d.can AS Volumen,
+                    d.mto AS Monto,
+                    COALESCE(dl.notes, '--') AS notes,
+                    CASE c.tipval
                         WHEN 3 THEN N'Crédito'
                         WHEN 4 THEN N'Débito'
                     END AS Tipo,
-                    CONVERT(VARCHAR(5), DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)), 108) AS hora_formateada,
-                    CAST(CONVERT(VARCHAR(100), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
-                    (t1.nrotur / 10) AS turno,
-                    t5.abr,
-                    t5.den Producto,
-                    'Sin verificar' AS Verificador, 
-                    CASE 
-                        WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t2.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t2.created_at AS DATE)) > 2 
-                        THEN 1 
-                        ELSE 0 
+                    CONVERT(VARCHAR(5), DATEADD(MINUTE, d.hratrn % 100, DATEADD(HOUR, d.hratrn / 100, 0)), 108) AS hora_formateada,
+                    CONVERT(VARCHAR(10), DATEADD(DAY, -1, CAST(d.fchtrn AS DATETIME)), 23) AS Fecha,
+                    (d.nrotur / 10) AS turno,
+                    p.abr,
+                    p.den AS Producto,
+                    'Sin verificar' AS Verificador,
+                    CASE
+                        WHEN dl.fchcor IS NOT NULL AND DATEDIFF(DAY, DATEADD(DAY, -1, CAST(dl.fchcor AS DATETIME)), CAST(dl.created_at AS DATE)) > 2
+                        THEN 1
+                        ELSE 0
                     END AS incidencia
-                  FROM SG12.dbo.Despachos t1
-                    LEFT JOIN (SELECT * FROM [TG].[dbo].[despachos_liberados] WHERE fchcor = @Fecha AND codgas = {$codgas}) t2 ON t1.nrotrn = t2.nrotrn AND t1.codgas = t2.codgas
-                    LEFT JOIN SG12.dbo.Clientes t3 ON t1.codcli = t3.cod
-                    LEFT JOIN SG12.dbo.Gasolineras t4 ON t1.codgas = t4.cod
-                    LEFT JOIN SG12.dbo.Productos t5 ON t1.codprd = t5.cod
-                    LEFT JOIN SG12.dbo.Clientes t6 ON t1.codcli = t6.cod
-                    LEFT JOIN [SG12].[dbo].[Islas] t7 ON t1.codisl = t7.cod
-                  WHERE
-                    t2.nrotrn IS NULL
-                    AND t2.codgas IS NULL
-                    AND t1.fchcor = @Fecha
-                    AND t1.codgas = {$codgas}
-                    AND (
-                        @shift = 0 
-                        OR t1.nrotur BETWEEN (@shift * 10) AND ((@shift * 10) + 9)
-                    )
-                    AND t1.codcli > 0
-                    AND t3.tipval IN (4)
-                    AND t1.mto > 0
-                  ORDER BY t1.nrotrn ASC;
-                    ;";
-        return ($this->sql->select($query, [])) ?: false ;
+                FROM SG12.dbo.Despachos d
+                LEFT JOIN (
+                    SELECT *
+                    FROM [TG].[dbo].[despachos_liberados]
+                    WHERE fchcor = @Fecha
+                ) dl ON d.nrotrn = dl.nrotrn AND d.codgas = dl.codgas
+                LEFT JOIN SG12.dbo.Clientes c ON d.codcli = c.cod
+                LEFT JOIN SG12.dbo.Gasolineras g ON d.codgas = g.cod
+                LEFT JOIN SG12.dbo.Productos p ON d.codprd = p.cod
+                LEFT JOIN [SG12].[dbo].[Islas] i ON d.codisl = i.cod
+                WHERE
+                    dl.nrotrn IS NULL
+                    AND d.fchcor = @Fecha
+                    AND d.codcli > 0
+                    AND c.tipval IN (3, 4)
+                    AND d.mto > 0
+                ORDER BY d.nrotrn ASC;";
+        return $this->fetchAll($query, [$from]);
     }
 
-    function check_dispatch($nrotrn, $codgas, $fecha) : array|false {
-        $query = "SELECT
-                    t1.*,
-                    CONVERT(VARCHAR(5), DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)), 108) AS hora_formateada,
-                    t2.tipval
-                FROM [SG12].[dbo].[Despachos] t1 LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod WHERE t1.nrotrn = {$nrotrn} AND t1.codgas = {$codgas} AND t1.fchcor = {$fecha};";
-
-        return $this->sql->select($query, []);
-    }
-
-    function check_dispatch_released($nrotrn, $codgas) : bool {
-        $query = "SELECT * FROM [TG].[dbo].[despachos_liberados] WHERE nrotrn = {$nrotrn} AND codgas = {$codgas};";
-        return (bool)$this->sql->select($query, []);
-    }
-
-    function release_dispatch_TG($dispatch) : bool {
-        $query = "INSERT INTO [TG].[dbo].[despachos_liberados] ([nrotrn],[codgas],[codisl],[nrotur],[codcli],[tipval],[codprd],[can],[mto],[codemp],[fchtrn],[fchcor],[hratrn]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?);";
-        $params = [$dispatch['nrotrn'], $dispatch['codgas'], $dispatch['codisl'], $dispatch['nrotur'], $dispatch['codcli'], (is_null($dispatch['tipval']) ? 0 : $dispatch['tipval']), $dispatch['codprd'], $dispatch['can'], $dispatch['mto'], $_SESSION['tg_user']['Id'], $dispatch['fchtrn'], $dispatch['fchcor'], $dispatch['hora_formateada']];
-
-        return $this->sql->insert($query, $params);
-    }
-
-    function get_dispatch_by_nrotrn_and_date($nrotrn, $fchcor) {
-        $query = "DECLARE @Fecha INT = {$fchcor};
-        SELECT
-            t1.*, t2.tipval, t3.abr Estacion
-        FROM
-            [SG12].[dbo].[Despachos] t1
-            LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
-            LEFT JOIN [SG12].[dbo].[Gasolineras] t3 ON t1.codgas = t3.cod
-        WHERE t1.nrotrn = {$nrotrn} AND t1.fchcor = @Fecha;";
-        $data = $this->sql->select($query, []);
-        // Vamos a contar cuantos registros existen con este nrotrn y fchcor
-        $count = count($data);
-        // Si no hay registros, retornamos false
-        if ($count == 0) return false;
-        // Si hay más de un registro, retornamos false
-        if ($count > 1) return false;
-        // Si hay un solo registro, retornamos los datos
-        return $data[0];
-    }
-
-    function get_dispatch_by_nrotrn($nrotrn, $codgas) : array|false {
-        $query = "SELECT * FROM [SG12].[dbo].[Despachos] WHERE nrotrn = ? AND codgas = ?;";
-        $params = [$nrotrn, $codgas];
-        return $this->sql->select($query, $params);
-    }
-
-    function save_notes($id, $notes) : bool {
-        $query = "UPDATE [TG].[dbo].[despachos_liberados] SET [notes] = ? WHERE id = ?";
-        $params = [$notes, $id];
-        return $this->sql->update($query, $params);
-    }
-
-    function get_payworks_dispatches_to_release($codgas, $fch, $nrotur) : array |false {
-
+    /**
+     * Cobros con tarjeta (Payworks) del día/turno, con su estado de liberación.
+     *
+     * @param int $fch      Fecha del corte (entero de fecha).
+     * @param int $nrotur   0 = todos los turnos; 1..4 = turno.
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_payworks_dispatches_to_release(int $codgas, int $fch, int $nrotur): array|false
+    {
         $query = "
-            DECLARE @fch INT = '{$fch}';
-            DECLARE @shift INT = '{$nrotur}';
+            DECLARE @fch INT = ?;
+            DECLARE @shift INT = ?;
             SELECT
                 t6.id,
                 t1.nrotrn Despacho,
@@ -2636,596 +2574,331 @@ class DespachosModel extends Model{
                 LEFT JOIN [TG].[dbo].[Usuario] t9 ON t6.codemp = t9.Id
             WHERE
                 t1.fchmov = @fch
-                AND t1.codgas = {$codgas}
+                AND t1.codgas = ?
                 AND (
-                        @shift = 0 
+                        @shift = 0
                         OR t1.nrotur BETWEEN (@shift * 10) AND ((@shift * 10) + 9)
                     )
                 AND NOT (t1.codbco = 0 AND t1.tiptar IN (84, 68, 67, 72)) AND t3.cod NOT IN (-1128) AND t1.mto > 0
             ORDER BY t2.nrotrn ASC;
         ";
-        return ($this->sql->select($query, [])) ?: false ;
+        return $this->fetchAll($query, [$fch, $nrotur, $codgas]);
     }
 
-    function overal_invoice_out_table($from, $until,$stations,$status){
-        $queryParts = [];
-        $estusQuery = '';
-        if ($status == 0) {
-            $estusQuery = " AND (
-                            CASE 
-                                WHEN NOT EXISTS (
-                                    SELECT 1
-                                    FROM STRING_SPLIT(t3.FechasConcatenadas, '','') fechas
-                                    WHERE DATEPART(MONTH, CAST(fechas.value AS DATE)) != DATEPART(MONTH,  CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchcor), 23))
-                                )
-                                THEN ''Correcto''
-                                ELSE ''Incorrecto''
-                            END
-                        ) = ''Incorrecto''";
-        }
-        foreach ($stations as $key => $station) {
-            if ($station['codigo'] == 39) {
-               continue;
-            }
-            $station_name = str_replace(' ', '_', $station['estacion_nombre']);
+    // =====================================================================
+    // 7. VENTAS POR ESTACIÓN / HORA Y DASHBOARDS
+    // =====================================================================
 
-            $server_ip = $station['servidor'];
-            $database = $station['base_datos'];
+    /**
+     * Ventas de combustible por día, estación y producto en un rango de fechas de corte.
+     *
+     * @param int $codgas Estación (0 = todas).
+     * @param int $codprd Producto (0 = los 5 combustibles principales).
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_sales_stations(int $from, int $until, int $codgas, int $codprd): array|false
+    {
+        $whereProducto = $codprd === 0
+            ? 'AND t1.codprd IN (179,180,181,192,193)'
+            : "AND t1.codprd = $codprd";
+        $whereStation = $codgas === 0 ? '' : "AND t1.codgas = $codgas";
 
-            $collationsatuid ='';
-            $collationtxtref ='';
-            if ( $station['codigo']==33) {
-                $collationsatuid ='COLLATE  Modern_Spanish_CI_AS as satuid';
-                $collationtxtref ='COLLATE  Modern_Spanish_CI_AS as txtref';
-            }
-
-            $subQuery  = "SELECT * 
-                    FROM OPENQUERY([$server_ip],
-                        '
-                        SELECT  
-                            t1.nro,
-                            CASE 
-                                WHEN t1.nro BETWEEN 2100000000 AND 2499999999 THEN ''Z '' + SUBSTRING(CAST(t1.nro AS VARCHAR(10)), 4, 10)
-                                WHEN t1.nro BETWEEN 2000000000 AND 2099999999 THEN ''T '' + SUBSTRING(CAST(t1.nro AS VARCHAR(10)), 4, 10)
-                                WHEN t1.nro BETWEEN 1900000000 AND 1999999999 THEN ''K '' + SUBSTRING(CAST(t1.nro AS VARCHAR(10)), 4, 10)
-                                WHEN t1.nro BETWEEN 1100000000 AND 1199999999 THEN ''C '' + SUBSTRING(CAST(t1.nro AS VARCHAR(10)), 4, 10)
-                                WHEN t1.nro BETWEEN 1700000000 AND 1799999999 THEN ''I '' + SUBSTRING(CAST(t1.nro AS VARCHAR(10)), 4, 10)
-                                WHEN t1.nro BETWEEN 1300000000 AND 1399999999 THEN ''E '' + SUBSTRING(CAST(t1.nro AS VARCHAR(10)), 4, 10)
-
-                                ELSE CAST(t1.nro AS VARCHAR(10)) 
-                            END AS ''factura'',
-                            t1.satuid $collationsatuid,
-                            t1.tip,
-                            CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fch), 23) AS fecha ,
-                            CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchcor), 23) AS vigencia,
-                            t3.FechasConcatenadas,
-                            t1.txtref $collationtxtref,
-                            CASE 
-                                WHEN t1.tipref = 1 THEN ''Efectivo''
-                                WHEN t1.tipref = 2 THEN ''Cheque Nominativo''
-                                WHEN t1.tipref = 3 THEN ''Transferencia Electronica''
-                                WHEN t1.tipref = 4 THEN ''Tarjeta de crédito''
-                                WHEN t1.tipref = 28 THEN ''Tarjeta de débito''
-                                ELSE ''Otro''
-                            END AS TipoPago,
-                            t3.NrotrnConcatenados,
-                            ''$station_name'' as estacion,
-                            CASE 
-                            WHEN NOT EXISTS (
-                                SELECT 1
-                                FROM STRING_SPLIT(t3.FechasConcatenadas, '','') fechas
-                                WHERE DATEPART(MONTH, CAST(fechas.value AS DATE)) != DATEPART(MONTH,  CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchcor), 23))
-                            )
-                            THEN ''Correcto''
-                            ELSE ''Incorrecto''
-                        END AS estado
-                        FROM 
-                            [$database].[dbo].[DocumentosC] t1
-                        LEFT JOIN (
-                            SELECT 
-                                t5.nrofac,
-                                STUFF((
-                                    SELECT DISTINCT
-                                        '', '' + CONVERT(VARCHAR(10), DATEADD(day, -1, fchtrn), 23)
-                                    FROM [$database].[dbo].[despachos] t2
-                                    WHERE t2.nrofac = t5.nrofac
-                                    FOR XML PATH(''''), TYPE).value(''.'', ''NVARCHAR(MAX)''), 1, 2, '''') AS FechasConcatenadas,
-                            COUNT(*) as NrotrnConcatenados
-                            FROM [$database].[dbo].[despachos] t5
-                            GROUP BY t5.nrofac
-                        ) t3 ON t1.nro = t3.nrofac
-                        LEFT JOIN [$database].[dbo].Gasolineras t4 ON t1.codgas = t4.cod
-                        WHERE t1.codopr = 21701354
-                        AND t1.fch BETWEEN $from AND $until
-                        AND t1.tip = 3
-                        $estusQuery
-                        ORDER BY t1.nro ASC
-                        '
-                    )";
-            $queryParts[] = $subQuery;
-        }
-        $finalQuery = implode(" UNION ALL ", $queryParts);
-
-   
-
-         $params = [];
-        return ($this->sql->select($finalQuery,$params)) ? : false;
-    }
-
-
-    function pivot_facturacion_diaria_table($from, $until,$from_date,$until_date,$estations){
-        $select_columns = ["fecha"];
-        $pivot_columns = [];
-        $final_select_columns = [];
-
-        foreach ($estations as $station) {
-            $station_name = str_replace(' ', '_', $station['estacion_nombre']);
-            $select_columns[] = "ISNULL([$station_name], 0) as [$station_name]";
-            $pivot_columns[] = "[$station_name]";
-            $final_select_columns[] = "ISNULL(dq.[$station_name], 0) as [$station_name]";
-        }
-        // Construir las subconsultas con OPENQUERY
-        $union_queries = [];
-
-        foreach ($estations as $station) {
-            $collation ='';
-            if ( $station['codigo']==33) {
-                $collation ='COLLATE  Modern_Spanish_CI_AS as fecha';
-            }
-
-            $station_name = str_replace(' ', '_', $station['estacion_nombre']);
-            $server_ip = $station['servidor'];
-            $database = $station['base_datos'];
-            if($station['vis_fac']== 1){
-                $union_queries[] = " 
-                 SELECT * FROM OPENQUERY([$server_ip],
-                'SELECT  fecha $collation , ''$station_name'' as estacion, total
-                FROM [$database].[dbo].[v_factura_global_diaria] WITH (NOLOCK) WHERE fecha BETWEEN ''$from_date'' AND ''$until_date'' ')
-                ";
-            }else{
-
-                $union_queries[] = "
-                SELECT * FROM OPENQUERY([$server_ip],
-                'SELECT
-                    CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) AS fecha,
-                    ''$station_name'' as estacion,
-                    CAST(ROUND(SUM(CASE WHEN t3.codopr = 21701354 THEN t1.mto ELSE 0 END), 2) AS DECIMAL(18, 2)) as total
-                FROM [$database].[dbo].[Despachos] t1 WITH (NOLOCK)
-                LEFT JOIN [$database].[dbo].DocumentosC t3 ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
-                WHERE t3.codopr = 21701354 and t1.fchtrn BETWEEN $from AND $until
-                GROUP BY CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23)')";
-            }
-        }
-
-        // Construir el query final
         $query = "
-         WITH DateRange AS (
-            SELECT CAST('$from_date' AS DATE) AS fecha
-            UNION ALL
-            SELECT DATEADD(day, 1, fecha)
-            FROM DateRange
-            WHERE fecha < '$until_date'
-        ),
-        DataQuery AS (
-            SELECT " . implode(",\n        ", $select_columns) . "
+        DECLARE @from INT = $from;
+        DECLARE @until INT = $until;
+
+        WITH Datos AS (
+            SELECT
+                CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) -1, 23) AS VARCHAR(10)) AS Fecha,
+                t1.fchcor AS FechaCompleta, -- Agregar la fecha completa
+                t4.cod AS CodigoGasolinera, -- Agregar el código de la gasolinera
+                t4.abr AS Gasolinera,
+                t2.cod AS CodigoProducto, -- Agregar el código del producto
+                t2.den AS Producto,
+                COUNT(*) AS TotalDespachos,
+                SUM(t1.can) AS Volumen,
+                ROUND(SUM(t1.mto), 2) AS Importe,
+                ROUND(SUM(CASE WHEN t3.tipval = 3 THEN t1.can ELSE 0 END), 3) AS Credito,
+                ROUND(SUM(CASE WHEN t3.tipval = 4 THEN t1.can ELSE 0 END), 3) AS Debito,
+                MIN(CASE WHEN t1.pre > 0 AND t1.codprd IN (179, 180, 181, 192, 193) THEN t1.pre ELSE NULL END) AS precio_minimo,
+                MAX(CASE WHEN t1.pre > 0 AND t1.codprd IN (179, 180, 181, 192, 193) THEN t1.pre ELSE NULL END) AS precio_maximo
+            FROM
+                [SG12].[dbo].[Despachos] t1
+                LEFT JOIN [SG12].[dbo].[Productos] t2 ON t1.codprd = t2.cod
+                LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
+                LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
+            WHERE
+                t1.fchcor BETWEEN @from AND @until
+                $whereProducto
+                $whereStation
+            GROUP BY
+                t1.fchcor, t1.codgas, t4.abr, t4.cod, t2.cod, t2.den
+        )
+
+        SELECT
+            Fecha,
+            LTRIM(Gasolinera) AS Gasolinera,
+            CodigoProducto,
+            CodigoGasolinera,
+            FechaCompleta,
+            LTRIM(Producto) AS Producto,
+            TotalDespachos,
+            ROUND(Volumen, 3) AS Volumen,
+            CASE
+                WHEN ROUND(precio_minimo, 2) < ROUND(precio_maximo, 2) THEN CONCAT(precio_minimo, ' - ', precio_maximo)
+                ELSE CAST(precio_maximo AS VARCHAR)
+            END AS Precio,
+            Importe,
+            Credito,
+            Debito
+        FROM
+            Datos
+        ORDER BY Fecha ASC, Gasolinera DESC OPTION (RECOMPILE);";
+
+        return $this->fetchAll($query);
+    }
+
+    /**
+     * Despachos individuales de una estación/producto/fecha de corte (detalle de get_sales_stations).
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_sales_details(int $fch, int $codgas, int $prd): array|false
+    {
+        $query = "
+        SELECT
+                CAST(CONVERT(VARCHAR(100), CAST(t1.fchcor AS DATETIME) -1, 23) AS VARCHAR(10)) AS Fecha,
+                t1.fchcor AS FechaCompleta, -- Agregar la fecha completa
+                t4.cod AS CodigoGasolinera, -- Agregar el código de la gasolinera
+                t4.abr AS Gasolinera,
+                t2.cod AS CodigoProducto, -- Agregar el código del producto
+                t2.den AS Producto,
+                t1.can AS Volumen,
+                ROUND(t1.mto, 2) AS Importe,
+                t1.pre Precio,
+                CASE
+                    WHEN t3.tipval = 3 THEN 'Crédito'
+                    WHEN t3.tipval = 4 THEN 'Débito'
+                    ELSE 'Otro'
+                END AS Tipo
+            FROM
+                [SG12].[dbo].[Despachos] t1
+                LEFT JOIN [SG12].[dbo].[Productos] t2 ON t1.codprd = t2.cod
+                LEFT JOIN [SG12].[dbo].[Clientes] t3 ON t1.codcli = t3.cod
+                LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
+            WHERE
+                t1.fchcor = ?
+                AND t1.codgas = ?
+                AND t1.codprd = ?
+        ";
+        return $this->fetchAll($query, [$fch, $codgas, $prd]);
+    }
+
+    /**
+     * Venta en efectivo (clientes que no son crédito/débito) por hora y día, en
+     * formato pivot: una fila por hora y una columna por fecha.
+     *
+     * Ya no se une a MovimientosTar, Valores ni ClientesValores: sus columnas no
+     * se usaban y un despacho con varios renglones relacionados se sumaba varias veces.
+     *
+     * @param string $fromDate  'Y-m-d' (inclusive).
+     * @param string $untilDate 'Y-m-d' (inclusive).
+     * @return list<array<string,mixed>>
+     * @throws InvalidArgumentException si las fechas no son 'Y-m-d' válidas.
+     */
+    public function sales_cash_hour_table(string $fromDate, string $untilDate, int $codgas): array
+    {
+        $start = DateTimeImmutable::createFromFormat('!Y-m-d', $fromDate);
+        $end   = DateTimeImmutable::createFromFormat('!Y-m-d', $untilDate);
+        if ($start === false || $end === false) {
+            throw new InvalidArgumentException('Las fechas deben tener formato Y-m-d.');
+        }
+        if ($start > $end) {
+            return [];
+        }
+        $from_int  = dateToInt($fromDate);
+        $until_int = dateToInt($untilDate);
+
+        // Una columna por día para el PIVOT (los nombres salen de DateTime::format, no del usuario).
+        $dates = [];
+        for ($day = $start; $day <= $end; $day = $day->modify('+1 day')) {
+            $dates[] = $day->format('Y-m-d');
+        }
+        $columnsList = implode(',', array_map(static fn (string $d): string => "[$d]", $dates));
+        $selectList  = implode(',', array_merge(
+            ['Hora'],
+            array_map(static fn (string $d): string => "ISNULL([$d], 0) AS [$d]", $dates)
+        ));
+
+        $query = "
+            WITH datosDespachos AS (
+                SELECT
+                    DATEPART(HOUR, CAST(DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)) AS TIME)) AS Hora,
+                    CONVERT(VARCHAR, DATEADD(DAY, t1.fchtrn - 1, '19000101'), 23) AS FechaTexto,
+                    t1.mto
+                FROM [SG12].[dbo].[Despachos] t1
+                LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
+                WHERE
+                    t1.codgas = $codgas
+                    AND (t2.tipval NOT IN (3, 4) OR t2.tipval IS NULL)
+                    AND t1.tar >= 0
+                    AND t1.fchtrn BETWEEN $from_int AND $until_int
+
+            ),
+            resumen AS (
+                SELECT Hora, FechaTexto, SUM(ISNULL(mto, 0)) AS TotalMto
+                FROM datosDespachos
+                GROUP BY Hora, FechaTexto
+            )
+            SELECT $selectList
             FROM (
-                " . implode("\n        UNION ALL\n        ", $union_queries) . "
+                SELECT Hora, FechaTexto, TotalMto
+                FROM resumen
             ) AS SourceTable
             PIVOT (
-                MAX(total)
-                FOR estacion IN (
-                    " . implode(",\n            ", $pivot_columns) . "
-                )
+                SUM(TotalMto)
+                FOR FechaTexto IN ($columnsList)
             ) AS PivotTable
-        )
-             SELECT 
-                d.fecha,
-                " . implode(",\n        ", $final_select_columns) . "
-            FROM DateRange d
-            LEFT JOIN DataQuery dq ON d.fecha = dq.fecha
-            ORDER BY d.fecha;";
-
-        return ($this->sql->select($query)) ?: false;
-    }
-
-    function get_all_dispatches_just_to_release($from) : array|false {
-        $query = "DECLARE @Fecha INT = {$from};
-                  SELECT
-                    dl.id,
-                    d.nrotrn AS Despacho,
-                    g.abr AS Estacion,
-                    i.den AS Isla,
-                    d.codcli,
-                    c.den AS Cliente,
-                    d.can AS Volumen,
-                    d.mto AS Monto,
-                    COALESCE(dl.notes, '--') AS notes,
-                    CASE c.tipval
-                        WHEN 3 THEN N'Crédito'
-                        WHEN 4 THEN N'Débito'
-                    END AS Tipo,
-                    CONVERT(VARCHAR(5), DATEADD(MINUTE, d.hratrn % 100, DATEADD(HOUR, d.hratrn / 100, 0)), 108) AS hora_formateada,
-                    CONVERT(VARCHAR(10), DATEADD(DAY, -1, CAST(d.fchtrn AS DATETIME)), 23) AS Fecha,
-                    (d.nrotur / 10) AS turno,
-                    p.abr,
-                    p.den AS Producto,
-                    'Sin verificar' AS Verificador, 
-                    CASE 
-                        WHEN dl.fchcor IS NOT NULL AND DATEDIFF(DAY, DATEADD(DAY, -1, CAST(dl.fchcor AS DATETIME)), CAST(dl.created_at AS DATE)) > 2 
-                        THEN 1 
-                        ELSE 0 
-                    END AS incidencia
-                FROM SG12.dbo.Despachos d
-                LEFT JOIN (
-                    SELECT * 
-                    FROM [TG].[dbo].[despachos_liberados] 
-                    WHERE fchcor = @Fecha
-                ) dl ON d.nrotrn = dl.nrotrn AND d.codgas = dl.codgas
-                LEFT JOIN SG12.dbo.Clientes c ON d.codcli = c.cod
-                LEFT JOIN SG12.dbo.Gasolineras g ON d.codgas = g.cod
-                LEFT JOIN SG12.dbo.Productos p ON d.codprd = p.cod
-                LEFT JOIN [SG12].[dbo].[Islas] i ON d.codisl = i.cod
-                WHERE
-                    dl.nrotrn IS NULL
-                    AND d.fchcor = @Fecha
-                    AND d.codcli > 0
-                    AND c.tipval IN (3, 4)
-                    AND d.mto > 0
-                ORDER BY d.nrotrn ASC;";
-        return ($this->sql->select($query, [])) ?: false ;
-    }
-
-
-    function control_dispatches_invoiced($from, $until, $codgas,$uuid,$tipo_cliente,$billed) :array|false {
-        $from  = (int) $from;
-        $until = (int) $until;
-        // Margen de ±1 día para movimientos de tarjeta registrados con fecha distinta al despacho.
-        $mov_from  = $from - 1;
-        $mov_until = $until + 1;
-        $uuid_true = " AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)";
-        $uuid_false = " AND  t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53";
-
-
-        $billed_true = " AND (t3.nro is not null or t1.nrofac !=0)";
-        $billed_false = " AND  t3.nro is null and t1.nrofac =0 ";
-        $where = "";
-        $where = $codgas != 0 ? "AND t1.codgas = $codgas" : "";
-        $where .= ($uuid != 0) ? ($uuid == 1 ? $uuid_false : ($uuid == 2 ? $uuid_true : "")): "";
-        $where .= ($billed != 0) ? ($billed == 1 ? $billed_false : ($billed == 2 ? $billed_true : "")): "";
-        if (!empty($tipo_cliente)) {
-            $where .= " AND 
-                        CASE 
-                            WHEN t10.codval = 28 THEN 'cliente_credito'
-                            WHEN t10.codval = 127 THEN 'cliente_debito'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'monedero'
-                            WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'contado'
-                            WHEN t3.codopr = 21701354 THEN 'factura_global'
-                            ELSE 'N/A'
-                        END = '$tipo_cliente'";
-        }
-
-        $params = [$from, $until, ];
-        $query = "WITH CTE AS (
-                    SELECT
-                        --CAST(CONVERT(VARCHAR(100), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) as fecha,
-                        CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
-                        CAST(CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS TIME(0)) AS hora_formateada,
-                        SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1)  as 'turno',
-                        t1.nrotrn as 'despacho',
-                        t8.den as 'producto',
-                        t6.abr as 'estacion',
-                        t7.den as 'empresa',
-                        t2.den as 'cliente_des',
-                        t5.den as 'cliente_fac',
-                        t1.can as 'cantidad',
-                        t1.mto as 'importe',
-                        t1.pre as 'precio',
-                        t1.gasfac,
-                        t1.nrofac,
-                        CASE 
-                            WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                            WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                            WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                            WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                            WHEN t3.nro BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                            WHEN t3.nro BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-
-                            ELSE CAST(t3.nro AS VARCHAR(10)) 
-                        END AS 'factura',
-                        CASE 
-                            WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                            WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                            WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                            WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                            WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                            WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                            ELSE CAST(t1.nrofac AS VARCHAR(10)) 
-                        END AS 'factura_desp',
-                        t15.Folio,
-                        case 
-                        when t1.satuid is not null Then t1.satuid 
-                        else t3.satuid
-                        end as 'UUID',
-                        t15.UUID as 'UUID_sat',
-                        t3.satuid as 'UUID_fac',
-                        t1.satuid as 'UUID_dep',
-                        t1.rut,
-                        t13.den as 'denominacion',
-                        t1.codcli as 'codigo_cliente',
-                        t10.codval,
-                        t2.tipval,
-                        CASE
-                            WHEN t13.den in (' Tarjeta EfectiCard',
-                                            ' SMARTBT - EFECTIVALE',
-                                            ' Tarjeta TicketCar',
-                                            ' Vale Efectivale',
-                                            'Ultra Gas',
-                                            ' Tarjeta Inburgas',
-                                            ' Vale Edenred',
-                                            ' Tarjetas Sodexo (Pluxee)',
-                                            'Mobil FleetPro',
-                                            ' SMARTBT - SODEXO WIZEO',
-                                            ' Vale Sodexo') THEN 'Monedero'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                            WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                            WHEN t10.codval = 127 THEN 'Cliente Débito'
-                            WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                            WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                            else 'N/A'
-                        END as 'tipo_cliente_aplicativo',
-                        CASE 
-                            WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                            WHEN t10.codval = 127 THEN 'Cliente Débito'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                            WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                            WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                            else 'N/A'
-                        END as 'tipo_cliente',
-                        t14.den as 'efectos_c',
-                        t3.txtref,
-                        t3.tipref,
-                        CASE
-                            WHEN t3.tipref = 4 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Credito'
-                            WHEN t3.tipref = 28 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Debito'
-                            WHEN t3.tipref = 1 AND t1.logmsk IN (2, 3) THEN 'Efectivo'
-                        END AS 'tipo_pago',
-                        CASE
-                            WHEN t1.tiptrn = 51 AND t1.gasfac != 2 THEN 'Tarjeta Credito'
-                            WHEN t1.tiptrn = 52 AND t1.gasfac != 2 THEN 'Tarjeta Debito'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Efectivale'
-                            WHEN t1.tiptrn = 0 THEN 'Efectivo'
-                        END AS 'tipo_pago_despacho',
-                        t1.tiptrn,
-                        t6.cvecli,
-                        t15.FechaTimbrado,
-                        ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
-                        FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                        LEFT JOIN [SG12].[dbo].Clientes t2 on t1.codcli = t2.cod
-                        LEFT JOIN [SG12].[dbo].DocumentosC t3 on t1.nrofac = t3.nro and t1.codgas = t3.codgas
-                        LEFT JOIN [SG12].[dbo].Clientes t5 on t3.codopr = t5.cod
-                        LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
-                        LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
-                        LEFT JOIN [SG12].[dbo].[Productos] t8 on t1.codprd = t8.cod
-                        LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
-                        LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov !=97  and mto != 0 and fchmov BETWEEN $mov_from AND $mov_until group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
-                        LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod 
-                        LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
-					    LEFT JOIN TGV2.dbo.Facturas t15 on t1.satuid = t15.UUID
-                    Where 
-                    t1.mto != 0 and
-                    t1.tiptrn  not in (65,74) and
-                    t1.fchtrn BETWEEN  ? and  ? {$where}
-                        )
-            SELECT *
-            FROM CTE
-            WHERE rn = 1
-            ORDER BY fecha, hora_formateada;
-                    ";
-        return ($this->sql->select($query, $params)) ?: false ;
-    }
-
-
-    /**
-     * Construye el query de despachos por estación con TODAS las transformaciones
-     * resueltas en SQL (hora HH:mm, coalesce de cliente/factura/UUID/pago, código
-     * de cliente) y devolviendo ÚNICAMENTE las 24 columnas que consume el
-     * DataTable: el controlador ya no recorre las filas en PHP ni viajan columnas
-     * auxiliares por la red.
-     *
-     * $prefix antepone "[BD].[dbo]." a las tablas cuando el query corre vía
-     * linked server (OPENQUERY); vacío cuando la conexión ya está parada en la
-     * base de datos de la estación.
-     */
-    private function control_dispatches_est_sql(int $from, int $until, $uuid, $billed, string $prefix = '') : string {
-        // Margen de ±1 día para movimientos de tarjeta registrados con fecha
-        // distinta a la del despacho (cortes de turno alrededor de medianoche).
-        $mov_from  = $from - 1;
-        $mov_until = $until + 1;
-
-        $uuid_condition = ($uuid != 0)
-            ? ($uuid == 1
-                ? "AND t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53"
-                : "AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)"
-              )
-            : "";
-
-        $billed_condition = ($billed != 0)
-            ? ($billed == 1
-                ? "AND t3.nro IS NULL AND t1.nrofac = 0"
-                : "AND (t3.nro IS NOT NULL OR t1.nrofac != 0)"
-              )
-            : "";
-
-        return "
-            SELECT fecha, hora_formateada, turno, despacho, producto, estacion, empresa,
-                   cliente_fac, cantidad, importe, precio, despachador, tipo_pago, factura,
-                   FechaFactura, [UUID], txtref, rut, denominacion, codigo_cliente,
-                   tipo_cliente, tipo_cliente_aplicativo, vehiculo, placas
-            FROM (
-            SELECT
-                CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
-                CONVERT(VARCHAR(5), CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)))) AS hora_formateada,
-                SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1) as turno,
-                t1.nrotrn as despacho,
-                t8.den as producto,
-                t6.abr as estacion,
-                t7.den as empresa,
-                ISNULL(t5.den, t2.den) as cliente_fac,
-                t1.can as cantidad,
-                t1.mto as importe,
-                t1.pre as precio,
-                CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS despachador,
-                COALESCE(
-                    CASE
-                        WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        ELSE CAST(t3.nro AS VARCHAR(10))
-                    END,
-                    CASE
-                        WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        ELSE CAST(t1.nrofac AS VARCHAR(10))
-                    END
-                ) AS factura,
-                CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS FechaFactura,
-                ISNULL(CASE WHEN t1.satuid IS NOT NULL THEN t1.satuid ELSE t3.satuid END, '.') as [UUID],
-                t3.txtref,
-                t1.rut,
-                t13.den as denominacion,
-                CASE WHEN t1.codcli < 0 THEN '' ELSE CAST(t1.codcli AS VARCHAR(20)) END as codigo_cliente,
-                CASE
-                    WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                    WHEN t10.codval = 127 THEN 'Cliente Débito'
-                    WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                    WHEN t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                    WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                    else 'N/A'
-                END as tipo_cliente,
-                CASE
-                    WHEN t13.den in (' Tarjeta EfectiCard',
-                                    ' SMARTBT - EFECTIVALE',
-                                    ' Tarjeta TicketCar',
-                                    ' Vale Efectivale',
-                                    'Ultra Gas',
-                                    ' Tarjeta Inburgas',
-                                    ' Vale Edenred',
-                                    ' Tarjetas Sodexo (Pluxee)',
-                                    'Mobil FleetPro',
-                                    ' SMARTBT - SODEXO WIZEO',
-                                    ' Vale Sodexo') THEN 'Monedero'
-                    WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                    WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                    WHEN t10.codval = 127 THEN 'Cliente Débito'
-                    WHEN t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                    WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                    else 'N/A'
-                END as tipo_cliente_aplicativo,
-                t11.nroveh as vehiculo,
-                t11.plc as placas,
-                COALESCE(
-                    CASE
-                        WHEN t3.tipref = 4 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Credito'
-                        WHEN t3.tipref = 28 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Debito'
-                        WHEN t3.tipref = 1 AND t1.logmsk IN (2, 3) THEN 'Efectivo'
-                    END,
-                    CASE
-                        WHEN t1.tiptrn = 51 AND t1.gasfac != 2 THEN 'Tarjeta Credito'
-                        WHEN t1.tiptrn = 52 AND t1.gasfac != 2 THEN 'Tarjeta Debito'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Efectivale'
-                        WHEN t1.tiptrn = 0 THEN 'Efectivo'
-                    END
-                ) AS tipo_pago,
-                ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
-              FROM {$prefix}Despachos t1 WITH (NOLOCK)
-            LEFT JOIN {$prefix}Clientes t2 WITH (NOLOCK) on t1.codcli = t2.cod
-            LEFT JOIN {$prefix}DocumentosC t3 WITH (NOLOCK) on t1.nrofac = t3.nro and t1.codgas = t3.codgas
-            LEFT JOIN {$prefix}Clientes t5 WITH (NOLOCK) on t3.codopr = t5.cod
-            LEFT JOIN {$prefix}Gasolineras t6 WITH (NOLOCK) ON t1.codgas = t6.cod
-            LEFT JOIN {$prefix}Empresas t7 WITH (NOLOCK) ON t6.codemp = t7.cod
-            LEFT JOIN {$prefix}Productos t8 WITH (NOLOCK) on t1.codprd = t8.cod
-            LEFT JOIN {$prefix}Responsables t9 WITH (NOLOCK) on t1.codres = t9.cod
-            LEFT JOIN {$prefix}ClientesValores t10 WITH (NOLOCK) ON t1.codcli = t10.codcli and t10.codest !=-1 and t10.codval in(127,28)
-            LEFT JOIN {$prefix}ClientesVehiculos t11 WITH (NOLOCK) on t1.codcli = t11.codcli and t1.nroveh = t11.nroveh
-            LEFT JOIN(Select nrotrn, sum(mto) as mto, codbco, codgas from {$prefix}MovimientosTar WITH (NOLOCK) Where tipmov != 86 and tipmov != 97 and mto != 0 and fchmov BETWEEN $mov_from AND $mov_until group by nrotrn, codgas, codbco) t12 on t1.nrotrn = t12.nrotrn and t1.codgas = t12.codgas
-            LEFT JOIN {$prefix}Valores t13 WITH (NOLOCK) on t12.codbco = t13.cod
-            WHERE t1.fchtrn BETWEEN $from AND $until
-              AND t1.mto != 0
-              AND t1.tiptrn NOT IN (65, 74)
-              $uuid_condition
-              $billed_condition
-            ) AS q WHERE q.rn = 1
+            ORDER BY Hora;
         ";
+
+        return $this->sql->select($query, []);
     }
 
     /**
-     * Consulta despachos conectándose DIRECTAMENTE al SQL Server de la estación
-     * (sin API intermedio y sin linked server/OPENQUERY). Lanza excepción si la
-     * estación no responde; el llamador decide el respaldo.
+     * Dashboard crédito/débito: monto, volumen y participación acumulada por cliente.
+     *
+     * @param int                         $from    Fecha inicial de corte (entero de fecha).
+     * @param int                         $until   Fecha final de corte (entero de fecha).
+     * @param int|string|array<int|string> $clients Códigos de cliente (array o "1,2,3"); 0 = todos.
+     * @return list<array<string,mixed>>|false
+     * @throws InvalidArgumentException si la lista de clientes trae algo que no sea entero.
      */
-    function control_dispatches_est_direct($from, $until, $uuid, $billed, $station) : array {
-        $dsn = "sqlsrv:Server={$station['servidor']};Database={$station['base_datos']};TrustServerCertificate=yes;LoginTimeout=10";
-        $pdo = new PDO($dsn, $station['usuario'], $station['contra']);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $pdo->exec("SET NOCOUNT ON");
+    public function get_dashboard_debit_credit(int $from, int $until, int|string|array $clients): array|false
+    {
+        $whereClients = $this->clientsFilter($clients);
 
-        $stmt = $pdo->query($this->control_dispatches_est_sql((int) $from, (int) $until, $uuid, $billed));
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $stmt->closeCursor();
-        return $rows;
+        $query = "
+        -- Rango de fechas de corte
+        DECLARE @from INT = $from;
+        DECLARE @until INT = $until;
+        -- CTE para agrupar y sumar datos relevantes
+        WITH Clientes AS (
+            SELECT
+                t2.den Clientes, -- Nombre del cliente
+                SUM(t1.mto) MontosTotales, -- Suma total de los montos
+                SUM(t1.can) VolumenesTotales, -- Suma total de los volúmenes
+                COUNT(*) TotalRegistros, -- Conteo total de registros
+                CASE
+                    WHEN t2.tipval = 3 THEN N'Crédito' -- Asigna Crédito si tipval es 3
+                    WHEN t2.tipval = 4 THEN N'Débito' -- Asigna Débito si tipval es 4
+                END Tipos
+            FROM
+                [SG12].[dbo].[Despachos] t1 WITH (NOLOCK) -- Tabla de despachos con NOLOCK para evitar bloqueos
+                INNER JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod -- Unión con la tabla de clientes
+                LEFT JOIN [SG12].[dbo].[Gasolineras] t3 ON t1.codgas = t3.cod -- Unión opcional con la tabla de gasolineras
+            WHERE
+                t1.fchcor BETWEEN @from AND @until -- Rango de fechas
+                AND t2.tipval IN (3, 4) -- Filtra por tipos de valor 3 (Crédito) o 4 (Débito)
+                AND t1.mto > 0 -- Filtra registros con monto mayor a 0
+                AND t1.can > 0 -- Filtra registros con cantidad mayor a 0
+                $whereClients -- Filtra por clientes específicos
+            GROUP BY t2.den, t2.tipval -- Agrupa por nombre de cliente y tipo de transacción
+        )
+        -- Selección final con cálculos adicionales
+        SELECT
+            Clientes, -- Nombre del cliente
+            Tipos, -- Tipo de transacción (Crédito o Débito)
+            VolumenesTotales, -- Suma total de los volúmenes
+            -- Acumulado de VolumenesTotales dentro de cada tipo, ordenado por MontosTotales descendente
+            SUM(VolumenesTotales) OVER (PARTITION BY Tipos ORDER BY MontosTotales DESC) AcumuladoVolumenesTotales,
+            TotalRegistros, -- Conteo total de registros
+            -- Acumulado de TotalRegistros dentro de cada tipo, ordenado por MontosTotales descendente
+            SUM(TotalRegistros) OVER (PARTITION BY Tipos ORDER BY MontosTotales DESC) AcumuladoRegistros,
+            MontosTotales, -- Suma total de los montos
+            -- Acumulado de MontosTotales dentro de cada tipo, ordenado por MontosTotales descendente
+            SUM(MontosTotales) OVER (PARTITION BY Tipos ORDER BY MontosTotales DESC) TotalesGenerales,
+            -- Porcentaje de MontosTotales respecto al total de MontosTotales dentro de cada tipo
+            (MontosTotales / SUM(MontosTotales) OVER (PARTITION BY Tipos)) * 100 Porcentaje,
+            -- Porcentaje acumulado de MontosTotales dentro de cada tipo, ordenado por MontosTotales descendente
+            (SUM(MontosTotales) OVER (PARTITION BY Tipos ORDER BY MontosTotales DESC) / SUM(MontosTotales) OVER (PARTITION BY Tipos)) * 100 Acumulado
+        FROM
+            Clientes -- Utiliza el CTE Clientes
+        ORDER BY
+            MontosTotales DESC; -- Ordena por monto total descendente
+        ";
+
+        return $this->fetchAll($query);
     }
 
     /**
-     * Mismo query pero vía linked server (OPENQUERY) desde el servidor central.
-     * Se usa como respaldo cuando la conexión directa a la estación falla.
-     * $tipo_cliente se conserva en la firma por compatibilidad pero el endpoint
-     * siempre lo manda en 0.
+     * Monto crédito/débito por mes (gráfica del dashboard).
+     *
+     * MontosCredito suma clientes crédito (tipval 3) y MontosDebito clientes
+     * débito (tipval 4). (Antes estaban cruzadas; la gráfica rotulaba al revés.)
+     *
+     * @param int|string|array<int|string> $clients Códigos de cliente (array o "1,2,3"); 0 = todos.
+     * @return list<array<string,mixed>>|false
      */
-    function control_dispatches_est($from, $until, $codgas,$uuid,$tipo_cliente,$billed,$estations) :array|false {
-        // Tolerar que llegue una sola fila de estación (assoc) en lugar de una lista.
-        if (isset($estations['servidor'])) {
-            $estations = [$estations];
-        }
-        if (empty($estations)) {
-            return false;
-        }
-        $union_queries = [];
-        foreach ($estations as $station) {
-            if (empty($station['servidor']) || empty($station['base_datos'])) {
-                continue;
-            }
-            $server_ip = $station['servidor'];
-            $database = $station['base_datos'];
+    public function get_graph1(int $from, int $until, int|string|array $clients): array|false
+    {
+        $whereClients = $this->clientsFilter($clients);
 
-            $inner = $this->control_dispatches_est_sql((int) $from, (int) $until, $uuid, $billed, "[$database].[dbo].");
-            // OPENQUERY recibe el query como literal: duplicar comillas simples.
-            // rn = 1 se filtra dentro del OPENQUERY para que los renglones
-            // repetidos por los joins no viajen por la red.
-            $escaped = str_replace("'", "''", $inner);
-            $union_queries[] = "
-                SELECT * FROM OPENQUERY([$server_ip], '$escaped')
-            ";
-        }
-        if (empty($union_queries)) {
-            return false;
-        }
-        $final_query = implode(" UNION ALL ", $union_queries);
+        $query = "
+            DECLARE @from INT = $from;
+            DECLARE @until INT = $until;
+            SELECT
+                 YEAR(d)                 AS [Year],
+                    MONTH(d) AS [Month],
+                    DATENAME(MONTH, d) AS [MonthName],
+                SUM(CASE WHEN t2.tipval = 4 THEN t1.mto ELSE 0 END) AS MontosDebito,
+                SUM(CASE WHEN t2.tipval = 3 THEN t1.mto ELSE 0 END) AS MontosCredito
+            FROM
+                [SG12].[dbo].[Despachos] t1
+            INNER JOIN
+                SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
+                CROSS APPLY (SELECT DATEADD(DAY, TRY_CONVERT(INT, t1.fchcor), '1899-12-30')) AS x(d)
 
-        return ($this->sql->select($final_query)) ?: false ;
+            WHERE
+                t2.tipval IN (3, 4) AND
+                t1.fchcor BETWEEN @from AND @until
+                $whereClients
+           GROUP BY YEAR(d), MONTH(d), DATENAME(MONTH, d)
+            ORDER BY YEAR(d), MONTH(d);
+        ";
+        return $this->fetchAll($query);
     }
 
-    function get_credit_dispatches($from, $until){
+    /**
+     * Filtro "AND t1.codcli IN (...)" a partir de la selección de clientes de
+     * los dashboards; 0 / '0' / lista vacía significan "todos".
+     *
+     * @param int|string|array<int|string> $clients
+     * @throws InvalidArgumentException si algún código no es entero.
+     */
+    private function clientsFilter(int|string|array $clients): string
+    {
+        if (is_array($clients)) {
+            return $clients === [] ? '' : 'AND t1.codcli IN (' . DespachosSql::listaEnteros($clients) . ')';
+        }
+        $clients = trim((string) $clients);
+        return ($clients === '' || $clients === '0') ? '' : 'AND t1.codcli IN (' . DespachosSql::listaEnteros($clients) . ')';
+    }
 
-        $from  = date('Y-m-d', strtotime(str_replace('/','-', $from)));
-        $until = date('Y-m-d', strtotime(str_replace('/','-', $until)));
-       $query = "
+    /**
+     * Cartera de crédito de ValesR (formato ancho para el reporte de crédito).
+     * Usa funciones escalares de la base ("dbo.Serie"), por lo que las tablas van sin prefijo.
+     *
+     * @param string $from  Fecha inicial en cualquier formato que entienda strtotime() (se normaliza a Y-m-d).
+     * @param string $until Fecha final.
+     * @return list<array<string,mixed>>|false
+     */
+    public function get_credit_dispatches(string $from, string $until): array|false
+    {
+        // date() produce solo dígitos y guiones: seguro para interpolar.
+        $from  = date('Y-m-d', strtotime(str_replace('/', '-', $from)));
+        $until = date('Y-m-d', strtotime(str_replace('/', '-', $until)));
+        $query = "
                 DECLARE @Inicial date = '{$from}';
                 DECLARE @Final   date = '{$until}';
                 DECLARE @fini int  = DATEDIFF(day,0,@Inicial);
@@ -3256,78 +2929,439 @@ class DespachosModel extends Model{
                 where t1.fch>=@fini and t1.fch<=@ffin and t3.tipval=3
                 order by t1.fch,t3.tipval
                 ";
-        return ($this->sql->select($query)) ?: false ;
-
+        return $this->fetchAll($query);
     }
-    function sales_cash_hour_table($fromDate, $untilDate, $codgas) {
-        // Generar fechas como columnas dinámicas
-        $dates = [];
-        $start = new DateTime($fromDate);
-        $end = new DateTime($untilDate);
-        $from_int = dateToInt($fromDate);
-        $until_int = dateToInt($untilDate);
-    
-        while ($start <= $end) {
-            $formatted = $start->format('Y-m-d');
-            $dates[] = $formatted;
-            $start->modify('+1 day');
-        }
-    
-        // Crear columnas para el PIVOT y SELECT con ISNULL
-        $columnsList = implode(',', array_map(fn($d) => "[$d]", $dates));
-        $selectList = implode(',', array_merge(
-            ['Hora'],
-            array_map(fn($d) => "ISNULL([$d], 0) AS [$d]", $dates)
-        ));
-    
-        $query = "
-            WITH datosDespachos AS (
-                SELECT 
-                    DATEPART(HOUR, CAST(DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)) AS TIME)) AS Hora,
-                    CONVERT(VARCHAR, DATEADD(DAY, t1.fchtrn - 1, '19000101'), 23) AS FechaTexto,
-                    t1.mto
-                FROM despachos t1
-                LEFT JOIN Clientes t2 ON t1.codcli = t2.cod
-                LEFT JOIN ClientesValores t3 ON t2.cod = t3.codcli AND t3.codest = 0 AND t3.codval IN (127, 28)
-                LEFT JOIN MovimientosTar t4 ON t1.nrotrn = t4.nrotrn AND t1.codgas = t4.codgas AND t4.tipmov != 82
-                LEFT JOIN [SG12].[dbo].Valores t13 ON t4.codbco = t13.cod AND t4.codbco = -1128
-                WHERE
-                    t1.codgas = {$codgas}
-                    AND (t2.tipval NOT IN (3, 4) OR t2.tipval IS NULL)
-                    AND t1.tar >= 0
-                    and t1.fchtrn BETWEEN $from_int AND $until_int
 
-            ),
-            resumen AS (
-                SELECT Hora, FechaTexto, SUM(ISNULL(mto, 0)) AS TotalMto
-                FROM datosDespachos
-                GROUP BY Hora, FechaTexto
-            )
-            SELECT {$selectList}
+    // =====================================================================
+    // 8. FACTURACIÓN GLOBAL Y CFDI
+    // =====================================================================
+
+    /**
+     * Facturas globales (cliente 21701354) emitidas por estación y su estado de
+     * vigencia: "Incorrecto" si la factura global agrupa despachos de un mes
+     * distinto al de su fecha de vigencia.
+     *
+     * @param int                       $from     Fecha inicial de factura (entero de fecha).
+     * @param int                       $until    Fecha final de factura (entero de fecha).
+     * @param list<array<string,mixed>> $stations Estaciones (codigo, servidor, base_datos, estacion_nombre).
+     * @param int|string               $status   0 = solo las incorrectas; cualquier otro valor = todas.
+     * @return list<array<string,mixed>>|false
+     */
+    public function overal_invoice_out_table(int $from, int $until, array $stations, int|string $status): array|false
+    {
+        $estusQuery = '';
+        if ((string) $status === '0') {
+            $estusQuery = " AND (
+                            CASE
+                                WHEN NOT EXISTS (
+                                    SELECT 1
+                                    FROM STRING_SPLIT(t3.FechasConcatenadas, '','') fechas
+                                    WHERE DATEPART(MONTH, CAST(fechas.value AS DATE)) != DATEPART(MONTH,  CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchcor), 23))
+                                )
+                                THEN ''Correcto''
+                                ELSE ''Incorrecto''
+                            END
+                        ) = ''Incorrecto''";
+        }
+
+        // El folio va dentro de un OPENQUERY: las comillas simples se duplican.
+        $folio = str_replace("'", "''", DespachosSql::folio('t1.nro'));
+
+        $queryParts = [];
+        foreach ($stations as $station) {
+            // Estación 39 excluida históricamente de este reporte.
+            if ((int) $station['codigo'] === 39) {
+                continue;
+            }
+            $station_name = str_replace(' ', '_', (string) $station['estacion_nombre']);
+            $server_ip    = DespachosSql::nombreSeguro((string) $station['servidor']);
+            $database     = DespachosSql::nombreSeguro((string) $station['base_datos']);
+
+            // La estación 33 tiene otro collation; hay que forzarlo para poder hacer UNION.
+            $collationsatuid = '';
+            $collationtxtref = '';
+            if ((int) $station['codigo'] === 33) {
+                $collationsatuid = 'COLLATE  Modern_Spanish_CI_AS as satuid';
+                $collationtxtref = 'COLLATE  Modern_Spanish_CI_AS as txtref';
+            }
+
+            $queryParts[] = "SELECT *
+                    FROM OPENQUERY([$server_ip],
+                        '
+                        SELECT
+                            t1.nro,
+                            $folio AS ''factura'',
+                            t1.satuid $collationsatuid,
+                            t1.tip,
+                            CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fch), 23) AS fecha ,
+                            CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchcor), 23) AS vigencia,
+                            t3.FechasConcatenadas,
+                            t1.txtref $collationtxtref,
+                            CASE
+                                WHEN t1.tipref = 1 THEN ''Efectivo''
+                                WHEN t1.tipref = 2 THEN ''Cheque Nominativo''
+                                WHEN t1.tipref = 3 THEN ''Transferencia Electronica''
+                                WHEN t1.tipref = 4 THEN ''Tarjeta de crédito''
+                                WHEN t1.tipref = 28 THEN ''Tarjeta de débito''
+                                ELSE ''Otro''
+                            END AS TipoPago,
+                            t3.NrotrnConcatenados,
+                            ''$station_name'' as estacion,
+                            CASE
+                            WHEN NOT EXISTS (
+                                SELECT 1
+                                FROM STRING_SPLIT(t3.FechasConcatenadas, '','') fechas
+                                WHERE DATEPART(MONTH, CAST(fechas.value AS DATE)) != DATEPART(MONTH,  CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchcor), 23))
+                            )
+                            THEN ''Correcto''
+                            ELSE ''Incorrecto''
+                        END AS estado
+                        FROM
+                            [$database].[dbo].[DocumentosC] t1
+                        LEFT JOIN (
+                            SELECT
+                                t5.nrofac,
+                                STUFF((
+                                    SELECT DISTINCT
+                                        '', '' + CONVERT(VARCHAR(10), DATEADD(day, -1, fchtrn), 23)
+                                    FROM [$database].[dbo].[despachos] t2
+                                    WHERE t2.nrofac = t5.nrofac
+                                    FOR XML PATH(''''), TYPE).value(''.'', ''NVARCHAR(MAX)''), 1, 2, '''') AS FechasConcatenadas,
+                            COUNT(*) as NrotrnConcatenados
+                            FROM [$database].[dbo].[despachos] t5
+                            GROUP BY t5.nrofac
+                        ) t3 ON t1.nro = t3.nrofac
+                        LEFT JOIN [$database].[dbo].Gasolineras t4 ON t1.codgas = t4.cod
+                        WHERE t1.codopr = " . DespachosSql::CODOPR_FACTURA_GLOBAL . "
+                        AND t1.fch BETWEEN $from AND $until
+                        AND t1.tip = 3
+                        $estusQuery
+                        ORDER BY t1.nro ASC
+                        '
+                    )";
+        }
+        if ($queryParts === []) {
+            return false;
+        }
+
+        return $this->fetchAll(implode(' UNION ALL ', $queryParts));
+    }
+
+    /**
+     * Total diario de Factura Global por estación, en pivot (una columna por
+     * estación). Estaciones con vista local (vis_fac = 1) la leen de
+     * v_factura_global_diaria; el resto lo calcula sobre Despachos.
+     *
+     * @param int                       $from       Fecha inicial (entero de fecha).
+     * @param int                       $until      Fecha final (entero de fecha).
+     * @param string                    $from_date  Misma fecha inicial como 'Y-m-d'.
+     * @param string                    $until_date Misma fecha final como 'Y-m-d'.
+     * @param list<array<string,mixed>> $estations  Estaciones (codigo, servidor, base_datos, estacion_nombre, vis_fac).
+     * @return list<array<string,mixed>>|false
+     * @throws InvalidArgumentException si las fechas de texto no son 'Y-m-d' válidas.
+     */
+    public function pivot_facturacion_diaria_table(int $from, int $until, string $from_date, string $until_date, array $estations): array|false
+    {
+        foreach ([$from_date, $until_date] as $date) {
+            if (DateTimeImmutable::createFromFormat('!Y-m-d', $date) === false) {
+                throw new InvalidArgumentException('Las fechas deben tener formato Y-m-d.');
+            }
+        }
+        if ($estations === []) {
+            return false;
+        }
+
+        $select_columns       = ['fecha'];
+        $pivot_columns        = [];
+        $final_select_columns = [];
+        $union_queries        = [];
+        $global               = DespachosSql::CODOPR_FACTURA_GLOBAL;
+
+        foreach ($estations as $station) {
+            $station_name = str_replace(' ', '_', (string) $station['estacion_nombre']);
+            $select_columns[]       = "ISNULL([$station_name], 0) as [$station_name]";
+            $pivot_columns[]        = "[$station_name]";
+            $final_select_columns[] = "ISNULL(dq.[$station_name], 0) as [$station_name]";
+
+            $collation = (int) $station['codigo'] === 33 ? 'COLLATE  Modern_Spanish_CI_AS as fecha' : '';
+            $server_ip = DespachosSql::nombreSeguro((string) $station['servidor']);
+            $database  = DespachosSql::nombreSeguro((string) $station['base_datos']);
+
+            if ((int) $station['vis_fac'] === 1) {
+                $union_queries[] = "
+                 SELECT * FROM OPENQUERY([$server_ip],
+                'SELECT  fecha $collation , ''$station_name'' as estacion, total
+                FROM [$database].[dbo].[v_factura_global_diaria] WITH (NOLOCK) WHERE fecha BETWEEN ''$from_date'' AND ''$until_date'' ')
+                ";
+            } else {
+                $union_queries[] = "
+                SELECT * FROM OPENQUERY([$server_ip],
+                'SELECT
+                    CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) AS fecha,
+                    ''$station_name'' as estacion,
+                    CAST(ROUND(SUM(CASE WHEN t3.codopr = $global THEN t1.mto ELSE 0 END), 2) AS DECIMAL(18, 2)) as total
+                FROM [$database].[dbo].[Despachos] t1 WITH (NOLOCK)
+                LEFT JOIN [$database].[dbo].DocumentosC t3 ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
+                WHERE t3.codopr = $global and t1.fchtrn BETWEEN $from AND $until
+                GROUP BY CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23)')";
+            }
+        }
+
+        $query = "
+         WITH DateRange AS (
+            SELECT CAST('$from_date' AS DATE) AS fecha
+            UNION ALL
+            SELECT DATEADD(day, 1, fecha)
+            FROM DateRange
+            WHERE fecha < '$until_date'
+        ),
+        DataQuery AS (
+            SELECT " . implode(",\n        ", $select_columns) . "
             FROM (
-                SELECT Hora, FechaTexto, TotalMto
-                FROM resumen
+                " . implode("\n        UNION ALL\n        ", $union_queries) . "
             ) AS SourceTable
             PIVOT (
-                SUM(TotalMto)
-                FOR FechaTexto IN ({$columnsList})
+                MAX(total)
+                FOR estacion IN (
+                    " . implode(",\n            ", $pivot_columns) . "
+                )
             ) AS PivotTable
-            ORDER BY Hora;
-        ";
-    
-        return $this->sql->select($query, []);
+        )
+             SELECT
+                d.fecha,
+                " . implode(",\n        ", $final_select_columns) . "
+            FROM DateRange d
+            LEFT JOIN DataQuery dq ON d.fecha = dq.fecha
+            ORDER BY d.fecha;";
+
+        return $this->fetchAll($query);
     }
 
-/**
- *
- * @param int|string $from   Fecha inicial (inclusive) para t1.fchtrn
- * @param int|string $until  Fecha final (inclusive) para t1.fchtrn
- *
- * @return array
- */
-public function anomalies_by_client(int $desde_eval_i, int $hasta_eval_i): array
-{
-    $query = "
+    /**
+     * Facturas de clientes que NO son crédito/débito agrupadas por día, cliente,
+     * estación y folio, con el método de pago dominante (el de mayor monto).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function invoice_client_desp(int $from, int $until): array
+    {
+        $folio = DespachosSql::folio('t1.nrofac');
+        $query = "
+        ;WITH Base AS (
+            SELECT
+                " . DespachosSql::fechaIso('t1.fchtrn') . " AS fecha,
+                t1.codcli,
+                t2.den,
+                t1.codgas,
+                t3.abr,
+                $folio AS factura,
+                t1.mto,
+                -- monto por método en cada fila (despacho)
+                CASE WHEN t1.tiptrn=51 AND t1.datref LIKE '%@P:04%' THEN t1.mto ELSE 0 END AS m_tc,
+                CASE WHEN t1.tiptrn=52 AND t1.datref LIKE '%@P:28%' THEN t1.mto ELSE 0 END AS m_td,
+                CASE WHEN t1.tiptrn=49 AND t1.datref LIKE '%@P:01%' THEN t1.mto ELSE 0 END AS m_ef,
+                CASE WHEN t1.tiptrn=53 AND t1.datref LIKE '%@P:05%' THEN t1.mto ELSE 0 END AS m_mo,
+                CASE WHEN t1.tiptrn=50 AND t1.datref LIKE '%@P:02%' THEN t1.mto ELSE 0 END AS m_ch
+            FROM SG12.dbo.Despachos t1
+            LEFT JOIN SG12.dbo.Clientes    t2 ON t1.codcli = t2.cod
+            LEFT JOIN SG12.dbo.Gasolineras t3 ON t1.codgas = t3.cod
+            WHERE
+                t1.fchtrn BETWEEN ? AND ?
+                AND t2.tipval NOT IN (3, 4)
+                AND t1.codcli <> " . DespachosSql::CODOPR_FACTURA_GLOBAL . "
+        ),
+        Agg AS (
+            SELECT
+                fecha, codcli, den, codgas, abr, factura,
+                COUNT(*) AS n_despachos,           -- cuenta de despachos por factura
+                SUM(mto) AS monto,
+                SUM(m_tc) AS m_tc,
+                SUM(m_td) AS m_td,
+                SUM(m_ef) AS m_ef,
+                SUM(m_mo) AS m_mo,
+                SUM(m_ch) AS m_ch
+            FROM Base
+            GROUP BY fecha, codcli, den, codgas, abr, factura
+        )
+        SELECT
+            A.fecha,
+            A.codcli,
+            A.den,
+            A.codgas,
+            A.abr,
+            A.factura,
+            A.n_despachos,                         -- total de despachos por factura
+            A.monto,
+            COALESCE(M.metodo_pago, 'Sin dato') AS metodo_pago
+        FROM Agg A
+        OUTER APPLY (
+            SELECT TOP 1 metodo_pago
+            FROM (VALUES
+                ('Tarjeta de crédito', A.m_tc),
+                ('Tarjeta de débito',  A.m_td),
+                ('Efectivo',           A.m_ef),
+                ('Monedero',           A.m_mo),
+                ('Cheque',             A.m_ch)
+            ) v(metodo_pago, monto)
+            WHERE v.monto > 0
+            ORDER BY v.monto DESC
+        ) M
+        ORDER BY A.codcli;
+        ";
+
+        return $this->sql->select($query, [$from, $until]);
+    }
+
+    /**
+     * CFDI timbrados en el central para clientes crédito/débito, junto al UUID
+     * que tiene la estación (para detectar facturas que no se sincronizaron).
+     *
+     * @param int $from   Fecha de factura (entero de fecha).
+     * @param int $codgas Estación.
+     * @return list<array<string,mixed>>|false
+     */
+    public function getCFDIs(int $from, int $codgas): array|false
+    {
+        $query = "
+        SELECT
+        G.den AS Estacion,
+        D.nrotrn AS Despacho,
+        Docc.satuid AS UUID,
+        D.nrofac AS Factura,
+        Docc.fch AS FechaFactura,
+        Docc.logfch AS FechaLogFactura,
+        dbo.fnNoFactura('', Docc.nro) AS serie,
+        COALESCE(C.densat, C.den) AS Cliente,
+        ISNULL(C.rfc, D.satrfc) AS RFC,
+        C.codext,
+        DR.nrofac AS [Factura Estación],
+        DR.satuid AS [UUID Estación]
+    FROM Despachos D
+        INNER JOIN DocumentosC Docc ON Docc.nro = D.nrofac
+            AND Docc.tip = 3
+            AND Docc.codgas = D.gasfac
+            AND Docc.satuid IS NOT NULL
+            AND Docc.satuid <> ''
+            AND Docc.fch = $from
+        INNER JOIN Documentos Doc ON Doc.nro = Docc.nro
+            AND Doc.tip = Docc.tip
+            AND Doc.codgas = Docc.codgas
+            AND Doc.nroitm > 0
+            AND Doc.codprd = D.codprd
+            AND D.nrotrn = CASE
+                WHEN CHARINDEX('@d:', Doc.satdat) > 0
+                THEN [dbo].[GetRef](Doc.satdat, 'D')
+                ELSE D.nrotrn
+            END
+        INNER JOIN Gasolineras G ON G.cod = D.codgas
+        INNER JOIN Clientes C ON C.cod = Docc.codopr AND C.tipval IN (3, 4)
+
+        -- Comparación con linked server (misma clave)
+        LEFT JOIN {$this->stationDb($codgas)}.[Despachos] DR ON DR.codgas = D.codgas AND DR.nrotrn = D.nrotrn
+    WHERE D.codgas = $codgas;
+    ";
+        return $this->fetchAll($query);
+    }
+
+    /**
+     * Compara CFDI del central contra los de la estación: 'match' (mismo UUID),
+     * 'missing' (la estación no lo tiene) o 'mismatch' (UUID distinto).
+     *
+     * @param int|string|null $codgas Estación; null o 'all' = todas.
+     * @param string          $bd     Base de datos de la estación (linked server).
+     * @param string          $server Linked server de la estación.
+     * @return list<array<string,mixed>>
+     * @throws InvalidArgumentException si $bd o $server traen caracteres no válidos.
+     */
+    public function cfdi_comparison_advance(int $from, int $until, int|string|null $codgas, string $bd, string $server): array
+    {
+        $server = DespachosSql::nombreSeguro($server);
+        $bd     = DespachosSql::nombreSeguro($bd);
+
+        $query = "
+        SELECT
+            G.den AS Estacion,
+            D.nrotrn AS Despacho,
+            Docc.satuid AS UUIDCorp,
+            D.nrofac AS FacturaCorp,
+            Docc.fch AS FechaFactura,
+            CONVERT(VARCHAR, CONVERT(SMALLDATETIME, Docc.fch, 100) - 1, 103) AS FechaFac,
+            Docc.logfch AS FechaLogFactura,
+            dbo.fnNoFactura('', Docc.nro) AS Serie,
+            COALESCE(C.densat, C.den) AS Cliente,
+            ISNULL(C.rfc, D.satrfc) AS RFC,
+            C.codext,
+            DR.nrotrn AS [despacho_estacion],
+            DR.nrofac AS FacturaEstacion,
+            DR.satuid AS UUIDEstacion,
+            D.codgas,
+            -- Determinar el estado
+            CASE
+                WHEN DR.satuid IS NOT NULL AND DR.satuid <> '' AND DR.satuid = Docc.satuid THEN 'match'
+                WHEN DR.nrofac IS NULL OR DR.satuid IS NULL OR DR.satuid = '' THEN 'missing'
+                WHEN DR.satuid <> Docc.satuid THEN 'mismatch'
+                ELSE 'pending'
+            END AS Estado
+        FROM SG12.dbo.Despachos D
+            INNER JOIN SG12.dbo.DocumentosC Docc ON Docc.nro = D.nrofac
+                AND Docc.tip = 3
+                AND Docc.codgas = D.gasfac
+                AND Docc.satuid IS NOT NULL
+                AND Docc.satuid <> ''
+                AND Docc.fch BETWEEN ? AND ?
+            INNER JOIN SG12.dbo.Documentos Doc ON Doc.nro = Docc.nro
+                AND Doc.tip = Docc.tip
+                AND Doc.codgas = Docc.codgas
+                AND Doc.nroitm > 0
+                AND Doc.codprd = D.codprd
+                AND D.nrotrn = CASE
+                    WHEN CHARINDEX('@d:', Doc.satdat) > 0
+                        THEN [dbo].[GetRef](Doc.satdat, 'D')
+                    ELSE D.nrotrn
+                END
+            INNER JOIN SG12.dbo.Gasolineras G ON G.cod = D.codgas
+            INNER JOIN SG12.dbo.Clientes C ON C.cod = Docc.codopr
+                AND C.tipval IN (3, 4)
+            -- Comparación con linked server
+            LEFT JOIN [$server].[$bd].dbo.[Despachos] DR
+                ON DR.codgas = D.codgas
+                AND DR.nrotrn = D.nrotrn
+    ";
+
+        $params = [$from, $until];
+
+        // Filtro opcional por estación.
+        if ($codgas !== null && $codgas !== 'all') {
+            $query   .= ' WHERE D.codgas = ?';
+            $params[] = $codgas;
+        }
+
+        $query .= ' ORDER BY Docc.fch DESC, G.den, D.nrotrn';
+
+        return $this->sql->select($query, $params);
+    }
+
+    // =====================================================================
+    // 9. DETECCIÓN DE ANOMALÍAS DE FACTURACIÓN POR CLIENTE
+    //
+    // Todas leen TG.dbo.vw_DespachosConFactura (despacho + factura ya unidos;
+    // [codopr (F)] = cliente de la FACTURA). Método estadístico: se calcula una
+    // línea base diaria con los meses previos completos y se marca como
+    // anómalo un día con facturas por encima de media + k·σ o de Q3 + 1.5·IQR.
+    // Los parámetros son enteros de fecha (fchtrn).
+    // =====================================================================
+
+    /**
+     * Clientes con días anómalos (σ o IQR) en el periodo evaluado, con
+     * indicadores de gravedad y banderas de facturas con varios productos o montos.
+     *
+     * @param int $desde_eval_i Inicio del periodo evaluado (entero de fecha).
+     * @param int $hasta_eval_i Fin del periodo evaluado (entero de fecha).
+     * @return list<array<string,mixed>>
+     */
+    public function anomalies_by_client(int $desde_eval_i, int $hasta_eval_i): array
+    {
+        $query = "
 /* ========= INPUT ========= */
 DECLARE @desde_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
 DECLARE @hasta_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
@@ -3497,13 +3531,17 @@ ORDER BY prom_zscore DESC, ed.codopr
 OPTION (RECOMPILE);
 ";
 
-    return $this->sql->select($query, [$desde_eval_i, $hasta_eval_i]);
-}
+        return $this->sql->select($query, [$desde_eval_i, $hasta_eval_i]);
+    }
 
-
-public function anomalies_by_client_days(int $desde_eval_i, int $hasta_eval_i, int $codopr): array
-{
-    $query = "
+    /**
+     * Días anómalos de UN cliente con z-score e incremento porcentual contra su histórico.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function anomalies_by_client_days(int $desde_eval_i, int $hasta_eval_i, int $codopr): array
+    {
+        $query = "
 /* ====== PARÁMETROS (desde/hasta vienen como enteros) ====== */
 DECLARE @desde_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
 DECLARE @hasta_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
@@ -3584,17 +3622,22 @@ ORDER BY zscore_hist DESC, e.fecha, e.codopr
 OPTION (RECOMPILE);
 ";
 
-    return $this->sql->select($query, [
-        $desde_eval_i,
-        $hasta_eval_i,
-        $codopr
-    ]);
-}
+        return $this->sql->select($query, [
+            $desde_eval_i,
+            $hasta_eval_i,
+            $codopr
+        ]);
+    }
 
-
-public function anomalies_by_client_tickets(int $desde_eval_i, int $hasta_eval_i, int $codopr): array
-{
-    $query = "
+    /**
+     * Detalle de tickets (despachos facturados) de UN cliente en el periodo, con
+     * serie y concepto del folio. Excluye a la factura global y a clientes crédito/débito.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function anomalies_by_client_tickets(int $desde_eval_i, int $hasta_eval_i, int $codopr): array
+    {
+        $query = "
 DECLARE @desde_int int = ?;
 DECLARE @hasta_int int = ?;
 DECLARE @codopr   int = ?;
@@ -3697,17 +3740,21 @@ ORDER BY fecha DESC, t1.hratrn ASC
 OPTION (RECOMPILE);
 ";
 
-    return $this->sql->select($query, [
-        $desde_eval_i,
-        $hasta_eval_i,
-        $codopr
-    ]);
-}
+        return $this->sql->select($query, [
+            $desde_eval_i,
+            $hasta_eval_i,
+            $codopr
+        ]);
+    }
 
-
-public function anomalies_clients_totals(int $desde_eval_i, int $hasta_eval_i): array
-{
-    $query = "
+    /**
+     * Totales del periodo por cliente (despachos, facturas únicas, monto).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function anomalies_clients_totals(int $desde_eval_i, int $hasta_eval_i): array
+    {
+        $query = "
 DECLARE @desde_int int = ?;
 DECLARE @hasta_int int = ?;
 
@@ -3735,15 +3782,20 @@ ORDER BY v.codopr
 OPTION (RECOMPILE);
 ";
 
-    return $this->sql->select($query, [
-        $desde_eval_i,
-        $hasta_eval_i
-    ]);
-}
+        return $this->sql->select($query, [
+            $desde_eval_i,
+            $hasta_eval_i
+        ]);
+    }
 
-public function anomalies_client_totals_period(int $desde_int, int $hasta_int, int $codopr): array
-{
-    $query = "
+    /**
+     * Totales del periodo de UN cliente (incluye litros y facturas únicas por estación).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function anomalies_client_totals_period(int $desde_int, int $hasta_int, int $codopr): array
+    {
+        $query = "
 DECLARE @desde_int int = ?;
 DECLARE @hasta_int int = ?;
 DECLARE @codopr     int = ?;
@@ -3776,17 +3828,21 @@ ORDER BY v.codopr
 OPTION (RECOMPILE);
 ";
 
-    return $this->sql->select($query, [
-        $desde_int,
-        $hasta_int,
-        $codopr
-    ]);
-}
+        return $this->sql->select($query, [
+            $desde_int,
+            $hasta_int,
+            $codopr
+        ]);
+    }
 
-
-public function anomalies_top_station(int $desde_eval_i, int $hasta_eval_i): array
-{
-    $query = "
+    /**
+     * Estaciones con más tickets en los días anómalos de los clientes.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function anomalies_top_station(int $desde_eval_i, int $hasta_eval_i): array
+    {
+        $query = "
 /* ========= INPUT ========= */
 DECLARE @desde_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
 DECLARE @hasta_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
@@ -3880,225 +3936,38 @@ ORDER BY tickets_anomalos DESC, Estacion
 OPTION (RECOMPILE);
 ";
 
-    return $this->sql->select($query, [
-        $desde_eval_i,
-        $hasta_eval_i
-    ]);
-}
-
-
-
-
-
-
-
-
-function invoice_client_desp($from, $until)
-{
-    $query = "
-        ;WITH Base AS (
-            SELECT
-                CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) AS fecha,
-                t1.codcli,
-                t2.den,
-                t1.codgas,
-                t3.abr,
-                CASE 
-                    WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                    WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                    WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                    WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                    WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                    WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                    ELSE CAST(t1.nrofac AS VARCHAR(10)) 
-                END AS factura,
-                t1.mto,
-                -- monto por método en cada fila (despacho)
-                CASE WHEN t1.tiptrn=51 AND t1.datref LIKE '%@P:04%' THEN t1.mto ELSE 0 END AS m_tc,
-                CASE WHEN t1.tiptrn=52 AND t1.datref LIKE '%@P:28%' THEN t1.mto ELSE 0 END AS m_td,
-                CASE WHEN t1.tiptrn=49 AND t1.datref LIKE '%@P:01%' THEN t1.mto ELSE 0 END AS m_ef,
-                CASE WHEN t1.tiptrn=53 AND t1.datref LIKE '%@P:05%' THEN t1.mto ELSE 0 END AS m_mo,
-                CASE WHEN t1.tiptrn=50 AND t1.datref LIKE '%@P:02%' THEN t1.mto ELSE 0 END AS m_ch
-            FROM SG12.dbo.Despachos t1
-            LEFT JOIN SG12.dbo.Clientes    t2 ON t1.codcli = t2.cod
-            LEFT JOIN SG12.dbo.Gasolineras t3 ON t1.codgas = t3.cod
-            WHERE
-                t1.fchtrn BETWEEN ? AND ?
-                AND t2.tipval NOT IN (3, 4)
-                AND t1.codcli <> 21701354
-        ),
-        Agg AS (
-            SELECT
-                fecha, codcli, den, codgas, abr, factura,
-                COUNT(*) AS n_despachos,           -- <<<<<< aquí contamos despachos
-                SUM(mto) AS monto,
-                SUM(m_tc) AS m_tc,
-                SUM(m_td) AS m_td,
-                SUM(m_ef) AS m_ef,
-                SUM(m_mo) AS m_mo,
-                SUM(m_ch) AS m_ch
-            FROM Base
-            GROUP BY fecha, codcli, den, codgas, abr, factura
-        )
-        SELECT
-            A.fecha,
-            A.codcli,
-            A.den,
-            A.codgas,
-            A.abr,
-            A.factura,
-            A.n_despachos,                         -- <<<<<< devolvemos el total de despachos por factura
-            A.monto,
-            COALESCE(M.metodo_pago, 'Sin dato') AS metodo_pago
-        FROM Agg A
-        OUTER APPLY (
-            SELECT TOP 1 metodo_pago
-            FROM (VALUES
-                ('Tarjeta de crédito', A.m_tc),
-                ('Tarjeta de débito',  A.m_td),
-                ('Efectivo',           A.m_ef),
-                ('Monedero',           A.m_mo),
-                ('Cheque',             A.m_ch)
-            ) v(metodo_pago, monto)
-            WHERE v.monto > 0
-            ORDER BY v.monto DESC
-        ) M
-        ORDER BY A.codcli;
-    ";
-
-    $params = [$from, $until];
-    return $this->sql->select($query, $params);
-}
-
-
-function getCFDIs($from, $codgas) {
-    $query = "
-        SELECT
-        G.den AS Estacion,
-        D.nrotrn AS Despacho,
-        Docc.satuid AS UUID,
-        D.nrofac AS Factura,
-        Docc.fch AS FechaFactura,
-        Docc.logfch AS FechaLogFactura,
-        dbo.fnNoFactura('', Docc.nro) AS serie,
-        COALESCE(C.densat, C.den) AS Cliente,
-        ISNULL(C.rfc, D.satrfc) AS RFC,
-        C.codext,
-        DR.nrofac AS [Factura Estación],
-        DR.satuid AS [UUID Estación]
-    FROM Despachos D
-        INNER JOIN DocumentosC Docc ON Docc.nro = D.nrofac
-            AND Docc.tip = 3
-            AND Docc.codgas = D.gasfac
-            AND Docc.satuid IS NOT NULL
-            AND Docc.satuid <> ''
-            AND Docc.fch = {$from}
-        INNER JOIN Documentos Doc ON Doc.nro = Docc.nro
-            AND Doc.tip = Docc.tip
-            AND Doc.codgas = Docc.codgas
-            AND Doc.nroitm > 0
-            AND Doc.codprd = D.codprd
-            AND D.nrotrn = CASE 
-                WHEN CHARINDEX('@d:', Doc.satdat) > 0 
-                THEN [dbo].[GetRef](Doc.satdat, 'D')
-                ELSE D.nrotrn
-            END
-        INNER JOIN Gasolineras G ON G.cod = D.codgas
-        INNER JOIN Clientes C ON C.cod = Docc.codopr AND C.tipval IN (3, 4)
-
-        -- Comparación con linked server (misma clave)
-        LEFT JOIN {$this->databases[$codgas]}.[Despachos] DR ON DR.codgas = D.codgas AND DR.nrotrn = D.nrotrn
-    WHERE D.codgas = {$codgas};
-    ";
-    return $this->sql->select($query, []) ?: false;
-}
-
-function cfdi_comparison_advance($from, $until, $codgas, $bd, $server)
-{
-    $query = "
-        SELECT
-            G.den AS Estacion,
-            D.nrotrn AS Despacho,
-            Docc.satuid AS UUIDCorp,
-            D.nrofac AS FacturaCorp,
-            Docc.fch AS FechaFactura,
-            CONVERT(VARCHAR, CONVERT(SMALLDATETIME, Docc.fch, 100) - 1, 103) AS FechaFac,
-            Docc.logfch AS FechaLogFactura,
-            dbo.fnNoFactura('', Docc.nro) AS Serie,
-            COALESCE(C.densat, C.den) AS Cliente,
-            ISNULL(C.rfc, D.satrfc) AS RFC,
-            C.codext,
-            DR.nrotrn AS [despacho_estacion],
-            DR.nrofac AS FacturaEstacion,
-            DR.satuid AS UUIDEstacion,
-            D.codgas,
-            -- Determinar el estado
-            CASE 
-                WHEN DR.satuid IS NOT NULL AND DR.satuid <> '' AND DR.satuid = Docc.satuid THEN 'match'
-                WHEN DR.nrofac IS NULL OR DR.satuid IS NULL OR DR.satuid = '' THEN 'missing'
-                WHEN DR.satuid <> Docc.satuid THEN 'mismatch'
-                ELSE 'pending'
-            END AS Estado
-        FROM SG12.dbo.Despachos D
-            INNER JOIN SG12.dbo.DocumentosC Docc ON Docc.nro = D.nrofac
-                AND Docc.tip = 3
-                AND Docc.codgas = D.gasfac
-                AND Docc.satuid IS NOT NULL
-                AND Docc.satuid <> ''
-                AND Docc.fch BETWEEN ? AND ?
-            INNER JOIN SG12.dbo.Documentos Doc ON Doc.nro = Docc.nro
-                AND Doc.tip = Docc.tip
-                AND Doc.codgas = Docc.codgas
-                AND Doc.nroitm > 0
-                AND Doc.codprd = D.codprd
-                AND D.nrotrn = CASE 
-                    WHEN CHARINDEX('@d:', Doc.satdat) > 0 
-                        THEN [dbo].[GetRef](Doc.satdat, 'D')
-                    ELSE D.nrotrn
-                END
-            INNER JOIN SG12.dbo.Gasolineras G ON G.cod = D.codgas
-            INNER JOIN SG12.dbo.Clientes C ON C.cod = Docc.codopr 
-                AND C.tipval IN (3, 4)
-            -- Comparación con linked server
-            LEFT JOIN [{$server}].[{$bd}].dbo.[Despachos] DR 
-                ON DR.codgas = D.codgas 
-                AND DR.nrotrn = D.nrotrn
-    ";
-
-    $params = [$from, $until];
-    
-    // Filtro opcional por estación
-    if ($codgas !== null && $codgas !== 'all') {
-        $query .= " WHERE D.codgas = ?";
-        $params[] = $codgas;
+        return $this->sql->select($query, [
+            $desde_eval_i,
+            $hasta_eval_i
+        ]);
     }
-    
-    $query .= " ORDER BY Docc.fch DESC, G.den, D.nrotrn";
 
-    return $this->sql->select($query, $params);
-}
+    /**
+     * Datos de la pantalla visual de anomalías: por cliente, conteo y monto por
+     * mes del año, más los indicadores de exceso (k·σ con k = 4).
+     *
+     * Consulta pesada: sube el límite de tiempo y memoria del proceso. El
+     * llamador es quien debe enviar el Content-Type JSON.
+     *
+     * @param string $eval_i_ini  Inicio del periodo evaluado ('Y-m-d').
+     * @param string $eval_i_fin  Fin del periodo evaluado ('Y-m-d').
+     * @param string $hist_i_ini  Inicio del histórico ('Y-m-d').
+     * @param string $hist_i_fin  Fin del histórico ('Y-m-d').
+     * @param string $visual_fin  Fin de la ventana de gráficas ('Y-m-d').
+     * @return list<array<string,mixed>>
+     */
+    public function get_anomalies_visual_data(string $eval_i_ini, string $eval_i_fin, string $hist_i_ini, string $hist_i_fin, string $visual_fin): array
+    {
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
 
+        $cod_eval_i_ini = $this->parseDayNumber($eval_i_ini);
+        $cod_eval_i_fin = $this->parseDayNumber($eval_i_fin);
+        $cod_hist_i_ini = $this->parseDayNumber($hist_i_ini);
+        $cod_hist_i_fin = $this->parseDayNumber($hist_i_fin);
+        $visual_fin_int = $this->parseDayNumber($visual_fin);
 
-
-
-
-
-
-
-
-public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini, $hist_i_fin, $visual_fin)
-{
-    set_time_limit(0);
-    ini_set('memory_limit', '1024M'); 
-    header('Content-Type: application/json');
-
-    $cod_eval_i_ini = $this->dateToInt($eval_i_ini);
-    $cod_eval_i_fin = $this->dateToInt($eval_i_fin);
-    $cod_hist_i_ini = $this->dateToInt($hist_i_ini);
-    $cod_hist_i_fin = $this->dateToInt($hist_i_fin);
-    $visual_fin_int = $this->dateToInt($visual_fin);
-
-    $sql = "
+        $sql = "
     DECLARE @eval_i_ini int = ?;
     DECLARE @eval_i_fin int = ?;
     DECLARE @hist_i_ini int = ?;
@@ -4256,38 +4125,43 @@ public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini,
     ORDER BY el.Exceso_Dinero DESC;
     ";
 
-    return $this->sql->select($sql, [$cod_eval_i_ini, $cod_eval_i_fin, $cod_hist_i_ini, $cod_hist_i_fin, $visual_fin_int]);
-}
+        return $this->sql->select($sql, [$cod_eval_i_ini, $cod_eval_i_fin, $cod_hist_i_ini, $cod_hist_i_fin, $visual_fin_int]);
+    }
 
-
-private function dateToInt($dateStr)
+    /**
+     * Fecha de texto → entero de fecha del esquema ((días desde 1900-01-01) + 1).
+     * Tolerante: devuelve 0 si la fecha viene vacía o no se puede interpretar.
+     */
+    private function parseDayNumber(string $date): int
     {
-        if (!$dateStr) return 0;
-        
+        if ($date === '') {
+            return 0;
+        }
+
         try {
-            $baseDate = new DateTime('1900-01-01');
-            $targetDate = new DateTime($dateStr);
-            
-            // Calculamos la diferencia en días
-            $interval = $baseDate->diff($targetDate);
-            $days = $interval->days;
-            
-            // Retornamos días + 1 (según la lógica de tu SQL original)
-            // Si $days es negativo (fechas antes de 1900), esto podría fallar, 
-            // pero para fechas actuales funciona perfecto.
-            return ($interval->invert ? -$days : $days) + 1;
-            
-        } catch (Exception $e) {
+            $interval = (new DateTime('1900-01-01'))->diff(new DateTime($date));
+            return ($interval->invert ? -$interval->days : $interval->days) + 1;
+        } catch (Exception) {
             return 0;
         }
     }
 
-public function get_suspicious_tickets_details($target_month_ini, $target_month_fin, $hist_ini, $hist_fin, $codopr)
-{
-    $eval_i_ini = $this->dateToInt($target_month_ini);
-    $eval_i_fin = $this->dateToInt($target_month_fin);
+    /**
+     * Tickets sospechosos de UN cliente en el periodo: cada despacho con su
+     * factura y banderas de producto mixto, monto mixto y día de alto volumen (>10).
+     *
+     * @param string $target_month_ini Inicio del periodo ('Y-m-d').
+     * @param string $target_month_fin Fin del periodo ('Y-m-d').
+     * @param string $hist_ini         (sin uso; se conserva por compatibilidad de firma)
+     * @param string $hist_fin         (sin uso; se conserva por compatibilidad de firma)
+     * @return list<array<string,mixed>>
+     */
+    public function get_suspicious_tickets_details(string $target_month_ini, string $target_month_fin, string $hist_ini, string $hist_fin, int $codopr): array
+    {
+        $eval_i_ini = $this->parseDayNumber($target_month_ini);
+        $eval_i_fin = $this->parseDayNumber($target_month_fin);
 
-    $sql = "
+        $sql = "
     DECLARE @codopr int = ?;
     DECLARE @eval_i_ini int = ?;
     DECLARE @eval_i_fin int = ?;
@@ -4371,18 +4245,25 @@ public function get_suspicious_tickets_details($target_month_ini, $target_month_
     OPTION (RECOMPILE);
     ";
 
-    return $this->sql->select($sql, [$codopr, $eval_i_ini, $eval_i_fin]);
-}
+        return $this->sql->select($sql, [$codopr, $eval_i_ini, $eval_i_fin]);
+    }
 
+    /**
+     * Desglose día por día de UN cliente: despachos reales, monto, límite k·σ,
+     * dinero excedente y bandera de día crítico.
+     *
+     * @param string $hist_ini Inicio del histórico ('Y-m-d').
+     * @param string $hist_fin Fin del histórico ('Y-m-d').
+     * @return list<array<string,mixed>>
+     */
+    public function get_client_anomaly_breakdown(int $codopr, string $target_month_ini, string $target_month_fin, string $hist_ini, string $hist_fin): array
+    {
+        $cod_eval_i_ini = $this->parseDayNumber($target_month_ini);
+        $cod_eval_i_fin = $this->parseDayNumber($target_month_fin);
+        $cod_hist_i_ini = $this->parseDayNumber($hist_ini);
+        $cod_hist_i_fin = $this->parseDayNumber($hist_fin);
 
-public function get_client_anomaly_breakdown($codopr, $target_month_ini, $target_month_fin, $hist_ini, $hist_fin)
-{
-    $cod_eval_i_ini = $this->dateToInt($target_month_ini);
-    $cod_eval_i_fin = $this->dateToInt($target_month_fin);
-    $cod_hist_i_ini = $this->dateToInt($hist_ini);
-    $cod_hist_i_fin = $this->dateToInt($hist_fin);
-
-    $sql = "
+        $sql = "
     DECLARE @codopr int = ?;
     DECLARE @eval_i_ini int = ?;
     DECLARE @eval_i_fin int = ?;
@@ -4437,8 +4318,6 @@ public function get_client_anomaly_breakdown($codopr, $target_month_ini, $target
     ORDER BY e.cnt DESC -- Ordenar por pico más alto primero
     ";
 
-    return $this->sql->select($sql, [$codopr, $cod_eval_i_ini, $cod_eval_i_fin, $cod_hist_i_ini, $cod_hist_i_fin]);
+        return $this->sql->select($sql, [$codopr, $cod_eval_i_ini, $cod_eval_i_fin, $cod_hist_i_ini, $cod_hist_i_fin]);
+    }
 }
-    
-    
-}   

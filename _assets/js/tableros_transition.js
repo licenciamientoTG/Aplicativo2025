@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var destination = '/tableros/index';
+  var destination = routeUrl('tableros.index');
   var transitionKey = 'tableros-transition-to';
   var mascotPath = '/_assets/images/mascota-agujita.webp';
   var fallbackMascotPath = '/_assets/images/mascota-agujita.png';
