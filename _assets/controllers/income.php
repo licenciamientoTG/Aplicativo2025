@@ -4539,14 +4539,15 @@ public function anomalies_client_tickets()
                 }
             }
 
-            // Bankaool liquida Villa Ahumada (estación 29) dentro de la
-            // conciliación Santander únicamente para la afiliación 8999954.
+            // Bankaool liquida Villa Ahumada (se muestra como estación 29,
+            // pero su Codigo interno es 31) dentro de Santander únicamente
+            // para la afiliación 8999954.
             // El endpoint sigue siendo Santander y la regla sólo se activa
             // cuando el cliente solicita esa estación y afiliación exactas.
-            if ($entidadId === 1 && $bankaoolRule === ['station_id' => 29, 'afiliacion' => '8999954']) {
+            if ($entidadId === 1 && $bankaoolRule === ['station_id' => 31, 'afiliacion' => '8999954']) {
                 $estacionSantander = null;
                 foreach ($catalogo as $afil) {
-                    if ($afil['estacion_id'] === 29 && $afil['afiliacion'] === '8999954') {
+                    if ($afil['estacion_id'] === 31 && $afil['afiliacion'] === '8999954') {
                         $estacionSantander = $afil['Estacion'];
                         break;
                     }
@@ -4596,8 +4597,8 @@ public function anomalies_client_tickets()
     public function get_tesoreria_santander() {
         $stationId = (int)($_GET['station_id'] ?? 0);
         $afiliacion = trim((string)($_GET['afiliacion'] ?? ''));
-        $bankaoolRule = $stationId === 29 && $afiliacion === '8999954'
-            ? ['station_id' => 29, 'afiliacion' => '8999954']
+        $bankaoolRule = $stationId === 31 && $afiliacion === '8999954'
+            ? ['station_id' => 31, 'afiliacion' => '8999954']
             : null;
         $this->emitir_tesoreria_movimientos_bancarios(1, $bankaoolRule);
     }
