@@ -105,7 +105,32 @@ $rows = [
     ['direction.week_graph', ['POST'], 'direction/week-graph', ['Direction', 'week_graph'], [], [], 'direction/week_graph'],
     ['direction.graph_month', ['POST'], 'direction/graph-month', ['Direction', 'graph_month'], [], [], 'direction/graph_month'],
     ['direction.historic_price_table_pivot2', ['POST'], 'direction/historic-price-table-pivot2', ['Direction', 'historic_price_table_pivot2'], [], [], 'direction/historic_price_table_pivot2'],
+
+    // administration (4a: varios). codgas de despachos es <int> (DespachosModel::get_rows(int $codgas, …))
+    ['administration.monthly_dispatches', ['GET'], 'administration/monthly-dispatches', ['Administration', 'monthly_dispatches'], [], [], 'administration/monthly_dispatches'],
+    ['administration.datatables_monthly_dispatches', ['POST'], 'administration/datatables-monthly-dispatches/2/2026-10-01/2026-10-16', ['Administration', 'datatables_monthly_dispatches'], [2, '2026-10-01', '2026-10-16'], ['codgas' => 2, 'from' => '2026-10-01', 'until' => '2026-10-16'], 'administration/datatables_monthly_dispatches/2/2026-10-01/2026-10-16'],
+    ['administration.relation_corpo_estaciones', ['GET'], 'administration/relation-corpo-estaciones', ['Administration', 'relation_corpo_estaciones'], [], [], 'administration/relation_corpo_estaciones'],
+    ['administration.exchange_rate', ['GET'], 'administration/exchange-rate', ['Administration', 'exchange_rate'], [], [], 'Administration/Exchange_Rate/'],
+    ['administration.datatable_exchange_rate', ['POST'], 'administration/datatable-exchange-rate', ['Administration', 'datatable_exchange_rate'], [], [], 'administration/datatable_exchange_rate'],
+    ['administration.exchange_rate_process', ['POST'], 'administration/exchange-rate-process', ['Administration', 'exchange_rate_process'], [], [], 'administration/exchange_rate_process'],
+    ['administration.update_exchange', ['POST'], 'administration/update-exchange', ['Administration', 'update_exchange'], [], [], 'administration/update_exchange'],
+    ['administration.delete_exchange', ['POST'], 'administration/delete-exchange', ['Administration', 'delete_exchange'], [], [], 'administration/delete_exchange'],
+    ['administration.get_binnacle', ['GET'], 'administration/get-binnacle', ['Administration', 'get_binnacle'], [], [], 'administration/get_binnacle'],
+    ['administration.binnacle_adjustments', ['GET'], 'administration/binnacle-adjustments', ['Administration', 'binnacle_adjustments'], [], [], 'administration/binnacle_adjustments'],
+    ['administration.tablaAuditoria', ['GET'], 'administration/tabla-auditoria/2026-07-01/2026-10-16/0', ['Administration', 'tablaAuditoria'], ['2026-07-01', '2026-10-16', '0'], ['from' => '2026-07-01', 'until' => '2026-10-16', 'codgas' => '0'], 'administration/tablaAuditoria/2026-07-01/2026-10-16/0'],
+    ['administration.tablaTickets', ['GET'], 'administration/tabla-tickets/2026-07-01/2026-10-16/0', ['Administration', 'tablaTickets'], ['2026-07-01', '2026-10-16', '0'], ['from' => '2026-07-01', 'until' => '2026-10-16', 'codgas' => '0'], 'administration/tablaTickets/2026-07-01/2026-10-16/0'],
+    ['administration.doc_agujita', ['GET'], 'administration/doc-agujita', ['Administration', 'doc_agujita'], [], [], 'administration/doc_agujita'],
+    ['administration.porcent_estacion_info', ['POST'], 'administration/porcent-estacion-info', ['Administration', 'porcent_estacion_info'], [], [], 'administration/porcent_estacion_info'],
+    ['administration.porcent_estacion_facturados_info', ['POST'], 'administration/porcent-estacion-facturados-info', ['Administration', 'porcent_estacion_facturados_info'], [], [], 'administration/porcent_estacion_facturados_info'],
+    ['administration.porcent_facturas_info', ['POST'], 'administration/porcent-facturas-info', ['Administration', 'porcent_facturas_info'], [], [], 'administration/porcent_facturas_info'],
 ];
+
+// Review Focus 4: doc_agujita se comparte fuera del sistema y no pide sesión, por la URL nueva y por la vieja
+check('administration: doc_agujita es pública (ruta y alias)',
+    (Router::match('administration/doc-agujita', 'GET')['route']['public'] ?? false) === true
+    && (Router::match('administration/doc_agujita', 'GET')['route']['public'] ?? false) === true);
+check('administration: el resto no es público',
+    (Router::match('administration/exchange-rate', 'GET')['route']['public'] ?? true) === false);
 
 // Review Focus 4: el id de producto es str (el controlador no lo castea)
 check('direction: daily_summary_shortge acepta un id con letras',

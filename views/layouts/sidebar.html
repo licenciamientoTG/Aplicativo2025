@@ -215,7 +215,7 @@
         </a>
         <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/administration/relation_corpo_estaciones">Relacion Corporativo,
+            <a class="sidebar-link" href="{{ url('administration.relation_corpo_estaciones') }}">Relacion Corporativo,
               Estaciones</a>
           </li>
           <li class="sidebar-item">
@@ -245,7 +245,7 @@
           {% endif %}
           {% if authorized(65) %}
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/administration/binnacle_adjustments">Bitácora de ajustes</a>
+            <a class="sidebar-link" href="{{ url('administration.binnacle_adjustments') }}">Bitácora de ajustes</a>
           </li>
           {% endif %}
         </ul>
@@ -841,7 +841,7 @@
       {% endif %}
       {% if authorized(41) %}
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/administration/exchange_rate">
+        <a class="sidebar-link" href="{{ url('administration.exchange_rate') }}">
           <i data-feather="dollar-sign"></i>
           <span class="align-middle">Tipo de cambio</span>
         </a>

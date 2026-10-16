@@ -43,7 +43,7 @@
                 <div class="dropdown-menu dropdown-menu-end">
                     <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a
                         Excel</a>
-                    <a class="dropdown-item" href="/administration/get_binnacle" id="binnacle" target="_blank"><i
+                    <a class="dropdown-item" href="{{ url('administration.get_binnacle') }}" id="binnacle" target="_blank"><i
                             data-feather="file-text"></i> Ver bitácora</a>
                 </div>
             </div>
@@ -179,7 +179,7 @@
                         function () {
                             $.ajax({
                                 type: "POST",
-                                url: "/administration/exchange_rate_process",
+                                url: "{{ url('administration.exchange_rate_process') }}",
                                 data: {
                                     rows: selectedRows,
                                     from: from,
@@ -221,7 +221,7 @@
                 } else {
                     $.ajax({
                         type: "POST",
-                        url: "/administration/exchange_rate_process",
+                        url: "{{ url('administration.exchange_rate_process') }}",
                         data: {
                             rows: selectedRows,
                             from: from,
