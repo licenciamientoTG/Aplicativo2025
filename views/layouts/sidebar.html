@@ -648,20 +648,20 @@
         {% if authorized(26) %}
         <ul id="marketing_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/client_cards">Tarjetas y engomados</a>
-            <a class="sidebar-link" href="/marketing/client_cards_nexus">Tarjetas nexus</a>
-            <a class="sidebar-link" href="/marketing/client_cards_nexus">Tarjetas nexus</a>
+            <a class="sidebar-link" href="{{ url('marketing.client_cards') }}">Tarjetas y engomados</a>
+            <a class="sidebar-link" href="{{ url('marketing.client_cards_nexus') }}">Tarjetas nexus</a>
+            <a class="sidebar-link" href="{{ url('marketing.client_cards_nexus') }}">Tarjetas nexus</a>
           </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/control_dispatches">Control de Despachos
             </a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/mqg_cards">Tarjetas MasQueGas</a>
+            <a class="sidebar-link" href="{{ url('marketing.mqg_cards') }}">Tarjetas MasQueGas</a>
           </li>
 
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/print_sticker/station/1/2/">Etiquetas inventarios</a>
+            <a class="sidebar-link" href="{{ url('marketing.print_sticker', {station: 'station', from: '1', until: '2'}) }}">Etiquetas inventarios</a>
           </li>
         </ul>
         {% endif %}

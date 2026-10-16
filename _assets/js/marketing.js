@@ -4,7 +4,7 @@ $(document).on("submit", "#findClientForm", function (event) {
     let formData = $("#findClientForm").serialize(); // Obtén los datos del formulario
     $.ajax({
         type: "POST",
-        url: "/marketing/findClientForm", // URL de destino
+        url: routeUrl('marketing.findClientForm'), // URL de destino
         data: formData,
         success: function (response) {
             console.log(response); // Puedes mostrar la respuesta en la consola
@@ -21,7 +21,7 @@ $(document).on("submit", "#findClientForm", function (event) {
             } else {
                 // Aqui debo mostrar una tabla con los datos del cliente
                 $.ajax({
-                    url: '/marketing/findClientTable',
+                    url: routeUrl('marketing.findClientTable'),
                     method: 'POST',
                     data: {
                         'codcli': response
@@ -55,7 +55,7 @@ function print_card_nexus()  {
         return;
     }
 
-    let url = `/marketing/print_card_nexus?number_card=${encodeURIComponent(number_card)}&name_card=${encodeURIComponent(name_card)}&name_client=${encodeURIComponent(name_client)}&typo=${encodeURIComponent(typo)}&name_vehicle=${encodeURIComponent(name_vehicle)}`;
+    let url = `${routeUrl('marketing.print_card_nexus')}?number_card=${encodeURIComponent(number_card)}&name_card=${encodeURIComponent(name_card)}&name_client=${encodeURIComponent(name_client)}&typo=${encodeURIComponent(typo)}&name_vehicle=${encodeURIComponent(name_vehicle)}`;
 
    window.open(url, '_blank');
 }
