@@ -5,7 +5,8 @@ return [
     group('marketing/', [
         route('client-cards/', [Marketing::class, 'client_cards'], name: 'marketing.client_cards', methods: ['GET'], alias: ['marketing/client_cards']),
         route('client-cards-nexus/', [Marketing::class, 'client_cards_nexus'], name: 'marketing.client_cards_nexus', methods: ['GET'], alias: ['marketing/client_cards_nexus']),
-        route('mqg-cards/', [Marketing::class, 'mqg_cards'], name: 'marketing.mqg_cards', methods: ['GET'], alias: ['marketing/mqg_cards']),
+        // mqg_cards muestra el formulario (GET) y genera el PDF con su POST a la misma URL
+        route('mqg-cards/', [Marketing::class, 'mqg_cards'], name: 'marketing.mqg_cards', methods: ['GET', 'POST'], alias: ['marketing/mqg_cards']),
 
         route('find-client-form/', [Marketing::class, 'findClientForm'], name: 'marketing.findClientForm', methods: ['POST'], alias: ['marketing/findClientForm']),
         route('find-client-table/', [Marketing::class, 'findClientTable'], name: 'marketing.findClientTable', methods: ['POST'], alias: ['marketing/findClientTable']),

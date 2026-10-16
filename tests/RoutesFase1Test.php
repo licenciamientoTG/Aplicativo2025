@@ -29,7 +29,7 @@ $rows = [
     // marketing: todos los parámetros <str:x> (tarjetas y códigos pueden traer letras o ceros a la izquierda)
     ['marketing.client_cards', ['GET'], 'marketing/client-cards', ['Marketing', 'client_cards'], [], [], 'Marketing/Client_Cards/'],
     ['marketing.client_cards_nexus', ['GET'], 'marketing/client-cards-nexus', ['Marketing', 'client_cards_nexus'], [], [], 'marketing/client_cards_nexus'],
-    ['marketing.mqg_cards', ['GET'], 'marketing/mqg-cards', ['Marketing', 'mqg_cards'], [], [], 'marketing/mqg_cards'],
+    ['marketing.mqg_cards', ['GET', 'POST'], 'marketing/mqg-cards', ['Marketing', 'mqg_cards'], [], [], 'marketing/mqg_cards'],
     ['marketing.findClientForm', ['POST'], 'marketing/find-client-form', ['Marketing', 'findClientForm'], [], [], 'marketing/findClientForm'],
     ['marketing.findClientTable', ['POST'], 'marketing/find-client-table', ['Marketing', 'findClientTable'], [], [], 'marketing/findClientTable'],
     ['marketing.stickerModal', ['POST'], 'marketing/sticker-modal', ['Marketing', 'stickerModal'], [], [], 'marketing/stickerModal'],
