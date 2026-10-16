@@ -6408,7 +6408,8 @@
         els.boardMembersList.append(row);
         els.manageBoardMembersList?.append(row.cloneNode(true));
       });
-      const message = `${entries.length} ${entries.length === 1 ? 'persona' : 'personas'} con acceso`;
+      const boardName = state.board?.name || 'este tablero';
+      const message = `${entries.length} ${entries.length === 1 ? 'persona' : 'personas'} con acceso en «${boardName}»`;
       setDetailStatus('boardMembersStatus', message);
       setDetailStatus('manageBoardMembersStatus', message);
     } catch (error) {
@@ -6454,6 +6455,12 @@
       return;
     }
     await loadBoardMembers();
+  }
+
+  function handleManageBoardSelection() {
+    const boardId = String(els.manageBoardSelect?.value || '');
+    if (!boardId || String(state.board?.id || '') === boardId) return;
+    selectManageBoard(boardId);
   }
 
   async function updateBoardMemberRole(userId, role, select) {
@@ -7099,7 +7106,8 @@
       const button = event.target.closest('[data-workspace-action]');
       if (button) runWorkspaceManagementAction(button);
     });
-    els.manageBoardSelect?.addEventListener('change', () => selectManageBoard(els.manageBoardSelect.value));
+    els.manageBoardSelect?.addEventListener('change', handleManageBoardSelection);
+    els.manageBoardSelect?.addEventListener('input', handleManageBoardSelection);
     els.boardVisibilityList?.addEventListener('change', (event) => {
       const select = event.target.closest('[data-board-visibility-select]');
       if (!select) return;

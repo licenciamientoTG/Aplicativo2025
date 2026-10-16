@@ -3566,10 +3566,10 @@ class Operations{
     }
     public function terminal_ticket_create(): void {
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { $this->terminalJsonError('Sin autorización.',403); return; }
-        $type=(string)($_POST['type'] ?? ''); $description=$type==='urovo' ? '' : trim((string)($_POST['description'] ?? '')); $urovoProblem=$type==='urovo' ? ($_POST['urovo_problem'] ?? null) : ''; $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? '')); $email=trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+        $type=(string)($_POST['type'] ?? ''); $description=$type==='urovo' ? '' : trim((string)($_POST['description'] ?? '')); $urovoProblem=$type==='urovo' ? ($_POST['urovo_problem'] ?? null) : ''; $problem=$type==='urovo' ? 'Terminal Urovo' : trim((string)($_POST['problem'] ?? '')); $urovoSerial=trim((string)($_POST['serial_urovo'] ?? $_POST['urovo_serial'] ?? ''));
         $requestKey=strtolower(trim((string)($_POST['request_key'] ?? '')));
         $urovoProblems=['Pantalla quebrada','Pantalla Negra','Carcasa Exterior','Puerto de Carga ( Punta )','Usb dañado','Falta Bateria','Touch','Modo Seguro','Impresora','Tapa de impresora','Boton de encendido','Tapa de bateria','Lector de Tarjetas','Otro'];
-        if (!preg_match('/^[a-f0-9-]{16,64}$/',$requestKey) || !isset($this->terminalTypes()[$type]) || !filter_var($email,FILTER_VALIDATE_EMAIL)) { $this->terminalJsonError('Revise tipo, descripción, correo y clave de solicitud.'); return; }
+        if (!preg_match('/^[a-f0-9-]{16,64}$/',$requestKey) || !isset($this->terminalTypes()[$type])) { $this->terminalJsonError('Revise tipo, descripción y clave de solicitud.'); return; }
         if ($type==='urovo') {
             if (!is_array($urovoProblem) || $urovoProblem===[]) { $this->terminalJsonError('Seleccione al menos un problema válido para UROVO.'); return; }
             foreach ($urovoProblem as $selectedProblem) {
