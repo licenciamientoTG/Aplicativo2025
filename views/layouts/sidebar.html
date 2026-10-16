@@ -255,7 +255,7 @@
       {% if authorized(73) or authorized(74) %}
       <li class="sidebar-header">ARQUEO DOLLAR2GO</li>
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/arqueo">
+        <a class="sidebar-link" href="{{ url('arqueo.index') }}">
           <i data-feather="dollar-sign"></i>
           <span class="align-middle">Arqueos</span>
         </a>
@@ -791,20 +791,20 @@
       {% if authorized(98) %}
       <li class="sidebar-header">PETROTAL</li>
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/petrotal/volumetricos">
+        <a class="sidebar-link" href="{{ url('petrotal.volumetricos') }}">
           <i data-feather="upload-cloud"></i>
           <span class="align-middle">Reporte CNE / Volumétricos</span>
         </a>
       </li>
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/petrotal/historial">
+        <a class="sidebar-link" href="{{ url('petrotal.historial') }}">
           <i data-feather="archive"></i>
           <span class="align-middle">Historial de envíos</span>
         </a>
       </li>
       {% if authorized(99) %}
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/petrotal/configuracion_fiel">
+        <a class="sidebar-link" href="{{ url('petrotal.configuracion_fiel') }}">
           <i data-feather="key"></i>
           <span class="align-middle">Configuración FIEL</span>
         </a>
