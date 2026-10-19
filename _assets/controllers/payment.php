@@ -3493,11 +3493,10 @@ class Payment
         $consolidados = [];
         foreach ($pagos as $pago) {
             // Una línea (transferencia) por requisición: Tesorería necesita cada orden de pago
-            // con su propio concepto. Excepción: MGC lleva una referencia fija por empresa
-            // pagadora, así que se mantiene consolidado por cuenta de cargo + proveedor.
-            $es_mgc = $this->referencia_mgc_por_empresa($pago['proveedor_codigo'], $pago['empresa_cod'] ?? null) !== null;
+            // por separado. Vale también para MGC (su referencia fija solo cambia el concepto,
+            // las líneas no se combinan).
             $key = $pago['cuenta_cargo_empresa'] . '|' . $pago['proveedor_codigo']
-                . ($es_mgc ? '' : '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id']);
+                . '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id'];
 
             if (!isset($consolidados[$key])) {
                 $consolidados[$key] = [
@@ -3780,12 +3779,11 @@ class Payment
         $consolidados = [];
 
         // Una línea (transferencia) por requisición, igual que Santander: Tesorería necesita
-        // cada orden de pago con su propio concepto. MGC se mantiene consolidado por cuenta
-        // de cargo + proveedor porque lleva una referencia fija por empresa pagadora.
+        // cada orden de pago por separado. Vale también para MGC (su referencia fija solo
+        // cambia el concepto, las líneas no se combinan).
         foreach ($pagos as $pago) {
-            $es_mgc = $this->referencia_mgc_por_empresa($pago['proveedor_codigo'], $pago['empresa_cod'] ?? null) !== null;
             $key = $pago['cuenta_cargo_banorte'] . '|' . $pago['proveedor_codigo']
-                . ($es_mgc ? '' : '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id']);
+                . '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id'];
 
             if (!isset($consolidados[$key])) {
                 $consolidados[$key] = [
