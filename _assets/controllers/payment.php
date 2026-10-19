@@ -3822,8 +3822,12 @@ class Payment
         foreach ($consolidados as $grupo) {
             // MGC exige una referencia de cuenta propia fija por empresa pagadora
             // en vez de la referencia genérica (año).
-            $referencia = $this->referencia_mgc_por_empresa($grupo['proveedor_codigo'], $grupo['empresa_cod'])
-                ?? $referencia_default;
+            // En Banorte la referencia numérica es corta (el portal rechaza las
+            // de 11 dígitos con "El contenido de Referencia sobrepasa la
+            // longitud definida"), así que la de MGC va como propósito de la
+            // transferencia (concepto) y la referencia numérica queda genérica.
+            $referencia_mgc = $this->referencia_mgc_por_empresa($grupo['proveedor_codigo'], $grupo['empresa_cod']);
+            $referencia = $referencia_default;
             // Operación y cuenta destino según el tipo de cuenta del beneficiario:
             //   04 = interbancaria SPEI (CLABE completa de 18)
             //   02 = cuenta Banorte (10 dígitos; si viene CLABE 072, extraer cuenta)
@@ -3844,7 +3848,7 @@ class Payment
             // ✅ Concepto: "<requisición> <PROVEEDOR>" o "ANTICIPO #55 <PROVEEDOR>".
             // MGC queda consolidado en una línea con la primera requisición.
             $primera_ref = $grupo['referencias'][0];
-            $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
+            $concepto_texto = $referencia_mgc ?? ($primera_ref . ' ' . $grupo['proveedor_nombre']);
 
             $concepto = $this->limpiar_texto_layout($concepto_texto, 30);
 
