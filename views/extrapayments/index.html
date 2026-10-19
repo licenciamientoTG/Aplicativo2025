@@ -16,7 +16,6 @@
 </style>
 {% endblock %}
 {% block content %}
-{% set estatus = {5: 'Borrador', 1: 'Pendiente CxP', 2: 'Pendiente Admón', 3: 'Autorizada', 4: 'Pagada', 8: 'Cancelada', 9: 'Rechazada'} %}
 {% set por_atender = solicitudes|filter(s => s.accion)|length %}
 {% set mias = solicitudes|filter(s => s.es_propia)|length %}
 <div class="card border-0 shadow-sm mb-3">
@@ -37,11 +36,28 @@
         {% if puede_crear %}<button type="button" class="ep-chip" data-vista="mias"><i class="fas fa-user"></i> Mis solicitudes<span class="n">{{ mias }}</span></button>{% endif %}
         {% if ver_todas or not puede_crear %}<button type="button" class="ep-chip" data-vista="todas"><i class="fas fa-list"></i> {{ ver_todas ? 'Todas' : 'Visibles' }}<span class="n">{{ solicitudes|length }}</span></button>{% endif %}
         <span class="vr mx-1"></span>
-        <select id="ep_filtro_estatus" class="form-select form-select-sm w-auto">
-            <option value="">Todos los estatus</option>
-            {% for k, v in estatus %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
-        </select>
         <input type="search" id="ep_filtro_texto" class="form-control form-control-sm w-auto" placeholder="Buscar folio, solicitante o motivo" style="min-width:16rem;">
+        <button type="button" id="ep_limpiar" class="btn btn-sm btn-outline-secondary ms-auto"><i class="fas fa-eraser"></i> Limpiar</button>
+        <a href="{{ url('extrapayments.export') }}" id="ep_exportar" class="btn btn-sm btn-success"><i class="fas fa-file-excel"></i> Exportar a Excel</a>
+    </div>
+    <div class="card-body border-top py-2 px-3 d-flex align-items-end flex-wrap gap-2">
+        <div><label class="small text-muted mb-0">Estatus</label>
+            <select id="ep_filtro_estatus" class="form-select form-select-sm">
+                <option value="">Todos</option>
+                {% for k, v in estatus %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+            </select></div>
+        <div><label class="small text-muted mb-0">Empresa</label>
+            <select id="ep_filtro_empresa" class="form-select form-select-sm">
+                <option value="">Todas</option>
+                {% for e in empresas %}<option value="{{ e.cod }}">{{ e.den }}</option>{% endfor %}
+            </select></div>
+        <div><label class="small text-muted mb-0">Motivo</label>
+            <select id="ep_filtro_motivo" class="form-select form-select-sm">
+                <option value="">Todos</option>
+                {% for m in motivos %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
+            </select></div>
+        <div><label class="small text-muted mb-0">Desde</label><input type="date" id="ep_filtro_desde" class="form-control form-control-sm"></div>
+        <div><label class="small text-muted mb-0">Hasta</label><input type="date" id="ep_filtro_hasta" class="form-control form-control-sm"></div>
     </div>
 </div>
 
@@ -55,6 +71,7 @@
                 <tbody>
                 {% for s in solicitudes %}
                     <tr class="ep-fila" data-status="{{ s.status }}" data-propia="{{ s.es_propia ? 1 : 0 }}" data-accion="{{ s.accion ? 1 : 0 }}"
+                        data-empresas=",{{ s.empresas|join(',') }}," data-motivo="{{ s.reason_id }}" data-fecha="{{ s.fecha_iso }}"
                         data-texto="{{ ('#' ~ s.id ~ ' ' ~ s.solicitante ~ ' ' ~ s.reason_nombre)|lower }}">
                         <td>#{{ s.id }}</td>
                         <td>{{ s.fecha|date('d/m/Y') }}</td>

@@ -181,9 +181,15 @@
             ? String($filtros.data('default'))
             : String($filtros.find('[data-vista]').first().data('vista'));
 
+        var valor = function (id) { return $.trim($(id).val()); };
+
         var aplicarFiltros = function () {
-            var estatus = $('#ep_filtro_estatus').val();
-            var texto = $.trim($('#ep_filtro_texto').val()).toLowerCase();
+            var estatus = valor('#ep_filtro_estatus');
+            var empresa = valor('#ep_filtro_empresa');
+            var motivo = valor('#ep_filtro_motivo');
+            var desde = valor('#ep_filtro_desde');
+            var hasta = valor('#ep_filtro_hasta');
+            var texto = valor('#ep_filtro_texto').toLowerCase();
             var visibles = 0;
             $('#tabla_solicitudes .ep-fila').each(function () {
                 var $f = $(this);
@@ -191,6 +197,11 @@
                     || (vista === 'mias' && $f.data('propia') == 1)
                     || (vista === 'atender' && $f.data('accion') == 1);
                 if (ok && estatus !== '' && String($f.data('status')) !== estatus) { ok = false; }
+                if (ok && empresa !== '' && String($f.attr('data-empresas')).indexOf(',' + empresa + ',') === -1) { ok = false; }
+                if (ok && motivo !== '' && String($f.data('motivo')) !== motivo) { ok = false; }
+                var fecha = String($f.data('fecha'));
+                if (ok && desde !== '' && fecha < desde) { ok = false; }
+                if (ok && hasta !== '' && fecha > hasta) { ok = false; }
                 if (ok && texto !== '' && String($f.data('texto')).indexOf(texto) === -1) { ok = false; }
                 $f.toggle(ok);
                 if (ok) { visibles++; }
@@ -199,11 +210,20 @@
             $filtros.find('[data-vista]').each(function () {
                 $(this).toggleClass('activo', $(this).data('vista') === vista);
             });
+            // El export lleva los mismos filtros; el servidor los re-aplica sobre lo que el usuario puede ver
+            var $a = $('#ep_exportar');
+            var q = $.param({ vista: vista, status: estatus, empresa_cod: empresa, reason_id: motivo, desde: desde, hasta: hasta, q: valor('#ep_filtro_texto') });
+            $a.attr('href', String($a.data('base') || ($a.data('base', $a.attr('href')), $a.attr('href'))) + '?' + q);
         };
 
         $filtros.on('click', '[data-vista]', function () { vista = String($(this).data('vista')); aplicarFiltros(); });
-        $('#ep_filtro_estatus').on('change', aplicarFiltros);
+        $('#ep_filtro_estatus, #ep_filtro_empresa, #ep_filtro_motivo, #ep_filtro_desde, #ep_filtro_hasta').on('change', aplicarFiltros);
         $('#ep_filtro_texto').on('input', aplicarFiltros);
+        $('#ep_limpiar').on('click', function () {
+            $('#ep_filtros').closest('.card').find('select').val('');
+            $('#ep_filtros').closest('.card').find('input').val('');
+            aplicarFiltros();
+        });
         aplicarFiltros();
     }
 

@@ -212,6 +212,56 @@ class ExtraPaymentRequestsModel extends Model
      * que están en un estatus que el usuario atiende ($statuses) y, con $all
      * (permiso de ver todas), cualquiera salvo borradores ajenos.
      */
+    /**
+     * Empresas de los renglones de cada solicitud: [request_id => [empresa_cod, ...]].
+     */
+    public function empresas_por_solicitud(array $ids) : array {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if (!$ids) {
+            return [];
+        }
+        $rows = $this->sql->select(
+            'SELECT DISTINCT request_id, empresa_cod FROM [TG].[dbo].[extra_payment_lines] WHERE request_id IN (' . implode(',', $ids) . ')'
+        ) ?: [];
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(int)$r['request_id']][] = (int)$r['empresa_cod'];
+        }
+        return $map;
+    }
+
+    /**
+     * Una fila por renglón de las solicitudes dadas (export). Con $empresaCod
+     * solo salen los renglones de esa empresa.
+     */
+    public function list_lines_for_export(array $ids, ?int $empresaCod = null) : array {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if (!$ids) {
+            return [];
+        }
+        $params = [];
+        $extra = '';
+        if ($empresaCod !== null) {
+            $extra = ' AND l.empresa_cod = ?';
+            $params[] = $empresaCod;
+        }
+        return $this->sql->select('
+            SELECT
+                r.id AS folio, r.fecha, r.status, r.tipo,
+                rs.nombre AS reason_nombre, r.motivo_otros,
+                e.den AS empresa_nombre,
+                l.centro_costos, l.proveedor, l.factura, l.fecha_factura,
+                l.descripcion, l.monto,
+                p.fecha_pago
+            FROM [TG].[dbo].[extra_payment_requests] r
+            JOIN [TG].[dbo].[extra_payment_lines] l ON l.request_id = r.id
+            LEFT JOIN [TG].[dbo].[extra_payment_reasons] rs ON rs.id = r.reason_id
+            LEFT JOIN [SG12].[dbo].[Empresas] e ON e.cod = l.empresa_cod
+            LEFT JOIN [TG].[dbo].[extra_payment_payments] p ON p.request_id = r.id
+            WHERE r.id IN (' . implode(',', $ids) . ')' . $extra . '
+            ORDER BY r.id DESC, l.id ASC', $params) ?: [];
+    }
+
     public function list_visible(int $userId, array $statuses, bool $all) : array {
         $cond = ['r.user_id = ?'];
         $params = [$userId];

@@ -5,6 +5,7 @@
 return [
     group('pagos-extraordinarios/', [
         route('', [ExtraPayments::class, 'index'], name: 'extrapayments.index', methods: ['GET']),
+        route('export/', [ExtraPayments::class, 'export'], name: 'extrapayments.export', methods: ['GET']),
         route('new/', [ExtraPayments::class, 'form'], name: 'extrapayments.new', methods: ['GET'], permission: 106),
         route('save/', [ExtraPayments::class, 'save'], name: 'extrapayments.save', methods: ['POST'], permission: 106),
         route('<int:id>/edit/', [ExtraPayments::class, 'form'], name: 'extrapayments.edit', methods: ['GET'], permission: 106),

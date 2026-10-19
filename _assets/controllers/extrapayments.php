@@ -166,28 +166,23 @@ class ExtraPayments
     /* ===================================================================== */
 
     /**
-     * Solicitudes: una sola vista para todos los roles. Cada quien ve las propias,
-     * las que le toca atender según su permiso (107 CxP, 108 Admón, 109 Tesorería)
-     * y, con 110, todas. Los botones de cada fila salen del permiso y el estatus.
+     * Solicitudes visibles para el usuario según su permiso, con las banderas de
+     * acción por fila: las propias, las del estatus que atiende (107 CxP, 108 Admón,
+     * 109 Tesorería) y, con 110, todas.
      */
-    public function index(): void
+    private function solicitudes_visibles(): array
     {
-        $this->guard([
-            ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_CXP, ExtraPaymentWorkflow::PERM_ADMON,
-            ExtraPaymentWorkflow::PERM_TESORERIA, ExtraPaymentWorkflow::PERM_VER_TODAS,
-        ]);
-
-        // Estatus que este usuario atiende, según su permiso
         $atiende = [];
         foreach (self::ETAPAS as [$permiso, $status]) {
             if (authorized($permiso)) {
                 $atiende[] = $status;
             }
         }
-        $ver_todas = authorized(ExtraPaymentWorkflow::PERM_VER_TODAS);
+        $ver_todas   = authorized(ExtraPaymentWorkflow::PERM_VER_TODAS);
         $puede_crear = authorized(ExtraPaymentWorkflow::PERM_CREAR);
 
         $solicitudes = $this->requestsModel->list_visible($this->user_id(), $atiende, $ver_todas);
+        $empresas = $this->requestsModel->empresas_por_solicitud(array_column($solicitudes, 'id'));
         foreach ($solicitudes as &$s) {
             $status = (int) $s['status'];
             $propia = (int) $s['user_id'] === $this->user_id();
@@ -198,10 +193,143 @@ class ExtraPayments
                 : null;
             $s['p_editar']   = $propia && $puede_crear && ExtraPaymentWorkflow::can_edit($status);
             $s['p_cancelar'] = $propia && $puede_crear && ExtraPaymentWorkflow::can_cancel($status);
+            $s['empresas']   = $empresas[(int) $s['id']] ?? [];
+            $f = $s['fecha'];
+            $s['fecha_iso']  = $f instanceof \DateTimeInterface ? $f->format('Y-m-d') : substr((string) $f, 0, 10);
         }
         unset($s);
 
-        echo $this->twig->render($this->route . 'index.html', compact('solicitudes', 'ver_todas', 'puede_crear', 'atiende'));
+        return [$solicitudes, $atiende, $ver_todas, $puede_crear];
+    }
+
+    /**
+     * Solicitudes: una sola vista para todos los roles. Los botones de cada fila
+     * salen del permiso y el estatus; los filtros se aplican en el navegador.
+     */
+    public function index(): void
+    {
+        $this->guard([
+            ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_CXP, ExtraPaymentWorkflow::PERM_ADMON,
+            ExtraPaymentWorkflow::PERM_TESORERIA, ExtraPaymentWorkflow::PERM_VER_TODAS,
+        ]);
+        [$solicitudes, $atiende, $ver_todas, $puede_crear] = $this->solicitudes_visibles();
+        $motivos  = $this->catalogModel->reasons();
+        $empresas = $this->catalogModel->empresas();
+        $estatus  = self::ESTATUS;
+        echo $this->twig->render($this->route . 'index.html', compact(
+            'solicitudes', 'ver_todas', 'puede_crear', 'atiende', 'motivos', 'empresas', 'estatus'
+        ));
+    }
+
+    /** Entero positivo de GET o null (GET no es confiable). */
+    private function get_int(string $clave): ?int
+    {
+        $v = $_GET[$clave] ?? '';
+        return is_scalar($v) && ctype_digit((string) $v) && strlen((string) $v) <= 9 ? (int) $v : null;
+    }
+
+    /**
+     * Exporta a .xlsx, una fila por renglón, lo mismo que muestra la lista con los
+     * filtros activos (vista, estatus, texto, empresa, motivo, fechas). Se parte
+     * siempre de lo que el usuario puede ver; los filtros solo reducen.
+     */
+    public function export(): void
+    {
+        $this->guard([
+            ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_CXP, ExtraPaymentWorkflow::PERM_ADMON,
+            ExtraPaymentWorkflow::PERM_TESORERIA, ExtraPaymentWorkflow::PERM_VER_TODAS,
+        ]);
+        [$solicitudes] = $this->solicitudes_visibles();
+
+        $vista   = (string) (is_scalar($_GET['vista'] ?? null) ? $_GET['vista'] : 'todas');
+        $status  = $this->get_int('status');
+        $empresa = $this->get_int('empresa_cod');
+        $motivo  = $this->get_int('reason_id');
+        $desde   = $this->fecha($_GET['desde'] ?? null) ?? '';
+        $hasta   = $this->fecha($_GET['hasta'] ?? null) ?? '';
+        $texto   = mb_strtolower(trim((string) (is_scalar($_GET['q'] ?? null) ? $_GET['q'] : '')));
+
+        $ids = [];
+        foreach ($solicitudes as $s) {
+            if ($vista === 'mias' && !$s['es_propia']) { continue; }
+            if ($vista === 'atender' && !$s['accion']) { continue; }
+            if ($status !== null && (int) $s['status'] !== $status) { continue; }
+            if ($empresa !== null && !in_array($empresa, $s['empresas'], true)) { continue; }
+            if ($motivo !== null && (int) $s['reason_id'] !== $motivo) { continue; }
+            if ($desde !== '' && $s['fecha_iso'] < $desde) { continue; }
+            if ($hasta !== '' && $s['fecha_iso'] > $hasta) { continue; }
+            if ($texto !== '' && mb_strpos(mb_strtolower('#' . $s['id'] . ' ' . $s['solicitante'] . ' ' . $s['reason_nombre']), $texto) === false) { continue; }
+            $ids[] = (int) $s['id'];
+        }
+
+        $filas = $this->requestsModel->list_lines_for_export($ids, $empresa);
+        $libro = $this->libro_export($filas);
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="pagos_extraordinarios_' . date('Ymd_His') . '.xlsx"');
+        header('Cache-Control: max-age=0');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($libro))->save('php://output');
+        exit;
+    }
+
+    /** Texto de usuario como cadena explícita (evita inyección de fórmulas =,+,-,@). */
+    private function celda_texto(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $hoja, int $col, int $fila, $valor): void
+    {
+        $hoja->setCellValueExplicit([$col, $fila], (string) ($valor ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+    }
+
+    /** Arma el libro del export (separado del endpoint para poder revisarlo sin descarga). */
+    private function libro_export(array $filas): \PhpOffice\PhpSpreadsheet\Spreadsheet
+    {
+        $libro = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $hoja  = $libro->getActiveSheet();
+        $hoja->setTitle('Pagos extraordinarios');
+
+        $cab = ['Folio', 'Fecha', 'Empresa', 'Centro de costos', 'Proveedor', 'Factura', 'Fecha factura',
+                'Descripción', 'Monto', 'Motivo', 'Estatus', 'Fecha de pago'];
+        foreach ($cab as $i => $t) {
+            $this->celda_texto($hoja, $i + 1, 1, $t);
+        }
+        $hoja->getStyle('A1:L1')->getFont()->setBold(true);
+
+        $fmt = function ($d): string {
+            if (!$d) {
+                return '';
+            }
+            $d = $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : (string) $d;
+            $t = strtotime($d);
+            return $t ? date('d/m/Y', $t) : '';
+        };
+        $r = 2;
+        foreach ($filas as $f) {
+            $motivo = (string) ($f['reason_nombre'] ?? '');
+            if (!empty($f['motivo_otros'])) {
+                $motivo .= ': ' . $f['motivo_otros'];
+            }
+            $this->celda_texto($hoja, 1, $r, '#' . (int) $f['folio']);
+            $this->celda_texto($hoja, 2, $r, $fmt($f['fecha'] ?? null));
+            $this->celda_texto($hoja, 3, $r, $f['empresa_nombre'] ?? '');
+            $this->celda_texto($hoja, 4, $r, $f['centro_costos'] ?? '');
+            $this->celda_texto($hoja, 5, $r, $f['proveedor'] ?? '');
+            $this->celda_texto($hoja, 6, $r, $f['factura'] ?? '');
+            $this->celda_texto($hoja, 7, $r, $fmt($f['fecha_factura'] ?? null));
+            $this->celda_texto($hoja, 8, $r, $f['descripcion'] ?? '');
+            $hoja->setCellValue([9, $r], (float) ($f['monto'] ?? 0)); // numérico
+            $this->celda_texto($hoja, 10, $r, $motivo);
+            $this->celda_texto($hoja, 11, $r, self::ESTATUS[(int) $f['status']] ?? (string) $f['status']);
+            $this->celda_texto($hoja, 12, $r, $fmt($f['fecha_pago'] ?? null));
+            $r++;
+        }
+        if ($r > 2) {
+            $hoja->getStyle('I2:I' . ($r - 1))->getNumberFormat()->setFormatCode('#,##0.00');
+        }
+        foreach (range('A', 'L') as $col) {
+            $hoja->getColumnDimension($col)->setAutoSize(true);
+        }
+        return $libro;
     }
 
     /** Formulario de alta (sin id) o de edición tras rechazo (con id). */

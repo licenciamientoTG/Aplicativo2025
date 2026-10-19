@@ -13,6 +13,7 @@ Router::load(require __DIR__ . '/../routes.php');
 
 $rows = [
     ['extrapayments.index',  ['GET'],  'pagos-extraordinarios',          ['ExtraPayments', 'index'],  [],     [],           null],
+    ['extrapayments.export', ['GET'],  'pagos-extraordinarios/export',   ['ExtraPayments', 'export'], [],     [],           null],
     ['extrapayments.new',    ['GET'],  'pagos-extraordinarios/new',      ['ExtraPayments', 'form'],   [],     [],           null],
     ['extrapayments.save',   ['POST'], 'pagos-extraordinarios/save',     ['ExtraPayments', 'save'],   [],     [],           null],
     ['extrapayments.edit',   ['GET'],  'pagos-extraordinarios/15/edit',  ['ExtraPayments', 'form'],   [15], ['id' => '15'], null],
