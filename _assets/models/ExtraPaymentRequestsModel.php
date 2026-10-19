@@ -26,10 +26,11 @@ class ExtraPaymentRequestsModel extends Model
     }
 
     /**
-     * Crea la solicitud (status 1) con renglones y auditoría CREATE.
+     * Crea la solicitud con renglones y auditoría: status 1 (CREATE) o, con
+     * $draft, status 5 borrador (CREATE_DRAFT).
      * @return int|false id de la solicitud
      */
-    public function create(array $header, array $lines, int $userId) : int|false {
+    public function create(array $header, array $lines, int $userId, bool $draft = false) : int|false {
         if (count($lines) === 0) {
             return false;
         }
@@ -58,7 +59,7 @@ class ExtraPaymentRequestsModel extends Model
                 (int)$header['reason_id'],
                 $this->nullable($header['motivo_otros'] ?? null),
                 $total,
-                ExtraPaymentWorkflow::ST_PEND_CXP,
+                $draft ? ExtraPaymentWorkflow::ST_BORRADOR : ExtraPaymentWorkflow::ST_PEND_CXP,
             ]);
             $id = (int)$id;
             if ($id <= 0) {
@@ -67,7 +68,7 @@ class ExtraPaymentRequestsModel extends Model
             }
 
             $this->insert_lines($id, $lines);
-            $this->audit($id, $userId, 'CREATE', 'Total ' . number_format($total, 2, '.', ''));
+            $this->audit($id, $userId, $draft ? 'CREATE_DRAFT' : 'CREATE', 'Total ' . number_format($total, 2, '.', ''));
 
             $this->sql->commit();
             return $id;
@@ -79,10 +80,11 @@ class ExtraPaymentRequestsModel extends Model
     }
 
     /**
-     * Reenvío tras rechazo: solo si status = 9. Reemplaza renglones, vuelve a
-     * status 1 e inactiva las aprobaciones previas.
+     * Edición de un borrador (5) o reenvío tras rechazo (9). Reemplaza renglones;
+     * con $draft sigue en 5 (solo desde 5), si no pasa a status 1 e inactiva las
+     * aprobaciones previas.
      */
-    public function update(int $id, array $header, array $lines, int $userId) : bool {
+    public function update(int $id, array $header, array $lines, int $userId, bool $draft = false) : bool {
         if (count($lines) === 0) {
             return false;
         }
@@ -98,21 +100,25 @@ class ExtraPaymentRequestsModel extends Model
                 $this->sql->rollBack();
                 return false;
             }
+            $prev = $this->sql->select('SELECT status FROM [TG].[dbo].[extra_payment_requests] WHERE id = ?', [$id]);
+            $wasDraft = $prev && (int)$prev[0]['status'] === ExtraPaymentWorkflow::ST_BORRADOR;
 
             $affected = $this->sql->updateSafe('
                 UPDATE [TG].[dbo].[extra_payment_requests]
                 SET status = ?, tipo = ?, reason_id = ?, motivo_otros = ?, total = ?,
                     departamento_id = ?, updated_at = GETDATE()
-                WHERE id = ? AND status = ?
+                WHERE id = ? AND status IN (?, ?)
             ', [
-                ExtraPaymentWorkflow::ST_PEND_CXP,
+                $draft ? ExtraPaymentWorkflow::ST_BORRADOR : ExtraPaymentWorkflow::ST_PEND_CXP,
                 (string)($header['tipo'] ?? ''),
                 (int)$header['reason_id'],
                 $this->nullable($header['motivo_otros'] ?? null),
                 $total,
                 isset($header['departamento_id']) && $header['departamento_id'] !== '' ? (int)$header['departamento_id'] : null,
                 $id,
-                ExtraPaymentWorkflow::ST_RECHAZADA,
+                ExtraPaymentWorkflow::ST_BORRADOR,
+                // Un borrador solo se puede guardar como borrador; una rechazada, solo reenviar.
+                $draft ? ExtraPaymentWorkflow::ST_BORRADOR : ExtraPaymentWorkflow::ST_RECHAZADA,
             ]);
             if ($affected !== 1) {
                 $this->sql->rollBack();
@@ -133,7 +139,7 @@ class ExtraPaymentRequestsModel extends Model
                 $this->sql->rollBack();
                 return false;
             }
-            $this->audit($id, $userId, 'RESUBMIT', 'Total ' . number_format($total, 2, '.', ''));
+            $this->audit($id, $userId, $draft ? 'UPDATE_DRAFT' : ($wasDraft ? 'SUBMIT' : 'RESUBMIT'), 'Total ' . number_format($total, 2, '.', ''));
 
             $this->sql->commit();
             return true;
@@ -214,7 +220,8 @@ class ExtraPaymentRequestsModel extends Model
      * @return array{0:string,1:array} [cláusula WHERE (con espacio inicial o ''), parámetros]
      */
     private function build_filters(array $filters) : array {
-        $where = [];
+        // Los borradores son privados de su dueño: nunca entran a reportes ni al export.
+        $where = ['r.status <> ' . ExtraPaymentWorkflow::ST_BORRADOR];
         $params = [];
 
         if (isset($filters['status']) && $filters['status'] !== '') {

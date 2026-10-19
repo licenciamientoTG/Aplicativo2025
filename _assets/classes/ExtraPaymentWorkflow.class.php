@@ -4,9 +4,12 @@
  *
  * Flujo: 1 Pendiente CxP -> 2 Pendiente Admon -> 3 Autorizada -> 4 Pagada.
  * Terminales/laterales: 8 Cancelada, 9 Rechazada (editable y reenviable).
+ * 5 Borrador: captura guardada sin enviar; solo la ve su dueño, no entra a bandejas.
+ * Se usa 5 y no 0 para que nunca se confunda con un valor vacío.
  */
 class ExtraPaymentWorkflow
 {
+    const ST_BORRADOR   = 5;
     const ST_PEND_CXP   = 1;
     const ST_PEND_ADMON = 2;
     const ST_AUTORIZADA = 3;
@@ -41,15 +44,15 @@ class ExtraPaymentWorkflow
         };
     }
 
-    /** Edición: solo las solicitudes rechazadas (estatus 9) se pueden editar y reenviar. */
+    /** Edición: borradores (5) y rechazadas (9) se pueden editar y enviar/reenviar. */
     public static function can_edit(int $status): bool
     {
-        return $status === self::ST_RECHAZADA;
+        return $status === self::ST_BORRADOR || $status === self::ST_RECHAZADA;
     }
 
     public static function can_cancel(int $status): bool
     {
-        return in_array($status, [self::ST_PEND_CXP, self::ST_PEND_ADMON, self::ST_RECHAZADA], true);
+        return in_array($status, [self::ST_BORRADOR, self::ST_PEND_CXP, self::ST_PEND_ADMON, self::ST_RECHAZADA], true);
     }
 
     /**

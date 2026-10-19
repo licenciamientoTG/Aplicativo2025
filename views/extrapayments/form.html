@@ -1,17 +1,29 @@
 {# views/extrapayments/form.html — Captura / corrección de solicitud de pago extraordinario #}
 {% extends "views/layouts/base.html" %}
-{% block title %}{{ solicitud ? 'Corregir solicitud' : 'Nueva solicitud' }}{% endblock %}
+{% block title %}{{ solicitud ? (solicitud.status == 5 ? 'Continuar borrador' : 'Corregir solicitud') : 'Nueva solicitud' }}{% endblock %}
 {% block menutitle %}Pago extraordinario{% endblock %}
 {% block mycss %}
 <style>
-    .ep-linea { border:1px solid #e2e8f0; border-radius:.5rem; padding:.75rem; margin-bottom:.75rem; background:#fff; }
-    .ep-linea label { font-size:.72rem; text-transform:uppercase; color:#6c757d; margin-bottom:.1rem; }
-    .ep-total { font-size:1.25rem; font-weight:700; }
+    .ep-opcion { display:flex; gap:.6rem; align-items:flex-start; border:1px solid #dee2e6; border-radius:.6rem; padding:.7rem .85rem; cursor:pointer; height:100%; margin:0; background:#fff; transition:border-color .15s, background .15s; }
+    .ep-opcion:hover { border-color:#adb5bd; }
+    .ep-opcion.sel { border-color:#1C4587; background:#eef3fb; box-shadow:0 0 0 1px #1C4587; }
+    .ep-opcion input { margin-top:.2rem; }
+    .ep-opcion .tit { font-weight:600; font-size:.85rem; line-height:1.2; display:block; }
+    .ep-opcion .desc { font-size:.75rem; color:#6c757d; display:block; margin-top:.15rem; }
+    .ep-linea { border:1px solid #e2e8f0; border-radius:.6rem; padding:.9rem 1rem; margin-bottom:.9rem; background:#fff; }
+    .ep-linea label { font-size:.7rem; text-transform:uppercase; color:#6c757d; margin-bottom:.1rem; font-weight:600; }
+    .ep-linea-head { display:flex; align-items:center; gap:.5rem; border-bottom:1px solid #f1f3f5; padding-bottom:.6rem; margin-bottom:.75rem; }
+    .ep-num { width:1.6rem; height:1.6rem; border-radius:.4rem; background:#1C4587; color:#fff; font-weight:700; font-size:.78rem; display:inline-flex; align-items:center; justify-content:center; }
+    .ep-linea-monto { font-weight:700; font-size:.85rem; margin-left:.4rem; }
+    .ep-xml-ok { font-size:.75rem; color:#0d6e3f; background:#e8f6ee; border-radius:.4rem; padding:.3rem .6rem; margin-top:.6rem; }
+    .ep-total { font-size:1.6rem; font-weight:700; }
 </style>
 {% endblock %}
 {% block content %}
-<form id="form_extra" data-save-url="{{ url('extrapayments.save') }}" data-detail-url="{{ url('extrapayments.detail', {id: 0}) }}" autocomplete="off">
+<form id="form_extra" data-save-url="{{ url('extrapayments.save') }}" data-detail-url="{{ url('extrapayments.detail', {id: 0}) }}" data-edit-url="{{ url('extrapayments.edit', {id: 0}) }}" autocomplete="off">
     {% if solicitud %}<input type="hidden" name="id" value="{{ solicitud.id }}">{% endif %}
+
+    <div id="ep_error" class="alert alert-danger d-none"></div>
 
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
@@ -33,16 +45,19 @@
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
             <h6>Tipo de solicitud</h6>
-            <div class="mb-3">
-                <label class="me-3"><input type="radio" name="tipo" value="individual" {{ (not solicitud or solicitud.tipo == 'individual') ? 'checked' }}> Individual (un pago)</label>
-                <label><input type="radio" name="tipo" value="multiple" {{ (solicitud and solicitud.tipo == 'multiple') ? 'checked' }}> Múltiple (varios pagos)</label>
+            <div class="row g-2 mb-4">
+                <div class="col-md-6"><label class="ep-opcion"><input type="radio" name="tipo" value="individual" {{ (not solicitud or solicitud.tipo == 'individual') ? 'checked' }}>
+                    <span><span class="tit">Individual (un solo pago)</span><span class="desc">Una factura o un pago directo a un proveedor.</span></span></label></div>
+                <div class="col-md-6"><label class="ep-opcion"><input type="radio" name="tipo" value="multiple" {{ (solicitud and solicitud.tipo == 'multiple') ? 'checked' }}>
+                    <span><span class="tit">Múltiple (varios pagos en bloque)</span><span class="desc">Varios renglones, proveedores o facturas en una sola autorización.</span></span></label></div>
             </div>
             <h6>Motivo del pago extraordinario</h6>
+            <div class="row g-2">
             {% for m in motivos %}
-            <div>
-                <label><input type="radio" name="reason_id" value="{{ m.id }}" data-requiere-texto="{{ m.requiere_texto ? 1 : 0 }}" {{ solicitud and solicitud.reason_id == m.id ? 'checked' }}> {{ m.nombre }}</label>
-            </div>
+                <div class="col-md-6 col-lg-4"><label class="ep-opcion"><input type="radio" name="reason_id" value="{{ m.id }}" data-requiere-texto="{{ m.requiere_texto ? 1 : 0 }}" {{ solicitud and solicitud.reason_id == m.id ? 'checked' }}>
+                    <span class="tit">{{ m.nombre }}</span></label></div>
             {% endfor %}
+            </div>
             <div id="wrap_motivo_otros" class="mt-2" style="display:none;">
                 <input type="text" name="motivo_otros" maxlength="200" class="form-control form-control-sm" placeholder="Especifique el motivo" value="{{ solicitud.motivo_otros|default('') }}">
             </div>
@@ -52,43 +67,66 @@
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <h6 class="mb-0">Renglones</h6>
+                <h6 class="mb-0">Renglones de pago <span class="badge bg-secondary ms-1" id="contador_lineas">1</span></h6>
                 <button type="button" id="btn_agregar_linea" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Agregar renglón</button>
             </div>
             <div id="lineas"></div>
-            <div class="text-end">Total: <span class="ep-total" id="total_general">$0.00</span></div>
+            <div class="text-center"><button type="button" id="btn_agregar_linea_pie" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Agregar otro renglón</button></div>
         </div>
     </div>
 
-    <div class="d-flex justify-content-end gap-2 mb-4">
-        <a href="{{ url('extrapayments.index') }}" class="btn btn-outline-secondary">Volver</a>
-        <button type="submit" id="btn_guardar" class="btn btn-primary"><i class="fas fa-paper-plane"></i> {{ solicitud ? 'Reenviar' : 'Enviar solicitud' }}</button>
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div class="small text-muted">Total calculado con los montos de los renglones.<br>Flujo: VoBo de Cuentas por Pagar y después autorización de Administración y Finanzas.</div>
+                <div class="text-end"><div class="small text-muted">TOTAL SOLICITADO (MXN)</div><div class="ep-total" id="total_general">$0.00</div></div>
+            </div>
+            <div class="d-flex justify-content-between flex-wrap gap-2">
+                <a href="{{ url('extrapayments.index') }}" class="btn btn-outline-secondary">Volver</a>
+                <div class="d-flex gap-2">
+                    {% if not solicitud or solicitud.status == 5 %}
+                    <button type="button" id="btn_borrador" class="btn btn-outline-primary"><i class="fas fa-save"></i> Guardar borrador</button>
+                    {% endif %}
+                    <button type="submit" id="btn_guardar" class="btn btn-primary"><i class="fas fa-paper-plane"></i> {{ solicitud and solicitud.status == 9 ? 'Reenviar' : 'Enviar solicitud' }}</button>
+                </div>
+            </div>
+        </div>
     </div>
 </form>
 
-{# Adjuntos: solo al editar (una solicitud nueva aún no tiene id; tras enviarla se redirige al detalle, donde se agregan). #}
+{# Adjuntos: solo al editar (una solicitud nueva aún no tiene id; con "Guardar borrador" ya se puede adjuntar). #}
 {% if solicitud %}{% include "views/extrapayments/partials/documentos.html" %}{% endif %}
 
 {# Plantilla de renglón: el JS la clona y reemplaza __I__ por el índice #}
 <template id="tpl_linea">
     <div class="ep-linea" data-i="__I__">
+        <div class="ep-linea-head">
+            <span class="ep-num">1</span>
+            <strong class="small text-uppercase">Renglón <span class="ep-num-txt">1</span></strong>
+            <span class="ep-linea-monto"></span>
+            <div class="ms-auto d-flex gap-1">
+                <label class="btn btn-sm btn-outline-info mb-0" style="text-transform:none;font-size:.75rem;" title="Lee un CFDI (.xml) y llena proveedor, factura, fecha, monto y concepto"><i class="fas fa-file-code"></i> Cargar XML CFDI<input type="file" accept=".xml,text/xml" class="d-none ep-xml-input"></label>
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-duplicar-linea" title="Duplicar este renglón"><i class="fas fa-copy"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-linea"><i class="fas fa-trash"></i> Quitar</button>
+            </div>
+        </div>
         <div class="row g-2">
             <div class="col-md-3"><label>Empresa</label>
                 <select name="lines[__I__][empresa_cod]" class="form-control form-control-sm">
                     <option value="">Seleccione...</option>
                     {% for e in empresas %}<option value="{{ e.cod }}">{{ e.den }}</option>{% endfor %}
                 </select></div>
-            <div class="col-md-3"><label>Centro de costos</label><input type="text" name="lines[__I__][centro_costos]" maxlength="80" class="form-control form-control-sm"></div>
+            <div class="col-md-3"><label>Centro de costos / estación</label><input type="text" name="lines[__I__][centro_costos]" maxlength="80" class="form-control form-control-sm"></div>
             <div class="col-md-4"><label>Proveedor</label><input type="text" name="lines[__I__][proveedor]" maxlength="200" class="form-control form-control-sm"></div>
-            <div class="col-md-2"><label>Monto</label><input type="number" step="0.01" min="0" name="lines[__I__][monto]" class="form-control form-control-sm ep-monto"></div>
-            <div class="col-md-2"><label>Factura</label><input type="text" name="lines[__I__][factura]" maxlength="60" class="form-control form-control-sm"></div>
-            <div class="col-md-2"><label>Fecha factura</label><input type="date" name="lines[__I__][fecha_factura]" class="form-control form-control-sm"></div>
-            <div class="col-md-2"><label>Orden de compra</label><input type="text" name="lines[__I__][orden_compra]" maxlength="60" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label>Monto (con IVA)</label><input type="number" step="0.01" min="0" name="lines[__I__][monto]" class="form-control form-control-sm ep-monto"></div>
+            <div class="col-md-3"><label>Factura / folio</label><input type="text" name="lines[__I__][factura]" maxlength="60" class="form-control form-control-sm"></div>
+            <div class="col-md-3"><label>Fecha de emisión de la factura</label><input type="date" name="lines[__I__][fecha_factura]" class="form-control form-control-sm"></div>
+            <div class="col-md-3"><label>Orden de compra (opcional)</label><input type="text" name="lines[__I__][orden_compra]" maxlength="60" class="form-control form-control-sm"></div>
             <div class="col-md-3"><label>Fecha de pago requerida</label><input type="date" name="lines[__I__][fecha_pago_requerida]" class="form-control form-control-sm"></div>
-            <div class="col-md-3 d-flex align-items-end justify-content-end"><button type="button" class="btn btn-sm btn-outline-danger btn-quitar-linea"><i class="fas fa-trash"></i> Quitar</button></div>
-            <div class="col-md-6"><label>Descripción</label><input type="text" name="lines[__I__][descripcion]" maxlength="400" class="form-control form-control-sm"></div>
-            <div class="col-md-6"><label>Comentario de urgencia</label><input type="text" name="lines[__I__][comentario_urgencia]" maxlength="300" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label>Descripción del concepto</label><input type="text" name="lines[__I__][descripcion]" maxlength="400" class="form-control form-control-sm" placeholder="Bien, servicio, refacción o flete a cubrir"></div>
+            <div class="col-md-6"><label>¿Por qué es urgente?</label><input type="text" name="lines[__I__][comentario_urgencia]" maxlength="300" class="form-control form-control-sm" placeholder="¿Por qué no puede esperar al pago normal?"></div>
         </div>
+        <div class="ep-xml-ok d-none"></div>
     </div>
 </template>
 {% endblock %}

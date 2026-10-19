@@ -104,6 +104,10 @@ class ExtraPayments
 
     private function puede_ver(array $solicitud): bool
     {
+        // Un borrador es privado de su dueño, incluso para quien ve todas.
+        if ((int) $solicitud['status'] === ExtraPaymentWorkflow::ST_BORRADOR) {
+            return $this->es_propia($solicitud);
+        }
         return $this->es_privilegiado() || $this->es_propia($solicitud);
     }
 
@@ -111,13 +115,13 @@ class ExtraPayments
     private function estatus_adjuntos(string $kind): array
     {
         return $kind === 'soporte'
-            ? [ExtraPaymentWorkflow::ST_PEND_CXP, ExtraPaymentWorkflow::ST_RECHAZADA]
+            ? [ExtraPaymentWorkflow::ST_BORRADOR, ExtraPaymentWorkflow::ST_PEND_CXP, ExtraPaymentWorkflow::ST_RECHAZADA]
             : [ExtraPaymentWorkflow::ST_AUTORIZADA, ExtraPaymentWorkflow::ST_PAGADA];
     }
 
     /**
      * ¿Puede el usuario subir adjuntos de esta clase en esta solicitud?
-     * soporte: el solicitante (106) con la solicitud en 1 (pendiente CxP) o 9 (rechazada).
+     * soporte: el solicitante (106) con la solicitud en 5 (borrador), 1 (pendiente CxP) o 9 (rechazada).
      * comprobante: Tesorería (109) con la solicitud en 3 (autorizada) o 4 (pagada).
      */
     private function puede_adjuntar(array $solicitud, string $kind): bool
@@ -221,7 +225,7 @@ class ExtraPayments
             (new Errors())->get404();
             return;
         }
-        if (!$privilegiado && !$this->es_propia($solicitud)) {
+        if (!$this->puede_ver($solicitud)) {
             $this->fail(403, 'No tiene acceso a esta solicitud.', false);
         }
 
@@ -241,7 +245,7 @@ class ExtraPayments
 
     /** Etiquetas de estatus (mismas de index.html). */
     private const ESTATUS = [
-        1 => 'Pendiente CxP', 2 => 'Pendiente Admón', 3 => 'Autorizada',
+        5 => 'Borrador', 1 => 'Pendiente CxP', 2 => 'Pendiente Admón', 3 => 'Autorizada',
         4 => 'Pagada', 8 => 'Cancelada', 9 => 'Rechazada',
     ];
 
@@ -262,7 +266,7 @@ class ExtraPayments
             (new Errors())->get404();
             return;
         }
-        if (!$privilegiado && !$this->es_propia($solicitud)) {
+        if (!$this->puede_ver($solicitud)) {
             $this->fail(403, 'No tiene acceso a esta solicitud.', false);
         }
 
@@ -510,6 +514,8 @@ class ExtraPayments
         }
 
         $id = (int) ($_POST['id'] ?? 0);
+        // Borrador: se guarda con las mismas validaciones pero no se envía ni avisa a CxP.
+        $borrador = ($_POST['borrador'] ?? '') === '1';
         $header = [
             'tipo'           => $tipo,
             'reason_id'      => $reasonId,
@@ -526,7 +532,7 @@ class ExtraPayments
         }
 
         if ($id > 0) {
-            // Reenvío tras rechazo: solo el dueño y solo desde status 9.
+            // Edición de borrador (5) o reenvío tras rechazo (9): solo el dueño.
             $actual = $this->requestsModel->get($id);
             if (!$actual || !$this->es_propia($actual)) {
                 $this->fail(403, 'No tiene acceso a esta solicitud.', true);
@@ -536,19 +542,29 @@ class ExtraPayments
             }
             // El departamento no se cambia desde el cliente: se conserva el de la solicitud.
             $header['departamento_id'] = $actual['departamento_id'] ?? null;
-            $ok = $this->requestsModel->update($id, $header, $lines, $userId);
+            // Una rechazada no vuelve a borrador.
+            if ($borrador && (int) $actual['status'] !== ExtraPaymentWorkflow::ST_BORRADOR) {
+                json_output(['success' => false, 'message' => 'Una solicitud rechazada solo se puede reenviar.']);
+            }
+            $ok = $this->requestsModel->update($id, $header, $lines, $userId, $borrador);
             if (!$ok) {
-                json_output(['success' => false, 'message' => 'No se pudo reenviar la solicitud: cambió de estatus o hubo un error. Recargue e intente de nuevo.']);
+                json_output(['success' => false, 'message' => 'No se pudo guardar la solicitud: cambió de estatus o hubo un error. Recargue e intente de nuevo.']);
+            }
+            if ($borrador) {
+                json_output(['success' => true, 'message' => 'Borrador guardado.', 'id' => $id, 'borrador' => true]);
             }
             $this->notify($id, 'pago_extra_cxp', 'Pago extraordinario #' . $id . ' pendiente de VoBo de Cuentas por pagar');
-            json_output(['success' => true, 'message' => 'Solicitud reenviada.', 'id' => $id]);
+            json_output(['success' => true, 'message' => 'Solicitud enviada.', 'id' => $id]);
         }
 
         $header['fecha']           = date('Y-m-d');
         $header['departamento_id'] = $this->departamento_id_usuario($userId);
-        $newId = $this->requestsModel->create($header, $lines, $userId);
+        $newId = $this->requestsModel->create($header, $lines, $userId, $borrador);
         if (!$newId) {
             json_output(['success' => false, 'message' => 'No se pudo guardar la solicitud. Intente de nuevo.']);
+        }
+        if ($borrador) {
+            json_output(['success' => true, 'message' => 'Borrador guardado.', 'id' => $newId, 'borrador' => true]);
         }
         $this->notify((int) $newId, 'pago_extra_cxp', 'Pago extraordinario #' . $newId . ' pendiente de VoBo de Cuentas por pagar');
         json_output(['success' => true, 'message' => 'Solicitud enviada.', 'id' => $newId]);

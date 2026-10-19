@@ -35,6 +35,9 @@ check('can_cancel(3) false', ExtraPaymentWorkflow::can_cancel(3) === false);
 check('can_cancel(2)', ExtraPaymentWorkflow::can_cancel(2) === true);
 check('can_cancel(1)', ExtraPaymentWorkflow::can_cancel(1) === true);
 check('can_cancel(9)', ExtraPaymentWorkflow::can_cancel(9) === true);
+check('can_edit(5) borrador', ExtraPaymentWorkflow::can_edit(5) === true);
+check('can_cancel(5) borrador', ExtraPaymentWorkflow::can_cancel(5) === true);
+check('borrador no se aprueba ni se paga', ExtraPaymentWorkflow::next_status_on_approve(5) === null && ExtraPaymentWorkflow::required_permission(5) === null);
 
 // Validación
 check('solicitud válida => []', ExtraPaymentWorkflow::validate_request($header, [$linea]) === []);
