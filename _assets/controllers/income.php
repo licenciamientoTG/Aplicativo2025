@@ -4467,7 +4467,7 @@ public function anomalies_client_tickets()
      * movimientos no conoce afiliaciones: se preserva la regla histórica de
      * encontrarlas en los textos del movimiento contra Tesoreria_afil.
      */
-    private function emitir_tesoreria_movimientos_bancarios(int $entidadId, ?array $bankaoolRule = null): void {
+    private function emitir_tesoreria_movimientos_bancarios(int $entidadId): void {
         ob_clean();
         header('Content-Type: application/json');
 
@@ -4541,51 +4541,6 @@ public function anomalies_client_tickets()
                 }
             }
 
-            // Bankaool liquida Villa Ahumada (se muestra como estación 29,
-            // pero su Codigo interno es 31) dentro de Santander únicamente
-            // para la afiliación 8999954.
-            // El endpoint sigue siendo Santander y la regla sólo se activa
-            // cuando el cliente solicita esa estación y afiliación exactas.
-            if ($entidadId === 1 && $bankaoolRule === ['station_id' => 31, 'afiliacion' => '8999954']) {
-                $estacionSantander = null;
-                foreach ($catalogo as $afil) {
-                    if ($afil['estacion_id'] === 31 && $afil['afiliacion'] === '8999954') {
-                        $estacionSantander = $afil['Estacion'];
-                        break;
-                    }
-                }
-
-                if ($estacionSantander !== null) {
-                    $stmtBankaool = $conn->prepare(
-                        "SELECT id, fecha, abono
-                         FROM [TG].[dbo].[movimientos_bancarios]
-                         WHERE banco = 'BANKAOOL' AND abono > 0
-                           AND YEAR(fecha) = ? AND MONTH(fecha) = ?
-                           AND (
-                               (UPPER(descripcion) LIKE 'DEBITO%' AND UPPER(descripcion) LIKE '%9990624%')
-                               OR (UPPER(descripcion) LIKE 'CREDITO%' AND UPPER(descripcion) LIKE '%9990624%')
-                           )
-                         ORDER BY fecha, id"
-                    );
-                    $stmtBankaool->execute([$year, $month]);
-                    while ($mov = $stmtBankaool->fetch(PDO::FETCH_ASSOC)) {
-                        $fecha = $mov['fecha'] instanceof DateTime
-                            ? $mov['fecha']->format('Y-m-d')
-                            : substr((string)$mov['fecha'], 0, 10);
-                        $resultado[] = [
-                            'Fecha'        => $fecha,
-                            'Afiliacion'   => '8999954',
-                            'Estacion'     => $estacionSantander,
-                            'Total'        => (float)$mov['abono'],
-                            'MovimientoId' => 'mb_' . (int)$mov['id'],
-                            // Mantener una descripción neutral, igual al
-                            // patrón visible de Santander, sin revelar el banco fuente.
-                            'Descripcion'  => 'DEPOSITO VENTAS DEL DIA',
-                        ];
-                    }
-                }
-            }
-
             echo json_encode(['status' => 'success', 'data' => $resultado, 'catalog' => $catalogo]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error BD: ' . $e->getMessage()]);
@@ -4597,12 +4552,82 @@ public function anomalies_client_tickets()
     // 3. TESORERIA SANTANDER
     // =========================================================================
     public function get_tesoreria_santander() {
-        $stationId = (int)($_GET['station_id'] ?? 0);
-        $afiliacion = trim((string)($_GET['afiliacion'] ?? ''));
-        $bankaoolRule = $stationId === 31 && $afiliacion === '8999954'
-            ? ['station_id' => 31, 'afiliacion' => '8999954']
-            : null;
-        $this->emitir_tesoreria_movimientos_bancarios(1, $bankaoolRule);
+        $this->emitir_tesoreria_movimientos_bancarios(1);
+    }
+
+    // Bankaool tiene una afiliación propia para Villa Ahumada (estación 31).
+    public function get_tesoreria_bankaool(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year  = (int)($_GET['year'] ?? date('Y'));
+        $month = (int)($_GET['month'] ?? date('m'));
+        if ($month < 1 || $month > 12) {
+            echo json_encode(['status' => 'error', 'message' => 'Periodo inválido']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+            $stmtCatalogo = $conn->prepare(
+                "SELECT A.estacion_id, A.afiliacion,
+                        ISNULL(S.Nombre, V.Nombre) AS Estacion,
+                        ISNULL(A.rfc, 'FORANEAS') AS RFC
+                 FROM Tesoreria_afil A
+                 LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                 LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                 WHERE A.entidad_id = 14 AND A.estacion_id = 31
+                   AND A.afiliacion = '9990624'
+                   AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)"
+            );
+            $stmtCatalogo->execute();
+            $r = $stmtCatalogo->fetch(PDO::FETCH_ASSOC);
+            $catalogo = $r ? [[
+                'estacion_id' => 31,
+                'afiliacion' => '9990624',
+                'Estacion' => $r['Estacion'],
+                'RFC' => trim((string)$r['RFC']),
+            ]] : [];
+
+            $resultado = [];
+            if ($catalogo) {
+                $stmtMovimientos = $conn->prepare(
+                    "SELECT id, fecha, abono, descripcion
+                     FROM [TG].[dbo].[movimientos_bancarios]
+                     WHERE banco = 'BANKAOOL' AND abono > 0
+                       AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                       AND UPPER(LTRIM(descripcion)) LIKE 'DEBITO%'
+                       AND UPPER(descripcion) LIKE '%9990624%'
+                     UNION ALL
+                     SELECT id, fecha, abono, descripcion
+                     FROM [TG].[dbo].[movimientos_bancarios]
+                     WHERE banco = 'BANKAOOL' AND abono > 0
+                       AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                       AND UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'
+                       AND UPPER(descripcion) LIKE '%9990624%'
+                     ORDER BY fecha, id"
+                );
+                $stmtMovimientos->execute([$year, $month, $year, $month]);
+                while ($mov = $stmtMovimientos->fetch(PDO::FETCH_ASSOC)) {
+                    $fecha = $mov['fecha'] instanceof DateTime
+                        ? $mov['fecha']->format('Y-m-d')
+                        : substr((string)$mov['fecha'], 0, 10);
+                    $resultado[] = [
+                        'Fecha' => $fecha,
+                        'Afiliacion' => '9990624',
+                        'Estacion' => $catalogo[0]['Estacion'],
+                        'Total' => (float)$mov['abono'],
+                        'MovimientoId' => 'mb_' . (int)$mov['id'],
+                        'Descripcion' => trim((string)$mov['descripcion']),
+                    ];
+                }
+            }
+
+            echo json_encode(['status' => 'success', 'data' => $resultado, 'catalog' => $catalogo]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error BD: ' . $e->getMessage()]);
+        }
+        exit;
     }
 
     // =========================================================================
@@ -5586,6 +5611,37 @@ public function get_conciliacion_config() {
                         'descripcion'  => 'Cuenta 9274246 (Manual)',
                         'conceptos_cg' => 'VENTA,DEPOSITO'
                     ];
+                }
+            }
+
+            // Bankaool Villa Ahumada se expone como opción propia sólo si la
+            // afiliación está configurada en Tesoreria_afil y aún no aparece
+            // en Conciliacion_Configuracion.
+            if ($estacion_id == 31) {
+                $existeBankaool = false;
+                foreach ($reglas as $r) {
+                    if ((int)$r['entidad_id'] === 14 && trim((string)$r['afiliacion']) === '9990624') {
+                        $existeBankaool = true;
+                        break;
+                    }
+                }
+
+                if (!$existeBankaool) {
+                    $stmtBankaool = $conn->prepare(
+                        "SELECT TOP 1 afiliacion
+                         FROM Tesoreria_afil
+                         WHERE entidad_id = 14 AND estacion_id = 31 AND afiliacion = '9990624'"
+                    );
+                    $stmtBankaool->execute();
+                    if ($stmtBankaool->fetchColumn() !== false) {
+                        $reglas[] = [
+                            'entidad_id' => 14,
+                            'nombre_banco' => 'Bankaool',
+                            'afiliacion' => '9990624',
+                            'descripcion' => 'Cuenta 9990624 (Manual)',
+                            'conceptos_cg' => '',
+                        ];
+                    }
                 }
             }
             

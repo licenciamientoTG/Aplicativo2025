@@ -1117,7 +1117,8 @@ const ENTITY_CONFIG = {
     3:  '/income/get_tesoreria_amex',
     4:  '/income/get_tesoreria_banorte',
     5:  '/income/get_tesoreria_bbva',
-    13: '/income/get_tesoreria_afirme'
+    13: '/income/get_tesoreria_afirme',
+    14: '/income/get_tesoreria_bankaool'
 };
 
 let widgetState   = { year: new Date().getFullYear(), month: (new Date().getMonth()+1).toString().padStart(2,'0') };
@@ -1321,7 +1322,7 @@ function llenarBancos() {
     stationConfig.forEach(r => {
         if (!vistos.has(r.entidad_id)) vistos.set(r.entidad_id, r.nombre_banco || `Banco ${r.entidad_id}`);
     });
-    const orden = [4, 1, 3, 13]; // Banorte, Santander, AMEX, Afirme
+    const orden = [4, 1, 3, 13, 14]; // Banorte, Santander, AMEX, Afirme, Bankaool
     const sorted = [...vistos.entries()].sort((a, b) => {
         const ia = orden.indexOf(a[0]), ib = orden.indexOf(b[0]);
         return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
