@@ -849,6 +849,16 @@
       {% endif %}
       {% endif %}
 
+      {% if authorized(106) or authorized(107) or authorized(108) or authorized(109) or authorized(110) %} {# Pagos extraordinarios #}
+      <li class="sidebar-header">PAGOS EXTRAORDINARIOS</li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="{{ url('extrapayments.index') }}" data-active-also="/pagos-extraordinarios/(new|\d+(/edit)?)/?$">
+          <i data-feather="list"></i>
+          <span class="align-middle">Solicitudes</span>
+        </a>
+      </li>
+      {% endif %}
+
       {% if authorized(3) or for_sistemas() %}
       <li class="sidebar-header">SISTEMAS</li>
       {% if authorized(22) or for_sistemas() %}
@@ -931,14 +941,20 @@
     // Iterate through links
     sidebarLinks.forEach((link) => {
       // Compare link path with current path
-      if (link.getAttribute("href") === currentPath) {
+      // Páginas hijas que también marcan este link (regex en data-active-also)
+      const alsoPattern = link.dataset.activeAlso;
+      const isExact = link.getAttribute("href") === currentPath;
+      const isChild = !isExact && alsoPattern && new RegExp(alsoPattern).test(currentPath);
+      if (isExact || isChild) {
         // Add 'active' class to the link
         link.classList.add("active_item");
 
-        // Prevent default click (reload)
-        link.addEventListener("click", function (e) {
-          e.preventDefault();
-        });
+        // Prevent default click (reload) solo en la página exacta
+        if (isExact) {
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+          });
+        }
 
         // Add 'active' class to parent sidebar-item
         const parentItem = link.closest(".sidebar-item");

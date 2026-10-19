@@ -1,0 +1,147 @@
+<!doctype html>
+{# views/extrapayments/print.html — Formato imprimible (réplica del Excel "FORMATO SOLICITUD EXTRA"); sin layout #}
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solicitud de pago extraordinario #{{ solicitud.id }}</title>
+<style>
+    @page { size: letter; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; margin: 0; padding: 16px; background: #fff; }
+    .hoja { max-width: 190mm; margin: 0 auto; }
+    h1 { font-size: 15px; text-align: center; margin: 0 0 10px; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; text-align: left; }
+    th { background: #e8e8e8; font-size: 10px; text-transform: uppercase; }
+    .sin-borde td, .sin-borde th { border: 0; }
+    .campo { margin: 0 0 8px; }
+    .etq { font-weight: bold; text-transform: uppercase; font-size: 10px; }
+    .der { text-align: right; }
+    .motivos td { border: 0; padding: 2px 6px; }
+    .caja { display: inline-block; width: 16px; height: 16px; border: 1px solid #000; text-align: center; line-height: 14px; font-weight: bold; margin-right: 6px; }
+    .firmas { margin-top: 34px; }
+    .firmas td { border: 0; width: 33%; text-align: center; padding: 0 10px; }
+    .linea { border-top: 1px solid #000; margin-top: 46px; padding-top: 3px; font-weight: bold; font-size: 10px; text-transform: uppercase; }
+    .firma-nombre { min-height: 14px; margin-top: 4px; }
+    .pago { margin-top: 14px; border: 1px solid #000; padding: 6px 8px; }
+    .aviso-estatus { border: 4px double #b00020; color: #b00020; text-align: center; font-size: 20px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; padding: 8px; margin: 0 0 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .barra { text-align: right; margin-bottom: 10px; }
+    .barra button { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+    @media print {
+        body { padding: 0; }
+        .barra { display: none; }
+        th { background: #e8e8e8 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        tr, .firmas { page-break-inside: avoid; }
+    }
+</style>
+</head>
+<body>
+<div class="hoja">
+    <div class="barra"><button type="button" onclick="window.print()">Imprimir</button></div>
+
+    <h1>Solicitud de pago extraordinario{{ solicitud.tipo == 'multiple' ? ' (múltiple)' : '' }}</h1>
+
+    {% if solicitud.status not in [3, 4] %}
+        <div class="aviso-estatus">{{ solicitud.status in [1, 2] ? 'Pendiente de autorización — ' ~ estatus_label : estatus_label }}</div>
+    {% endif %}
+
+    <table class="sin-borde" style="margin-bottom:10px">
+        <tr>
+            <td><span class="etq">Folio:</span> #{{ solicitud.id }}</td>
+            <td><span class="etq">Fecha:</span> {{ solicitud.fecha|date('d/m/Y') }}</td>
+            <td><span class="etq">Área:</span> {{ solicitud.departamento ?: '—' }}</td>
+        </tr>
+        <tr>
+            <td colspan="3"><span class="etq">Estatus:</span> {{ estatus_label }}</td>
+        </tr>
+        <tr>
+            <td colspan="3"><span class="etq">Solicitante:</span> {{ solicitud.solicitante }}</td>
+        </tr>
+    </table>
+
+    <div class="campo"><span class="etq">Motivo de la solicitud</span></div>
+    <table class="motivos" style="margin-bottom:10px">
+        {% for m in motivos %}
+            {% set elegido = m.id == solicitud.reason_id %}
+            <tr><td><span class="caja">{{ elegido ? 'X' : '' }}</span>{{ m.nombre }}{% if elegido and solicitud.motivo_otros %}: <u>{{ solicitud.motivo_otros }}</u>{% endif %}</td></tr>
+        {% endfor %}
+        {% if not motivo_en_catalogo %}
+            {# motivo ya desactivado en el catálogo: se muestra igualmente marcado #}
+            <tr><td><span class="caja">X</span>{{ solicitud.reason_nombre }}{% if solicitud.motivo_otros %}: <u>{{ solicitud.motivo_otros }}</u>{% endif %}</td></tr>
+        {% endif %}
+    </table>
+
+    {% if solicitud.tipo == 'individual' and solicitud.lines|length > 0 %}
+        {% set l = solicitud.lines[0] %}
+        <table style="margin-bottom:10px">
+            <tr><th style="width:28%">Razón social</th><td>{{ l.empresa_nombre ?: '—' }}</td></tr>
+            <tr><th>Proveedor / Colaborador</th><td>{{ l.proveedor ?: '—' }}</td></tr>
+            <tr><th>Factura</th><td>{{ l.factura ?: '—' }}</td></tr>
+            <tr><th>Fecha factura</th><td>{{ l.fecha_factura ? l.fecha_factura|date('d/m/Y') : '—' }}</td></tr>
+            <tr><th>Centro de costos</th><td>{{ l.centro_costos ?: '—' }}</td></tr>
+            <tr><th>Orden de compra</th><td>{{ l.orden_compra ?: '—' }}</td></tr>
+            <tr><th>Fecha de pago</th><td>{{ l.fecha_pago_requerida ? l.fecha_pago_requerida|date('d/m/Y') : '—' }}</td></tr>
+            <tr><th>Descripción</th><td>{{ l.descripcion ?: '—' }}</td></tr>
+            {% if l.comentario_urgencia %}<tr><th>Por qué es urgente el pago</th><td>{{ l.comentario_urgencia }}</td></tr>{% endif %}
+            <tr><th>Total</th><td><strong>${{ solicitud.total|number_format(2) }}</strong></td></tr>
+        </table>
+    {% else %}
+        <table style="margin-bottom:10px">
+            <thead>
+                <tr>
+                    <th>Orden de compra / Reembolso</th><th>Empresa que paga</th><th>Centro de costos</th>
+                    <th>Factura</th><th>Fecha factura</th><th>Proveedor / Colaborador</th><th>Descripción</th>
+                    <th class="der">Monto</th><th>Fecha de pago</th><th>Comentarios (por qué es urgente el pago)</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for l in solicitud.lines %}
+                <tr>
+                    <td>{{ l.orden_compra }}</td>
+                    <td>{{ l.empresa_nombre }}</td>
+                    <td>{{ l.centro_costos }}</td>
+                    <td>{{ l.factura }}</td>
+                    <td>{{ l.fecha_factura ? l.fecha_factura|date('d/m/Y') : '' }}</td>
+                    <td>{{ l.proveedor }}</td>
+                    <td>{{ l.descripcion }}</td>
+                    <td class="der">${{ l.monto|number_format(2) }}</td>
+                    <td>{{ l.fecha_pago_requerida ? l.fecha_pago_requerida|date('d/m/Y') : '' }}</td>
+                    <td>{{ l.comentario_urgencia }}</td>
+                </tr>
+            {% endfor %}
+                <tr>
+                    <th colspan="7" class="der">Total solicitud</th>
+                    <th class="der">${{ solicitud.total|number_format(2) }}</th>
+                    <th colspan="2"></th>
+                </tr>
+            </tbody>
+        </table>
+    {% endif %}
+
+    {% if solicitud.payment %}
+    <div class="pago">
+        <span class="etq">Pagado:</span>
+        {{ solicitud.payment.fecha_pago|date('d/m/Y') }} · Referencia: {{ solicitud.payment.referencia }}{% if cuenta %} · Cuenta: {{ cuenta }}{% endif %}
+    </div>
+    {% endif %}
+
+    <table class="firmas">
+        <tr>
+            <td>
+                <div class="firma-nombre">{{ firmas[1] ? firmas[1].aprobador ~ ' — ' ~ firmas[1].created_at|date('d/m/Y') : '' }}</div>
+                <div class="linea">VoBo Cuentas por pagar</div>
+            </td>
+            <td>
+                <div class="firma-nombre"></div>
+                <div class="linea">Jefe de área y/o dirección correspondiente</div>
+            </td>
+            <td>
+                <div class="firma-nombre">{{ firmas[2] ? firmas[2].aprobador ~ ' — ' ~ firmas[2].created_at|date('d/m/Y') : '' }}</div>
+                <div class="linea">Autorización Dir. de Admón y Finanzas</div>
+            </td>
+        </tr>
+    </table>
+</div>
+</body>
+</html>
