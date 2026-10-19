@@ -53,7 +53,7 @@
                         <button type="input" class="btn btn-primary btn-block w-100" style="margin-top: 32px;">Buscar</button>
                     </div>
                     <div class="col">
-                        <a href="/administration/stats_tickets" class="btn btn-success btn-block w-100" style="margin-top: 32px;">Limpiar</a>
+                        <a href="{{ url('administration.stats_tickets') }}" class="btn btn-success btn-block w-100" style="margin-top: 32px;">Limpiar</a>
                     </div>
                 </div>
             </form>
@@ -169,12 +169,12 @@
                                                 <tr data-toggle="tooltip" title="Nuevos: {{ status[0].ticket_count }} | En progreso: {{ status[1].ticket_count }} | En espera: {{status[2].ticket_count }} | En espera de información: {{status[3].ticket_count }}">
                                                     <td>Abiertos</td>
                                                     <td>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count }}</td>
-                                                    <td><a href="/administration/get_priority/{{ status[0].initial_date | date('Y-m-d') }}/{{ status[0].final_date | date('Y-m-d') }}/{{ ticket_form }}/abiertos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                    <td><a href="{{ url('administration.get_priority', {from: status[0].initial_date|date('Y-m-d'), until: status[0].final_date|date('Y-m-d'), ticket_form: ticket_form, priority: 'abiertos', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                                 </tr>
                                                 <tr data-toggle="tooltip" title="Resueltos: {{status[4].ticket_count }} | Cerrados: {{status[5].ticket_count }}">
                                                     <td>Resueltos</td>
                                                     <td>{{ status[4].ticket_count + status[5].ticket_count }}</td>
-                                                    <td><a href="/administration/get_priority/{{ status[0].initial_date | date('Y-m-d') }}/{{ status[0].final_date | date('Y-m-d') }}/{{ ticket_form }}/resueltos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                    <td><a href="{{ url('administration.get_priority', {from: status[0].initial_date|date('Y-m-d'), until: status[0].final_date|date('Y-m-d'), ticket_form: ticket_form, priority: 'resueltos', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                                 </tr>
                                                 <tr>
                                                     <th>Total</th>
@@ -218,12 +218,12 @@
                                             <tr data-toggle="tooltip" title="Nuevos: {{ status[0].ticket_count }} | En progreso: {{ status[1].ticket_count }} | En espera: {{status[2].ticket_count }} | En espera de información: {{status[3].ticket_count }}">
                                                 <td>Abiertos</td>
                                                 <td>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count }}</td>
-                                                <td><a href="/administration/get_priority/{{ status[0].start_of_month }}/{{ status[0].end_of_month }}/{{ ticket_form }}/abiertos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                <td><a href="{{ url('administration.get_priority', {from: status[0].start_of_month, until: status[0].end_of_month, ticket_form: ticket_form, priority: 'abiertos', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                             </tr>
                                             <tr data-toggle="tooltip" title="Resueltos: {{status[4].ticket_count }} | Cerrados: {{status[5].ticket_count }}">
                                                 <td>Resueltos</td>
                                                 <td>{{ status[4].ticket_count + status[5].ticket_count }}</td>
-                                                <td><a href="/administration/get_priority/{{ status[0].start_of_month }}/{{ status[0].end_of_month }}/{{ ticket_form }}/resueltos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                <td><a href="{{ url('administration.get_priority', {from: status[0].start_of_month, until: status[0].end_of_month, ticket_form: ticket_form, priority: 'resueltos', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                             </tr>
                                             <tr>
                                                 <th>Total</th>
@@ -277,7 +277,7 @@
                                                     <td>{{ ticket.tickets_qty }}</td>
                                                     <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
                                                     <td>
-                                                        <a href="/administration/get_priority/{{ ticket.week_start_date | date('Y-m-d') }}/{{ ticket.week_end_date | date('Y-m-d') }}/{{ticket_form}}/Urgentes" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
+                                                        <a href="{{ url('administration.get_priority', {from: ticket.week_start_date|date('Y-m-d'), until: ticket.week_end_date|date('Y-m-d'), ticket_form: ticket_form, priority: 'Urgentes', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
                                                     </td>
                                                 </tr>
                                                 {% set qty_rows = qty_rows + 1 %}
@@ -315,7 +315,7 @@
                                                     <td>{{ ticket.tickets_qty }}</td>
                                                     <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
                                                     <td>
-                                                        <a href="/administration/get_priority/{{ ticket.month_start_date | date('Y-m-d') }}/{{ ticket.month_end_date | date('Y-m-d') }}/{{ticket_form}}/Urgentes" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
+                                                        <a href="{{ url('administration.get_priority', {from: ticket.month_start_date|date('Y-m-d'), until: ticket.month_end_date|date('Y-m-d'), ticket_form: ticket_form, priority: 'Urgentes', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
                                                     </td>
                                                 </tr>
                                                 {% set qty_rows = qty_rows + 1 %}
@@ -353,7 +353,7 @@
                                                 <td>{{ ticket.tickets_qty }}</td>
                                                 <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
                                                 <td>
-                                                    <a href="/administration/get_priority/{{ ticket.year }}-01-01/{{ ticket.year }}-12-31/{{ticket_form}}/Urgentes" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
+                                                    <a href="{{ url('administration.get_priority', {from: ticket.year ~ '-01-01', until: ticket.year ~ '-12-31', ticket_form: ticket_form, priority: 'Urgentes', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
                                                 </td>
                                             </tr>
                                             {% set qty_rows = qty_rows + 1 %}
@@ -421,7 +421,7 @@
                                                 </td>
                                                 <td>{{ ticket.tickets_qty }}</td>
                                                 <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
-                                                <td><a href="/administration/get_priority/{{ ticket.year }}-01-01/{{ ticket.year }}-12-31/{{ticket_form}}/Normales" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                <td><a href="{{ url('administration.get_priority', {from: ticket.year ~ '-01-01', until: ticket.year ~ '-12-31', ticket_form: ticket_form, priority: 'Normales', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                             </tr>
                                             {% set qty_rows = qty_rows + 1 %}
                                             {% set total_tickets = total_tickets + ticket.tickets_qty %}
@@ -459,7 +459,7 @@
                                                     </td>
                                                     <td>{{ ticket.tickets_qty }}</td>
                                                     <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
-                                                    <td><a href="/administration/get_priority/{{ ticket.week_start_date | date('Y-m-d') }}/{{ ticket.week_end_date | date('Y-m-d') }}/{{ticket_form}}/Normales" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                    <td><a href="{{ url('administration.get_priority', {from: ticket.week_start_date|date('Y-m-d'), until: ticket.week_end_date|date('Y-m-d'), ticket_form: ticket_form, priority: 'Normales', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                                 </tr>
                                                 {% set qty_rows = qty_rows + 1 %}
                                                 {% set total_tickets = total_tickets + ticket.tickets_qty %}
@@ -497,7 +497,7 @@
                                                     </td>
                                                     <td>{{ ticket.tickets_qty }}</td>
                                                     <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
-                                                    <td><a href="/administration/get_priority/{{ ticket.month_start_date }}/{{ ticket.month_end_date }}/{{ticket_form}}/Normales" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                    <td><a href="{{ url('administration.get_priority', {from: ticket.month_start_date, until: ticket.month_end_date, ticket_form: ticket_form, priority: 'Normales', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                                 </tr>
                                                 {% set qty_rows = qty_rows + 1 %}
                                                 {% set total_tickets = total_tickets + ticket.tickets_qty %}
@@ -568,7 +568,7 @@
                                                 </td>
                                                 <td>{{ user.total }}</td>
                                                 <td>{{ ((user.total * 100) / total ) | number_format(1) }}%</td>
-                                                <td><a href="/administration/get_priority/{{ from | date('Y-m-d') }}/{{ until | date('Y-m-d') }}/{{ticket_form}}/usuarios/{{ user.user_id }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                <td><a href="{{ url('administration.get_priority', {from: from|date('Y-m-d'), until: until|date('Y-m-d'), ticket_form: ticket_form, priority: 'usuarios', user_id: user.user_id}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                             </tr>
 
                                             {% endfor %}
@@ -636,7 +636,7 @@
                                                 </td>
                                                 <td>{{ group.total }}</td>
                                                 <td>{{ ((group.total * 100) / total ) | number_format(1) }}%</td>
-                                                <td><a href="/administration/get_priority/{{ from | date('Y-m-d') }}/{{ until | date('Y-m-d') }}/{{ticket_form}}/grupos/{{ group.user_id }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                <td><a href="{{ url('administration.get_priority', {from: from|date('Y-m-d'), until: until|date('Y-m-d'), ticket_form: ticket_form, priority: 'grupos', user_id: group.user_id}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                             </tr>
 
                                             {% endfor %}
@@ -705,7 +705,7 @@
                                                 </td>
                                                 <td>{{ departments.total }}</td>
                                                 <td>{{ ((departments.total * 100) / total ) | number_format(1) }}%</td>
-                                                <td><a href="/administration/get_priority/{{ from | date('Y-m-d') }}/{{ until | date('Y-m-d') }}/{{ticket_form}}/departments/{{ departments.user_id }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                <td><a href="{{ url('administration.get_priority', {from: from|date('Y-m-d'), until: until|date('Y-m-d'), ticket_form: ticket_form, priority: 'departments', user_id: departments.user_id}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                             </tr>
 
                                             {% endfor %}
@@ -761,7 +761,7 @@
                                                 <tr>
                                                     <td>{{ type.problem }}</td>
                                                     <td>{{ type.total }}</td>
-                                                    <td><a href="/administration/get_priority/{{ from | date('Y-m-d') }}/{{ until | date('Y-m-d') }}/{{ticket_form}}/supports/{{ type.problem }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                    <td><a href="{{ url('administration.get_priority', {from: from|date('Y-m-d'), until: until|date('Y-m-d'), ticket_form: ticket_form, priority: 'supports', user_id: type.problem}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                                 </tr>
                                                 {% set total = total + type.total %}
                                                 {% endfor %}
@@ -945,12 +945,12 @@
                                         <tr data-toggle="tooltip" title="Nuevos: {{ status[0].ticket_count }} | En progreso: {{ status[1].ticket_count }} | En espera: {{status[2].ticket_count }} | En espera de información: {{status[3].ticket_count }}">
                                             <td>Abiertos</td>
                                             <td>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count }}</td>
-                                            <td><a href="/administration/get_priority/{{ status[0].start_of_month }}/{{ status[0].end_of_month }}/{{ ticket_form }}/abiertos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                            <td><a href="{{ url('administration.get_priority', {from: status[0].start_of_month, until: status[0].end_of_month, ticket_form: ticket_form, priority: 'abiertos', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                         </tr>
                                         <tr data-toggle="tooltip" title="Resueltos: {{status[4].ticket_count }} | Cerrados: {{status[5].ticket_count }}">
                                             <td>Resueltos</td>
                                             <td>{{ status[4].ticket_count + status[5].ticket_count }}</td>
-                                            <td><a href="/administration/get_priority/{{ status[0].start_of_month }}/{{ status[0].end_of_month }}/{{ ticket_form }}/resueltos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                            <td><a href="{{ url('administration.get_priority', {from: status[0].start_of_month, until: status[0].end_of_month, ticket_form: ticket_form, priority: 'resueltos', user_id: 0}) }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
                                         </tr>
                                         <tr>
                                             <th>Total</th>
@@ -1502,7 +1502,7 @@
         var modal = $(this);
 
         $.ajax({
-            url: '/administration/get_agent_report/' + agent + '/' + from + '/' + until + '/' + date_range + '/' + ticket_form,
+            url: routeUrl('administration.get_agent_report', { agent: agent, from: from, until: until, date_range: date_range, ticket_form: ticket_form }),
             type: 'GET',
             success: function (response) {
                 modal.find('.modal-body').html(response);

@@ -240,7 +240,7 @@ i { margin-right: 10px; }
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets|default(0) }}</h1>
               <div class="mb-0">
-                <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
+                <a href="{{ url('administration.filtered_statistics', {action: 'total_tickets', period: period|default('now'|date('Y-m')), ticket_form_id: ticket_form_id, agent_id: assigned_to_csv|default('0')}) }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -260,7 +260,7 @@ i { margin-right: 10px; }
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets_abiertos|default(0) }}</h1>
               <div class="mb-0 text-end">
-                <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
+                <a href="{{ url('administration.filtered_statistics', {action: 'open_tickets', period: period|default('now'|date('Y-m')), ticket_form_id: ticket_form_id, agent_id: assigned_to_csv|default('0')}) }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -280,7 +280,7 @@ i { margin-right: 10px; }
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets_cerrados|default(0) }}</h1>
               <div class="mb-0 text-end">
-                <a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
+                <a href="{{ url('administration.filtered_statistics', {action: 'closed_tickets', period: period|default('now'|date('Y-m')), ticket_form_id: ticket_form_id, agent_id: assigned_to_csv|default('0')}) }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -478,7 +478,7 @@ i { margin-right: 10px; }
               </div>
 
               <div class="card-footer d-flex justify-content-end p-3">
-                <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ id_value }}" class="text-muted d-flex align-items-center">
+                <a href="{{ url('administration.filtered_statistics', {action: 'total_tickets', period: period|default('now'|date('Y-m')), ticket_form_id: ticket_form_id, agent_id: id_value}) }}" class="text-muted d-flex align-items-center">
                   <span>Ver lista de tickets</span>
                   <i class="fas fa-arrow-right ms-2"></i>
                 </a>
