@@ -117,12 +117,20 @@ class ExtraPaymentRequestsModel extends Model
                 return false;
             }
 
-            $this->sql->delete('DELETE FROM [TG].[dbo].[extra_payment_lines] WHERE request_id = ?', [$id]);
+            // delete() devuelve true aunque borre 0 filas; false solo ante fallo.
+            if ($this->sql->delete('DELETE FROM [TG].[dbo].[extra_payment_lines] WHERE request_id = ?', [$id]) === false) {
+                $this->sql->rollBack();
+                return false;
+            }
             $this->insert_lines($id, $lines);
-            $this->sql->updateSafe(
+            // updateSafe() devuelve false ante error; 0 filas es válido (sin aprobaciones).
+            if ($this->sql->updateSafe(
                 'UPDATE [TG].[dbo].[extra_payment_approvals] SET is_active = 0 WHERE request_id = ? AND is_active = 1',
                 [$id]
-            );
+            ) === false) {
+                $this->sql->rollBack();
+                return false;
+            }
             $this->audit($id, $userId, 'RESUBMIT', 'Total ' . number_format($total, 2, '.', ''));
 
             $this->sql->commit();
