@@ -94,12 +94,29 @@
         var $btn = $('#btn_ep_pagar');
         $btn.prop('disabled', true);
         $.ajax({ url: $f.data('url'), type: 'POST', dataType: 'json', data: $f.serialize() })
-            .done(function (resp) { resolver(resp, $btn); })
+            .done(function (resp) {
+                if (resp.success && $f.data('detail-url')) {
+                    // La bandeja de Tesorería solo lista autorizadas: se va al detalle para adjuntar el comprobante.
+                    alertify.success(escHtml(resp.message));
+                    $('#modal_ep').modal('hide');
+                    window.location.href = $f.data('detail-url');
+                } else {
+                    resolver(resp, $btn);
+                }
+            })
             .fail(function (xhr) {
                 alertify.error(errorDe(xhr, 'Error de comunicación'));
                 $btn.prop('disabled', false);
             });
     });
+
+    // En el formulario de edición, adjuntar/eliminar recarga la página y se pierden los cambios sin guardar.
+    function confirmarPerdidaCambios(accion) {
+        if (!document.getElementById('form_extra')) { accion(); return; }
+        alertify.confirm('Cambios sin guardar',
+            'Al adjuntar o eliminar archivos se recarga la página y se perderán los cambios del formulario que no haya guardado. ¿Continuar?',
+            accion, function () {});
+    }
 
     // ---------------- Adjuntos (detalle y formulario de edición) ----------------
     // Subir: el servidor re-valida permiso, estatus, extensión y contenido.
@@ -113,27 +130,32 @@
         var fd = new FormData();
         fd.append('kind', $btn.data('kind'));
         Array.prototype.forEach.call(input.files, function (f) { fd.append('documento[]', f); });
-        $btn.prop('disabled', true);
-        $.ajax({ url: $btn.data('url'), type: 'POST', dataType: 'json', data: fd, processData: false, contentType: false })
-            .done(function (resp) {
-                if (resp.success) {
-                    alertify.success(escHtml(resp.message));
-                    window.location.reload();
-                } else {
-                    alertify.error(escHtml(resp.message || 'No se pudo subir').replace(/\n/g, '<br>'));
+        confirmarPerdidaCambios(function () {
+            $btn.prop('disabled', true);
+            $.ajax({ url: $btn.data('url'), type: 'POST', dataType: 'json', data: fd, processData: false, contentType: false })
+                .done(function (resp) {
+                    if (resp.success) {
+                        alertify.success(escHtml(resp.message));
+                        window.location.reload();
+                    } else {
+                        alertify.error(escHtml(resp.message || 'No se pudo subir').replace(/\n/g, '<br>'));
+                        $btn.prop('disabled', false);
+                    }
+                })
+                .fail(function (xhr) {
+                    alertify.error(errorDe(xhr, 'Error de comunicación'));
                     $btn.prop('disabled', false);
-                }
-            })
-            .fail(function (xhr) {
-                alertify.error(errorDe(xhr, 'Error de comunicación'));
-                $btn.prop('disabled', false);
-            });
+                });
+        });
     });
 
     // Eliminar (soft-delete)
     $(document).on('click', '.btn-ep-doc-del', function () {
         var $btn = $(this);
-        alertify.confirm('Eliminar documento', '¿Eliminar este documento?', function () {
+        var msg = document.getElementById('form_extra')
+            ? '¿Eliminar este documento? Se recargará la página y se perderán los cambios del formulario que no haya guardado.'
+            : '¿Eliminar este documento?';
+        alertify.confirm('Eliminar documento', msg, function () {
             $btn.prop('disabled', true);
             $.ajax({ url: $btn.data('url'), type: 'POST', dataType: 'json' })
                 .done(function (resp) {

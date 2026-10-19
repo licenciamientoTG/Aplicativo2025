@@ -3,7 +3,7 @@
     <h6 class="modal-title">Registrar pago — Solicitud #{{ solicitud.id }}</h6>
     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
 </div>
-<form id="form_ep_pago" data-url="{{ url('extrapayments.pay', {id: solicitud.id}) }}">
+<form id="form_ep_pago" data-url="{{ url('extrapayments.pay', {id: solicitud.id}) }}" data-detail-url="{{ url('extrapayments.detail', {id: solicitud.id}) }}">
     <div class="modal-body">
         <div class="row g-2 mb-3">
             <div class="col-md-5"><div class="small text-muted">Solicitante</div>{{ solicitud.solicitante }}</div>

@@ -266,6 +266,8 @@ class ExtraPayments
             $this->fail(403, 'No tiene acceso a esta solicitud.', false);
         }
 
+        $estatus_label = self::ESTATUS[(int) $solicitud['status']] ?? (string) $solicitud['status'];
+
         // Firmas: aprobación activa y aprobada de cada paso (1 CxP, 2 Admón y Finanzas).
         $firmas = [1 => null, 2 => null];
         foreach ($solicitud['approvals'] as $a) {
@@ -291,7 +293,7 @@ class ExtraPayments
         $motivos = $this->catalogModel->reasons();
         // Si el motivo elegido ya fue desactivado, la vista lo agrega marcado.
         $motivo_en_catalogo = in_array((int) $solicitud['reason_id'], array_map(fn($m) => (int) $m['id'], $motivos), true);
-        echo $this->twig->render($this->route . 'print.html', compact('solicitud', 'firmas', 'cuenta', 'motivos', 'motivo_en_catalogo'));
+        echo $this->twig->render($this->route . 'print.html', compact('solicitud', 'firmas', 'cuenta', 'motivos', 'motivo_en_catalogo', 'estatus_label'));
     }
 
     /** Filtros del reporte, saneados (GET no es confiable). */
@@ -478,6 +480,10 @@ class ExtraPayments
             }
             $monto = $raw['monto'] ?? null;
             $monto = is_scalar($monto) ? str_replace([',', '$', ' '], '', (string) $monto) : '';
+            // Formato estricto: hasta 13 enteros y 2 decimales, mayor a cero (sin notación científica ni signo).
+            if (!preg_match('/^\d{1,13}(\.\d{1,2})?$/', $monto) || (float) $monto <= 0) {
+                $errors[] = "Renglón $n: el monto debe ser un número mayor a cero con máximo 2 decimales.";
+            }
 
             $line = [
                 'empresa_cod'          => $empresa,
@@ -571,13 +577,13 @@ class ExtraPayments
     /* Adjuntos                                                              */
     /* ===================================================================== */
 
-    /** Eliminar: quien subió el adjunto o 110, mientras el estatus aún permita esa clase. */
+    /** Eliminar: solo quien subió el adjunto, mientras el estatus aún permita esa clase. */
     private function puede_eliminar_doc(array $solicitud, array $doc, int $uid): bool
     {
         if (!$this->puede_ver($solicitud)) {
             return false;
         }
-        if ((int) $doc['created_by'] !== $uid && !authorized(ExtraPaymentWorkflow::PERM_VER_TODAS)) {
+        if ((int) $doc['created_by'] !== $uid) {
             return false;
         }
         return in_array((int) $solicitud['status'], $this->estatus_adjuntos((string) $doc['kind']), true);
@@ -597,6 +603,16 @@ class ExtraPayments
             'can_upload_soporte'     => $this->puede_adjuntar($solicitud, 'soporte'),
             'can_upload_comprobante' => $this->puede_adjuntar($solicitud, 'comprobante'),
         ];
+    }
+
+    /** Bitácora de adjuntos; un fallo de bitácora no revierte la operación ya hecha. */
+    private function audit_doc(int $requestId, string $accion, string $detalle): void
+    {
+        try {
+            $this->requestsModel->audit($requestId, $this->user_id(), $accion, $detalle);
+        } catch (Throwable $e) {
+            error_log('ExtraPayments::audit_doc(' . $accion . ', #' . $requestId . '): ' . $e->getMessage());
+        }
     }
 
     /** Sube uno o más adjuntos (campo `documento[]`, `kind` = soporte|comprobante). */
@@ -630,15 +646,21 @@ class ExtraPayments
                 $errores[] = $nombre . ': se alcanzó el máximo de ' . ExtraPaymentDocumentsModel::MAX_ACTIVOS . ' adjuntos por solicitud';
                 continue;
             }
-            $res = $this->docsModel->upload($id, $kind, [
-                'name'     => $nombre,
-                'tmp_name' => $files['tmp_name'][$i],
-                'error'    => $files['error'][$i],
-                'size'     => $files['size'][$i],
-            ], $this->user_id());
+            try {
+                $res = $this->docsModel->upload($id, $kind, [
+                    'name'     => $nombre,
+                    'tmp_name' => $files['tmp_name'][$i],
+                    'error'    => $files['error'][$i],
+                    'size'     => $files['size'][$i],
+                ], $this->user_id());
+            } catch (Throwable $e) {
+                error_log('ExtraPayments::doc_upload(#' . $id . '): ' . $e->getMessage());
+                $res = ['success' => false, 'message' => 'No se pudo guardar el documento'];
+            }
             if ($res['success']) {
                 $subidos++;
                 $activos++;
+                $this->audit_doc($id, 'DOC_UPLOAD', $nombre . ' (' . $kind . ')');
             } else {
                 $errores[] = $nombre . ': ' . $res['message'];
             }
@@ -668,7 +690,8 @@ class ExtraPayments
             $this->fail(404, 'Documento no encontrado', false);
         }
         if (!$this->puede_ver($solicitud)) {
-            $this->fail(403, 'No tiene acceso a esta solicitud.', false);
+            // Misma respuesta que un documento inexistente: no revela qué ids existen.
+            $this->fail(404, 'Documento no encontrado', false);
         }
 
         $raiz = realpath(__DIR__ . '/../../' . ExtraPaymentDocumentsModel::UPLOAD_BASE);
@@ -701,7 +724,7 @@ class ExtraPayments
     public function doc_delete($doc_id): void
     {
         $this->guard([
-            ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_TESORERIA, ExtraPaymentWorkflow::PERM_VER_TODAS,
+            ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_TESORERIA,
         ], true);
 
         $doc = $this->docsModel->get_by_id((int) $doc_id);
@@ -715,6 +738,7 @@ class ExtraPayments
         if (!$this->docsModel->soft_delete((int) $doc['id'], $this->user_id())) {
             json_output(['success' => false, 'message' => 'No se pudo eliminar (¿ya estaba eliminado?)']);
         }
+        $this->audit_doc((int) $solicitud['id'], 'DOC_DELETE', (string) $doc['original_filename'] . ' (' . $doc['kind'] . ')');
         json_output(['success' => true, 'message' => 'Archivo eliminado']);
     }
 
@@ -829,7 +853,12 @@ class ExtraPayments
         if (!$this->requestsModel->register_payment($id, $this->user_id(), $cuentaId, $fecha, $referencia)) {
             json_output(['success' => false, 'message' => self::MSG_CAMBIO_ESTADO]);
         }
-        json_output(['success' => true, 'message' => 'Pago de la solicitud #' . $id . ' registrado.']);
+        // Se devuelve el id para que Tesorería llegue al detalle y adjunte el comprobante (la bandeja solo lista estatus 3).
+        json_output([
+            'success' => true,
+            'message' => 'Pago de la solicitud #' . $id . ' registrado. Suba el comprobante en el detalle.',
+            'id'      => $id,
+        ]);
     }
 
     /**

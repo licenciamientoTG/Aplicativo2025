@@ -41,7 +41,7 @@ class ExtraPaymentWorkflow
         };
     }
 
-    /** Edición por flujo: solo rechazadas (el caso "pendiente sin aprobaciones" lo decide el modelo). */
+    /** Edición: solo las solicitudes rechazadas (estatus 9) se pueden editar y reenviar. */
     public static function can_edit(int $status): bool
     {
         return $status === self::ST_RECHAZADA;
@@ -88,12 +88,12 @@ class ExtraPaymentWorkflow
         return $errors;
     }
 
-    /** Suma de montos redondeada a 2 decimales. */
+    /** Suma de los montos de cada renglón redondeado a 2 decimales (igual a lo que se guarda). */
     public static function total(array $lines): float
     {
         $sum = 0.0;
         foreach ($lines as $line) {
-            $sum += (float)($line['monto'] ?? 0);
+            $sum += round((float)($line['monto'] ?? 0), 2);
         }
         return round($sum, 2);
     }

@@ -25,6 +25,7 @@
     .linea { border-top: 1px solid #000; margin-top: 46px; padding-top: 3px; font-weight: bold; font-size: 10px; text-transform: uppercase; }
     .firma-nombre { min-height: 14px; margin-top: 4px; }
     .pago { margin-top: 14px; border: 1px solid #000; padding: 6px 8px; }
+    .aviso-estatus { border: 4px double #b00020; color: #b00020; text-align: center; font-size: 20px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; padding: 8px; margin: 0 0 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .barra { text-align: right; margin-bottom: 10px; }
     .barra button { padding: 6px 14px; font-size: 13px; cursor: pointer; }
     @media print {
@@ -41,11 +42,18 @@
 
     <h1>Solicitud de pago extraordinario{{ solicitud.tipo == 'multiple' ? ' (múltiple)' : '' }}</h1>
 
+    {% if solicitud.status not in [3, 4] %}
+        <div class="aviso-estatus">{{ solicitud.status in [1, 2] ? 'Pendiente de autorización — ' ~ estatus_label : estatus_label }}</div>
+    {% endif %}
+
     <table class="sin-borde" style="margin-bottom:10px">
         <tr>
             <td><span class="etq">Folio:</span> #{{ solicitud.id }}</td>
             <td><span class="etq">Fecha:</span> {{ solicitud.fecha|date('d/m/Y') }}</td>
             <td><span class="etq">Área:</span> {{ solicitud.departamento ?: '—' }}</td>
+        </tr>
+        <tr>
+            <td colspan="3"><span class="etq">Estatus:</span> {{ estatus_label }}</td>
         </tr>
         <tr>
             <td colspan="3"><span class="etq">Solicitante:</span> {{ solicitud.solicitante }}</td>
@@ -125,8 +133,8 @@
                 <div class="linea">VoBo Cuentas por pagar</div>
             </td>
             <td>
-                <div class="firma-nombre">{{ solicitud.solicitante }}</div>
-                <div class="linea">Autorización — Solicitante<br><span style="font-weight:normal;text-transform:none">Jefe de área y/o dirección correspondiente</span></div>
+                <div class="firma-nombre"></div>
+                <div class="linea">Jefe de área y/o dirección correspondiente</div>
             </td>
             <td>
                 <div class="firma-nombre">{{ firmas[2] ? firmas[2].aprobador ~ ' — ' ~ firmas[2].created_at|date('d/m/Y') : '' }}</div>

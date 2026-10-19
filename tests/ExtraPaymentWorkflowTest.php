@@ -58,4 +58,7 @@ foreach (['empresa_cod', 'proveedor', 'descripcion'] as $campo) {
 // Total
 check('total 10.10 + 0.20 === 10.3', ExtraPaymentWorkflow::total([['monto' => '10.10'], ['monto' => '0.20']]) === 10.3);
 
+// Total = suma de los renglones ya redondeados (encabezado == suma de lo guardado)
+check('total 100.555 + 100.555 === 201.12', ExtraPaymentWorkflow::total([['monto' => '100.555'], ['monto' => '100.555']]) === 201.12);
+
 finish();

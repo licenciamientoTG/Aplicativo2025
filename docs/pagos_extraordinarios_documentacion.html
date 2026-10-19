@@ -145,7 +145,9 @@
   <li>Formatos: pdf, jpg/jpeg, png y xml. Máximo 10 MB por archivo y 20 adjuntos activos por solicitud. Además de la extensión se valida el contenido real del archivo.</li>
   <li><strong>Soporte</strong>: lo sube el solicitante (propia y permiso 106) mientras la solicitud esté en estatus 1 o 9. Una solicitud nueva no tiene adjuntos hasta guardarse; se agregan desde el detalle.</li>
   <li><strong>Comprobante</strong>: lo sube Tesorería (permiso 109) cuando la solicitud está en estatus 3 o 4.</li>
-  <li>Eliminar: quien subió el archivo o quien tiene 110, solo mientras el estatus aún permita esa clase de adjunto. Es soft-delete.</li>
+  <li>Eliminar: solo quien subió el archivo (el permiso 110 es de solo lectura y no elimina), y únicamente mientras el estatus aún permita esa clase de adjunto (soporte en 1 o 9; comprobante en 3 o 4). Es soft-delete.</li>
+  <li>Cada subida y cada eliminación queda en la bitácora con las acciones <code>DOC_UPLOAD</code> y <code>DOC_DELETE</code> (nombre original del archivo y clase).</li>
+  <li><code>doc_view</code> responde 404 «Documento no encontrado» tanto si el documento no existe o fue eliminado como si pertenece a una solicitud que el usuario no puede ver.</li>
   <li>Los archivos se guardan en <code>_assets/uploads/pagos_extraordinarios/</code> con el id del registro como nombre y se sirven solo por <code>doc_view</code>, que revisa que el usuario pueda ver la solicitud.</li>
 </ul>
 
