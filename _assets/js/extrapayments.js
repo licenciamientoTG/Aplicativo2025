@@ -365,7 +365,7 @@
                     alertify.success(escHtml(resp.message));
                     // Borrador: va a la edición (con adjuntos); envío: va al detalle
                     var plantilla = String($form.data(resp.borrador ? 'edit-url' : 'detail-url'));
-                    window.location.href = plantilla.replace(/\/0\/(edit\/)?$/, function (m, ed) { return '/' + resp.id + '/' + (ed || ''); });
+                    window.location.href = plantilla.replace(/\/0(\/edit)?(\/?)$/, function (m, ed, barra) { return '/' + resp.id + (ed || '') + barra; });
                 } else {
                     mostrarError(resp.message || 'No se pudo guardar');
                     $botones.prop('disabled', false);
