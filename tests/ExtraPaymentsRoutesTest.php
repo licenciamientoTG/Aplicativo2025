@@ -18,6 +18,12 @@ $rows = [
     ['extrapayments.edit',   ['GET'],  'pagos-extraordinarios/15/edit',  ['ExtraPayments', 'form'],   [15], ['id' => '15'], null],
     ['extrapayments.detail', ['GET'],  'pagos-extraordinarios/15',       ['ExtraPayments', 'detail'], [15], ['id' => '15'], null],
     ['extrapayments.cancel', ['POST'], 'pagos-extraordinarios/15/cancel', ['ExtraPayments', 'cancel'], [15], ['id' => '15'], null],
+    ['extrapayments.inbox',          ['GET'],  'pagos-extraordinarios/inbox/cxp',        ['ExtraPayments', 'inbox'],          ['cxp'], ['stage' => 'cxp'], null],
+    ['extrapayments.decision_modal', ['GET'],  'pagos-extraordinarios/15/decision-modal', ['ExtraPayments', 'decision_modal'], [15],    ['id' => '15'],       null],
+    ['extrapayments.approve',        ['POST'], 'pagos-extraordinarios/15/approve',       ['ExtraPayments', 'approve'],        [15],    ['id' => '15'],       null],
+    ['extrapayments.reject',         ['POST'], 'pagos-extraordinarios/15/reject',        ['ExtraPayments', 'reject'],         [15],    ['id' => '15'],       null],
+    ['extrapayments.pay_modal',      ['GET'],  'pagos-extraordinarios/15/pay-modal',     ['ExtraPayments', 'pay_modal'],      [15],    ['id' => '15'],       null],
+    ['extrapayments.pay',            ['POST'], 'pagos-extraordinarios/15/pay',           ['ExtraPayments', 'pay'],            [15],    ['id' => '15'],       null],
 ];
 
 check_routes($rows);

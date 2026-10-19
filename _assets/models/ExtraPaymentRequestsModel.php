@@ -251,12 +251,14 @@ class ExtraPaymentRequestsModel extends Model
      * Aprueba el paso actual (1 CxP -> 2, 2 Admón -> 3). Falso si otro usuario
      * ya lo avanzó o el estatus no es aprobable.
      */
-    public function approve(int $id, int $userId, ?string $comentario) : bool {
+    public function approve(int $id, int $userId, ?string $comentario, ?int $expectedStatus = null) : bool {
         $this->sql->beginTransaction();
         try {
             $current = $this->current_status($id);
             $next = $current === null ? null : ExtraPaymentWorkflow::next_status_on_approve($current);
-            if ($next === null) {
+            // $expectedStatus: el estatus sobre el que el controlador validó el permiso;
+            // si cambió entre la lectura y la transacción, no se aprueba otro paso.
+            if ($next === null || ($expectedStatus !== null && $current !== $expectedStatus)) {
                 $this->sql->rollBack();
                 return false;
             }
@@ -281,7 +283,7 @@ class ExtraPaymentRequestsModel extends Model
     /**
      * Rechaza (status 9) desde 1 o 2; el comentario es obligatorio.
      */
-    public function reject(int $id, int $userId, string $comentario) : bool {
+    public function reject(int $id, int $userId, string $comentario, ?int $expectedStatus = null) : bool {
         if (trim($comentario) === '') {
             return false;
         }
@@ -289,7 +291,8 @@ class ExtraPaymentRequestsModel extends Model
         $this->sql->beginTransaction();
         try {
             $current = $this->current_status($id);
-            if ($current !== ExtraPaymentWorkflow::ST_PEND_CXP && $current !== ExtraPaymentWorkflow::ST_PEND_ADMON) {
+            if (($current !== ExtraPaymentWorkflow::ST_PEND_CXP && $current !== ExtraPaymentWorkflow::ST_PEND_ADMON)
+                || ($expectedStatus !== null && $current !== $expectedStatus)) {
                 $this->sql->rollBack();
                 return false;
             }

@@ -30,6 +30,77 @@
         }, function () {});
     });
 
+    // ---------------- Bandejas (inbox): modales por vista parcial ----------------
+    function escHtml(s) {
+        return String(s === null || s === undefined ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function errorDe(xhr, porDefecto) {
+        var msg = (xhr.responseJSON && xhr.responseJSON.message) || (xhr.responseText || '').substring(0, 200) || porDefecto;
+        return escHtml(msg);
+    }
+
+    // Abre el modal: el servidor devuelve HTML ya escapado por Twig (sin layout)
+    $(document).on('click', '.btn-ep-modal', function () {
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        $.ajax({ url: $btn.data('url'), type: 'GET', dataType: 'html' })
+            .done(function (content) {
+                $('#modal_ep_content').html(content);
+                $('#modal_ep').modal('show');
+            })
+            .fail(function (xhr) {
+                alertify.error(errorDe(xhr, 'No se pudo abrir la solicitud'));
+            })
+            .always(function () { $btn.prop('disabled', false); });
+    });
+
+    function resolver(resp, $botones) {
+        if (resp.success) {
+            alertify.success(escHtml(resp.message));
+            $('#modal_ep').modal('hide');
+            window.location.reload();
+        } else {
+            alertify.error(escHtml(resp.message || 'No se pudo completar la acción'));
+            $botones.prop('disabled', false);
+        }
+    }
+
+    // Aprobar / Rechazar (el servidor re-valida permiso y estatus)
+    $(document).on('click', '.btn-ep-decidir', function () {
+        var $btn = $(this);
+        var $todos = $('.btn-ep-decidir');
+        var comentario = $.trim($('#ep_comentario').val());
+        if ($btn.data('rechazo') && comentario === '') {
+            alertify.warning('Escriba el comentario del rechazo.');
+            $('#ep_comentario').focus();
+            return;
+        }
+        $todos.prop('disabled', true); // evita el doble clic
+        $.ajax({ url: $btn.data('url'), type: 'POST', dataType: 'json', data: { comentario: comentario } })
+            .done(function (resp) { resolver(resp, $todos); })
+            .fail(function (xhr) {
+                alertify.error(errorDe(xhr, 'Error de comunicación'));
+                $todos.prop('disabled', false);
+            });
+    });
+
+    // Pago de Tesorería
+    $(document).on('submit', '#form_ep_pago', function (e) {
+        e.preventDefault();
+        var $f = $(this);
+        var $btn = $('#btn_ep_pagar');
+        $btn.prop('disabled', true);
+        $.ajax({ url: $f.data('url'), type: 'POST', dataType: 'json', data: $f.serialize() })
+            .done(function (resp) { resolver(resp, $btn); })
+            .fail(function (xhr) {
+                alertify.error(errorDe(xhr, 'Error de comunicación'));
+                $btn.prop('disabled', false);
+            });
+    });
+
     // ---------------- Formulario ----------------
     var $form = $('#form_extra');
     if (!$form.length) { return; }

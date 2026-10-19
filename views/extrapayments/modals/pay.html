@@ -1,0 +1,37 @@
+{# Parcial sin layout: modal de pago de Tesorería. Twig escapa todo el texto de usuario. #}
+<div class="modal-header">
+    <h6 class="modal-title">Registrar pago — Solicitud #{{ solicitud.id }}</h6>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
+<form id="form_ep_pago" data-url="{{ url('extrapayments.pay', {id: solicitud.id}) }}">
+    <div class="modal-body">
+        <div class="row g-2 mb-3">
+            <div class="col-md-5"><div class="small text-muted">Solicitante</div>{{ solicitud.solicitante }}</div>
+            <div class="col-md-4"><div class="small text-muted">Motivo</div>{{ solicitud.reason_nombre }}{% if solicitud.motivo_otros %}: {{ solicitud.motivo_otros }}{% endif %}</div>
+            <div class="col-md-3"><div class="small text-muted">Total a pagar</div><strong>${{ solicitud.total|number_format(2) }}</strong></div>
+        </div>
+        <div class="mb-3">
+            <label for="ep_cuenta" class="form-label small text-muted">Cuenta de cargo</label>
+            <select id="ep_cuenta" name="bank_account_id" class="form-select" required>
+                <option value="">Seleccione…</option>
+                {% for c in cuentas %}
+                <option value="{{ c.Id }}">{{ c.Banco }} — {{ c.Descripcion }} ({{ c.CuentaLocal }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-5">
+                <label for="ep_fecha_pago" class="form-label small text-muted">Fecha de pago</label>
+                <input type="date" id="ep_fecha_pago" name="fecha_pago" class="form-control" value="{{ hoy }}" required>
+            </div>
+            <div class="col-md-7">
+                <label for="ep_referencia" class="form-label small text-muted">Referencia</label>
+                <input type="text" id="ep_referencia" name="referencia" class="form-control" maxlength="80" required>
+            </div>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <a href="{{ url('extrapayments.detail', {id: solicitud.id}) }}" class="btn btn-outline-secondary me-auto">Ver detalle</a>
+        <button type="submit" class="btn btn-success" id="btn_ep_pagar"><i class="fas fa-money-bill-wave"></i> Registrar pago</button>
+    </div>
+</form>
