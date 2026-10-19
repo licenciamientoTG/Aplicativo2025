@@ -727,7 +727,7 @@ let datatables_tickets = $('#datatables_tickets').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_tickets',
+        url: routeUrl('administration.datatables_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -820,7 +820,7 @@ function update_mojo() {
     // Ahora vamos a insertar una funcion ajax para actualizar el ticket en mojo
     $.ajax({
         method: 'POST',
-        url: '/administration/update_mojo',
+        url: routeUrl('administration.update_mojo'),
         success: function(response) {
 
             if (response.success) {
@@ -850,7 +850,7 @@ function delete_ticket(ticket_id) {
         success: function(response) {
             // Realizar una segunda petición AJAX
             $.ajax({
-                url: '/administration/delete_ticket/' + ticket_id,
+                url: routeUrl('administration.delete_ticket', { ticket_id: ticket_id }),
                 success: function(response) {
                     if (response.success) {
                         toastr.success(response.message, '¡Éxito!', {timeOut: 5000});
@@ -921,7 +921,7 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_tickets_2',
+        url: routeUrl('administration.datatables_tickets_2'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -1103,7 +1103,7 @@ let datatables_urgentes_tickets = $('#datatables_urgentes_tickets').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_urgentes_tickets',
+        url: routeUrl('administration.datatables_urgentes_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -1240,7 +1240,7 @@ let datatables_normales_tickets = $('#datatables_normales_tickets').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_normales_tickets',
+        url: routeUrl('administration.datatables_normales_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -1554,7 +1554,7 @@ let datatables_abiertos_tickets = $('#datatables_abiertos_tickets').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_abiertos_tickets',
+        url: routeUrl('administration.datatables_abiertos_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -1692,7 +1692,7 @@ let datatables_resueltos_tickets = $('#datatables_resueltos_tickets').DataTable(
         }
     ],
     ajax: {
-        url: '/administration/datatables_resueltos_tickets',
+        url: routeUrl('administration.datatables_resueltos_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -1830,7 +1830,7 @@ let datatables_usuarios_tickets = $('#datatables_usuarios_tickets').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_usuarios_tickets/',
+        url: routeUrl('administration.datatables_usuarios_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -1967,7 +1967,7 @@ let datatables_grupos_tickets = $('#datatables_grupos_tickets').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_grupos_tickets/',
+        url: routeUrl('administration.datatables_grupos_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -2069,7 +2069,7 @@ function updateMojoTicket(id) {
         success: function(response) {
             toastr.success('El ticket fue asignado correctamente', '¡Éxito!', { timeOut: 3000 });
             // Ahora vamos
-            $.get( "/administration/update_ticket_db/" + id );
+            $.get( routeUrl('administration.update_ticket_db', { ticket_id: id }) );
         },
         error: function(xhr, status, error) {
             toastr.error('Error al asignar el ticket', '¡Error!', { timeOut: 3000 });
@@ -2126,7 +2126,7 @@ let datatables_departments_tickets = $('#datatables_departments_tickets').DataTa
         }
     ],
     ajax: {
-        url: '/administration/datatables_departments_tickets/',
+        url: routeUrl('administration.datatables_departments_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),
@@ -2263,7 +2263,7 @@ let datatables_supports_tickets = $('#datatables_supports_tickets').DataTable({
         }
     ],
     ajax: {
-        url: '/administration/datatables_supports_tickets/',
+        url: routeUrl('administration.datatables_supports_tickets'),
         type: 'POST',
         data: {
             'from': $('input#from').val(),

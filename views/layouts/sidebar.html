@@ -234,13 +234,13 @@
         <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           {% if authorized(39) %}
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a>
+            <a class="sidebar-link" href="{{ url('administration.list_tickets') }}">Lista de tickets</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a>
+            <a class="sidebar-link" href="{{ url('administration.stats_tickets') }}">Estadístico de tickets</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/administration/ecv_calc">Cálculo mensual ECV</a>
+            <a class="sidebar-link" href="{{ url('administration.ecv_calc') }}">Cálculo mensual ECV</a>
           </li>
           {% endif %}
           {% if authorized(65) %}

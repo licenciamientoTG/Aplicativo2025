@@ -42,5 +42,33 @@ return [
         route('datatables-customer-anticipos/<str:from>/<str:until>/', [Administration::class, 'datatables_customer_anticipos'], name: 'administration.datatables_customer_anticipos', methods: ['POST'], alias: ['administration/datatables_customer_anticipos/<str:from>/<str:until>']),
         route('datatables-customer-anticipos2/<int:percent>/<str:from>/<str:until>/', [Administration::class, 'datatables_customer_anticipos2'], name: 'administration.datatables_customer_anticipos2', methods: ['POST'], alias: ['administration/datatables_customer_anticipos2/<int:percent>/<str:from>/<str:until>']),
         route('datatables-customer-advances-details/<str:codcli>/<str:from>/<str:until>/', [Administration::class, 'datatables_customer_advances_details'], name: 'administration.datatables_customer_advances_details', methods: ['POST'], alias: ['administration/datatables_customer_advances_details/<str:codcli>/<str:from>/<str:until>']),
+
+        // 4c: tickets de Mojo. ticket_id <int> (id_mojo numérico); ticket_form_id <int> (se castea); el resto de
+        // parámetros de texto/fecha es <str>. Las 10 datatables_* no llevan parámetros: sus filtros van en el
+        // body POST. get_latest_tickets, get_ticket, update_groups, update_ticket_queues, update_users,
+        // update_ticket_tags, update_ticket_forms, update_ticket_types y los helpers getMondayFromWeek/
+        // getSundayFromWeek/getFirstDayOfMonth/getLastDayOfMonth/getFirstDayOfYear/getLastDayOfYear no tienen
+        // ruta (D11): son internos, invocados con $this->... desde update_mojo()/list_tickets()/stats_tickets().
+        // get_statistics tampoco: no está enlazado desde ningún lado.
+        route('list-tickets/', [Administration::class, 'list_tickets'], name: 'administration.list_tickets', methods: ['GET'], alias: ['administration/list_tickets']),
+        route('stats-tickets/', [Administration::class, 'stats_tickets'], name: 'administration.stats_tickets', methods: ['GET'], alias: ['administration/stats_tickets']),
+        route('ecv-calc/', [Administration::class, 'ecv_calc'], name: 'administration.ecv_calc', methods: ['GET'], alias: ['administration/ecv_calc']),
+        route('filtered-statistics/<str:action>/<str:period>/<int:ticket_form_id>/<str:agent_id>/', [Administration::class, 'filtered_statistics'], name: 'administration.filtered_statistics', methods: ['GET'], alias: ['administration/filtered_statistics/<str:action>/<str:period>/<int:ticket_form_id>/<str:agent_id>']),
+        route('datatables-tickets/', [Administration::class, 'datatables_tickets'], name: 'administration.datatables_tickets', methods: ['POST'], alias: ['administration/datatables_tickets']),
+        route('datatables-tickets-2/', [Administration::class, 'datatables_tickets_2'], name: 'administration.datatables_tickets_2', methods: ['POST'], alias: ['administration/datatables_tickets_2']),
+        route('update-mojo/', [Administration::class, 'update_mojo'], name: 'administration.update_mojo', methods: ['POST'], alias: ['administration/update_mojo']),
+        route('delete-ticket/<int:ticket_id>/', [Administration::class, 'delete_ticket'], name: 'administration.delete_ticket', methods: ['GET'], alias: ['administration/delete_ticket/<int:ticket_id>']),
+        route('datatables-urgentes-tickets/', [Administration::class, 'datatables_urgentes_tickets'], name: 'administration.datatables_urgentes_tickets', methods: ['POST'], alias: ['administration/datatables_urgentes_tickets']),
+        route('datatables-normales-tickets/', [Administration::class, 'datatables_normales_tickets'], name: 'administration.datatables_normales_tickets', methods: ['POST'], alias: ['administration/datatables_normales_tickets']),
+        route('datatables-abiertos-tickets/', [Administration::class, 'datatables_abiertos_tickets'], name: 'administration.datatables_abiertos_tickets', methods: ['POST'], alias: ['administration/datatables_abiertos_tickets']),
+        route('datatables-resueltos-tickets/', [Administration::class, 'datatables_resueltos_tickets'], name: 'administration.datatables_resueltos_tickets', methods: ['POST'], alias: ['administration/datatables_resueltos_tickets']),
+        route('datatables-usuarios-tickets/', [Administration::class, 'datatables_usuarios_tickets'], name: 'administration.datatables_usuarios_tickets', methods: ['POST'], alias: ['administration/datatables_usuarios_tickets']),
+        route('datatables-grupos-tickets/', [Administration::class, 'datatables_grupos_tickets'], name: 'administration.datatables_grupos_tickets', methods: ['POST'], alias: ['administration/datatables_grupos_tickets']),
+        route('update-ticket-db/<int:ticket_id>/', [Administration::class, 'update_ticket_db'], name: 'administration.update_ticket_db', methods: ['GET'], alias: ['administration/update_ticket_db/<int:ticket_id>']),
+        route('datatables-departments-tickets/', [Administration::class, 'datatables_departments_tickets'], name: 'administration.datatables_departments_tickets', methods: ['POST'], alias: ['administration/datatables_departments_tickets']),
+        route('datatables-supports-tickets/', [Administration::class, 'datatables_supports_tickets'], name: 'administration.datatables_supports_tickets', methods: ['POST'], alias: ['administration/datatables_supports_tickets']),
+        route('get-priority/<str:from>/<str:until>/<str:ticket_form>/<str:priority>/<str:user_id>/', [Administration::class, 'get_priority'], name: 'administration.get_priority', methods: ['GET'], alias: ['administration/get_priority/<str:from>/<str:until>/<str:ticket_form>/<str:priority>/<str:user_id>']),
+        route('get-agent-report/<str:agent>/<str:from>/<str:until>/<str:date_range>/<str:ticket_form>/', [Administration::class, 'get_agent_report'], name: 'administration.get_agent_report', methods: ['GET'], alias: ['administration/get_agent_report/<str:agent>/<str:from>/<str:until>/<str:date_range>/<str:ticket_form>']),
+        route('close-ticket/<int:ticket_id>/', [Administration::class, 'close_ticket'], name: 'administration.close_ticket', methods: ['GET'], public: true, alias: ['administration/close_ticket/<int:ticket_id>']),
     ]),
 ];

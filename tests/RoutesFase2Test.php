@@ -135,6 +135,30 @@ $rows = [
     ['administration.datatables_customer_anticipos', ['POST'], 'administration/datatables-customer-anticipos/2026-10-01/2026-10-31', ['Administration', 'datatables_customer_anticipos'], ['2026-10-01', '2026-10-31'], ['from' => '2026-10-01', 'until' => '2026-10-31'], 'administration/datatables_customer_anticipos/2026-10-01/2026-10-31'],
     ['administration.datatables_customer_anticipos2', ['POST'], 'administration/datatables-customer-anticipos2/20/2026-10-01/2026-10-31', ['Administration', 'datatables_customer_anticipos2'], [20, '2026-10-01', '2026-10-31'], ['percent' => 20, 'from' => '2026-10-01', 'until' => '2026-10-31'], 'administration/datatables_customer_anticipos2/20/2026-10-01/2026-10-31'],
     ['administration.datatables_customer_advances_details', ['POST'], 'administration/datatables-customer-advances-details/C123/2026-10-01/2026-10-31', ['Administration', 'datatables_customer_advances_details'], ['C123', '2026-10-01', '2026-10-31'], ['codcli' => 'C123', 'from' => '2026-10-01', 'until' => '2026-10-31'], 'administration/datatables_customer_advances_details/C123/2026-10-01/2026-10-31'],
+
+    // administration (4c: tickets de Mojo). ticket_id <int> (id_mojo numérico); ticket_form_id <int> (se castea);
+    // el resto de los parámetros de texto/fecha es <str>. Las 10 datatables_* no llevan parámetros: sus filtros
+    // van en el body POST, no en la URL.
+    ['administration.list_tickets', ['GET'], 'administration/list-tickets', ['Administration', 'list_tickets'], [], [], 'administration/list_tickets'],
+    ['administration.stats_tickets', ['GET'], 'administration/stats-tickets', ['Administration', 'stats_tickets'], [], [], 'administration/stats_tickets'],
+    ['administration.ecv_calc', ['GET'], 'administration/ecv-calc', ['Administration', 'ecv_calc'], [], [], 'administration/ecv_calc'],
+    ['administration.filtered_statistics', ['GET'], 'administration/filtered-statistics/total_tickets/2026-10/51598/0', ['Administration', 'filtered_statistics'], ['total_tickets', '2026-10', 51598, '0'], ['action' => 'total_tickets', 'period' => '2026-10', 'ticket_form_id' => 51598, 'agent_id' => '0'], 'administration/filtered_statistics/total_tickets/2026-10/51598/0'],
+    ['administration.datatables_tickets', ['POST'], 'administration/datatables-tickets', ['Administration', 'datatables_tickets'], [], [], 'administration/datatables_tickets'],
+    ['administration.datatables_tickets_2', ['POST'], 'administration/datatables-tickets-2', ['Administration', 'datatables_tickets_2'], [], [], 'administration/datatables_tickets_2'],
+    ['administration.update_mojo', ['POST'], 'administration/update-mojo', ['Administration', 'update_mojo'], [], [], 'administration/update_mojo'],
+    ['administration.delete_ticket', ['GET'], 'administration/delete-ticket/12345', ['Administration', 'delete_ticket'], [12345], ['ticket_id' => 12345], 'administration/delete_ticket/12345'],
+    ['administration.datatables_urgentes_tickets', ['POST'], 'administration/datatables-urgentes-tickets', ['Administration', 'datatables_urgentes_tickets'], [], [], 'administration/datatables_urgentes_tickets'],
+    ['administration.datatables_normales_tickets', ['POST'], 'administration/datatables-normales-tickets', ['Administration', 'datatables_normales_tickets'], [], [], 'administration/datatables_normales_tickets'],
+    ['administration.datatables_abiertos_tickets', ['POST'], 'administration/datatables-abiertos-tickets', ['Administration', 'datatables_abiertos_tickets'], [], [], 'administration/datatables_abiertos_tickets'],
+    ['administration.datatables_resueltos_tickets', ['POST'], 'administration/datatables-resueltos-tickets', ['Administration', 'datatables_resueltos_tickets'], [], [], 'administration/datatables_resueltos_tickets'],
+    ['administration.datatables_usuarios_tickets', ['POST'], 'administration/datatables-usuarios-tickets', ['Administration', 'datatables_usuarios_tickets'], [], [], 'administration/datatables_usuarios_tickets'],
+    ['administration.datatables_grupos_tickets', ['POST'], 'administration/datatables-grupos-tickets', ['Administration', 'datatables_grupos_tickets'], [], [], 'administration/datatables_grupos_tickets'],
+    ['administration.update_ticket_db', ['GET'], 'administration/update-ticket-db/12345', ['Administration', 'update_ticket_db'], [12345], ['ticket_id' => 12345], 'administration/update_ticket_db/12345'],
+    ['administration.datatables_departments_tickets', ['POST'], 'administration/datatables-departments-tickets', ['Administration', 'datatables_departments_tickets'], [], [], 'administration/datatables_departments_tickets'],
+    ['administration.datatables_supports_tickets', ['POST'], 'administration/datatables-supports-tickets', ['Administration', 'datatables_supports_tickets'], [], [], 'administration/datatables_supports_tickets'],
+    ['administration.get_priority', ['GET'], 'administration/get-priority/2026-10-01/2026-10-31/51598/abiertos/0', ['Administration', 'get_priority'], ['2026-10-01', '2026-10-31', '51598', 'abiertos', '0'], ['from' => '2026-10-01', 'until' => '2026-10-31', 'ticket_form' => '51598', 'priority' => 'abiertos', 'user_id' => '0'], 'administration/get_priority/2026-10-01/2026-10-31/51598/abiertos/0'],
+    ['administration.get_agent_report', ['GET'], 'administration/get-agent-report/4351669/2026-10-01/2026-10-31/mensual/51598', ['Administration', 'get_agent_report'], ['4351669', '2026-10-01', '2026-10-31', 'mensual', '51598'], ['agent' => '4351669', 'from' => '2026-10-01', 'until' => '2026-10-31', 'date_range' => 'mensual', 'ticket_form' => '51598'], 'administration/get_agent_report/4351669/2026-10-01/2026-10-31/mensual/51598'],
+    ['administration.close_ticket', ['GET'], 'administration/close-ticket/12345', ['Administration', 'close_ticket'], [12345], ['ticket_id' => 12345], 'administration/close_ticket/12345'],
 ];
 
 // Review Focus 4: doc_agujita se comparte fuera del sistema y no pide sesión, por la URL nueva y por la vieja
@@ -143,6 +167,11 @@ check('administration: doc_agujita es pública (ruta y alias)',
     && (Router::match('administration/doc_agujita', 'GET')['route']['public'] ?? false) === true);
 check('administration: el resto no es público',
     (Router::match('administration/exchange-rate', 'GET')['route']['public'] ?? true) === false);
+
+// Review Focus 4c: close_ticket es público (ruta y alias) — hoy el whitelist de index.php no calza con el <id>
+check('administration: close_ticket es pública (ruta y alias)',
+    (Router::match('administration/close-ticket/12345', 'GET')['route']['public'] ?? false) === true
+    && (Router::match('administration/close_ticket/12345', 'GET')['route']['public'] ?? false) === true);
 
 // Review Focus 4: el id de producto es str (el controlador no lo castea)
 check('direction: daily_summary_shortge acepta un id con letras',
