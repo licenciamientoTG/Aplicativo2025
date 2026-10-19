@@ -1,0 +1,84 @@
+{# views/extrapayments/report.html — Reporte general de pagos extraordinarios (permiso 110) #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Reporte de pagos extraordinarios{% endblock %}
+{% block menutitle %}Pagos extraordinarios — Reporte{% endblock %}
+{% block mycss %}
+<style>
+    #tabla_reporte thead th { text-transform:uppercase; font-size:.72rem; letter-spacing:.04em; color:#6c757d; white-space:nowrap; }
+    #tabla_reporte tbody td { vertical-align:middle; }
+    .badge-estatus { font-size:.75rem; font-weight:600; padding:.35em .8em; border-radius:999px; color:#fff; }
+    .st-1 { background:#B45309; } .st-2 { background:#1C4587; } .st-3 { background:#0d9488; }
+    .st-4 { background:#198754; } .st-8 { background:#6c757d; } .st-9 { background:#dc3545; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <form method="get" action="{{ url('extrapayments.report') }}" class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small text-muted" for="f_status">Estatus</label>
+                <select id="f_status" name="status" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    {% for k, v in estatus %}<option value="{{ k }}" {{ filtros.status != '' and filtros.status == k ? 'selected' : '' }}>{{ v }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted" for="f_empresa">Empresa</label>
+                <select id="f_empresa" name="empresa_cod" class="form-select form-select-sm">
+                    <option value="">Todas</option>
+                    {% for e in empresas %}<option value="{{ e.cod }}" {{ filtros.empresa_cod != '' and filtros.empresa_cod == e.cod ? 'selected' : '' }}>{{ e.den }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted" for="f_motivo">Motivo</label>
+                <select id="f_motivo" name="reason_id" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    {% for m in motivos %}<option value="{{ m.id }}" {{ filtros.reason_id != '' and filtros.reason_id == m.id ? 'selected' : '' }}>{{ m.nombre }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted" for="f_desde">Desde</label>
+                <input id="f_desde" type="date" name="desde" value="{{ filtros.desde }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted" for="f_hasta">Hasta</label>
+                <input id="f_hasta" type="date" name="hasta" value="{{ filtros.hasta }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-search"></i> Filtrar</button>
+                <a href="{{ url('extrapayments.report') }}" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+                <a href="{{ url('extrapayments.report_export') }}{{ query ? '?' ~ query : '' }}" class="btn btn-sm btn-success ms-auto"><i class="fas fa-file-excel"></i> Exportar a Excel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="px-3 pt-3 small text-muted">{{ solicitudes|length }} solicitud(es) · Total ${{ total|number_format(2) }}</div>
+        <div class="table-responsive p-3">
+            <table id="tabla_reporte" class="table table-hover table-sm w-100 mb-0">
+                <thead>
+                    <tr><th>Folio</th><th>Fecha</th><th>Tipo</th><th>Solicitante</th><th>Departamento</th><th>Motivo</th><th class="text-end">Total</th><th>Estatus</th></tr>
+                </thead>
+                <tbody>
+                {% for s in solicitudes %}
+                    <tr>
+                        <td><a href="{{ url('extrapayments.detail', {id: s.id}) }}">#{{ s.id }}</a></td>
+                        <td>{{ s.fecha|date('d/m/Y') }}</td>
+                        <td>{{ s.tipo == 'individual' ? 'Individual' : 'Múltiple' }}</td>
+                        <td>{{ s.solicitante }}</td>
+                        <td>{{ s.departamento ?: '—' }}</td>
+                        <td>{{ s.reason_nombre }}</td>
+                        <td class="text-end">${{ s.total|number_format(2) }}</td>
+                        <td><span class="badge-estatus st-{{ s.status }}">{{ estatus[s.status] ?? s.status }}</span></td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">Sin resultados para los filtros elegidos.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

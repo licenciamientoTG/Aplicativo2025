@@ -16,9 +16,11 @@ class ExtraPaymentRequestsModel extends Model
                 r.id, r.fecha, r.tipo, r.total, r.status, r.user_id, r.reason_id,
                 r.departamento_id, r.created_at, r.updated_at,
                 u.Nombre AS solicitante,
-                rs.nombre AS reason_nombre
+                rs.nombre AS reason_nombre,
+                d.Nombre AS departamento
             FROM [TG].[dbo].[extra_payment_requests] r
             LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = r.user_id
+            LEFT JOIN [TG].[dbo].[Departamentos] d ON d.Id = r.departamento_id
             LEFT JOIN [TG].[dbo].[extra_payment_reasons] rs ON rs.id = r.reason_id
         ';
     }
@@ -207,9 +209,11 @@ class ExtraPaymentRequestsModel extends Model
     }
 
     /**
-     * Filtros opcionales: status, empresa_cod, reason_id, desde, hasta.
+     * Arma el WHERE parametrizado de los filtros opcionales (status, empresa_cod,
+     * reason_id, desde, hasta). Compartido por list_all y list_lines_for_export.
+     * @return array{0:string,1:array} [cláusula WHERE (con espacio inicial o ''), parámetros]
      */
-    public function list_all(array $filters = []) : array {
+    private function build_filters(array $filters) : array {
         $where = [];
         $params = [];
 
@@ -233,11 +237,44 @@ class ExtraPaymentRequestsModel extends Model
             $where[] = 'r.fecha <= ?';
             $params[] = (string)$filters['hasta'];
         }
+        return [$where ? ' WHERE ' . implode(' AND ', $where) : '', $params];
+    }
 
-        $query = $this->list_base_query()
-            . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
-            . ' ORDER BY r.id DESC';
-        return $this->sql->select($query, $params) ?: [];
+    /**
+     * Filtros opcionales: status, empresa_cod, reason_id, desde, hasta.
+     */
+    public function list_all(array $filters = []) : array {
+        [$where, $params] = $this->build_filters($filters);
+        return $this->sql->select(
+            $this->list_base_query() . $where . ' ORDER BY r.id DESC',
+            $params
+        ) ?: [];
+    }
+
+    /**
+     * Una fila por renglón para el export, con los mismos filtros que list_all.
+     * Con filtro de empresa solo salen los renglones de esa empresa.
+     */
+    public function list_lines_for_export(array $filters = []) : array {
+        [$where, $params] = $this->build_filters($filters);
+        if (isset($filters['empresa_cod']) && $filters['empresa_cod'] !== '') {
+            $where .= ' AND l.empresa_cod = ?';
+            $params[] = (int)$filters['empresa_cod'];
+        }
+        return $this->sql->select('
+            SELECT
+                r.id AS folio, r.fecha, r.status, r.tipo,
+                rs.nombre AS reason_nombre, r.motivo_otros,
+                e.den AS empresa_nombre,
+                l.centro_costos, l.proveedor, l.factura, l.fecha_factura,
+                l.descripcion, l.monto,
+                p.fecha_pago
+            FROM [TG].[dbo].[extra_payment_requests] r
+            JOIN [TG].[dbo].[extra_payment_lines] l ON l.request_id = r.id
+            LEFT JOIN [TG].[dbo].[extra_payment_reasons] rs ON rs.id = r.reason_id
+            LEFT JOIN [SG12].[dbo].[Empresas] e ON e.cod = l.empresa_cod
+            LEFT JOIN [TG].[dbo].[extra_payment_payments] p ON p.request_id = r.id
+        ' . $where . ' ORDER BY r.id DESC, l.id ASC', $params) ?: [];
     }
 
     public function list_by_status(int $status) : array {

@@ -21,6 +21,11 @@ return [
         route('<int:id>/documents/', [ExtraPayments::class, 'doc_upload'], name: 'extrapayments.doc_upload', methods: ['POST']),
         route('documents/<int:doc_id>/', [ExtraPayments::class, 'doc_view'], name: 'extrapayments.doc_view', methods: ['GET']),
         route('documents/<int:doc_id>/delete/', [ExtraPayments::class, 'doc_delete'], name: 'extrapayments.doc_delete', methods: ['POST']),
+        // Reporte (110) e impresión: 'report/' antes de '<int:id>/'. print valida
+        // la visibilidad (propia o privilegiado) en el controlador, como detail.
+        route('report/', [ExtraPayments::class, 'report'], name: 'extrapayments.report', methods: ['GET'], permission: 110),
+        route('report/export/', [ExtraPayments::class, 'report_export'], name: 'extrapayments.report_export', methods: ['GET'], permission: 110),
+        route('<int:id>/print/', [ExtraPayments::class, 'print'], name: 'extrapayments.print', methods: ['GET']),
         route('<int:id>/', [ExtraPayments::class, 'detail'], name: 'extrapayments.detail', methods: ['GET']),
     ]),
 ];
