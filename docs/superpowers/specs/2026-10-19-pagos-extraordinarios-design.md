@@ -24,7 +24,7 @@ Reemplazar el Excel de solicitud de pago extraordinario por un flujo en el siste
 ## Decisiones propias (a confirmar)
 - Controlador aparte `ExtraPayments`, router explícito `routes/extrapayments.php`, URLs `/pagos-extraordinarios/...`.
 - Entrada de sidebar "Pagos extraordinarios".
-- Permisos 103–107 (verificar libres en BD): 103 crear/ver propias, 104 VoBo CxP, 105 autoriza Admón, 106 paga Tesorería, 107 ver todas.
+- Permisos 106–110 (verificado en BD: 103–105 ya son de Tableros): 106 crear/ver propias, 107 VoBo CxP, 108 autoriza Admón, 109 paga Tesorería, 110 ver todas.
 - Rechazo regresa al solicitante con comentario; al reenviar se invalidan las aprobaciones previas.
 
 ## Datos (TG)
