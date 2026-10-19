@@ -37,6 +37,7 @@ class ExtraPayments
     public ExtraPaymentRequestsModel $requestsModel;
     public ExtraPaymentCatalogModel $catalogModel;
     public DepartamentosModel $departamentosModel;
+    public ExtraPaymentDocumentsModel $docsModel;
 
     public function __construct($twig)
     {
@@ -45,6 +46,7 @@ class ExtraPayments
         $this->requestsModel      = new ExtraPaymentRequestsModel();
         $this->catalogModel       = new ExtraPaymentCatalogModel();
         $this->departamentosModel = new DepartamentosModel();
+        $this->docsModel          = new ExtraPaymentDocumentsModel();
     }
 
     /* ===================================================================== */
@@ -86,6 +88,49 @@ class ExtraPayments
     private function es_propia(array $request): bool
     {
         return (int) $request['user_id'] === $this->user_id();
+    }
+
+    /**
+     * Ve cualquier solicitud quien tenga 110 (ver todas) o algún permiso de
+     * bandeja (107 CxP / 108 Admón / 109 Tesorería); los demás, solo las propias.
+     */
+    private function es_privilegiado(): bool
+    {
+        return authorized(ExtraPaymentWorkflow::PERM_VER_TODAS)
+            || authorized(ExtraPaymentWorkflow::PERM_CXP)
+            || authorized(ExtraPaymentWorkflow::PERM_ADMON)
+            || authorized(ExtraPaymentWorkflow::PERM_TESORERIA);
+    }
+
+    private function puede_ver(array $solicitud): bool
+    {
+        return $this->es_privilegiado() || $this->es_propia($solicitud);
+    }
+
+    /** Estatus en los que cada clase de adjunto se puede subir/eliminar. */
+    private function estatus_adjuntos(string $kind): array
+    {
+        return $kind === 'soporte'
+            ? [ExtraPaymentWorkflow::ST_PEND_CXP, ExtraPaymentWorkflow::ST_RECHAZADA]
+            : [ExtraPaymentWorkflow::ST_AUTORIZADA, ExtraPaymentWorkflow::ST_PAGADA];
+    }
+
+    /**
+     * ¿Puede el usuario subir adjuntos de esta clase en esta solicitud?
+     * soporte: el solicitante (106) con la solicitud en 1 (pendiente CxP) o 9 (rechazada).
+     * comprobante: Tesorería (109) con la solicitud en 3 (autorizada) o 4 (pagada).
+     */
+    private function puede_adjuntar(array $solicitud, string $kind): bool
+    {
+        if ($kind !== 'soporte' && $kind !== 'comprobante') {
+            return false;
+        }
+        if (!in_array((int) $solicitud['status'], $this->estatus_adjuntos($kind), true)) {
+            return false;
+        }
+        return $kind === 'soporte'
+            ? $this->es_propia($solicitud) && authorized(ExtraPaymentWorkflow::PERM_CREAR)
+            : authorized(ExtraPaymentWorkflow::PERM_TESORERIA);
     }
 
     /** Recorta, quita espacios y trunca al límite de la columna. */
@@ -145,7 +190,12 @@ class ExtraPayments
         $empresas = $this->catalogModel->empresas();
         $area     = $this->departamentosModel->nombre_de_usuario($this->user_id());
         $nombre   = $_SESSION['tg_user']['Nombre'] ?? ($_SESSION['tg_user']['Usuario'] ?? '');
-        echo $this->twig->render($this->route . 'form.html', compact('solicitud', 'motivos', 'empresas', 'area', 'nombre'));
+        // Alta: sin id no hay adjuntos; se agregan en el detalle tras el primer guardado.
+        $adjuntos = $solicitud ? $this->datos_adjuntos($solicitud) : [];
+        echo $this->twig->render($this->route . 'form.html', array_merge(
+            compact('solicitud', 'motivos', 'empresas', 'area', 'nombre'),
+            $adjuntos
+        ));
     }
 
     /** Detalle: encabezado, renglones, firmas y auditoría. */
@@ -161,10 +211,7 @@ class ExtraPayments
         // necesita abrir el detalle de lo que aprueba o paga. Los demás (solo 106)
         // ven únicamente las propias. Para estos últimos, inexistente y ajena
         // responden el mismo 403 (no se revela qué ids existen).
-        $privilegiado = authorized(ExtraPaymentWorkflow::PERM_VER_TODAS)
-            || authorized(ExtraPaymentWorkflow::PERM_CXP)
-            || authorized(ExtraPaymentWorkflow::PERM_ADMON)
-            || authorized(ExtraPaymentWorkflow::PERM_TESORERIA);
+        $privilegiado = $this->es_privilegiado();
 
         $solicitud = $this->requestsModel->get((int) $id);
         if (!$solicitud) {
@@ -182,7 +229,10 @@ class ExtraPayments
         $es_propia   = $this->es_propia($solicitud);
         $puede_editar   = $es_propia && authorized(ExtraPaymentWorkflow::PERM_CREAR) && ExtraPaymentWorkflow::can_edit($status);
         $puede_cancelar = $es_propia && authorized(ExtraPaymentWorkflow::PERM_CREAR) && ExtraPaymentWorkflow::can_cancel($status);
-        echo $this->twig->render($this->route . 'detail.html', compact('solicitud', 'puede_editar', 'puede_cancelar'));
+        echo $this->twig->render($this->route . 'detail.html', array_merge(
+            compact('solicitud', 'puede_editar', 'puede_cancelar'),
+            $this->datos_adjuntos($solicitud)
+        ));
     }
 
     /* ===================================================================== */
@@ -343,7 +393,158 @@ class ExtraPayments
     }
 
     /* ===================================================================== */
-    /* Bandejas de aprobación y pago                                         */
+    /* Adjuntos                                                              */
+    /* ===================================================================== */
+
+    /** Eliminar: quien subió el adjunto o 110, mientras el estatus aún permita esa clase. */
+    private function puede_eliminar_doc(array $solicitud, array $doc, int $uid): bool
+    {
+        if (!$this->puede_ver($solicitud)) {
+            return false;
+        }
+        if ((int) $doc['created_by'] !== $uid && !authorized(ExtraPaymentWorkflow::PERM_VER_TODAS)) {
+            return false;
+        }
+        return in_array((int) $solicitud['status'], $this->estatus_adjuntos((string) $doc['kind']), true);
+    }
+
+    /** Variables Twig del panel de adjuntos (views/extrapayments/partials/documentos.html). */
+    private function datos_adjuntos(array $solicitud): array
+    {
+        $uid = $this->user_id();
+        $documentos = $this->docsModel->get_by_request((int) $solicitud['id']);
+        foreach ($documentos as &$d) {
+            $d['puede_eliminar'] = $this->puede_eliminar_doc($solicitud, $d, $uid); // doc_delete lo re-valida
+        }
+        unset($d);
+        return [
+            'documentos'             => $documentos,
+            'can_upload_soporte'     => $this->puede_adjuntar($solicitud, 'soporte'),
+            'can_upload_comprobante' => $this->puede_adjuntar($solicitud, 'comprobante'),
+        ];
+    }
+
+    /** Sube uno o más adjuntos (campo `documento[]`, `kind` = soporte|comprobante). */
+    public function doc_upload($id): void
+    {
+        $this->guard([ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_TESORERIA], true);
+        $id = (int) $id;
+
+        $solicitud = $this->requestsModel->get($id);
+        if (!$solicitud || !$this->puede_ver($solicitud)) {
+            $this->fail(403, 'No tiene acceso a esta solicitud.', true);
+        }
+        $kind = (string) ($_POST['kind'] ?? '');
+        if (!in_array($kind, ExtraPaymentDocumentsModel::KINDS, true)) {
+            json_output(['success' => false, 'message' => 'Tipo de documento inválido.']);
+        }
+        if (!$this->puede_adjuntar($solicitud, $kind)) {
+            json_output(['success' => false, 'message' => 'No puede adjuntar este tipo de documento en el estatus actual de la solicitud.']);
+        }
+        if (empty($_FILES['documento']) || !is_array($_FILES['documento']['name'])) {
+            json_output(['success' => false, 'message' => 'No se recibieron archivos.']);
+        }
+
+        $files   = $_FILES['documento'];
+        $subidos = 0;
+        $errores = [];
+        $activos = $this->docsModel->count_active($id);
+        foreach (array_keys($files['name']) as $i) {
+            $nombre = (string) $files['name'][$i];
+            if ($activos >= ExtraPaymentDocumentsModel::MAX_ACTIVOS) {
+                $errores[] = $nombre . ': se alcanzó el máximo de ' . ExtraPaymentDocumentsModel::MAX_ACTIVOS . ' adjuntos por solicitud';
+                continue;
+            }
+            $res = $this->docsModel->upload($id, $kind, [
+                'name'     => $nombre,
+                'tmp_name' => $files['tmp_name'][$i],
+                'error'    => $files['error'][$i],
+                'size'     => $files['size'][$i],
+            ], $this->user_id());
+            if ($res['success']) {
+                $subidos++;
+                $activos++;
+            } else {
+                $errores[] = $nombre . ': ' . $res['message'];
+            }
+        }
+
+        json_output([
+            'success' => $subidos > 0,
+            'subidos' => $subidos,
+            'errores' => $errores,
+            'message' => $subidos > 0
+                ? "$subidos archivo(s) subido(s)" . ($errores ? ' (con error: ' . implode('; ', $errores) . ')' : '')
+                : implode("\n", $errores ?: ['No se pudo subir ningún archivo.']),
+        ]);
+    }
+
+    /** Sirve un adjunto solo a quien puede ver la solicitud; nunca como estático. */
+    public function doc_view($doc_id): void
+    {
+        $this->guard([
+            ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_CXP, ExtraPaymentWorkflow::PERM_ADMON,
+            ExtraPaymentWorkflow::PERM_TESORERIA, ExtraPaymentWorkflow::PERM_VER_TODAS,
+        ]);
+
+        $doc = $this->docsModel->get_by_id((int) $doc_id);
+        $solicitud = ($doc && (int) $doc['is_deleted'] === 0) ? $this->requestsModel->get((int) $doc['request_id']) : null;
+        if (!$solicitud) {
+            $this->fail(404, 'Documento no encontrado', false);
+        }
+        if (!$this->puede_ver($solicitud)) {
+            $this->fail(403, 'No tiene acceso a esta solicitud.', false);
+        }
+
+        $raiz = realpath(__DIR__ . '/../../' . ExtraPaymentDocumentsModel::UPLOAD_BASE);
+        $ruta = realpath(__DIR__ . '/../../' . $doc['file_path']);
+        if (!$raiz || !$ruta || !is_file($ruta) || strncmp($ruta, $raiz . DIRECTORY_SEPARATOR, strlen($raiz) + 1) !== 0) {
+            $this->fail(404, 'Archivo no encontrado', false);
+        }
+
+        $ext  = strtolower((string) $doc['file_extension']);
+        $mime = match ($ext) {
+            'pdf'         => 'application/pdf',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png'         => 'image/png',
+            'xml'         => 'application/xml',
+            default       => 'application/octet-stream',
+        };
+        // El XML se descarga: visto inline podría interpretarse como documento activo.
+        $disposicion = $ext === 'xml' ? 'attachment' : 'inline';
+        $nombre = preg_replace('/[^A-Za-z0-9._-]+/', '_', (string) $doc['original_filename']) ?: ('documento.' . $ext);
+
+        header('Content-Type: ' . $mime);
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: ' . $disposicion . '; filename="' . $nombre . '"');
+        header('Content-Length: ' . filesize($ruta));
+        readfile($ruta);
+        exit;
+    }
+
+    /** Soft-delete de un adjunto (ver puede_eliminar_doc). */
+    public function doc_delete($doc_id): void
+    {
+        $this->guard([
+            ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_TESORERIA, ExtraPaymentWorkflow::PERM_VER_TODAS,
+        ], true);
+
+        $doc = $this->docsModel->get_by_id((int) $doc_id);
+        $solicitud = ($doc && (int) $doc['is_deleted'] === 0) ? $this->requestsModel->get((int) $doc['request_id']) : null;
+        if (!$solicitud) {
+            $this->fail(403, 'No tiene acceso a este documento.', true);
+        }
+        if (!$this->puede_eliminar_doc($solicitud, $doc, $this->user_id())) {
+            json_output(['success' => false, 'message' => 'No puede eliminar este documento (no es suyo o la solicitud ya no lo permite).']);
+        }
+        if (!$this->docsModel->soft_delete((int) $doc['id'], $this->user_id())) {
+            json_output(['success' => false, 'message' => 'No se pudo eliminar (¿ya estaba eliminado?)']);
+        }
+        json_output(['success' => true, 'message' => 'Archivo eliminado']);
+    }
+
+    /* ===================================================================== */
+    /* Bandejas de aprobación y pago                                        */
     /* ===================================================================== */
 
     /** Bandeja por etapa (cxp | admon | tesoreria). */

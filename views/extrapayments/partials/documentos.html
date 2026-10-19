@@ -1,0 +1,36 @@
+{# Panel de adjuntos. Requiere: solicitud, documentos, can_upload_soporte, can_upload_comprobante. Debe ir FUERA de cualquier <form>. #}
+<div class="card border-0 shadow-sm mb-3" id="ep_docs">
+    <div class="card-body">
+        <h6>Documentos adjuntos</h6>
+        <div class="table-responsive">
+            <table class="table table-sm mb-2">
+                <thead><tr><th>Archivo</th><th>Tipo</th><th>Subido por</th><th>Fecha</th><th class="text-end">Tamaño</th><th></th></tr></thead>
+                <tbody>
+                {% for d in documentos %}
+                    <tr>
+                        <td><a href="{{ url('extrapayments.doc_view', {doc_id: d.id}) }}" target="_blank" rel="noopener">{{ d.original_filename }}</a></td>
+                        <td>{{ d.kind == 'soporte' ? 'Soporte' : 'Comprobante de pago' }}</td>
+                        <td>{{ d.usuario_nombre }}</td>
+                        <td>{{ d.created_at|date('d/m/Y H:i') }}</td>
+                        <td class="text-end">{{ (d.file_size / 1024)|number_format(1) }} KB</td>
+                        <td class="text-end">
+                            {% if d.puede_eliminar %}<button type="button" class="btn btn-sm btn-outline-danger btn-ep-doc-del" data-url="{{ url('extrapayments.doc_delete', {doc_id: d.id}) }}" title="Eliminar"><i class="fas fa-trash"></i></button>{% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6" class="text-muted">Sin documentos adjuntos.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% for k in ['soporte', 'comprobante'] %}
+            {% if (k == 'soporte' and can_upload_soporte) or (k == 'comprobante' and can_upload_comprobante) %}
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                <label class="small text-muted mb-0">{{ k == 'soporte' ? 'Agregar soporte' : 'Agregar comprobante de pago' }} (PDF, JPG, PNG o XML, máx. 10 MB):</label>
+                <input type="file" class="form-control form-control-sm w-auto ep-doc-file" multiple accept=".pdf,.jpg,.jpeg,.png,.xml">
+                <button type="button" class="btn btn-sm btn-primary ep-doc-upload" data-kind="{{ k }}" data-url="{{ url('extrapayments.doc_upload', {id: solicitud.id}) }}"><i class="fas fa-upload"></i> Subir</button>
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>

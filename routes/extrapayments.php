@@ -17,6 +17,10 @@ return [
         route('<int:id>/reject/', [ExtraPayments::class, 'reject'], name: 'extrapayments.reject', methods: ['POST']),
         route('<int:id>/pay-modal/', [ExtraPayments::class, 'pay_modal'], name: 'extrapayments.pay_modal', methods: ['GET']),
         route('<int:id>/pay/', [ExtraPayments::class, 'pay'], name: 'extrapayments.pay', methods: ['POST'], permission: 109),
+        // Adjuntos: el permiso depende del rol/estatus, se valida en el controlador.
+        route('<int:id>/documents/', [ExtraPayments::class, 'doc_upload'], name: 'extrapayments.doc_upload', methods: ['POST']),
+        route('documents/<int:doc_id>/', [ExtraPayments::class, 'doc_view'], name: 'extrapayments.doc_view', methods: ['GET']),
+        route('documents/<int:doc_id>/delete/', [ExtraPayments::class, 'doc_delete'], name: 'extrapayments.doc_delete', methods: ['POST']),
         route('<int:id>/', [ExtraPayments::class, 'detail'], name: 'extrapayments.detail', methods: ['GET']),
     ]),
 ];

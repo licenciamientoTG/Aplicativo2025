@@ -66,6 +66,9 @@
     </div>
 </form>
 
+{# Adjuntos: solo al editar (una solicitud nueva aún no tiene id; tras enviarla se redirige al detalle, donde se agregan). #}
+{% if solicitud %}{% include "views/extrapayments/partials/documentos.html" %}{% endif %}
+
 {# Plantilla de renglón: el JS la clona y reemplaza __I__ por el índice #}
 <template id="tpl_linea">
     <div class="ep-linea" data-i="__I__">

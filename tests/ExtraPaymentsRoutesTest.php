@@ -24,6 +24,9 @@ $rows = [
     ['extrapayments.reject',         ['POST'], 'pagos-extraordinarios/15/reject',        ['ExtraPayments', 'reject'],         [15],    ['id' => '15'],       null],
     ['extrapayments.pay_modal',      ['GET'],  'pagos-extraordinarios/15/pay-modal',     ['ExtraPayments', 'pay_modal'],      [15],    ['id' => '15'],       null],
     ['extrapayments.pay',            ['POST'], 'pagos-extraordinarios/15/pay',           ['ExtraPayments', 'pay'],            [15],    ['id' => '15'],       null],
+    ['extrapayments.doc_upload',     ['POST'], 'pagos-extraordinarios/15/documents',     ['ExtraPayments', 'doc_upload'],     [15],    ['id' => '15'],       null],
+    ['extrapayments.doc_view',       ['GET'],  'pagos-extraordinarios/documents/7',      ['ExtraPayments', 'doc_view'],       [7],     ['doc_id' => '7'],    null],
+    ['extrapayments.doc_delete',     ['POST'], 'pagos-extraordinarios/documents/7/delete', ['ExtraPayments', 'doc_delete'],   [7],     ['doc_id' => '7'],    null],
 ];
 
 check_routes($rows);

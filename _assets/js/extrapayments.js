@@ -101,6 +101,57 @@
             });
     });
 
+    // ---------------- Adjuntos (detalle y formulario de edición) ----------------
+    // Subir: el servidor re-valida permiso, estatus, extensión y contenido.
+    $(document).on('click', '.ep-doc-upload', function () {
+        var $btn = $(this);
+        var input = $btn.siblings('.ep-doc-file')[0];
+        if (!input || !input.files.length) {
+            alertify.warning('Seleccione al menos un archivo.');
+            return;
+        }
+        var fd = new FormData();
+        fd.append('kind', $btn.data('kind'));
+        Array.prototype.forEach.call(input.files, function (f) { fd.append('documento[]', f); });
+        $btn.prop('disabled', true);
+        $.ajax({ url: $btn.data('url'), type: 'POST', dataType: 'json', data: fd, processData: false, contentType: false })
+            .done(function (resp) {
+                if (resp.success) {
+                    alertify.success(escHtml(resp.message));
+                    window.location.reload();
+                } else {
+                    alertify.error(escHtml(resp.message || 'No se pudo subir').replace(/\n/g, '<br>'));
+                    $btn.prop('disabled', false);
+                }
+            })
+            .fail(function (xhr) {
+                alertify.error(errorDe(xhr, 'Error de comunicación'));
+                $btn.prop('disabled', false);
+            });
+    });
+
+    // Eliminar (soft-delete)
+    $(document).on('click', '.btn-ep-doc-del', function () {
+        var $btn = $(this);
+        alertify.confirm('Eliminar documento', '¿Eliminar este documento?', function () {
+            $btn.prop('disabled', true);
+            $.ajax({ url: $btn.data('url'), type: 'POST', dataType: 'json' })
+                .done(function (resp) {
+                    if (resp.success) {
+                        alertify.success(escHtml(resp.message));
+                        window.location.reload();
+                    } else {
+                        alertify.error(escHtml(resp.message || 'No se pudo eliminar'));
+                        $btn.prop('disabled', false);
+                    }
+                })
+                .fail(function (xhr) {
+                    alertify.error(errorDe(xhr, 'Error de comunicación'));
+                    $btn.prop('disabled', false);
+                });
+        }, function () {});
+    });
+
     // ---------------- Formulario ----------------
     var $form = $('#form_extra');
     if (!$form.length) { return; }
