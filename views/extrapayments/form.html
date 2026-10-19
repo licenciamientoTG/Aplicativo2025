@@ -20,6 +20,8 @@
     .ep-opcion.motivo.sel .tit { color:#fff; }
     .ep-opcion.motivo.sel .dot { border-color:#38bdf8; background:#38bdf8; }
     .ep-opcion.motivo.sel .dot::after { background:#1e293b; }
+    .ep-req { color:#dc3545; font-weight:700; font-size:.95em; }
+    .ep-leyenda { font-size:.75rem; color:#6c757d; }
     .ep-titulo { font-size:1.25rem; font-weight:700; margin:0; }
     .ep-folio { font-family:monospace; font-size:.75rem; font-weight:600; padding:.15rem .5rem; border-radius:.3rem; background:#eef3fb; color:#1C4587; border:1px solid #c7d6ee; }
     .ep-solicitante { display:inline-flex; flex-wrap:wrap; align-items:center; gap:.4rem; font-size:.78rem; background:#fff; border:1px solid #e2e8f0; border-radius:.5rem; padding:.4rem .75rem; box-shadow:0 1px 2px rgba(0,0,0,.04); }
@@ -44,7 +46,7 @@
                 <h1 class="ep-titulo">{{ solicitud ? (solicitud.status == 5 ? 'Continuar borrador' : 'Corregir solicitud de pago extraordinario') : 'Nueva solicitud de pago extraordinario' }}</h1>
                 {% if solicitud %}<span class="ep-folio">#{{ solicitud.id }}</span>{% endif %}
             </div>
-            <div class="small text-muted mt-1">Completa los datos del requerimiento; después pasa a VoBo de Cuentas por Pagar.</div>
+            <div class="small text-muted mt-1">Completa los datos del requerimiento; después pasa a VoBo de Cuentas por Pagar. Los campos con <span class="ep-req">*</span> son obligatorios.</div>
         </div>
         <div class="ep-solicitante">
             <span class="text-muted">Solicitante:</span><strong>{{ nombre }}</strong>
@@ -69,7 +71,7 @@
                 <div class="col-md-6"><label class="ep-opcion"><input type="radio" name="tipo" value="multiple" {{ (solicitud and solicitud.tipo == 'multiple') ? 'checked' }}>
                     <i class="dot"></i><span><span class="tit">Múltiple (varios pagos en bloque)</span><span class="desc">Varios renglones, proveedores o facturas en una sola autorización.</span></span></label></div>
             </div>
-            <h6>Motivo del pago extraordinario</h6>
+            <h6>Motivo del pago extraordinario <span class="ep-req" title="Obligatorio">*</span></h6>
             <div class="row g-2">
             {% for m in motivos %}
                 <div class="col-md-6 col-lg-4"><label class="ep-opcion motivo"><input type="radio" name="reason_id" value="{{ m.id }}" data-requiere-texto="{{ m.requiere_texto ? 1 : 0 }}" {{ solicitud and solicitud.reason_id == m.id ? 'checked' }}>
@@ -129,19 +131,19 @@
             </div>
         </div>
         <div class="row g-2">
-            <div class="col-md-3"><label>Empresa</label>
+            <div class="col-md-3"><label>Empresa <span class="ep-req" title="Obligatorio">*</span></label>
                 <select name="lines[__I__][empresa_cod]" class="form-control form-control-sm">
                     <option value="">Seleccione...</option>
                     {% for e in empresas %}<option value="{{ e.cod }}">{{ e.den }}</option>{% endfor %}
                 </select></div>
-            <div class="col-md-3"><label>Centro de costos / estación</label><input type="text" name="lines[__I__][centro_costos]" maxlength="80" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label>Proveedor</label><input type="text" name="lines[__I__][proveedor]" maxlength="200" class="form-control form-control-sm"></div>
-            <div class="col-md-2"><label>Monto (con IVA)</label><input type="number" step="0.01" min="0" name="lines[__I__][monto]" class="form-control form-control-sm ep-monto"></div>
+            <div class="col-md-3"><label>Centro de costos / estación <span class="ep-req" title="Obligatorio">*</span></label><input type="text" name="lines[__I__][centro_costos]" maxlength="80" class="form-control form-control-sm"></div>
+            <div class="col-md-4"><label>Proveedor <span class="ep-req" title="Obligatorio">*</span></label><input type="text" name="lines[__I__][proveedor]" maxlength="200" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label>Monto (con IVA) <span class="ep-req" title="Obligatorio">*</span></label><input type="number" step="0.01" min="0" name="lines[__I__][monto]" class="form-control form-control-sm ep-monto"></div>
             <div class="col-md-3"><label>Factura / folio</label><input type="text" name="lines[__I__][factura]" maxlength="60" class="form-control form-control-sm"></div>
             <div class="col-md-3"><label>Fecha de emisión de la factura</label><input type="date" name="lines[__I__][fecha_factura]" class="form-control form-control-sm"></div>
             <div class="col-md-3"><label>Orden de compra (opcional)</label><input type="text" name="lines[__I__][orden_compra]" maxlength="60" class="form-control form-control-sm"></div>
-            <div class="col-md-3"><label>Fecha de pago requerida</label><input type="date" name="lines[__I__][fecha_pago_requerida]" class="form-control form-control-sm"></div>
-            <div class="col-md-6"><label>Descripción del concepto</label><input type="text" name="lines[__I__][descripcion]" maxlength="400" class="form-control form-control-sm" placeholder="Bien, servicio, refacción o flete a cubrir"></div>
+            <div class="col-md-3"><label>Fecha de pago requerida <span class="ep-req" title="Obligatorio">*</span></label><input type="date" name="lines[__I__][fecha_pago_requerida]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label>Descripción del concepto <span class="ep-req" title="Obligatorio">*</span></label><input type="text" name="lines[__I__][descripcion]" maxlength="400" class="form-control form-control-sm" placeholder="Bien, servicio, refacción o flete a cubrir"></div>
             <div class="col-md-6"><label>¿Por qué es urgente?</label><input type="text" name="lines[__I__][comentario_urgencia]" maxlength="300" class="form-control form-control-sm" placeholder="¿Por qué no puede esperar al pago normal?"></div>
         </div>
         <div class="ep-xml-ok d-none"></div>
