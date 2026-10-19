@@ -853,7 +853,7 @@
       <li class="sidebar-header">PAGOS EXTRAORDINARIOS</li>
       {% if authorized(106) %}
       <li class="sidebar-item">
-        <a class="sidebar-link" href="{{ url('extrapayments.index') }}">
+        <a class="sidebar-link" href="{{ url('extrapayments.index') }}" data-active-also="/pagos-extraordinarios/(new|\d+/edit)/?$">
           <i data-feather="list"></i>
           <span class="align-middle">Mis solicitudes</span>
         </a>
@@ -975,14 +975,20 @@
     // Iterate through links
     sidebarLinks.forEach((link) => {
       // Compare link path with current path
-      if (link.getAttribute("href") === currentPath) {
+      // Páginas hijas que también marcan este link (regex en data-active-also)
+      const alsoPattern = link.dataset.activeAlso;
+      const isExact = link.getAttribute("href") === currentPath;
+      const isChild = !isExact && alsoPattern && new RegExp(alsoPattern).test(currentPath);
+      if (isExact || isChild) {
         // Add 'active' class to the link
         link.classList.add("active_item");
 
-        // Prevent default click (reload)
-        link.addEventListener("click", function (e) {
-          e.preventDefault();
-        });
+        // Prevent default click (reload) solo en la página exacta
+        if (isExact) {
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+          });
+        }
 
         // Add 'active' class to parent sidebar-item
         const parentItem = link.closest(".sidebar-item");
