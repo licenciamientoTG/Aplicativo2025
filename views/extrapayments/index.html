@@ -70,23 +70,23 @@
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="ep-kpi">
         <div class="et"><span>Total solicitado</span><span class="text-muted fw-normal">{{ 'now'|date('m/Y') }}</span></div>
-        <div class="val">${{ solicitudes|map(s => s.total)|reduce((a, b) => a + b, 0)|number_format(2) }}</div>
-        <div class="sub">{{ solicitudes|length }} solicitud(es) visibles</div>
+        <div class="val">{{ solicitudes|length }}</div>
+        <div class="sub">Solicitudes visibles para usted</div>
     </div></div>
     <div class="col-6 col-lg-3"><div class="ep-kpi">
         <div class="et"><span>Pendientes VoBo CxP</span><span class="pt" style="background:#f59e0b"></span></div>
         <div class="val" style="color:#b45309">{{ pend1|length }}</div>
-        <div class="sub">Monto en revisión: <b>${{ pend1|map(s => s.total)|reduce((a, b) => a + b, 0)|number_format(2) }}</b></div>
+        <div class="sub">Solicitudes en revisión</div>
     </div></div>
     <div class="col-6 col-lg-3"><div class="ep-kpi">
         <div class="et"><span>Autorización Admón y Finanzas</span><span class="pt" style="background:#1C4587"></span></div>
         <div class="val" style="color:#1C4587">{{ pend2|length }}</div>
-        <div class="sub">Monto por autorizar: <b>${{ pend2|map(s => s.total)|reduce((a, b) => a + b, 0)|number_format(2) }}</b></div>
+        <div class="sub">Solicitudes por autorizar</div>
     </div></div>
     <div class="col-6 col-lg-3"><div class="ep-kpi">
         <div class="et"><span>Pagadas</span><span class="pt" style="background:#22c55e"></span></div>
-        <div class="val" style="color:#15803d">${{ pagadas|map(s => s.total)|reduce((a, b) => a + b, 0)|number_format(2) }}</div>
-        <div class="sub">{{ pagadas|length }} solicitud(es) pagadas</div>
+        <div class="val" style="color:#15803d">{{ pagadas|length }}</div>
+        <div class="sub">Solicitudes pagadas</div>
     </div></div>
 </div>
 
