@@ -174,6 +174,39 @@
         }, function () {});
     });
 
+    // ---------------- Filtros de la lista de solicitudes ----------------
+    var $filtros = $('#ep_filtros');
+    if ($filtros.length) {
+        var vista = $filtros.find('[data-vista="' + $filtros.data('default') + '"]').length
+            ? String($filtros.data('default'))
+            : String($filtros.find('[data-vista]').first().data('vista'));
+
+        var aplicarFiltros = function () {
+            var estatus = $('#ep_filtro_estatus').val();
+            var texto = $.trim($('#ep_filtro_texto').val()).toLowerCase();
+            var visibles = 0;
+            $('#tabla_solicitudes .ep-fila').each(function () {
+                var $f = $(this);
+                var ok = (vista === 'todas')
+                    || (vista === 'mias' && $f.data('propia') == 1)
+                    || (vista === 'atender' && $f.data('accion') == 1);
+                if (ok && estatus !== '' && String($f.data('status')) !== estatus) { ok = false; }
+                if (ok && texto !== '' && String($f.data('texto')).indexOf(texto) === -1) { ok = false; }
+                $f.toggle(ok);
+                if (ok) { visibles++; }
+            });
+            $('#ep_sin_resultados').toggle(visibles === 0);
+            $filtros.find('[data-vista]').each(function () {
+                $(this).toggleClass('activo', $(this).data('vista') === vista);
+            });
+        };
+
+        $filtros.on('click', '[data-vista]', function () { vista = String($(this).data('vista')); aplicarFiltros(); });
+        $('#ep_filtro_estatus').on('change', aplicarFiltros);
+        $('#ep_filtro_texto').on('input', aplicarFiltros);
+        aplicarFiltros();
+    }
+
     // ---------------- Formulario ----------------
     var $form = $('#form_extra');
     if (!$form.length) { return; }

@@ -851,38 +851,12 @@
 
       {% if authorized(106) or authorized(107) or authorized(108) or authorized(109) or authorized(110) %} {# Pagos extraordinarios #}
       <li class="sidebar-header">PAGOS EXTRAORDINARIOS</li>
-      {% if authorized(106) %}
       <li class="sidebar-item">
-        <a class="sidebar-link" href="{{ url('extrapayments.index') }}" data-active-also="/pagos-extraordinarios/(new|\d+/edit)/?$">
+        <a class="sidebar-link" href="{{ url('extrapayments.index') }}" data-active-also="/pagos-extraordinarios/(new|\d+(/edit)?)/?$">
           <i data-feather="list"></i>
-          <span class="align-middle">Mis solicitudes</span>
+          <span class="align-middle">Solicitudes</span>
         </a>
       </li>
-      {% endif %}
-      {% if authorized(107) %}
-      <li class="sidebar-item">
-        <a class="sidebar-link" href="{{ url('extrapayments.inbox', {stage: 'cxp'}) }}">
-          <i data-feather="check-square"></i>
-          <span class="align-middle">VoBo Cuentas por Pagar</span>
-        </a>
-      </li>
-      {% endif %}
-      {% if authorized(108) %}
-      <li class="sidebar-item">
-        <a class="sidebar-link" href="{{ url('extrapayments.inbox', {stage: 'admon'}) }}">
-          <i data-feather="check-circle"></i>
-          <span class="align-middle">Autorización Admón y Finanzas</span>
-        </a>
-      </li>
-      {% endif %}
-      {% if authorized(109) %}
-      <li class="sidebar-item">
-        <a class="sidebar-link" href="{{ url('extrapayments.inbox', {stage: 'tesoreria'}) }}">
-          <i data-feather="credit-card"></i>
-          <span class="align-middle">Pagos pendientes</span>
-        </a>
-      </li>
-      {% endif %}
       {% if authorized(110) %}
       <li class="sidebar-item">
         <a class="sidebar-link" href="{{ url('extrapayments.report') }}">

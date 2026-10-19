@@ -207,6 +207,25 @@ class ExtraPaymentRequestsModel extends Model
         return $request;
     }
 
+    /**
+     * Listado unificado de "Solicitudes": las propias (incluye borradores), las
+     * que están en un estatus que el usuario atiende ($statuses) y, con $all
+     * (permiso de ver todas), cualquiera salvo borradores ajenos.
+     */
+    public function list_visible(int $userId, array $statuses, bool $all) : array {
+        $cond = ['r.user_id = ?'];
+        $params = [$userId];
+        if ($all) {
+            $cond[] = 'r.status <> ' . ExtraPaymentWorkflow::ST_BORRADOR;
+        } elseif ($statuses) {
+            $cond[] = 'r.status IN (' . implode(',', array_map('intval', $statuses)) . ')';
+        }
+        return $this->sql->select(
+            $this->list_base_query() . ' WHERE ' . implode(' OR ', $cond) . ' ORDER BY r.id DESC',
+            $params
+        ) ?: [];
+    }
+
     public function list_for_user(int $userId) : array {
         return $this->sql->select(
             $this->list_base_query() . ' WHERE r.user_id = ? ORDER BY r.id DESC',

@@ -22,15 +22,7 @@
                 <small class="text-muted">{{ solicitud.tipo == 'individual' ? 'Individual' : 'Múltiple' }} · {{ solicitud.fecha|date('d/m/Y') }}</small>
             </div>
             <div class="d-flex gap-2">
-                {% if authorized(106) %}
-                <a href="{{ url('extrapayments.index') }}" class="btn btn-sm btn-outline-secondary">Mis solicitudes</a>
-                {% elseif authorized(107) %}
-                <a href="{{ url('extrapayments.inbox', {stage: 'cxp'}) }}" class="btn btn-sm btn-outline-secondary">Volver a bandeja</a>
-                {% elseif authorized(108) %}
-                <a href="{{ url('extrapayments.inbox', {stage: 'admon'}) }}" class="btn btn-sm btn-outline-secondary">Volver a bandeja</a>
-                {% elseif authorized(109) %}
-                <a href="{{ url('extrapayments.inbox', {stage: 'tesoreria'}) }}" class="btn btn-sm btn-outline-secondary">Volver a bandeja</a>
-                {% endif %}
+                <a href="{{ url('extrapayments.index') }}" class="btn btn-sm btn-outline-secondary">Solicitudes</a>
                 <a href="{{ url('extrapayments.print', {id: solicitud.id}) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-print"></i> Imprimir</a>
                 {% if puede_editar %}<a href="{{ url('extrapayments.edit', {id: solicitud.id}) }}" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i> {{ solicitud.status == 5 ? 'Continuar borrador' : 'Corregir y reenviar' }}</a>{% endif %}
                 {% if puede_cancelar %}<button type="button" class="btn btn-sm btn-outline-danger btn-cancelar" data-url="{{ url('extrapayments.cancel', {id: solicitud.id}) }}" data-redirect="{{ url('extrapayments.index') }}"><i class="fas fa-ban"></i> Cancelar</button>{% endif %}

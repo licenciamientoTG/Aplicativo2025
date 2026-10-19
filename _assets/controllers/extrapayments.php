@@ -165,12 +165,43 @@ class ExtraPayments
     /* Vistas                                                                */
     /* ===================================================================== */
 
-    /** Mis solicitudes. */
+    /**
+     * Solicitudes: una sola vista para todos los roles. Cada quien ve las propias,
+     * las que le toca atender según su permiso (107 CxP, 108 Admón, 109 Tesorería)
+     * y, con 110, todas. Los botones de cada fila salen del permiso y el estatus.
+     */
     public function index(): void
     {
-        $this->guard([ExtraPaymentWorkflow::PERM_CREAR]);
-        $solicitudes = $this->requestsModel->list_for_user($this->user_id());
-        echo $this->twig->render($this->route . 'index.html', compact('solicitudes'));
+        $this->guard([
+            ExtraPaymentWorkflow::PERM_CREAR, ExtraPaymentWorkflow::PERM_CXP, ExtraPaymentWorkflow::PERM_ADMON,
+            ExtraPaymentWorkflow::PERM_TESORERIA, ExtraPaymentWorkflow::PERM_VER_TODAS,
+        ]);
+
+        // Estatus que este usuario atiende, según su permiso
+        $atiende = [];
+        foreach (self::ETAPAS as [$permiso, $status]) {
+            if (authorized($permiso)) {
+                $atiende[] = $status;
+            }
+        }
+        $ver_todas = authorized(ExtraPaymentWorkflow::PERM_VER_TODAS);
+        $puede_crear = authorized(ExtraPaymentWorkflow::PERM_CREAR);
+
+        $solicitudes = $this->requestsModel->list_visible($this->user_id(), $atiende, $ver_todas);
+        foreach ($solicitudes as &$s) {
+            $status = (int) $s['status'];
+            $propia = (int) $s['user_id'] === $this->user_id();
+            $s['es_propia']  = $propia;
+            // Acción de aprobación o pago que le toca a este usuario sobre esta fila
+            $s['accion']     = in_array($status, $atiende, true)
+                ? ($status === ExtraPaymentWorkflow::ST_AUTORIZADA ? 'pagar' : ($status === ExtraPaymentWorkflow::ST_PEND_CXP ? 'vobo' : 'autorizar'))
+                : null;
+            $s['p_editar']   = $propia && $puede_crear && ExtraPaymentWorkflow::can_edit($status);
+            $s['p_cancelar'] = $propia && $puede_crear && ExtraPaymentWorkflow::can_cancel($status);
+        }
+        unset($s);
+
+        echo $this->twig->render($this->route . 'index.html', compact('solicitudes', 'ver_todas', 'puede_crear', 'atiende'));
     }
 
     /** Formulario de alta (sin id) o de edición tras rechazo (con id). */
