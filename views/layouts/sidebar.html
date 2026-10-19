@@ -857,14 +857,6 @@
           <span class="align-middle">Solicitudes</span>
         </a>
       </li>
-      {% if authorized(110) %}
-      <li class="sidebar-item">
-        <a class="sidebar-link" href="{{ url('extrapayments.report') }}">
-          <i data-feather="bar-chart-2"></i>
-          <span class="align-middle">Reporte</span>
-        </a>
-      </li>
-      {% endif %}
       {% endif %}
 
       {% if authorized(3) or for_sistemas() %}

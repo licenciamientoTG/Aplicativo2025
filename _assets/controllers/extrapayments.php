@@ -271,7 +271,7 @@ class ExtraPayments
     }
 
     /* ===================================================================== */
-    /* Impresión y reporte                                                   */
+    /* Impresión                                                   */
     /* ===================================================================== */
 
     /** Etiquetas de estatus (mismas de index.html). */
@@ -329,122 +329,6 @@ class ExtraPayments
         // Si el motivo elegido ya fue desactivado, la vista lo agrega marcado.
         $motivo_en_catalogo = in_array((int) $solicitud['reason_id'], array_map(fn($m) => (int) $m['id'], $motivos), true);
         echo $this->twig->render($this->route . 'print.html', compact('solicitud', 'firmas', 'cuenta', 'motivos', 'motivo_en_catalogo', 'estatus_label'));
-    }
-
-    /** Filtros del reporte, saneados (GET no es confiable). */
-    private function filtros_reporte(): array
-    {
-        $f = ['status' => '', 'empresa_cod' => '', 'reason_id' => '', 'desde' => '', 'hasta' => ''];
-        $st = $_GET['status'] ?? '';
-        if (is_scalar($st) && ctype_digit((string) $st) && isset(self::ESTATUS[(int) $st])) {
-            $f['status'] = (int) $st;
-        }
-        foreach (['empresa_cod', 'reason_id'] as $k) {
-            $v = $_GET[$k] ?? '';
-            if (is_scalar($v) && ctype_digit((string) $v) && strlen((string) $v) <= 9) {
-                $f[$k] = (int) $v;
-            }
-        }
-        foreach (['desde', 'hasta'] as $k) {
-            $f[$k] = $this->fecha($_GET[$k] ?? null) ?? '';
-        }
-        return $f;
-    }
-
-    /** Reporte general con filtros (permiso 110). */
-    public function report(): void
-    {
-        $this->guard([ExtraPaymentWorkflow::PERM_VER_TODAS]);
-        $filtros = $this->filtros_reporte();
-        $solicitudes = $this->requestsModel->list_all($filtros);
-        $total = 0.0;
-        foreach ($solicitudes as $s) {
-            $total += (float) $s['total'];
-        }
-        $query = http_build_query(array_filter($filtros, fn($v) => $v !== ''));
-        echo $this->twig->render($this->route . 'report.html', [
-            'solicitudes' => $solicitudes,
-            'filtros'     => $filtros,
-            'motivos'     => $this->catalogModel->reasons(),
-            'empresas'    => $this->catalogModel->empresas(),
-            'estatus'     => self::ESTATUS,
-            'total'       => $total,
-            'query'       => $query,
-        ]);
-    }
-
-    /** Exporta el reporte a .xlsx, una fila por renglón (permiso 110). */
-    public function report_export(): void
-    {
-        $this->guard([ExtraPaymentWorkflow::PERM_VER_TODAS]);
-        $filas = $this->requestsModel->list_lines_for_export($this->filtros_reporte());
-        $libro = $this->libro_reporte($filas);
-
-        while (ob_get_level() > 0) {
-            ob_end_clean();
-        }
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment; filename="pagos_extraordinarios_' . date('Ymd_His') . '.xlsx"');
-        header('Cache-Control: max-age=0');
-        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($libro))->save('php://output');
-        exit;
-    }
-
-    /** Texto de usuario como cadena explícita (evita inyección de fórmulas =,+,-,@). */
-    private function celda_texto(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $hoja, int $col, int $fila, $valor): void
-    {
-        $hoja->setCellValueExplicit([$col, $fila], (string) ($valor ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-    }
-
-    /** Arma el libro del reporte (separado del endpoint para poder revisarlo sin descarga). */
-    private function libro_reporte(array $filas): \PhpOffice\PhpSpreadsheet\Spreadsheet
-    {
-        $libro = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-        $hoja  = $libro->getActiveSheet();
-        $hoja->setTitle('Pagos extraordinarios');
-
-        $cab = ['Folio', 'Fecha', 'Empresa', 'Centro de costos', 'Proveedor', 'Factura', 'Fecha factura',
-                'Descripción', 'Monto', 'Motivo', 'Estatus', 'Fecha de pago'];
-        foreach ($cab as $i => $t) {
-            $this->celda_texto($hoja, $i + 1, 1, $t);
-        }
-        $hoja->getStyle('A1:L1')->getFont()->setBold(true);
-
-        $fmt = function ($d): string {
-            if (!$d) {
-                return '';
-            }
-            $d = $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : (string) $d;
-            $t = strtotime($d);
-            return $t ? date('d/m/Y', $t) : '';
-        };
-        $r = 2;
-        foreach ($filas as $f) {
-            $motivo = (string) ($f['reason_nombre'] ?? '');
-            if (!empty($f['motivo_otros'])) {
-                $motivo .= ': ' . $f['motivo_otros'];
-            }
-            $this->celda_texto($hoja, 1, $r, '#' . (int) $f['folio']);
-            $this->celda_texto($hoja, 2, $r, $fmt($f['fecha'] ?? null));
-            $this->celda_texto($hoja, 3, $r, $f['empresa_nombre'] ?? '');
-            $this->celda_texto($hoja, 4, $r, $f['centro_costos'] ?? '');
-            $this->celda_texto($hoja, 5, $r, $f['proveedor'] ?? '');
-            $this->celda_texto($hoja, 6, $r, $f['factura'] ?? '');
-            $this->celda_texto($hoja, 7, $r, $fmt($f['fecha_factura'] ?? null));
-            $this->celda_texto($hoja, 8, $r, $f['descripcion'] ?? '');
-            $hoja->setCellValue([9, $r], (float) ($f['monto'] ?? 0)); // numérico
-            $this->celda_texto($hoja, 10, $r, $motivo);
-            $this->celda_texto($hoja, 11, $r, self::ESTATUS[(int) $f['status']] ?? (string) $f['status']);
-            $this->celda_texto($hoja, 12, $r, $fmt($f['fecha_pago'] ?? null));
-            $r++;
-        }
-        if ($r > 2) {
-            $hoja->getStyle('I2:I' . ($r - 1))->getNumberFormat()->setFormatCode('#,##0.00');
-        }
-        foreach (range('A', 'L') as $col) {
-            $hoja->getColumnDimension($col)->setAutoSize(true);
-        }
-        return $libro;
     }
 
     /* ===================================================================== */
@@ -790,23 +674,8 @@ class ExtraPayments
     }
 
     /* ===================================================================== */
-    /* Bandejas de aprobación y pago                                        */
+    /* Decisiones y pago                                                     */
     /* ===================================================================== */
-
-    /** Bandeja por etapa (cxp | admon | tesoreria). */
-    public function inbox($stage): void
-    {
-        $stage = (string) $stage;
-        if (!isset(self::ETAPAS[$stage])) {
-            (new Errors())->get404();
-            return;
-        }
-        [$permiso, $status, $titulo] = self::ETAPAS[$stage];
-        $this->guard([$permiso]);
-
-        $solicitudes = $this->requestsModel->list_by_status($status);
-        echo $this->twig->render($this->route . 'inbox.html', compact('solicitudes', 'stage', 'titulo', 'status'));
-    }
 
     /** Parcial (sin layout) del modal Aprobar / Rechazar. */
     public function decision_modal($id): void
