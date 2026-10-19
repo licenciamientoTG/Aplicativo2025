@@ -5614,37 +5614,6 @@ public function get_conciliacion_config() {
                 }
             }
 
-            // Bankaool Villa Ahumada se expone como opción propia sólo si la
-            // afiliación está configurada en Tesoreria_afil y aún no aparece
-            // en Conciliacion_Configuracion.
-            if ($estacion_id == 31) {
-                $existeBankaool = false;
-                foreach ($reglas as $r) {
-                    if ((int)$r['entidad_id'] === 14 && trim((string)$r['afiliacion']) === '9990624') {
-                        $existeBankaool = true;
-                        break;
-                    }
-                }
-
-                if (!$existeBankaool) {
-                    $stmtBankaool = $conn->prepare(
-                        "SELECT TOP 1 afiliacion
-                         FROM Tesoreria_afil
-                         WHERE entidad_id = 14 AND estacion_id = 31 AND afiliacion = '9990624'"
-                    );
-                    $stmtBankaool->execute();
-                    if ($stmtBankaool->fetchColumn() !== false) {
-                        $reglas[] = [
-                            'entidad_id' => 14,
-                            'nombre_banco' => 'Bankaool',
-                            'afiliacion' => '9990624',
-                            'descripcion' => 'Cuenta 9990624 (Manual)',
-                            'conceptos_cg' => '',
-                        ];
-                    }
-                }
-            }
-            
             echo json_encode(['status' => 'success', 'data' => $reglas]);
 
         } catch (PDOException $e) {
