@@ -4,104 +4,177 @@
 {% block menutitle %}Pagos extraordinarios{% endblock %}
 {% block mycss %}
 <style>
-    #tabla_solicitudes thead th { text-transform:uppercase; font-size:.72rem; letter-spacing:.04em; color:#6c757d; white-space:nowrap; }
-    #tabla_solicitudes tbody td { vertical-align:middle; }
-    .badge-estatus { font-size:.75rem; font-weight:600; padding:.35em .8em; border-radius:999px; color:#fff; }
-    .st-1 { background:#B45309; } .st-2 { background:#1C4587; } .st-3 { background:#0d9488; }
-    .st-4 { background:#198754; } .st-8 { background:#6c757d; } .st-9 { background:#dc3545; } .st-5 { background:#64748b; }
+    /* Tarjetas de resumen */
+    .ep-kpi { background:#fff; border:1px solid #e2e8f0; border-radius:.75rem; padding:.85rem 1rem; height:100%; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+    .ep-kpi .et { display:flex; justify-content:space-between; align-items:center; font-size:.75rem; color:#64748b; font-weight:600; }
+    .ep-kpi .pt { width:.5rem; height:.5rem; border-radius:50%; display:inline-block; }
+    .ep-kpi .val { font-size:1.35rem; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.3; margin-top:.15rem; }
+    .ep-kpi .sub { font-size:.72rem; color:#64748b; margin-top:.35rem; }
+    .ep-kpi .sub b { color:#334155; font-variant-numeric:tabular-nums; }
+
+    /* Chips de vista y control segmentado de estatus */
     .ep-chip { border:1px solid #dee2e6; background:#fff; color:#495057; border-radius:999px; padding:.3rem .85rem; font-size:.8rem; cursor:pointer; }
     .ep-chip:hover { border-color:#adb5bd; }
     .ep-chip.activo { background:#1C4587; border-color:#1C4587; color:#fff; }
     .ep-chip .n { font-weight:700; margin-left:.25rem; }
+    .ep-seg { display:inline-flex; gap:.2rem; padding:.2rem; background:#f1f5f9; border-radius:.55rem; overflow-x:auto; max-width:100%; }
+    .ep-seg button { border:0; background:transparent; color:#475569; font-size:.78rem; padding:.3rem .75rem; border-radius:.4rem; white-space:nowrap; cursor:pointer; }
+    .ep-seg button:hover { color:#0f172a; }
+    .ep-seg button.activo { background:#fff; color:#0f172a; font-weight:600; box-shadow:0 1px 2px rgba(15,23,42,.12); }
+
+    /* Tabla */
+    #tabla_solicitudes thead th { text-transform:uppercase; font-size:.7rem; letter-spacing:.05em; color:#64748b; white-space:nowrap; background:#f8fafc; }
+    #tabla_solicitudes tbody td { vertical-align:middle; }
+    #tabla_solicitudes .ep-fila { cursor:pointer; }
+    .ep-folio { font-family:Consolas, monospace; font-weight:700; color:#1C4587; white-space:nowrap; }
+    .ep-prov { font-weight:600; max-width:18rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ep-prov-sub { font-size:.7rem; color:#94a3b8; }
+    .ep-total { font-weight:700; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+
+    /* Estatus: punto + texto de color con borde suave */
+    .badge-estatus { display:inline-flex; align-items:center; gap:.4rem; font-size:.72rem; font-weight:600; padding:.15rem .55rem; border-radius:.35rem; border:1px solid; white-space:nowrap; }
+    .badge-estatus::before { content:''; width:.4rem; height:.4rem; border-radius:50%; background:currentColor; }
+    .st-1 { color:#b45309; background:#fffbeb; border-color:#fde68a; }
+    .st-2 { color:#1C4587; background:#eef3fb; border-color:#c7d6ee; }
+    .st-3 { color:#0f766e; background:#f0fdfa; border-color:#99f6e4; }
+    .st-4 { color:#15803d; background:#f0fdf4; border-color:#bbf7d0; }
+    .st-5 { color:#475569; background:#f1f5f9; border-color:#cbd5e1; }
+    .st-8 { color:#64748b; background:#f8fafc; border-color:#e2e8f0; }
+    .st-9 { color:#b91c1c; background:#fef2f2; border-color:#fecaca; }
+
+    .ep-vacio .ico { width:3rem; height:3rem; border-radius:50%; background:#f1f5f9; color:#94a3b8; display:inline-flex; align-items:center; justify-content:center; font-size:1.2rem; }
+    .ep-pie { background:#f8fafc; border-top:1px solid #e2e8f0; font-size:.78rem; color:#64748b; }
 </style>
 {% endblock %}
 {% block content %}
+{% set pend1 = solicitudes|filter(s => s.status == 1) %}
+{% set pend2 = solicitudes|filter(s => s.status == 2) %}
+{% set pagadas = solicitudes|filter(s => s.status == 4) %}
 {% set por_atender = solicitudes|filter(s => s.accion)|length %}
 {% set mias = solicitudes|filter(s => s.es_propia)|length %}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <h6 class="mb-0">Solicitudes de pago extraordinario</h6>
-            <small class="text-muted">Pagos fuera del flujo normal de proveedores.</small>
-        </div>
+{% set tabs = {1: 'VoBo CxP', 2: 'Autorización', 3: 'Autorizadas', 4: 'Pagadas', 9: 'Rechazadas', 5: 'Borradores', 8: 'Canceladas'} %}
+
+<div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+    <div>
+        <h5 class="mb-0 fw-bold">Pagos extraordinarios</h5>
+        <small class="text-muted">Pagos fuera del flujo normal de proveedores.</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url('extrapayments.export') }}" id="ep_exportar" class="btn btn-sm btn-outline-success"><i class="fas fa-file-excel"></i> Exportar a Excel</a>
         {% if puede_crear %}
         <a href="{{ url('extrapayments.new') }}" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Nueva solicitud</a>
         {% endif %}
     </div>
 </div>
 
-<div class="card border-0 shadow-sm mb-3">
+<div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="ep-kpi">
+        <div class="et"><span>Total solicitado</span><span class="text-muted fw-normal">{{ 'now'|date('m/Y') }}</span></div>
+        <div class="val">${{ solicitudes|map(s => s.total)|reduce((a, b) => a + b, 0)|number_format(2) }}</div>
+        <div class="sub">{{ solicitudes|length }} solicitud(es) visibles</div>
+    </div></div>
+    <div class="col-6 col-lg-3"><div class="ep-kpi">
+        <div class="et"><span>Pendientes VoBo CxP</span><span class="pt" style="background:#f59e0b"></span></div>
+        <div class="val" style="color:#b45309">{{ pend1|length }}</div>
+        <div class="sub">Monto en revisión: <b>${{ pend1|map(s => s.total)|reduce((a, b) => a + b, 0)|number_format(2) }}</b></div>
+    </div></div>
+    <div class="col-6 col-lg-3"><div class="ep-kpi">
+        <div class="et"><span>Autorización Admón y Finanzas</span><span class="pt" style="background:#1C4587"></span></div>
+        <div class="val" style="color:#1C4587">{{ pend2|length }}</div>
+        <div class="sub">Monto por autorizar: <b>${{ pend2|map(s => s.total)|reduce((a, b) => a + b, 0)|number_format(2) }}</b></div>
+    </div></div>
+    <div class="col-6 col-lg-3"><div class="ep-kpi">
+        <div class="et"><span>Pagadas</span><span class="pt" style="background:#22c55e"></span></div>
+        <div class="val" style="color:#15803d">${{ pagadas|map(s => s.total)|reduce((a, b) => a + b, 0)|number_format(2) }}</div>
+        <div class="sub">{{ pagadas|length }} solicitud(es) pagadas</div>
+    </div></div>
+</div>
+
+<div class="card border-0 shadow-sm">
     <div class="card-body py-2 px-3 d-flex align-items-center flex-wrap gap-2" id="ep_filtros" data-default="{{ por_atender > 0 ? 'atender' : (puede_crear ? 'mias' : 'todas') }}">
         {% if atiende %}<button type="button" class="ep-chip" data-vista="atender"><i class="fas fa-bell"></i> Por atender<span class="n">{{ por_atender }}</span></button>{% endif %}
         {% if puede_crear %}<button type="button" class="ep-chip" data-vista="mias"><i class="fas fa-user"></i> Mis solicitudes<span class="n">{{ mias }}</span></button>{% endif %}
         {% if ver_todas or not puede_crear %}<button type="button" class="ep-chip" data-vista="todas"><i class="fas fa-list"></i> {{ ver_todas ? 'Todas' : 'Visibles' }}<span class="n">{{ solicitudes|length }}</span></button>{% endif %}
         <span class="vr mx-1"></span>
-        <input type="search" id="ep_filtro_texto" class="form-control form-control-sm w-auto" placeholder="Buscar folio, solicitante o motivo" style="min-width:16rem;">
+        <input type="search" id="ep_filtro_texto" class="form-control form-control-sm w-auto" placeholder="Buscar folio, proveedor, factura, solicitante..." style="min-width:20rem;">
         <button type="button" id="ep_limpiar" class="btn btn-sm btn-outline-secondary ms-auto"><i class="fas fa-eraser"></i> Limpiar</button>
-        <a href="{{ url('extrapayments.export') }}" id="ep_exportar" class="btn btn-sm btn-success"><i class="fas fa-file-excel"></i> Exportar a Excel</a>
     </div>
     <div class="card-body border-top py-2 px-3 d-flex align-items-end flex-wrap gap-2">
-        <div><label class="small text-muted mb-0">Estatus</label>
-            <select id="ep_filtro_estatus" class="form-select form-select-sm">
-                <option value="">Todos</option>
-                {% for k, v in estatus %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
-            </select></div>
-        <div><label class="small text-muted mb-0">Empresa</label>
+        <div><label class="small text-muted mb-0 d-block">Estatus</label>
+            <div class="ep-seg" id="ep_tabs">
+                <button type="button" data-status="" class="activo">Todas <span class="text-muted">({{ solicitudes|length }})</span></button>
+                {% for k, v in tabs %}
+                {% set n = solicitudes|filter(s => s.status == k)|length %}
+                {% if n > 0 or k in [1, 2, 3, 4, 9] %}
+                <button type="button" data-status="{{ k }}">{{ v }} <span class="text-muted">({{ n }})</span></button>
+                {% endif %}
+                {% endfor %}
+            </div></div>
+        <div><label class="small text-muted mb-0 d-block">Empresa</label>
             <select id="ep_filtro_empresa" class="form-select form-select-sm">
                 <option value="">Todas</option>
                 {% for e in empresas %}<option value="{{ e.cod }}">{{ e.den }}</option>{% endfor %}
             </select></div>
-        <div><label class="small text-muted mb-0">Motivo</label>
+        <div><label class="small text-muted mb-0 d-block">Motivo</label>
             <select id="ep_filtro_motivo" class="form-select form-select-sm">
                 <option value="">Todos</option>
                 {% for m in motivos %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
             </select></div>
-        <div><label class="small text-muted mb-0">Desde</label><input type="date" id="ep_filtro_desde" class="form-control form-control-sm"></div>
-        <div><label class="small text-muted mb-0">Hasta</label><input type="date" id="ep_filtro_hasta" class="form-control form-control-sm"></div>
+        <div><label class="small text-muted mb-0 d-block">Desde</label><input type="date" id="ep_filtro_desde" class="form-control form-control-sm"></div>
+        <div><label class="small text-muted mb-0 d-block">Hasta</label><input type="date" id="ep_filtro_hasta" class="form-control form-control-sm"></div>
     </div>
-</div>
-
-<div class="card border-0 shadow-sm">
-    <div class="card-body p-0">
-        <div class="table-responsive p-3">
-            <table id="tabla_solicitudes" class="table table-hover table-sm w-100 mb-0">
-                <thead>
-                    <tr><th>Folio</th><th>Fecha</th><th>Solicitante</th><th>Tipo</th><th>Motivo</th><th class="text-end">Total</th><th>Estatus</th><th>Acciones</th></tr>
-                </thead>
-                <tbody>
-                {% for s in solicitudes %}
-                    <tr class="ep-fila" data-status="{{ s.status }}" data-propia="{{ s.es_propia ? 1 : 0 }}" data-accion="{{ s.accion ? 1 : 0 }}"
-                        data-empresas=",{{ s.empresas|join(',') }}," data-motivo="{{ s.reason_id }}" data-fecha="{{ s.fecha_iso }}"
-                        data-texto="{{ ('#' ~ s.id ~ ' ' ~ s.solicitante ~ ' ' ~ s.reason_nombre)|lower }}">
-                        <td>#{{ s.id }}</td>
-                        <td>{{ s.fecha|date('d/m/Y') }}</td>
-                        <td>{{ s.es_propia ? 'Yo' : s.solicitante }}</td>
-                        <td>{{ s.tipo == 'individual' ? 'Individual' : 'Múltiple' }}</td>
-                        <td>{{ s.reason_nombre }}</td>
-                        <td class="text-end">${{ s.total|number_format(2) }}</td>
-                        <td><span class="badge-estatus st-{{ s.status }}">{{ estatus[s.status] ?? s.status }}</span></td>
-                        <td class="text-nowrap">
-                            <a href="{{ url('extrapayments.detail', {id: s.id}) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle"><i class="fas fa-eye"></i></a>
-                            {% if s.accion == 'vobo' %}
-                            <button type="button" class="btn btn-sm btn-success btn-ep-modal" data-url="{{ url('extrapayments.decision_modal', {id: s.id}) }}"><i class="fas fa-check"></i> VoBo CxP</button>
-                            {% elseif s.accion == 'autorizar' %}
-                            <button type="button" class="btn btn-sm btn-success btn-ep-modal" data-url="{{ url('extrapayments.decision_modal', {id: s.id}) }}"><i class="fas fa-check-double"></i> Autorizar</button>
-                            {% elseif s.accion == 'pagar' %}
-                            <button type="button" class="btn btn-sm btn-success btn-ep-modal" data-url="{{ url('extrapayments.pay_modal', {id: s.id}) }}"><i class="fas fa-money-bill-wave"></i> Pagar</button>
-                            {% endif %}
-                            {% if s.p_editar %}
-                            <a href="{{ url('extrapayments.edit', {id: s.id}) }}" class="btn btn-sm btn-outline-warning" title="{{ s.status == 5 ? 'Continuar borrador' : 'Corregir y reenviar' }}"><i class="fas fa-edit"></i></a>
-                            {% endif %}
-                            {% if s.p_cancelar %}
-                            <button type="button" class="btn btn-sm btn-outline-danger btn-cancelar" data-url="{{ url('extrapayments.cancel', {id: s.id}) }}" title="Cancelar"><i class="fas fa-ban"></i></button>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-                    <tr id="ep_sin_resultados" style="{{ solicitudes ? 'display:none;' : '' }}"><td colspan="8" class="text-center text-muted py-4">No hay solicitudes para mostrar.</td></tr>
-                </tbody>
-            </table>
-        </div>
+    <div class="table-responsive border-top">
+        <table id="tabla_solicitudes" class="table table-hover table-sm w-100 mb-0">
+            <thead>
+                <tr><th class="ps-3">Folio</th><th>Fecha</th><th>Solicitante</th><th>Tipo</th><th>Motivo</th><th>Renglones / Proveedor</th><th class="text-end">Total (MXN)</th><th>Estatus</th><th class="text-end pe-3">Acciones</th></tr>
+            </thead>
+            <tbody>
+            {% for s in solicitudes %}
+                <tr class="ep-fila" data-href="{{ url('extrapayments.detail', {id: s.id}) }}" data-status="{{ s.status }}" data-propia="{{ s.es_propia ? 1 : 0 }}" data-accion="{{ s.accion ? 1 : 0 }}"
+                    data-empresas=",{{ s.empresas|join(',') }}," data-motivo="{{ s.reason_id }}" data-fecha="{{ s.fecha_iso }}" data-total="{{ s.total }}"
+                    data-texto="{{ s.busqueda }}">
+                    <td class="ps-3"><span class="ep-folio">#{{ s.id }}</span></td>
+                    <td class="text-nowrap text-muted">{{ s.fecha|date('d/m/Y') }}</td>
+                    <td>{{ s.es_propia ? 'Yo' : s.solicitante }}</td>
+                    <td class="text-nowrap">{{ s.tipo == 'individual' ? 'Individual (1)' : 'Múltiple (' ~ s.n_renglones ~ ')' }}</td>
+                    <td>{{ s.reason_nombre }}</td>
+                    <td>
+                        <div class="ep-prov" title="{{ s.proveedor }}">{{ s.proveedor ?: '—' }}</div>
+                        {% if s.n_renglones > 1 %}<div class="ep-prov-sub">+ {{ s.n_renglones - 1 }} {{ s.n_renglones - 1 == 1 ? 'renglón más' : 'renglones más' }}</div>{% endif %}
+                        {% if s.centro_costos %}<div class="ep-prov-sub">{{ s.centro_costos }}</div>{% endif %}
+                    </td>
+                    <td class="ep-total">${{ s.total|number_format(2) }}</td>
+                    <td><span class="badge-estatus st-{{ s.status }}">{{ estatus[s.status] ?? s.status }}</span></td>
+                    <td class="text-nowrap text-end pe-3">
+                        <a href="{{ url('extrapayments.detail', {id: s.id}) }}" class="btn btn-sm btn-outline-secondary" title="Ver detalle"><i class="fas fa-eye"></i></a>
+                        {% if s.accion == 'vobo' %}
+                        <button type="button" class="btn btn-sm btn-success btn-ep-modal" data-url="{{ url('extrapayments.decision_modal', {id: s.id}) }}"><i class="fas fa-check"></i> VoBo CxP</button>
+                        {% elseif s.accion == 'autorizar' %}
+                        <button type="button" class="btn btn-sm btn-success btn-ep-modal" data-url="{{ url('extrapayments.decision_modal', {id: s.id}) }}"><i class="fas fa-check-double"></i> Autorizar</button>
+                        {% elseif s.accion == 'pagar' %}
+                        <button type="button" class="btn btn-sm btn-success btn-ep-modal" data-url="{{ url('extrapayments.pay_modal', {id: s.id}) }}"><i class="fas fa-money-bill-wave"></i> Pagar</button>
+                        {% endif %}
+                        {% if s.p_editar %}
+                        <a href="{{ url('extrapayments.edit', {id: s.id}) }}" class="btn btn-sm btn-outline-warning" title="{{ s.status == 5 ? 'Continuar borrador' : 'Corregir y reenviar' }}"><i class="fas fa-edit"></i></a>
+                        {% endif %}
+                        {% if s.p_cancelar %}
+                        <button type="button" class="btn btn-sm btn-outline-danger btn-cancelar" data-url="{{ url('extrapayments.cancel', {id: s.id}) }}" title="Cancelar"><i class="fas fa-ban"></i></button>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+                <tr id="ep_sin_resultados" class="ep-vacio" style="display:none;"><td colspan="9" class="text-center py-5">
+                    <div class="ico mb-2"><i class="fas fa-search"></i></div>
+                    <div class="fw-semibold">No se encontraron solicitudes</div>
+                    <div class="small text-muted mb-2" id="ep_vacio_txt">Prueba modificando los filtros o el término de búsqueda.</div>
+                    {% if puede_crear %}<a href="{{ url('extrapayments.new') }}" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Crear solicitud</a>{% endif %}
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="ep-pie px-3 py-2 d-flex flex-column flex-sm-row justify-content-between gap-1">
+        <span>Mostrando <strong id="ep_pie_n">0</strong> de <strong>{{ solicitudes|length }}</strong> solicitudes</span>
+        <span>Total en vista: <strong id="ep_pie_total" class="text-dark">$0.00</strong> MXN</span>
     </div>
 </div>
 

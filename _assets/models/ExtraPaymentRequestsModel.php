@@ -213,19 +213,23 @@ class ExtraPaymentRequestsModel extends Model
      * (permiso de ver todas), cualquiera salvo borradores ajenos.
      */
     /**
-     * Empresas de los renglones de cada solicitud: [request_id => [empresa_cod, ...]].
+     * Renglones resumidos de cada solicitud para la lista:
+     * [request_id => [[empresa_cod, proveedor, factura, centro_costos], ...]] en orden de captura.
      */
-    public function empresas_por_solicitud(array $ids) : array {
+    public function lineas_por_solicitud(array $ids) : array {
         $ids = array_values(array_unique(array_map('intval', $ids)));
         if (!$ids) {
             return [];
         }
         $rows = $this->sql->select(
-            'SELECT DISTINCT request_id, empresa_cod FROM [TG].[dbo].[extra_payment_lines] WHERE request_id IN (' . implode(',', $ids) . ')'
+            'SELECT request_id, empresa_cod, proveedor, factura, centro_costos
+             FROM [TG].[dbo].[extra_payment_lines]
+             WHERE request_id IN (' . implode(',', $ids) . ')
+             ORDER BY request_id, id'
         ) ?: [];
         $map = [];
         foreach ($rows as $r) {
-            $map[(int)$r['request_id']][] = (int)$r['empresa_cod'];
+            $map[(int)$r['request_id']][] = $r;
         }
         return $map;
     }

@@ -182,7 +182,7 @@ class ExtraPayments
         $puede_crear = authorized(ExtraPaymentWorkflow::PERM_CREAR);
 
         $solicitudes = $this->requestsModel->list_visible($this->user_id(), $atiende, $ver_todas);
-        $empresas = $this->requestsModel->empresas_por_solicitud(array_column($solicitudes, 'id'));
+        $lineas = $this->requestsModel->lineas_por_solicitud(array_column($solicitudes, 'id'));
         foreach ($solicitudes as &$s) {
             $status = (int) $s['status'];
             $propia = (int) $s['user_id'] === $this->user_id();
@@ -193,7 +193,14 @@ class ExtraPayments
                 : null;
             $s['p_editar']   = $propia && $puede_crear && ExtraPaymentWorkflow::can_edit($status);
             $s['p_cancelar'] = $propia && $puede_crear && ExtraPaymentWorkflow::can_cancel($status);
-            $s['empresas']   = $empresas[(int) $s['id']] ?? [];
+            $ls = $lineas[(int) $s['id']] ?? [];
+            $s['empresas']        = array_values(array_unique(array_map(fn($l) => (int) $l['empresa_cod'], $ls)));
+            $s['n_renglones']     = count($ls);
+            $s['proveedor']       = $ls ? (string) $ls[0]['proveedor'] : '';
+            $s['centro_costos']   = $ls ? (string) $ls[0]['centro_costos'] : '';
+            // Texto de búsqueda: folio, solicitante, motivo y datos de todos los renglones
+            $s['busqueda']        = mb_strtolower('#' . $s['id'] . ' ' . $s['solicitante'] . ' ' . $s['reason_nombre'] . ' '
+                . implode(' ', array_map(fn($l) => $l['proveedor'] . ' ' . $l['factura'] . ' ' . $l['centro_costos'], $ls)));
             $f = $s['fecha'];
             $s['fecha_iso']  = $f instanceof \DateTimeInterface ? $f->format('Y-m-d') : substr((string) $f, 0, 10);
         }
@@ -258,7 +265,7 @@ class ExtraPayments
             if ($motivo !== null && (int) $s['reason_id'] !== $motivo) { continue; }
             if ($desde !== '' && $s['fecha_iso'] < $desde) { continue; }
             if ($hasta !== '' && $s['fecha_iso'] > $hasta) { continue; }
-            if ($texto !== '' && mb_strpos(mb_strtolower('#' . $s['id'] . ' ' . $s['solicitante'] . ' ' . $s['reason_nombre']), $texto) === false) { continue; }
+            if ($texto !== '' && mb_strpos($s['busqueda'], $texto) === false) { continue; }
             $ids[] = (int) $s['id'];
         }
 

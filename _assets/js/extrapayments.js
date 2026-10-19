@@ -180,17 +180,18 @@
         var vista = $filtros.find('[data-vista="' + $filtros.data('default') + '"]').length
             ? String($filtros.data('default'))
             : String($filtros.find('[data-vista]').first().data('vista'));
+        var estatus = ''; // pestaña de estatus activa ('' = todas)
 
         var valor = function (id) { return $.trim($(id).val()); };
 
         var aplicarFiltros = function () {
-            var estatus = valor('#ep_filtro_estatus');
             var empresa = valor('#ep_filtro_empresa');
             var motivo = valor('#ep_filtro_motivo');
             var desde = valor('#ep_filtro_desde');
             var hasta = valor('#ep_filtro_hasta');
             var texto = valor('#ep_filtro_texto').toLowerCase();
             var visibles = 0;
+            var total = 0;
             $('#tabla_solicitudes .ep-fila').each(function () {
                 var $f = $(this);
                 var ok = (vista === 'todas')
@@ -202,29 +203,47 @@
                 var fecha = String($f.data('fecha'));
                 if (ok && desde !== '' && fecha < desde) { ok = false; }
                 if (ok && hasta !== '' && fecha > hasta) { ok = false; }
-                if (ok && texto !== '' && String($f.data('texto')).indexOf(texto) === -1) { ok = false; }
+                if (ok && texto !== '' && String($f.attr('data-texto')).indexOf(texto) === -1) { ok = false; }
                 $f.toggle(ok);
-                if (ok) { visibles++; }
+                if (ok) { visibles++; total += parseFloat($f.data('total')) || 0; }
             });
             $('#ep_sin_resultados').toggle(visibles === 0);
+            var hayFiltros = vista !== 'todas' || estatus !== '' || empresa !== '' || motivo !== '' || desde !== '' || hasta !== '' || texto !== '';
+            $('#ep_vacio_txt').text(hayFiltros
+                ? 'Prueba modificando los filtros o el término de búsqueda.'
+                : 'Aún no hay solicitudes registradas.');
+            $('#ep_pie_n').text(visibles);
+            $('#ep_pie_total').text('$' + total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $filtros.find('[data-vista]').each(function () {
                 $(this).toggleClass('activo', $(this).data('vista') === vista);
             });
+            $('#ep_tabs button').each(function () {
+                $(this).toggleClass('activo', String($(this).data('status')) === estatus);
+            });
             // El export lleva los mismos filtros; el servidor los re-aplica sobre lo que el usuario puede ver
             var $a = $('#ep_exportar');
+            if (!$a.data('base')) { $a.data('base', $a.attr('href')); }
             var q = $.param({ vista: vista, status: estatus, empresa_cod: empresa, reason_id: motivo, desde: desde, hasta: hasta, q: valor('#ep_filtro_texto') });
-            $a.attr('href', String($a.data('base') || ($a.data('base', $a.attr('href')), $a.attr('href'))) + '?' + q);
+            $a.attr('href', $a.data('base') + '?' + q);
         };
 
         $filtros.on('click', '[data-vista]', function () { vista = String($(this).data('vista')); aplicarFiltros(); });
-        $('#ep_filtro_estatus, #ep_filtro_empresa, #ep_filtro_motivo, #ep_filtro_desde, #ep_filtro_hasta').on('change', aplicarFiltros);
+        $('#ep_tabs').on('click', 'button', function () { estatus = String($(this).data('status')); aplicarFiltros(); });
+        $('#ep_filtro_empresa, #ep_filtro_motivo, #ep_filtro_desde, #ep_filtro_hasta').on('change', aplicarFiltros);
         $('#ep_filtro_texto').on('input', aplicarFiltros);
         $('#ep_limpiar').on('click', function () {
+            estatus = '';
             $('#ep_filtros').closest('.card').find('select').val('');
             $('#ep_filtros').closest('.card').find('input').val('');
             aplicarFiltros();
         });
         aplicarFiltros();
+
+        // Clic en la fila abre el detalle (los botones y enlaces de la fila siguen funcionando solos)
+        $('#tabla_solicitudes').on('click', '.ep-fila', function (e) {
+            if ($(e.target).closest('a, button, input, select, label').length) { return; }
+            window.location.href = $(this).data('href');
+        });
     }
 
     // ---------------- Formulario ----------------
