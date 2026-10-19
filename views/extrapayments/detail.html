@@ -1,0 +1,100 @@
+{# views/extrapayments/detail.html — Detalle de solicitud de pago extraordinario #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Solicitud #{{ solicitud.id }}{% endblock %}
+{% block menutitle %}Pago extraordinario #{{ solicitud.id }}{% endblock %}
+{% block mycss %}
+<style>
+    .badge-estatus { font-size:.8rem; font-weight:600; padding:.35em .9em; border-radius:999px; color:#fff; }
+    .st-1 { background:#B45309; } .st-2 { background:#1C4587; } .st-3 { background:#0d9488; }
+    .st-4 { background:#198754; } .st-8 { background:#6c757d; } .st-9 { background:#dc3545; }
+    .ep-timeline { list-style:none; padding-left:0; margin:0; }
+    .ep-timeline li { border-left:3px solid #e2e8f0; padding:.25rem 0 .75rem .9rem; }
+    .ep-timeline li.ok { border-color:#198754; } .ep-timeline li.no { border-color:#dc3545; }
+</style>
+{% endblock %}
+{% block content %}
+{% set estatus = {1: 'Pendiente CxP', 2: 'Pendiente Admón', 3: 'Autorizada', 4: 'Pagada', 8: 'Cancelada', 9: 'Rechazada'} %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <h6 class="mb-1">Solicitud #{{ solicitud.id }} <span class="badge-estatus st-{{ solicitud.status }} ms-2">{{ estatus[solicitud.status] ?? solicitud.status }}</span></h6>
+                <small class="text-muted">{{ solicitud.tipo == 'individual' ? 'Individual' : 'Múltiple' }} · {{ solicitud.fecha|date('d/m/Y') }}</small>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="{{ url('extrapayments.index') }}" class="btn btn-sm btn-outline-secondary">Mis solicitudes</a>
+                {% if puede_editar %}<a href="{{ url('extrapayments.edit', {id: solicitud.id}) }}" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i> Corregir y reenviar</a>{% endif %}
+                {% if puede_cancelar %}<button type="button" class="btn btn-sm btn-outline-danger btn-cancelar" data-url="{{ url('extrapayments.cancel', {id: solicitud.id}) }}" data-redirect="{{ url('extrapayments.index') }}"><i class="fas fa-ban"></i> Cancelar</button>{% endif %}
+            </div>
+        </div>
+        <hr>
+        <div class="row g-3">
+            <div class="col-md-3"><div class="small text-muted">Solicitante</div>{{ solicitud.solicitante }}</div>
+            <div class="col-md-3"><div class="small text-muted">Área</div>{{ solicitud.departamento ?: '—' }}</div>
+            <div class="col-md-4"><div class="small text-muted">Motivo</div>{{ solicitud.reason_nombre }}{% if solicitud.motivo_otros %}: {{ solicitud.motivo_otros }}{% endif %}</div>
+            <div class="col-md-2"><div class="small text-muted">Total</div><strong>${{ solicitud.total|number_format(2) }}</strong></div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body p-0">
+        <div class="table-responsive p-3">
+            <table class="table table-sm table-hover mb-0">
+                <thead><tr><th>Empresa</th><th>Centro de costos</th><th>Proveedor</th><th>Factura</th><th>OC</th><th>Descripción</th><th>Pago requerido</th><th class="text-end">Monto</th></tr></thead>
+                <tbody>
+                {% for l in solicitud.lines %}
+                    <tr>
+                        <td>{{ l.empresa_nombre ?: l.empresa_cod }}</td>
+                        <td>{{ l.centro_costos }}</td>
+                        <td>{{ l.proveedor }}</td>
+                        <td>{{ l.factura }}{% if l.fecha_factura %}<br><small class="text-muted">{{ l.fecha_factura|date('d/m/Y') }}</small>{% endif %}</td>
+                        <td>{{ l.orden_compra }}</td>
+                        <td>{{ l.descripcion }}{% if l.comentario_urgencia %}<br><small class="text-danger">Urgencia: {{ l.comentario_urgencia }}</small>{% endif %}</td>
+                        <td>{{ l.fecha_pago_requerida|date('d/m/Y') }}</td>
+                        <td class="text-end">${{ l.monto|number_format(2) }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+            <h6>Firmas</h6>
+            <ul class="ep-timeline">
+                {% for a in solicitud.approvals %}
+                <li class="{{ a.decision == 'aprobada' ? 'ok' : 'no' }}">
+                    <strong>{{ a.step == 1 ? 'Cuentas por pagar' : 'Administración' }}</strong> — {{ a.decision == 'aprobada' ? 'Aprobada' : 'Rechazada' }}
+                    por {{ a.aprobador }} <small class="text-muted">{{ a.created_at|date('d/m/Y H:i') }}</small>
+                    {% if a.comentario %}<div class="small">{{ a.comentario }}</div>{% endif %}
+                </li>
+                {% else %}
+                <li class="text-muted">Sin firmas todavía.</li>
+                {% endfor %}
+                {% if solicitud.payment %}
+                <li class="ok"><strong>Tesorería</strong> — Pagada por {{ solicitud.payment.pagador }}
+                    <div class="small">Ref. {{ solicitud.payment.referencia }} · {{ solicitud.payment.fecha_pago|date('d/m/Y') }}</div></li>
+                {% endif %}
+            </ul>
+        </div></div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+            <h6>Historial</h6>
+            <ul class="ep-timeline">
+                {% for h in solicitud.audit %}
+                <li><strong>{{ h.action }}</strong> — {{ h.usuario }} <small class="text-muted">{{ h.created_at|date('d/m/Y H:i') }}</small>
+                    {% if h.detail %}<div class="small">{{ h.detail }}</div>{% endif %}</li>
+                {% endfor %}
+            </ul>
+        </div></div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ js_v('extrapayments.js') }}"></script>
+{% endblock %}

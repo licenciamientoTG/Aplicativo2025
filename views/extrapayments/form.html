@@ -1,0 +1,98 @@
+{# views/extrapayments/form.html — Captura / corrección de solicitud de pago extraordinario #}
+{% extends "views/layouts/base.html" %}
+{% block title %}{{ solicitud ? 'Corregir solicitud' : 'Nueva solicitud' }}{% endblock %}
+{% block menutitle %}Pago extraordinario{% endblock %}
+{% block mycss %}
+<style>
+    .ep-linea { border:1px solid #e2e8f0; border-radius:.5rem; padding:.75rem; margin-bottom:.75rem; background:#fff; }
+    .ep-linea label { font-size:.72rem; text-transform:uppercase; color:#6c757d; margin-bottom:.1rem; }
+    .ep-total { font-size:1.25rem; font-weight:700; }
+</style>
+{% endblock %}
+{% block content %}
+<form id="form_extra" data-save-url="{{ url('extrapayments.save') }}" data-detail-url="{{ url('extrapayments.detail', {id: 0}) }}" autocomplete="off">
+    {% if solicitud %}<input type="hidden" name="id" value="{{ solicitud.id }}">{% endif %}
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4"><label class="small text-muted">Solicitante</label><div class="fw-semibold">{{ nombre }}</div></div>
+                <div class="col-md-4"><label class="small text-muted">Área</label><div class="fw-semibold">{{ area ?: '—' }}</div></div>
+                <div class="col-md-4"><label class="small text-muted">Fecha</label><div class="fw-semibold">{{ solicitud ? solicitud.fecha|date('d/m/Y') : 'now'|date('d/m/Y') }}</div></div>
+            </div>
+            {% if solicitud %}
+            {% for a in solicitud.approvals %}
+            {% if a.decision == 'rechazada' %}
+            <div class="alert alert-danger mt-3 mb-0"><strong>Rechazada por {{ a.aprobador }}:</strong> {{ a.comentario }}</div>
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <h6>Tipo de solicitud</h6>
+            <div class="mb-3">
+                <label class="me-3"><input type="radio" name="tipo" value="individual" {{ (not solicitud or solicitud.tipo == 'individual') ? 'checked' }}> Individual (un pago)</label>
+                <label><input type="radio" name="tipo" value="multiple" {{ (solicitud and solicitud.tipo == 'multiple') ? 'checked' }}> Múltiple (varios pagos)</label>
+            </div>
+            <h6>Motivo del pago extraordinario</h6>
+            {% for m in motivos %}
+            <div>
+                <label><input type="radio" name="reason_id" value="{{ m.id }}" data-requiere-texto="{{ m.requiere_texto ? 1 : 0 }}" {{ solicitud and solicitud.reason_id == m.id ? 'checked' }}> {{ m.nombre }}</label>
+            </div>
+            {% endfor %}
+            <div id="wrap_motivo_otros" class="mt-2" style="display:none;">
+                <input type="text" name="motivo_otros" maxlength="200" class="form-control form-control-sm" placeholder="Especifique el motivo" value="{{ solicitud.motivo_otros|default('') }}">
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Renglones</h6>
+                <button type="button" id="btn_agregar_linea" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Agregar renglón</button>
+            </div>
+            <div id="lineas"></div>
+            <div class="text-end">Total: <span class="ep-total" id="total_general">$0.00</span></div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mb-4">
+        <a href="{{ url('extrapayments.index') }}" class="btn btn-outline-secondary">Volver</a>
+        <button type="submit" id="btn_guardar" class="btn btn-primary"><i class="fas fa-paper-plane"></i> {{ solicitud ? 'Reenviar' : 'Enviar solicitud' }}</button>
+    </div>
+</form>
+
+{# Plantilla de renglón: el JS la clona y reemplaza __I__ por el índice #}
+<template id="tpl_linea">
+    <div class="ep-linea" data-i="__I__">
+        <div class="row g-2">
+            <div class="col-md-3"><label>Empresa</label>
+                <select name="lines[__I__][empresa_cod]" class="form-control form-control-sm">
+                    <option value="">Seleccione...</option>
+                    {% for e in empresas %}<option value="{{ e.cod }}">{{ e.den }}</option>{% endfor %}
+                </select></div>
+            <div class="col-md-3"><label>Centro de costos</label><input type="text" name="lines[__I__][centro_costos]" maxlength="80" class="form-control form-control-sm"></div>
+            <div class="col-md-4"><label>Proveedor</label><input type="text" name="lines[__I__][proveedor]" maxlength="200" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label>Monto</label><input type="number" step="0.01" min="0" name="lines[__I__][monto]" class="form-control form-control-sm ep-monto"></div>
+            <div class="col-md-2"><label>Factura</label><input type="text" name="lines[__I__][factura]" maxlength="60" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label>Fecha factura</label><input type="date" name="lines[__I__][fecha_factura]" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label>Orden de compra</label><input type="text" name="lines[__I__][orden_compra]" maxlength="60" class="form-control form-control-sm"></div>
+            <div class="col-md-3"><label>Fecha de pago requerida</label><input type="date" name="lines[__I__][fecha_pago_requerida]" class="form-control form-control-sm"></div>
+            <div class="col-md-3 d-flex align-items-end justify-content-end"><button type="button" class="btn btn-sm btn-outline-danger btn-quitar-linea"><i class="fas fa-trash"></i> Quitar</button></div>
+            <div class="col-md-6"><label>Descripción</label><input type="text" name="lines[__I__][descripcion]" maxlength="400" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label>Comentario de urgencia</label><input type="text" name="lines[__I__][comentario_urgencia]" maxlength="300" class="form-control form-control-sm"></div>
+        </div>
+    </div>
+</template>
+{% endblock %}
+{% block myjs %}
+<script>
+    // Renglones existentes (edición tras rechazo). Flag 15 = JSON_HEX_TAG|AMP|APOS|QUOT: seguro dentro de <script>.
+    window.EP_LINEAS = {{ (solicitud ? solicitud.lines : [])|json_encode(15)|raw }};
+</script>
+<script src="{{ js_v('extrapayments.js') }}"></script>
+{% endblock %}
