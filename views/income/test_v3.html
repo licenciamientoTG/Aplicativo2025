@@ -179,6 +179,15 @@
     .diferido-split .t-green  { color:#16a34a;font-weight:600; }
     .btn-diferir { background:none;border:1px solid #7c3aed;color:#7c3aed;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:5px;white-space:nowrap;transition:all .15s; }
     .btn-diferir:hover { background:#7c3aed;color:white; }
+    /* Solo la prueba de diferidos TES: mantener los datos y la acción en una fila. */
+    .tes-pilot-row { height:auto;min-height:44px;overflow:visible;padding-top:5px;padding-bottom:5px;gap:12px; }
+    .tes-pilot-row .row-left { flex-direction:row;align-items:center;gap:12px;overflow:visible; }
+    .tes-pilot-date { flex:0 0 auto;font-size:.8rem;font-weight:600;white-space:nowrap; }
+    .tes-pilot-bank { flex:0 1 auto;min-width:0;font-size:.71rem;color:#6c757d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .tes-pilot-pending { display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;font-size:.71rem;color:#6c757d;white-space:nowrap; }
+    .tes-pilot-row .btn-diferir { display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:0 0 auto;min-height:24px;margin:0;padding:2px 7px;line-height:1; }
+    .tes-pilot-row .btn-diferir i { flex:0 0 auto;line-height:1; }
+    .tes-pilot-row .row-right { margin-left:auto; }
     .btn-mover-diferido { background:none;border:1px solid #0891b2;color:#0891b2;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
     .btn-mover-diferido:hover { background:#0891b2;color:white; }
     .btn-cancel-diferido { background:none;border:1px solid #dc3545;color:#dc3545;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
@@ -231,6 +240,12 @@
            fecha y monto, y mostrar etiquetas AMEX al tocar el renglón. */
         .tes-amex-row:not(.amex-tags-visible) .amex-badge-com,
         .tes-amex-row:not(.amex-tags-visible) .amex-badge-iva { display:none; }
+        .tes-pilot-row { gap:7px;padding-left:9px;padding-right:9px; }
+        .tes-pilot-row .row-left { gap:7px; }
+        .tes-pilot-date { font-size:.73rem; }
+        .tes-pilot-bank { display:none; }
+        .tes-pilot-pending { font-size:.67rem; }
+        .tes-pilot-row .row-right { margin-left:4px; }
     }
     .row-sin-comision { background:#fff8f0!important;border-left:5px solid #fd7e14!important;pointer-events:none!important;cursor:not-allowed!important;opacity:.85; }
     .row-sin-comision .row-line1 { color:#c0540a!important; }
@@ -2479,13 +2494,14 @@ function renderTes() {
                 : [];
             const pendienteDia = componentesDiferibles.reduce((sum, comp) => sum + tesMontoDisponible(comp), 0);
             const accionesDiferirTES = componentesDiferibles.length
-                ? `<span class="d-block small text-muted mt-1">Pendiente ${fmt.format(pendienteDia)} <button class="btn-diferir" data-componentes="${escHtml(JSON.stringify(componentesDiferibles))}" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(fecha)}',this)" title="Diferir depósito TES"><i class="fas fa-calendar-day"></i> D</button></span>`
+                ? `<span class="tes-pilot-pending">Pendiente ${fmt.format(pendienteDia)} <button class="btn-diferir" data-componentes="${escHtml(JSON.stringify(componentesDiferibles))}" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(fecha)}',this)" title="Diferir depósito TES"><i class="fas fa-calendar-day"></i> Diferir</button></span>`
                 : '';
-            $c.append(`<div class="row-item row-pendiente tes-amex-row ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesDisponibles))}" onclick="toggleTESBadges(this);toggleTESComponentes(this)">
-                <div class="row-left">
-                    <span class="row-line1">${dateFmt}</span>
-                    <span class="row-line2">Tesorería${amexLine2Extra}</span>${accionesDiferirTES}
-                </div>
+            const claseFilaPruebaTES = componentesDiferibles.length ? 'tes-pilot-row' : '';
+            const contenidoIzquierdoTES = componentesDiferibles.length
+                ? `<div class="row-left"><span class="tes-pilot-date">${dateFmt}</span><span class="tes-pilot-bank">Tesorería${amexLine2Extra}</span>${accionesDiferirTES}</div>`
+                : `<div class="row-left"><span class="row-line1">${dateFmt}</span><span class="row-line2">Tesorería${amexLine2Extra}</span></div>`;
+            $c.append(`<div class="row-item row-pendiente tes-amex-row ${claseFilaPruebaTES} ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesDisponibles))}" onclick="toggleTESBadges(this);toggleTESComponentes(this)">
+                ${contenidoIzquierdoTES}
                 <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
             </div>`);
         }
