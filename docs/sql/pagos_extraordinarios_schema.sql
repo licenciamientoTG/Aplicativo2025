@@ -181,19 +181,19 @@ SET IDENTITY_INSERT [TG].[dbo].[tg_permissions] ON;
 GO
 IF NOT EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] WHERE id = 106)
     INSERT INTO [TG].[dbo].[tg_permissions] (id, action, department, description, status, updated_at, created_at)
-    VALUES (106, 'read', 'Tesorería', 'Pagos extra: crear/ver propias', 1, GETDATE(), GETDATE());
+    VALUES (106, 'read', 'Tesorería', 'Pagos/Alta cuenta: acceso, crear y ver propias', 1, GETDATE(), GETDATE());
 IF NOT EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] WHERE id = 107)
     INSERT INTO [TG].[dbo].[tg_permissions] (id, action, department, description, status, updated_at, created_at)
-    VALUES (107, 'read', 'Tesorería', 'Pagos extra: VoBo CxP', 1, GETDATE(), GETDATE());
+    VALUES (107, 'read', 'Tesorería', 'Pagos extra: aprobar/rechazar VoBo CxP', 1, GETDATE(), GETDATE());
 IF NOT EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] WHERE id = 108)
     INSERT INTO [TG].[dbo].[tg_permissions] (id, action, department, description, status, updated_at, created_at)
-    VALUES (108, 'read', 'Tesorería', 'Pagos extra: Autoriza Admón/Finanzas', 1, GETDATE(), GETDATE());
+    VALUES (108, 'read', 'Tesorería', 'Pagos extra: autorizar/rechazar Admón y Finanzas', 1, GETDATE(), GETDATE());
 IF NOT EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] WHERE id = 109)
     INSERT INTO [TG].[dbo].[tg_permissions] (id, action, department, description, status, updated_at, created_at)
-    VALUES (109, 'read', 'Tesorería', 'Pagos extra: Pago Tesorería', 1, GETDATE(), GETDATE());
+    VALUES (109, 'read', 'Tesorería', 'Tesorería: pagar pagos extra, aprobar alta cuenta', 1, GETDATE(), GETDATE());
 IF NOT EXISTS (SELECT 1 FROM [TG].[dbo].[tg_permissions] WHERE id = 110)
     INSERT INTO [TG].[dbo].[tg_permissions] (id, action, department, description, status, updated_at, created_at)
-    VALUES (110, 'read', 'Tesorería', 'Pagos extra: Ver todas', 1, GETDATE(), GETDATE());
+    VALUES (110, 'read', 'Tesorería', 'Pagos extra: ver todas las solicitudes', 1, GETDATE(), GETDATE());
 GO
 SET IDENTITY_INSERT [TG].[dbo].[tg_permissions] OFF;
 GO

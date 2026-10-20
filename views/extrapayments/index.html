@@ -49,7 +49,7 @@
 {% block content %}
 {% set pend1 = solicitudes|filter(s => s.status == 1) %}
 {% set pend2 = solicitudes|filter(s => s.status == 2) %}
-{% set pagadas = solicitudes|filter(s => s.status == 4) %}
+{% set por_pagar = solicitudes|filter(s => s.status == 3) %}
 {% set por_atender = solicitudes|filter(s => s.accion)|length %}
 {% set mias = solicitudes|filter(s => s.es_propia)|length %}
 {% set tabs = {1: 'VoBo CxP', 2: 'Autorización', 3: 'Autorizadas', 4: 'Pagadas', 9: 'Rechazadas', 5: 'Borradores', 8: 'Canceladas'} %}
@@ -67,6 +67,7 @@
     </div>
 </div>
 
+{% if ver_cards %}
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="ep-kpi">
         <div class="et"><span>Total solicitado</span><span class="text-muted fw-normal">{{ 'now'|date('m/Y') }}</span></div>
@@ -84,11 +85,12 @@
         <div class="sub">Solicitudes por autorizar</div>
     </div></div>
     <div class="col-6 col-lg-3"><div class="ep-kpi">
-        <div class="et"><span>Pagadas</span><span class="pt" style="background:#22c55e"></span></div>
-        <div class="val" style="color:#15803d">{{ pagadas|length }}</div>
-        <div class="sub">Solicitudes pagadas</div>
+        <div class="et"><span>Pendientes de pagar</span><span class="pt" style="background:#22c55e"></span></div>
+        <div class="val" style="color:#15803d">{{ por_pagar|length }}</div>
+        <div class="sub">Autorizadas por pagar</div>
     </div></div>
 </div>
+{% endif %}
 
 <div class="card border-0 shadow-sm">
     <div class="card-body py-2 px-3 d-flex align-items-center flex-wrap gap-2" id="ep_filtros" data-default="{{ por_atender > 0 ? 'atender' : (puede_crear ? 'mias' : 'todas') }}">

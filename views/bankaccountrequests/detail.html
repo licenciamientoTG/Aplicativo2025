@@ -1,0 +1,134 @@
+{# views/bankaccountrequests/detail.html — Detalle de solicitud de alta de cuenta; Tesorería aprueba o rechaza #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Alta de cuenta #{{ solicitud.id }}{% endblock %}
+{% block menutitle %}Alta de cuenta bancaria{% endblock %}
+{% block mycss %}
+<style>
+    .ba-dato label { font-size:.7rem; text-transform:uppercase; color:#6c757d; font-weight:600; margin:0; display:block; }
+    .ba-dato div { font-size:.9rem; word-break:break-word; }
+    .ba-mono { font-family:Consolas, monospace; }
+    .badge-estatus { display:inline-flex; align-items:center; gap:.4rem; font-size:.78rem; font-weight:600; padding:.2rem .65rem; border-radius:.35rem; border:1px solid; }
+    .badge-estatus::before { content:''; width:.45rem; height:.45rem; border-radius:50%; background:currentColor; }
+    .st-1 { color:#b45309; background:#fffbeb; border-color:#fde68a; }
+    .st-2 { color:#15803d; background:#f0fdf4; border-color:#bbf7d0; }
+    .st-3 { color:#b91c1c; background:#fef2f2; border-color:#fecaca; }
+    .st-4 { color:#475569; background:#f1f5f9; border-color:#cbd5e1; }
+    /* Zona de carga de la carátula */
+    .ba-drop { position:relative; border:2px dashed #cbd5e1; border-radius:.75rem; background:#f8fafc; padding:1.4rem 1rem; text-align:center; transition:border-color .15s, background .15s; max-width:34rem; }
+    .ba-drop:hover, .ba-drop.arrastrando { border-color:#1C4587; background:#eef3fb; }
+    .ba-drop.con-archivo { border-style:solid; border-color:#86efac; background:#f0fdf4; padding:.9rem 1rem; text-align:left; }
+    .ba-drop-input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; z-index:1; }
+    .ba-drop.con-archivo .ba-drop-input { display:none; }
+    .ba-drop-ico { font-size:2rem; color:#94a3b8; }
+    .ba-drop:hover .ba-drop-ico, .ba-drop.arrastrando .ba-drop-ico { color:#1C4587; }
+    .ba-drop-tit { font-weight:600; color:#334155; margin-top:.25rem; }
+    .ba-drop-sub { font-size:.78rem; color:#94a3b8; margin-top:.15rem; }
+    .ba-drop-archivo { display:flex; align-items:center; gap:.75rem; }
+    .ba-drop-archivo .ba-drop-tipo { font-size:1.8rem; color:#15803d; }
+    .ba-drop-archivo .ba-drop-nombre { font-weight:600; color:#14532d; word-break:break-all; }
+    .ba-drop-archivo .ba-drop-tam { font-size:.78rem; color:#4d7c5f; }
+    .ba-drop-quitar { margin-left:auto; border:0; background:transparent; color:#64748b; font-size:1.1rem; width:2rem; height:2rem; border-radius:50%; cursor:pointer; }
+    .ba-drop-quitar:hover { background:#dcfce7; color:#b91c1c; }
+</style>
+{% endblock %}
+{% block content %}
+<div id="ba_detalle" data-approve-url="{{ url('bankaccounts.approve', {id: solicitud.id}) }}" data-reject-url="{{ url('bankaccounts.reject', {id: solicitud.id}) }}" data-upload-url="{{ url('bankaccounts.upload', {id: solicitud.id}) }}" data-index-url="{{ url('bankaccounts.index') }}">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 border-bottom pb-3 mb-3">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h1 class="h4 fw-bold mb-0">Alta de cuenta bancaria #{{ solicitud.id }}</h1>
+            <span class="badge-estatus st-{{ solicitud.status }}">{{ estatus[solicitud.status] ?? solicitud.status }}</span>
+        </div>
+        <a href="{{ url('bankaccounts.index') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-arrow-left"></i> Volver</a>
+    </div>
+
+    {% if duplicados.catalogo or duplicados.solicitudes %}
+    <div class="alert alert-warning">
+        <strong><i class="fas fa-exclamation-triangle"></i> Este número de cuenta ya está registrado.</strong>
+        <ul class="mb-0 mt-1 small">
+        {% for c in duplicados.catalogo %}
+            <li>En el catálogo: {{ c.Descripcion }}{{ c.Banco ? ' · ' ~ c.Banco }} ({{ c.Activo ? 'activa' : 'inactiva' }}).</li>
+        {% endfor %}
+        {% for r in duplicados.solicitudes %}
+            <li>Otra solicitud pendiente: #{{ r.id }} · {{ r.proveedor }}{{ r.banco ? ' · ' ~ r.banco }}.</li>
+        {% endfor %}
+        </ul>
+        {% if puede_decidir and duplicados.catalogo %}<div class="small mt-1">Si la aprueba no se crea una fila nueva: se liga a la cuenta existente y se reactiva si estaba inactiva.</div>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if solicitud.status == 4 %}
+    <div class="alert alert-secondary"><strong>Borrador.</strong> Adjunte la carátula del estado de cuenta para enviarla a Tesorería; mientras tanto solo usted la ve.</div>
+    {% endif %}
+
+    {% if solicitud.status == 3 %}
+    <div class="alert alert-danger"><strong>Rechazada por {{ solicitud.decisor }}:</strong> {{ solicitud.comentario }}</div>
+    {% elseif solicitud.status == 2 %}
+    <div class="alert alert-success mb-3">
+        <strong>Aprobada por {{ solicitud.decisor }}</strong>{{ solicitud.decided_at ? ' el ' ~ solicitud.decided_at|date('d/m/Y H:i') }}.
+        {% if solicitud.comentario %}<div class="small">{{ solicitud.comentario }}</div>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4 ba-dato"><label>Razón social</label><div>{{ solicitud.empresa }}</div></div>
+            <div class="col-md-4 ba-dato"><label>Proveedor</label><div class="fw-semibold">{{ solicitud.proveedor }}</div></div>
+            <div class="col-md-4 ba-dato"><label>Departamento</label><div>{{ solicitud.departamento }}</div></div>
+            <div class="col-md-4 ba-dato"><label>Banco</label><div>{{ solicitud.banco }} <span class="text-muted">({{ solicitud.clave_banco }})</span></div></div>
+            <div class="col-md-4 ba-dato"><label>Número de cuenta</label><div class="ba-mono">{{ solicitud.num_cuenta }}</div></div>
+            <div class="col-md-2 ba-dato"><label>Moneda</label><div>{{ solicitud.moneda }}</div></div>
+            <div class="col-md-3 ba-dato"><label>Solicitó</label><div>{{ solicitud.solicitante }} · {{ solicitud.fecha_solicitud|date('d/m/Y') }}</div></div>
+            {% if solicitud.fecha_alta %}<div class="col-md-3 ba-dato"><label>Fecha de alta</label><div>{{ solicitud.fecha_alta|date('d/m/Y') }}</div></div>{% endif %}
+        </div>
+    </div></div>
+
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+        <h6 class="mb-2">Carátula del estado de cuenta</h6>
+        {% if solicitud.file_path %}
+            {% if solicitud.file_extension == 'pdf' %}
+            <iframe src="{{ url('bankaccounts.caratula', {id: solicitud.id}) }}" style="width:100%;height:60vh;border:1px solid #e2e8f0;border-radius:.4rem;" title="Carátula"></iframe>
+            {% else %}
+            <img src="{{ url('bankaccounts.caratula', {id: solicitud.id}) }}" alt="Carátula" style="max-width:100%;max-height:60vh;border:1px solid #e2e8f0;border-radius:.4rem;">
+            {% endif %}
+            <div class="small mt-2"><a href="{{ url('bankaccounts.caratula', {id: solicitud.id}) }}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i> Abrir {{ solicitud.original_filename }}</a></div>
+        {% else %}
+            <div class="text-muted">Sin carátula.</div>
+        {% endif %}
+        {% if puede_subir %}
+        <div class="mt-3">
+        <div class="ba-drop" id="ba_drop">
+            <input type="file" id="ba_archivo" class="ba-drop-input" accept=".pdf,.jpg,.jpeg,.png" aria-label="Carátula del estado de cuenta">
+            <div class="ba-drop-vacio">
+                <i class="fas fa-cloud-upload-alt ba-drop-ico"></i>
+                <div class="ba-drop-tit">Arrastre la carátula aquí o haga clic para elegirla</div>
+                <div class="ba-drop-sub">PDF, JPG o PNG · máximo 10 MB</div>
+            </div>
+            <div class="ba-drop-archivo d-none">
+                <i class="fas fa-file ba-drop-tipo"></i>
+                <div><div class="ba-drop-nombre"></div><div class="ba-drop-tam"></div></div>
+                <button type="button" class="ba-drop-quitar" title="Quitar archivo" aria-label="Quitar archivo"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+            <button type="button" id="ba_subir" class="btn btn-primary mt-3" disabled><i class="fas fa-upload"></i> Subir y enviar a Tesorería</button>
+        </div>
+        {% endif %}
+    </div></div>
+
+    {% if puede_decidir %}
+    <div class="card border-0 shadow-sm"><div class="card-body">
+        <h6 class="mb-3">Decisión de Tesorería</h6>
+        <div class="row g-3">
+            <div class="col-12 ba-dato"><label for="ba_comentario">Comentario (obligatorio al rechazar)</label>
+                <input type="text" id="ba_comentario" maxlength="400" class="form-control form-control-sm"></div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" id="ba_rechazar" class="btn btn-sm btn-outline-danger"><i class="fas fa-times"></i> Rechazar</button>
+            <button type="button" id="ba_aprobar" class="btn btn-sm btn-success"><i class="fas fa-check"></i> Aprobar y agregar al catálogo</button>
+        </div>
+    </div></div>
+    {% endif %}
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ js_v('bankaccountrequests.js') }}"></script>
+{% endblock %}

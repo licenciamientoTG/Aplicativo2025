@@ -1,0 +1,75 @@
+{# views/bankaccountrequests/index.html — Solicitudes de alta de cuenta bancaria (propias o, con Tesorería, todas) #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Alta de cuenta bancaria{% endblock %}
+{% block menutitle %}Alta de cuenta bancaria{% endblock %}
+{% block mycss %}
+<style>
+    #tabla_altas thead th { text-transform:uppercase; font-size:.7rem; letter-spacing:.05em; color:#64748b; white-space:nowrap; background:#f8fafc; }
+    #tabla_altas tbody td { vertical-align:middle; }
+    #tabla_altas .ba-fila { cursor:pointer; }
+    .ba-folio { font-family:Consolas, monospace; font-weight:700; color:#1C4587; white-space:nowrap; }
+    .ba-cuenta { font-family:Consolas, monospace; white-space:nowrap; }
+    .badge-estatus { display:inline-flex; align-items:center; gap:.4rem; font-size:.72rem; font-weight:600; padding:.15rem .55rem; border-radius:.35rem; border:1px solid; white-space:nowrap; }
+    .badge-estatus::before { content:''; width:.4rem; height:.4rem; border-radius:50%; background:currentColor; }
+    .st-1 { color:#b45309; background:#fffbeb; border-color:#fde68a; }
+    .st-2 { color:#15803d; background:#f0fdf4; border-color:#bbf7d0; }
+    .st-3 { color:#b91c1c; background:#fef2f2; border-color:#fecaca; }
+    .st-4 { color:#475569; background:#f1f5f9; border-color:#cbd5e1; }
+    .ba-seg { display:inline-flex; gap:.2rem; padding:.2rem; background:#f1f5f9; border-radius:.55rem; }
+    .ba-seg button { border:0; background:transparent; color:#475569; font-size:.78rem; padding:.3rem .75rem; border-radius:.4rem; white-space:nowrap; cursor:pointer; }
+    .ba-seg button.activo { background:#fff; color:#0f172a; font-weight:600; box-shadow:0 1px 2px rgba(15,23,42,.12); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+    <div>
+        <h5 class="mb-0 fw-bold">Alta de cuenta bancaria</h5>
+        <small class="text-muted">Solicitudes para dar de alta cuentas de proveedores; Tesorería las aprueba.</small>
+    </div>
+    <a href="{{ url('bankaccounts.new') }}" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Nueva solicitud</a>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body py-2 px-3 d-flex align-items-center flex-wrap gap-2">
+        <div class="ba-seg" id="ba_tabs">
+            <button type="button" data-status="" class="activo">Todas</button>
+            {% for k, t in estatus %}<button type="button" data-status="{{ k }}">{{ t }}</button>{% endfor %}
+        </div>
+        <input type="search" id="ba_filtro_texto" class="form-control form-control-sm w-auto" placeholder="Buscar folio, proveedor, cuenta, banco..." style="min-width:20rem;">
+        <span class="ms-auto small text-muted">{{ es_tesoreria ? 'Mostrando todas las solicitudes' : 'Mostrando sus solicitudes' }}</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0" id="tabla_altas">
+            <thead><tr>
+                <th>Folio</th><th>Fecha</th><th>Razón social</th><th>Proveedor</th><th>Banco</th><th>Cuenta</th><th>Solicitante</th><th>Estatus</th>{% if es_tesoreria %}<th></th>{% endif %}
+            </tr></thead>
+            <tbody>
+            {% for s in solicitudes %}
+                <tr class="ba-fila" data-status="{{ s.status }}" data-busqueda="{{ s.busqueda }}" data-url="{{ url('bankaccounts.detail', {id: s.id}) }}">
+                    <td class="ba-folio">#{{ s.id }}</td>
+                    <td>{{ s.fecha_solicitud|date('d/m/Y') }}</td>
+                    <td>{{ s.empresa }}</td>
+                    <td class="fw-semibold">{{ s.proveedor }}</td>
+                    <td>{{ s.banco }}</td>
+                    <td class="ba-cuenta">{{ s.num_cuenta }}</td>
+                    <td>{{ s.solicitante }}</td>
+                    <td><span class="badge-estatus st-{{ s.status }}">{{ estatus[s.status] ?? s.status }}</span></td>
+                    {% if es_tesoreria %}<td class="text-end">{% if s.status == 1 %}<button type="button" class="btn btn-sm btn-outline-primary btn-ba-modal" data-url="{{ url('bankaccounts.decision_modal', {id: s.id}) }}"><i class="fas fa-gavel"></i> Revisar</button>{% endif %}</td>{% endif %}
+                </tr>
+            {% else %}
+                <tr><td colspan="{{ es_tesoreria ? 9 : 8 }}" class="text-center text-muted py-4">Aún no hay solicitudes.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_ba" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" id="modal_ba_content"></div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ js_v('bankaccountrequests.js') }}"></script>
+{% endblock %}

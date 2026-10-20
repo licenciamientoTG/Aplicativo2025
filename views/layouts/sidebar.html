@@ -849,7 +849,7 @@
       {% endif %}
       {% endif %}
 
-      {% if authorized(106) or authorized(107) or authorized(108) or authorized(109) or authorized(110) %} {# Pagos extraordinarios #}
+      {% if authorized(106) %} {# Pagos extraordinarios: el 106 abre la sección completa #}
       <li class="sidebar-header">PAGOS EXTRAORDINARIOS</li>
       <li class="sidebar-item">
         <a class="sidebar-link" href="{{ url('extrapayments.index') }}" data-active-also="/pagos-extraordinarios/(new|\d+(/edit)?)/?$">
@@ -857,7 +857,14 @@
           <span class="align-middle">Solicitudes</span>
         </a>
       </li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="{{ url('bankaccounts.index') }}" data-active-also="/pagos-extraordinarios/alta-cuenta/.+">
+          <i data-feather="credit-card"></i>
+          <span class="align-middle">Alta de cuenta bancaria</span>
+        </a>
+      </li>
       {% endif %}
+
 
       {% if authorized(3) or for_sistemas() %}
       <li class="sidebar-header">SISTEMAS</li>

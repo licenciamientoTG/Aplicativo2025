@@ -41,6 +41,11 @@ class ExtraPayments
 
     public function __construct($twig)
     {
+        // El 106 abre la sección: sin él no se entra a ninguna ruta del módulo,
+        // aunque se tenga otro permiso (107-110) que se valida después.
+        if (!authorized(ExtraPaymentWorkflow::PERM_CREAR)) {
+            $this->fail(403, 'No tiene permiso para acceder a este módulo.', $this->es_ajax() || $_SERVER['REQUEST_METHOD'] === 'POST');
+        }
         $this->twig               = $twig;
         $this->route              = 'views/extrapayments/';
         $this->requestsModel      = new ExtraPaymentRequestsModel();
@@ -223,8 +228,13 @@ class ExtraPayments
         $motivos  = $this->catalogModel->reasons();
         $empresas = $this->catalogModel->empresas();
         $estatus  = self::ESTATUS;
+        // Cards de resumen: solo quien ve todas (110) o revisa en CxP (107) / Admón (108);
+        // con solo el 106 la vista queda en sus propias solicitudes, sin cards.
+        $ver_cards = authorized(ExtraPaymentWorkflow::PERM_VER_TODAS)
+            || authorized(ExtraPaymentWorkflow::PERM_CXP)
+            || authorized(ExtraPaymentWorkflow::PERM_ADMON);
         echo $this->twig->render($this->route . 'index.html', compact(
-            'solicitudes', 'ver_todas', 'puede_crear', 'atiende', 'motivos', 'empresas', 'estatus'
+            'solicitudes', 'ver_todas', 'puede_crear', 'atiende', 'motivos', 'empresas', 'estatus', 'ver_cards'
         ));
     }
 
