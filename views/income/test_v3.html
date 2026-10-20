@@ -756,7 +756,8 @@
             </div>
             <div class="modal-body p-4 bg-light">
                 <input type="hidden" id="dif-tes-ref">
-                <div class="mb-3"><div class="text-muted small font-weight-bold text-uppercase mb-1">Componente</div><div class="font-weight-bold" id="dif-tes-concepto"></div><div class="text-muted small" id="dif-tes-fecha-origen"></div></div>
+                <div class="mb-3" id="dif-tes-selector-wrap" style="display:none;"><label class="text-muted small font-weight-bold text-uppercase mb-1" for="dif-tes-componente">Depósito</label><select id="dif-tes-componente" class="form-control form-control-sm" onchange="seleccionarComponenteDiferidoTES()"></select></div>
+                <div class="mb-3"><div class="text-muted small font-weight-bold text-uppercase mb-1">Depósito origen</div><div class="font-weight-bold" id="dif-tes-concepto"></div><div class="text-muted small" id="dif-tes-fecha-origen"></div></div>
                 <div class="row mb-3">
                     <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Pendiente en origen</div><div class="font-numeric h5 text-dark" id="dif-tes-disponible"></div><small class="text-muted">Importe del depósito aún no diferido y pendiente de conciliar.</small></div>
                     <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Fecha destino</div><input type="date" id="dif-tes-fecha-dest" class="form-control form-control-sm" min="2026-10-01" max="2026-10-31"></div>
@@ -2473,12 +2474,13 @@ function renderTes() {
                 <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
             </div>`);
         } else {
-            const accionesDiferirTES = tesDiferidosHabilitado() ? componentesDisponibles.filter(comp => tesMontoDisponible(comp) > 0).map(comp => {
-                const activos = tesDiferidosActivos(comp.ref);
-                const montoBase = parseFloat(comp.monto || 0) + activos.reduce((s, d) => s + parseFloat(d.monto_diferido || 0), 0);
-                const disponible = tesMontoDisponible(comp);
-                return `<span class="d-block small text-muted mt-1">${escHtml(comp.descripcion || comp.ref)} · Pendiente ${fmt.format(disponible)} <button class="btn-diferir" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(comp.ref)}','${escHtml(fecha)}',${montoBase},${disponible},'${escHtml(comp.descripcion || comp.ref)}')" title="Diferir componente TES"><i class="fas fa-calendar-day"></i> D</button></span>`;
-            }).join('') : '';
+            const componentesDiferibles = tesDiferidosHabilitado()
+                ? componentesDisponibles.filter(comp => tesMontoDisponible(comp) > 0)
+                : [];
+            const pendienteDia = componentesDiferibles.reduce((sum, comp) => sum + tesMontoDisponible(comp), 0);
+            const accionesDiferirTES = componentesDiferibles.length
+                ? `<span class="d-block small text-muted mt-1">Pendiente ${fmt.format(pendienteDia)} <button class="btn-diferir" data-componentes="${escHtml(JSON.stringify(componentesDiferibles))}" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(fecha)}',this)" title="Diferir depósito TES"><i class="fas fa-calendar-day"></i> D</button></span>`
+                : '';
             $c.append(`<div class="row-item row-pendiente tes-amex-row ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesDisponibles))}" onclick="toggleTESBadges(this);toggleTESComponentes(this)">
                 <div class="row-left">
                     <span class="row-line1">${dateFmt}</span>
@@ -4070,18 +4072,42 @@ async function cancelarTransitosDia(ids) {
 let _difState = {};   // datos temporales del modal de diferido
 let _difTesState = {};
 
-function abrirModalDiferidoTES(ref, fecha, montoCorte, disponible, concepto) {
+function abrirModalDiferidoTES(fecha, button) {
     if (!tesDiferidosHabilitado() || mesCerrado) return;
-    _difTesState = { ref, fecha, montoCorte: parseFloat(montoCorte), disponible: parseFloat(disponible), concepto };
-    $('#dif-tes-ref').val(ref);
-    $('#dif-tes-concepto').text(concepto || ref);
-    $('#dif-tes-fecha-origen').text(fecha.split('-').reverse().join('/'));
-    $('#dif-tes-disponible').text(fmt.format(disponible));
-    $('#dif-tes-monto').val('');
+    let componentes = [];
+    try { componentes = JSON.parse($(button).attr('data-componentes') || '[]'); } catch(e) { return; }
+    componentes = componentes.filter(comp => tesMontoDisponible(comp) > 0);
+    if (!componentes.length) return;
+
+    _difTesState = { fecha, componentes };
+    const $selector = $('#dif-tes-componente');
+    $selector.html(componentes.map((comp, index) => {
+        const pendiente = tesMontoDisponible(comp);
+        const label = `${comp.descripcion || comp.ref} · Pendiente ${fmt.format(pendiente)}`;
+        return `<option value="${index}">${escHtml(label)}</option>`;
+    }).join(''));
+    $('#dif-tes-selector-wrap').toggle(componentes.length > 1);
     $('#dif-tes-fecha-dest').val('').attr('min', '2026-10-01').attr('max', '2026-10-31');
     $('#dif-tes-desc').val('');
-    $('#dif-tes-restante').text(fmt.format(disponible));
+    $('#dif-tes-monto').val('');
+    seleccionarComponenteDiferidoTES();
     $('#modalDiferidoTES').modal('show');
+}
+
+function seleccionarComponenteDiferidoTES() {
+    const index = parseInt($('#dif-tes-componente').val() || '0', 10);
+    const comp = (_difTesState.componentes || [])[index];
+    if (!comp) return;
+    const activos = tesDiferidosActivos(comp.ref);
+    const montoCorte = parseFloat(comp.monto || 0) + activos.reduce((sum, d) => sum + parseFloat(d.monto_diferido || 0), 0);
+    const disponible = tesMontoDisponible(comp);
+    _difTesState = { ..._difTesState, ref: comp.ref, montoCorte, disponible, concepto: comp.descripcion || comp.ref };
+    $('#dif-tes-ref').val(comp.ref);
+    $('#dif-tes-concepto').text(comp.descripcion || comp.ref);
+    $('#dif-tes-fecha-origen').text(_difTesState.fecha.split('-').reverse().join('/'));
+    $('#dif-tes-disponible').text(fmt.format(disponible));
+    $('#dif-tes-restante').text(fmt.format(disponible));
+    $('#dif-tes-monto').val('').attr('max', disponible);
 }
 
 function actualizarDisponibleDiferidoTES() {
