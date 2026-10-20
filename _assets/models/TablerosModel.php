@@ -2114,6 +2114,42 @@ class TablerosModel {
         return ['id' => $id, 'board_id' => $boardId, 'name' => $name, 'color' => $color, 'sort_order' => $position];
     }
 
+    public function reorderGroups(int $boardId, int $userId, array $input): array {
+        $groupIds = $input['group_ids'] ?? null;
+        if (!is_array($groupIds) || !array_is_list($groupIds)) {
+            throw new TablerosApiException('validation', 'El orden debe incluir la lista completa de grupos.', 422);
+        }
+        $ids = [];
+        foreach ($groupIds as $value) {
+            $id = $this->positiveInt($value, 'group_id');
+            if (isset($ids[$id])) {
+                throw new TablerosApiException('validation', 'No se permiten grupos repetidos.', 422);
+            }
+            $ids[$id] = $id;
+        }
+        return $this->transaction(function () use ($boardId, $userId, $ids): array {
+            $groups = $this->all(
+                'SELECT id FROM tb_group WITH (UPDLOCK, HOLDLOCK) WHERE board_id = ? AND deleted_at IS NULL ORDER BY sort_order, id',
+                [$boardId]
+            );
+            $activeIds = array_map(static fn(array $group): int => (int)$group['id'], $groups);
+            if (count($activeIds) !== count($ids) || array_diff($activeIds, array_values($ids))) {
+                throw new TablerosApiException('validation', 'El orden debe incluir exactamente los grupos activos de este tablero. Actualiza el tablero e inténtalo de nuevo.', 422);
+            }
+            $ordered = [];
+            foreach (array_values($ids) as $index => $id) {
+                $position = $index * 10;
+                $this->execute(
+                    'UPDATE tb_group SET sort_order = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
+                    [$position, $id, $boardId]
+                );
+                $ordered[] = ['id' => $id, 'sort_order' => $position];
+            }
+            $this->writeActivity($boardId, null, $userId, 'group.reordered', ['group_ids' => array_values($ids)]);
+            return ['groups' => $ordered];
+        });
+    }
+
     public function createColumn(int $boardId, int $userId, array $input): array {
         $name = $this->requiredString($input, 'name', 120);
         if (!is_string($input['type'] ?? null)) {
@@ -2126,6 +2162,18 @@ class TablerosModel {
         $options = $input['options'] ?? [];
         if (!is_array($options) || strlen((string)json_encode($options, JSON_UNESCAPED_UNICODE)) > 16000) {
             throw new TablerosApiException('validation', 'Las opciones de la columna no son válidas.', 422);
+        }
+        if ($type === 'rating') {
+            $display = array_key_exists('display', $options) ? $options['display'] : 'stars';
+            if (!in_array($display, ['stars', 'percentage'], true)) {
+                throw new TablerosApiException('validation', 'La calificación debe mostrarse como estrellas o porcentaje.', 422);
+            }
+            $options['display'] = $display;
+            $maximum = $display === 'percentage' ? 100 : ($options['max'] ?? 5);
+            if (!is_numeric($maximum) || !is_finite((float)$maximum) || (float)$maximum <= 0) {
+                throw new TablerosApiException('validation', 'El máximo de la calificación debe ser un número positivo.', 422);
+            }
+            $options['max'] = (float)$maximum;
         }
         $required = $this->booleanInput($input, 'required', false);
         $enforceUnique = $this->booleanInput($input, 'enforce_unique', false);
@@ -3112,7 +3160,7 @@ class TablerosModel {
                 throw new TablerosApiException('validation', 'El progreso debe estar entre 0 y 100.', 422);
             }
             if ($type === 'rating') {
-                $maximum = (float)($options['max'] ?? 5);
+                $maximum = ($options['display'] ?? 'stars') === 'percentage' ? 100 : (float)($options['max'] ?? 5);
                 if ($number < 0 || $number > $maximum) {
                     throw new TablerosApiException('validation', 'La calificación está fuera del rango permitido.', 422);
                 }

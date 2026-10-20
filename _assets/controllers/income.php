@@ -8141,6 +8141,35 @@ public function stamped_invoices_detail(): void
             $conn = $this->v3_conn();
             $conn->beginTransaction();
 
+            $tesDiferidoOrigIds = [];
+            $tesDiferidoDestIds = [];
+            $usesTesDiferido = false;
+            foreach (($data['tes_rows'] ?? []) as $pilotRow) {
+                if (($pilotRow['tipo'] ?? '') === 'TES_DIFERIDO') {
+                    $usesTesDiferido = true;
+                    if (empty($pilotRow['diferido_tes_ids']) || !is_array($pilotRow['diferido_tes_ids'])) throw new Exception('Faltan los IDs de diferido TES destino.');
+                    foreach ($pilotRow['diferido_tes_ids'] as $did) { if ((int)$did <= 0) throw new Exception('ID de diferido TES inválido.'); $tesDiferidoDestIds[] = (int)$did; }
+                }
+                if (!empty($pilotRow['diferido_tes_orig_ids']) && !is_array($pilotRow['diferido_tes_orig_ids'])) throw new Exception('IDs de diferido TES origen inválidos.');
+                foreach (($pilotRow['diferido_tes_orig_ids'] ?? []) as $did) {
+                    $usesTesDiferido = true;
+                    if ((int)$did <= 0) throw new Exception('ID de diferido TES inválido.');
+                    $tesDiferidoOrigIds[] = (int)$did;
+                }
+            }
+            $isTesDiferidoPilot = trim($data['afiliacion'] ?? '') === '9990624'
+                && substr((string)($data['fecha_operativa'] ?? ''), 0, 7) === '2026-10'
+                && substr((string)($data['fecha_deposito'] ?? ''), 0, 7) === '2026-10';
+            if ($usesTesDiferido && !$isTesDiferidoPilot) {
+                throw new Exception('El diferido TES solo está habilitado para la afiliación 9990624 en octubre de 2026.');
+            }
+            if ($isTesDiferidoPilot) {
+                $this->v3_ensure_diferido_tes_table($conn);
+                $this->v3_assert_mes_abierto($conn, (int)$data['estacion_id'], (int)$data['entidad_id'], '9990624', '2026-10');
+                $this->v3_validate_diferido_tes_group($conn, $tesDiferidoOrigIds, $tesDiferidoDestIds,
+                    (int)$data['estacion_id'], (int)$data['entidad_id'], $data['tes_rows']);
+            }
+
             $total_cg  = (float)$data['total_cg'];
             $total_tes = (float)$data['total_tes'];
             $diferencia = round($total_tes - $total_cg, 2);
@@ -8238,6 +8267,21 @@ public function stamped_invoices_detail(): void
                     (float)$row['monto'],
                     $row['concepto'] ?? '',
                 ]);
+            }
+
+            // Marcar TES diferido en el grupo que concilia el saldo origen y/o destino.
+            if (!empty($tesDiferidoDestIds)) {
+                $ph = implode(',', array_fill(0, count($tesDiferidoDestIds), '?'));
+                $u = $conn->prepare("UPDATE CV3_DiferidoTES SET estado='CONCILIADO', conciliacion_id_dest=? WHERE id IN ($ph) AND conciliacion_id_dest IS NULL");
+                $u->execute(array_merge([$grupo_id], $tesDiferidoDestIds));
+                if ($u->rowCount() !== count(array_unique($tesDiferidoDestIds))) throw new Exception('Uno o más diferidos TES destino ya están conciliados.');
+            }
+            if (!empty($tesDiferidoOrigIds)) {
+                $ids = array_values(array_unique($tesDiferidoOrigIds));
+                $ph = implode(',', array_fill(0, count($ids), '?'));
+                $u = $conn->prepare("UPDATE CV3_DiferidoTES SET conciliacion_id_orig=? WHERE id IN ($ph) AND conciliacion_id_orig IS NULL");
+                $u->execute(array_merge([$grupo_id], $ids));
+                if ($u->rowCount() !== count($ids)) throw new Exception('Uno o más diferidos TES origen ya están conciliados.');
             }
 
             // 3a. Marcar fakes de tránsito como CONCILIADO (mes destino)
@@ -8367,6 +8411,10 @@ public function stamped_invoices_detail(): void
                 "UPDATE CV3_Diferido SET conciliacion_id_orig = NULL
                  WHERE conciliacion_id_orig = ?"
             )->execute([$grupo_id]);
+
+            $this->v3_ensure_diferido_tes_table($conn);
+            $conn->prepare("UPDATE CV3_DiferidoTES SET estado='PENDIENTE', conciliacion_id_dest=NULL WHERE conciliacion_id_dest=?")->execute([$grupo_id]);
+            $conn->prepare("UPDATE CV3_DiferidoTES SET conciliacion_id_orig=NULL WHERE conciliacion_id_orig=?")->execute([$grupo_id]);
 
             // Borrar detalles y grupo (FK CASCADE borra detalles)
             $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id = ?")->execute([$grupo_id]);
@@ -8529,6 +8577,10 @@ public function stamped_invoices_detail(): void
                     "UPDATE CV3_Diferido SET conciliacion_id_orig = NULL
                      WHERE conciliacion_id_orig IN ($placeholders)"
                 )->execute($chunk);
+
+                $this->v3_ensure_diferido_tes_table($conn);
+                $conn->prepare("UPDATE CV3_DiferidoTES SET estado='PENDIENTE', conciliacion_id_dest=NULL WHERE conciliacion_id_dest IN ($placeholders)")->execute($chunk);
+                $conn->prepare("UPDATE CV3_DiferidoTES SET conciliacion_id_orig=NULL WHERE conciliacion_id_orig IN ($placeholders)")->execute($chunk);
 
                 // 6. Borrar grupos (FK CASCADE elimina detalles)
                 $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id IN ($placeholders)")->execute($chunk);
@@ -9542,6 +9594,146 @@ public function stamped_invoices_detail(): void
         ");
     }
 
+    private function v3_ensure_diferido_tes_table(PDO $conn): void {
+        $conn->exec("IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE name='CV3_DiferidoTES' AND type='U')
+            CREATE TABLE dbo.CV3_DiferidoTES (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                estacion_id INT NOT NULL, entidad_id INT NOT NULL,
+                afiliacion VARCHAR(50) NOT NULL, referencia VARCHAR(200) NOT NULL,
+                fecha_origen DATE NOT NULL, fecha_destino DATE NOT NULL, mes VARCHAR(7) NOT NULL,
+                monto_corte DECIMAL(18,2) NOT NULL, monto_diferido DECIMAL(18,2) NOT NULL,
+                concepto VARCHAR(200) NULL, descripcion VARCHAR(300) NULL,
+                estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                conciliacion_id_orig INT NULL, conciliacion_id_dest INT NULL,
+                created_at DATETIME DEFAULT GETDATE(), created_by INT NULL
+            )");
+    }
+
+    private function v3_assert_mes_abierto(PDO $conn, int $sid, int $eid, string $afil, string $mes): void {
+        $s = $conn->prepare("SELECT TOP 1 id FROM Conciliacion_V3_CierreMes WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND mes=?");
+        $s->execute([$sid, $eid, $afil, $mes]);
+        if ($s->fetchColumn()) throw new Exception('El mes ya está cerrado.');
+    }
+
+    private function v3_validate_diferido_tes_group(PDO $conn, array $origIds, array $destIds, int $sid, int $eid, array $tesRows): void {
+        if (count($origIds) !== count(array_unique(array_map('intval', $origIds))) || count($destIds) !== count(array_unique(array_map('intval', $destIds)))) throw new Exception('IDs de diferido TES duplicados.');
+        $origIds = array_values(array_unique(array_filter(array_map('intval', $origIds))));
+        $destIds = array_values(array_unique(array_filter(array_map('intval', $destIds))));
+
+        // Si se concilia el depósito origen, debe conservar exactamente el
+        // principal disponible y declarar todos los splits activos de ese ref.
+        $sourceRows = array_values(array_filter($tesRows, static fn($row) => ($row['tipo'] ?? 'TES') !== 'TES_DIFERIDO'));
+        $sourceRefs = array_values(array_unique(array_filter(array_map(
+            static fn($row) => trim((string)($row['ref'] ?? '')),
+            $sourceRows
+        ))));
+        if ($sourceRefs) {
+            $ph = implode(',', array_fill(0, count($sourceRefs), '?'));
+            $active = $conn->prepare("SELECT id, referencia, monto_diferido, fecha_origen FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK)
+                WHERE estacion_id=? AND entidad_id=? AND afiliacion='9990624' AND mes='2026-10'
+                  AND estado<>'CANCELADO' AND referencia IN ($ph)");
+            $active->execute(array_merge([$sid, $eid], $sourceRefs));
+            $activeByRef = [];
+            foreach ($active->fetchAll(PDO::FETCH_ASSOC) as $split) $activeByRef[(string)$split['referencia']][] = $split;
+
+            foreach ($sourceRows as $row) {
+                $ref = trim((string)($row['ref'] ?? ''));
+                $splits = $activeByRef[$ref] ?? [];
+                if (!$splits) continue;
+                $listedIds = array_values(array_unique(array_map('intval', (array)($row['diferido_tes_orig_ids'] ?? []))));
+                $requiredIds = array_values(array_unique(array_map('intval', array_column($splits, 'id'))));
+                sort($listedIds); sort($requiredIds);
+                if ($listedIds !== $requiredIds) throw new Exception('El depósito origen debe incluir todos sus diferidos TES activos.');
+
+                if (!preg_match('/^mb_(\d+)$/', $ref, $m)) throw new Exception('Referencia TES origen inválida.');
+                $source = $conn->prepare("SELECT TOP 1 abono, fecha FROM [TG].[dbo].[movimientos_bancarios]
+                    WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10
+                      AND UPPER(descripcion) LIKE '%9990624%'
+                      AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%')");
+                $source->execute([(int)$m[1]]);
+                $movement = $source->fetch(PDO::FETCH_ASSOC);
+                if (!$movement) throw new Exception('No se encontró el movimiento TES origen.');
+                $movementDate = $movement['fecha'] instanceof DateTime ? $movement['fecha']->format('Y-m-d') : substr((string)$movement['fecha'], 0, 10);
+                $splitTotal = array_sum(array_map(static fn($split) => (float)$split['monto_diferido'], $splits));
+                $remaining = round((float)$movement['abono'] - $splitTotal, 2);
+                if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $movementDate
+                    || abs((float)($row['monto'] ?? 0) - $remaining) > 0.01) {
+                    throw new Exception('El renglón TES origen debe coincidir con el principal menos los splits activos.');
+                }
+            }
+        }
+
+        foreach ([[$origIds, 'origen'], [$destIds, 'destino']] as [$ids, $kind]) {
+            if (!$ids) continue;
+            if (count($ids) !== count($kind === 'origen' ? $origIds : $destIds)) throw new Exception('IDs de diferido TES inválidos.');
+            $ph = implode(',', array_fill(0, count($ids), '?'));
+            $s = $conn->prepare("SELECT id, estacion_id, entidad_id, afiliacion, mes, fecha_origen, fecha_destino, monto_diferido, estado, conciliacion_id_orig, conciliacion_id_dest FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE id IN ($ph)");
+            $s->execute($ids);
+            $rows = $s->fetchAll(PDO::FETCH_ASSOC);
+            if (count($rows) !== count($ids)) throw new Exception('Diferido TES no encontrado.');
+            foreach ($rows as $r) {
+                if ((int)$r['estacion_id'] !== $sid || (int)$r['entidad_id'] !== $eid || $r['afiliacion'] !== '9990624' || $r['mes'] !== '2026-10' || $r['estado'] === 'CANCELADO') throw new Exception('Diferido TES no disponible para esta conciliación.');
+                if ($kind === 'origen' && !empty($r['conciliacion_id_orig'])) throw new Exception('El saldo origen ya fue conciliado.');
+                if ($kind === 'destino' && !empty($r['conciliacion_id_dest'])) throw new Exception('El fake destino ya fue conciliado.');
+                $matchingRows = $tesRows;
+                $matching = false;
+                foreach ($matchingRows as $row) {
+                    $rowIds = $kind === 'origen' ? ($row['diferido_tes_orig_ids'] ?? []) : (($row['tipo'] ?? '') === 'TES_DIFERIDO' ? ($row['diferido_tes_ids'] ?? []) : []);
+                    if (!in_array((int)$r['id'], array_map('intval', (array)$rowIds), true)) continue;
+                    $expectedDate = $kind === 'origen' ? substr((string)$r['fecha_origen'], 0, 10) : substr((string)$r['fecha_destino'], 0, 10);
+                    if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $expectedDate) continue;
+                    $expectedRef = $kind === 'origen' ? (string)$r['referencia'] : 'diferido_tes_' . (int)$r['id'];
+                    if ((string)($row['ref'] ?? '') !== $expectedRef) continue;
+                    if ($kind === 'destino' && abs((float)($row['monto'] ?? 0) - (float)$r['monto_diferido']) > 0.005) continue;
+                    $matching = true; break;
+                }
+                if (!$matching) throw new Exception('El detalle TES no coincide con referencia, fecha o importe del diferido.');
+            }
+        }
+    }
+
+    // Piloto TES: consulta de saldos divididos para afiliación y mes exactos.
+    public function get_diferidos_tes_v3(): void {
+        ob_clean(); header('Content-Type: application/json');
+        $sid=(int)($_GET['estacion_id']??0); $eid=(int)($_GET['entidad_id']??0);
+        if (!$sid || !$eid || trim($_GET['afiliacion']??'')!=='9990624' || (int)($_GET['year']??0)!==2026 || (int)($_GET['month']??0)!==10) { echo json_encode(['status'=>'error','message'=>'El piloto solo está habilitado para afiliación 9990624 en octubre de 2026']); exit; }
+        try { $c=$this->v3_conn(); $this->v3_ensure_diferido_tes_table($c);
+            $s=$c->prepare("SELECT id, referencia AS tes_ref, CONVERT(VARCHAR(10),fecha_origen,23) fecha_origen, CONVERT(VARCHAR(10),fecha_destino,23) fecha_destino, monto_corte, monto_diferido, concepto, descripcion, estado, conciliacion_id_orig, conciliacion_id_dest FROM CV3_DiferidoTES WHERE estacion_id=? AND entidad_id=? AND afiliacion='9990624' AND mes='2026-10' AND estado<>'CANCELADO' ORDER BY fecha_origen,id");
+            $s->execute([$sid,$eid]); $rows=$s->fetchAll(PDO::FETCH_ASSOC); foreach($rows as &$r){$r['id']=(int)$r['id'];$r['monto_corte']=(float)$r['monto_corte'];$r['monto_diferido']=(float)$r['monto_diferido'];} unset($r);
+            echo json_encode(['status'=>'success','fakes'=>$rows,'en_diferido'=>$rows]);
+        } catch(Exception $e){echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    // Crea un split TES; tes_ref identifica movimientos_bancarios.id como mb_<id>.
+    public function crear_diferido_tes_v3(): void {
+        ob_clean(); header('Content-Type: application/json'); $d=json_decode(file_get_contents('php://input'),true)??[];
+        $sid=(int)($d['estacion_id']??0);$eid=(int)($d['entidad_id']??0);$ref=trim((string)($d['tes_ref']??$d['referencia']??$d['ref']??''));
+        $afil=trim((string)($d['afiliacion']??''));$fo=trim((string)($d['fecha_origen']??''));$fd=trim((string)($d['fecha_destino']??''));$amt=round((float)($d['monto_diferido']??0),2);
+        if(!$sid||$eid!==14||$afil!=='9990624'||!preg_match('/^mb_(\d+)$/',$ref,$refMatch)||$amt<=0||(($d['mes']??'2026-10')!=='2026-10')||!preg_match('/^2026-10-\d{2}$/',$fo)||!preg_match('/^2026-10-\d{2}$/',$fd)||!checkdate((int)substr($fo,5,2),(int)substr($fo,8,2),(int)substr($fo,0,4))||!checkdate((int)substr($fd,5,2),(int)substr($fd,8,2),(int)substr($fd,0,4))||$fo===$fd){echo json_encode(['status'=>'error','message'=>'Datos inválidos: solo se permiten referencias mb_<id>, afiliación 9990624 y fechas distintas de octubre de 2026 con monto positivo']);exit;}
+        try{$c=$this->v3_conn();$this->v3_ensure_diferido_tes_table($c);$c->beginTransaction();$this->v3_assert_mes_abierto($c,$sid,$eid,$afil,'2026-10');
+            $afilCheck=$c->prepare("SELECT TOP 1 estacion_id FROM Tesoreria_afil WHERE entidad_id=14 AND afiliacion='9990624' AND estacion_id=?");$afilCheck->execute([$sid]);if(!$afilCheck->fetchColumn())throw new Exception('La afiliación piloto no pertenece a la estación seleccionada.');
+            $src=$c->prepare("SELECT TOP 1 id, abono AS Depositos, fecha AS Fecha, descripcion AS Descripcion FROM [TG].[dbo].[movimientos_bancarios] WITH (UPDLOCK,HOLDLOCK) WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10 AND UPPER(descripcion) LIKE '%9990624%' AND ((UPPER(LTRIM(descripcion)) LIKE 'DEBITO%') OR (UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'))");$src->execute([(int)$refMatch[1]]);$source=$src->fetch(PDO::FETCH_ASSOC);
+            if(!$source)throw new Exception('No se encontró el depósito origen para esa referencia en Tesorería.');
+            $cut=round((float)$source['Depositos'],2);$sourceDate=substr((string)$source['Fecha'],0,10);if($fo!==$sourceDate)throw new Exception('La fecha origen no coincide con Tesorería.');
+            $already=$c->prepare("SELECT TOP 1 D.id FROM Conciliacion_V3_Detalles D WITH (UPDLOCK,HOLDLOCK)
+                INNER JOIN Conciliacion_V3_Grupos G WITH (UPDLOCK,HOLDLOCK) ON G.id=D.grupo_id
+                WHERE D.origen='TES' AND D.referencia_externa=? AND G.estacion_id=? AND G.entidad_id=? AND G.afiliacion='9990624'");
+            $already->execute([$ref,$sid,$eid]);if($already->fetchColumn())throw new Exception('El movimiento TES origen ya pertenece a una conciliación V3.');
+            $sum=$c->prepare("SELECT ISNULL(SUM(monto_diferido),0) FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND referencia=? AND estado<>'CANCELADO'");$sum->execute([$sid,$eid,$afil,$ref]);$used=(float)$sum->fetchColumn();if($used+$amt>$cut+0.005)throw new Exception('El monto diferido supera el saldo disponible del depósito.');
+            $ins=$c->prepare("INSERT INTO CV3_DiferidoTES(estacion_id,entidad_id,afiliacion,referencia,fecha_origen,fecha_destino,mes,monto_corte,monto_diferido,concepto,descripcion) VALUES(?,?,?,?,?,?, '2026-10',?,?,?,?)");$ins->execute([$sid,$eid,$afil,$ref,$fo,$fd,$cut,$amt,trim((string)($d['concepto']??$source['Descripcion']??'')),trim((string)($d['descripcion']??''))]);$id=(int)$c->query('SELECT @@IDENTITY')->fetchColumn();$c->commit();echo json_encode(['status'=>'success','id'=>$id,'tes_ref'=>$ref,'monto_efectivo'=>round($cut-$used-$amt,2)]);
+        }catch(Exception $e){if(isset($c)&&$c->inTransaction())$c->rollBack();echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
+    }
+
+    public function mover_diferido_tes_v3(): void { $this->cambiar_estado_diferido_tes_v3('mover'); }
+    public function cancelar_diferido_tes_v3(): void { $this->cambiar_estado_diferido_tes_v3('cancelar'); }
+    private function cambiar_estado_diferido_tes_v3(string $accion): void {
+        ob_clean();header('Content-Type: application/json');$d=json_decode(file_get_contents('php://input'),true)??[];$id=(int)($d['id']??0);$dest=trim((string)($d['nueva_fecha_destino']??''));
+        if(!$id||($accion==='mover'&&(!preg_match('/^2026-10-\d{2}$/',$dest)||!checkdate((int)substr($dest,5,2),(int)substr($dest,8,2),(int)substr($dest,0,4))))){echo json_encode(['status'=>'error','message'=>'Parámetros inválidos']);exit;}
+        try{$c=$this->v3_conn();$this->v3_ensure_diferido_tes_table($c);$c->beginTransaction();$s=$c->prepare('SELECT * FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE id=?');$s->execute([$id]);$r=$s->fetch(PDO::FETCH_ASSOC);if(!$r)throw new Exception('Diferido TES no encontrado.');if($r['afiliacion']!=='9990624'||$r['mes']!=='2026-10'||$r['estado']!=='PENDIENTE')throw new Exception('Diferido TES fuera del piloto o no está pendiente.');$this->v3_assert_mes_abierto($c,(int)$r['estacion_id'],(int)$r['entidad_id'],'9990624','2026-10');if(!empty($r['conciliacion_id_orig'])||!empty($r['conciliacion_id_dest']))throw new Exception('No se puede cambiar: alguno de sus grupos está conciliado.');
+            if($accion==='mover'){if($dest===substr((string)$r['fecha_origen'],0,10))throw new Exception('La fecha destino debe ser distinta a origen.');$c->prepare('UPDATE CV3_DiferidoTES SET fecha_destino=? WHERE id=?')->execute([$dest,$id]);}else{$c->prepare("UPDATE CV3_DiferidoTES SET estado='CANCELADO' WHERE id=?")->execute([$id]);}$c->commit();echo json_encode(['status'=>'success']);
+        }catch(Exception $e){if(isset($c)&&$c->inTransaction())$c->rollBack();echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
+    }
+
     // -------------------------------------------------------------------------
     //     GET /income/get_diferidos_cg_v3
     // -------------------------------------------------------------------------
@@ -9599,7 +9791,27 @@ public function stamped_invoices_detail(): void
                 $fakes[] = $r;
             }
 
-            echo json_encode(['status' => 'success', 'en_diferido' => $enDiferido, 'fakes' => $fakes]);
+            $diferidosTes = [];
+            if ($afiliacion === '9990624' && $year === 2026 && $month === 10) {
+                $this->v3_ensure_diferido_tes_table($conn);
+                $st = $conn->prepare("SELECT id, referencia AS tes_ref,
+                            CONVERT(VARCHAR(10), fecha_origen, 23) AS fecha_origen,
+                            CONVERT(VARCHAR(10), fecha_destino, 23) AS fecha_destino,
+                            mes, monto_corte, monto_diferido, concepto, descripcion,
+                            estado, conciliacion_id_orig, conciliacion_id_dest
+                     FROM CV3_DiferidoTES WHERE estacion_id=? AND entidad_id=?
+                       AND afiliacion='9990624' AND mes='2026-10' AND estado<>'CANCELADO'
+                     ORDER BY fecha_origen, id");
+                $st->execute([$estacion_id, $entidad_id]);
+                $diferidosTes = $st->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($diferidosTes as &$tesRow) {
+                    $tesRow['id'] = (int)$tesRow['id'];
+                    $tesRow['monto_corte'] = (float)$tesRow['monto_corte'];
+                    $tesRow['monto_diferido'] = (float)$tesRow['monto_diferido'];
+                }
+                unset($tesRow);
+            }
+            echo json_encode(['status' => 'success', 'en_diferido' => $enDiferido, 'fakes' => $fakes, 'diferidos_tes' => $diferidosTes]);
 
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
@@ -9638,6 +9850,11 @@ public function stamped_invoices_detail(): void
         $monto_diferido   = round((float)$data['monto_diferido'], 2);
         $concepto         = trim($data['concepto']    ?? '');
         $descripcion      = trim($data['descripcion'] ?? '');
+
+        if ($afiliacion === '9990624' && $mes === '2026-10') {
+            echo json_encode(['status' => 'error', 'message' => 'Durante el piloto de octubre de 2026, los diferidos de la afiliación 9990624 solo se crean desde Tesorería.']);
+            exit;
+        }
 
         if ($monto_diferido <= 0) {
             echo json_encode(['status' => 'error', 'message' => 'Monto diferido inválido']);
@@ -9727,6 +9944,11 @@ public function stamped_invoices_detail(): void
         $monto_dif_total  = round((float)($data['monto_diferido_total'] ?? 0), 2);
         $descripcion      = trim($data['descripcion']           ?? '');
         $cortes           = $data['cortes']                     ?? [];
+
+        if ($afiliacion === '9990624' && $mes === '2026-10') {
+            echo json_encode(['status' => 'error', 'message' => 'Durante el piloto de octubre de 2026, los diferidos de la afiliación 9990624 solo se crean desde Tesorería.']);
+            exit;
+        }
 
         if (!$estacion_id || !$entidad_id || !$mes || !$cg_fecha_destino || empty($cortes) || $monto_dif_total <= 0) {
             echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);

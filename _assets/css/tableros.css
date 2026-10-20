@@ -246,6 +246,14 @@
 .boards-group-row td { position: relative; height: 42px; padding: 0 10px; border-right: 0; background: #edf3f5; }
 .boards-group-heading { min-height: 41px; justify-content: space-between; gap: 12px; }
 .boards-group-toggle { min-width: 0; gap: 9px; padding: 6px 2px; border: 0; color: var(--boards-ink); background: transparent; text-align: left; }
+.boards-group-heading { cursor: grab; }
+.boards-group-heading:active { cursor: grabbing; }
+.boards-group-toggle { flex: 0 1 auto; margin-right: auto; }
+.boards-group-sortable-ghost > .boards-group-row > td { opacity: .28; border-top: 3px solid #8baaff; border-bottom: 3px solid #8baaff; }
+.boards-group-sortable-chosen > .boards-group-row > td { cursor: grabbing; }
+.boards-group-sortable-drag { opacity: .96; }
+.boards-rating-percentage { display: flex; align-items: center; gap: 7px; }
+.boards-rating-percentage > span { color: #86969e; font-weight: 700; }
 .boards-group-toggle > i { width: 12px; color: #71848d; font-size: .7rem; }
 .boards-group-toggle strong { overflow: hidden; max-width: 400px; text-overflow: ellipsis; white-space: nowrap; font-size: .84rem; font-weight: 600; }
 .boards-group-marker { flex: 0 0 4px; width: 4px; height: 21px; border-radius: 2px; background: var(--group-color, var(--boards-petrol)); }

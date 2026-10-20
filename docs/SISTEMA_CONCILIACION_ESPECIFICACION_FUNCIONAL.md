@@ -17,6 +17,8 @@ El sistema permite registrar transitos cuando parte del corte se deposita en un 
 ### Gestion de Diferidos
 El sistema permite diferir montos de un corte a otra fecha destino dentro del mismo mes. Soporta creacion individual y por lote diario, distribucion proporcional, movimiento de fecha destino y cancelacion con reglas de estado y cierre.
 
+Como prueba piloto temporal durante octubre de 2026, la afiliacion 9990624 tambien puede diferir una parte de un deposito de Tesoreria a cualquier otra fecha de ese mismo mes, incluso anterior a la fecha original. El remanente permanece disponible en el dia de origen y el monto diferido se presenta como partida TES en el dia destino. Esta extension tiene controles tanto en la vista como en el servidor y conserva la relacion con la referencia del movimiento original para conciliacion, cancelacion y deshacer.
+
 ### Carga y Normalizacion de Reportes Bancarios
 El sistema permite carga manual de reportes de BANORTE, SANTANDER/GETNET, AMEX y AFIRME, con mapeo de columnas, validacion de campos clave y omision de duplicados por huella de transaccion. Para AMEX, integra carga separada de comisiones e IVA por deposito.
 
