@@ -194,8 +194,10 @@
 .boards-search-row { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .boards-search { display: flex; width: min(300px, 100%); min-width: 180px; min-height: 35px; flex: 1 1 260px; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid var(--boards-line); border-radius: 5px; color: #71838f; background: #fff; }
 .boards-search:focus-within { border-color: #7aa9a9; box-shadow: 0 0 0 2px rgb(15 118 110 / 12%); }
-.boards-search input { width: 100%; min-width: 0; padding: 6px 0; border: 0; outline: 0; color: var(--boards-ink); background: transparent; font-size: .82rem; }
+.boards-search input, .boards-search select { width: 100%; min-width: 0; padding: 6px 0; border: 0; outline: 0; color: var(--boards-ink); background: transparent; font-size: .82rem; }
+.boards-search select { padding-right: 3px; appearance: none; cursor: pointer; }
 .boards-search input::placeholder { color: #8c9aa3; }
+.boards-search-chevron { flex: 0 0 auto; color: #71838f; font-size: .64rem; pointer-events: none; }
 .boards-search kbd { padding: 1px 5px; border: 1px solid #d7e0e4; border-radius: 3px; color: #788994; background: #f7f9fa; font-family: inherit; font-size: .7rem; }
 .boards-search-scope { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; margin: 0; }
 .boards-search-scope select { width: 150px; min-height: 35px; padding: 5px 25px 5px 9px; appearance: none; border: 1px solid var(--boards-line); border-radius: 5px; color: var(--boards-ink); background: #fff; background-image: none; font-size: .76rem; cursor: pointer; }
@@ -899,7 +901,8 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-toolbar { min-height: 62px; gap: 12px; padding: 10px 18px; border-bottom-color: #414463; background: #252843; }
 .boards-search { width: min(300px, 100%); min-height: 34px; border-color: #484b69; color: #b0b6d0; background: #1e213b; }
 .boards-search:focus-within { border-color: #80a3ff; box-shadow: 0 0 0 3px rgb(94 136 255 / 18%); }
-.boards-search input { color: #f4f5fc; }
+.boards-search input, .boards-search select { color: #f4f5fc; color-scheme: dark; }
+.boards-search-chevron { color: #aeb5d1; }
 .boards-search input::placeholder { color: #989db9; }
 .boards-search kbd { border-color: #4a4e69; color: #9da2bd; background: #30334e; }
 .boards-search-scope select { border-color: #484b69; color: #dce1f6; background: #1e213b; }

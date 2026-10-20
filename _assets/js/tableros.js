@@ -4337,19 +4337,157 @@
     els.boardSearchColumn.setAttribute('aria-label', els.boardSearchColumn.value
       ? `Buscar en ${els.boardSearchColumn.selectedOptions[0]?.textContent || 'columna'}`
       : 'Buscar en todas las columnas');
+    renderBoardSearchControl();
+    const selectedColumn = state.columns.find((column) => String(column.id) === els.boardSearchColumn.value);
+    if (selectedColumn && ['person', 'people'].includes(columnType(selectedColumn))) loadSummaryPeople();
+  }
+
+  function boardSearchControlKind(column) {
+    if (!column) return 'text';
+    const type = columnType(column);
+    if (['status', 'dropdown', 'person', 'people', 'tags', 'country', 'team'].includes(type)) return 'choice';
+    if (['date', 'timeline'].includes(type)) return 'date';
+    if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) return 'number';
+    if (type === 'hour') return 'time';
+    return 'text';
+  }
+
+  function boardSearchChoices(column) {
+    const type = columnType(column);
+    if (['status', 'dropdown'].includes(type)) {
+      const choices = parseOptions(column.options);
+      const known = new Set(choices.map((option) => option.value));
+      state.items.forEach((item) => {
+        const value = stringifyValue(getCellValue(item, column));
+        if (value && !known.has(value)) { choices.push({ value, label: value }); known.add(value); }
+      });
+      return choices;
+    }
+    if (['person', 'people'].includes(type)) {
+      const ids = Array.from(new Set(state.items.flatMap((item) => selectedIds(getCellValue(item, column)).map(String))));
+      return ids.map((id) => ({ value: id, label: state.summaryPeople.get(id)?.name || state.summaryPeople.get(id)?.username || `Persona ${id}` }));
+    }
+    const values = state.items.flatMap((item) => {
+      const value = getCellValue(item, column);
+      return Array.isArray(value) ? value : value === null || value === undefined || value === '' ? [] : [value];
+    });
+    const unique = new Map();
+    values.forEach((value) => {
+      const option = boardSearchOption(value);
+      if (option.value && !unique.has(option.value)) unique.set(option.value, option.label);
+    });
+    return Array.from(unique, ([value, label]) => ({ value, label }));
+  }
+
+  function boardSearchOption(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const rawValue = value.value ?? value.id ?? value.user_id ?? value.name ?? value.label ?? stringifyValue(value);
+      const label = value.label ?? value.name ?? value.value ?? value.id ?? stringifyValue(value);
+      return { value: String(rawValue), label: String(label) };
+    }
+    const text = stringifyValue(value);
+    return { value: text, label: text };
+  }
+
+  function boardSearchAnyLabel(column) {
+    const type = columnType(column);
+    if (type === 'person' || type === 'people') return 'Cualquier persona';
+    if (type === 'tags') return 'Cualquier etiqueta';
+    if (type === 'country') return 'Cualquier país';
+    if (type === 'team') return 'Cualquier equipo';
+    return 'Cualquier estado';
+  }
+
+  function renderBoardSearchControl() {
+    const current = els.boardSearch;
+    const shell = current?.closest('.boards-search');
+    if (!shell) return;
+    const selectedColumn = els.boardSearchColumn?.value || '';
+    const column = state.columns.find((candidate) => String(candidate.id) === selectedColumn);
+    const kind = boardSearchControlKind(column);
+    const currentValue = current.value || '';
+    const chevron = shell.querySelector('#boardSearchChevron');
+    if (chevron) chevron.hidden = kind !== 'choice';
+    if (current.dataset.searchControlKind === kind) {
+      if (kind === 'choice') {
+        const choices = boardSearchChoices(column);
+        current.replaceChildren(new Option(boardSearchAnyLabel(column), ''));
+        choices.forEach((choice) => current.append(new Option(choice.label, choice.value)));
+        current.value = choices.some((choice) => choice.value === currentValue) ? currentValue : '';
+      }
+      return;
+    }
+    let control;
+    if (kind === 'choice') {
+      control = document.createElement('select');
+      control.className = 'form-select';
+      control.append(new Option(boardSearchAnyLabel(column), ''));
+      boardSearchChoices(column).forEach((choice) => control.append(new Option(choice.label, choice.value)));
+    } else {
+      control = document.createElement('input');
+      control.type = kind === 'date' ? 'date' : kind === 'number' ? 'number' : kind === 'time' ? 'time' : 'search';
+      if (kind === 'number') {
+        control.step = columnType(column) === 'item_id' ? '1' : 'any';
+        if (columnType(column) === 'progress' || (columnType(column) === 'rating' && column.options?.display === 'percentage')) {
+          control.min = '0';
+          control.max = '100';
+        } else if (columnType(column) === 'rating') {
+          control.min = '0';
+          control.max = String(column.options?.max ?? 5);
+        }
+      }
+    }
+    control.id = 'boardSearch';
+    control.classList.add('boards-search-value');
+    control.dataset.searchControlKind = kind;
+    control.setAttribute('aria-label', column ? `Buscar en ${column.name || 'columna'}` : 'Buscar en el tablero');
+    if (kind === 'text') control.placeholder = column ? `Buscar en ${column.name || 'columna'}` : 'Buscar en el tablero';
+    if (kind === 'choice') {
+      const options = [...control.options].map((option) => option.value);
+      control.value = options.includes(currentValue) ? currentValue : '';
+    } else if (kind === 'date') {
+      control.value = /^\d{4}-\d{2}-\d{2}$/.test(currentValue) ? currentValue : '';
+    } else if (kind === 'number') {
+      control.value = /^-?\d+(?:\.\d+)?$/.test(currentValue) ? currentValue : '';
+    } else if (kind === 'time') {
+      control.value = /^\d{2}:\d{2}/.test(currentValue) ? currentValue.slice(0, 5) : '';
+    } else {
+      control.value = currentValue;
+    }
+    current.replaceWith(control);
+    els.boardSearch = control;
   }
 
   function itemMatchesSearch(item, query) {
     if (!query) return true;
     const selectedColumn = els.boardSearchColumn?.value || '';
     const column = state.columns.find((candidate) => String(candidate.id) === selectedColumn);
-    const values = selectedColumn === 'name'
-      ? [item.name]
-      : column ? [stringifyValue(getCellValue(item, column))]
-        : [item.name, ...state.columns.map((entry) => stringifyValue(getCellValue(item, entry)))];
-    const searchData = values.join(' ').toLocaleLowerCase();
-    return searchData.includes(query);
+    if (selectedColumn === 'name') return String(item.name || '').toLocaleLowerCase().includes(query);
+    if (column) {
+      const type = columnType(column);
+      const value = getCellValue(item, column);
+      if (['status', 'dropdown', 'person', 'people', 'tags', 'country', 'team'].includes(type)) {
+        if (['person', 'people'].includes(type)) return selectedIds(value).some((id) => String(id) === query);
+        const values = Array.isArray(value) ? value.map((entry) => boardSearchOption(entry).value) : [boardSearchOption(value).value];
+        return values.some((entry) => entry.toLocaleLowerCase() === query);
+      }
+      if (type === 'date') return dateOnly(value) === query;
+      if (type === 'timeline') {
+        const range = dateRange(value);
+        const end = range.end || range.start;
+        return Boolean(range.start && end && query >= range.start && query <= end);
+      }
+      if (type === 'file') return filesForItem(item)
+        .filter((file) => String(file.column_id || '') === String(column.id))
+        .some((file) => String(file.name || '').toLocaleLowerCase().includes(query));
+      if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) return value !== null && value !== '' && Number(value) === Number(query);
+      if (type === 'hour') return stringifyValue(value).slice(0, 5) === query;
+      return stringifyValue(value).toLocaleLowerCase().includes(query);
+    }
+    return [item.name, ...state.columns.map((entry) => stringifyValue(getCellValue(item, entry)))].join(' ').toLocaleLowerCase().includes(query);
   }
+
+  function boardSearchValue() { return els.boardSearch?.value || ''; }
 
   function compareFilter(item, filter) {
     const column = state.columns.find((candidate) => String(candidate.id) === String(filter.column_id));
@@ -4380,7 +4518,7 @@
   }
 
   function getFilteredItems() {
-    const query = els.boardSearch.value.trim().toLocaleLowerCase();
+    const query = boardSearchValue().trim().toLocaleLowerCase();
     return state.items.filter((item) => itemMatchesSearch(item, query) && state.filters.every((filter) => compareFilter(item, filter)));
   }
 
@@ -4713,7 +4851,7 @@
   function renderTable() {
     itemSortables.forEach((sortable) => sortable.destroy());
     itemSortables = [];
-    const query = els.boardSearch.value.trim().toLocaleLowerCase();
+    const query = boardSearchValue().trim().toLocaleLowerCase();
     const filteredItems = getFilteredItems();
     const columns = orderedColumns();
     const visibleCount = filteredItems.length;
@@ -5040,6 +5178,7 @@
       .then((result) => {
         if (Number(state.board?.id) !== boardId) return;
         (Array.isArray(result.data) ? result.data : []).forEach((person) => state.summaryPeople.set(String(person.id), person));
+        renderBoardSearchColumns();
         renderTable();
       })
       .catch(() => {});
@@ -5054,7 +5193,7 @@
   }
 
   function updateItemCount(visibleCount) {
-    const hasConditions = Boolean(els.boardSearch.value.trim()) || state.filters.length > 0;
+    const hasConditions = Boolean(boardSearchValue().trim()) || state.filters.length > 0;
     els.boardItemCount.textContent = hasConditions
       ? `${visibleCount} de ${state.items.length} elementos`
       : `${state.items.length} ${state.items.length === 1 ? 'elemento' : 'elementos'}`;
@@ -5829,7 +5968,7 @@
     const panel = makeElement('div', 'boards-panel-view');
     const heading = makeElement('div', 'boards-panel-heading');
     heading.append(makeElement('h3', '', 'Resumen del tablero'));
-    if (state.filters.length || els.boardSearch.value.trim()) heading.append(makeElement('p', '', 'Los totales reflejan la búsqueda y los filtros activos.'));
+    if (state.filters.length || boardSearchValue().trim()) heading.append(makeElement('p', '', 'Los totales reflejan la búsqueda y los filtros activos.'));
     const metrics = makeElement('div', 'boards-panel-metrics');
     [
       ['Elementos', items.length],
@@ -5912,7 +6051,7 @@
       return;
     }
     const targetGroupId = String(groupId || state.groups[0].id);
-    if (state.activeViewType === 'table' && !els.boardSearch.value.trim() && !state.filters.length) {
+    if (state.activeViewType === 'table' && !boardSearchValue().trim() && !state.filters.length) {
       state.inlineAddGroupId = targetGroupId;
       state.collapsedGroups.delete(targetGroupId);
       renderTable();
@@ -6086,7 +6225,7 @@
         }
       }
       if ((editedColumn && ['status', 'dropdown'].includes(columnType(editedColumn)))
-        || state.activeViewType !== 'table' || els.boardSearch.value.trim() || state.filters.length) renderActiveView();
+        || state.activeViewType !== 'table' || boardSearchValue().trim() || state.filters.length) renderActiveView();
     } catch (error) {
       editor.classList.add('has-error');
       setNotice(errorMessage(error, 'No se pudo guardar el cambio.'), 'error');
@@ -7065,7 +7204,13 @@
         showEmptyState();
       }
     });
-    els.boardSearch.addEventListener('input', renderActiveView);
+    const boardSearchShell = els.boardSearch.closest('.boards-search');
+    boardSearchShell?.addEventListener('input', (event) => {
+      if (event.target === els.boardSearch) renderActiveView();
+    });
+    boardSearchShell?.addEventListener('change', (event) => {
+      if (event.target === els.boardSearch && els.boardSearch.tagName === 'SELECT') renderActiveView();
+    });
     els.boardSearchColumn?.addEventListener('change', () => {
       els.boardSearchColumn.setAttribute('aria-label', els.boardSearchColumn.value
         ? `Buscar en ${els.boardSearchColumn.selectedOptions[0]?.textContent || 'columna'}`
@@ -7274,7 +7419,7 @@
     els.boardTableContainer.addEventListener('keydown', (event) => {
       const itemRow = event.target.closest('.boards-item-row:not(.is-child-row)');
       if (itemRow && event.target === itemRow && ['ArrowUp', 'ArrowDown'].includes(event.key)
-        && canEditBoard() && !state.filters.length && !els.boardSearch.value.trim()) {
+        && canEditBoard() && !state.filters.length && !boardSearchValue().trim()) {
         const item = state.items.find((candidate) => String(candidate.id) === itemRow.dataset.openItemDetails);
         const siblings = state.items.filter((candidate) => candidate.parent_item_id == null && String(candidate.group_id) === String(item?.group_id))
           .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
