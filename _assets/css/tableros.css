@@ -249,8 +249,9 @@
 .boards-group-heading { cursor: grab; }
 .boards-group-heading:active { cursor: grabbing; }
 .boards-group-toggle { flex: 0 1 auto; margin-right: auto; }
-.boards-group-body.is-group-dragging { opacity: .42; }
-.boards-group-body.is-group-drop-target .boards-group-heading { outline: 2px dashed #7492ee; outline-offset: -3px; }
+.boards-group-sortable-ghost > .boards-group-row > td { opacity: .28; border-top: 3px solid #8baaff; border-bottom: 3px solid #8baaff; }
+.boards-group-sortable-chosen > .boards-group-row > td { cursor: grabbing; }
+.boards-group-sortable-drag { opacity: .96; }
 .boards-rating-percentage { display: flex; align-items: center; gap: 7px; }
 .boards-rating-percentage > span { color: #86969e; font-weight: 700; }
 .boards-group-toggle > i { width: 12px; color: #71848d; font-size: .7rem; }

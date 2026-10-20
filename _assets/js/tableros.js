@@ -4236,7 +4236,6 @@
     cell.colSpan = columnCount + 2;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
-    groupWrap.draggable = canEditBoard();
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
 
     const toggle = document.createElement('button');
@@ -4745,6 +4744,36 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    if (window.Sortable && canEditBoard() && state.groups.length > 1) {
+      window.Sortable.create(table, {
+        animation: 180,
+        easing: 'cubic-bezier(0.2, 0, 0, 1)',
+        draggable: 'tbody.boards-group-body',
+        handle: '.boards-group-heading',
+        filter: '.boards-group-meta button, .boards-group-meta a',
+        preventOnFilter: false,
+        ghostClass: 'boards-group-sortable-ghost',
+        chosenClass: 'boards-group-sortable-chosen',
+        dragClass: 'boards-group-sortable-drag',
+        fallbackOnBody: true,
+        swapThreshold: 0.65,
+        onStart: (event) => {
+          state.draggedGroupId = event.item.dataset.groupBody;
+          state.previousGroupOrder = [...state.groups];
+        },
+        onEnd: (event) => {
+          const groupIds = [...table.querySelectorAll(':scope > tbody[data-group-body]')].map((body) => body.dataset.groupBody);
+          const previous = state.previousGroupOrder || [...state.groups];
+          const changed = groupIds.some((id, index) => id !== String(previous[index]?.id));
+          state.draggedGroupId = '';
+          state.previousGroupOrder = null;
+          if (changed) {
+            state.suppressGroupClickUntil = Date.now() + 800;
+            void saveGroupOrder(groupIds, previous);
+          }
+        }
+      });
+    }
     requestAnimationFrame(() => {
       table.querySelectorAll('td[data-status-tone] .boards-status-select').forEach((select) => {
         const cell = select.closest('td');
@@ -6897,18 +6926,7 @@
       }
     });
     els.boardTableContainer.addEventListener('dragstart', (event) => {
-      const groupHeading = event.target.closest('.boards-group-heading');
-      if (groupHeading) {
-        if (event.target.closest('.boards-group-meta button, .boards-group-meta a')) { event.preventDefault(); return; }
-        if (!canEditBoard()) { event.preventDefault(); return; }
-        state.draggedGroupId = groupHeading.closest('[data-group-body]')?.dataset.groupBody || '';
-        if (!state.draggedGroupId) { event.preventDefault(); return; }
-        state.previousGroupOrder = [...state.groups];
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', `group:${state.draggedGroupId}`);
-        event.target.closest('[data-group-body]')?.classList.add('is-group-dragging');
-        return;
-      }
+      if (event.target.closest('.boards-group-heading')) return;
       const row = event.target.closest('[data-item-row]');
       const nameField = event.target.closest('.boards-item-name');
       const control = event.target.closest('button, a, input, select, textarea, [contenteditable="true"]');
@@ -6938,16 +6956,6 @@
       event.dataTransfer.setData('text/plain', String(item.id));
     });
     els.boardTableContainer.addEventListener('dragover', (event) => {
-      if (state.draggedGroupId) {
-        const source = els.boardTableContainer.querySelector(`[data-group-body="${CSS.escape(state.draggedGroupId)}"]`);
-        const target = event.target.closest('[data-group-body]');
-        if (!source || !target || source === target || source.parentElement !== target.parentElement) return;
-        event.preventDefault();
-        const rect = target.getBoundingClientRect();
-        target.parentElement.insertBefore(source, event.clientY < rect.top + rect.height / 2 ? target : target.nextSibling);
-        target.classList.add('is-group-drop-target');
-        return;
-      }
       if (!state.draggedItemId) return;
       const body = event.target.closest('[data-group-body]');
       const draggedItems = state.draggedItemIds.map((id) => state.items.find((candidate) => String(candidate.id) === id)).filter(Boolean);
@@ -6972,17 +6980,6 @@
       if (body && (!event.relatedTarget || !body.contains(event.relatedTarget))) body.classList.remove('is-drop-target');
     });
     els.boardTableContainer.addEventListener('drop', (event) => {
-      if (state.draggedGroupId) {
-        event.preventDefault();
-        const groupIds = [...els.boardTableContainer.querySelectorAll('[data-group-body]')].map((body) => body.dataset.groupBody);
-        const previous = state.previousGroupOrder || [...state.groups];
-        state.draggedGroupId = '';
-        state.previousGroupOrder = null;
-        state.suppressGroupClickUntil = Date.now() + 800;
-        els.boardTableContainer.querySelectorAll('.is-group-dragging, .is-group-drop-target').forEach((body) => body.classList.remove('is-group-dragging', 'is-group-drop-target'));
-        if (groupIds.some((id, index) => id !== String(previous[index]?.id))) void saveGroupOrder(groupIds, previous);
-        return;
-      }
       const body = event.target.closest('[data-group-body]');
       if (!state.draggedItemId || !body) return;
       const draggedItems = state.draggedItemIds.map((id) => state.items.find((candidate) => String(candidate.id) === id)).filter(Boolean);
@@ -6998,13 +6995,6 @@
       moveItemToGroup(item, body.dataset.groupBody, sortOrder, draggedItems);
     });
     els.boardTableContainer.addEventListener('dragend', () => {
-      if (state.draggedGroupId && state.previousGroupOrder) {
-        state.groups = state.previousGroupOrder;
-        renderTable();
-      }
-      state.draggedGroupId = '';
-      state.previousGroupOrder = null;
-      els.boardTableContainer.querySelectorAll('.is-group-dragging, .is-group-drop-target').forEach((body) => body.classList.remove('is-group-dragging', 'is-group-drop-target'));
       state.draggedItemId = '';
       state.draggedItemIds = [];
       els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target, .is-drop-before, .is-drop-after').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
