@@ -4236,6 +4236,7 @@
     cell.colSpan = columnCount + 2;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
+    groupWrap.draggable = canEditBoard();
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
 
     const toggle = document.createElement('button');
@@ -4255,17 +4256,6 @@
     name.textContent = group.name || 'Grupo sin nombre';
     toggle.append(chevron, marker, name);
     groupWrap.append(toggle);
-    if (canEditBoard()) {
-      const dragHandle = makeElement('button', 'boards-group-drag-handle');
-      dragHandle.type = 'button';
-      dragHandle.draggable = true;
-      dragHandle.dataset.groupDragHandle = String(group.id);
-      dragHandle.setAttribute('aria-label', `Arrastrar para reordenar el grupo ${group.name || ''}`);
-      dragHandle.title = 'Arrastra para reordenar';
-      dragHandle.innerHTML = '<i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>';
-      groupWrap.prepend(dragHandle);
-    }
-
     const meta = document.createElement('div');
     meta.className = 'boards-group-meta';
     const count = document.createElement('span');
@@ -6887,6 +6877,10 @@
       }
       const toggle = event.target.closest('[data-toggle-group]');
       if (toggle) {
+        if (Date.now() < (state.suppressGroupClickUntil || 0)) {
+          state.suppressGroupClickUntil = 0;
+          return;
+        }
         const id = toggle.dataset.toggleGroup;
         if (state.collapsedGroups.has(id)) state.collapsedGroups.delete(id);
         else state.collapsedGroups.add(id);
@@ -6903,9 +6897,12 @@
       }
     });
     els.boardTableContainer.addEventListener('dragstart', (event) => {
-      if (event.target.closest('[data-group-drag-handle]')) {
+      const groupHeading = event.target.closest('.boards-group-heading');
+      if (groupHeading) {
+        if (event.target.closest('.boards-group-meta button, .boards-group-meta a')) { event.preventDefault(); return; }
         if (!canEditBoard()) { event.preventDefault(); return; }
-        state.draggedGroupId = event.target.closest('[data-group-drag-handle]').dataset.groupDragHandle;
+        state.draggedGroupId = groupHeading.closest('[data-group-body]')?.dataset.groupBody || '';
+        if (!state.draggedGroupId) { event.preventDefault(); return; }
         state.previousGroupOrder = [...state.groups];
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', `group:${state.draggedGroupId}`);
@@ -6981,6 +6978,7 @@
         const previous = state.previousGroupOrder || [...state.groups];
         state.draggedGroupId = '';
         state.previousGroupOrder = null;
+        state.suppressGroupClickUntil = Date.now() + 800;
         els.boardTableContainer.querySelectorAll('.is-group-dragging, .is-group-drop-target').forEach((body) => body.classList.remove('is-group-dragging', 'is-group-drop-target'));
         if (groupIds.some((id, index) => id !== String(previous[index]?.id))) void saveGroupOrder(groupIds, previous);
         return;
@@ -7012,9 +7010,9 @@
       els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target, .is-drop-before, .is-drop-after').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
     });
     els.boardTableContainer.addEventListener('keydown', (event) => {
-      const handle = event.target.closest('[data-group-drag-handle]');
-      if (!handle || !['ArrowUp', 'ArrowDown'].includes(event.key) || !canEditBoard()) return;
-      const current = state.groups.findIndex((group) => String(group.id) === handle.dataset.groupDragHandle);
+      const heading = event.target.closest('.boards-group-heading');
+      if (!heading || !['ArrowUp', 'ArrowDown'].includes(event.key) || !canEditBoard()) return;
+      const current = state.groups.findIndex((group) => String(group.id) === heading.closest('[data-group-body]')?.dataset.groupBody);
       const next = Math.max(0, Math.min(state.groups.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)));
       if (current < 0 || current === next) return;
       event.preventDefault();

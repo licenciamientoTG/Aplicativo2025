@@ -8157,13 +8157,14 @@ public function stamped_invoices_detail(): void
                     $tesDiferidoOrigIds[] = (int)$did;
                 }
             }
-            if ($usesTesDiferido) {
+            $isTesDiferidoPilot = trim($data['afiliacion'] ?? '') === '9990624'
+                && substr((string)($data['fecha_operativa'] ?? ''), 0, 7) === '2026-10'
+                && substr((string)($data['fecha_deposito'] ?? ''), 0, 7) === '2026-10';
+            if ($usesTesDiferido && !$isTesDiferidoPilot) {
+                throw new Exception('El diferido TES solo está habilitado para la afiliación 9990624 en octubre de 2026.');
+            }
+            if ($isTesDiferidoPilot) {
                 $this->v3_ensure_diferido_tes_table($conn);
-                if (trim($data['afiliacion'] ?? '') !== '9990624'
-                    || substr((string)($data['fecha_operativa'] ?? ''), 0, 7) !== '2026-10'
-                    || substr((string)($data['fecha_deposito'] ?? ''), 0, 7) !== '2026-10') {
-                    throw new Exception('El diferido TES solo está habilitado para la afiliación 9990624 en octubre de 2026.');
-                }
                 $this->v3_assert_mes_abierto($conn, (int)$data['estacion_id'], (int)$data['entidad_id'], '9990624', '2026-10');
                 $this->v3_validate_diferido_tes_group($conn, $tesDiferidoOrigIds, $tesDiferidoDestIds,
                     (int)$data['estacion_id'], (int)$data['entidad_id'], $data['tes_rows']);

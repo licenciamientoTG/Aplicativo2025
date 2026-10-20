@@ -2415,9 +2415,7 @@ function renderTes() {
                         }
                         return;
                     }
-                    const amexComp = getAmexComisionByRef(comp.ref, fecha, comp.afiliacion || '');
-                    const montoActualComp = parseFloat(comp.monto || 0)
-                        + ((isAmex && amexComp) ? (parseFloat(amexComp.comision || 0) + parseFloat(amexComp.iva || 0)) : 0);
+                    const montoActualComp = montoConciliacionTesComponente(comp, fecha);
                     if (Math.abs((parseFloat(hComp.monto) || 0) - montoActualComp) > 0.01) {
                         syncItemsTes.push({
                             id_detalle: hComp.id,

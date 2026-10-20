@@ -246,8 +246,9 @@
 .boards-group-row td { position: relative; height: 42px; padding: 0 10px; border-right: 0; background: #edf3f5; }
 .boards-group-heading { min-height: 41px; justify-content: space-between; gap: 12px; }
 .boards-group-toggle { min-width: 0; gap: 9px; padding: 6px 2px; border: 0; color: var(--boards-ink); background: transparent; text-align: left; }
-.boards-group-drag-handle { display: inline-grid; place-items: center; width: 27px; height: 30px; flex: 0 0 auto; border: 0; border-radius: 6px; color: #8a98a2; background: transparent; cursor: grab; touch-action: none; }
-.boards-group-drag-handle:active { cursor: grabbing; }
+.boards-group-heading { cursor: grab; }
+.boards-group-heading:active { cursor: grabbing; }
+.boards-group-toggle { flex: 0 1 auto; margin-right: auto; }
 .boards-group-body.is-group-dragging { opacity: .42; }
 .boards-group-body.is-group-drop-target .boards-group-heading { outline: 2px dashed #7492ee; outline-offset: -3px; }
 .boards-rating-percentage { display: flex; align-items: center; gap: 7px; }
