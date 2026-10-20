@@ -138,8 +138,6 @@ $(function () {
             ['Tipo de terminal', typeLabel(incident.type)], ['Prioridad', ticket.priority], ['Cola', ticket.queue], ['Formulario', ticket.form],
             ['Empresa', ticket.company], ['Folio del proveedor', incident.provider_folio], ['Reporte al proveedor', dateLabel(incident.provider_date)],
             [closeLabel, dateLabel(closedAt)], ['Resuelto/cerrado por', ticket.closed_by],
-            ['Confirmación en portal', incident.resolution_confirmed ? 'Confirmada' : (incident.state === 'Closed' ? 'Pendiente' : 'No aplica')],
-            ['Confirmada por', incident.resolution_confirmed_by], ['Confirmada el', dateLabel(incident.resolution_confirmed_at)],
             ['Resolución registrada en Mojo', ticket.resolution]
         ];
         html += section('clipboard-list', 'DATOS DEL TICKET', 'Información operativa', detailList(operational));
