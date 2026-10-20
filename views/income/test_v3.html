@@ -196,6 +196,9 @@
     .tes-day-deferred .row-item { min-height:44px;height:auto; }
     .tes-day-deferred .row-left { flex-direction:column;align-items:flex-start;justify-content:center; }
     .tes-day-empty-header { display:flex;align-items:center;gap:8px;padding:7px 14px;border-bottom:1px solid #eee;color:#475569;font-size:.78rem; }
+    .tes-day-empty-header.selectable { cursor:pointer; }
+    .tes-day-empty-header.selectable:hover { background:#f1f5f9; }
+    .tes-day-empty-header.active { background:var(--selected-bg);border-left:5px solid var(--selected-border);padding-left:9px; }
     .btn-mover-diferido { background:none;border:1px solid #0891b2;color:#0891b2;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
     .btn-mover-diferido:hover { background:#0891b2;color:white; }
     .btn-cancel-diferido { background:none;border:1px solid #dc3545;color:#dc3545;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
@@ -2430,7 +2433,8 @@ function renderTes() {
             ...comp,
             diferido_tes_orig_ids: tesDiferidoIdsOrigen(comp.ref)
         }));
-        const refsSeleccionables = componentesDisponibles.filter(comp => tesMontoDisponible(comp) > 0).map(comp => normalizarRef(comp.ref));
+        const refsSeleccionables = componentesDisponibles.filter(comp => tesMontoDisponible(comp) > 0
+            && !hasConciliada('TES', normalizarRef(comp.ref))).map(comp => normalizarRef(comp.ref));
 
         // ── Enriquecimiento AMEX ──────────────────────────────
         const amexCom  = isAmex ? getAmexComision(item) : null;
@@ -2458,9 +2462,10 @@ function renderTes() {
             && !hasConciliada('TES', `diferido_tes_${d.id}`)
         );
         const montoFilaDia = montoConc + diferidosDestinoDia.reduce((sum, d) => sum + parseFloat(d.monto_diferido || 0), 0);
-        const componentesSeleccionados = refsSeleccionables.every(r => sel.tes.some(s => s.ref === r));
+        const refsSeleccionablesDeFila = esConcil ? [] : refsSeleccionables;
+        const componentesSeleccionados = refsSeleccionablesDeFila.every(r => sel.tes.some(s => s.ref === r));
         const diferidosSeleccionados = diferidosDestinoPendientes.every(d => sel.tes.some(s => s.ref === `diferido_tes_${d.id}`));
-        const haySeleccionableDia = refsSeleccionables.length > 0 || diferidosDestinoPendientes.length > 0;
+        const haySeleccionableDia = refsSeleccionablesDeFila.length > 0 || diferidosDestinoPendientes.length > 0;
         const esSel = haySeleccionableDia && componentesSeleccionados && diferidosSeleccionados;
         const esPreconciliacion = preconciliacionesBanorte.some(p => p.tes_rows.some(row => refsMovimiento.includes(row.ref)));
 
@@ -2533,7 +2538,10 @@ function renderTes() {
         }
 
         if (esConcil) {
-            const filaConciliadaTES = `<div class="row-item ${statusClass} tes-amex-row" data-fecha="${escHtml(fecha)}" onclick="toggleTESBadges(this)">
+            const clickFilaConciliadaTES = diferidosDestinoPendientes.length
+                ? 'toggleTESComponentes(this);toggleTESBadges(this)'
+                : 'toggleTESBadges(this)';
+            const filaConciliadaTES = `<div class="row-item ${statusClass} tes-amex-row ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="[]" onclick="${clickFilaConciliadaTES}">
                 <div class="row-left">
                     <span class="row-line1">${dateFmt}</span>
                     <span class="row-line2">Tesorería${amexLine2Extra}</span>
@@ -2579,7 +2587,9 @@ function renderTes() {
             const totalDia = diferidosDia.reduce((sum, d) => sum + parseFloat(d.monto_diferido || 0), 0);
             const icono = abierto ? 'fa-chevron-down' : 'fa-chevron-right';
             const filasDiferidos = diferidosDia.map(renderFilaDiferidoTES).join('');
-            $c.append(`<div class="tes-day-block"><div class="tes-day-empty-header"><button class="tes-day-toggle" onclick="toggleDiferidosTESDia('${escHtml(fecha)}',this)" aria-label="Mostrar depósitos diferidos"><i class="fas ${icono}"></i></button><strong>${dateFmt}</strong><span>Tesorería — diferidos</span><span class="font-numeric ml-auto">${fmt.format(totalDia)}</span></div><div class="tes-day-deferred ${abierto ? 'open' : ''}" id="${fechaDiferidosId}">${filasDiferidos}</div></div>`);
+            const tieneDiferidosSeleccionables = diferidosDia.some(d => String(d.estado || '').toUpperCase() === 'PENDIENTE'
+                && !d.conciliacion_id_dest && !hasConciliada('TES', `diferido_tes_${d.id}`));
+            $c.append(`<div class="tes-day-block"><div class="tes-day-empty-header ${tieneDiferidosSeleccionables ? 'selectable' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="[]" ${tieneDiferidosSeleccionables ? 'onclick="toggleTESComponentes(this)"' : ''}><button class="tes-day-toggle" onclick="event.stopPropagation();toggleDiferidosTESDia('${escHtml(fecha)}',this)" aria-label="Mostrar depósitos diferidos"><i class="fas ${icono}"></i></button><strong>${dateFmt}</strong><span>Tesorería — diferidos</span><span class="font-numeric ml-auto">${fmt.format(totalDia)}</span></div><div class="tes-day-deferred ${abierto ? 'open' : ''}" id="${fechaDiferidosId}">${filasDiferidos}</div></div>`);
         });
     }
 
@@ -2852,7 +2862,8 @@ function toggleTESComponentes(el) {
     let componentes = [];
     try { componentes = JSON.parse($(el).attr('data-componentes') || '[]'); } catch(e) { return; }
     const fecha = $(el).attr('data-fecha') || '';
-    const refs = componentes.filter(c => montoConciliacionTesComponente(c, fecha) > 0).map(c => normalizarRef(c.ref)).filter(Boolean);
+    const refs = componentes.filter(c => montoConciliacionTesComponente(c, fecha) > 0)
+        .map(c => normalizarRef(c.ref)).filter(ref => ref && !hasConciliada('TES', ref));
     const diferidosDia = tesDiferidosHabilitado() ? (diferidosTES || []).filter(d =>
         String(d.fecha_destino || '').substring(0, 10) === fecha
         && String(d.estado || '').toUpperCase() === 'PENDIENTE'
