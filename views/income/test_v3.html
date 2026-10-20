@@ -188,6 +188,8 @@
     .tes-pilot-row .btn-diferir { display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:0 0 auto;min-height:24px;margin:0;padding:2px 7px;line-height:1; }
     .tes-pilot-row .btn-diferir i { flex:0 0 auto;line-height:1; }
     .tes-pilot-row .row-right { margin-left:auto; }
+    .tes-pilot-row .row-line1 { flex:0 0 auto;font-size:.8rem;line-height:1.2; }
+    .tes-pilot-row .row-line2 { flex:0 1 auto;margin-top:0;line-height:1.2; }
     .tes-day-toggle { display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:24px;padding:0;border:0;background:transparent;color:#64748b;cursor:pointer; }
     .tes-day-deferred { display:none;padding-left:24px;border-left:2px solid #ddd6fe;margin-left:10px; }
     .tes-day-deferred.open { display:block; }
@@ -2399,6 +2401,20 @@ function renderTes() {
         const clickAttr = !mesCerrado && !conciliado && estadoFake === 'PENDIENTE' ? `onclick="toggleDiferidoTES('${refFake}','${escHtml(fecha)}',${montoFake},'${escHtml(d.concepto || d.descripcion || 'Diferido TES')}',${parseInt(d.id, 10)},this)"` : '';
         return `<div class="row-item ${statusClass} ${seleccionada ? 'active' : ''}" data-fecha="${escHtml(fecha)}" ${clickAttr}><div class="row-left"><span class="row-line1"><span class="diferido-badge">TES DIFERIDO</span>${escHtml(d.concepto || d.descripcion || 'Depósito diferido')}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(montoFake)}</span></div></div>`;
     };
+    const envolverFilaConDiferidosTES = (fecha, filaHtml) => {
+        const keyFechaDia = String(fecha || '').substring(0, 10);
+        const diferidosDia = diferidosPorFecha.get(keyFechaDia) || [];
+        if (!tesDiferidosHabilitado() || !diferidosDia.length || fechasDiferidosRenderizadas.has(keyFechaDia)) return filaHtml;
+
+        fechasDiferidosRenderizadas.add(keyFechaDia);
+        const fechaDiferidosId = `tes-diferidos-${keyFechaDia.replace(/-/g, '')}`;
+        const abierto = openGroupsTES.has(keyFechaDia);
+        const controlDesplegar = `<button class="tes-day-toggle" onclick="event.stopPropagation();toggleDiferidosTESDia('${escHtml(keyFechaDia)}',this)" aria-label="Mostrar depósitos diferidos" aria-expanded="${abierto ? 'true' : 'false'}" title="${abierto ? 'Ocultar' : 'Mostrar'} depósitos diferidos"><i class="fas ${abierto ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></button>`;
+        if (!filaHtml.includes('tes-pilot-row')) filaHtml = filaHtml.replace('class="row-item ', 'class="row-item tes-pilot-row ');
+        filaHtml = filaHtml.replace('<div class="row-left">', `<div class="row-left">${controlDesplegar}`);
+        const filasDiferidos = diferidosDia.map(renderFilaDiferidoTES).join('');
+        return `<div class="tes-day-block">${filaHtml}<div class="tes-day-deferred ${abierto ? 'open' : ''}" id="${fechaDiferidosId}">${filasDiferidos}</div></div>`;
+    };
     const sorted = [...tesData].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
 
     sorted.forEach(item => {
@@ -2505,13 +2521,14 @@ function renderTes() {
         }
 
         if (esConcil) {
-            $c.append(`<div class="row-item ${statusClass} tes-amex-row" data-fecha="${escHtml(fecha)}" onclick="toggleTESBadges(this)">
+            const filaConciliadaTES = `<div class="row-item ${statusClass} tes-amex-row" data-fecha="${escHtml(fecha)}" onclick="toggleTESBadges(this)">
                 <div class="row-left">
                     <span class="row-line1">${dateFmt}</span>
                     <span class="row-line2">Tesorería${amexLine2Extra}</span>
                 </div>
                 <div class="row-right" style="pointer-events:auto;">${amexBadgesHtml}${difTag}${staleBtn}${unlinkBtn}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
-            </div>`);
+            </div>`;
+            $c.append(envolverFilaConDiferidosTES(fecha, filaConciliadaTES));
         } else if (isAmex && !tieneComision) {
             // AMEX sin comisión — bloqueado, no clickeable
             $c.append(`<div class="row-item row-sin-comision" data-fecha="${escHtml(fecha)}" title="Sube el reporte de comisiones AMEX para poder conciliar este día">
@@ -2529,27 +2546,15 @@ function renderTes() {
             const accionesDiferirTES = componentesDiferibles.length
                 ? `<span class="tes-pilot-pending">Pendiente ${fmt.format(pendienteDia)} <button class="btn-diferir" data-componentes="${escHtml(JSON.stringify(componentesDiferibles))}" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(fecha)}',this)" title="Diferir depósito TES"><i class="fas fa-calendar-day"></i> Diferir</button></span>`
                 : '';
-            const keyFechaDia = fecha.substring(0, 10);
-            const diferidosDia = fechasDiferidosRenderizadas.has(keyFechaDia) ? [] : (diferidosPorFecha.get(keyFechaDia) || []);
-            const claseFilaPruebaTES = tesDiferidosHabilitado() && (componentesDiferibles.length || diferidosDia.length) ? 'tes-pilot-row' : '';
-            const fechaDiferidosId = `tes-diferidos-${fecha.substring(0, 10).replace(/-/g, '')}`;
-            const diferidosAbiertos = openGroupsTES.has(fecha.substring(0, 10));
-            const controlDesplegarDiferidos = diferidosDia.length
-                ? `<button class="tes-day-toggle" onclick="event.stopPropagation();toggleDiferidosTESDia('${escHtml(fecha.substring(0, 10))}',this)" aria-label="Mostrar depósitos diferidos" title="${diferidosAbiertos ? 'Ocultar' : 'Mostrar'} depósitos diferidos"><i class="fas ${diferidosAbiertos ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></button>`
-                : '';
+            const claseFilaPruebaTES = tesDiferidosHabilitado() && componentesDiferibles.length ? 'tes-pilot-row' : '';
             const contenidoIzquierdoTES = claseFilaPruebaTES
-                ? `<div class="row-left">${controlDesplegarDiferidos}<span class="tes-pilot-date">${dateFmt}</span><span class="tes-pilot-bank">Tesorería${amexLine2Extra}</span>${accionesDiferirTES}</div>`
+                ? `<div class="row-left"><span class="tes-pilot-date">${dateFmt}</span><span class="tes-pilot-bank">Tesorería${amexLine2Extra}</span>${accionesDiferirTES}</div>`
                 : `<div class="row-left"><span class="row-line1">${dateFmt}</span><span class="row-line2">Tesorería${amexLine2Extra}</span></div>`;
             const filaDiaTES = `<div class="row-item row-pendiente tes-amex-row ${claseFilaPruebaTES} ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesDisponibles))}" onclick="toggleTESBadges(this);toggleTESComponentes(this)">
                 ${contenidoIzquierdoTES}
                 <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
             </div>`;
-            if (diferidosDia.length && tesDiferidosHabilitado()) {
-                fechasDiferidosRenderizadas.add(fecha.substring(0, 10));
-                $c.append(`<div class="tes-day-block">${filaDiaTES}<div class="tes-day-deferred ${diferidosAbiertos ? 'open' : ''}" id="${fechaDiferidosId}">${diferidosDia.map(renderFilaDiferidoTES).join('')}</div></div>`);
-            } else {
-                $c.append(filaDiaTES);
-            }
+            $c.append(envolverFilaConDiferidosTES(fecha, filaDiaTES));
         }
     });
 
