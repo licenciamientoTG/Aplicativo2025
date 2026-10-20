@@ -9635,7 +9635,7 @@ public function stamped_invoices_detail(): void
                   AND estado<>'CANCELADO' AND referencia IN ($ph)");
             $active->execute(array_merge([$sid, $eid], $sourceRefs));
             $activeByRef = [];
-            foreach ($active->fetchAll(PDO::FETCH_ASSOC) as $split) $activeByRef[(string)$split['referencia']][] = $split;
+            foreach ($active->fetchAll(PDO::FETCH_ASSOC) as $split) $activeByRef[trim((string)$split['referencia'])][] = $split;
 
             foreach ($sourceRows as $row) {
                 $ref = trim((string)($row['ref'] ?? ''));
@@ -9679,21 +9679,28 @@ public function stamped_invoices_detail(): void
                 if ((int)$r['estacion_id'] !== $sid || (int)$r['entidad_id'] !== $eid || $r['afiliacion'] !== '9990624' || $r['mes'] !== '2026-10' || $r['estado'] === 'CANCELADO') throw new Exception('Diferido TES no disponible para esta conciliación.');
                 if ($kind === 'origen' && !empty($r['conciliacion_id_orig'])) throw new Exception('El saldo origen ya fue conciliado.');
                 if ($kind === 'destino' && !empty($r['conciliacion_id_dest'])) throw new Exception('El fake destino ya fue conciliado.');
-                $matchingRows = $tesRows;
-                $matching = false;
-                foreach ($matchingRows as $row) {
-                    if ($kind === 'origen') {
-                        $ref = (string)$r['referencia'];
-                        if (!isset($validatedOriginRowsByRef[$ref]) || trim((string)($row['ref'] ?? '')) !== $ref) continue;
-                    } else {
-                        $rowIds = ($row['tipo'] ?? '') === 'TES_DIFERIDO' ? ($row['diferido_tes_ids'] ?? []) : [];
-                        if (!in_array((int)$r['id'], array_map('intval', (array)$rowIds), true)) continue;
+                if ($kind === 'origen') {
+                    // The source row was already checked above against the bank
+                    // movement date and residual amount. Its split IDs were
+                    // derived from that validated reference, so matching it a
+                    // second time here is redundant and can fail on SQL values
+                    // with trailing whitespace in referencia.
+                    $ref = trim((string)$r['referencia']);
+                    if (!isset($validatedOriginRowsByRef[$ref])) {
+                        throw new Exception('El origen del diferido TES ' . (int)$r['id'] . ' no corresponde a un depósito TES validado.');
                     }
-                    $expectedDate = $kind === 'origen' ? substr((string)$r['fecha_origen'], 0, 10) : substr((string)$r['fecha_destino'], 0, 10);
+                    continue;
+                }
+
+                $matching = false;
+                foreach ($tesRows as $row) {
+                    $rowIds = ($row['tipo'] ?? '') === 'TES_DIFERIDO' ? ($row['diferido_tes_ids'] ?? []) : [];
+                    if (!in_array((int)$r['id'], array_map('intval', (array)$rowIds), true)) continue;
+                    $expectedDate = substr((string)$r['fecha_destino'], 0, 10);
                     if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $expectedDate) continue;
-                    $expectedRef = $kind === 'origen' ? (string)$r['referencia'] : 'diferido_tes_' . (int)$r['id'];
+                    $expectedRef = 'diferido_tes_' . (int)$r['id'];
                     if ((string)($row['ref'] ?? '') !== $expectedRef) continue;
-                    if ($kind === 'destino' && abs((float)($row['monto'] ?? 0) - (float)$r['monto_diferido']) > 0.005) continue;
+                    if (abs((float)($row['monto'] ?? 0) - (float)$r['monto_diferido']) > 0.005) continue;
                     $matching = true; break;
                 }
                 if (!$matching) throw new Exception('Diferido TES ' . (int)$r['id'] . ' no coincide con referencia, fecha o importe esperado.');
