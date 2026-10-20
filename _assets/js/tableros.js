@@ -4758,11 +4758,15 @@
         ghostClass: 'boards-group-sortable-ghost',
         chosenClass: 'boards-group-sortable-chosen',
         dragClass: 'boards-group-sortable-drag',
+        forceFallback: true,
         fallbackOnBody: true,
+        fallbackTolerance: 4,
+        touchStartThreshold: 5,
         swapThreshold: 0.65,
         onStart: (event) => {
           state.draggedGroupId = event.item.dataset.groupBody;
           state.previousGroupOrder = [...state.groups];
+          state.suppressGroupClickUntil = Date.now() + 1000;
         },
         onEnd: (event) => {
           const groupIds = [...table.querySelectorAll(':scope > tbody[data-group-body]')].map((body) => body.dataset.groupBody);
