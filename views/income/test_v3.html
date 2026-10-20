@@ -1289,12 +1289,6 @@ function shouldKeepCGItemVisible(item) {
 }
 
 function obtenerKeywordsCG() {
-    const pilotoBankaoolVillaAhumada = currentRule
-        && Number(currentRule.entidad_id) === 14
-        && String(currentRule.afiliacion || '').trim() === '9990624'
-        && Number(widgetState.year) === 2026
-        && String(widgetState.month).padStart(2, '0') === '10';
-    if (pilotoBankaoolVillaAhumada) return [];
     return currentRule && currentRule.conceptos_cg
         ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(Boolean)
         : [];
