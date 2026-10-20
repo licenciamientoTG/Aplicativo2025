@@ -476,13 +476,15 @@ public function balance_age()
         $until  = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
         $tipval = (int)($_POST['tipval']  ?? 4);
         $codcli = (int)($_POST['codcli']  ?? 0);
+        $empresa = (int)($_POST['empresa'] ?? 0);
 
         $data = [];
         if ($rows = $this->clientesModel->get_dispatches_by_client(
             dateToInt($from->format('Y-m-d')),
             dateToInt($until->format('Y-m-d')),
             $tipval,
-            $codcli
+            $codcli,
+            $empresa
         )) {
             foreach ($rows as $r) {
                 $data[] = [
@@ -494,11 +496,26 @@ public function balance_age()
                     'Litros'   => $r['Litros'],
                     'Monto'    => $r['Monto'],
                     'Estacion' => $r['Estacion'],
+                    'RazonSocial' => $r['RazonSocial'],
                     'producto' => $r['producto'],
                 ];
             }
         }
         json_output(["data" => $data]);
+    }
+
+    /** Consumos débito por cliente y razón social. POST /income/clients_dispatches_by_company (empresa=0 → todas). */
+    public function clients_dispatches_by_company() : void {
+        $from    = $this->createDateTime($_POST['from']  ?? date('Y-m-01'));
+        $until   = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+        $empresa = (int)($_POST['empresa'] ?? 0);
+
+        $rows = $this->clientesModel->get_dispatches_summary_by_company(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $empresa
+        );
+        json_output(['data' => $rows ?: []]);
     }
 
     public function client_anticipos_table() : void {
