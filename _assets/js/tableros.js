@@ -244,12 +244,14 @@
   let itemOrderSaving = false;
   let suppressNavClickUntil = 0;
 
-  async function saveNavOrder(entityType, entityId, anchorId, placement) {
+  async function saveNavOrder(entityType, entityId, anchorId, placement, targetParentId) {
     if (navOrderSaving) return;
     navOrderSaving = true;
     navSortables.forEach((sortable) => sortable.option('disabled', true));
     try {
-      const result = await post('/reorder_structure', { entity_type: entityType, entity_id: entityId, anchor_id: anchorId, placement });
+      const payload = { entity_type: entityType, entity_id: entityId, anchor_id: anchorId, placement };
+      if (targetParentId !== undefined) payload.target_parent_id = targetParentId;
+      const result = await post('/reorder_structure', payload);
       ['workspaces', 'folders', 'boards'].forEach((key) => { if (Array.isArray(result.data?.[key])) state[key] = result.data[key]; });
       setNotice('Orden guardado.', 'success');
     } catch (error) {
@@ -764,24 +766,54 @@
         if (anchor) void saveNavOrder(entityType, entity.id, anchor.dataset.navEntityId, direction < 0 ? 'before' : 'after');
       });
     };
-    const makeNavList = (parent, entityType) => {
+    const makeNavList = (parent, entityType, parentFolderId = null) => {
       const container = makeElement('div', 'boards-nav-siblings');
+      container.dataset.navParentId = parentFolderId == null ? '' : String(parentFolderId);
+      if (parentFolderId == null) container.dataset.navRoot = '1';
       parent.append(container);
       if (window.Sortable && !query && !navOrderSaving) {
         navSortables.push(window.Sortable.create(container, {
           draggable: '[data-nav-entity-id]',
+          group: { name: `tableros-${entityType}`, pull: true, put: true },
           handle: entityType === 'board' ? '.boards-nav-board' : '.boards-nav-folder-row',
           filter: '.boards-nav-folder-actions, .boards-nav-folder-actions *',
           preventOnFilter: false,
           animation: 180, forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
           ghostClass: 'boards-sortable-ghost',
-          onStart: () => { suppressNavClickUntil = Date.now() + 1000; },
+          onStart: () => { suppressNavClickUntil = Date.now() + 1000; app.dataset.navDraggingType = entityType; app.classList.add('is-nav-dragging'); },
+          onMove: (event) => {
+            navSortables.forEach((sortable) => sortable.el.classList.toggle('is-nav-drop-target', sortable.el === event.to));
+            if (entityType !== 'folder') return true;
+            const movingId = String(event.dragged?.dataset.navEntityId || '');
+            const targetParentId = String(event.to?.dataset.navParentId || '');
+            if (!movingId || !targetParentId) return true;
+            let parent = folderNodes.get(targetParentId);
+            while (parent) {
+              if (String(parent.id) === movingId) return false;
+              parent = parent.parent_folder_id == null ? null : folderNodes.get(String(parent.parent_folder_id));
+            }
+            return true;
+          },
           onEnd: (event) => {
             suppressNavClickUntil = Date.now() + 800;
-            if (event.oldIndex === event.newIndex) return;
+            app.classList.remove('is-nav-dragging');
+            delete app.dataset.navDraggingType;
+            navSortables.forEach((sortable) => sortable.el.classList.remove('is-nav-drop-target'));
+            const previousParentId = String(event.from?.dataset.navParentId || '');
+            const targetParentId = String(event.to?.dataset.navParentId || '');
+            const changedParent = previousParentId !== targetParentId;
+            if (!changedParent && event.to?.dataset.navDropOnly === '1') {
+              renderBoardOptions();
+              return;
+            }
+            if (!changedParent && event.oldIndex === event.newIndex) return;
             const before = event.item.nextElementSibling;
             const anchor = before || event.item.previousElementSibling;
-            if (anchor) void saveNavOrder(entityType, event.item.dataset.navEntityId, anchor.dataset.navEntityId, before ? 'before' : 'after');
+            if (changedParent) {
+              void saveNavOrder(entityType, event.item.dataset.navEntityId, anchor?.dataset.navEntityId, before ? 'before' : 'after', targetParentId || null);
+            } else if (anchor) {
+              void saveNavOrder(entityType, event.item.dataset.navEntityId, anchor.dataset.navEntityId, before ? 'before' : 'after');
+            }
           }
         }));
       }
@@ -859,13 +891,43 @@
         actions.append(archiveFolder);
         }
       }
+      const dropTargets = makeElement('span', 'boards-nav-folder-drop-targets');
+      if (folder.can_reorder) {
+        ['board', 'folder'].forEach((entityType) => {
+          const dropTarget = makeElement('span', 'boards-nav-folder-drop-target', entityType === 'board' ? 'Mover tablero aquí' : 'Anidar carpeta aquí');
+          dropTarget.dataset.navParentId = String(folder.id);
+          dropTarget.dataset.navDropType = entityType;
+          dropTargets.append(dropTarget);
+        });
+        row.append(dropTargets);
+      }
       const node = makeElement('div', 'boards-nav-folder-node');
       node.append(row);
       attachNavHandle(node, folder, 'folder', container);
       container.append(node);
+      if (folder.can_reorder && window.Sortable && !query && !navOrderSaving) {
+        dropTargets.querySelectorAll('[data-nav-drop-type]').forEach((dropTarget) => {
+          const targetType = dropTarget.dataset.navDropType;
+          dropTarget.dataset.navDropOnly = '1';
+          navSortables.push(window.Sortable.create(dropTarget, {
+            group: { name: `tableros-${targetType}`, pull: false, put: true },
+            draggable: '.nav-drop-target-never-match',
+            onMove: (event) => {
+              if (targetType !== 'folder') return true;
+              let parent = folderNodes.get(String(dropTarget.dataset.navParentId));
+              const movingId = String(event.dragged?.dataset.navEntityId || '');
+              while (parent) {
+                if (String(parent.id) === movingId) return false;
+                parent = parent.parent_folder_id == null ? null : folderNodes.get(String(parent.parent_folder_id));
+              }
+              return true;
+            }
+          }));
+        });
+      }
       if (collapsed) return;
-      const boardsList = makeNavList(node, 'board');
-      const foldersList = makeNavList(node, 'folder');
+      const boardsList = makeNavList(node, 'board', folder.id);
+      const foldersList = makeNavList(node, 'folder', folder.id);
       folder.boards.filter((board) => matchesText(board.name)).sort(byPosition).forEach((board) => renderBoard(board, depth + 1, boardsList));
       folder.children.sort(byPosition).forEach((child) => renderFolder(child, depth + 1, foldersList));
     };
@@ -874,8 +936,9 @@
     rootBoards.sort(byPosition).forEach((board) => renderBoard(board, 0, rootBoardList));
     roots.sort(byPosition).forEach((folder) => renderFolder(folder, 0, rootFolderList));
     navSortables.forEach((sortable) => {
+      if (sortable.el.dataset.navDropOnly === '1') return;
       const siblings = [...sortable.el.children].filter((node) => node.dataset.navEntityId);
-      if (siblings.length < 2 || siblings.some((node) => node.dataset.canReorder !== '1')) {
+      if (siblings.length > 0 && siblings.some((node) => node.dataset.canReorder !== '1')) {
         sortable.option('disabled', true);
         siblings.forEach((node) => { node.dataset.canReorder = '0'; });
       }

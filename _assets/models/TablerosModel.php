@@ -635,6 +635,9 @@ class TablerosModel {
             throw new TablerosApiException('validation', 'Selecciona una carpeta o un tablero.', 422);
         }
         $id = $this->positiveInt($input['entity_id'] ?? null, 'entity_id');
+        if (array_key_exists('target_parent_id', $input)) {
+            return $this->moveStructureEntity($userId, $isAdmin, $type, $id, $input);
+        }
         $anchorId = $this->positiveInt($input['anchor_id'] ?? null, 'anchor_id');
         $placement = $input['placement'] ?? null;
         if ($id === $anchorId || !in_array($placement, ['before', 'after'], true)) {
@@ -697,6 +700,94 @@ class TablerosModel {
             if ($type === 'board') {
                 $this->writeActivity($id, null, $userId, 'board.reordered', ['anchor_id' => $anchorId, 'placement' => $placement]);
             }
+            return $this->getWorkspaceStructure($userId, $isAdmin);
+        });
+    }
+
+    /** Move an entity between folder/root lists, or within one using an optional anchor. */
+    private function moveStructureEntity(int $userId, bool $isAdmin, string $type, int $id, array $input): array {
+        $targetParentId = $this->optionalPositiveInt($input['target_parent_id'], 'target_parent_id');
+        $anchorId = $this->optionalPositiveInt($input['anchor_id'] ?? null, 'anchor_id');
+        $placement = $input['placement'] ?? 'after';
+        if (!in_array($placement, ['before', 'after'], true) || ($anchorId !== null && $anchorId === $id)) {
+            throw new TablerosApiException('validation', 'La posición solicitada no es válida.', 422);
+        }
+        return $this->transaction(function () use ($userId, $isAdmin, $type, $id, $targetParentId, $anchorId, $placement): array {
+            $table = $type === 'folder' ? 'tb_folder' : 'tb_board';
+            $parentKey = $type === 'folder' ? 'parent_folder_id' : 'folder_id';
+            $collection = $type === 'folder' ? 'folders' : 'boards';
+            $structure = $this->getWorkspaceStructure($userId, $isAdmin);
+            $visible = array_column($structure[$collection], null, 'id');
+            $visibleFolders = array_column($structure['folders'], null, 'id');
+            $moved = $visible[$id] ?? null;
+            if (!$moved) throw new TablerosApiException('not_found', 'No se encontró el elemento visible.', 404);
+            if (empty($moved['can_reorder'])) throw new TablerosApiException('forbidden', 'No tienes permiso para mover este elemento.', 403);
+            $workspaceId = (int)$moved['workspace_id'];
+            if ($type === 'folder' && $targetParentId !== null) {
+                if ($targetParentId === $id) throw new TablerosApiException('validation', 'Una carpeta no puede contenerse a sí misma.', 422);
+                $dest = $visibleFolders[$targetParentId] ?? null;
+                if (!$dest || (int)$dest['workspace_id'] !== $workspaceId) throw new TablerosApiException('validation', 'La carpeta destino no pertenece a este espacio.', 422);
+                if (empty($dest['can_reorder'])) throw new TablerosApiException('forbidden', 'No tienes permiso para modificar la carpeta destino.', 403);
+                $cycle = $this->one('WITH descendants AS (SELECT id FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL UNION ALL SELECT f.id FROM tb_folder f JOIN descendants d ON f.parent_folder_id = d.id WHERE f.workspace_id = ? AND f.deleted_at IS NULL) SELECT id FROM descendants WHERE id = ? OPTION (MAXRECURSION 100)', [$id, $workspaceId, $workspaceId, $targetParentId]);
+                if ($cycle) throw new TablerosApiException('validation', 'No puedes mover una carpeta dentro de sí misma o de una subcarpeta.', 422);
+            }
+            if ($targetParentId !== null) {
+                $dest = $visibleFolders[$targetParentId] ?? null;
+                if (!$dest || (int)$dest['workspace_id'] !== $workspaceId || empty($dest['can_reorder'])) throw new TablerosApiException('forbidden', 'No tienes permiso para usar la carpeta destino.', 403);
+            }
+            if ($type === 'folder') {
+                $depth = (int)($this->one('WITH tree AS (SELECT id, parent_folder_id, 1 AS lvl FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL UNION ALL SELECT f.id, f.parent_folder_id, t.lvl + 1 FROM tb_folder f JOIN tree t ON f.parent_folder_id = t.id WHERE f.workspace_id = ? AND f.deleted_at IS NULL) SELECT COALESCE(MAX(lvl), 0) AS depth FROM tree OPTION (MAXRECURSION 100)', [$id, $workspaceId, $workspaceId])['depth'] ?? 0);
+                $destDepth = 0; $cursorId = $targetParentId;
+                while ($cursorId !== null) {
+                    $cursor = $this->one('SELECT parent_folder_id FROM tb_folder WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', [$cursorId, $workspaceId]);
+                    if (!$cursor) throw new TablerosApiException('validation', 'La carpeta destino ya no está disponible.', 422);
+                    $destDepth++; $cursorId = $cursor['parent_folder_id'] === null ? null : (int)$cursor['parent_folder_id'];
+                    if ($destDepth > 3) throw new TablerosApiException('conflict', 'La jerarquía de carpetas no es válida.', 409);
+                }
+                if ($destDepth + $depth > 3) throw new TablerosApiException('validation', 'Monday permite hasta tres niveles de carpetas dentro del espacio de trabajo.', 422);
+            }
+            $oldParent = $moved[$parentKey] === null ? null : (int)$moved[$parentKey];
+            if ($anchorId !== null) {
+                $anchor = $visible[$anchorId] ?? null;
+                if (!$anchor || (int)$anchor['workspace_id'] !== $workspaceId || ($anchor[$parentKey] === null ? null : (int)$anchor[$parentKey]) !== $targetParentId) throw new TablerosApiException('validation', 'El elemento de referencia no está en la lista destino.', 422);
+                if (empty($anchor['can_reorder'])) throw new TablerosApiException('forbidden', 'No tienes permiso para reordenar el elemento de referencia.', 403);
+            }
+            $lists = [];
+            foreach (array_unique([$oldParent, $targetParentId], SORT_REGULAR) as $parentId) {
+                $rows = $this->all("SELECT id, sort_order FROM $table WITH (UPDLOCK, HOLDLOCK) WHERE workspace_id = ? AND (($parentKey = ?) OR ($parentKey IS NULL AND ? IS NULL)) AND deleted_at IS NULL ORDER BY sort_order, id", [$workspaceId, $parentId, $parentId]);
+                foreach ($rows as $row) if (isset($visible[(int)$row['id']]) && empty($visible[(int)$row['id']]['can_reorder'])) throw new TablerosApiException('forbidden', 'Necesitas permiso para reordenar todos los elementos visibles de estas listas.', 403);
+                $lists[(string)($parentId ?? 'root')] = array_values(array_filter($rows, static fn($r) => isset($visible[(int)$r['id']])));
+            }
+            $oldKey = (string)($oldParent ?? 'root'); $newKey = (string)($targetParentId ?? 'root');
+            $source = array_values(array_filter($lists[$oldKey] ?? [], static fn($r) => (int)$r['id'] !== $id));
+            $target = $oldKey === $newKey ? $source : ($lists[$newKey] ?? []);
+            if ($anchorId !== null) {
+                $idx = array_search($anchorId, array_map(static fn($r) => (int)$r['id'], $target), true);
+                if ($idx === false) throw new TablerosApiException('conflict', 'La estructura cambió. Actualiza e inténtalo de nuevo.', 409);
+                array_splice($target, $idx + ($placement === 'after' ? 1 : 0), 0, [['id' => $id, 'sort_order' => (int)$moved['sort_order']]]);
+            } else {
+                $target[] = ['id' => $id, 'sort_order' => (int)$moved['sort_order']];
+            }
+            $this->execute("UPDATE $table SET $parentKey = ?, updated_at = GETDATE() WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL", [$targetParentId, $id, $workspaceId]);
+            $write = function (array $rows, array $originalRows) use ($table, $parentKey, $workspaceId): void {
+                $slots = array_map(static fn($row) => (int)$row['sort_order'], $originalRows);
+                sort($slots, SORT_NUMERIC);
+                while (count($slots) < count($rows)) $slots[] = ($slots ? max($slots) : -1) + 1;
+                $previousPosition = null;
+                foreach ($rows as $index => $row) {
+                    $position = (int)$slots[$index];
+                    if ($previousPosition !== null) {
+                        if ($previousPosition >= 2147483647) throw new TablerosApiException('conflict', 'El orden excede el rango permitido.', 409);
+                        $position = max($position, $previousPosition + 1);
+                    }
+                    if ($position > 2147483647) throw new TablerosApiException('conflict', 'El orden excede el rango permitido.', 409);
+                    $this->execute("UPDATE $table SET sort_order = ?, updated_at = GETDATE() WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL", [$position, (int)$row['id'], $workspaceId]);
+                    $previousPosition = $position;
+                }
+            };
+            if ($oldKey !== $newKey) $write($source, $lists[$oldKey] ?? []);
+            $write($target, $lists[$newKey] ?? []);
+            if ($type === 'board') $this->writeActivity($id, null, $userId, 'board.reordered', ['target_parent_id' => $targetParentId, 'anchor_id' => $anchorId, 'placement' => $placement]);
             return $this->getWorkspaceStructure($userId, $isAdmin);
         });
     }
