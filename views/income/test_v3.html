@@ -1288,6 +1288,18 @@ function shouldKeepCGItemVisible(item) {
     return isConciliatedCGRef(getCGRef(item));
 }
 
+function obtenerKeywordsCG() {
+    const pilotoBankaoolVillaAhumada = currentRule
+        && Number(currentRule.entidad_id) === 14
+        && String(currentRule.afiliacion || '').trim() === '9990624'
+        && Number(widgetState.year) === 2026
+        && String(widgetState.month).padStart(2, '0') === '10';
+    if (pilotoBankaoolVillaAhumada) return [];
+    return currentRule && currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(Boolean)
+        : [];
+}
+
 // ── INIT ────────────────────────────────────────────────────
 $(document).ready(function() {
     initWidget();
@@ -1944,9 +1956,7 @@ function renderCG() {
     }
 
     // ── 2. ITEMS CG REALES ──────────────────────────────────────
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     // Fecha de hoy en formato YYYY-MM-DD para excluir el día en curso
     const today = new Date();
@@ -2738,9 +2748,7 @@ function conciliarDia(fecha) {
     limpiarSeleccion();
 
     // Keywords para filtrar CG (mismo criterio que renderCG)
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(k => k)
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     // CG pendientes del día
     cgData.forEach(item => {
@@ -2940,9 +2948,7 @@ function limpiarSeleccion() {
 function seleccionarDiaCG(fecha) {
     if (mesCerrado) return;
 
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(k => k)
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     // Items pendientes del día — excluye conciliados, 100% en tránsito y 100% diferido
     const pendientes = cgData.filter(item => {
@@ -3077,8 +3083,7 @@ function fechaCGItem(item) {
 
 function obtenerPreconciliacionesBanorte() {
     if (!currentRule || currentRule.entidad_id !== 4 || mesCerrado) return [];
-    const keywords = currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(Boolean) : [];
+    const keywords = obtenerKeywordsCG();
     const hoy = new Date();
     const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
     const cgPorFecha = {};
@@ -3346,9 +3351,7 @@ function abrirModalCierre() {
     $('#modalCierreMes').modal('show');
 
     // Calcular ítems pendientes localmente (misma lógica que renderCG)
-    const keywords = currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     _cierreState.pendingItems = cgData.filter(item => {
         const monto = parseFloat(item.Total || 0);
@@ -3548,9 +3551,7 @@ function confirmarReabrirMes() {
 // ── RESUMEN SUPERIOR ──────────────────────────────────────────
 function actualizarResumenSuperior() {
     // CG: aplicar el mismo filtro de conceptos_cg que el panel
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
-        : [];
+    const keywords = obtenerKeywordsCG();
     const totalCG  = cgData.filter(item => {
         if (!keywords.length) return parseFloat(item.Total || 0) > 0;
         const c = (item.Concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -3587,9 +3588,7 @@ function actualizarResumenSuperior() {
 
 // ── CONTADORES ────────────────────────────────────────────────
 function updateCGCounter()  {
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
-        : [];
+    const keywords = obtenerKeywordsCG();
     const tot = cgData.filter(item => {
         if (!keywords.length) return parseFloat(item.Total || 0) > 0;
         const c = (item.Concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -3679,9 +3678,7 @@ function calcularRango() {
     // Mismo filtro que renderCG: monto > 0, no hoy, keywords
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
-        : [];
+    const keywords = obtenerKeywordsCG();
     const filteredCG = cgData.filter(item => {
         if (parseFloat(item.Total || 0) <= 0) return false;
         if (cgFecha(item) === todayStr) return false;
@@ -3968,9 +3965,7 @@ function abrirModoTransacciones() {
     $contTX.html('<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 small text-muted">Procesando Transacciones...</div></div>');
 
     // Mismo filtro que renderCG: keywords por conceptos_cg
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     // Agrupar CG por fecha (igual que renderCG)
     const cgGroups = {};
