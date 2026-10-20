@@ -250,7 +250,7 @@ function getColorByLabel(label) {
         "GASOLINEROS DE MEX": "#A133FF ",
         "REPSOL": "#00cde6",
         "TECNOCENTRO": "#FF33A1",
-        "G500": "#FF3333",
+        // "G500": "#FF3333",
         "PEMEX PL/10110": "#8B4513",
         "PEMEX ES 15172": "#FF5733",
         "HERRERA PL/10706": "#Ff0000",
