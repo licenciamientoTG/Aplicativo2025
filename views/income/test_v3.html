@@ -2435,9 +2435,16 @@ function renderTes() {
             const detalleDiferencia = historialFuentePrincipal
                 ? `<span class="diff-tag ${Math.abs(diferenciaFuente)<.01?'ok':(diferenciaFuente>0?'pos':'neg')}">${fmt.format(diferenciaFuente)}</span>`
                 : '';
+            const componentesDiferibles = !mesCerrado && !concilLegacyDia
+                ? componentes.filter(comp => !hasConciliada('TES', normalizarRef(comp.ref)) && tesMontoDisponible(comp) > 0)
+                : [];
+            const montoPendienteDiferible = componentesDiferibles.reduce((sum, comp) => sum + tesMontoDisponible(comp), 0);
+            const accionDiferir = componentesDiferibles.length
+                ? `<span class="tes-pilot-pending">Pendiente ${fmt.format(montoPendienteDiferible)} <button class="btn-diferir" data-componentes="${escHtml(JSON.stringify(componentesDiferibles))}" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(fecha)}',this)" title="Diferir depósito TES"><i class="fas fa-calendar-day"></i> Diferir</button></span>`
+                : '';
             const fuenteHtml = componentes.length
                 ? `<div class="row-item tes-pilot-row tes-source-aggregate ${estadoFuente} ${fuenteSeleccionada ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesPendientes))}" data-seleccionable="${componentesPendientes.length && !mesCerrado ? '1' : '0'}" ${componentesPendientes.length && !mesCerrado ? 'onclick="toggleTESFuenteDia(this)"' : ''}>
-                    <div class="row-left"><span class="row-line1">Depósitos del día</span><span class="row-line2">Tesorería · ${componentes.length} movimiento${componentes.length === 1 ? '' : 's'}</span></div>
+                    <div class="row-left"><span class="row-line1">Depósitos del día</span><span class="row-line2">Tesorería · ${componentes.length} movimiento${componentes.length === 1 ? '' : 's'}</span>${accionDiferir}</div>
                     <div class="row-right" style="pointer-events:auto;">${detalleDiferencia}${botonesDeshacer}<span class="font-numeric">${fmt.format(montoFuente)}</span></div>
                 </div>`
                 : '';
