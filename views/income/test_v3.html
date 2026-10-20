@@ -758,7 +758,7 @@
                 <input type="hidden" id="dif-tes-ref">
                 <div class="mb-3"><div class="text-muted small font-weight-bold text-uppercase mb-1">Componente</div><div class="font-weight-bold" id="dif-tes-concepto"></div><div class="text-muted small" id="dif-tes-fecha-origen"></div></div>
                 <div class="row mb-3">
-                    <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Disponible en origen</div><div class="font-numeric h5 text-dark" id="dif-tes-disponible"></div></div>
+                    <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Pendiente en origen</div><div class="font-numeric h5 text-dark" id="dif-tes-disponible"></div><small class="text-muted">Importe del depósito aún no diferido y pendiente de conciliar.</small></div>
                     <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Fecha destino</div><input type="date" id="dif-tes-fecha-dest" class="form-control form-control-sm" min="2026-10-01" max="2026-10-31"></div>
                 </div>
                 <div class="mb-3"><label class="text-muted small font-weight-bold text-uppercase mb-1">Monto a diferir</label><input type="number" id="dif-tes-monto" class="form-control" step="0.01" min="0.01" oninput="actualizarDisponibleDiferidoTES()"></div>
@@ -2103,7 +2103,7 @@ function renderCG() {
 
             // Botón [D] diferir — solo si hay monto efectivo disponible y no está conciliado
             let diferirBtn = '';
-            if (!esConcil && !transitoInfo && montoEfectivo > 0 && !mesCerrado) {
+            if (!tesDiferidosHabilitado() && !esConcil && !transitoInfo && montoEfectivo > 0 && !mesCerrado) {
                 diferirBtn = `<button class="btn-diferir" onclick="event.stopPropagation();abrirModalDiferido('${escHtml(ref)}','${escHtml(fecha)}',${montoOrig},${montoEfectivo},'${escHtml(concepto)}')" title="Diferir a otro día"><i class="fas fa-calendar-day"></i> D</button>`;
             }
 
@@ -2249,7 +2249,7 @@ function renderCG() {
                </button>`
             : '';
         // Botón de diferir a nivel de día
-        const diaDiferirBtn = (!mesCerrado && itemsDiferibles.length > 0)
+        const diaDiferirBtn = (!tesDiferidosHabilitado() && !mesCerrado && itemsDiferibles.length > 0)
             ? `<button class="btn-diferir ml-2" onclick="event.stopPropagation();abrirModalDiferidoDia('${escHtml(fecha)}',${JSON.stringify(itemsDiferibles).replace(/"/g,'&quot;')})" title="Diferir día completo a otro día">
                    <i class="fas fa-calendar-day"></i> D Día
                </button>`
@@ -2477,7 +2477,7 @@ function renderTes() {
                 const activos = tesDiferidosActivos(comp.ref);
                 const montoBase = parseFloat(comp.monto || 0) + activos.reduce((s, d) => s + parseFloat(d.monto_diferido || 0), 0);
                 const disponible = tesMontoDisponible(comp);
-                return `<span class="d-block small text-muted mt-1">${escHtml(comp.descripcion || comp.ref)} · Disponible ${fmt.format(disponible)} <button class="btn-diferir" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(comp.ref)}','${escHtml(fecha)}',${montoBase},${disponible},'${escHtml(comp.descripcion || comp.ref)}')" title="Diferir componente TES"><i class="fas fa-calendar-day"></i> D</button></span>`;
+                return `<span class="d-block small text-muted mt-1">${escHtml(comp.descripcion || comp.ref)} · Pendiente ${fmt.format(disponible)} <button class="btn-diferir" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(comp.ref)}','${escHtml(fecha)}',${montoBase},${disponible},'${escHtml(comp.descripcion || comp.ref)}')" title="Diferir componente TES"><i class="fas fa-calendar-day"></i> D</button></span>`;
             }).join('') : '';
             $c.append(`<div class="row-item row-pendiente tes-amex-row ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesDisponibles))}" onclick="toggleTESBadges(this);toggleTESComponentes(this)">
                 <div class="row-left">

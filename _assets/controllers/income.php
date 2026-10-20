@@ -9851,6 +9851,11 @@ public function stamped_invoices_detail(): void
         $concepto         = trim($data['concepto']    ?? '');
         $descripcion      = trim($data['descripcion'] ?? '');
 
+        if ($afiliacion === '9990624' && $mes === '2026-10') {
+            echo json_encode(['status' => 'error', 'message' => 'Durante el piloto de octubre de 2026, los diferidos de la afiliación 9990624 solo se crean desde Tesorería.']);
+            exit;
+        }
+
         if ($monto_diferido <= 0) {
             echo json_encode(['status' => 'error', 'message' => 'Monto diferido inválido']);
             exit;
@@ -9939,6 +9944,11 @@ public function stamped_invoices_detail(): void
         $monto_dif_total  = round((float)($data['monto_diferido_total'] ?? 0), 2);
         $descripcion      = trim($data['descripcion']           ?? '');
         $cortes           = $data['cortes']                     ?? [];
+
+        if ($afiliacion === '9990624' && $mes === '2026-10') {
+            echo json_encode(['status' => 'error', 'message' => 'Durante el piloto de octubre de 2026, los diferidos de la afiliación 9990624 solo se crean desde Tesorería.']);
+            exit;
+        }
 
         if (!$estacion_id || !$entidad_id || !$mes || !$cg_fecha_destino || empty($cortes) || $monto_dif_total <= 0) {
             echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
