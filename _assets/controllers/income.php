@@ -4613,18 +4613,14 @@ public function anomalies_client_tickets()
                      FROM [TG].[dbo].[movimientos_bancarios]
                      WHERE banco = 'BANKAOOL' AND abono > 0
                        AND YEAR(fecha) = ? AND MONTH(fecha) = ?
-                       AND UPPER(LTRIM(descripcion)) LIKE 'DEBITO%'
                        AND UPPER(descripcion) LIKE '%9990624%'
-                     UNION ALL
-                     SELECT id, fecha, abono, descripcion
-                     FROM [TG].[dbo].[movimientos_bancarios]
-                     WHERE banco = 'BANKAOOL' AND abono > 0
-                       AND YEAR(fecha) = ? AND MONTH(fecha) = ?
-                       AND UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'
-                       AND UPPER(descripcion) LIKE '%9990624%'
+                       AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%'
+                         OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'
+                         OR UPPER(LTRIM(descripcion)) LIKE 'AMEX%'
+                         OR UPPER(LTRIM(descripcion)) LIKE 'INTERNAC%')
                      ORDER BY fecha, id"
                 );
-                $stmtMovimientos->execute([$year, $month, $year, $month]);
+                $stmtMovimientos->execute([$year, $month]);
                 while ($mov = $stmtMovimientos->fetch(PDO::FETCH_ASSOC)) {
                     $fecha = $mov['fecha'] instanceof DateTime
                         ? $mov['fecha']->format('Y-m-d')
@@ -9649,7 +9645,8 @@ public function stamped_invoices_detail(): void
                 $source = $conn->prepare("SELECT TOP 1 abono, fecha FROM [TG].[dbo].[movimientos_bancarios]
                     WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10
                       AND UPPER(descripcion) LIKE '%9990624%'
-                      AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%')");
+                      AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'
+                        OR UPPER(LTRIM(descripcion)) LIKE 'AMEX%' OR UPPER(LTRIM(descripcion)) LIKE 'INTERNAC%')");
                 $source->execute([(int)$m[1]]);
                 $movement = $source->fetch(PDO::FETCH_ASSOC);
                 if (!$movement) throw new Exception('No se encontró el movimiento TES origen.');
@@ -9712,7 +9709,7 @@ public function stamped_invoices_detail(): void
         if(!$sid||$eid!==14||$afil!=='9990624'||!preg_match('/^mb_(\d+)$/',$ref,$refMatch)||$amt<=0||(($d['mes']??'2026-10')!=='2026-10')||!preg_match('/^2026-10-\d{2}$/',$fo)||!preg_match('/^2026-10-\d{2}$/',$fd)||!checkdate((int)substr($fo,5,2),(int)substr($fo,8,2),(int)substr($fo,0,4))||!checkdate((int)substr($fd,5,2),(int)substr($fd,8,2),(int)substr($fd,0,4))){echo json_encode(['status'=>'error','message'=>'Datos inválidos: solo se permiten referencias mb_<id>, afiliación 9990624 y fechas de octubre de 2026 con monto positivo']);exit;}
         try{$c=$this->v3_conn();$this->v3_ensure_diferido_tes_table($c);$c->beginTransaction();$this->v3_assert_mes_abierto($c,$sid,$eid,$afil,'2026-10');
             $afilCheck=$c->prepare("SELECT TOP 1 estacion_id FROM Tesoreria_afil WHERE entidad_id=14 AND afiliacion='9990624' AND estacion_id=?");$afilCheck->execute([$sid]);if(!$afilCheck->fetchColumn())throw new Exception('La afiliación piloto no pertenece a la estación seleccionada.');
-            $src=$c->prepare("SELECT TOP 1 id, abono AS Depositos, fecha AS Fecha, descripcion AS Descripcion FROM [TG].[dbo].[movimientos_bancarios] WITH (UPDLOCK,HOLDLOCK) WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10 AND UPPER(descripcion) LIKE '%9990624%' AND ((UPPER(LTRIM(descripcion)) LIKE 'DEBITO%') OR (UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'))");$src->execute([(int)$refMatch[1]]);$source=$src->fetch(PDO::FETCH_ASSOC);
+            $src=$c->prepare("SELECT TOP 1 id, abono AS Depositos, fecha AS Fecha, descripcion AS Descripcion FROM [TG].[dbo].[movimientos_bancarios] WITH (UPDLOCK,HOLDLOCK) WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10 AND UPPER(descripcion) LIKE '%9990624%' AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%' OR UPPER(LTRIM(descripcion)) LIKE 'AMEX%' OR UPPER(LTRIM(descripcion)) LIKE 'INTERNAC%')");$src->execute([(int)$refMatch[1]]);$source=$src->fetch(PDO::FETCH_ASSOC);
             if(!$source)throw new Exception('No se encontró el depósito origen para esa referencia en Tesorería.');
             $cut=round((float)$source['Depositos'],2);$sourceDate=substr((string)$source['Fecha'],0,10);if($fo!==$sourceDate)throw new Exception('La fecha origen no coincide con Tesorería.');
             $already=$c->prepare("SELECT TOP 1 D.id FROM Conciliacion_V3_Detalles D WITH (UPDLOCK,HOLDLOCK)
