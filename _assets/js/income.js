@@ -2499,20 +2499,9 @@ async function clients_dispatches_table(tipo) {
     var codcli   = tipo === 'debit' ? $('#cliente_debit').val()  : $('#cliente_credit').val();
     var tipval   = tipo === 'debit' ? 4 : 3;
     var isDebit  = tipo === 'debit';
-    var empresa  = isDebit ? (parseInt($('#empresa_debit').val(), 10) || 0) : 0;
-    // En débito el cliente es opcional ("0" = todos); la tabla de crédito agrega una columna menos
-    var colOff   = isDebit ? 1 : 0;
 
     if (!codcli) {
         alertify.myAlert('<div class="text-center text-warning"><h5>Selecciona un cliente</h5><p>Debes elegir un cliente antes de consultar.</p></div>');
-        return;
-    }
-    if (isDebit && codcli === '0' && empresa === 0) {
-        alertify.myAlert('<div class="text-center text-warning"><h5>Falta un filtro</h5><p>Selecciona un cliente o una razón social.</p></div>');
-        return;
-    }
-    if (isDebit && codcli === '0' && (new Date(until) - new Date(from)) / 86400000 > 31) {
-        alertify.myAlert('<div class="text-center text-warning"><h5>Rango muy amplio</h5><p>Sin cliente, el rango máximo es de 31 días.</p></div>');
         return;
     }
 
@@ -2546,15 +2535,9 @@ async function clients_dispatches_table(tipo) {
         buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
         ajax: {
             method: 'POST',
-            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval, 'empresa': empresa },
+            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval },
             url: '/income/clients_dispatches_table',
             timeout: 600000,
-            dataSrc: function (json) {
-                if (json.error) {
-                    alertify.myAlert('<div class="text-center text-warning"><p>' + json.error + '</p></div>');
-                }
-                return json.data || [];
-            },
             error: function () {
                 $('.table-responsive').removeClass('loading');
                 alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No existen registros con los parámetros dados.</p></div>');
@@ -2574,20 +2557,19 @@ async function clients_dispatches_table(tipo) {
                 return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0') + ' ' + ap;
             }},
             { data: 'nrotrn',   className: 'text-center' },
-            { data: 'Estacion', className: 'text-nowrap' }
-        ].concat(isDebit ? [{ data: 'RazonSocial', className: 'text-nowrap' }] : []).concat([
+            { data: 'Estacion', className: 'text-nowrap' },
             { data: 'Litros',   render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
             { data: 'Monto',    render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-end' },
             { data: 'producto' },
-        ]),
+        ],
         deferRender: true,
         initComplete: function () { $('.table-responsive').removeClass('loading'); },
         footerCallback: function (row, data, start, end, display) {
             var api = this.api();
-            var litrosTotal = api.column(6 + colOff, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
-            var montoTotal  = api.column(7 + colOff, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
-            $(api.column(6 + colOff).footer()).html(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3}));
-            $(api.column(7 + colOff).footer()).html('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2}));
+            var litrosTotal = api.column(6, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
+            var montoTotal  = api.column(7, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
+            $(api.column(6).footer()).html(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3}));
+            $(api.column(7).footer()).html('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2}));
             if (isDebit) {
                 $('#sum_litros_consumos_debit').text(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3, maximumFractionDigits:3}));
                 $('#sum_monto_consumos_debit').text('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
@@ -2596,6 +2578,98 @@ async function clients_dispatches_table(tipo) {
         }
     });
 }
+
+// ── Consumos Débito por Razón Social (resumen por cliente y empresa) ────────
+
+async function debit_consumos_company_table() {
+    var tableId = 'debit_consumos_company_table';
+    var from    = $('#from_debit_company').val();
+    var until   = $('#until_debit_company').val();
+    var empresa = parseInt($('#empresa_debit_company').val(), 10) || 0;
+
+    if ($.fn.DataTable.isDataTable('#' + tableId)) {
+        $('#' + tableId).DataTable().destroy();
+        $('#' + tableId + ' thead .filter').remove();
+    }
+
+    $('#' + tableId + ' thead').prepend($('#' + tableId + ' thead tr').clone().addClass('filter'));
+    $('#' + tableId + ' thead tr.filter th').each(function (index) {
+        var col = $('#' + tableId + ' thead th').length / 2;
+        if (index < col) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#' + tableId + ' thead tr.filter th input').on('keyup change', function () {
+        $('#' + tableId).DataTable()
+            .column($(this).parent().index())
+            .search(this.value).draw();
+    });
+
+    var fmtMoney = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    var sumCol = function (api, idx) {
+        return api.column(idx, { search: 'applied' }).data()
+            .reduce(function (a, b) { return (parseFloat(a) || 0) + (parseFloat(b) || 0); }, 0);
+    };
+
+    $('#' + tableId).DataTable({
+        order: [[5, 'desc']],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"i>',
+        paging: false,
+        scrollY: '60vh',
+        scrollX: true,
+        scrollCollapse: true,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        ajax: {
+            method: 'POST',
+            data: { 'from': from, 'until': until, 'empresa': empresa },
+            url: '/income/clients_dispatches_by_company',
+            timeout: 600000,
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No existen registros con los parámetros dados.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        columns: [
+            { data: 'codcli' },
+            { data: 'Cliente',     className: 'text-nowrap' },
+            { data: 'RazonSocial', className: 'text-nowrap' },
+            { data: 'Despachos',   render: $.fn.dataTable.render.number(',', '.', 0, ''), className: 'text-end' },
+            { data: 'Litros',      render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
+            { data: 'Monto', className: 'text-nowrap text-end', render: function (d, type) {
+                if (type !== 'display') return d;
+                return '<a href="#" class="company-drill" title="Ver despachos">' + fmtMoney(d) + ' <i class="fas fa-list-ul"></i></a>';
+            }},
+        ],
+        deferRender: true,
+        initComplete: function () { $('.table-responsive').removeClass('loading'); },
+        footerCallback: function () {
+            var api = this.api();
+            var desp = sumCol(api, 3), lit = sumCol(api, 4), mto = sumCol(api, 5);
+            $(api.column(3).footer()).html(desp.toLocaleString('es-MX'));
+            $(api.column(4).footer()).html(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
+            $(api.column(5).footer()).html(fmtMoney(mto));
+            $('#sum_despachos_company_debit').text(desp.toLocaleString('es-MX'));
+            $('#sum_litros_company_debit').text(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
+            $('#sum_monto_company_debit').text(fmtMoney(mto));
+            $('#sum_clientes_company_debit').text(api.rows({ search: 'applied' }).count().toLocaleString('es-MX'));
+        }
+    });
+}
+
+// Drill-down: despachos de un cliente en la razón social del renglón
+$(document).on('click', '#debit_consumos_company_table .company-drill', function (e) {
+    e.preventDefault();
+    var row = $('#debit_consumos_company_table').DataTable().row($(this).closest('tr')).data();
+    if (row) {
+        edo_consumos_modal(row.codcli, row.Cliente + ' — ' + row.RazonSocial,
+            $('#from_debit_company').val(), $('#until_debit_company').val(), 4, row.codemp);
+    }
+});
 
 // ── Estado de Cuenta por Cliente (Débito / Crédito) ─────────────────────────
 
@@ -2793,7 +2867,7 @@ function client_vehicles_modal(codcli, cliente) {
 }
 
 // Modal de consumos (despachos) compartido: débito tipval=4 / crédito tipval=3
-function edo_consumos_modal(codcli, cliente, from, until, tipval) {
+function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
     var money = function (v) {
         return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
@@ -2805,7 +2879,7 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval) {
     $('#modal_edo_drill_table tfoot').empty();
     $('#modal_edo_drill').modal('show');
 
-    $.post('/income/clients_dispatches_table', { codcli: codcli, from: from, until: until, tipval: tipval }, function (json) {
+    $.post('/income/clients_dispatches_table', { codcli: codcli, from: from, until: until, tipval: tipval, empresa: empresa || 0 }, function (json) {
         var rows = (json && json.data) || [];
         if (!rows.length) {
             $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Sin registros en el periodo.</td></tr>');

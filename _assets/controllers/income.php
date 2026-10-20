@@ -478,12 +478,6 @@ public function balance_age()
         $codcli = (int)($_POST['codcli']  ?? 0);
         $empresa = (int)($_POST['empresa'] ?? 0);
 
-        // Débito sin cliente (consulta por razón social): rango acotado para no barrer Despachos completo
-        if ($tipval === 4 && $codcli <= 0 && $from->diff($until)->days > 31) {
-            json_output(['data' => [], 'error' => 'Sin cliente el rango máximo es de 31 días.']);
-            return;
-        }
-
         $data = [];
         if ($rows = $this->clientesModel->get_dispatches_by_client(
             dateToInt($from->format('Y-m-d')),
@@ -508,6 +502,20 @@ public function balance_age()
             }
         }
         json_output(["data" => $data]);
+    }
+
+    /** Consumos débito por cliente y razón social. POST /income/clients_dispatches_by_company (empresa=0 → todas). */
+    public function clients_dispatches_by_company() : void {
+        $from    = $this->createDateTime($_POST['from']  ?? date('Y-m-01'));
+        $until   = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+        $empresa = (int)($_POST['empresa'] ?? 0);
+
+        $rows = $this->clientesModel->get_dispatches_summary_by_company(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $empresa
+        );
+        json_output(['data' => $rows ?: []]);
     }
 
     public function client_anticipos_table() : void {

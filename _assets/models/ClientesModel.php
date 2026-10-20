@@ -192,6 +192,32 @@ class ClientesModel extends Model{
     }
 
     /**
+     * Consumos de clientes débito agrupados por cliente y razón social (un renglón por par).
+     * $empresa: 0 = todas, -1 = estaciones sin razón social, >0 = SG12.Empresas.cod.
+     */
+    public function get_dispatches_summary_by_company(int $from, int $until, int $empresa = 0) : array|false {
+        $query = "SELECT
+                    t1.codcli,
+                    t2.den AS Cliente,
+                    ISNULL(EMP.cod, -1) AS codemp,
+                    ISNULL(EMP.den, '(Sin razón social)') AS RazonSocial,
+                    COUNT(*) AS Despachos,
+                    CAST(SUM(t1.can) AS decimal(18,3)) AS Litros,
+                    CAST(SUM(t1.mto) AS decimal(18,2)) AS Monto
+                FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
+                LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+                LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                WHERE t1.fchtrn BETWEEN ? AND ?
+                    AND t1.codcli > 0
+                    AND t2.tipval = 4
+                    AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                GROUP BY t1.codcli, t2.den, EMP.cod, EMP.den
+                ORDER BY SUM(t1.mto) DESC";
+        return $this->sql->select($query, [$from, $until, $empresa, $empresa, $empresa]) ?: false;
+    }
+
+    /**
      * @param $codcli
      * @param $tar
      * @return int|false
