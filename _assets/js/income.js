@@ -2498,9 +2498,21 @@ async function clients_dispatches_table(tipo) {
     var until    = tipo === 'debit' ? $('#until_debit').val()    : $('#until_credit').val();
     var codcli   = tipo === 'debit' ? $('#cliente_debit').val()  : $('#cliente_credit').val();
     var tipval   = tipo === 'debit' ? 4 : 3;
+    var isDebit  = tipo === 'debit';
+    var empresa  = isDebit ? (parseInt($('#empresa_debit').val(), 10) || 0) : 0;
+    // En débito el cliente es opcional ("0" = todos); la tabla de crédito agrega una columna menos
+    var colOff   = isDebit ? 1 : 0;
 
     if (!codcli) {
         alertify.myAlert('<div class="text-center text-warning"><h5>Selecciona un cliente</h5><p>Debes elegir un cliente antes de consultar.</p></div>');
+        return;
+    }
+    if (isDebit && codcli === '0' && empresa === 0) {
+        alertify.myAlert('<div class="text-center text-warning"><h5>Falta un filtro</h5><p>Selecciona un cliente o una razón social.</p></div>');
+        return;
+    }
+    if (isDebit && codcli === '0' && (new Date(until) - new Date(from)) / 86400000 > 31) {
+        alertify.myAlert('<div class="text-center text-warning"><h5>Rango muy amplio</h5><p>Sin cliente, el rango máximo es de 31 días.</p></div>');
         return;
     }
 
@@ -2526,15 +2538,23 @@ async function clients_dispatches_table(tipo) {
     $('#' + tableId).DataTable({
         order: [[0, 'asc'], [2, 'asc']],
         colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        paging: true,
-        pageLength: 100,
+        dom: '<"top"Bf>rt<"bottom"i>',
+        paging: false,
+        scrollY: '60vh',
+        scrollX: true,
+        scrollCollapse: true,
         buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
         ajax: {
             method: 'POST',
-            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval },
+            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval, 'empresa': empresa },
             url: '/income/clients_dispatches_table',
             timeout: 600000,
+            dataSrc: function (json) {
+                if (json.error) {
+                    alertify.myAlert('<div class="text-center text-warning"><p>' + json.error + '</p></div>');
+                }
+                return json.data || [];
+            },
             error: function () {
                 $('.table-responsive').removeClass('loading');
                 alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No existen registros con los parámetros dados.</p></div>');
@@ -2554,19 +2574,25 @@ async function clients_dispatches_table(tipo) {
                 return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0') + ' ' + ap;
             }},
             { data: 'nrotrn',   className: 'text-center' },
-            { data: 'Estacion', className: 'text-nowrap' },
+            { data: 'Estacion', className: 'text-nowrap' }
+        ].concat(isDebit ? [{ data: 'RazonSocial', className: 'text-nowrap' }] : []).concat([
             { data: 'Litros',   render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
             { data: 'Monto',    render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-end' },
             { data: 'producto' },
-        ],
+        ]),
         deferRender: true,
         initComplete: function () { $('.table-responsive').removeClass('loading'); },
         footerCallback: function (row, data, start, end, display) {
             var api = this.api();
-            var litrosTotal = api.column(6, { page: 'current' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
-            var montoTotal  = api.column(7, { page: 'current' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
-            $(api.column(6).footer()).html(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3}));
-            $(api.column(7).footer()).html('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2}));
+            var litrosTotal = api.column(6 + colOff, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
+            var montoTotal  = api.column(7 + colOff, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
+            $(api.column(6 + colOff).footer()).html(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3}));
+            $(api.column(7 + colOff).footer()).html('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2}));
+            if (isDebit) {
+                $('#sum_litros_consumos_debit').text(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3, maximumFractionDigits:3}));
+                $('#sum_monto_consumos_debit').text('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
+                $('#sum_despachos_consumos_debit').text(api.rows({ search: 'applied' }).count().toLocaleString('es-MX'));
+            }
         }
     });
 }
