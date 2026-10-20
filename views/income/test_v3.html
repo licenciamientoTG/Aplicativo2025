@@ -781,9 +781,7 @@
                 <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalDiferidoTES').modal('hide')" style="font-size:1.5rem;opacity:.8;text-decoration:none;">&times;</button>
             </div>
             <div class="modal-body p-4 bg-light">
-                <input type="hidden" id="dif-tes-ref">
-                <div class="mb-3" id="dif-tes-selector-wrap" style="display:none;"><label class="text-muted small font-weight-bold text-uppercase mb-1" for="dif-tes-componente">Depósito</label><select id="dif-tes-componente" class="form-control form-control-sm" onchange="seleccionarComponenteDiferidoTES()"></select></div>
-                <div class="mb-3"><div class="text-muted small font-weight-bold text-uppercase mb-1">Depósito origen</div><div class="font-weight-bold" id="dif-tes-concepto"></div><div class="text-muted small" id="dif-tes-fecha-origen"></div></div>
+                <div class="mb-3"><div class="text-muted small font-weight-bold text-uppercase mb-1">Día y movimientos de origen</div><div class="font-weight-bold" id="dif-tes-concepto"></div><div class="text-muted small" id="dif-tes-fecha-origen"></div></div>
                 <div class="row mb-3">
                     <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Pendiente en origen</div><div class="font-numeric h5 text-dark" id="dif-tes-disponible"></div><small class="text-muted">Importe del depósito aún no diferido y pendiente de conciliar.</small></div>
                     <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Fecha destino</div><input type="date" id="dif-tes-fecha-dest" class="form-control form-control-sm" min="2026-10-01" max="2026-10-31" onchange="actualizarModoDiferidoTES()"></div>
@@ -1286,6 +1284,12 @@ function shouldKeepCGItemVisible(item) {
     const monto = parseFloat(item.Total || 0);
     if (monto > 0) return true;
     return isConciliatedCGRef(getCGRef(item));
+}
+
+function obtenerKeywordsCG() {
+    return currentRule && currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(Boolean)
+        : [];
 }
 
 // ── INIT ────────────────────────────────────────────────────
@@ -1944,9 +1948,7 @@ function renderCG() {
     }
 
     // ── 2. ITEMS CG REALES ──────────────────────────────────────
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     // Fecha de hoy en formato YYYY-MM-DD para excluir el día en curso
     const today = new Date();
@@ -2384,6 +2386,107 @@ function renderTes() {
         return;
     }
 
+    // In the October 2026 TES pilot each date is an expandable container.
+    // Original deposits remain grouped into one child row per day, while each
+    // deferred amount remains its own independently selectable child.
+    // The ordinary renderer below remains intact for every other affiliation.
+    if (tesDiferidosHabilitado()) {
+        const fuentesPorFecha = new Map();
+        [...tesData].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).forEach(item => {
+            const fecha = String(item.fecha || '').substring(0, 10);
+            if (!fuentesPorFecha.has(fecha)) fuentesPorFecha.set(fecha, []);
+            fuentesPorFecha.get(fecha).push(item);
+        });
+        const fechas = [...new Set([...fuentesPorFecha.keys(), ...diferidosPorFecha.keys()])].sort();
+        let totalPiloto = 0;
+        fechas.forEach(fecha => {
+            const items = fuentesPorFecha.get(fecha) || [];
+            const diferidosDia = diferidosPorFecha.get(fecha) || [];
+            const refsDiaHistoricos = items.flatMap(item => (item.all_refs || []).map(normalizarRef));
+            const concilLegacyDia = refsDiaHistoricos.some(ref => hasConciliada('TES', ref));
+            const componentes = items.flatMap(item => Array.isArray(item.components) && item.components.length
+                ? item.components
+                : [{ ref: item.id_origen || '', monto: item.monto || 0, descripcion: item.descripcion || '' }])
+                .filter(comp => normalizarRef(comp.ref));
+            const componentesPendientes = componentes.filter(comp => !concilLegacyDia
+                && !hasConciliada('TES', normalizarRef(comp.ref))
+                && montoConciliacionTesComponente(comp, fecha) > 0);
+            const montoFuente = componentes.reduce((sum, comp) => sum + montoConciliacionTesComponente(comp, fecha), 0);
+            const fuenteConciliada = concilLegacyDia || (componentes.length > 0
+                && componentes.every(comp => hasConciliada('TES', normalizarRef(comp.ref))));
+            const historialFuente = componentes.map(comp => getHistorialDetalle('TES', normalizarRef(comp.ref))).filter(Boolean);
+            const historialLegacy = concilLegacyDia
+                ? getHistorialDetalle('TES', refsDiaHistoricos.find(ref => hasConciliada('TES', ref)))
+                : null;
+            const historialFuentePrincipal = historialFuente[0] || historialLegacy;
+            const diferenciaFuente = historialFuentePrincipal ? parseFloat(historialFuentePrincipal.diferencia || 0) : 0;
+            const estadoFuente = fuenteConciliada
+                ? (Math.abs(diferenciaFuente) < .01 ? 'row-concil-ok' : 'row-concil-diff')
+                : 'row-pendiente';
+            const refsPendientesFuente = componentesPendientes.map(comp => normalizarRef(comp.ref));
+            const fuenteSeleccionada = refsPendientesFuente.length > 0
+                && refsPendientesFuente.every(ref => sel.tes.some(s => s.ref === ref));
+            const gruposFuente = [...new Set(historialFuente.map(h => parseInt(h.grupo_id, 10)).filter(Number.isFinite))];
+            const botonesDeshacer = !mesCerrado ? gruposFuente.map(id =>
+                `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${id})" title="Deshacer conciliación"><i class="fas fa-unlink"></i></button>`
+            ).join('') : '';
+            const detalleDiferencia = historialFuentePrincipal
+                ? `<span class="diff-tag ${Math.abs(diferenciaFuente)<.01?'ok':(diferenciaFuente>0?'pos':'neg')}">${fmt.format(diferenciaFuente)}</span>`
+                : '';
+            const componentesDiferibles = !mesCerrado && !concilLegacyDia
+                ? componentes.filter(comp => !hasConciliada('TES', normalizarRef(comp.ref)) && tesMontoDisponible(comp) > 0)
+                : [];
+            const montoPendienteDiferible = componentesDiferibles.reduce((sum, comp) => sum + tesMontoDisponible(comp), 0);
+            const accionDiferir = componentesDiferibles.length
+                ? `<span class="tes-pilot-pending">Pendiente ${fmt.format(montoPendienteDiferible)} <button class="btn-diferir" data-componentes="${escHtml(JSON.stringify(componentesDiferibles))}" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(fecha)}',this)" title="Diferir depósito TES"><i class="fas fa-calendar-day"></i> Diferir</button></span>`
+                : '';
+            const fuenteHtml = componentes.length
+                ? `<div class="row-item tes-pilot-row tes-source-aggregate ${estadoFuente} ${fuenteSeleccionada ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesPendientes))}" data-seleccionable="${componentesPendientes.length && !mesCerrado ? '1' : '0'}" ${componentesPendientes.length && !mesCerrado ? 'onclick="toggleTESFuenteDia(this)"' : ''}>
+                    <div class="row-left"><span class="row-line1">Depósitos del día</span><span class="row-line2">Tesorería · ${componentes.length} movimiento${componentes.length === 1 ? '' : 's'}</span>${accionDiferir}</div>
+                    <div class="row-right" style="pointer-events:auto;">${detalleDiferencia}${botonesDeshacer}<span class="font-numeric">${fmt.format(montoFuente)}</span></div>
+                </div>`
+                : '';
+            totalPiloto += montoFuente;
+            const filasDiferidos = [];
+            diferidosDia.forEach(d => {
+                const ref = `diferido_tes_${d.id}`;
+                const estado = String(d.estado || '').toUpperCase();
+                const conciliado = hasConciliada('TES', ref) || !!d.conciliacion_id_dest || ['CONCILIADO', 'CONCILIADA'].includes(estado);
+                const historial = getHistorialDetalle('TES', ref);
+                const dif = historial ? parseFloat(historial.diferencia || 0) : 0;
+                const monto = parseFloat(d.monto_diferido || 0);
+                const sePuedeSeleccionar = !mesCerrado && !conciliado && estado === 'PENDIENTE';
+                const status = conciliado ? (Math.abs(dif) < .01 ? 'row-concil-ok' : 'row-concil-diff') : 'row-pendiente';
+                const concepto = d.concepto || d.descripcion || 'Depósito diferido TES';
+                const acciones = !mesCerrado && !conciliado && !d.conciliacion_id_orig && !d.conciliacion_id_dest
+                    ? `<button class="btn-mover-diferido" onclick="event.stopPropagation();abrirModalMoverDiferidoTES(${parseInt(d.id, 10)},'${escHtml(fecha)}')" title="Mover diferido"><i class="fas fa-arrows-alt-h"></i></button><button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoTES(${parseInt(d.id, 10)})" title="Cancelar diferido"><i class="fas fa-times"></i></button>` : '';
+                const diferencia = historial ? `<span class="diff-tag ${Math.abs(dif)<.01?'ok':(dif>0?'pos':'neg')}">${fmt.format(dif)}</span><button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${historial.grupo_id})" title="Deshacer conciliación"><i class="fas fa-unlink"></i></button>` : '';
+                const etiqueta = String(d.fecha_origen || '').substring(0, 10) === fecha ? 'TES SEPARADO' : 'TES DIFERIDO';
+                totalPiloto += monto;
+                filasDiferidos.push(`<div class="row-item tes-pilot-row ${status} ${sel.tes.some(s => s.ref === ref) ? 'active' : ''}" data-tes-diferido-id="${parseInt(d.id, 10)}" data-tes-ref="${escHtml(ref)}" data-fecha="${escHtml(fecha)}" data-monto="${monto}" data-concepto="${escHtml(concepto)}" data-seleccionable="${sePuedeSeleccionar ? '1' : '0'}" ${sePuedeSeleccionar ? 'onclick="toggleDiferidoTESDesdeFila(this)"' : ''}><div class="row-left"><span class="row-line1"><span class="diferido-badge">${etiqueta}</span>${escHtml(concepto)}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(monto)}</span></div></div>`);
+            });
+            const refsSeleccionables = [...refsPendientesFuente];
+            diferidosDia.forEach(d => {
+                const ref = `diferido_tes_${d.id}`;
+                const estado = String(d.estado || '').toUpperCase();
+                if (!mesCerrado && estado === 'PENDIENTE' && !hasConciliada('TES', ref) && !d.conciliacion_id_dest) refsSeleccionables.push(ref);
+            });
+            const todosSeleccionados = refsSeleccionables.length > 0
+                && refsSeleccionables.every(ref => sel.tes.some(s => s.ref === ref));
+            const dateFmt = fecha.split('-').reverse().join('/');
+            const totalDia = montoFuente + diferidosDia.reduce((sum, d) => sum + parseFloat(d.monto_diferido || 0), 0);
+            const fechaId = `tes-diferidos-${fecha.replace(/-/g, '')}`;
+            const abierto = openGroupsTES.has(fecha);
+            const icono = abierto ? 'fa-chevron-down' : 'fa-chevron-right';
+            const cabeceraSeleccionable = refsSeleccionables.length > 0;
+            const clickCabecera = cabeceraSeleccionable ? `onclick="toggleTESDiaPiloto('${escHtml(fecha)}')"` : '';
+            const controlDesplegar = `<button class="tes-day-toggle" onclick="event.stopPropagation();toggleDiferidosTESDia('${escHtml(fecha)}',this)" aria-label="Mostrar movimientos del día" aria-expanded="${abierto ? 'true' : 'false'}" title="${abierto ? 'Ocultar' : 'Mostrar'} movimientos del día"><i class="fas ${icono}"></i></button>`;
+            const header = `<div class="tes-day-empty-header tes-pilot-row ${cabeceraSeleccionable ? 'selectable' : ''} ${todosSeleccionados ? 'active' : ''}" data-fecha="${escHtml(fecha)}" ${clickCabecera}>${controlDesplegar}<strong>${dateFmt}</strong><span>Tesorería</span><span class="font-numeric ml-auto">${fmt.format(totalDia)}</span></div>`;
+            $c.append(`<div class="tes-day-block">${header}<div class="tes-day-deferred ${abierto ? 'open' : ''}" id="${fechaId}">${fuenteHtml}${filasDiferidos.join('')}</div></div>`);
+        });
+        $('#tes-counter').text(fmt.format(totalPiloto));
+        return;
+    }
     let grandTotal = 0;
     const fechasDiferidosRenderizadas = new Set();
     const renderFilaDiferidoTES = d => {
@@ -2738,9 +2841,7 @@ function conciliarDia(fecha) {
     limpiarSeleccion();
 
     // Keywords para filtrar CG (mismo criterio que renderCG)
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(k => k)
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     // CG pendientes del día
     cgData.forEach(item => {
@@ -2857,7 +2958,76 @@ function toggleTransitoFake(ref, fecha, monto, concepto, transitoId, el) {
     else          { sel.left.push({ ref, fecha, monto, concepto, tipo: 'TRANSITO', transito_id: transitoId }); $(el).addClass('active'); }
     recalcTotals();
 }
-function toggleTESComponentes(el) {
+function actualizarSeleccionVisualDiaTES(fecha) {
+    const $header = $(`#tes-content .tes-day-empty-header[data-fecha="${fecha}"]`);
+    const $fuente = $(`#tes-content .tes-source-aggregate[data-fecha="${fecha}"]`);
+    let componentes = [];
+    try { componentes = JSON.parse($fuente.attr('data-componentes') || '[]'); } catch(e) {}
+    const refsFuente = componentes.map(comp => normalizarRef(comp.ref)).filter(Boolean);
+    const fuenteSeleccionada = refsFuente.length > 0 && refsFuente.every(ref => sel.tes.some(s => s.ref === ref));
+    $fuente.toggleClass('active', fuenteSeleccionada);
+    const $diferidos = $(`#tes-content .row-item[data-fecha="${fecha}"][data-tes-diferido-id][data-seleccionable="1"]`);
+    const refsDiferidos = $diferidos.toArray().map(row => $(row).attr('data-tes-ref')).filter(Boolean);
+    $diferidos.each(function() { $(this).toggleClass('active', sel.tes.some(s => s.ref === $(this).attr('data-tes-ref'))); });
+    const refsDia = [...refsFuente, ...refsDiferidos];
+    const seleccionDia = refsDia.length > 0 && refsDia.every(ref => sel.tes.some(s => s.ref === ref));
+    $header.toggleClass('active', seleccionDia);
+}
+function toggleTESFuenteDia(el) {
+    if (mesCerrado) return;
+    const $el = $(el);
+    const fecha = $el.attr('data-fecha') || '';
+    let componentes = [];
+    try { componentes = JSON.parse($el.attr('data-componentes') || '[]'); } catch(e) { return; }
+    const refs = componentes.map(comp => normalizarRef(comp.ref)).filter(Boolean);
+    if (!refs.length) return;
+    const todosSeleccionados = refs.every(ref => sel.tes.some(s => s.ref === ref));
+    if (todosSeleccionados) {
+        sel.tes = sel.tes.filter(item => !refs.includes(normalizarRef(item.ref)));
+    } else {
+        componentes.forEach(comp => {
+            const ref = normalizarRef(comp.ref);
+            if (!ref || sel.tes.some(item => item.ref === ref)) return;
+            sel.tes.push({ ref, fecha, monto: montoConciliacionTesComponente(comp, fecha), concepto: comp.descripcion || '', diferido_tes_orig_ids: tesDiferidoIdsOrigen(ref) });
+        });
+    }
+    actualizarSeleccionVisualDiaTES(fecha);
+    recalcTotals();
+}
+function toggleTESMovimientoPiloto(el) {
+    // Legacy handler retained in case old markup is restored.
+    toggleTESFuenteDia(el);
+}
+function toggleTESDiaPiloto(fecha) {
+    if (mesCerrado) return;
+    const $fuente = $(`#tes-content .tes-source-aggregate[data-fecha="${fecha}"]`);
+    let componentes = [];
+    try { componentes = JSON.parse($fuente.attr('data-componentes') || '[]'); } catch(e) {}
+    const refsFuente = componentes.map(comp => normalizarRef(comp.ref)).filter(Boolean);
+    const $diferidos = $(`#tes-content .row-item[data-fecha="${fecha}"][data-tes-diferido-id][data-seleccionable="1"]`);
+    const refsDiferidos = $diferidos.toArray().map(row => $(row).attr('data-tes-ref')).filter(Boolean);
+    const refs = [...refsFuente, ...refsDiferidos];
+    if (!refs.length) return;
+    const todosSeleccionados = refs.every(ref => sel.tes.some(s => s.ref === ref));
+    if (todosSeleccionados) {
+        sel.tes = sel.tes.filter(item => !refs.includes(normalizarRef(item.ref)));
+    } else {
+        componentes.forEach(comp => {
+            const ref = normalizarRef(comp.ref);
+            if (!ref || sel.tes.some(item => item.ref === ref)) return;
+            sel.tes.push({ ref, fecha, monto: montoConciliacionTesComponente(comp, fecha), concepto: comp.descripcion || '', diferido_tes_orig_ids: tesDiferidoIdsOrigen(ref) });
+        });
+        $diferidos.each(function() {
+            const $row = $(this);
+            const ref = $row.attr('data-tes-ref');
+            if (!ref || sel.tes.some(item => item.ref === ref)) return;
+            const id = parseInt($row.attr('data-tes-diferido-id'), 10);
+            sel.tes.push({ ref, fecha, monto: parseFloat($row.attr('data-monto')) || 0, concepto: $row.attr('data-concepto') || '', tipo: 'TES_DIFERIDO', diferido_tes_ids: [id] });
+        });
+    }
+    actualizarSeleccionVisualDiaTES(fecha);
+    recalcTotals();
+}function toggleTESComponentes(el) {
     if (mesCerrado) return;
     let componentes = [];
     try { componentes = JSON.parse($(el).attr('data-componentes') || '[]'); } catch(e) { return; }
@@ -2909,7 +3079,13 @@ function toggleDiferidoTES(ref, fecha, monto, concepto, id, el) {
     if (idx >= 0) sel.tes.splice(idx, 1);
     else sel.tes.push({ ref, fecha, monto, concepto, tipo: 'TES_DIFERIDO', diferido_tes_ids: [parseInt(id, 10)] });
     $(el).toggleClass('active', idx < 0);
+    actualizarSeleccionVisualDiaTES(fecha);
     recalcTotals();
+}
+function toggleDiferidoTESDesdeFila(el) {
+    const $el = $(el);
+    toggleDiferidoTES($el.attr('data-tes-ref'), $el.attr('data-fecha'), parseFloat($el.attr('data-monto')) || 0,
+        $el.attr('data-concepto') || '', parseInt($el.attr('data-tes-diferido-id'), 10), el);
 }
 function toggleDiferidosTESDia(fecha, btn) {
     if (!tesDiferidosHabilitado()) return;
@@ -2940,9 +3116,7 @@ function limpiarSeleccion() {
 function seleccionarDiaCG(fecha) {
     if (mesCerrado) return;
 
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(k => k)
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     // Items pendientes del día — excluye conciliados, 100% en tránsito y 100% diferido
     const pendientes = cgData.filter(item => {
@@ -3077,8 +3251,7 @@ function fechaCGItem(item) {
 
 function obtenerPreconciliacionesBanorte() {
     if (!currentRule || currentRule.entidad_id !== 4 || mesCerrado) return [];
-    const keywords = currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(Boolean) : [];
+    const keywords = obtenerKeywordsCG();
     const hoy = new Date();
     const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
     const cgPorFecha = {};
@@ -3346,9 +3519,7 @@ function abrirModalCierre() {
     $('#modalCierreMes').modal('show');
 
     // Calcular ítems pendientes localmente (misma lógica que renderCG)
-    const keywords = currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     _cierreState.pendingItems = cgData.filter(item => {
         const monto = parseFloat(item.Total || 0);
@@ -3548,9 +3719,7 @@ function confirmarReabrirMes() {
 // ── RESUMEN SUPERIOR ──────────────────────────────────────────
 function actualizarResumenSuperior() {
     // CG: aplicar el mismo filtro de conceptos_cg que el panel
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
-        : [];
+    const keywords = obtenerKeywordsCG();
     const totalCG  = cgData.filter(item => {
         if (!keywords.length) return parseFloat(item.Total || 0) > 0;
         const c = (item.Concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -3587,9 +3756,7 @@ function actualizarResumenSuperior() {
 
 // ── CONTADORES ────────────────────────────────────────────────
 function updateCGCounter()  {
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
-        : [];
+    const keywords = obtenerKeywordsCG();
     const tot = cgData.filter(item => {
         if (!keywords.length) return parseFloat(item.Total || 0) > 0;
         const c = (item.Concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -3679,9 +3846,7 @@ function calcularRango() {
     // Mismo filtro que renderCG: monto > 0, no hoy, keywords
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
-        : [];
+    const keywords = obtenerKeywordsCG();
     const filteredCG = cgData.filter(item => {
         if (parseFloat(item.Total || 0) <= 0) return false;
         if (cgFecha(item) === todayStr) return false;
@@ -3968,9 +4133,7 @@ function abrirModoTransacciones() {
     $contTX.html('<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 small text-muted">Procesando Transacciones...</div></div>');
 
     // Mismo filtro que renderCG: keywords por conceptos_cg
-    const keywords = currentRule && currentRule.conceptos_cg
-        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
-        : [];
+    const keywords = obtenerKeywordsCG();
 
     // Agrupar CG por fecha (igual que renderCG)
     const cgGroups = {};
@@ -4191,19 +4354,17 @@ function abrirModalDiferidoTES(fecha, button) {
     componentes = componentes.filter(comp => tesMontoDisponible(comp) > 0);
     if (!componentes.length) return;
 
-    _difTesState = { fecha, componentes };
-    const $selector = $('#dif-tes-componente');
-    $selector.html(componentes.map((comp, index) => {
-        const pendiente = tesMontoDisponible(comp);
-        const label = `${comp.descripcion || comp.ref} · Pendiente ${fmt.format(pendiente)}`;
-        return `<option value="${index}">${escHtml(label)}</option>`;
-    }).join(''));
-    $('#dif-tes-selector-wrap').toggle(componentes.length > 1);
+    const disponible = componentes.reduce((sum, comp) => sum + tesMontoDisponible(comp), 0);
+    _difTesState = { fecha, componentes, disponible };
     // Use the selected origin day as the date picker's initial view instead of today.
     $('#dif-tes-fecha-dest').val(fecha).attr('min', '2026-10-01').attr('max', '2026-10-31');
     $('#dif-tes-desc').val('');
     $('#dif-tes-monto').val('');
-    seleccionarComponenteDiferidoTES();
+    $('#dif-tes-concepto').text(`${componentes.length} movimientos TES`);
+    $('#dif-tes-fecha-origen').text(fecha.split('-').reverse().join('/'));
+    $('#dif-tes-disponible').text(fmt.format(disponible));
+    $('#dif-tes-restante').text(fmt.format(disponible));
+    $('#dif-tes-monto').val('').attr('max', disponible);
     actualizarModoDiferidoTES();
     $('#modalDiferidoTES').modal('show');
 }
@@ -4212,22 +4373,6 @@ function actualizarModoDiferidoTES() {
     const separar = $('#dif-tes-fecha-dest').val() === _difTesState.fecha;
     $('#dif-tes-titulo').text(separar ? 'Separar monto TES' : 'Diferir depósito TES');
     $('#dif-tes-submit').text(separar ? 'Separar' : 'Diferir');
-}
-
-function seleccionarComponenteDiferidoTES() {
-    const index = parseInt($('#dif-tes-componente').val() || '0', 10);
-    const comp = (_difTesState.componentes || [])[index];
-    if (!comp) return;
-    const activos = tesDiferidosActivos(comp.ref);
-    const montoCorte = parseFloat(comp.monto || 0) + activos.reduce((sum, d) => sum + parseFloat(d.monto_diferido || 0), 0);
-    const disponible = tesMontoDisponible(comp);
-    _difTesState = { ..._difTesState, ref: comp.ref, montoCorte, disponible, concepto: comp.descripcion || comp.ref };
-    $('#dif-tes-ref').val(comp.ref);
-    $('#dif-tes-concepto').text(comp.descripcion || comp.ref);
-    $('#dif-tes-fecha-origen').text(_difTesState.fecha.split('-').reverse().join('/'));
-    $('#dif-tes-disponible').text(fmt.format(disponible));
-    $('#dif-tes-restante').text(fmt.format(disponible));
-    $('#dif-tes-monto').val('').attr('max', disponible);
 }
 
 function actualizarDisponibleDiferidoTES() {
@@ -4244,8 +4389,8 @@ async function confirmarCrearDiferidoTES() {
     try {
         const response = await fetch(URLS_V3.crear_diferido_tes, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
             estacion_id: parseInt($('#estacionSelect').val()), entidad_id: currentRule.entidad_id, afiliacion: currentRule.afiliacion,
-            tes_ref: _difTesState.ref, fecha_origen: _difTesState.fecha, fecha_destino: fechaDestino, mes:'2026-10',
-            monto_corte: _difTesState.montoCorte, monto_diferido: monto, concepto: _difTesState.concepto, descripcion: $('#dif-tes-desc').val().trim()
+            tes_refs: _difTesState.componentes.map(comp => comp.ref), fecha_origen: _difTesState.fecha, fecha_destino: fechaDestino, mes:'2026-10',
+            monto_diferido: monto, concepto: `${_difTesState.componentes.length} movimientos TES`, descripcion: $('#dif-tes-desc').val().trim()
         }) });
         const json = await response.json();
         if (json.status === 'success') { $('#modalDiferidoTES').modal('hide'); await actualizarTodo(); }

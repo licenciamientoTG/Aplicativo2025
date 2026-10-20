@@ -238,10 +238,10 @@ class MojoTerminalTicketsService {
         $description=(string)$incident['description'];
         if (!empty($incident['request_key'])) $description .= "\n\n<!-- terminal-request-".preg_replace('/[^a-f0-9-]/i','',(string)$incident['request_key'])." -->";
         $title='Terminal '.$incident['label'].' - '.$stationName;
-        $payload=['title'=>$title,'description'=>$description,'ticket_queue_id'=>self::SYSTEM_QUEUE,'priority_id'=>30,'user_id'=>$mojoUserId];
+        $payload=['title'=>$title,'description'=>$description,'priority_id'=>30,'user_id'=>$mojoUserId];
         if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$this->valeraStationOption($stationName),'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
         else {
-            $payload += ['ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_problema'=>$incident['type']==='urovo' ? 'Terminal Urovo' : (string)($incident['problem'] ?? '')];
+            $payload += ['ticket_queue_id'=>self::SYSTEM_QUEUE,'ticket_form_id'=>self::SYSTEM_FORM,'custom_field_area_o_departamento'=>'Operaciones','custom_field_problema'=>$incident['type']==='urovo' ? 'Terminal Urovo' : (string)($incident['problem'] ?? '')];
             if (trim($stationEmail)!=='') $payload['custom_field_solicitante']=trim($stationEmail);
         }
         if ($incident['type']==='urovo') $payload[self::UROVO_SERIAL_FIELD]=(string)($incident['serial_urovo'] ?? $incident['urovo_serial'] ?? '');
