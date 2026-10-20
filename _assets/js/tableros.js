@@ -1964,6 +1964,15 @@
     return wrapper;
   }
 
+  function displayColumnValue(column, value) {
+    if (value == null || value === '') return '';
+    if (columnType(column) === 'rating') {
+      if (column.options?.display === 'percentage') return `${value} %`;
+      return `${value} ★`;
+    }
+    return stringifyValue(value);
+  }
+
   function createCellEditor(item, column, value) {
     const type = String(column.type || 'text').toLowerCase();
     if (type === 'file') return createFileCellEditor(item, column);
@@ -1973,7 +1982,7 @@
       const option = ['status', 'dropdown'].includes(type)
         ? parseOptions(column.options).find((entry) => entry.value === String(value ?? ''))
         : null;
-      readonly.textContent = option?.label || stringifyValue(value) || '—';
+      readonly.textContent = option?.label || displayColumnValue(column, value) || '—';
       if (['status', 'dropdown', 'tags'].includes(type) && option) readonly.style.setProperty('--status-color', option.color);
       return readonly;
     }
@@ -1997,7 +2006,7 @@
       return markEditor(input, item, column, 'string');
     }
     if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) {
-      if (type === 'rating') {
+      if (type === 'rating' && column.options?.display !== 'percentage') {
         const select = document.createElement('select');
         select.className = 'boards-status-select';
         const maximum = Math.max(1, Math.min(10, Number(column.options?.max) || 5));
@@ -2005,10 +2014,10 @@
         blank.value = '';
         blank.textContent = 'Sin calificar';
         select.append(blank);
-        for (let score = 1; score <= maximum; score += 1) {
+        for (let score = 0; score <= maximum; score += 1) {
           const option = document.createElement('option');
           option.value = String(score);
-          option.textContent = `${score} de ${maximum}`;
+          option.textContent = `${'★'.repeat(score)}${'☆'.repeat(maximum - score)} (${score}/${maximum})`;
           select.append(option);
         }
         select.value = value == null ? '' : String(value);
@@ -2017,6 +2026,13 @@
       input.type = 'number';
       input.step = 'any';
       if (type === 'progress') { input.min = '0'; input.max = '100'; input.placeholder = '0–100'; }
+      if (type === 'rating') {
+        input.min = '0'; input.max = '100'; input.placeholder = '0–100 %';
+        input.setAttribute('aria-label', `${column.name || 'Calificación'} en porcentaje (0–100)`);
+        const wrapper = makeElement('div', 'boards-rating-percentage');
+        wrapper.append(markEditor(input, item, column, 'number'), makeElement('span', '', '%'));
+        return wrapper;
+      }
       if (type === 'item_id') { input.step = '1'; input.min = '1'; input.placeholder = 'ID del elemento'; }
       input.classList.add('is-number');
       return markEditor(input, item, column, 'number');
@@ -2317,7 +2333,7 @@
       : (videoMime || videoExtension ? 'video'
         : (effectiveMime === 'application/pdf' ? 'pdf'
           : (['text/plain', 'text/csv'].includes(effectiveMime) ? 'text'
-            : (spreadsheetExtension ? 'spreadsheet' : 'unsupported'))));
+            : (spreadsheetExtension ? 'spreadsheet' : (['doc', 'docx'].includes(extension) ? 'document' : 'unsupported')))));
     const icon = previewKind === 'pdf' ? 'fa-file-pdf'
       : (previewKind === 'video' ? 'fa-file-video'
         : (imageMime || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension) ? 'fa-file-image'
@@ -3083,14 +3099,15 @@
       video.src = fileEndpoint(file, true);
       stage.append(video);
       els.filePreviewContent.append(stage);
-    } else if (['pdf', 'text', 'spreadsheet'].includes(type.previewKind)) {
+    } else if (['pdf', 'text', 'spreadsheet', 'document'].includes(type.previewKind)) {
       const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
       els.filePreviewContent.append(loading);
       openDialog(els.filePreviewDialog);
       try {
-        const response = await fetch(type.previewKind === 'spreadsheet' ? spreadsheetPreviewEndpoint(file) : fileEndpoint(file, true), {
+        const officePreview = ['spreadsheet', 'document'].includes(type.previewKind);
+        const response = await fetch(officePreview ? spreadsheetPreviewEndpoint(file) : fileEndpoint(file, true), {
           credentials: 'same-origin',
-          headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : (type.previewKind === 'spreadsheet' ? 'text/html, application/json' : 'text/plain, text/csv, application/json') }
+          headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : (officePreview ? 'application/pdf, text/html, application/json' : 'text/plain, text/csv, application/json') }
         });
         let blob = await response.blob();
         if (!response.ok || /(?:application\/json|\+json)/i.test(response.headers.get('content-type') || '')) {
@@ -3105,7 +3122,9 @@
         }
         blob = inferStoredFileBlobType(file, blob, response.headers.get('content-type') || '');
         if (previewRequest !== filePreviewRequest) return;
-        if (type.previewKind === 'spreadsheet') {
+        const responseType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        if (officePreview && !['application/pdf', 'text/html'].includes(responseType)) throw new Error('El servidor no devolvió una vista de impresión compatible.');
+        if (officePreview && responseType === 'text/html') {
           filePreviewObjectUrl = URL.createObjectURL(blob);
           const frame = makeElement('iframe', 'boards-preview-frame boards-preview-spreadsheet-frame');
           frame.src = filePreviewObjectUrl;
@@ -3113,7 +3132,7 @@
           frame.referrerPolicy = 'no-referrer';
           frame.setAttribute('sandbox', '');
           els.filePreviewContent.replaceChildren(frame);
-        } else if (type.previewKind === 'pdf') {
+        } else if (type.previewKind === 'pdf' || (officePreview && responseType === 'application/pdf')) {
           filePreviewObjectUrl = URL.createObjectURL(blob);
           const frame = makeElement('iframe', 'boards-preview-frame');
           frame.src = filePreviewObjectUrl;
@@ -3229,7 +3248,7 @@
           const option = parseOptions(column.options).find((entry) => String(entry.value) === String(value));
           if (option) value = option.label || option.value;
         } else if (Array.isArray(value)) value = value.map((entry) => entry?.name || entry?.label || entry).join(', ');
-        add('Valor actual', value === null || value === undefined || value === '' ? 'Vacío' : stringifyValue(value));
+        add('Valor actual', value === null || value === undefined || value === '' ? 'Vacío' : displayColumnValue(column, value));
       }
     } else if (type === 'item.name_changed') add('Nombre', payload.name || item?.name);
     else if (type === 'item.moved') {
@@ -4236,6 +4255,16 @@
     name.textContent = group.name || 'Grupo sin nombre';
     toggle.append(chevron, marker, name);
     groupWrap.append(toggle);
+    if (canEditBoard()) {
+      const dragHandle = makeElement('button', 'boards-group-drag-handle');
+      dragHandle.type = 'button';
+      dragHandle.draggable = true;
+      dragHandle.dataset.groupDragHandle = String(group.id);
+      dragHandle.setAttribute('aria-label', `Arrastrar para reordenar el grupo ${group.name || ''}`);
+      dragHandle.title = 'Arrastra para reordenar';
+      dragHandle.innerHTML = '<i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>';
+      groupWrap.prepend(dragHandle);
+    }
 
     const meta = document.createElement('div');
     meta.className = 'boards-group-meta';
@@ -4263,6 +4292,21 @@
     cell.append(groupWrap);
     row.append(cell);
     return row;
+  }
+
+  async function saveGroupOrder(groupIds, previousGroups) {
+    try {
+      const result = await post('/reorder_groups', { board_id: state.board.id, group_ids: groupIds });
+      const orderMap = new Map((result.data?.groups || []).map((group) => [String(group.id), Number(group.sort_order)]));
+      state.groups = [...state.groups].sort((a, b) => (orderMap.get(String(a.id)) ?? 0) - (orderMap.get(String(b.id)) ?? 0));
+      state.groups.forEach((group, index) => { group.sort_order = orderMap.get(String(group.id)) ?? index * 10; });
+      renderTable();
+      setNotice('Se actualizó el orden de los grupos.', 'success');
+    } catch (error) {
+      state.groups = previousGroups;
+      renderTable();
+      setNotice(errorMessage(error, 'No se pudo guardar el orden de los grupos.'), 'error');
+    }
   }
 
   function createMoveEditor(item) {
@@ -5393,7 +5437,7 @@
         visibleFields.forEach((field) => {
           const value = getCellValue(item, field);
           const entry = makeElement('div', 'boards-kanban-card-field');
-          entry.append(makeElement('dt', '', field.name || 'Dato'), makeElement('dd', '', stringifyValue(value)));
+          entry.append(makeElement('dt', '', field.name || 'Dato'), makeElement('dd', '', displayColumnValue(field, value)));
           fields.append(entry);
         });
         if (fields.childElementCount) card.append(fields);
@@ -6214,6 +6258,7 @@
     els.newColumnType.addEventListener('change', () => {
       const optionsType = ['status', 'dropdown', 'tags'].includes(els.newColumnType.value);
       els.columnOptionsField.classList.toggle('d-none', !optionsType);
+      document.getElementById('columnRatingField').classList.toggle('d-none', els.newColumnType.value !== 'rating');
       const help = {
         status: 'Escribe una opción por línea. El sistema asignará un color inicial a cada estado.',
         formula: 'La API acepta únicamente la sintaxis segura definida por el servidor.',
@@ -6244,7 +6289,11 @@
       if (type === 'status' && options?.length) {
         options = options.map((label, index) => ({ value: label, label, color: statusLabelColor(label, index) }));
       }
-      const result = await post('/create_column', { board_id: state.board.id, name, type, ...(options?.length ? { options } : {}) });
+      if (type === 'rating') {
+        const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
+        options = { display, max: display === 'percentage' ? 100 : 5 };
+      }
+      const result = await post('/create_column', { board_id: state.board.id, name, type, ...(options ? { options } : {}) });
       const column = result.data || {};
       state.columns.push({ id: column.id, name, type, options: options || [], required: false, sort_order: column.sort_order ?? state.columns.length });
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
@@ -6854,6 +6903,15 @@
       }
     });
     els.boardTableContainer.addEventListener('dragstart', (event) => {
+      if (event.target.closest('[data-group-drag-handle]')) {
+        if (!canEditBoard()) { event.preventDefault(); return; }
+        state.draggedGroupId = event.target.closest('[data-group-drag-handle]').dataset.groupDragHandle;
+        state.previousGroupOrder = [...state.groups];
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', `group:${state.draggedGroupId}`);
+        event.target.closest('[data-group-body]')?.classList.add('is-group-dragging');
+        return;
+      }
       const row = event.target.closest('[data-item-row]');
       const nameField = event.target.closest('.boards-item-name');
       const control = event.target.closest('button, a, input, select, textarea, [contenteditable="true"]');
@@ -6883,6 +6941,16 @@
       event.dataTransfer.setData('text/plain', String(item.id));
     });
     els.boardTableContainer.addEventListener('dragover', (event) => {
+      if (state.draggedGroupId) {
+        const source = els.boardTableContainer.querySelector(`[data-group-body="${CSS.escape(state.draggedGroupId)}"]`);
+        const target = event.target.closest('[data-group-body]');
+        if (!source || !target || source === target || source.parentElement !== target.parentElement) return;
+        event.preventDefault();
+        const rect = target.getBoundingClientRect();
+        target.parentElement.insertBefore(source, event.clientY < rect.top + rect.height / 2 ? target : target.nextSibling);
+        target.classList.add('is-group-drop-target');
+        return;
+      }
       if (!state.draggedItemId) return;
       const body = event.target.closest('[data-group-body]');
       const draggedItems = state.draggedItemIds.map((id) => state.items.find((candidate) => String(candidate.id) === id)).filter(Boolean);
@@ -6907,6 +6975,16 @@
       if (body && (!event.relatedTarget || !body.contains(event.relatedTarget))) body.classList.remove('is-drop-target');
     });
     els.boardTableContainer.addEventListener('drop', (event) => {
+      if (state.draggedGroupId) {
+        event.preventDefault();
+        const groupIds = [...els.boardTableContainer.querySelectorAll('[data-group-body]')].map((body) => body.dataset.groupBody);
+        const previous = state.previousGroupOrder || [...state.groups];
+        state.draggedGroupId = '';
+        state.previousGroupOrder = null;
+        els.boardTableContainer.querySelectorAll('.is-group-dragging, .is-group-drop-target').forEach((body) => body.classList.remove('is-group-dragging', 'is-group-drop-target'));
+        if (groupIds.some((id, index) => id !== String(previous[index]?.id))) void saveGroupOrder(groupIds, previous);
+        return;
+      }
       const body = event.target.closest('[data-group-body]');
       if (!state.draggedItemId || !body) return;
       const draggedItems = state.draggedItemIds.map((id) => state.items.find((candidate) => String(candidate.id) === id)).filter(Boolean);
@@ -6922,9 +7000,28 @@
       moveItemToGroup(item, body.dataset.groupBody, sortOrder, draggedItems);
     });
     els.boardTableContainer.addEventListener('dragend', () => {
+      if (state.draggedGroupId && state.previousGroupOrder) {
+        state.groups = state.previousGroupOrder;
+        renderTable();
+      }
+      state.draggedGroupId = '';
+      state.previousGroupOrder = null;
+      els.boardTableContainer.querySelectorAll('.is-group-dragging, .is-group-drop-target').forEach((body) => body.classList.remove('is-group-dragging', 'is-group-drop-target'));
       state.draggedItemId = '';
       state.draggedItemIds = [];
       els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target, .is-drop-before, .is-drop-after').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
+    });
+    els.boardTableContainer.addEventListener('keydown', (event) => {
+      const handle = event.target.closest('[data-group-drag-handle]');
+      if (!handle || !['ArrowUp', 'ArrowDown'].includes(event.key) || !canEditBoard()) return;
+      const current = state.groups.findIndex((group) => String(group.id) === handle.dataset.groupDragHandle);
+      const next = Math.max(0, Math.min(state.groups.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)));
+      if (current < 0 || current === next) return;
+      event.preventDefault();
+      const previous = [...state.groups];
+      const ids = previous.map((group) => String(group.id));
+      ids.splice(next, 0, ids.splice(current, 1)[0]);
+      void saveGroupOrder(ids, previous);
     });
     els.boardTableContainer.addEventListener('submit', (event) => {
       const form = event.target.closest('[data-inline-add-form]');
