@@ -9725,20 +9725,39 @@ public function stamped_invoices_detail(): void
     // Crea un split TES; tes_ref identifica movimientos_bancarios.id como mb_<id>.
     public function crear_diferido_tes_v3(): void {
         ob_clean(); header('Content-Type: application/json'); $d=json_decode(file_get_contents('php://input'),true)??[];
-        $sid=(int)($d['estacion_id']??0);$eid=(int)($d['entidad_id']??0);$ref=trim((string)($d['tes_ref']??$d['referencia']??$d['ref']??''));
+        $sid=(int)($d['estacion_id']??0);$eid=(int)($d['entity_id']??$d['entidad_id']??0);
         $afil=trim((string)($d['afiliacion']??''));$fo=trim((string)($d['fecha_origen']??''));$fd=trim((string)($d['fecha_destino']??''));$amt=round((float)($d['monto_diferido']??0),2);
-        if(!$sid||$eid!==14||$afil!=='9990624'||!preg_match('/^mb_(\d+)$/',$ref,$refMatch)||$amt<=0||(($d['mes']??'2026-10')!=='2026-10')||!preg_match('/^2026-10-\d{2}$/',$fo)||!preg_match('/^2026-10-\d{2}$/',$fd)||!checkdate((int)substr($fo,5,2),(int)substr($fo,8,2),(int)substr($fo,0,4))||!checkdate((int)substr($fd,5,2),(int)substr($fd,8,2),(int)substr($fd,0,4))){echo json_encode(['status'=>'error','message'=>'Datos inválidos: solo se permiten referencias mb_<id>, afiliación 9990624 y fechas de octubre de 2026 con monto positivo']);exit;}
+        $isBatch=array_key_exists('tes_refs',$d);
+        $refs=$isBatch?$d['tes_refs']:[$d['tes_ref']??$d['referencia']??$d['ref']??''];
+        if(!$sid||$eid!==14||$afil!=='9990624'||!is_array($refs)||!$refs||$amt<=0||(($d['mes']??($isBatch?'':'2026-10'))!=='2026-10')||!preg_match('/^2026-10-\d{2}$/',$fo)||!preg_match('/^2026-10-\d{2}$/',$fd)||!checkdate((int)substr($fo,5,2),(int)substr($fo,8,2),(int)substr($fo,0,4))||!checkdate((int)substr($fd,5,2),(int)substr($fd,8,2),(int)substr($fd,0,4))){echo json_encode(['status'=>'error','message'=>'Datos inválidos: solo se permiten referencias mb_<id>, afiliación 9990624 y fechas de octubre de 2026 con monto positivo']);exit;}
+        $refs=array_map(static fn($ref)=>trim((string)$ref),$refs);
+        if(count($refs)!==count(array_unique($refs))){echo json_encode(['status'=>'error','message'=>'Referencias TES duplicadas.']);exit;}
+        foreach($refs as $ref){if(!preg_match('/^mb_(\d+)$/',$ref)){echo json_encode(['status'=>'error','message'=>'Referencia TES inválida.']);exit;}}
         try{$c=$this->v3_conn();$this->v3_ensure_diferido_tes_table($c);$c->beginTransaction();$this->v3_assert_mes_abierto($c,$sid,$eid,$afil,'2026-10');
             $afilCheck=$c->prepare("SELECT TOP 1 estacion_id FROM Tesoreria_afil WHERE entidad_id=14 AND afiliacion='9990624' AND estacion_id=?");$afilCheck->execute([$sid]);if(!$afilCheck->fetchColumn())throw new Exception('La afiliación piloto no pertenece a la estación seleccionada.');
-            $src=$c->prepare("SELECT TOP 1 id, abono AS Depositos, fecha AS Fecha, descripcion AS Descripcion FROM [TG].[dbo].[movimientos_bancarios] WITH (UPDLOCK,HOLDLOCK) WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10 AND UPPER(descripcion) LIKE '%9990624%' AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%' OR UPPER(LTRIM(descripcion)) LIKE 'AMEX%' OR UPPER(LTRIM(descripcion)) LIKE 'INTERNAC%')");$src->execute([(int)$refMatch[1]]);$source=$src->fetch(PDO::FETCH_ASSOC);
-            if(!$source)throw new Exception('No se encontró el depósito origen para esa referencia en Tesorería.');
-            $cut=round((float)$source['Depositos'],2);$sourceDate=substr((string)$source['Fecha'],0,10);if($fo!==$sourceDate)throw new Exception('La fecha origen no coincide con Tesorería.');
+            $sources=[];$availableCents=0;
+            $src=$c->prepare("SELECT TOP 1 id, abono AS Depositos, fecha AS Fecha, descripcion AS Descripcion FROM [TG].[dbo].[movimientos_bancarios] WITH (UPDLOCK,HOLDLOCK) WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10 AND UPPER(descripcion) LIKE '%9990624%' AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%' OR UPPER(LTRIM(descripcion)) LIKE 'AMEX%' OR UPPER(LTRIM(descripcion)) LIKE 'INTERNAC%')");
             $already=$c->prepare("SELECT TOP 1 D.id FROM Conciliacion_V3_Detalles D WITH (UPDLOCK,HOLDLOCK)
                 INNER JOIN Conciliacion_V3_Grupos G WITH (UPDLOCK,HOLDLOCK) ON G.id=D.grupo_id
                 WHERE D.origen='TES' AND D.referencia_externa=? AND G.estacion_id=? AND G.entidad_id=? AND G.afiliacion='9990624'");
-            $already->execute([$ref,$sid,$eid]);if($already->fetchColumn())throw new Exception('El movimiento TES origen ya pertenece a una conciliación V3.');
-            $sum=$c->prepare("SELECT ISNULL(SUM(monto_diferido),0) FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND referencia=? AND estado<>'CANCELADO'");$sum->execute([$sid,$eid,$afil,$ref]);$used=(float)$sum->fetchColumn();if($used+$amt>$cut+0.005)throw new Exception('El monto diferido supera el saldo disponible del depósito.');
-            $ins=$c->prepare("INSERT INTO CV3_DiferidoTES(estacion_id,entidad_id,afiliacion,referencia,fecha_origen,fecha_destino,mes,monto_corte,monto_diferido,concepto,descripcion) VALUES(?,?,?,?,?,?, '2026-10',?,?,?,?)");$ins->execute([$sid,$eid,$afil,$ref,$fo,$fd,$cut,$amt,trim((string)($d['concepto']??$source['Descripcion']??'')),trim((string)($d['descripcion']??''))]);$id=(int)$c->query('SELECT @@IDENTITY')->fetchColumn();$c->commit();echo json_encode(['status'=>'success','id'=>$id,'tes_ref'=>$ref,'monto_efectivo'=>round($cut-$used-$amt,2)]);
+            $sum=$c->prepare("SELECT ISNULL(SUM(monto_diferido),0) FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND referencia=? AND estado<>'CANCELADO'");
+            foreach($refs as $ref){
+                preg_match('/^mb_(\d+)$/',$ref,$refMatch);$src->execute([(int)$refMatch[1]]);$source=$src->fetch(PDO::FETCH_ASSOC);
+                if(!$source)throw new Exception('No se encontró el depósito origen para la referencia '.$ref.' en Tesorería.');
+                $cutCents=(int)round((float)$source['Depositos']*100);$sourceDate=$source['Fecha'] instanceof DateTime?$source['Fecha']->format('Y-m-d'):substr((string)$source['Fecha'],0,10);
+                if($fo!==$sourceDate)throw new Exception('La fecha origen no coincide con Tesorería para '.$ref.'.');
+                $already->execute([$ref,$sid,$eid]);if($already->fetchColumn())throw new Exception('El movimiento TES origen '.$ref.' ya pertenece a una conciliación V3.');
+                $sum->execute([$sid,$eid,$afil,$ref]);$usedCents=(int)round((float)$sum->fetchColumn()*100);$remainingCents=$cutCents-$usedCents;
+                if($remainingCents<0)throw new Exception('El saldo disponible del depósito '.$ref.' es inválido.');
+                $sources[]=['ref'=>$ref,'source'=>$source,'cut_cents'=>$cutCents,'used_cents'=>$usedCents,'remaining_cents'=>$remainingCents];$availableCents+=$remainingCents;
+            }
+            $amountCents=(int)round($amt*100);if($amountCents>$availableCents)throw new Exception('El monto diferido supera el saldo disponible agregado de los depósitos.');
+            $ins=$c->prepare("INSERT INTO CV3_DiferidoTES(estacion_id,entidad_id,afiliacion,referencia,fecha_origen,fecha_destino,mes,monto_corte,monto_diferido,concepto,descripcion) VALUES(?,?,?,?,?,?, '2026-10',?,?,?,?)");$inserted=[];$leftCents=$amountCents;
+            foreach($sources as $item){if($leftCents<=0)break;$consumeCents=min($leftCents,$item['remaining_cents']);if($consumeCents<=0)continue;$source=$item['source'];$concept=trim((string)($source['Descripcion']??''))?:trim((string)($d['concepto']??''));$ins->execute([$sid,$eid,$afil,$item['ref'],$fo,$fd,$item['cut_cents']/100,$consumeCents/100,$concept,trim((string)($d['descripcion']??''))]);$inserted[]=['id'=>(int)$c->query('SELECT @@IDENTITY')->fetchColumn(),'tes_ref'=>$item['ref'],'monto_diferido'=>$consumeCents/100];$leftCents-=$consumeCents;}
+            if($leftCents!==0)throw new Exception('El saldo disponible cambió; no fue posible distribuir el monto completo.');
+            $c->commit();
+            if(!$isBatch){$item=$inserted[0]??[];echo json_encode(['status'=>'success','id'=>$item['id']??null,'tes_ref'=>$item['tes_ref']??$refs[0],'monto_efectivo'=>round(($availableCents-$amountCents)/100,2)]);}
+            else{echo json_encode(['status'=>'success','ids'=>array_column($inserted,'id'),'splits'=>$inserted,'monto_diferido'=>$amt,'monto_efectivo'=>round(($availableCents-$amountCents)/100,2)]);}
         }catch(Exception $e){if(isset($c)&&$c->inTransaction())$c->rollBack();echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
     }
 
