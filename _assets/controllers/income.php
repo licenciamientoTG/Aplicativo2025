@@ -9657,7 +9657,7 @@ public function stamped_invoices_detail(): void
                 $splitTotal = array_sum(array_map(static fn($split) => (float)$split['monto_diferido'], $splits));
                 $remaining = round((float)$movement['abono'] - $splitTotal, 2);
                 if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $movementDate
-                    || abs((float)($row['monto'] ?? 0) - $remaining) > 0.01) {
+                    || abs(round((float)($row['monto'] ?? 0), 2) - $remaining) > 0.005) {
                     throw new Exception('El renglón TES origen debe coincidir con el principal menos los splits activos.');
                 }
             }
@@ -9709,7 +9709,7 @@ public function stamped_invoices_detail(): void
         ob_clean(); header('Content-Type: application/json'); $d=json_decode(file_get_contents('php://input'),true)??[];
         $sid=(int)($d['estacion_id']??0);$eid=(int)($d['entidad_id']??0);$ref=trim((string)($d['tes_ref']??$d['referencia']??$d['ref']??''));
         $afil=trim((string)($d['afiliacion']??''));$fo=trim((string)($d['fecha_origen']??''));$fd=trim((string)($d['fecha_destino']??''));$amt=round((float)($d['monto_diferido']??0),2);
-        if(!$sid||$eid!==14||$afil!=='9990624'||!preg_match('/^mb_(\d+)$/',$ref,$refMatch)||$amt<=0||(($d['mes']??'2026-10')!=='2026-10')||!preg_match('/^2026-10-\d{2}$/',$fo)||!preg_match('/^2026-10-\d{2}$/',$fd)||!checkdate((int)substr($fo,5,2),(int)substr($fo,8,2),(int)substr($fo,0,4))||!checkdate((int)substr($fd,5,2),(int)substr($fd,8,2),(int)substr($fd,0,4))||$fo===$fd){echo json_encode(['status'=>'error','message'=>'Datos inválidos: solo se permiten referencias mb_<id>, afiliación 9990624 y fechas distintas de octubre de 2026 con monto positivo']);exit;}
+        if(!$sid||$eid!==14||$afil!=='9990624'||!preg_match('/^mb_(\d+)$/',$ref,$refMatch)||$amt<=0||(($d['mes']??'2026-10')!=='2026-10')||!preg_match('/^2026-10-\d{2}$/',$fo)||!preg_match('/^2026-10-\d{2}$/',$fd)||!checkdate((int)substr($fo,5,2),(int)substr($fo,8,2),(int)substr($fo,0,4))||!checkdate((int)substr($fd,5,2),(int)substr($fd,8,2),(int)substr($fd,0,4))){echo json_encode(['status'=>'error','message'=>'Datos inválidos: solo se permiten referencias mb_<id>, afiliación 9990624 y fechas de octubre de 2026 con monto positivo']);exit;}
         try{$c=$this->v3_conn();$this->v3_ensure_diferido_tes_table($c);$c->beginTransaction();$this->v3_assert_mes_abierto($c,$sid,$eid,$afil,'2026-10');
             $afilCheck=$c->prepare("SELECT TOP 1 estacion_id FROM Tesoreria_afil WHERE entidad_id=14 AND afiliacion='9990624' AND estacion_id=?");$afilCheck->execute([$sid]);if(!$afilCheck->fetchColumn())throw new Exception('La afiliación piloto no pertenece a la estación seleccionada.');
             $src=$c->prepare("SELECT TOP 1 id, abono AS Depositos, fecha AS Fecha, descripcion AS Descripcion FROM [TG].[dbo].[movimientos_bancarios] WITH (UPDLOCK,HOLDLOCK) WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10 AND UPPER(descripcion) LIKE '%9990624%' AND ((UPPER(LTRIM(descripcion)) LIKE 'DEBITO%') OR (UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'))");$src->execute([(int)$refMatch[1]]);$source=$src->fetch(PDO::FETCH_ASSOC);
@@ -9730,7 +9730,7 @@ public function stamped_invoices_detail(): void
         ob_clean();header('Content-Type: application/json');$d=json_decode(file_get_contents('php://input'),true)??[];$id=(int)($d['id']??0);$dest=trim((string)($d['nueva_fecha_destino']??''));
         if(!$id||($accion==='mover'&&(!preg_match('/^2026-10-\d{2}$/',$dest)||!checkdate((int)substr($dest,5,2),(int)substr($dest,8,2),(int)substr($dest,0,4))))){echo json_encode(['status'=>'error','message'=>'Parámetros inválidos']);exit;}
         try{$c=$this->v3_conn();$this->v3_ensure_diferido_tes_table($c);$c->beginTransaction();$s=$c->prepare('SELECT * FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE id=?');$s->execute([$id]);$r=$s->fetch(PDO::FETCH_ASSOC);if(!$r)throw new Exception('Diferido TES no encontrado.');if($r['afiliacion']!=='9990624'||$r['mes']!=='2026-10'||$r['estado']!=='PENDIENTE')throw new Exception('Diferido TES fuera del piloto o no está pendiente.');$this->v3_assert_mes_abierto($c,(int)$r['estacion_id'],(int)$r['entidad_id'],'9990624','2026-10');if(!empty($r['conciliacion_id_orig'])||!empty($r['conciliacion_id_dest']))throw new Exception('No se puede cambiar: alguno de sus grupos está conciliado.');
-            if($accion==='mover'){if($dest===substr((string)$r['fecha_origen'],0,10))throw new Exception('La fecha destino debe ser distinta a origen.');$c->prepare('UPDATE CV3_DiferidoTES SET fecha_destino=? WHERE id=?')->execute([$dest,$id]);}else{$c->prepare("UPDATE CV3_DiferidoTES SET estado='CANCELADO' WHERE id=?")->execute([$id]);}$c->commit();echo json_encode(['status'=>'success']);
+            if($accion==='mover'){$c->prepare('UPDATE CV3_DiferidoTES SET fecha_destino=? WHERE id=?')->execute([$dest,$id]);}else{$c->prepare("UPDATE CV3_DiferidoTES SET estado='CANCELADO' WHERE id=?")->execute([$id]);}$c->commit();echo json_encode(['status'=>'success']);
         }catch(Exception $e){if(isset($c)&&$c->inTransaction())$c->rollBack();echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
     }
 

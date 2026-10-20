@@ -774,7 +774,7 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content border-0 shadow-lg" style="border-radius:15px;overflow:hidden;">
             <div class="modal-header border-0 py-3" style="background:#7c3aed;">
-                <h5 class="modal-title font-weight-bold text-white"><i class="fas fa-calendar-day mr-2"></i>Diferir depósito TES</h5>
+                <h5 class="modal-title font-weight-bold text-white"><i class="fas fa-calendar-day mr-2"></i><span id="dif-tes-titulo">Diferir depósito TES</span></h5>
                 <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalDiferidoTES').modal('hide')" style="font-size:1.5rem;opacity:.8;text-decoration:none;">&times;</button>
             </div>
             <div class="modal-body p-4 bg-light">
@@ -783,13 +783,13 @@
                 <div class="mb-3"><div class="text-muted small font-weight-bold text-uppercase mb-1">Depósito origen</div><div class="font-weight-bold" id="dif-tes-concepto"></div><div class="text-muted small" id="dif-tes-fecha-origen"></div></div>
                 <div class="row mb-3">
                     <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Pendiente en origen</div><div class="font-numeric h5 text-dark" id="dif-tes-disponible"></div><small class="text-muted">Importe del depósito aún no diferido y pendiente de conciliar.</small></div>
-                    <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Fecha destino</div><input type="date" id="dif-tes-fecha-dest" class="form-control form-control-sm" min="2026-10-01" max="2026-10-31"></div>
+                    <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Fecha destino</div><input type="date" id="dif-tes-fecha-dest" class="form-control form-control-sm" min="2026-10-01" max="2026-10-31" onchange="actualizarModoDiferidoTES()"></div>
                 </div>
                 <div class="mb-3"><label class="text-muted small font-weight-bold text-uppercase mb-1">Monto a diferir</label><input type="number" id="dif-tes-monto" class="form-control" step="0.01" min="0.01" oninput="actualizarDisponibleDiferidoTES()"></div>
                 <div class="mb-3 p-2 rounded" style="background:#d1fae5;"><div class="text-muted small font-weight-bold text-uppercase mb-1">Saldo que queda en origen</div><div class="font-numeric h5 text-success mb-0" id="dif-tes-restante"></div></div>
                 <div><label class="text-muted small font-weight-bold text-uppercase mb-1">Descripción (opcional)</label><input type="text" id="dif-tes-desc" class="form-control form-control-sm"></div>
             </div>
-            <div class="modal-footer bg-white border-0 pt-0"><button class="btn btn-secondary rounded-pill px-4" onclick="$('#modalDiferidoTES').modal('hide')">Cancelar</button><button class="btn rounded-pill px-4 font-weight-bold text-white" style="background:#7c3aed;" onclick="confirmarCrearDiferidoTES()">Diferir</button></div>
+            <div class="modal-footer bg-white border-0 pt-0"><button class="btn btn-secondary rounded-pill px-4" onclick="$('#modalDiferidoTES').modal('hide')">Cancelar</button><button id="dif-tes-submit" class="btn rounded-pill px-4 font-weight-bold text-white" style="background:#7c3aed;" onclick="confirmarCrearDiferidoTES()">Diferir</button></div>
         </div>
     </div>
 </div>
@@ -2399,7 +2399,8 @@ function renderTes() {
         const diferencia = historialFake ? `<span class="diff-tag ${Math.abs(difVal)<.01?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span><button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${historialFake.grupo_id})" title="Deshacer conciliación"><i class="fas fa-unlink"></i></button>` : '';
         const statusClass = conciliado ? (Math.abs(difVal) < .01 ? 'row-concil-ok' : 'row-concil-diff') : 'row-pendiente';
         const clickAttr = !mesCerrado && !conciliado && estadoFake === 'PENDIENTE' ? `onclick="toggleDiferidoTES('${refFake}','${escHtml(fecha)}',${montoFake},'${escHtml(d.concepto || d.descripcion || 'Diferido TES')}',${parseInt(d.id, 10)},this)"` : '';
-        return `<div class="row-item ${statusClass} ${seleccionada ? 'active' : ''}" data-fecha="${escHtml(fecha)}" ${clickAttr}><div class="row-left"><span class="row-line1"><span class="diferido-badge">TES DIFERIDO</span>${escHtml(d.concepto || d.descripcion || 'Depósito diferido')}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(montoFake)}</span></div></div>`;
+        const etiquetaFake = String(d.fecha_origen || '').substring(0, 10) === fecha ? 'TES SEPARADO' : 'TES DIFERIDO';
+        return `<div class="row-item ${statusClass} ${seleccionada ? 'active' : ''}" data-tes-diferido-id="${parseInt(d.id, 10)}" data-fecha="${escHtml(fecha)}" ${clickAttr}><div class="row-left"><span class="row-line1"><span class="diferido-badge">${etiquetaFake}</span>${escHtml(d.concepto || d.descripcion || 'Depósito diferido')}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(montoFake)}</span></div></div>`;
     };
     const envolverFilaConDiferidosTES = (fecha, filaHtml) => {
         const keyFechaDia = String(fecha || '').substring(0, 10);
@@ -2449,7 +2450,18 @@ function renderTes() {
         // se guardaba como fecha_afiliación; no debe volver a seleccionarse.
         const esConcil = refsHistoricas.some(r => hasConciliada('TES', r))
             || (refsMovimiento.length > 0 && refsMovimiento.every(r => hasConciliada('TES', r)));
-        const esSel    = refsSeleccionables.length > 0 && refsSeleccionables.every(r => sel.tes.some(s => s.ref === r));
+        const fechaDia = String(fecha || '').substring(0, 10);
+        const diferidosDestinoDia = tesDiferidosHabilitado() ? (diferidosPorFecha.get(fechaDia) || []) : [];
+        const diferidosDestinoPendientes = diferidosDestinoDia.filter(d =>
+            String(d.estado || '').toUpperCase() === 'PENDIENTE'
+            && !d.conciliacion_id_dest
+            && !hasConciliada('TES', `diferido_tes_${d.id}`)
+        );
+        const montoFilaDia = montoConc + diferidosDestinoDia.reduce((sum, d) => sum + parseFloat(d.monto_diferido || 0), 0);
+        const componentesSeleccionados = refsSeleccionables.every(r => sel.tes.some(s => s.ref === r));
+        const diferidosSeleccionados = diferidosDestinoPendientes.every(d => sel.tes.some(s => s.ref === `diferido_tes_${d.id}`));
+        const haySeleccionableDia = refsSeleccionables.length > 0 || diferidosDestinoPendientes.length > 0;
+        const esSel = haySeleccionableDia && componentesSeleccionados && diferidosSeleccionados;
         const esPreconciliacion = preconciliacionesBanorte.some(p => p.tes_rows.some(row => refsMovimiento.includes(row.ref)));
 
         const hRecs = getHistorialDetalles('TES', allRefs);
@@ -2526,7 +2538,7 @@ function renderTes() {
                     <span class="row-line1">${dateFmt}</span>
                     <span class="row-line2">Tesorería${amexLine2Extra}</span>
                 </div>
-                <div class="row-right" style="pointer-events:auto;">${amexBadgesHtml}${difTag}${staleBtn}${unlinkBtn}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
+                <div class="row-right" style="pointer-events:auto;">${amexBadgesHtml}${difTag}${staleBtn}${unlinkBtn}<span class="font-numeric">${fmt.format(montoFilaDia)}</span></div>
             </div>`;
             $c.append(envolverFilaConDiferidosTES(fecha, filaConciliadaTES));
         } else if (isAmex && !tieneComision) {
@@ -2546,13 +2558,13 @@ function renderTes() {
             const accionesDiferirTES = componentesDiferibles.length
                 ? `<span class="tes-pilot-pending">Pendiente ${fmt.format(pendienteDia)} <button class="btn-diferir" data-componentes="${escHtml(JSON.stringify(componentesDiferibles))}" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(fecha)}',this)" title="Diferir depósito TES"><i class="fas fa-calendar-day"></i> Diferir</button></span>`
                 : '';
-            const claseFilaPruebaTES = tesDiferidosHabilitado() && componentesDiferibles.length ? 'tes-pilot-row' : '';
+            const claseFilaPruebaTES = tesDiferidosHabilitado() && (componentesDiferibles.length || diferidosDestinoPendientes.length) ? 'tes-pilot-row' : '';
             const contenidoIzquierdoTES = claseFilaPruebaTES
                 ? `<div class="row-left"><span class="tes-pilot-date">${dateFmt}</span><span class="tes-pilot-bank">Tesorería${amexLine2Extra}</span>${accionesDiferirTES}</div>`
                 : `<div class="row-left"><span class="row-line1">${dateFmt}</span><span class="row-line2">Tesorería${amexLine2Extra}</span></div>`;
             const filaDiaTES = `<div class="row-item row-pendiente tes-amex-row ${claseFilaPruebaTES} ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesDisponibles))}" onclick="toggleTESBadges(this);toggleTESComponentes(this)">
                 ${contenidoIzquierdoTES}
-                <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
+                <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(montoFilaDia)}</span></div>
             </div>`;
             $c.append(envolverFilaConDiferidosTES(fecha, filaDiaTES));
         }
@@ -2839,12 +2851,21 @@ function toggleTESComponentes(el) {
     if (mesCerrado) return;
     let componentes = [];
     try { componentes = JSON.parse($(el).attr('data-componentes') || '[]'); } catch(e) { return; }
-    const refs = componentes.filter(c => montoConciliacionTesComponente(c, $(el).attr('data-fecha') || '') > 0).map(c => normalizarRef(c.ref)).filter(Boolean);
-    if (!refs.length) return;
+    const fecha = $(el).attr('data-fecha') || '';
+    const refs = componentes.filter(c => montoConciliacionTesComponente(c, fecha) > 0).map(c => normalizarRef(c.ref)).filter(Boolean);
+    const diferidosDia = tesDiferidosHabilitado() ? (diferidosTES || []).filter(d =>
+        String(d.fecha_destino || '').substring(0, 10) === fecha
+        && String(d.estado || '').toUpperCase() === 'PENDIENTE'
+        && !d.conciliacion_id_dest
+        && !hasConciliada('TES', `diferido_tes_${d.id}`)
+    ) : [];
+    if (!refs.length && !diferidosDia.length) return;
 
-    const todosSeleccionados = refs.every(ref => sel.tes.some(s => s.ref === ref));
+    const todosSeleccionados = refs.every(ref => sel.tes.some(s => s.ref === ref))
+        && diferidosDia.every(d => sel.tes.some(s => s.ref === `diferido_tes_${d.id}`));
     if (todosSeleccionados) {
-        sel.tes = sel.tes.filter(s => !refs.includes(normalizarRef(s.ref)));
+        const refsDiferidos = diferidosDia.map(d => `diferido_tes_${d.id}`);
+        sel.tes = sel.tes.filter(s => !refs.includes(normalizarRef(s.ref)) && !refsDiferidos.includes(s.ref));
         $(el).removeClass('active');
     } else {
         componentes.forEach(c => {
@@ -2852,14 +2873,23 @@ function toggleTESComponentes(el) {
             if (!ref || sel.tes.some(s => s.ref === ref) || hasConciliada('TES', ref)) return;
             sel.tes.push({
                 ref,
-                fecha: $(el).attr('data-fecha') || '',
-                monto: montoConciliacionTesComponente(c, $(el).attr('data-fecha') || ''),
+                fecha,
+                monto: montoConciliacionTesComponente(c, fecha),
                 concepto: c.descripcion || '',
                 diferido_tes_orig_ids: tesDiferidoIdsOrigen(ref)
             });
         });
-        $(el).toggleClass('active', refs.every(ref => sel.tes.some(s => s.ref === ref)));
+        diferidosDia.forEach(d => {
+            const ref = `diferido_tes_${d.id}`;
+            if (sel.tes.some(s => s.ref === ref)) return;
+            sel.tes.push({ ref, fecha, monto: parseFloat(d.monto_diferido || 0), concepto: d.concepto || d.descripcion || 'Diferido TES', tipo: 'TES_DIFERIDO', diferido_tes_ids: [parseInt(d.id, 10)] });
+        });
+        $(el).toggleClass('active', refs.every(ref => sel.tes.some(s => s.ref === ref))
+            && diferidosDia.every(d => sel.tes.some(s => s.ref === `diferido_tes_${d.id}`)));
     }
+    diferidosDia.forEach(d => {
+        $(`.row-item[data-tes-diferido-id="${parseInt(d.id, 10)}"]`).toggleClass('active', sel.tes.some(s => s.ref === `diferido_tes_${d.id}`));
+    });
     recalcTotals();
 }
 function toggleDiferidoTES(ref, fecha, monto, concepto, id, el) {
@@ -4158,11 +4188,19 @@ function abrirModalDiferidoTES(fecha, button) {
         return `<option value="${index}">${escHtml(label)}</option>`;
     }).join(''));
     $('#dif-tes-selector-wrap').toggle(componentes.length > 1);
-    $('#dif-tes-fecha-dest').val('').attr('min', '2026-10-01').attr('max', '2026-10-31');
+    // Use the selected origin day as the date picker's initial view instead of today.
+    $('#dif-tes-fecha-dest').val(fecha).attr('min', '2026-10-01').attr('max', '2026-10-31');
     $('#dif-tes-desc').val('');
     $('#dif-tes-monto').val('');
     seleccionarComponenteDiferidoTES();
+    actualizarModoDiferidoTES();
     $('#modalDiferidoTES').modal('show');
+}
+
+function actualizarModoDiferidoTES() {
+    const separar = $('#dif-tes-fecha-dest').val() === _difTesState.fecha;
+    $('#dif-tes-titulo').text(separar ? 'Separar monto TES' : 'Diferir depósito TES');
+    $('#dif-tes-submit').text(separar ? 'Separar' : 'Diferir');
 }
 
 function seleccionarComponenteDiferidoTES() {
@@ -4190,7 +4228,6 @@ async function confirmarCrearDiferidoTES() {
     const monto = Math.round((parseFloat($('#dif-tes-monto').val()) || 0) * 100) / 100;
     const fechaDestino = $('#dif-tes-fecha-dest').val();
     if (!tesDiferidosHabilitado() || !fechaDestino || !/^2026-10-(0[1-9]|[12]\d|3[01])$/.test(fechaDestino)) { alert('Selecciona una fecha de octubre de 2026.'); return; }
-    if (fechaDestino === _difTesState.fecha) { alert('Selecciona otra fecha de octubre de 2026.'); return; }
     if (!(monto > 0) || monto > _difTesState.disponible + 0.005) { alert('El monto debe ser mayor a cero y no superar el disponible.'); return; }
     body_loading(true);
     try {
