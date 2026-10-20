@@ -236,6 +236,7 @@
     recycleMode: '',
     recycleEntries: []
   };
+  let groupSortable = null;
   let shareUserSearchRequest = 0;
   let boardMembersRequest = 0;
   let selectedShareUser = null;
@@ -4535,6 +4536,8 @@
     const columns = orderedColumns();
     const visibleCount = filteredItems.length;
     updateItemCount(visibleCount);
+    groupSortable?.destroy();
+    groupSortable = null;
     els.boardTableContainer.replaceChildren();
     const table = document.createElement('table');
     table.className = 'boards-table';
@@ -4745,7 +4748,7 @@
     }
     els.boardTableContainer.append(table);
     if (window.Sortable && canEditBoard() && state.groups.length > 1) {
-      window.Sortable.create(table, {
+      groupSortable = window.Sortable.create(table, {
         animation: 180,
         easing: 'cubic-bezier(0.2, 0, 0, 1)',
         draggable: 'tbody.boards-group-body',
