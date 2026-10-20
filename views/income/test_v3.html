@@ -181,13 +181,19 @@
     .btn-diferir:hover { background:#7c3aed;color:white; }
     /* Solo la prueba de diferidos TES: mantener los datos y la acción en una fila. */
     .tes-pilot-row { height:auto;min-height:44px;overflow:visible;padding-top:5px;padding-bottom:5px;gap:12px; }
-    .tes-pilot-row .row-left { flex-direction:row;align-items:center;gap:12px;overflow:visible; }
+    .tes-pilot-row .row-left { flex-direction:row;align-items:center;justify-content:flex-start;gap:12px;overflow:visible; }
     .tes-pilot-date { flex:0 0 auto;font-size:.8rem;font-weight:600;white-space:nowrap; }
     .tes-pilot-bank { flex:0 1 auto;min-width:0;font-size:.71rem;color:#6c757d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .tes-pilot-pending { display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;font-size:.71rem;color:#6c757d;white-space:nowrap; }
     .tes-pilot-row .btn-diferir { display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:0 0 auto;min-height:24px;margin:0;padding:2px 7px;line-height:1; }
     .tes-pilot-row .btn-diferir i { flex:0 0 auto;line-height:1; }
     .tes-pilot-row .row-right { margin-left:auto; }
+    .tes-day-toggle { display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:24px;padding:0;border:0;background:transparent;color:#64748b;cursor:pointer; }
+    .tes-day-deferred { display:none;padding-left:24px;border-left:2px solid #ddd6fe;margin-left:10px; }
+    .tes-day-deferred.open { display:block; }
+    .tes-day-deferred .row-item { min-height:44px;height:auto; }
+    .tes-day-deferred .row-left { flex-direction:column;align-items:flex-start;justify-content:center; }
+    .tes-day-empty-header { display:flex;align-items:center;gap:8px;padding:7px 14px;border-bottom:1px solid #eee;color:#475569;font-size:.78rem; }
     .btn-mover-diferido { background:none;border:1px solid #0891b2;color:#0891b2;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
     .btn-mover-diferido:hover { background:#0891b2;color:white; }
     .btn-cancel-diferido { background:none;border:1px solid #dc3545;color:#dc3545;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
@@ -2359,6 +2365,14 @@ function renderTes() {
     const $c = $('#tes-content').empty();
 
     const fakesTesVisibles = (diferidosTES || []).filter(d => !['CANCELADO', 'CANCELADA', 'ANULADO', 'ANULADA'].includes(String(d.estado || '').toUpperCase()));
+    const diferidosPorFecha = new Map();
+    if (tesDiferidosHabilitado()) {
+        fakesTesVisibles.filter(d => String(d.fecha_destino || '').startsWith('2026-10-')).forEach(d => {
+            const fecha = String(d.fecha_destino).substring(0, 10);
+            if (!diferidosPorFecha.has(fecha)) diferidosPorFecha.set(fecha, []);
+            diferidosPorFecha.get(fecha).push(d);
+        });
+    }
     if (!tesData.length && !fakesTesVisibles.length) {
         $c.html('<div class="text-center text-muted py-5 mt-5">Sin depósitos en Tesorería</div>');
         $('#tes-counter').text('$0.00');
@@ -2366,6 +2380,25 @@ function renderTes() {
     }
 
     let grandTotal = 0;
+    const fechasDiferidosRenderizadas = new Set();
+    const renderFilaDiferidoTES = d => {
+        const refFake = `diferido_tes_${d.id}`;
+        const fecha = String(d.fecha_destino || '').substring(0, 10);
+        const montoFake = parseFloat(d.monto_diferido || 0);
+        grandTotal += montoFake;
+        const estadoFake = String(d.estado || '').toUpperCase();
+        const conciliado = hasConciliada('TES', refFake) || !!d.conciliacion_id_dest || ['CONCILIADO', 'CONCILIADA'].includes(estadoFake);
+        const vinculado = !!(d.conciliacion_id_orig || d.conciliacion_id_dest);
+        const historialFake = getHistorialDetalle('TES', refFake);
+        const seleccionada = sel.tes.some(s => s.ref === refFake);
+        const difVal = historialFake ? parseFloat(historialFake.diferencia || 0) : 0;
+        const acciones = !mesCerrado && !vinculado && !conciliado && estadoFake === 'PENDIENTE'
+            ? `<button class="btn-mover-diferido" onclick="event.stopPropagation();abrirModalMoverDiferidoTES(${parseInt(d.id, 10)},'${escHtml(fecha)}')" title="Mover diferido"><i class="fas fa-arrows-alt-h"></i></button><button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoTES(${parseInt(d.id, 10)})" title="Cancelar diferido"><i class="fas fa-times"></i></button>` : '';
+        const diferencia = historialFake ? `<span class="diff-tag ${Math.abs(difVal)<.01?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span><button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${historialFake.grupo_id})" title="Deshacer conciliación"><i class="fas fa-unlink"></i></button>` : '';
+        const statusClass = conciliado ? (Math.abs(difVal) < .01 ? 'row-concil-ok' : 'row-concil-diff') : 'row-pendiente';
+        const clickAttr = !mesCerrado && !conciliado && estadoFake === 'PENDIENTE' ? `onclick="toggleDiferidoTES('${refFake}','${escHtml(fecha)}',${montoFake},'${escHtml(d.concepto || d.descripcion || 'Diferido TES')}',${parseInt(d.id, 10)},this)"` : '';
+        return `<div class="row-item ${statusClass} ${seleccionada ? 'active' : ''}" data-fecha="${escHtml(fecha)}" ${clickAttr}><div class="row-left"><span class="row-line1"><span class="diferido-badge">TES DIFERIDO</span>${escHtml(d.concepto || d.descripcion || 'Depósito diferido')}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(montoFake)}</span></div></div>`;
+    };
     const sorted = [...tesData].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
 
     sorted.forEach(item => {
@@ -2496,35 +2529,40 @@ function renderTes() {
             const accionesDiferirTES = componentesDiferibles.length
                 ? `<span class="tes-pilot-pending">Pendiente ${fmt.format(pendienteDia)} <button class="btn-diferir" data-componentes="${escHtml(JSON.stringify(componentesDiferibles))}" onclick="event.stopPropagation();abrirModalDiferidoTES('${escHtml(fecha)}',this)" title="Diferir depósito TES"><i class="fas fa-calendar-day"></i> Diferir</button></span>`
                 : '';
-            const claseFilaPruebaTES = componentesDiferibles.length ? 'tes-pilot-row' : '';
-            const contenidoIzquierdoTES = componentesDiferibles.length
-                ? `<div class="row-left"><span class="tes-pilot-date">${dateFmt}</span><span class="tes-pilot-bank">Tesorería${amexLine2Extra}</span>${accionesDiferirTES}</div>`
+            const keyFechaDia = fecha.substring(0, 10);
+            const diferidosDia = fechasDiferidosRenderizadas.has(keyFechaDia) ? [] : (diferidosPorFecha.get(keyFechaDia) || []);
+            const claseFilaPruebaTES = tesDiferidosHabilitado() && (componentesDiferibles.length || diferidosDia.length) ? 'tes-pilot-row' : '';
+            const fechaDiferidosId = `tes-diferidos-${fecha.substring(0, 10).replace(/-/g, '')}`;
+            const diferidosAbiertos = openGroupsTES.has(fecha.substring(0, 10));
+            const controlDesplegarDiferidos = diferidosDia.length
+                ? `<button class="tes-day-toggle" onclick="event.stopPropagation();toggleDiferidosTESDia('${escHtml(fecha.substring(0, 10))}',this)" aria-label="Mostrar depósitos diferidos" title="${diferidosAbiertos ? 'Ocultar' : 'Mostrar'} depósitos diferidos"><i class="fas ${diferidosAbiertos ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></button>`
+                : '';
+            const contenidoIzquierdoTES = claseFilaPruebaTES
+                ? `<div class="row-left">${controlDesplegarDiferidos}<span class="tes-pilot-date">${dateFmt}</span><span class="tes-pilot-bank">Tesorería${amexLine2Extra}</span>${accionesDiferirTES}</div>`
                 : `<div class="row-left"><span class="row-line1">${dateFmt}</span><span class="row-line2">Tesorería${amexLine2Extra}</span></div>`;
-            $c.append(`<div class="row-item row-pendiente tes-amex-row ${claseFilaPruebaTES} ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesDisponibles))}" onclick="toggleTESBadges(this);toggleTESComponentes(this)">
+            const filaDiaTES = `<div class="row-item row-pendiente tes-amex-row ${claseFilaPruebaTES} ${esPreconciliacion ? 'row-preconciliacion' : ''} ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesDisponibles))}" onclick="toggleTESBadges(this);toggleTESComponentes(this)">
                 ${contenidoIzquierdoTES}
                 <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
-            </div>`);
+            </div>`;
+            if (diferidosDia.length && tesDiferidosHabilitado()) {
+                fechasDiferidosRenderizadas.add(fecha.substring(0, 10));
+                $c.append(`<div class="tes-day-block">${filaDiaTES}<div class="tes-day-deferred ${diferidosAbiertos ? 'open' : ''}" id="${fechaDiferidosId}">${diferidosDia.map(renderFilaDiferidoTES).join('')}</div></div>`);
+            } else {
+                $c.append(filaDiaTES);
+            }
         }
     });
 
     if (tesDiferidosHabilitado()) {
-        fakesTesVisibles.filter(d => String(d.fecha_destino || '').startsWith('2026-10-')).sort((a, b) => String(a.fecha_destino).localeCompare(String(b.fecha_destino))).forEach(d => {
-            const refFake = `diferido_tes_${d.id}`;
-            const fecha = String(d.fecha_destino).substring(0, 10);
-            const montoFake = parseFloat(d.monto_diferido || 0);
-            grandTotal += montoFake;
-            const estadoFake = String(d.estado || '').toUpperCase();
-            const conciliado = hasConciliada('TES', refFake) || !!d.conciliacion_id_dest || ['CONCILIADO', 'CONCILIADA'].includes(estadoFake);
-            const vinculado = !!(d.conciliacion_id_orig || d.conciliacion_id_dest);
-            const historialFake = getHistorialDetalle('TES', refFake);
-            const seleccionada = sel.tes.some(s => s.ref === refFake);
-            const difVal = historialFake ? parseFloat(historialFake.diferencia || 0) : 0;
-            const acciones = !mesCerrado && !vinculado && !conciliado && String(d.estado || '').toUpperCase() === 'PENDIENTE'
-                ? `<button class="btn-mover-diferido" onclick="event.stopPropagation();abrirModalMoverDiferidoTES(${parseInt(d.id, 10)},'${escHtml(fecha)}')" title="Mover diferido"><i class="fas fa-arrows-alt-h"></i></button><button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoTES(${parseInt(d.id, 10)})" title="Cancelar diferido"><i class="fas fa-times"></i></button>` : '';
-            const diferencia = historialFake ? `<span class="diff-tag ${Math.abs(difVal)<.01?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span><button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${historialFake.grupo_id})" title="Deshacer conciliación"><i class="fas fa-unlink"></i></button>` : '';
-            const statusClass = conciliado ? (Math.abs(difVal) < .01 ? 'row-concil-ok' : 'row-concil-diff') : 'row-pendiente';
-            const clickAttr = !mesCerrado && !conciliado && estadoFake === 'PENDIENTE' ? `onclick="toggleDiferidoTES('${refFake}','${escHtml(fecha)}',${montoFake},'${escHtml(d.concepto || d.descripcion || 'Diferido TES')}',${parseInt(d.id, 10)},this)"` : '';
-            $c.append(`<div class="row-item ${statusClass} ${seleccionada ? 'active' : ''}" data-fecha="${escHtml(fecha)}" ${clickAttr}><div class="row-left"><span class="row-line1"><span class="diferido-badge">TES DIFERIDO</span>${escHtml(d.concepto || d.descripcion || 'Depósito diferido')}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(montoFake)}</span></div></div>`);
+        diferidosPorFecha.forEach((diferidosDia, fecha) => {
+            if (fechasDiferidosRenderizadas.has(fecha)) return;
+            const fechaDiferidosId = `tes-diferidos-${fecha.replace(/-/g, '')}`;
+            const abierto = openGroupsTES.has(fecha);
+            const dateFmt = fecha.split('-').reverse().join('/');
+            const totalDia = diferidosDia.reduce((sum, d) => sum + parseFloat(d.monto_diferido || 0), 0);
+            const icono = abierto ? 'fa-chevron-down' : 'fa-chevron-right';
+            const filasDiferidos = diferidosDia.map(renderFilaDiferidoTES).join('');
+            $c.append(`<div class="tes-day-block"><div class="tes-day-empty-header"><button class="tes-day-toggle" onclick="toggleDiferidosTESDia('${escHtml(fecha)}',this)" aria-label="Mostrar depósitos diferidos"><i class="fas ${icono}"></i></button><strong>${dateFmt}</strong><span>Tesorería — diferidos</span><span class="font-numeric ml-auto">${fmt.format(totalDia)}</span></div><div class="tes-day-deferred ${abierto ? 'open' : ''}" id="${fechaDiferidosId}">${filasDiferidos}</div></div>`);
         });
     }
 
@@ -2826,6 +2864,18 @@ function toggleDiferidoTES(ref, fecha, monto, concepto, id, el) {
     else sel.tes.push({ ref, fecha, monto, concepto, tipo: 'TES_DIFERIDO', diferido_tes_ids: [parseInt(id, 10)] });
     $(el).toggleClass('active', idx < 0);
     recalcTotals();
+}
+function toggleDiferidosTESDia(fecha, btn) {
+    if (!tesDiferidosHabilitado()) return;
+    const id = `tes-diferidos-${String(fecha).replace(/-/g, '')}`;
+    const body = document.getElementById(id);
+    if (!body) return;
+    const abrir = !body.classList.contains('open');
+    body.classList.toggle('open', abrir);
+    $(btn).find('i').toggleClass('fa-chevron-right', !abrir).toggleClass('fa-chevron-down', abrir);
+    $(btn).attr('aria-expanded', abrir ? 'true' : 'false');
+    if (abrir) openGroupsTES.add(fecha);
+    else openGroupsTES.delete(fecha);
 }
 function toggleTESBadges(el) {
     const tesContent = document.getElementById('tes-content');
