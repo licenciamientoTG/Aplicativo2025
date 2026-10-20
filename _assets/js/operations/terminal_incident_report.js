@@ -135,8 +135,8 @@ $(function () {
 
         const closeLabel = isSolved ? 'Resuelto el' : 'Cerrado el';
         const operational = [
-            ['Tipo de terminal', typeLabel(incident.type)], ['Prioridad', ticket.priority], ['Cola', ticket.queue], ['Formulario', ticket.form],
-            ['Empresa', ticket.company], ['Folio del proveedor', incident.provider_folio], ['Reporte al proveedor', dateLabel(incident.provider_date)],
+            ['Tipo de terminal', typeLabel(incident.type)], ['Cola', ticket.queue], ['Formulario', ticket.form],
+            ['Folio del proveedor', incident.provider_folio], ['Reporte al proveedor', dateLabel(incident.provider_date)],
             [closeLabel, dateLabel(closedAt)], ['Resuelto/cerrado por', ticket.closed_by],
             ['Resolución registrada en Mojo', ticket.resolution]
         ];
