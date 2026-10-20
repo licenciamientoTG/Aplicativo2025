@@ -9618,6 +9618,50 @@ public function stamped_invoices_detail(): void
         if (count($origIds) !== count(array_unique(array_map('intval', $origIds))) || count($destIds) !== count(array_unique(array_map('intval', $destIds)))) throw new Exception('IDs de diferido TES duplicados.');
         $origIds = array_values(array_unique(array_filter(array_map('intval', $origIds))));
         $destIds = array_values(array_unique(array_filter(array_map('intval', $destIds))));
+
+        // Si se concilia el depósito origen, debe conservar exactamente el
+        // principal disponible y declarar todos los splits activos de ese ref.
+        $sourceRows = array_values(array_filter($tesRows, static fn($row) => ($row['tipo'] ?? 'TES') !== 'TES_DIFERIDO'));
+        $sourceRefs = array_values(array_unique(array_filter(array_map(
+            static fn($row) => trim((string)($row['ref'] ?? '')),
+            $sourceRows
+        ))));
+        if ($sourceRefs) {
+            $ph = implode(',', array_fill(0, count($sourceRefs), '?'));
+            $active = $conn->prepare("SELECT id, referencia, monto_diferido, fecha_origen FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK)
+                WHERE estacion_id=? AND entidad_id=? AND afiliacion='9990624' AND mes='2026-10'
+                  AND estado<>'CANCELADO' AND referencia IN ($ph)");
+            $active->execute(array_merge([$sid, $eid], $sourceRefs));
+            $activeByRef = [];
+            foreach ($active->fetchAll(PDO::FETCH_ASSOC) as $split) $activeByRef[(string)$split['referencia']][] = $split;
+
+            foreach ($sourceRows as $row) {
+                $ref = trim((string)($row['ref'] ?? ''));
+                $splits = $activeByRef[$ref] ?? [];
+                if (!$splits) continue;
+                $listedIds = array_values(array_unique(array_map('intval', (array)($row['diferido_tes_orig_ids'] ?? []))));
+                $requiredIds = array_values(array_unique(array_map('intval', array_column($splits, 'id'))));
+                sort($listedIds); sort($requiredIds);
+                if ($listedIds !== $requiredIds) throw new Exception('El depósito origen debe incluir todos sus diferidos TES activos.');
+
+                if (!preg_match('/^mb_(\d+)$/', $ref, $m)) throw new Exception('Referencia TES origen inválida.');
+                $source = $conn->prepare("SELECT TOP 1 abono, fecha FROM [TG].[dbo].[movimientos_bancarios]
+                    WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10
+                      AND UPPER(descripcion) LIKE '%9990624%'
+                      AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%')");
+                $source->execute([(int)$m[1]]);
+                $movement = $source->fetch(PDO::FETCH_ASSOC);
+                if (!$movement) throw new Exception('No se encontró el movimiento TES origen.');
+                $movementDate = $movement['fecha'] instanceof DateTime ? $movement['fecha']->format('Y-m-d') : substr((string)$movement['fecha'], 0, 10);
+                $splitTotal = array_sum(array_map(static fn($split) => (float)$split['monto_diferido'], $splits));
+                $remaining = round((float)$movement['abono'] - $splitTotal, 2);
+                if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $movementDate
+                    || abs((float)($row['monto'] ?? 0) - $remaining) > 0.01) {
+                    throw new Exception('El renglón TES origen debe coincidir con el principal menos los splits activos.');
+                }
+            }
+        }
+
         foreach ([[$origIds, 'origen'], [$destIds, 'destino']] as [$ids, $kind]) {
             if (!$ids) continue;
             if (count($ids) !== count($kind === 'origen' ? $origIds : $destIds)) throw new Exception('IDs de diferido TES inválidos.');
@@ -9670,6 +9714,10 @@ public function stamped_invoices_detail(): void
             $src=$c->prepare("SELECT TOP 1 id, abono AS Depositos, fecha AS Fecha, descripcion AS Descripcion FROM [TG].[dbo].[movimientos_bancarios] WITH (UPDLOCK,HOLDLOCK) WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10 AND UPPER(descripcion) LIKE '%9990624%' AND ((UPPER(LTRIM(descripcion)) LIKE 'DEBITO%') OR (UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'))");$src->execute([(int)$refMatch[1]]);$source=$src->fetch(PDO::FETCH_ASSOC);
             if(!$source)throw new Exception('No se encontró el depósito origen para esa referencia en Tesorería.');
             $cut=round((float)$source['Depositos'],2);$sourceDate=substr((string)$source['Fecha'],0,10);if($fo!==$sourceDate)throw new Exception('La fecha origen no coincide con Tesorería.');
+            $already=$c->prepare("SELECT TOP 1 D.id FROM Conciliacion_V3_Detalles D WITH (UPDLOCK,HOLDLOCK)
+                INNER JOIN Conciliacion_V3_Grupos G WITH (UPDLOCK,HOLDLOCK) ON G.id=D.grupo_id
+                WHERE D.origen='TES' AND D.referencia_externa=? AND G.estacion_id=? AND G.entidad_id=? AND G.afiliacion='9990624'");
+            $already->execute([$ref,$sid,$eid]);if($already->fetchColumn())throw new Exception('El movimiento TES origen ya pertenece a una conciliación V3.');
             $sum=$c->prepare("SELECT ISNULL(SUM(monto_diferido),0) FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND referencia=? AND estado<>'CANCELADO'");$sum->execute([$sid,$eid,$afil,$ref]);$used=(float)$sum->fetchColumn();if($used+$amt>$cut+0.005)throw new Exception('El monto diferido supera el saldo disponible del depósito.');
             $ins=$c->prepare("INSERT INTO CV3_DiferidoTES(estacion_id,entidad_id,afiliacion,referencia,fecha_origen,fecha_destino,mes,monto_corte,monto_diferido,concepto,descripcion) VALUES(?,?,?,?,?,?, '2026-10',?,?,?,?)");$ins->execute([$sid,$eid,$afil,$ref,$fo,$fd,$cut,$amt,trim((string)($d['concepto']??$source['Descripcion']??'')),trim((string)($d['descripcion']??''))]);$id=(int)$c->query('SELECT @@IDENTITY')->fetchColumn();$c->commit();echo json_encode(['status'=>'success','id'=>$id,'tes_ref'=>$ref,'monto_efectivo'=>round($cut-$used-$amt,2)]);
         }catch(Exception $e){if(isset($c)&&$c->inTransaction())$c->rollBack();echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;

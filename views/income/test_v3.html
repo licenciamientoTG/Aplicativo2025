@@ -2472,7 +2472,7 @@ function renderTes() {
                     <span class="row-line1">${dateFmt}</span>
                     <span class="row-line2">Tesorería — pendiente comisión</span>
                 </div>
-                <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(monto)}</span></div>
+                <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
             </div>`);
         } else {
             const accionesDiferirTES = tesDiferidosHabilitado() ? componentesDisponibles.filter(comp => tesMontoDisponible(comp) > 0).map(comp => {
