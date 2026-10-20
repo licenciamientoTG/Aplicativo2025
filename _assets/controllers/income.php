@@ -9671,7 +9671,7 @@ public function stamped_invoices_detail(): void
             if (!$ids) continue;
             if (count($ids) !== count($kind === 'origen' ? $origIds : $destIds)) throw new Exception('IDs de diferido TES inválidos.');
             $ph = implode(',', array_fill(0, count($ids), '?'));
-            $s = $conn->prepare("SELECT id, estacion_id, entidad_id, afiliacion, mes, fecha_origen, fecha_destino, monto_diferido, estado, conciliacion_id_orig, conciliacion_id_dest FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE id IN ($ph)");
+            $s = $conn->prepare("SELECT id, estacion_id, entidad_id, afiliacion, mes, referencia, fecha_origen, fecha_destino, monto_diferido, estado, conciliacion_id_orig, conciliacion_id_dest FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE id IN ($ph)");
             $s->execute($ids);
             $rows = $s->fetchAll(PDO::FETCH_ASSOC);
             if (count($rows) !== count($ids)) throw new Exception('Diferido TES no encontrado.');
