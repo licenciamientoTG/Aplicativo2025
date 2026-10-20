@@ -8162,7 +8162,7 @@ public function stamped_invoices_detail(): void
             if ($isTesDiferidoPilot) {
                 $this->v3_ensure_diferido_tes_table($conn);
                 $this->v3_assert_mes_abierto($conn, (int)$data['estacion_id'], (int)$data['entidad_id'], '9990624', '2026-10');
-                $this->v3_validate_diferido_tes_group($conn, $tesDiferidoOrigIds, $tesDiferidoDestIds,
+                $tesDiferidoOrigIds = $this->v3_validate_diferido_tes_group($conn, $tesDiferidoOrigIds, $tesDiferidoDestIds,
                     (int)$data['estacion_id'], (int)$data['entidad_id'], $data['tes_rows']);
             }
 
@@ -9611,10 +9611,15 @@ public function stamped_invoices_detail(): void
         if ($s->fetchColumn()) throw new Exception('El mes ya está cerrado.');
     }
 
-    private function v3_validate_diferido_tes_group(PDO $conn, array $origIds, array $destIds, int $sid, int $eid, array $tesRows): void {
+    private function v3_validate_diferido_tes_group(PDO $conn, array $origIds, array $destIds, int $sid, int $eid, array $tesRows): array {
         if (count($origIds) !== count(array_unique(array_map('intval', $origIds))) || count($destIds) !== count(array_unique(array_map('intval', $destIds)))) throw new Exception('IDs de diferido TES duplicados.');
         $origIds = array_values(array_unique(array_filter(array_map('intval', $origIds))));
+        $submittedOrigIds = $origIds;
         $destIds = array_values(array_unique(array_filter(array_map('intval', $destIds))));
+        // Origin split IDs are derived from validated source references below;
+        // client IDs do not determine which source row owns a split.
+        $origIds = [];
+        $validatedOriginRowsByRef = [];
 
         // Si se concilia el depósito origen, debe conservar exactamente el
         // principal disponible y declarar todos los splits activos de ese ref.
@@ -9636,10 +9641,7 @@ public function stamped_invoices_detail(): void
                 $ref = trim((string)($row['ref'] ?? ''));
                 $splits = $activeByRef[$ref] ?? [];
                 if (!$splits) continue;
-                $listedIds = array_values(array_unique(array_map('intval', (array)($row['diferido_tes_orig_ids'] ?? []))));
-                $requiredIds = array_values(array_unique(array_map('intval', array_column($splits, 'id'))));
-                sort($listedIds); sort($requiredIds);
-                if ($listedIds !== $requiredIds) throw new Exception('El depósito origen debe incluir todos sus diferidos TES activos.');
+                if (isset($validatedOriginRowsByRef[$ref])) throw new Exception('El depósito TES origen está duplicado en el detalle.');
 
                 if (!preg_match('/^mb_(\d+)$/', $ref, $m)) throw new Exception('Referencia TES origen inválida.');
                 $source = $conn->prepare("SELECT TOP 1 abono, fecha FROM [TG].[dbo].[movimientos_bancarios]
@@ -9655,10 +9657,15 @@ public function stamped_invoices_detail(): void
                 $remaining = round((float)$movement['abono'] - $splitTotal, 2);
                 if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $movementDate
                     || abs(round((float)($row['monto'] ?? 0), 2) - $remaining) > 0.005) {
-                    throw new Exception('El renglón TES origen debe coincidir con el principal menos los splits activos.');
+                    throw new Exception('TES origen ' . $ref . ' debe coincidir con su fecha y saldo residual.');
                 }
+                $validatedOriginRowsByRef[$ref] = $row;
+                foreach ($splits as $split) $origIds[] = (int)$split['id'];
             }
         }
+
+        $origIds = array_values(array_unique($origIds));
+        if (array_diff($submittedOrigIds, $origIds)) throw new Exception('IDs de diferido TES origen no corresponden a los depósitos validados.');
 
         foreach ([[$origIds, 'origen'], [$destIds, 'destino']] as [$ids, $kind]) {
             if (!$ids) continue;
@@ -9675,8 +9682,13 @@ public function stamped_invoices_detail(): void
                 $matchingRows = $tesRows;
                 $matching = false;
                 foreach ($matchingRows as $row) {
-                    $rowIds = $kind === 'origen' ? ($row['diferido_tes_orig_ids'] ?? []) : (($row['tipo'] ?? '') === 'TES_DIFERIDO' ? ($row['diferido_tes_ids'] ?? []) : []);
-                    if (!in_array((int)$r['id'], array_map('intval', (array)$rowIds), true)) continue;
+                    if ($kind === 'origen') {
+                        $ref = (string)$r['referencia'];
+                        if (!isset($validatedOriginRowsByRef[$ref]) || trim((string)($row['ref'] ?? '')) !== $ref) continue;
+                    } else {
+                        $rowIds = ($row['tipo'] ?? '') === 'TES_DIFERIDO' ? ($row['diferido_tes_ids'] ?? []) : [];
+                        if (!in_array((int)$r['id'], array_map('intval', (array)$rowIds), true)) continue;
+                    }
                     $expectedDate = $kind === 'origen' ? substr((string)$r['fecha_origen'], 0, 10) : substr((string)$r['fecha_destino'], 0, 10);
                     if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $expectedDate) continue;
                     $expectedRef = $kind === 'origen' ? (string)$r['referencia'] : 'diferido_tes_' . (int)$r['id'];
@@ -9684,9 +9696,11 @@ public function stamped_invoices_detail(): void
                     if ($kind === 'destino' && abs((float)($row['monto'] ?? 0) - (float)$r['monto_diferido']) > 0.005) continue;
                     $matching = true; break;
                 }
-                if (!$matching) throw new Exception('El detalle TES no coincide con referencia, fecha o importe del diferido.');
+                if (!$matching) throw new Exception('Diferido TES ' . (int)$r['id'] . ' no coincide con referencia, fecha o importe esperado.');
             }
         }
+
+        return $origIds;
     }
 
     // Piloto TES: consulta de saldos divididos para afiliación y mes exactos.
