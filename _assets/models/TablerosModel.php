@@ -34,7 +34,7 @@ class TablerosModel {
     }
 
     public function getBoards(int $userId, bool $isAdmin): array {
-        $sql = "SELECT DISTINCT b.id, b.workspace_id, b.folder_id, b.name, b.description,
+        $sql = "SELECT DISTINCT b.id, b.workspace_id, b.folder_id, b.name, b.description, b.sort_order,
                        w.name AS workspace_name, w.visibility AS workspace_visibility,
                        f.name AS folder_name, f.parent_folder_id,
                        b.visibility, b.created_by, b.created_at, b.updated_at,
@@ -60,8 +60,13 @@ class TablerosModel {
                   AND (b.created_by = ? OR m.user_id = ? OR ? = 1
                        OR b.visibility = 'organization'
                        OR (b.visibility = 'workspace' AND (wm.user_id = ? OR w.visibility = 'open')))
-                ORDER BY w.name, f.name, b.name, b.id";
-        return $this->all($sql, [$userId, $isAdmin ? 1 : 0, $userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $userId, $isAdmin ? 1 : 0, $userId]);
+                ORDER BY w.name, f.name, b.sort_order, b.name, b.id";
+        $boards = $this->all($sql, [$userId, $isAdmin ? 1 : 0, $userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $userId, $isAdmin ? 1 : 0, $userId]);
+        foreach ($boards as &$board) {
+            $board['can_reorder'] = in_array($board['user_role'], ['owner', 'designer', 'editor'], true);
+        }
+        unset($board);
+        return $boards;
     }
 
     /** Flat hierarchy payload; the client builds the nested folder tree. */
@@ -100,16 +105,18 @@ class TablerosModel {
             $marks = implode(',', array_fill(0, count($ids), '?'));
             $folders = $this->all(
                 "SELECT id, workspace_id, parent_folder_id, name, color, sort_order, created_by
-                 FROM tb_folder WHERE workspace_id IN ($marks) AND deleted_at IS NULL ORDER BY sort_order, name, id",
+                 FROM tb_folder WHERE workspace_id IN ($marks) AND deleted_at IS NULL ORDER BY sort_order, id",
                 array_map('intval', $ids)
             );
         }
         $folderById = [];
         $workspaceRoles = [];
+        $workspaceReorderRoles = [];
         $workspaceVisibility = [];
         foreach ($folders as $folder) $folderById[(string)$folder['id']] = $folder;
         foreach ($workspaces as $workspace) {
             $workspaceRoles[(string)$workspace['id']] = (string)($workspace['user_role'] ?? '');
+            $workspaceReorderRoles[(string)$workspace['id']] = empty($workspace['shared_only']) ? (string)($workspace['user_role'] ?? '') : '';
             $workspaceVisibility[(string)$workspace['id']] = (string)($workspace['visibility'] ?? '');
         }
         foreach ($folders as &$folder) {
@@ -117,6 +124,7 @@ class TablerosModel {
             $isCreator = (int)($folder['created_by'] ?? 0) === $userId;
             $folder['can_trash'] = $isAdmin || $workspaceRole === 'owner' || $isCreator;
             $folder['can_archive'] = $isAdmin || in_array($workspaceRole, ['owner', 'editor'], true) || $isCreator;
+            $folder['can_reorder'] = $isAdmin || $isCreator || in_array($workspaceReorderRoles[(string)$folder['workspace_id']] ?? '', ['owner', 'editor'], true);
         }
         unset($folder);
         $allowed = [];
@@ -618,6 +626,88 @@ class TablerosModel {
             [$workspaceId, $parentFolderId, bin2hex(random_bytes(20)), $name, $color, $position, $userId]
         );
         return ['id' => $id, 'workspace_id' => $workspaceId, 'parent_folder_id' => $parentFolderId, 'name' => $name, 'color' => $color, 'sort_order' => $position];
+    }
+
+    /** Reorder visible siblings only; hidden entities retain their stored order. */
+    public function reorderStructure(int $userId, bool $isAdmin, array $input): array {
+        $type = $input['entity_type'] ?? null;
+        if (!in_array($type, ['folder', 'board'], true)) {
+            throw new TablerosApiException('validation', 'Selecciona una carpeta o un tablero.', 422);
+        }
+        $id = $this->positiveInt($input['entity_id'] ?? null, 'entity_id');
+        $anchorId = $this->positiveInt($input['anchor_id'] ?? null, 'anchor_id');
+        $placement = $input['placement'] ?? null;
+        if ($id === $anchorId || !in_array($placement, ['before', 'after'], true)) {
+            throw new TablerosApiException('validation', 'La posición solicitada no es válida.', 422);
+        }
+        return $this->transaction(function () use ($userId, $isAdmin, $type, $id, $anchorId, $placement): array {
+            $table = $type === 'folder' ? 'tb_folder' : 'tb_board';
+            $parentKey = $type === 'folder' ? 'parent_folder_id' : 'folder_id';
+            $collection = $type === 'folder' ? 'folders' : 'boards';
+            $structure = $this->getWorkspaceStructure($userId, $isAdmin);
+            $visible = array_column($structure[$collection], null, 'id');
+            $moved = $visible[$id] ?? null;
+            $anchor = $visible[$anchorId] ?? null;
+            if (!$moved || !$anchor) {
+                throw new TablerosApiException('not_found', 'No se encontró la carpeta o el tablero visible.', 404);
+            }
+            if (empty($moved['can_reorder']) || empty($anchor['can_reorder'])) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para cambiar este orden.', 403);
+            }
+            if ((int)$moved['workspace_id'] !== (int)$anchor['workspace_id']
+                || ($moved[$parentKey] === null ? null : (int)$moved[$parentKey]) !== ($anchor[$parentKey] === null ? null : (int)$anchor[$parentKey])) {
+                throw new TablerosApiException('validation', 'Solo puedes reordenar elementos dentro de la misma carpeta y espacio.', 422);
+            }
+            $workspaceId = (int)$moved['workspace_id'];
+            $parentId = $moved[$parentKey] === null ? null : (int)$moved[$parentKey];
+            $siblings = $this->all(
+                "SELECT id, sort_order FROM $table WITH (UPDLOCK, HOLDLOCK)
+                 WHERE workspace_id = ? AND (($parentKey = ?) OR ($parentKey IS NULL AND ? IS NULL))
+                   AND deleted_at IS NULL ORDER BY sort_order, id",
+                [$workspaceId, $parentId, $parentId]
+            );
+            foreach ($siblings as $sibling) {
+                $visibleSibling = $visible[(int)$sibling['id']] ?? null;
+                if ($visibleSibling && empty($visibleSibling['can_reorder'])) {
+                    throw new TablerosApiException('forbidden', 'Necesitas permiso para reordenar todos los elementos visibles de esta carpeta.', 403);
+                }
+            }
+            $siblings = array_values(array_filter($siblings, static fn(array $row): bool => isset($visible[(int)$row['id']])));
+            $order = array_map(static fn(array $row): int => (int)$row['id'], $siblings);
+            if (!in_array($id, $order, true) || !in_array($anchorId, $order, true)) {
+                throw new TablerosApiException('conflict', 'La estructura cambió. Actualiza e inténtalo de nuevo.', 409);
+            }
+            $order = array_values(array_filter($order, static fn(int $siblingId): bool => $siblingId !== $id));
+            $anchorIndex = array_search($anchorId, $order, true);
+            array_splice($order, $anchorIndex + ($placement === 'after' ? 1 : 0), 0, [$id]);
+            $previousPosition = null;
+            foreach ($order as $index => $siblingId) {
+                // Preserve existing visible slots where possible, making tied legacy slots distinct.
+                $position = max((int)$siblings[$index]['sort_order'], $previousPosition === null ? PHP_INT_MIN : $previousPosition + 1);
+                if ($position > 2147483647) {
+                    throw new TablerosApiException('conflict', 'El orden excede el rango permitido.', 409);
+                }
+                $this->execute(
+                    "UPDATE $table SET sort_order = ?, updated_at = GETDATE()
+                     WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL",
+                    [$position, $siblingId, $workspaceId]
+                );
+                $previousPosition = $position;
+            }
+            if ($type === 'board') {
+                $this->writeActivity($id, null, $userId, 'board.reordered', ['anchor_id' => $anchorId, 'placement' => $placement]);
+            }
+            return $this->getWorkspaceStructure($userId, $isAdmin);
+        });
+    }
+
+    private function nextBoardSortOrder(int $workspaceId, ?int $folderId): int {
+        $row = $this->one(
+            'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM tb_board WITH (UPDLOCK, HOLDLOCK)
+             WHERE workspace_id = ? AND ((folder_id = ?) OR (folder_id IS NULL AND ? IS NULL)) AND deleted_at IS NULL',
+            [$workspaceId, $folderId, $folderId]
+        );
+        return (int)($row['next_order'] ?? 0);
     }
 
     public function getBoard(int $boardId): ?array {
@@ -1956,13 +2046,14 @@ class TablerosModel {
                     throw new TablerosApiException('forbidden', 'No tienes acceso a la carpeta seleccionada.', 403);
                 }
             }
+            $sortOrder = $this->nextBoardSortOrder($workspaceId, $folderId);
             $boardId = $this->insertId(
-                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, created_by, created_at, updated_at)
-                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
-                [$workspaceId, $folderId, $name, $description, $visibility, $userId]
+                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, sort_order, created_by, created_at, updated_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$workspaceId, $folderId, $name, $description, $visibility, $sortOrder, $userId]
             );
             $this->writeActivity($boardId, null, $userId, 'board.created', ['name' => $name]);
-            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $description, 'visibility' => $visibility, 'role' => 'owner'];
+            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $description, 'visibility' => $visibility, 'sort_order' => $sortOrder, 'role' => 'owner'];
         });
     }
 
@@ -2001,10 +2092,11 @@ class TablerosModel {
                     $folderId = (int)$folder['id'];
                 }
             }
+            $sortOrder = $this->nextBoardSortOrder($workspaceId, $folderId);
             $boardId = $this->insertId(
-                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, created_by, created_at, updated_at)
-                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
-                [$workspaceId, $folderId, $name, $source['description'] ?? null, 'private', $userId]
+                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, sort_order, created_by, created_at, updated_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$workspaceId, $folderId, $name, $source['description'] ?? null, 'private', $sortOrder, $userId]
             );
 
             $groupMap = [];
@@ -2097,7 +2189,7 @@ class TablerosModel {
                 }
             }
             $this->writeActivity($boardId, null, $userId, 'board.created', ['name' => $name, 'source_board_id' => $sourceBoardId, 'duplicate_mode' => $mode]);
-            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $source['description'] ?? null, 'visibility' => 'private', 'role' => 'owner'];
+            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $source['description'] ?? null, 'visibility' => 'private', 'sort_order' => $sortOrder, 'role' => 'owner'];
         });
     }
 

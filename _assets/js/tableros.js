@@ -89,6 +89,7 @@
     duplicateBoardDialog: document.getElementById('duplicateBoardDialog'),
     duplicateBoardForm: document.getElementById('duplicateBoardForm'),
     boardSearch: document.getElementById('boardSearch'),
+    boardSearchColumn: document.getElementById('boardSearchColumn'),
     boardItemCount: document.getElementById('boardItemCount'),
     boardTableContainer: document.getElementById('boardTableContainer'),
     boardTableStatus: document.getElementById('boardTableStatus'),
@@ -237,6 +238,29 @@
     recycleEntries: []
   };
   let groupSortable = null;
+  let navSortables = [];
+  let itemSortables = [];
+  let navOrderSaving = false;
+  let itemOrderSaving = false;
+  let suppressNavClickUntil = 0;
+
+  async function saveNavOrder(entityType, entityId, anchorId, placement) {
+    if (navOrderSaving) return;
+    navOrderSaving = true;
+    navSortables.forEach((sortable) => sortable.option('disabled', true));
+    try {
+      const result = await post('/reorder_structure', { entity_type: entityType, entity_id: entityId, anchor_id: anchorId, placement });
+      ['workspaces', 'folders', 'boards'].forEach((key) => { if (Array.isArray(result.data?.[key])) state[key] = result.data[key]; });
+      setNotice('Orden guardado.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error, 'No se pudo guardar el orden.'), 'error');
+    } finally {
+      navOrderSaving = false;
+      renderBoardOptions();
+      const selector = entityType === 'board' ? '[data-nav-board]' : '[data-toggle-folder]';
+      document.querySelector(`[data-nav-entity-id="${String(entityId)}"] ${selector}`)?.focus({ preventScroll: true });
+    }
+  }
   let shareUserSearchRequest = 0;
   let boardMembersRequest = 0;
   let selectedShareUser = null;
@@ -675,6 +699,8 @@
   }
 
   function renderBoardNav() {
+    navSortables.forEach((sortable) => sortable.destroy());
+    navSortables = [];
     const list = document.getElementById('boardNavList');
     const search = document.getElementById('boardNavSearch');
     if (!list || !search) return;
@@ -723,7 +749,46 @@
       (parent ? parent.boards : rootBoards).push(board);
     });
     const matchesText = (label) => !query || String(label || '').toLocaleLowerCase('es-MX').includes(query);
-    const renderBoard = (board, depth) => {
+    const attachNavHandle = (node, entity, entityType, container) => {
+      node.dataset.navEntityId = String(entity.id);
+      node.dataset.canReorder = entity.can_reorder ? '1' : '0';
+      if (!entity.can_reorder || query || navOrderSaving) return;
+      node.addEventListener('keydown', (event) => {
+        if (node.dataset.canReorder !== '1' || !['ArrowUp', 'ArrowDown'].includes(event.key)
+          || event.target.closest('.boards-nav-folder-actions')) return;
+        event.preventDefault();
+        const siblings = [...container.children];
+        const index = siblings.indexOf(node);
+        const direction = event.key === 'ArrowUp' ? -1 : 1;
+        const anchor = siblings[index + direction];
+        if (anchor) void saveNavOrder(entityType, entity.id, anchor.dataset.navEntityId, direction < 0 ? 'before' : 'after');
+      });
+    };
+    const makeNavList = (parent, entityType) => {
+      const container = makeElement('div', 'boards-nav-siblings');
+      parent.append(container);
+      if (window.Sortable && !query && !navOrderSaving) {
+        navSortables.push(window.Sortable.create(container, {
+          draggable: '[data-nav-entity-id]',
+          handle: entityType === 'board' ? '.boards-nav-board' : '.boards-nav-folder-row',
+          filter: '.boards-nav-folder-actions, .boards-nav-folder-actions *',
+          preventOnFilter: false,
+          animation: 180, forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
+          ghostClass: 'boards-sortable-ghost',
+          onStart: () => { suppressNavClickUntil = Date.now() + 1000; },
+          onEnd: (event) => {
+            suppressNavClickUntil = Date.now() + 800;
+            if (event.oldIndex === event.newIndex) return;
+            const before = event.item.nextElementSibling;
+            const anchor = before || event.item.previousElementSibling;
+            if (anchor) void saveNavOrder(entityType, event.item.dataset.navEntityId, anchor.dataset.navEntityId, before ? 'before' : 'after');
+          }
+        }));
+      }
+      return container;
+    };
+    const byPosition = (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
+    const renderBoard = (board, depth, container) => {
       if (!matchesText(board.name)) return;
       const link = makeElement('button', 'boards-nav-board');
       link.type = 'button';
@@ -737,9 +802,12 @@
       const icon = makeElement('i', 'fa-solid fa-table-cells');
       icon.setAttribute('aria-hidden', 'true');
       link.append(icon, makeElement('span', '', board.name || 'Tablero sin nombre'));
-      list.append(link);
+      const node = makeElement('div', 'boards-nav-board-node');
+      node.append(link);
+      attachNavHandle(node, board, 'board', container);
+      container.append(node);
     };
-    const renderFolder = (folder, depth = 0) => {
+    const renderFolder = (folder, depth = 0, container) => {
       const subtreeMatches = (node) => matchesText(node.name)
         || node.boards.some((board) => matchesText(board.name))
         || node.children.some(subtreeMatches);
@@ -791,14 +859,28 @@
         actions.append(archiveFolder);
         }
       }
-      list.append(row);
+      const node = makeElement('div', 'boards-nav-folder-node');
+      node.append(row);
+      attachNavHandle(node, folder, 'folder', container);
+      container.append(node);
       if (collapsed) return;
-      folder.boards.filter((board) => matchesText(board.name)).forEach((board) => renderBoard(board, depth + 1));
-      folder.children.forEach((child) => renderFolder(child, depth + 1));
+      const boardsList = makeNavList(node, 'board');
+      const foldersList = makeNavList(node, 'folder');
+      folder.boards.filter((board) => matchesText(board.name)).sort(byPosition).forEach((board) => renderBoard(board, depth + 1, boardsList));
+      folder.children.sort(byPosition).forEach((child) => renderFolder(child, depth + 1, foldersList));
     };
-    rootBoards.forEach((board) => renderBoard(board, 0));
-    roots.forEach((folder) => renderFolder(folder));
-    if (!list.children.length) list.append(makeElement('p', 'boards-nav-empty', query ? 'No hay coincidencias en este espacio.' : 'Crea una carpeta o un tablero para empezar.'));
+    const rootBoardList = makeNavList(list, 'board');
+    const rootFolderList = makeNavList(list, 'folder');
+    rootBoards.sort(byPosition).forEach((board) => renderBoard(board, 0, rootBoardList));
+    roots.sort(byPosition).forEach((folder) => renderFolder(folder, 0, rootFolderList));
+    navSortables.forEach((sortable) => {
+      const siblings = [...sortable.el.children].filter((node) => node.dataset.navEntityId);
+      if (siblings.length < 2 || siblings.some((node) => node.dataset.canReorder !== '1')) {
+        sortable.option('disabled', true);
+        siblings.forEach((node) => { node.dataset.canReorder = '0'; });
+      }
+    });
+    if (!list.querySelector('[data-nav-entity-id]')) list.append(makeElement('p', 'boards-nav-empty', query ? 'No hay coincidencias en este espacio.' : 'Crea una carpeta o un tablero para empezar.'));
     populateWorkspaceSelectors();
   }
 
@@ -1183,6 +1265,7 @@
       state.selectedWorkspaceId = String(state.board?.workspace_id || state.selectedWorkspaceId || '');
       state.groups = Array.isArray(data.groups) ? data.groups : [];
       state.columns = Array.isArray(data.columns) ? data.columns : [];
+      renderBoardSearchColumns();
       state.items = Array.isArray(data.items) ? data.items : [];
       state.viewsAvailable = Array.isArray(data.views);
       state.views = state.viewsAvailable ? data.views : [];
@@ -1203,6 +1286,7 @@
       state.selectedItemIds.clear();
       state.inlineAddGroupId = '';
       els.boardSearch.value = '';
+      if (els.boardSearchColumn) els.boardSearchColumn.value = '';
       renderWorkspace();
       showLoading(false);
       els.boardWorkspace.hidden = false;
@@ -1928,6 +2012,7 @@
     }
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.className = 'boards-file-cell-input';
     input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
     input.setAttribute('aria-label', `Seleccionar archivo para ${item.name || 'elemento'}`);
@@ -1938,27 +2023,41 @@
     button.setAttribute('aria-label', button.title);
     button.addEventListener('click', () => input.click());
     input.addEventListener('change', async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const validationMessage = fileUploadValidationMessage(file);
-      if (validationMessage) {
-        setNotice(validationMessage, 'error');
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      const invalidFile = files.find((file) => fileUploadValidationMessage(file));
+      if (invalidFile) {
+        setNotice(`${invalidFile.name}: ${fileUploadValidationMessage(invalidFile)}`, 'error');
         input.value = '';
         return;
       }
       button.disabled = true;
-      button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>';
-      button.title = 'Subiendo archivo…';
-      button.setAttribute('aria-label', button.title);
+      let uploadedCount = 0;
+      let uploadError = null;
       try {
-        await uploadFileToItem(item, column, file);
+        for (const [index, file] of files.entries()) {
+          button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>';
+          button.title = `Subiendo ${index + 1} de ${files.length}…`;
+          button.setAttribute('aria-label', button.title);
+          await uploadFileToItem(item, column, file);
+          uploadedCount += 1;
+        }
         renderActiveView();
-        setNotice('Archivo subido y vinculado al elemento.', 'success');
       } catch (error) {
+        uploadError = error;
         renderActiveView();
-        setNotice(errorMessage(error, 'No se pudo subir el archivo.'), 'error');
       } finally {
         input.value = '';
+        button.disabled = false;
+        button.innerHTML = '<i class="fa-solid fa-plus" aria-hidden="true"></i>';
+        button.title = uploadedCount ? 'Adjuntar más archivos' : 'Subir archivos';
+        button.setAttribute('aria-label', button.title);
+      }
+      if (uploadError) {
+        const detail = errorMessage(uploadError, 'No se pudo subir el archivo.');
+        setNotice(uploadedCount ? `Se subieron ${uploadedCount} de ${files.length} archivos. ${detail}` : detail, 'error');
+      } else {
+        setNotice(`${uploadedCount} ${uploadedCount === 1 ? 'archivo subido y vinculado' : 'archivos subidos y vinculados'} al elemento.`, 'success');
       }
     });
     wrapper.append(input, button, list);
@@ -4165,9 +4264,27 @@
     }
   }
 
+  function renderBoardSearchColumns() {
+    if (!els.boardSearchColumn) return;
+    const previous = els.boardSearchColumn.value;
+    const options = [new Option('Todas las columnas', ''), new Option('Elemento', 'name')];
+    state.columns.forEach((column) => options.push(new Option(column.name || 'Columna', String(column.id))));
+    els.boardSearchColumn.replaceChildren(...options);
+    els.boardSearchColumn.value = options.some((option) => option.value === previous) ? previous : '';
+    els.boardSearchColumn.setAttribute('aria-label', els.boardSearchColumn.value
+      ? `Buscar en ${els.boardSearchColumn.selectedOptions[0]?.textContent || 'columna'}`
+      : 'Buscar en todas las columnas');
+  }
+
   function itemMatchesSearch(item, query) {
     if (!query) return true;
-    const searchData = [item.name, ...state.columns.map((column) => stringifyValue(getCellValue(item, column)))].join(' ').toLocaleLowerCase();
+    const selectedColumn = els.boardSearchColumn?.value || '';
+    const column = state.columns.find((candidate) => String(candidate.id) === selectedColumn);
+    const values = selectedColumn === 'name'
+      ? [item.name]
+      : column ? [stringifyValue(getCellValue(item, column))]
+        : [item.name, ...state.columns.map((entry) => stringifyValue(getCellValue(item, entry)))];
+    const searchData = values.join(' ').toLocaleLowerCase();
     return searchData.includes(query);
   }
 
@@ -4531,6 +4648,8 @@
   }
 
   function renderTable() {
+    itemSortables.forEach((sortable) => sortable.destroy());
+    itemSortables = [];
     const query = els.boardSearch.value.trim().toLocaleLowerCase();
     const filteredItems = getFilteredItems();
     const columns = orderedColumns();
@@ -4624,7 +4743,7 @@
         const nameCell = document.createElement('th');
         nameCell.scope = 'row';
         nameCell.className = 'boards-item-name';
-        nameCell.draggable = canEditBoard() && item.parent_item_id == null;
+        nameCell.draggable = !window.Sortable && canEditBoard() && item.parent_item_id == null;
         nameCell.append(createTableItemName(item));
         row.append(nameCell);
         columns.forEach((column) => {
@@ -4642,6 +4761,7 @@
       };
       const makeChildPanel = (parent, children) => {
         const panelRow = makeElement('tr', 'boards-subitems-panel-row');
+        panelRow.dataset.childrenOf = String(parent.id);
         const panelCell = document.createElement('td');
         panelCell.colSpan = columns.length + 2;
         const panel = makeElement('div', 'boards-subitems-panel');
@@ -4747,6 +4867,57 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    if (window.Sortable && canEditBoard() && !query && !state.filters.length) {
+      table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
+        itemSortables.push(window.Sortable.create(body, {
+          group: 'board-root-items',
+          draggable: 'tr.boards-item-row:not(.is-child-row)',
+          handle: '.boards-item-name',
+          filter: '.boards-item-name-form, .boards-item-name-form *, .boards-item-subtask-add, [data-recycle-type], .boards-select-cell, .boards-select-cell *',
+          preventOnFilter: false,
+          animation: 180, forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
+          ghostClass: 'boards-sortable-ghost',
+          disabled: itemOrderSaving,
+          onStart: (event) => {
+            const currentId = event.item.dataset.openItemDetails;
+            const current = state.items.find((item) => String(item.id) === currentId);
+            // A row move is persisted as one atomic item operation. Moving a
+            // selection would require sequential writes with stale row versions.
+            event.item._movingItems = current ? [current] : [];
+            const panel = event.item.nextElementSibling;
+            if (panel?.dataset.childrenOf === event.item.dataset.openItemDetails) {
+              event.item._childPanel = panel;
+              panel.hidden = true;
+            }
+            state.suppressItemClickUntil = Date.now() + 1000;
+          },
+          onMove: (event) => {
+            if (event.related.matches('.boards-group-row, .boards-group-columns')) return false;
+            if (event.related.matches('.boards-add-row, .boards-table-summary-row')) return event.willInsertAfter ? false : -1;
+          },
+          onEnd: (event) => {
+            const panel = event.item._childPanel;
+            if (panel) { event.item.after(panel); panel.hidden = false; delete event.item._childPanel; }
+            [event.from, event.to].forEach((body) => {
+              [...body.children].filter((row) => row.dataset.childrenOf).forEach((childPanel) => {
+                const parent = [...body.children].find((row) => row.dataset.openItemDetails === childPanel.dataset.childrenOf);
+                if (parent) parent.after(childPanel);
+              });
+            });
+            state.suppressItemClickUntil = Date.now() + 800;
+            const roots = [...event.to.children].filter((row) => row.matches('tr.boards-item-row:not(.is-child-row)'));
+            const movingItems = (event.item._movingItems || []).filter(Boolean);
+            delete event.item._movingItems;
+            const movingIds = new Set(movingItems.map((item) => String(item.id)));
+            const position = roots.slice(0, roots.indexOf(event.item)).filter((row) => !movingIds.has(row.dataset.openItemDetails)).length;
+            const item = state.items.find((candidate) => String(candidate.id) === event.item.dataset.openItemDetails);
+            if (!item || position < 0) { renderActiveView(); return; }
+            if (event.from === event.to && event.oldIndex === event.newIndex) return;
+            void saveSortableItem(item, event.to.dataset.groupBody, position, movingItems);
+          }
+        }));
+      });
+    }
     if (window.Sortable && canEditBoard() && state.groups.length > 1) {
       groupSortable = window.Sortable.create(table, {
         animation: 180,
@@ -5214,6 +5385,7 @@
   function renderActiveView() {
     const type = normalizeViewType(state.activeViewType);
     state.activeViewType = type;
+    renderBoardSearchColumns();
     applyBoardItemSize(state.viewConfig.item_size || 'double');
     updateItemCount(getFilteredItems().length);
     document.querySelectorAll('.boards-view-tab[data-view-type]').forEach((button) => {
@@ -5875,6 +6047,24 @@
       if (document.contains(select)) {
         select.value = String(item.group_id);
         select.disabled = false;
+      }
+    }
+  }
+
+  async function saveSortableItem(item, groupId, sortOrder, movingItems = [item]) {
+    if (itemOrderSaving) { renderActiveView(); return; }
+    itemOrderSaving = true;
+    const boardId = state.board?.id;
+    itemSortables.forEach((sortable) => sortable.option('disabled', true));
+    groupSortable?.option('disabled', true);
+    try {
+      await moveItemToGroup(item, groupId, sortOrder, movingItems);
+    } finally {
+      itemOrderSaving = false;
+      if (String(state.board?.id) === String(boardId)) {
+        renderActiveView();
+        const row = els.boardTableContainer.querySelector(`[data-open-item-details="${item.id}"]`);
+        row?.focus({ preventScroll: true });
       }
     }
   }
@@ -6758,6 +6948,12 @@
       }
     });
     document.getElementById('boardNavList')?.addEventListener('click', (event) => {
+      if (Date.now() < suppressNavClickUntil) {
+        suppressNavClickUntil = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       const button = event.target.closest('[data-nav-board]');
       if (button) {
         els.boardSelect.value = button.dataset.navBoard;
@@ -6807,6 +7003,12 @@
       }
     });
     els.boardSearch.addEventListener('input', renderActiveView);
+    els.boardSearchColumn?.addEventListener('change', () => {
+      els.boardSearchColumn.setAttribute('aria-label', els.boardSearchColumn.value
+        ? `Buscar en ${els.boardSearchColumn.selectedOptions[0]?.textContent || 'columna'}`
+        : 'Buscar en todas las columnas');
+      renderActiveView();
+    });
     document.querySelectorAll('.boards-view-tab[data-view-type]').forEach((button) => {
       button.addEventListener('click', () => switchView(button.dataset.viewType));
     });
@@ -7007,6 +7209,20 @@
       els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target, .is-drop-before, .is-drop-after').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
     });
     els.boardTableContainer.addEventListener('keydown', (event) => {
+      const itemRow = event.target.closest('.boards-item-row:not(.is-child-row)');
+      if (itemRow && event.target === itemRow && ['ArrowUp', 'ArrowDown'].includes(event.key)
+        && canEditBoard() && !state.filters.length && !els.boardSearch.value.trim()) {
+        const item = state.items.find((candidate) => String(candidate.id) === itemRow.dataset.openItemDetails);
+        const siblings = state.items.filter((candidate) => candidate.parent_item_id == null && String(candidate.group_id) === String(item?.group_id))
+          .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+        const current = siblings.indexOf(item);
+        const next = current + (event.key === 'ArrowUp' ? -1 : 1);
+        if (item && current >= 0 && next >= 0 && next < siblings.length) {
+          event.preventDefault();
+          void saveSortableItem(item, item.group_id, next);
+        }
+        return;
+      }
       const heading = event.target.closest('.boards-group-heading');
       if (!heading || !['ArrowUp', 'ArrowDown'].includes(event.key) || !canEditBoard()) return;
       const current = state.groups.findIndex((group) => String(group.id) === heading.closest('[data-group-body]')?.dataset.groupBody);
@@ -7092,6 +7308,12 @@
         }
         const nameButton = event.target.closest('[data-item-name-button]');
         if (nameButton) {
+          if (Date.now() < state.suppressItemClickUntil) {
+            state.suppressItemClickUntil = 0;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+          }
           event.stopPropagation();
           beginItemNameEdit(nameButton);
           return;

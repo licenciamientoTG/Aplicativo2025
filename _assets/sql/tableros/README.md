@@ -13,6 +13,7 @@
 - `010_allow_sticker_only_comments.sql` permite comentarios de archivo que contienen solamente stickers, quitando la restricción que exigía texto. Es idempotente y no modifica datos; ejecutar después de `006_file_comments.sql`.
 - `011_trash_archive.sql` agrega el registro común de papelera/archivo y la cola de limpieza física con reintentos. Ejecutar después de `010_allow_sticker_only_comments.sql` en instalaciones existentes y nuevas.
 - `012_access_control.sql` canonicaliza visibilidad (`open`/`closed` para espacios de trabajo; `private`/`workspace`/`organization` para tableros), actualiza los roles de miembros de tablero y crea la bitácora de acceso administrativo. Ejecutar después de `011_trash_archive.sql` y antes de desplegar la aplicación que usa estos valores.
+- `014_board_sort_order.sql` agrega `sort_order` a `tb_board` y conserva el orden alfabético actual como punto inicial. Ejecutar en `tableros` antes de desplegar la aplicación que permite reordenar tableros. Es aditivo y no cambia ni elimina tableros; una reversión elimina el orden personalizado y vuelve a ordenar por nombre.
 - La conexión de la aplicación a `tableros` reutiliza la configuración SQL existente sin cambiar la conexión compartida de los demás modelos.
 
 Después de desplegar el código, Sistemas debe asignar en `/it` los permisos **Tableros - Acceso**, **Tableros - Crear** y **Tableros - Administrar** a las personas correspondientes. El módulo no concede acceso automáticamente.

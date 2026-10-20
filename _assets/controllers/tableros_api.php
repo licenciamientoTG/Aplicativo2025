@@ -27,6 +27,12 @@ class tableros_api {
         });
     }
 
+    public function reorder_structure(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            return $this->model->reorderStructure($userId, $this->access->hasGlobalPermission('admin'), $input);
+        });
+    }
+
     public function workspace_members(): void {
         $this->handle('GET', function (int $userId): array {
             $workspaceId = $this->positiveInt($_GET['workspace_id'] ?? null, 'workspace_id');
