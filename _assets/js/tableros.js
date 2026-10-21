@@ -4659,12 +4659,12 @@
       meta.append(recycleAction('Eliminar grupo', 'group', group.id, 'trash', state.board?.id));
       meta.append(recycleAction('Archivar grupo', 'group', group.id, 'archive', state.board?.id));
     }
+    groupWrap.append(meta);
     titleCell.append(groupWrap);
 
     const metaCell = document.createElement('td');
     metaCell.className = 'boards-group-meta-cell';
     metaCell.colSpan = Math.max(1, columnCount);
-    metaCell.append(meta);
     row.append(titleCell, metaCell);
     return row;
   }

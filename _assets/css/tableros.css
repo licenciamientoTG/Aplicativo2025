@@ -254,13 +254,13 @@
 .boards-table .boards-group-row { position: sticky; z-index: 8; top: 0; }
 .boards-table .boards-group-row > td { position: relative; }
 .boards-table .boards-group-row > .boards-group-title-cell { position: sticky; z-index: 9; left: 0; padding: 0; }
-.boards-group-meta-cell { padding-inline: 12px !important; text-align: right; }
-.boards-group-meta { justify-content: flex-end; }
+.boards-group-meta-cell { padding: 0 !important; }
+.boards-group-meta { flex: 0 0 auto; justify-content: flex-end; gap: 8px; white-space: nowrap; }
 .boards-group-heading { width: 100%; min-height: 41px; box-sizing: border-box; justify-content: space-between; gap: 12px; }
 .boards-group-toggle { min-width: 0; gap: 9px; padding: 6px 2px; border: 0; color: var(--boards-ink); background: transparent; text-align: left; }
 .boards-group-heading { cursor: grab; }
 .boards-group-heading:active { cursor: grabbing; }
-.boards-group-toggle { flex: 0 1 auto; margin-right: auto; }
+.boards-group-toggle { flex: 1 1 auto; min-width: 0; margin-right: 0; }
 .boards-group-sortable-ghost > .boards-group-row > td { opacity: .28; border-top: 3px solid #8baaff; border-bottom: 3px solid #8baaff; }
 .boards-group-sortable-chosen > .boards-group-row > td { cursor: grabbing; }
 .boards-group-sortable-drag { opacity: .96; }
@@ -276,9 +276,9 @@
 .boards-rating-percentage { display: flex; align-items: center; gap: 7px; }
 .boards-rating-percentage > span { color: #86969e; font-weight: 700; }
 .boards-group-toggle > i { width: 12px; color: #71848d; font-size: .7rem; }
-.boards-group-toggle strong { overflow: hidden; max-width: 400px; text-overflow: ellipsis; white-space: nowrap; font-size: .84rem; font-weight: 600; }
+.boards-group-toggle strong { min-width: 0; flex: 1 1 auto; overflow: hidden; max-width: 400px; text-overflow: ellipsis; white-space: nowrap; font-size: .84rem; font-weight: 600; }
 .boards-group-marker { flex: 0 0 4px; width: 4px; height: 21px; border-radius: 2px; background: var(--group-color, var(--boards-petrol)); }
-.boards-group-meta { flex: 0 0 auto; gap: 12px; }
+.boards-group-meta { flex: 0 0 auto; gap: 8px; white-space: nowrap; }
 .boards-group-count { color: #71828b; font-size: .73rem; white-space: nowrap; }
 .boards-add-in-group { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid transparent; border-radius: 4px; color: #4f6b77; background: transparent; font-size: .73rem; }
 .boards-add-in-group:hover { border-color: #c8d8dd; color: var(--boards-petrol-dark); background: #fff; }
