@@ -54,7 +54,8 @@ class NotasCreditoConsumosModel extends Model {
 
             SELECT DISTINCT gasapl, nroapl INTO #fac FROM #apl;
 
-            SELECT t.gasfac, t.nrofac, COUNT(*) AS n, SUM(t.can) AS litros, SUM(t.mto) AS monto
+            SELECT t.gasfac, t.nrofac, COUNT(*) AS n, SUM(t.can) AS litros, SUM(t.mto) AS monto,
+                   MIN(t.fchtrn) AS fch_min, MAX(t.fchtrn) AS fch_max
               INTO #desp
               FROM #fac f
               JOIN SG12.dbo.Despachos t WITH (NOLOCK) ON t.nrofac = f.nroapl AND t.gasfac = f.gasapl
@@ -102,6 +103,8 @@ class NotasCreditoConsumosModel extends Model {
                        SUM(ISNULL(ds.n, 0))               AS despachos,
                        SUM(ISNULL(ds.litros, 0))          AS litros,
                        SUM(ISNULL(ds.monto, 0))           AS monto_despachos,
+                       MIN(ds.fch_min)                    AS fch_min,
+                       MAX(ds.fch_max)                    AS fch_max,
                        MAX(ISNULL(np.notas, 1) - 1)       AS otras_notas
                   FROM #apl a
                   LEFT JOIN #desp ds ON ds.nrofac = a.nroapl AND ds.gasfac = a.gasapl
@@ -117,6 +120,8 @@ class NotasCreditoConsumosModel extends Model {
                    ISNULL(pn.despachos, 0)       AS despachos,
                    ISNULL(pn.litros, 0)          AS litros,
                    ISNULL(pn.monto_despachos, 0) AS monto_despachos,
+                   CONVERT(varchar(10), DATEADD(day, pn.fch_min - 1, '19000101'), 23) AS despacho_desde,
+                   CONVERT(varchar(10), DATEADD(day, pn.fch_max - 1, '19000101'), 23) AS despacho_hasta,
                    ISNULL(pn.otras_notas, 0)     AS otras_notas,
                    (SELECT STRING_AGG(emp.den, ', ') FROM #nemp ne
                       JOIN SG12.dbo.Empresas emp WITH (NOLOCK) ON emp.cod = ne.codemp
@@ -147,12 +152,13 @@ class NotasCreditoConsumosModel extends Model {
      *   LIGADO       su factura E tiene nota G
      * $soloSinNota deja solo SIN_FACTURA y E_SIN_NOTA.
      * $empresa: 0 = todas, -1 = estaciones sin razón social, >0 = SG12.Empresas.cod.
+     * fecha_nota_min = la nota G más antigua de la factura (para el periodo de facturación).
      */
     public function despachos_debito(int $from, int $until, bool $soloSinNota, int $empresa = 0): array {
         $query = "
             SET NOCOUNT ON;
             DECLARE @d int = ?, @h int = ?, @solo bit = ?, @emp int = ?;
-            DROP TABLE IF EXISTS #d, #fac, #n;
+            DROP TABLE IF EXISTS #d, #fac, #n, #fe;
 
             SELECT t.codgas, t.nrotrn, t.fchtrn, t.hratrn, t.codcli, t.codprd, t.can, t.mto, t.nrofac, t.gasfac,
                    EMP.den AS razon_social
@@ -167,20 +173,42 @@ class NotasCreditoConsumosModel extends Model {
 
             SELECT DISTINCT gasfac, nrofac INTO #fac FROM #d WHERE nrofac BETWEEN 1300000000 AND 1399999999;
 
-            SELECT a.gasapl, a.nroapl, STRING_AGG(CAST(a.nro AS varchar(12)), ',') AS notas
+            -- Una E puede tener varias notas: folio, fecha y UUID en el mismo orden
+            SELECT a.gasapl, a.nroapl,
+                   STRING_AGG(CAST(a.nro AS varchar(12)), ',') WITHIN GROUP (ORDER BY a.nro) AS notas,
+                   STRING_AGG(CONVERT(varchar(10), DATEADD(day, g.fch - 1, '19000101'), 23), ',') WITHIN GROUP (ORDER BY a.nro) AS fechas_nota,
+                   STRING_AGG(ISNULL(CAST(g.satuid AS varchar(50)), ''), ',') WITHIN GROUP (ORDER BY a.nro) AS uuids_nota,
+                   MIN(g.fch) AS fch_nota_min,
+                   MIN(COALESCE(tg.FechaTimbrado, g.lognew)) AS timbrado_nota_min
               INTO #n
               FROM #fac f
               JOIN SG12.dbo.DocumentosA a WITH (NOLOCK) ON a.nroapl = f.nrofac AND a.gasapl = f.gasfac
               JOIN SG12.dbo.DocumentosC g WITH (NOLOCK)
                 ON g.nro = a.nro AND g.codgas = a.codgas AND g.tip = 6 AND g.flgcon <> " . self::FLGCON_CANCELADA . "
+              LEFT JOIN [TGV2].dbo.Facturas tg WITH (NOLOCK) ON tg.UUID = g.satuid
              GROUP BY a.gasapl, a.nroapl;
+
+            -- Fecha y timbrado de cada factura E. ControlGas deja fechar la E en
+            -- el mes del consumo aunque se timbre después; el timbrado sale del
+            -- CFDI descargado del SAT (TGV2) y, si no está, de DocumentosC.lognew
+            -- (alta del documento, coincide con el timbrado al minuto).
+            SELECT f.gasfac, f.nrofac, e.fch, COALESCE(tf.FechaTimbrado, e.lognew) AS timbrado
+              INTO #fe
+              FROM #fac f
+              JOIN SG12.dbo.DocumentosC e WITH (NOLOCK) ON e.nro = f.nrofac AND e.codgas = f.gasfac
+              LEFT JOIN [TGV2].dbo.Facturas tf WITH (NOLOCK) ON tf.UUID = e.satuid;
 
             SELECT x.*
               FROM (
                 SELECT gs.abr AS estacion, d.codgas, d.nrotrn,
                        CONVERT(varchar(10), DATEADD(day, d.fchtrn - 1, '19000101'), 23) AS fecha,
                        d.hratrn, d.codcli, cl.den AS cliente, p.den AS producto,
-                       d.can, d.mto, d.nrofac, n.notas, ISNULL(d.razon_social, '(Sin razón social)') AS razon_social,
+                       d.can, d.mto, d.nrofac, n.notas, n.fechas_nota, n.uuids_nota,
+                       CONVERT(varchar(10), DATEADD(day, n.fch_nota_min - 1, '19000101'), 23) AS fecha_nota_min,
+                       CONVERT(varchar(16), n.timbrado_nota_min, 120) AS timbrado_nota,
+                       CONVERT(varchar(10), DATEADD(day, fe.fch - 1, '19000101'), 23) AS fecha_factura,
+                       CONVERT(varchar(16), fe.timbrado, 120) AS timbrado_factura,
+                       ISNULL(d.razon_social, '(Sin razón social)') AS razon_social,
                        CASE WHEN ISNULL(d.nrofac, 0) = 0 AND d.mto <= 0 THEN 'MONTO_CERO'
                             WHEN ISNULL(d.nrofac, 0) = 0 THEN 'SIN_FACTURA'
                             WHEN d.nrofac NOT BETWEEN 1300000000 AND 1399999999 THEN 'OTRA_SERIE'
@@ -188,6 +216,7 @@ class NotasCreditoConsumosModel extends Model {
                             ELSE 'LIGADO' END AS estado
                   FROM #d d
                   LEFT JOIN #n n ON n.nroapl = d.nrofac AND n.gasapl = d.gasfac
+                  LEFT JOIN #fe fe ON fe.nrofac = d.nrofac AND fe.gasfac = d.gasfac
                   LEFT JOIN SG12.dbo.Gasolineras gs ON gs.cod = d.codgas
                   LEFT JOIN SG12.dbo.Clientes cl WITH (NOLOCK) ON cl.cod = d.codcli
                   LEFT JOIN SG12.dbo.Productos p ON p.cod = d.codprd
@@ -195,7 +224,7 @@ class NotasCreditoConsumosModel extends Model {
              WHERE @solo = 0 OR x.estado IN ('SIN_FACTURA', 'E_SIN_NOTA')
              ORDER BY x.fecha DESC, x.cliente, x.hratrn;
 
-            DROP TABLE IF EXISTS #d, #fac, #n;";
+            DROP TABLE IF EXISTS #d, #fac, #n, #fe;";
         return $this->sql->select($query, [$from, $until, $soloSinNota ? 1 : 0, $empresa]) ?: [];
     }
 }

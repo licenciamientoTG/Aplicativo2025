@@ -41,6 +41,7 @@ class Tesoreria
      * Banorte de Héctor Armandino Fierro Holguín.
      * Las 3 de Banorte/Diaz Gas se agregaron el 2026-08-19, confirmadas
      * contra el catálogo (mismo titular, activas).
+     * La 6527 de Banorte/Diaz Gas se agregó el 2026-10-21 (catálogo Id 3366).
      */
     private const CUENTAS_PERFIL_CREDITO = [
         '1209082994',    // Banorte, Héctor Armandino Fierro Holguín
@@ -51,6 +52,7 @@ class Tesoreria
         '0601500956',    // Banorte, Diaz Gas SA de CV
         '0601500947',    // Banorte, Diaz Gas SA de CV
         '0186932791',    // Banorte, Diaz Gas SA de CV
+        '1155446527',    // Banorte, Diaz Gas SA de CV (DG 6527)
     ];
 
     /**

@@ -110,6 +110,9 @@ class Accounting{
         echo $this->twig->render($this->route . 'credit_notes_consumption.html', [
             'desde'    => date('Y-m-01'),
             'hasta'    => date('Y-m-d'),
+            // Tab "Periodo de facturación": por defecto el mes anterior (ya facturado)
+            'p_desde'  => date('Y-m-01', strtotime('first day of last month')),
+            'p_hasta'  => date('Y-m-t', strtotime('first day of last month')),
             // Mismo catálogo de razones sociales que /income/clients
             'empresas' => (new ClientesModel())->get_station_companies(),
         ]);
@@ -149,6 +152,8 @@ class Accounting{
                 'despachos'       => (int)$r['despachos'],
                 'litros'          => round((float)$r['litros'], 3),
                 'monto_despachos' => $despachos,
+                'despacho_desde'  => $r['despacho_desde'] ?? '',
+                'despacho_hasta'  => $r['despacho_hasta'] ?? '',
                 'diferencia'      => round($total - $despachos, 2),
                 'estatus'         => $estatus,
                 'uuid'            => $r['satuid'],
@@ -186,7 +191,80 @@ class Accounting{
                 'monto'    => round((float)$r['mto'], 2),
                 'factura'  => (int)$r['nrofac'] ? get_invoice_series((int)$r['nrofac']) : '',
                 'nota'     => $r['notas'] ? implode(', ', array_map(fn($n) => get_invoice_series((int)$n), explode(',', $r['notas']))) : '',
+                'fecha_nota' => str_replace(',', ', ', (string)$r['fechas_nota']),
+                'uuid_nota'  => trim(str_replace(',', ', ', (string)$r['uuids_nota']), ', '),
                 'estado'   => $estados[$r['estado']] ?? $r['estado'],
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /**
+     * POST AJAX: despachos de clientes débito del rango comparando el mes del
+     * despacho contra el mes de TIMBRADO de su factura E y de su nota G (la más
+     * antigua si la factura tiene varias). Las dos tienen que estar en el mes
+     * del despacho. La fecha del documento se muestra aparte: ControlGas deja
+     * fechar la E en el mes del consumo aunque se timbre al mes siguiente.
+     * Mismo universo que credit_notes_consumption_dispatches.
+     */
+    public function credit_notes_consumption_period(): void {
+        [$from, $until] = $this->rango_notas_consumos();
+        $empresa = (int)($_POST['empresa'] ?? 0);
+        // Meses entre dos 'YYYY-MM'
+        $desfase = function (string $a, string $b): int {
+            [$ya, $ma] = array_map('intval', explode('-', $a));
+            [$yb, $mb] = array_map('intval', explode('-', $b));
+            return ($yb - $ya) * 12 + ($mb - $ma);
+        };
+        $data = [];
+        foreach ($this->notasConsumosModel->despachos_debito($from, $until, false, $empresa) as $r) {
+            $periodoDesp = substr((string)$r['fecha'], 0, 7);
+            $esE   = in_array($r['estado'], ['LIGADO', 'E_SIN_NOTA'], true);
+            $mesE  = $esE && $r['timbrado_factura'] ? substr($r['timbrado_factura'], 0, 7) : '';
+            $mesG  = $r['estado'] === 'LIGADO' && $r['timbrado_nota'] ? substr($r['timbrado_nota'], 0, 7) : '';
+            $mesesE = $mesE !== '' ? $desfase($periodoDesp, $mesE) : null;
+            $mesesG = $mesG !== '' ? $desfase($periodoDesp, $mesG) : null;
+            $estatusE = $mesesE === null ? '' : ($mesesE === 0 ? 'En periodo' : 'Fuera de periodo');
+            $estatusG = $mesesG === null ? '' : ($mesesG === 0 ? 'En periodo' : 'Fuera de periodo');
+
+            if ($r['estado'] === 'LIGADO') {
+                $estatus = match (true) {
+                    $mesesE === 0 && $mesesG === 0 => 'En periodo',
+                    $mesesE !== 0 && $mesesG !== 0 => 'E y G fuera de periodo',
+                    $mesesE !== 0                  => 'E fuera de periodo',
+                    default                        => 'G fuera de periodo',
+                };
+            } elseif (in_array($r['estado'], ['SIN_FACTURA', 'E_SIN_NOTA'], true)) {
+                $estatus = 'Sin nota G';
+            } else {
+                $estatus = 'No aplica';
+            }
+            $hora = str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
+            $data[] = [
+                'periodo'       => $periodoDesp,
+                'estacion'      => trim((string)$r['estacion']),
+                'razon_social'  => $r['razon_social'],
+                'despacho'      => $r['nrotrn'],
+                'fecha'         => $r['fecha'],
+                'hora'          => substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'codcli'        => $r['codcli'],
+                'cliente'       => $r['cliente'],
+                'litros'        => round((float)$r['can'], 3),
+                'monto'         => round((float)$r['mto'], 2),
+                'factura'       => (int)$r['nrofac'] ? get_invoice_series((int)$r['nrofac']) : '',
+                'fecha_factura'    => $esE ? ($r['fecha_factura'] ?? '') : '',
+                'timbrado_factura' => $esE ? ($r['timbrado_factura'] ?? '') : '',
+                'meses_e'          => $mesesE,
+                'estatus_e'        => $estatusE,
+                // La fecha de la E dice el mes del consumo pero se timbró en otro
+                'e_fechada'        => $esE && $mesesE !== 0 && substr((string)$r['fecha_factura'], 0, 7) === $periodoDesp,
+                'nota'             => $r['notas'] ? implode(', ', array_map(fn($n) => get_invoice_series((int)$n), explode(',', $r['notas']))) : '',
+                'fecha_nota'       => $r['fecha_nota_min'] ?? '',
+                'timbrado_nota'    => $r['timbrado_nota'] ?? '',
+                'meses_g'          => $mesesG,
+                'estatus_g'        => $estatusG,
+                'uuid_nota'        => trim(str_replace(',', ', ', (string)$r['uuids_nota']), ', '),
+                'estatus'          => $estatus,
             ];
         }
         json_output(['data' => $data]);
