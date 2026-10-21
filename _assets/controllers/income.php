@@ -522,6 +522,28 @@ public function balance_age()
         json_output(['data' => $rows ?: []]);
     }
 
+    /** Cortes donde despachos ≠ ValesR para un cliente. POST /income/clients_cortes_diff (tipval 4=débito/3=crédito). */
+    public function clients_cortes_diff() : void {
+        $from    = $this->createDateTime($_POST['from']  ?? date('Y-m-01'));
+        $until   = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+        $tipval  = (int)($_POST['tipval']  ?? 4) === 3 ? 3 : 4;
+        $codcli  = (int)($_POST['codcli']  ?? 0);
+        $empresa = (int)($_POST['empresa'] ?? 0);
+
+        if ($codcli <= 0) {
+            json_output(['data' => []]);
+            return;
+        }
+        $rows = $this->clientesModel->get_cortes_diff_by_client(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $tipval,
+            $codcli,
+            $empresa
+        );
+        json_output(['data' => $rows ?: []]);
+    }
+
     public function client_anticipos_table() : void {
         $codcli = (int)($_POST['codcli'] ?? 0);
         $from   = $this->createDateTime($_POST['from']  ?? date('Y-01-01'));

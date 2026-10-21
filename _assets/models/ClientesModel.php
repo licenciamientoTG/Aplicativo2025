@@ -192,32 +192,112 @@ class ClientesModel extends Model{
     }
 
     /**
-     * Consumos sumados por cliente (un renglón por cliente, todas sus razones sociales juntas).
-     * $tipval: 4 = débito, 3 = crédito. $codcli: 0 = todos. $empresa: 0 = todas, -1 = estaciones sin razón social, >0 = SG12.Empresas.cod.
+     * Consumos sumados por cliente (un renglón por cliente, todas sus razones sociales juntas),
+     * comparados contra lo que entró en los cortes (SG12.ValesR, mismo origen que Ingresos / Venta por Rubro).
+     * Despachos se filtra por fecha del despacho y ValesR por fecha del corte (coinciden salvo ~5 despachos/mes).
+     * Cuenta los clientes que solo aparecen de un lado (FULL JOIN), p. ej. PUBLICO EN GENERAL débito sin corte.
+     * $tipval: 4 = débito (valor 127), 3 = crédito (valor 28). $codcli: 0 = todos.
+     * $empresa: 0 = todas, -1 = estaciones sin razón social, >0 = SG12.Empresas.cod.
      */
     public function get_dispatches_summary_by_client(int $from, int $until, int $tipval = 4, int $codcli = 0, int $empresa = 0) : array|false {
-        $query = "SELECT
-                    t1.codcli,
-                    t2.den AS Cliente,
-                    COUNT(DISTINCT EMP.cod) AS RazonesSociales,
-                    COUNT(DISTINCT t1.codgas) AS Estaciones,
-                    COUNT(*) AS Despachos,
-                    CAST(SUM(t1.can) AS decimal(18,3)) AS Litros,
-                    CAST(SUM(t1.mto) AS decimal(18,2)) AS Monto,
-                    CONVERT(VARCHAR(10), CAST(MIN(t1.fchtrn) AS DATETIME) - 1, 23) AS PrimerConsumo,
-                    CONVERT(VARCHAR(10), CAST(MAX(t1.fchtrn) AS DATETIME) - 1, 23) AS UltimoConsumo
-                FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
-                LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
-                LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
-                WHERE t1.fchtrn BETWEEN ? AND ?
-                    AND t1.codcli > 0
-                    AND t2.tipval = ?
-                    AND (? = 0 OR t1.codcli = ?)
-                    AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
-                GROUP BY t1.codcli, t2.den
-                ORDER BY SUM(t1.mto) DESC";
-        return $this->sql->select($query, [$from, $until, $tipval, $codcli, $codcli, $empresa, $empresa, $empresa]) ?: false;
+        $codval = $tipval === 3 ? 28 : 127;
+        $query = "WITH d AS (
+                    SELECT
+                        t1.codcli,
+                        COUNT(DISTINCT EMP.cod) AS RazonesSociales,
+                        COUNT(DISTINCT t1.codgas) AS Estaciones,
+                        COUNT(*) AS Despachos,
+                        SUM(t1.can) AS Litros,
+                        SUM(t1.mto) AS Monto,
+                        MIN(t1.fchtrn) AS PrimerFch,
+                        MAX(t1.fchtrn) AS UltimoFch
+                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                    JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
+                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    WHERE t1.fchtrn BETWEEN ? AND ?
+                        AND t1.codcli > 0
+                        AND t2.tipval = ?
+                        AND (? = 0 OR t1.codcli = ?)
+                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                    GROUP BY t1.codcli
+                ), r AS (
+                    SELECT r.codcli, SUM(r.mto) AS MontoCortes
+                    FROM [SG12].[dbo].[ValesR] r WITH (NOLOCK)
+                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
+                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    WHERE r.fch BETWEEN ? AND ?
+                        AND r.codval = ?
+                        AND (? = 0 OR r.codcli = ?)
+                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                    GROUP BY r.codcli
+                )
+                SELECT
+                    COALESCE(d.codcli, r.codcli) AS codcli,
+                    ISNULL(c.den, '(Cliente ' + CAST(COALESCE(d.codcli, r.codcli) AS VARCHAR(12)) + ')') AS Cliente,
+                    ISNULL(d.RazonesSociales, 0) AS RazonesSociales,
+                    ISNULL(d.Estaciones, 0) AS Estaciones,
+                    ISNULL(d.Despachos, 0) AS Despachos,
+                    CAST(ISNULL(d.Litros, 0) AS decimal(18,3)) AS Litros,
+                    CAST(ISNULL(d.Monto, 0) AS decimal(18,2)) AS Monto,
+                    CAST(ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS MontoCortes,
+                    CAST(ISNULL(d.Monto, 0) - ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS Diferencia,
+                    CONVERT(VARCHAR(10), CAST(d.PrimerFch AS DATETIME) - 1, 23) AS PrimerConsumo,
+                    CONVERT(VARCHAR(10), CAST(d.UltimoFch AS DATETIME) - 1, 23) AS UltimoConsumo
+                FROM d
+                FULL JOIN r ON r.codcli = d.codcli
+                LEFT JOIN [SG12].[dbo].[Clientes] c ON c.cod = COALESCE(d.codcli, r.codcli)
+                ORDER BY ISNULL(d.Monto, 0) DESC";
+        return $this->sql->select($query, [
+            $from, $until, $tipval, $codcli, $codcli, $empresa, $empresa, $empresa,
+            $from, $until, $codval, $codcli, $codcli, $empresa, $empresa, $empresa,
+        ]) ?: false;
+    }
+
+    /**
+     * Cortes (estación + fecha de corte + turno) donde los despachos de un cliente no cuadran contra SG12.ValesR.
+     * Aquí ambos lados van por fecha de corte (Despachos.fchcor = ValesR.fch) para comparar corte contra corte.
+     * $tipval: 4 = débito (valor 127), 3 = crédito (valor 28). $empresa igual que en get_dispatches_summary_by_client.
+     */
+    public function get_cortes_diff_by_client(int $from, int $until, int $tipval, int $codcli, int $empresa = 0) : array|false {
+        $codval = $tipval === 3 ? 28 : 127;
+        $query = "WITH d AS (
+                    SELECT t1.codgas, t1.fchcor AS fch, t1.nrotur, COUNT(*) AS Despachos, SUM(t1.mto) AS Monto
+                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    WHERE t1.fchcor BETWEEN ? AND ?
+                        AND t1.codcli = ?
+                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                    GROUP BY t1.codgas, t1.fchcor, t1.nrotur
+                ), r AS (
+                    SELECT r.codgas, r.fch, r.nrotur, SUM(r.mto) AS MontoCortes
+                    FROM [SG12].[dbo].[ValesR] r WITH (NOLOCK)
+                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
+                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    WHERE r.fch BETWEEN ? AND ?
+                        AND r.codcli = ?
+                        AND r.codval = ?
+                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                    GROUP BY r.codgas, r.fch, r.nrotur
+                )
+                SELECT
+                    CONVERT(VARCHAR(10), CAST(COALESCE(d.fch, r.fch) AS DATETIME) - 1, 23) AS FechaCorte,
+                    COALESCE(d.nrotur, r.nrotur) AS Turno,
+                    G.abr AS Estacion,
+                    ISNULL(d.Despachos, 0) AS Despachos,
+                    CAST(ISNULL(d.Monto, 0) AS decimal(18,2)) AS Monto,
+                    CAST(ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS MontoCortes,
+                    CAST(ISNULL(d.Monto, 0) - ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS Diferencia
+                FROM d
+                FULL JOIN r ON r.codgas = d.codgas AND r.fch = d.fch AND r.nrotur = d.nrotur
+                LEFT JOIN [SG12].[dbo].[Gasolineras] G ON G.cod = COALESCE(d.codgas, r.codgas)
+                WHERE ABS(ISNULL(d.Monto, 0) - ISNULL(r.MontoCortes, 0)) >= 0.01
+                ORDER BY COALESCE(d.fch, r.fch), G.abr, COALESCE(d.nrotur, r.nrotur)";
+        return $this->sql->select($query, [
+            $from, $until, $codcli, $empresa, $empresa, $empresa,
+            $from, $until, $codcli, $codval, $empresa, $empresa, $empresa,
+        ]) ?: false;
     }
 
     /**
