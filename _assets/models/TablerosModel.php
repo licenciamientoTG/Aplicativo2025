@@ -155,7 +155,7 @@ class TablerosModel {
         if (!in_array($type, ['workspace', 'folder', 'board', 'group', 'column', 'item', 'file'], true)) {
             throw new TablerosApiException('validation', 'El tipo de elemento no se puede eliminar.', 422);
         }
-        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['workspace', 'folder', 'board', 'group', 'item'], true))) {
+        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['workspace', 'folder', 'board', 'group', 'item', 'file'], true))) {
             throw new TablerosApiException('validation', 'El tipo de elemento no se puede archivar.', 422);
         }
         $ids = $input['entity_ids'] ?? [$input['entity_id'] ?? null];

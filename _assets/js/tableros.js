@@ -240,6 +240,7 @@
   let groupSortable = null;
   let navSortables = [];
   let itemSortables = [];
+  let kanbanSortables = [];
   let navOrderSaving = false;
   let itemOrderSaving = false;
   let suppressNavClickUntil = 0;
@@ -318,6 +319,7 @@
         const payload = { entity_type: entityType, entity_id: entityId, ...(boardId ? { board_id: boardId } : {}) };
         await post(archive ? '/archive' : '/trash', payload);
       }
+      if (entityType === 'file' && els.filePreviewDialog?.open) closeDialog(els.filePreviewDialog);
       if (action === 'trash' || archive) {
         if (entityType === 'board' && String(state.board?.id) === String(entityId)) {
           state.board = null;
@@ -3139,6 +3141,10 @@
     els.filePreviewTitle.textContent = name;
     els.filePreviewType.textContent = type.extension ? type.extension.toUpperCase() : (type.mime || 'Archivo');
     els.filePreviewIcon.replaceChildren(makeElement('i', `fa-solid ${type.icon}`));
+    els.filePreviewDialog.querySelectorAll('[data-preview-action]').forEach((button) => {
+      button.hidden = !canEditBoard();
+      button.disabled = false;
+    });
     els.filePreviewContent.replaceChildren();
     if (els.filePreviewPanel) els.filePreviewPanel.hidden = true;
     document.querySelectorAll('[data-preview-panel]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
@@ -3292,6 +3298,7 @@
           const frame = makeElement('iframe', 'boards-preview-frame boards-preview-spreadsheet-frame');
           frame.src = filePreviewObjectUrl;
           frame.title = `Vista previa de ${name}`;
+          frame.style.colorScheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
           frame.referrerPolicy = 'no-referrer';
           frame.setAttribute('sandbox', '');
           els.filePreviewContent.replaceChildren(frame);
@@ -3300,6 +3307,7 @@
           const frame = makeElement('iframe', 'boards-preview-frame');
           frame.src = filePreviewObjectUrl;
           frame.title = `Vista previa de ${name}`;
+          frame.style.colorScheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
           frame.referrerPolicy = 'no-referrer';
           els.filePreviewContent.replaceChildren(frame);
         } else {
@@ -3307,7 +3315,6 @@
           if (previewRequest !== filePreviewRequest) return;
           const pre = makeElement('pre', 'boards-preview-text');
           pre.textContent = text;
-          pre.style.cssText = 'box-sizing:border-box;width:100%;height:100%;margin:0;padding:20px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#e7e9f5;background:#1b1e34;font:inherit;text-align:left;';
           els.filePreviewContent.replaceChildren(pre);
         }
       } catch (error) {
@@ -5585,7 +5592,15 @@
   }
 
   function renderActiveView() {
+    kanbanSortables.forEach((sortable) => sortable.destroy());
+    kanbanSortables = [];
     const type = normalizeViewType(state.activeViewType);
+    if (type !== 'table') {
+      itemSortables.forEach((sortable) => sortable.destroy());
+      itemSortables = [];
+      groupSortable?.destroy();
+      groupSortable = null;
+    }
     state.activeViewType = type;
     renderBoardSearchColumns();
     applyBoardItemSize(state.viewConfig.item_size || 'double');
@@ -5777,6 +5792,7 @@
     const fieldId = state.viewConfig.kanban_column_id || 'groups';
     const column = fieldId === 'groups' ? null : state.columns.find((candidate) => String(candidate.id) === String(fieldId));
     const items = getFilteredItems();
+    const canDragKanban = canEditBoard() && !boardSearchValue().trim() && !state.filters.length;
     const board = makeElement('div', 'boards-kanban-board');
     let lanes = [];
     if (!column) {
@@ -5817,7 +5833,9 @@
       laneItems.forEach((item) => {
         const card = makeElement('article', 'boards-kanban-card');
         card.dataset.kanbanItem = String(item.id);
-        card.draggable = canEditBoard() && item.parent_item_id == null;
+        const canDragCard = canDragKanban && item.parent_item_id == null;
+        card.classList.toggle('is-draggable', canDragCard);
+        card.draggable = canDragCard && !window.Sortable;
         if (column && ['status', 'dropdown'].includes(columnType(column))) card.style.setProperty('--kanban-status-color', safeGroupColor(lane.color));
         card.append(createItemNameControl(item, 'boards-kanban-card-title'));
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
@@ -5884,15 +5902,12 @@
           evidence.append(previews);
           card.append(evidence);
         });
-        const moveControl = makeElement('div', 'boards-kanban-card-action');
         if (column && ['status', 'dropdown'].includes(columnType(column))) {
+          const moveControl = makeElement('div', 'boards-kanban-card-action');
           moveControl.append(makeElement('span', '', 'Estado'));
           moveControl.append(createCellEditor(item, column, getCellValue(item, column)));
-        } else if (!column) {
-          moveControl.append(makeElement('span', '', 'Mover'));
-          moveControl.append(createMoveEditor(item));
+          card.append(moveControl);
         }
-        if (moveControl.childElementCount) card.append(moveControl);
         card.append(createDetailsButton(item));
         cardList.append(card);
       });
@@ -5900,42 +5915,93 @@
       board.append(laneElement);
     });
     els.boardRendererArea.append(board);
-    board.addEventListener('dragstart', (event) => {
-      const card = event.target.closest('[data-kanban-item]');
-      if (!card || !card.draggable) { event.preventDefault(); return; }
-      state.draggedItemId = card.dataset.kanbanItem;
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', state.draggedItemId);
-      card.classList.add('is-dragging');
-    });
-    board.addEventListener('dragover', (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      if (!lane || !state.draggedItemId) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      lane.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
-    });
-    board.addEventListener('dragleave', (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      if (lane && (!event.relatedTarget || !lane.contains(event.relatedTarget))) lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
-    });
-    board.addEventListener('drop', async (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
-      if (!lane || !item) return;
-      event.preventDefault();
-      lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
-      state.suppressItemClickUntil = Date.now() + 800;
-      const targetColumn = lane.dataset.kanbanColumn
-        ? state.columns.find((candidate) => String(candidate.id) === lane.dataset.kanbanColumn)
-        : null;
-      if (targetColumn) await updateItemCell(item, targetColumn, lane.dataset.kanbanLane);
-      else await moveItemToGroup(item, lane.dataset.kanbanLane);
-    });
-    board.addEventListener('dragend', () => {
-      state.draggedItemId = '';
-      board.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => element.classList.remove('is-dragging', 'is-drop-target'));
-    });
+    if (window.Sortable && canDragKanban) {
+      const laneLists = [...board.querySelectorAll('.boards-kanban-cards')];
+      laneLists.forEach((cardList) => {
+        kanbanSortables.push(window.Sortable.create(cardList, {
+          group: { name: `kanban-board-${state.board.id}`, pull: true, put: true },
+          draggable: '.boards-kanban-card.is-draggable',
+          handle: '.boards-kanban-card',
+          filter: 'button:not(.boards-kanban-card-title), input, select, textarea, a',
+          preventOnFilter: false,
+          animation: 180,
+          easing: 'cubic-bezier(0.2, 0, 0, 1)',
+          forceFallback: true,
+          fallbackOnBody: true,
+          fallbackTolerance: 4,
+          touchStartThreshold: 5,
+          swapThreshold: 0.65,
+          ghostClass: 'boards-sortable-ghost',
+          chosenClass: 'boards-kanban-sortable-chosen',
+          dragClass: 'boards-kanban-sortable-drag',
+          onStart: () => { state.suppressItemClickUntil = Date.now() + 1000; },
+          onMove: (event) => {
+            if (column && event.from === event.to) return false;
+            board.querySelectorAll('.boards-kanban-lane.is-drop-target').forEach((lane) => lane.classList.remove('is-drop-target'));
+            event.to.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
+            return true;
+          },
+          onEnd: (event) => {
+            board.querySelectorAll('.boards-kanban-lane.is-drop-target').forEach((lane) => lane.classList.remove('is-drop-target'));
+            state.suppressItemClickUntil = Date.now() + 800;
+            const item = state.items.find((candidate) => String(candidate.id) === event.item.dataset.kanbanItem);
+            if (!item) { renderActiveView(); return; }
+            if (column) {
+              const laneKey = event.to.dataset.kanbanLane;
+              if (event.from === event.to || String(getCellValue(item, column) ?? '') === String(laneKey ?? '')) {
+                renderActiveView();
+                return;
+              }
+              void updateItemCell(item, column, laneKey);
+              return;
+            }
+            const targetCards = [...event.to.querySelectorAll(':scope > .boards-kanban-card')]
+              .filter((card) => state.items.find((candidate) => String(candidate.id) === card.dataset.kanbanItem)?.parent_item_id == null);
+            const sortOrder = targetCards.indexOf(event.item);
+            if (sortOrder < 0) { renderActiveView(); return; }
+            if (event.from === event.to && event.oldIndex === event.newIndex) return;
+            void saveSortableItem(item, event.to.dataset.kanbanLane, sortOrder);
+          }
+        }));
+      });
+    } else if (!window.Sortable) {
+      board.addEventListener('dragstart', (event) => {
+        const card = event.target.closest('[data-kanban-item]');
+        if (!card || !card.draggable) { event.preventDefault(); return; }
+        state.draggedItemId = card.dataset.kanbanItem;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', state.draggedItemId);
+        card.classList.add('is-dragging');
+      });
+      board.addEventListener('dragover', (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        if (!lane || !state.draggedItemId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        lane.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
+      });
+      board.addEventListener('dragleave', (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        if (lane && (!event.relatedTarget || !lane.contains(event.relatedTarget))) lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+      });
+      board.addEventListener('drop', async (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
+        if (!lane || !item) return;
+        event.preventDefault();
+        lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+        state.suppressItemClickUntil = Date.now() + 800;
+        const targetColumn = lane.dataset.kanbanColumn
+          ? state.columns.find((candidate) => String(candidate.id) === lane.dataset.kanbanColumn)
+          : null;
+        if (targetColumn) await updateItemCell(item, targetColumn, lane.dataset.kanbanLane);
+        else await moveItemToGroup(item, lane.dataset.kanbanLane);
+      });
+      board.addEventListener('dragend', () => {
+        state.draggedItemId = '';
+        board.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => element.classList.remove('is-dragging', 'is-drop-target'));
+      });
+    }
     updateItemCount(items.length);
   }
 
@@ -6225,13 +6291,23 @@
         }
       }
       if ((editedColumn && ['status', 'dropdown'].includes(columnType(editedColumn)))
-        || state.activeViewType !== 'table' || boardSearchValue().trim() || state.filters.length) renderActiveView();
+        || state.activeViewType !== 'table' || boardSearchValue().trim() || state.filters.length) {
+        const activeKanbanColumn = state.activeViewType === 'kanban'
+          && String(state.viewConfig.kanban_column_id || 'groups') === String(editedColumn?.id || '');
+        if (activeKanbanColumn) syncKanbanCardsFromState();
+        else renderActiveView();
+      }
     } catch (error) {
       editor.classList.add('has-error');
       setNotice(errorMessage(error, 'No se pudo guardar el cambio.'), 'error');
       if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) {
-        setNotice('El tablero cambió en otra sesión. Se recargaron los datos más recientes.', 'info');
-        await loadBoard(state.board.id, true);
+        if (state.activeViewType === 'kanban') {
+          setNotice('El tablero cambió en otra sesión. No se guardó el movimiento; vuelve a intentarlo.', 'info');
+          syncKanbanCardsFromState();
+        } else {
+          setNotice('El tablero cambió en otra sesión. Se recargaron los datos más recientes.', 'info');
+          await loadBoard(state.board.id, true);
+        }
       }
     } finally {
       if (document.contains(editor)) setEditorDisabled(editor, false);
@@ -6258,15 +6334,21 @@
     itemOrderSaving = true;
     const boardId = state.board?.id;
     itemSortables.forEach((sortable) => sortable.option('disabled', true));
+    kanbanSortables.forEach((sortable) => sortable.option('disabled', true));
     groupSortable?.option('disabled', true);
     try {
       await moveItemToGroup(item, groupId, sortOrder, movingItems);
     } finally {
       itemOrderSaving = false;
       if (String(state.board?.id) === String(boardId)) {
-        renderActiveView();
-        const row = els.boardTableContainer.querySelector(`[data-open-item-details="${item.id}"]`);
-        row?.focus({ preventScroll: true });
+        if (state.activeViewType === 'kanban') {
+          syncKanbanCardsFromState();
+          kanbanSortables.forEach((sortable) => sortable.option('disabled', false));
+        } else {
+          renderActiveView();
+          const row = els.boardTableContainer.querySelector(`[data-open-item-details="${item.id}"]`);
+          row?.focus({ preventScroll: true });
+        }
       }
     }
   }
@@ -6279,25 +6361,38 @@
       if (Number.isInteger(sortOrder) && sortOrder >= 0) {
         const orderedItems = movingItems.slice().sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
         const reordering = orderedItems.every((candidate) => String(candidate.group_id) === String(groupId));
+        const updateKanbanLocally = state.activeViewType === 'kanban' && orderedItems.length === 1 && orderedItems[0].parent_item_id == null;
+        const sourceGroupIds = new Set(orderedItems.map((candidate) => String(candidate.group_id)));
         const sequence = reordering ? orderedItems.slice().reverse() : orderedItems;
         for (const candidate of sequence) {
           const originalIndex = orderedItems.findIndex((entry) => String(entry.id) === String(candidate.id));
-          await post('/move_item', {
+          const result = await post('/move_item', {
             board_id: state.board.id,
             item_id: candidate.id,
             group_id: groupId,
             sort_order: sortOrder + originalIndex,
             version: candidate.version
           });
+          if (updateKanbanLocally) {
+            const applied = applyAffectedItems(result.data?.affected_items, candidate, groupId, result.data?.version);
+            if (!applied) {
+              candidate.group_id = groupId;
+              candidate.version = result.data?.version ?? candidate.version;
+            }
+          }
           movedCount += 1;
         }
-        await loadBoard(state.board.id, true);
-        const reordered = orderedItems.every((candidate) => String(candidate.group_id) === String(groupId));
+        if (updateKanbanLocally) {
+          sourceGroupIds.forEach((sourceGroupId) => updateLocalGroupSortOrder(sourceGroupId));
+          updateLocalGroupSortOrder(String(groupId), orderedItems, sortOrder);
+        } else {
+          await loadBoard(state.board.id, true);
+        }
         const message = orderedItems.length > 1
-          ? (reordered ? `${orderedItems.length} elementos reordenados en el grupo.` : `${orderedItems.length} elementos movidos al grupo.`)
-          : (reordered ? 'Elemento reordenado dentro del grupo.' : 'Elemento y subelementos movidos al grupo y posición seleccionados.');
+          ? (reordering ? `${orderedItems.length} elementos reordenados en el grupo.` : `${orderedItems.length} elementos movidos al grupo.`)
+          : (reordering ? 'Elemento reordenado dentro del grupo.' : 'Elemento y subelementos movidos al grupo y posición seleccionados.');
         setNotice(message, 'success');
-        return;
+        return true;
       }
       const payload = {
         board_id: state.board.id,
@@ -6316,10 +6411,75 @@
       }
       renderActiveView();
       setNotice('Elemento y sus subelementos movidos al grupo seleccionado.', 'success');
+      return true;
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo mover el elemento.'), 'error');
-      if (movedCount || error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
+      if (movedCount || error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) {
+        if (state.activeViewType !== 'kanban') await loadBoard(state.board.id, true);
+      }
+      return false;
     }
+  }
+
+  function updateLocalGroupSortOrder(groupId, insertedItems = [], insertAt = null) {
+    const normalizedGroupId = String(groupId);
+    const insertedRoots = insertedItems.filter((item) => item.parent_item_id == null);
+    const insertedIds = new Set(insertedRoots.map((item) => String(item.id)));
+    const roots = state.items
+      .filter((item) => String(item.group_id) === normalizedGroupId && item.parent_item_id == null && !insertedIds.has(String(item.id)))
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+    if (insertedRoots.length) roots.splice(Math.max(0, Math.min(Number(insertAt) || 0, roots.length)), 0, ...insertedRoots);
+
+    const childrenByParent = new Map();
+    state.items.forEach((item) => {
+      if (item.parent_item_id == null) return;
+      const key = String(item.parent_item_id);
+      if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+      childrenByParent.get(key).push(item);
+    });
+    childrenByParent.forEach((children) => children.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id)));
+
+    const ordered = [];
+    const visited = new Set();
+    const appendTree = (current) => {
+      const key = String(current.id);
+      if (visited.has(key)) return;
+      visited.add(key);
+      ordered.push(current);
+      (childrenByParent.get(key) || []).forEach(appendTree);
+    };
+    roots.forEach(appendTree);
+    state.items
+      .filter((item) => String(item.group_id) === normalizedGroupId && !visited.has(String(item.id)))
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id))
+      .forEach(appendTree);
+    ordered.forEach((item, index) => { item.sort_order = index; });
+    state.items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+  }
+
+  function syncKanbanCardsFromState() {
+    const board = els.boardRendererArea.querySelector('.boards-kanban-board');
+    if (!board) return;
+    const items = getFilteredItems();
+    const cards = new Map([...board.querySelectorAll('.boards-kanban-card[data-kanban-item]')]
+      .map((card) => [card.dataset.kanbanItem, card]));
+    board.querySelectorAll('.boards-kanban-cards').forEach((list) => {
+      const laneColumnId = list.dataset.kanbanColumn;
+      const column = laneColumnId ? state.columns.find((candidate) => String(candidate.id) === laneColumnId) : null;
+      const laneKey = list.dataset.kanbanLane;
+      const laneItems = items.filter((item) => column
+        ? stringifyValue(getCellValue(item, column)) === laneKey
+        : String(item.group_id) === laneKey);
+      list.querySelectorAll(':scope > .boards-kanban-card').forEach((card) => card.remove());
+      list.querySelectorAll(':scope > .boards-kanban-empty').forEach((empty) => empty.remove());
+      laneItems.forEach((item) => {
+        const card = cards.get(String(item.id));
+        if (card) list.append(card);
+      });
+      if (!laneItems.length) list.append(makeElement('p', 'boards-kanban-empty', 'Sin elementos'));
+      const count = list.closest('.boards-kanban-lane')?.querySelector('.boards-kanban-count');
+      if (count) count.textContent = String(laneItems.length);
+    });
   }
 
   function rootBoardItem(item) {
@@ -7647,6 +7807,15 @@
         imageStageObserver.disconnect();
         imageStageObserver = null;
       }
+    });
+    els.filePreviewDialog.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-preview-action]');
+      if (!button || !activePreviewFile || !canEditBoard()) return;
+      button.dataset.recycleAction = button.dataset.previewAction;
+      button.dataset.recycleType = 'file';
+      button.dataset.recycleId = String(activePreviewFile.file_id);
+      button.dataset.recycleBoard = String(state.board?.id || '');
+      runRecycleAction(button);
     });
     setupFilePreviewRail();
     [els.itemDetailsDialog, els.filePreviewDialog].forEach((dialog) => {
