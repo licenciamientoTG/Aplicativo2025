@@ -1,0 +1,202 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Reporte de Tránsitos V3{% endblock %}
+{% block menutitle %}Reporte de Tránsitos V3{% endblock %}
+
+{% block content %}
+<style>
+  body { background:#f1f5f9; }
+  .transit-page { max-width:1500px; margin:auto; }
+  .transit-card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; box-shadow:0 2px 8px rgba(15,23,42,.05); }
+  .transit-filter { display:flex; align-items:end; flex-wrap:wrap; gap:14px; }
+  .transit-filter label { display:block; margin-bottom:5px; color:#64748b; font-size:.72rem; font-weight:700; letter-spacing:.05em; }
+  .transit-filter .form-control { min-width:190px; height:40px; border-radius:9px; }
+  .transit-filter .period-control { min-width:165px; }
+  .transit-metric { height:100%; padding:18px 20px; border-left:4px solid; }
+  .transit-metric.outgoing { border-color:#d97706; }
+  .transit-metric.incoming { border-color:#2563eb; }
+  .transit-metric-label { color:#64748b; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  .transit-metric-value { margin-top:5px; color:#1e293b; font:800 1.55rem/1.2 Consolas,monospace; }
+  .transit-metric-sub { margin-top:4px; color:#64748b; font-size:.8rem; }
+  .transit-table { min-width:1000px; }
+  .transit-table td, .transit-table th { vertical-align:middle; }
+  .transit-table td.amount { text-align:right; font-family:Consolas,monospace; font-weight:700; white-space:nowrap; }
+  .transit-definition { color:#475569; font-size:.84rem; }
+</style>
+
+<main class="container-fluid px-3 py-3 transit-page">
+  <header class="d-flex align-items-center justify-content-between flex-wrap mb-3" style="gap:12px;">
+    <div>
+      <h4 class="mb-1 font-weight-bold">Reporte de Tránsitos <span class="text-primary">V3</span></h4>
+      <p class="mb-0 text-muted" style="font-size:.86rem;">Consulta mensual por empresa y banco, considerando todas las estaciones.</p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm rounded-pill" href="/income/summary_v3">
+      <i class="fas fa-arrow-left mr-1"></i> Volver al dashboard
+    </a>
+  </header>
+
+  <section class="transit-card p-3 p-md-4 mb-3" aria-label="Filtros del reporte de tránsitos">
+    <div class="transit-filter">
+      <div>
+        <label for="transitCompany">EMPRESA</label>
+        <select id="transitCompany" class="form-control">
+          <option value="DIAZ GAS">DIAZ</option>
+          <option value="FORANEAS">FORÁNEAS</option>
+          <option value="GASOMEX">GASOMEX</option>
+        </select>
+      </div>
+      <div>
+        <label for="transitBank">BANCO</label>
+        <select id="transitBank" class="form-control"><option value="">Todos los bancos</option></select>
+      </div>
+      <div>
+        <label for="transitPeriod">MES A CONSULTAR</label>
+        <input id="transitPeriod" class="form-control period-control" type="month">
+      </div>
+      <button id="transitSearch" class="btn btn-primary px-4" type="button" onclick="consultarTransitos()">
+        <i class="fas fa-search mr-1"></i> Consultar
+      </button>
+    </div>
+  </section>
+
+  <section class="row mb-3" aria-label="Totales de tránsitos">
+    <div class="col-md-6 mb-2">
+      <article class="transit-card transit-metric outgoing">
+        <div class="transit-metric-label"><i class="fas fa-arrow-up mr-1"></i> Tránsito saliente</div>
+        <div id="outgoingAmount" class="transit-metric-value">—</div>
+        <div id="outgoingCount" class="transit-metric-sub">Ventas del mes que pasan al siguiente</div>
+      </article>
+    </div>
+    <div class="col-md-6 mb-2">
+      <article class="transit-card transit-metric incoming">
+        <div class="transit-metric-label"><i class="fas fa-arrow-down mr-1"></i> Tránsito entrante aplicado</div>
+        <div id="incomingAmount" class="transit-metric-value">—</div>
+        <div id="incomingCount" class="transit-metric-sub">Saldos del mes anterior conciliados en el mes</div>
+      </article>
+    </div>
+  </section>
+
+  <section class="transit-card p-3 p-md-4 mb-3">
+    <div class="transit-definition mb-3">
+      <strong>Cómo se cuentan:</strong> saliente = venta del mes seleccionado que se mandó al siguiente; entrante aplicado = tránsito del mes anterior que quedó unido a una conciliación del mes seleccionado.
+    </div>
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+      <h6 class="mb-0 font-weight-bold">Detalle por estación, banco y afiliación</h6>
+      <small id="transitPeriodLabel" class="text-muted"></small>
+    </div>
+    <div id="transitError" class="alert alert-danger d-none" role="alert"></div>
+    <div id="transitEmpty" class="text-center text-muted py-5">
+      <i class="fas fa-calendar-alt d-block mb-2" style="font-size:2rem;"></i>
+      Elige empresa, banco y mes para consultar los tránsitos.
+    </div>
+    <div id="transitLoading" class="text-center text-muted py-5 d-none">
+      <i class="fas fa-spinner fa-spin mr-1"></i> Consultando tránsitos…
+    </div>
+    <div id="transitResults" class="table-responsive d-none">
+      <table class="table table-sm table-hover transit-table mb-0">
+        <thead class="thead-light"><tr>
+          <th>Sentido</th><th>Estación</th><th>Empresa</th><th>Banco</th><th>Afiliación</th>
+          <th>Mes origen</th><th>Mes destino</th><th>Conciliación</th><th class="text-right">Monto</th>
+        </tr></thead>
+        <tbody id="transitRows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block myjs %}
+<script>
+const TRANSIT_FMT = new Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN', maximumFractionDigits:2 });
+let transitRequest = 0;
+
+function cargarBancosTransitos() {
+  const empresa = $('#transitCompany').val();
+  const selected = $('#transitBank').val();
+  $.getJSON('/income/get_dashboard_v3_bancos', { razon_social: empresa }, function(res) {
+    if (empresa !== $('#transitCompany').val() || res.status !== 'success') return;
+    const $bank = $('#transitBank').empty().append($('<option>').val('').text('Todos los bancos'));
+    (res.data || []).forEach(row => $bank.append($('<option>').val(row.nombre).text(row.nombre)));
+    if ((res.data || []).some(row => row.nombre === selected)) $bank.val(selected);
+  });
+}
+
+function consultarTransitos() {
+  const [year, month] = ($('#transitPeriod').val() || '').split('-');
+  if (!year || !month) {
+    mostrarTransitoError('Selecciona el mes que quieres consultar.');
+    return;
+  }
+  const request = ++transitRequest;
+  const params = {
+    year, month,
+    razon_social: $('#transitCompany').val(),
+    banco: $('#transitBank').val()
+  };
+  $('#transitError').addClass('d-none').text('');
+  $('#transitEmpty').addClass('d-none');
+  $('#transitResults').addClass('d-none');
+  $('#transitLoading').removeClass('d-none');
+  $.getJSON('/income/get_transitos_reporte_v3', params)
+    .done(res => {
+      if (request !== transitRequest) return;
+      if (res.status !== 'success') { mostrarTransitoError(res.message || 'No se pudo consultar el reporte.'); return; }
+      renderReporteTransitos(res.data || [], `${year}-${month}`);
+    })
+    .fail(() => { if (request === transitRequest) mostrarTransitoError('Ocurrió un error al consultar los tránsitos.'); })
+    .always(() => { if (request === transitRequest) $('#transitLoading').addClass('d-none'); });
+}
+
+function mostrarTransitoError(message) {
+  $('#transitLoading').addClass('d-none');
+  $('#transitResults').addClass('d-none');
+  $('#transitEmpty').addClass('d-none');
+  $('#transitError').removeClass('d-none').text(message);
+}
+
+function renderReporteTransitos(rows, period) {
+  const outgoing = rows.filter(row => row.sentido === 'SALIENTE');
+  const incoming = rows.filter(row => row.sentido === 'ENTRANTE');
+  const total = list => list.reduce((sum, row) => sum + Number(row.monto_transito || 0), 0);
+  $('#outgoingAmount').text(TRANSIT_FMT.format(total(outgoing)));
+  $('#outgoingCount').text(`${outgoing.length} registros · venta de ${period} que pasa a ${outgoing[0]?.mes_destino || siguienteMes(period)}`);
+  $('#incomingAmount').text(TRANSIT_FMT.format(total(incoming)));
+  $('#incomingCount').text(`${incoming.length} registros · origen ${anteriorMes(period)} y aplicado en ${period}`);
+  $('#transitPeriodLabel').text(`${period} · todas las estaciones`);
+
+  const esc = value => $('<div>').text(value == null ? '' : String(value)).html();
+  const $rows = $('#transitRows').empty();
+  rows.forEach(row => $rows.append(`<tr>
+    <td><span class="badge ${row.sentido === 'SALIENTE' ? 'badge-warning' : 'badge-primary'}">${esc(row.sentido)}</span></td>
+    <td>${esc(row.estacion)}</td><td>${esc(row.razon_social)}</td><td>${esc(row.banco)}</td><td>${esc(row.afiliacion || '—')}</td>
+    <td>${esc(row.mes_origen)}</td><td>${esc(row.mes_destino)}</td><td>${esc(row.conciliacion || '—')}</td>
+    <td class="amount">${TRANSIT_FMT.format(Number(row.monto_transito || 0))}</td></tr>`));
+  $('#transitLoading').addClass('d-none');
+  if (rows.length) {
+    $('#transitEmpty').addClass('d-none');
+    $('#transitResults').removeClass('d-none');
+  } else {
+    $('#transitResults').addClass('d-none');
+    $('#transitEmpty').removeClass('d-none').html('<i class="fas fa-inbox d-block mb-2" style="font-size:2rem;"></i> No hay tránsitos salientes ni entrantes aplicados para estos filtros.');
+  }
+}
+
+function anteriorMes(period) {
+  const date = new Date(`${period}-01T12:00:00`);
+  date.setMonth(date.getMonth() - 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+function siguienteMes(period) {
+  const date = new Date(`${period}-01T12:00:00`);
+  date.setMonth(date.getMonth() + 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+$(function() {
+  const now = new Date();
+  $('#transitPeriod').val(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  $('#transitCompany').on('change', cargarBancosTransitos);
+  cargarBancosTransitos();
+  consultarTransitos();
+});
+</script>
+{% endblock %}
