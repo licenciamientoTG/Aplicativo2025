@@ -56,6 +56,7 @@
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
   const pageMode = app.dataset.pageMode || 'boards';
+  const lastBoardStorageKey = 'tableros-last-board-id';
   let noticeTimer = 0;
   let filePreviewObjectUrl = '';
   let filePreviewRequest = 0;
@@ -1057,7 +1058,11 @@
         return;
       }
       const routeId = getRouteBoardId();
-      const requestedId = app.dataset.initialBoardId || routeId;
+      let lastBoardId = '';
+      if (pageMode === 'boards') {
+        try { lastBoardId = localStorage.getItem(lastBoardStorageKey) || ''; } catch (_) {}
+      }
+      const requestedId = app.dataset.initialBoardId || routeId || lastBoardId;
       const target = state.boards.find((board) => String(board.id) === String(requestedId)) || state.boards[0];
       if (target) {
         els.boardSelect.value = String(target.id);
@@ -1339,6 +1344,9 @@
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       state.items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       if (!state.board) throw new Error('El servidor no devolvió los datos del tablero.');
+      if (pageMode === 'boards') {
+        try { localStorage.setItem(lastBoardStorageKey, String(state.board.id)); } catch (_) {}
+      }
       state.activeViewType = 'table';
       state.activeSavedViewId = '';
       state.viewConfig = {};

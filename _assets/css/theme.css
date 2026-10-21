@@ -300,6 +300,7 @@ html[data-theme="light"] body .boards-nav-board { color: #425767; }
 html[data-theme="light"] body .boards-nav-board.is-active { color: #174f83; background: #e8f1f8; }
 html[data-theme="light"] body .boards-nav-folder-actions button,
 html[data-theme="light"] body .boards-navigator-section .boards-nav-actions button { color: #536575; }
+html[data-theme="light"] body .boards-nav-folder-actions { background: #f1f5f7; }
 html[data-theme="light"] body .boards-nav-folder-actions button:hover,
 html[data-theme="light"] body .boards-navigator-section .boards-nav-actions button:hover { background: #e8eef2; }
 html[data-theme="light"] body .boards-nav-archive { border-color: #d8e2e7; }
