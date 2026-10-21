@@ -256,7 +256,7 @@
 .boards-table .boards-group-row > .boards-group-title-cell { position: sticky; z-index: 9; left: 0; padding: 0; }
 .boards-group-meta-cell { padding: 0 !important; }
 .boards-group-meta { flex: 0 0 auto; justify-content: flex-end; gap: 8px; white-space: nowrap; }
-.boards-group-heading { width: 100%; min-height: 41px; box-sizing: border-box; justify-content: space-between; gap: 12px; }
+.boards-group-heading { position: absolute; z-index: 1; top: 0; left: 0; width: 100%; min-height: 41px; box-sizing: border-box; justify-content: space-between; gap: 12px; }
 .boards-group-toggle { min-width: 0; gap: 9px; padding: 6px 2px; border: 0; color: var(--boards-ink); background: transparent; text-align: left; }
 .boards-group-heading { cursor: grab; }
 .boards-group-heading:active { cursor: grabbing; }
