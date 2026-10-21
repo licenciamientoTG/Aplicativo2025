@@ -4497,7 +4497,7 @@
         const values = Array.isArray(value) ? value.map((entry) => boardSearchOption(entry).value) : [boardSearchOption(value).value];
         return values.some((entry) => entry.toLocaleLowerCase() === query);
       }
-      if (type === 'date') return dateOnly(value) === query;
+      if (type === 'date') return dateMatchesSearch(value, query);
       if (type === 'timeline') {
         const range = dateRange(value);
         const end = range.end || range.start;
@@ -4510,7 +4510,43 @@
       if (type === 'hour') return stringifyValue(value).slice(0, 5) === query;
       return stringifyValue(value).toLocaleLowerCase().includes(query);
     }
-    return [item.name, ...state.columns.map((entry) => stringifyValue(getCellValue(item, entry)))].join(' ').toLocaleLowerCase().includes(query);
+    if (String(item.name || '').toLocaleLowerCase().includes(query)) return true;
+    return state.columns.some((entry) => {
+      const value = getCellValue(item, entry);
+      if (columnType(entry) === 'date') return dateMatchesSearch(value, query);
+      if (columnType(entry) === 'timeline') {
+        const range = dateRange(value);
+        return dateMatchesSearch(range.start, query) || dateMatchesSearch(range.end, query);
+      }
+      return stringifyValue(value).toLocaleLowerCase().includes(query);
+    });
+  }
+
+  function dateMatchesSearch(value, query) {
+    const date = dateOnly(value);
+    const needle = String(query || '').trim().toLocaleLowerCase('es-MX');
+    if (!date || !needle) return false;
+    const parsed = localDate(date);
+    if (!parsed || Number.isNaN(parsed.getTime())) return false;
+    const year = String(parsed.getFullYear());
+    const month = String(parsed.getMonth() + 1);
+    const day = String(parsed.getDate());
+    const monthPadded = month.padStart(2, '0');
+    const dayPadded = day.padStart(2, '0');
+    const candidates = [
+      date, `${monthPadded}/${dayPadded}/${year}`, `${month}/${day}/${year}`,
+      `${dayPadded}/${monthPadded}/${year}`, `${day}/${month}/${year}`,
+      `${monthPadded}/${dayPadded}`, `${month}/${day}`,
+      `${dayPadded}/${monthPadded}`, `${day}/${month}`,
+      formatDate(date, { day: 'numeric', month: 'short', year: 'numeric' }),
+      formatDate(date, { day: 'numeric', month: 'long', year: 'numeric' }),
+      new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric' }).format(parsed),
+      new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric' }).format(parsed)
+    ];
+    const normalize = (text) => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es-MX').replace(/[.\-]/g, '/').replace(/\s+/g, ' ').trim();
+    const normalizedNeedle = normalize(needle);
+    return candidates.some((candidate) => normalize(candidate).includes(normalizedNeedle));
   }
 
   function boardSearchValue() { return els.boardSearch?.value || ''; }
@@ -7806,9 +7842,11 @@
   function setupExtendedEvents() {
     const navigatorToggle = document.getElementById('toggleBoardNavigator');
     const boardsMain = navigatorToggle?.closest('.boards-main');
+    const boardNavigator = document.getElementById('boardNavigator');
     const setNavigatorCollapsed = (collapsed, persist = true) => {
       if (!boardsMain || !navigatorToggle) return;
       boardsMain.classList.toggle('is-navigator-collapsed', collapsed);
+      if (boardNavigator) boardNavigator.hidden = collapsed;
       navigatorToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       const label = collapsed ? 'Mostrar navegación de espacios y carpetas' : 'Ocultar navegación de espacios y carpetas';
       navigatorToggle.setAttribute('aria-label', label);
