@@ -112,6 +112,9 @@
       <h6 class="mb-0 font-weight-bold">Detalle por estación, banco y afiliación</h6>
       <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
         <small id="transitPeriodLabel" class="text-muted"></small>
+        <button id="exportTransitExcel" class="btn btn-success btn-sm" type="button" onclick="exportarTransitosExcel()" disabled>
+          <i class="fas fa-file-excel mr-1"></i> Exportar Excel
+        </button>
         <button id="clearTransitColumnFilters" class="btn btn-outline-secondary btn-sm" type="button" onclick="limpiarFiltrosColumnasTransito()" disabled>
           <i class="fas fa-times mr-1"></i> Limpiar filtros de columnas
         </button>
@@ -152,6 +155,9 @@ const TRANSIT_FMT = new Intl.NumberFormat('es-MX', { style:'currency', currency:
 let transitRequest = 0;
 let stationRequest = 0;
 let transitReportRows = [];
+let visibleTransitReportRows = [];
+let transitReportPeriod = '';
+let transitReportReady = false;
 const transitColumnFilters = new Map();
 let activeTransitMenu = null;
 const transitColumnNames = ['Sentido','Estación','Empresa','Banco','Afiliación','Mes origen','Mes destino','Conciliación','Monto'];
@@ -194,6 +200,8 @@ function consultarTransitos() {
   $('#transitEmpty').addClass('d-none');
   $('#transitResults').addClass('d-none');
   $('#transitLoading').removeClass('d-none');
+  transitReportReady = false;
+  $('#exportTransitExcel').prop('disabled', true);
   $.getJSON('/income/get_transitos_reporte_v3', params)
     .done(res => {
       if (request !== transitRequest) return;
@@ -208,12 +216,16 @@ function mostrarTransitoError(message) {
   $('#transitLoading').addClass('d-none');
   $('#transitResults').addClass('d-none');
   $('#transitEmpty').addClass('d-none');
+  transitReportReady = false;
+  $('#exportTransitExcel').prop('disabled', true);
   $('#transitError').removeClass('d-none').text(message);
 }
 
 function renderReporteTransitos(rows, period) {
-  const outgoing = rows.filter(row => row.sentido === 'SALIENTE');
-  const incoming = rows.filter(row => row.sentido === 'ENTRANTE');
+  transitReportPeriod = period;
+  transitReportReady = true;
+  const outgoing = rows.filter(row => sentidoTransito(row) === 'SALIENTE');
+  const incoming = rows.filter(row => sentidoTransito(row) === 'ENTRANTE');
   const total = list => list.reduce((sum, row) => sum + Number(row.monto_transito || 0), 0);
   $('#outgoingAmount').text(TRANSIT_FMT.format(total(outgoing)));
   $('#outgoingCount').text(`${outgoing.length} registros · venta de ${period} que pasa a ${outgoing[0]?.mes_destino || siguienteMes(period)}`);
@@ -224,12 +236,21 @@ function renderReporteTransitos(rows, period) {
 
   transitReportRows = rows;
   renderTransitosFiltrados();
+  $('#exportTransitExcel').prop('disabled', false);
   $('#transitLoading').addClass('d-none');
 }
 
 function valorColumnaTransito(row, column) {
-  const values = [row.sentido,row.estacion,row.razon_social,row.banco,row.afiliacion,row.mes_origen,row.mes_destino,row.conciliacion,Number(row.monto_transito || 0).toFixed(2)];
+  const values = [sentidoTransito(row),row.estacion,row.razon_social,row.banco,row.afiliacion,row.mes_origen,row.mes_destino,row.conciliacion,Number(row.monto_transito || 0).toFixed(2)];
   return values[column] == null ? '' : String(values[column]);
+}
+
+function sentidoTransito(row) {
+  if (row.sentido === 'SALIENTE' || row.sentido === 'ENTRANTE') return row.sentido;
+  if (row.mes_origen === transitReportPeriod && row.mes_destino === siguienteMes(transitReportPeriod)) return 'SALIENTE';
+  if (row.mes_origen === anteriorMes(transitReportPeriod)
+      && row.mes_destino === transitReportPeriod && Number(row.conciliacion || 0) > 0) return 'ENTRANTE';
+  return '';
 }
 
 function renderTransitosFiltrados() {
@@ -239,17 +260,20 @@ function renderTransitosFiltrados() {
     }
     return true;
   });
+  visibleTransitReportRows = visibleRows;
   const body = document.getElementById('transitRows');
   body.replaceChildren();
   visibleRows.forEach(row => {
     const tr = document.createElement('tr');
-    const values = [row.sentido,row.estacion,row.razon_social,row.banco,row.afiliacion || '—',row.mes_origen,row.mes_destino,row.conciliacion || '—'];
+    const sentido = sentidoTransito(row);
+    const values = [sentido || 'Sin sentido',row.estacion,row.razon_social,row.banco,row.afiliacion || '—',row.mes_origen,row.mes_destino,row.conciliacion || '—'];
     values.forEach((value, index) => {
       const td = document.createElement('td');
       if (index === 0) {
         const badge = document.createElement('span');
-        badge.className = `badge ${row.sentido === 'SALIENTE' ? 'badge-warning' : 'badge-primary'}`;
-        badge.textContent = value == null ? '' : String(value);
+        badge.className = `badge ${sentido === 'SALIENTE' ? 'badge-warning' : 'badge-primary'}`;
+        badge.style.cssText = `display:inline-block;padding:4px 7px;border-radius:12px;font-size:.72rem;font-weight:700;color:${sentido === 'SALIENTE' ? '#92400e' : '#1e40af'};background:${sentido === 'SALIENTE' ? '#fef3c7' : '#dbeafe'};white-space:nowrap;`;
+        badge.textContent = value == null ? 'Sin sentido' : String(value);
         td.appendChild(badge);
       } else td.textContent = value == null ? '' : String(value);
       tr.appendChild(td);
@@ -279,6 +303,58 @@ function renderTransitosFiltrados() {
   else {
     const message = transitReportRows.length ? 'Ningún tránsito coincide con los filtros de columna.' : 'No hay tránsitos salientes ni entrantes aplicados para estos filtros.';
     $('#transitEmpty').removeClass('d-none').text(message);
+  }
+}
+
+async function exportarTransitosExcel() {
+  if (!transitReportReady) return;
+  const button = document.getElementById('exportTransitExcel');
+  const originalHtml = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Preparando…';
+  const stationId = $('#transitStation').val();
+  const payload = {
+    period: transitReportPeriod,
+    empresa: $('#transitCompany').val(),
+    banco: $('#transitBank').val(),
+    estacion: stationId ? $('#transitStation option:selected').text() : 'Todas las estaciones',
+    rows: visibleTransitReportRows.map(row => ({
+      sentido: sentidoTransito(row),
+      estacion: row.estacion || '',
+      razon_social: row.razon_social || '',
+      banco: row.banco || '',
+      afiliacion: row.afiliacion || '',
+      mes_origen: row.mes_origen || '',
+      mes_destino: row.mes_destino || '',
+      conciliacion: row.conciliacion || '',
+      monto_transito: Number(row.monto_transito || 0)
+    }))
+  };
+  try {
+    const response = await fetch('/income/export_transitos_reporte_v3', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body:JSON.stringify(payload)
+    });
+    const type = response.headers.get('Content-Type') || '';
+    if (!response.ok || type.includes('application/json')) {
+      const error = type.includes('application/json') ? await response.json() : null;
+      throw new Error(error?.message || 'No se pudo generar el archivo de Excel.');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transitos-v3-${transitReportPeriod}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    mostrarTransitoError(error.message || 'Ocurrió un error al exportar el reporte.');
+  } finally {
+    button.innerHTML = originalHtml;
+    button.disabled = !transitReportReady;
   }
 }
 
