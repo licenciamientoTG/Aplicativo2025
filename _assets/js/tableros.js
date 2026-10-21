@@ -5827,7 +5827,9 @@
       laneItems.forEach((item) => {
         const card = makeElement('article', 'boards-kanban-card');
         card.dataset.kanbanItem = String(item.id);
-        card.draggable = canDragKanban && item.parent_item_id == null;
+        const canDragCard = canDragKanban && item.parent_item_id == null;
+        card.classList.toggle('is-draggable', canDragCard);
+        card.draggable = canDragCard && !window.Sortable;
         if (column && ['status', 'dropdown'].includes(columnType(column))) card.style.setProperty('--kanban-status-color', safeGroupColor(lane.color));
         card.append(createItemNameControl(item, 'boards-kanban-card-title'));
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
@@ -5912,7 +5914,7 @@
       laneLists.forEach((cardList) => {
         kanbanSortables.push(window.Sortable.create(cardList, {
           group: { name: `kanban-board-${state.board.id}`, pull: true, put: true },
-          draggable: '.boards-kanban-card[draggable="true"]',
+          draggable: '.boards-kanban-card.is-draggable',
           handle: '.boards-kanban-card',
           filter: 'button:not(.boards-kanban-card-title), input, select, textarea, a',
           preventOnFilter: false,

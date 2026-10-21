@@ -1494,8 +1494,8 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 /* Kanban cards stay compact while keeping evidence one click away. */
 .boards-kanban-lane { transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease; }
 .boards-kanban-lane.is-drop-target { border-color: var(--boards-petrol); box-shadow: 0 0 0 2px color-mix(in srgb, var(--boards-petrol) 22%, transparent); }
-.boards-kanban-card[draggable="true"] { cursor: grab; }
-.boards-kanban-card[draggable="true"] .boards-kanban-card-title { cursor: grab; }
+.boards-kanban-card.is-draggable { cursor: grab; }
+.boards-kanban-card.is-draggable .boards-kanban-card-title { cursor: grab; }
 .boards-kanban-card.is-dragging { opacity: .42; cursor: grabbing; }
 .boards-kanban-sortable-chosen { cursor: grabbing; box-shadow: 0 7px 22px rgb(22 35 52 / 22%); }
 .boards-kanban-sortable-drag { opacity: .92; transform: rotate(1deg); }
