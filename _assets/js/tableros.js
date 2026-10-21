@@ -240,6 +240,7 @@
   let groupSortable = null;
   let navSortables = [];
   let itemSortables = [];
+  let kanbanSortables = [];
   let navOrderSaving = false;
   let itemOrderSaving = false;
   let suppressNavClickUntil = 0;
@@ -5585,7 +5586,15 @@
   }
 
   function renderActiveView() {
+    kanbanSortables.forEach((sortable) => sortable.destroy());
+    kanbanSortables = [];
     const type = normalizeViewType(state.activeViewType);
+    if (type !== 'table') {
+      itemSortables.forEach((sortable) => sortable.destroy());
+      itemSortables = [];
+      groupSortable?.destroy();
+      groupSortable = null;
+    }
     state.activeViewType = type;
     renderBoardSearchColumns();
     applyBoardItemSize(state.viewConfig.item_size || 'double');
@@ -5777,6 +5786,7 @@
     const fieldId = state.viewConfig.kanban_column_id || 'groups';
     const column = fieldId === 'groups' ? null : state.columns.find((candidate) => String(candidate.id) === String(fieldId));
     const items = getFilteredItems();
+    const canDragKanban = canEditBoard() && !boardSearchValue().trim() && !state.filters.length;
     const board = makeElement('div', 'boards-kanban-board');
     let lanes = [];
     if (!column) {
@@ -5817,7 +5827,7 @@
       laneItems.forEach((item) => {
         const card = makeElement('article', 'boards-kanban-card');
         card.dataset.kanbanItem = String(item.id);
-        card.draggable = canEditBoard() && item.parent_item_id == null;
+        card.draggable = canDragKanban && item.parent_item_id == null;
         if (column && ['status', 'dropdown'].includes(columnType(column))) card.style.setProperty('--kanban-status-color', safeGroupColor(lane.color));
         card.append(createItemNameControl(item, 'boards-kanban-card-title'));
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
@@ -5900,42 +5910,92 @@
       board.append(laneElement);
     });
     els.boardRendererArea.append(board);
-    board.addEventListener('dragstart', (event) => {
-      const card = event.target.closest('[data-kanban-item]');
-      if (!card || !card.draggable) { event.preventDefault(); return; }
-      state.draggedItemId = card.dataset.kanbanItem;
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', state.draggedItemId);
-      card.classList.add('is-dragging');
-    });
-    board.addEventListener('dragover', (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      if (!lane || !state.draggedItemId) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      lane.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
-    });
-    board.addEventListener('dragleave', (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      if (lane && (!event.relatedTarget || !lane.contains(event.relatedTarget))) lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
-    });
-    board.addEventListener('drop', async (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
-      if (!lane || !item) return;
-      event.preventDefault();
-      lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
-      state.suppressItemClickUntil = Date.now() + 800;
-      const targetColumn = lane.dataset.kanbanColumn
-        ? state.columns.find((candidate) => String(candidate.id) === lane.dataset.kanbanColumn)
-        : null;
-      if (targetColumn) await updateItemCell(item, targetColumn, lane.dataset.kanbanLane);
-      else await moveItemToGroup(item, lane.dataset.kanbanLane);
-    });
-    board.addEventListener('dragend', () => {
-      state.draggedItemId = '';
-      board.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => element.classList.remove('is-dragging', 'is-drop-target'));
-    });
+    if (window.Sortable && canDragKanban) {
+      const laneLists = [...board.querySelectorAll('.boards-kanban-cards')];
+      laneLists.forEach((cardList) => {
+        kanbanSortables.push(window.Sortable.create(cardList, {
+          group: { name: `kanban-board-${state.board.id}`, pull: true, put: true },
+          draggable: '.boards-kanban-card[draggable="true"]',
+          handle: '.boards-kanban-card-title',
+          filter: 'button:not(.boards-kanban-card-title), input, select, textarea, a',
+          preventOnFilter: false,
+          animation: 180,
+          easing: 'cubic-bezier(0.2, 0, 0, 1)',
+          forceFallback: true,
+          fallbackOnBody: true,
+          fallbackTolerance: 4,
+          touchStartThreshold: 5,
+          swapThreshold: 0.65,
+          ghostClass: 'boards-sortable-ghost',
+          chosenClass: 'boards-kanban-sortable-chosen',
+          dragClass: 'boards-kanban-sortable-drag',
+          onStart: () => { state.suppressItemClickUntil = Date.now() + 1000; },
+          onMove: (event) => {
+            if (column && event.from === event.to) return false;
+            board.querySelectorAll('.boards-kanban-lane.is-drop-target').forEach((lane) => lane.classList.remove('is-drop-target'));
+            event.to.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
+            return true;
+          },
+          onEnd: (event) => {
+            board.querySelectorAll('.boards-kanban-lane.is-drop-target').forEach((lane) => lane.classList.remove('is-drop-target'));
+            state.suppressItemClickUntil = Date.now() + 800;
+            const item = state.items.find((candidate) => String(candidate.id) === event.item.dataset.kanbanItem);
+            if (!item) { renderActiveView(); return; }
+            if (column) {
+              const laneKey = event.to.dataset.kanbanLane;
+              if (event.from === event.to || String(getCellValue(item, column) ?? '') === String(laneKey ?? '')) {
+                renderActiveView();
+                return;
+              }
+              void updateItemCell(item, column, laneKey);
+              return;
+            }
+            const targetCards = [...event.to.querySelectorAll(':scope > .boards-kanban-card')];
+            const sortOrder = targetCards.indexOf(event.item);
+            if (sortOrder < 0) { renderActiveView(); return; }
+            if (event.from === event.to && event.oldIndex === event.newIndex) return;
+            void saveSortableItem(item, event.to.dataset.kanbanLane, sortOrder);
+          }
+        }));
+      });
+    } else if (!window.Sortable) {
+      board.addEventListener('dragstart', (event) => {
+        const card = event.target.closest('[data-kanban-item]');
+        if (!card || !card.draggable) { event.preventDefault(); return; }
+        state.draggedItemId = card.dataset.kanbanItem;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', state.draggedItemId);
+        card.classList.add('is-dragging');
+      });
+      board.addEventListener('dragover', (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        if (!lane || !state.draggedItemId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        lane.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
+      });
+      board.addEventListener('dragleave', (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        if (lane && (!event.relatedTarget || !lane.contains(event.relatedTarget))) lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+      });
+      board.addEventListener('drop', async (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
+        if (!lane || !item) return;
+        event.preventDefault();
+        lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+        state.suppressItemClickUntil = Date.now() + 800;
+        const targetColumn = lane.dataset.kanbanColumn
+          ? state.columns.find((candidate) => String(candidate.id) === lane.dataset.kanbanColumn)
+          : null;
+        if (targetColumn) await updateItemCell(item, targetColumn, lane.dataset.kanbanLane);
+        else await moveItemToGroup(item, lane.dataset.kanbanLane);
+      });
+      board.addEventListener('dragend', () => {
+        state.draggedItemId = '';
+        board.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => element.classList.remove('is-dragging', 'is-drop-target'));
+      });
+    }
     updateItemCount(items.length);
   }
 
@@ -6258,6 +6318,7 @@
     itemOrderSaving = true;
     const boardId = state.board?.id;
     itemSortables.forEach((sortable) => sortable.option('disabled', true));
+    kanbanSortables.forEach((sortable) => sortable.option('disabled', true));
     groupSortable?.option('disabled', true);
     try {
       await moveItemToGroup(item, groupId, sortOrder, movingItems);
