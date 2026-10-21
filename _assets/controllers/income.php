@@ -7726,6 +7726,7 @@ public function stamped_invoices_detail(): void
         $month = (int)($_GET['month'] ?? 0);
         $rs = trim($_GET['razon_social'] ?? '');
         $banco = trim($_GET['banco'] ?? '');
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
         if ($year < 2000 || $month < 1 || $month > 12) {
             echo json_encode(['status'=>'error','message'=>'Selecciona un período válido.']);
             exit;
@@ -7737,6 +7738,7 @@ public function stamped_invoices_detail(): void
             $conn = $this->v3_conn();
             $scope = '';
             if ($banco !== '') $scope .= ' AND TE.Nombre=?';
+            if ($estacion_id > 0) $scope .= ' AND T.estacion_id=?';
             if ($rs === 'DIAZ GAS') $scope .= " AND E.RFC='DGA930823KD3'";
             elseif ($rs === 'GASOMEX') $scope .= " AND E.RFC='DGM880621FU5'";
             elseif ($rs === 'FORANEAS') $scope .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
@@ -7767,9 +7769,11 @@ public function stamped_invoices_detail(): void
             $stmt = $conn->prepare($sql);
             $queryParams = [$period,$next];
             if ($banco !== '') $queryParams[] = $banco;
+            if ($estacion_id > 0) $queryParams[] = $estacion_id;
             $queryParams[] = $previous;
             $queryParams[] = $period;
             if ($banco !== '') $queryParams[] = $banco;
+            if ($estacion_id > 0) $queryParams[] = $estacion_id;
             $stmt->execute($queryParams);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             foreach ($rows as &$row) $row['monto_transito'] = (float)$row['monto_transito'];

@@ -10,6 +10,7 @@
   .transit-filter { display:flex; align-items:end; flex-wrap:wrap; gap:14px; }
   .transit-filter label { display:block; margin-bottom:5px; color:#64748b; font-size:.72rem; font-weight:700; letter-spacing:.05em; }
   .transit-filter .form-control { min-width:190px; height:40px; border-radius:9px; }
+  .transit-filter .station-control { min-width:240px; }
   .transit-filter .period-control { min-width:165px; }
   .transit-metric { height:100%; padding:18px 20px; border-left:4px solid; }
   .transit-metric.outgoing { border-color:#d97706; }
@@ -47,6 +48,10 @@
       <div>
         <label for="transitBank">BANCO</label>
         <select id="transitBank" class="form-control"><option value="">Todos los bancos</option></select>
+      </div>
+      <div>
+        <label for="transitStation">ESTACIÓN</label>
+        <select id="transitStation" class="form-control station-control"><option value="">Todas las estaciones</option></select>
       </div>
       <div>
         <label for="transitPeriod">MES A CONSULTAR</label>
@@ -108,6 +113,7 @@
 <script>
 const TRANSIT_FMT = new Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN', maximumFractionDigits:2 });
 let transitRequest = 0;
+let stationRequest = 0;
 
 function cargarBancosTransitos() {
   const empresa = $('#transitCompany').val();
@@ -117,6 +123,16 @@ function cargarBancosTransitos() {
     const $bank = $('#transitBank').empty().append($('<option>').val('').text('Todos los bancos'));
     (res.data || []).forEach(row => $bank.append($('<option>').val(row.nombre).text(row.nombre)));
     if ((res.data || []).some(row => row.nombre === selected)) $bank.val(selected);
+  });
+}
+
+function cargarEstacionesTransitos() {
+  const empresa = $('#transitCompany').val();
+  const request = ++stationRequest;
+  $.getJSON('/income/get_estaciones_catalogo', { empresa, all: 1 }, function(res) {
+    if (request !== stationRequest || empresa !== $('#transitCompany').val() || res.status !== 'success') return;
+    const $station = $('#transitStation').empty().append($('<option>').val('').text('Todas las estaciones'));
+    (res.respuesta || []).forEach(row => $station.append($('<option>').val(row.Codigo).text(row.Nombre)));
   });
 }
 
@@ -130,7 +146,8 @@ function consultarTransitos() {
   const params = {
     year, month,
     razon_social: $('#transitCompany').val(),
-    banco: $('#transitBank').val()
+    banco: $('#transitBank').val(),
+    estacion_id: $('#transitStation').val()
   };
   $('#transitError').addClass('d-none').text('');
   $('#transitEmpty').addClass('d-none');
@@ -161,7 +178,8 @@ function renderReporteTransitos(rows, period) {
   $('#outgoingCount').text(`${outgoing.length} registros · venta de ${period} que pasa a ${outgoing[0]?.mes_destino || siguienteMes(period)}`);
   $('#incomingAmount').text(TRANSIT_FMT.format(total(incoming)));
   $('#incomingCount').text(`${incoming.length} registros · origen ${anteriorMes(period)} y aplicado en ${period}`);
-  $('#transitPeriodLabel').text(`${period} · todas las estaciones`);
+  const station = $('#transitStation option:selected').text();
+  $('#transitPeriodLabel').text(`${period} · ${$('#transitStation').val() ? station : 'todas las estaciones'}`);
 
   const esc = value => $('<div>').text(value == null ? '' : String(value)).html();
   const $rows = $('#transitRows').empty();
@@ -194,8 +212,12 @@ function siguienteMes(period) {
 $(function() {
   const now = new Date();
   $('#transitPeriod').val(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
-  $('#transitCompany').on('change', cargarBancosTransitos);
+  $('#transitCompany').on('change', function() {
+    cargarBancosTransitos();
+    cargarEstacionesTransitos();
+  });
   cargarBancosTransitos();
+  cargarEstacionesTransitos();
   consultarTransitos();
 });
 </script>
