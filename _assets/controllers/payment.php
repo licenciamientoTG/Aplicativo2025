@@ -3859,6 +3859,13 @@ class Payment
 
             $rfc = $this->limpiar_texto_layout((string)$grupo['rfc'], 13);
 
+            // MGC está dado de alta en el portal Banorte con su RFC como ID Tercero;
+            // el IdBeneficiario del catálogo (numérico) es de Santander y Banorte
+            // lo rechaza con "La clave del proveedor no es válida".
+            if ((int)$grupo['proveedor_codigo'] === self::PROVIDER_COD_MGC && $rfc !== '') {
+                $clave_id = $rfc;
+            }
+
             // ✅ Formato Banorte pago a proveedores (11 campos separados por TAB):
             // OPERACION | CLAVE ID | CUENTA ORIGEN | CUENTA CLABE/DESTINO | IMPORTE
             // | REFERENCIA | DESCRIPCION | RFC | IVA | FECHA APLICACION | INSTRUCCION DE PAGO

@@ -798,11 +798,11 @@ class VentasModel extends Model
                         emp.den AS Empresa,
 						E.grupo as Grupo,
                        CASE 
-							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias') THEN 'EFECTIVO'
+							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
-							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
+							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa', ' BANKAOOL', ' BANKAOOL (Propinas)') THEN 'TARJETAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +', ' GASnGO MEXICO') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago
                     FROM SG12.dbo.Valores v
@@ -897,11 +897,11 @@ class VentasModel extends Model
                         SUM(i.mto) AS Monto,
                         emp.den AS Empresa,
                        CASE 
-							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias') THEN 'EFECTIVO'
+							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
-							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
+							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa', ' BANKAOOL', ' BANKAOOL (Propinas)') THEN 'TARJETAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +', ' GASnGO MEXICO') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago
                     FROM SG12.dbo.Valores v
@@ -993,10 +993,10 @@ class VentasModel extends Model
                         SUM(i.can) AS Cantidad,
                         SUM(i.mto) AS Monto,
                        CASE
-							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'INTERL - Efectivo') THEN 'EFECTIVO'
+							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
-							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa') THEN 'TARJETAS'
+							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa', ' BANKAOOL', ' BANKAOOL (Propinas)') THEN 'TARJETAS'
 							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +', ' GASnGO MEXICO') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago,
@@ -1096,7 +1096,7 @@ class VentasModel extends Model
                             WHEN t2.tipval = 3 THEN 'CREDITO'
                             WHEN t2.tipval = 4 THEN 'DEBITO'
                             WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
-                            WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa') THEN 'TARJETAS'
+                            WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa', ' BANKAOOL', ' BANKAOOL (Propinas)') THEN 'TARJETAS'
                             WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +', ' GASnGO MEXICO') THEN 'VALERAS'
                             WHEN v.den IS NULL AND t1.tiptrn IN (0, 49) THEN 'EFECTIVO'
                             WHEN v.den IS NULL AND t1.tiptrn = 53 THEN 'VALERAS' -- vale sin voucher ligado

@@ -1,0 +1,68 @@
+<h2>¿Cómo ocultar y mostrar las columnas?</h2>
+<p class="subtitle">El Excel tiene 64 columnas. Estas son tres formas de navegarlas en /compras/combustible. Datos de ejemplo.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Grupos de columnas con interruptores</h3>
+      <p>Arriba de la tabla hay botones por tema; cada uno muestra u oculta su bloque entero. Fecha, estación y folio quedan fijos al desplazar.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-body" style="font-size:12px">
+          <div style="margin-bottom:8px">
+            <span style="background:#2563eb;color:#fff;padding:3px 10px;border-radius:12px">Factura ✓</span>
+            <span style="background:#2563eb;color:#fff;padding:3px 10px;border-radius:12px">Pago ✓</span>
+            <span style="border:1px solid #999;padding:3px 10px;border-radius:12px">Transporte</span>
+            <span style="border:1px solid #999;padding:3px 10px;border-radius:12px">Petrotal</span>
+            <span style="border:1px solid #999;padding:3px 10px;border-radius:12px">Fletes</span>
+            <span style="border:1px solid #999;padding:3px 10px;border-radius:12px">Análisis</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse">
+            <tr style="background:#eee"><th style="text-align:left;padding:4px">Fecha</th><th style="text-align:left">Estación</th><th style="text-align:left">Folio</th><th style="text-align:right">Litros</th><th style="text-align:right">Monto</th><th>Vence</th><th>Pago prog.</th></tr>
+            <tr><td style="padding:4px">22-sep</td><td>Travel Center</td><td>3000405</td><td style="text-align:right">31,245</td><td style="text-align:right">739,064</td><td>12-oct</td><td>Pendiente</td></tr>
+            <tr><td style="padding:4px">22-sep</td><td>4457</td><td>3003164</td><td style="text-align:right">31,236</td><td style="text-align:right">635,503</td><td>01-oct</td><td>01-oct</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Vistas guardadas (Captura, Pagos, Completa)</h3>
+      <p>Un selector de vista cambia de golpe qué columnas se ven, y un botón "Columnas" permite afinar una por una. Cada persona conserva su elección.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-body" style="font-size:12px">
+          <div style="margin-bottom:8px">Vista:
+            <span style="background:#2563eb;color:#fff;padding:3px 10px;border-radius:4px">Captura</span>
+            <span style="border:1px solid #999;padding:3px 10px;border-radius:4px">Pagos</span>
+            <span style="border:1px solid #999;padding:3px 10px;border-radius:4px">Completa</span>
+            <span style="float:right;border:1px solid #999;padding:3px 10px;border-radius:4px">⚙ Columnas (12 de 64)</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse">
+            <tr style="background:#eee"><th style="text-align:left;padding:4px">Fecha</th><th style="text-align:left">Estación</th><th style="text-align:left">Folio</th><th style="text-align:left">Transportista</th><th style="text-align:left">Placas</th><th style="text-align:left">BOL</th></tr>
+            <tr><td style="padding:4px">22-sep</td><td>Travel Center</td><td>3000405</td><td style="color:#b45309">falta</td><td style="color:#b45309">falta</td><td>—</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Fila compacta que se expande</h3>
+      <p>La tabla muestra solo lo esencial (unas 8 columnas). Al dar clic en una fila se despliega el resto, ordenado por tema, ahí mismo para ver o capturar.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-body" style="font-size:12px">
+          <table style="width:100%;border-collapse:collapse">
+            <tr style="background:#eee"><th style="text-align:left;padding:4px">▸</th><th style="text-align:left">Fecha</th><th style="text-align:left">Estación</th><th style="text-align:left">Folio</th><th style="text-align:right">Monto</th><th>Estado</th></tr>
+            <tr><td style="padding:4px">▾</td><td>22-sep</td><td>4457</td><td>3003164</td><td style="text-align:right">635,503</td><td>Pagada</td></tr>
+            <tr><td colspan="6" style="background:#f6f6f6;padding:8px">Transporte: <i>falta</i> · Placas: <i>falta</i> · Petrotal: — · Flete: — · Precio venta: 23.40 · Utilidad/L: …</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
