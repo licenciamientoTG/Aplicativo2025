@@ -20,6 +20,30 @@
   .transit-metric-sub { margin-top:4px; color:#64748b; font-size:.8rem; }
   .transit-table { min-width:1000px; }
   .transit-table td, .transit-table th { vertical-align:middle; }
+  .transit-table th { white-space:nowrap; }
+  .transit-th-content { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .transit-col-filter { display:inline-flex; align-items:center; justify-content:center; width:27px; height:27px; padding:0; border:1px solid transparent; border-radius:6px; background:transparent; color:#64748b; cursor:pointer; }
+  .transit-col-filter:hover, .transit-col-filter:focus-visible { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; outline:none; }
+  .transit-col-filter.is-active { border-color:#93c5fd; background:#dbeafe; color:#1d4ed8; }
+  .transit-col-filter:focus-visible { box-shadow:0 0 0 3px rgba(59,130,246,.22); }
+  .transit-filter-menu { position:fixed; z-index:3000; width:290px; max-width:calc(100vw - 16px); padding:12px; border:1px solid #cbd5e1; border-radius:10px; background:#fff; box-shadow:0 12px 32px rgba(15,23,42,.2); color:#1e293b; }
+  .transit-filter-menu[hidden] { display:none; }
+  .transit-filter-menu-title { margin-bottom:8px; font-size:.82rem; font-weight:700; }
+  .transit-filter-menu-search { width:100%; height:36px; padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; }
+  .transit-filter-menu-search:focus { border-color:#60a5fa; outline:3px solid rgba(59,130,246,.2); }
+  .transit-filter-select-all { display:flex; align-items:center; gap:8px; padding:8px 2px; border-bottom:1px solid #e2e8f0; font-size:.8rem; font-weight:600; }
+  .transit-filter-options { max-height:220px; overflow:auto; padding:4px 0; }
+  .transit-filter-option { display:flex; align-items:center; gap:8px; min-height:30px; margin:0; padding:4px 5px; border-radius:5px; font-size:.8rem; font-weight:400; cursor:pointer; }
+  .transit-filter-option:hover { background:#f1f5f9; }
+  .transit-filter-option span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .transit-filter-no-options { padding:12px 5px; color:#64748b; font-size:.8rem; }
+  .transit-filter-menu-actions { display:flex; align-items:center; justify-content:space-between; gap:6px; padding-top:9px; border-top:1px solid #e2e8f0; }
+  .transit-filter-menu-actions button { padding:5px 9px; border:0; border-radius:5px; background:#f1f5f9; color:#334155; font-size:.77rem; cursor:pointer; }
+  .transit-filter-menu-actions button:hover { background:#e2e8f0; }
+  .transit-filter-menu-actions .apply { background:#2563eb; color:white; }
+  .transit-filter-menu-actions .apply:hover { background:#1d4ed8; }
+  .transit-column-filter-summary { min-height:24px; color:#64748b; font-size:.77rem; }
+  .transit-column-filter-summary.active { color:#1d4ed8; }
   .transit-table td.amount { text-align:right; font-family:Consolas,monospace; font-weight:700; white-space:nowrap; }
   .transit-definition { color:#475569; font-size:.84rem; }
 </style>
@@ -86,8 +110,14 @@
     </div>
     <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
       <h6 class="mb-0 font-weight-bold">Detalle por estación, banco y afiliación</h6>
-      <small id="transitPeriodLabel" class="text-muted"></small>
+      <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+        <small id="transitPeriodLabel" class="text-muted"></small>
+        <button id="clearTransitColumnFilters" class="btn btn-outline-secondary btn-sm" type="button" onclick="limpiarFiltrosColumnasTransito()" disabled>
+          <i class="fas fa-times mr-1"></i> Limpiar filtros de columnas
+        </button>
+      </div>
     </div>
+    <div class="transit-column-filter-summary mb-2" id="transitColumnFilterSummary" aria-live="polite">Los filtros de encabezado solo afectan el detalle; los totales mantienen los filtros de empresa, banco, estación y mes.</div>
     <div id="transitError" class="alert alert-danger d-none" role="alert"></div>
     <div id="transitEmpty" class="text-center text-muted py-5">
       <i class="fas fa-calendar-alt d-block mb-2" style="font-size:2rem;"></i>
@@ -99,8 +129,15 @@
     <div id="transitResults" class="table-responsive d-none">
       <table class="table table-sm table-hover transit-table mb-0">
         <thead class="thead-light"><tr>
-          <th>Sentido</th><th>Estación</th><th>Empresa</th><th>Banco</th><th>Afiliación</th>
-          <th>Mes origen</th><th>Mes destino</th><th>Conciliación</th><th class="text-right">Monto</th>
+          <th><div class="transit-th-content"><span>Sentido</span><button class="transit-col-filter" type="button" data-transit-filter-column="0" aria-label="Filtrar por Sentido" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th><div class="transit-th-content"><span>Estación</span><button class="transit-col-filter" type="button" data-transit-filter-column="1" aria-label="Filtrar por Estación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th><div class="transit-th-content"><span>Empresa</span><button class="transit-col-filter" type="button" data-transit-filter-column="2" aria-label="Filtrar por Empresa" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th><div class="transit-th-content"><span>Banco</span><button class="transit-col-filter" type="button" data-transit-filter-column="3" aria-label="Filtrar por Banco" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th><div class="transit-th-content"><span>Afiliación</span><button class="transit-col-filter" type="button" data-transit-filter-column="4" aria-label="Filtrar por Afiliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th><div class="transit-th-content"><span>Mes origen</span><button class="transit-col-filter" type="button" data-transit-filter-column="5" aria-label="Filtrar por Mes origen" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th><div class="transit-th-content"><span>Mes destino</span><button class="transit-col-filter" type="button" data-transit-filter-column="6" aria-label="Filtrar por Mes destino" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th><div class="transit-th-content"><span>Conciliación</span><button class="transit-col-filter" type="button" data-transit-filter-column="7" aria-label="Filtrar por Conciliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th class="text-right"><div class="transit-th-content"><span>Monto</span><button class="transit-col-filter" type="button" data-transit-filter-column="8" aria-label="Filtrar por Monto" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
         </tr></thead>
         <tbody id="transitRows"></tbody>
       </table>
@@ -114,6 +151,10 @@
 const TRANSIT_FMT = new Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN', maximumFractionDigits:2 });
 let transitRequest = 0;
 let stationRequest = 0;
+let transitReportRows = [];
+const transitColumnFilters = new Map();
+let activeTransitMenu = null;
+const transitColumnNames = ['Sentido','Estación','Empresa','Banco','Afiliación','Mes origen','Mes destino','Conciliación','Monto'];
 
 function cargarBancosTransitos() {
   const empresa = $('#transitCompany').val();
@@ -181,22 +222,231 @@ function renderReporteTransitos(rows, period) {
   const station = $('#transitStation option:selected').text();
   $('#transitPeriodLabel').text(`${period} · ${$('#transitStation').val() ? station : 'todas las estaciones'}`);
 
-  const esc = value => $('<div>').text(value == null ? '' : String(value)).html();
-  const $rows = $('#transitRows').empty();
-  rows.forEach(row => $rows.append(`<tr>
-    <td><span class="badge ${row.sentido === 'SALIENTE' ? 'badge-warning' : 'badge-primary'}">${esc(row.sentido)}</span></td>
-    <td>${esc(row.estacion)}</td><td>${esc(row.razon_social)}</td><td>${esc(row.banco)}</td><td>${esc(row.afiliacion || '—')}</td>
-    <td>${esc(row.mes_origen)}</td><td>${esc(row.mes_destino)}</td><td>${esc(row.conciliacion || '—')}</td>
-    <td class="amount">${TRANSIT_FMT.format(Number(row.monto_transito || 0))}</td></tr>`));
+  transitReportRows = rows;
+  renderTransitosFiltrados();
   $('#transitLoading').addClass('d-none');
-  if (rows.length) {
-    $('#transitEmpty').addClass('d-none');
-    $('#transitResults').removeClass('d-none');
-  } else {
-    $('#transitResults').addClass('d-none');
-    $('#transitEmpty').removeClass('d-none').html('<i class="fas fa-inbox d-block mb-2" style="font-size:2rem;"></i> No hay tránsitos salientes ni entrantes aplicados para estos filtros.');
+}
+
+function valorColumnaTransito(row, column) {
+  const values = [row.sentido,row.estacion,row.razon_social,row.banco,row.afiliacion,row.mes_origen,row.mes_destino,row.conciliacion,Number(row.monto_transito || 0).toFixed(2)];
+  return values[column] == null ? '' : String(values[column]);
+}
+
+function renderTransitosFiltrados() {
+  const visibleRows = transitReportRows.filter(row => {
+    for (const [column, selected] of transitColumnFilters) {
+      if (!selected.has(valorColumnaTransito(row, column))) return false;
+    }
+    return true;
+  });
+  const body = document.getElementById('transitRows');
+  body.replaceChildren();
+  visibleRows.forEach(row => {
+    const tr = document.createElement('tr');
+    const values = [row.sentido,row.estacion,row.razon_social,row.banco,row.afiliacion || '—',row.mes_origen,row.mes_destino,row.conciliacion || '—'];
+    values.forEach((value, index) => {
+      const td = document.createElement('td');
+      if (index === 0) {
+        const badge = document.createElement('span');
+        badge.className = `badge ${row.sentido === 'SALIENTE' ? 'badge-warning' : 'badge-primary'}`;
+        badge.textContent = value == null ? '' : String(value);
+        td.appendChild(badge);
+      } else td.textContent = value == null ? '' : String(value);
+      tr.appendChild(td);
+    });
+    const amount = document.createElement('td');
+    amount.className = 'amount';
+    amount.textContent = TRANSIT_FMT.format(Number(row.monto_transito || 0));
+    tr.appendChild(amount);
+    body.appendChild(tr);
+  });
+
+  const activeCount = transitColumnFilters.size;
+  $('#clearTransitColumnFilters').prop('disabled', activeCount === 0);
+  $('#transitColumnFilterSummary')
+    .toggleClass('active', activeCount > 0)
+    .text(activeCount ? `${activeCount} filtro${activeCount === 1 ? '' : 's'} de columna activo${activeCount === 1 ? '' : 's'} · aplica solo al detalle.` : 'Los filtros de encabezado solo afectan el detalle; los totales mantienen los filtros de empresa, banco, estación y mes.');
+
+  document.querySelectorAll('.transit-col-filter').forEach(button => {
+    const active = transitColumnFilters.has(Number(button.dataset.transitFilterColumn));
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    button.setAttribute('aria-label', `${active ? 'Filtro activo. Editar filtro por ' : 'Filtrar por '}${transitColumnNames[Number(button.dataset.transitFilterColumn)]}`);
+  });
+
+  $('#transitResults').toggleClass('d-none', transitReportRows.length === 0);
+  if (visibleRows.length) $('#transitEmpty').addClass('d-none');
+  else {
+    const message = transitReportRows.length ? 'Ningún tránsito coincide con los filtros de columna.' : 'No hay tránsitos salientes ni entrantes aplicados para estos filtros.';
+    $('#transitEmpty').removeClass('d-none').text(message);
   }
 }
+
+function valoresDistintosTransito(column) {
+  return [...new Set(transitReportRows.map(row => valorColumnaTransito(row, column)))]
+    .sort((a, b) => (a === '' ? '(En blanco)' : a).localeCompare(b === '' ? '(En blanco)' : b, 'es', { numeric:true, sensitivity:'base' }));
+}
+
+function crearMenuFiltroTransito() {
+  if (document.getElementById('transitColumnFilterMenu')) return document.getElementById('transitColumnFilterMenu');
+  const menu = document.createElement('div');
+  menu.id = 'transitColumnFilterMenu';
+  menu.className = 'transit-filter-menu';
+  menu.hidden = true;
+  menu.setAttribute('role','dialog');
+  menu.setAttribute('aria-label','Filtro de columna');
+  menu.innerHTML = `<div class="transit-filter-menu-title"></div>
+    <input class="transit-filter-menu-search" type="search" aria-label="Buscar valores" placeholder="Buscar valores…">
+    <label class="transit-filter-select-all"><input type="checkbox" class="transit-filter-all"> <span>Seleccionar todos los visibles</span></label>
+    <div class="transit-filter-options" role="group"></div>
+    <div class="transit-filter-menu-actions">
+      <button type="button" data-action="clear">Limpiar filtro</button>
+      <div class="d-flex" style="gap:6px;"><button type="button" data-action="cancel">Cancelar</button><button type="button" class="apply" data-action="apply">Aplicar</button></div>
+    </div>`;
+  document.body.appendChild(menu);
+  menu.addEventListener('click', event => event.stopPropagation());
+  menu.addEventListener('input', event => {
+    if (event.target.matches('.transit-filter-menu-search')) renderTransitMenuOptions();
+  });
+  menu.addEventListener('change', event => {
+    if (!activeTransitMenu) return;
+    if (event.target.matches('.transit-filter-option input')) {
+      if (event.target.checked) activeTransitMenu.draft.add(event.target.value);
+      else activeTransitMenu.draft.delete(event.target.value);
+      updateTransitSelectAll();
+    } else if (event.target.matches('.transit-filter-all')) {
+      const visible = transitMenuVisibleValues();
+      if (event.target.checked) visible.forEach(value => activeTransitMenu.draft.add(value));
+      else visible.forEach(value => activeTransitMenu.draft.delete(value));
+      renderTransitMenuOptions();
+    }
+  });
+  menu.addEventListener('click', event => {
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (action === 'apply') aplicarFiltroColumnaTransito();
+    else if (action === 'cancel') cerrarMenuFiltroTransito(true);
+    else if (action === 'clear') limpiarFiltroColumnaTransito();
+  });
+  return menu;
+}
+
+function abrirMenuFiltroTransito(button) {
+  const menu = crearMenuFiltroTransito();
+  if (activeTransitMenu && activeTransitMenu.button === button) {
+    cerrarMenuFiltroTransito(false);
+    return;
+  }
+  cerrarMenuFiltroTransito(false);
+  const column = Number(button.dataset.transitFilterColumn);
+  const allValues = valoresDistintosTransito(column);
+  const applied = transitColumnFilters.get(column);
+  activeTransitMenu = { column, button, allValues, draft:new Set(applied || allValues) };
+  menu.querySelector('.transit-filter-menu-title').textContent = `Filtrar por ${transitColumnNames[column]}`;
+  menu.querySelector('.transit-filter-menu-search').value = '';
+  button.setAttribute('aria-expanded','true');
+  renderTransitMenuOptions();
+  menu.hidden = false;
+  const rect = button.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8));
+  const below = rect.bottom + 4;
+  const top = below + menu.offsetHeight <= window.innerHeight - 8 ? below : Math.max(8, rect.top - menu.offsetHeight - 4);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.querySelector('.transit-filter-menu-search').focus();
+}
+
+function transitMenuVisibleValues() {
+  if (!activeTransitMenu) return [];
+  const query = document.querySelector('#transitColumnFilterMenu .transit-filter-menu-search').value.trim().toLocaleLowerCase('es');
+  return activeTransitMenu.allValues.filter(value => (value === '' ? '(En blanco)' : value).toLocaleLowerCase('es').includes(query));
+}
+
+function renderTransitMenuOptions() {
+  if (!activeTransitMenu) return;
+  const menu = document.getElementById('transitColumnFilterMenu');
+  const list = menu.querySelector('.transit-filter-options');
+  list.replaceChildren();
+  const values = transitMenuVisibleValues();
+  if (!values.length) {
+    const empty = document.createElement('div');
+    empty.className = 'transit-filter-no-options';
+    empty.textContent = 'No hay valores para esta búsqueda.';
+    list.appendChild(empty);
+  }
+  values.forEach(value => {
+    const label = document.createElement('label');
+    label.className = 'transit-filter-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = value;
+    checkbox.checked = activeTransitMenu.draft.has(value);
+    const text = document.createElement('span');
+    text.textContent = value === '' ? '(En blanco)' : value;
+    label.append(checkbox, text);
+    list.appendChild(label);
+  });
+  updateTransitSelectAll();
+}
+
+function updateTransitSelectAll() {
+  if (!activeTransitMenu) return;
+  const all = document.querySelector('#transitColumnFilterMenu .transit-filter-all');
+  const visible = transitMenuVisibleValues();
+  const selectedCount = visible.filter(value => activeTransitMenu.draft.has(value)).length;
+  all.checked = visible.length > 0 && selectedCount === visible.length;
+  all.indeterminate = selectedCount > 0 && selectedCount < visible.length;
+}
+
+function aplicarFiltroColumnaTransito() {
+  if (!activeTransitMenu) return;
+  const { column, draft, allValues } = activeTransitMenu;
+  if (draft.size === allValues.length && allValues.every(value => draft.has(value))) transitColumnFilters.delete(column);
+  else transitColumnFilters.set(column, new Set(draft));
+  cerrarMenuFiltroTransito(true);
+  renderTransitosFiltrados();
+}
+
+function limpiarFiltroColumnaTransito() {
+  if (!activeTransitMenu) return;
+  transitColumnFilters.delete(activeTransitMenu.column);
+  cerrarMenuFiltroTransito(true);
+  renderTransitosFiltrados();
+}
+
+function limpiarFiltrosColumnasTransito() {
+  transitColumnFilters.clear();
+  cerrarMenuFiltroTransito(false);
+  renderTransitosFiltrados();
+}
+
+function cerrarMenuFiltroTransito(restoreFocus) {
+  if (!activeTransitMenu) return;
+  const { button } = activeTransitMenu;
+  const menu = document.getElementById('transitColumnFilterMenu');
+  if (menu) menu.hidden = true;
+  button.setAttribute('aria-expanded','false');
+  activeTransitMenu = null;
+  if (restoreFocus) button.focus();
+}
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('.transit-col-filter');
+  if (button) {
+    event.preventDefault();
+    event.stopPropagation();
+    abrirMenuFiltroTransito(button);
+  } else if (activeTransitMenu && !event.target.closest('#transitColumnFilterMenu')) cerrarMenuFiltroTransito(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && activeTransitMenu) {
+    event.preventDefault();
+    cerrarMenuFiltroTransito(true);
+  }
+});
+window.addEventListener('resize', () => cerrarMenuFiltroTransito(false));
+window.addEventListener('scroll', event => {
+  if (!event.target.closest?.('#transitColumnFilterMenu')) cerrarMenuFiltroTransito(false);
+}, true);
 
 function anteriorMes(period) {
   const date = new Date(`${period}-01T12:00:00`);
