@@ -477,6 +477,7 @@ public function balance_age()
         $tipval = (int)($_POST['tipval']  ?? 4);
         $codcli = (int)($_POST['codcli']  ?? 0);
         $empresa = (int)($_POST['empresa'] ?? 0);
+        $propio = $this->consumoPropioParam();
 
         $data = [];
         if ($rows = $this->clientesModel->get_dispatches_by_client(
@@ -484,7 +485,8 @@ public function balance_age()
             dateToInt($until->format('Y-m-d')),
             $tipval,
             $codcli,
-            $empresa
+            $empresa,
+            $propio
         )) {
             foreach ($rows as $r) {
                 $data[] = [
@@ -498,6 +500,7 @@ public function balance_age()
                     'Estacion' => $r['Estacion'],
                     'RazonSocial' => $r['RazonSocial'],
                     'producto' => $r['producto'],
+                    'Categoria' => $r['Categoria'],
                 ];
             }
         }
@@ -517,9 +520,16 @@ public function balance_age()
             dateToInt($until->format('Y-m-d')),
             $tipval,
             $codcli,
-            $empresa
+            $empresa,
+            $this->consumoPropioParam()
         );
         json_output(['data' => $rows ?: []]);
+    }
+
+    /** Filtro de consumo propio (TG.dbo.clientes_consumo_propio): incluir (default) | excluir | solo. */
+    private function consumoPropioParam() : string {
+        $propio = $_POST['propio'] ?? 'incluir';
+        return in_array($propio, ['incluir', 'excluir', 'solo'], true) ? $propio : 'incluir';
     }
 
     /** Cortes donde despachos ≠ ValesR para un cliente. POST /income/clients_cortes_diff (tipval 4=débito/3=crédito). */

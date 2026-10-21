@@ -1,0 +1,357 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Notas de Crédito vs Consumos{% endblock %}
+{% block menutitle %}Contabilidad — Notas de Crédito vs Consumos{% endblock %}
+
+{% block mycss %}
+<style>
+  /* Mismo look de tablas que Contabilidad > Movimientos bancos. */
+  .nc-tabla thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
+  .nc-tabla tbody tr td { font-size: .8rem; vertical-align: middle; color: #334155; }
+  .nc-tabla thead tr.filter th { background-color: #e2e8f0 !important; padding: 3px 6px !important; }
+  .nc-tabla thead tr.filter th input {
+    font-size: .7rem; padding: 2px 5px; height: 22px; border-radius: 3px;
+    border: 1px solid #cbd5e1; width: 100%; box-sizing: border-box;
+  }
+  .nc-tabla { border-collapse: separate; border-spacing: 0; }
+  .nc-tabla thead th { position: sticky; top: 0; z-index: 30; }
+  .nc-tabla th, .nc-tabla td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
+  .nc-tabla tr > :last-child { border-right: none; }
+  .nc-tabla td.nc-wrap { white-space: normal; min-width: 220px; max-width: 320px; word-break: break-word; }
+
+  div.dt-button-collection { z-index: 9999 !important; }
+
+  .nc-monto { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .nc-neg { color: #dc3545; font-weight: 600; }
+  .nc-mono { font-family: monospace; white-space: nowrap; font-size: .75rem; }
+
+  .nc-tabla-wrap { border: 2px solid #cbd5e1; border-radius: .5rem; background: #fff; overflow: hidden; }
+  .nc-tabla-wrap .nc-top {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .5rem .75rem; background: #fff; border-bottom: 2px solid #cbd5e1;
+  }
+  .nc-tabla-wrap .dataTables_filter input { border: 1px solid #cbd5e1; border-radius: .375rem; padding: .25rem .5rem; margin-left: .5rem; }
+  .nc-tabla-wrap .nc-bottom {
+    display: flex; justify-content: space-between; align-items: center; padding: .4rem .75rem;
+    background: #f8fafc; border-top: 2px solid #cbd5e1; color: #475569; font-size: .75rem;
+  }
+  .nc-scroll { overflow: auto; max-height: 64vh; }
+
+  .nc-badge { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .7rem; font-weight: 700; }
+  .nc-ok    { background: #dcfce7; color: #166534; }
+  .nc-warn  { background: #fef3c7; color: #92400e; }
+  .nc-bad   { background: #fee2e2; color: #991b1b; }
+  .nc-muted { background: #e2e8f0; color: #475569; }
+
+  .nc-resumen { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
+  .nc-resumen .nc-chip {
+    border: 1px solid #e2e8f0; border-radius: .5rem; padding: .4rem .75rem; background: #fff;
+    font-size: .8rem; color: #334155; cursor: pointer; user-select: none;
+  }
+  .nc-resumen .nc-chip.activo { border-color: #009559; box-shadow: 0 0 0 2px rgba(0, 149, 89, .15); }
+  .nc-resumen .nc-chip b { font-variant-numeric: tabular-nums; }
+
+  #ncLoader {
+    display: none; position: fixed; inset: 0; z-index: 10500;
+    background: rgba(248, 250, 252, .75); backdrop-filter: blur(1px);
+    align-items: center; justify-content: center; flex-direction: column; gap: .75rem;
+  }
+  #ncLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
+  #ncLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div id="ncLoader">
+  <div class="spinner-border"></div>
+  <span>Consultando ControlGas...</span>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form class="row align-items-end g-2" id="ncFiltros">
+      <div class="col-auto">
+        <label for="desde">Desde:</label>
+        <input type="date" class="form-control" id="desde" value="{{ desde }}" required>
+      </div>
+      <div class="col-auto">
+        <label for="hasta">Hasta:</label>
+        <input type="date" class="form-control" id="hasta" value="{{ hasta }}" required>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+      </div>
+      <div class="col">
+        <small class="text-muted">
+          Notas: por fecha de la nota G. Consumos: por fecha del despacho, solo clientes débito.
+        </small>
+      </div>
+    </form>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabNotas" type="button" role="tab">
+      Notas de crédito G <span class="badge bg-secondary" id="cntNotas">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabConsumos" type="button" role="tab">
+      Consumos débito <span class="badge bg-secondary" id="cntConsumos">0</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tabNotas" role="tabpanel">
+    <div class="nc-resumen" id="resumenNotas"></div>
+    <div class="nc-tabla-wrap">
+      <table id="tablaNotas" class="table table-sm table-hover nc-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Nota</th>
+            <th>Fecha</th>
+            <th>Cód. cliente</th>
+            <th>Cliente</th>
+            <th>Valor nota</th>
+            <th>Factura(s) ligada(s)</th>
+            <th>Aplicado</th>
+            <th>Despachos</th>
+            <th>Litros</th>
+            <th>Suma despachos</th>
+            <th>Diferencia</th>
+            <th>Estatus</th>
+            <th>UUID</th>
+            <th>Notas</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tabConsumos" role="tabpanel">
+    <div class="d-flex align-items-center gap-3 mb-2">
+      <div class="form-check form-switch m-0">
+        <input class="form-check-input" type="checkbox" id="soloSinNota" checked>
+        <label class="form-check-label" for="soloSinNota">Solo consumos sin nota (sin factura o factura E sin nota)</label>
+      </div>
+    </div>
+    <div class="nc-resumen" id="resumenConsumos"></div>
+    <div class="nc-tabla-wrap">
+      <table id="tablaConsumos" class="table table-sm table-hover nc-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Estación</th>
+            <th>Despacho</th>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Cód. cliente</th>
+            <th>Cliente</th>
+            <th>Producto</th>
+            <th>Litros</th>
+            <th>Monto</th>
+            <th>Factura</th>
+            <th>Nota G</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+$(function () {
+  var ESTATUS_CLASE = {
+    'Cuadra': 'nc-ok', 'Ligado': 'nc-ok',
+    'Diferencia': 'nc-warn', 'Factura con varias notas': 'nc-warn', 'Facturado en otra serie': 'nc-muted',
+    'Sin ligar': 'nc-bad', 'Sin despachos': 'nc-bad', 'Sin factura': 'nc-bad', 'Factura E sin nota': 'nc-bad',
+    'Cancelada': 'nc-muted',
+  };
+
+  function fmtMonto(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtLitros(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  }
+  function fmtFecha(iso) {
+    var p = String(iso || '').substring(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  // display: con formato; export/sort/filter: valor crudo
+  function monto(d, type) { return type === 'display' ? fmtMonto(d) : d; }
+  function montoDif(d, type) {
+    if (type !== 'display') return d;
+    return Math.abs(d) > 1 ? '<span class="nc-neg">' + fmtMonto(d) + '</span>' : fmtMonto(d);
+  }
+  function badge(d, type) {
+    if (type !== 'display') return d;
+    return '<span class="nc-badge ' + (ESTATUS_CLASE[d] || 'nc-muted') + '">' + esc(d) + '</span>';
+  }
+  function fecha(d, type) { return type === 'display' ? fmtFecha(d) : d; }
+  function texto(d, type) { return type === 'display' ? esc(d) : d; }
+
+  function initTabla(sel, columnas, titulo, extra) {
+    var api = $(sel).DataTable($.extend({
+      paging: true,
+      pageLength: 100,
+      lengthMenu: [[50, 100, 500, -1], [50, 100, 500, 'Todos']],
+      order: [],
+      dom: '<"nc-top"Bf>rt<"nc-bottom"ilp>',
+      language: {
+        info: 'Mostrando _START_–_END_ de _TOTAL_',
+        infoFiltered: '(filtrados de _MAX_)',
+        infoEmpty: 'Sin registros',
+        emptyTable: 'Elige un rango y presiona Buscar.',
+        lengthMenu: '_MENU_ por página',
+        search: 'Buscar:',
+        paginate: { previous: '‹', next: '›' },
+      },
+      buttons: [
+        {
+          extend: 'excel',
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          className: 'btn btn-sm btn-success',
+          title: function () { return titulo + ' ' + $('#desde').val() + ' a ' + $('#hasta').val(); },
+          exportOptions: { columns: ':visible', orthogonal: 'export' },
+        },
+        { extend: 'colvis', text: '<i class="fas fa-columns"></i> Columnas', className: 'btn btn-sm btn-outline-secondary' },
+      ],
+      data: [],
+      deferRender: true,
+      columns: columnas,
+      initComplete: function () {
+        var api = this.api();
+        $(sel).wrap('<div class="nc-scroll"></div>');
+        var filterRow = $('<tr class="filter"></tr>');
+        $(sel + ' thead tr:first th').each(function () {
+          filterRow.append('<th><input type="text" placeholder="' + esc($(this).text().trim()) + '" /></th>');
+        });
+        $(sel + ' thead').append(filterRow);
+        $(sel + ' thead tr.filter th input').on('keyup change', function () {
+          api.column($(this).parent().index() + ':visible').search(this.value).draw();
+        });
+        var altura = $(sel + ' thead tr:first th').first().outerHeight() || 33;
+        $(sel + ' thead tr.filter th').css('top', altura + 'px');
+      },
+    }, extra || {}));
+    return api;
+  }
+
+  var tablaNotas = initTabla('#tablaNotas', [
+    { data: 'nota', className: 'nc-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'nc-wrap', render: texto },
+    { data: 'total', className: 'nc-monto', render: monto },
+    { data: 'facturas', className: 'nc-mono', render: texto },
+    { data: 'aplicado', className: 'nc-monto', render: monto },
+    { data: 'despachos', className: 'nc-monto' },
+    { data: 'litros', className: 'nc-monto', render: function (d, t) { return t === 'display' ? fmtLitros(d) : d; } },
+    { data: 'monto_despachos', className: 'nc-monto', render: monto },
+    { data: 'diferencia', className: 'nc-monto', render: montoDif },
+    { data: 'estatus', render: badge },
+    { data: 'uuid', className: 'nc-mono', render: texto },
+    { data: 'notas', className: 'nc-wrap', render: texto },
+  ], 'Notas de credito G vs consumos');
+
+  var tablaConsumos = initTabla('#tablaConsumos', [
+    { data: 'estacion' },
+    { data: 'despacho', className: 'nc-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'hora' },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'nc-wrap', render: texto },
+    { data: 'producto' },
+    { data: 'litros', className: 'nc-monto', render: function (d, t) { return t === 'display' ? fmtLitros(d) : d; } },
+    { data: 'monto', className: 'nc-monto', render: monto },
+    { data: 'factura', className: 'nc-mono' },
+    { data: 'nota', className: 'nc-mono', render: texto },
+    { data: 'estado', render: badge },
+  ], 'Consumos debito vs notas de credito');
+
+  $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+  });
+
+  // Chips de resumen por estatus: conteo + suma; clic filtra la columna de estatus.
+  function pintarResumen(contenedor, api, filas, campoEstatus, colEstatus, campoMonto) {
+    var grupos = {};
+    filas.forEach(function (r) {
+      var k = r[campoEstatus];
+      grupos[k] = grupos[k] || { n: 0, monto: 0 };
+      grupos[k].n++;
+      grupos[k].monto += Number(r[campoMonto]) || 0;
+    });
+    var html = '<span class="nc-chip activo" data-estatus="">Todos: <b>' + filas.length + '</b></span>';
+    Object.keys(grupos).sort().forEach(function (k) {
+      html += '<span class="nc-chip" data-estatus="' + esc(k) + '">' + badge(k, 'display') +
+        ' <b>' + grupos[k].n + '</b> · $' + fmtMonto(grupos[k].monto) + '</span>';
+    });
+    $(contenedor).html(html).off('click').on('click', '.nc-chip', function () {
+      $(contenedor + ' .nc-chip').removeClass('activo');
+      $(this).addClass('activo');
+      var v = $(this).data('estatus');
+      api.column(colEstatus).search(v ? '^' + $.fn.dataTable.util.escapeRegex(v) + '$' : '', true, false).draw();
+    });
+  }
+
+  function mostrarLoader(on) { document.getElementById('ncLoader').style.display = on ? 'flex' : 'none'; }
+
+  function pedir(url, extra) {
+    return $.ajax({
+      url: url, method: 'POST', dataType: 'json', timeout: 600000,
+      data: $.extend({ desde: $('#desde').val(), hasta: $('#hasta').val() }, extra || {}),
+    });
+  }
+
+  function cargarConsumos() {
+    return pedir('/accounting/credit_notes_consumption_dispatches', { solo_sin_nota: $('#soloSinNota').is(':checked') ? '1' : '0' })
+      .done(function (r) {
+        var filas = (r && r.data) || [];
+        tablaConsumos.column(11).search('');
+        tablaConsumos.clear().rows.add(filas).draw();
+        $('#cntConsumos').text(filas.length);
+        pintarResumen('#resumenConsumos', tablaConsumos, filas, 'estado', 11, 'monto');
+      });
+  }
+
+  function buscar() {
+    mostrarLoader(true);
+    var pNotas = pedir('/accounting/credit_notes_consumption_notes').done(function (r) {
+      var filas = (r && r.data) || [];
+      tablaNotas.column(11).search('');
+      tablaNotas.clear().rows.add(filas).draw();
+      $('#cntNotas').text(filas.length);
+      pintarResumen('#resumenNotas', tablaNotas, filas, 'estatus', 11, 'total');
+    });
+    $.when(pNotas, cargarConsumos())
+      .fail(function () { alertify.error('Error al consultar ControlGas'); })
+      .always(function () {
+        mostrarLoader(false);
+        $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+      });
+  }
+
+  $('#ncFiltros').on('submit', function (e) { e.preventDefault(); buscar(); });
+  $('#soloSinNota').on('change', function () {
+    mostrarLoader(true);
+    cargarConsumos()
+      .fail(function () { alertify.error('Error al consultar los consumos'); })
+      .always(function () { mostrarLoader(false); });
+  });
+});
+</script>
+{% endblock %}

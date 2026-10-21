@@ -375,6 +375,14 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <label class="col-form-label-sm">Hasta</label>
                         <input type="date" class="form-control form-control-sm" id="until_debit" value="{{ 'now'|date('Y-m-d') }}">
                     </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm" title="Clientes marcados como consumo interno (marketing, bonificaciones, cortesías, inventarios, arqueo…)">Consumo propio</label>
+                        <select class="form-control form-control-sm" id="propio_debit">
+                            <option value="incluir" selected>Incluir (marcados)</option>
+                            <option value="excluir">Excluir</option>
+                            <option value="solo">Solo consumo propio</option>
+                        </select>
+                    </div>
                     
                 </div>
                 <div class="row">
@@ -398,6 +406,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div></div></div>
             <div class="col"><div class="card"><div class="card-body text-center py-2">
                 <small class="text-muted">Total Monto</small><h6 id="sum_monto_consumos_debit" class="mb-0">$0.00</h6>
+            </div></div></div>
+            <div class="col"><div class="card"><div class="card-body text-center py-2">
+                <small class="text-muted">Consumo propio</small><h6 id="sum_propio_client_debit" class="mb-0 text-info">$0.00</h6>
             </div></div></div>
         </div>
 
@@ -425,7 +436,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                 <table id="debit_consumos_client_table" class="table table-hover table-sm w-100">
                     <thead>
                         <tr>
-                            <th>Cód.</th><th>Cliente</th><th>Razones soc.</th><th>Estaciones</th>
+                            <th>Cód.</th><th>Cliente</th><th>Categoría</th><th>Razones soc.</th><th>Estaciones</th>
                             <th>Primer consumo</th><th>Último consumo</th>
                             <th>Despachos</th><th>Litros</th><th>Monto</th>
                             <th title="Lo que entró en los cortes con este cliente (SG12.ValesR), misma fuente que Venta por Rubro">Cortes</th><th title="Despachos − Cortes. Clic para ver los cortes que no cuadran">Diferencia</th>
@@ -434,7 +445,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -454,7 +465,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                 <table id="debit_consumos_table" class="table table-hover table-sm w-100">
                     <thead>
                         <tr>
-                            <th>Cliente</th><th>Cód.</th><th>Fecha</th><th>Hora</th>
+                            <th>Cliente</th><th>Cód.</th><th>Categoría</th><th>Fecha</th><th>Hora</th>
                             <th>Nro. Despacho</th><th>Estación</th><th>Razón social</th>
                             <th>Litros</th><th>Monto</th><th>Producto</th>
                         </tr>
@@ -462,7 +473,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th>Cliente</th><th>Cód.</th><th>Fecha</th><th>Hora</th>
+                            <th>Cliente</th><th>Cód.</th><th>Categoría</th><th>Fecha</th><th>Hora</th>
                             <th>Nro. Despacho</th><th>Estación</th><th>Razón social</th>
                             <th>Litros</th><th>Monto</th><th>Producto</th>
                         </tr>

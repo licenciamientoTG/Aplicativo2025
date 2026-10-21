@@ -2490,6 +2490,12 @@ async function clients_credit_table() {
     });
 }
 
+// Categoría de consumo propio (TG.dbo.clientes_consumo_propio), solo débito: badge en pantalla, texto en Excel/filtros
+function consumo_propio_render(d, type) {
+    if (!d || type !== 'display') return d || '';
+    return '<span class="badge bg-info text-dark" title="Consumo propio">' + $('<div>').text(d).html() + '</span>';
+}
+
 // ── Consumos por Cliente (Débito tipval=4 / Crédito tipval=3) ───────────────
 
 async function clients_dispatches_table(tipo) {
@@ -2500,6 +2506,10 @@ async function clients_dispatches_table(tipo) {
     var tipval   = tipo === 'debit' ? 4 : 3;
     // codcli=0 → todos los clientes; empresa 0=todas, -1=sin razón social
     var empresa  = parseInt($('#empresa_' + tipo).val(), 10) || 0;
+    // Consumo propio solo existe en débito: columna Categoría + filtro incluir/excluir/solo
+    var isDebit  = tipo === 'debit';
+    var propio   = isDebit ? ($('#propio_debit').val() || 'incluir') : 'incluir';
+    var off      = isDebit ? 1 : 0;
 
     if (!codcli) {
         alertify.myAlert('<div class="text-center text-warning"><h5>Selecciona un cliente</h5><p>Debes elegir un cliente antes de consultar.</p></div>');
@@ -2529,7 +2539,7 @@ async function clients_dispatches_table(tipo) {
     var allClients = String(codcli) === '0';
 
     $('#' + tableId).DataTable({
-        order: [[0, 'asc'], [2, 'asc']],
+        order: [[0, 'asc'], [2 + off, 'asc']],
         colReorder: true,
         dom: allClients ? '<"top"Bf>rt<"bottom"ilp>' : '<"top"Bf>rt<"bottom"i>',
         paging: allClients,
@@ -2541,7 +2551,7 @@ async function clients_dispatches_table(tipo) {
         buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
         ajax: {
             method: 'POST',
-            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval, 'empresa': empresa },
+            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval, 'empresa': empresa, 'propio': propio },
             url: '/income/clients_dispatches_table',
             timeout: 600000,
             error: function () {
@@ -2553,6 +2563,7 @@ async function clients_dispatches_table(tipo) {
         columns: [
             { data: 'Cliente',  className: 'text-nowrap' },
             { data: 'codcli' },
+        ].concat(isDebit ? [{ data: 'Categoria', className: 'text-nowrap', render: consumo_propio_render }] : []).concat([
             { data: 'Fecha',    className: 'text-center' },
             { data: 'hratrn',   className: 'text-center', render: function(d) {
                 if (!d) return '';
@@ -2568,12 +2579,12 @@ async function clients_dispatches_table(tipo) {
             { data: 'Litros',   render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
             { data: 'Monto',    render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-end' },
             { data: 'producto' },
-        ],
+        ]),
         deferRender: true,
         initComplete: function () { $('.table-responsive').removeClass('loading'); },
         footerCallback: function (row, data, start, end, display) {
             var api = this.api();
-            var litrosIdx = 7, montoIdx = 8;
+            var litrosIdx = 7 + off, montoIdx = 8 + off;
             var litrosTotal = api.column(litrosIdx, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
             var montoTotal  = api.column(montoIdx, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
             $(api.column(litrosIdx).footer()).html(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3}));
@@ -2595,6 +2606,10 @@ async function clients_summary_table(tipo) {
     var codcli  = parseInt($('#cliente_' + tipo).val(), 10) || 0;
     var empresa = parseInt($('#empresa_' + tipo).val(), 10) || 0;
     var tipval  = tipo === 'debit' ? 4 : 3;
+    // Consumo propio solo existe en débito: columna Categoría + filtro incluir/excluir/solo
+    var isDebit = tipo === 'debit';
+    var propio  = isDebit ? ($('#propio_debit').val() || 'incluir') : 'incluir';
+    var off     = isDebit ? 1 : 0;
 
     if ($.fn.DataTable.isDataTable('#' + tableId)) {
         $('#' + tableId).DataTable().destroy();
@@ -2624,7 +2639,7 @@ async function clients_summary_table(tipo) {
     };
 
     $('#' + tableId).DataTable({
-        order: [[8, 'desc']],
+        order: [[8 + off, 'desc']],
         // Clientes cuyos despachos no cuadran con los cortes (p. ej. PUBLICO EN GENERAL débito)
         createdRow: function (tr, row) {
             if (Math.abs(parseFloat(row.Diferencia) || 0) >= 0.01) $(tr).addClass('table-warning');
@@ -2638,7 +2653,7 @@ async function clients_summary_table(tipo) {
         buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
         ajax: {
             method: 'POST',
-            data: { 'from': from, 'until': until, 'codcli': codcli, 'empresa': empresa, 'tipval': tipval },
+            data: { 'from': from, 'until': until, 'codcli': codcli, 'empresa': empresa, 'tipval': tipval, 'propio': propio },
             url: '/income/clients_dispatches_by_client',
             timeout: 600000,
             error: function () {
@@ -2650,6 +2665,7 @@ async function clients_summary_table(tipo) {
         columns: [
             { data: 'codcli' },
             { data: 'Cliente',         className: 'text-nowrap' },
+        ].concat(isDebit ? [{ data: 'Categoria', className: 'text-nowrap', render: consumo_propio_render }] : []).concat([
             { data: 'RazonesSociales', className: 'text-center' },
             { data: 'Estaciones',      className: 'text-center' },
             { data: 'PrimerConsumo',   className: 'text-center text-nowrap' },
@@ -2668,18 +2684,23 @@ async function clients_summary_table(tipo) {
                 if (Math.abs(parseFloat(d) || 0) < 0.01) return '<span class="text-muted">$0.00</span>';
                 return '<a href="#" class="client-cortes-drill text-danger fw-bold" title="Ver cortes que no cuadran">' + fmtMoney(d) + ' <i class="fas fa-search"></i></a>';
             }},
-        ],
+        ]),
         deferRender: true,
         initComplete: function () { $('.table-responsive').removeClass('loading'); },
         footerCallback: function () {
             var api = this.api();
-            var desp = sumCol(api, 6), lit = sumCol(api, 7), mto = sumCol(api, 8), cor = sumCol(api, 9), dif = sumCol(api, 10);
-            $(api.column(6).footer()).html(desp.toLocaleString('es-MX'));
-            $(api.column(7).footer()).html(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
-            $(api.column(8).footer()).html(fmtMoney(mto));
-            $(api.column(9).footer()).html(fmtMoney(cor));
-            $(api.column(10).footer()).html(fmtMoney(dif));
+            var desp = sumCol(api, 6 + off), lit = sumCol(api, 7 + off), mto = sumCol(api, 8 + off), cor = sumCol(api, 9 + off), dif = sumCol(api, 10 + off);
+            $(api.column(6 + off).footer()).html(desp.toLocaleString('es-MX'));
+            $(api.column(7 + off).footer()).html(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
+            $(api.column(8 + off).footer()).html(fmtMoney(mto));
+            $(api.column(9 + off).footer()).html(fmtMoney(cor));
+            $(api.column(10 + off).footer()).html(fmtMoney(dif));
             $('#sum_clientes_client_' + tipo).text(api.rows({ search: 'applied' }).count().toLocaleString('es-MX'));
+            if (isDebit) {
+                var propioMto = api.rows({ search: 'applied' }).data().toArray()
+                    .reduce(function (a, r) { return r.Categoria ? a + (parseFloat(r.Monto) || 0) : a; }, 0);
+                $('#sum_propio_client_debit').text(fmtMoney(propioMto));
+            }
         }
     });
 }
