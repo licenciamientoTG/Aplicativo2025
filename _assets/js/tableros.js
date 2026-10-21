@@ -5894,15 +5894,12 @@
           evidence.append(previews);
           card.append(evidence);
         });
-        const moveControl = makeElement('div', 'boards-kanban-card-action');
         if (column && ['status', 'dropdown'].includes(columnType(column))) {
+          const moveControl = makeElement('div', 'boards-kanban-card-action');
           moveControl.append(makeElement('span', '', 'Estado'));
           moveControl.append(createCellEditor(item, column, getCellValue(item, column)));
-        } else if (!column) {
-          moveControl.append(makeElement('span', '', 'Mover'));
-          moveControl.append(createMoveEditor(item));
+          card.append(moveControl);
         }
-        if (moveControl.childElementCount) card.append(moveControl);
         card.append(createDetailsButton(item));
         cardList.append(card);
       });
@@ -5916,7 +5913,7 @@
         kanbanSortables.push(window.Sortable.create(cardList, {
           group: { name: `kanban-board-${state.board.id}`, pull: true, put: true },
           draggable: '.boards-kanban-card[draggable="true"]',
-          handle: '.boards-kanban-card-title',
+          handle: '.boards-kanban-card',
           filter: 'button:not(.boards-kanban-card-title), input, select, textarea, a',
           preventOnFilter: false,
           animation: 180,
