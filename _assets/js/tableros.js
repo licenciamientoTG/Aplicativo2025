@@ -614,7 +614,7 @@
       if (!select) return;
       const previous = state.selectedWorkspaceId || select.value;
       select.replaceChildren();
-      state.workspaces.filter((workspace) => !workspace.shared_only).forEach((workspace) => {
+      state.workspaces.filter((workspace) => canCreateInWorkspace(workspace)).forEach((workspace) => {
         const option = makeElement('option', '', workspace.name || 'Espacio sin nombre');
         option.value = String(workspace.id);
         select.append(option);
@@ -668,8 +668,8 @@
 
   function openCreateFolder(workspaceId = state.selectedWorkspaceId, parentFolderId = '') {
     const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
-    if (!workspace || workspace.shared_only) {
-      setNotice('Solo puedes crear carpetas en espacios de trabajo a los que perteneces.', 'error');
+    if (!canCreateInWorkspace(workspace)) {
+      setNotice('No tienes permiso para crear carpetas en este espacio de trabajo.', 'error');
       return;
     }
     populateWorkspaceSelectors();
@@ -688,7 +688,7 @@
   }
 
   function openCreateBoard(workspaceId = state.selectedWorkspaceId, folderId = '') {
-    const eligible = state.workspaces.filter((workspace) => !workspace.shared_only);
+    const eligible = state.workspaces.filter((workspace) => canCreateInWorkspace(workspace));
     if (!eligible.length) {
       openDialog(els.createWorkspaceDialog);
       setNotice('Crea un espacio de trabajo antes de crear tableros.', 'info');
@@ -734,14 +734,14 @@
     const workspace = state.workspaces.find((entry) => String(entry.id) === workspaceId);
     const rootFolderButton = document.getElementById('navCreateFolder');
     const rootBoardButton = document.getElementById('navCreateBoard');
-    if (rootFolderButton) rootFolderButton.hidden = !workspace || Boolean(workspace.shared_only);
-    if (rootBoardButton) rootBoardButton.hidden = !workspace || Boolean(workspace.shared_only);
+    if (rootFolderButton) rootFolderButton.hidden = !canCreateInWorkspace(workspace);
+    if (rootBoardButton) rootBoardButton.hidden = !canCreateInWorkspace(workspace);
     if (!workspace) {
       list.append(makeElement('p', 'boards-nav-empty', state.workspaces.length ? 'No hay contenido en este espacio.' : 'Crea un espacio de trabajo para empezar.'));
       return;
     }
     const workspaceFolders = state.folders.filter((folder) => String(folder.workspace_id) === workspaceId);
-    const restricted = Boolean(workspace.shared_only);
+    const restricted = !canCreateInWorkspace(workspace);
     const folderNodes = new Map(workspaceFolders.map((folder) => [String(folder.id), { ...folder, children: [], boards: [] }]));
     const roots = [];
     folderNodes.forEach((folder) => {
@@ -861,7 +861,7 @@
       toggle.append(makeElement('i', 'fa-regular fa-folder', ''));
       toggle.append(makeElement('span', '', folder.name || 'Carpeta sin nombre'));
       row.append(toggle);
-      if (canCreateBoard && !workspace.shared_only) {
+      if (canCreateInWorkspace(workspace)) {
         const actions = makeElement('span', 'boards-nav-folder-actions');
         if (depth < 2) {
           const addFolder = makeElement('button', '', '');
@@ -1192,7 +1192,7 @@
   ];
 
   function getManageableBoards() {
-    return state.boards.filter((board) => ['owner', 'designer'].includes(String(board.role || board.user_role || '').toLowerCase()));
+    return state.boards.filter((board) => ['owner', 'designer', 'editor'].includes(String(board.role || board.user_role || '').toLowerCase()));
   }
 
   function renderBoardVisibilityManager() {
@@ -1385,9 +1385,22 @@
     return ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
+  function canCreateInWorkspace(workspace) {
+    if (!workspace) return false;
+    return Boolean(workspace.can_manage_content || (canCreateBoard && !workspace.shared_only));
+  }
+
+  function canDeleteBoard() {
+    const role = String(state.board?.role || '').toLowerCase();
+    const directInvitation = ['board_invitation', 'direct_invitation', 'board_member'].includes(String(state.board?.access_source || '').toLowerCase());
+    const workspace = state.workspaces.find((entry) => String(entry.id) === String(state.board?.workspace_id || ''));
+    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role)
+      || (role === 'editor' && (!directInvitation || String(workspace?.user_role || '').toLowerCase() === 'owner'));
+  }
+
   function canShareBoard() {
     const role = String(state.board?.role || '').toLowerCase();
-    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
+    return !role ? canAdmin : ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
   function accessSourceLabel(source) {
@@ -1433,10 +1446,10 @@
     document.getElementById('openCreateItem').hidden = !edit;
     document.getElementById('openCreateGroup').hidden = !manage;
     document.getElementById('openCreateColumn').hidden = !manage;
-    document.getElementById('trashBoard').hidden = !canShareBoard();
+    document.getElementById('trashBoard').hidden = !canDeleteBoard();
     document.getElementById('archiveBoard').hidden = !canShareBoard();
     const duplicateButton = document.getElementById('openDuplicateBoard');
-    if (duplicateButton) duplicateButton.hidden = !canCreateBoard || !['owner', 'designer'].includes(role);
+    if (duplicateButton) duplicateButton.hidden = !['owner', 'designer', 'editor'].includes(role);
     const shareButton = document.getElementById('openShareBoard');
     if (shareButton) shareButton.hidden = !canShareBoard();
     const sharedViewOption = document.getElementById('sharedViewOption');
@@ -2473,7 +2486,7 @@
 
   function canManageAutomation() {
     const role = String(state.board?.role || '').toLowerCase();
-    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
+    return !role ? canAdmin : ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
   function displayDateTime(value) {
@@ -6805,7 +6818,7 @@
 
     document.getElementById('openDuplicateBoard')?.addEventListener('click', () => {
       const role = String(state.board?.role || '').toLowerCase();
-      if (!canCreateBoard || !['owner', 'designer'].includes(role) || !state.board?.id) return;
+      if (!['owner', 'designer', 'editor'].includes(role) || !state.board?.id) return;
       document.getElementById('duplicateBoardName').value = `Duplicado de ${state.board.name || 'tablero'}`;
       document.getElementById('duplicateBoardMode').value = 'structure';
       document.getElementById('duplicateBoardSubscribers').checked = false;
@@ -6823,7 +6836,7 @@
 
     dialogSubmit(els.duplicateBoardForm, async (formData) => {
       const role = String(state.board?.role || '').toLowerCase();
-      if (!canCreateBoard || !['owner', 'designer'].includes(role)) throw new Error('Solo el propietario o un diseñador puede duplicar este tablero.');
+      if (!['owner', 'designer', 'editor'].includes(role)) throw new Error('No tienes permiso para duplicar este tablero.');
       const result = await post('/duplicate_board', {
         board_id: state.board.id,
         name: getFormValue(formData, 'name'),
@@ -6843,10 +6856,11 @@
     });
 
     dialogSubmit(els.createBoardForm, async (formData) => {
-      if (!canCreateBoard) throw new Error('No tienes permiso para crear tableros.');
       const name = getFormValue(formData, 'name');
       const description = getFormValue(formData, 'description');
       const workspaceId = getFormValue(formData, 'workspace_id');
+      const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
+      if (!canCreateInWorkspace(workspace)) throw new Error('No tienes permiso para crear tableros en este espacio.');
       const folderId = getFormValue(formData, 'folder_id');
       const visibility = getFormValue(formData, 'visibility') || 'private';
       const result = await post('/create_board', { name, workspace_id: workspaceId, visibility, ...(folderId ? { folder_id: folderId } : {}), ...(description ? { description } : {}) });
@@ -6880,9 +6894,10 @@
     });
 
     dialogSubmit(els.createFolderForm, async (formData) => {
-      if (!canCreateBoard) throw new Error('No tienes permiso para crear carpetas.');
       const name = getFormValue(formData, 'name');
       const workspaceId = getFormValue(formData, 'workspace_id');
+      const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
+      if (!canCreateInWorkspace(workspace)) throw new Error('No tienes permiso para crear carpetas en este espacio.');
       const parentFolderId = getFormValue(formData, 'parent_folder_id');
       const color = getFormValue(formData, 'color');
       const result = await post('/create_folder', { name, color, workspace_id: workspaceId, ...(parentFolderId ? { parent_folder_id: parentFolderId } : {}) });
@@ -6994,7 +7009,7 @@
       const name = getFormValue(formData, 'name');
       const viewType = normalizeViewType(getFormValue(formData, 'view_type'));
       const isShared = Boolean(formData.get('is_shared'));
-      if (isShared && !canShareBoard()) throw new Error('Solo el propietario o una persona diseñadora puede compartir vistas.');
+      if (isShared && !canShareBoard()) throw new Error('No tienes permiso para compartir vistas.');
       const result = await post('/create_view', {
         board_id: state.board.id,
         name,
