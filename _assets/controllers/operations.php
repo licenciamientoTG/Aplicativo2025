@@ -3862,7 +3862,7 @@ class Operations{
                 'success'=>true,
                 'incident'=>[
                     'id'=>(int)$incident['id'],'ticket_id'=>$ticketId,'type'=>(string)$incident['tipo_terminal'],
-                    'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? $station['Nombre'] ?? ''),
+                    'state'=>(string)$incident['estado_local'],'station'=>(string)($incident['estacion_nombre'] ?? ''),
                     'description'=>(string)$incident['descripcion'],'serial'=>(string)($incident['serial_urovo'] ?? ''),
                     'provider_folio'=>(string)($incident['folio_proveedor'] ?? ''),'provider_date'=>(string)($incident['fecha_reporte_proveedor'] ?? ''),
                     'opened'=>(string)($incident['fecha_apertura_mojo'] ?? ''),'created'=>(string)($incident['fecha_registro'] ?? ''),

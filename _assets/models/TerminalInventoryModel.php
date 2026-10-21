@@ -159,7 +159,7 @@ class TerminalInventoryModel extends Model {
         $this->sql->update("UPDATE [TG].[dbo].[inv_ter_solicitudes] SET ticket_mojo_id=?, actualizado_en=SYSDATETIME() WHERE request_key=?", [$ticketId,$requestKey]);
     }
     public function incidentById(int $incidentId): array|false {
-        $rows=$this->sql->select('SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE id=?', [$incidentId]);
+        $rows=$this->sql->select('SELECT i.*,s.Nombre AS estacion_nombre FROM [TG].[dbo].[inv_ter_incidencias] i LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id WHERE i.id=?', [$incidentId]);
         return $rows[0] ?? false;
     }
     public function incidentStateHistory(int $incidentId): array {
@@ -220,7 +220,7 @@ class TerminalInventoryModel extends Model {
         return $affected === 1;
     }
     public function incidentForStation(int $incidentId, int $stationId): array|false {
-        $rows=$this->sql->select('SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE id=? AND estacion_id=?', [$incidentId,$stationId]);
+        $rows=$this->sql->select('SELECT i.*,s.Nombre AS estacion_nombre FROM [TG].[dbo].[inv_ter_incidencias] i LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id WHERE i.id=? AND i.estacion_id=?', [$incidentId,$stationId]);
         return $rows[0] ?? false;
     }
     public function changeIncidentState(int $incidentId, string $old, string $new, int $userId, string $email, string $origin, ?string $comment=null, string $sync='sincronizado'): void {
