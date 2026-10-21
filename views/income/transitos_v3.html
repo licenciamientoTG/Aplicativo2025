@@ -21,7 +21,7 @@
   .transit-table { min-width:1000px; }
   .transit-table td, .transit-table th { vertical-align:middle; }
   .transit-table th { white-space:nowrap; }
-  .transit-th-content { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .transit-th-content { display:flex; align-items:center; justify-content:flex-start; gap:6px; }
   .transit-col-filter { display:inline-flex; align-items:center; justify-content:center; width:27px; height:27px; padding:0; border:1px solid transparent; border-radius:6px; background:transparent; color:#64748b; cursor:pointer; }
   .transit-col-filter:hover, .transit-col-filter:focus-visible { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; outline:none; }
   .transit-col-filter.is-active { border-color:#93c5fd; background:#dbeafe; color:#1d4ed8; }
@@ -129,15 +129,15 @@
     <div id="transitResults" class="table-responsive d-none">
       <table class="table table-sm table-hover transit-table mb-0">
         <thead class="thead-light"><tr>
-          <th><div class="transit-th-content"><span>Sentido</span><button class="transit-col-filter" type="button" data-transit-filter-column="0" aria-label="Filtrar por Sentido" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
-          <th><div class="transit-th-content"><span>Estación</span><button class="transit-col-filter" type="button" data-transit-filter-column="1" aria-label="Filtrar por Estación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
-          <th><div class="transit-th-content"><span>Empresa</span><button class="transit-col-filter" type="button" data-transit-filter-column="2" aria-label="Filtrar por Empresa" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
-          <th><div class="transit-th-content"><span>Banco</span><button class="transit-col-filter" type="button" data-transit-filter-column="3" aria-label="Filtrar por Banco" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
-          <th><div class="transit-th-content"><span>Afiliación</span><button class="transit-col-filter" type="button" data-transit-filter-column="4" aria-label="Filtrar por Afiliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
-          <th><div class="transit-th-content"><span>Mes origen</span><button class="transit-col-filter" type="button" data-transit-filter-column="5" aria-label="Filtrar por Mes origen" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
-          <th><div class="transit-th-content"><span>Mes destino</span><button class="transit-col-filter" type="button" data-transit-filter-column="6" aria-label="Filtrar por Mes destino" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
-          <th><div class="transit-th-content"><span>Conciliación</span><button class="transit-col-filter" type="button" data-transit-filter-column="7" aria-label="Filtrar por Conciliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
-          <th class="text-right"><div class="transit-th-content"><span>Monto</span><button class="transit-col-filter" type="button" data-transit-filter-column="8" aria-label="Filtrar por Monto" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="0" aria-label="Filtrar por Sentido" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Sentido</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="1" aria-label="Filtrar por Estación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Estación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="2" aria-label="Filtrar por Empresa" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Empresa</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="3" aria-label="Filtrar por Banco" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Banco</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="4" aria-label="Filtrar por Afiliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Afiliación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="5" aria-label="Filtrar por Mes origen" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Mes origen</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="6" aria-label="Filtrar por Mes destino" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Mes destino</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="7" aria-label="Filtrar por Conciliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Conciliación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="8" aria-label="Filtrar por Monto" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Monto</span></div></th>
         </tr></thead>
         <tbody id="transitRows"></tbody>
       </table>
