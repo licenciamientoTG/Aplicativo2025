@@ -116,12 +116,12 @@ class tableros_api {
 
     public function create_folder(): void {
         $this->handle('POST', function (int $userId, array $input): array {
-            if (!$this->access->hasGlobalPermission('create')) {
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            if (!$this->access->hasGlobalPermission('create') && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes permiso para crear carpetas.', 403);
             }
-            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
             $role = $this->access->workspaceRole($workspaceId);
-            if ($role === null) {
+            if ($role === null && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
             }
             return $this->model->createFolder($userId, $input);
@@ -147,7 +147,7 @@ class tableros_api {
             if (isset($_GET['board_id'])) {
                 $boardId = $this->positiveInt($_GET['board_id'], 'board_id');
                 if (filter_var($_GET['directory'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
-                    $this->requireBoardRole($boardId, ['owner', 'designer']);
+                    $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
                     return $this->model->activeUsersWithDashboardAccess(is_string($query) ? $query : '');
                 }
                 $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
@@ -710,7 +710,7 @@ class tableros_api {
     public function create_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->createAutomation($boardId, $userId, $input);
         });
     }
@@ -718,7 +718,7 @@ class tableros_api {
     public function update_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->updateAutomation($boardId, $userId, $input);
         });
     }
@@ -726,7 +726,7 @@ class tableros_api {
     public function pause_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->setAutomationStatus($boardId, $userId, $input, 'paused');
         });
     }
@@ -734,7 +734,7 @@ class tableros_api {
     public function activate_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->setAutomationStatus($boardId, $userId, $input, 'active');
         });
     }
@@ -742,7 +742,7 @@ class tableros_api {
     public function delete_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->deleteAutomation($boardId, $userId, $input);
         });
     }
@@ -759,7 +759,7 @@ class tableros_api {
     public function run_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->enqueueAutomationRun($boardId, $userId, $input);
         });
     }
@@ -774,11 +774,11 @@ class tableros_api {
 
     public function create_board(): void {
         $this->handle('POST', function (int $userId, array $input): array {
-            if (!$this->access->hasGlobalPermission('create')) {
+            $workspaceId = isset($input['workspace_id']) ? $this->positiveInt($input['workspace_id'], 'workspace_id') : 0;
+            if (!$this->access->hasGlobalPermission('create') && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
             }
-            $workspaceId = isset($input['workspace_id']) ? $this->positiveInt($input['workspace_id'], 'workspace_id') : 0;
-            if ($workspaceId > 0 && $this->access->workspaceRole($workspaceId) === null) {
+            if ($workspaceId > 0 && $this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
             }
             return $this->model->createBoard($userId, $input);
@@ -844,7 +844,7 @@ class tableros_api {
     public function share_board(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->shareBoard($boardId, $userId, $input);
         });
     }
@@ -852,10 +852,7 @@ class tableros_api {
     public function duplicate_board(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
-            if (!$this->access->hasGlobalPermission('create')) {
-                throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
-            }
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->duplicateBoard($boardId, $userId, $input);
         });
     }
@@ -883,7 +880,7 @@ class tableros_api {
     public function update_board_visibility(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->updateBoardVisibility($boardId, $userId, $input);
         });
     }
@@ -899,7 +896,7 @@ class tableros_api {
     public function revoke_member(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->revokeBoardMember($boardId, $userId, $input);
         });
     }
@@ -909,8 +906,8 @@ class tableros_api {
             $boardId = $this->bodyBoardId($input);
             $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             if (filter_var($input['is_shared'] ?? false, FILTER_VALIDATE_BOOLEAN)
-                && !in_array($role, ['owner', 'designer'], true)) {
-                throw new TablerosApiException('forbidden', 'Solo el propietario o un diseñador puede compartir una vista.', 403);
+                && !in_array($role, ['owner', 'designer', 'editor'], true)) {
+                throw new TablerosApiException('forbidden', 'Solo el propietario, el diseñador o el editor puede compartir una vista.', 403);
             }
             return $this->model->createView($boardId, $userId, $input);
         });

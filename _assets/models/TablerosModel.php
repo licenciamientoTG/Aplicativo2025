@@ -99,6 +99,18 @@ class TablerosModel {
                 $workspaceIds[$workspaceId] = true;
             }
         }
+        $workspaceContentManagers = [];
+        foreach ($boards as $board) {
+            if (in_array(strtolower((string)($board['user_role'] ?? '')), ['owner', 'designer', 'editor'], true)) {
+                $workspaceContentManagers[(string)$board['workspace_id']] = true;
+            }
+        }
+        foreach ($workspaces as &$workspace) {
+            $workspace['can_manage_content'] = !empty($workspace['can_manage_members'])
+                || in_array(strtolower((string)($workspace['user_role'] ?? '')), ['owner', 'editor'], true)
+                || !empty($workspaceContentManagers[(string)$workspace['id']]);
+        }
+        unset($workspace);
         $folders = [];
         if ($workspaceIds) {
             $ids = array_keys($workspaceIds);
@@ -202,7 +214,13 @@ class TablerosModel {
                 if ($workspaceName !== '') $location = $boardId ? $workspaceName . ' / ' . $location : $workspaceName;
             } elseif ($type === 'workspace') $location = 'Espacios de trabajo';
             if ($boardId && !$this->access->hasGlobalPermission('admin')) {
-                $role = $this->access->boardRole($boardId);
+                $boardAccess = $this->access->boardAccess($boardId);
+                $role = $boardAccess['role'] ?? null;
+                if ($type === 'board' && $kind === 'trash' && $role === 'editor'
+                    && ($boardAccess['source'] ?? '') === 'board_invitation'
+                    && $this->access->workspaceRole((int)$workspaceId) !== 'owner') {
+                    throw new TablerosApiException('forbidden', 'El rol Editor no puede eliminar el tablero.', 403);
+                }
                 $allowed = in_array($type, ['item', 'file'], true)
                     ? ['owner', 'designer', 'editor', 'contributor']
                     : ['owner', 'designer', 'editor'];
@@ -577,7 +595,7 @@ class TablerosModel {
     }
 
     public function createFolder(int $userId, array $input): array {
-        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear carpetas.', 403);
+        if (!$this->access->hasGlobalPermission('create') && !$this->access->canManageWorkspaceContent((int)($input['workspace_id'] ?? 0))) throw new TablerosApiException('forbidden', 'No tienes permiso para crear carpetas.', 403);
         if (!$this->userIsActive($userId)) {
             throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         }
@@ -587,7 +605,7 @@ class TablerosModel {
             $workspaceId = $defaultWorkspace ? (int)$defaultWorkspace['id'] : 0;
         }
         if ($workspaceId <= 0) throw new TablerosApiException('validation', 'Selecciona un espacio de trabajo.', 422);
-        if ($this->access->workspaceRole($workspaceId) === null) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
+        if ($this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId)) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
         $parentFolderId = $this->optionalPositiveInt($input['parent_folder_id'] ?? null, 'parent_folder_id');
         $name = $this->requiredString($input, 'name', 200);
         $color = $this->optionalString($input, 'color', 32);
@@ -605,7 +623,8 @@ class TablerosModel {
             $workspaceRole = $this->access->workspaceRole($workspaceId);
             $systemFolderVisible = $parent['created_by'] === null && $workspaceRole !== null;
             if ((int)($parent['created_by'] ?? 0) !== $userId && $workspaceRole !== 'owner' && !$systemFolderVisible
-                && !$this->folderHasVisibleBoard($parentFolderId, $workspaceId)) {
+                && !$this->folderHasVisibleBoard($parentFolderId, $workspaceId)
+                && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'Solo puedes crear una subcarpeta en una carpeta que puedes ver.', 403);
             }
             $depth = 1;
@@ -961,7 +980,7 @@ class TablerosModel {
     }
 
     public function revokeBoardMember(int $boardId, int $actorId, array $input): array {
-        $this->requireBoardAllowed($boardId, ['owner','designer']);
+        $this->requireBoardAllowed($boardId, ['owner','designer','editor']);
         $targetUserId = $this->positiveInt($input['user_id'] ?? null, 'user_id');
         return $this->transaction(function () use ($boardId, $actorId, $targetUserId): array {
             $board = $this->one(
@@ -1047,8 +1066,29 @@ class TablerosModel {
             $itemPositions[(string)$item['id']] = $index;
         }
         unset($item);
+        $activeFileIds = array_fill_keys(array_map(
+            static fn(array $file): string => (string)$file['id'],
+            $this->all('SELECT id FROM tb_file WHERE board_id = ? AND deleted_at IS NULL', [$boardId])
+        ), true);
+        $filterActiveFiles = static function (array $entries) use ($activeFileIds): array {
+            return array_values(array_filter($entries, static function ($entry) use ($activeFileIds): bool {
+                if (!is_array($entry)) return false;
+                $fileId = $entry['file_id'] ?? $entry['id'] ?? null;
+                return $fileId !== null && isset($activeFileIds[(string)$fileId]);
+            }));
+        };
         foreach ($cells as &$cell) {
             $value = $this->cellValue($cell);
+            if ((string)$cell['type'] === 'file' && is_array($value)) {
+                if (isset($value['files']) && is_array($value['files'])) {
+                    $value['files'] = $filterActiveFiles($value['files']);
+                } elseif (array_is_list($value)) {
+                    $value = $filterActiveFiles($value);
+                } elseif (isset($value['file_id']) || isset($value['id'])) {
+                    $value = $filterActiveFiles([$value]);
+                    $value = $value[0] ?? [];
+                }
+            }
             $itemIndex = $itemPositions[(string)$cell['item_id']] ?? null;
             if ($itemIndex !== null) {
                 $items[$itemIndex]['cells'][(string)$cell['column_id']] = $value;
@@ -2106,7 +2146,7 @@ class TablerosModel {
     }
 
     public function createBoard(int $userId, array $input): array {
-        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
+        if (!$this->access->hasGlobalPermission('create') && !$this->access->canManageWorkspaceContent((int)($input['workspace_id'] ?? 0))) throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
         if (!$this->userIsActive($userId)) {
             throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         }
@@ -2120,7 +2160,7 @@ class TablerosModel {
         }
 
         return $this->transaction(function () use ($userId, $name, $description, $workspaceId, $folderId, $visibility): array {
-            if ($this->access->workspaceRole($workspaceId) === null) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
+            if ($this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId)) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
             $workspace = $this->one("SELECT id, visibility FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
             if (!$workspace) {
                 throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
@@ -2133,7 +2173,8 @@ class TablerosModel {
                 $workspaceRole = $this->access->workspaceRole($workspaceId);
                 $systemFolderVisible = $folder['created_by'] === null && $workspaceRole !== null;
                 if ((int)($folder['created_by'] ?? 0) !== $userId && $workspaceRole !== 'owner' && !$systemFolderVisible
-                    && !$this->folderHasVisibleBoard($folderId, $workspaceId)) {
+                    && !$this->folderHasVisibleBoard($folderId, $workspaceId)
+                    && !$this->access->canManageWorkspaceContent($workspaceId)) {
                     throw new TablerosApiException('forbidden', 'No tienes acceso a la carpeta seleccionada.', 403);
                 }
             }
@@ -2150,7 +2191,6 @@ class TablerosModel {
 
     /** Clone a board with new IDs. No files, relations, dependencies, or automation state are copied. */
     public function duplicateBoard(int $sourceBoardId, int $userId, array $input): array {
-        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
         if (!$this->userIsActive($userId)) throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         $name = $this->requiredString($input, 'name', 120);
         $mode = strtolower(trim((string)($input['mode'] ?? '')));
@@ -2166,20 +2206,20 @@ class TablerosModel {
             // Keep the source location where the actor can create there; otherwise use one of their own workspaces.
             $workspaceId = (int)$source['workspace_id'];
             $workspaceRole = $this->access->workspaceRole($workspaceId);
-            if ($workspaceRole === null) {
+            if ($workspaceRole === null && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 $ownWorkspace = $this->one("SELECT TOP (1) id FROM tb_workspace WHERE created_by = ? AND workspace_type = 'workspace' AND deleted_at IS NULL ORDER BY id", [$userId]);
                 if (!$ownWorkspace) throw new TablerosApiException('forbidden', 'No tienes un espacio de trabajo disponible para crear el tablero.', 403);
                 $workspaceId = (int)$ownWorkspace['id'];
             }
             $workspace = $this->one("SELECT id FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
-            if (!$workspace || $this->access->workspaceRole($workspaceId) === null) {
+            if (!$workspace || ($this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId))) {
                 throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo destino.', 403);
             }
             $folderId = null;
             if ($workspaceId === (int)$source['workspace_id'] && !empty($source['folder_id'])) {
                 $folder = $this->one('SELECT id, created_by FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', [(int)$source['folder_id'], $workspaceId]);
                 $role = $this->access->workspaceRole($workspaceId);
-                if ($folder && ((int)($folder['created_by'] ?? 0) === $userId || $role === 'owner' || $folder['created_by'] === null)) {
+                if ($folder && ((int)($folder['created_by'] ?? 0) === $userId || $role === 'owner' || $folder['created_by'] === null || $this->access->canManageWorkspaceContent($workspaceId))) {
                     $folderId = (int)$folder['id'];
                 }
             }
@@ -2914,7 +2954,7 @@ class TablerosModel {
     }
 
     public function shareBoard(int $boardId, int $userId, array $input): array {
-        $this->requireBoardAllowed($boardId, ['owner','designer']);
+        $this->requireBoardAllowed($boardId, ['owner','designer','editor']);
         $members = $input['members'] ?? null;
         if ($members === null && isset($input['user_id'])) {
             $members = [['user_id' => $input['user_id'], 'role' => $input['role'] ?? 'viewer']];
@@ -3006,9 +3046,10 @@ class TablerosModel {
             );
             $isOwner = (int)$board['created_by'] === $userId;
             $isDesigner = strtolower((string)($member['role'] ?? '')) === 'designer';
+            $isEditor = strtolower((string)($member['role'] ?? '')) === 'editor';
             $isAdmin = $this->access->hasGlobalPermission('admin');
-            if (!$isOwner && !$isDesigner && !$isAdmin) {
-                throw new TablerosApiException('forbidden', 'Solo el propietario o un diseñador puede cambiar la visibilidad del tablero.', 403);
+            if (!$isOwner && !$isDesigner && !$isEditor && !$isAdmin) {
+                throw new TablerosApiException('forbidden', 'Solo el propietario, el diseñador o el editor puede cambiar la visibilidad del tablero.', 403);
             }
             $previousVisibility = (string)$board['visibility'];
             if ($previousVisibility !== $visibility) {

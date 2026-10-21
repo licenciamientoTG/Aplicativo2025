@@ -7816,6 +7816,99 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    // Builds an Excel workbook from the rows currently visible in the report,
+    // including the user's per-column selections.
+    public function export_transitos_reporte_v3(): void {
+        if (ob_get_length()) ob_clean();
+        $data = json_decode(file_get_contents('php://input'), true);
+        $rows = $data['rows'] ?? null;
+        if (!is_array($rows) || count($rows) > 20000) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['status'=>'error','message'=>'El reporte no contiene filas válidas para exportar.']);
+            exit;
+        }
+
+        $period = trim((string)($data['period'] ?? ''));
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) $period = date('Y-m');
+        $company = trim((string)($data['empresa'] ?? ''));
+        if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) $company = 'Todas';
+        $bank = trim((string)($data['banco'] ?? '')) ?: 'Todos los bancos';
+        $station = trim((string)($data['estacion'] ?? '')) ?: 'Todas las estaciones';
+
+        try {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Tránsitos');
+            $sheet->mergeCells('A1:I1');
+            $sheet->setCellValue('A1', 'REPORTE DE TRÁNSITOS V3');
+            $sheet->setCellValue('A2', 'Período');
+            $sheet->setCellValue('B2', $period);
+            $sheet->setCellValue('C2', 'Empresa');
+            $sheet->setCellValueExplicit('D2', $company, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValue('E2', 'Banco');
+            $sheet->setCellValueExplicit('F2', $bank, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValue('G2', 'Estación');
+            $sheet->mergeCells('H2:I2');
+            $sheet->setCellValueExplicit('H2', $station, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+
+            $headers = ['SENTIDO','ESTACIÓN','EMPRESA','BANCO','AFILIACIÓN','MES ORIGEN','MES DESTINO','CONCILIACIÓN','MONTO'];
+            $sheet->fromArray($headers, null, 'A5');
+            $outgoingTotal = 0.0;
+            $incomingTotal = 0.0;
+            $rowNumber = 6;
+            $textColumns = ['sentido','estacion','razon_social','banco','afiliacion','mes_origen','mes_destino','conciliacion'];
+            foreach ($rows as $item) {
+                if (!is_array($item)) continue;
+                foreach ($textColumns as $column) {
+                    $value = trim((string)($item[$column] ?? ''));
+                    $cell = chr(65 + array_search($column, $textColumns, true)) . $rowNumber;
+                    $sheet->setCellValueExplicit($cell, $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                }
+                $amount = filter_var($item['monto_transito'] ?? 0, FILTER_VALIDATE_FLOAT);
+                if ($amount === false || !is_finite((float)$amount)) $amount = 0.0;
+                $sheet->setCellValue('I'.$rowNumber, (float)$amount);
+                if (($item['sentido'] ?? '') === 'SALIENTE') $outgoingTotal += (float)$amount;
+                if (($item['sentido'] ?? '') === 'ENTRANTE') $incomingTotal += (float)$amount;
+                $rowNumber++;
+            }
+
+            $lastRow = max(5, $rowNumber - 1);
+            $sheet->setCellValue('A3', 'Saliente exportado');
+            $sheet->setCellValue('B3', $outgoingTotal);
+            $sheet->setCellValue('C3', 'Entrante aplicado exportado');
+            $sheet->setCellValue('D3', $incomingTotal);
+            $sheet->setCellValue('E3', 'Filas exportadas');
+            $sheet->setCellValue('F3', $rowNumber - 6);
+            $sheet->getStyle('A1:I1')->applyFromArray([
+                'font'=>['bold'=>true,'size'=>14,'color'=>['argb'=>'FFFFFFFF']],
+                'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF1E40AF']],
+            ]);
+            $sheet->getStyle('A2:H3')->getFont()->setBold(true);
+            $sheet->getStyle('A5:I5')->applyFromArray([
+                'font'=>['bold'=>true,'color'=>['argb'=>'FFFFFFFF']],
+                'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF334155']],
+                'alignment'=>['horizontal'=>\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            ]);
+            $sheet->getStyle('B3:D3')->getNumberFormat()->setFormatCode('$#,##0.00');
+            if ($lastRow >= 6) $sheet->getStyle('I6:I'.$lastRow)->getNumberFormat()->setFormatCode('$#,##0.00');
+            $sheet->setAutoFilter('A5:I'.$lastRow);
+            $sheet->freezePane('A6');
+            foreach (range('A','I') as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
+
+            $filename = 'Transitos_V3_'.$period.'.xlsx';
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="'.$filename.'"');
+            header('Cache-Control: max-age=0');
+            (new Xlsx($spreadsheet))->save('php://output');
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['status'=>'error','message'=>'No fue posible generar el archivo de Excel.']);
+        }
+        exit;
+    }
+
     // ── DASHBOARD V3 — TRÁNSITOS  GET /income/get_transitos_dashboard_v3 ──────
     public function get_transitos_dashboard_v3(): void {
         ob_clean();

@@ -56,6 +56,7 @@
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
   const pageMode = app.dataset.pageMode || 'boards';
+  const lastBoardStorageKey = 'tableros-last-board-id';
   let noticeTimer = 0;
   let filePreviewObjectUrl = '';
   let filePreviewRequest = 0;
@@ -63,6 +64,7 @@
   let activePreviewFile = null;
   let activePreviewItem = null;
   let imageStageObserver = null;
+  let groupHeadingResizeObserver = null;
   const els = {
     boardSelect: document.getElementById('boardSelect'),
     workspaceSelect: document.getElementById('workspaceSelect'),
@@ -612,7 +614,7 @@
       if (!select) return;
       const previous = state.selectedWorkspaceId || select.value;
       select.replaceChildren();
-      state.workspaces.filter((workspace) => !workspace.shared_only).forEach((workspace) => {
+      state.workspaces.filter((workspace) => canCreateInWorkspace(workspace)).forEach((workspace) => {
         const option = makeElement('option', '', workspace.name || 'Espacio sin nombre');
         option.value = String(workspace.id);
         select.append(option);
@@ -666,8 +668,8 @@
 
   function openCreateFolder(workspaceId = state.selectedWorkspaceId, parentFolderId = '') {
     const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
-    if (!workspace || workspace.shared_only) {
-      setNotice('Solo puedes crear carpetas en espacios de trabajo a los que perteneces.', 'error');
+    if (!canCreateInWorkspace(workspace)) {
+      setNotice('No tienes permiso para crear carpetas en este espacio de trabajo.', 'error');
       return;
     }
     populateWorkspaceSelectors();
@@ -686,7 +688,7 @@
   }
 
   function openCreateBoard(workspaceId = state.selectedWorkspaceId, folderId = '') {
-    const eligible = state.workspaces.filter((workspace) => !workspace.shared_only);
+    const eligible = state.workspaces.filter((workspace) => canCreateInWorkspace(workspace));
     if (!eligible.length) {
       openDialog(els.createWorkspaceDialog);
       setNotice('Crea un espacio de trabajo antes de crear tableros.', 'info');
@@ -732,14 +734,14 @@
     const workspace = state.workspaces.find((entry) => String(entry.id) === workspaceId);
     const rootFolderButton = document.getElementById('navCreateFolder');
     const rootBoardButton = document.getElementById('navCreateBoard');
-    if (rootFolderButton) rootFolderButton.hidden = !workspace || Boolean(workspace.shared_only);
-    if (rootBoardButton) rootBoardButton.hidden = !workspace || Boolean(workspace.shared_only);
+    if (rootFolderButton) rootFolderButton.hidden = !canCreateInWorkspace(workspace);
+    if (rootBoardButton) rootBoardButton.hidden = !canCreateInWorkspace(workspace);
     if (!workspace) {
       list.append(makeElement('p', 'boards-nav-empty', state.workspaces.length ? 'No hay contenido en este espacio.' : 'Crea un espacio de trabajo para empezar.'));
       return;
     }
     const workspaceFolders = state.folders.filter((folder) => String(folder.workspace_id) === workspaceId);
-    const restricted = Boolean(workspace.shared_only);
+    const restricted = !canCreateInWorkspace(workspace);
     const folderNodes = new Map(workspaceFolders.map((folder) => [String(folder.id), { ...folder, children: [], boards: [] }]));
     const roots = [];
     folderNodes.forEach((folder) => {
@@ -859,7 +861,7 @@
       toggle.append(makeElement('i', 'fa-regular fa-folder', ''));
       toggle.append(makeElement('span', '', folder.name || 'Carpeta sin nombre'));
       row.append(toggle);
-      if (canCreateBoard && !workspace.shared_only) {
+      if (canCreateInWorkspace(workspace)) {
         const actions = makeElement('span', 'boards-nav-folder-actions');
         if (depth < 2) {
           const addFolder = makeElement('button', '', '');
@@ -1056,7 +1058,11 @@
         return;
       }
       const routeId = getRouteBoardId();
-      const requestedId = app.dataset.initialBoardId || routeId;
+      let lastBoardId = '';
+      if (pageMode === 'boards') {
+        try { lastBoardId = localStorage.getItem(lastBoardStorageKey) || ''; } catch (_) {}
+      }
+      const requestedId = app.dataset.initialBoardId || routeId || lastBoardId;
       const target = state.boards.find((board) => String(board.id) === String(requestedId)) || state.boards[0];
       if (target) {
         els.boardSelect.value = String(target.id);
@@ -1186,7 +1192,7 @@
   ];
 
   function getManageableBoards() {
-    return state.boards.filter((board) => ['owner', 'designer'].includes(String(board.role || board.user_role || '').toLowerCase()));
+    return state.boards.filter((board) => ['owner', 'designer', 'editor'].includes(String(board.role || board.user_role || '').toLowerCase()));
   }
 
   function renderBoardVisibilityManager() {
@@ -1338,6 +1344,9 @@
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       state.items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       if (!state.board) throw new Error('El servidor no devolvió los datos del tablero.');
+      if (pageMode === 'boards') {
+        try { localStorage.setItem(lastBoardStorageKey, String(state.board.id)); } catch (_) {}
+      }
       state.activeViewType = 'table';
       state.activeSavedViewId = '';
       state.viewConfig = {};
@@ -1376,9 +1385,22 @@
     return ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
+  function canCreateInWorkspace(workspace) {
+    if (!workspace) return false;
+    return Boolean(workspace.can_manage_content || (canCreateBoard && !workspace.shared_only));
+  }
+
+  function canDeleteBoard() {
+    const role = String(state.board?.role || '').toLowerCase();
+    const directInvitation = ['board_invitation', 'direct_invitation', 'board_member'].includes(String(state.board?.access_source || '').toLowerCase());
+    const workspace = state.workspaces.find((entry) => String(entry.id) === String(state.board?.workspace_id || ''));
+    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role)
+      || (role === 'editor' && (!directInvitation || String(workspace?.user_role || '').toLowerCase() === 'owner'));
+  }
+
   function canShareBoard() {
     const role = String(state.board?.role || '').toLowerCase();
-    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
+    return !role ? canAdmin : ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
   function accessSourceLabel(source) {
@@ -1424,10 +1446,10 @@
     document.getElementById('openCreateItem').hidden = !edit;
     document.getElementById('openCreateGroup').hidden = !manage;
     document.getElementById('openCreateColumn').hidden = !manage;
-    document.getElementById('trashBoard').hidden = !canShareBoard();
+    document.getElementById('trashBoard').hidden = !canDeleteBoard();
     document.getElementById('archiveBoard').hidden = !canShareBoard();
     const duplicateButton = document.getElementById('openDuplicateBoard');
-    if (duplicateButton) duplicateButton.hidden = !canCreateBoard || !['owner', 'designer'].includes(role);
+    if (duplicateButton) duplicateButton.hidden = !['owner', 'designer', 'editor'].includes(role);
     const shareButton = document.getElementById('openShareBoard');
     if (shareButton) shareButton.hidden = !canShareBoard();
     const sharedViewOption = document.getElementById('sharedViewOption');
@@ -2131,11 +2153,18 @@
 
   function displayColumnValue(column, value) {
     if (value == null || value === '') return '';
+    if (columnType(column) === 'numbers') return formatGroupedNumber(value);
     if (columnType(column) === 'rating') {
       if (column.options?.display === 'percentage') return `${value} %`;
       return `${value} ★`;
     }
     return stringifyValue(value);
+  }
+
+  function formatGroupedNumber(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return stringifyValue(value);
+    return new Intl.NumberFormat('en-US', { useGrouping: true, maximumFractionDigits: 20 }).format(number);
   }
 
   function createCellEditor(item, column, value) {
@@ -2188,8 +2217,20 @@
         select.value = value == null ? '' : String(value);
         return markEditor(select, item, column, 'number');
       }
-      input.type = 'number';
-      input.step = 'any';
+      if (type === 'numbers') {
+        input.type = 'text';
+        input.inputMode = 'decimal';
+        input.value = value == null ? '' : formatGroupedNumber(value);
+        input.addEventListener('focus', () => { input.value = input.value.replace(/,/g, ''); });
+        input.addEventListener('blur', () => {
+          if (input.value.trim() === '') return;
+          const number = Number(input.value.replace(/,/g, ''));
+          if (Number.isFinite(number)) input.value = formatGroupedNumber(number);
+        });
+      } else {
+        input.type = 'number';
+        input.step = 'any';
+      }
       if (type === 'progress') { input.min = '0'; input.max = '100'; input.placeholder = '0–100'; }
       if (type === 'rating') {
         input.min = '0'; input.max = '100'; input.placeholder = '0–100 %';
@@ -2445,7 +2486,7 @@
 
   function canManageAutomation() {
     const role = String(state.board?.role || '').toLowerCase();
-    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
+    return !role ? canAdmin : ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
   function displayDateTime(value) {
@@ -4478,7 +4519,7 @@
         const values = Array.isArray(value) ? value.map((entry) => boardSearchOption(entry).value) : [boardSearchOption(value).value];
         return values.some((entry) => entry.toLocaleLowerCase() === query);
       }
-      if (type === 'date') return dateOnly(value) === query;
+      if (type === 'date') return dateMatchesSearch(value, query);
       if (type === 'timeline') {
         const range = dateRange(value);
         const end = range.end || range.start;
@@ -4487,11 +4528,47 @@
       if (type === 'file') return filesForItem(item)
         .filter((file) => String(file.column_id || '') === String(column.id))
         .some((file) => String(file.name || '').toLocaleLowerCase().includes(query));
-      if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) return value !== null && value !== '' && Number(value) === Number(query);
+      if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) return value !== null && value !== '' && Number(value) === Number(query.replace(/,/g, ''));
       if (type === 'hour') return stringifyValue(value).slice(0, 5) === query;
       return stringifyValue(value).toLocaleLowerCase().includes(query);
     }
-    return [item.name, ...state.columns.map((entry) => stringifyValue(getCellValue(item, entry)))].join(' ').toLocaleLowerCase().includes(query);
+    if (String(item.name || '').toLocaleLowerCase().includes(query)) return true;
+    return state.columns.some((entry) => {
+      const value = getCellValue(item, entry);
+      if (columnType(entry) === 'date') return dateMatchesSearch(value, query);
+      if (columnType(entry) === 'timeline') {
+        const range = dateRange(value);
+        return dateMatchesSearch(range.start, query) || dateMatchesSearch(range.end, query);
+      }
+      return stringifyValue(value).toLocaleLowerCase().includes(query);
+    });
+  }
+
+  function dateMatchesSearch(value, query) {
+    const date = dateOnly(value);
+    const needle = String(query || '').trim().toLocaleLowerCase('es-MX');
+    if (!date || !needle) return false;
+    const parsed = localDate(date);
+    if (!parsed || Number.isNaN(parsed.getTime())) return false;
+    const year = String(parsed.getFullYear());
+    const month = String(parsed.getMonth() + 1);
+    const day = String(parsed.getDate());
+    const monthPadded = month.padStart(2, '0');
+    const dayPadded = day.padStart(2, '0');
+    const candidates = [
+      date, `${monthPadded}/${dayPadded}/${year}`, `${month}/${day}/${year}`,
+      `${dayPadded}/${monthPadded}/${year}`, `${day}/${month}/${year}`,
+      `${monthPadded}/${dayPadded}`, `${month}/${day}`,
+      `${dayPadded}/${monthPadded}`, `${day}/${month}`,
+      formatDate(date, { day: 'numeric', month: 'short', year: 'numeric' }),
+      formatDate(date, { day: 'numeric', month: 'long', year: 'numeric' }),
+      new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric' }).format(parsed),
+      new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric' }).format(parsed)
+    ];
+    const normalize = (text) => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es-MX').replace(/[.\-]/g, '/').replace(/\s+/g, ' ').trim();
+    const normalizedNeedle = normalize(needle);
+    return candidates.some((candidate) => normalize(candidate).includes(normalizedNeedle));
   }
 
   function boardSearchValue() { return els.boardSearch?.value || ''; }
@@ -4558,8 +4635,9 @@
   function createGroupRow(group, itemCount, columnCount) {
     const row = document.createElement('tr');
     row.className = 'boards-group-row';
-    const cell = document.createElement('td');
-    cell.colSpan = columnCount + 2;
+    const titleCell = document.createElement('td');
+    titleCell.className = 'boards-group-title-cell';
+    titleCell.colSpan = 2;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
@@ -4604,9 +4682,21 @@
       meta.append(recycleAction('Archivar grupo', 'group', group.id, 'archive', state.board?.id));
     }
     groupWrap.append(meta);
-    cell.append(groupWrap);
-    row.append(cell);
+    titleCell.append(groupWrap);
+
+    const metaCell = document.createElement('td');
+    metaCell.className = 'boards-group-meta-cell';
+    metaCell.colSpan = Math.max(1, columnCount);
+    row.append(titleCell, metaCell);
     return row;
+  }
+
+  function syncGroupHeadingWidths() {
+    const width = els.boardTableContainer?.clientWidth || 0;
+    if (!width) return;
+    els.boardTableContainer.querySelectorAll('.boards-group-heading').forEach((heading) => {
+      heading.style.width = `${width}px`;
+    });
   }
 
   async function saveGroupOrder(groupIds, previousGroups) {
@@ -4899,6 +4989,7 @@
 
     state.groups.forEach((group) => {
       const groupItems = orderItemsByHierarchy(filteredItems.filter((item) => String(item.group_id) === String(group.id)));
+      if (query && !groupItems.length) return;
       const tbody = document.createElement('tbody');
       tbody.className = 'boards-group-body';
       tbody.dataset.groupBody = String(group.id);
@@ -5075,6 +5166,7 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    syncGroupHeadingWidths();
     if (window.Sortable && canEditBoard() && !query && !state.filters.length) {
       table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
         itemSortables.push(window.Sortable.create(body, {
@@ -6222,7 +6314,7 @@
     const value = editor.value;
     if (kind === 'number') {
       if (value === '') return null;
-      const number = Number(value);
+      const number = Number(value.replace(/,/g, ''));
       if (!Number.isFinite(number)) throw new Error('Escribe un número válido.');
       return number;
     }
@@ -6726,7 +6818,7 @@
 
     document.getElementById('openDuplicateBoard')?.addEventListener('click', () => {
       const role = String(state.board?.role || '').toLowerCase();
-      if (!canCreateBoard || !['owner', 'designer'].includes(role) || !state.board?.id) return;
+      if (!['owner', 'designer', 'editor'].includes(role) || !state.board?.id) return;
       document.getElementById('duplicateBoardName').value = `Duplicado de ${state.board.name || 'tablero'}`;
       document.getElementById('duplicateBoardMode').value = 'structure';
       document.getElementById('duplicateBoardSubscribers').checked = false;
@@ -6744,7 +6836,7 @@
 
     dialogSubmit(els.duplicateBoardForm, async (formData) => {
       const role = String(state.board?.role || '').toLowerCase();
-      if (!canCreateBoard || !['owner', 'designer'].includes(role)) throw new Error('Solo el propietario o un diseñador puede duplicar este tablero.');
+      if (!['owner', 'designer', 'editor'].includes(role)) throw new Error('No tienes permiso para duplicar este tablero.');
       const result = await post('/duplicate_board', {
         board_id: state.board.id,
         name: getFormValue(formData, 'name'),
@@ -6764,10 +6856,11 @@
     });
 
     dialogSubmit(els.createBoardForm, async (formData) => {
-      if (!canCreateBoard) throw new Error('No tienes permiso para crear tableros.');
       const name = getFormValue(formData, 'name');
       const description = getFormValue(formData, 'description');
       const workspaceId = getFormValue(formData, 'workspace_id');
+      const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
+      if (!canCreateInWorkspace(workspace)) throw new Error('No tienes permiso para crear tableros en este espacio.');
       const folderId = getFormValue(formData, 'folder_id');
       const visibility = getFormValue(formData, 'visibility') || 'private';
       const result = await post('/create_board', { name, workspace_id: workspaceId, visibility, ...(folderId ? { folder_id: folderId } : {}), ...(description ? { description } : {}) });
@@ -6801,9 +6894,10 @@
     });
 
     dialogSubmit(els.createFolderForm, async (formData) => {
-      if (!canCreateBoard) throw new Error('No tienes permiso para crear carpetas.');
       const name = getFormValue(formData, 'name');
       const workspaceId = getFormValue(formData, 'workspace_id');
+      const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
+      if (!canCreateInWorkspace(workspace)) throw new Error('No tienes permiso para crear carpetas en este espacio.');
       const parentFolderId = getFormValue(formData, 'parent_folder_id');
       const color = getFormValue(formData, 'color');
       const result = await post('/create_folder', { name, color, workspace_id: workspaceId, ...(parentFolderId ? { parent_folder_id: parentFolderId } : {}) });
@@ -6915,7 +7009,7 @@
       const name = getFormValue(formData, 'name');
       const viewType = normalizeViewType(getFormValue(formData, 'view_type'));
       const isShared = Boolean(formData.get('is_shared'));
-      if (isShared && !canShareBoard()) throw new Error('Solo el propietario o una persona diseñadora puede compartir vistas.');
+      if (isShared && !canShareBoard()) throw new Error('No tienes permiso para compartir vistas.');
       const result = await post('/create_view', {
         board_id: state.board.id,
         name,
@@ -7784,6 +7878,27 @@
   }
 
   function setupExtendedEvents() {
+    const navigatorToggle = document.getElementById('toggleBoardNavigator');
+    const boardsMain = navigatorToggle?.closest('.boards-main');
+    const boardNavigator = document.getElementById('boardNavigator');
+    const setNavigatorCollapsed = (collapsed, persist = true) => {
+      if (!boardsMain || !navigatorToggle) return;
+      boardsMain.classList.toggle('is-navigator-collapsed', collapsed);
+      if (boardNavigator) boardNavigator.hidden = collapsed;
+      navigatorToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      const label = collapsed ? 'Mostrar navegación de espacios y carpetas' : 'Ocultar navegación de espacios y carpetas';
+      navigatorToggle.setAttribute('aria-label', label);
+      navigatorToggle.title = label;
+      navigatorToggle.innerHTML = `<i class="fa-solid ${collapsed ? 'fa-chevron-right' : 'fa-chevron-left'}" aria-hidden="true"></i>`;
+      if (persist) {
+        try { localStorage.setItem('tableros-navigator-collapsed', collapsed ? '1' : '0'); } catch (_) {}
+      }
+    };
+    let navigatorCollapsed = false;
+    try { navigatorCollapsed = localStorage.getItem('tableros-navigator-collapsed') === '1'; } catch (_) {}
+    setNavigatorCollapsed(navigatorCollapsed, false);
+    navigatorToggle?.addEventListener('click', () => setNavigatorCollapsed(!boardsMain?.classList.contains('is-navigator-collapsed')));
+
     els.workspaceManagementList?.addEventListener('click', (event) => {
       const button = event.target.closest('[data-workspace-action]');
       if (button) runWorkspaceManagementAction(button);
@@ -7911,5 +8026,11 @@
   setupDialogs();
   attachEvents();
   setupExtendedEvents();
+  if (window.ResizeObserver && els.boardTableContainer) {
+    groupHeadingResizeObserver = new ResizeObserver(syncGroupHeadingWidths);
+    groupHeadingResizeObserver.observe(els.boardTableContainer);
+  } else {
+    window.addEventListener('resize', syncGroupHeadingWidths);
+  }
   loadBoards();
 })();
