@@ -24,11 +24,11 @@ html[data-theme="dark"] body .modal-header,
 html[data-theme="dark"] body .modal-footer,
 html[data-theme="dark"] body .dropdown-divider { border-color: #3a4655; }
 html[data-theme="dark"] body .table { --bs-table-color: #d7dde5; --bs-table-bg: transparent; --bs-table-border-color: #3a4655; --bs-table-striped-color: #d7dde5; --bs-table-striped-bg: rgb(255 255 255 / 4%); --bs-table-hover-color: #fff; --bs-table-hover-bg: rgb(255 255 255 / 7%); }
-html[data-theme="dark"] body .form-control,
-html[data-theme="dark"] body .form-select,
-html[data-theme="dark"] body .input-group-text,
-html[data-theme="dark"] body textarea,
-html[data-theme="dark"] body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) { border-color: #526173; background-color: #202b38; color: #e2e8ef; }
+html[data-theme="dark"] body:not(.tableros-shell-page) .form-control,
+html[data-theme="dark"] body:not(.tableros-shell-page) .form-select,
+html[data-theme="dark"] body:not(.tableros-shell-page) .input-group-text,
+html[data-theme="dark"] body:not(.tableros-shell-page) textarea,
+html[data-theme="dark"] body:not(.tableros-shell-page) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) { border-color: #526173; background-color: #202b38; color: #e2e8ef; }
 html[data-theme="dark"] body .form-control::placeholder,
 html[data-theme="dark"] body input::placeholder,
 html[data-theme="dark"] body textarea::placeholder { color: #9aa8b8; }
@@ -280,6 +280,10 @@ html[data-theme="light"] body .boards-table-summary-label,
 html[data-theme="light"] body .boards-summary-count { color: #536575; }
 html[data-theme="light"] body .boards-status-select { color: #263746; color-scheme: light; }
 html[data-theme="light"] body .boards-workspace-trigger { border-color: #cbd7de; color: #344957; background: #fff; }
+html[data-theme="light"] body .boards-workspace-menu .boards-workspace-trigger:hover,
+html[data-theme="light"] body .boards-workspace-menu.is-open .boards-workspace-trigger { border-color: #b7cbd5; color: #263746; background: #f7fafb; }
+html[data-theme="light"] body .boards-workspace-menu .boards-workspace-trigger > i:first-child,
+html[data-theme="light"] body .boards-workspace-menu .boards-workspace-chevron { color: #68869a; }
 html[data-theme="light"] body .boards-workspace-options { border-color: #d8e2e7; background: #fff; }
 html[data-theme="light"] body .boards-workspace-option { color: #344957; }
 html[data-theme="light"] body .boards-workspace-option:hover,
@@ -386,6 +390,28 @@ html[data-theme="light"] body .boards-workspace-members-dialog .boards-share-use
 html[data-theme="light"] body .boards-workspace-members-dialog .boards-share-user-option[aria-selected="true"] { border-color: #d4e4ee; color: #174f83; background: #eaf3f8; }
 html[data-theme="light"] body .boards-workspace-members-dialog .boards-share-user-copy strong { color: #263746; }
 html[data-theme="light"] body .boards-workspace-members-dialog .boards-share-user-copy small { color: #687987; }
+html[data-theme="light"] body #shareBoardDialog .boards-field-label,
+html[data-theme="light"] body #shareBoardDialog .boards-detail-section h4,
+html[data-theme="light"] body #shareBoardDialog .boards-member-section h4 { color: #344957; }
+html[data-theme="light"] body #shareBoardDialog .boards-field-help,
+html[data-theme="light"] body #shareBoardDialog .boards-detail-status { color: #687987; }
+html[data-theme="light"] body #shareBoardDialog .boards-share-user-results { border-color: #d8e2e7; background: #fff; box-shadow: 0 12px 30px rgb(30 48 60 / 18%); }
+html[data-theme="light"] body #shareBoardDialog .boards-share-user-option { border-color: transparent; color: #344957; background: transparent; }
+html[data-theme="light"] body #shareBoardDialog .boards-share-user-option:hover,
+html[data-theme="light"] body #shareBoardDialog .boards-share-user-option:focus-visible,
+html[data-theme="light"] body #shareBoardDialog .boards-share-user-option[aria-selected="true"] { border-color: #d4e4ee; color: #174f83; background: #eaf3f8; }
+html[data-theme="light"] body #shareBoardDialog .boards-share-user-copy strong { color: #263746; }
+html[data-theme="light"] body #shareBoardDialog .boards-share-user-copy small,
+html[data-theme="light"] body #shareBoardDialog .boards-share-user-empty { color: #687987; }
+html[data-theme="light"] body #shareBoardDialog .boards-share-person-clear { color: #536575; }
+html[data-theme="light"] body #shareBoardDialog .boards-share-person-clear:hover { color: #174f83; background: #eaf3f8; }
+html[data-theme="light"] body #shareBoardDialog .boards-member-section { border-color: #d8e2e7; background: #f7fafb; }
+html[data-theme="light"] body #shareBoardDialog .boards-member-row { border-color: #d8e2e7; color: #344957; background: #fff; }
+html[data-theme="light"] body #shareBoardDialog .boards-member-person strong { color: #263746; }
+html[data-theme="light"] body #shareBoardDialog .boards-member-person span,
+html[data-theme="light"] body #shareBoardDialog .boards-member-role { color: #687987; }
+html[data-theme="light"] body #shareBoardDialog .boards-member-row .boards-text-button { color: #245f8c; }
+html[data-theme="light"] body #shareBoardDialog .boards-member-row .boards-member-role-select { border-color: #cbd7de; color: #344957; background-color: #fff; color-scheme: light; }
 
 @media (max-width: 575.98px) {
   .theme-switch-item { padding: 0 .2rem; }
