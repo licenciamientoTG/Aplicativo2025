@@ -225,6 +225,7 @@ html[data-theme="light"] body .boards-add-group-after,
 html[data-theme="light"] body .boards-add-in-group,
 html[data-theme="light"] body .boards-subitem-add { color: #245f8c; }
 html[data-theme="light"] body .boards-table-frame { background: #fff; }
+html[data-theme="light"] body .boards-current-group { border-color: #d8e2e7; color: #344957; background: #edf3f6; }
 html[data-theme="light"] body .boards-add-row td { border-color: #d8e2e7; background: #f7fafb; }
 html[data-theme="light"] body .boards-add-row button { color: #245f8c; }
 html[data-theme="light"] body .boards-add-row button:hover { color: #174f83; background: #eaf3f8; }
