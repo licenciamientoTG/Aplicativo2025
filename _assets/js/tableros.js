@@ -5131,7 +5131,6 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
-    updateCurrentGroupIndicator();
     if (window.Sortable && canEditBoard() && !query && !state.filters.length) {
       table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
         itemSortables.push(window.Sortable.create(body, {
@@ -5227,26 +5226,6 @@
     els.boardTableStatus.textContent = state.groups.length ? '' : 'Agrega un grupo para organizar los elementos de este tablero.';
     loadSummaryPeople();
     updateSelectionBar();
-  }
-
-  function updateCurrentGroupIndicator() {
-    const indicator = document.getElementById('boardCurrentGroup');
-    if (!indicator || !els.boardTableContainer) return;
-    const containerRect = els.boardTableContainer.getBoundingClientRect();
-    const headingRows = [...els.boardTableContainer.querySelectorAll('.boards-group-row')];
-    if (!headingRows.length || containerRect.height <= 0) {
-      indicator.hidden = true;
-      return;
-    }
-    const scrollTop = containerRect.top + 2;
-    const passedRows = headingRows.filter((row) => row.getBoundingClientRect().top <= scrollTop);
-    const currentRow = passedRows[passedRows.length - 1] || headingRows[0];
-    const groupId = currentRow.closest('[data-group-body]')?.dataset.groupBody;
-    const group = state.groups.find((entry) => String(entry.id) === String(groupId));
-    const name = currentRow.querySelector('.boards-group-toggle strong')?.textContent || group?.name || 'Grupo';
-    indicator.querySelector('strong').textContent = name;
-    indicator.style.setProperty('--group-color', safeGroupColor(group?.color));
-    indicator.hidden = false;
   }
 
   function loadSummaryPeople() {
@@ -7881,7 +7860,6 @@
     try { navigatorCollapsed = localStorage.getItem('tableros-navigator-collapsed') === '1'; } catch (_) {}
     setNavigatorCollapsed(navigatorCollapsed, false);
     navigatorToggle?.addEventListener('click', () => setNavigatorCollapsed(!boardsMain?.classList.contains('is-navigator-collapsed')));
-    els.boardTableContainer?.addEventListener('scroll', updateCurrentGroupIndicator, { passive: true });
 
     els.workspaceManagementList?.addEventListener('click', (event) => {
       const button = event.target.closest('[data-workspace-action]');
