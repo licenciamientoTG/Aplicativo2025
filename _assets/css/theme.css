@@ -83,6 +83,7 @@ html[data-theme="dark"] body .sidebar:not(.tableros-shell-sidebar) .sidebar-item
 html[data-theme="light"] body.tableros-shell-page { background: #f2f6f8; color: #263746; }
 html[data-theme="light"] body .tableros-shell-page .tableros-shell-sidebar,
 html[data-theme="light"] body .tableros-shell-page .tableros-shell-sidebar .sidebar-content { background: #fff !important; }
+html[data-theme="light"] body .tableros-shell-page .tableros-shell-sidebar { background: #fff !important; }
 html[data-theme="light"] body .tableros-shell-page #sidebar.tableros-shell-sidebar { border-color: #dfe5e8; }
 html[data-theme="light"] body .tableros-shell-page .tableros-shell-link { color: #536575; }
 html[data-theme="light"] body .tableros-shell-page .tableros-shell-link:hover,
@@ -111,7 +112,21 @@ html[data-theme="light"] body .tableros-shell-page .footer { background: #fff; c
 
 /* The Tableros module has its own dark palette near the end of tableros.css.
    These light-mode overrides restore clear surfaces and readable text. */
-html[data-theme="light"] body .boards-app { color: #263746; }
+html[data-theme="light"] body .boards-app {
+  --boards-ink: #263746;
+  --boards-muted: #687987;
+  --boards-line: #d8e2e7;
+  --boards-surface: #fff;
+  --boards-canvas: #fff;
+  --boards-petrol: #0f766e;
+  --boards-petrol-dark: #0a5d57;
+  --boards-blue: #3574a5;
+  --boards-cell: #fff;
+  --boards-cell-hover: #f4f8fa;
+  --boards-soft: #f7fafb;
+  color: #263746;
+  background: #fff;
+}
 html[data-theme="light"] body .boards-page-title,
 html[data-theme="light"] body .boards-board-title,
 html[data-theme="light"] body .boards-empty h3,
@@ -140,6 +155,7 @@ html[data-theme="light"] body .boards-board-heading,
 html[data-theme="light"] body .boards-viewbar,
 html[data-theme="light"] body .boards-toolbar { border-color: #d8e2e7; background: #fff; }
 html[data-theme="light"] body .boards-board-mark { border-color: #c9dbe8; color: #245d88; background: #eaf3f8; }
+html[data-theme="light"] body .boards-page-icon { border-color: #c9dbe8; color: #245d88; background: #eaf3f8; }
 html[data-theme="light"] body .boards-view-tab { color: #536575; }
 html[data-theme="light"] body .boards-view-tab:hover { color: #174f83; background: #f1f5f7; }
 html[data-theme="light"] body .boards-view-tab.is-active { border-bottom-color: #3574a5; color: #174f83; }
@@ -171,6 +187,12 @@ html[data-theme="light"] body .boards-recycle-entry { border-color: #d8e2e7; col
 html[data-theme="light"] body .boards-search input,
 html[data-theme="light"] body .boards-search select { color: #344957; color-scheme: light; }
 html[data-theme="light"] body .boards-search input::placeholder { color: #81909a; }
+html[data-theme="light"] body .boards-navigator-search { border-color: #cbd7de; color: #536575; background: #fff; }
+html[data-theme="light"] body .boards-navigator-search input { color: #344957; }
+html[data-theme="light"] body .boards-navigator-search input::placeholder { color: #81909a; }
+html[data-theme="light"] body .boards-nav-empty,
+html[data-theme="light"] body .boards-navigator-heading span { color: #687987; }
+html[data-theme="light"] body .boards-navigator-heading strong { color: #344957; }
 html[data-theme="light"] body .boards-column-order-button,
 html[data-theme="light"] body .boards-filter-remove { border-color: #d8e2e7; color: #536575; background: #fff; }
 html[data-theme="light"] body .boards-text-button,
@@ -178,6 +200,10 @@ html[data-theme="light"] body .boards-add-group-after,
 html[data-theme="light"] body .boards-add-in-group,
 html[data-theme="light"] body .boards-subitem-add { color: #245f8c; }
 html[data-theme="light"] body .boards-table-frame { background: #fff; }
+html[data-theme="light"] body .boards-add-row td { border-color: #d8e2e7; background: #f7fafb; }
+html[data-theme="light"] body .boards-add-row button { color: #245f8c; }
+html[data-theme="light"] body .boards-add-row button:hover { color: #174f83; background: #eaf3f8; }
+html[data-theme="light"] body .boards-add-row button > i { color: #3574a5; }
 html[data-theme="light"] body .boards-table { color: #344957; }
 html[data-theme="light"] body .boards-table th,
 html[data-theme="light"] body .boards-table td { border-color: #d8e2e7; }
@@ -192,6 +218,25 @@ html[data-theme="light"] body .boards-item-name-link { color: #245f8c; }
 html[data-theme="light"] body .boards-item-row:hover td,
 html[data-theme="light"] body .boards-item-row:hover .boards-item-name { background: #f4f8fa; }
 html[data-theme="light"] body .boards-group-row td { border-color: #d8e2e7; background: #f7fafb; }
+html[data-theme="light"] body .boards-group-body + .boards-group-body > .boards-group-row td { border-top-color: #e7edef; }
+html[data-theme="light"] body .boards-cell-input,
+html[data-theme="light"] body .boards-date-editor .boards-cell-input.is-date { color: #344957; color-scheme: light; }
+html[data-theme="light"] body .boards-date-picker { color: #536575; }
+html[data-theme="light"] body .boards-date-picker:hover,
+html[data-theme="light"] body .boards-date-picker[aria-expanded="true"] { color: #174f83; background: #eaf3f8; }
+html[data-theme="light"] body .boards-inline-add-form input,
+html[data-theme="light"] body .boards-timeline-editor input,
+html[data-theme="light"] body .boards-item-name-input { border-color: #cbd7de; color: #344957; background: #fff; color-scheme: light; }
+html[data-theme="light"] body .boards-add-row .boards-inline-add-form button { border-color: #cbd7de; color: #425767; background: #fff; }
+html[data-theme="light"] body .boards-add-row .boards-inline-add-form button:hover { background: #f1f5f7; }
+html[data-theme="light"] body .boards-readonly-value,
+html[data-theme="light"] body .boards-readonly-value.is-structured,
+html[data-theme="light"] body .boards-editor-help { color: #536575; }
+html[data-theme="light"] body .boards-row-details,
+html[data-theme="light"] body .boards-cell-save { border-color: #cbd7de; color: #245f8c; background: #f7fafb; }
+html[data-theme="light"] body .boards-row-details:hover,
+html[data-theme="light"] body .boards-cell-save:hover { background: #eaf3f8; }
+html[data-theme="light"] body .boards-people-chip { border-color: #fff; }
 html[data-theme="light"] body .boards-group-heading { color: #344957; background: linear-gradient(90deg, color-mix(in srgb, var(--group-color, #678cff) 10%, #fff) 0, #fff 42%); }
 html[data-theme="light"] body .boards-group-toggle { color: #344957; }
 html[data-theme="light"] body .boards-group-count,
