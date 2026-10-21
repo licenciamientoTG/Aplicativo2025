@@ -2496,111 +2496,11 @@ function consumo_propio_render(d, type) {
     return '<span class="badge bg-info text-dark" title="Consumo propio">' + $('<div>').text(d).html() + '</span>';
 }
 
-// ── Consumos por Cliente (Débito tipval=4 / Crédito tipval=3) ───────────────
-
-async function clients_dispatches_table(tipo) {
-    var tableId  = tipo === 'debit' ? 'debit_consumos_table' : 'credit_consumos_table';
-    var from     = tipo === 'debit' ? $('#from_debit').val()     : $('#from_credit').val();
-    var until    = tipo === 'debit' ? $('#until_debit').val()    : $('#until_credit').val();
-    var codcli   = tipo === 'debit' ? $('#cliente_debit').val()  : $('#cliente_credit').val();
-    var tipval   = tipo === 'debit' ? 4 : 3;
-    // codcli=0 → todos los clientes; empresa 0=todas, -1=sin razón social
-    var empresa  = parseInt($('#empresa_' + tipo).val(), 10) || 0;
-    // Consumo propio solo existe en débito: columna Categoría + filtro incluir/excluir/solo
-    var isDebit  = tipo === 'debit';
-    var propio   = isDebit ? ($('#propio_debit').val() || 'incluir') : 'incluir';
-    var off      = isDebit ? 1 : 0;
-
-    if (!codcli) {
-        alertify.myAlert('<div class="text-center text-warning"><h5>Selecciona un cliente</h5><p>Debes elegir un cliente antes de consultar.</p></div>');
-        return;
-    }
-
-    if ($.fn.DataTable.isDataTable('#' + tableId)) {
-        $('#' + tableId).DataTable().destroy();
-        $('#' + tableId + ' thead .filter').remove();
-    }
-
-    $('#' + tableId + ' thead').prepend($('#' + tableId + ' thead tr').clone().addClass('filter'));
-    $('#' + tableId + ' thead tr.filter th').each(function (index) {
-        var col = $('#' + tableId + ' thead th').length / 2;
-        if (index < col) {
-            var title = $(this).text();
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#' + tableId + ' thead tr.filter th input').on('keyup change', function () {
-        $('#' + tableId).DataTable()
-            .column($(this).parent().index())
-            .search(this.value).draw();
-    });
-
-    // Todos los clientes ≈ 27k despachos/mes: paginar para no meter todo al DOM
-    var allClients = String(codcli) === '0';
-
-    $('#' + tableId).DataTable({
-        order: [[0, 'asc'], [2 + off, 'asc']],
-        colReorder: true,
-        dom: allClients ? '<"top"Bf>rt<"bottom"ilp>' : '<"top"Bf>rt<"bottom"i>',
-        paging: allClients,
-        pageLength: 100,
-        lengthMenu: [[100, 500, 1000, -1], [100, 500, 1000, 'Todos']],
-        scrollY: '60vh',
-        scrollX: true,
-        scrollCollapse: true,
-        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
-        ajax: {
-            method: 'POST',
-            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval, 'empresa': empresa, 'propio': propio },
-            url: '/income/clients_dispatches_table',
-            timeout: 600000,
-            error: function () {
-                $('.table-responsive').removeClass('loading');
-                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No existen registros con los parámetros dados.</p></div>');
-            },
-            beforeSend: function () { $('.table-responsive').addClass('loading'); }
-        },
-        columns: [
-            { data: 'Cliente',  className: 'text-nowrap' },
-            { data: 'codcli' },
-        ].concat(isDebit ? [{ data: 'Categoria', className: 'text-nowrap', render: consumo_propio_render }] : []).concat([
-            { data: 'Fecha',    className: 'text-center' },
-            { data: 'hratrn',   className: 'text-center', render: function(d) {
-                if (!d) return '';
-                var n = parseInt(d, 10);
-                if (isNaN(n)) return d;
-                var h = Math.floor(n / 100), m = n % 100, ap = h >= 12 ? 'PM' : 'AM';
-                h = h % 12 || 12;
-                return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0') + ' ' + ap;
-            }},
-            { data: 'nrotrn',   className: 'text-center' },
-            { data: 'Estacion', className: 'text-nowrap' },
-            { data: 'RazonSocial', className: 'text-nowrap' },
-            { data: 'Litros',   render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
-            { data: 'Monto',    render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-end' },
-            { data: 'producto' },
-        ]),
-        deferRender: true,
-        initComplete: function () { $('.table-responsive').removeClass('loading'); },
-        footerCallback: function (row, data, start, end, display) {
-            var api = this.api();
-            var litrosIdx = 7 + off, montoIdx = 8 + off;
-            var litrosTotal = api.column(litrosIdx, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
-            var montoTotal  = api.column(montoIdx, { search: 'applied' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
-            $(api.column(litrosIdx).footer()).html(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3}));
-            $(api.column(montoIdx).footer()).html('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2}));
-            $('#sum_litros_consumos_' + tipo).text(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3, maximumFractionDigits:3}));
-            $('#sum_monto_consumos_' + tipo).text('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
-            $('#sum_despachos_consumos_' + tipo).text(api.rows({ search: 'applied' }).count().toLocaleString('es-MX'));
-        }
-    });
-}
-
 // ── Consumos por Cliente, sumatorias (Débito tipval=4 / Crédito tipval=3) ──
 
 async function clients_summary_table(tipo) {
     var tableId = tipo + '_consumos_client_table';
-    // Comparte filtros con el detalle de movimientos (tab Consumos Débito/Crédito)
+    // Solo sumatorias: el detalle por cliente se ve en el modal (clic en Monto)
     var from    = $('#from_' + tipo).val();
     var until   = $('#until_' + tipo).val();
     var codcli  = parseInt($('#cliente_' + tipo).val(), 10) || 0;
@@ -2696,6 +2596,9 @@ async function clients_summary_table(tipo) {
             $(api.column(9 + off).footer()).html(fmtMoney(cor));
             $(api.column(10 + off).footer()).html(fmtMoney(dif));
             $('#sum_clientes_client_' + tipo).text(api.rows({ search: 'applied' }).count().toLocaleString('es-MX'));
+            $('#sum_despachos_consumos_' + tipo).text(desp.toLocaleString('es-MX'));
+            $('#sum_litros_consumos_' + tipo).text(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
+            $('#sum_monto_consumos_' + tipo).text(fmtMoney(mto));
             if (isDebit) {
                 var propioMto = api.rows({ search: 'applied' }).data().toArray()
                     .reduce(function (a, r) { return r.Categoria ? a + (parseFloat(r.Monto) || 0) : a; }, 0);

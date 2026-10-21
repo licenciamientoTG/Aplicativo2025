@@ -216,6 +216,7 @@ class ClientesModel extends Model{
      * comparados contra lo que entró en los cortes (SG12.ValesR, mismo origen que Ingresos / Venta por Rubro).
      * Despachos se filtra por fecha del despacho y ValesR por fecha del corte (coinciden salvo ~5 despachos/mes).
      * Cuenta los clientes que solo aparecen de un lado (FULL JOIN), p. ej. PUBLICO EN GENERAL débito sin corte.
+     * Un despacho de un cliente que hoy es de otro tipo también entra si su corte lo cobró con el valor del tipo pedido.
      * $tipval: 4 = débito (valor 127), 3 = crédito (valor 28). $codcli: 0 = todos.
      * $empresa: 0 = todas, -1 = estaciones sin razón social, >0 = SG12.Empresas.cod.
      * $propio: 'incluir' | 'excluir' | 'solo' (ver consumoPropioFilter). Categoria = categoría de consumo propio o ''.
@@ -224,7 +225,15 @@ class ClientesModel extends Model{
         $codval = $tipval === 3 ? 28 : 127;
         $propio_d = $this->consumoPropioFilter($propio, 't1.codcli');
         $propio_r = $this->consumoPropioFilter($propio, 'r.codcli');
-        $query = "WITH d AS (
+        $query = "WITH vx AS (
+                    -- despachos de clientes que hoy son de otro tipo pero el corte cobró con este valor (ValesR.sec = -nrotrn)
+                    SELECT DISTINCT vr.codgas, -vr.sec AS nrotrn
+                    FROM [SG12].[dbo].[ValesR] vr WITH (NOLOCK)
+                    JOIN [SG12].[dbo].[Clientes] vc ON vc.cod = vr.codcli
+                    WHERE vr.fch BETWEEN ? - 1 AND ? + 1
+                        AND vr.codval = ?
+                        AND vc.tipval <> ?
+                ), d AS (
                     SELECT
                         t1.codcli,
                         COUNT(DISTINCT EMP.cod) AS RazonesSociales,
@@ -238,9 +247,10 @@ class ClientesModel extends Model{
                     JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
                     LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
                     LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    LEFT JOIN vx ON vx.codgas = t1.codgas AND vx.nrotrn = t1.nrotrn
                     WHERE t1.fchtrn BETWEEN ? AND ?
                         AND t1.codcli > 0
-                        AND t2.tipval = ?
+                        AND (t2.tipval = ? OR vx.nrotrn IS NOT NULL)
                         AND (? = 0 OR t1.codcli = ?)
                         AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
                         {$propio_d}
@@ -276,6 +286,7 @@ class ClientesModel extends Model{
                 LEFT JOIN [TG].dbo.clientes_consumo_propio CP ON CP.codcli = COALESCE(d.codcli, r.codcli) AND CP.activo = 1
                 ORDER BY ISNULL(d.Monto, 0) DESC";
         return $this->sql->select($query, [
+            $from, $until, $codval, $tipval,
             $from, $until, $tipval, $codcli, $codcli, $empresa, $empresa, $empresa,
             $from, $until, $codval, $codcli, $codcli, $empresa, $empresa, $empresa,
         ]) ?: false;

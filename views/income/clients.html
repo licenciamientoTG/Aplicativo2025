@@ -412,21 +412,6 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div></div></div>
         </div>
 
-        <ul class="nav nav-pills mb-2" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#debit_consumos_sub_resumen" type="button">
-                    <i class="fas fa-users"></i> Resumen por cliente
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#debit_consumos_sub_detalle" type="button">
-                    <i class="fas fa-list-ul"></i> Detalle de movimientos
-                </button>
-            </li>
-        </ul>
-        <div class="tab-content">
-        {# Sub-tab 1: sumatorias por cliente #}
-        <div class="tab-pane active" id="debit_consumos_sub_resumen" role="tabpanel">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><i class="fas fa-users"></i> Resumen por cliente</h5>
@@ -452,37 +437,6 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div>
         </div>
 
-        </div>
-
-        {# Sub-tab 2: detalle despacho por despacho #}
-        <div class="tab-pane" id="debit_consumos_sub_detalle" role="tabpanel">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-list-ul"></i> Detalle de movimientos</h5>
-                <small class="text-muted">Cada despacho del periodo, con estación, razón social y producto.</small>
-            </div>
-            <div class="card-body table-responsive">
-                <table id="debit_consumos_table" class="table table-hover table-sm w-100">
-                    <thead>
-                        <tr>
-                            <th>Cliente</th><th>Cód.</th><th>Categoría</th><th>Fecha</th><th>Hora</th>
-                            <th>Nro. Despacho</th><th>Estación</th><th>Razón social</th>
-                            <th>Litros</th><th>Monto</th><th>Producto</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                    <tfoot>
-                        <tr>
-                            <th>Cliente</th><th>Cód.</th><th>Categoría</th><th>Fecha</th><th>Hora</th>
-                            <th>Nro. Despacho</th><th>Estación</th><th>Razón social</th>
-                            <th>Litros</th><th>Monto</th><th>Producto</th>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-        </div>
-        </div>{# /tab-content sub-tabs #}
     </div>
 
     {# ── TAB 4: CONSUMOS CRÉDITO ── #}
@@ -543,21 +497,6 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div></div></div>
         </div>
 
-        <ul class="nav nav-pills mb-2" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#credit_consumos_sub_resumen" type="button">
-                    <i class="fas fa-users"></i> Resumen por cliente
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#credit_consumos_sub_detalle" type="button">
-                    <i class="fas fa-list-ul"></i> Detalle de movimientos
-                </button>
-            </li>
-        </ul>
-        <div class="tab-content">
-        {# Sub-tab 1: sumatorias por cliente #}
-        <div class="tab-pane active" id="credit_consumos_sub_resumen" role="tabpanel">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><i class="fas fa-users"></i> Resumen por cliente</h5>
@@ -583,37 +522,6 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div>
         </div>
 
-        </div>
-
-        {# Sub-tab 2: detalle despacho por despacho #}
-        <div class="tab-pane" id="credit_consumos_sub_detalle" role="tabpanel">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-list-ul"></i> Detalle de movimientos</h5>
-                <small class="text-muted">Cada despacho del periodo, con estación, razón social y producto.</small>
-            </div>
-            <div class="card-body table-responsive">
-                <table id="credit_consumos_table" class="table table-hover table-sm w-100">
-                    <thead>
-                        <tr>
-                            <th>Cliente</th><th>Cód.</th><th>Fecha</th><th>Hora</th>
-                            <th>Nro. Despacho</th><th>Estación</th><th>Razón social</th>
-                            <th>Litros</th><th>Monto</th><th>Producto</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                    <tfoot>
-                        <tr>
-                            <th>Cliente</th><th>Cód.</th><th>Fecha</th><th>Hora</th>
-                            <th>Nro. Despacho</th><th>Estación</th><th>Razón social</th>
-                            <th>Litros</th><th>Monto</th><th>Producto</th>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-        </div>
-        </div>{# /tab-content sub-tabs #}
     </div>
 
     {# ── TAB 5: EDO. CUENTA CRÉDITO ── #}
@@ -1304,19 +1212,12 @@ $('#btn_dashboard_debit').on('click', function () {
 $('#btn_debit_consumos').on('click', function () {
     // $('#cliente_debit').selectpicker('hide');
     clients_summary_table('debit');
-    clients_dispatches_table('debit');
-});
-
-// Sub-tabs de Consumos Débito/Crédito: DataTables con scrollX miden mal si se crean ocultas
-$('button[data-bs-target*="_consumos_sub_"]').on('shown.bs.tab', function () {
-    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
 });
 
 // ── Consumos Crédito ──
 $('#btn_credit_consumos').on('click', function () {
     // $('#cliente_credit').selectpicker('hide');
     clients_summary_table('credit');
-    clients_dispatches_table('credit');
 });
 
 // ── Estado de Cuenta ──

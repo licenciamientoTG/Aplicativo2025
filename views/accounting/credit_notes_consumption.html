@@ -67,128 +67,141 @@
   <span>Consultando ControlGas...</span>
 </div>
 
-<div class="card mb-3">
-  <div class="card-body">
-    <form class="row align-items-end g-2" id="ncFiltros">
-      <div class="col-auto">
-        <label for="desde">Desde:</label>
-        <input type="date" class="form-control" id="desde" value="{{ desde }}" required>
-      </div>
-      <div class="col-auto">
-        <label for="hasta">Hasta:</label>
-        <input type="date" class="form-control" id="hasta" value="{{ hasta }}" required>
-      </div>
-      <div class="col-auto">
-        {# Razón social = empresa de la estación del despacho, igual que /income/clients #}
-        <label for="empresa">Razón social:</label>
-        <select class="form-control" id="empresa">
-          <option value="0">Todas</option>
-          {% for e in empresas %}
-          <option value="{{ e.cod }}">{{ e.den }}</option>
-          {% endfor %}
-          <option value="-1">(Sin razón social)</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <button type="submit" class="btn btn-primary">Buscar</button>
-      </div>
-      <div class="col">
-        <small class="text-muted">
-          Notas: por fecha de la nota G, del corporativo y de estaciones. Razón social: la de la estación
-          que emitió la nota; para las del corporativo, la de las estaciones de sus despachos
-          (corporativas sin ligar caen en "(Sin razón social)").
-          Consumos: por fecha del despacho, clientes débito, mismo conteo que Clientes &gt; Consumos Débito.
-        </small>
-      </div>
-    </form>
-  </div>
-</div>
-
 <ul class="nav nav-tabs mb-3" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabNotas" type="button" role="tab">
-      Notas de crédito G <span class="badge bg-secondary" id="cntNotas">0</span>
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabConsumos" type="button" role="tab">
-      Consumos débito <span class="badge bg-secondary" id="cntConsumos">0</span>
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabRelacion" type="button" role="tab">
+      <i class="fas fa-link"></i> Relación
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPeriodo" type="button" role="tab">
-      Periodo de facturación <span class="badge bg-secondary" id="cntPeriodo">0</span>
+      <i class="fas fa-calendar-alt"></i> Periodo de facturación <span class="badge bg-secondary" id="cntPeriodo">0</span>
     </button>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div class="tab-pane fade show active" id="tabNotas" role="tabpanel">
-    <div class="nc-resumen" id="resumenNotas"></div>
-    <div class="nc-tabla-wrap">
-      <table id="tablaNotas" class="table table-sm table-hover nc-tabla w-100 mb-0">
-        <thead>
-          <tr>
-            <th>Nota</th>
-            <th>Emitida en</th>
-            <th>Fecha nota G</th>
-            <th>Cód. cliente</th>
-            <th>Cliente</th>
-            <th>Razón social</th>
-            <th>Valor nota</th>
-            <th>Factura(s) ligada(s)</th>
-            <th>Aplicado</th>
-            <th>Despachos</th>
-            <th>Litros</th>
-            <th>Suma despachos</th>
-            <th>Despachos desde</th>
-            <th>Despachos hasta</th>
-            <th>Diferencia</th>
-            <th>Estatus</th>
-            <th>UUID</th>
-            <th>Notas</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="tab-pane fade" id="tabConsumos" role="tabpanel">
-    <div class="d-flex align-items-center gap-3 mb-2">
-      <div class="form-check form-switch m-0">
-        <input class="form-check-input" type="checkbox" id="soloSinNota" checked>
-        <label class="form-check-label" for="soloSinNota">Solo consumos sin nota (sin factura o factura E sin nota)</label>
+  {# Relación: notas de crédito G y consumos débito, mismo buscador #}
+  <div class="tab-pane fade show active" id="tabRelacion" role="tabpanel">
+    <div class="card mb-3">
+      <div class="card-body">
+        <form class="row align-items-end g-2" id="ncFiltros">
+          <div class="col-auto">
+            <label for="desde">Desde:</label>
+            <input type="date" class="form-control" id="desde" value="{{ desde }}" required>
+          </div>
+          <div class="col-auto">
+            <label for="hasta">Hasta:</label>
+            <input type="date" class="form-control" id="hasta" value="{{ hasta }}" required>
+          </div>
+          <div class="col-auto">
+            {# Razón social = empresa de la estación del despacho, igual que /income/clients #}
+            <label for="empresa">Razón social:</label>
+            <select class="form-control" id="empresa">
+              <option value="0">Todas</option>
+              {% for e in empresas %}
+              <option value="{{ e.cod }}">{{ e.den }}</option>
+              {% endfor %}
+              <option value="-1">(Sin razón social)</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Buscar</button>
+          </div>
+          <div class="col">
+            <small class="text-muted">
+              Notas: por fecha de la nota G, del corporativo y de estaciones. Razón social: la de la estación
+              que emitió la nota; para las del corporativo, la de las estaciones de sus despachos
+              (corporativas sin ligar caen en "(Sin razón social)").
+              Consumos: por fecha del despacho, clientes débito, mismo conteo que Clientes &gt; Consumos Débito.
+            </small>
+          </div>
+        </form>
       </div>
     </div>
-    <div class="nc-resumen" id="resumenConsumos"></div>
-    <div class="nc-tabla-wrap">
-      <table id="tablaConsumos" class="table table-sm table-hover nc-tabla w-100 mb-0">
-        <thead>
-          <tr>
-            <th>Estación</th>
-            <th>Razón social</th>
-            <th>Despacho</th>
-            <th>Fecha despacho</th>
-            <th>Hora</th>
-            <th>Cód. cliente</th>
-            <th>Cliente</th>
-            <th>Producto</th>
-            <th>Litros</th>
-            <th>Monto</th>
-            <th>Factura</th>
-            <th>Nota G</th>
-            <th>Fecha nota G</th>
-            <th>UUID nota G</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+
+    <ul class="nav nav-pills mb-3" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabNotas" type="button" role="tab">
+          Notas de crédito G <span class="badge bg-secondary" id="cntNotas">0</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabConsumos" type="button" role="tab">
+          Consumos débito <span class="badge bg-secondary" id="cntConsumos">0</span>
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="tabNotas" role="tabpanel">
+        <div class="nc-resumen" id="resumenNotas"></div>
+        <div class="nc-tabla-wrap">
+          <table id="tablaNotas" class="table table-sm table-hover nc-tabla w-100 mb-0">
+            <thead>
+              <tr>
+                <th>Nota</th>
+                <th>Emitida en</th>
+                <th>Fecha nota G</th>
+                <th>Cód. cliente</th>
+                <th>Cliente</th>
+                <th>Razón social</th>
+                <th>Valor nota</th>
+                <th>Factura(s) ligada(s)</th>
+                <th>Aplicado</th>
+                <th>Despachos</th>
+                <th>Litros</th>
+                <th>Suma despachos</th>
+                <th>Despachos desde</th>
+                <th>Despachos hasta</th>
+                <th>Diferencia</th>
+                <th>Estatus</th>
+                <th>UUID</th>
+                <th>Notas</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="tabConsumos" role="tabpanel">
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="soloSinNota" checked>
+            <label class="form-check-label" for="soloSinNota">Solo consumos sin nota (sin factura o factura E sin nota)</label>
+          </div>
+        </div>
+        <div class="nc-resumen" id="resumenConsumos"></div>
+        <div class="nc-tabla-wrap">
+          <table id="tablaConsumos" class="table table-sm table-hover nc-tabla w-100 mb-0">
+            <thead>
+              <tr>
+                <th>Estación</th>
+                <th>Razón social</th>
+                <th>Despacho</th>
+                <th>Fecha despacho</th>
+                <th>Hora</th>
+                <th>Cód. cliente</th>
+                <th>Cliente</th>
+                <th>Producto</th>
+                <th>Litros</th>
+                <th>Monto</th>
+                <th>Factura</th>
+                <th>Nota G</th>
+                <th>Fecha nota G</th>
+                <th>UUID nota G</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
-  {# Periodo de facturación: buscador propio, independiente del de arriba #}
+  {# Periodo de facturación: buscador propio, independiente del de Relación #}
   <div class="tab-pane fade" id="tabPeriodo" role="tabpanel">
     <div class="card mb-3">
       <div class="card-body">
@@ -218,14 +231,16 @@
             <small class="text-muted">
               Compara el mes del despacho contra el mes de <b>timbrado</b> de su factura E y de su nota G
               (la más antigua si hay varias); las dos deben estar en el mes del despacho.
-              La fecha del documento se muestra aparte: ControlGas permite fechar la E en el mes del consumo
-              aunque se timbre al mes siguiente.
+              Solo totales (sin desglose por despacho), para poder consultar varios meses.
+              ControlGas permite fechar la E en el mes del consumo aunque se timbre al mes siguiente
+              (columna "E fechada en mes, timbrada fuera").
             </small>
           </div>
         </form>
       </div>
     </div>
 
+    <div class="nc-resumen" id="resumenPeriodo"></div>
     <div class="nc-tabla-wrap mb-3">
       <div class="nc-top"><b>Resumen por mes del despacho</b></div>
       <div class="nc-scroll" style="max-height:none">
@@ -255,38 +270,6 @@
       </div>
     </div>
 
-    <div class="nc-resumen" id="resumenPeriodo"></div>
-    <div class="nc-tabla-wrap">
-      <table id="tablaPeriodo" class="table table-sm table-hover nc-tabla w-100 mb-0">
-        <thead>
-          <tr>
-            <th>Mes despacho</th>
-            <th>Estación</th>
-            <th>Razón social</th>
-            <th>Despacho</th>
-            <th>Fecha despacho</th>
-            <th>Hora</th>
-            <th>Cód. cliente</th>
-            <th>Cliente</th>
-            <th>Litros</th>
-            <th>Monto</th>
-            <th>Factura E</th>
-            <th>Fecha E</th>
-            <th>Timbrado E</th>
-            <th>Desfase E (meses)</th>
-            <th>Estatus E</th>
-            <th>Nota G</th>
-            <th>Fecha G</th>
-            <th>Timbrado G</th>
-            <th>Desfase G (meses)</th>
-            <th>Estatus G</th>
-            <th>UUID nota G</th>
-            <th>Estatus</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
   </div>
 </div>
 
@@ -422,43 +405,8 @@ $(function () {
     { data: 'estado', render: badge },
   ], 'Consumos debito vs notas de credito');
 
-  var tablaPeriodo = initTabla('#tablaPeriodo', [
-    { data: 'periodo' },
-    { data: 'estacion' },
-    { data: 'razon_social', render: texto },
-    { data: 'despacho', className: 'nc-mono' },
-    { data: 'fecha', render: fecha },
-    { data: 'hora' },
-    { data: 'codcli' },
-    { data: 'cliente', className: 'nc-wrap', render: texto },
-    { data: 'litros', className: 'nc-monto', render: function (d, t) { return t === 'display' ? fmtLitros(d) : d; } },
-    { data: 'monto', className: 'nc-monto', render: monto },
-    { data: 'factura', className: 'nc-mono' },
-    { data: 'fecha_factura', render: fecha },
-    { data: 'timbrado_factura', render: timbrado },
-    { data: 'meses_e', className: 'nc-monto', defaultContent: '', render: meses },
-    { data: 'estatus_e', render: badgeOpcional },
-    { data: 'nota', className: 'nc-mono', render: texto },
-    { data: 'fecha_nota', render: fecha },
-    { data: 'timbrado_nota', render: timbrado },
-    { data: 'meses_g', className: 'nc-monto', defaultContent: '', render: meses },
-    { data: 'estatus_g', render: badgeOpcional },
-    { data: 'uuid_nota', className: 'nc-mono', render: texto },
-    { data: 'estatus', render: badge },
-  ], function () { return 'Periodo de facturacion ' + $('#p_desde').val() + ' a ' + $('#p_hasta').val(); });
-
-  function meses(d, t) {
-    if (d === null || d === undefined) return '';
-    return t === 'display' && d !== 0 ? '<span class="nc-neg">' + (d > 0 ? '+' : '') + d + '</span>' : d;
-  }
-  function timbrado(d, t) {
-    if (!d || t !== 'display') return d || '';
-    return fmtFecha(d.substring(0, 10)) + ' ' + d.substring(11, 16);
-  }
-  function badgeOpcional(d, t) { return d ? badge(d, t) : ''; }
-
   // Índice de la columna de estatus en cada tabla (para los chips de resumen)
-  var COL_ESTATUS_NOTAS = 15, COL_ESTADO_CONSUMOS = 14, COL_ESTATUS_PERIODO = 21;
+  var COL_ESTATUS_NOTAS = 15, COL_ESTADO_CONSUMOS = 14;
 
   $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
     $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
@@ -523,25 +471,26 @@ $(function () {
       });
   }
 
-  // Resumen por mes del despacho (tab Periodo de facturación)
+  // Resumen por mes del despacho (tab Periodo de facturación). Cada fila ya
+  // viene agrupada por periodo + estatus con n despachos y su monto.
   function pintarResumenMeses(filas) {
     var meses = {};
     filas.forEach(function (r) {
       var m = meses[r.periodo] = meses[r.periodo] ||
         { n: 0, e: 0, eEn: 0, eFuera: 0, mEFuera: 0, eFechada: 0, g: 0, gEn: 0, gFuera: 0, mGFuera: 0, sin: 0, mSin: 0, na: 0 };
-      var mto = Number(r.monto) || 0;
-      m.n++;
+      var n = Number(r.n) || 0, mto = Number(r.monto) || 0;
+      m.n += n;
       if (r.estatus_e) {
-        m.e++;
-        if (r.estatus_e === 'En periodo') m.eEn++; else { m.eFuera++; m.mEFuera += mto; }
-        if (r.e_fechada) m.eFechada++;
+        m.e += n;
+        if (r.estatus_e === 'En periodo') m.eEn += n; else { m.eFuera += n; m.mEFuera += mto; }
+        if (r.e_fechada) m.eFechada += n;
       }
       if (r.estatus_g) {
-        m.g++;
-        if (r.estatus_g === 'En periodo') m.gEn++; else { m.gFuera++; m.mGFuera += mto; }
+        m.g += n;
+        if (r.estatus_g === 'En periodo') m.gEn += n; else { m.gFuera += n; m.mGFuera += mto; }
       }
-      if (r.estatus === 'Sin nota G') { m.sin++; m.mSin += mto; }
-      else if (r.estatus === 'No aplica') m.na++;
+      if (r.estatus === 'Sin nota G') { m.sin += n; m.mSin += mto; }
+      else if (r.estatus === 'No aplica') m.na += n;
     });
     function num(v, rojo) {
       return '<td class="nc-monto' + (rojo && v ? ' nc-neg' : '') + '">' + v.toLocaleString('en-US') + '</td>';
@@ -561,6 +510,25 @@ $(function () {
     $('#tablaPeriodoResumen tbody').html(html || '<tr><td colspan="16" class="text-muted">Sin despachos en el rango.</td></tr>');
   }
 
+  // Totales por estatus del periodo (informativos: ya no hay tabla de despachos que filtrar)
+  function pintarChipsPeriodo(filas) {
+    var grupos = {}, total = 0, totalMonto = 0;
+    filas.forEach(function (r) {
+      var g = grupos[r.estatus] = grupos[r.estatus] || { n: 0, monto: 0 };
+      g.n += Number(r.n) || 0;
+      g.monto += Number(r.monto) || 0;
+      total += Number(r.n) || 0;
+      totalMonto += Number(r.monto) || 0;
+    });
+    var html = '<span class="nc-chip activo">Todos: <b>' + total.toLocaleString('en-US') + '</b> · $' + fmtMonto(totalMonto) + '</span>';
+    Object.keys(grupos).sort().forEach(function (k) {
+      html += '<span class="nc-chip">' + badge(k, 'display') + ' <b>' + grupos[k].n.toLocaleString('en-US') +
+        '</b> · $' + fmtMonto(grupos[k].monto) + '</span>';
+    });
+    $('#resumenPeriodo').html(html);
+    $('#cntPeriodo').text(total.toLocaleString('en-US'));
+  }
+
   $('#pFiltros').on('submit', function (e) {
     e.preventDefault();
     mostrarLoader(true);
@@ -569,10 +537,7 @@ $(function () {
       data: { desde: $('#p_desde').val(), hasta: $('#p_hasta').val(), empresa: $('#p_empresa').val() },
     }).done(function (r) {
       var filas = (r && r.data) || [];
-      tablaPeriodo.column(COL_ESTATUS_PERIODO).search('');
-      tablaPeriodo.clear().rows.add(filas).draw();
-      $('#cntPeriodo').text(filas.length);
-      pintarResumen('#resumenPeriodo', tablaPeriodo, filas, 'estatus', COL_ESTATUS_PERIODO, 'monto');
+      pintarChipsPeriodo(filas);
       pintarResumenMeses(filas);
     }).fail(function () {
       alertify.error('Error al consultar el periodo de facturación');
