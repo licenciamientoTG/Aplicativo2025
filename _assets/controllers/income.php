@@ -7748,6 +7748,7 @@ public function stamped_invoices_detail(): void
         $month = (int)($_GET['month'] ?? 0);
         $rs = trim($_GET['razon_social'] ?? '');
         $banco = trim($_GET['banco'] ?? '');
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
         if ($year < 2000 || $month < 1 || $month > 12) {
             echo json_encode(['status'=>'error','message'=>'Selecciona un período válido.']);
             exit;
@@ -7759,11 +7760,14 @@ public function stamped_invoices_detail(): void
             $conn = $this->v3_conn();
             $scope = '';
             if ($banco !== '') $scope .= ' AND TE.Nombre=?';
+            if ($estacion_id > 0) $scope .= ' AND T.estacion_id=?';
             if ($rs === 'DIAZ GAS') $scope .= " AND E.RFC='DGA930823KD3'";
             elseif ($rs === 'GASOMEX') $scope .= " AND E.RFC='DGM880621FU5'";
             elseif ($rs === 'FORANEAS') $scope .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
 
-            $sql = "SELECT T.id,'SALIENTE' AS sentido,T.mes_origen,T.mes_destino,
+            $sql = "SELECT T.id,'SALIENTE' AS sentido,
+                    CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                    T.conciliacion_id_dest AS conciliacion,T.mes_origen,T.mes_destino,
                     T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
                     T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
                     ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
@@ -7772,7 +7776,9 @@ public function stamped_invoices_detail(): void
                 LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
                 WHERE T.estado<>'CANCELADO' AND T.mes_origen=? AND T.mes_destino=? $scope
                 UNION ALL
-                SELECT T.id,'ENTRANTE' AS sentido,T.mes_origen,T.mes_destino,
+                SELECT T.id,'ENTRANTE' AS sentido,
+                    CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                    T.conciliacion_id_dest AS conciliacion,T.mes_origen,T.mes_destino,
                     T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
                     T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
                     ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
@@ -7781,13 +7787,15 @@ public function stamped_invoices_detail(): void
                 LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
                 WHERE T.estado='CONCILIADO' AND T.conciliacion_id_dest IS NOT NULL
                   AND T.mes_origen=? AND T.mes_destino=? $scope
-                ORDER BY sentido,estacion,banco,T.id";
+                ORDER BY sentido,estacion,banco,id";
             $stmt = $conn->prepare($sql);
             $queryParams = [$period,$next];
             if ($banco !== '') $queryParams[] = $banco;
+            if ($estacion_id > 0) $queryParams[] = $estacion_id;
             $queryParams[] = $previous;
             $queryParams[] = $period;
             if ($banco !== '') $queryParams[] = $banco;
+            if ($estacion_id > 0) $queryParams[] = $estacion_id;
             $stmt->execute($queryParams);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             foreach ($rows as &$row) $row['monto_transito'] = (float)$row['monto_transito'];
