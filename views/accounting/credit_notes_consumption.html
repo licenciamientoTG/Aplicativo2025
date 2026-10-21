@@ -79,11 +79,25 @@
         <input type="date" class="form-control" id="hasta" value="{{ hasta }}" required>
       </div>
       <div class="col-auto">
+        {# Razón social = empresa de la estación del despacho, igual que /income/clients #}
+        <label for="empresa">Razón social:</label>
+        <select class="form-control" id="empresa">
+          <option value="0">Todas</option>
+          {% for e in empresas %}
+          <option value="{{ e.cod }}">{{ e.den }}</option>
+          {% endfor %}
+          <option value="-1">(Sin razón social)</option>
+        </select>
+      </div>
+      <div class="col-auto">
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
       <div class="col">
         <small class="text-muted">
-          Notas: por fecha de la nota G. Consumos: por fecha del despacho, solo clientes débito.
+          Notas: por fecha de la nota G, del corporativo y de estaciones. Razón social: la de la estación
+          que emitió la nota; para las del corporativo, la de las estaciones de sus despachos
+          (corporativas sin ligar caen en "(Sin razón social)").
+          Consumos: por fecha del despacho, clientes débito, mismo conteo que Clientes &gt; Consumos Débito.
         </small>
       </div>
     </form>
@@ -111,9 +125,11 @@
         <thead>
           <tr>
             <th>Nota</th>
+            <th>Emitida en</th>
             <th>Fecha</th>
             <th>Cód. cliente</th>
             <th>Cliente</th>
+            <th>Razón social</th>
             <th>Valor nota</th>
             <th>Factura(s) ligada(s)</th>
             <th>Aplicado</th>
@@ -144,6 +160,7 @@
         <thead>
           <tr>
             <th>Estación</th>
+            <th>Razón social</th>
             <th>Despacho</th>
             <th>Fecha</th>
             <th>Hora</th>
@@ -172,7 +189,7 @@ $(function () {
     'Cuadra': 'nc-ok', 'Ligado': 'nc-ok',
     'Diferencia': 'nc-warn', 'Factura con varias notas': 'nc-warn', 'Facturado en otra serie': 'nc-muted',
     'Sin ligar': 'nc-bad', 'Sin despachos': 'nc-bad', 'Sin factura': 'nc-bad', 'Factura E sin nota': 'nc-bad',
-    'Cancelada': 'nc-muted',
+    'Cancelada': 'nc-muted', 'Despacho en $0': 'nc-muted',
   };
 
   function fmtMonto(n) {
@@ -252,9 +269,11 @@ $(function () {
 
   var tablaNotas = initTabla('#tablaNotas', [
     { data: 'nota', className: 'nc-mono' },
+    { data: 'emitida' },
     { data: 'fecha', render: fecha },
     { data: 'codcli' },
     { data: 'cliente', className: 'nc-wrap', render: texto },
+    { data: 'razon_social', className: 'nc-wrap', render: texto },
     { data: 'total', className: 'nc-monto', render: monto },
     { data: 'facturas', className: 'nc-mono', render: texto },
     { data: 'aplicado', className: 'nc-monto', render: monto },
@@ -269,6 +288,7 @@ $(function () {
 
   var tablaConsumos = initTabla('#tablaConsumos', [
     { data: 'estacion' },
+    { data: 'razon_social', render: texto },
     { data: 'despacho', className: 'nc-mono' },
     { data: 'fecha', render: fecha },
     { data: 'hora' },
@@ -281,6 +301,9 @@ $(function () {
     { data: 'nota', className: 'nc-mono', render: texto },
     { data: 'estado', render: badge },
   ], 'Consumos debito vs notas de credito');
+
+  // Índice de la columna de estatus en cada tabla (para los chips de resumen)
+  var COL_ESTATUS_NOTAS = 13, COL_ESTADO_CONSUMOS = 12;
 
   $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
     $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
@@ -313,7 +336,7 @@ $(function () {
   function pedir(url, extra) {
     return $.ajax({
       url: url, method: 'POST', dataType: 'json', timeout: 600000,
-      data: $.extend({ desde: $('#desde').val(), hasta: $('#hasta').val() }, extra || {}),
+      data: $.extend({ desde: $('#desde').val(), hasta: $('#hasta').val(), empresa: $('#empresa').val() }, extra || {}),
     });
   }
 
@@ -321,10 +344,10 @@ $(function () {
     return pedir('/accounting/credit_notes_consumption_dispatches', { solo_sin_nota: $('#soloSinNota').is(':checked') ? '1' : '0' })
       .done(function (r) {
         var filas = (r && r.data) || [];
-        tablaConsumos.column(11).search('');
+        tablaConsumos.column(COL_ESTADO_CONSUMOS).search('');
         tablaConsumos.clear().rows.add(filas).draw();
         $('#cntConsumos').text(filas.length);
-        pintarResumen('#resumenConsumos', tablaConsumos, filas, 'estado', 11, 'monto');
+        pintarResumen('#resumenConsumos', tablaConsumos, filas, 'estado', COL_ESTADO_CONSUMOS, 'monto');
       });
   }
 
@@ -332,10 +355,10 @@ $(function () {
     mostrarLoader(true);
     var pNotas = pedir('/accounting/credit_notes_consumption_notes').done(function (r) {
       var filas = (r && r.data) || [];
-      tablaNotas.column(11).search('');
+      tablaNotas.column(COL_ESTATUS_NOTAS).search('');
       tablaNotas.clear().rows.add(filas).draw();
       $('#cntNotas').text(filas.length);
-      pintarResumen('#resumenNotas', tablaNotas, filas, 'estatus', 11, 'total');
+      pintarResumen('#resumenNotas', tablaNotas, filas, 'estatus', COL_ESTATUS_NOTAS, 'total');
     });
     $.when(pNotas, cargarConsumos())
       .fail(function () { alertify.error('Error al consultar ControlGas'); })

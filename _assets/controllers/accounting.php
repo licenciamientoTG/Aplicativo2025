@@ -108,16 +108,19 @@ class Accounting{
      */
     public function credit_notes_consumption(): void {
         echo $this->twig->render($this->route . 'credit_notes_consumption.html', [
-            'desde' => date('Y-m-01'),
-            'hasta' => date('Y-m-d'),
+            'desde'    => date('Y-m-01'),
+            'hasta'    => date('Y-m-d'),
+            // Mismo catálogo de razones sociales que /income/clients
+            'empresas' => (new ClientesModel())->get_station_companies(),
         ]);
     }
 
     /** POST AJAX: una fila por nota G del rango con su estatus de cruce. */
     public function credit_notes_consumption_notes(): void {
         [$from, $until] = $this->rango_notas_consumos();
+        $empresa = (int)($_POST['empresa'] ?? 0);
         $data = [];
-        foreach ($this->notasConsumosModel->notas($from, $until) as $r) {
+        foreach ($this->notasConsumosModel->notas($from, $until, $empresa) as $r) {
             $total     = round((float)$r['total'], 2);
             $despachos = round((float)$r['monto_despachos'], 2);
             $facturas  = $r['facturas'] ? explode(',', $r['facturas']) : [];
@@ -135,9 +138,11 @@ class Accounting{
 
             $data[] = [
                 'nota'            => get_invoice_series((int)$r['nro']),
+                'emitida'         => (int)$r['codgas'] === 0 ? 'Corporativo' : trim((string)$r['estacion']),
                 'fecha'           => $r['fecha'],
                 'codcli'          => $r['codopr'],
                 'cliente'         => $r['cliente'],
+                'razon_social'    => $r['razon_social'] ?? '',
                 'total'           => $total,
                 'facturas'        => implode(', ', array_map(fn($f) => get_invoice_series((int)$f), $facturas)),
                 'aplicado'        => round((float)$r['aplicado'], 2),
@@ -156,18 +161,21 @@ class Accounting{
     /** POST AJAX: despachos de clientes débito del rango con su nota G (o el motivo de no tenerla). */
     public function credit_notes_consumption_dispatches(): void {
         [$from, $until] = $this->rango_notas_consumos();
-        $solo = ($_POST['solo_sin_nota'] ?? '1') === '1';
+        $solo    = ($_POST['solo_sin_nota'] ?? '1') === '1';
+        $empresa = (int)($_POST['empresa'] ?? 0);
         $estados = [
+            'MONTO_CERO'  => 'Despacho en $0',
             'SIN_FACTURA' => 'Sin factura',
             'E_SIN_NOTA'  => 'Factura E sin nota',
             'OTRA_SERIE'  => 'Facturado en otra serie',
             'LIGADO'      => 'Ligado',
         ];
         $data = [];
-        foreach ($this->notasConsumosModel->despachos_debito($from, $until, $solo) as $r) {
+        foreach ($this->notasConsumosModel->despachos_debito($from, $until, $solo, $empresa) as $r) {
             $hora = str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
             $data[] = [
                 'estacion' => trim((string)$r['estacion']),
+                'razon_social' => $r['razon_social'],
                 'despacho' => $r['nrotrn'],
                 'fecha'    => $r['fecha'],
                 'hora'     => substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
