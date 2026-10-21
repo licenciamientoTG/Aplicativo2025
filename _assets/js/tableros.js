@@ -2131,11 +2131,18 @@
 
   function displayColumnValue(column, value) {
     if (value == null || value === '') return '';
+    if (columnType(column) === 'numbers') return formatGroupedNumber(value);
     if (columnType(column) === 'rating') {
       if (column.options?.display === 'percentage') return `${value} %`;
       return `${value} ★`;
     }
     return stringifyValue(value);
+  }
+
+  function formatGroupedNumber(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return stringifyValue(value);
+    return new Intl.NumberFormat('en-US', { useGrouping: true, maximumFractionDigits: 20 }).format(number);
   }
 
   function createCellEditor(item, column, value) {
@@ -2188,8 +2195,20 @@
         select.value = value == null ? '' : String(value);
         return markEditor(select, item, column, 'number');
       }
-      input.type = 'number';
-      input.step = 'any';
+      if (type === 'numbers') {
+        input.type = 'text';
+        input.inputMode = 'decimal';
+        input.value = value == null ? '' : formatGroupedNumber(value);
+        input.addEventListener('focus', () => { input.value = input.value.replace(/,/g, ''); });
+        input.addEventListener('blur', () => {
+          if (input.value.trim() === '') return;
+          const number = Number(input.value.replace(/,/g, ''));
+          if (Number.isFinite(number)) input.value = formatGroupedNumber(number);
+        });
+      } else {
+        input.type = 'number';
+        input.step = 'any';
+      }
       if (type === 'progress') { input.min = '0'; input.max = '100'; input.placeholder = '0–100'; }
       if (type === 'rating') {
         input.min = '0'; input.max = '100'; input.placeholder = '0–100 %';
@@ -4487,7 +4506,7 @@
       if (type === 'file') return filesForItem(item)
         .filter((file) => String(file.column_id || '') === String(column.id))
         .some((file) => String(file.name || '').toLocaleLowerCase().includes(query));
-      if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) return value !== null && value !== '' && Number(value) === Number(query);
+      if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) return value !== null && value !== '' && Number(value) === Number(query.replace(/,/g, ''));
       if (type === 'hour') return stringifyValue(value).slice(0, 5) === query;
       return stringifyValue(value).toLocaleLowerCase().includes(query);
     }
@@ -4899,6 +4918,7 @@
 
     state.groups.forEach((group) => {
       const groupItems = orderItemsByHierarchy(filteredItems.filter((item) => String(item.group_id) === String(group.id)));
+      if (query && !groupItems.length) return;
       const tbody = document.createElement('tbody');
       tbody.className = 'boards-group-body';
       tbody.dataset.groupBody = String(group.id);
@@ -6222,7 +6242,7 @@
     const value = editor.value;
     if (kind === 'number') {
       if (value === '') return null;
-      const number = Number(value);
+      const number = Number(value.replace(/,/g, ''));
       if (!Number.isFinite(number)) throw new Error('Escribe un número válido.');
       return number;
     }
@@ -7784,6 +7804,25 @@
   }
 
   function setupExtendedEvents() {
+    const navigatorToggle = document.getElementById('toggleBoardNavigator');
+    const boardsMain = navigatorToggle?.closest('.boards-main');
+    const setNavigatorCollapsed = (collapsed, persist = true) => {
+      if (!boardsMain || !navigatorToggle) return;
+      boardsMain.classList.toggle('is-navigator-collapsed', collapsed);
+      navigatorToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      const label = collapsed ? 'Mostrar navegación de espacios y carpetas' : 'Ocultar navegación de espacios y carpetas';
+      navigatorToggle.setAttribute('aria-label', label);
+      navigatorToggle.title = label;
+      navigatorToggle.innerHTML = `<i class="fa-solid ${collapsed ? 'fa-chevron-right' : 'fa-chevron-left'}" aria-hidden="true"></i>`;
+      if (persist) {
+        try { localStorage.setItem('tableros-navigator-collapsed', collapsed ? '1' : '0'); } catch (_) {}
+      }
+    };
+    let navigatorCollapsed = false;
+    try { navigatorCollapsed = localStorage.getItem('tableros-navigator-collapsed') === '1'; } catch (_) {}
+    setNavigatorCollapsed(navigatorCollapsed, false);
+    navigatorToggle?.addEventListener('click', () => setNavigatorCollapsed(!boardsMain?.classList.contains('is-navigator-collapsed')));
+
     els.workspaceManagementList?.addEventListener('click', (event) => {
       const button = event.target.closest('[data-workspace-action]');
       if (button) runWorkspaceManagementAction(button);

@@ -252,6 +252,7 @@
 .boards-item-row:hover .boards-item-name { background: #f7fafb; }
 .boards-group-row td { position: relative; height: 42px; padding: 0 10px; border-right: 0; background: #edf3f5; }
 .boards-group-heading { min-height: 41px; justify-content: space-between; gap: 12px; }
+.boards-table .boards-group-heading { position: sticky; z-index: 2; left: 0; }
 .boards-group-toggle { min-width: 0; gap: 9px; padding: 6px 2px; border: 0; color: var(--boards-ink); background: transparent; text-align: left; }
 .boards-group-heading { cursor: grab; }
 .boards-group-heading:active { cursor: grabbing; }
@@ -1250,7 +1251,12 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 }
 
 /* The board tree remains inside the module while the TotalGas navigation stays intact. */
-.boards-main { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: min(75vh, 920px); overflow: hidden; border: 1px solid #393c5b; border-radius: 10px; background: #1e2139; }
+.boards-main { position: relative; display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: min(75vh, 920px); overflow: hidden; border: 1px solid #393c5b; border-radius: 10px; background: #1e2139; }
+.boards-main.is-navigator-collapsed { grid-template-columns: 40px minmax(0, 1fr); }
+.boards-main.is-navigator-collapsed .boards-navigator { display: none; }
+.boards-navigator-toggle { position: absolute; z-index: 6; top: 10px; left: 226px; display: grid; width: 26px; height: 26px; place-items: center; padding: 0; border: 1px solid #454a68; border-radius: 5px; color: #c4cbe0; background: #252944; cursor: pointer; }
+.boards-navigator-toggle:hover { border-color: #7285bc; color: #fff; background: #30395e; }
+.boards-main.is-navigator-collapsed .boards-navigator-toggle { left: 7px; }
 .boards-main-content { min-width: 0; }
 .boards-main .boards-workspace { border: 0; border-radius: 0; }
 .boards-main .boards-notice { margin: 12px 14px; }
@@ -1427,9 +1433,12 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-dialog form > .form-select { margin-bottom: 13px; }
 @media (max-width: 1080px) {
   .boards-main { grid-template-columns: 210px minmax(0, 1fr); }
+  .boards-main.is-navigator-collapsed { grid-template-columns: 40px minmax(0, 1fr); }
+  .boards-navigator-toggle { left: 176px; }
 }
 @media (max-width: 850px) {
   .boards-main { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .boards-main.is-navigator-collapsed { grid-template-columns: 40px minmax(0, 1fr); }
   .boards-navigator { max-height: 230px; border-right: 0; border-bottom: 1px solid #393d5a; }
   .boards-nav-list { max-height: 94px; }
 }
