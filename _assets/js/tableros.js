@@ -4613,8 +4613,9 @@
   function createGroupRow(group, itemCount, columnCount) {
     const row = document.createElement('tr');
     row.className = 'boards-group-row';
-    const cell = document.createElement('td');
-    cell.colSpan = columnCount + 2;
+    const titleCell = document.createElement('td');
+    titleCell.className = 'boards-group-title-cell';
+    titleCell.colSpan = 2;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
@@ -4658,9 +4659,13 @@
       meta.append(recycleAction('Eliminar grupo', 'group', group.id, 'trash', state.board?.id));
       meta.append(recycleAction('Archivar grupo', 'group', group.id, 'archive', state.board?.id));
     }
-    groupWrap.append(meta);
-    cell.append(groupWrap);
-    row.append(cell);
+    titleCell.append(groupWrap);
+
+    const metaCell = document.createElement('td');
+    metaCell.className = 'boards-group-meta-cell';
+    metaCell.colSpan = Math.max(1, columnCount);
+    metaCell.append(meta);
+    row.append(titleCell, metaCell);
     return row;
   }
 
