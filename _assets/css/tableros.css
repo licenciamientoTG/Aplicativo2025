@@ -1430,7 +1430,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-nav-folder:hover > i:nth-child(2) { filter: brightness(1.2); }
 .boards-nav-folder span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .boards-nav-folder:hover { color: #f4f6ff; background: #292e4c; }
-.boards-nav-folder-actions { position: absolute; z-index: 2; top: 50%; right: 0; display: none; padding: 2px; border-radius: 4px; background: #292e4c; transform: translateY(-50%); }
+.boards-nav-folder-actions { position: absolute; z-index: 2; top: 50%; left: calc(40px + (var(--nav-depth, 0) * 12px)); display: none; padding: 2px; border-radius: 4px; background: #292e4c; transform: translateY(-50%); }
 .boards-nav-folder-row:hover .boards-nav-folder-actions,
 .boards-nav-folder-row:focus-within .boards-nav-folder-actions { display: inline-flex; }
 .boards-nav-folder-row:hover .boards-nav-folder span,
