@@ -470,6 +470,9 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-preview-rail button span { font-size: .61rem; }
 .boards-preview-rail button:hover:not(:disabled), .boards-preview-rail button[aria-expanded="true"] { border-color: #53618b; color: #fff; background: #333956; }
 .boards-preview-rail button:disabled { color: #72778f; cursor: not-allowed; opacity: .65; }
+.boards-preview-rail button[hidden] { display: none; }
+.boards-preview-rail button.boards-preview-delete { color: #df8b91; }
+.boards-preview-rail button.boards-preview-delete:hover:not(:disabled) { border-color: #74434c; color: #fff; background: #633741; }
 .boards-preview-panel { width: clamp(300px, 24vw, 440px); flex: 0 0 clamp(300px, 24vw, 440px); overflow: auto; padding: 18px 15px; border-left: 1px solid #363a56; color: #e8eaf4; background: #242740; }
 .boards-preview-panel[hidden] { display: none; }
 .boards-preview-panel h4 { margin: 0 0 14px; color: #f3f4fc; font-size: .88rem; }

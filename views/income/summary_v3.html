@@ -115,6 +115,9 @@ body { background:#f1f5f9; }
       <p class="mb-0 text-muted" style="font-size:.78rem;">Solo muestra meses con cierre confirmado</p>
     </div>
     <div class="export-group d-flex gap-2 flex-wrap">
+      <a class="btn btn-outline-warning btn-sm" href="/income/transitos_v3">
+        <i class="fas fa-exchange-alt mr-1"></i> Reporte de Tránsitos
+      </a>
       <button class="btn btn-success btn-sm" onclick="exportarResumen()">
         <i class="fas fa-file-excel mr-1"></i> Resumen General
       </button>
@@ -296,37 +299,6 @@ body { background:#f1f5f9; }
     </div>
   </div>
 
-  {# Reporte de tránsitos deshabilitado temporalmente.
-  <div id="tab-transitos">
-    <!-- Aging summary -->
-    <div class="row mb-3" id="aging-summary"></div>
-    <div class="chart-card">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <div class="chart-title mb-0"><i class="fas fa-hourglass-half mr-1"></i> Tránsitos Pendientes de Conciliar</div>
-        <div class="d-flex align-items-center gap-3">
-            <small class="text-muted" id="transitos-total-label"></small>
-            <div id="pagination-transitos-top"></div>
-        </div>
-      </div>
-      <div class="table-responsive">
-        <table class="dash-table">
-          <thead><tr>
-            <th>Antigüedad</th><th>Estación</th><th>Banco</th><th>Afiliación</th>
-            <th>Mes Origen</th><th>Concepto</th>
-            <th class="num">Monto ($)</th><th>Días</th>
-          </tr></thead>
-          <tbody id="tbody-transitos"></tbody>
-        </table>
-      </div>
-      <div id="pagination-transitos-bottom" class="d-flex justify-content-center mt-3"></div>
-      <div id="empty-transitos" class="empty-state d-none">
-        <i class="fas fa-check-circle" style="color:#22c55e;"></i>
-        Sin tránsitos pendientes
-      </div>
-    </div>
-  </div>
-  #}
-
 </div><!-- /container -->
 
 <div id="sumPickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
@@ -353,6 +325,7 @@ const FMT = new Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN', m
 const FMT2 = new Intl.NumberFormat('es-MX', { maximumFractionDigits:2 });
 let chartTrend = null, chartRS = null;
 let _data = null, _tran = null;
+let bancosRequest = 0;
 
 // ── ESTADO DE FILTROS ────────────────────────────────────────────────────────
 let widgetState   = { year: new Date().getFullYear(), month: '' };
@@ -431,37 +404,22 @@ function filtrarEstaciones() {
         const rs  = RS_MAPPING[rfc] || 'FORANEAS';
         if (rs === currentRS) $s.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
     });
-    limpiarBancos();
+    cargarBancos();
 }
-function limpiarBancos() {
-    currentBanco = '';
-    $('#f-banco').empty().append('<option value="">-- Banco --</option>');
+function cargarBancos() {
+    const requestId = ++bancosRequest;
+    const razonSocial = currentRS;
+    $.getJSON('/income/get_dashboard_v3_bancos', { razon_social: razonSocial }, function(res) {
+        if (requestId !== bancosRequest || razonSocial !== currentRS) return;
+        if (res.status !== 'success') return;
+        const $b = $('#f-banco').empty().append('<option value="">-- Todos los bancos --</option>');
+        (res.data || []).forEach(b => $b.append($('<option>').val(b.nombre).text(b.nombre)));
+        if (currentBanco && (res.data || []).some(b => b.nombre === currentBanco)) $b.val(currentBanco);
+        else { currentBanco = ''; $b.val(''); }
+    });
 }
 function alCambiarEstacion() {
-    limpiarBancos();
     aplicarFiltros();
-
-    const estacionId = $('#estacionSelect').val();
-    if (!estacionId) return;
-
-    $.getJSON('/income/get_conciliacion_config', { estacion_id: estacionId }, function(res) {
-        if (res.status !== 'success') return;
-
-        const bancos = new Map();
-        (res.data || []).forEach(regla => {
-            if (!bancos.has(regla.entidad_id)) {
-                bancos.set(regla.entidad_id, regla.nombre_banco || `Banco ${regla.entidad_id}`);
-            }
-        });
-
-        const orden = [4, 1, 3, 13]; // Banorte, Santander, AMEX, Afirme
-        [...bancos.entries()]
-            .sort((a, b) => {
-                const ia = orden.indexOf(Number(a[0])), ib = orden.indexOf(Number(b[0]));
-                return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-            })
-            .forEach(([, nombre]) => $('#f-banco').append(`<option value="${nombre}">${nombre}</option>`));
-    });
 }
 
 // ── FILTROS ──────────────────────────────────────────────────────────────────
@@ -498,7 +456,6 @@ function aplicarFiltros() {
     if (f.estacion_id) labels.push($('#estacionSelect option:selected').text());
     $('#filtros-activos').text(labels.length ? '▸ ' + labels.join(' / ') : '');
     cargarDatos(f);
-    // Reporte de tránsitos deshabilitado temporalmente.
 }
 
 // ── CARGA DE DATOS ────────────────────────────────────────────────────────────
@@ -525,7 +482,6 @@ function cargarTransitos(f) {
         }
     });
 }
-
 
 // ── KPIs ──────────────────────────────────────────────────────────────────────
 function renderKPIs(k) {
@@ -865,7 +821,7 @@ function verNota(encoded) {
 // ── INIT ──────────────────────────────────────────────────────────────────────
 $(function() {
     initWidget();
-    cargarEstaciones(); // dispara filtrarEstaciones → cargarBancos
+    cargarEstaciones(); // dispara filtrarEstaciones y carga bancos por empresa
     aplicarFiltros();
 });
 </script>

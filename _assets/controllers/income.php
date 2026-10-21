@@ -6839,6 +6839,10 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'summary_v3.html');
     }
 
+    public function transitos_v3(): void {
+        echo $this->twig->render($this->route . 'transitos_v3.html');
+    }
+
     public function cash_reconciliation(): void {
         echo $this->twig->render($this->route . 'cash_reconciliation.html');
     }
@@ -7679,6 +7683,91 @@ public function stamped_invoices_detail(): void
             ]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // Bank choices for the dashboard are scoped to the selected company, not
+    // to the currently selected station.
+    public function get_dashboard_v3_bancos(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+        $rs = trim($_GET['razon_social'] ?? '');
+        try {
+            $conn = $this->v3_conn();
+            $where = "WHERE LEN(ISNULL(TA.afiliacion,'')) > 0";
+            if ($rs === 'DIAZ GAS') $where .= " AND E.RFC='DGA930823KD3'";
+            elseif ($rs === 'GASOMEX') $where .= " AND E.RFC='DGM880621FU5'";
+            elseif ($rs === 'FORANEAS') $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
+            $stmt = $conn->prepare("SELECT DISTINCT TE.Nombre AS nombre
+                FROM Tesoreria_afil TA
+                JOIN Estaciones E ON E.Codigo=TA.estacion_id
+                JOIN Tesoreria_Entidad TE ON TE.id=TA.entidad_id
+                $where ORDER BY TE.Nombre");
+            $stmt->execute();
+            echo json_encode(['status'=>'success','data'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        } catch (Exception $e) {
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
+    // Dedicated monthly transit report. Outgoing amounts originate in the
+    // selected month and move to the next month; incoming amounts originate
+    // in the previous month and were reconciled into the selected month.
+    public function get_transitos_reporte_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+        $year = (int)($_GET['year'] ?? 0);
+        $month = (int)($_GET['month'] ?? 0);
+        $rs = trim($_GET['razon_social'] ?? '');
+        $banco = trim($_GET['banco'] ?? '');
+        if ($year < 2000 || $month < 1 || $month > 12) {
+            echo json_encode(['status'=>'error','message'=>'Selecciona un período válido.']);
+            exit;
+        }
+        $period = sprintf('%04d-%02d', $year, $month);
+        $previous = (new DateTimeImmutable($period . '-01'))->modify('-1 month')->format('Y-m');
+        $next = (new DateTimeImmutable($period . '-01'))->modify('+1 month')->format('Y-m');
+        try {
+            $conn = $this->v3_conn();
+            $scope = '';
+            if ($banco !== '') $scope .= ' AND TE.Nombre=?';
+            if ($rs === 'DIAZ GAS') $scope .= " AND E.RFC='DGA930823KD3'";
+            elseif ($rs === 'GASOMEX') $scope .= " AND E.RFC='DGM880621FU5'";
+            elseif ($rs === 'FORANEAS') $scope .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
+
+            $sql = "SELECT T.id,'SALIENTE' AS sentido,T.mes_origen,T.mes_destino,
+                    T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
+                    T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                    ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
+                FROM CV3_Transito T
+                LEFT JOIN Estaciones E ON E.Codigo=T.estacion_id
+                LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
+                WHERE T.estado<>'CANCELADO' AND T.mes_origen=? AND T.mes_destino=? $scope
+                UNION ALL
+                SELECT T.id,'ENTRANTE' AS sentido,T.mes_origen,T.mes_destino,
+                    T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
+                    T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                    ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
+                FROM CV3_Transito T
+                LEFT JOIN Estaciones E ON E.Codigo=T.estacion_id
+                LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
+                WHERE T.estado='CONCILIADO' AND T.conciliacion_id_dest IS NOT NULL
+                  AND T.mes_origen=? AND T.mes_destino=? $scope
+                ORDER BY sentido,estacion,banco,T.id";
+            $stmt = $conn->prepare($sql);
+            $queryParams = [$period,$next];
+            if ($banco !== '') $queryParams[] = $banco;
+            $queryParams[] = $previous;
+            $queryParams[] = $period;
+            if ($banco !== '') $queryParams[] = $banco;
+            $stmt->execute($queryParams);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as &$row) $row['monto_transito'] = (float)$row['monto_transito'];
+            echo json_encode(['status'=>'success','data'=>$rows]);
+        } catch (Exception $e) {
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
         }
         exit;
     }
