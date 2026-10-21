@@ -63,6 +63,7 @@
   let activePreviewFile = null;
   let activePreviewItem = null;
   let imageStageObserver = null;
+  let groupHeadingResizeObserver = null;
   const els = {
     boardSelect: document.getElementById('boardSelect'),
     workspaceSelect: document.getElementById('workspaceSelect'),
@@ -4669,6 +4670,14 @@
     return row;
   }
 
+  function syncGroupHeadingWidths() {
+    const width = els.boardTableContainer?.clientWidth || 0;
+    if (!width) return;
+    els.boardTableContainer.querySelectorAll('.boards-group-heading').forEach((heading) => {
+      heading.style.width = `${width}px`;
+    });
+  }
+
   async function saveGroupOrder(groupIds, previousGroups) {
     try {
       const result = await post('/reorder_groups', { board_id: state.board.id, group_ids: groupIds });
@@ -5136,6 +5145,7 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    syncGroupHeadingWidths();
     if (window.Sortable && canEditBoard() && !query && !state.filters.length) {
       table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
         itemSortables.push(window.Sortable.create(body, {
@@ -7993,5 +8003,11 @@
   setupDialogs();
   attachEvents();
   setupExtendedEvents();
+  if (window.ResizeObserver && els.boardTableContainer) {
+    groupHeadingResizeObserver = new ResizeObserver(syncGroupHeadingWidths);
+    groupHeadingResizeObserver.observe(els.boardTableContainer);
+  } else {
+    window.addEventListener('resize', syncGroupHeadingWidths);
+  }
   loadBoards();
 })();

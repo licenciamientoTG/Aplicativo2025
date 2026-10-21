@@ -1047,8 +1047,29 @@ class TablerosModel {
             $itemPositions[(string)$item['id']] = $index;
         }
         unset($item);
+        $activeFileIds = array_fill_keys(array_map(
+            static fn(array $file): string => (string)$file['id'],
+            $this->all('SELECT id FROM tb_file WHERE board_id = ? AND deleted_at IS NULL', [$boardId])
+        ), true);
+        $filterActiveFiles = static function (array $entries) use ($activeFileIds): array {
+            return array_values(array_filter($entries, static function ($entry) use ($activeFileIds): bool {
+                if (!is_array($entry)) return false;
+                $fileId = $entry['file_id'] ?? $entry['id'] ?? null;
+                return $fileId !== null && isset($activeFileIds[(string)$fileId]);
+            }));
+        };
         foreach ($cells as &$cell) {
             $value = $this->cellValue($cell);
+            if ((string)$cell['type'] === 'file' && is_array($value)) {
+                if (isset($value['files']) && is_array($value['files'])) {
+                    $value['files'] = $filterActiveFiles($value['files']);
+                } elseif (array_is_list($value)) {
+                    $value = $filterActiveFiles($value);
+                } elseif (isset($value['file_id']) || isset($value['id'])) {
+                    $value = $filterActiveFiles([$value]);
+                    $value = $value[0] ?? [];
+                }
+            }
             $itemIndex = $itemPositions[(string)$cell['item_id']] ?? null;
             if ($itemIndex !== null) {
                 $items[$itemIndex]['cells'][(string)$cell['column_id']] = $value;
