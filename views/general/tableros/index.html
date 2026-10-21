@@ -36,7 +36,6 @@
 {% block mycss %}<script>(function(){try{document.documentElement.setAttribute('data-theme',localStorage.getItem('totalgas-theme')==='dark'?'dark':'light')}catch(error){document.documentElement.setAttribute('data-theme','light')}})();</script><link href="{{ css_v('tableros.css') }}" rel="stylesheet"><link href="{{ css_v('tableros_shell.css') }}" rel="stylesheet"><link href="{{ css_v('theme.css') }}" rel="stylesheet">{% endblock %}
 {% block heavyVendorCss %}{% endblock %}
 {% block heavyVendorJs %}{% endblock %}
-{% block myjs %}<script src="{{ js_v('theme.js') }}"></script>{% endblock %}
 {% block content %}
 <div id="tablerosApp"
   class="boards-app"
@@ -499,4 +498,4 @@
 </dialog>
 
 {% endblock %}
-{% block myjs %}<script src="/_assets/vendor/sortablejs/Sortable.min.js"></script><script src="{{ js_v('tableros.js') }}"></script>{% endblock %}
+{% block myjs %}<script src="/_assets/vendor/sortablejs/Sortable.min.js"></script><script src="{{ js_v('tableros.js') }}"></script><script src="{{ js_v('theme.js') }}"></script>{% endblock %}
