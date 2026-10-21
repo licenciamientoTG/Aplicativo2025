@@ -16,7 +16,6 @@ class MojoTerminalTicketsService {
         'Verifones - Red', 'Verifones - Teclado',
     ];
     // Valores vigentes del campo desplegable "Estacion" del formulario 84607.
-    // El título conserva el nombre del catálogo TG (incluido su número), pero
     // Mojo sólo muestra un valor si el enviado coincide literalmente con una
     // de estas opciones. COLOSIO queda fuera de forma intencional.
     private const VALERAS_STATION_OPTIONS = [
@@ -237,7 +236,7 @@ class MojoTerminalTicketsService {
         $valeras=!$systemTicket;
         $description=(string)$incident['description'];
         if (!empty($incident['request_key'])) $description .= "\n\n<!-- terminal-request-".preg_replace('/[^a-f0-9-]/i','',(string)$incident['request_key'])." -->";
-        $title='Terminal '.$incident['label'].' - '.$stationName;
+        $title='Terminal '.$incident['label'].' - '.$this->stationDisplayName($stationName);
         $payload=['title'=>$title,'description'=>$description,'priority_id'=>30,'user_id'=>$mojoUserId];
         if ($valeras) $payload += ['ticket_form_id'=>self::VALERAS_FORM,'custom_field_estacion'=>$this->valeraStationOption($stationName),'custom_field_tipo_de_terminal'=>$incident['mojo_type'],'custom_field_folio_de_reporte_del_proveedor'=>$incident['provider_folio'],'custom_field_fecha_de_reporte_a_proveedor'=>$incident['provider_date'],'custom_field_descripcion_del_problema'=>$incident['description']];
         else {
@@ -263,8 +262,11 @@ class MojoTerminalTicketsService {
         $value=strtr($value,['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n']);
         return preg_replace('/[^a-z0-9]/','',$value) ?? '';
     }
+    private function stationDisplayName(string $stationName): string {
+        return preg_replace('/^\s*\d+\s*[-–]?\s*/u', '', trim($stationName)) ?? trim($stationName);
+    }
     private function valeraStationOption(string $stationName): string {
-        $withoutNumber = preg_replace('/^\s*\d+\s*[-–]?\s*/u', '', trim($stationName)) ?? '';
+        $withoutNumber = $this->stationDisplayName($stationName);
         $normalized = $this->normalizeTerminal($withoutNumber);
 
         // El propio catálogo de Mojo contiene la errata "Jesus mMaria".

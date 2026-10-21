@@ -1429,9 +1429,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-nav-folder:hover > i:nth-child(2) { filter: brightness(1.2); }
 .boards-nav-folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .boards-nav-folder:hover { color: #f4f6ff; background: #292e4c; }
-.boards-nav-folder-actions { display: none; flex: 0 0 auto; }
-.boards-nav-folder-row:hover .boards-nav-folder-actions,
-.boards-nav-folder-row:focus-within .boards-nav-folder-actions { display: inline-flex; }
+.boards-nav-folder-actions { display: inline-flex; flex: 0 0 auto; }
 .boards-nav-folder-actions button { display: grid; width: 25px; height: 25px; place-items: center; border: 0; border-radius: 4px; color: #b5c4ec; background: transparent; }
 .boards-nav-folder-actions button:hover { background: #384263; }
 .boards-nav-board { padding-left: calc(9px + (var(--nav-depth, 0) * 12px)); }
