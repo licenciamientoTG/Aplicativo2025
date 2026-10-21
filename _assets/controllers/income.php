@@ -7835,12 +7835,12 @@ public function stamped_invoices_detail(): void
             $sheet->setCellValue('A2', 'Período');
             $sheet->setCellValue('B2', $period);
             $sheet->setCellValue('C2', 'Empresa');
-            $sheet->setCellValue('D2', $company);
+            $sheet->setCellValueExplicit('D2', $company, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             $sheet->setCellValue('E2', 'Banco');
-            $sheet->setCellValue('F2', $bank);
+            $sheet->setCellValueExplicit('F2', $bank, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             $sheet->setCellValue('G2', 'Estación');
             $sheet->mergeCells('H2:I2');
-            $sheet->setCellValue('H2', $station);
+            $sheet->setCellValueExplicit('H2', $station, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
 
             $headers = ['SENTIDO','ESTACIÓN','EMPRESA','BANCO','AFILIACIÓN','MES ORIGEN','MES DESTINO','CONCILIACIÓN','MONTO'];
             $sheet->fromArray($headers, null, 'A5');

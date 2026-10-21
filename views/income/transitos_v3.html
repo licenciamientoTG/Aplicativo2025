@@ -312,6 +312,7 @@ async function exportarTransitosExcel() {
   const originalHtml = button.innerHTML;
   button.disabled = true;
   button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Preparando…';
+  $('#transitError').addClass('d-none').text('');
   const stationId = $('#transitStation').val();
   const payload = {
     period: transitReportPeriod,
@@ -351,7 +352,7 @@ async function exportarTransitosExcel() {
     link.remove();
     URL.revokeObjectURL(url);
   } catch (error) {
-    mostrarTransitoError(error.message || 'Ocurrió un error al exportar el reporte.');
+    $('#transitError').removeClass('d-none').text(error.message || 'Ocurrió un error al exportar el reporte.');
   } finally {
     button.innerHTML = originalHtml;
     button.disabled = !transitReportReady;
