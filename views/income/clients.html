@@ -419,7 +419,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><i class="fas fa-users"></i> Resumen por cliente</h5>
-                <small class="text-muted">Un renglón por cliente con el total del periodo. Clic en el monto para ver sus despachos.</small>
+                <small class="text-muted">Un renglón por cliente con el total del periodo, comparado contra lo que entró en los cortes. Clic en el monto para ver sus despachos; clic en la diferencia para ver los cortes que no cuadran.</small>
             </div>
             <div class="card-body table-responsive">
                 <table id="debit_consumos_client_table" class="table table-hover table-sm w-100">
@@ -428,12 +428,13 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th>Cód.</th><th>Cliente</th><th>Razones soc.</th><th>Estaciones</th>
                             <th>Primer consumo</th><th>Último consumo</th>
                             <th>Despachos</th><th>Litros</th><th>Monto</th>
+                            <th title="Lo que entró en los cortes con este cliente (SG12.ValesR), misma fuente que Venta por Rubro">Cortes</th><th title="Despachos − Cortes. Clic para ver los cortes que no cuadran">Diferencia</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -549,7 +550,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><i class="fas fa-users"></i> Resumen por cliente</h5>
-                <small class="text-muted">Un renglón por cliente con el total del periodo. Clic en el monto para ver sus despachos.</small>
+                <small class="text-muted">Un renglón por cliente con el total del periodo, comparado contra lo que entró en los cortes. Clic en el monto para ver sus despachos; clic en la diferencia para ver los cortes que no cuadran.</small>
             </div>
             <div class="card-body table-responsive">
                 <table id="credit_consumos_client_table" class="table table-hover table-sm w-100">
@@ -558,12 +559,13 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th>Cód.</th><th>Cliente</th><th>Razones soc.</th><th>Estaciones</th>
                             <th>Primer consumo</th><th>Último consumo</th>
                             <th>Despachos</th><th>Litros</th><th>Monto</th>
+                            <th title="Lo que entró en los cortes con este cliente (SG12.ValesR), misma fuente que Venta por Rubro">Cortes</th><th title="Despachos − Cortes. Clic para ver los cortes que no cuadran">Diferencia</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
                         </tr>
                     </tfoot>
                 </table>

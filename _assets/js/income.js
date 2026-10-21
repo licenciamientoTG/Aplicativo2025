@@ -2625,6 +2625,10 @@ async function clients_summary_table(tipo) {
 
     $('#' + tableId).DataTable({
         order: [[8, 'desc']],
+        // Clientes cuyos despachos no cuadran con los cortes (p. ej. PUBLICO EN GENERAL débito)
+        createdRow: function (tr, row) {
+            if (Math.abs(parseFloat(row.Diferencia) || 0) >= 0.01) $(tr).addClass('table-warning');
+        },
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"i>',
         paging: false,
@@ -2656,15 +2660,25 @@ async function clients_summary_table(tipo) {
                 if (type !== 'display') return d;
                 return '<a href="#" class="client-drill" title="Ver despachos">' + fmtMoney(d) + ' <i class="fas fa-list-ul"></i></a>';
             }},
+            { data: 'MontoCortes', className: 'text-nowrap text-end', render: function (d, type) {
+                return type === 'display' ? fmtMoney(d) : d;
+            }},
+            { data: 'Diferencia', className: 'text-nowrap text-end', render: function (d, type) {
+                if (type !== 'display') return d;
+                if (Math.abs(parseFloat(d) || 0) < 0.01) return '<span class="text-muted">$0.00</span>';
+                return '<a href="#" class="client-cortes-drill text-danger fw-bold" title="Ver cortes que no cuadran">' + fmtMoney(d) + ' <i class="fas fa-search"></i></a>';
+            }},
         ],
         deferRender: true,
         initComplete: function () { $('.table-responsive').removeClass('loading'); },
         footerCallback: function () {
             var api = this.api();
-            var desp = sumCol(api, 6), lit = sumCol(api, 7), mto = sumCol(api, 8);
+            var desp = sumCol(api, 6), lit = sumCol(api, 7), mto = sumCol(api, 8), cor = sumCol(api, 9), dif = sumCol(api, 10);
             $(api.column(6).footer()).html(desp.toLocaleString('es-MX'));
             $(api.column(7).footer()).html(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
             $(api.column(8).footer()).html(fmtMoney(mto));
+            $(api.column(9).footer()).html(fmtMoney(cor));
+            $(api.column(10).footer()).html(fmtMoney(dif));
             $('#sum_clientes_client_' + tipo).text(api.rows({ search: 'applied' }).count().toLocaleString('es-MX'));
         }
     });
@@ -2680,6 +2694,57 @@ $(document).on('click', '#debit_consumos_client_table .client-drill, #credit_con
             tipo === 'debit' ? 4 : 3, parseInt($('#empresa_' + tipo).val(), 10) || 0);
     }
 });
+
+// Drill-down de la diferencia: cortes (estación + fecha de corte + turno) donde despachos ≠ ValesR
+$(document).on('click', '#debit_consumos_client_table .client-cortes-drill, #credit_consumos_client_table .client-cortes-drill', function (e) {
+    e.preventDefault();
+    var tipo = $(this).closest('table').attr('id').indexOf('debit') === 0 ? 'debit' : 'credit';
+    var row  = $('#' + tipo + '_consumos_client_table').DataTable().row($(this).closest('tr')).data();
+    if (row) cortes_diff_modal(tipo, row.codcli, row.Cliente);
+});
+
+function cortes_diff_modal(tipo, codcli, cliente) {
+    var from  = $('#from_' + tipo).val();
+    var until = $('#until_' + tipo).val();
+    var esc   = function (v) { return $('<div>').text(v == null ? '' : String(v)).html(); };
+    var money = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    var headers = ['Fecha corte', 'Turno', 'Estación', 'Despachos', 'Monto despachos', 'Monto cortes', 'Diferencia'];
+
+    $('#modal_edo_drill_title').html('Cortes que no cuadran — ' + esc(cliente) + ' <small class="text-muted">(' + esc(from) + ' → ' + esc(until) + ')</small>');
+    $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
+    $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+    $('#modal_edo_drill_table tfoot').empty();
+    $('#modal_edo_drill').modal('show');
+
+    $.post('/income/clients_cortes_diff', {
+        codcli: codcli, from: from, until: until,
+        tipval: tipo === 'debit' ? 4 : 3,
+        empresa: parseInt($('#empresa_' + tipo).val(), 10) || 0
+    }, function (json) {
+        var rows = (json && json.data) || [];
+        if (!rows.length) {
+            $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Todos los cortes cuadran por fecha de corte; la diferencia viene de despachos cuya fecha de corte cae fuera del periodo.</td></tr>');
+            return;
+        }
+        $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
+            return '<tr><td>' + esc(r.FechaCorte) + '</td><td class="text-center">' + esc(r.Turno) + '</td><td>' + esc(r.Estacion) + '</td>' +
+                   '<td class="text-end">' + (parseInt(r.Despachos, 10) || 0).toLocaleString('es-MX') + '</td>' +
+                   '<td class="text-end">' + money(r.Monto) + '</td><td class="text-end">' + money(r.MontoCortes) + '</td>' +
+                   '<td class="text-end text-danger fw-bold">' + money(r.Diferencia) + '</td></tr>';
+        }).join(''));
+        var sum = function (k) { return rows.reduce(function (a, r) { return a + (parseFloat(r[k]) || 0); }, 0); };
+        $('#modal_edo_drill_table tfoot').html(
+            '<tr><th colspan="3" class="text-end">Total</th>' +
+            '<th class="text-end">' + sum('Despachos').toLocaleString('es-MX') + '</th>' +
+            '<th class="text-end">' + money(sum('Monto')) + '</th><th class="text-end">' + money(sum('MontoCortes')) + '</th>' +
+            '<th class="text-end">' + money(sum('Diferencia')) + '</th></tr>'
+        );
+    }, 'json').fail(function () {
+        $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
+    });
+}
 
 // ── Estado de Cuenta por Cliente (Débito / Crédito) ─────────────────────────
 
