@@ -5527,6 +5527,9 @@ class Payment
         $zip->close();
 
         while (ob_get_level()) ob_end_clean();
+        // Cookie que el navegador lee para saber que la descarga arrancó (sin ella, el iframe mostró un error)
+        $token = preg_replace('/\W/', '', $_POST['zip_token'] ?? '');
+        if ($token !== '') setcookie('zip_token', $token, 0, '/');
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="facturas_' . date('Ymd_His') . '.zip"');
         header('Content-Length: ' . filesize($tmp));

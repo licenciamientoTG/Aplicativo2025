@@ -180,13 +180,14 @@
                         <span class="fw-semibold" style="font-size:.85rem;"><i class="fas fa-list me-1"></i> Resultados</span>
                         <div class="d-flex align-items-center gap-2">
                             <span id="search-count" class="text-muted" style="font-size:.78rem;"></span>
+                            <small id="zip-hint" class="text-muted d-none" style="font-size:.74rem;">ZIP: máximo 500 facturas por descarga</small>
                             <button type="button" class="btn btn-sm btn-outline-primary d-none" id="btn-zip" title="Descargar los PDF de esta búsqueda en un ZIP (máx. 500)">
                                 <i class="fas fa-file-archive"></i> Descargar PDF (ZIP)
                             </button>
                         </div>
                     </div>
                     <form id="zip-form" method="post" action="/payment/search_invoices_zip" target="zip-frame" class="d-none"></form>
-                    <iframe name="zip-frame" class="d-none"></iframe>
+                    <iframe name="zip-frame" id="zip-frame" class="d-none"></iframe>
                     <div class="table-responsive" style="padding:.75rem; max-height:65vh;">
                         <table class="table table-sm table-hover w-100 mb-0">
                             <thead style="background:#f8fafc; position:sticky; top:0;">
@@ -372,13 +373,48 @@ document.getElementById('search-form').addEventListener('submit', async function
 const ZIP_MAX = 500;
 let ultimaBusqueda = null;   // filtros de la búsqueda que se ve en pantalla
 
+const getCookie = n => (document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)')) || [])[1];
+let zipTimer = null;
+
+function zipTerminado() {
+    clearInterval(zipTimer);
+    zipTimer = null;
+    document.cookie = 'zip_token=; Max-Age=0; path=/';
+    const btn = document.getElementById('btn-zip');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-file-archive"></i> Descargar PDF (ZIP)';
+}
+
+// Si la descarga arranca, el servidor deja la cookie zip_token; si falla, responde un texto que se carga en el iframe.
 document.getElementById('btn-zip').addEventListener('click', () => {
-    if (!ultimaBusqueda) return;
+    if (!ultimaBusqueda || zipTimer) return;
+    const token = 'z' + Date.now();
     const form = document.getElementById('zip-form');
-    form.innerHTML = Object.entries(ultimaBusqueda)
+    form.innerHTML = Object.entries({ ...ultimaBusqueda, zip_token: token })
         .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('');
+
+    const btn = document.getElementById('btn-zip');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generando ZIP...';
+    const inicio = Date.now();
+    zipTimer = setInterval(() => {
+        if (getCookie('zip_token') === token) {
+            zipTerminado();
+            alertify.success('Descarga del ZIP iniciada.');
+        } else if (Date.now() - inicio > 10 * 60 * 1000) {
+            zipTerminado();
+            alertify.error('El ZIP tardó demasiado y no se pudo descargar. Intenta con menos facturas.');
+        }
+    }, 500);
     form.submit();
-    alertify.message('Generando ZIP, la descarga empezará en unos momentos...');
+});
+
+document.getElementById('zip-frame').addEventListener('load', function () {
+    if (!zipTimer) return;   // carga inicial del iframe o descarga ya confirmada
+    let msg = '';
+    try { msg = this.contentDocument.body.innerText.trim(); } catch (e) {}
+    zipTerminado();
+    alertify.error('No se pudo generar el ZIP' + (msg ? ': ' + msg.slice(0, 200) : '. Intenta de nuevo.'));
 });
 
 function renderBusqueda(res) {
@@ -388,7 +424,15 @@ function renderBusqueda(res) {
     const btnZip = document.getElementById('btn-zip');
     const conPdf = rows.filter(r => r.TienePdf == 1).length;
     const excede = res.truncado || rows.length > ZIP_MAX;
+    const hint = document.getElementById('zip-hint');
+    zipTerminado();
     btnZip.classList.toggle('d-none', !conPdf);
+    hint.classList.toggle('d-none', !rows.length);
+    hint.classList.toggle('text-danger', excede);
+    hint.classList.toggle('fw-semibold', excede);
+    hint.textContent = excede
+        ? `Hay más de ${ZIP_MAX} facturas: afina los filtros para poder descargar el ZIP (máx. ${ZIP_MAX})`
+        : `ZIP: máximo ${ZIP_MAX} facturas por descarga`;
     btnZip.disabled = excede;
     btnZip.title = excede
         ? `El ZIP admite máximo ${ZIP_MAX} facturas; afina los filtros`
