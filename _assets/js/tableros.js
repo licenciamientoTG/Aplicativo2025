@@ -8342,6 +8342,17 @@
     document.addEventListener('pointerdown', (event) => {
       if (!event.target.closest('.boards-column-menu, [data-open-column-menu]')) closeColumnMenus();
     });
+    document.addEventListener('click', (event) => {
+      const menuAction = event.target.closest('[data-column-menu-action]');
+      if (!menuAction) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const columnId = menuAction.closest('.boards-column-menu')?.dataset.columnMenuColumn;
+      const column = state.columns.find((entry) => String(entry.id) === String(columnId));
+      closeColumnMenus();
+      if (column) runColumnMenuAction(menuAction.dataset.columnMenuAction, column, menuAction)
+        .catch((error) => setNotice(error.message || 'No se pudo realizar la acción de columna.', 'error'));
+    });
     document.addEventListener('scroll', (event) => {
       if (event.target.closest?.('.boards-column-menu')) return;
       closeColumnMenus();
