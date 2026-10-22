@@ -495,20 +495,33 @@ class Direction{
         $currentMonth = (int) date('m');
         $currentday = (int) date('d');
         $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $currentMonth, $currentYear);
+        $daysElapsed = max($currentday - 1, 1); // días cerrados del mes; evita división entre 0 el día 1
+        // Último mes cerrado (el que usa el Excel para marcar "Sin Consumo" / "Nuevo")
+        $lastClosedKey = ($currentMonth == 1)
+            ? ($currentYear - 1) . "_12"
+            : $currentYear . "_" . ($currentMonth - 1);
         $data = [];
         $columnData = $this->generate_columns_and_pivot_clause();
         $columns_name = $columnData['columns_name'];
 
         $rows = $this->CreDebMensualModel->comsumption_credit_client_table( $columnData,$type);
-        foreach ($rows as $key=> $row) {
+        foreach ($rows ?: [] as $key=> $row) {
                 $clienteAbreviado = mb_strlen($row['Cliente'], 'UTF-8') > 25 
                 ? mb_substr($row['Cliente'], 0, 25, 'UTF-8') . '...'
                 : $row['Cliente'];
                 $lognew = self::format_month_year($row['ingreso']); // primer ingreso entre las cuentas del RFC
-                $prediction = (($row[$currentYear."_".$currentMonth] /($currentday-1) )*$daysInMonth) ?? 0;
-                $pro_vs_max = ($row['MaxValue'] != 0) ?  ((($prediction / $row['MaxValue'] )-1)*100  ) : 0;
-                $ratio = ((float)$row['MaxValue'] != 0) ? $prediction / (float)$row['MaxValue'] : 0;
-                $estatus = ($ratio >= 0.9) ? 'Verde' : (($ratio >= 0.7) ? 'Naranja' : 'Rojo');
+                $maxValue = (float)($row['MaxValue'] ?? 0);
+                $prediction = ((float)($row[$currentYear."_".$currentMonth] ?? 0) / $daysElapsed) * $daysInMonth;
+                $pro_vs_max = ($maxValue != 0) ? ((($prediction / $maxValue) - 1) * 100) : 0;
+                $ratio = ($maxValue != 0) ? $prediction / $maxValue : 0;
+                $estatus = ($ratio >= 0.9) ? 'Verde' : (($ratio >= 0.7) ? 'Naranja' : 'Rojo'); // umbrales del Excel: <70% rojo, 70-90% naranja, >=90% verde
+                $lastClosed = (float)($row[$lastClosedKey] ?? 0);
+                $max_label = '';
+                if ($maxValue == 0) {
+                    $max_label = ($lastClosed == 0) ? 'Sin Consumos' : 'Nuevo';
+                } elseif ($lastClosed == 0) {
+                    $max_label = 'Sin Consumo';
+                }
                 $entry = [
                     'CodigoCliente' => 1,
                     'Cliente'       => $row['Cliente'],
@@ -516,16 +529,17 @@ class Direction{
                     'lognew'        => $lognew,
                     'nombre_asesor' => "",
                     'nombre_zona'   => '',
-                    'MaxValue'      => round($row['MaxValue'],3)  ?? 0,
-                    'prediction'      => round($prediction,3)  ?? 0,
-                    'pro_vs_max'      => round($pro_vs_max)  ?? 0,
+                    'MaxValue'      => round($maxValue,3),
+                    'max_label'     => $max_label,
+                    'prediction'      => round($prediction,3),
+                    'pro_vs_max'      => round($pro_vs_max),
                     'cumplimiento'    => round($ratio * 100),
                     'estatus'         => $estatus,
     
     
                 ];
                 foreach ($columns_name as $column) {
-                    $entry[$column] = round($row[$column],3)  ?? 0;
+                    $entry[$column] = round((float)($row[$column] ?? 0),3);
                 }
 
                 $data[] = $entry;
@@ -1181,6 +1195,8 @@ class Direction{
     public function excel_tg6(){
         set_time_limit(300);
         ini_set('memory_limit', '512M');
+        ini_set('display_errors', '0');   // un aviso impreso corrompe el .xlsx
+        while (ob_get_level() > 0) { ob_end_clean(); }
         $currentYear = (int)date('Y');
         $year = (int)($_GET['year'] ?? $currentYear);
         $monthKey = fn($key) => preg_match('/^(\d{4})_(\d{1,2})$/', (string)$key, $m) ? ((int)$m[1] * 12 + (int)$m[2]) : null;
@@ -1219,8 +1235,11 @@ class Direction{
         }
         $names = [1 => 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
         $lastMonth = ($year === (int)date('Y')) ? (int)date('n') : 12;
-        $lastCol = $coord($lastMonth + 1);
-        // [etiqueta, campo, tipo n=cantidad / p=porcentaje, negritas, relleno]
+        $totalCol = $lastMonth + 2;                 // columna "Total año"
+        $lastCol = $coord($totalCol);
+        $lastMonthCol = $coord($lastMonth + 1);
+
+        // [etiqueta, campo, n=cantidad / p=porcentaje, es sección, color de la sección]
         $lines = [
             ['Venta Cre/Deb', 'sum_mouth_mun', 'n', true, 'FF90EE90'],
             ['Crédito', 'sum_cre_mun', 'n', false, null],
@@ -1230,7 +1249,7 @@ class Direction{
             ['Crédito', 'sum_meta_cre', 'n', false, null],
             ['Débito', 'sum_meta_deb', 'n', false, null],
             null,
-            ['% LOGRO', 'percentage_achieved', 'p', true, 'FFC9A27A'],
+            ['% Logro', 'percentage_achieved', 'p', true, 'FFC9A27A'],
             ['Crédito', 'percentage_achieved_cred', 'p', false, null],
             ['Débito', 'percentage_achieved_deb', 'p', false, null],
             null,
@@ -1241,32 +1260,94 @@ class Direction{
             ['Venta Cre/Deb', 'sum_mouth', 'n', false, null],
             ['Venta Contado', 'sales_cash', 'n', false, null],
         ];
-        $sheet->setCellValue('A1', 'Año ' . $year);
-        $sheet->getStyle('A1')->getFont()->setBold(true);
+
+        $sheet->setShowGridlines(false);
+        $sheet->getTabColor()->setARGB('FF90EE90');
+
+        // Título y subtítulo
+        $sheet->mergeCells("A1:{$lastCol}1");
+        $sheet->setCellValue('A1', 'Venta vs Meta Empresarial · ' . $year);
+        $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
+            'font' => ['bold' => true, 'size' => 16, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF0D2B4E']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'indent' => 1],
+        ]);
+        $sheet->getRowDimension(1)->setRowHeight(30);
+        $sheet->mergeCells("A2:{$lastCol}2");
+        $sheet->setCellValue('A2', 'Litros · Generado el ' . date('d/m/Y H:i'));
+        $sheet->getStyle("A2:{$lastCol}2")->applyFromArray([
+            'font' => ['italic' => true, 'size' => 9, 'color' => ['argb' => 'FF607D8B']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'indent' => 1],
+        ]);
+
+        // Encabezado de meses
+        $sheet->setCellValue('A4', 'Concepto');
         for ($m = 1; $m <= $lastMonth; $m++) {
-            $sheet->setCellValue($coord($m + 1) . '1', $names[$m] . ' ' . $year);
+            $sheet->setCellValue($coord($m + 1) . '4', $names[$m] . ' ' . $year);
         }
-        $sheet->getStyle("B1:{$lastCol}1")->getFont()->setBold(true);
-        $sheet->getStyle("B1:{$lastCol}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFFF00');
-        $r = 3;
+        $sheet->setCellValue($coord($totalCol) . '4', 'Total año');
+        $sheet->getStyle("A4:{$lastCol}4")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['argb' => 'FF000000']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFFFFF00']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+        $sheet->getStyle('A4')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT)->setIndent(1);
+        $sheet->getRowDimension(4)->setRowHeight(22);
+
+        // Filas
+        $r = 5;
+        $zebra = false;
         foreach ($lines as $line) {
-            if ($line === null) { $r++; continue; }
-            [$label, $field, $kind, $bold, $fill] = $line;
+            if ($line === null) { $sheet->getRowDimension($r)->setRowHeight(12); $r++; continue; }
+            [$label, $field, $kind, $isSection, $color] = $line;
+            $isPct = ($kind === 'p');
             $sheet->setCellValue('A' . $r, $label);
+            $sum = 0.0;
             for ($m = 1; $m <= $lastMonth; $m++) {
-                $v = isset($byMonth[$m]) ? $num($byMonth[$m][$field] ?? 0) : 0;
-                $sheet->setCellValue($coord($m + 1) . $r, $kind === 'p' ? $v / 100 : $v);
+                $v = isset($byMonth[$m]) ? $num($byMonth[$m][$field] ?? 0) : 0.0;
+                $sum += $v;
+                $sheet->setCellValue($coord($m + 1) . $r, $isPct ? $v / 100 : $v);
             }
-            $sheet->getStyle("B{$r}:{$lastCol}{$r}")->getNumberFormat()->setFormatCode($kind === 'p' ? '0.0%' : '#,##0');
-            if ($bold) { $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFont()->setBold(true); }
-            if ($fill) { $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($fill); }
+            // el total de un porcentaje no se suma
+            if (!$isPct) {
+                $sheet->setCellValue($lastCol . $r, $sum);
+            }
+            $sheet->getStyle("B{$r}:{$lastCol}{$r}")->getNumberFormat()->setFormatCode($isPct ? '0.0%' : '#,##0');
+            $sheet->getStyle("B{$r}:{$lastCol}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+            if ($isSection) {
+                $sheet->getRowDimension($r)->setRowHeight(21);
+                $sheet->getStyle("A{$r}:{$lastCol}{$r}")->applyFromArray([
+                    'font' => ['bold' => true, 'color' => ['argb' => 'FF000000']],
+                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $color]],
+                    'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+                ]);
+                $zebra = false;
+            } else {
+                $sheet->getStyle("A{$r}")->getAlignment()->setIndent(2);
+                $sheet->getRowDimension($r)->setRowHeight(19);
+                $zebra = !$zebra;
+                $sheet->getStyle("{$lastCol}{$r}")->getFont()->setBold(true);
+            }
+
             $r++;
         }
-        $sheet->getColumnDimension('A')->setWidth(22);
+        $lastRow = $r - 1;
+
+        // Bordes finos en toda la tabla y línea separadora antes del total del año
+        $sheet->getStyle("A4:{$lastCol}{$lastRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFD0D7DE');
+        $sheet->getStyle("A4:{$lastCol}{$lastRow}")->getBorders()->getOutline()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF1F4E79');
+        $sheet->getStyle("{$lastCol}4:{$lastCol}{$lastRow}")->getBorders()->getLeft()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF1F4E79');
+
+        $sheet->getColumnDimension('A')->setWidth(28);
         for ($m = 1; $m <= $lastMonth; $m++) {
-            $sheet->getColumnDimension($coord($m + 1))->setWidth(14);
+            $sheet->getColumnDimension($coord($m + 1))->setWidth(15);
         }
-        $sheet->freezePane('B2');
+        $sheet->getColumnDimension($lastCol)->setWidth(17);
+
+        $sheet->freezePane('B5');
+        $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE)->setFitToWidth(1)->setFitToHeight(0);
+        $sheet->getPageSetup()->setFitToPage(true);
     }
 
     // Hoja de una tabla de consumo: fila 1 = suma de cada mes, fila 2 = encabezados, desde la 3 los clientes
@@ -1307,7 +1388,7 @@ class Direction{
                 $sums[$i] += $v;
                 $sheet->setCellValue($coord($first + $i) . $r, $v);
             }
-            $sheet->setCellValue($coord($cMax) . $r, $row['max_label'] !== '' ? $row['max_label'] : $row['MaxValue']);
+            $sheet->setCellValue($coord($cMax) . $r, ($row['max_label'] ?? '') !== '' ? $row['max_label'] : $row['MaxValue']);
             $sheet->setCellValue($coord($cPred) . $r, $row['prediction']);
             $sheet->setCellValue($coord($cVar) . $r, $row['pro_vs_max'] / 100);
             $sheet->setCellValue($coord($cPct) . $r, $row['cumplimiento'] / 100);
