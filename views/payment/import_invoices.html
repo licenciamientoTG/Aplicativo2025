@@ -460,7 +460,7 @@ function renderBusqueda(res) {
             <td class="text-nowrap">${folio}</td>
             <td><small class="font-monospace text-muted">${esc(r.UUID)}</small></td>
             <td class="text-end text-nowrap">${fmtMoney(r.Total)}</td>
-            <td class="text-nowrap"><small class="text-muted">${esc(r.FechaImportacion)}</small></td>
+            <td class="text-nowrap"><small class="text-muted">${esc(r.FechaImportacion)}</small>${r.OrigenImportacion === 'aplicativo' ? ' <span class="badge bg-info text-dark" title="Importada manualmente desde el aplicativo">Aplicativo</span>' : ''}</td>
             <td class="text-center text-nowrap">${pdf} ${xml}</td>
         </tr>`;
     }).join('');

@@ -301,7 +301,7 @@ public function buscarPorUUIDs($uuids) {
                     CONVERT(VARCHAR(16), fr.FechaImportacion, 120) AS FechaImportacion,
                     fr.EmisorNombre, fr.EmisorRfc, fr.ReceptorNombre,
                     fr.Total, fr.Moneda, fr.TipoDeComprobante, fr.Remision, fr.Destino,
-                    fr.EstacionCodgas,
+                    fr.EstacionCodgas, fr.OrigenImportacion,
                     e.Nombre AS EstacionNombre,
                     CASE WHEN ISNULL(fr.RutaArchivo, '') <> '' THEN 1 ELSE 0 END AS TienePdf,
                     CASE WHEN ISNULL(fr.RutaXml, '') <> '' THEN 1 ELSE 0 END AS TieneXml
@@ -334,8 +334,9 @@ public function buscarPorUUIDs($uuids) {
         return $out;
     }
 
+    /** Solo la usa la importación manual de PDF del aplicativo, por eso marca el origen. */
     public function update_ruta($facturaId, $ruta, $nombreArchivo) {
-        $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ? WHERE Id = ?";
+        $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ?, OrigenImportacion = 'aplicativo' WHERE Id = ?";
         return $this->sql->update($query, [$ruta, $nombreArchivo, $facturaId]);
     }
 

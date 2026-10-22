@@ -332,6 +332,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (window.jQuery && $("#tabla_sesiones").length) {
     $("#tabla_sesiones").DataTable({
       order: [[0, "desc"]],
+      columnDefs: [{ targets: 0, type: "num" }], // "10" debe ir antes que "9"
       language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" },
     });
   }

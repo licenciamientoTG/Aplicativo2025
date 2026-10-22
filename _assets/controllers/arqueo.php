@@ -41,6 +41,7 @@ class Arqueo
         ['id' => 12, 'nombre' => 'Custodia',        'caja' => 1],
         ['id' => 13, 'nombre' => 'Perez Serna',     'caja' => 1],
         ['id' => 13, 'nombre' => 'Perez Serna',     'caja' => 2],
+        ['id' => 14, 'nombre' => 'Sucursal 28',     'caja' => 1],
     ];
 
     /**
