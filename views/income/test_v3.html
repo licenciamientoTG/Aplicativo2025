@@ -372,7 +372,7 @@
                 <button class="btn btn-sm btn-outline-info rounded-pill" onclick="abrirModoTransacciones()" title="Comparar CG vs Transacciones por día">
                     <i class="fas fa-exchange-alt mr-1"></i> Modo TX
                 </button>
-                <button class="btn btn-sm btn-outline-primary rounded-pill" onclick="abrirModoDespachos()" title="Comparar CG vs Despachos por día">
+                <button class="btn btn-sm btn-outline-primary rounded-pill d-none" id="btn-modo-despachos" onclick="abrirModoDespachos()" title="Comparar CG vs despachos Bankaool por día">
                     <i class="fas fa-gas-pump mr-1"></i> Modo DES
                 </button>
                 <button class="btn btn-sm btn-outline-warning rounded-pill d-none" id="btn-gestionar-transitos" onclick="abrirModalGestionTransitos()" title="Ver y cancelar tránsitos activos">
@@ -1201,6 +1201,8 @@ let stationConfig = [];
 let currentRule   = null;           // { entidad_id, afiliacion, nombre_banco }
 
 function actualizarBadgeAfil() {
+    const mostrarModoDES = esPilotoVillaAhumadaBankaool() && String($('#estacionSelect').val()) === '31';
+    $('#btn-modo-despachos').toggleClass('d-none', !mostrarModoDES);
     if (currentRule && currentRule.afiliacion) {
         $('#badge-afil-texto').text(currentRule.afiliacion);
         $('#badge-afil-activa').show();
@@ -4202,12 +4204,15 @@ async function confirmarCrearTransito() {
 }
 
 async function abrirModoTransacciones() { return abrirModoComparacion('TX'); }
-async function abrirModoDespachos() { return abrirModoComparacion('DES'); }
+async function abrirModoDespachos() {
+    if (!esPilotoVillaAhumadaBankaool() || String($('#estacionSelect').val()) !== '31') return;
+    return abrirModoComparacion('DES');
+}
 
 async function abrirModoComparacion(modo) {
     if (!currentRule) { alert('Primero selecciona una estación y banco.'); return; }
     const esModoDespachos = modo === 'DES';
-    const nombreComparador = esModoDespachos ? 'Despachos' : 'Transacciones';
+    const nombreComparador = esModoDespachos ? 'Despachos Bankaool' : 'Transacciones';
     const iconoComparador = esModoDespachos ? 'fa-gas-pump' : 'fa-exchange-alt';
     $('#mtx-title').html(`<i class="fas fa-columns mr-2"></i> Modo ${nombreComparador} — CG vs ${nombreComparador} por día`);
     $('#mtx-comparison-label').html(`<i class="fas ${iconoComparador} mr-2"></i> ${nombreComparador}`);

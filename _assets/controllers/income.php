@@ -5091,7 +5091,7 @@ public function anomalies_client_tickets()
         $codgas = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
         $year = filter_input(INPUT_GET, 'year', FILTER_VALIDATE_INT);
         $month = filter_input(INPUT_GET, 'month', FILTER_VALIDATE_INT);
-        if (!$codgas || !$year || !$month || $year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
+        if ((int)$codgas !== 31 || !$year || !$month || $year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
             http_response_code(400);
             echo json_encode(['status' => 'error', 'message' => 'Estación, año o mes inválido']);
             exit;

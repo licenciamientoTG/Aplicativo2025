@@ -113,7 +113,7 @@ class DespachosModel extends Model
         return $this->fetchAll($query, [$codgas, $desde, $hasta]);
     }
 
-    /** Resumen diario de despachos por fecha de transacción (fchtrn). */
+    /** Resumen diario de despachos con RUT Bankaool normalizado por fchtrn. */
     public function get_daily_dispatch_summary(int $codgas, string $from, string $until): array|false
     {
         $desde = dateToInt($from);
@@ -126,6 +126,7 @@ class DespachosModel extends Model
                   FROM {$db}.[despachos]
                   WHERE codgas = ?
                     AND fchtrn BETWEEN ? AND ?
+                    AND UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(ISNULL(rut, ''))), ' ', ''), '-', ''), '.', ''), '/', ''), '_', '')) LIKE '%BANKAOOL%'
                   GROUP BY fchtrn
                   ORDER BY fchtrn";
 
