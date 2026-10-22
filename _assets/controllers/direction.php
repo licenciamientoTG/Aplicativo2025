@@ -414,7 +414,8 @@ class Direction{
     }
 
     function comsumption_credit_count_table(){
-        echo json_encode(array("data" => $this->consumption_rows((int)$_POST['type'])));
+        $type = (int)$_POST['type'];
+        echo json_encode(array("data" => $this->consumption_rows($type), "meta" => array("year" => (int)date('Y'), "month" => (int)date('n'), "cantidad" => $this->MetaVentaModel->meta_month((int)date('Y'), (int)date('n'), $type))));
     }
 
     // Filas de la tabla; las usan la pantalla y la exportación a Excel
@@ -484,7 +485,8 @@ class Direction{
 
 
     function comsumption_credit_client_table(){
-        echo json_encode(array("data" => $this->client_rows((int)$_POST['type'])));
+        $type = (int)$_POST['type'];
+        echo json_encode(array("data" => $this->client_rows($type), "meta" => array("year" => (int)date('Y'), "month" => (int)date('n'), "cantidad" => $this->MetaVentaModel->meta_month((int)date('Y'), (int)date('n'), $type))));
     }
 
     // Filas de la tabla; las usan la pantalla y la exportación a Excel

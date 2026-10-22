@@ -784,7 +784,11 @@ class It{
      * @throws Exception
      */
     public function editUserForm() {
-        $rs = $this->usersModel->editUser(trim($_POST['name']), $_POST['profile_id'], trim(strtolower($_POST['email'])), $_POST['IdEstacion'], $_POST['status'], $_POST['id'], $_POST['department_id'] ?? null);
+        $username = trim($_POST['username'] ?? '');
+        if ($username !== '' && $this->usersModel->usernameTaken($username, $_POST['id'])) {
+            return json_output(2); // Usuario duplicado
+        }
+        $rs = $this->usersModel->editUser(trim($_POST['name']), $_POST['profile_id'], trim(strtolower($_POST['email'])), $_POST['IdEstacion'], $_POST['status'], $_POST['id'], $_POST['department_id'] ?? null, $username !== '' ? $username : null);
         return json_output(($rs ? 1 : 0));
     }
 

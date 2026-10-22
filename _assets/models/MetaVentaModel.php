@@ -8,6 +8,15 @@ class MetaVentaModel extends Model{
     public $fecha_ingreso;
     public $zona;
 
+    // Meta de litros de un mes para un tipo (28 crédito / 127 débito); 0 si no hay meta cargada
+    function meta_month(int $year, int $month, int $type) : float {
+        $rows = $this->sql->select(
+            "SELECT ISNULL(SUM([cantidad]), 0) AS meta FROM [TGV2].[dbo].[MetaVenta] WHERE [año] = ? AND [mes] = ? AND [tipo_id] = ?",
+            [$year, $month, $type]
+        );
+        return $rows ? (float)$rows[0]['meta'] : 0.0;
+    }
+
     function get_mount_resumen() : array|false {
         $query = "SELECT
                     [año],
