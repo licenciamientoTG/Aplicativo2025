@@ -113,6 +113,25 @@ class DespachosModel extends Model
         return $this->fetchAll($query, [$codgas, $desde, $hasta]);
     }
 
+    /** Resumen diario de despachos por fecha de transacción (fchtrn). */
+    public function get_daily_dispatch_summary(int $codgas, string $from, string $until): array|false
+    {
+        $desde = dateToInt($from);
+        $hasta = dateToInt($until);
+        $db = $this->stationDb($codgas);
+        $query = "SELECT
+                    CONVERT(varchar(10), DATEADD(day, -1, CAST(fchtrn AS datetime)), 23) AS fecha,
+                    COUNT(*) AS cantidad,
+                    SUM(mto) AS importe
+                  FROM {$db}.[despachos]
+                  WHERE codgas = ?
+                    AND fchtrn BETWEEN ? AND ?
+                  GROUP BY fchtrn
+                  ORDER BY fchtrn";
+
+        return $this->fetchAll($query, [$codgas, $desde, $hasta]);
+    }
+
     /**
      * Turno anterior y siguiente dentro de la secuencia 11 → 21 → 31 → 41 → 11.
      *
