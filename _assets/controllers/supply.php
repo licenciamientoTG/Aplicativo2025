@@ -2872,16 +2872,20 @@ class Supply
             'transportistas' => $this->fuelCarriersModel->get_all(),
         ]);
 
-        // Lo que ya está cargado se omite: por cada llave se descuentan las
-        // filas existentes (así dos líneas iguales en la hoja siguen contando como dos).
+        // Lo que ya está cargado (o se canceló) se omite: por cada llave se descuentan
+        // las filas existentes (así dos líneas iguales en la hoja siguen contando como dos).
         $existentes = $this->fuelReceptionScheduleModel->get_existing_counts(array_column($r['filas'], 'fecha'));
         $nombresEst = array_column($estaciones, 'Nombre', 'Codigo');
         $nombresProv = array_column($this->fuelReceptionScheduleModel->get_proveedores(), 'nombre', 'id');
         foreach ($r['filas'] as &$f) {
             $llave = FuelReceptionScheduleModel::llave_importacion($f);
-            if (($existentes[$llave] ?? 0) > 0) {
-                $existentes[$llave]--;
+            if (($existentes['activas'][$llave] ?? 0) > 0) {
+                $existentes['activas'][$llave]--;
                 $f['estado'] = 'ya_existe';
+            } elseif (($existentes['canceladas'][$llave] ?? 0) > 0) {
+                // Alguien la canceló a propósito: subir el mismo archivo no la revive.
+                $existentes['canceladas'][$llave]--;
+                $f['estado'] = 'cancelada';
             } else {
                 $f['estado'] = 'nueva';
             }

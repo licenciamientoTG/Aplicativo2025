@@ -194,25 +194,29 @@ function botonesAccion(id, invoiceId, estatus) {
 }
 
 function formatearFilaTerminal(fila, mostrarTransportista, mostrarReferencia, mostrarNotas) {
+    // data-c / data-label no cambian nada en escritorio: en celular (CSS
+    // @media en scheduling.html) cada fila se dibuja como tarjeta y el
+    // label da nombre a cada dato.
     const celdaTransportista = mostrarTransportista
-        ? `<td>${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>`
+        ? `<td data-c="transp" data-label="Transportista">${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>`
         : '';
     const celdaReferencia = mostrarReferencia
-        ? `<td>${esc(fila.referencia) || ''}</td>`
+        ? `<td data-c="ref" data-label="Referencia">${esc(fila.referencia) || ''}</td>`
         : '';
     const celdaNotas = mostrarNotas
-        ? `<td>${esc(fila.notas) || ''}</td>`
+        ? `<td data-c="notas" data-label="Notas">${esc(fila.notas) || ''}</td>`
         : '';
+    const etiquetaHora = String(fila.supplier_id) === String(SUPPLIER_ID_MCG) ? 'Turno' : 'Hora';
     return `
         <tr data-id="${fila.id}">
-            <td>${esc(fila.hora) || '<span class="text-muted">—</span>'}</td>
-            <td>${badgeProducto(fila.product, fila.mezcla)}</td>
-            <td>${Number(fila.litros).toLocaleString('es-MX')}</td>
-            <td>${esc(fila.station_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="hora" data-label="${etiquetaHora}">${esc(fila.hora) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="prod">${badgeProducto(fila.product, fila.mezcla)}</td>
+            <td data-c="lit">${Number(fila.litros).toLocaleString('es-MX')} <span class="u-litros">L</span></td>
+            <td data-c="est">${esc(fila.station_nombre) || '<span class="text-muted">—</span>'}</td>
             ${celdaTransportista}
             ${celdaReferencia}
             ${celdaNotas}
-            <td>${botonesAccion(fila.id, fila.invoice_id, fila.estatus)}</td>
+            <td data-c="acc">${botonesAccion(fila.id, fila.invoice_id, fila.estatus)}</td>
         </tr>
     `;
 }
@@ -248,28 +252,28 @@ function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarRef
     }).join('');
 
     const celdaTransportista = mostrarTransportista
-        ? `<td><select class="form-select form-select-sm campo-rapido" data-campo="carrier_id"><option value="">—</option>${opcionesTransportista}</select></td>`
+        ? `<td data-c="transp" data-label="Transportista"><select class="form-select form-select-sm campo-rapido" data-campo="carrier_id"><option value="">—</option>${opcionesTransportista}</select></td>`
         : '';
     const celdaReferencia = mostrarReferencia
-        ? `<td><input type="text" class="form-control form-control-sm campo-rapido" data-campo="referencia"></td>`
+        ? `<td data-c="ref" data-label="Referencia"><input type="text" class="form-control form-control-sm campo-rapido" data-campo="referencia"></td>`
         : '';
     const celdaNotas = mostrarNotas
-        ? `<td><input type="text" class="form-control form-control-sm campo-rapido" data-campo="notas"></td>`
+        ? `<td data-c="notas" data-label="Notas"><input type="text" class="form-control form-control-sm campo-rapido" data-campo="notas"></td>`
         : '';
 
     const celdaHora = String(supplierId) === String(SUPPLIER_ID_MCG)
-        ? `<td><select class="form-select form-select-sm campo-rapido" data-campo="hora">
+        ? `<td data-c="hora" data-label="Turno"><select class="form-select form-select-sm campo-rapido" data-campo="hora">
                 <option value="">—</option>
                 <option value="T1">T1</option>
                 <option value="T2">T2</option>
                 <option value="T3">T3</option>
            </select></td>`
-        : `<td><input type="time" class="form-control form-control-sm campo-rapido" data-campo="hora"></td>`;
+        : `<td data-c="hora" data-label="Hora"><input type="time" class="form-control form-control-sm campo-rapido" data-campo="hora"></td>`;
 
     return `
         <tr class="fila-rapida" data-supplier-id="${supplierId}" data-terminal-id="${terminalId || ''}" data-registro-id="">
             ${celdaHora}
-            <td>
+            <td data-c="prod" data-label="Producto">
                 <select class="form-select form-select-sm campo-rapido" data-campo="product">
                     <option value="Regular">Regular</option>
                     <option value="Premium">Premium</option>
@@ -277,8 +281,8 @@ function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarRef
                     <option value="Mixta">Mixta</option>
                 </select>
             </td>
-            <td><input type="number" min="1" step="1" class="form-control form-control-sm campo-rapido" data-campo="litros" placeholder="Litros"></td>
-            <td>
+            <td data-c="lit" data-label="Litros"><input type="number" min="1" step="1" class="form-control form-control-sm campo-rapido" data-campo="litros" placeholder="Litros"></td>
+            <td data-c="est" data-label="Estación">
                 <select class="selectpicker campo-rapido" data-campo="station_code" data-live-search="true" data-width="180px" data-size="8" data-container="body">
                     <option value="">Seleccione…</option>
                     ${opcionesEstacion}
@@ -287,7 +291,7 @@ function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarRef
             ${celdaTransportista}
             ${celdaReferencia}
             ${celdaNotas}
-            <td>
+            <td data-c="acc">
                 <div class="d-flex gap-1 justify-content-center">
                     <button type="button" class="btn btn-outline-success btn-guardar-fila-rapida btn-accion-icono" title="Guardar"><i data-feather="check"></i></button>
                     <button type="button" class="btn btn-outline-danger btn-cancelar-fila-rapida btn-accion-icono" title="Cancelar"><i data-feather="x"></i></button>
@@ -300,19 +304,19 @@ function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarRef
 function formatearFilaEstacion(fila) {
     return `
         <tr data-id="${fila.id}">
-            <td>${esc(fila.hora) || '<span class="text-muted">—</span>'}</td>
-            <td>${badgeProducto(fila.product, fila.mezcla)}</td>
-            <td>${Number(fila.litros).toLocaleString('es-MX')}</td>
-            <td>${esc(fila.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
-            <td>${esc(fila.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
-            <td>${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>
-            <td>${esc(fila.notas) || ''}</td>
-            <td>${botonesAccion(fila.id, fila.invoice_id, fila.estatus)}</td>
+            <td data-c="hora" data-label="${String(fila.supplier_id) === String(SUPPLIER_ID_MCG) ? 'Turno' : 'Hora'}">${esc(fila.hora) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="prod">${badgeProducto(fila.product, fila.mezcla)}</td>
+            <td data-c="lit">${Number(fila.litros).toLocaleString('es-MX')} <span class="u-litros">L</span></td>
+            <td data-c="prov" data-label="Proveedor">${esc(fila.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="term" data-label="Terminal">${esc(fila.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="transp" data-label="Transportista">${esc(fila.carrier_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="notas" data-label="Notas">${esc(fila.notas) || ''}</td>
+            <td data-c="acc">${botonesAccion(fila.id, fila.invoice_id, fila.estatus)}</td>
         </tr>
     `;
 }
 
-function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, pesoRelativo, botonAgregar) {
+function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, pesoRelativo, botonAgregar, claseTabla) {
     // El grosor del borde escala con el volumen del grupo relativo al mayor
     // del día (3px..9px) -- una tarjeta con más litros programados destaca
     // sin necesitar leer el número del badge.
@@ -321,12 +325,12 @@ function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, peso
     return `
         <div class="${colClass()} mb-4">
             <div class="card h-100"${estiloBorde}>
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 d-flex align-items-center gap-2">${titulo}${botonAgregar || ''}</h6>
+                <div class="card-header bg-light d-flex justify-content-between align-items-center grupo-header">
+                    <h6 class="mb-0 d-flex align-items-center gap-2 grupo-titulo">${titulo}${botonAgregar || ''}</h6>
                     <span class="badge bg-white text-dark border">${subtotal.toLocaleString('es-MX')} L</span>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0">
+                    <table class="table table-sm table-hover mb-0 ${claseTabla || ''}">
                         <thead>
                             <tr>${encabezados.map(function (h) { return '<th>' + h + '</th>'; }).join('')}</tr>
                         </thead>
@@ -442,7 +446,7 @@ function renderPorTerminal(filas) {
             const botonFilaRapida = grupo.supplierId
                 ? `<button type="button" class="btn btn-sm btn-outline-secondary btn-accion-icono btn-fila-rapida" data-supplier-id="${grupo.supplierId}" data-terminal-id="${terminalId || ''}" data-mostrar-transportista="${mostrarTransportista ? '1' : '0'}" data-mostrar-referencia="${mostrarReferencia ? '1' : '0'}" data-mostrar-notas="${mostrarNotas ? '1' : '0'}" title="Capturar renglón rápido (como Excel)"><i data-feather="list"></i></button>`
                 : '';
-            contenedor.append(tarjetaGrupo(titulo, grupo.total, filasHtml, encabezados, color, peso, botonAgregar + botonFilaRapida));
+            contenedor.append(tarjetaGrupo(titulo, grupo.total, filasHtml, encabezados, color, peso, botonAgregar + botonFilaRapida, 'tm-term'));
         });
 }
 
@@ -491,7 +495,7 @@ function renderPorEstacion(filas) {
             ? grupo.filas.map(formatearFilaEstacion).join('')
             : '<tr><td colspan="' + encabezados.length + '" class="text-muted text-center">Sin recepciones programadas hoy.</td></tr>';
         const peso = maxTotal > 0 ? grupo.total / maxTotal : 0;
-        contenedor.append(tarjetaGrupo(esc(nombre), grupo.total, filasHtml, encabezados, COLOR_ESTACION, peso));
+        contenedor.append(tarjetaGrupo(esc(nombre), grupo.total, filasHtml, encabezados, COLOR_ESTACION, peso, '', 'tm-est'));
     });
 }
 
@@ -738,37 +742,37 @@ function filasHtmlPlanInventario(grupo) {
 
     return grupo.filas.map(function (f) {
         const base = `
-            <td>${esc(f.hora) || '<span class="text-muted">—</span>'}</td>
-            <td>${badgeProducto(f.product, f.mezcla)}</td>
-            <td>${Number(f.litros).toLocaleString('es-MX')}</td>
-            <td>${esc(f.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
-            <td>${esc(f.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
-            <td>${esc(f.carrier_nombre) || '<span class="text-muted">—</span>'}</td>`;
+            <td data-c="hora" data-label="${String(f.supplier_id) === String(SUPPLIER_ID_MCG) ? 'Turno' : 'Hora'}">${esc(f.hora) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="prod">${badgeProducto(f.product, f.mezcla)}</td>
+            <td data-c="lit">${Number(f.litros).toLocaleString('es-MX')} <span class="u-litros">L</span></td>
+            <td data-c="prov" data-label="Proveedor">${esc(f.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="term" data-label="Terminal">${esc(f.terminal_nombre) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="transp" data-label="Transportista">${esc(f.carrier_nombre) || '<span class="text-muted">—</span>'}</td>`;
         if (!productosInv) {
             const txt = !inv || inv.estado === 'pendiente' ? 'Sin consultar'
                 : inv.estado === 'cargando' ? 'Consultando…' : 'Sin dato';
-            return `<tr>${base}<td colspan="9" class="text-muted small text-center">${txt}</td></tr>`;
+            return `<tr>${base}<td colspan="9" data-c="inv-msg" class="text-muted small text-center">${txt}</td></tr>`;
         }
         const p = productosInv[f.product];
         if (!p) {
-            return `<tr>${base}<td colspan="9" class="text-muted small text-center">La estación no tiene tanque de ${esc(f.product)}</td></tr>`;
+            return `<tr>${base}<td colspan="9" data-c="inv-msg" class="text-muted small text-center">La estación no tiene tanque de ${esc(f.product)}</td></tr>`;
         }
         const programado = programadoPorProducto[f.product] || 0;
         const volTras = p.volumen + programado;
         const noCabe = p.cap_operativa > 0 && volTras > p.cap_operativa;
         const pctTras = p.cap_operativa > 0 ? volTras * 100 / p.cap_operativa : null;
         return `<tr>${base}
-            <td class="text-end">${fmtNum(p.cap_operativa)}</td>
-            <td class="text-end">${fmtNum(p.volumen)}</td>
-            <td>${barraPorcentaje(p.porcentaje)}</td>
-            <td class="text-end">${fmtNum(p.venta_mes)}</td>
-            <td class="text-end">${fmtNum(p.prom_dia)}</td>
-            <td class="text-end">${fmtNum(p.dias_inv, 1)}</td>
-            <td class="text-center">${statusDiasInv(p.dias_inv)}</td>
-            <td class="text-end ${noCabe ? 'text-danger fw-bold' : ''}" title="Volumen actual + ${programado.toLocaleString('es-MX')} L programados de ${esc(f.product)} hoy">
+            <td data-c="m" data-label="Cap. operativa" class="text-end">${fmtNum(p.cap_operativa)}</td>
+            <td data-c="m" data-label="Volumen" class="text-end">${fmtNum(p.volumen)}</td>
+            <td data-c="m" data-label="%">${barraPorcentaje(p.porcentaje)}</td>
+            <td data-c="m" data-label="Venta total mes" class="text-end">${fmtNum(p.venta_mes)}</td>
+            <td data-c="m" data-label="Prom. día mes" class="text-end">${fmtNum(p.prom_dia)}</td>
+            <td data-c="m" data-label="Días inv" class="text-end">${fmtNum(p.dias_inv, 1)}</td>
+            <td data-c="m" data-label="Status" class="text-center">${statusDiasInv(p.dias_inv)}</td>
+            <td data-c="m" data-label="Vol. tras descarga" class="text-end ${noCabe ? 'text-danger fw-bold' : ''}" title="Volumen actual + ${programado.toLocaleString('es-MX')} L programados de ${esc(f.product)} hoy">
                 ${fmtNum(volTras)}${pctTras !== null ? ` <span class="small">(${fmtNum(pctTras, 0)}%)</span>` : ''}${noCabe ? ' <span class="badge bg-danger">No cabe</span>' : ''}
             </td>
-            <td class="text-end ${p.espacio_libre < programado ? 'text-danger fw-bold' : ''}">${fmtNum(p.espacio_libre)}</td>
+            <td data-c="m" data-label="Espacio libre" class="text-end ${p.espacio_libre < programado ? 'text-danger fw-bold' : ''}">${fmtNum(p.espacio_libre)}</td>
         </tr>`;
     }).join('');
 }
@@ -784,7 +788,7 @@ function tarjetaPlanInventario(grupo, maxTotal) {
     const titulo = `${esc(grupo.nombre)} <span class="d-inline-flex align-items-center gap-1 fw-normal">${estado}</span>`;
     // Siempre a ancho completo (son 15 columnas) y con id para poder
     // reemplazar solo esta tarjeta cuando llega su estación.
-    return tarjetaGrupo(titulo, grupo.total, filasHtmlPlanInventario(grupo), encabezadosPlanInventario(), COLOR_ESTACION, peso)
+    return tarjetaGrupo(titulo, grupo.total, filasHtmlPlanInventario(grupo), encabezadosPlanInventario(), COLOR_ESTACION, peso, '', 'tm-inv')
         .replace(`<div class="${colClass()} mb-4">`, `<div class="col-12 mb-4" id="inv-card-${esc(grupo.code)}">`);
 }
 
@@ -974,10 +978,17 @@ $(document).ready(function () {
     // Esta vista necesita todo el ancho posible (tablas con muchas columnas
     // por tarjeta) -- se colapsa el sidebar solo aquí, sin tocar la
     // preferencia global guardada en localStorage para las demás vistas.
+    // OJO: el tema invierte el significado de la clase `collapsed` bajo 992 px
+    // (light.css): en escritorio `collapsed` = oculto, en celular/tablet
+    // `collapsed` = ABIERTO. Por eso aquí se decide según el ancho.
     const sidebar = document.getElementById('sidebar');
-    if (sidebar && !sidebar.classList.contains('collapsed')) {
-        sidebar.classList.add('collapsed');
-        window.dispatchEvent(new Event('resize'));
+    if (sidebar) {
+        const escritorio = window.matchMedia('(min-width: 992px)').matches;
+        const debeTenerClase = escritorio;
+        if (sidebar.classList.contains('collapsed') !== debeTenerClase) {
+            sidebar.classList.toggle('collapsed', debeTenerClase);
+            window.dispatchEvent(new Event('resize'));
+        }
     }
 
     $('.selectpicker').selectpicker();
@@ -1514,7 +1525,9 @@ $(document).ready(function () {
     function importTabla(filas) {
         const badge = f => f.estado === 'nueva'
             ? '<span class="badge bg-success">Nueva</span>'
-            : '<span class="badge bg-secondary">Ya existe</span>';
+            : (f.estado === 'cancelada'
+                ? '<span class="badge bg-warning text-dark" title="Se canceló antes; no se vuelve a crear">Cancelada antes</span>'
+                : '<span class="badge bg-secondary">Ya existe</span>');
         const cuerpo = filas.map(f => `
             <tr class="${f.estado === 'nueva' ? '' : 'text-muted'}">
                 <td>${badge(f)}</td>
@@ -1589,7 +1602,7 @@ $(document).ready(function () {
                 }
                 const nuevas = resp.filas.filter(f => f.estado === 'nueva').length;
                 const existen = resp.filas.length - nuevas;
-                let html = `<strong>${nuevas}</strong> por importar · <strong>${existen}</strong> ya existen (se omiten)`;
+                let html = `<strong>${nuevas}</strong> por importar · <strong>${existen}</strong> ya estaban cargadas o canceladas (se omiten)`;
                 if (resp.transportistas_nuevos.length) {
                     html += ` · transportistas nuevos: ${esc(resp.transportistas_nuevos.join(', '))}`;
                 }

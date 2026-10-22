@@ -143,25 +143,27 @@ class FuelReceptionScheduleModel extends Model {
     }
 
     /**
-     * Cuántas recepciones activas (no canceladas) hay ya por llave
-     * fecha|proveedor|estación|producto|litros, para las fechas dadas.
-     * La importación desde Excel la usa para no duplicar lo ya cargado.
+     * Cuántas recepciones hay ya por llave fecha|proveedor|estación|
+     * producto|litros, para las fechas dadas: ['activas' => [...],
+     * 'canceladas' => [...]]. La importación desde Excel las usa para no
+     * duplicar lo ya cargado ni resucitar lo que alguien canceló a propósito.
      */
     function get_existing_counts(array $fechas): array {
         $fechas = array_values(array_unique($fechas));
+        $counts = ['activas' => [], 'canceladas' => []];
         if (!$fechas) {
-            return [];
+            return $counts;
         }
         $placeholders = implode(',', array_fill(0, count($fechas), '?'));
         $query = "
-            SELECT CONVERT(VARCHAR(10), fecha, 23) AS fecha, supplier_id, station_code, product, litros, COUNT(*) AS n
+            SELECT CONVERT(VARCHAR(10), fecha, 23) AS fecha, supplier_id, station_code, product, litros,
+                   CASE WHEN estatus = 'Cancelado' THEN 1 ELSE 0 END AS cancelada, COUNT(*) AS n
             FROM TG.dbo.fuel_reception_schedule
-            WHERE fecha IN ($placeholders) AND estatus <> 'Cancelado'
-            GROUP BY fecha, supplier_id, station_code, product, litros
+            WHERE fecha IN ($placeholders)
+            GROUP BY fecha, supplier_id, station_code, product, litros, CASE WHEN estatus = 'Cancelado' THEN 1 ELSE 0 END
         ";
-        $counts = [];
         foreach ($this->sql->select($query, $fechas) ?: [] as $r) {
-            $counts[self::llave_importacion($r)] = (int)$r['n'];
+            $counts[$r['cancelada'] ? 'canceladas' : 'activas'][self::llave_importacion($r)] = (int)$r['n'];
         }
         return $counts;
     }
