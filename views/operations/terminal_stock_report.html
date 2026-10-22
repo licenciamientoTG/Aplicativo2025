@@ -22,7 +22,7 @@
   <form method="get" action="/operations/terminal_stock_report" aria-label="Filtros del reporte de stock">
     <div class="row g-2 align-items-end">
       <div class="col-md-4"><label class="form-label" for="stockFilterStation">Estación</label><select class="form-select" id="stockFilterStation" name="station"><option value="">Todas las estaciones</option>{% for id,name in stations %}<option value="{{ id|e('html_attr') }}" {{ filters.station == id ? 'selected' : '' }}>{{ name|e }}</option>{% endfor %}</select></div>
-      <div class="col-md-4"><label class="form-label" for="stockFilterType">Tipo de terminal</label><select class="form-select" id="stockFilterType" name="type"><option value="">Todos los tipos</option>{% for code,type in types %}<option value="{{ code|e('html_attr') }}" {{ filters.type == code ? 'selected' : '' }}>{{ type.label|e }}</option>{% endfor %}</select></div>
+      <div class="col-md-4"><label class="form-label" for="stockFilterType">Tipo de terminal</label><select class="form-select" id="stockFilterType" name="type"><option value="">Todos los tipos</option>{% for code,type in types %}<option value="{{ code|e('html_attr') }}" {{ filters.type == code ? 'selected' : '' }}>{{ type|e }}</option>{% endfor %}</select></div>
       <div class="col-md-4"><label class="form-label" for="stockFilterStatus">Estado de stock</label><select class="form-select" id="stockFilterStatus" name="status"><option value="all" {{ filters.status == 'all' ? 'selected' : '' }}>Todos</option><option value="damaged" {{ filters.status == 'damaged' ? 'selected' : '' }}>Con dañadas</option><option value="no_damaged" {{ filters.status == 'no_damaged' ? 'selected' : '' }}>Sin dañadas</option><option value="no_stock" {{ filters.status == 'no_stock' ? 'selected' : '' }}>Sin stock configurado</option></select></div>
     </div>
     <div class="d-flex flex-wrap gap-2 mt-3"><button type="submit" class="btn btn-primary"><i data-feather="filter"></i> Aplicar filtros</button><a class="btn btn-outline-secondary" href="/operations/terminal_stock_report">Limpiar filtros</a></div>
@@ -48,6 +48,7 @@
   <ul class="mb-2 mt-2">
     <li><strong>Stock configurado</strong> corresponde a las cantidades esperadas configuradas para la estación. Una configuración faltante cuenta como cero.</li>
     <li><strong>Dañadas</strong> cuenta incidencias en estado Abierta, Solved o Reabierta. Un ticket Solved permanece como dañado hasta que la estación confirme la reparación.</li>
+    <li>El conteo usa una incidencia activa como representación de una terminal dañada; tickets duplicados para un mismo equipo pueden sobrecontar.</li>
     <li><strong>Funcionando</strong> es la suma por tipo de <code>máximo(stock configurado − dañadas, 0)</code>.</li>
   </ul>
   <p class="mb-0 text-muted">Es una fotografía operativa del estado actual; no es un indicador de desempeño ni un histórico. No se filtra por fecha.</p>

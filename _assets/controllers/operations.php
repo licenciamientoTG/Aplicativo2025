@@ -3483,7 +3483,7 @@ class Operations{
         $nextMonth=$monthStart->modify('+1 month');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
         $closed=$this->terminalInventoryModel->closedIncidentsForMonth($stationId,$monthStart->format('Y-m-d H:i:s'),$nextMonth->format('Y-m-d H:i:s'));
-        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'closedIncidents'=>$closed,'currentMonth'=>$monthStart->format('Y-m'),'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)]);
+        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'closedIncidents'=>$closed,'currentMonth'=>$monthStart->format('Y-m'),'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION),'canStockReport'=>$this->terminalUserCan(TerminalInventoryModel::STOCK_REPORT_PERMISSION)]);
     }
 
     /** Operations module for transferring station assignments between station managers. */
