@@ -1235,8 +1235,11 @@ class Direction{
         }
         $names = [1 => 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
         $lastMonth = ($year === (int)date('Y')) ? (int)date('n') : 12;
-        $lastCol = $coord($lastMonth + 1);
-        // [etiqueta, campo, tipo n=cantidad / p=porcentaje, negritas, relleno]
+        $totalCol = $lastMonth + 2;                 // columna "Total año"
+        $lastCol = $coord($totalCol);
+        $lastMonthCol = $coord($lastMonth + 1);
+
+        // [etiqueta, campo, n=cantidad / p=porcentaje, es sección, color de la sección]
         $lines = [
             ['Venta Cre/Deb', 'sum_mouth_mun', 'n', true, 'FF90EE90'],
             ['Crédito', 'sum_cre_mun', 'n', false, null],
@@ -1246,7 +1249,7 @@ class Direction{
             ['Crédito', 'sum_meta_cre', 'n', false, null],
             ['Débito', 'sum_meta_deb', 'n', false, null],
             null,
-            ['% LOGRO', 'percentage_achieved', 'p', true, 'FFC9A27A'],
+            ['% Logro', 'percentage_achieved', 'p', true, 'FFC9A27A'],
             ['Crédito', 'percentage_achieved_cred', 'p', false, null],
             ['Débito', 'percentage_achieved_deb', 'p', false, null],
             null,
@@ -1257,32 +1260,94 @@ class Direction{
             ['Venta Cre/Deb', 'sum_mouth', 'n', false, null],
             ['Venta Contado', 'sales_cash', 'n', false, null],
         ];
-        $sheet->setCellValue('A1', 'Año ' . $year);
-        $sheet->getStyle('A1')->getFont()->setBold(true);
+
+        $sheet->setShowGridlines(false);
+        $sheet->getTabColor()->setARGB('FF90EE90');
+
+        // Título y subtítulo
+        $sheet->mergeCells("A1:{$lastCol}1");
+        $sheet->setCellValue('A1', 'Venta vs Meta Empresarial · ' . $year);
+        $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
+            'font' => ['bold' => true, 'size' => 16, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF0D2B4E']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'indent' => 1],
+        ]);
+        $sheet->getRowDimension(1)->setRowHeight(30);
+        $sheet->mergeCells("A2:{$lastCol}2");
+        $sheet->setCellValue('A2', 'Litros · Generado el ' . date('d/m/Y H:i'));
+        $sheet->getStyle("A2:{$lastCol}2")->applyFromArray([
+            'font' => ['italic' => true, 'size' => 9, 'color' => ['argb' => 'FF607D8B']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'indent' => 1],
+        ]);
+
+        // Encabezado de meses
+        $sheet->setCellValue('A4', 'Concepto');
         for ($m = 1; $m <= $lastMonth; $m++) {
-            $sheet->setCellValue($coord($m + 1) . '1', $names[$m] . ' ' . $year);
+            $sheet->setCellValue($coord($m + 1) . '4', $names[$m] . ' ' . $year);
         }
-        $sheet->getStyle("B1:{$lastCol}1")->getFont()->setBold(true);
-        $sheet->getStyle("B1:{$lastCol}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFFF00');
-        $r = 3;
+        $sheet->setCellValue($coord($totalCol) . '4', 'Total año');
+        $sheet->getStyle("A4:{$lastCol}4")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['argb' => 'FF000000']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFFFFF00']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+        $sheet->getStyle('A4')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT)->setIndent(1);
+        $sheet->getRowDimension(4)->setRowHeight(22);
+
+        // Filas
+        $r = 5;
+        $zebra = false;
         foreach ($lines as $line) {
-            if ($line === null) { $r++; continue; }
-            [$label, $field, $kind, $bold, $fill] = $line;
+            if ($line === null) { $sheet->getRowDimension($r)->setRowHeight(12); $r++; continue; }
+            [$label, $field, $kind, $isSection, $color] = $line;
+            $isPct = ($kind === 'p');
             $sheet->setCellValue('A' . $r, $label);
+            $sum = 0.0;
             for ($m = 1; $m <= $lastMonth; $m++) {
-                $v = isset($byMonth[$m]) ? $num($byMonth[$m][$field] ?? 0) : 0;
-                $sheet->setCellValue($coord($m + 1) . $r, $kind === 'p' ? $v / 100 : $v);
+                $v = isset($byMonth[$m]) ? $num($byMonth[$m][$field] ?? 0) : 0.0;
+                $sum += $v;
+                $sheet->setCellValue($coord($m + 1) . $r, $isPct ? $v / 100 : $v);
             }
-            $sheet->getStyle("B{$r}:{$lastCol}{$r}")->getNumberFormat()->setFormatCode($kind === 'p' ? '0.0%' : '#,##0');
-            if ($bold) { $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFont()->setBold(true); }
-            if ($fill) { $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($fill); }
+            // el total de un porcentaje no se suma
+            if (!$isPct) {
+                $sheet->setCellValue($lastCol . $r, $sum);
+            }
+            $sheet->getStyle("B{$r}:{$lastCol}{$r}")->getNumberFormat()->setFormatCode($isPct ? '0.0%' : '#,##0');
+            $sheet->getStyle("B{$r}:{$lastCol}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+            if ($isSection) {
+                $sheet->getRowDimension($r)->setRowHeight(21);
+                $sheet->getStyle("A{$r}:{$lastCol}{$r}")->applyFromArray([
+                    'font' => ['bold' => true, 'color' => ['argb' => 'FF000000']],
+                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $color]],
+                    'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+                ]);
+                $zebra = false;
+            } else {
+                $sheet->getStyle("A{$r}")->getAlignment()->setIndent(2);
+                $sheet->getRowDimension($r)->setRowHeight(19);
+                $zebra = !$zebra;
+                $sheet->getStyle("{$lastCol}{$r}")->getFont()->setBold(true);
+            }
+
             $r++;
         }
-        $sheet->getColumnDimension('A')->setWidth(22);
+        $lastRow = $r - 1;
+
+        // Bordes finos en toda la tabla y línea separadora antes del total del año
+        $sheet->getStyle("A4:{$lastCol}{$lastRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFD0D7DE');
+        $sheet->getStyle("A4:{$lastCol}{$lastRow}")->getBorders()->getOutline()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF1F4E79');
+        $sheet->getStyle("{$lastCol}4:{$lastCol}{$lastRow}")->getBorders()->getLeft()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF1F4E79');
+
+        $sheet->getColumnDimension('A')->setWidth(28);
         for ($m = 1; $m <= $lastMonth; $m++) {
-            $sheet->getColumnDimension($coord($m + 1))->setWidth(14);
+            $sheet->getColumnDimension($coord($m + 1))->setWidth(15);
         }
-        $sheet->freezePane('B2');
+        $sheet->getColumnDimension($lastCol)->setWidth(17);
+
+        $sheet->freezePane('B5');
+        $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE)->setFitToWidth(1)->setFitToHeight(0);
+        $sheet->getPageSetup()->setFitToPage(true);
     }
 
     // Hoja de una tabla de consumo: fila 1 = suma de cada mes, fila 2 = encabezados, desde la 3 los clientes

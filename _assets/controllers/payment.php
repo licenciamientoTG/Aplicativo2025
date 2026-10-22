@@ -5355,7 +5355,84 @@ class Payment
 
     public function import_invoices()
     {
-        echo $this->twig->render($this->route . 'import_invoices.html');
+        $emisores = $this->facturasRecibidasModel->emisores_con_facturas();
+        $stations = array_values(array_filter(
+            $this->estacionesModel->get_stations(),
+            fn($s) => (int)$s['Codigo'] > 0
+        ));
+        echo $this->twig->render($this->route . 'import_invoices.html', compact('emisores', 'stations'));
+    }
+
+    /**
+     * Búsqueda de facturas importadas (tab "Búsqueda" de import_invoices). Devuelve JSON.
+     */
+    public function search_invoices_table()
+    {
+        header('Content-Type: application/json');
+        $limite = 1000;
+        $rows = $this->facturasRecibidasModel->search_invoices([
+            'emisor_rfc'  => trim($_POST['emisor_rfc'] ?? ''),
+            'codgas'      => trim($_POST['codgas'] ?? ''),
+            'q'           => trim($_POST['q'] ?? ''),
+            'from'        => $_POST['from'] ?? '',
+            'until'       => $_POST['until'] ?? '',
+            'campo_fecha' => $_POST['campo_fecha'] ?? 'fecha',
+        ], $limite);
+
+        $truncado = count($rows) > $limite;
+        if ($truncado) {
+            $rows = array_slice($rows, 0, $limite);
+        }
+        echo json_encode(['success' => true, 'data' => $rows, 'truncado' => $truncado, 'limite' => $limite]);
+    }
+
+    /**
+     * Sirve el PDF/XML de una factura importada. ?id=&tipo=pdf|xml&download=1 para forzar descarga.
+     */
+    public function search_invoice_file()
+    {
+        $id   = (int)($_GET['id'] ?? 0);
+        $tipo = $_GET['tipo'] ?? 'pdf';
+        if ($id <= 0 || !in_array($tipo, ['pdf', 'xml'], true)) {
+            http_response_code(400);
+            echo 'Parámetros inválidos';
+            return;
+        }
+
+        $rutas = $this->facturasRecibidasModel->rutas_archivos($id);
+        $ruta = $tipo === 'pdf' ? ($rutas['RutaArchivo'] ?? '') : ($rutas['RutaXml'] ?? '');
+        if (!$ruta) {
+            http_response_code(404);
+            echo 'Archivo no encontrado';
+            return;
+        }
+
+        $ruta = str_replace('/', DIRECTORY_SEPARATOR, $ruta);
+        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
+        // Rutas relativas (attachments\...) → carpeta base del importador de correos
+        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
+            $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
+        }
+
+        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
+        $real = realpath($ruta);
+        if ($real === false || $baseAllowed === false || strpos($real, $baseAllowed) !== 0) {
+            http_response_code(404);
+            echo 'Archivo no encontrado o fuera del directorio permitido.';
+            return;
+        }
+        if (!is_readable($real)) {
+            http_response_code(404);
+            echo 'Archivo no legible.';
+            return;
+        }
+
+        $disposition = !empty($_GET['download']) ? 'attachment' : 'inline';
+        header('Content-Type: ' . ($tipo === 'pdf' ? 'application/pdf' : 'text/xml'));
+        header('Content-Disposition: ' . $disposition . '; filename="' . basename($real) . '"');
+        header('Content-Length: ' . filesize($real));
+        readfile($real);
+        exit;
     }
 
 

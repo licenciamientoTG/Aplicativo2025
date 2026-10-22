@@ -245,6 +245,79 @@ public function buscarPorUUIDs($uuids) {
         return $result;
     }
 
+    /**
+     * Proveedores (emisores) que tienen facturas en FacturasRecibidas, para el filtro de búsqueda.
+     */
+    public function emisores_con_facturas() {
+        $query = "SELECT EmisorRfc, MAX(EmisorNombre) AS EmisorNombre, COUNT(*) AS Total
+                  FROM TG.dbo.FacturasRecibidas WITH (NOLOCK)
+                  WHERE EmisorRfc IS NOT NULL AND EmisorRfc <> ''
+                  GROUP BY EmisorRfc
+                  ORDER BY MAX(EmisorNombre)";
+        return ($this->sql->select($query, [])) ?: [];
+    }
+
+    /**
+     * Búsqueda de facturas ya importadas.
+     * Filtros: emisor_rfc, codgas ('' = todas, 'none' = sin estación resuelta), q (folio/UUID/remisión),
+     * from/until sobre Fecha (emisión) o FechaImportacion según $campo_fecha ('fecha'|'importacion').
+     * Devuelve como máximo $limite filas (+1 para detectar truncamiento).
+     */
+    public function search_invoices(array $f, int $limite = 1000) {
+        $where = [];
+        $params = [];
+
+        $campo = ($f['campo_fecha'] ?? 'fecha') === 'importacion' ? 'fr.FechaImportacion' : 'fr.Fecha';
+        if (!empty($f['from'])) {
+            $where[] = "$campo >= ?";
+            $params[] = date('Y-m-d', strtotime($f['from'])) . ' 00:00:00';
+        }
+        if (!empty($f['until'])) {
+            $where[] = "$campo <= ?";
+            $params[] = date('Y-m-d', strtotime($f['until'])) . ' 23:59:59';
+        }
+        if (!empty($f['emisor_rfc'])) {
+            $where[] = "fr.EmisorRfc = ?";
+            $params[] = $f['emisor_rfc'];
+        }
+        if (($f['codgas'] ?? '') === 'none') {
+            $where[] = "fr.EstacionCodgas IS NULL";
+        } elseif (($f['codgas'] ?? '') !== '') {
+            $where[] = "fr.EstacionCodgas = ?";
+            $params[] = (string)(int)$f['codgas'];
+        }
+        if (!empty($f['q'])) {
+            $like = '%' . trim($f['q']) . '%';
+            $where[] = "(fr.UUID LIKE ? OR fr.Folio LIKE ? OR fr.Remision LIKE ?)";
+            array_push($params, $like, $like, $like);
+        }
+
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+        $top = $limite + 1;
+
+        $query = "SELECT TOP $top
+                    fr.Id, fr.Folio, fr.Serie, fr.UUID,
+                    CONVERT(VARCHAR(10), fr.Fecha, 23) AS Fecha,
+                    CONVERT(VARCHAR(16), fr.FechaImportacion, 120) AS FechaImportacion,
+                    fr.EmisorNombre, fr.EmisorRfc, fr.ReceptorNombre,
+                    fr.Total, fr.Moneda, fr.TipoDeComprobante, fr.Remision, fr.Destino,
+                    fr.EstacionCodgas,
+                    e.Nombre AS EstacionNombre,
+                    CASE WHEN ISNULL(fr.RutaArchivo, '') <> '' THEN 1 ELSE 0 END AS TienePdf,
+                    CASE WHEN ISNULL(fr.RutaXml, '') <> '' THEN 1 ELSE 0 END AS TieneXml
+                  FROM TG.dbo.FacturasRecibidas fr WITH (NOLOCK)
+                  LEFT JOIN TG.dbo.Estaciones e ON CAST(e.Codigo AS VARCHAR(10)) = fr.EstacionCodgas
+                  $whereSQL
+                  ORDER BY fr.Fecha DESC, fr.Id DESC";
+
+        return ($this->sql->select($query, $params)) ?: [];
+    }
+
+    public function rutas_archivos($facturaId) {
+        $rows = $this->sql->select("SELECT RutaArchivo, RutaXml FROM TG.dbo.FacturasRecibidas WHERE Id = ?", [$facturaId]);
+        return $rows[0] ?? null;
+    }
+
     public function update_ruta($facturaId, $ruta, $nombreArchivo) {
         $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ? WHERE Id = ?";
         return $this->sql->update($query, [$ruta, $nombreArchivo, $facturaId]);

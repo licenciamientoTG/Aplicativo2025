@@ -2490,10 +2490,11 @@ async function clients_credit_table() {
     });
 }
 
-// Categoría de consumo propio (TG.dbo.clientes_consumo_propio), solo débito: badge en pantalla, texto en Excel/filtros
+// Consumo propio (TG.dbo.clientes_consumo_propio), solo débito: la categoría detallada no se muestra, solo "Propio"
 function consumo_propio_render(d, type) {
-    if (!d || type !== 'display') return d || '';
-    return '<span class="badge bg-info text-dark" title="Consumo propio">' + $('<div>').text(d).html() + '</span>';
+    if (!d) return '';
+    if (type !== 'display') return 'Propio';
+    return '<span class="badge bg-info text-dark" title="Consumo propio">Propio</span>';
 }
 
 // ── Consumos por Cliente, sumatorias (Débito tipval=4 / Crédito tipval=3) ──
