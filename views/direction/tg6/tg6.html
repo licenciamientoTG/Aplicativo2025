@@ -16,10 +16,6 @@
     border-radius: 10px; /* Bordes redondeados */
 }
 
-    .border_end {
-        border-right: 1px solid #00000078 !important;
-        border-left: 1px solid #00000078 !important;
-    }
     .table th, .table td {
         white-space: nowrap;
         padding: 0.25rem 0.5rem;
@@ -35,20 +31,34 @@
     .bg-brown {background-color: #8040009a;  }
 
 
-     .table-orange {
-     
-
-    --bs-table-color: #000;
-    --bs-table-bg: orange;
-    --bs-table-border-color: orange;
-    --bs-table-striped-bg: orange;
-    --bs-table-striped-color: #000;
-    --bs-table-active-bg: #orange;
-    --bs-table-active-color: #000;
-    --bs-table-hover-bg: orange;
-    --bs-table-hover-color: #000
-    }
-
+    /* Tablas de consumo TG6 */
+    .tg6-table thead th { background: var(--tg6-tint, #f4f6f8); color: var(--tg6-dark, inherit); border-top: 4px solid var(--tg6-accent, #adb5bd); vertical-align: bottom; }
+    .tg6-table > :not(caption) > * > * { border-color: #dee2e6; }
+    .tg6-table tbody tr:hover > td { background-color: var(--tg6-tint, #f4f6f8); }
+    .tg6-accent-cc { --tg6-accent: #0095DA; --tg6-tint: #e3f3fb; --tg6-dark: #0a5a82; }
+    .tg6-accent-cl { --tg6-accent: #0b5ed7; --tg6-tint: #e4ecfb; --tg6-dark: #0a3d91; }
+    .tg6-accent-db { --tg6-accent: #6f42c1; --tg6-tint: #eee8f8; --tg6-dark: #4a2b85; }
+    .tg6-pane .card-header { background: var(--tg6-tint); border-left: 5px solid var(--tg6-accent); }
+    .tg6-pane .card-title { color: var(--tg6-dark); font-weight: 600; }
+    #CreditCount-tab.active { border-top: 3px solid #0095DA; color: #0a5a82; }
+    #CreditClient-tab.active { border-top: 3px solid #0b5ed7; color: #0a3d91; }
+    #DebitCount-tab.active { border-top: 3px solid #6f42c1; color: #4a2b85; }
+    #CreditCount-tab { border-bottom-color: transparent; box-shadow: inset 0 -3px 0 #0095DA33; }
+    #CreditClient-tab { box-shadow: inset 0 -3px 0 #0b5ed733; }
+    #DebitCount-tab { box-shadow: inset 0 -3px 0 #6f42c133; }
+    .tg6-table th.dtfc-fixed-left { background-color: var(--tg6-tint, #f4f6f8); }
+    .tg6-table td.text-end, .tg6-table th.text-end, .tg6-month-sum { font-variant-numeric: tabular-nums; }
+    .tg6-table .tg6-group-start { border-left: 2px solid #6c757d !important; }
+    .tg6-table .tg6-group-end { border-right: 2px solid #6c757d !important; }
+    .tg6-month-sum { font-size: .8em; font-weight: 400; color: #6c757d; margin-bottom: .15rem; padding-right: 14px; }
+    .tg6-muted { color: #6c757d; }
+    .tg6-zero { color: #adb5bd; }
+    .tg6-amber { color: #b35c00; }
+    .tg6-table td.dtfc-fixed-left, .tg6-table th.dtfc-fixed-left { background-color: #fff; }
+    .tg6-table td.dtfc-fixed-left:last-child, .tg6-table th.dtfc-fixed-left:last-child { box-shadow: 4px 0 6px -2px rgba(0,0,0,.15); }
+    .tg6-name { display: inline-block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+    .tg6-status .btn.active { box-shadow: inset 0 0 0 2px rgba(0,0,0,.25); }
+    .tg6-error { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
 </style>
 {% endblock %}
 {% block menutitle %}TG6{% endblock %}
@@ -72,6 +82,12 @@
 				{% endfor %}
 			</select>
 		</div>
+		<div class="btn-group btn-group-sm" role="group" aria-label="Atajos de rango">
+			<button type="button" class="btn btn-outline-secondary" data-tg6-range="ytd">Año en curso</button>
+			<button type="button" class="btn btn-outline-secondary" data-tg6-range="12m">Últimos 12</button>
+			<button type="button" class="btn btn-outline-secondary" data-tg6-range="6m">Últimos 6</button>
+		</div>
+		<small class="text-muted align-self-center">Aplica a las 3 tablas</small>
 	</div>
 {% endmacro %}
 
@@ -83,10 +99,13 @@
 
 
 <div class="d-flex flex-wrap justify-content-end gap-2 mb-2">
-	<button type="button" class="btn btn-sm btn-outline-primary" id="btn_assign_advisor">
+	<button type="button" class="btn btn-sm btn-outline-success" onclick="downloadExcel()">
+		<i class="fas fa-file-excel"></i> Descargar Excel
+	</button>
+	<button type="button" class="btn btn-sm btn-outline-secondary" id="btn_assign_advisor">
 		<i class="fas fa-user-tag"></i> Asignar asesor
 	</button>
-	<button type="button" class="btn btn-sm btn-primary" id="btn_sync_consumption">
+	<button type="button" class="btn btn-sm btn-outline-secondary" id="btn_sync_consumption" title="Reemplaza los consumos guardados del mes elegido">
 		<i class="fas fa-sync-alt"></i> Sincronizar
 	</button>
 </div>
@@ -95,13 +114,13 @@
         <button class="nav-link active" id="VtaVsVenHistoric-tab" data-bs-toggle="tab" data-bs-target="#VtaVsVenHistoric" type="button" role="tab" aria-controls="VtaVsVenHistoric" aria-selected="true">Vta vs Emp Historico</button>
       </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link " id="CreditCount-tab" data-bs-toggle="tab" data-bs-target="#CreditCount" type="button" role="tab" aria-controls="CreditCount" aria-selected="true">Cre Consumo Cuenta</button>
+      <button class="nav-link " id="CreditCount-tab" data-bs-toggle="tab" data-bs-target="#CreditCount" type="button" role="tab" aria-controls="CreditCount" aria-selected="false">Crédito · por cuenta</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="CreditClient-tab" data-bs-toggle="tab" data-bs-target="#CreditClient" type="button" role="tab" aria-controls="CreditClient" aria-selected="false">Cre Consumo Cliente</button>
+      <button class="nav-link" id="CreditClient-tab" data-bs-toggle="tab" data-bs-target="#CreditClient" type="button" role="tab" aria-controls="CreditClient" aria-selected="false">Crédito · por RFC</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="DebitCount-tab" data-bs-toggle="tab" data-bs-target="#DebitCount" type="button" role="tab" aria-controls="DebitCount" aria-selected="false">Debito Consumos</button>
+      <button class="nav-link" id="DebitCount-tab" data-bs-toggle="tab" data-bs-target="#DebitCount" type="button" role="tab" aria-controls="DebitCount" aria-selected="false">Débito · por cuenta</button>
     </li>
   </ul>
 
@@ -118,7 +137,6 @@
 							{% endfor %}
 						</select>
 					</div>
-					<button class="btn btn-outline-success" onclick="downloadExcel()">Descargar</button>
 				</div>
 			</div>
 			<div class="card-body">
@@ -360,10 +378,10 @@
 			</div>
 		</div>
 	</div>
-	<div class="tab-pane  " id="CreditCount" role="tabpanel" aria-labelledby="CreditCount-tab">
+	<div class="tab-pane tg6-pane tg6-accent-cc" id="CreditCount" role="tabpanel" aria-labelledby="CreditCount-tab">
 		<div class="card-header">
 			<div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
-				<h5 class="card-title mb-0">Credito Consumo Cuenta</h5>
+				<h5 class="card-title mb-0">Crédito · consumo por cuenta</h5>
 				<div class="d-flex flex-wrap align-items-end gap-2">
 						{{ ui.month_range(months) }}
 				</div>
@@ -371,143 +389,92 @@
 		</div>
 		<div class="card-body">
 			<div class="tg6-status small mb-2" data-for="#comsumption_credit_count_table"></div>
-			<table class="table table-bordered table-sm table-hover w-100" id="comsumption_credit_count_table">
+			<table class="table table-bordered table-sm table-hover w-100 tg6-table tg6-accent-cc" id="comsumption_credit_count_table">
 				<thead>
 					<tr class=" ">
 						<th>Cliente</th>
 						<th>Nombre</th>
 						<th class="d-none">Nombre</th>
 						<th>Asesor</th>
-						<th>Ingreso</th>
+						<th class="tg6-group-end">Alta</th>
 						{% for month in months %}
-							<th class="table-info text-nowrap text-left">{{month.name}}</th>
+							<th class="text-nowrap text-end">{{month.name}}</th>
 						{% endfor %}
-						<th class="table-success">Consumo Mayor</th>
-						<th class="table-primary">Proyeccion</th>
-						<th class="table-info text-nowrap">Proy. VS<br>Cons Mayor<br>En 6 Meses</th>
-							<th class="table-info text-nowrap">% Cumpl.</th>
-						<th class="table-info">Zona</th>
+						<th class="text-end tg6-group-start">Consumo Mayor</th>
+						<th class="text-end">Proyección</th>
+						<th class="text-nowrap text-end" title="Proyección del mes contra el consumo mayor de los últimos 6 meses">Proy. vs máx. 6m</th>
+							<th class="text-nowrap text-end">% Cumpl.</th>
+						<th>Zona</th>
 
 					</tr>
 				</thead>
 				<tbody></tbody>
-				<tfoot>
-					<tr>
-						<th></th>
-						<th></th>
-						<th class="d-none"></th>
-						<th></th>
-						<th></th>
-						{% for month in months %}
-							<th class="text-nowrap text-left"></th>
-						{% endfor %}
-						<th></th>
-						<th></th>
-						<th></th>
-						<th></th>
-						<th></th>
-					</tr>
-				</tfoot>
-			</table>
+				</table>
 		</div>
 	</div>
-	<div class="tab-pane " id="CreditClient" role="tabpanel" aria-labelledby="CreditClient-tab">
+	<div class="tab-pane tg6-pane tg6-accent-cl" id="CreditClient" role="tabpanel" aria-labelledby="CreditClient-tab">
 		<div class="card-header">
 			<div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
-				<h5 class="card-title mb-0">Credito Consumo Cliente</h5>
+				<h5 class="card-title mb-0">Crédito · consumo por RFC</h5>
 				{{ ui.month_range(months) }}
 			</div>
 		</div>
 		<div class="card-body">
 
 			<div class="tg6-status small mb-2" data-for="#comsumption_credit_client_table"></div>
-			<table class="table table-bordered table-sm table-hover w-100" id="comsumption_credit_client_table">
+			<table class="table table-bordered table-sm table-hover w-100 tg6-table tg6-accent-cl" id="comsumption_credit_client_table">
 				<thead>
 					<tr class=" ">
 						<th>Cliente</th>
 						<th>Nombre</th>
 						<th class="d-none">Nombre</th>
 						<th>Asesor</th>
-						<th>Ingreso</th>
+						<th class="tg6-group-end">Alta</th>
 						{% for month in months %}
-							<th class="table-success text-nowrap text-left">{{month.name}}</th>
+							<th class="text-nowrap text-end">{{month.name}}</th>
 						{% endfor %}
-						<th class="table-success">Consumo Mayor</th>
-						<th class="table-primary">Proyeccion</th>
-						<th class="table-info text-nowrap">Proy. VS<br>Cons Mayor<br>En 6 Meses</th>
-							<th class="table-info text-nowrap">% Cumpl.</th>
-						<th class="table-success">Zona</th>
+						<th class="text-end tg6-group-start">Consumo Mayor</th>
+						<th class="text-end">Proyección</th>
+						<th class="text-nowrap text-end" title="Proyección del mes contra el consumo mayor de los últimos 6 meses">Proy. vs máx. 6m</th>
+							<th class="text-nowrap text-end">% Cumpl.</th>
+						<th>Zona</th>
 
 					</tr>
 				</thead>
 				<tbody></tbody>
-				<tfoot>
-					<tr>
-						<th></th>
-						<th></th>
-						<th class="d-none"></th>
-						<th></th>
-						<th></th>
-						{% for month in months %}
-							<th class="text-nowrap text-left"></th>
-						{% endfor %}
-						<th></th>
-						<th></th>
-						<th></th>
-						<th></th>
-						<th></th>
-					</tr>
-				</tfoot>
-			</table>
+				</table>
 		</div>
 	</div>
-	<div class="tab-pane " id="DebitCount" role="tabpanel" aria-labelledby="DebitCount-tab">
+	<div class="tab-pane tg6-pane tg6-accent-db" id="DebitCount" role="tabpanel" aria-labelledby="DebitCount-tab">
 		<div class="card-header">
 			<div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
-				<h5 class="card-title mb-0">Debito Consumo</h5>
+				<h5 class="card-title mb-0">Débito · consumo por cuenta</h5>
 				{{ ui.month_range(months) }}
 			</div>
 		</div>
 		<div class="card-body">
 			<div class="tg6-status small mb-2" data-for="#comsumption_debit_table"></div>
-			<table class="table table-bordered table-sm table-hover w-100" id="comsumption_debit_table">
+			<table class="table table-bordered table-sm table-hover w-100 tg6-table tg6-accent-db" id="comsumption_debit_table">
 				<thead>
 					<tr class=" ">
 						<th>Cliente</th>
 						<th>Nombre</th>
 						<th class="d-none">Nombre</th>
 						<th>Asesor</th>
-						<th>Ingreso</th>
+						<th class="tg6-group-end">Alta</th>
 						{% for month in months %}
-							<th class="table-orange text-nowrap text-left">{{month.name}}</th>
+							<th class="text-nowrap text-end">{{month.name}}</th>
 						{% endfor %}
-						<th class="table-success">Consumo Mayor</th>
-						<th class="table-primary">Proyeccion</th>
-						<th class="table-info text-nowrap">Proy. VS<br>Cons Mayor<br>En 6 Meses</th>
-							<th class="table-info text-nowrap">% Cumpl.</th>
-						<th class="table-orange">Zona</th>
+						<th class="text-end tg6-group-start">Consumo Mayor</th>
+						<th class="text-end">Proyección</th>
+						<th class="text-nowrap text-end" title="Proyección del mes contra el consumo mayor de los últimos 6 meses">Proy. vs máx. 6m</th>
+							<th class="text-nowrap text-end">% Cumpl.</th>
+						<th>Zona</th>
 
 					</tr>
 				</thead>
 				<tbody></tbody>
-				<tfoot>
-					<tr>
-						<th></th>
-						<th></th>
-						<th class="d-none"></th>
-						<th></th>
-						<th></th>
-						{% for month in months %}
-							<th class="text-nowrap text-left"></th>
-						{% endfor %}
-						<th></th>
-						<th></th>
-						<th></th>
-						<th></th>
-						<th></th>
-					</tr>
-				</tfoot>
-			</table>
+				</table>
 		</div>
 	</div>
 </div>

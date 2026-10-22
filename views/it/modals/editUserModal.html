@@ -22,8 +22,8 @@
             <input type="text" class="form-control" id="name" name="name" value="{{ user.Nombre }}" required>
         </div>
         <div class="mb-3">
-            <label for="username" class="form-label">Usuario: </label>
-            <input type="text" class="form-control" id="username" value="{{ user.Usuario }}" readonly disabled>
+            <label for="username" class="form-label">Usuario: <b class="text-danger">*</b></label>
+            <input type="text" class="form-control" id="username" name="username" value="{{ user.Usuario }}" required>
         </div>
         <div class="mb-3">
             <label for="email" class="form-label">Correo electrónico: </label>

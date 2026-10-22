@@ -91,13 +91,13 @@ class UsuariosModel extends Model{
      * @return bool
      * @throws Exception
      */
-    function editUser($name, $profile_id, $email, $IdEstacion, $status, $id, $department_id = null) : bool {
+    function editUser($name, $profile_id, $email, $IdEstacion, $status, $id, $department_id = null, $username = null) : bool {
         $department_id = ($department_id === '' || $department_id === null) ? null : (int)$department_id;
         $query = 'UPDATE [TG].[dbo].[Usuario] SET
-                    [Nombre] = ?,[Estatus] = ?,[IdPerfil] = ?,[Correo] = ?,[IdDepartamento] = ?
+                    [Nombre] = ?,[Estatus] = ?,[IdPerfil] = ?,[Correo] = ?,[IdDepartamento] = ?,[Usuario] = ISNULL(?, [Usuario])
                 WHERE
                     [Id] = ?;';
-        if ($this->sql->update($query, [$name, $status, $profile_id, $email, $department_id, $id])) { // Si logramos actualizar los datos del usuario
+        if ($this->sql->update($query, [$name, $status, $profile_id, $email, $department_id, $username, $id])) { // Si logramos actualizar los datos del usuario
             if ($this->sql->select("SELECT * FROM [TG].[dbo].[UsuarioEstacion] WHERE IdUsuario = ?", [$id])) {
                 if ($IdEstacion == 0) {
                     // Editamos ese registro
@@ -116,6 +116,14 @@ class UsuariosModel extends Model{
         } else {
             return false;
         }
+    }
+
+    /**
+     * Indica si otro usuario (distinto de $id) ya usa ese nombre de usuario
+     * @throws Exception
+     */
+    function usernameTaken($username, $id) : bool {
+        return (bool)$this->sql->select('SELECT TOP (1) Id FROM [TG].[dbo].[Usuario] WHERE Usuario = ? AND Id <> ?;', [$username, $id]);
     }
 
     /**

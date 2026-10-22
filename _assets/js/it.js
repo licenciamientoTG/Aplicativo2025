@@ -1249,6 +1249,8 @@ $(document).on("submit", "#editUserForm", function (event) {
                 datatables_users.clear().draw();
                 datatables_users.ajax.reload();
                 $('.table-responsive').removeClass('loading');
+            } else if (response == 2) {
+                toastr.warning('Ya existe otro usuario con ese nombre de usuario', '¡Atención!', { timeOut: 5000 });
             } else {
                 toastr.warning('No fue posible modificar los datos del usuario', '¡Atención!', { timeOut: 5000 });
             }
