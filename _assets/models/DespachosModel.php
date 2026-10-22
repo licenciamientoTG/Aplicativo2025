@@ -89,19 +89,19 @@ class DespachosModel extends Model
     }
 
     /**
-     * Conteo diario de despachos identificados como Bankaool a partir de las 23:00.
+     * Importe diario de despachos identificados como Bankaool a partir de las 23:00.
      * La vista de conciliación lo usa únicamente para Villa Ahumada (codgas 31).
      *
-     * @return list<array{fecha:string,cantidad:int}>|false
+     * @return list<array{fecha:string,importe:float}>|false
      */
-    public function get_bankaool_late_dispatch_counts(int $codgas, string $from, string $until): array|false
+    public function get_bankaool_late_dispatch_amounts(int $codgas, string $from, string $until): array|false
     {
         $desde = dateToInt($from);
         $hasta = dateToInt($until);
         $db = $this->stationDb($codgas);
         $query = "SELECT
                     CONVERT(varchar(10), DATEADD(day, -1, CAST(fchtrn AS datetime)), 23) AS fecha,
-                    COUNT(*) AS cantidad
+                    SUM(mto) AS importe
                   FROM {$db}.[despachos]
                   WHERE codgas = ?
                     AND fchtrn BETWEEN ? AND ?

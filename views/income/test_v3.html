@@ -1148,7 +1148,7 @@ const URLS_V3 = {
     config:            '/income/get_conciliacion_config',
     ventas:            '/income/get_ventas_local',
     transacciones:     '/income/get_transacciones_banco',
-    bankaoolNocturnas: '/income/get_conteo_despachos_bankaool_nocturnos',
+    bankaoolNocturnas: '/income/get_importe_despachos_bankaool_nocturnos',
     conciliadas:       '/income/get_conciliaciones_v3_hechas',
     guardar:           '/income/guardar_conciliacion_v3',
     deshacer:          '/income/deshacer_conciliacion_v3',
@@ -4185,14 +4185,14 @@ async function abrirModoTransacciones() {
     $contTX.html('<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 small text-muted">Procesando Transacciones...</div></div>');
 
     // Villa Ahumada / Bankaool: contar despachos con RUT Bankaool desde las 23:00.
-    let bankaoolNocturnasPorFecha = {};
+    let importesBankaoolNocturnosPorFecha = {};
     if (esPilotoVillaAhumadaBankaool() && String($('#estacionSelect').val()) === '31') {
         try {
             const response = await fetch(`${URLS_V3.bankaoolNocturnas}?year=${widgetState.year}&month=${widgetState.month}`);
             const json = await response.json();
-            if (json.status === 'success' && json.data && typeof json.data === 'object') bankaoolNocturnasPorFecha = json.data;
+            if (json.status === 'success' && json.data && typeof json.data === 'object') importesBankaoolNocturnosPorFecha = json.data;
         } catch (e) {
-            bankaoolNocturnasPorFecha = {};
+            importesBankaoolNocturnosPorFecha = {};
         }
     }
 
@@ -4233,7 +4233,7 @@ async function abrirModoTransacciones() {
     });
 
     // Unión de todas las fechas
-    const allDates = [...new Set([...Object.keys(cgGroups), ...Object.keys(txGroups), ...Object.keys(bankaoolNocturnasPorFecha)])].sort();
+    const allDates = [...new Set([...Object.keys(cgGroups), ...Object.keys(txGroups), ...Object.keys(importesBankaoolNocturnosPorFecha)])].sort();
 
     $contCG.empty();
     $contTX.empty();
@@ -4254,9 +4254,9 @@ async function abrirModoTransacciones() {
         grandTotalTX += tx.total;
 
         const dateFmt = fecha.split('-').reverse().join('/');
-        const bankaoolNocturnas = parseInt(bankaoolNocturnasPorFecha[fecha] || 0, 10);
-        const bankaoolNocturnasBadge = bankaoolNocturnas > 0
-            ? `<span class="bankaool-nocturnas-tag" title="Despachos con RUT Bankaool a las 23:00 o después"><i class="fas fa-arrow-right"></i>${bankaoolNocturnas} tx ≥ 23:00</span>`
+        const importeBankaoolNocturno = parseFloat(importesBankaoolNocturnosPorFecha[fecha] || 0);
+        const bankaoolNocturnasBadge = importeBankaoolNocturno > 0
+            ? `<span class="bankaool-nocturnas-tag" title="Importe de despachos Bankaool desde las 23:00"><i class="fas fa-arrow-right"></i>${fmt.format(importeBankaoolNocturno)}</span>`
             : '';
 
         // Badge diferencia

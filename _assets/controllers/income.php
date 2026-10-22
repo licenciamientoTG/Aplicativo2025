@@ -5055,7 +5055,7 @@ public function anomalies_client_tickets()
     }
 
     /** Conteo de despachos Bankaool nocturnos para Villa Ahumada en modo TX. */
-    public function get_conteo_despachos_bankaool_nocturnos() {
+    public function get_importe_despachos_bankaool_nocturnos() {
         ob_clean();
         header('Content-Type: application/json');
 
@@ -5070,15 +5070,15 @@ public function anomalies_client_tickets()
         try {
             $from = sprintf('%04d-%02d-01', $year, $month);
             $until = date('Y-m-t', strtotime($from));
-            $rows = $this->despachosModel->get_bankaool_late_dispatch_counts(31, $from, $until) ?: [];
-            $counts = [];
+            $rows = $this->despachosModel->get_bankaool_late_dispatch_amounts(31, $from, $until) ?: [];
+            $amounts = [];
             foreach ($rows as $row) {
-                $counts[(string)$row['fecha']] = (int)$row['cantidad'];
+                $amounts[(string)$row['fecha']] = (float)$row['importe'];
             }
-            echo json_encode(['status' => 'success', 'data' => $counts]);
+            echo json_encode(['status' => 'success', 'data' => $amounts]);
         } catch (Throwable $e) {
             http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'No se pudo consultar el conteo de despachos']);
+            echo json_encode(['status' => 'error', 'message' => 'No se pudo consultar el importe de los despachos']);
         }
         exit;
     }
