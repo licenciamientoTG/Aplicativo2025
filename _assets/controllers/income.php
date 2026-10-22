@@ -5054,6 +5054,68 @@ public function anomalies_client_tickets()
         exit;
     }
 
+    /** Conteo de despachos Bankaool nocturnos para Villa Ahumada en modo TX. */
+    public function get_importe_despachos_bankaool_nocturnos() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year = filter_input(INPUT_GET, 'year', FILTER_VALIDATE_INT);
+        $month = filter_input(INPUT_GET, 'month', FILTER_VALIDATE_INT);
+        if (!$year || !$month || $year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Año o mes inválido']);
+            exit;
+        }
+
+        try {
+            $from = sprintf('%04d-%02d-01', $year, $month);
+            $until = date('Y-m-t', strtotime($from));
+            $rows = $this->despachosModel->get_bankaool_late_dispatch_amounts(31, $from, $until) ?: [];
+            $amounts = [];
+            foreach ($rows as $row) {
+                $amounts[(string)$row['fecha']] = (float)$row['importe'];
+            }
+            echo json_encode(['status' => 'success', 'data' => $amounts]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'No se pudo consultar el importe de los despachos']);
+        }
+        exit;
+    }
+
+    /** Resumen mensual de despachos diarios para el modo comparativo DES. */
+    public function get_despachos_resumen_diario() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $codgas = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
+        $year = filter_input(INPUT_GET, 'year', FILTER_VALIDATE_INT);
+        $month = filter_input(INPUT_GET, 'month', FILTER_VALIDATE_INT);
+        if ((int)$codgas !== 31 || !$year || !$month || $year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Estación, año o mes inválido']);
+            exit;
+        }
+
+        try {
+            $from = sprintf('%04d-%02d-01', $year, $month);
+            $until = date('Y-m-t', strtotime($from));
+            $rows = $this->despachosModel->get_daily_dispatch_summary($codgas, $from, $until) ?: [];
+            $data = [];
+            foreach ($rows as $row) {
+                $data[(string)$row['fecha']] = [
+                    'total' => (float)$row['importe'],
+                    'count' => (int)$row['cantidad'],
+                ];
+            }
+            echo json_encode(['status' => 'success', 'data' => $data]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'No se pudo consultar el resumen de despachos']);
+        }
+        exit;
+    }
+
     public function get_transacciones_por_deposito() {
         ob_clean();
         header('Content-Type: application/json');

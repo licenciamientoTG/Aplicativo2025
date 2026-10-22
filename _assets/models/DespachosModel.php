@@ -89,6 +89,51 @@ class DespachosModel extends Model
     }
 
     /**
+     * Importe diario de despachos identificados como Bankaool a partir de las 23:00.
+     * La vista de conciliación lo usa únicamente para Villa Ahumada (codgas 31).
+     *
+     * @return list<array{fecha:string,importe:float}>|false
+     */
+    public function get_bankaool_late_dispatch_amounts(int $codgas, string $from, string $until): array|false
+    {
+        $desde = dateToInt($from);
+        $hasta = dateToInt($until);
+        $db = $this->stationDb($codgas);
+        $query = "SELECT
+                    CONVERT(varchar(10), DATEADD(day, -1, CAST(fchtrn AS datetime)), 23) AS fecha,
+                    SUM(mto) AS importe
+                  FROM {$db}.[despachos]
+                  WHERE codgas = ?
+                    AND fchtrn BETWEEN ? AND ?
+                    AND hratrn >= 2300
+                    AND rut LIKE '%BANKAOOL%'
+                  GROUP BY fchtrn
+                  ORDER BY fchtrn";
+
+        return $this->fetchAll($query, [$codgas, $desde, $hasta]);
+    }
+
+    /** Resumen diario de despachos con RUT Bankaool normalizado por fchtrn. */
+    public function get_daily_dispatch_summary(int $codgas, string $from, string $until): array|false
+    {
+        $desde = dateToInt($from);
+        $hasta = dateToInt($until);
+        $db = $this->stationDb($codgas);
+        $query = "SELECT
+                    CONVERT(varchar(10), DATEADD(day, -1, CAST(fchtrn AS datetime)), 23) AS fecha,
+                    COUNT(*) AS cantidad,
+                    SUM(mto) AS importe
+                  FROM {$db}.[despachos]
+                  WHERE codgas = ?
+                    AND fchtrn BETWEEN ? AND ?
+                    AND UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(ISNULL(rut, ''))), ' ', ''), '-', ''), '.', ''), '/', ''), '_', '')) LIKE '%BANKAOOL%'
+                  GROUP BY fchtrn
+                  ORDER BY fchtrn";
+
+        return $this->fetchAll($query, [$codgas, $desde, $hasta]);
+    }
+
+    /**
      * Turno anterior y siguiente dentro de la secuencia 11 → 21 → 31 → 41 → 11.
      *
      * @return array{previous:int,next:int}

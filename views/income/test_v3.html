@@ -7,6 +7,10 @@
 
 {% block content %}
 <style>
+    .bankaool-nocturnas-tag { display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:3px 8px;border:1px solid #f59e0b;border-radius:999px;background:#fff7ed;color:#9a3412;font-size:.72rem;font-weight:700;line-height:1.2;white-space:nowrap;vertical-align:middle; }
+    .bankaool-nocturnas-tag i { color:#ea580c;font-size:.68rem; }
+    .bankaool-nocturnas-tag-cg { border-color:#93c5fd;background:#eff6ff;color:#1d4ed8; }
+    .bankaool-nocturnas-tag-cg i { color:#2563eb; }
     :root {
         --primary-color: #2c3e50;
         --accent-color:  #3498db;
@@ -368,6 +372,9 @@
                 <button class="btn btn-sm btn-outline-info rounded-pill" onclick="abrirModoTransacciones()" title="Comparar CG vs Transacciones por día">
                     <i class="fas fa-exchange-alt mr-1"></i> Modo TX
                 </button>
+                <button class="btn btn-sm btn-outline-primary rounded-pill d-none" id="btn-modo-despachos" onclick="abrirModoDespachos()" title="Comparar CG vs despachos Bankaool por día">
+                    <i class="fas fa-gas-pump mr-1"></i> Modo DES
+                </button>
                 <button class="btn btn-sm btn-outline-warning rounded-pill d-none" id="btn-gestionar-transitos" onclick="abrirModalGestionTransitos()" title="Ver y cancelar tránsitos activos">
                     <i class="fas fa-shipping-fast mr-1"></i> Tránsitos
                     <span id="transitos-cg-count" class="badge badge-warning ml-1">0</span>
@@ -605,7 +612,7 @@
         <div class="modal-content border-0 shadow-lg" style="height:90vh;border-radius:15px;overflow:hidden;">
             <div class="modal-header bg-dark text-white border-0 py-3">
                 <div class="d-flex align-items-center flex-nowrap pr-3 text-nowrap">
-                    <h5 class="modal-title font-weight-bold text-white mb-0"><i class="fas fa-columns mr-2"></i> Modo Transacciones — CG vs Banco por día</h5>
+                    <h5 id="mtx-title" class="modal-title font-weight-bold text-white mb-0"><i class="fas fa-columns mr-2"></i> Modo Transacciones — CG vs Banco por día</h5>
                     <span aria-hidden="true" style="display:inline-block;width:16px;"></span>
                     <div class="h5 mb-0 text-white" aria-label="Contexto de la conciliación">
                         <span class="font-weight-bold">Estación:</span> <span id="mtx-context-estacion">—</span>
@@ -631,8 +638,8 @@
                     </div>
                     <!-- Panel Derecho: Transacciones -->
                     <div class="col-6 h-100 d-flex flex-column">
-                        <div class="bg-primary text-white p-2 rounded-top font-weight-bold d-flex justify-content-between">
-                            <span><i class="fas fa-exchange-alt mr-2"></i> Transacciones</span>
+                        <div id="mtx-comparison-header" class="bg-primary text-white p-2 rounded-top font-weight-bold d-flex justify-content-between">
+                            <span id="mtx-comparison-label"><i class="fas fa-exchange-alt mr-2"></i> Transacciones</span>
                             <span id="mtx-tx-total" class="badge badge-light text-dark">$0.00</span>
                         </div>
                         <div class="bg-white border rounded-bottom flex-fill p-0" style="overflow-y:auto;" id="mtx-panel-tx">
@@ -1146,6 +1153,8 @@ const URLS_V3 = {
     config:            '/income/get_conciliacion_config',
     ventas:            '/income/get_ventas_local',
     transacciones:     '/income/get_transacciones_banco',
+    bankaoolNocturnas: '/income/get_importe_despachos_bankaool_nocturnos',
+    despachosDiarios:  '/income/get_despachos_resumen_diario',
     conciliadas:       '/income/get_conciliaciones_v3_hechas',
     guardar:           '/income/guardar_conciliacion_v3',
     deshacer:          '/income/deshacer_conciliacion_v3',
@@ -1192,6 +1201,8 @@ let stationConfig = [];
 let currentRule   = null;           // { entidad_id, afiliacion, nombre_banco }
 
 function actualizarBadgeAfil() {
+    const mostrarModoDES = esPilotoVillaAhumadaBankaool() && String($('#estacionSelect').val()) === '31';
+    $('#btn-modo-despachos').toggleClass('d-none', !mostrarModoDES);
     if (currentRule && currentRule.afiliacion) {
         $('#badge-afil-texto').text(currentRule.afiliacion);
         $('#badge-afil-activa').show();
@@ -1210,6 +1221,7 @@ let sel = { left:[], tes:[] };      // left=CG, tes=Tesorería
 let cgData  = [];
 let tesData = [];
 let txData  = [];
+let importesBankaoolNocturnosPorFecha = {};
 let conciliadasSet = new Set();     // grupo_id ya conciliados
 let historial = [];                 // detalles conciliados actuales
 
@@ -1494,6 +1506,7 @@ function actualizarTodo() {
         fetchTransitos(estid, eid, afil),
         fetchTransitosCG(estid, eid, afil, year, month),
         fetchDiferidosCG(estid, eid, afil, year, month),
+        fetchImportesBankaoolNocturnos(year, month),
         checkMesCerrado(estid, eid, afil, mes),
         isAmex ? fetchAmexComisiones(year, month) : Promise.resolve(),
     ]).finally(() => {
@@ -1700,6 +1713,20 @@ async function fetchTx(eid, afil, year, month) {
         txData = (json.status === 'success') ? (json.data || []) : [];
     } catch(e) { txData = []; }
     renderTx();
+}
+
+async function fetchImportesBankaoolNocturnos(year, month) {
+    importesBankaoolNocturnosPorFecha = {};
+    if (!esPilotoVillaAhumadaBankaool() || String($('#estacionSelect').val()) !== '31') return;
+    try {
+        const response = await fetch(`${URLS_V3.bankaoolNocturnas}?year=${year}&month=${month}`);
+        const json = await response.json();
+        if (json.status === 'success' && json.data && typeof json.data === 'object') {
+            importesBankaoolNocturnosPorFecha = json.data;
+        }
+    } catch (e) {
+        importesBankaoolNocturnosPorFecha = {};
+    }
 }
 
 // ── FETCH CONCILIADAS V3 ──────────────────────────────────────
@@ -1998,7 +2025,7 @@ function renderCG() {
         return keywords.some(k => c.includes(k));
     });
 
-    if (!filtered.length && !transitosCG.fakes.length) {
+    if (!filtered.length && !transitosCG.fakes.length && !Object.keys(importesBankaoolNocturnosPorFecha).length) {
         $c.html('<div class="text-center text-muted py-5 mt-5">Sin movimientos CG</div>');
         $('#cg-counter').text('$0.00');
         return;
@@ -2017,6 +2044,9 @@ function renderCG() {
         if (!f) return;
         if (!byDate[f]) byDate[f] = [];
         byDate[f].push(item);
+    });
+    Object.keys(importesBankaoolNocturnosPorFecha).forEach(fecha => {
+        if (!byDate[fecha]) byDate[fecha] = [];
     });
 
     let grandTotal = 0;
@@ -2108,6 +2138,10 @@ function renderCG() {
         const iconClass = isOpen ? 'fa-chevron-down' : 'fa-chevron-right';
         const bodyClass = isOpen ? 'open' : '';
         const dateFmt   = fecha.split('-').reverse().join('/');
+        const importeBankaoolNocturno = parseFloat(importesBankaoolNocturnosPorFecha[fecha] || 0);
+        const bankaoolNocturnasBadge = importeBankaoolNocturno > 0
+            ? `<span class="bankaool-nocturnas-tag bankaool-nocturnas-tag-cg" title="Importe de despachos Bankaool desde las 23:00"><i class="fas fa-arrow-right"></i>${fmt.format(importeBankaoolNocturno)}</span>`
+            : '';
 
         // Filas del grupo
         let itemsHtml = '';
@@ -2334,6 +2368,7 @@ function renderCG() {
                     <span class="mr-2"><i class="far fa-calendar-alt mr-1"></i>${dateFmt}</span>
                     ${fechaTienePreconciliacion ? '<span class="badge badge-danger mr-1">PRE</span>' : ''}
                     <span class="badge" style="${badgeStyle}">${iconExcl}${nConcil}/${nTotal}</span>
+                    ${bankaoolNocturnasBadge}
                     ${diaSyncBtn}
                     ${diaTransitBtn}
                     ${diaCancelTransitBtn}
@@ -4168,8 +4203,20 @@ async function confirmarCrearTransito() {
     }
 }
 
-function abrirModoTransacciones() {
+async function abrirModoTransacciones() { return abrirModoComparacion('TX'); }
+async function abrirModoDespachos() {
+    if (!esPilotoVillaAhumadaBankaool() || String($('#estacionSelect').val()) !== '31') return;
+    return abrirModoComparacion('DES');
+}
+
+async function abrirModoComparacion(modo) {
     if (!currentRule) { alert('Primero selecciona una estación y banco.'); return; }
+    const esModoDespachos = modo === 'DES';
+    const nombreComparador = esModoDespachos ? 'Despachos Bankaool' : 'Transacciones';
+    const iconoComparador = esModoDespachos ? 'fa-gas-pump' : 'fa-exchange-alt';
+    $('#mtx-title').html(`<i class="fas fa-columns mr-2"></i> Modo ${nombreComparador} — CG vs ${nombreComparador} por día`);
+    $('#mtx-comparison-label').html(`<i class="fas ${iconoComparador} mr-2"></i> ${nombreComparador}`);
+    $('#mtx-comparison-header').toggleClass('bg-primary', !esModoDespachos).toggleClass('bg-info', esModoDespachos);
 
     $('#mtx-context-estacion').text($('#estacionSelect option:selected').text() || '—');
     $('#mtx-context-banco').text(currentRule.nombre_banco || $('#bancoSelect option:selected').text() || '—');
@@ -4179,7 +4226,37 @@ function abrirModoTransacciones() {
     const $contTX = $('#mtx-panel-tx').empty();
     $('#modalModoTransacciones').modal('show');
     $contCG.html('<div class="text-center py-5"><div class="spinner-border text-dark"></div><div class="mt-2 small text-muted">Procesando ControlGas...</div></div>');
-    $contTX.html('<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 small text-muted">Procesando Transacciones...</div></div>');
+    $contTX.html(`<div class="text-center py-5"><div class="spinner-border ${esModoDespachos ? 'text-info' : 'text-primary'}"></div><div class="mt-2 small text-muted">Procesando ${nombreComparador}...</div></div>`);
+
+    // Mantener visible el desglose Bankaool en ambos modos cuando aplica.
+    await fetchImportesBankaoolNocturnos(widgetState.year, widgetState.month);
+
+    const comparisonGroups = {};
+    let comparisonLoadError = false;
+    if (esModoDespachos) {
+        try {
+            const codgas = encodeURIComponent($('#estacionSelect').val());
+            const response = await fetch(`${URLS_V3.despachosDiarios}?estacion_id=${codgas}&year=${widgetState.year}&month=${widgetState.month}`);
+            const json = await response.json();
+            if (json.status === 'success' && json.data && typeof json.data === 'object') {
+                Object.entries(json.data).forEach(([fecha, row]) => {
+                    comparisonGroups[fecha] = { total: parseFloat(row.total || 0), count: parseInt(row.count || 0, 10) };
+                });
+            } else comparisonLoadError = true;
+        } catch (e) {
+            comparisonLoadError = true;
+            console.error('No fue posible cargar Despachos para la comparación', e);
+        }
+    } else {
+        txData.forEach(item => {
+            const monto = parseFloat(item.Total || 0);
+            const f = normalizarFecha((item.FechaTransaccion || '').substring(0, 10));
+            if (!f) return;
+            if (!comparisonGroups[f]) comparisonGroups[f] = { total: 0, count: 0 };
+            comparisonGroups[f].total += monto;
+            comparisonGroups[f].count++;
+        });
+    }
 
     // Mismo filtro que renderCG: keywords por conceptos_cg
     const keywords = obtenerKeywordsCG();
@@ -4206,19 +4283,8 @@ function abrirModoTransacciones() {
         cgGroups[f].count++;
     });
 
-    // Agrupar TX por fecha de transacción
-    const txGroups = {};
-    txData.forEach(item => {
-        const monto = parseFloat(item.Total || 0);
-        const f = normalizarFecha((item.FechaTransaccion || '').substring(0, 10));
-        if (!f) return;
-        if (!txGroups[f]) txGroups[f] = { total: 0, count: 0 };
-        txGroups[f].total += monto;
-        txGroups[f].count++;
-    });
-
     // Unión de todas las fechas
-    const allDates = [...new Set([...Object.keys(cgGroups), ...Object.keys(txGroups)])].sort();
+    const allDates = [...new Set([...Object.keys(cgGroups), ...Object.keys(comparisonGroups), ...Object.keys(importesBankaoolNocturnosPorFecha)])].sort();
 
     $contCG.empty();
     $contTX.empty();
@@ -4229,16 +4295,20 @@ function abrirModoTransacciones() {
         return;
     }
 
-    let grandTotalCG = 0, grandTotalTX = 0;
+    let grandTotalCG = 0, grandTotalComparador = 0;
 
     allDates.forEach(fecha => {
         const cg  = cgGroups[fecha] || { total: 0, count: 0 };
-        const tx  = txGroups[fecha] || { total: 0, count: 0 };
-        const dif = tx.total - cg.total;
+        const comparador = comparisonGroups[fecha] || { total: 0, count: 0 };
+        const dif = comparador.total - cg.total;
         grandTotalCG += cg.total;
-        grandTotalTX += tx.total;
+        grandTotalComparador += comparador.total;
 
         const dateFmt = fecha.split('-').reverse().join('/');
+        const importeBankaoolNocturno = parseFloat(importesBankaoolNocturnosPorFecha[fecha] || 0);
+        const bankaoolNocturnasBadge = importeBankaoolNocturno > 0
+            ? `<span class="bankaool-nocturnas-tag" title="Importe de despachos Bankaool desde las 23:00"><i class="fas fa-arrow-right"></i>${fmt.format(importeBankaoolNocturno)}</span>`
+            : '';
 
         // Badge diferencia
         let diffHtml = '';
@@ -4255,23 +4325,29 @@ function abrirModoTransacciones() {
                 <div>
                     <span class="font-weight-bold mr-2 text-dark">${dateFmt}</span>
                     <small class="badge badge-light border text-dark">${cg.count} cortes</small>
+                    ${bankaoolNocturnasBadge}
                 </div>
                 <div class="font-numeric h6 mb-0 text-dark">${cg.total > 0 ? fmt.format(cg.total) : '<span class="text-muted">—</span>'}</div>
             </div>`);
 
         $contTX.append(`
-            <div class="p-3 border-bottom d-flex justify-content-between align-items-center ${tx.total > 0 ? 'bg-white' : 'bg-light'}" style="height:60px;">
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center ${comparador.total > 0 ? 'bg-white' : 'bg-light'}" style="height:60px;">
                 <div>
                     <span class="font-weight-bold mr-2 text-dark">${dateFmt}</span>
-                    <small class="badge badge-light border text-dark">${tx.count} txs</small>
+                    <small class="badge badge-light border text-dark">${comparador.count} ${esModoDespachos ? 'despachos' : 'txs'}</small>
                     ${diffHtml}
                 </div>
-                <div class="font-numeric h6 mb-0 text-dark">${tx.total > 0 ? fmt.format(tx.total) : '<span class="text-muted">—</span>'}</div>
+                <div class="font-numeric h6 mb-0 text-dark">${comparador.total > 0 ? fmt.format(comparador.total) : '<span class="text-muted">—</span>'}</div>
             </div>`);
     });
 
     $('#mtx-cg-total').text(fmt.format(grandTotalCG));
-    $('#mtx-tx-total').text(fmt.format(grandTotalTX));
+    if (comparisonLoadError) {
+        $contTX.html('<div class="text-center py-5 text-danger">No fue posible cargar los despachos de esta estación.</div>');
+        $('#mtx-tx-total').text('—');
+    } else {
+        $('#mtx-tx-total').text(fmt.format(grandTotalComparador));
+    }
 }
 
 function abrirModalGestionTransitos() {
