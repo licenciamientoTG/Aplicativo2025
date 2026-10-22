@@ -1,0 +1,59 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones - Reporte de stock de terminales{% endblock %}
+{% block menutitle %}Reporte de stock de terminales{% endblock %}
+{% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet"><link href="/_assets/css/terminal-stock-report.css" rel="stylesheet">{% endblock %}
+{% block content %}
+<div class="terminal-page-header d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+  <div>
+    <p class="text-muted mb-1">Existencia operativa actual por estación y tipo de terminal.</p>
+    {% if summary.type_rows is defined %}<span class="badge bg-light text-primary border">{{ summary.type_rows }} combinaciones de estación y tipo</span>{% endif %}
+  </div>
+  {% if canCapture|default(false) %}<a class="btn btn-outline-primary" href="/operations/terminal_inventory"><i data-feather="plus"></i> Registrar incidencia</a>{% endif %}
+</div>
+
+<div class="row g-3 mb-3" aria-label="Totales del reporte">
+  <div class="col-sm-6 col-xl-3"><div class="card terminal-card terminal-stat h-100"><div class="card-body"><small>Stock configurado</small><strong>{{ summary.stock|default(0) }}</strong><span>terminales esperadas</span></div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card terminal-card terminal-stat terminal-stat-success h-100"><div class="card-body"><small>Funcionando</small><strong>{{ summary.functioning|default(0) }}</strong><span>stock menos dañadas por tipo</span></div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card terminal-card terminal-stat terminal-stat-pending h-100"><div class="card-body"><small>Dañadas</small><strong>{{ summary.damaged|default(0) }}</strong><span>incidencias pendientes de confirmación</span></div></div></div>
+  {% if summary.over_by|default(0) > 0 %}<div class="col-sm-6 col-xl-3"><div class="card terminal-card terminal-stat h-100"><div class="card-body"><small>Sobre inventario configurado</small><strong>{{ summary.over_by }}</strong><span>dañadas por encima del stock esperado</span></div></div></div>{% endif %}
+</div>
+
+<div class="card terminal-card mb-3"><div class="card-body p-3 p-lg-4">
+  <form method="get" action="/operations/terminal_stock_report" aria-label="Filtros del reporte de stock">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-4"><label class="form-label" for="stockFilterStation">Estación</label><select class="form-select" id="stockFilterStation" name="station"><option value="">Todas las estaciones</option>{% for id,name in stations %}<option value="{{ id|e('html_attr') }}" {{ filters.station == id ? 'selected' : '' }}>{{ nombre_estacion_sin_codigo(name)|e }}</option>{% endfor %}</select></div>
+      <div class="col-md-4"><label class="form-label" for="stockFilterType">Tipo de terminal</label><select class="form-select" id="stockFilterType" name="type"><option value="">Todos los tipos</option>{% for code,type in types %}<option value="{{ code|e('html_attr') }}" {{ filters.type == code ? 'selected' : '' }}>{{ type|e }}</option>{% endfor %}</select></div>
+      <div class="col-md-4"><label class="form-label" for="stockFilterStatus">Estado de stock</label><select class="form-select" id="stockFilterStatus" name="status"><option value="all" {{ filters.status == 'all' ? 'selected' : '' }}>Todos</option><option value="damaged" {{ filters.status == 'damaged' ? 'selected' : '' }}>Con dañadas</option><option value="no_damaged" {{ filters.status == 'no_damaged' ? 'selected' : '' }}>Sin dañadas</option><option value="no_stock" {{ filters.status == 'no_stock' ? 'selected' : '' }}>Sin stock configurado</option></select></div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3"><button type="submit" class="btn btn-primary"><i data-feather="filter"></i> Aplicar filtros</button><a class="btn btn-outline-secondary" href="/operations/terminal_stock_report">Limpiar filtros</a></div>
+  </form>
+</div></div>
+
+<div class="card terminal-card"><div class="card-body p-3 p-lg-4">
+  <div class="terminal-report-caption"><div><h5>Stock actual por estación y tipo</h5><p>Los filtros se aplican en el servidor. Cada estación agrupa sus tipos de terminal.</p></div></div>
+  <div class="table-responsive"><table class="table table-hover align-middle terminal-overview-table terminal-stock-table mb-0">
+    <thead><tr><th scope="col">Estación</th><th scope="col">Tipo de terminal</th><th scope="col">Stock</th><th scope="col">Dañadas</th><th scope="col">Funcionando</th></tr></thead>
+    <tbody>{% for row in rows %}
+      {% for terminal_type in row.types %}<tr>
+        {% if loop.first %}<th scope="rowgroup" rowspan="{{ row.types|length }}" class="terminal-stock-station">{{ nombre_estacion_sin_codigo(row.station_name|default('Estación'))|e }}</th>{% endif %}
+        <td class="terminal-stock-type">{{ terminal_type.type_label|default(terminal_type.type_code)|e }}</td>
+        <td><span class="terminal-stock-number">{{ terminal_type.stock|default(0) }}</span></td>
+        <td>{% if terminal_type.over_by|default(0) > 0 %}<span class="badge bg-warning text-dark terminal-stock-overage" title="Las dañadas superan el stock configurado">+{{ terminal_type.over_by }} sobre stock</span>{% endif %}<strong class="terminal-stock-number">{{ terminal_type.damaged|default(0) }}</strong></td>
+        <td><strong class="terminal-stock-number">{{ terminal_type.functioning|default(0) }}</strong></td>
+      </tr>{% else %}<tr><th scope="row" class="terminal-stock-station">{{ nombre_estacion_sin_codigo(row.station_name|default('Estación'))|e }}</th><td class="text-muted">Sin tipos configurados</td><td><span class="terminal-stock-number">0</span></td><td><span class="terminal-stock-number">0</span></td><td><span class="terminal-stock-number">0</span></td></tr>{% endfor %}
+    {% else %}<tr><td colspan="5" class="text-center text-muted py-5">No hay estaciones para los filtros seleccionados.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr class="fw-bold"><th scope="row" colspan="2">Total</th><td><span class="terminal-stock-number">{{ summary.stock|default(0) }}</span></td><td>{% if summary.over_by|default(0) > 0 %}<small class="terminal-stock-total-overage">{{ summary.over_by }} sobre stock</small>{% endif %}<span class="terminal-stock-number">{{ summary.damaged|default(0) }}</span></td><td><span class="terminal-stock-number">{{ summary.functioning|default(0) }}</span></td></tr></tfoot>
+  </table></div>
+</div></div>
+
+<div class="alert alert-light border mt-3 mb-0" role="note">
+  <strong>Cómo leer este reporte</strong>
+  <ul class="mb-2 mt-2">
+    <li><strong>Stock configurado</strong> corresponde a las cantidades esperadas configuradas para la estación. Una configuración faltante cuenta como cero.</li>
+    <li><strong>Dañadas</strong> cuenta incidencias en estado Abierta, Solved o Reabierta. Un ticket Solved permanece como dañado hasta que la estación confirme la reparación.</li>
+    <li>El conteo usa una incidencia activa como representación de una terminal dañada; tickets duplicados para un mismo equipo pueden sobrecontar.</li>
+    <li><strong>Funcionando</strong> es la suma por tipo de <code>máximo(stock configurado − dañadas, 0)</code>.</li>
+  </ul>
+  <p class="mb-0 text-muted">Es una fotografía operativa del estado actual; no es un indicador de desempeño ni un histórico. No se filtra por fecha.</p>
+</div>
+{% endblock %}

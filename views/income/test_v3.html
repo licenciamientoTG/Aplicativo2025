@@ -79,6 +79,7 @@
     .row-right { display:flex;align-items:center;flex-shrink:0;margin-left:8px; }
     .row-line1 { font-size:.84rem;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .row-line2 { font-size:.71rem;color:#6c757d;line-height:1.25;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .grupo-conciliacion-badge { display:inline-flex;align-items:center;vertical-align:middle;margin-left:5px;padding:1px 6px;border:1px solid #bfdbfe;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:.64rem;font-weight:700;line-height:1.35;white-space:nowrap; }
     .row-item:hover { background:#f8f9fa; }
     .row-item.active { background:var(--selected-bg)!important;border-left:5px solid var(--selected-border);padding-left:9px; }
     .row-item.conciliated { color:var(--matched-text);opacity:.9;border-left:5px solid rgba(0,0,0,.1); }
@@ -1276,6 +1277,27 @@ function getHistorialDetalles(origen, refs) {
     ));
 }
 
+function normalizarTextoGrupo(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-MX').trim();
+}
+
+function esPilotoVillaAhumadaBankaool() {
+    const estacion = normalizarTextoGrupo($('#estacionSelect option:selected').text());
+    const banco = normalizarTextoGrupo(currentRule && currentRule.nombre_banco);
+    return estacion.includes('villa ahumada')
+        && Number(currentRule && currentRule.entidad_id) === 14
+        && banco.includes('bankaool');
+}
+
+function distintivosGrupoConciliacion(registros) {
+    if (!esPilotoVillaAhumadaBankaool()) return '';
+    const lista = Array.isArray(registros) ? registros : (registros ? [registros] : []);
+    const grupos = [...new Set(lista
+        .map(item => String(item && item.grupo_id != null ? item.grupo_id : '').trim())
+        .filter(id => /^\d+$/.test(id)))].sort((a, b) => Number(a) - Number(b));
+    return grupos.map(id => `<span class="grupo-conciliacion-badge" title="Conciliado en el grupo ${escHtml(id)}">Grupo ${escHtml(id)}</span>`).join(' ');
+}
+
 function isConciliatedCGRef(ref) {
     return hasConciliada('CG', ref);
 }
@@ -2155,10 +2177,11 @@ function renderCG() {
             }
 
             if (esConcil) {
+                const grupoBadge = distintivosGrupoConciliacion(hRec);
                 itemsHtml += `<div class="row-item ${statusClass}">
                     <div class="row-left">
                         <span class="row-line1">${escHtml(concepto)}</span>
-                        <span class="row-line2">ControlGas</span>
+                        <span class="row-line2">ControlGas${grupoBadge}</span>
                     </div>
                     <div class="row-right">${syncBtn}${difTag}${unlinkBtn}<span class="font-numeric">${fmt.format(montoEfectivo)}</span></div>
                 </div>`;
@@ -2260,7 +2283,7 @@ function renderCG() {
             itemsHtml += `<div class="row-item ${statusClass} ${esSel?'active':''}" data-grp-ref="${escHtml(grpRef)}" ${clickAttr}>
                 <div class="row-left">
                     <span class="row-line1"><span class="diferido-badge">DIFERIDO</span>Diferido de día${fakesDelDia.length > 1 ? ` (${fakesDelDia.length})` : ''}</span>
-                    <span class="row-line2">Origen: ${origenLabel}</span>
+                    <span class="row-line2">Origen: ${origenLabel}${distintivosGrupoConciliacion(hRecs)}</span>
                 </div>
                 <div class="row-right" style="pointer-events:auto;">${dTag}${unlinkB}${moverBtn}${cancelDifBtn}${diferidoProtegidoHint}<span class="font-numeric">${fmt.format(totalGrp)}</span></div>
             </div>`;
@@ -2427,6 +2450,7 @@ function renderTes() {
             const fuenteSeleccionada = refsPendientesFuente.length > 0
                 && refsPendientesFuente.every(ref => sel.tes.some(s => s.ref === ref));
             const gruposFuente = [...new Set(historialFuente.map(h => parseInt(h.grupo_id, 10)).filter(Number.isFinite))];
+            const distintivosFuente = distintivosGrupoConciliacion([...historialFuente, ...(historialLegacy ? [historialLegacy] : [])]);
             const botonesDeshacer = !mesCerrado ? gruposFuente.map(id =>
                 `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${id})" title="Deshacer conciliación"><i class="fas fa-unlink"></i></button>`
             ).join('') : '';
@@ -2442,7 +2466,7 @@ function renderTes() {
                 : '';
             const fuenteHtml = componentes.length
                 ? `<div class="row-item tes-pilot-row tes-source-aggregate ${estadoFuente} ${fuenteSeleccionada ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="${escHtml(JSON.stringify(componentesPendientes))}" data-seleccionable="${componentesPendientes.length && !mesCerrado ? '1' : '0'}" ${componentesPendientes.length && !mesCerrado ? 'onclick="toggleTESFuenteDia(this)"' : ''}>
-                    <div class="row-left"><span class="row-line1">Depósitos del día</span><span class="row-line2">Tesorería · ${componentes.length} movimiento${componentes.length === 1 ? '' : 's'}</span>${accionDiferir}</div>
+                    <div class="row-left"><span class="row-line1">Depósitos del día</span><span class="row-line2">Tesorería · ${componentes.length} movimiento${componentes.length === 1 ? '' : 's'}${distintivosFuente}</span>${accionDiferir}</div>
                     <div class="row-right" style="pointer-events:auto;">${detalleDiferencia}${botonesDeshacer}<span class="font-numeric">${fmt.format(montoFuente)}</span></div>
                 </div>`
                 : '';
@@ -2463,7 +2487,7 @@ function renderTes() {
                 const diferencia = historial ? `<span class="diff-tag ${Math.abs(dif)<.01?'ok':(dif>0?'pos':'neg')}">${fmt.format(dif)}</span><button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${historial.grupo_id})" title="Deshacer conciliación"><i class="fas fa-unlink"></i></button>` : '';
                 const etiqueta = String(d.fecha_origen || '').substring(0, 10) === fecha ? 'TES SEPARADO' : 'TES DIFERIDO';
                 totalPiloto += monto;
-                filasDiferidos.push(`<div class="row-item tes-pilot-row ${status} ${sel.tes.some(s => s.ref === ref) ? 'active' : ''}" data-tes-diferido-id="${parseInt(d.id, 10)}" data-tes-ref="${escHtml(ref)}" data-fecha="${escHtml(fecha)}" data-monto="${monto}" data-concepto="${escHtml(concepto)}" data-seleccionable="${sePuedeSeleccionar ? '1' : '0'}" ${sePuedeSeleccionar ? 'onclick="toggleDiferidoTESDesdeFila(this)"' : ''}><div class="row-left"><span class="row-line1"><span class="diferido-badge">${etiqueta}</span>${escHtml(concepto)}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(monto)}</span></div></div>`);
+                filasDiferidos.push(`<div class="row-item tes-pilot-row ${status} ${sel.tes.some(s => s.ref === ref) ? 'active' : ''}" data-tes-diferido-id="${parseInt(d.id, 10)}" data-tes-ref="${escHtml(ref)}" data-fecha="${escHtml(fecha)}" data-monto="${monto}" data-concepto="${escHtml(concepto)}" data-seleccionable="${sePuedeSeleccionar ? '1' : '0'}" ${sePuedeSeleccionar ? 'onclick="toggleDiferidoTESDesdeFila(this)"' : ''}><div class="row-left"><span class="row-line1"><span class="diferido-badge">${etiqueta}</span>${escHtml(concepto)}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}${distintivosGrupoConciliacion(historial)}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(monto)}</span></div></div>`);
             });
             const refsSeleccionables = [...refsPendientesFuente];
             diferidosDia.forEach(d => {
@@ -2506,7 +2530,7 @@ function renderTes() {
         const statusClass = conciliado ? (Math.abs(difVal) < .01 ? 'row-concil-ok' : 'row-concil-diff') : 'row-pendiente';
         const clickAttr = !mesCerrado && !conciliado && estadoFake === 'PENDIENTE' ? `onclick="toggleDiferidoTES('${refFake}','${escHtml(fecha)}',${montoFake},'${escHtml(d.concepto || d.descripcion || 'Diferido TES')}',${parseInt(d.id, 10)},this)"` : '';
         const etiquetaFake = String(d.fecha_origen || '').substring(0, 10) === fecha ? 'TES SEPARADO' : 'TES DIFERIDO';
-        return `<div class="row-item ${statusClass} ${seleccionada ? 'active' : ''}" data-tes-diferido-id="${parseInt(d.id, 10)}" data-fecha="${escHtml(fecha)}" ${clickAttr}><div class="row-left"><span class="row-line1"><span class="diferido-badge">${etiquetaFake}</span>${escHtml(d.concepto || d.descripcion || 'Depósito diferido')}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(montoFake)}</span></div></div>`;
+        return `<div class="row-item ${statusClass} ${seleccionada ? 'active' : ''}" data-tes-diferido-id="${parseInt(d.id, 10)}" data-fecha="${escHtml(fecha)}" ${clickAttr}><div class="row-left"><span class="row-line1"><span class="diferido-badge">${etiquetaFake}</span>${escHtml(d.concepto || d.descripcion || 'Depósito diferido')}</span><span class="row-line2">Origen ${escHtml(d.fecha_origen || '')} · ${escHtml(tesRefDiferido(d))}${distintivosGrupoConciliacion(historialFake)}</span></div><div class="row-right" style="pointer-events:auto;">${diferencia}${acciones}<span class="font-numeric">${fmt.format(montoFake)}</span></div></div>`;
     };
     const envolverFilaConDiferidosTES = (fecha, filaHtml) => {
         const keyFechaDia = String(fecha || '').substring(0, 10);
@@ -2576,6 +2600,7 @@ function renderTes() {
         const hRec = hRecs[0] || null;
         let difTag = '', unlinkBtn = '', staleBtn = '', statusClass = 'row-pendiente';
         if (esConcil) {
+            const distintivosTES = distintivosGrupoConciliacion(hRecs);
             if (hRec) {
                 const difVal = parseFloat(hRec.diferencia);
                 const ok = Math.abs(difVal) < 0.01;
@@ -2647,7 +2672,7 @@ function renderTes() {
             const filaConciliadaTES = `<div class="row-item ${statusClass} tes-amex-row ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" data-componentes="[]" onclick="${clickFilaConciliadaTES}">
                 <div class="row-left">
                     <span class="row-line1">${dateFmt}</span>
-                    <span class="row-line2">Tesorería${amexLine2Extra}</span>
+                    <span class="row-line2">Tesorería${amexLine2Extra}${distintivosTES}</span>
                 </div>
                 <div class="row-right" style="pointer-events:auto;">${amexBadgesHtml}${difTag}${staleBtn}${unlinkBtn}<span class="font-numeric">${fmt.format(montoFilaDia)}</span></div>
             </div>`;

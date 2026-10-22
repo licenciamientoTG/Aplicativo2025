@@ -1,0 +1,9 @@
+.terminal-stock-table{min-width:680px}
+.terminal-stock-table th:nth-child(n+3),
+.terminal-stock-table td:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}
+.terminal-stock-table .terminal-stock-station,
+.terminal-stock-table .terminal-stock-type{white-space:nowrap}
+.terminal-stock-table .terminal-stock-station{vertical-align:middle}
+.terminal-stock-table .terminal-stock-number{display:inline-block;min-width:4ch;text-align:right}
+.terminal-stock-table .terminal-stock-overage{display:inline-block;margin-right:.5rem;white-space:nowrap}
+.terminal-stock-table .terminal-stock-total-overage{display:inline-block;margin-right:.5rem;color:#9a6700;white-space:nowrap}

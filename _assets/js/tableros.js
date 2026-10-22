@@ -239,6 +239,9 @@
     recycleMode: '',
     recycleEntries: []
   };
+  const itemCommentSelectedStickers = [];
+  const itemCommentSelectedFiles = [];
+  const itemCommentPendingByItem = new Map();
   let groupSortable = null;
   let navSortables = [];
   let itemSortables = [];
@@ -1350,6 +1353,7 @@
       state.activeViewType = 'table';
       state.activeSavedViewId = '';
       state.viewConfig = {};
+      state.viewConfig.item_size = getLocalBoardItemSize(state.board.id) || 'double';
       state.filters = [];
       state.filterDraft = [];
       state.calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -1623,6 +1627,102 @@
     swatch.addEventListener('input', sync);
     row.append(swatch, name, preview);
     return row;
+  }
+
+  function newColumnOptionRow(label = '', index = 0) {
+    const row = makeElement('div', 'boards-new-option-row');
+    const preview = makeElement('span', 'boards-new-option-preview', label || 'Vista previa');
+    preview.style.setProperty('--status-color', statusLabelColor(label, index));
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control boards-new-option-name';
+    input.value = label;
+    input.maxLength = 120;
+    input.required = true;
+    input.autocomplete = 'off';
+    input.placeholder = 'Nombre de la opción';
+    input.setAttribute('aria-label', `Nombre de la opción ${index + 1}`);
+    const actions = makeElement('div', 'boards-new-option-actions');
+    [['up', 'Subir opción', 'fa-arrow-up'], ['down', 'Bajar opción', 'fa-arrow-down'], ['remove', 'Eliminar opción', 'fa-xmark']].forEach(([action, labelText, icon]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `boards-new-option-action is-${action}`;
+      button.dataset.columnOptionAction = action;
+      button.setAttribute('aria-label', labelText);
+      button.title = labelText;
+      button.append(makeElement('i', `fa-solid ${icon}`, ''));
+      actions.append(button);
+    });
+    row.append(preview, input, actions);
+    return row;
+  }
+
+  function syncNewColumnOptions() {
+    const rows = Array.from(document.querySelectorAll('#newColumnOptionsList .boards-new-option-row'));
+    const values = rows.map((row) => row.querySelector('.boards-new-option-name')?.value.trim() || '');
+    const seen = new Set();
+    els.newColumnOptions.value = values.join('\n');
+    document.getElementById('newColumnOptionsCount').textContent = `${values.length} ${values.length === 1 ? 'opción' : 'opciones'}`;
+    rows.forEach((row, index) => {
+      const input = row.querySelector('.boards-new-option-name');
+      const preview = row.querySelector('.boards-new-option-preview');
+      const normalized = values[index].normalize('NFC').toLocaleLowerCase('es-MX');
+      let validationMessage = '';
+      if (!normalized) validationMessage = 'Escribe un nombre para esta opción.';
+      else if (seen.has(normalized)) validationMessage = 'Esta opción ya está en la lista.';
+      else seen.add(normalized);
+      input.setCustomValidity(validationMessage);
+      input.classList.toggle('is-invalid', Boolean(validationMessage));
+      input.setAttribute('aria-invalid', validationMessage ? 'true' : 'false');
+      preview.textContent = input.value.trim() || 'Vista previa';
+      preview.style.setProperty('--status-color', statusLabelColor(input.value, index));
+      input.setAttribute('aria-label', `Nombre de la opción ${index + 1}`);
+      row.querySelector('[data-column-option-action="up"]').disabled = index === 0;
+      row.querySelector('[data-column-option-action="down"]').disabled = index === rows.length - 1;
+    });
+  }
+
+  function renderNewColumnOptions(values = null) {
+    const labels = values || els.newColumnOptions.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    const rows = labels.map((label, index) => newColumnOptionRow(label, index));
+    if (!rows.length) rows.push(makeElement('p', 'boards-new-options-empty', 'Aún no hay opciones. Agrégalas en el orden en que quieres que aparezcan.'));
+    document.getElementById('newColumnOptionsList').replaceChildren(...rows);
+    syncNewColumnOptions();
+  }
+
+  function addNewColumnOption(index = null) {
+    const list = document.getElementById('newColumnOptionsList');
+    list.querySelector('.boards-new-options-empty')?.remove();
+    const rows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+    const insertAt = index == null ? rows.length : Math.max(0, Math.min(rows.length, index));
+    const row = newColumnOptionRow('', insertAt);
+    list.insertBefore(row, rows[insertAt] || null);
+    syncNewColumnOptions();
+    row.querySelector('.boards-new-option-name')?.focus();
+  }
+
+  function handleNewColumnOptionAction(event) {
+    const button = event.target.closest('[data-column-option-action]');
+    if (!button) return;
+    const row = button.closest('.boards-new-option-row');
+    const list = document.getElementById('newColumnOptionsList');
+    const rows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+    const index = rows.indexOf(row);
+    if (button.dataset.columnOptionAction === 'remove') {
+      row.remove();
+      syncNewColumnOptions();
+      renderNewColumnOptions();
+      const remainingRows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+      const focusIndex = Math.min(index, remainingRows.length - 1);
+      (remainingRows[focusIndex]?.querySelector('.boards-new-option-name') || document.getElementById('addColumnOption')).focus();
+      return;
+    }
+    const nextIndex = index + (button.dataset.columnOptionAction === 'up' ? -1 : 1);
+    if (nextIndex < 0 || nextIndex >= rows.length) return;
+    if (nextIndex < index) list.insertBefore(row, rows[nextIndex]);
+    else list.insertBefore(rows[nextIndex], row);
+    syncNewColumnOptions();
+    row.querySelector('.boards-new-option-name')?.focus();
   }
 
   function openLabelsEditor(column) {
@@ -2385,6 +2485,12 @@
     element.dataset.itemId = String(item.id);
     element.dataset.columnId = String(column.id);
     element.setAttribute('aria-label', `${item.name || 'Elemento'}, ${column.name || 'columna'}`);
+    if (['input', 'textarea'].includes(element.tagName) && ['string', 'structured'].includes(kind)) {
+      element.addEventListener('blur', () => {
+        element.scrollLeft = 0;
+        element.scrollTop = 0;
+      });
+    }
     return element;
   }
 
@@ -2414,6 +2520,7 @@
     const name = createItemNameControl(item);
     name.classList.add('boards-table-item-name-control');
     wrap.append(name);
+    wrap.append(createDetailsButton(item));
     if (canEditBoard()) {
       const addSubitem = makeElement('button', 'boards-item-subtask-add', '');
       addSubitem.type = 'button';
@@ -2735,7 +2842,9 @@
           if (comment.created_at) authorDetails.append(makeElement('time', '', displayDateTime(comment.created_at)));
           heading.append(authorDetails);
           article.append(heading);
-          article.append(makeElement('p', '', comment.body || comment.comment || ''));
+          const commentBody = makeElement('p');
+          appendCommentText(commentBody, comment.body || comment.comment || '');
+          article.append(commentBody);
           if (Array.isArray(comment.stickers) && comment.stickers.length) {
             const stickers = makeElement('div', 'boards-preview-comment-stickers');
             comment.stickers.forEach((sticker) => {
@@ -3397,14 +3506,41 @@
         const meta = makeElement('div', 'boards-comment-author-line');
         meta.append(commentAvatar(author, comment.created_by_id || comment.user_id));
         meta.append(makeElement('div', 'boards-detail-meta', `${author} · ${displayDateTime(comment.created_at)}`));
-        const body = makeElement('p', 'boards-comment-body', comment.body || '');
+        const body = makeElement('div', 'boards-comment-body');
+        appendSafeCommentHtml(body, comment.body || '');
         article.append(meta, body);
+        if (Array.isArray(comment.stickers) && comment.stickers.length) {
+          const stickers = makeElement('div', 'boards-comment-stickers');
+          comment.stickers.forEach((sticker) => {
+            const id = sticker?.id ?? sticker;
+            if (id == null) return;
+            const image = document.createElement('img');
+            image.src = `${apiRoot}/sticker_file/${encodeURIComponent(id)}`;
+            image.alt = sticker?.name || 'Sticker'; image.loading = 'lazy'; image.decoding = 'async';
+            stickers.append(image);
+          });
+          if (stickers.childElementCount) article.append(stickers);
+        }
+        if (Array.isArray(comment.attachments) && comment.attachments.length) {
+          const attachments = makeElement('div', 'boards-comment-attachments');
+          comment.attachments.forEach((attachment) => {
+            if (attachment?.file_id == null) return;
+            const file = { file_id: attachment.file_id, name: attachment.name || `Archivo ${attachment.file_id}` };
+            const link = makeElement('a', '', file.name); link.href = fileEndpoint(file);
+            link.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(file); });
+            attachments.append(link);
+          });
+          if (attachments.childElementCount) article.append(attachments);
+        }
         els.itemCommentsList.append(article);
       });
     }
     const form = els.itemCommentForm;
     form.hidden = !canEditBoard();
-    form.querySelectorAll('textarea, button').forEach((control) => { control.disabled = !canEditBoard(); });
+    form.querySelectorAll('button, input').forEach((control) => { control.disabled = !canEditBoard(); });
+    const editor = document.getElementById('itemCommentBody');
+    if (editor) editor.contentEditable = String(canEditBoard());
+    setItemCommentPendingUi(itemCommentPendingByItem.has(String(state.detailItemId)));
     setDetailStatus('itemCommentStatus', `${state.itemComments.length} ${state.itemComments.length === 1 ? 'comentario' : 'comentarios'}`);
   }
 
@@ -3770,6 +3906,16 @@
     const item = state.items.find((candidate) => String(candidate.id) === String(itemId));
     if (!item || !state.board) return;
     const requestId = ++state.activeDetailRequest;
+    const pendingComment = itemCommentPendingByItem.get(String(item.id));
+    itemCommentSelectedFiles.splice(0, itemCommentSelectedFiles.length, ...(pendingComment?.files || []));
+    itemCommentSelectedStickers.splice(0, itemCommentSelectedStickers.length, ...(pendingComment?.stickers || []));
+    renderItemCommentPendingAttachments(); renderItemCommentPendingStickers();
+    const commentEditor = document.getElementById('itemCommentBody');
+    if (commentEditor) {
+      commentEditor.replaceChildren();
+      if (pendingComment?.body) appendSafeCommentHtml(commentEditor, pendingComment.body);
+    }
+    setItemCommentPendingUi(Boolean(pendingComment));
     state.detailItemId = String(item.id);
     state.itemComments = [];
     state.itemActivity = [];
@@ -3878,28 +4024,177 @@
     event.preventDefault();
     if (!canEditBoard()) return;
     const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
-    const textarea = document.getElementById('itemCommentBody');
-    const body = textarea.value.trim();
-    if (!item || !body) return;
+    const editor = document.getElementById('itemCommentBody');
+    const activePending = itemCommentPendingByItem.get(String(item?.id));
+    const body = activePending?.body ?? editor.innerHTML.trim();
+    const text = editor.innerText.trim();
+    const stickers = activePending?.stickers || itemCommentSelectedStickers;
+    const files = activePending?.files || itemCommentSelectedFiles;
+    if (!item || (!text && !stickers.length && !files.length)) return;
     const button = els.itemCommentForm.querySelector('[type="submit"]');
     button.disabled = true;
     button.textContent = 'Publicando…';
     try {
-      const result = await post('/add_comment', { board_id: state.board.id, item_id: item.id, body });
-      if (result.data) state.itemComments.push(result.data);
-      textarea.value = '';
+      let pending = activePending;
+      if (!pending) {
+        const fileIds = [];
+        for (const entry of files) {
+          let uploadedFileId = entry.uploadedFileId;
+          if (!uploadedFileId) {
+            const payload = new FormData(); payload.set('csrf_token', csrfToken);
+            payload.set('board_id', String(state.board.id)); payload.set('item_id', String(item.id)); payload.set('file', entry.file);
+            const uploaded = await multipartPost('/upload_file', payload);
+            uploadedFileId = uploaded.data?.id ?? uploaded.data?.file_id;
+            entry.uploadedFileId = uploadedFileId;
+          }
+          if (!uploadedFileId) throw new Error('El servidor no devolvió el identificador del archivo adjunto.');
+          fileIds.push(String(uploadedFileId));
+        }
+        const stickerIds = stickers.map((sticker) => String(sticker.id));
+        const result = await post('/add_comment', { board_id: state.board.id, item_id: item.id, body, stickers: stickerIds, file_ids: fileIds });
+        const comment = result.data || {};
+        const commentId = comment.id ?? comment.comment_id;
+        if (commentId == null) throw new Error('El servidor no devolvió el identificador del comentario.');
+        pending = { commentId, body, stickerIds, stickers: [...stickers], files, fileIds, itemId: String(item.id) };
+        itemCommentPendingByItem.set(String(item.id), pending);
+        setItemCommentPendingUi(true);
+      }
+      {
+        const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
+        const refreshed = await request(`/comments?${params.toString()}`);
+        state.itemComments = Array.isArray(refreshed.data) ? refreshed.data : [...state.itemComments];
+      }
+      itemCommentPendingByItem.delete(String(item.id));
+      item.comment_count = Number(item.comment_count || 0) + 1;
+      renderActiveView();
+      editor.replaceChildren(); itemCommentSelectedFiles.splice(0); itemCommentSelectedStickers.splice(0);
+      renderItemCommentPendingAttachments(); renderItemCommentPendingStickers();
       renderComments();
       const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
-      const activity = await request(`/activity?${params.toString()}`);
-      state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
-      renderActivity();
+      try {
+        const activity = await request(`/activity?${params.toString()}`);
+        state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
+        renderActivity();
+      } catch (_) {
+        setDetailStatus('itemActivityStatus', 'No se pudo actualizar la actividad. Vuelve a abrir la pestaña para intentar de nuevo.', true);
+      }
       setNotice('Comentario agregado.', 'success');
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo agregar el comentario.'), 'error');
     } finally {
-      button.disabled = false;
-      button.textContent = 'Comentar';
+      button.disabled = !canEditBoard();
+      button.textContent = 'Publicar actualización';
+      setItemCommentPendingUi(itemCommentPendingByItem.has(String(item?.id)));
     }
+  }
+
+  function setItemCommentPendingUi(pending) {
+    const form = els.itemCommentForm;
+    if (!form) return;
+    form.querySelectorAll('button:not([type="submit"]), input').forEach((control) => { control.disabled = pending || !canEditBoard(); });
+    const editor = document.getElementById('itemCommentBody');
+    if (editor) editor.contentEditable = String(!pending && canEditBoard());
+  }
+
+  function renderItemCommentPendingStickers() {
+    const host = document.getElementById('itemCommentStickers');
+    if (!host) return;
+    host.replaceChildren();
+    itemCommentSelectedStickers.forEach((sticker, index) => {
+      const image = document.createElement('img');
+      image.src = `${apiRoot}/sticker_file/${encodeURIComponent(sticker.id)}`;
+      image.alt = sticker.name || 'Sticker'; image.loading = 'lazy'; image.decoding = 'async';
+      const remove = makeElement('button', '', '×'); remove.type = 'button';
+      remove.setAttribute('aria-label', `Quitar ${sticker.name || 'sticker'}`);
+      remove.addEventListener('click', () => { itemCommentSelectedStickers.splice(index, 1); renderItemCommentPendingStickers(); });
+      const chip = makeElement('span', 'boards-item-pending-sticker'); chip.append(image, remove); host.append(chip);
+    });
+    host.hidden = !itemCommentSelectedStickers.length;
+  }
+
+  function renderItemCommentPendingAttachments() {
+    const host = document.getElementById('itemCommentFiles');
+    if (!host) return;
+    host.replaceChildren();
+    itemCommentSelectedFiles.forEach((entry, index) => {
+      const chip = makeElement('span', 'boards-item-pending-file', entry.name);
+      const remove = makeElement('button', '', 'Quitar'); remove.type = 'button';
+      remove.addEventListener('click', () => { itemCommentSelectedFiles.splice(index, 1); renderItemCommentPendingAttachments(); });
+      chip.append(remove); host.append(chip);
+    });
+    host.hidden = !itemCommentSelectedFiles.length;
+  }
+
+  function setupItemCommentComposer() {
+    const form = els.itemCommentForm;
+    if (!form) return;
+    const editor = document.getElementById('itemCommentBody');
+    const fileInput = document.getElementById('itemCommentFileInput');
+    const picker = document.getElementById('itemCommentStickerPicker');
+    const emojiPicker = form.querySelector('.boards-item-emoji-picker');
+    const emojiOptions = emojiPicker?.querySelector('.boards-item-emoji-options');
+    ['😀', '👍', '🎉', '❤️', '😂', '🙏', '🚀', '✅'].forEach((emoji) => {
+      const option = makeElement('button', '', emoji); option.type = 'button'; option.dataset.emoji = emoji;
+      option.setAttribute('aria-label', `Insertar ${emoji}`); emojiOptions?.append(option);
+    });
+    form.querySelectorAll('[data-comment-command]').forEach((button) => button.addEventListener('click', () => {
+      editor.focus(); document.execCommand(button.dataset.commentCommand, false, null);
+    }));
+    document.getElementById('itemCommentColor')?.addEventListener('input', (event) => {
+      editor.focus(); document.execCommand('styleWithCSS', false, true);
+      document.execCommand('foreColor', false, event.target.value);
+    });
+    let savedEditorRange = null;
+    const saveEditorRange = () => {
+      const selection = window.getSelection();
+      if (selection?.rangeCount && editor.contains(selection.anchorNode)) savedEditorRange = selection.getRangeAt(0).cloneRange();
+    };
+    ['keyup', 'mouseup', 'input'].forEach((eventName) => editor.addEventListener(eventName, saveEditorRange));
+    emojiPicker?.querySelector('summary')?.addEventListener('mousedown', saveEditorRange);
+    emojiPicker?.querySelectorAll('button[data-emoji]').forEach((button) => {
+      button.addEventListener('mousedown', (event) => { saveEditorRange(); event.preventDefault(); });
+      button.addEventListener('click', () => {
+        editor.focus();
+        if (savedEditorRange) {
+          const selection = window.getSelection();
+          selection.removeAllRanges(); selection.addRange(savedEditorRange);
+        }
+        document.execCommand('insertText', false, button.dataset.emoji);
+        saveEditorRange(); emojiPicker.open = false;
+      });
+    });
+    document.getElementById('itemCommentAttach')?.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
+    fileInput?.addEventListener('change', () => {
+      Array.from(fileInput.files || []).forEach((file) => {
+        const error = fileUploadValidationMessage(file);
+        if (error) { setNotice(`${file.name}: ${error}`, 'error'); return; }
+        if (!itemCommentSelectedFiles.some((entry) => entry.file === file)) itemCommentSelectedFiles.push({ file, name: file.name });
+      });
+      renderItemCommentPendingAttachments();
+    });
+    document.getElementById('itemCommentSticker')?.addEventListener('click', async () => {
+      picker.hidden = !picker.hidden;
+      if (picker.hidden || picker.dataset.loaded === '1') return;
+      picker.textContent = 'Cargando stickers…';
+      try {
+        const result = await request('/stickers');
+        picker.replaceChildren();
+        (Array.isArray(result.data) ? result.data : []).forEach((sticker) => {
+          if (sticker?.id == null) return;
+          const button = makeElement('button', 'boards-item-sticker-option'); button.type = 'button';
+          button.setAttribute('aria-label', `Agregar ${sticker.name || 'sticker'}`);
+          const image = document.createElement('img'); image.src = `${apiRoot}/sticker_file/${encodeURIComponent(sticker.id)}`;
+          image.alt = sticker.name || 'Sticker'; image.loading = 'lazy'; button.append(image);
+          button.addEventListener('click', () => {
+            if (!itemCommentSelectedStickers.some((entry) => String(entry.id) === String(sticker.id))) itemCommentSelectedStickers.push({ id: sticker.id, name: sticker.name || 'Sticker' });
+            renderItemCommentPendingStickers(); picker.hidden = true;
+          });
+          picker.append(button);
+        });
+        if (!picker.childElementCount) picker.textContent = 'No hay stickers disponibles.';
+        picker.dataset.loaded = '1';
+      } catch (error) { picker.textContent = errorMessage(error, 'No se pudieron cargar los stickers.'); }
+    });
   }
 
   function fileUploadValidationMessage(file) {
@@ -4755,6 +5050,13 @@
     const icon = makeElement('i', 'fa-regular fa-comment-dots');
     icon.setAttribute('aria-hidden', 'true');
     button.append(icon);
+    const commentCount = Number(item.comment_count || 0);
+    if (commentCount > 0) {
+      button.classList.add('has-comments');
+      const count = makeElement('span', 'boards-row-comment-count', commentCount > 99 ? '99+' : String(commentCount));
+      count.setAttribute('aria-label', `${commentCount} ${commentCount === 1 ? 'comentario' : 'comentarios'}`);
+      button.append(count);
+    }
     return button;
   }
 
@@ -4945,6 +5247,70 @@
     }
   }
 
+  function bindColumnResizing(table) {
+    const storageKey = `totalgas-board-column-widths-${state.board?.id || ''}`;
+    let widths = {};
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) widths = saved;
+    } catch (_) { /* Ignore unavailable or invalid local preferences. */ }
+
+    const applyWidth = (key, columnIndex, width) => {
+      const minWidth = key === 'item' ? 260 : 156;
+      const nextWidth = Math.max(minWidth, Math.round(width));
+      table.querySelectorAll(':scope > tbody > tr').forEach((row) => {
+        const cell = row.children[columnIndex];
+        if (!cell || cell.colSpan !== 1) return;
+        cell.style.width = `${nextWidth}px`;
+        cell.style.minWidth = `${nextWidth}px`;
+        cell.style.maxWidth = `${nextWidth}px`;
+      });
+      widths[key] = nextWidth;
+      try { localStorage.setItem(storageKey, JSON.stringify(widths)); } catch (_) { /* Resizing still works for this render. */ }
+      return nextWidth;
+    };
+
+    table.querySelectorAll('.boards-group-columns th[data-resize-key]').forEach((header) => {
+      const key = header.dataset.resizeKey;
+      const columnIndex = Array.prototype.indexOf.call(header.parentElement.children, header);
+      const savedWidth = Number(widths[key]);
+      if (Number.isFinite(savedWidth) && savedWidth > 0) applyWidth(key, columnIndex, savedWidth);
+
+      const handle = makeElement('button', 'boards-column-resize-handle');
+      handle.type = 'button';
+      handle.dataset.resizeKey = key;
+      handle.dataset.resizeIndex = String(columnIndex);
+      handle.setAttribute('role', 'separator');
+      handle.setAttribute('aria-orientation', 'vertical');
+      handle.setAttribute('aria-label', `Cambiar ancho de ${header.textContent.trim() || 'columna'}`);
+      header.append(handle);
+
+      handle.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const current = Number(widths[key]) || header.getBoundingClientRect().width;
+        applyWidth(key, columnIndex, current + (event.key === 'ArrowRight' ? 16 : -16));
+      });
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const startX = event.clientX;
+        const startWidth = Number(widths[key]) || header.getBoundingClientRect().width;
+        table.classList.add('is-resizing-column');
+        const move = (moveEvent) => applyWidth(key, columnIndex, startWidth + moveEvent.clientX - startX);
+        const finish = () => {
+          table.classList.remove('is-resizing-column');
+          document.removeEventListener('pointermove', move);
+          document.removeEventListener('pointerup', finish);
+          document.removeEventListener('pointercancel', finish);
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', finish);
+        document.addEventListener('pointercancel', finish);
+      });
+    });
+  }
+
   function renderTable() {
     itemSortables.forEach((sortable) => sortable.destroy());
     itemSortables = [];
@@ -4977,10 +5343,12 @@
       row.append(selectHead);
       const itemHead = makeElement('th', 'boards-item-head', 'Elemento');
       itemHead.scope = 'col';
+      itemHead.dataset.resizeKey = 'item';
       row.append(itemHead);
       columns.forEach((column) => {
         const th = makeElement('th', '', column.name || 'Columna');
         th.scope = 'col';
+        th.dataset.resizeKey = String(column.id);
         if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
         row.append(th);
       });
@@ -5166,6 +5534,7 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    bindColumnResizing(table);
     syncGroupHeadingWidths();
     if (window.Sortable && canEditBoard() && !query && !state.filters.length) {
       table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
@@ -5402,6 +5771,66 @@
     avatar.title = name || 'Usuario';
     avatar.setAttribute('aria-label', `Autor: ${name || 'Usuario'}`);
     return avatar;
+  }
+
+  function appendCommentText(container, value) {
+    const text = String(value || '');
+    const urlPattern = /(?<![\w@.-])(?:https?:\/\/|www\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?:\:\d{2,5})?(?:[/?#][^\s<>]*)?/gi;
+    let lastIndex = 0;
+    let match;
+    while ((match = urlPattern.exec(text)) !== null) {
+      let rawUrl = match[0];
+      let trailing = '';
+      while (/[.,!?;:)]$/.test(rawUrl)) {
+        trailing = rawUrl.slice(-1) + trailing;
+        rawUrl = rawUrl.slice(0, -1);
+      }
+      if (!rawUrl) continue;
+      container.append(document.createTextNode(text.slice(lastIndex, match.index)));
+      const href = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+      try {
+        const parsed = new URL(href);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported URL protocol');
+        const link = makeElement('a', 'boards-comment-link', rawUrl);
+        link.href = parsed.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        container.append(link);
+      } catch (_) {
+        container.append(document.createTextNode(rawUrl));
+      }
+      if (trailing) container.append(document.createTextNode(trailing));
+      lastIndex = match.index + match[0].length;
+    }
+    container.append(document.createTextNode(text.slice(lastIndex)));
+  }
+
+  function appendSafeCommentHtml(container, value) {
+    const source = String(value || '');
+    if (!/[<][a-z!/]/i.test(source)) { appendCommentText(container, source); return; }
+    const parsed = new DOMParser().parseFromString(source, 'text/html');
+    const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'SPAN', 'BR', 'P', 'DIV', 'UL', 'OL', 'LI', 'A']);
+    const copyChildren = (from, to, insideLink = false) => {
+      Array.from(from.childNodes).forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) { if (insideLink) to.append(document.createTextNode(node.nodeValue || '')); else appendCommentText(to, node.nodeValue || ''); return; }
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const tag = node.tagName.toUpperCase();
+        if (!allowed.has(tag)) { if (!['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'SVG', 'MATH'].includes(tag)) copyChildren(node, to, insideLink); return; }
+        const element = document.createElement(tag.toLowerCase());
+        if (tag === 'SPAN') {
+          const color = node.style?.color || '';
+          if (/^(#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([\d.%\s,/-]+\))$/i.test(color.trim())) element.style.color = color;
+        } else if (tag === 'A') {
+          try {
+            const url = new URL(node.getAttribute('href') || '', window.location.origin);
+            if (!['https:', 'http:'].includes(url.protocol)) throw new Error('invalid protocol');
+            element.href = url.href; element.target = '_blank'; element.rel = 'noopener noreferrer';
+          } catch (_) { copyChildren(node, to); return; }
+        }
+        copyChildren(node, element, insideLink || tag === 'A'); to.append(element);
+      });
+    };
+    copyChildren(parsed.body, container);
   }
 
   function fieldSelect(labelText, setting, columns, selectedValue, emptyText = 'Selecciona una columna') {
@@ -5652,7 +6081,8 @@
     state.activeSavedViewId = String(view.id);
     state.activeViewType = normalizeViewType(view.view_type);
     state.viewConfig = config && typeof config === 'object' ? { ...config } : {};
-    state.viewConfig.item_size = ['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double';
+    state.viewConfig.item_size = getLocalBoardItemSize(state.board?.id)
+      || (['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double');
     normalizeColumnViewConfig();
     state.filters = Array.isArray(state.viewConfig.filters) ? state.viewConfig.filters.map((filter) => ({ ...filter })) : [];
     state.filterDraft = state.filters.map((filter) => ({ ...filter }));
@@ -5725,6 +6155,9 @@
   function applyBoardItemSize(size) {
     const normalized = ['simple', 'double', 'triple'].includes(size) ? size : 'double';
     state.viewConfig.item_size = normalized;
+    if (state.board?.id) {
+      try { localStorage.setItem(`totalgas-board-item-size-${state.board.id}`, normalized); } catch (_) { /* Keep the preference for this session. */ }
+    }
     app.dataset.itemSize = normalized;
     const label = document.getElementById('boardItemSizeLabel');
     if (label) label.textContent = normalized === 'simple' ? 'Simple' : (normalized === 'triple' ? 'Triple' : 'Doble');
@@ -5734,6 +6167,16 @@
       if (selected) button.setAttribute('aria-pressed', 'true');
       else button.setAttribute('aria-pressed', 'false');
     });
+  }
+
+  function getLocalBoardItemSize(boardId) {
+    if (!boardId) return '';
+    try {
+      const size = localStorage.getItem(`totalgas-board-item-size-${boardId}`) || '';
+      return ['simple', 'double', 'triple'].includes(size) ? size : '';
+    } catch (_) {
+      return '';
+    }
   }
 
   function renderEmptyRenderer(title, description) {
@@ -6820,6 +7263,18 @@
       const role = String(state.board?.role || '').toLowerCase();
       if (!['owner', 'designer', 'editor'].includes(role) || !state.board?.id) return;
       document.getElementById('duplicateBoardName').value = `Duplicado de ${state.board.name || 'tablero'}`;
+      const destinationSelect = document.getElementById('duplicateBoardWorkspace');
+      if (destinationSelect) {
+        destinationSelect.replaceChildren();
+        state.workspaces.filter((workspace) => canCreateInWorkspace(workspace)).forEach((workspace) => {
+          const option = makeElement('option', '', workspace.name || 'Espacio sin nombre');
+          option.value = String(workspace.id);
+          destinationSelect.append(option);
+        });
+        const sourceWorkspaceId = String(state.board.workspace_id || '');
+        destinationSelect.value = Array.from(destinationSelect.options).some((option) => option.value === sourceWorkspaceId)
+          ? sourceWorkspaceId : (destinationSelect.options[0]?.value || '');
+      }
       document.getElementById('duplicateBoardMode').value = 'structure';
       document.getElementById('duplicateBoardSubscribers').checked = false;
       document.getElementById('duplicateBoardModeHelp').textContent = 'Se copiarán grupos y columnas, sin elementos.';
@@ -6840,6 +7295,7 @@
       const result = await post('/duplicate_board', {
         board_id: state.board.id,
         name: getFormValue(formData, 'name'),
+        workspace_id: getFormValue(formData, 'workspace_id'),
         mode: getFormValue(formData, 'mode') || 'structure',
         keep_subscribers: formData.get('keep_subscribers') === '1'
       });
@@ -6932,7 +7388,7 @@
       els.columnOptionsField.classList.toggle('d-none', !optionsType);
       document.getElementById('columnRatingField').classList.toggle('d-none', els.newColumnType.value !== 'rating');
       const help = {
-        status: 'Escribe una opción por línea. El sistema asignará un color inicial a cada estado.',
+        status: 'Define los estados y su orden. Cada uno tendrá un color inicial que podrás ajustar después.',
         formula: 'La API acepta únicamente la sintaxis segura definida por el servidor.',
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
@@ -6945,11 +7401,29 @@
       els.columnTypeHelp.textContent = help[els.newColumnType.value] || 'El tipo determina el editor y las validaciones disponibles para cada celda.';
       const optionsHelp = els.columnOptionsField.querySelector('.boards-field-help');
       if (optionsHelp) optionsHelp.textContent = els.newColumnType.value === 'status'
-        ? 'Una opción por línea. Los estados se mostrarán como etiquetas coloreadas.'
-        : 'Para Estado, Lista desplegable y Etiquetas: escribe una opción por línea.';
+        ? 'Los estados se mostrarán como etiquetas coloreadas. Puedes cambiar sus colores después.'
+        : 'Agrega opciones en el orden en que quieres que aparezcan.';
+      document.getElementById('addColumnOption').querySelector('span').textContent = els.newColumnType.value === 'status' ? 'Agregar estado' : 'Agregar opción';
+      renderNewColumnOptions();
+      els.columnOptionsField.querySelectorAll('.boards-new-option-name').forEach((input) => { input.disabled = !optionsType; });
+    });
+    document.getElementById('addColumnOption').addEventListener('click', () => addNewColumnOption());
+    document.getElementById('newColumnOptionsList').addEventListener('input', (event) => {
+      if (event.target.matches('.boards-new-option-name')) syncNewColumnOptions();
+    });
+    document.getElementById('newColumnOptionsList').addEventListener('click', handleNewColumnOptionAction);
+    document.getElementById('newColumnOptionsList').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || !event.target.matches('.boards-new-option-name')) return;
+      event.preventDefault();
+      const row = event.target.closest('.boards-new-option-row');
+      const rows = Array.from(document.querySelectorAll('#newColumnOptionsList .boards-new-option-row'));
+      addNewColumnOption(rows.indexOf(row) + 1);
     });
     els.createColumnForm.addEventListener('reset', () => {
-      window.setTimeout(() => els.newColumnType.dispatchEvent(new Event('change')), 0);
+      window.setTimeout(() => {
+        els.newColumnOptions.value = '';
+        els.newColumnType.dispatchEvent(new Event('change'));
+      }, 0);
     });
     dialogSubmit(els.createColumnForm, async (formData) => {
       if (!canManageStructure()) throw new Error('Se requiere permiso de administración para agregar columnas.');
@@ -7981,6 +8455,7 @@
         activateDetailTab(detailTabs[next], true);
       });
     });
+    setupItemCommentComposer();
     els.itemCommentForm.addEventListener('submit', submitItemComment);
     [els.boardMembersList, els.manageBoardMembersList].forEach((list) => {
       list?.addEventListener('click', (event) => {

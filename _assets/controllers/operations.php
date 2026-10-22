@@ -3483,7 +3483,7 @@ class Operations{
         $nextMonth=$monthStart->modify('+1 month');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
         $closed=$this->terminalInventoryModel->closedIncidentsForMonth($stationId,$monthStart->format('Y-m-d H:i:s'),$nextMonth->format('Y-m-d H:i:s'));
-        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'closedIncidents'=>$closed,'currentMonth'=>$monthStart->format('Y-m'),'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION)]);
+        echo $this->twig->render($this->route.'terminal_inventory.html', ['station'=>$station,'types'=>$types,'activeIncidents'=>$active,'closedIncidents'=>$closed,'currentMonth'=>$monthStart->format('Y-m'),'expectedCounts'=>$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types)),'canReport'=>$this->terminalUserCan(TerminalInventoryModel::REPORT_PERMISSION),'canStationReport'=>$this->terminalUserCan(TerminalInventoryModel::STATION_REPORT_PERMISSION),'canStockReport'=>$this->terminalUserCan(TerminalInventoryModel::STOCK_REPORT_PERMISSION)]);
     }
 
     /** Operations module for transferring station assignments between station managers. */
@@ -3928,6 +3928,43 @@ class Operations{
         $station=$this->terminalAssignedStation();
         if (!$station) { http_response_code(403); echo 'El usuario no tiene una estación asignada válida.'; return; }
         $this->renderTerminalIncidentReport((int)$station['Codigo'],true,(string)$station['Nombre']);
+    }
+    public function terminal_stock_report(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::STOCK_REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte de stock.'; return; }
+        $stations=[];
+        foreach ($this->terminalInventoryModel->activeStations() as $row) $stations[(string)$row['Codigo']]=(string)$row['Nombre'];
+        $types=[];
+        $enabledTypes=$this->terminalTypes();
+        foreach ($enabledTypes as $code=>$info) $types[(string)$code]=(string)$info['label'];
+        $station=trim((string)($_GET['station'] ?? ''));
+        $type=trim((string)($_GET['type'] ?? ''));
+        $status=trim((string)($_GET['status'] ?? 'all'));
+        if ($station!=='' && (!preg_match('/^[1-9][0-9]*$/',$station) || !isset($stations[$station]))) { http_response_code(400); echo 'La estación seleccionada no es válida.'; return; }
+        if ($type!=='' && !isset($types[$type])) { http_response_code(400); echo 'El tipo de terminal seleccionado no es válido.'; return; }
+        if (!in_array($status,['all','damaged','no_damaged','no_stock'],true)) { http_response_code(400); echo 'El filtro de estado no es válido.'; return; }
+        try {
+            $selectedTypes=$type!=='' ? [$type] : array_keys($enabledTypes);
+            $details=$this->terminalInventoryModel->currentStationStockReport($selectedTypes);
+            $details=array_values(array_filter($details,function($row) use ($station,$status): bool {
+                if ($station!=='' && (string)$row['station_id']!==$station) return false;
+                return match ($status) {
+                    'damaged'=>(int)$row['damaged']>0,
+                    'no_damaged'=>(int)$row['damaged']===0,
+                    'no_stock'=>(int)$row['stock']===0,
+                    default=>true,
+                };
+            }));
+            $grouped=[];
+            foreach ($details as $detail) {
+                $stationId=(int)$detail['station_id'];
+                if (!isset($grouped[$stationId])) $grouped[$stationId]=['station_id'=>$stationId,'station_name'=>(string)$detail['station_name'],'types'=>[]];
+                $typeCode=(string)$detail['type_code'];
+                $grouped[$stationId]['types'][]=['type_code'=>$typeCode,'type_label'=>$types[$typeCode] ?? $typeCode,'stock'=>(int)$detail['stock'],'damaged'=>(int)$detail['damaged'],'functioning'=>(int)$detail['functioning'],'over_by'=>(int)$detail['over_by']];
+            }
+            $rows=array_values($grouped); $summary=['stock'=>0,'damaged'=>0,'functioning'=>0,'over_by'=>0,'type_rows'=>count($details)];
+            foreach ($rows as $row) foreach ($row['types'] as $typeRow) foreach (['stock','damaged','functioning','over_by'] as $metric) $summary[$metric]+=$typeRow[$metric];
+            echo $this->twig->render($this->route.'terminal_stock_report.html',['rows'=>$rows,'stations'=>$stations,'types'=>$types,'filters'=>['station'=>$station,'type'=>$type,'status'=>$status],'summary'=>$summary]);
+        } catch (Throwable $e) { error_log('No se pudo consultar el reporte de stock de terminales: '.$e->getMessage()); http_response_code(500); echo 'No fue posible consultar el reporte de stock.'; }
     }
     private function renderTerminalIncidentReport(?int $stationScope,bool $stationView,string $stationName=''): void {
         $globalReport=!$stationView;

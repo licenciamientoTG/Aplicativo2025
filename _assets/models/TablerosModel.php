@@ -478,6 +478,9 @@ class TablerosModel {
             $deleteIds('tb_file_comment_sticker', 'file_comment_id', $fileCommentIds);
             $deleteIds('tb_file_comment_attachment', 'file_comment_id', $fileCommentIds);
             $deleteIds('tb_file_comment_attachment', 'file_id', $fileIds);
+            $deleteIds('tb_comment_sticker', 'comment_id', $commentIds);
+            $deleteIds('tb_comment_attachment', 'comment_id', $commentIds);
+            $deleteIds('tb_comment_attachment', 'file_id', $fileIds);
             $deleteIds('tb_notification', 'file_comment_id', $fileCommentIds);
             $deleteIds('tb_notification', 'comment_id', $commentIds);
             $deleteIds('tb_notification', 'file_id', $fileIds);
@@ -1038,9 +1041,10 @@ class TablerosModel {
         unset($column);
 
         $items = $this->all(
-            'SELECT id, board_id, group_id, parent_item_id, name, sort_order, version,
-                    created_by, updated_by, created_at, updated_at
-             FROM tb_item WHERE board_id = ? AND deleted_at IS NULL ORDER BY group_id, sort_order, id',
+            'SELECT i.id, i.board_id, i.group_id, i.parent_item_id, i.name, i.sort_order, i.version,
+                    i.created_by, i.updated_by, i.created_at, i.updated_at,
+                    (SELECT COUNT(*) FROM tb_comment c WHERE c.item_id = i.id AND c.board_id = i.board_id AND c.deleted_at IS NULL) AS comment_count
+             FROM tb_item i WHERE i.board_id = ? AND i.deleted_at IS NULL ORDER BY i.group_id, i.sort_order, i.id',
             [$boardId]
         );
         $cells = $this->all(
@@ -1175,7 +1179,7 @@ class TablerosModel {
 
     public function getComments(int $boardId, int $itemId): array {
         $this->requireItemOnBoard($itemId, $boardId);
-        return $this->all(
+        $comments = $this->all(
             "SELECT TOP (200) c.id, c.board_id, c.item_id, c.parent_comment_id, c.body, c.created_by, c.updated_by,
                     COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name,
                     c.created_at, c.updated_at
@@ -1185,12 +1189,27 @@ class TablerosModel {
              ORDER BY c.created_at, c.id",
             [$boardId, $itemId]
         );
+        foreach ($comments as &$comment) {
+            $comment['stickers'] = $this->all('SELECT s.id, s.name FROM tb_comment_sticker l INNER JOIN tb_user_sticker s ON s.id = l.sticker_id WHERE l.comment_id = ? ORDER BY s.id', [(int)$comment['id']]);
+            $comment['attachments'] = $this->all('SELECT f.id AS file_id, f.name FROM tb_comment_attachment a INNER JOIN tb_file f ON f.id = a.file_id WHERE a.comment_id = ? AND f.deleted_at IS NULL ORDER BY f.name, f.id', [(int)$comment['id']]);
+        }
+        unset($comment);
+        return $comments;
     }
 
     public function addComment(int $boardId, int $userId, array $input): array {
         $itemId = $this->positiveInt($input['item_id'] ?? null, 'item_id');
         $parentId = $this->optionalPositiveInt($input['parent_comment_id'] ?? null, 'parent_comment_id');
-        $body = $this->requiredString($input, 'body', 10000);
+        $rawBody = isset($input['body']) && is_string($input['body']) ? trim($input['body']) : '';
+        $body = $this->sanitizeCommentBody($rawBody);
+        $stickerIds = $input['stickers'] ?? [];
+        if (!is_array($stickerIds) || count($stickerIds) > 20) throw new TablerosApiException('validation', 'La lista de stickers no es válida.', 422);
+        $stickerIds = array_values(array_unique(array_map(fn($id): int => $this->positiveInt($id, 'stickers'), $stickerIds)));
+        $attachmentIds = $input['file_ids'] ?? [];
+        if (!is_array($attachmentIds) || count($attachmentIds) > 20) throw new TablerosApiException('validation', 'La lista de archivos adjuntos no es válida.', 422);
+        $attachmentIds = array_values(array_unique(array_map(fn($id): int => $this->positiveInt($id, 'file_ids'), $attachmentIds)));
+        if (trim(strip_tags($body)) === '' && !$stickerIds && !$attachmentIds) throw new TablerosApiException('validation', 'Escribe un comentario o agrega un sticker o archivo.', 422);
+        if (mb_strlen($body, 'UTF-8') > 10000) throw new TablerosApiException('validation', 'El comentario excede el límite de 10000 caracteres.', 422);
         $this->requireItemOnBoard($itemId, $boardId);
         if ($parentId !== null && !$this->one(
             'SELECT id FROM tb_comment WHERE id = ? AND board_id = ? AND item_id = ? AND deleted_at IS NULL',
@@ -1198,19 +1217,63 @@ class TablerosModel {
         )) {
             throw new TablerosApiException('validation', 'El comentario padre no pertenece a este elemento.', 422);
         }
-        return $this->transaction(function () use ($boardId, $userId, $itemId, $parentId, $body): array {
+        return $this->transaction(function () use ($boardId, $userId, $itemId, $parentId, $body, $stickerIds, $attachmentIds): array {
+            if ($stickerIds) {
+                $marks = implode(',', array_fill(0, count($stickerIds), '?'));
+                if ((int)$this->one("SELECT COUNT(*) AS total FROM tb_user_sticker WHERE id IN ($marks) AND deleted_at IS NULL", $stickerIds)['total'] !== count($stickerIds)) throw new TablerosApiException('validation', 'Uno o más stickers ya no están disponibles.', 422);
+            }
+            if ($attachmentIds) {
+                $marks = implode(',', array_fill(0, count($attachmentIds), '?'));
+                $params = array_merge([$boardId, $itemId], $attachmentIds);
+                if ((int)$this->one("SELECT COUNT(*) AS total FROM tb_file WHERE board_id = ? AND item_id = ? AND deleted_at IS NULL AND id IN ($marks)", $params)['total'] !== count($attachmentIds)) throw new TablerosApiException('validation', 'Uno o más archivos no pertenecen a este elemento o ya no están disponibles.', 422);
+            }
             $id = $this->insertId(
                 'INSERT INTO tb_comment (board_id, item_id, parent_comment_id, body, created_by, created_at, updated_at)
                  OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, GETDATE(), GETDATE())',
                 [$boardId, $itemId, $parentId, $body, $userId]
             );
+            foreach ($stickerIds as $stickerId) $this->execute('INSERT INTO tb_comment_sticker (comment_id, sticker_id, created_by, created_at) VALUES (?, ?, ?, GETDATE())', [$id, $stickerId, $userId]);
+            foreach ($attachmentIds as $fileId) $this->execute('INSERT INTO tb_comment_attachment (comment_id, file_id, created_at) VALUES (?, ?, GETDATE())', [$id, $fileId]);
             $this->writeActivity($boardId, $itemId, $userId, 'comment.created', ['comment_id' => $id]);
             return [
                 'id' => $id, 'board_id' => $boardId, 'item_id' => $itemId,
                 'parent_comment_id' => $parentId, 'body' => $body, 'created_by' => $userId,
                 'created_by_display_name' => $this->userDisplayName($userId),
+                'stickers' => $stickerIds ? $this->all('SELECT id, name FROM tb_user_sticker WHERE id IN (' . implode(',', array_fill(0, count($stickerIds), '?')) . ')', $stickerIds) : [],
+                'attachments' => $attachmentIds ? $this->all('SELECT f.id AS file_id, f.name FROM tb_file f WHERE f.id IN (' . implode(',', array_fill(0, count($attachmentIds), '?')) . ') ORDER BY f.name, f.id', $attachmentIds) : [],
             ];
         });
+    }
+
+    private function sanitizeCommentBody(string $body): string {
+        if ($body === '') return '';
+        $body = preg_replace('~<(script|style|iframe|object|svg|math)\\b[^>]*>.*?</\\1\\s*>~is', '', $body) ?? '';
+        return preg_replace_callback('~</?([a-zA-Z][a-zA-Z0-9]*)\\b([^>]*)>~', static function (array $match): string {
+            $tag = strtolower($match[1]); $closing = str_starts_with($match[0], '</');
+            $allowed = ['b'=>'b','strong'=>'strong','i'=>'i','em'=>'em','u'=>'u','span'=>'span','br'=>'br','p'=>'p','div'=>'div'];
+            if (!isset($allowed[$tag])) return '';
+            if ($closing) return in_array($tag, ['br'], true) ? '' : '</' . $allowed[$tag] . '>';
+            if ($tag !== 'span' || !preg_match('/\\bstyle\\s*=\\s*(["\'])(.*?)\\1/i', $match[2], $style)) return '<' . $allowed[$tag] . '>';
+            if (!preg_match('/^\\s*color\\s*:\\s*(#[0-9a-f]{3}(?:[0-9a-f]{3})?|[a-z]{1,20})\\s*;?\\s*$/i', $style[2], $color)) return '<span>';
+            return '<span style="color:' . strtolower($color[1]) . '">';
+        }, $body) ?? '';
+    }
+
+    public function attachItemCommentFile(int $commentId, int $fileId): int {
+        return $this->transaction(function () use ($commentId, $fileId): int {
+            $comment = $this->one('SELECT board_id, item_id FROM tb_comment WHERE id = ? AND deleted_at IS NULL', [$commentId]);
+            if (!$comment) throw new TablerosApiException('not_found', 'No se encontró el comentario.', 404);
+            $file = $this->one('SELECT id FROM tb_file WHERE id = ? AND board_id = ? AND item_id = ? AND deleted_at IS NULL', [$fileId, $comment['board_id'], $comment['item_id']]);
+            if (!$file) throw new TablerosApiException('validation', 'El archivo debe pertenecer al mismo tablero y elemento del comentario.', 422);
+            $this->execute('IF NOT EXISTS (SELECT 1 FROM tb_comment_attachment WHERE comment_id = ? AND file_id = ?) INSERT INTO tb_comment_attachment (comment_id, file_id, created_at) VALUES (?, ?, GETDATE())', [$commentId, $fileId, $commentId, $fileId]);
+            return (int)$comment['board_id'];
+        });
+    }
+
+    public function getItemCommentBoardId(int $commentId): int {
+        $row = $this->one('SELECT board_id FROM tb_comment WHERE id = ? AND deleted_at IS NULL', [$commentId]);
+        if (!$row) throw new TablerosApiException('not_found', 'No se encontró el comentario.', 404);
+        return (int)$row['board_id'];
     }
 
     public function getStickers(): array {
@@ -1289,7 +1352,7 @@ class TablerosModel {
         $row = $this->one(
             "SELECT s.id, s.name, s.content_type, s.byte_size, s.sha256_hash, s.storage_provider, s.storage_container, s.storage_object_key,
                     CONVERT(VARCHAR(64), s.sha256_hash, 2) AS sha256_hex
-             FROM tb_user_sticker s WHERE s.id = ? AND (s.deleted_at IS NULL OR EXISTS (SELECT 1 FROM tb_file_comment_sticker l WHERE l.sticker_id = s.id))",
+             FROM tb_user_sticker s WHERE s.id = ? AND (s.deleted_at IS NULL OR EXISTS (SELECT 1 FROM tb_file_comment_sticker l WHERE l.sticker_id = s.id) OR EXISTS (SELECT 1 FROM tb_comment_sticker l WHERE l.sticker_id = s.id))",
             [$stickerId]
         );
         $contentType = (string)($row['content_type'] ?? '');
@@ -2198,21 +2261,21 @@ class TablerosModel {
             throw new TablerosApiException('validation', 'El modo de duplicación no es válido.', 422);
         }
         $keepSubscribers = $this->booleanInput($input, 'keep_subscribers', false);
+        $destinationWorkspaceId = $this->optionalPositiveInt($input['workspace_id'] ?? null, 'workspace_id');
 
-        return $this->transaction(function () use ($sourceBoardId, $userId, $name, $mode, $keepSubscribers): array {
+        return $this->transaction(function () use ($sourceBoardId, $userId, $name, $mode, $keepSubscribers, $destinationWorkspaceId): array {
             $source = $this->one('SELECT * FROM tb_board WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$sourceBoardId]);
             if (!$source) throw new TablerosApiException('not_found', 'No se encontró el tablero.', 404);
 
-            // Keep the source location where the actor can create there; otherwise use one of their own workspaces.
-            $workspaceId = (int)$source['workspace_id'];
-            $workspaceRole = $this->access->workspaceRole($workspaceId);
-            if ($workspaceRole === null && !$this->access->canManageWorkspaceContent($workspaceId)) {
+            $workspaceId = $destinationWorkspaceId ?? (int)$source['workspace_id'];
+            if ($destinationWorkspaceId === null
+                && !$this->access->canCreateBoardInWorkspace($workspaceId)) {
                 $ownWorkspace = $this->one("SELECT TOP (1) id FROM tb_workspace WHERE created_by = ? AND workspace_type = 'workspace' AND deleted_at IS NULL ORDER BY id", [$userId]);
                 if (!$ownWorkspace) throw new TablerosApiException('forbidden', 'No tienes un espacio de trabajo disponible para crear el tablero.', 403);
                 $workspaceId = (int)$ownWorkspace['id'];
             }
             $workspace = $this->one("SELECT id FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
-            if (!$workspace || ($this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId))) {
+            if (!$workspace || !$this->access->canCreateBoardInWorkspace($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo destino.', 403);
             }
             $folderId = null;

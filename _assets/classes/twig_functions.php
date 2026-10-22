@@ -201,6 +201,11 @@ $terminal_inventory_station_report_access = new \Twig\TwigFunction('terminal_inv
     return (new TerminalInventoryModel())->hasPermission((int)$_SESSION['tg_user']['Id'], TerminalInventoryModel::STATION_REPORT_PERMISSION);
 });
 $twig->addFunction($terminal_inventory_station_report_access);
+$terminal_inventory_stock_report_access = new \Twig\TwigFunction('terminal_inventory_stock_report_access', function () {
+    if (empty($_SESSION['tg_user']['Id']) || !class_exists('TerminalInventoryModel') || !defined('TerminalInventoryModel::STOCK_REPORT_PERMISSION')) return false;
+    return (new TerminalInventoryModel())->hasPermission((int)$_SESSION['tg_user']['Id'], TerminalInventoryModel::STOCK_REPORT_PERMISSION);
+});
+$twig->addFunction($terminal_inventory_stock_report_access);
 
 // Permisos de Tableros: se resuelven en TG por nombre y asignación vigente.
 $tableros_access = new \Twig\TwigFunction('tableros_access', function ($key = 'access') {
