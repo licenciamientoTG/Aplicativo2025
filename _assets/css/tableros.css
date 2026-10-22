@@ -288,10 +288,15 @@
 
 .boards-cell-input,
 .boards-status-select { display: block; width: 100%; min-width: 105px; min-height: 30px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; color: #354a57; background: transparent; font: inherit; font-size: .8rem; }
-.boards-cell-input:hover,
+.boards-cell-input:hover { border-color: transparent; background-color: transparent; }
 .boards-status-select:hover { border-color: #d7e1e5; background-color: #fff; }
 .boards-cell-input:focus,
 .boards-status-select:focus { border-color: #73a8a5; outline: 0; background-color: #fff; box-shadow: 0 0 0 2px rgb(15 118 110 / 12%); }
+.boards-column-resize-handle { position: absolute; z-index: 8; top: 0; right: -3px; width: 7px; height: 100%; padding: 0; border: 0; background: transparent; cursor: col-resize; touch-action: none; }
+.boards-column-resize-handle:hover,
+.boards-column-resize-handle:focus-visible { background: rgb(15 118 110 / 28%); outline: 0; }
+.boards-table.is-resizing-column,
+.boards-table.is-resizing-column * { cursor: col-resize !important; user-select: none !important; }
 .boards-cell-input.is-number { max-width: 130px; }
 .boards-cell-input.is-date { min-width: 145px; max-width: 170px; }
 .boards-status-select { min-width: 120px; max-width: 210px; padding-right: 24px; border-color: #e0e8eb; color: #3e6665; background: #f5faf9; }
@@ -999,7 +1004,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-date-picker[aria-expanded="true"] { color: #fff; background: #3c4263; }
 .boards-date-picker:focus-visible { outline: 2px solid #9ab7ff; outline-offset: 1px; }
 .boards-date-picker svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.boards-cell-input:hover,
+.boards-cell-input:hover { border-color: transparent; background-color: transparent; }
 .boards-status-select:hover { border-color: #666a89; background-color: #393c5a; }
 .boards-cell-input:focus,
 .boards-status-select:focus { border-color: #84a5ff; color: #fff; background-color: #393c5a; box-shadow: 0 0 0 2px rgb(102 145 255 / 20%); }

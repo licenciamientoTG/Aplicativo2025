@@ -1,0 +1,55 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones - Reporte de stock de terminales{% endblock %}
+{% block menutitle %}Reporte de stock de terminales{% endblock %}
+{% block mycss %}<link href="/_assets/css/terminal-inventory.css" rel="stylesheet">{% endblock %}
+{% block content %}
+<div class="terminal-page-header d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+  <div>
+    <p class="text-muted mb-1">Existencia operativa actual por estación y tipo de terminal.</p>
+    <span class="badge bg-light text-primary border">{{ rows|length }} estaciones</span>
+  </div>
+  {% if canCapture|default(false) %}<a class="btn btn-outline-primary" href="/operations/terminal_inventory"><i data-feather="plus"></i> Registrar incidencia</a>{% endif %}
+</div>
+
+<div class="row g-3 mb-3" aria-label="Totales del reporte">
+  <div class="col-sm-6 col-xl-3"><div class="card terminal-card terminal-stat h-100"><div class="card-body"><small>Stock configurado</small><strong>{{ summary.stock|default(0) }}</strong><span>terminales esperadas</span></div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card terminal-card terminal-stat terminal-stat-success h-100"><div class="card-body"><small>Funcionando</small><strong>{{ summary.functioning|default(0) }}</strong><span>stock menos dañadas por tipo</span></div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card terminal-card terminal-stat terminal-stat-pending h-100"><div class="card-body"><small>Dañadas</small><strong>{{ summary.damaged|default(0) }}</strong><span>incidencias pendientes de confirmación</span></div></div></div>
+  {% if summary.over_by|default(0) > 0 %}<div class="col-sm-6 col-xl-3"><div class="card terminal-card terminal-stat h-100"><div class="card-body"><small>Sobre inventario configurado</small><strong>{{ summary.over_by }}</strong><span>dañadas por encima del stock esperado</span></div></div></div>{% endif %}
+</div>
+
+<div class="card terminal-card mb-3"><div class="card-body p-3 p-lg-4">
+  <form method="get" action="/operations/terminal_stock_report" aria-label="Filtros del reporte de stock">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-4"><label class="form-label" for="stockFilterStation">Estación</label><select class="form-select" id="stockFilterStation" name="station"><option value="">Todas las estaciones</option>{% for id,name in stations %}<option value="{{ id|e('html_attr') }}" {{ filters.station == id ? 'selected' : '' }}>{{ name|e }}</option>{% endfor %}</select></div>
+      <div class="col-md-4"><label class="form-label" for="stockFilterType">Tipo de terminal</label><select class="form-select" id="stockFilterType" name="type"><option value="">Todos los tipos</option>{% for code,type in types %}<option value="{{ code|e('html_attr') }}" {{ filters.type == code ? 'selected' : '' }}>{{ type.label|e }}</option>{% endfor %}</select></div>
+      <div class="col-md-4"><label class="form-label" for="stockFilterStatus">Estado de stock</label><select class="form-select" id="stockFilterStatus" name="status"><option value="all" {{ filters.status == 'all' ? 'selected' : '' }}>Todos</option><option value="damaged" {{ filters.status == 'damaged' ? 'selected' : '' }}>Con dañadas</option><option value="no_damaged" {{ filters.status == 'no_damaged' ? 'selected' : '' }}>Sin dañadas</option><option value="no_stock" {{ filters.status == 'no_stock' ? 'selected' : '' }}>Sin stock configurado</option></select></div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3"><button type="submit" class="btn btn-primary"><i data-feather="filter"></i> Aplicar filtros</button><a class="btn btn-outline-secondary" href="/operations/terminal_stock_report">Limpiar filtros</a></div>
+  </form>
+</div></div>
+
+<div class="card terminal-card"><div class="card-body p-3 p-lg-4">
+  <div class="terminal-report-caption"><div><h5>Stock actual por estación</h5><p>Una fila por estación. Los filtros se aplican en el servidor.</p></div></div>
+  <div class="table-responsive"><table class="table table-hover align-middle terminal-overview-table mb-0">
+    <thead><tr><th scope="col">Estación</th><th scope="col" class="text-center">Stock configurado</th><th scope="col" class="text-center">Funcionando</th><th scope="col" class="text-center">Dañadas</th></tr></thead>
+    <tbody>{% for row in rows %}<tr>
+      <th scope="row">{{ row.station_name|default('Estación')|e }}{% if row.station_id is defined %}<small class="d-block text-muted">#{{ row.station_id|e }}</small>{% endif %}</th>
+      <td class="text-center">{{ row.stock|default(0) }}</td>
+      <td class="text-center"><strong>{{ row.functioning|default(0) }}</strong></td>
+      <td class="text-center"><strong>{{ row.damaged|default(0) }}</strong>{% if row.over_by|default(0) > 0 %}<span class="badge bg-warning text-dark ms-2" title="Las dañadas superan el stock configurado">+{{ row.over_by }} sobre stock</span>{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="4" class="text-center text-muted py-5">No hay estaciones para los filtros seleccionados.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr class="fw-bold"><th scope="row">Total</th><td class="text-center">{{ summary.stock|default(0) }}</td><td class="text-center">{{ summary.functioning|default(0) }}</td><td class="text-center">{{ summary.damaged|default(0) }}{% if summary.over_by|default(0) > 0 %}<small class="d-block text-warning-emphasis">{{ summary.over_by }} sobre stock configurado</small>{% endif %}</td></tr></tfoot>
+  </table></div>
+</div></div>
+
+<div class="alert alert-light border mt-3 mb-0" role="note">
+  <strong>Cómo leer este reporte</strong>
+  <ul class="mb-2 mt-2">
+    <li><strong>Stock configurado</strong> corresponde a las cantidades esperadas configuradas para la estación. Una configuración faltante cuenta como cero.</li>
+    <li><strong>Dañadas</strong> cuenta incidencias en estado Abierta, Solved o Reabierta. Un ticket Solved permanece como dañado hasta que la estación confirme la reparación.</li>
+    <li><strong>Funcionando</strong> es la suma por tipo de <code>máximo(stock configurado − dañadas, 0)</code>.</li>
+  </ul>
+  <p class="mb-0 text-muted">Es una fotografía operativa del estado actual; no es un indicador de desempeño ni un histórico. No se filtra por fecha.</p>
+</div>
+{% endblock %}

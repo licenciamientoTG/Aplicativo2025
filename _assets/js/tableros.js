@@ -2388,6 +2388,12 @@
     element.dataset.itemId = String(item.id);
     element.dataset.columnId = String(column.id);
     element.setAttribute('aria-label', `${item.name || 'Elemento'}, ${column.name || 'columna'}`);
+    if (['input', 'textarea'].includes(element.tagName) && ['string', 'structured'].includes(kind)) {
+      element.addEventListener('blur', () => {
+        element.scrollLeft = 0;
+        element.scrollTop = 0;
+      });
+    }
     return element;
   }
 
@@ -5144,6 +5150,70 @@
     }
   }
 
+  function bindColumnResizing(table) {
+    const storageKey = `totalgas-board-column-widths-${state.board?.id || ''}`;
+    let widths = {};
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) widths = saved;
+    } catch (_) { /* Ignore unavailable or invalid local preferences. */ }
+
+    const applyWidth = (key, columnIndex, width) => {
+      const minWidth = key === 'item' ? 260 : 156;
+      const nextWidth = Math.max(minWidth, Math.round(width));
+      table.querySelectorAll(':scope > tbody > tr').forEach((row) => {
+        const cell = row.children[columnIndex];
+        if (!cell || cell.colSpan !== 1) return;
+        cell.style.width = `${nextWidth}px`;
+        cell.style.minWidth = `${nextWidth}px`;
+        cell.style.maxWidth = `${nextWidth}px`;
+      });
+      widths[key] = nextWidth;
+      try { localStorage.setItem(storageKey, JSON.stringify(widths)); } catch (_) { /* Resizing still works for this render. */ }
+      return nextWidth;
+    };
+
+    table.querySelectorAll('.boards-group-columns th[data-resize-key]').forEach((header) => {
+      const key = header.dataset.resizeKey;
+      const columnIndex = Array.prototype.indexOf.call(header.parentElement.children, header);
+      const savedWidth = Number(widths[key]);
+      if (Number.isFinite(savedWidth) && savedWidth > 0) applyWidth(key, columnIndex, savedWidth);
+
+      const handle = makeElement('button', 'boards-column-resize-handle');
+      handle.type = 'button';
+      handle.dataset.resizeKey = key;
+      handle.dataset.resizeIndex = String(columnIndex);
+      handle.setAttribute('role', 'separator');
+      handle.setAttribute('aria-orientation', 'vertical');
+      handle.setAttribute('aria-label', `Cambiar ancho de ${header.textContent.trim() || 'columna'}`);
+      header.append(handle);
+
+      handle.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const current = Number(widths[key]) || header.getBoundingClientRect().width;
+        applyWidth(key, columnIndex, current + (event.key === 'ArrowRight' ? 16 : -16));
+      });
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const startX = event.clientX;
+        const startWidth = Number(widths[key]) || header.getBoundingClientRect().width;
+        table.classList.add('is-resizing-column');
+        const move = (moveEvent) => applyWidth(key, columnIndex, startWidth + moveEvent.clientX - startX);
+        const finish = () => {
+          table.classList.remove('is-resizing-column');
+          document.removeEventListener('pointermove', move);
+          document.removeEventListener('pointerup', finish);
+          document.removeEventListener('pointercancel', finish);
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', finish);
+        document.addEventListener('pointercancel', finish);
+      });
+    });
+  }
+
   function renderTable() {
     itemSortables.forEach((sortable) => sortable.destroy());
     itemSortables = [];
@@ -5176,10 +5246,12 @@
       row.append(selectHead);
       const itemHead = makeElement('th', 'boards-item-head', 'Elemento');
       itemHead.scope = 'col';
+      itemHead.dataset.resizeKey = 'item';
       row.append(itemHead);
       columns.forEach((column) => {
         const th = makeElement('th', '', column.name || 'Columna');
         th.scope = 'col';
+        th.dataset.resizeKey = String(column.id);
         if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
         row.append(th);
       });
@@ -5365,6 +5437,7 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    bindColumnResizing(table);
     syncGroupHeadingWidths();
     if (window.Sortable && canEditBoard() && !query && !state.filters.length) {
       table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {

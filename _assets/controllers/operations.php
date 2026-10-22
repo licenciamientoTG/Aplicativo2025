@@ -3929,6 +3929,30 @@ class Operations{
         if (!$station) { http_response_code(403); echo 'El usuario no tiene una estación asignada válida.'; return; }
         $this->renderTerminalIncidentReport((int)$station['Codigo'],true,(string)$station['Nombre']);
     }
+    public function terminal_stock_report(): void {
+        if (!$this->terminalUserCan(TerminalInventoryModel::STOCK_REPORT_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para consultar el reporte de stock.'; return; }
+        $stations=[];
+        foreach ($this->terminalInventoryModel->activeStations() as $row) $stations[(string)$row['Codigo']]=(string)$row['Nombre'];
+        $types=[];
+        foreach ($this->terminalTypeCatalog() as $code=>$info) $types[(string)$code]=(string)$info['label'];
+        $station=trim((string)($_GET['station'] ?? ''));
+        $type=trim((string)($_GET['type'] ?? ''));
+        $status=trim((string)($_GET['status'] ?? 'all'));
+        if ($station!=='' && (!preg_match('/^[1-9][0-9]*$/',$station) || !isset($stations[$station]))) { http_response_code(400); echo 'La estación seleccionada no es válida.'; return; }
+        if ($type!=='' && !isset($types[$type])) { http_response_code(400); echo 'El tipo de terminal seleccionado no es válido.'; return; }
+        if (!in_array($status,['all','damaged','no_damaged','no_stock'],true)) { http_response_code(400); echo 'El filtro de estado no es válido.'; return; }
+        try {
+            $rows=$this->terminalInventoryModel->currentStationStockReport($type!=='' ? $type : null);
+            if ($station!=='') $rows=array_values(array_filter($rows,fn($row)=>(string)$row['station_id']===$station));
+            if ($status==='damaged') $rows=array_values(array_filter($rows,fn($row)=>(int)$row['damaged']>0));
+            elseif ($status==='no_damaged') $rows=array_values(array_filter($rows,fn($row)=>(int)$row['damaged']===0));
+            elseif ($status==='no_stock') $rows=array_values(array_filter($rows,fn($row)=>(int)$row['stock']===0));
+            foreach ($rows as &$row) { foreach (['station_id','stock','damaged','functioning','over_by'] as $key) $row[$key]=(int)$row[$key]; }
+            unset($row);
+            $summary=['stock'=>array_sum(array_column($rows,'stock')),'damaged'=>array_sum(array_column($rows,'damaged')),'functioning'=>array_sum(array_column($rows,'functioning')),'over_by'=>array_sum(array_column($rows,'over_by'))];
+            echo $this->twig->render($this->route.'terminal_stock_report.html',['rows'=>$rows,'stations'=>$stations,'types'=>$types,'filters'=>['station'=>$station,'type'=>$type,'status'=>$status],'summary'=>$summary]);
+        } catch (Throwable $e) { error_log('No se pudo consultar el reporte de stock de terminales: '.$e->getMessage()); http_response_code(500); echo 'No fue posible consultar el reporte de stock.'; }
+    }
     private function renderTerminalIncidentReport(?int $stationScope,bool $stationView,string $stationName=''): void {
         $globalReport=!$stationView;
         $month=trim((string)($_GET['month'] ?? '')); $from=trim((string)($_GET['from'] ?? '')); $to=trim((string)($_GET['to'] ?? ''));

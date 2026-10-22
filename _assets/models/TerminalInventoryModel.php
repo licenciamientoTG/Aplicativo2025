@@ -3,6 +3,7 @@ class TerminalInventoryModel extends Model {
     public const CAPTURE_PERMISSION = 'Inventario terminales - Captura propia';
     public const REPORT_PERMISSION = 'Inventario terminales - Reporte global';
     public const STATION_REPORT_PERMISSION = 'Inventario terminales - Reporte de estación';
+    public const STOCK_REPORT_PERMISSION = 'Inventario terminales - Reporte de stock';
     public const CAPTURE_PERMISSION_ID = 96;
     public const REPORT_PERMISSION_ID = 97;
     private static array $resolvedPermissionIds = [];
@@ -16,7 +17,7 @@ class TerminalInventoryModel extends Model {
             self::REPORT_PERMISSION => self::REPORT_PERMISSION_ID,
             default => 0,
         };
-        if ($permissionId === 0 && $description === self::STATION_REPORT_PERMISSION) {
+        if ($permissionId === 0 && in_array($description, [self::STATION_REPORT_PERMISSION, self::STOCK_REPORT_PERMISSION], true)) {
             if (!array_key_exists($description, self::$resolvedPermissionIds)) {
                 $rows=$this->sql->select('SELECT MIN(id) AS id,COUNT(*) AS matching_count FROM [TG].[dbo].[tg_permissions] WHERE [action]=? AND department=? AND description=? AND status=1', ['read','Operaciones',$description]);
                 self::$resolvedPermissionIds[$description]=((int)($rows[0]['matching_count'] ?? 0)===1) ? (int)$rows[0]['id'] : 0;
@@ -118,6 +119,41 @@ class TerminalInventoryModel extends Model {
             WHERE e.Codigo NOT IN (0,4,20) AND (e.activa=1 OR EXISTS (
                 SELECT 1 FROM [TG].[dbo].[inv_ter_incidencias] i WHERE i.estacion_id=e.Codigo
             )) ORDER BY e.Nombre");
+    }
+    /** Current operational snapshot by active station, optionally restricted to one terminal type. */
+    public function currentStationStockReport(?string $type=null): array {
+        $typeFilter = $type === null ? '' : ' AND source.tipo_terminal=?';
+        $params = $type === null ? [] : [$type];
+        return $this->sql->select("WITH source AS (
+                SELECT tipo_terminal FROM [TG].[dbo].[inv_ter_configuracion_estacion]
+                UNION
+                SELECT tipo_terminal FROM [TG].[dbo].[inv_ter_incidencias] WHERE estado_local IN ('Abierta','Solved','Reabierta')
+            ), station_types AS (
+                SELECT e.Codigo AS station_id,e.Nombre AS station_name,source.tipo_terminal,
+                    COALESCE(c.terminales_esperadas,0) AS stock,COALESCE(d.damaged,0) AS damaged
+                FROM [TG].[dbo].[Estaciones] e
+                CROSS JOIN source
+                LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=e.Codigo AND c.tipo_terminal=source.tipo_terminal
+                LEFT JOIN (
+                    SELECT estacion_id,tipo_terminal,COUNT(*) AS damaged
+                    FROM [TG].[dbo].[inv_ter_incidencias]
+                    WHERE estado_local IN ('Abierta','Solved','Reabierta')
+                    GROUP BY estacion_id,tipo_terminal
+                ) d ON d.estacion_id=e.Codigo AND d.tipo_terminal=source.tipo_terminal
+                WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)$typeFilter
+            )
+            SELECT station_id,station_name,
+                SUM(stock) AS stock,SUM(damaged) AS damaged,
+                SUM(CASE WHEN stock>damaged THEN stock-damaged ELSE 0 END) AS functioning,
+                SUM(CASE WHEN damaged>stock THEN damaged-stock ELSE 0 END) AS over_by
+            FROM station_types
+            GROUP BY station_id,station_name
+            UNION ALL
+            SELECT e.Codigo,e.Nombre,0,0,0,0
+            FROM [TG].[dbo].[Estaciones] e
+            WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
+              AND NOT EXISTS (SELECT 1 FROM station_types st WHERE st.station_id=e.Codigo)
+            ORDER BY station_name", $params);
     }
     public function incidentAssignees(?int $stationId=null): array {
         $stationWhere=$stationId===null ? '' : ' WHERE i.estacion_id=?';
