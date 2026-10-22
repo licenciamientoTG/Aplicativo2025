@@ -7,6 +7,8 @@
 
 {% block content %}
 <style>
+    .bankaool-nocturnas-tag { display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:3px 8px;border:1px solid #f59e0b;border-radius:999px;background:#fff7ed;color:#9a3412;font-size:.72rem;font-weight:700;line-height:1.2;white-space:nowrap;vertical-align:middle; }
+    .bankaool-nocturnas-tag i { color:#ea580c;font-size:.68rem; }
     :root {
         --primary-color: #2c3e50;
         --accent-color:  #3498db;
@@ -4254,7 +4256,7 @@ async function abrirModoTransacciones() {
         const dateFmt = fecha.split('-').reverse().join('/');
         const bankaoolNocturnas = parseInt(bankaoolNocturnasPorFecha[fecha] || 0, 10);
         const bankaoolNocturnasBadge = bankaoolNocturnas > 0
-            ? `<small class="badge ml-2" title="Despachos con RUT Bankaool a las 23:00 o después"><i class="fas fa-arrow-right mr-1"></i>${bankaoolNocturnas} tx ≥ 23:00</small>`
+            ? `<span class="bankaool-nocturnas-tag" title="Despachos con RUT Bankaool a las 23:00 o después"><i class="fas fa-arrow-right"></i>${bankaoolNocturnas} tx ≥ 23:00</span>`
             : '';
 
         // Badge diferencia
