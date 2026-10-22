@@ -1042,7 +1042,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-selection-bar .form-select { width: min(220px, 100%); min-height: 34px; border-color: #62749e; color: #f2f5ff; background-color: #384a78; color-scheme: dark; }
 .boards-selection-bar .boards-button-light { border-color: #60729f; color: #e5ebff; background: #344778; }
 .boards-table thead { display: none; }
-.boards-group-columns th { position: sticky; z-index: 3; top: 0; height: 32px; padding: 3px 9px; border-right: 1px solid #3d4160; border-bottom: 1px solid #525672; color: #bfc4dc; background: #313450; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+.boards-group-columns th { position: sticky; z-index: 3; top: 48px; height: 32px; padding: 3px 9px; border-right: 1px solid #3d4160; border-bottom: 1px solid #525672; color: #bfc4dc; background: #313450; font-size: .72rem; font-weight: 600; white-space: nowrap; }
 .boards-group-columns .boards-item-head { left: 38px; z-index: 5; min-width: 270px; box-shadow: 1px 0 0 #4a4d68; }
 .boards-table .boards-select-head,
 .boards-table .boards-select-cell { position: sticky; z-index: 4; left: 0; min-width: 38px; width: 38px; max-width: 38px; padding: 0; text-align: center; }
@@ -1297,6 +1297,10 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-add-row .boards-inline-add-form .boards-inline-add-cancel { border-color: transparent; color: #b7bed8; background: transparent; }
 .boards-add-row .boards-inline-add-form .boards-inline-add-cancel:hover { background: #353b5b; }
 .boards-row-details { display: inline-grid; width: 28px; min-height: 27px; place-items: center; padding: 0; font-size: .86rem; }
+.boards-row-details { position: relative; }
+.boards-row-comment-count { position: absolute; top: -6px; right: -7px; display: inline-grid; min-width: 15px; height: 15px; place-items: center; padding: 0 3px; border: 1px solid #fff; border-radius: 999px; color: #fff; background: #d84f5f; font-size: .58rem; font-weight: 700; line-height: 1; }
+.boards-comment-link { color: #176d9e; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.boards-comment-link:hover { color: #0e4e76; }
 .boards-table-item-name-wrap { display: flex; min-width: 0; align-items: center; gap: 5px; }
 .boards-table-item-name-wrap.is-child { padding-left: 14px; }
 .boards-table-item-name-wrap.is-child::before { content: '↳'; flex: 0 0 12px; color: #82949e; font-size: .95rem; font-weight: 700; line-height: 1; }
@@ -1352,6 +1356,14 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-details-panel .boards-comment-form,
 .boards-details-panel .boards-file-form,
 .boards-details-panel .boards-compact-form { border-color: #494d6b; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-comment-entry { border-color: #dce5e9; color: #263746; background: #fff; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-comment-body { color: #394e5a; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-comment-author-line .boards-detail-meta { color: #71828c; }
+html:not([data-theme="dark"]) .boards-comment-link { color: #176d9e; }
+html[data-theme="dark"] .boards-comment-link { color: #a9d6e3; }
+html[data-theme="dark"] .boards-comment-link:hover { color: #d0eff8; }
+.boards-row-details.has-comments { border-color: #d8848d; color: #9f3444; background: #fff5f5; }
+html[data-theme="dark"] .boards-row-comment-count { border-color: #343955; }
 .boards-file-browser-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .boards-file-browser-heading h4 { margin-bottom: 4px; }
 .boards-file-browser-heading p { margin: 0; color: #aeb2ca; font-size: .78rem; }

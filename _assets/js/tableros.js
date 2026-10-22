@@ -2414,6 +2414,7 @@
     const name = createItemNameControl(item);
     name.classList.add('boards-table-item-name-control');
     wrap.append(name);
+    wrap.append(createDetailsButton(item));
     if (canEditBoard()) {
       const addSubitem = makeElement('button', 'boards-item-subtask-add', '');
       addSubitem.type = 'button';
@@ -2735,7 +2736,9 @@
           if (comment.created_at) authorDetails.append(makeElement('time', '', displayDateTime(comment.created_at)));
           heading.append(authorDetails);
           article.append(heading);
-          article.append(makeElement('p', '', comment.body || comment.comment || ''));
+          const commentBody = makeElement('p');
+          appendCommentText(commentBody, comment.body || comment.comment || '');
+          article.append(commentBody);
           if (Array.isArray(comment.stickers) && comment.stickers.length) {
             const stickers = makeElement('div', 'boards-preview-comment-stickers');
             comment.stickers.forEach((sticker) => {
@@ -3397,7 +3400,8 @@
         const meta = makeElement('div', 'boards-comment-author-line');
         meta.append(commentAvatar(author, comment.created_by_id || comment.user_id));
         meta.append(makeElement('div', 'boards-detail-meta', `${author} · ${displayDateTime(comment.created_at)}`));
-        const body = makeElement('p', 'boards-comment-body', comment.body || '');
+        const body = makeElement('p', 'boards-comment-body');
+        appendCommentText(body, comment.body || '');
         article.append(meta, body);
         els.itemCommentsList.append(article);
       });
@@ -3887,6 +3891,8 @@
     try {
       const result = await post('/add_comment', { board_id: state.board.id, item_id: item.id, body });
       if (result.data) state.itemComments.push(result.data);
+      item.comment_count = Number(item.comment_count || 0) + 1;
+      renderActiveView();
       textarea.value = '';
       renderComments();
       const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
@@ -4755,6 +4761,13 @@
     const icon = makeElement('i', 'fa-regular fa-comment-dots');
     icon.setAttribute('aria-hidden', 'true');
     button.append(icon);
+    const commentCount = Number(item.comment_count || 0);
+    if (commentCount > 0) {
+      button.classList.add('has-comments');
+      const count = makeElement('span', 'boards-row-comment-count', commentCount > 99 ? '99+' : String(commentCount));
+      count.setAttribute('aria-label', `${commentCount} ${commentCount === 1 ? 'comentario' : 'comentarios'}`);
+      button.append(count);
+    }
     return button;
   }
 
@@ -5402,6 +5415,38 @@
     avatar.title = name || 'Usuario';
     avatar.setAttribute('aria-label', `Autor: ${name || 'Usuario'}`);
     return avatar;
+  }
+
+  function appendCommentText(container, value) {
+    const text = String(value || '');
+    const urlPattern = /(?:https?:\/\/|www\.)[^\s<>]+/gi;
+    let lastIndex = 0;
+    let match;
+    while ((match = urlPattern.exec(text)) !== null) {
+      let rawUrl = match[0];
+      let trailing = '';
+      while (/[.,!?;:)]$/.test(rawUrl)) {
+        trailing = rawUrl.slice(-1) + trailing;
+        rawUrl = rawUrl.slice(0, -1);
+      }
+      if (!rawUrl) continue;
+      container.append(document.createTextNode(text.slice(lastIndex, match.index)));
+      const href = /^www\./i.test(rawUrl) ? `https://${rawUrl}` : rawUrl;
+      try {
+        const parsed = new URL(href);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported URL protocol');
+        const link = makeElement('a', 'boards-comment-link', rawUrl);
+        link.href = parsed.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        container.append(link);
+      } catch (_) {
+        container.append(document.createTextNode(rawUrl));
+      }
+      if (trailing) container.append(document.createTextNode(trailing));
+      lastIndex = match.index + match[0].length;
+    }
+    container.append(document.createTextNode(text.slice(lastIndex)));
   }
 
   function fieldSelect(labelText, setting, columns, selectedValue, emptyText = 'Selecciona una columna') {
@@ -6820,6 +6865,18 @@
       const role = String(state.board?.role || '').toLowerCase();
       if (!['owner', 'designer', 'editor'].includes(role) || !state.board?.id) return;
       document.getElementById('duplicateBoardName').value = `Duplicado de ${state.board.name || 'tablero'}`;
+      const destinationSelect = document.getElementById('duplicateBoardWorkspace');
+      if (destinationSelect) {
+        destinationSelect.replaceChildren();
+        state.workspaces.filter((workspace) => canCreateInWorkspace(workspace)).forEach((workspace) => {
+          const option = makeElement('option', '', workspace.name || 'Espacio sin nombre');
+          option.value = String(workspace.id);
+          destinationSelect.append(option);
+        });
+        const sourceWorkspaceId = String(state.board.workspace_id || '');
+        destinationSelect.value = Array.from(destinationSelect.options).some((option) => option.value === sourceWorkspaceId)
+          ? sourceWorkspaceId : (destinationSelect.options[0]?.value || '');
+      }
       document.getElementById('duplicateBoardMode').value = 'structure';
       document.getElementById('duplicateBoardSubscribers').checked = false;
       document.getElementById('duplicateBoardModeHelp').textContent = 'Se copiarán grupos y columnas, sin elementos.';
@@ -6840,6 +6897,7 @@
       const result = await post('/duplicate_board', {
         board_id: state.board.id,
         name: getFormValue(formData, 'name'),
+        workspace_id: getFormValue(formData, 'workspace_id'),
         mode: getFormValue(formData, 'mode') || 'structure',
         keep_subscribers: formData.get('keep_subscribers') === '1'
       });

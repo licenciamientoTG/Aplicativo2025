@@ -338,6 +338,7 @@ class TablerosAccess
         $userId = $this->currentUserId();
         if ($workspaceId <= 0 || $userId <= 0) return false;
         if ($this->hasGlobalPermission('admin')) return true;
+        if (in_array($this->workspaceRole($workspaceId), ['owner', 'editor'], true)) return true;
         try {
             $stmt = $this->boardConnection()->prepare(
                 "SELECT TOP (1) b.id
@@ -353,6 +354,13 @@ class TablerosAccess
             error_log('TablerosAccess: no fue posible validar la administración del contenido del espacio: ' . $e->getMessage());
             return false;
         }
+    }
+
+    /** Whether this user can create a board in the selected workspace. */
+    public function canCreateBoardInWorkspace(int $workspaceId): bool
+    {
+        return $this->canManageWorkspaceContent($workspaceId)
+            || ($this->hasGlobalPermission('create') && $this->workspaceRole($workspaceId) !== null);
     }
 
     private function currentUserId(): int

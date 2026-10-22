@@ -1038,9 +1038,10 @@ class TablerosModel {
         unset($column);
 
         $items = $this->all(
-            'SELECT id, board_id, group_id, parent_item_id, name, sort_order, version,
-                    created_by, updated_by, created_at, updated_at
-             FROM tb_item WHERE board_id = ? AND deleted_at IS NULL ORDER BY group_id, sort_order, id',
+            'SELECT i.id, i.board_id, i.group_id, i.parent_item_id, i.name, i.sort_order, i.version,
+                    i.created_by, i.updated_by, i.created_at, i.updated_at,
+                    (SELECT COUNT(*) FROM tb_comment c WHERE c.item_id = i.id AND c.board_id = i.board_id AND c.deleted_at IS NULL) AS comment_count
+             FROM tb_item i WHERE i.board_id = ? AND i.deleted_at IS NULL ORDER BY i.group_id, i.sort_order, i.id',
             [$boardId]
         );
         $cells = $this->all(
@@ -2198,21 +2199,21 @@ class TablerosModel {
             throw new TablerosApiException('validation', 'El modo de duplicación no es válido.', 422);
         }
         $keepSubscribers = $this->booleanInput($input, 'keep_subscribers', false);
+        $destinationWorkspaceId = $this->optionalPositiveInt($input['workspace_id'] ?? null, 'workspace_id');
 
-        return $this->transaction(function () use ($sourceBoardId, $userId, $name, $mode, $keepSubscribers): array {
+        return $this->transaction(function () use ($sourceBoardId, $userId, $name, $mode, $keepSubscribers, $destinationWorkspaceId): array {
             $source = $this->one('SELECT * FROM tb_board WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$sourceBoardId]);
             if (!$source) throw new TablerosApiException('not_found', 'No se encontró el tablero.', 404);
 
-            // Keep the source location where the actor can create there; otherwise use one of their own workspaces.
-            $workspaceId = (int)$source['workspace_id'];
-            $workspaceRole = $this->access->workspaceRole($workspaceId);
-            if ($workspaceRole === null && !$this->access->canManageWorkspaceContent($workspaceId)) {
+            $workspaceId = $destinationWorkspaceId ?? (int)$source['workspace_id'];
+            if ($destinationWorkspaceId === null
+                && !$this->access->canCreateBoardInWorkspace($workspaceId)) {
                 $ownWorkspace = $this->one("SELECT TOP (1) id FROM tb_workspace WHERE created_by = ? AND workspace_type = 'workspace' AND deleted_at IS NULL ORDER BY id", [$userId]);
                 if (!$ownWorkspace) throw new TablerosApiException('forbidden', 'No tienes un espacio de trabajo disponible para crear el tablero.', 403);
                 $workspaceId = (int)$ownWorkspace['id'];
             }
             $workspace = $this->one("SELECT id FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
-            if (!$workspace || ($this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId))) {
+            if (!$workspace || !$this->access->canCreateBoardInWorkspace($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo destino.', 403);
             }
             $folderId = null;

@@ -312,6 +312,7 @@ html[data-theme="light"] body .boards-selection-bar .form-select,
 html[data-theme="light"] body .boards-selection-bar .boards-button-light { border-color: #cbd7de; color: #344957; background: #fff; color-scheme: light; }
 html[data-theme="light"] body .boards-group-columns th,
 html[data-theme="light"] body .boards-group-columns .boards-select-head { border-color: #d8e2e7; color: #344957; background: #edf3f6; }
+html[data-theme="light"] body .boards-group-columns th { top: 42px; }
 html[data-theme="light"] body .boards-table .boards-select-cell { background: #fff; }
 html[data-theme="light"] body .boards-table thead .boards-select-head input,
 html[data-theme="light"] body .boards-table .boards-select-cell input { border-color: #aebdc6; background-color: #fff; }

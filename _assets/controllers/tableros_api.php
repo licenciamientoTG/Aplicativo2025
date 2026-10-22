@@ -853,6 +853,10 @@ class tableros_api {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
             $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            if (!$this->access->canCreateBoardInWorkspace($workspaceId)) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros en el espacio seleccionado.', 403);
+            }
             return $this->model->duplicateBoard($boardId, $userId, $input);
         });
     }
