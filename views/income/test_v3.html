@@ -2445,22 +2445,21 @@ function renderTes() {
                 ? item.components
                 : [{ ref: item.id_origen || '', monto: item.monto || 0, descripcion: item.descripcion || '' }])
                 .filter(comp => normalizarRef(comp.ref));
+            const historialFuente = componentes.map(comp => getHistorialDetalle('TES', normalizarRef(comp.ref))).filter(Boolean);
+            const historialLegacy = concilLegacyDia
+                ? getHistorialDetalle('TES', refsDiaHistoricos.find(ref => hasConciliada('TES', ref)))
+                : null;
             // The expanded view renders all source movements as one aggregate row;
-            // count that visible row once, regardless of its component count.
-            const filaFuenteConciliadaDia = concilLegacyDia || (componentes.length > 0
-                && componentes.every(comp => hasConciliada('TES', normalizarRef(comp.ref))));
+            // a matching reconciliation history/group marks that visible row even
+            // when legacy refs prevent the per-component set lookup from matching.
+            const filaFuenteConciliadaDia = concilLegacyDia || historialFuente.length > 0 || !!historialLegacy;
             const diferidosConciliadosDia = diferidosDia.filter(d => hasConciliada('TES', `diferido_tes_${d.id}`) || !!d.conciliacion_id_dest || ['CONCILIADO', 'CONCILIADA'].includes(String(d.estado || '').toUpperCase())).length;
             const estadoSemaforoDia = tesDayState((componentes.length ? 1 : 0) + diferidosDia.length, (filaFuenteConciliadaDia ? 1 : 0) + diferidosConciliadosDia);
             const componentesPendientes = componentes.filter(comp => !concilLegacyDia
                 && !hasConciliada('TES', normalizarRef(comp.ref))
                 && montoConciliacionTesComponente(comp, fecha) > 0);
             const montoFuente = componentes.reduce((sum, comp) => sum + montoConciliacionTesComponente(comp, fecha), 0);
-            const fuenteConciliada = concilLegacyDia || (componentes.length > 0
-                && componentes.every(comp => hasConciliada('TES', normalizarRef(comp.ref))));
-            const historialFuente = componentes.map(comp => getHistorialDetalle('TES', normalizarRef(comp.ref))).filter(Boolean);
-            const historialLegacy = concilLegacyDia
-                ? getHistorialDetalle('TES', refsDiaHistoricos.find(ref => hasConciliada('TES', ref)))
-                : null;
+            const fuenteConciliada = filaFuenteConciliadaDia;
             const historialFuentePrincipal = historialFuente[0] || historialLegacy;
             const diferenciaFuente = historialFuentePrincipal ? parseFloat(historialFuentePrincipal.diferencia || 0) : 0;
             const estadoFuente = fuenteConciliada
