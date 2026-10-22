@@ -318,6 +318,22 @@ public function buscarPorUUIDs($uuids) {
         return $rows[0] ?? null;
     }
 
+    /**
+     * Rutas de PDF de varias facturas en una sola consulta. Devuelve [Id => RutaArchivo] (solo las que tienen ruta).
+     */
+    public function rutas_pdf_por_ids(array $ids) {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if (!$ids) return [];
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $rows = $this->sql->select(
+            "SELECT Id, RutaArchivo FROM TG.dbo.FacturasRecibidas WHERE Id IN ($in) AND ISNULL(RutaArchivo, '') <> ''",
+            $ids
+        );
+        $out = [];
+        foreach ($rows as $r) $out[(int)$r['Id']] = $r['RutaArchivo'];
+        return $out;
+    }
+
     public function update_ruta($facturaId, $ruta, $nombreArchivo) {
         $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ? WHERE Id = ?";
         return $this->sql->update($query, [$ruta, $nombreArchivo, $facturaId]);

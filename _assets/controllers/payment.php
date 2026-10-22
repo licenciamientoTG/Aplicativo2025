@@ -5407,17 +5407,8 @@ class Payment
             return;
         }
 
-        $ruta = str_replace('/', DIRECTORY_SEPARATOR, $ruta);
-        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
-        // Rutas relativas (attachments\...) → carpeta base del importador de correos
-        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
-            $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
-        }
-
-        // Restricción por prefijo y sin "..": no se usa realpath() porque si la carpeta de adjuntos
-        // es un enlace/junction a otra unidad, realpath() la sacaría del directorio base.
-        $base = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\';
-        if (strpos($ruta, '..') !== false || stripos($ruta, $base) !== 0) {
+        $ruta = $this->normalizar_ruta_factura($ruta);
+        if (strpos($ruta, '..') !== false || stripos($ruta, self::FACTURAS_BASE_DIR) !== 0) {
             http_response_code(403);
             echo 'Archivo fuera del directorio permitido: ' . $ruta;
             return;
@@ -5439,6 +5430,108 @@ class Payment
         header('Content-Disposition: ' . $disposition . '; filename="' . basename($real) . '"');
         header('Content-Length: ' . filesize($real));
         readfile($real);
+        exit;
+    }
+
+    private const FACTURAS_BASE_DIR = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\';
+    private const ZIP_MAX_FACTURAS  = 500;
+
+    /**
+     * Convierte la ruta guardada en BD a ruta absoluta de Windows.
+     * La restricción por prefijo (FACTURAS_BASE_DIR) y sin ".." la aplica quien la usa: no se usa
+     * realpath() porque si la carpeta de adjuntos es un enlace/junction a otra unidad, la sacaría del base.
+     */
+    private function normalizar_ruta_factura(string $ruta): string
+    {
+        $ruta = str_replace('/', DIRECTORY_SEPARATOR, $ruta);
+        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
+        // Rutas relativas (attachments\...) → carpeta base del importador de correos
+        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
+            $ruta = self::FACTURAS_BASE_DIR . 'correoFacturas\\' . ltrim($ruta, '\\');
+        }
+        return $ruta;
+    }
+
+    /**
+     * Descarga en un ZIP los PDF de las facturas que coinciden con los filtros de la búsqueda (máx. 500).
+     * Estructura: Proveedor/Estacion/Fecha_Serie-Folio_UUID.pdf + LEEME.txt con las que no se pudieron incluir.
+     */
+    public function search_invoices_zip()
+    {
+        $max = self::ZIP_MAX_FACTURAS;
+        $rows = $this->facturasRecibidasModel->search_invoices([
+            'emisor_rfc'  => trim($_POST['emisor_rfc'] ?? ''),
+            'codgas'      => trim($_POST['codgas'] ?? ''),
+            'q'           => trim($_POST['q'] ?? ''),
+            'from'        => $_POST['from'] ?? '',
+            'until'       => $_POST['until'] ?? '',
+            'campo_fecha' => $_POST['campo_fecha'] ?? 'fecha',
+        ], $max);
+
+        if (!$rows) {
+            http_response_code(404);
+            echo 'La búsqueda no tiene facturas.';
+            return;
+        }
+        if (count($rows) > $max) {
+            http_response_code(400);
+            echo "La búsqueda tiene más de $max facturas; afina los filtros.";
+            return;
+        }
+        if (!class_exists('ZipArchive')) {
+            http_response_code(500);
+            echo 'La extensión zip de PHP no está habilitada en el servidor.';
+            return;
+        }
+
+        set_time_limit(0);
+        $rutas = $this->facturasRecibidasModel->rutas_pdf_por_ids(array_column($rows, 'Id'));
+        $limpiar = fn($s) => trim(preg_replace('/[^\w\-. ]+/u', '', (string)$s)) ?: 'SIN_DATO';
+
+        $tmp = tempnam(sys_get_temp_dir(), 'facz');
+        $zip = new ZipArchive();
+        if ($zip->open($tmp, ZipArchive::OVERWRITE) !== true) {
+            @unlink($tmp);
+            http_response_code(500);
+            echo 'No se pudo crear el archivo ZIP.';
+            return;
+        }
+
+        $incluidas = 0;
+        $omitidas = [];
+        $usados = [];
+        foreach ($rows as $r) {
+            $folio = ($r['Serie'] ? $r['Serie'] . '-' : '') . $r['Folio'];
+            $etiqueta = $r['Fecha'] . ' ' . $folio . ' ' . $r['UUID'];
+            $ruta = isset($rutas[(int)$r['Id']]) ? $this->normalizar_ruta_factura($rutas[(int)$r['Id']]) : '';
+            if ($ruta === '') {
+                $omitidas[] = "$etiqueta — sin PDF registrado";
+                continue;
+            }
+            if (strpos($ruta, '..') !== false || stripos($ruta, self::FACTURAS_BASE_DIR) !== 0 || !is_file($ruta) || !is_readable($ruta)) {
+                $omitidas[] = "$etiqueta — el archivo no existe o no es accesible en el servidor";
+                continue;
+            }
+            $nombre = $limpiar($r['EmisorNombre']) . '/' . $limpiar($r['EstacionNombre'] ?: 'SIN_ESTACION') . '/'
+                    . $limpiar($r['Fecha'] . '_' . $folio . '_' . $r['UUID']);
+            $n = $usados[$nombre] = ($usados[$nombre] ?? 0) + 1;
+            $zip->addFile($ruta, $nombre . ($n > 1 ? "_$n" : '') . '.pdf');
+            $incluidas++;
+        }
+
+        if ($omitidas) {
+            $zip->addFromString('LEEME.txt', "Facturas que no se incluyeron (" . count($omitidas) . "):\r\n\r\n" . implode("\r\n", $omitidas));
+        } elseif ($incluidas === 0) {
+            $zip->addFromString('LEEME.txt', 'Sin archivos.');
+        }
+        $zip->close();
+
+        while (ob_get_level()) ob_end_clean();
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="facturas_' . date('Ymd_His') . '.zip"');
+        header('Content-Length: ' . filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
         exit;
     }
 

@@ -178,8 +178,15 @@
                 <div class="card shadow-sm d-none" id="search-results">
                     <div class="card-header bg-white d-flex justify-content-between align-items-center">
                         <span class="fw-semibold" style="font-size:.85rem;"><i class="fas fa-list me-1"></i> Resultados</span>
-                        <span id="search-count" class="text-muted" style="font-size:.78rem;"></span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="search-count" class="text-muted" style="font-size:.78rem;"></span>
+                            <button type="button" class="btn btn-sm btn-outline-primary d-none" id="btn-zip" title="Descargar los PDF de esta búsqueda en un ZIP (máx. 500)">
+                                <i class="fas fa-file-archive"></i> Descargar PDF (ZIP)
+                            </button>
+                        </div>
                     </div>
+                    <form id="zip-form" method="post" action="/payment/search_invoices_zip" target="zip-frame" class="d-none"></form>
+                    <iframe name="zip-frame" class="d-none"></iframe>
                     <div class="table-responsive" style="padding:.75rem; max-height:65vh;">
                         <table class="table table-sm table-hover w-100 mb-0">
                             <thead style="background:#f8fafc; position:sticky; top:0;">
@@ -352,6 +359,7 @@ document.getElementById('search-form').addEventListener('submit', async function
             method: 'POST', body: new FormData(this), credentials: 'include'
         });
         const res = await resp.json();
+        ultimaBusqueda = Object.fromEntries(new FormData(this));
         renderBusqueda(res);
     } catch (err) {
         alertify.error('No se pudo realizar la búsqueda.');
@@ -361,10 +369,30 @@ document.getElementById('search-form').addEventListener('submit', async function
     }
 });
 
+const ZIP_MAX = 500;
+let ultimaBusqueda = null;   // filtros de la búsqueda que se ve en pantalla
+
+document.getElementById('btn-zip').addEventListener('click', () => {
+    if (!ultimaBusqueda) return;
+    const form = document.getElementById('zip-form');
+    form.innerHTML = Object.entries(ultimaBusqueda)
+        .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('');
+    form.submit();
+    alertify.message('Generando ZIP, la descarga empezará en unos momentos...');
+});
+
 function renderBusqueda(res) {
     document.getElementById('search-results').classList.remove('d-none');
     const tbody = document.getElementById('search-body');
     const rows = res.data || [];
+    const btnZip = document.getElementById('btn-zip');
+    const conPdf = rows.filter(r => r.TienePdf == 1).length;
+    const excede = res.truncado || rows.length > ZIP_MAX;
+    btnZip.classList.toggle('d-none', !conPdf);
+    btnZip.disabled = excede;
+    btnZip.title = excede
+        ? `El ZIP admite máximo ${ZIP_MAX} facturas; afina los filtros`
+        : `Descargar los ${conPdf} PDF de esta búsqueda en un ZIP`;
     document.getElementById('search-count').textContent = rows.length
         ? `${rows.length} factura(s)` + (res.truncado ? ` — mostrando las primeras ${res.limite}, afina los filtros` : '')
         : '';
