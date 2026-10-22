@@ -5355,7 +5355,6 @@
 
   function closeColumnMenus() {
     document.querySelectorAll('[data-open-column-menu][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
-    document.querySelectorAll('.boards-column-heading.is-menu-open').forEach((heading) => heading.classList.remove('is-menu-open'));
     document.querySelectorAll('.boards-column-menu').forEach((menu) => menu.remove());
   }
 
@@ -5368,10 +5367,10 @@
     closeColumnMenus();
     const th = trigger.closest('th');
     if (!th) return;
-    th.classList.add('is-menu-open');
     const menu = makeElement('div', 'boards-column-menu');
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', `Acciones de ${column.name || 'columna'}`);
+    menu.dataset.columnMenuColumn = String(column.id);
     const addAction = (label, action, disabled = false, disabledReason = '') => {
       const button = makeElement('button', '', label);
       button.type = 'button';
@@ -5397,7 +5396,17 @@
     addAction('Renombrar', 'rename', !canManageStructure());
     addAction('Ocultar', 'hide');
     addAction('Eliminar', 'delete', !canManageStructure());
-    th.append(menu);
+    document.body.append(menu);
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportPadding = 8;
+    const left = Math.max(viewportPadding, Math.min(triggerRect.left, window.innerWidth - menuRect.width - viewportPadding));
+    let top = triggerRect.bottom - 2;
+    if (top + menuRect.height > window.innerHeight - viewportPadding) top = triggerRect.top - menuRect.height + 2;
+    top = Math.max(viewportPadding, Math.min(top, window.innerHeight - menuRect.height - viewportPadding));
+    menu.style.left = `${left}px`;
+    menu.style.right = 'auto';
+    menu.style.top = `${top}px`;
     trigger.setAttribute('aria-expanded', 'true');
     menu.querySelector('button:not(:disabled)')?.focus();
   }
@@ -8296,7 +8305,8 @@
       const menuAction = event.target.closest('[data-column-menu-action]');
       if (menuAction) {
         event.preventDefault(); event.stopPropagation();
-        const column = state.columns.find((entry) => String(entry.id) === menuAction.closest('[data-column-header]')?.dataset.columnHeader);
+        const columnId = menuAction.closest('.boards-column-menu')?.dataset.columnMenuColumn;
+        const column = state.columns.find((entry) => String(entry.id) === columnId);
         closeColumnMenus();
         if (column) runColumnMenuAction(menuAction.dataset.columnMenuAction, column, menuAction).catch((error) => setNotice(error.message || 'No se pudo realizar la acción de columna.', 'error'));
         return;
@@ -8332,6 +8342,11 @@
     document.addEventListener('pointerdown', (event) => {
       if (!event.target.closest('.boards-column-menu, [data-open-column-menu]')) closeColumnMenus();
     });
+    document.addEventListener('scroll', (event) => {
+      if (event.target.closest?.('.boards-column-menu')) return;
+      closeColumnMenus();
+    }, true);
+    window.addEventListener('resize', closeColumnMenus);
     document.addEventListener('keydown', (event) => {
       const menu = event.target.closest?.('.boards-column-menu');
       if (menu && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {

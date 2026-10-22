@@ -5010,7 +5010,7 @@ public function anomalies_client_tickets()
                 // Usamos hash siempre, ya que ID_Externo en Santander puede venir duplicado.
                 $hashData = 
                     (string)($row['Afiliacion'] ?? '') . 
-                    $fechaParaHash . 
+                    $fechaParaHash .
                     (string)($row['Hora'] ?? '') . 
                     (string)($row['Monto'] ?? '') . 
                     (string)($row['Codigo_Autorizacion'] ?? '') .
