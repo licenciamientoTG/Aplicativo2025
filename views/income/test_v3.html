@@ -2445,10 +2445,12 @@ function renderTes() {
                 ? item.components
                 : [{ ref: item.id_origen || '', monto: item.monto || 0, descripcion: item.descripcion || '' }])
                 .filter(comp => normalizarRef(comp.ref));
-            const refsComponentesDia = [...new Set(componentes.map(comp => normalizarRef(comp.ref)).filter(Boolean))];
-            const refsConciliadosDia = concilLegacyDia ? refsComponentesDia.length : refsComponentesDia.filter(ref => hasConciliada('TES', ref)).length;
+            // The expanded view renders all source movements as one aggregate row;
+            // count that visible row once, regardless of its component count.
+            const filaFuenteConciliadaDia = concilLegacyDia || (componentes.length > 0
+                && componentes.every(comp => hasConciliada('TES', normalizarRef(comp.ref))));
             const diferidosConciliadosDia = diferidosDia.filter(d => hasConciliada('TES', `diferido_tes_${d.id}`) || !!d.conciliacion_id_dest || ['CONCILIADO', 'CONCILIADA'].includes(String(d.estado || '').toUpperCase())).length;
-            const estadoSemaforoDia = tesDayState(refsComponentesDia.length + diferidosDia.length, refsConciliadosDia + diferidosConciliadosDia);
+            const estadoSemaforoDia = tesDayState((componentes.length ? 1 : 0) + diferidosDia.length, (filaFuenteConciliadaDia ? 1 : 0) + diferidosConciliadosDia);
             const componentesPendientes = componentes.filter(comp => !concilLegacyDia
                 && !hasConciliada('TES', normalizarRef(comp.ref))
                 && montoConciliacionTesComponente(comp, fecha) > 0);
