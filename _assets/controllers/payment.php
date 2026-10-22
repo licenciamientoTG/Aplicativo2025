@@ -5414,23 +5414,25 @@ class Payment
             $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
         }
 
-        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
-        $real = realpath($ruta);
-        if ($real === false) {
+        // Restricción por prefijo y sin "..": no se usa realpath() porque si la carpeta de adjuntos
+        // es un enlace/junction a otra unidad, realpath() la sacaría del directorio base.
+        $base = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\';
+        if (strpos($ruta, '..') !== false || stripos($ruta, $base) !== 0) {
+            http_response_code(403);
+            echo 'Archivo fuera del directorio permitido: ' . $ruta;
+            return;
+        }
+        if (!is_file($ruta)) {
             http_response_code(404);
             echo 'El archivo no existe en este servidor: ' . basename($ruta);
             return;
         }
-        if ($baseAllowed === false || strpos($real, $baseAllowed) !== 0) {
+        if (!is_readable($ruta)) {
             http_response_code(403);
-            echo 'Archivo fuera del directorio permitido.';
+            echo 'Sin permisos de lectura sobre el archivo: ' . basename($ruta);
             return;
         }
-        if (!is_readable($real)) {
-            http_response_code(404);
-            echo 'Archivo no legible.';
-            return;
-        }
+        $real = $ruta;
 
         $disposition = !empty($_GET['download']) ? 'attachment' : 'inline';
         header('Content-Type: ' . ($tipo === 'pdf' ? 'application/pdf' : 'text/xml'));
