@@ -1359,6 +1359,12 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 html:not([data-theme="dark"]) .boards-details-panel .boards-comment-entry { border-color: #dce5e9; color: #263746; background: #fff; }
 html:not([data-theme="dark"]) .boards-details-panel .boards-comment-body { color: #394e5a; }
 html:not([data-theme="dark"]) .boards-details-panel .boards-comment-author-line .boards-detail-meta { color: #71828c; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-activity-entry { border-color: #dce5e9; color: #263746; background: #fff; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-activity-entry strong { color: #354b58; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-activity-details dt { color: #71828c; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-activity-details dd,
+html:not([data-theme="dark"]) .boards-details-panel .boards-activity-entry > .boards-detail-meta { color: #526873; }
+html:not([data-theme="dark"]) .boards-details-tabs [role="tab"][aria-selected="true"] { color: #263746; }
 html:not([data-theme="dark"]) .boards-comment-link { color: #176d9e; }
 html[data-theme="dark"] .boards-comment-link { color: #a9d6e3; }
 html[data-theme="dark"] .boards-comment-link:hover { color: #d0eff8; }
