@@ -4129,7 +4129,10 @@ public function anomalies_client_tickets()
                                 $ids = $fingerprints = [];
                                 while ($existing = $stmt->fetch(PDO::FETCH_ASSOC)) {
                                     $ids[trim((string)$existing['Afiliacion']).'|'.trim((string)$existing['ID_Externo'])] = true;
-                                    $fingerprints[implode('|', [trim((string)$existing['Afiliacion']), substr((string)$existing['Fecha_Transaccion'],0,10), trim((string)$existing['Hora']), number_format((float)$existing['Monto'],2,'.',''), trim((string)$existing['Codigo_Autorizacion']), trim((string)$existing['Terminal']), trim((string)$existing['Referencia'])])] = true;
+                                    $existingDate = $existing['Fecha_Transaccion'] instanceof \DateTimeInterface
+                                        ? $existing['Fecha_Transaccion']->format('Y-m-d')
+                                        : substr((string)$existing['Fecha_Transaccion'], 0, 10);
+                                    $fingerprints[implode('|', [trim((string)$existing['Afiliacion']), $existingDate, trim((string)$existing['Hora']), number_format((float)$existing['Monto'],2,'.',''), trim((string)$existing['Codigo_Autorizacion']), trim((string)$existing['Terminal']), trim((string)$existing['Referencia'])])] = true;
                                 }
                                 $columns = $columnas_oficiales;
                                 $ins = $conn->prepare('INSERT INTO banco_bankaool ('.implode(',', $columns).') VALUES ('.implode(',', array_fill(0,count($columns),'?')).')');
@@ -4998,11 +5001,16 @@ public function anomalies_client_tickets()
             // completa, por lo que se conserva sólo la primera aparición.
             $transaccionesVistas = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                $fechaVal = $row['Fecha_Transaccion'];
+                $fechaIso = ($fechaVal instanceof \DateTimeInterface)
+                    ? $fechaVal->format('Y-m-d')
+                    : substr((string)$fechaVal, 0, 10);
+                $fechaParaHash = ((int)$eid === 14) ? $fechaIso : (string)$fechaVal;
                 // GENERACIÓN DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
                 // Usamos hash siempre, ya que ID_Externo en Santander puede venir duplicado.
                 $hashData = 
                     (string)($row['Afiliacion'] ?? '') . 
-                    (string)($row['Fecha_Transaccion'] ?? '') . 
+                    $fechaParaHash . 
                     (string)($row['Hora'] ?? '') . 
                     (string)($row['Monto'] ?? '') . 
                     (string)($row['Codigo_Autorizacion'] ?? '') .
@@ -5016,9 +5024,6 @@ public function anomalies_client_tickets()
                     continue;
                 }
                 $transaccionesVistas[$idTransaccion] = true;
-                
-                $fechaVal = $row['Fecha_Transaccion'];
-                $fechaIso = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 
                 $fechaDepoVal = $row['Fecha_Deposito'];
                 $fechaDepoIso = null;
