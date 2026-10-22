@@ -495,20 +495,33 @@ class Direction{
         $currentMonth = (int) date('m');
         $currentday = (int) date('d');
         $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $currentMonth, $currentYear);
+        $daysElapsed = max($currentday - 1, 1); // días cerrados del mes; evita división entre 0 el día 1
+        // Último mes cerrado (el que usa el Excel para marcar "Sin Consumo" / "Nuevo")
+        $lastClosedKey = ($currentMonth == 1)
+            ? ($currentYear - 1) . "_12"
+            : $currentYear . "_" . ($currentMonth - 1);
         $data = [];
         $columnData = $this->generate_columns_and_pivot_clause();
         $columns_name = $columnData['columns_name'];
 
         $rows = $this->CreDebMensualModel->comsumption_credit_client_table( $columnData,$type);
-        foreach ($rows as $key=> $row) {
+        foreach ($rows ?: [] as $key=> $row) {
                 $clienteAbreviado = mb_strlen($row['Cliente'], 'UTF-8') > 25 
                 ? mb_substr($row['Cliente'], 0, 25, 'UTF-8') . '...'
                 : $row['Cliente'];
                 $lognew = self::format_month_year($row['ingreso']); // primer ingreso entre las cuentas del RFC
-                $prediction = (($row[$currentYear."_".$currentMonth] /($currentday-1) )*$daysInMonth) ?? 0;
-                $pro_vs_max = ($row['MaxValue'] != 0) ?  ((($prediction / $row['MaxValue'] )-1)*100  ) : 0;
-                $ratio = ((float)$row['MaxValue'] != 0) ? $prediction / (float)$row['MaxValue'] : 0;
-                $estatus = ($ratio >= 0.9) ? 'Verde' : (($ratio >= 0.7) ? 'Naranja' : 'Rojo');
+                $maxValue = (float)($row['MaxValue'] ?? 0);
+                $prediction = ((float)($row[$currentYear."_".$currentMonth] ?? 0) / $daysElapsed) * $daysInMonth;
+                $pro_vs_max = ($maxValue != 0) ? ((($prediction / $maxValue) - 1) * 100) : 0;
+                $ratio = ($maxValue != 0) ? $prediction / $maxValue : 0;
+                $estatus = ($ratio >= 0.9) ? 'Verde' : (($ratio >= 0.7) ? 'Naranja' : 'Rojo'); // umbrales del Excel: <70% rojo, 70-90% naranja, >=90% verde
+                $lastClosed = (float)($row[$lastClosedKey] ?? 0);
+                $max_label = '';
+                if ($maxValue == 0) {
+                    $max_label = ($lastClosed == 0) ? 'Sin Consumos' : 'Nuevo';
+                } elseif ($lastClosed == 0) {
+                    $max_label = 'Sin Consumo';
+                }
                 $entry = [
                     'CodigoCliente' => 1,
                     'Cliente'       => $row['Cliente'],
@@ -516,16 +529,17 @@ class Direction{
                     'lognew'        => $lognew,
                     'nombre_asesor' => "",
                     'nombre_zona'   => '',
-                    'MaxValue'      => round($row['MaxValue'],3)  ?? 0,
-                    'prediction'      => round($prediction,3)  ?? 0,
-                    'pro_vs_max'      => round($pro_vs_max)  ?? 0,
+                    'MaxValue'      => round($maxValue,3),
+                    'max_label'     => $max_label,
+                    'prediction'      => round($prediction,3),
+                    'pro_vs_max'      => round($pro_vs_max),
                     'cumplimiento'    => round($ratio * 100),
                     'estatus'         => $estatus,
     
     
                 ];
                 foreach ($columns_name as $column) {
-                    $entry[$column] = round($row[$column],3)  ?? 0;
+                    $entry[$column] = round((float)($row[$column] ?? 0),3);
                 }
 
                 $data[] = $entry;
@@ -1181,6 +1195,8 @@ class Direction{
     public function excel_tg6(){
         set_time_limit(300);
         ini_set('memory_limit', '512M');
+        ini_set('display_errors', '0');   // un aviso impreso corrompe el .xlsx
+        while (ob_get_level() > 0) { ob_end_clean(); }
         $currentYear = (int)date('Y');
         $year = (int)($_GET['year'] ?? $currentYear);
         $monthKey = fn($key) => preg_match('/^(\d{4})_(\d{1,2})$/', (string)$key, $m) ? ((int)$m[1] * 12 + (int)$m[2]) : null;
@@ -1307,7 +1323,7 @@ class Direction{
                 $sums[$i] += $v;
                 $sheet->setCellValue($coord($first + $i) . $r, $v);
             }
-            $sheet->setCellValue($coord($cMax) . $r, $row['max_label'] !== '' ? $row['max_label'] : $row['MaxValue']);
+            $sheet->setCellValue($coord($cMax) . $r, ($row['max_label'] ?? '') !== '' ? $row['max_label'] : $row['MaxValue']);
             $sheet->setCellValue($coord($cPred) . $r, $row['prediction']);
             $sheet->setCellValue($coord($cVar) . $r, $row['pro_vs_max'] / 100);
             $sheet->setCellValue($coord($cPct) . $r, $row['cumplimiento'] / 100);
