@@ -9,6 +9,8 @@
 <style>
     .bankaool-nocturnas-tag { display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:3px 8px;border:1px solid #f59e0b;border-radius:999px;background:#fff7ed;color:#9a3412;font-size:.72rem;font-weight:700;line-height:1.2;white-space:nowrap;vertical-align:middle; }
     .bankaool-nocturnas-tag i { color:#ea580c;font-size:.68rem; }
+    .bankaool-nocturnas-tag-cg { border-color:#93c5fd;background:#eff6ff;color:#1d4ed8; }
+    .bankaool-nocturnas-tag-cg i { color:#2563eb; }
     :root {
         --primary-color: #2c3e50;
         --accent-color:  #3498db;
@@ -2132,7 +2134,7 @@ function renderCG() {
         const dateFmt   = fecha.split('-').reverse().join('/');
         const importeBankaoolNocturno = parseFloat(importesBankaoolNocturnosPorFecha[fecha] || 0);
         const bankaoolNocturnasBadge = importeBankaoolNocturno > 0
-            ? `<span class="bankaool-nocturnas-tag" title="Importe de despachos Bankaool desde las 23:00"><i class="fas fa-arrow-right"></i>${fmt.format(importeBankaoolNocturno)}</span>`
+            ? `<span class="bankaool-nocturnas-tag bankaool-nocturnas-tag-cg" title="Importe de despachos Bankaool desde las 23:00"><i class="fas fa-arrow-right"></i>${fmt.format(importeBankaoolNocturno)}</span>`
             : '';
 
         // Filas del grupo
