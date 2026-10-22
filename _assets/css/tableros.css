@@ -216,6 +216,23 @@
 .boards-table th,
 .boards-table td { min-width: 156px; height: 42px; padding: 5px 9px; border-right: 1px solid #e7edef; border-bottom: 1px solid #e7edef; text-align: left; vertical-align: middle; }
 .boards-table thead th { position: sticky; z-index: 3; top: 0; height: 38px; min-width: 156px; border-bottom-color: #d4e0e5; color: #5d707b; background: #f5f8f9; font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.boards-table thead th.boards-column-heading { position: sticky; }
+.boards-column-heading { align-items: center; display: flex; }
+.boards-column-heading-title { display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.boards-column-heading.is-column-collapsed { width: 38px !important; min-width: 38px !important; max-width: 38px !important; padding: 3px !important; }
+.boards-column-heading.is-column-collapsed .boards-column-heading-title,
+.boards-column-heading.is-column-collapsed .boards-required-label { display: none; }
+.boards-column-heading.is-column-collapsed .boards-column-menu-trigger { width: 28px; margin: 0; }
+.boards-table td.is-column-collapsed { width: 38px !important; min-width: 38px !important; max-width: 38px !important; padding: 3px !important; overflow: hidden; }
+.boards-table td.is-column-collapsed > * { visibility: hidden; }
+.boards-column-menu-trigger { width: 25px; height: 25px; margin-left: 5px; padding: 0; border: 0; border-radius: 4px; color: #617681; background: transparent; font-size: 1.1rem; line-height: 1; cursor: pointer; }
+.boards-column-menu-trigger:hover, .boards-column-menu-trigger:focus-visible { color: #124c53; background: #e6f0ef; outline: 2px solid transparent; }
+.boards-column-menu { position: absolute; z-index: 30; top: calc(100% - 2px); right: 4px; display: flex; width: 230px; max-height: min(70vh, 500px); flex-direction: column; overflow: auto; padding: 5px; border: 1px solid #d6e0e4; border-radius: 6px; background: #fff; box-shadow: 0 8px 24px rgb(26 49 61 / 20%); white-space: normal; }
+.boards-column-menu button { width: 100%; padding: 7px 9px; border: 0; border-radius: 4px; color: #354b56; background: transparent; font: inherit; font-size: .76rem; text-align: left; cursor: pointer; }
+.boards-column-menu button:hover:not(:disabled), .boards-column-menu button:focus-visible { color: #123f46; background: #edf5f4; outline: 2px solid transparent; }
+.boards-column-menu button:disabled { color: #9ba8ad; cursor: not-allowed; }
+.boards-column-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #e5ebee; }
+.boards-ephemeral-group-row th { height: 30px; padding: 5px 10px; color: #4d6570; background: #edf3f4; font-size: .72rem; font-weight: 700; }
 .boards-required-label { margin-left: 7px; padding: 2px 4px; border-radius: 3px; color: #805d2a; background: #f8f1e5; font-size: .62rem; font-weight: 500; }
 .boards-table thead .boards-item-head { left: 0; z-index: 5; min-width: 260px; }
 .boards-table .boards-item-name { position: sticky; z-index: 2; left: 0; min-width: 260px; max-width: 390px; color: #304450; background: #fff; font-weight: 500; }
@@ -980,6 +997,12 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-table th,
 .boards-table td { height: 37px; padding: 3px 9px; border-right-color: #3b3e5b; border-bottom-color: #3b3e5b; }
 .boards-table thead th { height: 38px; border-bottom-color: #555978; color: #c0c4dc; background: #30334f; font-size: .74rem; }
+.boards-column-menu { border-color: #555978; background: #292c47; box-shadow: 0 8px 24px rgb(0 0 0 / 38%); }
+.boards-column-menu button { color: #e3e5f1; }
+.boards-column-menu button:hover:not(:disabled), .boards-column-menu button:focus-visible { color: #fff; background: #3b405e; }
+.boards-column-menu button:disabled { color: #888da8; }
+.boards-column-menu hr { border-top-color: #484c68; }
+.boards-ephemeral-group-row th { color: #e0e4f1; background: #393d5d; }
 .boards-table thead .boards-item-head,
 .boards-table .boards-item-name { min-width: 270px; }
 .boards-table thead .boards-item-head { background: #30334f; box-shadow: 1px 0 0 #4a4d68; }

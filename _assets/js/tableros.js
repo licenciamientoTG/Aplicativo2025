@@ -207,6 +207,7 @@
     filterDraft: [],
     calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     collapsedGroups: new Set(),
+    columnMenuState: { filters: [], sort: null, groupBy: null, collapsedColumns: new Set() },
     draggedItemId: '',
     draggedItemIds: [],
     suppressItemClickUntil: 0,
@@ -1318,6 +1319,7 @@
   }
 
   async function loadBoard(id, skipRoute = false) {
+    resetColumnMenuState();
     document.getElementById('trashArchiveView').hidden = true;
     state.recycleMode = '';
     if (!id) {
@@ -4898,7 +4900,21 @@
 
   function getFilteredItems() {
     const query = boardSearchValue().trim().toLocaleLowerCase();
-    return state.items.filter((item) => itemMatchesSearch(item, query) && state.filters.every((filter) => compareFilter(item, filter)));
+    const temporaryFilters = state.columnMenuState.filters;
+    return state.items.filter((item) => itemMatchesSearch(item, query)
+      && state.filters.every((filter) => compareFilter(item, filter))
+      && temporaryFilters.every((filter) => compareFilter(item, filter)));
+  }
+
+  function compareColumnMenuItems(a, b) {
+    const sort = state.columnMenuState.sort;
+    if (!sort) return Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
+    const column = state.columns.find((candidate) => String(candidate.id) === String(sort.columnId));
+    const left = column ? getCellValue(a, column) : '';
+    const right = column ? getCellValue(b, column) : '';
+    const direction = sort.direction === 'desc' ? -1 : 1;
+    const result = stringifyValue(left).localeCompare(stringifyValue(right), 'es-MX', { numeric: true, sensitivity: 'base' });
+    return result * direction || Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
   }
 
   function orderItemsByHierarchy(items) {
@@ -4918,10 +4934,11 @@
       if (visited.has(id)) return;
       visited.add(id);
       ordered.push(item);
-      (childrenByParent.get(id) || []).forEach(appendWithChildren);
+      (childrenByParent.get(id) || []).slice().sort(compareColumnMenuItems).forEach(appendWithChildren);
     };
 
     items.filter((item) => item.parent_item_id == null || !visibleIds.has(String(item.parent_item_id)))
+      .slice().sort(compareColumnMenuItems)
       .forEach(appendWithChildren);
     items.forEach(appendWithChildren);
     return ordered;
@@ -5311,6 +5328,142 @@
     });
   }
 
+  function resetColumnMenuState() {
+    state.columnMenuState = { filters: [], sort: null, groupBy: null, collapsedColumns: new Set() };
+  }
+
+  function makeColumnHeader(column) {
+    const th = makeElement('th', 'boards-column-heading');
+    th.scope = 'col';
+    th.dataset.resizeKey = String(column.id);
+    th.dataset.columnHeader = String(column.id);
+    const collapsed = state.columnMenuState.collapsedColumns.has(String(column.id));
+    th.classList.toggle('is-column-collapsed', collapsed);
+    const title = makeElement('span', 'boards-column-heading-title', column.name || 'Columna');
+    th.append(title);
+    if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
+    const trigger = makeElement('button', 'boards-column-menu-trigger', '⋯');
+    trigger.type = 'button';
+    trigger.dataset.openColumnMenu = String(column.id);
+    trigger.setAttribute('aria-label', `Acciones de la columna ${column.name || ''}`);
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    th.append(trigger);
+    return th;
+  }
+
+  function closeColumnMenus() {
+    document.querySelectorAll('[data-open-column-menu][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+    document.querySelectorAll('.boards-column-menu').forEach((menu) => menu.remove());
+  }
+
+  function openColumnMenu(column, trigger) {
+    closeColumnMenus();
+    const th = trigger.closest('th');
+    if (!th) return;
+    const menu = makeElement('div', 'boards-column-menu');
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', `Acciones de ${column.name || 'columna'}`);
+    const addAction = (label, action, disabled = false) => {
+      const button = makeElement('button', '', label);
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.dataset.columnMenuAction = action;
+      button.disabled = disabled;
+      menu.append(button);
+    };
+    addAction('Configuración', 'configure', !canManageStructure() || !['status', 'dropdown', 'tags'].includes(columnType(column)));
+    addAction('Filtrar…', 'filter');
+    addAction('Ordenar ascendente', 'sort-asc');
+    addAction('Ordenar descendente', 'sort-desc');
+    addAction(state.columnMenuState.collapsedColumns.has(String(column.id)) ? 'Mostrar columna' : 'Contraer', 'collapse');
+    addAction('Agrupar por', 'group');
+    menu.append(makeElement('hr'));
+    addAction('Duplicar…', 'duplicate', !canManageStructure());
+    addAction('Agregar columna a la derecha', 'add-right', !canManageStructure());
+    addAction('Cambiar tipo…', 'change-type', !canManageStructure());
+    addAction('Renombrar', 'rename', !canManageStructure());
+    addAction('Ocultar', 'hide');
+    addAction('Eliminar', 'delete', !canManageStructure());
+    th.append(menu);
+    trigger.setAttribute('aria-expanded', 'true');
+    menu.querySelector('button:not(:disabled)')?.focus();
+  }
+
+  async function runColumnMenuAction(action, column, trigger) {
+    const id = String(column.id);
+    if (action === 'configure') { openLabelsEditor(column); return; }
+    if (action === 'filter') {
+      const input = window.prompt(`Filtrar «${column.name}» (deja vacío para quitar el filtro):`);
+      if (input === null) return;
+      state.columnMenuState.filters = state.columnMenuState.filters.filter((filter) => String(filter.column_id) !== id);
+      if (input.trim()) state.columnMenuState.filters.push({ column_id: id, operator: 'contains', value: input.trim() });
+      renderActiveView(); return;
+    }
+    if (action === 'sort-asc' || action === 'sort-desc') {
+      state.columnMenuState.sort = { columnId: id, direction: action === 'sort-desc' ? 'desc' : 'asc' };
+      renderActiveView(); return;
+    }
+    if (action === 'collapse') {
+      if (state.columnMenuState.collapsedColumns.has(id)) state.columnMenuState.collapsedColumns.delete(id);
+      else state.columnMenuState.collapsedColumns.add(id);
+      renderActiveView(); return;
+    }
+    if (action === 'group') {
+      state.columnMenuState.groupBy = state.columnMenuState.groupBy === id ? null : id;
+      setNotice(state.columnMenuState.groupBy ? `Agrupación temporal por «${column.name}» seleccionada.` : 'Agrupación temporal quitada.', 'success');
+      renderActiveView(); return;
+    }
+    if (action === 'rename') {
+      const name = window.prompt('Nuevo nombre de columna:', column.name || '');
+      if (name === null || !name.trim()) return;
+      await post('/rename_column', { board_id: state.board.id, column_id: column.id, name: name.trim() });
+      column.name = name.trim(); renderActiveView(); return;
+    }
+    if (action === 'duplicate') {
+      const mode = window.confirm('¿Copiar también los datos de esta columna?\n\nAceptar: estructura y datos.\nCancelar: solo estructura.');
+      await post('/duplicate_column', { board_id: state.board.id, column_id: column.id, copy_data: mode });
+      await loadBoard(state.board.id, true);
+      setNotice('Columna duplicada.', 'success');
+      return;
+    }
+    if (action === 'add-right') {
+      els.createColumnForm.reset();
+      window.setTimeout(() => {
+        state.insertAfterColumnId = id;
+        document.getElementById('createColumnTitle').textContent = 'Agregar columna a la derecha';
+        els.createColumnForm.querySelector('[type="submit"]').textContent = 'Agregar columna';
+        openDialog(els.createColumnDialog);
+      }, 0);
+      return;
+    }
+    if (action === 'change-type') {
+      const types = [...document.getElementById('newColumnType').options].map((option) => option.value).join(', ');
+      const type = window.prompt(`Tipo nuevo (opciones: ${types}):`, column.type || 'text');
+      if (!type || ![...document.getElementById('newColumnType').options].some((option) => option.value === type)) return;
+      const options = ['status', 'dropdown', 'tags'].includes(type)
+        ? parseOptions(column.options)
+        : type === 'rating' ? { display: 'stars', max: 5 } : [];
+      const payload = { board_id: state.board.id, column_id: column.id, type, options };
+      const preview = await post('/preview_column_type_change', payload);
+      const detail = preview.data || {};
+      const examples = Array.isArray(detail.invalid_examples) ? detail.invalid_examples.map((entry) => `Elemento ${entry.item_id}: ${entry.reason}`).join('\n') : '';
+      const summary = `Cambiar «${column.name}» a ${type}.\n\nValores compatibles: ${detail.valid_count ?? '—'}\nValores inválidos: ${detail.invalid_count ?? '—'}\nConflictos de valor único: ${detail.unique_conflict_count ?? '—'}${examples ? `\n\nEjemplos:\n${examples}` : ''}`;
+      if (!detail.can_commit) { setNotice(summary, 'error'); return; }
+      if (!window.confirm(`${summary}\n\n¿Confirmas el cambio?`)) return;
+      await post('/change_column_type', payload);
+      await loadBoard(state.board.id, true); setNotice('Tipo de columna actualizado.', 'success'); return;
+    }
+    if (action === 'hide') {
+      const hidden = new Set(state.viewConfig.hidden_column_ids || []); hidden.add(id);
+      state.viewConfig.hidden_column_ids = [...hidden]; markViewModified(); renderActiveView(); return;
+    }
+    if (action === 'delete') {
+      await runRecycleAction(recycleAction(`Eliminar columna ${column.name || ''}`, 'column', column.id, 'trash', state.board?.id));
+      return;
+    }
+  }
+
   function renderTable() {
     itemSortables.forEach((sortable) => sortable.destroy());
     itemSortables = [];
@@ -5346,11 +5499,7 @@
       itemHead.dataset.resizeKey = 'item';
       row.append(itemHead);
       columns.forEach((column) => {
-        const th = makeElement('th', '', column.name || 'Columna');
-        th.scope = 'col';
-        th.dataset.resizeKey = String(column.id);
-        if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
-        row.append(th);
+        row.append(makeColumnHeader(column));
       });
       return row;
     };
@@ -5415,6 +5564,8 @@
         row.append(nameCell);
         columns.forEach((column) => {
           const cell = document.createElement('td');
+          cell.dataset.columnCell = String(column.id);
+          cell.classList.toggle('is-column-collapsed', state.columnMenuState.collapsedColumns.has(String(column.id)));
           if (columnType(column) === 'date') cell.classList.add('boards-date-cell');
           if (['status', 'dropdown'].includes(columnType(column))) cell.dataset.statusTone = statusTone(column, getCellValue(item, column));
           if (columnType(column) === 'status') {
@@ -5447,10 +5598,7 @@
         itemHead.scope = 'col';
         headRow.append(itemHead);
         columns.forEach((column) => {
-          const th = makeElement('th', '', column.name || 'Columna');
-          th.scope = 'col';
-          if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
-          headRow.append(th);
+          headRow.append(makeColumnHeader(column));
         });
         head.append(headRow);
         innerTable.append(head);
@@ -5479,14 +5627,33 @@
         panelRow.append(panelCell);
         return panelRow;
       };
-      groupItems.forEach((item) => {
-        const parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
-        if (parentId && visibleItemIds.has(parentId)) return;
-        tbody.append(renderItemRow(item));
-        const children = childrenByParent.get(String(item.id)) || [];
-        if (children.length) tbody.append(makeChildPanel(item, children));
+      const roots = groupItems.filter((item) => item.parent_item_id == null || !visibleItemIds.has(String(item.parent_item_id)));
+      const groupedByColumn = state.columnMenuState.groupBy
+        ? state.columns.find((column) => String(column.id) === String(state.columnMenuState.groupBy))
+        : null;
+      const sections = new Map();
+      roots.forEach((item) => {
+        const raw = groupedByColumn ? getCellValue(item, groupedByColumn) : '';
+        const key = raw == null || raw === '' ? 'Sin valor' : stringifyValue(raw);
+        if (!sections.has(key)) sections.set(key, []);
+        sections.get(key).push(item);
       });
-      if (canEditBoard() && !query && !state.filters.length) {
+      sections.forEach((sectionItems, sectionName) => {
+        if (groupedByColumn) {
+          const heading = makeElement('tr', 'boards-ephemeral-group-row');
+          const label = makeElement('th', '', `${groupedByColumn.name}: ${sectionName}`);
+          label.scope = 'rowgroup';
+          label.colSpan = columns.length + 2;
+          heading.append(label);
+          tbody.append(heading);
+        }
+        sectionItems.forEach((item) => {
+          tbody.append(renderItemRow(item));
+          const children = childrenByParent.get(String(item.id)) || [];
+          if (children.length) tbody.append(makeChildPanel(item, children));
+        });
+      });
+      if (canEditBoard() && !query && !state.filters.length && !state.columnMenuState.filters.length && !state.columnMenuState.sort && !state.columnMenuState.groupBy) {
         const addRow = makeElement('tr', 'boards-add-row');
         const addCell = document.createElement('td');
         addCell.colSpan = columns.length + 2;
@@ -5536,7 +5703,7 @@
     els.boardTableContainer.append(table);
     bindColumnResizing(table);
     syncGroupHeadingWidths();
-    if (window.Sortable && canEditBoard() && !query && !state.filters.length) {
+    if (window.Sortable && canEditBoard() && !query && !state.filters.length && !state.columnMenuState.filters.length && !state.columnMenuState.sort && !state.columnMenuState.groupBy) {
       table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
         itemSortables.push(window.Sortable.create(body, {
           group: 'board-root-items',
@@ -6074,6 +6241,7 @@
   }
 
   function applySavedView(view) {
+    resetColumnMenuState();
     let config = view.config;
     if (typeof config === 'string') {
       try { config = JSON.parse(config); } catch (error) { config = {}; }
@@ -6107,6 +6275,7 @@
   }
 
   function switchView(type) {
+    resetColumnMenuState();
     state.activeViewType = normalizeViewType(type);
     state.activeSavedViewId = '';
     els.savedViewSelect.value = '';
@@ -7421,6 +7590,9 @@
     });
     els.createColumnForm.addEventListener('reset', () => {
       window.setTimeout(() => {
+        state.insertAfterColumnId = '';
+        document.getElementById('createColumnTitle').textContent = 'Configurar columna';
+        els.createColumnForm.querySelector('[type="submit"]').textContent = 'Agregar columna';
         els.newColumnOptions.value = '';
         els.newColumnType.dispatchEvent(new Event('change'));
       }, 0);
@@ -7439,9 +7611,10 @@
         const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
         options = { display, max: display === 'percentage' ? 100 : 5 };
       }
-      const result = await post('/create_column', { board_id: state.board.id, name, type, ...(options ? { options } : {}) });
+      const result = await post('/create_column', { board_id: state.board.id, name, type, ...(options ? { options } : {}), ...(state.insertAfterColumnId ? { insert_after_column_id: state.insertAfterColumnId } : {}) });
       const column = result.data || {};
       state.columns.push({ id: column.id, name, type, options: options || [], required: false, sort_order: column.sort_order ?? state.columns.length });
+      state.insertAfterColumnId = '';
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       closeDialog(els.createColumnDialog);
       renderActiveView();
@@ -8042,6 +8215,21 @@
       }
     });
     els.boardTableContainer.addEventListener('click', (event) => {
+      const menuTrigger = event.target.closest('[data-open-column-menu]');
+      if (menuTrigger) {
+        event.preventDefault(); event.stopPropagation();
+        const column = state.columns.find((entry) => String(entry.id) === menuTrigger.dataset.openColumnMenu);
+        if (column) openColumnMenu(column, menuTrigger);
+        return;
+      }
+      const menuAction = event.target.closest('[data-column-menu-action]');
+      if (menuAction) {
+        event.preventDefault(); event.stopPropagation();
+        const column = state.columns.find((entry) => String(entry.id) === menuAction.closest('[data-column-header]')?.dataset.columnHeader);
+        closeColumnMenus();
+        if (column) runColumnMenuAction(menuAction.dataset.columnMenuAction, column, menuAction).catch((error) => setNotice(error.message || 'No se pudo realizar la acción de columna.', 'error'));
+        return;
+      }
       const download = event.target.closest('[data-download-group-files]');
       if (download) {
         event.preventDefault();
@@ -8068,6 +8256,16 @@
       if (event.target.closest('[data-cancel-inline-add]')) {
         state.inlineAddGroupId = '';
         renderTable();
+      }
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('.boards-column-menu, [data-open-column-menu]')) closeColumnMenus();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && document.querySelector('.boards-column-menu')) {
+        const trigger = document.querySelector('[data-open-column-menu][aria-expanded="true"]');
+        closeColumnMenus();
+        trigger?.focus();
       }
     });
     els.boardTableContainer.addEventListener('dragstart', (event) => {

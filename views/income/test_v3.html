@@ -2598,9 +2598,9 @@ function renderTes() {
 
         const hRecs = getHistorialDetalles('TES', allRefs);
         const hRec = hRecs[0] || null;
+        const distintivosTES = esConcil ? distintivosGrupoConciliacion(hRecs) : '';
         let difTag = '', unlinkBtn = '', staleBtn = '', statusClass = 'row-pendiente';
         if (esConcil) {
-            const distintivosTES = distintivosGrupoConciliacion(hRecs);
             if (hRec) {
                 const difVal = parseFloat(hRec.diferencia);
                 const ok = Math.abs(difVal) < 0.01;

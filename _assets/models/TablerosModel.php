@@ -2466,7 +2466,18 @@ class TablerosModel {
         if ($enforceUnique && in_array($type, ['people', 'person'], true)) {
             throw new TablerosApiException('validation', 'Las columnas de personas no admiten valores únicos.', 422);
         }
-        $position = $this->nextSortOrder('tb_column', $boardId);
+        return $this->transaction(function () use ($boardId, $userId, $name, $type, $options, $required, $enforceUnique, $input): array {
+        $columns = $this->all('SELECT id, sort_order FROM tb_column WITH (UPDLOCK, HOLDLOCK) WHERE board_id = ? AND deleted_at IS NULL ORDER BY sort_order, id', [$boardId]);
+        $afterId = $this->optionalPositiveInt($input['insert_after_column_id'] ?? null, 'insert_after_column_id');
+        $positionIndex = count($columns);
+        if ($afterId !== null) {
+            $found = false;
+            foreach ($columns as $index => $existingColumn) if ((int)$existingColumn['id'] === $afterId) { $positionIndex = $index + 1; $found = true; break; }
+            if (!$found) throw new TablerosApiException('validation', 'La columna de referencia no pertenece a este tablero.', 422);
+        }
+        array_splice($columns, $positionIndex, 0, [['id' => null]]);
+        foreach ($columns as $index => $entry) if ($entry['id'] !== null) $this->execute('UPDATE tb_column SET sort_order = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ?', [$index * 10, $entry['id'], $boardId]);
+        $position = $positionIndex * 10;
         $id = $this->insertId(
             'INSERT INTO tb_column (board_id, name, type, options_json, required, sort_order, enforce_unique, created_by, created_at, updated_at)
              OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
@@ -2474,6 +2485,104 @@ class TablerosModel {
         );
         $this->writeActivity($boardId, null, $userId, 'column.created', ['column_id' => $id, 'type' => $type, 'name' => $name]);
         return ['id' => $id, 'board_id' => $boardId, 'name' => $name, 'type' => $type, 'options' => $options, 'required' => $required, 'enforce_unique' => $enforceUnique, 'sort_order' => $position];
+        });
+    }
+
+    public function renameColumn(int $boardId, int $userId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $name = $this->requiredString($input, 'name', 120);
+        return $this->transaction(function () use ($boardId, $userId, $columnId, $name): array {
+            $column = $this->one('SELECT id FROM tb_column WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId, $boardId]);
+            if (!$column) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+            $this->execute('UPDATE tb_column SET name = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ?', [$name, $columnId, $boardId]);
+            $this->writeActivity($boardId, null, $userId, 'column.renamed', ['column_id' => $columnId, 'name' => $name]);
+            return ['column_id' => $columnId, 'name' => $name];
+        });
+    }
+
+    /** Duplicate the column definition only; users can populate the new column explicitly. */
+    public function duplicateColumn(int $boardId, int $userId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $copyData = $this->booleanInput($input, 'copy_data', false);
+        return $this->transaction(function () use ($boardId, $userId, $columnId, $copyData): array {
+            $source = $this->one('SELECT * FROM tb_column WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId, $boardId]);
+            if (!$source) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+            if ($copyData && in_array((string)$source['type'], ['people','person','board_relation','subtasks','dependency'], true)) {
+                throw new TablerosApiException('validation', 'No se pueden copiar automáticamente las relaciones auxiliares de este tipo de columna.', 422);
+            }
+            $name = $this->requiredString(['name' => mb_substr((string)$source['name'] . ' (copia)', 0, 120)], 'name', 120);
+            $position = $this->nextSortOrder('tb_column', $boardId);
+            $id = $this->insertId('INSERT INTO tb_column (board_id,name,type,options_json,required,sort_order,enforce_unique,created_by,created_at,updated_at) OUTPUT INSERTED.id VALUES (?,?,?,?,?,?,?,?,GETDATE(),GETDATE())', [$boardId,$name,$source['type'],$source['options_json'],$source['required'],$position,$source['enforce_unique'],$userId]);
+            $copiedCount = 0;
+            if ($copyData) {
+                $copiedCount = $this->execute('INSERT INTO tb_cell (item_id,column_id,board_id,value_text,value_number,value_date,value_datetime,value_boolean,value_json,unique_value_hash,created_by,updated_by,updated_at)
+                    SELECT c.item_id,?,c.board_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json,c.unique_value_hash,?, ?,GETDATE()
+                    FROM tb_cell c INNER JOIN tb_item i ON i.id=c.item_id AND i.board_id=c.board_id AND i.deleted_at IS NULL
+                    WHERE c.board_id=? AND c.column_id=? AND c.deleted_at IS NULL', [$id,$userId,$userId,$boardId,$columnId]);
+            }
+            $this->writeActivity($boardId, null, $userId, 'column.duplicated', ['source_column_id' => $columnId, 'column_id' => $id]);
+            return ['id' => $id, 'board_id' => $boardId, 'name' => $name, 'type' => $source['type'], 'options' => $this->decodeJson($source['options_json'] ?? null, []), 'required' => (bool)$source['required'], 'enforce_unique' => (bool)$source['enforce_unique'], 'sort_order' => $position, 'copied_count' => $copiedCount];
+        });
+    }
+
+    public function previewColumnTypeChange(int $boardId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $target = strtolower(trim((string)($input['type'] ?? '')));
+        if (!in_array($target, self::ALLOWED_TYPES, true)) throw new TablerosApiException('validation', 'El tipo de columna no está permitido.', 422);
+        $column = $this->one('SELECT id,type,options_json,required,enforce_unique FROM tb_column WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId,$boardId]);
+        if (!$column) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+        return $this->inspectColumnTypeChange($boardId, $column, $target);
+    }
+
+    public function changeColumnType(int $boardId, int $userId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $target = strtolower(trim((string)($input['type'] ?? '')));
+        if (!in_array($target, self::ALLOWED_TYPES, true)) throw new TablerosApiException('validation', 'El tipo de columna no está permitido.', 422);
+        $options = $input['options'] ?? [];
+        if (!is_array($options)) throw new TablerosApiException('validation', 'Las opciones no son válidas.', 422);
+        return $this->transaction(function () use ($boardId,$userId,$columnId,$target,$options): array {
+            $column = $this->one('SELECT id,type,options_json,required,enforce_unique FROM tb_column WITH (UPDLOCK,HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId,$boardId]);
+            if (!$column) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+            $report = $this->inspectColumnTypeChange($boardId, $column, $target, $options);
+            if ($report['invalid_count'] > 0) throw new TablerosApiException('validation', 'Hay valores que no pueden convertirse de forma segura. No se modificó la columna.', 422);
+            if ($report['unique_conflict_count'] > 0) throw new TablerosApiException('conflict', 'La conversión produciría valores únicos duplicados. No se modificó la columna.', 409);
+            $cells = $this->all('SELECT c.id,c.item_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json FROM tb_cell c WITH (UPDLOCK,HOLDLOCK) INNER JOIN tb_item i ON i.id=c.item_id AND i.board_id=? AND i.deleted_at IS NULL WHERE c.board_id=? AND c.column_id=? AND c.deleted_at IS NULL', [$boardId,$boardId,$columnId]);
+            foreach ($cells as $cell) {
+                $value = $this->cellValue($cell);
+                if ($value === null || $value === '') continue;
+                $converted = $this->validateCellValue($target, $value, $options);
+                $storage = $this->cellStorage($target, $converted);
+                $hash = !empty($column['enforce_unique']) && $converted !== null ? $this->canonicalValueHash($target, $converted) : null;
+                $this->execute('UPDATE tb_cell SET value_text=?,value_number=?,value_date=?,value_datetime=?,value_boolean=?,value_json=?,unique_value_hash=CONVERT(VARBINARY(32),?,2),updated_by=?,updated_at=GETDATE() WHERE id=?', array_merge($storage,[$hash,$userId,$cell['id']]));
+            }
+            $json = json_encode($options, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($json === false || strlen($json) > 16000) throw new TablerosApiException('validation','Las opciones de la columna no son válidas.',422);
+            $this->execute('UPDATE tb_column SET type=?,options_json=?,updated_at=GETDATE() WHERE id=? AND board_id=?', [$target,$json,$columnId,$boardId]);
+            $this->writeActivity($boardId,null,$userId,'column.type_changed',['column_id'=>$columnId,'type'=>$target]);
+            return ['column_id'=>$columnId,'type'=>$target,'converted_count'=>$report['valid_count']];
+        });
+    }
+
+    private function inspectColumnTypeChange(int $boardId, array $column, string $target, array $options = []): array {
+        $source = (string)$column['type'];
+        // Side tables encode semantics beyond tb_cell and must never be orphaned by a type edit.
+        $sideTableTypes = ['people','person','file','board_relation','subtasks','dependency','item_id','team','timeline','location','country','link'];
+        if (in_array($source,$sideTableTypes,true) || in_array($target,$sideTableTypes,true)) throw new TablerosApiException('validation','Este tipo usa relaciones o datos auxiliares y no admite conversión automática.',422);
+        if (in_array($target, ['status','dropdown','tags'], true) && !$this->optionValues($options)) throw new TablerosApiException('validation','Configura opciones antes de convertir a un tipo con etiquetas.',422);
+        $cells = $this->all('SELECT c.id,c.item_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json FROM tb_item i WITH (UPDLOCK,HOLDLOCK) LEFT JOIN tb_cell c WITH (UPDLOCK,HOLDLOCK) ON c.item_id=i.id AND c.board_id=i.board_id AND c.column_id=? AND c.deleted_at IS NULL WHERE i.board_id=? AND i.deleted_at IS NULL', [$column['id'],$boardId]);
+        $invalid = []; $valid = 0; $values = [];
+        foreach ($cells as $cell) {
+            $value = $this->cellValue($cell);
+            if ($value === null || $value === '') {
+                if ((bool)$column['required']) { if (count($invalid)<5) $invalid[]=['item_id'=>(int)$cell['item_id'],'reason'=>'required']; }
+                else $valid++;
+                continue;
+            }
+            try { $converted = $this->validateCellValue($target,$value,$options); $valid++; if ((bool)$column['enforce_unique'] && $converted !== null) { $key = $this->canonicalValueHash($target,$converted); $values[$key] = ($values[$key] ?? 0)+1; } }
+            catch (Throwable $e) { if (count($invalid)<5) $invalid[]=['item_id'=>(int)$cell['item_id'],'reason'=>'invalid_value']; }
+        }
+        $uniqueConflicts = count(array_filter($values, static fn($n) => $n > 1));
+        return ['column_id'=>(int)$column['id'],'from_type'=>$source,'to_type'=>$target,'value_count'=>count($cells),'valid_count'=>$valid,'invalid_count'=>max(0,count($cells)-$valid),'invalid_examples'=>$invalid,'unique_conflict_count'=>$uniqueConflicts,'can_commit'=>!$invalid && !$uniqueConflicts];
     }
 
     public function updateColumnOptions(int $boardId, int $userId, array $input): array {

@@ -828,6 +828,38 @@ class tableros_api {
         });
     }
 
+    public function rename_column(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->renameColumn($boardId, $userId, $input);
+        });
+    }
+
+    public function duplicate_column(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->duplicateColumn($boardId, $userId, $input);
+        });
+    }
+
+    public function preview_column_type_change(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->previewColumnTypeChange($boardId, $input);
+        });
+    }
+
+    public function change_column_type(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->changeColumnType($boardId, $userId, $input);
+        });
+    }
+
     public function create_item(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
