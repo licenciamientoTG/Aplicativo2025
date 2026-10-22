@@ -208,6 +208,7 @@
     calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     collapsedGroups: new Set(),
     columnMenuState: { filters: [], sort: null, groupBy: null, collapsedColumns: new Set() },
+    columnDialogAction: null,
     draggedItemId: '',
     draggedItemIds: [],
     suppressItemClickUntil: 0,
@@ -5358,18 +5359,24 @@
   }
 
   function openColumnMenu(column, trigger) {
+    if (trigger.getAttribute('aria-expanded') === 'true') {
+      closeColumnMenus();
+      trigger.focus();
+      return;
+    }
     closeColumnMenus();
     const th = trigger.closest('th');
     if (!th) return;
     const menu = makeElement('div', 'boards-column-menu');
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', `Acciones de ${column.name || 'columna'}`);
-    const addAction = (label, action, disabled = false) => {
+    const addAction = (label, action, disabled = false, disabledReason = '') => {
       const button = makeElement('button', '', label);
       button.type = 'button';
       button.setAttribute('role', 'menuitem');
       button.dataset.columnMenuAction = action;
       button.disabled = disabled;
+      if (disabledReason) button.title = disabledReason;
       menu.append(button);
     };
     addAction('Configuración', 'configure', !canManageStructure() || !['status', 'dropdown', 'tags'].includes(columnType(column)));
@@ -5379,7 +5386,10 @@
     addAction(state.columnMenuState.collapsedColumns.has(String(column.id)) ? 'Mostrar columna' : 'Contraer', 'collapse');
     addAction('Agrupar por', 'group');
     menu.append(makeElement('hr'));
-    addAction('Duplicar…', 'duplicate', !canManageStructure());
+    addAction('Duplicar estructura', 'duplicate-structure', !canManageStructure());
+    const cannotCopyData = ['people', 'person', 'board_relation', 'subtasks', 'dependency', 'file'].includes(columnType(column));
+    addAction('Duplicar con datos', 'duplicate-data', !canManageStructure() || cannotCopyData,
+      cannotCopyData ? 'Este tipo incluye relaciones o archivos que no se duplican automáticamente.' : 'Crea una copia con los valores actuales.');
     addAction('Agregar columna a la derecha', 'add-right', !canManageStructure());
     addAction('Cambiar tipo…', 'change-type', !canManageStructure());
     addAction('Renombrar', 'rename', !canManageStructure());
@@ -5415,16 +5425,27 @@
       renderActiveView(); return;
     }
     if (action === 'rename') {
-      const name = window.prompt('Nuevo nombre de columna:', column.name || '');
-      if (name === null || !name.trim()) return;
-      await post('/rename_column', { board_id: state.board.id, column_id: column.id, name: name.trim() });
-      column.name = name.trim(); renderActiveView(); return;
+      els.createColumnForm.reset();
+      window.setTimeout(() => {
+        state.columnDialogAction = { type: 'rename', columnId: id };
+        document.getElementById('createColumnTitle').textContent = 'Renombrar columna';
+        document.getElementById('newColumnName').value = column.name || '';
+        document.getElementById('columnTypeField').classList.add('d-none');
+        document.getElementById('columnOptionsField').classList.add('d-none');
+        document.getElementById('columnRatingField').classList.add('d-none');
+        els.createColumnForm.querySelector('[type="submit"]').textContent = 'Guardar nombre';
+        openDialog(els.createColumnDialog, document.getElementById('newColumnName'));
+      }, 0);
+      return;
     }
-    if (action === 'duplicate') {
-      const mode = window.confirm('¿Copiar también los datos de esta columna?\n\nAceptar: estructura y datos.\nCancelar: solo estructura.');
+    if (action === 'duplicate-structure' || action === 'duplicate-data') {
+      const mode = action === 'duplicate-data';
+      if (mode && ['people', 'person', 'board_relation', 'subtasks', 'dependency', 'file'].includes(columnType(column))) {
+        throw new Error('Este tipo usa datos relacionados que no se pueden duplicar automáticamente. Puedes duplicar su estructura.');
+      }
       await post('/duplicate_column', { board_id: state.board.id, column_id: column.id, copy_data: mode });
       await loadBoard(state.board.id, true);
-      setNotice('Columna duplicada.', 'success');
+      setNotice(mode ? 'Columna y datos duplicados.' : 'Estructura de columna duplicada.', 'success');
       return;
     }
     if (action === 'add-right') {
@@ -5438,21 +5459,23 @@
       return;
     }
     if (action === 'change-type') {
-      const types = [...document.getElementById('newColumnType').options].map((option) => option.value).join(', ');
-      const type = window.prompt(`Tipo nuevo (opciones: ${types}):`, column.type || 'text');
-      if (!type || ![...document.getElementById('newColumnType').options].some((option) => option.value === type)) return;
-      const options = ['status', 'dropdown', 'tags'].includes(type)
-        ? parseOptions(column.options)
-        : type === 'rating' ? { display: 'stars', max: 5 } : [];
-      const payload = { board_id: state.board.id, column_id: column.id, type, options };
-      const preview = await post('/preview_column_type_change', payload);
-      const detail = preview.data || {};
-      const examples = Array.isArray(detail.invalid_examples) ? detail.invalid_examples.map((entry) => `Elemento ${entry.item_id}: ${entry.reason}`).join('\n') : '';
-      const summary = `Cambiar «${column.name}» a ${type}.\n\nValores compatibles: ${detail.valid_count ?? '—'}\nValores inválidos: ${detail.invalid_count ?? '—'}\nConflictos de valor único: ${detail.unique_conflict_count ?? '—'}${examples ? `\n\nEjemplos:\n${examples}` : ''}`;
-      if (!detail.can_commit) { setNotice(summary, 'error'); return; }
-      if (!window.confirm(`${summary}\n\n¿Confirmas el cambio?`)) return;
-      await post('/change_column_type', payload);
-      await loadBoard(state.board.id, true); setNotice('Tipo de columna actualizado.', 'success'); return;
+      els.createColumnForm.reset();
+      window.setTimeout(() => {
+        state.columnDialogAction = { type: 'change-type', columnId: id, originalOptions: parseOptions(column.options) };
+        document.getElementById('createColumnTitle').textContent = 'Cambiar tipo de columna';
+        document.getElementById('columnNameField').classList.add('d-none');
+        els.newColumnName.value = column.name || '';
+        els.newColumnType.value = column.type || 'text';
+        const labelOptions = parseOptions(column.options).map((option) => option.label);
+        els.newColumnOptions.value = labelOptions.join('\n');
+        if (column.type === 'rating' && column.options && typeof column.options === 'object') {
+          document.getElementById('newColumnRatingDisplay').value = column.options.display || 'stars';
+        }
+        els.newColumnType.dispatchEvent(new Event('change'));
+        els.createColumnForm.querySelector('[type="submit"]').textContent = 'Revisar conversión';
+        openDialog(els.createColumnDialog, els.newColumnType);
+      }, 0);
+      return;
     }
     if (action === 'hide') {
       const hidden = new Set(state.viewConfig.hidden_column_ids || []); hidden.add(id);
@@ -7291,6 +7314,7 @@
   }
 
   function setupDialogs() {
+    els.createColumnDialog.addEventListener('close', () => els.createColumnForm.reset());
     document.addEventListener('click', (event) => {
       const action = event.target.closest('[data-recycle-action]');
       if (!action) return;
@@ -7591,14 +7615,59 @@
     els.createColumnForm.addEventListener('reset', () => {
       window.setTimeout(() => {
         state.insertAfterColumnId = '';
+        state.columnDialogAction = null;
         document.getElementById('createColumnTitle').textContent = 'Configurar columna';
         els.createColumnForm.querySelector('[type="submit"]').textContent = 'Agregar columna';
+        document.getElementById('columnNameField').classList.remove('d-none');
+        document.getElementById('columnTypeField').classList.remove('d-none');
         els.newColumnOptions.value = '';
         els.newColumnType.dispatchEvent(new Event('change'));
       }, 0);
     });
     dialogSubmit(els.createColumnForm, async (formData) => {
       if (!canManageStructure()) throw new Error('Se requiere permiso de administración para agregar columnas.');
+      if (state.columnDialogAction?.type === 'rename') {
+        const columnId = state.columnDialogAction.columnId;
+        const name = getFormValue(formData, 'name').trim();
+        if (!name) throw new Error('Escribe un nombre para la columna.');
+        await post('/rename_column', { board_id: state.board.id, column_id: columnId, name });
+        const column = state.columns.find((entry) => String(entry.id) === String(columnId));
+        if (column) column.name = name;
+        closeDialog(els.createColumnDialog);
+        renderActiveView();
+        setNotice('Nombre de columna actualizado.', 'success');
+        return;
+      }
+      if (state.columnDialogAction?.type === 'change-type') {
+        const columnId = state.columnDialogAction.columnId;
+        const column = state.columns.find((entry) => String(entry.id) === String(columnId));
+        const type = getFormValue(formData, 'type');
+        if (!column) throw new Error('La columna ya no está disponible; vuelve a cargar el tablero.');
+        let options = [];
+        if (['status', 'dropdown', 'tags'].includes(type)) {
+          const priorOptions = state.columnDialogAction.originalOptions || [];
+          options = els.newColumnOptions.value.split(/\r?\n/).map((label) => label.trim()).filter(Boolean).map((label, index) => {
+            const prior = priorOptions.find((option) => option.label === label || option.value === label);
+            return prior ? { ...prior, label } : { value: label, label, color: statusLabelColor(label, index) };
+          });
+        } else if (type === 'rating') {
+          const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
+          options = { display, max: display === 'percentage' ? 100 : 5 };
+        }
+        const payload = { board_id: state.board.id, column_id: columnId, type, options };
+        const preview = await post('/preview_column_type_change', payload);
+        const detail = preview.data || {};
+        const examples = Array.isArray(detail.invalid_examples) ? detail.invalid_examples.map((entry) => `Elemento ${entry.item_id}: ${entry.reason}`).join('\n') : '';
+        const summary = `Tipo actual: ${detail.from_type || column.type}\nTipo nuevo: ${type}\n\nValores compatibles: ${detail.valid_count ?? '—'}\nValores inválidos: ${detail.invalid_count ?? '—'}\nConflictos de valor único: ${detail.unique_conflict_count ?? '—'}${examples ? `\n\nEjemplos:\n${examples}` : ''}`;
+        if (!detail.can_commit) throw new Error(`${summary}\n\nAjusta el tipo u opciones y vuelve a revisar. No se modificó la columna.`);
+        const confirmed = await confirmAction(summary, { title: 'Revisar cambio de tipo', confirmLabel: 'Cambiar tipo' });
+        if (!confirmed) { closeDialog(els.createColumnDialog); return; }
+        await post('/change_column_type', payload);
+        closeDialog(els.createColumnDialog);
+        await loadBoard(state.board.id, true);
+        setNotice('Tipo de columna actualizado.', 'success');
+        return;
+      }
       const name = getFormValue(formData, 'name');
       const type = getFormValue(formData, 'type');
       let options = ['status', 'dropdown', 'tags'].includes(type)
@@ -8262,6 +8331,17 @@
       if (!event.target.closest('.boards-column-menu, [data-open-column-menu]')) closeColumnMenus();
     });
     document.addEventListener('keydown', (event) => {
+      const menu = event.target.closest?.('.boards-column-menu');
+      if (menu && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        const actions = [...menu.querySelectorAll('button[role="menuitem"]:not(:disabled)')];
+        const index = actions.indexOf(document.activeElement);
+        const next = event.key === 'Home' ? 0
+          : event.key === 'End' ? actions.length - 1
+            : (index + (event.key === 'ArrowDown' ? 1 : -1) + actions.length) % actions.length;
+        event.preventDefault();
+        actions[next]?.focus();
+        return;
+      }
       if (event.key === 'Escape' && document.querySelector('.boards-column-menu')) {
         const trigger = document.querySelector('[data-open-column-menu][aria-expanded="true"]');
         closeColumnMenus();

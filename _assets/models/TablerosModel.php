@@ -2507,7 +2507,7 @@ class TablerosModel {
         return $this->transaction(function () use ($boardId, $userId, $columnId, $copyData): array {
             $source = $this->one('SELECT * FROM tb_column WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId, $boardId]);
             if (!$source) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
-            if ($copyData && in_array((string)$source['type'], ['people','person','board_relation','subtasks','dependency'], true)) {
+            if ($copyData && in_array((string)$source['type'], ['people','person','board_relation','subtasks','dependency','file'], true)) {
                 throw new TablerosApiException('validation', 'No se pueden copiar automáticamente las relaciones auxiliares de este tipo de columna.', 422);
             }
             $name = $this->requiredString(['name' => mb_substr((string)$source['name'] . ' (copia)', 0, 120)], 'name', 120);
