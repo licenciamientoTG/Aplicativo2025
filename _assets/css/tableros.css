@@ -1316,7 +1316,7 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-nav-board.is-active { color: #f6f8ff; background: #264b91; font-weight: 650; }
 .boards-nav-board.is-active i { color: #bad0ff; }
 .boards-nav-empty { margin: 2px 8px; color: #a8aec7; font-size: .75rem; }
-.boards-group-body + .boards-group-body > .boards-group-row td { height: 73px; border-top: 25px solid #1e2139; }
+.boards-group-body + .boards-group-body > .boards-group-row td { height: 48px; border-top: 1px solid #343754; }
 .boards-inline-add-form { display: flex; min-height: 38px; align-items: center; gap: 6px; padding: 4px 9px 4px 38px; }
 .boards-inline-add-form input { width: min(360px, 100%); min-height: 28px; padding: 4px 8px; border: 1px solid #6a789d; border-radius: 4px; color: #f4f5fd; background: #343b5c; font: inherit; font-size: .77rem; }
 .boards-inline-add-form input:focus { border-color: #9ab7ff; outline: 2px solid rgb(130 166 255 / 22%); }
