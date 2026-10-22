@@ -342,7 +342,7 @@ final class DespachosSql
      * @param array<string,mixed>  $porColumna  Búsquedas por columna ['clave' => 'texto'].
      * @return array{0:string,1:list<string>}   [fragmento " AND ...", parámetros posicionales]
      */
-    public static function busqueda(array $columnas, array $porColumna, string $global): array
+    public static function busqueda(array $columnas, array $porColumna, string $global, ?array $columnasGlobal = null): array
     {
         $sql    = '';
         $params = [];
@@ -358,9 +358,11 @@ final class DespachosSql
             }
         }
 
-        if ($global !== '' && $columnas !== []) {
+        // La búsqueda global puede limitarse a unas cuantas columnas (24 CAST+LIKE con OR es muy caro).
+        $globales = $columnasGlobal === null ? $columnas : array_intersect_key($columnas, array_flip($columnasGlobal));
+        if ($global !== '' && $globales !== []) {
             $ors = [];
-            foreach ($columnas as $expresion) {
+            foreach ($globales as $expresion) {
                 $ors[]    = "CAST($expresion AS NVARCHAR(MAX)) LIKE ?";
                 $params[] = '%' . $global . '%';
             }
@@ -368,6 +370,47 @@ final class DespachosSql
         }
 
         return [$sql, $params];
+    }
+
+    /**
+     * Columnas sobre las que actúa la búsqueda global del reporte (el resto solo
+     * se busca por su filtro de columna).
+     *
+     * @var list<string>
+     */
+    public const COLUMNAS_BUSQUEDA_GLOBAL = ['despacho', 'cliente_fac', 'factura', 'UUID', 'rut', 'placas'];
+
+    /**
+     * Separa de las búsquedas por columna las que se pueden resolver con un
+     * filtro exacto sobre Despachos ANTES del ROW_NUMBER (usan la PK/índices en
+     * lugar de CAST(...) LIKE '%x%' sobre todo el CTE):
+     *  - despacho / codigo_cliente: número entero => igualdad.
+     *  - fecha: fecha ISO completa (aaaa-mm-dd) => igualdad sobre fchtrn.
+     * Cualquier otro valor (parcial, texto) se queda como búsqueda LIKE normal.
+     *
+     * @param array<string,mixed> $porColumna
+     * @return array{0:string,1:array<string,mixed>} [" AND ..." para el WHERE interno, búsquedas restantes]
+     */
+    public static function filtrosExactos(array $porColumna): array
+    {
+        $sql = '';
+        foreach ($porColumna as $clave => $valor) {
+            if (!is_scalar($valor)) {
+                continue;
+            }
+            $valor = trim((string) $valor);
+            if (($clave === 'despacho' || $clave === 'codigo_cliente') && preg_match('/^-?\d{1,18}$/', $valor) === 1) {
+                $col  = $clave === 'despacho' ? 't1.nrotrn' : 't1.codcli';
+                $sql .= " AND $col = " . (int) $valor;
+                unset($porColumna[$clave]);
+            } elseif ($clave === 'fecha' && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $valor, $m) === 1 && checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+                // fchtrn guarda la fecha como entero con 1 día de desfase (ver fechaIso()).
+                // Formato aaaammdd: 'aaaa-mm-dd' se interpreta como aaaa-dd-mm según el idioma de la sesión.
+                $sql .= " AND t1.fchtrn = DATEDIFF(day, 0, '$m[1]$m[2]$m[3]') + 1";
+                unset($porColumna[$clave]);
+            }
+        }
+        return [$sql, $porColumna];
     }
 
     /**

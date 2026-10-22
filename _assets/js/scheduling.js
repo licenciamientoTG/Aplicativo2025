@@ -1492,4 +1492,146 @@ $(document).ready(function () {
                 });
         });
     });
+
+    // ---- Importar programación desde el libro de Excel de Abastos ----
+    // Subir el libro lee sus hojas sin pedir nada más; "Subir y comprobar"
+    // muestra qué se cargaría; "Confirmar" lo guarda (solo lo que no existe).
+    let importToken = null;
+
+    function importAviso(clase, html) {
+        $('#importEstado').html(`<div class="alert alert-${clase} mb-0">${html}</div>`);
+    }
+
+    function importReiniciar() {
+        importToken = null;
+        $('#importArchivo').val('');
+        $('#importHojaWrap, #importLeerWrap, #btnImportarConfirmar').hide();
+        $('#btnImportarConfirmar').prop('disabled', true);
+        $('#importHoja').empty();
+        $('#importEstado, #importResultado').empty();
+    }
+
+    function importTabla(filas) {
+        const badge = f => f.estado === 'nueva'
+            ? '<span class="badge bg-success">Nueva</span>'
+            : '<span class="badge bg-secondary">Ya existe</span>';
+        const cuerpo = filas.map(f => `
+            <tr class="${f.estado === 'nueva' ? '' : 'text-muted'}">
+                <td>${badge(f)}</td>
+                <td>${esc(f.fecha)}</td>
+                <td>${esc(f.hora || '')}</td>
+                <td>${esc(f.supplier_nombre)}</td>
+                <td>${esc(f.terminal_nombre)}</td>
+                <td>${esc(f.station_nombre)}</td>
+                <td>${esc(f.product)}</td>
+                <td class="text-end">${Number(f.litros).toLocaleString('es-MX')}</td>
+                <td>${esc(f.carrier_nombre)}</td>
+                <td>${esc(f.referencia || '')}</td>
+                <td>${esc(f.notas || '')}</td>
+                <td class="small text-warning-emphasis">${esc((f.avisos || []).join('; '))}</td>
+            </tr>`).join('');
+        return `<div class="table-responsive" style="max-height:45vh;">
+            <table class="table table-sm table-hover mb-0" style="font-size:0.8125rem;">
+                <thead class="table-light position-sticky top-0"><tr>
+                    <th></th><th>Fecha</th><th>Hora</th><th>Proveedor</th><th>Terminal</th><th>Estación</th>
+                    <th>Producto</th><th class="text-end">Litros</th><th>Transportista</th><th>Referencia</th><th>Notas</th><th>Avisos</th>
+                </tr></thead><tbody>${cuerpo}</tbody></table></div>`;
+    }
+
+    $('#btnImportarExcel').on('click', function () {
+        importReiniciar();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('modalImportar')).show();
+    });
+
+    $('#importArchivo').on('change', function () {
+        const archivo = this.files[0];
+        $('#importResultado').empty();
+        $('#importHojaWrap, #importLeerWrap, #btnImportarConfirmar').hide();
+        if (!archivo) return;
+        const datos = new FormData();
+        datos.append('archivo', archivo);
+        importAviso('info', 'Leyendo las hojas del libro…');
+        $.ajax({ url: '/supply/scheduling_import_upload', method: 'POST', data: datos, processData: false, contentType: false, dataType: 'json' })
+            .done(function (resp) {
+                if (!resp.success) {
+                    importAviso('danger', esc(resp.message || 'No se pudo leer el libro'));
+                    return;
+                }
+                importToken = resp.token;
+                const select = $('#importHoja').empty();
+                resp.hojas.forEach(h => select.append(`<option value="${esc(h)}">${esc(h)}</option>`));
+                // Si hay una hoja con el día de la pantalla (ej. "22"), se deja elegida.
+                const dia = (fechaInput.val() || '').slice(8, 10);
+                if (resp.hojas.includes(dia)) select.val(dia);
+                $('#importHojaWrap, #importLeerWrap').show();
+                importAviso('success', `${esc(resp.archivo)}: ${resp.hojas.length} hojas. Elige la hoja y pulsa «Subir y comprobar».`);
+            })
+            .fail(function () {
+                importAviso('danger', 'No se pudo subir el archivo.');
+            });
+    });
+
+    $('#importHoja').on('change', function () {
+        $('#importResultado').empty();
+        $('#btnImportarConfirmar').hide().prop('disabled', true);
+    });
+
+    $('#btnImportarLeer').on('click', function () {
+        const boton = $(this).prop('disabled', true);
+        $('#btnImportarConfirmar').hide().prop('disabled', true);
+        importAviso('info', 'Leyendo la hoja…');
+        $.post('/supply/scheduling_import_preview', { token: importToken, hoja: $('#importHoja').val() })
+            .done(function (resp) {
+                if (!resp.success) {
+                    importAviso('danger', esc(resp.message || 'No se pudo leer la hoja'));
+                    $('#importResultado').empty();
+                    return;
+                }
+                const nuevas = resp.filas.filter(f => f.estado === 'nueva').length;
+                const existen = resp.filas.length - nuevas;
+                let html = `<strong>${nuevas}</strong> por importar · <strong>${existen}</strong> ya existen (se omiten)`;
+                if (resp.transportistas_nuevos.length) {
+                    html += ` · transportistas nuevos: ${esc(resp.transportistas_nuevos.join(', '))}`;
+                }
+                importAviso(resp.errores.length ? 'warning' : 'success', html);
+                let detalle = '';
+                if (resp.errores.length) {
+                    detalle += `<div class="alert alert-danger"><strong>Hay filas con error; corrígelas en el Excel y vuelve a subirlo:</strong><ul class="mb-0">${
+                        resp.errores.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
+                }
+                detalle += importTabla(resp.filas);
+                $('#importResultado').html(detalle);
+                $('#btnImportarConfirmar').toggle(nuevas > 0).prop('disabled', resp.errores.length > 0 || nuevas === 0);
+            })
+            .fail(function () {
+                importAviso('danger', 'No se pudo leer la hoja.');
+            })
+            .always(function () {
+                boton.prop('disabled', false);
+            });
+    });
+
+    $('#btnImportarConfirmar').on('click', function () {
+        const boton = $(this).prop('disabled', true);
+        importAviso('info', 'Guardando…');
+        $.post('/supply/scheduling_import_commit', { token: importToken, hoja: $('#importHoja').val() })
+            .done(function (resp) {
+                if (!resp.success) {
+                    importAviso('danger', esc(resp.message || 'No se pudo importar'));
+                    if (resp.errores) {
+                        $('#importResultado').html(`<ul>${resp.errores.map(e => `<li>${esc(e)}</li>`).join('')}</ul>`);
+                    }
+                    boton.prop('disabled', false);
+                    return;
+                }
+                importAviso('success', `Listo: se importaron <strong>${resp.insertadas}</strong> recepciones y se omitieron <strong>${resp.omitidas}</strong> que ya existían.`);
+                $('#importResultado').html(importTabla(resp.filas));
+                boton.hide();
+                cargarDia(fechaInput.val());
+            })
+            .fail(function () {
+                importAviso('danger', 'No se pudo importar; no se guardó nada.');
+                boton.prop('disabled', false);
+            });
+    });
 });

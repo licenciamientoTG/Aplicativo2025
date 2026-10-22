@@ -81,6 +81,25 @@ function cerrarSesion(id) {
   );
 }
 
+function eliminarSesion(id, btn) {
+  const nombre = $(btn).data("nombre") || "#" + id;
+  alertify.confirm(
+    "Eliminar arqueo",
+    "¿Eliminar el arqueo «" + $("<div>").text(nombre).html() + "»? Dejará de mostrarse en el sistema.",
+    () => {
+      ajaxJson(routeUrl('arqueo.eliminar', { sesion_id: id }), {}).then((res) => {
+        if (res.success) {
+          toastr.success("Arqueo eliminado.");
+          setTimeout(() => location.reload(), 600);
+        } else {
+          toastr.error(res.message || "No se pudo eliminar.");
+        }
+      });
+    },
+    () => {}
+  );
+}
+
 /* ===================== Captura de caja ===================== */
 
 /* Total de una denominación según su tipo (igual que Arqueo::total_denominacion). */

@@ -122,7 +122,8 @@ class Direction{
         $meta_venta = $this->MetaVentaModel->get_mount_resumen_end();
         $months = self::get_months_list(); // Asumiendo que esta función ya te da los meses
         $months = array_reverse($months); // Si también necesitas invertir los meses
-        echo $this->twig->render($this->route . 'tg6/tg6.html', compact('months', 'currentYear', 'months_resumen', 'meta_venta'));
+        $years = array_values(array_unique(array_column($months_resumen, 'year')));
+        echo $this->twig->render($this->route . 'tg6/tg6.html', compact('months', 'currentYear', 'months_resumen', 'meta_venta', 'years'));
     }
     function consult_consumption() {
         
@@ -245,23 +246,17 @@ class Direction{
         $months = [];
         $currentMonth = (int)date('m');
         $currentYear = (int)date('Y');
+        $names = [1 => 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
         for ($i = $currentMonth; $i >= 1; $i--) {
-            $date = DateTime::createFromFormat('!m', $i);
-            $monthName = strftime('%h', $date->getTimestamp()); // Nombre del mes
-            $formattedMonth = $i; // Mes en formato 'mm'
             $months[] = [
-                'name' => sprintf('%s %04d', ucfirst($monthName), $currentYear),
-                'formatted' => sprintf('%04d_%s', $currentYear, $formattedMonth)
-
+                'name' => sprintf('%s %04d', $names[$i], $currentYear),
+                'formatted' => sprintf('%04d_%s', $currentYear, $i)
             ];
         }
         for ($i = 12; $i >= 1; $i--) {
-            $date = DateTime::createFromFormat('!m', $i);
-            $monthName = strftime('%h', $date->getTimestamp()); // Nombre del mes
-            $formattedMonth = $i;
             $months[] = [
-                'name' => sprintf('%s %04d', ucfirst($monthName), $currentYear - 1),
-                'formatted' => sprintf('%04d_%s', $currentYear - 1, $formattedMonth)
+                'name' => sprintf('%s %04d', $names[$i], $currentYear - 1),
+                'formatted' => sprintf('%04d_%s', $currentYear - 1, $i)
             ];
         }
         return $months;
@@ -294,26 +289,167 @@ class Direction{
         ];
     }
 
+    // Año-mes ("2026-08"): ordena y filtra bien como texto
+    private static function format_month_year($date): string {
+        $ts = strtotime((string)$date);
+        return $ts ? date('Y-m', $ts) : '';
+    }
+
+    function search_clients() {
+        $q = trim((string)($_POST['q'] ?? ''));
+        $tipo = ((int)($_POST['tipo'] ?? 28) === 127) ? 127 : 28;
+        echo json_encode(['data' => $this->CreDebMensualModel->search_clients($q, $tipo)]);
+    }
+
+    function assign_advisor() {
+        $ids = $_POST['client_ids'] ?? [];
+        $advisor = (string)($_POST['advisor'] ?? '');
+        $tipo = ((int)($_POST['tipo'] ?? 28) === 127) ? 127 : 28;
+        if (!is_array($ids) || !$ids) {
+            echo json_encode(['success' => false, 'message' => 'Selecciona al menos un cliente.']);
+            return;
+        }
+        try {
+            $updated = $this->CreDebMensualModel->assign_advisor($ids, $advisor, $tipo);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => 'No se pudo asignar el asesor.']);
+            return;
+        }
+        echo json_encode(['success' => true, 'updated' => $updated]);
+    }
+
+    // Recalcula ConsumoCreditoDebitoMensual (crédito y débito) de un mes completo (o hasta hoy si es el mes en curso)
+    // y responde qué cambió respecto a lo que había guardado
+    function sync_consumption() {
+        set_time_limit(300);
+        $month = DateTime::createFromFormat('!Y-m', $_POST['month'] ?? '');
+        $today = new DateTime('today');
+        if (!$month) {
+            echo json_encode(['success' => false, 'message' => 'Selecciona un mes válido.']);
+            return;
+        }
+        $from  = new DateTime($month->format('Y-m-01'));
+        $until = min(new DateTime($month->format('Y-m-t')), $today);
+        if ($from > $today) {
+            echo json_encode(['success' => false, 'message' => 'No se puede sincronizar un mes futuro.']);
+            return;
+        }
+        $year = (int)$month->format('Y');
+        $mes  = (int)$month->format('n');
+
+        try {
+            $before = $this->CreDebMensualModel->month_snapshot($year, $mes);
+            $this->CreDebMensualModel->sync_month(
+                dateToInt($from->format('Y-m-d')),
+                dateToInt($until->format('Y-m-d')),
+                $year,
+                $mes
+            );
+            $after = $this->CreDebMensualModel->month_snapshot($year, $mes);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => 'No se pudo sincronizar: ' . $e->getMessage()]);
+            return;
+        }
+
+        echo json_encode([
+            'success' => true,
+            'mes'     => $month->format('Y-m'),
+            'desde'   => $from->format('Y-m-d'),
+            'hasta'   => $until->format('Y-m-d'),
+            'cambios' => self::diff_consumption($before, $after),
+        ]);
+    }
+
+    // Compara dos fotos del mes por tipo (28 crédito, 127 débito) y cliente
+    private static function diff_consumption(array $before, array $after): array {
+        $index = function (array $rows) {
+            $out = [];
+            foreach ($rows as $r) {
+                $out[$r['tipo_id'] . '|' . $r['cliente_id']] = $r;
+            }
+            return $out;
+        };
+        $b = $index($before);
+        $a = $index($after);
+        $tipos = [28 => 'Crédito', 127 => 'Débito'];
+        $result = [];
+        foreach ($tipos as $tipoId => $label) {
+            $t = ['tipo' => $label, 'clientes_antes' => 0, 'clientes_despues' => 0,
+                  'litros_antes' => 0.0, 'litros_despues' => 0.0,
+                  'nuevos' => 0, 'eliminados' => 0, 'modificados' => 0, 'detalle' => []];
+            foreach ($b as $k => $r) {
+                if ((int)$r['tipo_id'] !== $tipoId) continue;
+                $t['clientes_antes']++;
+                $t['litros_antes'] += (float)$r['litros'];
+            }
+            foreach ($a as $k => $r) {
+                if ((int)$r['tipo_id'] !== $tipoId) continue;
+                $t['clientes_despues']++;
+                $t['litros_despues'] += (float)$r['litros'];
+                if (!isset($b[$k])) {
+                    $t['nuevos']++;
+                    $t['detalle'][] = ['cliente' => $r['cliente_id'], 'nombre' => trim((string)$r['nombre']), 'cambio' => 'Nuevo',
+                                       'antes' => 0.0, 'despues' => round((float)$r['litros'], 3)];
+                } elseif (abs((float)$r['litros'] - (float)$b[$k]['litros']) >= 0.0005) {
+                    $t['modificados']++;
+                    $t['detalle'][] = ['cliente' => $r['cliente_id'], 'nombre' => trim((string)$r['nombre']), 'cambio' => 'Modificado',
+                                       'antes' => round((float)$b[$k]['litros'], 3), 'despues' => round((float)$r['litros'], 3)];
+                }
+            }
+            foreach ($b as $k => $r) {
+                if ((int)$r['tipo_id'] !== $tipoId || isset($a[$k])) continue;
+                $t['eliminados']++;
+                $t['detalle'][] = ['cliente' => $r['cliente_id'], 'nombre' => trim((string)$r['nombre']), 'cambio' => 'Eliminado',
+                                   'antes' => round((float)$r['litros'], 3), 'despues' => 0.0];
+            }
+            // Los 15 cambios más grandes en litros
+            usort($t['detalle'], fn($x, $y) => abs($y['despues'] - $y['antes']) <=> abs($x['despues'] - $x['antes']));
+            $t['detalle_total'] = count($t['detalle']);
+            $t['detalle'] = array_slice($t['detalle'], 0, 15);
+            $t['litros_antes'] = round($t['litros_antes'], 3);
+            $t['litros_despues'] = round($t['litros_despues'], 3);
+            $result[] = $t;
+        }
+        return $result;
+    }
+
     function comsumption_credit_count_table(){
-        $type= $_POST['type'];
-        $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE);
-        $formatter->setPattern('MMM-yy'); // Formato deseado: nombre completo del mes y año en 2 dígitos
+        echo json_encode(array("data" => $this->consumption_rows((int)$_POST['type'])));
+    }
+
+    // Filas de la tabla; las usan la pantalla y la exportación a Excel
+    private function consumption_rows(int $type): array {
         $currentYear = date('Y');
         $currentMonth = (int) date('m');
         $currentday = (int) date('d');
         $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $currentMonth, $currentYear);
+        $daysElapsed = max($currentday - 1, 1); // días cerrados del mes; evita división entre 0 el día 1
+        // Último mes cerrado (el que usa el Excel para marcar "Sin Consumo" / "Nuevo")
+        $lastClosedKey = ($currentMonth == 1)
+            ? ($currentYear - 1) . "_12"
+            : $currentYear . "_" . ($currentMonth - 1);
         $data = [];
         $columnData = $this->generate_columns_and_pivot_clause();
         $columns_name = $columnData['columns_name'];
         $rows = $this->CreDebMensualModel->comsumption_credit_count_table( $columnData,$type);
-        foreach ($rows as $key=> $row) {
+        foreach ($rows ?: [] as $key=> $row) {
             // if($key < 294 ){
-                $clienteAbreviado = mb_strlen($row['Cliente'], 'UTF-8') > 25 
+                $clienteAbreviado = mb_strlen($row['Cliente'], 'UTF-8') > 25
                 ? mb_substr($row['Cliente'], 0, 25, 'UTF-8') . '...'
                 : $row['Cliente'];
-                $lognew = $formatter->format(strtotime($row['lognew']));
-                $prediction = (($row[$currentYear."_".$currentMonth] / ($currentday-1) )*$daysInMonth) ?? 0;
-                $pro_vs_max = ($row['MaxValue'] != 0) ?  ((($prediction / $row['MaxValue'] )-1)*100  ) : 0;
+                $lognew = self::format_month_year($row['lognew']);
+                $maxValue = (float)($row['MaxValue'] ?? 0);
+                $prediction = ((float)($row[$currentYear."_".$currentMonth] ?? 0) / $daysElapsed) * $daysInMonth;
+                $pro_vs_max = ($maxValue != 0) ?  ((($prediction / $maxValue )-1)*100  ) : 0;
+                $ratio = ($maxValue != 0) ? $prediction / $maxValue : 0;
+                $estatus = ($ratio >= 0.9) ? 'Verde' : (($ratio >= 0.7) ? 'Naranja' : 'Rojo'); // umbrales del Excel: <70% rojo, 70-90% naranja, >=90% verde
+                $lastClosed = (float)($row[$lastClosedKey] ?? 0);
+                $max_label = '';
+                if ($maxValue == 0) {
+                    $max_label = ($lastClosed == 0) ? 'Sin Consumos' : 'Nuevo';
+                } elseif ($lastClosed == 0) {
+                    $max_label = 'Sin Consumo';
+                }
                 $entry = [
                     'CodigoCliente' => $row['CodigoCliente'],
                     'Cliente'       => $row['Cliente'],
@@ -321,14 +457,17 @@ class Direction{
                     'lognew'        => $lognew,
                     'nombre_asesor' => $row['nombre_asesor'],
                     'nombre_zona'   => $row['nombre_zona'],
-                    'MaxValue'      => round($row['MaxValue'],3)  ?? 0,
-                    'prediction'      => round($prediction,3)  ?? 0,
-                    'pro_vs_max'      => round($pro_vs_max)  ?? 0,
-    
-    
+                    'MaxValue'      => round($maxValue,3),
+                    'max_label'     => $max_label,
+                    'prediction'      => round($prediction,3),
+                    'pro_vs_max'      => round($pro_vs_max),
+                    'cumplimiento'    => round($ratio * 100),
+                    'estatus'         => $estatus,
+
+
                 ];
                 foreach ($columns_name as $column) {
-                    $entry[$column] = round($row[$column],3)  ?? 0;
+                    $entry[$column] = round((float)($row[$column] ?? 0),3);
                 }
                 // if ($key == 293) {
                 //     echo '<pre>';
@@ -340,14 +479,16 @@ class Direction{
 
         }
 
-        echo json_encode(array("data" => $data));
+        return $data;
     }
 
 
     function comsumption_credit_client_table(){
-        $type= $_POST['type'];
-        $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE);
-        $formatter->setPattern('MMM-yy'); // Formato deseado: nombre completo del mes y año en 2 dígitos
+        echo json_encode(array("data" => $this->client_rows((int)$_POST['type'])));
+    }
+
+    // Filas de la tabla; las usan la pantalla y la exportación a Excel
+    private function client_rows(int $type): array {
         $currentYear = date('Y');
         $currentMonth = (int) date('m');
         $currentday = (int) date('d');
@@ -361,10 +502,11 @@ class Direction{
                 $clienteAbreviado = mb_strlen($row['Cliente'], 'UTF-8') > 25 
                 ? mb_substr($row['Cliente'], 0, 25, 'UTF-8') . '...'
                 : $row['Cliente'];
-                // $lognew = $formatter->format(strtotime($row['lognew']));
-                $lognew=date('M-y');
+                $lognew = self::format_month_year($row['ingreso']); // primer ingreso entre las cuentas del RFC
                 $prediction = (($row[$currentYear."_".$currentMonth] /($currentday-1) )*$daysInMonth) ?? 0;
                 $pro_vs_max = ($row['MaxValue'] != 0) ?  ((($prediction / $row['MaxValue'] )-1)*100  ) : 0;
+                $ratio = ((float)$row['MaxValue'] != 0) ? $prediction / (float)$row['MaxValue'] : 0;
+                $estatus = ($ratio >= 0.9) ? 'Verde' : (($ratio >= 0.7) ? 'Naranja' : 'Rojo');
                 $entry = [
                     'CodigoCliente' => 1,
                     'Cliente'       => $row['Cliente'],
@@ -375,6 +517,8 @@ class Direction{
                     'MaxValue'      => round($row['MaxValue'],3)  ?? 0,
                     'prediction'      => round($prediction,3)  ?? 0,
                     'pro_vs_max'      => round($pro_vs_max)  ?? 0,
+                    'cumplimiento'    => round($ratio * 100),
+                    'estatus'         => $estatus,
     
     
                 ];
@@ -385,7 +529,7 @@ class Direction{
                 $data[] = $entry;
         }
 
-        echo json_encode(array("data" => $data));
+        return $data;
     }
 
 
@@ -673,7 +817,10 @@ class Direction{
         json_output(array("data" => $data));
     }
     public function Vta_vs_meta_canvas(){
-        $meta_venta = $this->MetaVentaModel->get_mount_resumen_end();
+        $year = (int)($_POST['year'] ?? date('Y'));
+        // El resumen viene del más reciente al más antiguo; la gráfica va de enero a diciembre del año elegido
+        $meta_venta = array_filter($this->MetaVentaModel->get_mount_resumen_end() ?: [], fn($row) => (int)$row['año'] === $year);
+        usort($meta_venta, fn($a, $b) => (int)$a['mes'] <=> (int)$b['mes']);
         $month_names = [
             1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
             5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
@@ -1028,137 +1175,166 @@ class Direction{
         }
     }
 
+    // Excel de las 4 pestañas, una por hoja: histórico del año elegido y las tres tablas de consumo con el rango de meses elegido
     public function excel_tg6(){
-        $inputFileName = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\tg6.xlsx';
-        $spreadsheet = IOFactory::load($inputFileName);
+        set_time_limit(300);
+        ini_set('memory_limit', '512M');
+        $currentYear = (int)date('Y');
+        $year = (int)($_GET['year'] ?? $currentYear);
+        $monthKey = fn($key) => preg_match('/^(\d{4})_(\d{1,2})$/', (string)$key, $m) ? ((int)$m[1] * 12 + (int)$m[2]) : null;
+        $from = $monthKey($_GET['from'] ?? '') !== null ? $_GET['from'] : $currentYear . '_1';
+        $to   = $monthKey($_GET['to'] ?? '') !== null ? $_GET['to'] : $currentYear . '_' . (int)date('n');
+        // meses de la tabla (más antiguo primero) dentro del rango elegido
+        $months = array_values(array_filter(array_reverse(self::get_months_list()), function ($m) use ($monthKey, $from, $to) {
+            $k = $monthKey($m['formatted']);
+            return $k >= $monthKey($from) && $k <= $monthKey($to);
+        }));
 
-        $sheet = $spreadsheet->getSheetByName('Vta vs Meta Emp Historico');
-        if (!$sheet) {
-            throw new Exception("La hoja 'Vta vs Meta Emp Historico' no se encontró.");
-            return;
-        }    
-        $currentYear = date('Y');
-        
-        $months_resumen = [
-            ['numero' => 1,  'name' => 'Ene'],
-            ['numero' => 2,  'name' => 'Feb'],
-            ['numero' => 3,  'name' => 'Mar'],
-            ['numero' => 4,  'name' => 'Abr'],
-            ['numero' => 5,  'name' => 'May'],
-            ['numero' => 6,  'name' => 'Jun'],
-            ['numero' => 7,  'name' => 'Jul'],
-            ['numero' => 8,  'name' => 'Ago'],
-            ['numero' => 9,  'name' => 'Sep'],
-            ['numero' => 10, 'name' => 'Oct'],
-            ['numero' => 11, 'name' => 'Nov'],
-            ['numero' => 12, 'name' => 'Dic'],
-        ];        
-        $meta_venta = $this->MetaVentaModel->get_mount_resumen_export();
+        $spreadsheet = new Spreadsheet();
+        $this->excel_historic_sheet($spreadsheet->getActiveSheet(), $year);
+        $this->excel_consumption_sheet($spreadsheet->createSheet(), 'Cre Consumo Cuenta', $this->consumption_rows(28), $months, false, 'FFD9EAF7');
+        $this->excel_consumption_sheet($spreadsheet->createSheet(), 'Cre Consumo Cliente', $this->client_rows(28), $months, true, 'FFD9F2E3');
+        $this->excel_consumption_sheet($spreadsheet->createSheet(), 'Debito Consumos', $this->consumption_rows(127), $months, false, 'FFFFE0B3');
+        $spreadsheet->setActiveSheetIndex(0);
 
-        //////////encabezado meses
-        $row = 5;  
-        $column = 'B';
-        foreach ($months_resumen as $month) {
-            $sheet->setCellValue($column . $row, $month['name'] . '-' . $currentYear);  // Rellenar celdas
-            $column++;
-        }
-         ////////encabezado Venta Cre/Deb---debito
-         $row = 10;  
-         $column = 'B';
-        foreach ($months_resumen as $item) {
-            foreach ($meta_venta as $data) {
-                $sum_deb = 0;
-                if ($data['mes'] == $item['numero']) {
-                    $sum_deb = $data['sum_deb'];
-                    $sheet->setCellValue($column . $row, $sum_deb);  // Rellenar celdas
-
-                }
-            }
-            $column++;
-        }
-
-         ////////encabezado Venta Cre/Deb---Credito
-        $row = 9;
-        $column = 'B';
-        foreach ($months_resumen as $item) {
-            foreach ($meta_venta as $data) {
-                $sum_cre_mun = 0;
-                if ($data['mes'] == $item['numero']) {
-                    $sum_cre_mun = $data['sum_cre_mun'];
-                    $sheet->setCellValue($column . $row, $sum_cre_mun);  // Rellenar celdas
-
-                }
-            }
-            $column++;
-        }
-
-        ////////encabezado Meta-Cre
-        $row = 14;
-        $column = 'B';
-        foreach ($months_resumen as $item) {
-            foreach ($meta_venta as $data) {
-                $sum_meta_cre = 0;
-                if ($data['mes'] == $item['numero']) {
-                    $sum_meta_cre = $data['sum_meta_cre'];
-                    $sheet->setCellValue($column . $row, $sum_meta_cre);  // Rellenar celdas
-
-                }
-            }
-            $column++;
-        }
-        ////////encabezado Meta-Deb
-        $row = 15;
-        $column = 'B';
-        foreach ($months_resumen as $item) {
-            foreach ($meta_venta as $data) {
-                $sum_meta_deb = 0;
-                if ($data['mes'] == $item['numero']) {
-                    $sum_meta_deb = $data['sum_meta_deb'];
-                    $sheet->setCellValue($column . $row, $sum_meta_deb);  // Rellenar celdas
-
-                }
-            }
-            $column++;
-        }
-
-         ////////encabezado credito municipio juarez
-         $row = 24;
-         $column = 'B';
-         foreach ($months_resumen as $item) {
-             foreach ($meta_venta as $data) {
-                 $cred_mun_jua = 0;
-                 if ($data['mes'] == $item['numero']) {
-                     $cred_mun_jua = $data['cred_mun_jua'];
-                     $sheet->setCellValue($column . $row, $cred_mun_jua);  // Rellenar celdas
- 
-                 }
-             }
-             $column++;
-         }
-
-         $row = 26;
-         $column = 'B';
-         foreach ($months_resumen as $item) {
-             foreach ($meta_venta as $data) {
-                 $VentasReales = 0;
-                 if ($data['mes'] == $item['numero']) {
-                     $VentasReales = $data['VentasReales'];
-                     $sheet->setCellValue($column . $row, $VentasReales);  // Rellenar celdas
- 
-                 }
-             }
-             $column++;
-         }
-
-        header('Content-Disposition: attachment;"');
-        header('Content-Type: application/excel');
-
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="TG6 Clientes Credito-Debito ' . date('d-m-Y') . '.xlsx"');
         header('Cache-Control: max-age=0');
-        // Guardar el archivo Excel
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-
+        (new Xlsx($spreadsheet))->save('php://output');
         exit();
+    }
+
+    // Hoja "Vta vs Meta Emp Historico": mismas filas y meses que la pestaña, para el año elegido
+    private function excel_historic_sheet($sheet, int $year): void {
+        $sheet->setTitle('Vta vs Meta Emp Historico');
+        $coord = fn($i) => \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
+        $num = fn($v) => (float)str_replace(',', '', (string)$v);
+        $byMonth = [];
+        foreach ($this->MetaVentaModel->get_mount_resumen_end() ?: [] as $row) {
+            if ((int)$row['año'] === $year) {
+                $byMonth[(int)$row['mes']] = $row;
+            }
+        }
+        $names = [1 => 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        $lastMonth = ($year === (int)date('Y')) ? (int)date('n') : 12;
+        $lastCol = $coord($lastMonth + 1);
+        // [etiqueta, campo, tipo n=cantidad / p=porcentaje, negritas, relleno]
+        $lines = [
+            ['Venta Cre/Deb', 'sum_mouth_mun', 'n', true, 'FF90EE90'],
+            ['Crédito', 'sum_cre_mun', 'n', false, null],
+            ['Débito', 'sum_deb', 'n', false, null],
+            null,
+            ['Meta', 'sum_meta_mouth', 'n', true, 'FFADD8E6'],
+            ['Crédito', 'sum_meta_cre', 'n', false, null],
+            ['Débito', 'sum_meta_deb', 'n', false, null],
+            null,
+            ['% LOGRO', 'percentage_achieved', 'p', true, 'FFC9A27A'],
+            ['Crédito', 'percentage_achieved_cred', 'p', false, null],
+            ['Débito', 'percentage_achieved_deb', 'p', false, null],
+            null,
+            ['Venta Cre - Mun', 'cred_mun_jua', 'n', true, 'FFFFA500'],
+            ['Crédito Municipal', 'cred_mun_jua', 'n', false, null],
+            null,
+            ['Venta Total', 'VentasReales', 'n', true, 'FFFFFF00'],
+            ['Venta Cre/Deb', 'sum_mouth', 'n', false, null],
+            ['Venta Contado', 'sales_cash', 'n', false, null],
+        ];
+        $sheet->setCellValue('A1', 'Año ' . $year);
+        $sheet->getStyle('A1')->getFont()->setBold(true);
+        for ($m = 1; $m <= $lastMonth; $m++) {
+            $sheet->setCellValue($coord($m + 1) . '1', $names[$m] . ' ' . $year);
+        }
+        $sheet->getStyle("B1:{$lastCol}1")->getFont()->setBold(true);
+        $sheet->getStyle("B1:{$lastCol}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFFF00');
+        $r = 3;
+        foreach ($lines as $line) {
+            if ($line === null) { $r++; continue; }
+            [$label, $field, $kind, $bold, $fill] = $line;
+            $sheet->setCellValue('A' . $r, $label);
+            for ($m = 1; $m <= $lastMonth; $m++) {
+                $v = isset($byMonth[$m]) ? $num($byMonth[$m][$field] ?? 0) : 0;
+                $sheet->setCellValue($coord($m + 1) . $r, $kind === 'p' ? $v / 100 : $v);
+            }
+            $sheet->getStyle("B{$r}:{$lastCol}{$r}")->getNumberFormat()->setFormatCode($kind === 'p' ? '0.0%' : '#,##0');
+            if ($bold) { $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFont()->setBold(true); }
+            if ($fill) { $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($fill); }
+            $r++;
+        }
+        $sheet->getColumnDimension('A')->setWidth(22);
+        for ($m = 1; $m <= $lastMonth; $m++) {
+            $sheet->getColumnDimension($coord($m + 1))->setWidth(14);
+        }
+        $sheet->freezePane('B2');
+    }
+
+    // Hoja de una tabla de consumo: fila 1 = suma de cada mes, fila 2 = encabezados, desde la 3 los clientes
+    private function excel_consumption_sheet($sheet, string $title, array $rows, array $months, bool $byRfc, string $headerFill): void {
+        $sheet->setTitle($title);
+        $coord = fn($i) => \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
+        $statusFill = ['Verde' => 'FFC6EFCE', 'Naranja' => 'FFFFEB9C', 'Rojo' => 'FFFFC7CE'];
+        $text = \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING;
+
+        // columnas fijas antes de los meses
+        $lead = $byRfc
+            ? [['Nombre', 'Cliente'], ['Ingreso', 'lognew']]
+            : [['Cliente', 'CodigoCliente'], ['Nombre', 'Cliente'], ['Asesor', 'nombre_asesor'], ['Ingreso', 'lognew']];
+        $headers = array_column($lead, 0);
+        foreach ($months as $m) { $headers[] = $m['name']; }
+        array_push($headers, 'Consumo Mayor', 'Proyección', 'Proy. VS Cons Mayor En 6 Meses', '% Cumpl.', 'Zona');
+
+        $first = count($lead) + 1;                    // primera columna de mes
+        $last  = $first + count($months) - 1;         // última columna de mes
+        $cMax  = $last + 1; $cPred = $last + 2; $cVar = $last + 3; $cPct = $last + 4; $cZone = $last + 5;
+
+        foreach ($headers as $i => $h) {
+            $sheet->setCellValue($coord($i + 1) . '2', $h);
+        }
+        $sheet->setCellValue('A1', 'Suma');
+        $sheet->getStyle('A1:' . $coord($cZone) . '2')->getFont()->setBold(true);
+        $sheet->getStyle('A2:' . $coord($cZone) . '2')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($headerFill);
+        $sheet->getStyle('A2:' . $coord($cZone) . '2')->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_BOTTOM);
+
+        $r = 3;
+        $sums = array_fill(0, count($months), 0.0);
+        foreach ($rows as $row) {
+            foreach ($lead as $i => $spec) {
+                $sheet->setCellValueExplicit($coord($i + 1) . $r, (string)($row[$spec[1]] ?? ''), $text);
+            }
+            foreach ($months as $i => $m) {
+                $v = (float)($row[$m['formatted']] ?? 0);
+                $sums[$i] += $v;
+                $sheet->setCellValue($coord($first + $i) . $r, $v);
+            }
+            $sheet->setCellValue($coord($cMax) . $r, $row['max_label'] !== '' ? $row['max_label'] : $row['MaxValue']);
+            $sheet->setCellValue($coord($cPred) . $r, $row['prediction']);
+            $sheet->setCellValue($coord($cVar) . $r, $row['pro_vs_max'] / 100);
+            $sheet->setCellValue($coord($cPct) . $r, $row['cumplimiento'] / 100);
+            $sheet->setCellValueExplicit($coord($cZone) . $r, (string)($row['nombre_zona'] ?? ''), $text);
+            if (isset($statusFill[$row['estatus']])) {
+                $sheet->getStyle($coord($cPct) . $r)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($statusFill[$row['estatus']]);
+            }
+            $r++;
+        }
+        foreach ($sums as $i => $s) {
+            $sheet->setCellValue($coord($first + $i) . '1', $s);
+        }
+        $lastRow = max($r - 1, 3);
+        if ($months) {
+            $sheet->getStyle($coord($first) . '3:' . $coord($last) . $lastRow)->getNumberFormat()->setFormatCode('#,##0.000');
+            $sheet->getStyle($coord($first) . '1:' . $coord($last) . '1')->getNumberFormat()->setFormatCode('#,##0');
+        }
+        $sheet->getStyle($coord($cMax) . '3:' . $coord($cPred) . $lastRow)->getNumberFormat()->setFormatCode('#,##0.000');
+        $sheet->getStyle($coord($cVar) . '3:' . $coord($cPct) . $lastRow)->getNumberFormat()->setFormatCode('0%');
+        $sheet->getStyle($coord($cMax) . '3:' . $coord($cMax) . $lastRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+        $sheet->getColumnDimension($coord($byRfc ? 1 : 2))->setWidth(42);
+        foreach ($months as $i => $m) { $sheet->getColumnDimension($coord($first + $i))->setWidth(13); }
+        foreach ([$cMax, $cPred] as $c) { $sheet->getColumnDimension($coord($c))->setWidth(15); }
+        $sheet->getColumnDimension($coord($cVar))->setWidth(16);
+        $sheet->getColumnDimension($coord($cPct))->setWidth(10);
+        $sheet->getColumnDimension($coord($cZone))->setWidth(14);
+        $sheet->setAutoFilter('A2:' . $coord($cZone) . $lastRow);
+        $sheet->freezePane($coord($byRfc ? 2 : 3) . '3');
     }
 
     public function download_format(){

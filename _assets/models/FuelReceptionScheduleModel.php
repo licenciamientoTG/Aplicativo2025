@@ -143,6 +143,58 @@ class FuelReceptionScheduleModel extends Model {
     }
 
     /**
+     * Cuántas recepciones activas (no canceladas) hay ya por llave
+     * fecha|proveedor|estación|producto|litros, para las fechas dadas.
+     * La importación desde Excel la usa para no duplicar lo ya cargado.
+     */
+    function get_existing_counts(array $fechas): array {
+        $fechas = array_values(array_unique($fechas));
+        if (!$fechas) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($fechas), '?'));
+        $query = "
+            SELECT CONVERT(VARCHAR(10), fecha, 23) AS fecha, supplier_id, station_code, product, litros, COUNT(*) AS n
+            FROM TG.dbo.fuel_reception_schedule
+            WHERE fecha IN ($placeholders) AND estatus <> 'Cancelado'
+            GROUP BY fecha, supplier_id, station_code, product, litros
+        ";
+        $counts = [];
+        foreach ($this->sql->select($query, $fechas) ?: [] as $r) {
+            $counts[self::llave_importacion($r)] = (int)$r['n'];
+        }
+        return $counts;
+    }
+
+    static function llave_importacion(array $r): string {
+        return implode('|', [$r['fecha'], (int)$r['supplier_id'], (int)$r['station_code'], $r['product'], (int)$r['litros']]);
+    }
+
+    /**
+     * Inserta en una sola transacción las filas ya resueltas de la
+     * importación desde Excel. Devuelve cuántas insertó; si algo falla
+     * revierte todo.
+     */
+    function import_rows(array $rows, int $userId): int {
+        $this->sql->beginTransaction();
+        try {
+            foreach ($rows as $r) {
+                $this->add([
+                    'fecha' => $r['fecha'], 'hora' => $r['hora'], 'supplier_id' => $r['supplier_id'],
+                    'terminal_id' => $r['terminal_id'], 'station_code' => $r['station_code'],
+                    'product' => $r['product'], 'mezcla' => null, 'litros' => $r['litros'],
+                    'carrier_id' => $r['carrier_id'], 'referencia' => $r['referencia'], 'notas' => $r['notas'],
+                ], $userId);
+            }
+            $this->sql->commit();
+        } catch (Throwable $e) {
+            $this->sql->rollBack();
+            throw $e;
+        }
+        return count($rows);
+    }
+
+    /**
      * Copia exacta de una recepción en el mismo día (Abastos la usa cuando
      * ControlGas registra una descarga doble: duplican la de 30,000 y luego
      * editan a mano cada una a 15,000). La copia nace como 'Programado' y

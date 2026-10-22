@@ -8,6 +8,7 @@ return [
         route('asignar-caja/', [Arqueo::class, 'asignar_caja'], name: 'arqueo.asignar_caja', methods: ['POST'], alias: ['arqueo/asignar_caja']),
         route('crear-sesion/', [Arqueo::class, 'crear_sesion'], name: 'arqueo.crear_sesion', methods: ['POST'], alias: ['arqueo/crear_sesion']),
         route('abrir/<int:sesion_id>/', [Arqueo::class, 'abrir'], name: 'arqueo.abrir', methods: ['POST']),
+        route('eliminar/<int:sesion_id>/', [Arqueo::class, 'eliminar_sesion'], name: 'arqueo.eliminar', methods: ['POST']),
         route('cerrar/<int:sesion_id>/', [Arqueo::class, 'cerrar'], name: 'arqueo.cerrar', methods: ['POST']),
 
         route('caja/<int:caja_id>/', [Arqueo::class, 'caja'], name: 'arqueo.caja', methods: ['GET']),

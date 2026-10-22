@@ -167,6 +167,11 @@
                                 <a href="{{ url('arqueo.auditoria', {sesion_id: s.id}) }}" class="btn btn-sm btn-outline-secondary" title="Auditoría de la sesión">
                                     <i class="fas fa-history"></i>
                                 </a>
+                                {% if puede_eliminar %}
+                                <button class="btn btn-sm btn-outline-danger" onclick="eliminarSesion({{ s.id }}, this)" data-nombre="{{ s.nombre }}" title="Eliminar arqueo">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
                             {% endif %}
                         </div>
                     </td>

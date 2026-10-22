@@ -279,3 +279,11 @@ BEGIN
         ON [TG].[dbo].[arqueo_concentrado_imagenes] ([sesion_id], [sucursal_id]);
 END
 GO
+
+/* ---------------------------------------------------------------------------
+   11) Soft delete de sesiones (solo lo ejecuta el usuario autorizado en código).
+   deleted_at NULL = sesión visible. No se borra ninguna fila hija.
+   --------------------------------------------------------------------------- */
+IF COL_LENGTH('[TG].[dbo].[arqueo_sesiones]', 'deleted_at') IS NULL
+    ALTER TABLE [TG].[dbo].[arqueo_sesiones] ADD [deleted_at] DATETIME NULL, [deleted_by] INT NULL;
+GO

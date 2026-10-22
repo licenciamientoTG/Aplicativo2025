@@ -92,9 +92,7 @@ class MetaVentaModel extends Model{
                             t1.año AS año,  -- Combina año y mes en una única columna
                             ROUND(sum(t1.litros),0)   as litros
                         FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual] t1
-                        LEFT JOIN [TGV2].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
-                        LEFT JOIN [TGV2].[dbo].[Asesores] t3 on t2.asesor_id = t3.asesor_id
-                        LEFT JOIN [TGV2].[dbo].[Zonas] t4 on t2.[zona_id] = t4.[zona_id]
+                        LEFT JOIN [SG12].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
                         WHERE
                             (t1.año = YEAR(GETDATE()) OR t1.año = YEAR(GETDATE()) - 1)  
                             AND t1.tipo_id = 28
@@ -212,9 +210,7 @@ class MetaVentaModel extends Model{
                     t1.año AS año,  -- Combina año y mes en una única columna
                     ROUND(sum(t1.litros),0)   as litros
                 FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual] t1
-                LEFT JOIN [TGV2].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
-                LEFT JOIN [TGV2].[dbo].[Asesores] t3 on t2.asesor_id = t3.asesor_id
-                LEFT JOIN [TGV2].[dbo].[Zonas] t4 on t2.[zona_id] = t4.[zona_id]
+                LEFT JOIN [SG12].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
                 WHERE
                     (t1.año = YEAR(GETDATE()) OR t1.año = YEAR(GETDATE()) - 1)  
                     AND t1.tipo_id = 28

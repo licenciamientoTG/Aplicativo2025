@@ -146,7 +146,12 @@
                         </button>
                     </div>
                     <div class="col-auto">
-                        <button type="button" class="btn btn-outline-secondary" id="btnExportarExcel" title="Exportar a Excel lo que se está viendo (respeta filtros activos)">
+                        <button type="button" class="btn btn-outline-secondary" id="btnImportarExcel" title="Importar la programación desde el libro de Excel de Abastos">
+                            <i data-feather="upload"></i> Importar
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-outline-secondary" id="btnExportarExcel"title="Exportar a Excel lo que se está viendo (respeta filtros activos)">
                             <i data-feather="download"></i> Exportar
                         </button>
                     </div>
@@ -246,6 +251,42 @@
             <form id="frmProgramacion">
                 <div id="modalProgramacionContent"></div>
             </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalImportar" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Importar programación desde Excel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label" for="importArchivo">Libro de Excel (.xlsx)</label>
+                        <input type="file" class="form-control" id="importArchivo" accept=".xlsx">
+                    </div>
+                    <div class="col-md-3" id="importHojaWrap" style="display:none;">
+                        <label class="form-label" for="importHoja">Hoja</label>
+                        <select class="form-select" id="importHoja"></select>
+                    </div>
+                    <div class="col-md-4" id="importLeerWrap" style="display:none;">
+                        <button type="button" class="btn btn-primary" id="btnImportarLeer">
+                            <i data-feather="upload"></i> Subir y comprobar
+                        </button>
+                    </div>
+                </div>
+                <div id="importEstado" class="mt-3"></div>
+                <div id="importResultado" class="mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-success" id="btnImportarConfirmar" style="display:none;" disabled>
+                    Confirmar importación
+                </button>
+            </div>
         </div>
     </div>
 </div>

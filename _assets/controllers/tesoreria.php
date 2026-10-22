@@ -831,6 +831,182 @@ class Tesoreria
     }
 
     /**
+     * GET: descarga en .xlsx los movimientos de las cuentas elegidas en el
+     * modal Exportar, una hoja por cuenta, dentro de Desde/Hasta. Respeta el
+     * perfil del usuario: las cuentas pedidas se cruzan con cuentas_permitidas().
+     * Params: desde, hasta, cuentas[] (números de cuenta).
+     */
+    public function exportar_movimientos_cuentas(): void
+    {
+        if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)) {
+            (new Errors())->get404();
+            return;
+        }
+
+        $filtros = $this->filtros_movimientos($_GET);
+        $cuentas = array_values(array_unique(array_filter(
+            array_map('trim', (array)($_GET['cuentas'] ?? [])),
+            fn($c) => $c !== ''
+        )));
+        $permitidas = $this->cuentas_permitidas();
+        if ($permitidas !== null) $cuentas = array_values(array_intersect($cuentas, $permitidas));
+
+        if (!$cuentas) {
+            http_response_code(400);
+            echo 'Elige al menos una cuenta';
+            return;
+        }
+
+        $filtros['cuenta'] = '';
+        $filtros['tipo']   = '';
+        $movimientos = $this->movsModel->get_movimientos($filtros, $cuentas);
+
+        $porCuenta = array_fill_keys($cuentas, []);
+        foreach ($movimientos as $m) {
+            $porCuenta[$m['cuenta']][] = $m;
+        }
+        ksort($porCuenta);
+
+        $libro  = $this->libro_movimientos_cuentas($porCuenta);
+        $nombre = 'movimientos_bancos_' . $filtros['desde'] . '_' . $filtros['hasta'] . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $nombre . '"');
+        header('Cache-Control: max-age=0');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($libro))->save('php://output');
+        exit;
+    }
+
+    /** Libro de exportar_movimientos_cuentas(): una hoja por cuenta, titulada con el número. */
+    private function libro_movimientos_cuentas(array $porCuenta): \PhpOffice\PhpSpreadsheet\Spreadsheet
+    {
+        $libro = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $libro->removeSheetByIndex(0);
+        $usados = [];
+
+        foreach ($porCuenta as $cuenta => $movs) {
+            $banco  = self::banco_de($movs[0]['banco'] ?? '');
+            $hoja   = $libro->createSheet();
+            // Excel: máx. 31 chars, sin \ / ? * [ ] : y sin títulos repetidos
+            // Se antepone el banco; si no hay movimientos no se conoce, y queda solo la cuenta
+            $etiqueta = isset($movs[0]) ? (self::BANCOS[$banco]['etiqueta'] ?? $banco) . ' ' : '';
+            $titulo = substr(preg_replace('/[\\\\\/\?\*\[\]\:]/', '-', $etiqueta . $cuenta), 0, 31) ?: 'Cuenta';
+            while (isset($usados[strtolower($titulo)])) $titulo = substr($titulo, 0, 29) . '_' . count($usados);
+            $usados[strtolower($titulo)] = true;
+            $hoja->setTitle($titulo);
+
+            $this->llenar_hoja_cuenta($hoja, $banco, $movs);
+        }
+
+        $libro->setActiveSheetIndex(0);
+        return $libro;
+    }
+
+    /** Encabezados por banco, mismas columnas (y orden) que su tab en pantalla. */
+    private function encabezados_banco(string $banco): array
+    {
+        switch ($banco) {
+            case 'BANORTE':
+                return ['Cuenta', 'Fecha de Operación', 'Fecha', 'Referencia', 'Descripción',
+                        'Cod. Transac', 'Sucursal', 'Depósitos', 'Retiros', 'Saldo', 'Secuencia',
+                        'Descripción Detallada'];
+            case 'BANKAOOL':
+                return ['Cuenta', 'Fecha', 'Hora', 'Descripción', 'Referencia', 'Cargo', 'Abono', 'Saldo',
+                        'Concepto', 'Contraparte'];
+            case 'INBURSA':
+                return ['Cuenta', 'Fecha', 'Referencia', 'Ref. Externa', 'Referencia Leyenda',
+                        'Ref. Numérica', 'Movimiento', 'Cargo', 'Abono', 'Saldo', 'Ordenante', 'Clave de Rastreo'];
+            case 'AFIRME':
+                return ['Concepto', 'Fecha', 'Referencia', 'Cargo', 'Abono', 'Saldo', 'Cuenta', 'Código'];
+            default:
+                return ['Cuenta', 'Fecha', 'Hora', 'Sucursal', 'Descripción', 'Importe Cargo',
+                        'Importe Abono', 'Saldo', 'Referencia', 'Concepto', 'Descripción Larga', 'Contraparte'];
+        }
+    }
+
+    /** Una fila por movimiento, en el orden de encabezados_banco(). */
+    private function fila_movimiento(string $banco, array $m): array
+    {
+        switch ($banco) {
+            case 'BANORTE':
+                return [$m['cuenta'], $m['fecha_operacion'] ?? '', $m['fecha'], $m['referencia'] ?? '',
+                        $m['descripcion'] ?? '', $m['clave_trans'] ?? '', $m['sucursal'] ?? '',
+                        $m['abono'], $m['cargo'], $m['saldo'] ?? null, $m['secuencia'] ?? '',
+                        $m['descripcion_larga'] ?? ''];
+            case 'BANKAOOL':
+                return [$m['cuenta'], $m['fecha'], $m['hora'] ?? '', $m['descripcion'] ?? '',
+                        $m['referencia'] ?? '', $m['cargo'], $m['abono'], $m['saldo'] ?? null,
+                        $m['concepto'] ?? '', $m['nombre_contraparte'] ?? ''];
+            case 'INBURSA':
+                return [$m['cuenta'], $m['fecha'], $m['descripcion_larga'] ?? '', $m['clave_trans'] ?? '',
+                        $m['concepto'] ?? '', $m['referencia'] ?? '', $m['descripcion'] ?? '',
+                        $m['cargo'], $m['abono'], $m['saldo'] ?? null, $m['nombre_contraparte'] ?? '',
+                        $m['clave_rastreo'] ?? ''];
+            case 'AFIRME':
+                return [$m['descripcion'] ?? '', $m['fecha'], $m['referencia'] ?? '', $m['cargo'],
+                        $m['abono'], $m['saldo'] ?? null, $m['cuenta'], $m['clave_trans'] ?? ''];
+            default:
+                return [$m['cuenta'], $m['fecha'], $m['hora'] ?? '', $m['sucursal'] ?? '',
+                        $m['descripcion'] ?? '', $m['cargo'], $m['abono'], $m['saldo'] ?? null,
+                        $m['referencia'] ?? '', $m['concepto'] ?? '', $m['descripcion_larga'] ?? '',
+                        $m['nombre_contraparte'] ?? ''];
+        }
+    }
+
+    /** Columnas de cargo/abono/saldo (1-based) por banco, para formato de moneda. */
+    private function columnas_monto(string $banco): array
+    {
+        switch ($banco) {
+            case 'BANORTE':  return [8, 9, 10];
+            case 'BANKAOOL': return [6, 7, 8];
+            case 'INBURSA':  return [8, 9, 10];
+            case 'AFIRME':   return [4, 5, 6];
+            default:         return [6, 7, 8];
+        }
+    }
+
+    /**
+     * Antepone apóstrofe a textos que empiezan como fórmula (= + - @): la
+     * "Descripción Detallada" de Banorte llega como "=REFERENCIA CTA/CLABE..."
+     * y setAutoSize() la calcularía como fórmula, corrompiendo el .xlsx.
+     */
+    private function escapar_formula($valor)
+    {
+        if (is_string($valor) && $valor !== '' && strpbrk($valor[0], '=+-@') !== false) {
+            return "'" . $valor;
+        }
+        return $valor;
+    }
+
+    private function llenar_hoja_cuenta(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $hoja, string $banco, array $movs): void
+    {
+        $coord         = '\PhpOffice\PhpSpreadsheet\Cell\Coordinate';
+        $encabezados   = $this->encabezados_banco($banco);
+        $ultimaColumna = $coord::stringFromColumnIndex(count($encabezados));
+
+        $hoja->fromArray($encabezados, null, 'A1');
+        $hoja->getStyle('A1:' . $ultimaColumna . '1')->getFont()->setBold(true);
+        $hoja->getStyle('A1:' . $ultimaColumna . '1')->getFill()
+             ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('E2E8F0');
+
+        $fila = 2;
+        foreach ($movs as $m) {
+            $hoja->fromArray(array_map([$this, 'escapar_formula'], $this->fila_movimiento($banco, $m)), null, 'A' . $fila);
+            $fila++;
+        }
+
+        foreach ($this->columnas_monto($banco) as $col) {
+            $letra = $coord::stringFromColumnIndex($col);
+            $hoja->getStyle($letra . '2:' . $letra . max(2, $fila - 1))->getNumberFormat()->setFormatCode('#,##0.00');
+        }
+        foreach (range(1, count($encabezados)) as $col) {
+            $hoja->getColumnDimension($coord::stringFromColumnIndex($col))->setAutoSize(true);
+        }
+        $hoja->freezePane('A2');
+    }
+
+    /**
      * Arma el libro del saldo por grupo. Separado del endpoint para poder
      * generarlo y revisarlo sin la descarga (headers + exit) de por medio.
      */

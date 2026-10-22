@@ -795,6 +795,40 @@ public function balance_age()
         $clientName = $_GET['clientName'] ?? false;
         echo $this->twig->render($this->route . 'credit_debit_dispatches.html', compact('stations', 'from', 'until', 'codgas', 'clientName', 'client_type'));
     }  
+    function pending_cancellation_invoices(){
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            echo $this->twig->render($this->route . 'pending_cancellation_invoices.html');
+        }
+    }
+    function pending_cancellation_invoices_table(){
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
+        $data = [];
+        if ($rows = $this->documentosModel->cancelacion_en_proceso_debito()) {
+            foreach ($rows as $r) {
+                $data[] = [
+                    'fecha'             => $r['fecha'],
+                    'factura'           => $r['factura'],
+                    'codcli'            => $r['codcli'],
+                    'cliente'           => $r['cliente'],
+                    'rfc'               => $r['rfc'],
+                    'uuid'              => $r['uuid'],
+                    'subtotal'          => round((float)$r['subtotal'], 2),
+                    'iva'               => round((float)$r['iva'], 2),
+                    'total'             => round((float)$r['total'], 2),
+                    'aplicado'          => round(-1 * (float)$r['aplicado'], 2),
+                    'motivo'            => $r['motivo'],
+                    'estado'            => (int)$r['estado'],
+                    'primera_solicitud' => $r['primera_solicitud'],
+                    'ultima_consulta'   => $r['ultima_consulta'],
+                    'dias_en_proceso'   => (int)$r['dias_en_proceso'],
+                    'intentos'          => (int)$r['intentos'],
+                    'usuario'           => $r['usuario'],
+                ];
+            }
+        }
+        json_output(array("data" => $data));
+    }
     function relation_invoice_advance(){
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'relation_invoice_advance.html');
@@ -2173,7 +2207,8 @@ public function anomalies_client_tickets()
         $result = $this->despachosModel->control_dispatches2_paginated(
             dateToInt($_POST['from']), dateToInt($_POST['until']),
             $codgas, $uuid, $tipo_cliente, $billed,
-            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch,
+            max(0, (int) ($_POST['total_hint'] ?? 0))
         );
 
         // Transformar SOLO la página actual (decenas de filas, no todo el dataset).

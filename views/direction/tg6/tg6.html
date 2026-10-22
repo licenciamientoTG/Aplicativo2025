@@ -53,10 +53,43 @@
 {% endblock %}
 {% block menutitle %}TG6{% endblock %}
 
+{% macro month_range(months) %}
+	{% set cy = 'now'|date('Y') %}
+	<div class="d-flex align-items-end gap-2">
+		<div>
+			<label class="form-label mb-0 small">Desde</label>
+			<select class="form-select form-select-sm tg6-month-from">
+				{% for month in months %}
+					<option value="{{ month.formatted }}" {{ month.formatted == cy ~ '_1' ? 'selected' }}>{{ month.name }}</option>
+				{% endfor %}
+			</select>
+		</div>
+		<div>
+			<label class="form-label mb-0 small">Hasta</label>
+			<select class="form-select form-select-sm tg6-month-to">
+				{% for month in months %}
+					<option value="{{ month.formatted }}" {{ loop.last ? 'selected' }}>{{ month.name }}</option>
+				{% endfor %}
+			</select>
+		</div>
+	</div>
+{% endmacro %}
+
 {% block content %}
+{% import _self as ui %}
+{# Esta vista abre con el sidebar colapsado; el botón de hamburguesa lo vuelve a abrir #}
+<script>document.getElementById('sidebar')?.classList.add('collapsed');</script>
 
 
 
+<div class="d-flex flex-wrap justify-content-end gap-2 mb-2">
+	<button type="button" class="btn btn-sm btn-outline-primary" id="btn_assign_advisor">
+		<i class="fas fa-user-tag"></i> Asignar asesor
+	</button>
+	<button type="button" class="btn btn-sm btn-primary" id="btn_sync_consumption">
+		<i class="fas fa-sync-alt"></i> Sincronizar
+	</button>
+</div>
  <ul class="nav nav-tabs" id="myTab" role="tablist">
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="VtaVsVenHistoric-tab" data-bs-toggle="tab" data-bs-target="#VtaVsVenHistoric" type="button" role="tab" aria-controls="VtaVsVenHistoric" aria-selected="true">Vta vs Emp Historico</button>
@@ -76,7 +109,15 @@
 	<div class="tab-pane active" id="VtaVsVenHistoric" role="tabpanel" aria-labelledby="VtaVsVenHistoric-tab">
 		<div class="card">
 			<div class="card-body text-end">
-				<div class="mb-3">
+				<div class="mb-3 d-flex flex-wrap justify-content-end align-items-end gap-2">
+					<div class="text-start">
+						<label for="historic_year" class="form-label mb-0 small">Año</label>
+						<select class="form-select form-select-sm" id="historic_year">
+							{% for year in years|reverse %}
+								<option value="{{ year }}" {{ year == currentYear ? 'selected' }}>{{ year }}</option>
+							{% endfor %}
+						</select>
+					</div>
 					<button class="btn btn-outline-success" onclick="downloadExcel()">Descargar</button>
 				</div>
 			</div>
@@ -88,7 +129,7 @@
 								<tr class="">
 									<th></th>
 									{% for item in months_resumen %}
-										<td class="fw-bolder bg-yellow">{{ item.name }}
+										<td class="fw-bolder bg-yellow" data-year="{{ item.year }}">{{ item.name }}
 											{{ item.year }}</td>
 									{% endfor %}
 									<th>TOTAL</th>
@@ -107,7 +148,7 @@
 												{% set sum_mouth_mun = data.sum_mouth_mun %}
 											{% endif %}
 										{% endfor %}
-										<td class=" td_num bg-lightgreen fw-bolder">{{ sum_mouth_mun }}</td>
+										<td class=" td_num bg-lightgreen fw-bolder" data-year="{{ item.year }}">{{ sum_mouth_mun }}</td>
 									{% endfor %}
 									<td class="bg-lightgreen"></td>
 								</tr>
@@ -120,7 +161,7 @@
 												{% set sum_cre_mun = data.sum_cre_mun %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num">{{ sum_cre_mun }}</td>
+										<td class="td_num" data-year="{{ item.year }}">{{ sum_cre_mun }}</td>
 									{% endfor %}
 									<td></td>
 								</tr>
@@ -133,7 +174,7 @@
 												{% set sum_deb = data.sum_deb %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num">{{ sum_deb }}</td>
+										<td class="td_num" data-year="{{ item.year }}">{{ sum_deb }}</td>
 									{% endfor %}
 									<td></td>
 								</tr>
@@ -150,7 +191,7 @@
 												{% set sum_meta_mouth = data.sum_meta_mouth %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num fw-bolder">{{ sum_meta_mouth }}</td>
+										<td class="td_num fw-bolder" data-year="{{ item.year }}">{{ sum_meta_mouth }}</td>
 									{% endfor %}
 								</tr>
 								<tr>
@@ -163,7 +204,7 @@
 												{% set sum_meta_cre = data.sum_meta_cre %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num">{{ sum_meta_cre }}</td>
+										<td class="td_num" data-year="{{ item.year }}">{{ sum_meta_cre }}</td>
 									{% endfor %}
 									<td></td>
 								</tr>
@@ -177,7 +218,7 @@
 												{% set sum_meta_deb = data.sum_meta_deb %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num">{{ sum_meta_deb }}</td>
+										<td class="td_num" data-year="{{ item.year }}">{{ sum_meta_deb }}</td>
 									{% endfor %}
 									<td></td>
 								</tr>
@@ -194,7 +235,7 @@
 												{% set percentage_achieved = data.percentage_achieved %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num text-white fw-bolder">{{ percentage_achieved }}
+										<td class="td_num text-white fw-bolder" data-year="{{ item.year }}">{{ percentage_achieved }}
 											%</td>
 									{% endfor %}
 								</tr>
@@ -208,7 +249,7 @@
 												{% set percentage_achieved_cred = data.percentage_achieved_cred %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num ">{{ percentage_achieved_cred }}
+										<td class="td_num " data-year="{{ item.year }}">{{ percentage_achieved_cred }}
 											%</td>
 									{% endfor %}
 									<td>%</td>
@@ -223,7 +264,7 @@
 												{% set percentage_achieved_deb = data.percentage_achieved_deb %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num ">{{ percentage_achieved_deb }}
+										<td class="td_num " data-year="{{ item.year }}">{{ percentage_achieved_deb }}
 											%</td>
 									{% endfor %}
 									<td>%</td>
@@ -241,7 +282,7 @@
 												{% set cred_mun_jua = data.cred_mun_jua %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num  fw-bolder">{{ cred_mun_jua }}
+										<td class="td_num  fw-bolder" data-year="{{ item.year }}">{{ cred_mun_jua }}
 										</td>
 									{% endfor %}
 									<td></td>
@@ -256,7 +297,7 @@
 												{% set cred_mun_jua = data.cred_mun_jua %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num ">{{ cred_mun_jua }}
+										<td class="td_num " data-year="{{ item.year }}">{{ cred_mun_jua }}
 										</td>
 									{% endfor %}
 									<td></td>
@@ -274,7 +315,7 @@
 												{% set VentasReales = data.VentasReales %}
 											{% endif %}
 										{% endfor %}
-										<td class="td_num  fw-bolder">{{ VentasReales }}
+										<td class="td_num  fw-bolder" data-year="{{ item.year }}">{{ VentasReales }}
 										</td>
 									{% endfor %}
 									<td></td>
@@ -289,7 +330,7 @@
 												{% set sum_mouth = data.sum_mouth %}
 											{% endif %}
 										{% endfor %}
-										<td class=" td_num ">{{ sum_mouth }}</td>
+										<td class=" td_num " data-year="{{ item.year }}">{{ sum_mouth }}</td>
 									{% endfor %}
 									<td></td>
 								</tr>
@@ -303,7 +344,7 @@
 												{% set sales_cash = data.sales_cash %}
 											{% endif %}
 										{% endfor %}
-										<td class=" td_num  ">{{ sales_cash }}</td>
+										<td class=" td_num  " data-year="{{ item.year }}">{{ sales_cash }}</td>
 									{% endfor %}
 									<td></td>
 								</tr>
@@ -321,9 +362,15 @@
 	</div>
 	<div class="tab-pane  " id="CreditCount" role="tabpanel" aria-labelledby="CreditCount-tab">
 		<div class="card-header">
-			<h5 class="card-title mb-0">Credito Consumo Cuenta</h5>
+			<div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
+				<h5 class="card-title mb-0">Credito Consumo Cuenta</h5>
+				<div class="d-flex flex-wrap align-items-end gap-2">
+						{{ ui.month_range(months) }}
+				</div>
+			</div>
 		</div>
 		<div class="card-body">
+			<div class="tg6-status small mb-2" data-for="#comsumption_credit_count_table"></div>
 			<table class="table  table-sm table-hover  w-100" id="comsumption_credit_count_table">
 				<thead>
 					<tr class=" ">
@@ -337,7 +384,8 @@
 						{% endfor %}
 						<th class="table-success">Consumo Mayor</th>
 						<th class="table-primary">Proyeccion</th>
-						<th class="table-info text-nowrap">Proy vs Cons</th>
+						<th class="table-info text-nowrap">Proy. VS<br>Cons Mayor<br>En 6 Meses</th>
+							<th class="table-info text-nowrap">% Cumpl.</th>
 						<th class="table-info">Zona</th>
 
 					</tr>
@@ -357,6 +405,7 @@
 						<th></th>
 						<th></th>
 						<th></th>
+						<th></th>
 					</tr>
 				</tfoot>
 			</table>
@@ -364,10 +413,14 @@
 	</div>
 	<div class="tab-pane " id="CreditClient" role="tabpanel" aria-labelledby="CreditClient-tab">
 		<div class="card-header">
-			<h5 class="card-title mb-0">Credito Consumo Cliente</h5>
+			<div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
+				<h5 class="card-title mb-0">Credito Consumo Cliente</h5>
+				{{ ui.month_range(months) }}
+			</div>
 		</div>
 		<div class="card-body">
 
+			<div class="tg6-status small mb-2" data-for="#comsumption_credit_client_table"></div>
 			<table class="table  table-sm table-hover  w-100" id="comsumption_credit_client_table">
 				<thead>
 					<tr class=" ">
@@ -381,7 +434,8 @@
 						{% endfor %}
 						<th class="table-success">Consumo Mayor</th>
 						<th class="table-primary">Proyeccion</th>
-						<th class="table-info text-nowrap">Proy vs Cons</th>
+						<th class="table-info text-nowrap">Proy. VS<br>Cons Mayor<br>En 6 Meses</th>
+							<th class="table-info text-nowrap">% Cumpl.</th>
 						<th class="table-success">Zona</th>
 
 					</tr>
@@ -401,6 +455,7 @@
 						<th></th>
 						<th></th>
 						<th></th>
+						<th></th>
 					</tr>
 				</tfoot>
 			</table>
@@ -408,9 +463,13 @@
 	</div>
 	<div class="tab-pane " id="DebitCount" role="tabpanel" aria-labelledby="DebitCount-tab">
 		<div class="card-header">
-			<h5 class="card-title mb-0">Debito Consumo</h5>
+			<div class="d-flex flex-wrap justify-content-between align-items-end gap-2">
+				<h5 class="card-title mb-0">Debito Consumo</h5>
+				{{ ui.month_range(months) }}
+			</div>
 		</div>
 		<div class="card-body">
+			<div class="tg6-status small mb-2" data-for="#comsumption_debit_table"></div>
 			<table class="table  table-sm table-hover  w-100" id="comsumption_debit_table">
 				<thead>
 					<tr class=" ">
@@ -424,7 +483,8 @@
 						{% endfor %}
 						<th class="table-success">Consumo Mayor</th>
 						<th class="table-primary">Proyeccion</th>
-						<th class="table-info text-nowrap">Proy vs Cons</th>
+						<th class="table-info text-nowrap">Proy. VS<br>Cons Mayor<br>En 6 Meses</th>
+							<th class="table-info text-nowrap">% Cumpl.</th>
 						<th class="table-orange">Zona</th>
 
 					</tr>
@@ -444,6 +504,7 @@
 						<th></th>
 						<th></th>
 						<th></th>
+						<th></th>
 					</tr>
 				</tfoot>
 			</table>
@@ -454,8 +515,83 @@
 
 
 
+
+<div class="modal fade" id="assign_advisor_modal" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog modal-lg modal-dialog-scrollable">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">Asignar asesor</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+			</div>
+			<div class="modal-body">
+				<div class="d-flex gap-2 mb-2">
+					<select class="form-select w-auto" id="advisor_tipo">
+						<option value="28" selected>Crédito</option>
+						<option value="127">Débito (con consumo este año)</option>
+					</select>
+					<input type="search" class="form-control" id="advisor_search" placeholder="Buscar por código, nombre o RFC..." autocomplete="off">
+				</div>
+				<div class="small text-muted mb-2" id="advisor_search_info"></div>
+				<table class="table table-sm table-hover mb-0">
+					<thead>
+						<tr>
+							<th style="width:32px"><input type="checkbox" id="advisor_check_all" title="Seleccionar todos"></th>
+							<th>Código</th>
+							<th>Nombre</th>
+							<th>RFC</th>
+							<th>Asesor actual</th>
+						</tr>
+					</thead>
+					<tbody id="advisor_results"></tbody>
+				</table>
+			</div>
+			<div class="modal-footer justify-content-between">
+				<div class="d-flex align-items-center gap-2">
+					<label for="advisor_select" class="mb-0">Asignar a</label>
+					<select class="form-select form-select-sm w-auto" id="advisor_select">
+						<option value="Hugo">Hugo</option>
+						<option value="Alberto">Alberto</option>
+					</select>
+				</div>
+				<div>
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+					<button type="button" class="btn btn-primary" id="btn_assign_run" disabled>Asignar (<span id="advisor_selected_count">0</span>)</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="modal fade" id="sync_consumption_modal" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog modal-lg modal-dialog-scrollable">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">Sincronizar consumos Crédito / Débito</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+			</div>
+			<div class="modal-body">
+				<div id="sync_step_select">
+					<label for="sync_month" class="form-label">Mes a sincronizar</label>
+					<input type="month" class="form-control" id="sync_month" value="{{ 'now'|date('Y-m') }}" max="{{ 'now'|date('Y-m') }}">
+					<div class="form-text">Se recalcula el mes completo (hasta hoy si es el mes en curso) y se reemplaza lo guardado.</div>
+				</div>
+				<div id="sync_step_loading" class="text-center py-4 d-none">
+					<div class="spinner-border text-primary" role="status"></div>
+					<div class="mt-2">Sincronizando, esto puede tardar unos segundos...</div>
+				</div>
+				<div id="sync_step_result" class="d-none"></div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="btn_sync_close">Cerrar</button>
+				<button type="button" class="btn btn-primary" id="btn_sync_run"><i class="fas fa-sync-alt"></i> Sincronizar</button>
+			</div>
+		</div>
+	</div>
+</div>
 {% endblock %}
 {% block myjs %}
+{# Chart.js 2.x: solo para la gráfica Vta vs Meta de esta vista #}
+<script src="{{ PLUGINS }}chartjs/Chart.min.js"></script>
 <!-- <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@0.7.0"></script> -->
 {# <script type="text/javascript" src="{{ PLUGINS }}chartjs4/index.ts"></script> #}
 
