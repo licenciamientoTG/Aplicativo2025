@@ -1213,6 +1213,7 @@ let sel = { left:[], tes:[] };      // left=CG, tes=Tesorería
 let cgData  = [];
 let tesData = [];
 let txData  = [];
+let importesBankaoolNocturnosPorFecha = {};
 let conciliadasSet = new Set();     // grupo_id ya conciliados
 let historial = [];                 // detalles conciliados actuales
 
@@ -1497,6 +1498,7 @@ function actualizarTodo() {
         fetchTransitos(estid, eid, afil),
         fetchTransitosCG(estid, eid, afil, year, month),
         fetchDiferidosCG(estid, eid, afil, year, month),
+        fetchImportesBankaoolNocturnos(year, month),
         checkMesCerrado(estid, eid, afil, mes),
         isAmex ? fetchAmexComisiones(year, month) : Promise.resolve(),
     ]).finally(() => {
@@ -1703,6 +1705,20 @@ async function fetchTx(eid, afil, year, month) {
         txData = (json.status === 'success') ? (json.data || []) : [];
     } catch(e) { txData = []; }
     renderTx();
+}
+
+async function fetchImportesBankaoolNocturnos(year, month) {
+    importesBankaoolNocturnosPorFecha = {};
+    if (!esPilotoVillaAhumadaBankaool() || String($('#estacionSelect').val()) !== '31') return;
+    try {
+        const response = await fetch(`${URLS_V3.bankaoolNocturnas}?year=${year}&month=${month}`);
+        const json = await response.json();
+        if (json.status === 'success' && json.data && typeof json.data === 'object') {
+            importesBankaoolNocturnosPorFecha = json.data;
+        }
+    } catch (e) {
+        importesBankaoolNocturnosPorFecha = {};
+    }
 }
 
 // ── FETCH CONCILIADAS V3 ──────────────────────────────────────
@@ -2001,7 +2017,7 @@ function renderCG() {
         return keywords.some(k => c.includes(k));
     });
 
-    if (!filtered.length && !transitosCG.fakes.length) {
+    if (!filtered.length && !transitosCG.fakes.length && !Object.keys(importesBankaoolNocturnosPorFecha).length) {
         $c.html('<div class="text-center text-muted py-5 mt-5">Sin movimientos CG</div>');
         $('#cg-counter').text('$0.00');
         return;
@@ -2020,6 +2036,9 @@ function renderCG() {
         if (!f) return;
         if (!byDate[f]) byDate[f] = [];
         byDate[f].push(item);
+    });
+    Object.keys(importesBankaoolNocturnosPorFecha).forEach(fecha => {
+        if (!byDate[fecha]) byDate[fecha] = [];
     });
 
     let grandTotal = 0;
@@ -2111,6 +2130,10 @@ function renderCG() {
         const iconClass = isOpen ? 'fa-chevron-down' : 'fa-chevron-right';
         const bodyClass = isOpen ? 'open' : '';
         const dateFmt   = fecha.split('-').reverse().join('/');
+        const importeBankaoolNocturno = parseFloat(importesBankaoolNocturnosPorFecha[fecha] || 0);
+        const bankaoolNocturnasBadge = importeBankaoolNocturno > 0
+            ? `<span class="bankaool-nocturnas-tag" title="Importe de despachos Bankaool desde las 23:00"><i class="fas fa-arrow-right"></i>${fmt.format(importeBankaoolNocturno)}</span>`
+            : '';
 
         // Filas del grupo
         let itemsHtml = '';
@@ -2337,6 +2360,7 @@ function renderCG() {
                     <span class="mr-2"><i class="far fa-calendar-alt mr-1"></i>${dateFmt}</span>
                     ${fechaTienePreconciliacion ? '<span class="badge badge-danger mr-1">PRE</span>' : ''}
                     <span class="badge" style="${badgeStyle}">${iconExcl}${nConcil}/${nTotal}</span>
+                    ${bankaoolNocturnasBadge}
                     ${diaSyncBtn}
                     ${diaTransitBtn}
                     ${diaCancelTransitBtn}
