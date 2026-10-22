@@ -3934,7 +3934,8 @@ class Operations{
         $stations=[];
         foreach ($this->terminalInventoryModel->activeStations() as $row) $stations[(string)$row['Codigo']]=(string)$row['Nombre'];
         $types=[];
-        foreach ($this->terminalTypeCatalog() as $code=>$info) $types[(string)$code]=(string)$info['label'];
+        $enabledTypes=$this->terminalTypes();
+        foreach ($enabledTypes as $code=>$info) $types[(string)$code]=(string)$info['label'];
         $station=trim((string)($_GET['station'] ?? ''));
         $type=trim((string)($_GET['type'] ?? ''));
         $status=trim((string)($_GET['status'] ?? 'all'));
@@ -3942,14 +3943,26 @@ class Operations{
         if ($type!=='' && !isset($types[$type])) { http_response_code(400); echo 'El tipo de terminal seleccionado no es válido.'; return; }
         if (!in_array($status,['all','damaged','no_damaged','no_stock'],true)) { http_response_code(400); echo 'El filtro de estado no es válido.'; return; }
         try {
-            $rows=$this->terminalInventoryModel->currentStationStockReport($type!=='' ? $type : null);
-            if ($station!=='') $rows=array_values(array_filter($rows,fn($row)=>(string)$row['station_id']===$station));
-            if ($status==='damaged') $rows=array_values(array_filter($rows,fn($row)=>(int)$row['damaged']>0));
-            elseif ($status==='no_damaged') $rows=array_values(array_filter($rows,fn($row)=>(int)$row['damaged']===0));
-            elseif ($status==='no_stock') $rows=array_values(array_filter($rows,fn($row)=>(int)$row['stock']===0));
-            foreach ($rows as &$row) { foreach (['station_id','stock','damaged','functioning','over_by'] as $key) $row[$key]=(int)$row[$key]; }
-            unset($row);
-            $summary=['stock'=>array_sum(array_column($rows,'stock')),'damaged'=>array_sum(array_column($rows,'damaged')),'functioning'=>array_sum(array_column($rows,'functioning')),'over_by'=>array_sum(array_column($rows,'over_by'))];
+            $selectedTypes=$type!=='' ? [$type] : array_keys($enabledTypes);
+            $details=$this->terminalInventoryModel->currentStationStockReport($selectedTypes);
+            $details=array_values(array_filter($details,function($row) use ($station,$status): bool {
+                if ($station!=='' && (string)$row['station_id']!==$station) return false;
+                return match ($status) {
+                    'damaged'=>(int)$row['damaged']>0,
+                    'no_damaged'=>(int)$row['damaged']===0,
+                    'no_stock'=>(int)$row['stock']===0,
+                    default=>true,
+                };
+            }));
+            $grouped=[];
+            foreach ($details as $detail) {
+                $stationId=(int)$detail['station_id'];
+                if (!isset($grouped[$stationId])) $grouped[$stationId]=['station_id'=>$stationId,'station_name'=>(string)$detail['station_name'],'types'=>[]];
+                $typeCode=(string)$detail['type_code'];
+                $grouped[$stationId]['types'][]=['type_code'=>$typeCode,'type_label'=>$types[$typeCode] ?? $typeCode,'stock'=>(int)$detail['stock'],'damaged'=>(int)$detail['damaged'],'functioning'=>(int)$detail['functioning'],'over_by'=>(int)$detail['over_by']];
+            }
+            $rows=array_values($grouped); $summary=['stock'=>0,'damaged'=>0,'functioning'=>0,'over_by'=>0,'type_rows'=>count($details)];
+            foreach ($rows as $row) foreach ($row['types'] as $typeRow) foreach (['stock','damaged','functioning','over_by'] as $metric) $summary[$metric]+=$typeRow[$metric];
             echo $this->twig->render($this->route.'terminal_stock_report.html',['rows'=>$rows,'stations'=>$stations,'types'=>$types,'filters'=>['station'=>$station,'type'=>$type,'status'=>$status],'summary'=>$summary]);
         } catch (Throwable $e) { error_log('No se pudo consultar el reporte de stock de terminales: '.$e->getMessage()); http_response_code(500); echo 'No fue posible consultar el reporte de stock.'; }
     }

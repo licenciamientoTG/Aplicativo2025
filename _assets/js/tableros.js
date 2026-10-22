@@ -1353,6 +1353,7 @@
       state.activeViewType = 'table';
       state.activeSavedViewId = '';
       state.viewConfig = {};
+      state.viewConfig.item_size = getLocalBoardItemSize(state.board.id) || 'double';
       state.filters = [];
       state.filterDraft = [];
       state.calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -5984,7 +5985,8 @@
     state.activeSavedViewId = String(view.id);
     state.activeViewType = normalizeViewType(view.view_type);
     state.viewConfig = config && typeof config === 'object' ? { ...config } : {};
-    state.viewConfig.item_size = ['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double';
+    state.viewConfig.item_size = getLocalBoardItemSize(state.board?.id)
+      || (['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double');
     normalizeColumnViewConfig();
     state.filters = Array.isArray(state.viewConfig.filters) ? state.viewConfig.filters.map((filter) => ({ ...filter })) : [];
     state.filterDraft = state.filters.map((filter) => ({ ...filter }));
@@ -6057,6 +6059,9 @@
   function applyBoardItemSize(size) {
     const normalized = ['simple', 'double', 'triple'].includes(size) ? size : 'double';
     state.viewConfig.item_size = normalized;
+    if (state.board?.id) {
+      try { localStorage.setItem(`totalgas-board-item-size-${state.board.id}`, normalized); } catch (_) { /* Keep the preference for this session. */ }
+    }
     app.dataset.itemSize = normalized;
     const label = document.getElementById('boardItemSizeLabel');
     if (label) label.textContent = normalized === 'simple' ? 'Simple' : (normalized === 'triple' ? 'Triple' : 'Doble');
@@ -6066,6 +6071,16 @@
       if (selected) button.setAttribute('aria-pressed', 'true');
       else button.setAttribute('aria-pressed', 'false');
     });
+  }
+
+  function getLocalBoardItemSize(boardId) {
+    if (!boardId) return '';
+    try {
+      const size = localStorage.getItem(`totalgas-board-item-size-${boardId}`) || '';
+      return ['simple', 'double', 'triple'].includes(size) ? size : '';
+    } catch (_) {
+      return '';
+    }
   }
 
   function renderEmptyRenderer(title, description) {

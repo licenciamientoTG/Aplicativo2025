@@ -120,40 +120,32 @@ class TerminalInventoryModel extends Model {
                 SELECT 1 FROM [TG].[dbo].[inv_ter_incidencias] i WHERE i.estacion_id=e.Codigo
             )) ORDER BY e.Nombre");
     }
-    /** Current operational snapshot by active station, optionally restricted to one terminal type. */
-    public function currentStationStockReport(?string $type=null): array {
-        $typeFilter = $type === null ? '' : ' AND source.tipo_terminal=?';
-        $params = $type === null ? [] : [$type];
-        return $this->sql->select("WITH source AS (
-                SELECT tipo_terminal FROM [TG].[dbo].[inv_ter_configuracion_estacion]
-                UNION
-                SELECT tipo_terminal FROM [TG].[dbo].[inv_ter_incidencias] WHERE estado_local IN ('Abierta','Solved','Reabierta')
-            ), station_types AS (
-                SELECT e.Codigo AS station_id,e.Nombre AS station_name,source.tipo_terminal,
+    /** Current snapshot for each active station and requested terminal type. */
+    public function currentStationStockReport(array $types): array {
+        $types=array_values(array_unique(array_filter(array_map('strval',$types),fn($type)=>$type!=='')));
+        if (!$types) return [];
+        $typeRows=implode(' UNION ALL ',array_fill(0,count($types),'SELECT ? AS type_code'));
+        $marks=implode(',',array_fill(0,count($types),'?'));
+        $params=array_merge($types,$types);
+        return $this->sql->select("WITH type_set AS ($typeRows), station_types AS (
+                SELECT e.Codigo AS station_id,e.Nombre AS station_name,t.type_code,
                     COALESCE(c.terminales_esperadas,0) AS stock,COALESCE(d.damaged,0) AS damaged
                 FROM [TG].[dbo].[Estaciones] e
-                CROSS JOIN source
-                LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=e.Codigo AND c.tipo_terminal=source.tipo_terminal
+                CROSS JOIN type_set t
+                LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=e.Codigo AND c.tipo_terminal=t.type_code
                 LEFT JOIN (
                     SELECT estacion_id,tipo_terminal,COUNT(*) AS damaged
                     FROM [TG].[dbo].[inv_ter_incidencias]
-                    WHERE estado_local IN ('Abierta','Solved','Reabierta')
+                    WHERE estado_local IN ('Abierta','Solved','Reabierta') AND tipo_terminal IN ($marks)
                     GROUP BY estacion_id,tipo_terminal
-                ) d ON d.estacion_id=e.Codigo AND d.tipo_terminal=source.tipo_terminal
-                WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)$typeFilter
+                ) d ON d.estacion_id=e.Codigo AND d.tipo_terminal=t.type_code
+                WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
             )
-            SELECT station_id,station_name,
-                SUM(stock) AS stock,SUM(damaged) AS damaged,
-                SUM(CASE WHEN stock>damaged THEN stock-damaged ELSE 0 END) AS functioning,
-                SUM(CASE WHEN damaged>stock THEN damaged-stock ELSE 0 END) AS over_by
+            SELECT station_id,station_name,type_code,stock,damaged,
+                CASE WHEN stock>damaged THEN stock-damaged ELSE 0 END AS functioning,
+                CASE WHEN damaged>stock THEN damaged-stock ELSE 0 END AS over_by
             FROM station_types
-            GROUP BY station_id,station_name
-            UNION ALL
-            SELECT e.Codigo,e.Nombre,0,0,0,0
-            FROM [TG].[dbo].[Estaciones] e
-            WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
-              AND NOT EXISTS (SELECT 1 FROM station_types st WHERE st.station_id=e.Codigo)
-            ORDER BY station_name", $params);
+            ORDER BY station_name,type_code",$params);
     }
     public function incidentAssignees(?int $stationId=null): array {
         $stationWhere=$stationId===null ? '' : ' WHERE i.estacion_id=?';
