@@ -390,7 +390,13 @@
       <option value="name">Nombre</option><option value="text">Texto</option><option value="long_text">Texto largo</option><option value="numbers">Número</option><option value="formula">Fórmula</option><option value="progress">Progreso</option><option value="rating">Calificación</option><option value="people">Personas</option><option value="person">Persona</option><option value="team">Equipo</option><option value="status">Estado</option><option value="dropdown">Lista desplegable</option><option value="tags">Etiquetas</option><option value="date">Fecha</option><option value="timeline">Cronograma</option><option value="hour">Hora</option><option value="file">Archivo</option><option value="email">Correo electrónico</option><option value="phone">Teléfono</option><option value="country">País</option><option value="link">Enlace</option><option value="location">Ubicación</option><option value="board_relation">Relación con tablero</option><option value="subtasks">Subelementos</option><option value="dependency">Dependencia</option><option value="item_id">ID de elemento</option>
     </select>
     <div id="columnRatingField" class="d-none"><label class="boards-field-label" for="newColumnRatingDisplay">Mostrar calificación como</label><select class="form-select" id="newColumnRatingDisplay" name="rating_display"><option value="stars">Estrellas (0–5)</option><option value="percentage">Porcentaje (0–100 %)</option></select></div>
-    <div id="columnOptionsField" class="d-none"><label class="boards-field-label" for="newColumnOptions">Opciones de la columna</label><textarea class="form-control" id="newColumnOptions" rows="3" placeholder="Pendiente&#10;En curso&#10;Listo"></textarea><small class="boards-field-help">Para Estado, Lista desplegable y Etiquetas: escribe una opción por línea.</small></div>
+    <div id="columnOptionsField" class="boards-column-options-field d-none">
+      <div class="boards-column-options-heading"><span class="boards-field-label">Opciones de la columna</span><span id="newColumnOptionsCount" class="boards-column-options-count">0 opciones</span></div>
+      <div id="newColumnOptionsList" class="boards-new-options-list" aria-live="polite"></div>
+      <button id="addColumnOption" class="boards-add-column-option" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Agregar opción</span></button>
+      <textarea class="d-none" id="newColumnOptions" tabindex="-1" aria-hidden="true"></textarea>
+      <small id="columnOptionsHelp" class="boards-field-help">Agrega las opciones que podrán elegir en esta columna.</small>
+    </div>
     <small id="columnTypeHelp" class="boards-field-help">El tipo determina el editor y las validaciones disponibles para cada celda.</small>
     <div class="boards-dialog-actions"><button type="button" class="btn boards-button-light" data-close-dialog>Cancelar</button><button type="submit" class="btn boards-button-primary">Agregar columna</button></div>
   </form>

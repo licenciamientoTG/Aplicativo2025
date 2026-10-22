@@ -1629,6 +1629,102 @@
     return row;
   }
 
+  function newColumnOptionRow(label = '', index = 0) {
+    const row = makeElement('div', 'boards-new-option-row');
+    const preview = makeElement('span', 'boards-new-option-preview', label || 'Vista previa');
+    preview.style.setProperty('--status-color', statusLabelColor(label, index));
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control boards-new-option-name';
+    input.value = label;
+    input.maxLength = 120;
+    input.required = true;
+    input.autocomplete = 'off';
+    input.placeholder = 'Nombre de la opción';
+    input.setAttribute('aria-label', `Nombre de la opción ${index + 1}`);
+    const actions = makeElement('div', 'boards-new-option-actions');
+    [['up', 'Subir opción', 'fa-arrow-up'], ['down', 'Bajar opción', 'fa-arrow-down'], ['remove', 'Eliminar opción', 'fa-xmark']].forEach(([action, labelText, icon]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `boards-new-option-action is-${action}`;
+      button.dataset.columnOptionAction = action;
+      button.setAttribute('aria-label', labelText);
+      button.title = labelText;
+      button.append(makeElement('i', `fa-solid ${icon}`, ''));
+      actions.append(button);
+    });
+    row.append(preview, input, actions);
+    return row;
+  }
+
+  function syncNewColumnOptions() {
+    const rows = Array.from(document.querySelectorAll('#newColumnOptionsList .boards-new-option-row'));
+    const values = rows.map((row) => row.querySelector('.boards-new-option-name')?.value.trim() || '');
+    const seen = new Set();
+    els.newColumnOptions.value = values.join('\n');
+    document.getElementById('newColumnOptionsCount').textContent = `${values.length} ${values.length === 1 ? 'opción' : 'opciones'}`;
+    rows.forEach((row, index) => {
+      const input = row.querySelector('.boards-new-option-name');
+      const preview = row.querySelector('.boards-new-option-preview');
+      const normalized = values[index].normalize('NFC').toLocaleLowerCase('es-MX');
+      let validationMessage = '';
+      if (!normalized) validationMessage = 'Escribe un nombre para esta opción.';
+      else if (seen.has(normalized)) validationMessage = 'Esta opción ya está en la lista.';
+      else seen.add(normalized);
+      input.setCustomValidity(validationMessage);
+      input.classList.toggle('is-invalid', Boolean(validationMessage));
+      input.setAttribute('aria-invalid', validationMessage ? 'true' : 'false');
+      preview.textContent = input.value.trim() || 'Vista previa';
+      preview.style.setProperty('--status-color', statusLabelColor(input.value, index));
+      input.setAttribute('aria-label', `Nombre de la opción ${index + 1}`);
+      row.querySelector('[data-column-option-action="up"]').disabled = index === 0;
+      row.querySelector('[data-column-option-action="down"]').disabled = index === rows.length - 1;
+    });
+  }
+
+  function renderNewColumnOptions(values = null) {
+    const labels = values || els.newColumnOptions.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    const rows = labels.map((label, index) => newColumnOptionRow(label, index));
+    if (!rows.length) rows.push(makeElement('p', 'boards-new-options-empty', 'Aún no hay opciones. Agrégalas en el orden en que quieres que aparezcan.'));
+    document.getElementById('newColumnOptionsList').replaceChildren(...rows);
+    syncNewColumnOptions();
+  }
+
+  function addNewColumnOption(index = null) {
+    const list = document.getElementById('newColumnOptionsList');
+    list.querySelector('.boards-new-options-empty')?.remove();
+    const rows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+    const insertAt = index == null ? rows.length : Math.max(0, Math.min(rows.length, index));
+    const row = newColumnOptionRow('', insertAt);
+    list.insertBefore(row, rows[insertAt] || null);
+    syncNewColumnOptions();
+    row.querySelector('.boards-new-option-name')?.focus();
+  }
+
+  function handleNewColumnOptionAction(event) {
+    const button = event.target.closest('[data-column-option-action]');
+    if (!button) return;
+    const row = button.closest('.boards-new-option-row');
+    const list = document.getElementById('newColumnOptionsList');
+    const rows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+    const index = rows.indexOf(row);
+    if (button.dataset.columnOptionAction === 'remove') {
+      row.remove();
+      syncNewColumnOptions();
+      renderNewColumnOptions();
+      const remainingRows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+      const focusIndex = Math.min(index, remainingRows.length - 1);
+      (remainingRows[focusIndex]?.querySelector('.boards-new-option-name') || document.getElementById('addColumnOption')).focus();
+      return;
+    }
+    const nextIndex = index + (button.dataset.columnOptionAction === 'up' ? -1 : 1);
+    if (nextIndex < 0 || nextIndex >= rows.length) return;
+    if (nextIndex < index) list.insertBefore(row, rows[nextIndex]);
+    else list.insertBefore(rows[nextIndex], row);
+    syncNewColumnOptions();
+    row.querySelector('.boards-new-option-name')?.focus();
+  }
+
   function openLabelsEditor(column) {
     if (!canManageStructure()) throw new Error('Se requiere permiso de diseño para editar etiquetas.');
     if (!column || !['status', 'dropdown', 'tags'].includes(String(column.type || '').toLowerCase())) {
@@ -7292,7 +7388,7 @@
       els.columnOptionsField.classList.toggle('d-none', !optionsType);
       document.getElementById('columnRatingField').classList.toggle('d-none', els.newColumnType.value !== 'rating');
       const help = {
-        status: 'Escribe una opción por línea. El sistema asignará un color inicial a cada estado.',
+        status: 'Define los estados y su orden. Cada uno tendrá un color inicial que podrás ajustar después.',
         formula: 'La API acepta únicamente la sintaxis segura definida por el servidor.',
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
@@ -7305,11 +7401,29 @@
       els.columnTypeHelp.textContent = help[els.newColumnType.value] || 'El tipo determina el editor y las validaciones disponibles para cada celda.';
       const optionsHelp = els.columnOptionsField.querySelector('.boards-field-help');
       if (optionsHelp) optionsHelp.textContent = els.newColumnType.value === 'status'
-        ? 'Una opción por línea. Los estados se mostrarán como etiquetas coloreadas.'
-        : 'Para Estado, Lista desplegable y Etiquetas: escribe una opción por línea.';
+        ? 'Los estados se mostrarán como etiquetas coloreadas. Puedes cambiar sus colores después.'
+        : 'Agrega opciones en el orden en que quieres que aparezcan.';
+      document.getElementById('addColumnOption').querySelector('span').textContent = els.newColumnType.value === 'status' ? 'Agregar estado' : 'Agregar opción';
+      renderNewColumnOptions();
+      els.columnOptionsField.querySelectorAll('.boards-new-option-name').forEach((input) => { input.disabled = !optionsType; });
+    });
+    document.getElementById('addColumnOption').addEventListener('click', () => addNewColumnOption());
+    document.getElementById('newColumnOptionsList').addEventListener('input', (event) => {
+      if (event.target.matches('.boards-new-option-name')) syncNewColumnOptions();
+    });
+    document.getElementById('newColumnOptionsList').addEventListener('click', handleNewColumnOptionAction);
+    document.getElementById('newColumnOptionsList').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || !event.target.matches('.boards-new-option-name')) return;
+      event.preventDefault();
+      const row = event.target.closest('.boards-new-option-row');
+      const rows = Array.from(document.querySelectorAll('#newColumnOptionsList .boards-new-option-row'));
+      addNewColumnOption(rows.indexOf(row) + 1);
     });
     els.createColumnForm.addEventListener('reset', () => {
-      window.setTimeout(() => els.newColumnType.dispatchEvent(new Event('change')), 0);
+      window.setTimeout(() => {
+        els.newColumnOptions.value = '';
+        els.newColumnType.dispatchEvent(new Event('change'));
+      }, 0);
     });
     dialogSubmit(els.createColumnForm, async (formData) => {
       if (!canManageStructure()) throw new Error('Se requiere permiso de administración para agregar columnas.');
