@@ -217,6 +217,7 @@
 .boards-table td { min-width: 156px; height: 42px; padding: 5px 9px; border-right: 1px solid #e7edef; border-bottom: 1px solid #e7edef; text-align: left; vertical-align: middle; }
 .boards-table thead th { position: sticky; z-index: 3; top: 0; height: 38px; min-width: 156px; border-bottom-color: #d4e0e5; color: #5d707b; background: #f5f8f9; font-size: .75rem; font-weight: 600; white-space: nowrap; }
 .boards-table thead th.boards-column-heading { position: sticky; }
+.boards-table thead th.boards-column-heading.is-menu-open { z-index: 80 !important; }
 .boards-column-heading { position: relative; white-space: nowrap; }
 .boards-column-heading-title { display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
 .boards-column-heading.is-column-collapsed { width: 38px !important; min-width: 38px !important; max-width: 38px !important; padding: 3px !important; }

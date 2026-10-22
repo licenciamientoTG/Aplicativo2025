@@ -5355,6 +5355,7 @@
 
   function closeColumnMenus() {
     document.querySelectorAll('[data-open-column-menu][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+    document.querySelectorAll('.boards-column-heading.is-menu-open').forEach((heading) => heading.classList.remove('is-menu-open'));
     document.querySelectorAll('.boards-column-menu').forEach((menu) => menu.remove());
   }
 
@@ -5367,6 +5368,7 @@
     closeColumnMenus();
     const th = trigger.closest('th');
     if (!th) return;
+    th.classList.add('is-menu-open');
     const menu = makeElement('div', 'boards-column-menu');
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', `Acciones de ${column.name || 'columna'}`);

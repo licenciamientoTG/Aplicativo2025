@@ -3403,6 +3403,11 @@ public function anomalies_client_tickets()
         $originalName = $_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? 'archivo.tmp');
         $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
 
+        if ($bankType === 'BANKAOOL' && $extension !== 'xlsx') {
+            echo json_encode(['status' => 'error', 'message' => 'Para Bankaool sólo se permite archivo XLSX']);
+            exit;
+        }
+
         // Afirme es un reporte de transacciones: su CSV sólo se procesa en la
         // rama que inserta banco_afirme. Nunca se envía al flujo de Tesorería.
         if ($bankType === 'AFIRME' && $extension !== 'csv') {
@@ -4050,6 +4055,96 @@ public function anomalies_client_tickets()
                                     $inserted++;
                                     $huellas[$huellaAMEX] = true;
                                 }
+                            } elseif ($bankType === 'BANKAOOL') {
+                                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+                                $sheet = $spreadsheet->getActiveSheet();
+                                $allRows = $sheet->toArray(null, true, false, false);
+                                $rawHeader = array_shift($allRows);
+                                $normalizeHeader = static function ($value) {
+                                    $value = mb_strtolower(trim(preg_replace('/\s+/u', ' ', (string)$value)), 'UTF-8');
+                                    $value = strtr($value, ['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n']);
+                                    return preg_replace('/[^a-z0-9]+/', '', $value);
+                                };
+                                $requiredHeaders = [
+                                    'id'=>'ID_Externo', 'numeroafiliacion'=>'Afiliacion',
+                                    'fechatransaccion'=>'FechaHora', 'importe'=>'Monto',
+                                    'autorizacion'=>'Codigo_Autorizacion', 'terminal'=>'Terminal',
+                                    'referencia'=>'Referencia', 'estatus'=>'Estatus'
+                                ];
+                                $indices = [];
+                                foreach ($rawHeader as $i => $header) {
+                                    $key = $normalizeHeader($header);
+                                    if (isset($requiredHeaders[$key])) $indices[$requiredHeaders[$key]] = $i;
+                                }
+                                foreach (['ID_Externo','Afiliacion','FechaHora','Monto','Codigo_Autorizacion','Terminal','Referencia','Estatus'] as $required) {
+                                    if (!isset($indices[$required])) throw new Exception('El archivo Bankaool no contiene la columna requerida: ' . $required);
+                                }
+
+                                $approved = [];
+                                $skipped = 0;
+                                foreach ($allRows as $row) {
+                                    if (empty(array_filter($row, static fn($v) => $v !== null && trim((string)$v) !== ''))) continue;
+                                    $affiliate = trim((string)($row[$indices['Afiliacion']] ?? ''));
+                                    if ($affiliate !== '' && ltrim($affiliate, '0') !== '9990624') {
+                                        throw new Exception('El archivo Bankaool contiene una afiliación distinta de 9990624. No se insertó ningún registro.');
+                                    }
+                                    $status = mb_strtolower(trim((string)($row[$indices['Estatus']] ?? '')), 'UTF-8');
+                                    if ($status !== 'aprobada') { $skipped++; continue; }
+                                    $id = trim((string)($row[$indices['ID_Externo']] ?? ''));
+                                    $rawDate = $row[$indices['FechaHora']] ?? null;
+                                    $rawAmount = $row[$indices['Monto']] ?? null;
+                                    if ($id === '' || $affiliate === '' || $rawDate === null || $rawDate === '' || $rawAmount === null || $rawAmount === '') {
+                                        throw new Exception('Hay filas aprobadas sin ID, fecha, importe o afiliación. No se insertó ningún registro.');
+                                    }
+                                    try {
+                                        if (is_numeric($rawDate)) $dateTime = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$rawDate);
+                                        else {
+                                            $dateText = trim((string)$rawDate);
+                                            $dateTime = false;
+                                            foreach (['!d/m/Y H:i:s', '!d/m/Y H:i', '!Y-m-d H:i:s', '!Y-m-d\\TH:i:sP', '!Y-m-d\\TH:i:s\\Z'] as $dateFormat) {
+                                                $candidate = \DateTime::createFromFormat($dateFormat, $dateText);
+                                                $dateErrors = \DateTime::getLastErrors();
+                                                if ($candidate && ($dateErrors === false || ($dateErrors['warning_count'] === 0 && $dateErrors['error_count'] === 0))) {
+                                                    $dateTime = $candidate;
+                                                    break;
+                                                }
+                                            }
+                                            if (!$dateTime) throw new Exception('invalid date');
+                                        }
+                                    } catch (\Throwable $e) { throw new Exception('Fecha inválida en fila aprobada de Bankaool. No se insertó ningún registro.'); }
+                                    $amountText = is_numeric($rawAmount) ? (string)$rawAmount : str_replace(['$', ',', ' '], '', (string)$rawAmount);
+                                    if (!is_numeric($amountText)) throw new Exception('Importe inválido en fila aprobada de Bankaool. No se insertó ningún registro.');
+                                    $approved[] = [
+                                        'ID_Externo'=>$id, 'Afiliacion'=>ltrim($affiliate, '0'),
+                                        'Fecha_Transaccion'=>$dateTime->format('Y-m-d'), 'Hora'=>$dateTime->format('H:i:s'),
+                                        'Monto'=>(float)$amountText,
+                                        'Codigo_Autorizacion'=>isset($indices['Codigo_Autorizacion']) ? trim((string)($row[$indices['Codigo_Autorizacion']] ?? '')) : null,
+                                        'Terminal'=>isset($indices['Terminal']) ? trim((string)($row[$indices['Terminal']] ?? '')) : null,
+                                        'Referencia'=>isset($indices['Referencia']) ? trim((string)($row[$indices['Referencia']] ?? '')) : null,
+                                        'Fecha_Deposito'=>null, 'Nombre_Archivo'=>$dbFilePath
+                                    ];
+                                }
+
+                                $stmt = $conn->query('SELECT ID_Externo, Afiliacion, Fecha_Transaccion, Hora, Monto, Codigo_Autorizacion, Terminal, Referencia FROM banco_bankaool');
+                                $ids = $fingerprints = [];
+                                while ($existing = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    $ids[trim((string)$existing['Afiliacion']).'|'.trim((string)$existing['ID_Externo'])] = true;
+                                    $fingerprints[implode('|', [trim((string)$existing['Afiliacion']), substr((string)$existing['Fecha_Transaccion'],0,10), trim((string)$existing['Hora']), number_format((float)$existing['Monto'],2,'.',''), trim((string)$existing['Codigo_Autorizacion']), trim((string)$existing['Terminal']), trim((string)$existing['Referencia'])])] = true;
+                                }
+                                $columns = $columnas_oficiales;
+                                $ins = $conn->prepare('INSERT INTO banco_bankaool ('.implode(',', $columns).') VALUES ('.implode(',', array_fill(0,count($columns),'?')).')');
+                                $conn->beginTransaction();
+                                try {
+                                    foreach ($approved as $dataRow) {
+                                        $idKey = $dataRow['Afiliacion'].'|'.$dataRow['ID_Externo'];
+                                        $fingerprint = implode('|', [$dataRow['Afiliacion'],$dataRow['Fecha_Transaccion'],$dataRow['Hora'],number_format($dataRow['Monto'],2,'.',''),trim((string)$dataRow['Codigo_Autorizacion']),trim((string)$dataRow['Terminal']),trim((string)$dataRow['Referencia'])]);
+                                        if (isset($ids[$idKey]) || isset($fingerprints[$fingerprint])) { $skipped++; continue; }
+                                        $ins->execute(array_values($dataRow));
+                                        $ids[$idKey] = $fingerprints[$fingerprint] = true;
+                                        $inserted++;
+                                    }
+                                    $conn->commit();
+                                } catch (\Throwable $e) { if ($conn->inTransaction()) $conn->rollBack(); throw $e; }
                             } elseif ($bankType === 'AFIRME') {
                                 $allRows = [];
                                 $rawHeader = [];
@@ -4865,6 +4960,7 @@ public function anomalies_client_tickets()
             elseif ($eid == 4) $tabla = "banco_banorte";
             elseif ($eid == 5) $tabla = "banco_bbva";
             elseif ($eid == 13) $tabla = "banco_afirme";
+            elseif ($eid == 14) $tabla = "banco_bankaool";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
