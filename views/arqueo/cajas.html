@@ -108,7 +108,7 @@
 {% endblock %}
 {% block myjs %}
 <script>
-  $(document).on('change', '.select-asignar', function () {
+  $(document).on('change', 'select.select-asignar', function () {
     var sel = this;
     var $sel = $(sel);
     var anterior = sel.getAttribute('data-anterior') ?? String(sel.value);

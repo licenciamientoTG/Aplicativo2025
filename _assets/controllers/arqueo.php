@@ -19,7 +19,7 @@ class Arqueo
 {
     private const PERM_ADMIN   = 73; // arqueo_admin    — auditor administrador
     private const PERM_AUDITOR = 74; // arqueo_capturar — usuario auditor (captura)
-    private const ELIMINAR_USER_ID = 6296; // alejandro.martinez — único que puede eliminar sesiones
+    private const ELIMINAR_USER_IDS = [6296, 6215]; // alejandro.martinez, Alejandra.Blanco — únicos que pueden eliminar sesiones
 
     /**
      * Sucursales del arqueo. Waterfill y Perez Serna tienen 2 cajas.
@@ -147,10 +147,10 @@ class Arqueo
         return $asignado > 0 && $asignado === (int) $this->user_id();
     }
 
-    /** Solo el usuario fijado en ELIMINAR_USER_ID (y con permiso admin) elimina sesiones. */
+    /** Solo los usuarios fijados en ELIMINAR_USER_IDS (y con permiso admin) eliminan sesiones. */
     private function puede_eliminar(): bool
     {
-        return $this->user_id() === self::ELIMINAR_USER_ID && authorized(self::PERM_ADMIN);
+        return in_array($this->user_id(), self::ELIMINAR_USER_IDS, true) && authorized(self::PERM_ADMIN);
     }
 
     private function es_ajax(): bool
@@ -360,7 +360,7 @@ class Arqueo
         }
     }
 
-    /** Soft delete de una sesión (cualquier estado). Solo ELIMINAR_USER_ID. */
+    /** Soft delete de una sesión (cualquier estado). Solo ELIMINAR_USER_IDS. */
     public function eliminar_sesion($sesion_id): void
     {
         header('Content-Type: application/json');
