@@ -191,6 +191,17 @@ class tableros_api {
         });
     }
 
+    public function attach_item_comment_file(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $commentId = $this->positiveInt($input['comment_id'] ?? null, 'comment_id');
+            $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
+            $boardId = $this->model->getItemCommentBoardId($commentId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
+            $this->model->attachItemCommentFile($commentId, $fileId);
+            return ['comment_id' => $commentId, 'file_id' => $fileId];
+        });
+    }
+
     public function file_comments($id): void {
         $this->handle('GET', function (int $userId) use ($id): array {
             $fileId = $this->positiveInt($id, 'file_id');

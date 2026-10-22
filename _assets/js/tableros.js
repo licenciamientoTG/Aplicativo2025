@@ -239,6 +239,9 @@
     recycleMode: '',
     recycleEntries: []
   };
+  const itemCommentSelectedStickers = [];
+  const itemCommentSelectedFiles = [];
+  const itemCommentPendingByItem = new Map();
   let groupSortable = null;
   let navSortables = [];
   let itemSortables = [];
@@ -3400,15 +3403,41 @@
         const meta = makeElement('div', 'boards-comment-author-line');
         meta.append(commentAvatar(author, comment.created_by_id || comment.user_id));
         meta.append(makeElement('div', 'boards-detail-meta', `${author} · ${displayDateTime(comment.created_at)}`));
-        const body = makeElement('p', 'boards-comment-body');
-        appendCommentText(body, comment.body || '');
+        const body = makeElement('div', 'boards-comment-body');
+        appendSafeCommentHtml(body, comment.body || '');
         article.append(meta, body);
+        if (Array.isArray(comment.stickers) && comment.stickers.length) {
+          const stickers = makeElement('div', 'boards-comment-stickers');
+          comment.stickers.forEach((sticker) => {
+            const id = sticker?.id ?? sticker;
+            if (id == null) return;
+            const image = document.createElement('img');
+            image.src = `${apiRoot}/sticker_file/${encodeURIComponent(id)}`;
+            image.alt = sticker?.name || 'Sticker'; image.loading = 'lazy'; image.decoding = 'async';
+            stickers.append(image);
+          });
+          if (stickers.childElementCount) article.append(stickers);
+        }
+        if (Array.isArray(comment.attachments) && comment.attachments.length) {
+          const attachments = makeElement('div', 'boards-comment-attachments');
+          comment.attachments.forEach((attachment) => {
+            if (attachment?.file_id == null) return;
+            const file = { file_id: attachment.file_id, name: attachment.name || `Archivo ${attachment.file_id}` };
+            const link = makeElement('a', '', file.name); link.href = fileEndpoint(file);
+            link.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(file); });
+            attachments.append(link);
+          });
+          if (attachments.childElementCount) article.append(attachments);
+        }
         els.itemCommentsList.append(article);
       });
     }
     const form = els.itemCommentForm;
     form.hidden = !canEditBoard();
-    form.querySelectorAll('textarea, button').forEach((control) => { control.disabled = !canEditBoard(); });
+    form.querySelectorAll('button, input').forEach((control) => { control.disabled = !canEditBoard(); });
+    const editor = document.getElementById('itemCommentBody');
+    if (editor) editor.contentEditable = String(canEditBoard());
+    setItemCommentPendingUi(itemCommentPendingByItem.has(String(state.detailItemId)));
     setDetailStatus('itemCommentStatus', `${state.itemComments.length} ${state.itemComments.length === 1 ? 'comentario' : 'comentarios'}`);
   }
 
@@ -3774,6 +3803,16 @@
     const item = state.items.find((candidate) => String(candidate.id) === String(itemId));
     if (!item || !state.board) return;
     const requestId = ++state.activeDetailRequest;
+    const pendingComment = itemCommentPendingByItem.get(String(item.id));
+    itemCommentSelectedFiles.splice(0, itemCommentSelectedFiles.length, ...(pendingComment?.files || []));
+    itemCommentSelectedStickers.splice(0, itemCommentSelectedStickers.length, ...(pendingComment?.stickers || []));
+    renderItemCommentPendingAttachments(); renderItemCommentPendingStickers();
+    const commentEditor = document.getElementById('itemCommentBody');
+    if (commentEditor) {
+      commentEditor.replaceChildren();
+      if (pendingComment?.body) appendSafeCommentHtml(commentEditor, pendingComment.body);
+    }
+    setItemCommentPendingUi(Boolean(pendingComment));
     state.detailItemId = String(item.id);
     state.itemComments = [];
     state.itemActivity = [];
@@ -3882,30 +3921,177 @@
     event.preventDefault();
     if (!canEditBoard()) return;
     const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
-    const textarea = document.getElementById('itemCommentBody');
-    const body = textarea.value.trim();
-    if (!item || !body) return;
+    const editor = document.getElementById('itemCommentBody');
+    const activePending = itemCommentPendingByItem.get(String(item?.id));
+    const body = activePending?.body ?? editor.innerHTML.trim();
+    const text = editor.innerText.trim();
+    const stickers = activePending?.stickers || itemCommentSelectedStickers;
+    const files = activePending?.files || itemCommentSelectedFiles;
+    if (!item || (!text && !stickers.length && !files.length)) return;
     const button = els.itemCommentForm.querySelector('[type="submit"]');
     button.disabled = true;
     button.textContent = 'Publicando…';
     try {
-      const result = await post('/add_comment', { board_id: state.board.id, item_id: item.id, body });
-      if (result.data) state.itemComments.push(result.data);
+      let pending = activePending;
+      if (!pending) {
+        const fileIds = [];
+        for (const entry of files) {
+          let uploadedFileId = entry.uploadedFileId;
+          if (!uploadedFileId) {
+            const payload = new FormData(); payload.set('csrf_token', csrfToken);
+            payload.set('board_id', String(state.board.id)); payload.set('item_id', String(item.id)); payload.set('file', entry.file);
+            const uploaded = await multipartPost('/upload_file', payload);
+            uploadedFileId = uploaded.data?.id ?? uploaded.data?.file_id;
+            entry.uploadedFileId = uploadedFileId;
+          }
+          if (!uploadedFileId) throw new Error('El servidor no devolvió el identificador del archivo adjunto.');
+          fileIds.push(String(uploadedFileId));
+        }
+        const stickerIds = stickers.map((sticker) => String(sticker.id));
+        const result = await post('/add_comment', { board_id: state.board.id, item_id: item.id, body, stickers: stickerIds, file_ids: fileIds });
+        const comment = result.data || {};
+        const commentId = comment.id ?? comment.comment_id;
+        if (commentId == null) throw new Error('El servidor no devolvió el identificador del comentario.');
+        pending = { commentId, body, stickerIds, stickers: [...stickers], files, fileIds, itemId: String(item.id) };
+        itemCommentPendingByItem.set(String(item.id), pending);
+        setItemCommentPendingUi(true);
+      }
+      {
+        const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
+        const refreshed = await request(`/comments?${params.toString()}`);
+        state.itemComments = Array.isArray(refreshed.data) ? refreshed.data : [...state.itemComments];
+      }
+      itemCommentPendingByItem.delete(String(item.id));
       item.comment_count = Number(item.comment_count || 0) + 1;
       renderActiveView();
-      textarea.value = '';
+      editor.replaceChildren(); itemCommentSelectedFiles.splice(0); itemCommentSelectedStickers.splice(0);
+      renderItemCommentPendingAttachments(); renderItemCommentPendingStickers();
       renderComments();
       const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
-      const activity = await request(`/activity?${params.toString()}`);
-      state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
-      renderActivity();
+      try {
+        const activity = await request(`/activity?${params.toString()}`);
+        state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
+        renderActivity();
+      } catch (_) {
+        setDetailStatus('itemActivityStatus', 'No se pudo actualizar la actividad. Vuelve a abrir la pestaña para intentar de nuevo.', true);
+      }
       setNotice('Comentario agregado.', 'success');
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo agregar el comentario.'), 'error');
     } finally {
-      button.disabled = false;
-      button.textContent = 'Comentar';
+      button.disabled = !canEditBoard();
+      button.textContent = 'Publicar actualización';
+      setItemCommentPendingUi(itemCommentPendingByItem.has(String(item?.id)));
     }
+  }
+
+  function setItemCommentPendingUi(pending) {
+    const form = els.itemCommentForm;
+    if (!form) return;
+    form.querySelectorAll('button:not([type="submit"]), input').forEach((control) => { control.disabled = pending || !canEditBoard(); });
+    const editor = document.getElementById('itemCommentBody');
+    if (editor) editor.contentEditable = String(!pending && canEditBoard());
+  }
+
+  function renderItemCommentPendingStickers() {
+    const host = document.getElementById('itemCommentStickers');
+    if (!host) return;
+    host.replaceChildren();
+    itemCommentSelectedStickers.forEach((sticker, index) => {
+      const image = document.createElement('img');
+      image.src = `${apiRoot}/sticker_file/${encodeURIComponent(sticker.id)}`;
+      image.alt = sticker.name || 'Sticker'; image.loading = 'lazy'; image.decoding = 'async';
+      const remove = makeElement('button', '', '×'); remove.type = 'button';
+      remove.setAttribute('aria-label', `Quitar ${sticker.name || 'sticker'}`);
+      remove.addEventListener('click', () => { itemCommentSelectedStickers.splice(index, 1); renderItemCommentPendingStickers(); });
+      const chip = makeElement('span', 'boards-item-pending-sticker'); chip.append(image, remove); host.append(chip);
+    });
+    host.hidden = !itemCommentSelectedStickers.length;
+  }
+
+  function renderItemCommentPendingAttachments() {
+    const host = document.getElementById('itemCommentFiles');
+    if (!host) return;
+    host.replaceChildren();
+    itemCommentSelectedFiles.forEach((entry, index) => {
+      const chip = makeElement('span', 'boards-item-pending-file', entry.name);
+      const remove = makeElement('button', '', 'Quitar'); remove.type = 'button';
+      remove.addEventListener('click', () => { itemCommentSelectedFiles.splice(index, 1); renderItemCommentPendingAttachments(); });
+      chip.append(remove); host.append(chip);
+    });
+    host.hidden = !itemCommentSelectedFiles.length;
+  }
+
+  function setupItemCommentComposer() {
+    const form = els.itemCommentForm;
+    if (!form) return;
+    const editor = document.getElementById('itemCommentBody');
+    const fileInput = document.getElementById('itemCommentFileInput');
+    const picker = document.getElementById('itemCommentStickerPicker');
+    const emojiPicker = form.querySelector('.boards-item-emoji-picker');
+    const emojiOptions = emojiPicker?.querySelector('.boards-item-emoji-options');
+    ['😀', '👍', '🎉', '❤️', '😂', '🙏', '🚀', '✅'].forEach((emoji) => {
+      const option = makeElement('button', '', emoji); option.type = 'button'; option.dataset.emoji = emoji;
+      option.setAttribute('aria-label', `Insertar ${emoji}`); emojiOptions?.append(option);
+    });
+    form.querySelectorAll('[data-comment-command]').forEach((button) => button.addEventListener('click', () => {
+      editor.focus(); document.execCommand(button.dataset.commentCommand, false, null);
+    }));
+    document.getElementById('itemCommentColor')?.addEventListener('input', (event) => {
+      editor.focus(); document.execCommand('styleWithCSS', false, true);
+      document.execCommand('foreColor', false, event.target.value);
+    });
+    let savedEditorRange = null;
+    const saveEditorRange = () => {
+      const selection = window.getSelection();
+      if (selection?.rangeCount && editor.contains(selection.anchorNode)) savedEditorRange = selection.getRangeAt(0).cloneRange();
+    };
+    ['keyup', 'mouseup', 'input'].forEach((eventName) => editor.addEventListener(eventName, saveEditorRange));
+    emojiPicker?.querySelector('summary')?.addEventListener('mousedown', saveEditorRange);
+    emojiPicker?.querySelectorAll('button[data-emoji]').forEach((button) => {
+      button.addEventListener('mousedown', (event) => { saveEditorRange(); event.preventDefault(); });
+      button.addEventListener('click', () => {
+        editor.focus();
+        if (savedEditorRange) {
+          const selection = window.getSelection();
+          selection.removeAllRanges(); selection.addRange(savedEditorRange);
+        }
+        document.execCommand('insertText', false, button.dataset.emoji);
+        saveEditorRange(); emojiPicker.open = false;
+      });
+    });
+    document.getElementById('itemCommentAttach')?.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
+    fileInput?.addEventListener('change', () => {
+      Array.from(fileInput.files || []).forEach((file) => {
+        const error = fileUploadValidationMessage(file);
+        if (error) { setNotice(`${file.name}: ${error}`, 'error'); return; }
+        if (!itemCommentSelectedFiles.some((entry) => entry.file === file)) itemCommentSelectedFiles.push({ file, name: file.name });
+      });
+      renderItemCommentPendingAttachments();
+    });
+    document.getElementById('itemCommentSticker')?.addEventListener('click', async () => {
+      picker.hidden = !picker.hidden;
+      if (picker.hidden || picker.dataset.loaded === '1') return;
+      picker.textContent = 'Cargando stickers…';
+      try {
+        const result = await request('/stickers');
+        picker.replaceChildren();
+        (Array.isArray(result.data) ? result.data : []).forEach((sticker) => {
+          if (sticker?.id == null) return;
+          const button = makeElement('button', 'boards-item-sticker-option'); button.type = 'button';
+          button.setAttribute('aria-label', `Agregar ${sticker.name || 'sticker'}`);
+          const image = document.createElement('img'); image.src = `${apiRoot}/sticker_file/${encodeURIComponent(sticker.id)}`;
+          image.alt = sticker.name || 'Sticker'; image.loading = 'lazy'; button.append(image);
+          button.addEventListener('click', () => {
+            if (!itemCommentSelectedStickers.some((entry) => String(entry.id) === String(sticker.id))) itemCommentSelectedStickers.push({ id: sticker.id, name: sticker.name || 'Sticker' });
+            renderItemCommentPendingStickers(); picker.hidden = true;
+          });
+          picker.append(button);
+        });
+        if (!picker.childElementCount) picker.textContent = 'No hay stickers disponibles.';
+        picker.dataset.loaded = '1';
+      } catch (error) { picker.textContent = errorMessage(error, 'No se pudieron cargar los stickers.'); }
+    });
   }
 
   function fileUploadValidationMessage(file) {
@@ -5419,7 +5605,7 @@
 
   function appendCommentText(container, value) {
     const text = String(value || '');
-    const urlPattern = /(?:https?:\/\/|www\.)[^\s<>]+/gi;
+    const urlPattern = /(?<![\w@.-])(?:https?:\/\/|www\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?:\:\d{2,5})?(?:[/?#][^\s<>]*)?/gi;
     let lastIndex = 0;
     let match;
     while ((match = urlPattern.exec(text)) !== null) {
@@ -5431,7 +5617,7 @@
       }
       if (!rawUrl) continue;
       container.append(document.createTextNode(text.slice(lastIndex, match.index)));
-      const href = /^www\./i.test(rawUrl) ? `https://${rawUrl}` : rawUrl;
+      const href = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
       try {
         const parsed = new URL(href);
         if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported URL protocol');
@@ -5447,6 +5633,34 @@
       lastIndex = match.index + match[0].length;
     }
     container.append(document.createTextNode(text.slice(lastIndex)));
+  }
+
+  function appendSafeCommentHtml(container, value) {
+    const source = String(value || '');
+    if (!/[<][a-z!/]/i.test(source)) { appendCommentText(container, source); return; }
+    const parsed = new DOMParser().parseFromString(source, 'text/html');
+    const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'SPAN', 'BR', 'P', 'DIV', 'UL', 'OL', 'LI', 'A']);
+    const copyChildren = (from, to, insideLink = false) => {
+      Array.from(from.childNodes).forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) { if (insideLink) to.append(document.createTextNode(node.nodeValue || '')); else appendCommentText(to, node.nodeValue || ''); return; }
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const tag = node.tagName.toUpperCase();
+        if (!allowed.has(tag)) { if (!['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'SVG', 'MATH'].includes(tag)) copyChildren(node, to, insideLink); return; }
+        const element = document.createElement(tag.toLowerCase());
+        if (tag === 'SPAN') {
+          const color = node.style?.color || '';
+          if (/^(#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([\d.%\s,/-]+\))$/i.test(color.trim())) element.style.color = color;
+        } else if (tag === 'A') {
+          try {
+            const url = new URL(node.getAttribute('href') || '', window.location.origin);
+            if (!['https:', 'http:'].includes(url.protocol)) throw new Error('invalid protocol');
+            element.href = url.href; element.target = '_blank'; element.rel = 'noopener noreferrer';
+          } catch (_) { copyChildren(node, to); return; }
+        }
+        copyChildren(node, element, insideLink || tag === 'A'); to.append(element);
+      });
+    };
+    copyChildren(parsed.body, container);
   }
 
   function fieldSelect(labelText, setting, columns, selectedValue, emptyText = 'Selecciona una columna') {
@@ -8039,6 +8253,7 @@
         activateDetailTab(detailTabs[next], true);
       });
     });
+    setupItemCommentComposer();
     els.itemCommentForm.addEventListener('submit', submitItemComment);
     [els.boardMembersList, els.manageBoardMembersList].forEach((list) => {
       list?.addEventListener('click', (event) => {

@@ -254,6 +254,7 @@
 .boards-table .boards-group-row { position: sticky; z-index: 8; top: 0; }
 .boards-table .boards-group-row > td { position: relative; }
 .boards-table .boards-group-row > .boards-group-title-cell { position: sticky; z-index: 9; left: 0; padding: 0; }
+.boards-group-columns th { position: sticky; z-index: 3; top: 42px; background: #f5f8f9; }
 .boards-group-meta-cell { padding: 0 !important; }
 .boards-group-meta { flex: 0 0 auto; justify-content: flex-end; gap: 8px; white-space: nowrap; }
 .boards-group-heading { position: absolute; z-index: 1; top: 0; left: 0; width: 100%; min-height: 41px; box-sizing: border-box; justify-content: space-between; gap: 12px; }
@@ -421,6 +422,33 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-comment-body { margin: 6px 0 0; color: #394e5a; font-size: .78rem; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
 .boards-comment-author-line { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .boards-comment-author-line .boards-detail-meta { min-width: 0; overflow-wrap: anywhere; }
+.boards-item-comment-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 7px 0 5px; }
+.boards-item-comment-toolbar button,
+.boards-item-comment-toolbar label,
+.boards-item-comment-toolbar .boards-item-emoji-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 30px; min-height: 30px; padding: 4px 7px; border: 1px solid #d6e0e4; border-radius: 5px; color: #425767; background: #f7fafb; font-size: .75rem; cursor: pointer; }
+.boards-item-comment-toolbar label { cursor: default; }
+.boards-item-emoji-picker { position: relative; }
+.boards-item-emoji-toggle { list-style: none; }
+.boards-item-emoji-toggle::-webkit-details-marker { display: none; }
+.boards-item-emoji-options { position: absolute; z-index: 7; top: calc(100% + 5px); left: 0; display: grid; grid-template-columns: repeat(4, 34px); gap: 4px; width: max-content; padding: 6px; border: 1px solid #d6e0e4; border-radius: 6px; background: #fff; box-shadow: 0 5px 18px #172b3a24; }
+.boards-item-emoji-options button { min-width: 32px; min-height: 32px; padding: 2px; border: 0; background: transparent; font-size: 1rem; cursor: pointer; }
+.boards-item-emoji-options button:hover, .boards-item-emoji-options button:focus-visible { background: #edf4f7; }
+.boards-item-comment-toolbar input[type="color"] { width: 22px; height: 22px; padding: 1px; border: 0; background: transparent; }
+.boards-item-comment-editor { min-height: 86px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.boards-item-comment-editor:empty::before { content: attr(data-placeholder); color: #87959c; pointer-events: none; }
+.boards-item-sticker-picker { display: flex; flex-wrap: wrap; gap: 5px; max-height: 190px; overflow: auto; margin: 5px 0; padding: 7px; border: 1px solid #d6e0e4; border-radius: 6px; background: #f7fafb; }
+.boards-item-sticker-picker[hidden] { display: none; }
+.boards-item-sticker-option { display: grid; width: 48px; height: 48px; place-items: center; padding: 3px; border: 1px solid #d6e0e4; border-radius: 5px; background: #fff; cursor: pointer; }
+.boards-item-sticker-option img { max-width: 40px; max-height: 40px; object-fit: contain; }
+.boards-comment-stickers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.boards-comment-stickers img { width: auto; max-width: 150px; height: auto; max-height: 110px; object-fit: contain; }
+.boards-comment-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.boards-comment-attachments a { color: #176d9e; font-size: .72rem; overflow-wrap: anywhere; }
+.boards-item-pending-sticker { position: relative; display: inline-flex; padding: 3px; border: 1px solid #d6e0e4; border-radius: 5px; background: #f7fafb; }
+.boards-item-pending-sticker img { max-width: 72px; max-height: 58px; object-fit: contain; }
+.boards-item-pending-sticker button { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; padding: 0; border: 1px solid #cbd7de; border-radius: 50%; background: #fff; cursor: pointer; }
+.boards-item-pending-file { display: inline-flex; align-items: center; gap: 5px; padding: 3px 6px; border: 1px solid #d6e0e4; border-radius: 4px; font-size: .7rem; overflow-wrap: anywhere; }
+.boards-item-pending-file button { padding: 0; border: 0; color: #176d9e; background: transparent; cursor: pointer; }
 .boards-comment-form,
 .boards-file-form,
 .boards-compact-form { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e6edef; }
@@ -1385,11 +1413,42 @@ html[data-theme="dark"] .boards-row-comment-count { border-color: #343955; }
 .boards-file-category-heading span { display: inline-grid; min-width: 18px; height: 18px; place-items: center; border-radius: 50%; color: #b9bfd8; background: #383d5b; font-size: .65rem; }
 .boards-file-category-list { display: grid; gap: 8px; }
 .boards-details-panel .boards-file-entry { margin: 0; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-file-entry { border-color: #dce5e9; color: #263746; background: #fff; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-file-entry-heading > strong { color: #354b58; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-file-entry > .boards-detail-meta,
+html:not([data-theme="dark"]) .boards-file-browser-heading p,
+html:not([data-theme="dark"]) .boards-file-browser-heading .boards-detail-status { color: #71828c; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-file-version-label { color: #617581; background: #eef3f5; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-file-history { color: #526873; background: #f5f8f9; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-file-history-row { color: #627681; }
+html:not([data-theme="dark"]) .boards-file-type-filters { border-bottom-color: #dce5e9; }
+html:not([data-theme="dark"]) .boards-file-type-filter { border-color: #d6e1e5; color: #526873; background: #f3f6f8; }
+html:not([data-theme="dark"]) .boards-file-type-filter span { color: #526873; background: #e3ebef; }
+html:not([data-theme="dark"]) .boards-file-type-filter:hover { border-color: #8fa8b5; color: #263746; }
+html:not([data-theme="dark"]) .boards-file-type-filter.is-active { border-color: #7294fa; color: #fff; background: #30477e; }
+html:not([data-theme="dark"]) .boards-file-type-filter.is-active span { color: #fff; background: #477cf1; }
+html:not([data-theme="dark"]) .boards-file-category-heading { color: #526873; }
+html:not([data-theme="dark"]) .boards-file-category-heading span { color: #526873; background: #e6edf0; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-file-entry .boards-text-button { color: #176d9e; }
+html:not([data-theme="dark"]) .boards-details-panel .boards-file-entry .boards-text-button:hover { color: #0e4e76; }
 .boards-details-panel .boards-activity-entry { position: relative; padding: 14px 15px 13px 18px; border-left: 2px solid #6489f2; }
 .boards-activity-details { display: grid; gap: 5px; margin: 9px 0; }
 .boards-activity-detail { display: grid; grid-template-columns: minmax(95px, .35fr) minmax(0, 1fr); gap: 10px; font-size: .76rem; line-height: 1.45; }
 .boards-activity-detail dt { margin: 0; color: #aeb2ca; font-weight: 500; }
 .boards-activity-detail dd { margin: 0; color: #e1e4f2; overflow-wrap: anywhere; }
+html[data-theme="dark"] .boards-item-comment-toolbar button,
+html[data-theme="dark"] .boards-item-comment-toolbar label,
+html[data-theme="dark"] .boards-item-comment-toolbar .boards-item-emoji-toggle { border-color: #505676; color: #d4d8e9; background: #292d49; }
+html[data-theme="dark"] .boards-item-emoji-options { border-color: #505676; background: #1b1e34; }
+html[data-theme="dark"] .boards-item-emoji-options button { color: #e4e7f2; }
+html[data-theme="dark"] .boards-item-emoji-options button:hover,
+html[data-theme="dark"] .boards-item-emoji-options button:focus-visible { background: #343a59; }
+html[data-theme="dark"] .boards-item-comment-sticker-picker { border-color: #505676; background: #1b1e34; }
+html[data-theme="dark"] .boards-item-sticker-option { border-color: #505676; background: #292d49; }
+html[data-theme="dark"] .boards-item-pending-sticker,
+html[data-theme="dark"] .boards-item-pending-file { border-color: #505676; color: #d4d8e9; background: #292d49; }
+html[data-theme="dark"] .boards-item-pending-sticker button { border-color: #737b9c; color: #fff; background: #343a59; }
+html[data-theme="dark"] .boards-comment-attachments a { color: #a9d6e3; }
 @media (max-width: 460px) {
   .boards-file-browser-heading { display: block; }
   .boards-file-browser-heading .boards-detail-status { margin-top: 9px; }
