@@ -5416,9 +5416,14 @@ class Payment
 
         $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
         $real = realpath($ruta);
-        if ($real === false || $baseAllowed === false || strpos($real, $baseAllowed) !== 0) {
+        if ($real === false) {
             http_response_code(404);
-            echo 'Archivo no encontrado o fuera del directorio permitido.';
+            echo 'El archivo no existe en este servidor: ' . basename($ruta);
+            return;
+        }
+        if ($baseAllowed === false || strpos($real, $baseAllowed) !== 0) {
+            http_response_code(403);
+            echo 'Archivo fuera del directorio permitido.';
             return;
         }
         if (!is_readable($real)) {
