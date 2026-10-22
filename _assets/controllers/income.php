@@ -5054,6 +5054,35 @@ public function anomalies_client_tickets()
         exit;
     }
 
+    /** Conteo de despachos Bankaool nocturnos para Villa Ahumada en modo TX. */
+    public function get_conteo_despachos_bankaool_nocturnos() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year = filter_input(INPUT_GET, 'year', FILTER_VALIDATE_INT);
+        $month = filter_input(INPUT_GET, 'month', FILTER_VALIDATE_INT);
+        if (!$year || !$month || $year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Año o mes inválido']);
+            exit;
+        }
+
+        try {
+            $from = sprintf('%04d-%02d-01', $year, $month);
+            $until = date('Y-m-t', strtotime($from));
+            $rows = $this->despachosModel->get_bankaool_late_dispatch_counts(31, $from, $until) ?: [];
+            $counts = [];
+            foreach ($rows as $row) {
+                $counts[(string)$row['fecha']] = (int)$row['cantidad'];
+            }
+            echo json_encode(['status' => 'success', 'data' => $counts]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'No se pudo consultar el conteo de despachos']);
+        }
+        exit;
+    }
+
     public function get_transacciones_por_deposito() {
         ob_clean();
         header('Content-Type: application/json');
