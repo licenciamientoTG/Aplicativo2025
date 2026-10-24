@@ -1422,4 +1422,50 @@ public function get_debit_snapshot() : array|false {
     return $this->sql->select($query) ?: false;
 }
 
+    /** Clientes clasificados como consumo propio (activos), débito y crédito. */
+    public function get_consumo_propio_list() : array|false {
+        $query = "SELECT cp.codcli, c.den AS cliente, c.tipval, cp.categoria, CONVERT(VARCHAR(16), cp.created_at, 120) AS alta
+                  FROM [TG].dbo.clientes_consumo_propio cp
+                  LEFT JOIN [SG12].dbo.Clientes c ON c.cod = cp.codcli
+                  WHERE cp.activo = 1
+                  ORDER BY c.tipval DESC, cp.categoria, c.den";
+        return $this->sql->select($query) ?: false;
+    }
+
+    /** Busca clientes débito/crédito (por nombre o código) que aún no son consumo propio. */
+    public function search_consumo_propio_candidates(string $q) : array|false {
+        $query = "SELECT TOP 30 c.cod, c.den, c.tipval
+                  FROM [SG12].dbo.Clientes c
+                  WHERE c.tipval IN (3,4) AND (c.den LIKE ? OR CAST(c.cod AS VARCHAR(12)) = ?)
+                    AND NOT EXISTS (SELECT 1 FROM [TG].dbo.clientes_consumo_propio cp WHERE cp.codcli = c.cod AND cp.activo = 1)
+                  ORDER BY c.den";
+        return $this->sql->select($query, ['%' . $q . '%', $q]) ?: false;
+    }
+
+    /** Clasifica (o reactiva) un cliente débito/crédito como consumo propio. */
+    public function save_consumo_propio(int $codcli, string $categoria) : bool {
+        $existe = $this->sql->select("SELECT 1 AS ok FROM [SG12].dbo.Clientes WHERE cod = ? AND tipval IN (3,4)", [$codcli]);
+        if (!$existe) return false;
+        $afectadas = $this->sql->updateSafe(
+            "UPDATE [TG].dbo.clientes_consumo_propio SET categoria = ?, activo = 1 WHERE codcli = ?",
+            [$categoria, $codcli]
+        );
+        if ($afectadas === false) return false;
+        if ($afectadas === 0) {
+            return (bool)$this->sql->insert(
+                "INSERT INTO [TG].dbo.clientes_consumo_propio (codcli, categoria) VALUES (?, ?)",
+                [$codcli, $categoria]
+            );
+        }
+        return true;
+    }
+
+    /** Quita la clasificación (activo = 0; no borra el renglón). */
+    public function remove_consumo_propio(int $codcli) : bool {
+        return $this->sql->updateSafe(
+            "UPDATE [TG].dbo.clientes_consumo_propio SET activo = 0 WHERE codcli = ?",
+            [$codcli]
+        ) !== false;
+    }
+
 }

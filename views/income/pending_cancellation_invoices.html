@@ -9,8 +9,11 @@
         <div class="row align-items-end">
             <div class="col-md-3">
                 <label class="col-form-label-sm" for="tipo_cliente">Tipo de cliente</label>
-                <select id="tipo_cliente" class="form-select form-select-sm" disabled>
-                    <option>Clientes débito</option>
+                <select id="tipo_cliente" class="form-select form-select-sm">
+                    <option value="debito" selected>Clientes débito</option>
+                    <option value="credito">Clientes crédito</option>
+                    <option value="contado">Contado</option>
+                    <option value="todos">Todos</option>
                 </select>
             </div>
             <div class="col-md-2">
@@ -87,6 +90,9 @@ function pending_cancellation_table() {
         $t.find('thead tr.filter').remove();
     }
 
+    // Títulos originales: la fila de filtros los reemplaza por inputs y Excel los exportaría vacíos
+    const pcTitles = $t.find('thead tr:first th').map(function () { return $(this).text().trim(); }).get();
+
     // Cabecera doble: la fila clonada lleva un buscador por columna
     $t.find('thead').prepend($t.find('thead tr').clone().addClass('filter'));
     $t.find('thead tr.filter th').each(function () {
@@ -103,10 +109,11 @@ function pending_cancellation_table() {
         colReorder: false,
         dom: '<"top"Bf>rt<"bottom"lip>',
         pageLength: 100,
-        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel', title: 'Facturas en proceso de cancelacion', exportOptions: { orthogonal: 'export' } }],
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel', title: 'Facturas en proceso de cancelacion', exportOptions: { orthogonal: 'export', format: { header: (data, idx) => pcTitles[idx] } } }],
         ajax: {
             method: 'POST',
             url: '/income/pending_cancellation_invoices_table',
+            data: { tipo_cliente: $('#tipo_cliente').val() },
             dataSrc: function (json) {
                 const d = json.data || [];
                 $('#pc_count').text(d.length);

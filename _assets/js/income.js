@@ -2490,7 +2490,7 @@ async function clients_credit_table() {
     });
 }
 
-// Consumo propio (TG.dbo.clientes_consumo_propio), solo débito: la categoría detallada no se muestra, solo "Propio"
+// Consumo propio (TG.dbo.clientes_consumo_propio), débito y crédito: la categoría detallada no se muestra, solo "Propio"
 function consumo_propio_render(d, type) {
     if (!d) return '';
     if (type !== 'display') return 'Propio';
@@ -2507,10 +2507,9 @@ async function clients_summary_table(tipo) {
     var codcli  = parseInt($('#cliente_' + tipo).val(), 10) || 0;
     var empresa = parseInt($('#empresa_' + tipo).val(), 10) || 0;
     var tipval  = tipo === 'debit' ? 4 : 3;
-    // Consumo propio solo existe en débito: columna Categoría + filtro incluir/excluir/solo
-    var isDebit = tipo === 'debit';
-    var propio  = isDebit ? ($('#propio_debit').val() || 'incluir') : 'incluir';
-    var off     = isDebit ? 1 : 0;
+    // Consumo propio (débito y crédito): columna Categoría + filtro incluir/excluir/solo
+    var propio  = $('#propio_' + tipo).val() || 'incluir';
+    var off     = 1;
 
     if ($.fn.DataTable.isDataTable('#' + tableId)) {
         $('#' + tableId).DataTable().destroy();
@@ -2566,7 +2565,7 @@ async function clients_summary_table(tipo) {
         columns: [
             { data: 'codcli' },
             { data: 'Cliente',         className: 'text-nowrap' },
-        ].concat(isDebit ? [{ data: 'Categoria', className: 'text-nowrap', render: consumo_propio_render }] : []).concat([
+        ].concat([{ data: 'Categoria', className: 'text-nowrap', render: consumo_propio_render }]).concat([
             { data: 'RazonesSociales', className: 'text-center' },
             { data: 'Estaciones',      className: 'text-center' },
             { data: 'PrimerConsumo',   className: 'text-center text-nowrap' },
@@ -2600,14 +2599,111 @@ async function clients_summary_table(tipo) {
             $('#sum_despachos_consumos_' + tipo).text(desp.toLocaleString('es-MX'));
             $('#sum_litros_consumos_' + tipo).text(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
             $('#sum_monto_consumos_' + tipo).text(fmtMoney(mto));
-            if (isDebit) {
-                var propioMto = api.rows({ search: 'applied' }).data().toArray()
-                    .reduce(function (a, r) { return r.Categoria ? a + (parseFloat(r.Monto) || 0) : a; }, 0);
-                $('#sum_propio_client_debit').text(fmtMoney(propioMto));
-            }
+            var propioMto = api.rows({ search: 'applied' }).data().toArray()
+                .reduce(function (a, r) { return r.Categoria ? a + (parseFloat(r.Monto) || 0) : a; }, 0);
+            $('#sum_propio_client_' + tipo).text(fmtMoney(propioMto));
         }
     });
 }
+
+// ── Catálogo de consumo propio (débito y crédito): ver, quitar y clasificar nuevos ──
+
+var cpSeleccionado = null;
+var cpEsc = function (t) { return $('<div>').text(t == null ? '' : t).html(); };
+
+function cp_cargar() {
+    $.post('/income/consumo_propio_list', {}, function (json) {
+        var rows = (json && json.data) || [];
+        if ($.fn.DataTable.isDataTable('#cp_tabla')) $('#cp_tabla').DataTable().destroy();
+        $('#cp_tabla tbody').html(rows.map(function (r) {
+            return '<tr><td>' + r.codcli + '</td><td>' + cpEsc(r.cliente) + '</td>' +
+                '<td>' + (parseInt(r.tipval, 10) === 3 ? 'Crédito' : 'Débito') + '</td>' +
+                '<td>' + cpEsc(r.categoria) + '</td><td>' + cpEsc(r.alta) + '</td>' +
+                '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger cp-quitar" data-codcli="' + r.codcli + '" title="Quitar clasificación"><i class="fas fa-times"></i></button></td></tr>';
+        }).join(''));
+        $('#cp_tabla').DataTable({
+            paging: false, scrollY: '40vh', scrollCollapse: true, order: [[2, 'asc'], [3, 'asc']],
+            dom: '<"top"f>rt<"bottom"i>',
+            language: { search: 'Filtrar:', info: '_TOTAL_ clasificados', infoEmpty: 'Sin clasificados', emptyTable: 'Sin clientes clasificados' }
+        });
+        var cats = {};
+        rows.forEach(function (r) { cats[r.categoria] = 1; });
+        $('#cp_categorias').html(Object.keys(cats).map(function (c) { return '<option value="' + cpEsc(c) + '">'; }).join(''));
+    }, 'json');
+}
+
+function cp_reset_seleccion() {
+    cpSeleccionado = null;
+    $('#cp_buscar').val('');
+    $('#cp_categoria').val('');
+    $('#cp_resultados').empty();
+    $('#cp_guardar').prop('disabled', true);
+    $('#cp_seleccion').text('Ningún cliente seleccionado.');
+}
+
+$(document).on('click', '.btn-consumo-propio-catalogo', function () {
+    cp_reset_seleccion();
+    $('#modal_consumo_propio').modal('show');
+    cp_cargar();
+});
+
+var cpTimer = null;
+$(document).on('input', '#cp_buscar', function () {
+    var q = $(this).val().trim();
+    clearTimeout(cpTimer);
+    cpSeleccionado = null;
+    $('#cp_guardar').prop('disabled', true);
+    $('#cp_seleccion').text('Ningún cliente seleccionado.');
+    if (q.length < 2) { $('#cp_resultados').empty(); return; }
+    cpTimer = setTimeout(function () {
+        $.post('/income/consumo_propio_search', { q: q }, function (json) {
+            var rows = (json && json.data) || [];
+            $('#cp_resultados').html(rows.length ? rows.map(function (r) {
+                return '<button type="button" class="list-group-item list-group-item-action py-1 cp-elegir" data-cod="' + r.cod + '" data-den="' + cpEsc(r.den) + '">' +
+                    '<small class="text-muted">' + r.cod + ' · ' + (parseInt(r.tipval, 10) === 3 ? 'Crédito' : 'Débito') + '</small> ' + cpEsc(r.den) + '</button>';
+            }).join('') : '<div class="list-group-item py-1 text-muted">Sin coincidencias (o ya están clasificados).</div>');
+        }, 'json');
+    }, 300);
+});
+
+$(document).on('click', '.cp-elegir', function () {
+    cpSeleccionado = parseInt($(this).data('cod'), 10);
+    $('#cp_buscar').val($(this).data('den'));
+    $('#cp_resultados').empty();
+    $('#cp_seleccion').text('Seleccionado: ' + cpSeleccionado + ' — ' + $(this).data('den'));
+    $('#cp_guardar').prop('disabled', false);
+    $('#cp_categoria').trigger('focus');
+});
+
+$(document).on('click', '#cp_guardar', function () {
+    var categoria = $('#cp_categoria').val().trim();
+    if (!cpSeleccionado || !categoria) {
+        alertify.error('Selecciona un cliente y escribe la categoría.');
+        return;
+    }
+    $.post('/income/consumo_propio_save', { codcli: cpSeleccionado, categoria: categoria }, function (json) {
+        if (json && json.status === 'ok') {
+            alertify.success('Cliente clasificado. Vuelve a consultar el reporte para ver el cambio.');
+            cp_reset_seleccion();
+            cp_cargar();
+        } else {
+            alertify.error((json && json.message) || 'No se pudo clasificar.');
+        }
+    }, 'json').fail(function () { alertify.error('Error al guardar.'); });
+});
+
+$(document).on('click', '.cp-quitar', function () {
+    var codcli = $(this).data('codcli');
+    if (!confirm('¿Quitar la clasificación de consumo propio del cliente ' + codcli + '?')) return;
+    $.post('/income/consumo_propio_remove', { codcli: codcli }, function (json) {
+        if (json && json.status === 'ok') {
+            alertify.success('Clasificación quitada. Vuelve a consultar el reporte para ver el cambio.');
+            cp_cargar();
+        } else {
+            alertify.error((json && json.message) || 'No se pudo quitar.');
+        }
+    }, 'json').fail(function () { alertify.error('Error al quitar.'); });
+});
 
 // Drill-down: despachos del cliente con la razón social del filtro
 $(document).on('click', '#debit_consumos_client_table .client-drill, #credit_consumos_client_table .client-drill', function (e) {

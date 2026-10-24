@@ -526,6 +526,36 @@ public function balance_age()
         json_output(['data' => $rows ?: []]);
     }
 
+    /** Catálogo de consumo propio (débito y crédito). POST /income/consumo_propio_list */
+    public function consumo_propio_list() : void {
+        json_output(['data' => $this->clientesModel->get_consumo_propio_list() ?: []]);
+    }
+
+    /** Buscador de clientes por clasificar. POST /income/consumo_propio_search (q = nombre o código). */
+    public function consumo_propio_search() : void {
+        $q = trim((string)($_POST['q'] ?? ''));
+        if (mb_strlen($q) < 2) json_output(['data' => []]);
+        json_output(['data' => $this->clientesModel->search_consumo_propio_candidates($q) ?: []]);
+    }
+
+    /** Clasifica un cliente. POST /income/consumo_propio_save (codcli, categoria). */
+    public function consumo_propio_save() : void {
+        $codcli    = (int)($_POST['codcli'] ?? 0);
+        $categoria = trim((string)($_POST['categoria'] ?? ''));
+        if ($codcli <= 0 || $categoria === '' || mb_strlen($categoria) > 60) {
+            json_output(['status' => 'error', 'message' => 'Cliente y categoría (máx. 60 caracteres) son obligatorios.']);
+        }
+        $ok = $this->clientesModel->save_consumo_propio($codcli, $categoria);
+        json_output($ok ? ['status' => 'ok'] : ['status' => 'error', 'message' => 'No se pudo clasificar (¿es cliente débito/crédito?).']);
+    }
+
+    /** Quita la clasificación. POST /income/consumo_propio_remove (codcli). */
+    public function consumo_propio_remove() : void {
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        $ok = $codcli > 0 && $this->clientesModel->remove_consumo_propio($codcli);
+        json_output($ok ? ['status' => 'ok'] : ['status' => 'error', 'message' => 'No se pudo quitar la clasificación.']);
+    }
+
     /** Filtro de consumo propio (TG.dbo.clientes_consumo_propio): incluir (default) | excluir | solo. */
     private function consumoPropioParam() : string {
         $propio = $_POST['propio'] ?? 'incluir';
@@ -804,7 +834,7 @@ public function balance_age()
         ini_set('memory_limit', '512M');
         set_time_limit(300);
         $data = [];
-        if ($rows = $this->documentosModel->cancelacion_en_proceso_debito()) {
+        if ($rows = $this->documentosModel->cancelacion_en_proceso_debito($_POST['tipo_cliente'] ?? 'debito')) {
             foreach ($rows as $r) {
                 $data[] = [
                     'fecha'             => $r['fecha'],

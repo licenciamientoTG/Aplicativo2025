@@ -2934,7 +2934,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         const money = v => Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v);
         const pct = (dif, base) => base !== 0 ? `${((dif / base) * 100).toFixed(2)}%` : '—';
         const color = v => Math.abs(v) < 0.005 ? 'gray' : (v > 0 ? 'green' : 'red');
-        const orden = ['CREDITO', 'DEBITO', 'CONSUMO PROPIO', 'EFECTIVO', 'TARJETAS', 'VALERAS', 'OTRO'];
+        const orden = ['CREDITO', 'DEBITO', 'CONSUMO PROPIO DEBITO', 'CONSUMO PROPIO CREDITO', 'EFECTIVO', 'TARJETAS', 'VALERAS', 'OTRO'];
         const posicion = medio => orden.includes(medio) ? orden.indexOf(medio) : orden.length;
 
         let container = document.getElementById(containerId);

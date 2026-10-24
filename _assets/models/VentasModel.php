@@ -536,14 +536,17 @@ class VentasModel extends Model
     /** Código de valor ficticio para los renglones de consumo propio (no existe en SG12.Valores). */
     const CONSUMO_PROPIO_CODVAL = -900001;
 
+    /** Ídem para consumo propio de clientes crédito (valor 28). */
+    const CONSUMO_PROPIO_CODVAL_CREDITO = -900002;
+
     /** Valores de SG12.Valores que en el corte ya son consumo propio por sí mismos: 145 = 'Promociones MKT'. */
     const CONSUMO_PROPIO_VALORES = [145];
 
     /**
      * Sustituto de "SG12.dbo.Valores v INNER JOIN SG12.dbo.Ingresos i ON v.cod = i.codval" que separa el
-     * consumo propio del débito: a Ingresos se le resta el ValesR (valor 127) de los clientes en
+     * consumo propio de débito y crédito: a Ingresos se le resta el ValesR (valor 127 débito / 28 crédito) de los clientes en
      * TG.dbo.clientes_consumo_propio y ese mismo monto se suma como valor ficticio
-     * 'Consumo propio - {categoría}'. ValesR 127 cuadra al centavo con Ingresos 127 por corte, así que
+     * 'Consumo propio - {categoría}'. ValesR 127 y 28 cuadran al centavo con Ingresos por corte (validado oct-2026), así que
      * el total por estación no cambia. Los valores de CONSUMO_PROPIO_VALORES (p. ej. Promociones MKT) se
      * pasan completos a consumo propio con su nombre. Expone i (fch, codgas, codval, can, mto) y v (cod, den)
      * igual que el join original, por lo que el resto de la consulta no se toca.
@@ -551,11 +554,12 @@ class VentasModel extends Model
     private function ingresosConConsumoPropioFrom() : string
     {
         $cp = self::CONSUMO_PROPIO_CODVAL;
+        $cpc = self::CONSUMO_PROPIO_CODVAL_CREDITO;
         $valores = implode(',', self::CONSUMO_PROPIO_VALORES);
         return "(
                         SELECT i0.fch, i0.codgas,
                             CASE WHEN i0.codval IN ({$valores}) THEN {$cp} ELSE i0.codval END AS codval,
-                            CASE WHEN i0.codval IN ({$valores}) THEN N'Consumo propio - ' + v0.den ELSE v0.den END AS den,
+                            CASE WHEN i0.codval IN ({$valores}) THEN N'Consumo propio débito - ' + v0.den ELSE v0.den END AS den,
                             i0.can, i0.mto
                         FROM SG12.dbo.Ingresos i0
                         INNER JOIN SG12.dbo.Valores v0 ON v0.cod = i0.codval
@@ -564,12 +568,15 @@ class VentasModel extends Model
                         FROM SG12.dbo.ValesR r
                         INNER JOIN TG.dbo.clientes_consumo_propio cp ON cp.codcli = r.codcli AND cp.activo = 1
                         INNER JOIN SG12.dbo.Valores v0 ON v0.cod = r.codval
-                        WHERE r.codval = 127
+                        WHERE r.codval IN (127, 28)
                         UNION ALL
-                        SELECT r.fch, r.codgas, {$cp}, N'Consumo propio - ' + cp.categoria, r.can, r.mto
+                        SELECT r.fch, r.codgas,
+                            CASE WHEN r.codval = 28 THEN {$cpc} ELSE {$cp} END,
+                            CASE WHEN r.codval = 28 THEN N'Consumo propio crédito - ' ELSE N'Consumo propio débito - ' END + cp.categoria,
+                            r.can, r.mto
                         FROM SG12.dbo.ValesR r
                         INNER JOIN TG.dbo.clientes_consumo_propio cp ON cp.codcli = r.codcli AND cp.activo = 1
-                        WHERE r.codval = 127
+                        WHERE r.codval IN (127, 28)
                     ) i
                     CROSS APPLY (SELECT i.codval AS cod, i.den AS den) v";
     }
@@ -837,7 +844,8 @@ class VentasModel extends Model
                         emp.den AS Empresa,
 						E.grupo as Grupo,
                        CASE 
-							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL . " THEN 'CONSUMO PROPIO'
+							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL . " THEN 'CONSUMO PROPIO DEBITO'
+							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL_CREDITO . " THEN 'CONSUMO PROPIO CREDITO'
 							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
@@ -936,7 +944,8 @@ class VentasModel extends Model
                         SUM(i.mto) AS Monto,
                         emp.den AS Empresa,
                        CASE 
-							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL . " THEN 'CONSUMO PROPIO'
+							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL . " THEN 'CONSUMO PROPIO DEBITO'
+							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL_CREDITO . " THEN 'CONSUMO PROPIO CREDITO'
 							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
@@ -1032,7 +1041,8 @@ class VentasModel extends Model
                         SUM(i.can) AS Cantidad,
                         SUM(i.mto) AS Monto,
                        CASE
-							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL . " THEN 'CONSUMO PROPIO'
+							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL . " THEN 'CONSUMO PROPIO DEBITO'
+							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL_CREDITO . " THEN 'CONSUMO PROPIO CREDITO'
 							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
@@ -1132,7 +1142,7 @@ class VentasModel extends Model
                         CONVERT(DATE, CAST(t1.fchcor AS DATETIME) - 1) AS Fecha, -- fecha de corte, igual que Ingresos.fch
                         t1.mto AS Monto,
                         CASE
-                            WHEN cp.codcli IS NOT NULL THEN 'CONSUMO PROPIO' -- TG.dbo.clientes_consumo_propio
+                            WHEN cp.codcli IS NOT NULL THEN CASE WHEN t2.tipval = 3 THEN 'CONSUMO PROPIO CREDITO' ELSE 'CONSUMO PROPIO DEBITO' END -- TG.dbo.clientes_consumo_propio
                             WHEN t2.tipval = 3 THEN 'CREDITO'
                             WHEN t2.tipval = 4 THEN 'DEBITO'
                             WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
@@ -1150,7 +1160,7 @@ class VentasModel extends Model
                         END AS MedioPago
                     FROM SG12.dbo.Despachos t1
                     LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
-                    LEFT JOIN TG.dbo.clientes_consumo_propio cp ON cp.codcli = t1.codcli AND cp.activo = 1 AND t2.tipval = 4
+                    LEFT JOIN TG.dbo.clientes_consumo_propio cp ON cp.codcli = t1.codcli AND cp.activo = 1 AND t2.tipval IN (3, 4)
                     -- 1 fila por despacho: si se pagó con varios valores gana el de mayor monto;
                     -- sin cancelación/reverso (tipmov 86/97), que duplicaban el conteo
                     LEFT JOIN (

@@ -1971,8 +1971,11 @@ class DocumentosModel extends Model{
      *
      * @return list<array<string,mixed>>|false
      */
-    public function cancelacion_en_proceso_debito(): array|false
+    public function cancelacion_en_proceso_debito(string $tipo = 'debito'): array|false
     {
+        // Clientes.tipval: 4 = débito, 3 = crédito, 0 = contado (mostrador)
+        $tipvals = ['debito' => '4', 'credito' => '3', 'contado' => '0', 'todos' => '0,3,4'][$tipo] ?? '4';
+
         $serie = "CASE WHEN dc.nro >= 2100000000 THEN 'Z' WHEN dc.nro >= 2000000000 THEN 'T'
                        WHEN dc.nro >= 1900000000 THEN 'K' WHEN dc.nro >= 1700000000 THEN 'I'
                        WHEN dc.nro >= 1300000000 THEN 'E' WHEN dc.nro >= 1200000000 THEN 'D' ELSE 'C' END";
@@ -2023,7 +2026,7 @@ class DocumentosModel extends Model{
                 ON dc.tip = 3 AND dc.codgas = 0 AND dc.nro BETWEEN 1100000000 AND 2499999999
                AND DATEADD(day, -1, CAST(dc.fch AS datetime)) = r.fecha_lbl
                AND r.etiqueta = {$serie} + CAST(dc.nro % 10000000 AS VARCHAR(10))
-            INNER JOIN [SG12].[dbo].[Clientes] c ON c.cod = dc.codopr AND c.tipval = 4
+            INNER JOIN [SG12].[dbo].[Clientes] c ON c.cod = dc.codopr AND c.tipval IN ({$tipvals})
             LEFT JOIN pri ON pri.llave = r.llave AND pri.rn = 1
             LEFT JOIN [SG12].[dbo].[Usuarios] u ON u.cod = pri.codusu
             LEFT JOIN (
