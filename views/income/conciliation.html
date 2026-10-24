@@ -1,0 +1,945 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Conciliación{% endblock %}
+{% block menutitle %}Ingresos — Conciliación de venta de crédito{% endblock %}
+
+{% block mycss %}
+<style>
+  /* Mismo look de tablas que Contabilidad > Notas de Crédito vs Consumos. */
+  .cv-tabla thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
+  .cv-tabla tbody tr td { font-size: .8rem; vertical-align: middle; color: #334155; }
+  .cv-tabla thead tr.filter th { background-color: #e2e8f0 !important; padding: 3px 6px !important; }
+  .cv-tabla thead tr.filter th input {
+    font-size: .7rem; padding: 2px 5px; height: 22px; border-radius: 3px;
+    border: 1px solid #cbd5e1; width: 100%; box-sizing: border-box;
+  }
+  .cv-tabla { border-collapse: separate; border-spacing: 0; }
+  .cv-tabla thead th { position: sticky; top: 0; z-index: 30; }
+  .cv-tabla th, .cv-tabla td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
+  .cv-tabla tr > :last-child { border-right: none; }
+  .cv-tabla td.cv-wrap { white-space: normal; min-width: 220px; max-width: 340px; word-break: break-word; }
+  .cv-tabla tbody tr.cv-click { cursor: pointer; }
+
+  div.dt-button-collection { z-index: 9999 !important; }
+
+  .cv-monto { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .cv-neg { color: #dc3545; font-weight: 600; }
+  .cv-mono { font-family: monospace; white-space: nowrap; font-size: .75rem; }
+
+  .cv-tabla-wrap { border: 2px solid #cbd5e1; border-radius: .5rem; background: #fff; overflow: hidden; }
+  .cv-tabla-wrap .cv-top {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .5rem .75rem; background: #fff; border-bottom: 2px solid #cbd5e1;
+  }
+  .cv-tabla-wrap .dataTables_filter input { border: 1px solid #cbd5e1; border-radius: .375rem; padding: .25rem .5rem; margin-left: .5rem; }
+  .cv-tabla-wrap .cv-bottom {
+    display: flex; justify-content: space-between; align-items: center; padding: .4rem .75rem;
+    background: #f8fafc; border-top: 2px solid #cbd5e1; color: #475569; font-size: .75rem;
+  }
+  .cv-scroll { overflow: auto; max-height: 64vh; }
+
+  .cv-badge { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .7rem; font-weight: 700; }
+  .cv-ok    { background: #dcfce7; color: #166534; }
+  .cv-info  { background: #e0f2fe; color: #075985; }
+  .cv-warn  { background: #fef3c7; color: #92400e; }
+  .cv-bad   { background: #fee2e2; color: #991b1b; }
+  .cv-muted { background: #e2e8f0; color: #475569; }
+
+  .cv-resumen { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
+  .cv-resumen .cv-chip {
+    border: 1px solid #e2e8f0; border-radius: .5rem; padding: .4rem .75rem; background: #fff;
+    font-size: .8rem; color: #334155; cursor: pointer; user-select: none;
+  }
+  .cv-resumen .cv-chip.activo { border-color: #009559; box-shadow: 0 0 0 2px rgba(0, 149, 89, .15); }
+  .cv-resumen .cv-chip b { font-variant-numeric: tabular-nums; }
+
+  /* Resumen (cascada) */
+  .cv-cascada { width: 100%; font-size: .85rem; }
+  .cv-cascada td { padding: .35rem .6rem; border-bottom: 1px solid #f1f5f9; }
+  .cv-cascada td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cv-cascada tr.cv-sub td:first-child { padding-left: 1.6rem; color: #64748b; }
+  .cv-cascada tr.cv-total td { font-weight: 700; border-top: 2px solid #cbd5e1; background: #f8fafc; }
+  .cv-cascada tr.cv-link td:first-child { color: #0369a1; cursor: pointer; text-decoration: underline dotted; }
+  .cv-cascada .cv-nota { display: block; font-size: .72rem; color: #64748b; font-weight: 400; }
+  .cv-card-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: #475569; font-weight: 700; }
+
+  #cvLoader {
+    display: none; position: fixed; inset: 0; z-index: 10500;
+    background: rgba(248, 250, 252, .75); backdrop-filter: blur(1px);
+    align-items: center; justify-content: center; flex-direction: column; gap: .75rem;
+  }
+  #cvLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
+  #cvLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div id="cvLoader">
+  <div class="spinner-border"></div>
+  <span>Consultando ControlGas y bancos...</span>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form class="row align-items-end g-2" id="cvFiltros">
+      <div class="col-auto">
+        <label for="cvMes">Mes:</label>
+        <input type="month" class="form-control" id="cvMes" value="{{ mes }}" required>
+      </div>
+      <div class="col-auto">
+        {# Razón social = empresa de la estación (de los despachos, de la factura o del cobro), igual que /income/clients #}
+        <label for="cvEmpresa">Razón social:</label>
+        <select class="form-control" id="cvEmpresa">
+          <option value="0">Todas</option>
+          {% for e in empresas %}
+          <option value="{{ e.cod }}">{{ e.den }}</option>
+          {% endfor %}
+          <option value="-1">(Sin razón social)</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="cvOtros">
+          <label class="form-check-label" for="cvOtros">Incluir cobranza administrativa y arrendamiento</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+      </div>
+      <div class="col">
+        <small class="text-muted">
+          Clientes de crédito. <b>Facturado</b> = despachos del mes cuya factura existe y no está cancelada,
+          aunque la factura sea del mes siguiente. <b>Cobros</b> = "Cobranza a Clientes" de ControlGas, cruzados contra
+          Movimientos Bancos por el MOV (secuencia del estado de cuenta) y, si no cuadra, por importe.
+        </small>
+      </div>
+    </form>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" role="tablist" id="cvTabs">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabResumen" type="button" role="tab">
+      <i class="fas fa-balance-scale"></i> Resumen <small class="text-muted">(Conciliación)</small>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabVenta" type="button" role="tab">
+      Venta vs facturado <small class="text-muted">(Desglose venta)</small> <span class="badge bg-secondary" id="cntVenta">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabApp" type="button" role="tab" data-lazy="app">
+      Consumos por cliente <small class="text-muted">(Venta aplicativo)</small> <span class="badge bg-secondary" id="cntApp">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPropio" type="button" role="tab" data-lazy="propio">
+      Consumo propio y bonificaciones <small class="text-muted">(Consumos propios)</small> <span class="badge bg-secondary" id="cntPropio">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabFacturas" type="button" role="tab">
+      Facturas de crédito <small class="text-muted">(Control Gas)</small> <span class="badge bg-secondary" id="cntFacturas">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCobros" type="button" role="tab">
+      Cobros <small class="text-muted">(Cobros agosto)</small> <span class="badge bg-secondary" id="cntCobros">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCruce" type="button" role="tab">
+      Cobros vs banco <small class="text-muted">(Conciliación cobros)</small> <span class="badge bg-secondary" id="cntCruce">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabBanco" type="button" role="tab" data-lazy="banco">
+      Banco <small class="text-muted">(Banco 2791)</small> <span class="badge bg-secondary" id="cntBanco">–</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+  {# 1. Resumen #}
+  <div class="tab-pane fade show active" id="tabResumen" role="tabpanel">
+    <div id="resumenVacio" class="text-muted p-3">Elige un mes y presiona Buscar.</div>
+    <div class="row g-3" id="resumenContenido" style="display:none">
+      <div class="col-xl-6">
+        <div class="card h-100"><div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="cv-card-title">Venta vs facturación</span>
+            <span id="resEstatusVenta"></span>
+          </div>
+          <table class="cv-cascada" id="resVenta"></table>
+        </div></div>
+      </div>
+      <div class="col-xl-6">
+        <div class="card mb-3"><div class="card-body">
+          <div class="cv-card-title mb-2">Puente con facturas de ControlGas (por fecha de factura)</div>
+          <table class="cv-cascada" id="resPuente"></table>
+        </div></div>
+        <div class="card"><div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="cv-card-title">Cobranza vs banco</span>
+            <span id="resEstatusCobros"></span>
+          </div>
+          <table class="cv-cascada" id="resCobros"></table>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  {# 2. Venta vs facturado (Desglose venta) #}
+  <div class="tab-pane fade" id="tabVenta" role="tabpanel">
+    <div class="cv-resumen" id="chipsVenta"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaVenta" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Clasificación</th>
+            <th>Cód.</th>
+            <th>Cliente</th>
+            <th>Despachos</th>
+            <th>Litros</th>
+            <th>Monto aplicativo</th>
+            <th>Cortes</th>
+            <th>Monto − Cortes</th>
+            <th>Facturado (factura del mes)</th>
+            <th>Facturado (factura posterior)</th>
+            <th>Sin factura</th>
+            <th>Desp. sin factura</th>
+            <th>Factura cancelada</th>
+            <th>Facturas</th>
+            <th>Diferencia (Monto − Facturado)</th>
+            <th>Estatus</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">Clic en un cliente para ver sus despachos y la factura de cada uno.</small>
+  </div>
+
+  {# 3. Consumos por cliente (Venta aplicativo) #}
+  <div class="tab-pane fade" id="tabApp" role="tabpanel">
+    <div class="cv-resumen" id="chipsApp"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaApp" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Cód.</th><th>Cliente</th><th>Consumo propio</th><th>Razones soc.</th><th>Estaciones</th>
+            <th>Primer consumo</th><th>Último consumo</th><th>Despachos</th><th>Litros</th><th>Monto</th>
+            <th>Cortes</th><th>Diferencia</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">Mismo cálculo que Clientes &gt; Consumos Crédito &gt; Resumen por cliente.</small>
+  </div>
+
+  {# 4. Consumo propio y bonificaciones (Consumos propios) #}
+  <div class="tab-pane fade" id="tabPropio" role="tabpanel">
+    <div class="cv-resumen" id="chipsPropio"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaPropio" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Cliente</th><th>Cód.</th><th>Categoría</th><th>Fecha</th><th>Hora</th><th>Nro. despacho</th>
+            <th>Estación</th><th>Razón social</th><th>Litros</th><th>Monto</th><th>Producto</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">Clientes de crédito del catálogo de consumo propio (Clientes &gt; Consumos Crédito &gt; Consumo propio).</small>
+  </div>
+
+  {# 5. Facturas de crédito (Control Gas) #}
+  <div class="tab-pane fade" id="tabFacturas" role="tabpanel">
+    <div class="cv-resumen" id="chipsFacturas"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaFacturas" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Factura</th><th>Estación</th><th>Fecha</th><th>Tipo</th><th>Cód.</th><th>Cliente</th>
+            <th>Total factura</th><th>Despachos</th><th>Monto despachos</th><th>Desp. del mes</th>
+            <th>Monto del mes</th><th>Monto otros meses</th><th>Total − despachos</th>
+            <th>Despachos desde</th><th>Despachos hasta</th><th>CFDI</th><th>Periodo</th><th>UUID</th><th>Referencia</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">
+      Facturas "Facturación Crédito" con fecha del mes, más las de otra fecha que contienen despachos del mes.
+    </small>
+  </div>
+
+  {# 6. Cobros (Cobros agosto) #}
+  <div class="tab-pane fade" id="tabCobros" role="tabpanel">
+    <div class="cv-resumen" id="chipsCobros"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaCobros" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Estación</th><th>Cobro</th><th>Fecha</th><th>Cód.</th><th>Cliente</th><th>Tipo</th><th>Forma de pago</th>
+            <th>Ordenante</th><th>Banco ordenante</th><th>Monto</th><th>MOV</th><th>Facturas</th><th>Estatus banco</th>
+            <th>UUID</th><th>Referencia</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  {# 7. Cobros vs banco (Conciliación cobros) #}
+  <div class="tab-pane fade" id="tabCruce" role="tabpanel">
+    <div class="cv-resumen" id="chipsCruce"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaCruce" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Estatus</th><th>MOV</th><th>Cobros</th><th>Clientes</th><th>Monto cobros</th>
+            <th>Banco</th><th>Cuenta</th><th>Fecha banco</th><th>Secuencia</th><th>Depósito</th><th>Diferencia</th>
+            <th>Ordenante en banco</th><th>RFC</th><th>Detalle banco</th><th>Folios de cobro</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">
+      Una fila por depósito (o por MOV sin depósito). Reglas, de la más segura a la menos: Cuadra (suma del MOV = depósito) ·
+      centavos (hasta $1) · MOV compartido (parte de los cobros del MOV) · MOV vecinos (2–3 MOV consecutivos que juntos cuadran) ·
+      por importe (depósito libre del mismo importe a ±3 días).
+    </small>
+  </div>
+
+  {# 8. Banco (Banco 2791) #}
+  <div class="tab-pane fade" id="tabBanco" role="tabpanel">
+    <div class="cv-resumen" id="chipsBanco"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaBanco" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Cuenta</th><th>Fecha</th><th>Fecha operación</th><th>Secuencia</th><th>Descripción</th><th>Referencia</th>
+            <th>Depósito</th><th>Retiro</th><th>Saldo</th><th>Contraparte</th><th>RFC</th><th>Detalle</th><th>Ligado</th><th>Cobros</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">Movimientos del mes de las cuentas que recibieron cobros (Movimientos Bancos).</small>
+  </div>
+</div>
+
+{# Detalle de despachos de un cliente (desde Venta vs facturado) #}
+<div class="modal fade" id="modalDespachos" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalDespachosTitulo"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="cv-resumen" id="chipsDespachos"></div>
+        <div class="cv-tabla-wrap">
+          <table id="tablaDespachos" class="table table-sm table-hover cv-tabla w-100 mb-0">
+            <thead>
+              <tr>
+                <th>Estación</th><th>Despacho</th><th>Fecha</th><th>Hora</th><th>Producto</th><th>Litros</th><th>Monto</th>
+                <th>Factura</th><th>Emitida en</th><th>Fecha factura</th><th>Estado</th><th>UUID</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+$(function () {
+  var ESTATUS_CLASE = {
+    // Venta vs facturado / despachos
+    'Facturado': 'cv-ok', 'Facturado después': 'cv-info', 'No se factura': 'cv-muted',
+    'Pendiente de facturar': 'cv-warn', 'Sin facturar': 'cv-bad', 'Sin factura': 'cv-bad',
+    'Factura cancelada': 'cv-bad', 'Factura no encontrada': 'cv-bad',
+    'Venta': 'cv-info', 'Consumo propio': 'cv-muted', 'Bonificación': 'cv-muted',
+    // Facturas
+    'Del mes': 'cv-ok', 'Emitida después': 'cv-info', 'Mezcla de meses': 'cv-warn', 'Despachos de otro mes': 'cv-warn',
+    'Sin despachos': 'cv-bad', 'Cancelada': 'cv-muted', 'No encontrada': 'cv-bad',
+    'Timbrada': 'cv-ok', 'Sin timbrar': 'cv-warn',
+    // Cobros
+    'Cuadra': 'cv-ok', 'Cuadra (centavos)': 'cv-ok', 'Cuadra (MOV compartido)': 'cv-ok', 'Cuadra (MOV vecinos)': 'cv-ok',
+    'Cuadra por importe': 'cv-info', 'Cuadra por importe (sin MOV)': 'cv-info',
+    'Diferencia': 'cv-warn', 'Sin banco': 'cv-bad', 'Sin MOV': 'cv-bad', 'Cancelado': 'cv-muted',
+    // Banco
+    'Ligado a cobro': 'cv-ok', 'Sin cobro de crédito': 'cv-muted', 'Retiro': 'cv-muted',
+    // Resumen
+    'Conciliado': 'cv-ok', 'Revisar': 'cv-bad',
+  };
+
+  function fmtMonto(n) {
+    return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtLitros(n) {
+    return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  }
+  function fmtFecha(iso) {
+    var p = String(iso || '').substring(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function suma(filas, campo, filtro) {
+    return filas.reduce(function (s, r) { return (!filtro || filtro(r)) ? s + (Number(r[campo]) || 0) : s; }, 0);
+  }
+  // display: con formato; export/sort/filter: valor crudo
+  function monto(d, type) { return type === 'display' ? (d === null || d === '' ? '' : fmtMonto(d)) : d; }
+  function montoDif(d, type) {
+    if (type !== 'display') return d;
+    if (d === null || d === '') return '';
+    return Math.abs(d) >= 0.01 ? '<span class="cv-neg">' + fmtMonto(d) + '</span>' : fmtMonto(d);
+  }
+  function litros(d, type) { return type === 'display' ? fmtLitros(d) : d; }
+  function badge(d, type) {
+    if (type !== 'display') return d;
+    return d ? '<span class="cv-badge ' + (ESTATUS_CLASE[d] || 'cv-muted') + '">' + esc(d) + '</span>' : '';
+  }
+  function fecha(d, type) { return type === 'display' ? fmtFecha(d) : d; }
+  function texto(d, type) { return type === 'display' ? esc(d) : d; }
+  function mesTexto() {
+    var p = ($('#cvMes').val() || '').split('-');
+    var meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    return p.length === 2 ? meses[Number(p[1]) - 1] + ' ' + p[0] : '';
+  }
+
+  function initTabla(sel, columnas, titulo, extra) {
+    return $(sel).DataTable($.extend({
+      paging: true,
+      pageLength: 100,
+      lengthMenu: [[50, 100, 500, -1], [50, 100, 500, 'Todos']],
+      order: [],
+      dom: '<"cv-top"Bf>rt<"cv-bottom"ilp>',
+      language: {
+        info: 'Mostrando _START_–_END_ de _TOTAL_',
+        infoFiltered: '(filtrados de _MAX_)',
+        infoEmpty: 'Sin registros',
+        emptyTable: 'Elige un mes y presiona Buscar.',
+        lengthMenu: '_MENU_ por página',
+        search: 'Buscar:',
+        paginate: { previous: '‹', next: '›' },
+      },
+      buttons: [
+        {
+          extend: 'excel',
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          className: 'btn btn-sm btn-success',
+          title: function () { return titulo + ' ' + mesTexto() + ' - ' + $('#cvEmpresa option:selected').text(); },
+          exportOptions: { columns: ':visible', orthogonal: 'export' },
+        },
+        { extend: 'colvis', text: '<i class="fas fa-columns"></i> Columnas', className: 'btn btn-sm btn-outline-secondary' },
+      ],
+      data: [],
+      deferRender: true,
+      columns: columnas,
+      initComplete: function () {
+        var api = this.api();
+        $(sel).wrap('<div class="cv-scroll"></div>');
+        var filterRow = $('<tr class="filter"></tr>');
+        $(sel + ' thead tr:first th').each(function () {
+          filterRow.append('<th><input type="text" placeholder="' + esc($(this).text().trim()) + '" /></th>');
+        });
+        $(sel + ' thead').append(filterRow);
+        $(sel + ' thead tr.filter th input').on('keyup change', function () {
+          api.column($(this).parent().index() + ':visible').search(this.value).draw();
+        });
+        var altura = $(sel + ' thead tr:first th').first().outerHeight() || 33;
+        $(sel + ' thead tr.filter th').css('top', altura + 'px');
+      },
+    }, extra || {}));
+  }
+
+  // Chips por estatus: conteo + suma; clic filtra la columna de estatus.
+  function pintarChips(contenedor, api, filas, campoEstatus, colEstatus, campoMonto) {
+    var grupos = {};
+    filas.forEach(function (r) {
+      var k = r[campoEstatus] || '(vacío)';
+      grupos[k] = grupos[k] || { n: 0, monto: 0 };
+      grupos[k].n++;
+      grupos[k].monto += Number(r[campoMonto]) || 0;
+    });
+    var html = '<span class="cv-chip activo" data-estatus="">Todos: <b>' + filas.length.toLocaleString('en-US') + '</b> · $' +
+      fmtMonto(suma(filas, campoMonto)) + '</span>';
+    Object.keys(grupos).sort().forEach(function (k) {
+      html += '<span class="cv-chip" data-estatus="' + esc(k) + '">' + badge(k, 'display') +
+        ' <b>' + grupos[k].n.toLocaleString('en-US') + '</b> · $' + fmtMonto(grupos[k].monto) + '</span>';
+    });
+    api.column(colEstatus).search('').draw();
+    $(contenedor).html(html).off('click').on('click', '.cv-chip', function () {
+      $(contenedor + ' .cv-chip').removeClass('activo');
+      $(this).addClass('activo');
+      var v = $(this).data('estatus');
+      api.column(colEstatus).search(v ? '^' + $.fn.dataTable.util.escapeRegex(v) + '$' : '', true, false).draw();
+    });
+  }
+
+  function cargarTabla(api, filas, cnt) {
+    api.clear().rows.add(filas).draw();
+    $(cnt).text(filas.length.toLocaleString('en-US'));
+  }
+
+  // ---------------------------------------------------------------- tablas
+  var tablaVenta = initTabla('#tablaVenta', [
+    { data: 'clase', render: badge },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'cv-wrap', render: texto },
+    { data: 'despachos', className: 'cv-monto' },
+    { data: 'litros', className: 'cv-monto', render: litros },
+    { data: 'monto', className: 'cv-monto', render: monto },
+    { data: 'cortes', className: 'cv-monto', render: monto },
+    { data: 'monto_cortes', className: 'cv-monto', render: montoDif },
+    { data: 'facturado_mes', className: 'cv-monto', render: monto },
+    { data: 'facturado_despues', className: 'cv-monto', render: monto },
+    { data: 'sin_factura', className: 'cv-monto', render: montoDif },
+    { data: 'n_sin_factura', className: 'cv-monto' },
+    { data: 'factura_cancelada', className: 'cv-monto', render: montoDif },
+    { data: 'facturas', className: 'cv-monto' },
+    { data: 'diferencia', className: 'cv-monto', render: montoDif },
+    { data: 'estatus', render: badge },
+  ], 'Venta vs facturado', { createdRow: function (row) { $(row).addClass('cv-click'); } });
+  var COL_ESTATUS_VENTA = 15;
+
+  var tablaApp = initTabla('#tablaApp', [
+    { data: 'codcli' },
+    { data: 'Cliente', className: 'cv-wrap', render: texto },
+    { data: 'Categoria', render: function (d, t) { return t === 'display' ? (d ? '<span class="cv-badge cv-muted">' + esc(d) + '</span>' : '') : d; } },
+    { data: 'RazonesSociales', className: 'cv-monto' },
+    { data: 'Estaciones', className: 'cv-monto' },
+    { data: 'PrimerConsumo', render: fecha },
+    { data: 'UltimoConsumo', render: fecha },
+    { data: 'Despachos', className: 'cv-monto' },
+    { data: 'Litros', className: 'cv-monto', render: litros },
+    { data: 'Monto', className: 'cv-monto', render: monto },
+    { data: 'MontoCortes', className: 'cv-monto', render: monto },
+    { data: 'Diferencia', className: 'cv-monto', render: montoDif },
+  ], 'Consumos por cliente (Venta aplicativo)');
+
+  var tablaPropio = initTabla('#tablaPropio', [
+    { data: 'Cliente', className: 'cv-wrap', render: texto },
+    { data: 'codcli' },
+    { data: 'Categoria', render: function (d, t) { return t === 'display' ? '<span class="cv-badge cv-muted">' + esc(d) + '</span>' : d; } },
+    { data: 'Fecha', render: fecha },
+    { data: 'hratrn', render: function (d, t) {
+        if (t !== 'display') return d;
+        var h = String(d == null ? '' : d).padStart(4, '0');
+        return h.substring(0, 2) + ':' + h.substring(2);
+      } },
+    { data: 'nrotrn', className: 'cv-mono' },
+    { data: 'Estacion' },
+    { data: 'RazonSocial', render: texto },
+    { data: 'Litros', className: 'cv-monto', render: litros },
+    { data: 'Monto', className: 'cv-monto', render: monto },
+    { data: 'producto', render: texto },
+  ], 'Consumo propio y bonificaciones (Consumos propios)');
+  var COL_CATEGORIA_PROPIO = 2;
+
+  var tablaFacturas = initTabla('#tablaFacturas', [
+    { data: 'factura', className: 'cv-mono' },
+    { data: 'estacion' },
+    { data: 'fecha', render: fecha },
+    { data: 'tipo', render: texto },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'cv-wrap', render: texto },
+    { data: 'total', className: 'cv-monto', render: monto },
+    { data: 'despachos', className: 'cv-monto' },
+    { data: 'monto_despachos', className: 'cv-monto', render: monto },
+    { data: 'despachos_mes', className: 'cv-monto' },
+    { data: 'monto_mes', className: 'cv-monto', render: monto },
+    { data: 'monto_otros', className: 'cv-monto', render: montoDif },
+    { data: 'ajuste', className: 'cv-monto', render: montoDif },
+    { data: 'despacho_desde', render: fecha },
+    { data: 'despacho_hasta', render: fecha },
+    { data: 'cfdi', render: badge },
+    { data: 'periodo', render: badge },
+    { data: 'uuid', className: 'cv-mono', render: texto },
+    { data: 'referencia', className: 'cv-wrap', render: texto },
+  ], 'Facturas de credito (Control Gas)');
+  var COL_PERIODO_FACTURAS = 16;
+
+  var tablaCobros = initTabla('#tablaCobros', [
+    { data: 'estacion' },
+    { data: 'cobro', className: 'cv-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'cv-wrap', render: texto },
+    { data: 'tipo', render: texto },
+    { data: 'forma_pago', render: texto },
+    { data: 'ordenante', className: 'cv-wrap', render: texto },
+    { data: 'banco_ordenante', render: texto },
+    { data: 'monto', className: 'cv-monto', render: monto },
+    { data: 'mov', className: 'cv-mono' },
+    { data: 'facturas', className: 'cv-wrap', render: texto },
+    { data: 'estatus', render: badge },
+    { data: 'uuid', className: 'cv-mono', render: texto },
+    { data: 'referencia', className: 'cv-wrap', render: texto },
+  ], 'Cobros');
+  var COL_ESTATUS_COBROS = 12;
+
+  var tablaCruce = initTabla('#tablaCruce', [
+    { data: 'estatus', render: badge },
+    { data: 'movs', className: 'cv-mono' },
+    { data: 'cobros', className: 'cv-monto' },
+    { data: 'clientes', className: 'cv-wrap', render: texto },
+    { data: 'monto', className: 'cv-monto', render: monto },
+    { data: 'banco' },
+    { data: 'cuenta', className: 'cv-mono' },
+    { data: 'fecha_banco', render: fecha },
+    { data: 'secuencia', className: 'cv-mono' },
+    { data: 'abono', className: 'cv-monto', render: monto },
+    { data: 'diferencia', className: 'cv-monto', render: montoDif },
+    { data: 'contraparte', className: 'cv-wrap', render: texto },
+    { data: 'rfc', className: 'cv-mono', render: texto },
+    { data: 'detalle', className: 'cv-wrap', render: texto },
+    { data: 'folios', className: 'cv-wrap', render: texto },
+  ], 'Cobros vs banco (Conciliacion cobros)');
+  var COL_ESTATUS_CRUCE = 0;
+
+  var tablaBanco = initTabla('#tablaBanco', [
+    { data: 'cuenta', className: 'cv-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'fecha_operacion', render: fecha },
+    { data: 'secuencia', className: 'cv-mono' },
+    { data: 'descripcion', className: 'cv-wrap', render: texto },
+    { data: 'referencia', className: 'cv-mono', render: texto },
+    { data: 'abono', className: 'cv-monto', render: monto },
+    { data: 'cargo', className: 'cv-monto', render: monto },
+    { data: 'saldo', className: 'cv-monto', render: monto },
+    { data: 'contraparte', className: 'cv-wrap', render: texto },
+    { data: 'rfc', className: 'cv-mono', render: texto },
+    { data: 'detalle', className: 'cv-wrap', render: texto },
+    { data: 'ligado', render: badge },
+    { data: 'cobros', className: 'cv-wrap', render: texto },
+  ], 'Banco');
+  var COL_LIGADO_BANCO = 12;
+
+  var tablaDespachos = initTabla('#tablaDespachos', [
+    { data: 'estacion' },
+    { data: 'despacho', className: 'cv-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'hora' },
+    { data: 'producto', render: texto },
+    { data: 'litros', className: 'cv-monto', render: litros },
+    { data: 'monto', className: 'cv-monto', render: monto },
+    { data: 'factura', className: 'cv-mono' },
+    { data: 'emitida_en' },
+    { data: 'fecha_factura', render: fecha },
+    { data: 'estado', render: badge },
+    { data: 'uuid', className: 'cv-mono', render: texto },
+  ], 'Despachos', { pageLength: 50 });
+  var COL_ESTADO_DESPACHOS = 10;
+
+  $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+  });
+  $('#modalDespachos').on('shown.bs.modal', function () { tablaDespachos.columns.adjust(); });
+
+  // ---------------------------------------------------------------- datos
+  var estado = { busqueda: 0, venta: [], facturas: [], cobros: [], lazy: {} };
+
+  function filtros(extra) {
+    return $.extend({ mes: $('#cvMes').val(), empresa: $('#cvEmpresa').val() }, extra || {});
+  }
+  function pedir(ruta, extra) {
+    return $.ajax({ url: routeUrl(ruta), method: 'POST', dataType: 'json', timeout: 600000, data: filtros(extra) });
+  }
+  function mostrarLoader(on) { document.getElementById('cvLoader').style.display = on ? 'flex' : 'none'; }
+
+  function buscar() {
+    estado.busqueda++;
+    estado.lazy = {};
+    ['#cntApp', '#cntPropio', '#cntBanco'].forEach(function (c) { $(c).text('–'); });
+    [tablaApp, tablaPropio, tablaBanco].forEach(function (t) { t.clear().draw(); });
+    $('#chipsApp, #chipsPropio, #chipsBanco').empty();
+    mostrarLoader(true);
+
+    var pVenta = pedir('income.conciliation_sales').done(function (r) {
+      estado.venta = (r && r.data) || [];
+      cargarTabla(tablaVenta, estado.venta, '#cntVenta');
+      pintarChips('#chipsVenta', tablaVenta, estado.venta, 'estatus', COL_ESTATUS_VENTA, 'monto');
+    });
+    var pFacturas = pedir('income.conciliation_invoices').done(function (r) {
+      estado.facturas = (r && r.data) || [];
+      cargarTabla(tablaFacturas, estado.facturas, '#cntFacturas');
+      pintarChips('#chipsFacturas', tablaFacturas, estado.facturas, 'periodo', COL_PERIODO_FACTURAS, 'total');
+    });
+    var pCobros = pedir('income.conciliation_payments', { otros: $('#cvOtros').is(':checked') ? '1' : '0' }).done(function (r) {
+      estado.cobros = (r && r.data) || [];
+      cargarTabla(tablaCobros, estado.cobros, '#cntCobros');
+      pintarChips('#chipsCobros', tablaCobros, estado.cobros, 'estatus', COL_ESTATUS_COBROS, 'monto');
+      var grupos = agruparCruce(estado.cobros);
+      cargarTabla(tablaCruce, grupos, '#cntCruce');
+      pintarChips('#chipsCruce', tablaCruce, grupos, 'estatus', COL_ESTATUS_CRUCE, 'monto');
+    });
+
+    $.when(pVenta, pFacturas, pCobros)
+      .done(function () { pintarResumen(); })
+      .fail(function () { alertify.error('Error al consultar la conciliación'); })
+      .always(function () {
+        mostrarLoader(false);
+        $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+        // Si el usuario está parado en un tab de carga diferida, cargarlo ya
+        var activo = $('#cvTabs .nav-link.active').data('lazy');
+        if (activo) cargarLazy(activo);
+      });
+  }
+
+  // Una fila por depósito del banco (o por MOV sin depósito, o por cobro sin MOV)
+  function agruparCruce(cobros) {
+    var grupos = {}, orden = [];
+    cobros.forEach(function (r) {
+      var k;
+      if (r.deposito_id) k = 'd' + r.deposito_id + '|' + r.estatus;
+      else if (r.mov !== null && r.mov !== '' && r.estatus !== 'Cancelado') k = 'm' + r.mov + '|' + r.estatus;
+      else k = 'c' + r.cobro + '|' + r.estacion;
+      if (!grupos[k]) {
+        grupos[k] = {
+          estatus: r.estatus, movs: [], cobros: 0, clientes: [], monto: 0, banco: r.banco, cuenta: r.cuenta,
+          fecha_banco: r.fecha_banco, secuencia: r.secuencia_banco, abono: r.abono, diferencia: r.diferencia,
+          contraparte: r.contraparte, rfc: r.rfc_contraparte, detalle: r.detalle_banco, folios: [],
+        };
+        orden.push(k);
+      }
+      var g = grupos[k];
+      g.cobros++;
+      g.monto += Number(r.monto) || 0;
+      if (r.mov !== null && r.mov !== '' && g.movs.indexOf(String(r.mov)) < 0) g.movs.push(String(r.mov));
+      if (r.cliente && g.clientes.indexOf(r.cliente) < 0) g.clientes.push(r.cliente);
+      g.folios.push(r.cobro + (r.estacion ? ' (' + r.estacion + ')' : ''));
+    });
+    return orden.map(function (k) {
+      var g = grupos[k];
+      g.monto = Math.round(g.monto * 100) / 100;
+      g.movs = g.movs.join(', ');
+      g.clientes = g.clientes.join('; ');
+      g.folios = g.folios.join(', ');
+      return g;
+    });
+  }
+
+  // ---------------------------------------------------------------- resumen
+  function fila(etiqueta, valor, clase, extra) {
+    return '<tr class="' + (clase || '') + '"' + (extra || '') + '><td>' + etiqueta + '</td><td>' +
+      (valor === null ? '' : (valor < 0 ? '−$' + fmtMonto(-valor) : '$' + fmtMonto(valor))) + '</td></tr>';
+  }
+  // Clic nativo: lo atiende el data-api de Bootstrap (no depende del plugin de jQuery)
+  function abrirTab(tab) {
+    var b = document.querySelector('#cvTabs button[data-bs-target="' + tab + '"]');
+    if (b) b.click();
+  }
+  function irA(tab, tabla, col, valor, chips) {
+    abrirTab(tab);
+    tabla.column(col).search('^' + $.fn.dataTable.util.escapeRegex(valor) + '$', true, false).draw();
+    $(chips + ' .cv-chip').removeClass('activo').filter(function () { return $(this).data('estatus') === valor; }).addClass('activo');
+  }
+
+  function pintarResumen() {
+    var v = estado.venta, f = estado.facturas, c = estado.cobros;
+    var esVenta = function (r) { return r.clase === 'Venta'; };
+    var venta     = suma(v, 'monto');
+    var propio    = suma(v, 'monto', function (r) { return r.clase === 'Consumo propio'; });
+    var bonif     = suma(v, 'monto', function (r) { return r.clase === 'Bonificación'; });
+    var neta      = venta - propio - bonif;
+    var factMes   = suma(v, 'facturado_mes', esVenta);
+    var factDesp  = suma(v, 'facturado_despues', esVenta);
+    var facturado = factMes + factDesp;
+    var sinFact   = suma(v, 'sin_factura', esVenta);
+    var nSinFact  = suma(v, 'n_sin_factura', esVenta);
+    var cancel    = suma(v, 'factura_cancelada', esVenta);
+    var sinExplicar = Math.round((neta - facturado - sinFact - cancel) * 100) / 100;
+    var propioFact  = suma(v, 'facturado', function (r) { return r.clase !== 'Venta'; });
+    var montoCortes = suma(v, 'monto_cortes');
+
+    var html =
+      fila('Venta aplicativo (monto de despachos de crédito)', venta) +
+      fila('(−) Consumo propio', -propio, 'cv-sub') +
+      fila('(−) Bonificaciones', -bonif, 'cv-sub') +
+      fila('Venta neta', neta, 'cv-total') +
+      fila('Facturado en ControlGas (despachos del mes con factura vigente)', facturado) +
+      fila('en facturas fechadas en el mes', factMes, 'cv-sub') +
+      fila('en facturas posteriores (p. ej. 1.ª semana del mes siguiente)', factDesp, 'cv-sub') +
+      fila('<b>Partidas conciliatorias</b>', null) +
+      fila('Despachos sin factura (' + nSinFact.toLocaleString('en-US') + ')<span class="cv-nota">Ver Venta vs facturado</span>', sinFact, 'cv-sub cv-link', ' data-ir="sin"') +
+      fila('Despachos con factura cancelada o no encontrada', cancel, 'cv-sub cv-link', ' data-ir="cancel"') +
+      fila('Diferencia sin explicar', sinExplicar, 'cv-total');
+    if (Math.abs(propioFact) >= 0.01) {
+      html += fila('Nota: consumo propio / bonificación que sí se facturó (no entra en la venta neta)', propioFact, 'cv-sub');
+    }
+    html += fila('Nota: Monto − Cortes del aplicativo (despachos contra lo cobrado en el corte)<span class="cv-nota">Ver Consumos por cliente</span>', montoCortes, 'cv-sub cv-link', ' data-ir="cortes"');
+    $('#resVenta').html(html);
+    $('#resEstatusVenta').html(badge(Math.abs(sinExplicar) < 0.01 ? 'Conciliado' : 'Revisar', 'display'));
+
+    // Puente: facturas por fecha → facturado por despacho
+    var vig = function (r) { return r.periodo !== 'Cancelada' && r.periodo !== 'No encontrada'; };
+    var enMes = function (r) { return r.en_mes && vig(r); };
+    var totalMes   = suma(f, 'total', enMes);
+    var otros      = suma(f, 'monto_otros', enMes);
+    var sinDesp    = suma(f, 'total', function (r) { return enMes(r) && r.periodo === 'Sin despachos'; });
+    var ajuste     = suma(f, 'ajuste', function (r) { return enMes(r) && r.periodo !== 'Sin despachos'; });
+    var posteriores = suma(f, 'monto_mes', function (r) { return !r.en_mes && vig(r); });
+    var puente     = totalMes - otros - sinDesp - ajuste + posteriores;
+    var factTodos  = suma(v, 'facturado');
+    $('#resPuente').html(
+      fila('Facturas de crédito fechadas en el mes (vigentes)', totalMes) +
+      fila('(−) Parte de esas facturas con despachos de otros meses', -otros, 'cv-sub cv-link', ' data-ir="otros"') +
+      fila('(−) Facturas sin despachos ligados', -sinDesp, 'cv-sub cv-link', ' data-ir="sindesp"') +
+      fila('(−) Total de factura − suma de sus despachos', -ajuste, 'cv-sub') +
+      fila('(+) Facturas posteriores con despachos del mes', posteriores, 'cv-sub cv-link', ' data-ir="posteriores"') +
+      fila('Facturado de despachos del mes', puente, 'cv-total') +
+      fila('Control vs Venta vs facturado (todas las clasificaciones)<span class="cv-nota">Debe ser 0; si no, hay facturas con despachos de clientes que no son de crédito o de otra razón social</span>',
+        Math.round((puente - factTodos) * 100) / 100, 'cv-sub')
+    );
+
+    // Cobranza
+    var porEstatus = {};
+    c.forEach(function (r) {
+      var g = porEstatus[r.estatus] = porEstatus[r.estatus] || { n: 0, monto: 0 };
+      g.n++; g.monto += Number(r.monto) || 0;
+    });
+    var totalCobros = suma(c, 'monto');
+    var cuadra = Object.keys(porEstatus).filter(function (k) { return k.indexOf('Cuadra') === 0; })
+      .reduce(function (s, k) { return s + porEstatus[k].monto; }, 0);
+    var htmlC = fila('Cobros del mes (' + c.length.toLocaleString('en-US') + ')', totalCobros, 'cv-total');
+    Object.keys(porEstatus).sort().forEach(function (k) {
+      htmlC += fila(badge(k, 'display') + ' ' + porEstatus[k].n.toLocaleString('en-US') + ' cobros', porEstatus[k].monto,
+        'cv-sub cv-link', ' data-ir="cobro" data-estatus="' + esc(k) + '"');
+    });
+    htmlC += fila('Cuadrado contra banco', cuadra, 'cv-total');
+    $('#resCobros').html(htmlC);
+    var pct = totalCobros ? (cuadra * 100 / totalCobros) : 0;
+    $('#resEstatusCobros').html('<span class="cv-badge ' + (pct >= 99.99 ? 'cv-ok' : 'cv-warn') + '">' + pct.toFixed(1) + '% cuadrado</span>');
+
+    $('#resumenVacio').hide();
+    $('#resumenContenido').show();
+  }
+
+  $('#resumenContenido').on('click', 'tr.cv-link', function () {
+    var ir = $(this).data('ir');
+    if (ir === 'sin') {
+      abrirTab('#tabVenta');
+      $('#chipsVenta .cv-chip').removeClass('activo');
+      tablaVenta.column(COL_ESTATUS_VENTA).search('^(Pendiente de facturar|Sin facturar)$', true, false).draw();
+    } else if (ir === 'cancel') {
+      irA('#tabVenta', tablaVenta, COL_ESTATUS_VENTA, 'Factura cancelada', '#chipsVenta');
+    } else if (ir === 'cortes') {
+      abrirTab('#tabApp');
+    } else if (ir === 'otros') {
+      abrirTab('#tabFacturas');
+      $('#chipsFacturas .cv-chip').removeClass('activo');
+      tablaFacturas.column(COL_PERIODO_FACTURAS).search('^(Mezcla de meses|Despachos de otro mes)$', true, false).draw();
+    } else if (ir === 'sindesp') {
+      irA('#tabFacturas', tablaFacturas, COL_PERIODO_FACTURAS, 'Sin despachos', '#chipsFacturas');
+    } else if (ir === 'posteriores') {
+      irA('#tabFacturas', tablaFacturas, COL_PERIODO_FACTURAS, 'Emitida después', '#chipsFacturas');
+    } else if (ir === 'cobro') {
+      irA('#tabCruce', tablaCruce, COL_ESTATUS_CRUCE, $(this).data('estatus'), '#chipsCruce');
+    }
+  });
+
+  // ---------------------------------------------------------------- detalle por cliente
+  $('#tablaVenta tbody').on('click', 'tr', function () {
+    var r = tablaVenta.row(this).data();
+    if (!r || !r.codcli) return;
+    $('#modalDespachosTitulo').html('Despachos de ' + esc(r.cliente) + ' <small class="text-muted">(' + esc(mesTexto()) + ')</small>');
+    tablaDespachos.clear().draw();
+    $('#chipsDespachos').empty();
+    $('#modalDespachos').modal('show');
+    pedir('income.conciliation_client_dispatches', { codcli: r.codcli }).done(function (resp) {
+      var filas = (resp && resp.data) || [];
+      tablaDespachos.clear().rows.add(filas).draw();
+      pintarChips('#chipsDespachos', tablaDespachos, filas, 'estado', COL_ESTADO_DESPACHOS, 'monto');
+      tablaDespachos.columns.adjust();
+    }).fail(function () { alertify.error('Error al consultar los despachos'); });
+  });
+
+  // ---------------------------------------------------------------- tabs de carga diferida
+  function cargarLazy(cual) {
+    if (!estado.busqueda || estado.lazy[cual]) return;
+    estado.lazy[cual] = true;
+    var busqueda = estado.busqueda;
+    var p;
+    if (cual === 'app') {
+      p = pedir('income.conciliation_app_sales').done(function (r) {
+        if (busqueda !== estado.busqueda) return;
+        var filas = (r && r.data) || [];
+        cargarTabla(tablaApp, filas, '#cntApp');
+        $('#chipsApp').html(
+          '<span class="cv-chip">Clientes: <b>' + filas.length + '</b></span>' +
+          '<span class="cv-chip">Despachos: <b>' + suma(filas, 'Despachos').toLocaleString('en-US') + '</b></span>' +
+          '<span class="cv-chip">Litros: <b>' + fmtLitros(suma(filas, 'Litros')) + '</b></span>' +
+          '<span class="cv-chip">Monto: <b>$' + fmtMonto(suma(filas, 'Monto')) + '</b></span>' +
+          '<span class="cv-chip">Cortes: <b>$' + fmtMonto(suma(filas, 'MontoCortes')) + '</b></span>' +
+          '<span class="cv-chip">Diferencia: <b>$' + fmtMonto(suma(filas, 'Diferencia')) + '</b></span>'
+        );
+      });
+    } else if (cual === 'propio') {
+      p = pedir('income.conciliation_own_consumption').done(function (r) {
+        if (busqueda !== estado.busqueda) return;
+        var filas = (r && r.data) || [];
+        cargarTabla(tablaPropio, filas, '#cntPropio');
+        pintarChips('#chipsPropio', tablaPropio, filas, 'Categoria', COL_CATEGORIA_PROPIO, 'Monto');
+      });
+    } else if (cual === 'banco') {
+      var cuentas = [];
+      estado.cobros.forEach(function (r) { if (r.cuenta && cuentas.indexOf(r.cuenta) < 0) cuentas.push(r.cuenta); });
+      if (!cuentas.length) {
+        cargarTabla(tablaBanco, [], '#cntBanco');
+        $('#chipsBanco').html('<span class="text-muted">Ningún cobro del mes quedó ligado a una cuenta de Movimientos Bancos.</span>');
+        return;
+      }
+      // depósito → cobros ligados (de la conciliación de cobros)
+      var ligados = {};
+      estado.cobros.forEach(function (r) {
+        if (r.deposito_id && r.estatus !== 'Diferencia') (ligados[r.deposito_id] = ligados[r.deposito_id] || []).push(r.cobro);
+      });
+      p = pedir('income.conciliation_bank', { cuentas: cuentas }).done(function (r) {
+        if (busqueda !== estado.busqueda) return;
+        var filas = ((r && r.data) || []).map(function (m) {
+          m.ligado = m.abono > 0 ? (ligados[m.id] ? 'Ligado a cobro' : 'Sin cobro de crédito') : 'Retiro';
+          m.cobros = (ligados[m.id] || []).join(', ');
+          return m;
+        });
+        cargarTabla(tablaBanco, filas, '#cntBanco');
+        pintarChips('#chipsBanco', tablaBanco, filas, 'ligado', COL_LIGADO_BANCO, 'abono');
+        var porCuenta = {};
+        filas.forEach(function (m) {
+          var g = porCuenta[m.cuenta] = porCuenta[m.cuenta] || { n: 0, abono: 0, cargo: 0 };
+          g.n++; g.abono += m.abono; g.cargo += m.cargo;
+        });
+        Object.keys(porCuenta).forEach(function (k) {
+          $('#chipsBanco').append('<span class="cv-chip">' + esc(filas.find(function (m) { return m.cuenta === k; }).banco) + ' ' + esc(k) +
+            ': <b>' + porCuenta[k].n + '</b> movs · depósitos $' + fmtMonto(porCuenta[k].abono) + ' · retiros $' + fmtMonto(porCuenta[k].cargo) + '</span>');
+        });
+      });
+    }
+    mostrarLoader(true);
+    p.fail(function () { estado.lazy[cual] = false; alertify.error('Error al consultar'); })
+      .always(function () { mostrarLoader(false); $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); });
+  }
+
+  $('#cvTabs button[data-lazy]').on('shown.bs.tab', function () { cargarLazy($(this).data('lazy')); });
+
+  $('#cvFiltros').on('submit', function (e) { e.preventDefault(); buscar(); });
+});
+</script>
+{% endblock %}

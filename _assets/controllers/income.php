@@ -220,6 +220,275 @@ class Income{
         }
     }
 
+    /**
+     * Ingresos > Conciliación: venta a clientes de crédito vs facturación de
+     * ControlGas y cobranza vs banco (ConciliacionVentaModel + ConciliacionCobros).
+     * Va bajo el permiso 14 de Reportes (routes/income.php), sin permiso propio.
+     * Diseño: docs/superpowers/specs/2026-10-24-conciliacion-venta-credito-design.md
+     */
+    public function conciliation() : void {
+        echo $this->twig->render($this->route . 'conciliation.html', [
+            'mes'      => date('Y-m', strtotime('first day of last month')),
+            'empresas' => $this->clientesModel->get_station_companies(),
+        ]);
+    }
+
+    /** POST: una fila por cliente de crédito con venta, cortes y lo facturado de sus despachos del mes. */
+    public function conciliation_sales() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->venta_por_cliente($from, $until, $this->conciliationEmpresa()) as $r) {
+            $categoria = trim((string)$r['categoria']);
+            $clase     = $categoria === '' ? 'Venta' : ($categoria === 'Bonificaciones' ? 'Bonificación' : 'Consumo propio');
+            $monto     = round((float)$r['monto'], 2);
+            $facturado = round((float)$r['facturado_mes'] + (float)$r['facturado_despues'], 2);
+            $sin       = round((float)$r['sin_factura'], 2);
+            $cancelada = round((float)$r['factura_cancelada'], 2);
+
+            if ($clase !== 'Venta')               $estatus = $facturado > 0 ? 'Facturado' : 'No se factura';
+            elseif (abs($monto - $facturado) < 0.01) $estatus = 'Facturado';
+            elseif ($cancelada > 0)               $estatus = 'Factura cancelada';
+            elseif ($facturado == 0)              $estatus = 'Sin facturar';
+            else                                  $estatus = 'Pendiente de facturar';
+
+            $data[] = [
+                'codcli'            => (int)$r['codcli'],
+                'cliente'           => $r['cliente'],
+                'clase'             => $clase,
+                'categoria'         => $categoria,
+                'despachos'         => (int)$r['despachos'],
+                'litros'            => round((float)$r['litros'], 3),
+                'monto'             => $monto,
+                'cortes'            => round((float)$r['cortes'], 2),
+                'monto_cortes'      => round($monto - (float)$r['cortes'], 2),
+                'facturado_mes'     => round((float)$r['facturado_mes'], 2),
+                'facturado_despues' => round((float)$r['facturado_despues'], 2),
+                'facturado'         => $facturado,
+                'sin_factura'       => $sin,
+                'n_sin_factura'     => (int)$r['n_sin_factura'],
+                'factura_cancelada' => $cancelada,
+                'facturas'          => (int)$r['facturas'],
+                'diferencia'        => round($monto - $facturado, 2),
+                'estatus'           => $estatus,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST (codcli): despachos del cliente en el mes con su factura (modal del desglose). */
+    public function conciliation_client_dispatches() : void {
+        [$from, $until, , $hasta] = $this->conciliationRange();
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        if ($codcli <= 0) json_output(['data' => []]);
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->despachos_cliente($from, $until, $this->conciliationEmpresa(), $codcli) as $r) {
+            $hora = str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
+            if ((int)$r['nrofac'] === 0)            $estado = 'Sin factura';
+            elseif ($r['cancelada'] === null)       $estado = 'Factura no encontrada';
+            elseif ((int)$r['cancelada'] === 1)     $estado = 'Factura cancelada';
+            elseif ($r['fecha_factura'] > $hasta)   $estado = 'Facturado después';
+            else                                    $estado = 'Facturado';
+            $data[] = [
+                'estacion'      => trim((string)$r['estacion']),
+                'despacho'      => $r['nrotrn'],
+                'fecha'         => $r['fecha'],
+                'hora'          => substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'producto'      => trim((string)$r['producto']),
+                'litros'        => round((float)$r['litros'], 3),
+                'monto'         => round((float)$r['monto'], 2),
+                'factura'       => (int)$r['nrofac'] ? get_invoice_series((int)$r['nrofac']) : '',
+                'emitida_en'    => trim((string)$r['estacion_factura']),
+                'fecha_factura' => $r['fecha_factura'] ?? '',
+                'uuid'          => $r['satuid'] ?? '',
+                'estado'        => $estado,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST: facturas de crédito del mes (por fecha) y de cualquier fecha con despachos del mes. */
+    public function conciliation_invoices() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->facturas($from, $until, $this->conciliationEmpresa()) as $r) {
+            $fch       = (int)$r['fch'];
+            $despachos = (int)$r['despachos'];
+            $delMes    = (int)$r['despachos_mes'];
+            if ($r['cancelada'] === null)        $periodo = 'No encontrada';
+            elseif ((int)$r['cancelada'] === 1)  $periodo = 'Cancelada';
+            elseif ($despachos === 0)            $periodo = 'Sin despachos';
+            elseif ($delMes === 0)               $periodo = 'Despachos de otro mes';
+            elseif ($delMes < $despachos)        $periodo = 'Mezcla de meses';
+            elseif ($fch > $until)               $periodo = 'Emitida después';
+            else                                 $periodo = 'Del mes';
+
+            $total = round((float)$r['total'], 2);
+            $data[] = [
+                'factura'         => get_invoice_series((int)$r['nro']),
+                'estacion'        => trim((string)$r['estacion']),
+                'fecha'           => $r['fecha'] ?? '',
+                'en_mes'          => $fch >= $from && $fch <= $until,
+                'tipo'            => trim((string)$r['tipo']),
+                'codcli'          => $r['codopr'],
+                'cliente'         => $r['cliente'],
+                'total'           => $total,
+                'despachos'       => $despachos,
+                'monto_despachos' => round((float)$r['monto_despachos'], 2),
+                'despachos_mes'   => $delMes,
+                'monto_mes'       => round((float)$r['monto_mes'], 2),
+                'monto_otros'     => round((float)$r['monto_despachos'] - (float)$r['monto_mes'], 2),
+                'ajuste'          => $despachos ? round($total - (float)$r['monto_despachos'], 2) : 0,
+                'despacho_desde'  => $r['despacho_desde'] ?? '',
+                'despacho_hasta'  => $r['despacho_hasta'] ?? '',
+                'cfdi'            => $r['cancelada'] === null ? '' : ((int)$r['cancelada'] === 1 ? 'Cancelada' : (trim((string)$r['satuid']) === '' ? 'Sin timbrar' : 'Timbrada')),
+                'periodo'         => $periodo,
+                'uuid'            => $r['satuid'] ?? '',
+                'referencia'      => $this->txtrefTexto((string)$r['txtref']),
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /**
+     * POST (otros=1 incluye Cobranza Administrativa y Arrendamiento): cobros del
+     * mes con el depósito del banco que les corresponde. El cruce corre con los
+     * cobros de todas las estaciones y luego se filtra la razón social, porque un
+     * MOV puede juntar cobros de varias.
+     */
+    public function conciliation_payments() : void {
+        set_time_limit(300);
+        [$from, $until, $desde, $hasta] = $this->conciliationRange();
+        $empresa = $this->conciliationEmpresa();
+        $model   = new ConciliacionVentaModel;
+        $cobros  = $model->cobros($from, $until, ($_POST['otros'] ?? '0') === '1');
+        $depositos = $model->depositos_para_cobros(
+            array_column($cobros, 'mov'),
+            date('Y-m-d', strtotime($desde . ' -' . ConciliacionCobros::DIAS_ANTES . ' days')),
+            date('Y-m-d', strtotime($hasta . ' +' . ConciliacionCobros::DIAS_DESPUES . ' days'))
+        );
+
+        $data = [];
+        foreach (ConciliacionCobros::conciliar($cobros, $depositos) as $r) {
+            $emp = $r['empresa'] === null ? -1 : (int)$r['empresa'];
+            if ($empresa !== 0 && $emp !== $empresa) continue;
+            $tags = $this->txtrefTags((string)$r['txtref']);
+            $facturas = [];
+            foreach (array_filter(explode(',', (string)$r['facturas'])) as $f) {
+                [$nro, $mto] = array_pad(explode(':', $f), 2, 0);
+                $facturas[] = get_invoice_series((int)$nro) . ' ($' . number_format((float)$mto, 2) . ')';
+            }
+            $data[] = [
+                'estacion'        => trim((string)$r['estacion']),
+                'cobro'           => (int)$r['nro'],
+                'fecha'           => $r['fecha'],
+                'codcli'          => $r['codopr'],
+                'cliente'         => $r['cliente'] ?? '',
+                'tipo'            => trim((string)$r['tipo']),
+                'forma_pago'      => self::CONCILIATION_FORMAS_PAGO[$tags['M'] ?? ''] ?? ($tags['M'] ?? ''),
+                'ordenante'       => trim($tags['B'] ?? ''),
+                'banco_ordenante' => self::CONCILIATION_BANCOS[$tags['K'] ?? ''] ?? ($tags['K'] ?? ''),
+                'monto'           => $r['monto'],
+                'mov'             => $r['mov'],
+                'facturas'        => implode(', ', $facturas),
+                'estatus'         => $r['estatus'],
+                'cobros_mov'      => $r['cobros_mov'],
+                'monto_mov'       => $r['monto_mov'],
+                'deposito_id'     => $r['deposito_id'],
+                'banco'           => $r['banco'] ?? '',
+                'cuenta'          => $r['cuenta'] ?? '',
+                'fecha_banco'     => $r['fecha_banco'] ?? '',
+                'secuencia_banco' => $r['secuencia_banco'],
+                'abono'           => $r['abono'] === null ? null : round((float)$r['abono'], 2),
+                'diferencia'      => $r['diferencia'],
+                'contraparte'     => trim((string)$r['contraparte']),
+                'rfc_contraparte' => trim((string)$r['rfc_contraparte']),
+                'detalle_banco'   => trim((string)$r['detalle_banco']),
+                'uuid'            => $r['satuid'] ?? '',
+                'referencia'      => $this->txtrefTexto((string)$r['txtref']),
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST (cuentas[]): movimientos del mes de las cuentas que recibieron cobros. */
+    public function conciliation_bank() : void {
+        [, , $desde, $hasta] = $this->conciliationRange();
+        $cuentas = array_slice(array_map('strval', (array)($_POST['cuentas'] ?? [])), 0, 50);
+        $data = array_map(fn($r) => [
+            'id'          => (int)$r['id'],
+            'banco'       => $r['banco'],
+            'cuenta'      => $r['cuenta'],
+            'fecha'       => $r['fecha'],
+            'fecha_operacion' => $r['fecha_operacion'] ?? '',
+            'secuencia'   => $r['secuencia'],
+            'descripcion' => trim((string)$r['descripcion']),
+            'referencia'  => trim((string)$r['referencia']),
+            'abono'       => round((float)$r['abono'], 2),
+            'cargo'       => round((float)$r['cargo'], 2),
+            'saldo'       => $r['saldo'] === null ? null : round((float)$r['saldo'], 2),
+            'contraparte' => trim((string)$r['nombre_contraparte']),
+            'rfc'         => trim((string)$r['rfc_contraparte']),
+            'detalle'     => trim((string)$r['detalle']),
+        ], (new ConciliacionVentaModel)->movimientos_banco($desde, $hasta, $cuentas));
+        json_output(['data' => $data]);
+    }
+
+    /** POST: el mismo "Resumen por cliente" de Clientes > Consumos Crédito (hoja Venta aplicativo). */
+    public function conciliation_app_sales() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $rows = $this->clientesModel->get_dispatches_summary_by_client($from, $until, 3, 0, $this->conciliationEmpresa(), 'incluir');
+        json_output(['data' => $rows ?: []]);
+    }
+
+    /** POST: despachos de crédito de clientes de consumo propio y bonificaciones (hoja Consumos propios). */
+    public function conciliation_own_consumption() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $rows = $this->clientesModel->get_dispatches_by_client($from, $until, 3, 0, $this->conciliationEmpresa(), 'solo');
+        json_output(['data' => $rows ?: []]);
+    }
+
+    /** Forma de pago SAT (@M: del cobro). */
+    private const CONCILIATION_FORMAS_PAGO = [
+        '01' => 'Efectivo', '02' => 'Cheque', '03' => 'Transferencia', '04' => 'Tarjeta de crédito', '28' => 'Tarjeta de débito',
+    ];
+    /** Banco del ordenante (@K: del cobro), clave SPEI. */
+    private const CONCILIATION_BANCOS = [
+        '002' => 'BANAMEX', '012' => 'BBVA', '014' => 'SANTANDER', '021' => 'HSBC', '030' => 'BAJIO', '036' => 'INBURSA',
+        '044' => 'SCOTIABANK', '058' => 'BANREGIO', '062' => 'AFIRME', '072' => 'BANORTE', '127' => 'AZTECA', '137' => 'BANCOPPEL',
+    ];
+
+    /** Mes del POST ('Y-m') → [desde int, hasta int, desde 'Y-m-d', hasta 'Y-m-d']. */
+    private function conciliationRange() : array {
+        $mes = preg_match('/^\d{4}-\d{2}$/', $_POST['mes'] ?? '') ? $_POST['mes'] : date('Y-m', strtotime('first day of last month'));
+        $desde = $mes . '-01';
+        $hasta = date('Y-m-t', strtotime($desde));
+        return [dateToInt($desde), dateToInt($hasta), $desde, $hasta];
+    }
+
+    /** Razón social del POST: 0 = todas, -1 = sin razón social, >0 = SG12.Empresas.cod. */
+    private function conciliationEmpresa() : int {
+        return (int)($_POST['empresa'] ?? 0);
+    }
+
+    /** Etiquetas "@X:valor" del txtref de ControlGas (B ordenante, N nota, M forma de pago, K banco…). */
+    private function txtrefTags(string $txtref) : array {
+        $tags = [];
+        foreach (explode('@', $txtref) as $parte) {
+            if (strlen($parte) > 2 && $parte[1] === ':') $tags[$parte[0]] = trim(substr($parte, 2));
+        }
+        return $tags;
+    }
+
+    /** Texto legible del txtref: la nota (@N:) sin las demás etiquetas. */
+    private function txtrefTexto(string $txtref) : string {
+        $tags = $this->txtrefTags($txtref);
+        return $tags['N'] ?? trim($txtref, "@ \r\n");
+    }
+
 // === Dentro de class Income ===
 
 // Reemplaza/Agrega este método
@@ -366,11 +635,6 @@ public function balance_age()
 
 
 
-    public function salesxcard(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'salesxcard.html');
-        }
-    }
     public function cash_sales_table() {
         $data = [];
         $from = dateToInt($_POST['fromDate']);   // Asume que es un entero tipo fecha (e.g. 45747)

@@ -989,6 +989,290 @@ class VentasModel extends Model
 
         return $this->sql->select($query, []);
     }
+    /**
+     * Venta por empresa con TARJETAS desglosadas (pestaña "Desglosado" de Venta por Empresa Mensual).
+     * Misma fuente y mismos totales que getMounthCompanyPayment (Ingresos), solo cambia el reparto de TARJETAS:
+     *   TARJETAS CREDITO / TARJETAS DEBITO  = HTI e INTERL (ya vienen separadas), American Express (siempre crédito)
+     *                                         y SMARTBT-Bancarias / BANKAOOL repartidos con el % crédito/débito de los
+     *                                         Despachos (tiptrn 51 = crédito, 52 = débito) de la misma estación y mes.
+     *   TARJETAS SIN CLASIFICAR             = terminales manuales (Santander, Banorte, Bancomer, Afirme...) y
+     *                                         SMARTBT/BANKAOOL de estaciones-mes sin despachos con tarjeta.
+     * Devuelve Empresa, MedioPago, Monto del rango completo (sin pivote por mes).
+     */
+    function getCompanyPaymentDesglosado($from, $until, $company)
+    {
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
+        $company_string = ((int)$company > 0) ? "AND emp.cod = " . (int)$company : '';
+        $cp = self::CONSUMO_PROPIO_CODVAL;
+        $cpc = self::CONSUMO_PROPIO_CODVAL_CREDITO;
+        $tarjeta_credito = "' SMARTBT - American Express',' Tarjetas American Express','HTI - Tarjeta American Express','INTERL - Tarjeta American Express','INTERL - Tarjeta de Crédito','HTI - Tarjeta de Crédito'";
+        $tarjeta_debito = "'INTERL - Tarjeta de Débito','HTI - Tarjeta de Débito'";
+        $tarjeta_manual = "' SMARTBT - MANUAL Bancarias','SMARTBT - MANUAL Bancarias',' Tarjetas Bancomer',' Tarjetas Santander',' Tarjetas Banorte',' Tarjetas Afirme','INTERLOGIC Manual',' Tarjetas Scotiabank',' Banca MiFel',' Tarjeta Inbursa',' BANKAOOL (Propinas)'";
+        $valeras = "' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro',' Tarjeta Inburgas',' Tarjeta TicketCar',' Tarjeta TicketCar +',' Vale Efectivale',' SMARTBT - EFECTIVALE','Ultra Gas','Tarjetas Sodexo (Pluxee)',' Tarjeta EfectiCard +',' GASnGO MEXICO'";
+
+        $query = "
+                DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
+                DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
+
+                WITH ratio AS (
+                    -- % crédito (tiptrn 51) por estación, mes y terminal (@B: de datref), sin clientes crédito/débito
+                    SELECT x.codgas, x.mes, x.bval,
+                           SUM(CASE WHEN x.tiptrn = 51 THEN x.mto ELSE 0 END) / NULLIF(SUM(x.mto), 0) AS pc
+                    FROM (
+                        SELECT d.codgas, d.tiptrn, d.mto,
+                               DATEFROMPARTS(YEAR(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), MONTH(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), 1) AS mes,
+                               TRY_CONVERT(INT, CASE WHEN CHARINDEX('@B:', d.datref) > 0
+                                   THEN SUBSTRING(d.datref, CHARINDEX('@B:', d.datref) + 3,
+                                        CASE WHEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) > 0
+                                             THEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) - CHARINDEX('@B:', d.datref) - 3
+                                             ELSE 20 END) END) AS bval
+                        FROM SG12.dbo.Despachos d
+                        LEFT JOIN SG12.dbo.Clientes c ON c.cod = d.codcli
+                        -- fchtrn (con 1 día de margen) permite usar IX_DespachosFch en vez de recorrer toda la tabla por fchcor
+                        WHERE d.fchtrn BETWEEN @fecha_inicial_int - 1 AND @fecha_fin_int + 1
+                          AND d.fchcor BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                          AND d.tiptrn IN (51, 52)
+                          AND ISNULL(c.tipval, 0) NOT IN (3, 4)
+                    ) x
+                    WHERE x.bval IN (-3001, -3090)
+                    GROUP BY x.codgas, x.mes, x.bval
+                ), base AS (
+                    SELECT emp.den AS Empresa, i.codgas,
+                           DATEFROMPARTS(YEAR(f.Fecha), MONTH(f.Fecha), 1) AS mes,
+                           v.cod AS cod, v.den AS den, SUM(i.mto) AS Monto
+                    FROM {$this->ingresosConConsumoPropioFrom()}
+                    INNER JOIN TG.dbo.Estaciones E ON i.codgas = E.Codigo
+                    INNER JOIN SG12.dbo.Empresas emp ON E.codemp = emp.cod
+                    CROSS APPLY (SELECT CONVERT(DATE, DATEADD(DAY, -1, i.fch)) AS Fecha) f
+                    WHERE i.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                    $company_string
+                    GROUP BY emp.den, i.codgas, DATEFROMPARTS(YEAR(f.Fecha), MONTH(f.Fecha), 1), v.cod, v.den
+                )
+                -- base se lee UNA sola vez (referenciarla varias veces recalculaba Ingresos + ValesR en cada UNION)
+                SELECT x.Empresa, x.MedioPago, SUM(x.Monto) AS Monto
+                FROM base b
+                LEFT JOIN ratio r ON r.codgas = b.codgas AND r.mes = b.mes AND r.bval = b.cod
+                CROSS APPLY (
+                    SELECT b.Empresa,
+                        CASE
+                            WHEN b.cod = {$cp} THEN 'CONSUMO PROPIO DEBITO'
+                            WHEN b.cod = {$cpc} THEN 'CONSUMO PROPIO CREDITO'
+                            WHEN b.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
+                            WHEN b.den IN ('Clientes Crédito') THEN 'CREDITO'
+                            WHEN b.den IN ('Clientes Débito') THEN 'DEBITO'
+                            WHEN b.den IN ({$tarjeta_credito}) THEN 'TARJETAS CREDITO'
+                            WHEN b.den IN ({$tarjeta_debito}) THEN 'TARJETAS DEBITO'
+                            WHEN b.den IN ({$tarjeta_manual}) THEN 'TARJETAS SIN CLASIFICAR'
+                            WHEN b.den IN ({$valeras}) THEN 'VALERAS'
+                            ELSE 'OTRO'
+                        END AS MedioPago,
+                        b.Monto AS Monto
+                    WHERE b.cod NOT IN (-3001, -3090)
+                    UNION ALL
+                    SELECT b.Empresa, 'TARJETAS CREDITO', b.Monto * r.pc WHERE b.cod IN (-3001, -3090) AND r.pc IS NOT NULL
+                    UNION ALL
+                    SELECT b.Empresa, 'TARJETAS DEBITO', b.Monto * (1 - r.pc) WHERE b.cod IN (-3001, -3090) AND r.pc IS NOT NULL
+                    UNION ALL
+                    SELECT b.Empresa, 'TARJETAS SIN CLASIFICAR', b.Monto WHERE b.cod IN (-3001, -3090) AND r.pc IS NULL
+                ) x
+                GROUP BY x.Empresa, x.MedioPago
+                ORDER BY x.Empresa, x.MedioPago;
+            ";
+        return $this->sql->select($query, []);
+    }
+
+    /** Listas de conceptos (SG12.Valores.den, con sus espacios) por medio de pago, iguales a las de las demás consultas de ventas. */
+    private function conceptosEfectivo() : string
+    {
+        return "' Efectivo MN',' DOLARES',' Morralla MN','Transferencias','HTI - Efectivo','INTERL - Efectivo'";
+    }
+    private function conceptosTarjetas() : string
+    {
+        return "' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer',' SMARTBT - American Express',' Tarjetas Santander',' Tarjetas Banorte',' Tarjetas Afirme','SMARTBT - MANUAL Bancarias','INTERL - Tarjeta de Crédito','INTERL - Tarjeta de Débito','INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express','HTI - Tarjeta American Express','INTERL - Tarjeta American Express',' Banca MiFel',' Tarjeta Inbursa',' BANKAOOL',' BANKAOOL (Propinas)'";
+    }
+    private function conceptosValeras() : string
+    {
+        return "' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro',' Tarjeta Inburgas',' Tarjeta TicketCar',' Tarjeta TicketCar +',' Vale Efectivale',' SMARTBT - EFECTIVALE','Ultra Gas','Tarjetas Sodexo (Pluxee)',' Tarjeta EfectiCard +',' GASnGO MEXICO'";
+    }
+
+    /**
+     * Ingresos (lo que el corte declaró por forma de pago, SG12.Ingresos + Valores) como conceptos:
+     * Empresa, Estacion, Concepto (Valores.den), MedioPago, Monto. Requiere @fecha_inicial_int / @fecha_fin_int.
+     */
+    private function conceptosIngresosSql(int $company) : string
+    {
+        $company_string = $company > 0 ? "AND emp.cod = {$company}" : '';
+        $cp = self::CONSUMO_PROPIO_CODVAL;
+        $cpc = self::CONSUMO_PROPIO_CODVAL_CREDITO;
+        return "SELECT emp.den AS Empresa, E.Nombre AS Estacion, LTRIM(v.den) AS Concepto,
+                    CASE
+                        WHEN v.cod = {$cp} THEN 'CONSUMO PROPIO DEBITO'
+                        WHEN v.cod = {$cpc} THEN 'CONSUMO PROPIO CREDITO'
+                        WHEN v.den IN ({$this->conceptosEfectivo()}) THEN 'EFECTIVO'
+                        WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
+                        WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
+                        WHEN v.den IN ({$this->conceptosTarjetas()}) THEN 'TARJETAS'
+                        WHEN v.den IN ({$this->conceptosValeras()}) THEN 'VALERAS'
+                        ELSE 'OTRO'
+                    END AS MedioPago,
+                    SUM(i.mto) AS Monto
+                FROM {$this->ingresosConConsumoPropioFrom()}
+                INNER JOIN TG.dbo.Estaciones E ON i.codgas = E.Codigo
+                INNER JOIN SG12.dbo.Empresas emp ON E.codemp = emp.cod
+                WHERE i.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                {$company_string}
+                GROUP BY emp.den, E.Nombre, v.cod, v.den";
+    }
+
+    /**
+     * Despachos (cada transacción, clasificada por el voucher de MovimientosTar, el tipo de transacción y el tipo de cliente)
+     * como conceptos: Empresa, Estacion, Concepto, MedioPago, Monto, Eventos. Misma lógica de medio de pago que
+     * getMounthEstationEventos. En tarjetas el concepto lleva [crédito]/[débito] según tiptrn (51/52).
+     * Requiere @fecha_inicial_int / @fecha_fin_int.
+     */
+    private function conceptosDespachosSql(int $company) : string
+    {
+        $company_string = $company > 0 ? "AND emp.cod = {$company}" : '';
+        return "SELECT Empresa, Estacion, Concepto, MedioPago, SUM(Monto) AS Monto, COUNT(*) AS Eventos
+                FROM (
+                    SELECT emp.den AS Empresa, E.Nombre AS Estacion, t1.mto AS Monto,
+                        CASE
+                            WHEN cp.codcli IS NOT NULL THEN N'Consumo propio ' + CASE WHEN t2.tipval = 3 THEN N'crédito' ELSE N'débito' END + N' - ' + cp.categoria
+                            WHEN t2.tipval = 3 THEN N'Clientes Crédito'
+                            WHEN t2.tipval = 4 THEN N'Clientes Débito'
+                            WHEN v.den IS NOT NULL THEN LTRIM(v.den) + CASE WHEN t1.tiptrn = 51 THEN N' [crédito]' WHEN t1.tiptrn = 52 THEN N' [débito]' ELSE N'' END
+                            WHEN t1.tiptrn IN (0, 49) THEN N'Sin voucher - efectivo'
+                            WHEN t1.tiptrn = 53 THEN N'Sin voucher - vale'
+                            WHEN t1.tiptrn = 50 THEN N'Sin voucher - cheque'
+                            WHEN t1.tiptrn IN (51, 52) AND t2.cod IS NULL THEN N'Sin voucher - tarjeta ' + CASE WHEN t1.tiptrn = 51 THEN N'crédito' ELSE N'débito' END
+                            WHEN t1.tiptrn IN (51, 52) THEN N'Sin voucher - cliente contado con tarjeta (pagó efectivo)'
+                            ELSE N'Otro (tiptrn ' + CAST(t1.tiptrn AS NVARCHAR(10)) + N')'
+                        END AS Concepto,
+                        CASE
+                            WHEN cp.codcli IS NOT NULL THEN CASE WHEN t2.tipval = 3 THEN 'CONSUMO PROPIO CREDITO' ELSE 'CONSUMO PROPIO DEBITO' END
+                            WHEN t2.tipval = 3 THEN 'CREDITO'
+                            WHEN t2.tipval = 4 THEN 'DEBITO'
+                            WHEN v.den IN ({$this->conceptosEfectivo()}) THEN 'EFECTIVO'
+                            WHEN v.den IN ({$this->conceptosTarjetas()}) THEN 'TARJETAS'
+                            WHEN v.den IN ({$this->conceptosValeras()}) THEN 'VALERAS'
+                            WHEN v.den IS NULL AND t1.tiptrn IN (0, 49) THEN 'EFECTIVO'
+                            WHEN v.den IS NULL AND t1.tiptrn = 53 THEN 'VALERAS'
+                            WHEN v.den IS NULL AND t1.tiptrn = 50 THEN 'EFECTIVO'
+                            WHEN v.den IS NULL AND t1.tiptrn IN (51, 52) AND t2.cod IS NULL THEN 'TARJETAS'
+                            WHEN v.den IS NULL AND t1.tiptrn IN (51, 52) THEN 'EFECTIVO'
+                            ELSE 'OTRO'
+                        END AS MedioPago
+                    FROM SG12.dbo.Despachos t1
+                    LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
+                    LEFT JOIN TG.dbo.clientes_consumo_propio cp ON cp.codcli = t1.codcli AND cp.activo = 1 AND t2.tipval IN (3, 4)
+                    LEFT JOIN (
+                        SELECT codgas, nrotrn, codbco,
+                            ROW_NUMBER() OVER (PARTITION BY codgas, nrotrn ORDER BY mto DESC) AS rn
+                        FROM SG12.dbo.MovimientosTar
+                        WHERE mto <> 0
+                            AND tipmov NOT IN (86, 97)
+                            AND fchmov BETWEEN @fecha_inicial_int - 1 AND @fecha_fin_int + 1
+                    ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas AND t12.rn = 1
+                    LEFT JOIN SG12.dbo.Valores v ON t12.codbco = v.cod
+                    INNER JOIN TG.dbo.Estaciones E ON t1.codgas = E.Codigo
+                    INNER JOIN SG12.dbo.Empresas emp ON E.codemp = emp.cod
+                    WHERE t1.fchtrn BETWEEN @fecha_inicial_int - 1 AND @fecha_fin_int + 1
+                        AND t1.fchcor BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                        AND t1.mto > 0
+                        AND t1.tiptrn NOT IN (65, 74)
+                        {$company_string}
+                ) d
+                GROUP BY Empresa, Estacion, Concepto, MedioPago";
+    }
+
+    private function conceptosFechas($from, $until) : string
+    {
+        $f = date('Y-m-d', strtotime($from));
+        $u = date('Y-m-d', strtotime($until));
+        return "DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '{$f}') + 1;
+                DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '{$u}') + 1;";
+    }
+
+    /** Comparativa Ingresos vs Despachos por empresa y medio de pago: Empresa, MedioPago, Ingresos, Despachos, Eventos. */
+    function getCompanyConceptosResumen($from, $until, $company)
+    {
+        $company = (int)$company;
+        $query = "
+                {$this->conceptosFechas($from, $until)}
+                WITH ing AS (
+                    SELECT Empresa, MedioPago, SUM(Monto) AS Monto
+                    FROM ({$this->conceptosIngresosSql($company)}) q GROUP BY Empresa, MedioPago
+                ), desp AS (
+                    SELECT Empresa, MedioPago, SUM(Monto) AS Monto, SUM(Eventos) AS Eventos
+                    FROM ({$this->conceptosDespachosSql($company)}) q GROUP BY Empresa, MedioPago
+                )
+                SELECT COALESCE(ing.Empresa, desp.Empresa) AS Empresa,
+                       COALESCE(ing.MedioPago, desp.MedioPago) AS MedioPago,
+                       ISNULL(ing.Monto, 0) AS Ingresos,
+                       ISNULL(desp.Monto, 0) AS Despachos,
+                       ISNULL(desp.Eventos, 0) AS Eventos
+                FROM ing FULL JOIN desp ON desp.Empresa = ing.Empresa AND desp.MedioPago = ing.MedioPago
+                ORDER BY 1, 2;
+            ";
+        return $this->sql->select($query, []);
+    }
+
+    /**
+     * Desglose de un medio de pago de una empresa.
+     * $by = 'concepto': Lado ('I' ingresos / 'D' despachos), Concepto, Monto, Eventos.
+     * $by = 'estacion': Estacion, Ingresos, Despachos, Eventos; con $lado ('I'|'D') y $concepto solo de ese concepto
+     *                   (entonces Ingresos o Despachos, el del otro lado, queda en 0).
+     */
+    function getCompanyConceptosDetalle($from, $until, $company, $empresa, $medio, $by, $lado = '', $concepto = '')
+    {
+        $company = (int)$company;
+        $params = [];
+        $filtro_i = "WHERE MedioPago = ? AND Empresa = ?";
+        $filtro_d = "WHERE MedioPago = ? AND Empresa = ?";
+        $params_i = [$medio, $empresa];
+        $params_d = [$medio, $empresa];
+        if ($lado !== '' && $concepto !== '') {
+            if ($lado === 'I') {
+                $filtro_i .= " AND Concepto = ?";
+                $params_i[] = $concepto;
+                $filtro_d = "WHERE 1 = 0";
+                $params_d = [];
+            } else {
+                $filtro_d .= " AND Concepto = ?";
+                $params_d[] = $concepto;
+                $filtro_i = "WHERE 1 = 0";
+                $params_i = [];
+            }
+        }
+        if ($by === 'estacion') {
+            $query = "
+                {$this->conceptosFechas($from, $until)}
+                WITH ing AS (
+                    SELECT Estacion, SUM(Monto) AS Monto FROM ({$this->conceptosIngresosSql($company)}) q {$filtro_i} GROUP BY Estacion
+                ), desp AS (
+                    SELECT Estacion, SUM(Monto) AS Monto, SUM(Eventos) AS Eventos FROM ({$this->conceptosDespachosSql($company)}) q {$filtro_d} GROUP BY Estacion
+                )
+                SELECT COALESCE(ing.Estacion, desp.Estacion) AS Estacion,
+                       ISNULL(ing.Monto, 0) AS Ingresos, ISNULL(desp.Monto, 0) AS Despachos, ISNULL(desp.Eventos, 0) AS Eventos
+                FROM ing FULL JOIN desp ON desp.Estacion = ing.Estacion
+                ORDER BY 1;
+            ";
+        } else {
+            $query = "
+                {$this->conceptosFechas($from, $until)}
+                SELECT 'I' AS Lado, Concepto, SUM(Monto) AS Monto, 0 AS Eventos
+                FROM ({$this->conceptosIngresosSql($company)}) q {$filtro_i} GROUP BY Concepto
+                UNION ALL
+                SELECT 'D', Concepto, SUM(Monto), SUM(Eventos)
+                FROM ({$this->conceptosDespachosSql($company)}) q {$filtro_d} GROUP BY Concepto
+                ORDER BY 1, 3 DESC;
+            ";
+        }
+        // Los ? del SQL van en el orden en que aparecen: primero ingresos, luego despachos
+        return $this->sql->select($query, array_merge($params_i, $params_d));
+    }
+
     function getMounthEstationPayment($from, $until, $estation, $total)
     {
         $fromstring = date('Y-m-d', strtotime($from));

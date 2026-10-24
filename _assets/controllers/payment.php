@@ -5360,7 +5360,41 @@ class Payment
             $this->estacionesModel->get_stations(),
             fn($s) => (int)$s['Codigo'] > 0
         ));
-        echo $this->twig->render($this->route . 'import_invoices.html', compact('emisores', 'stations'));
+        $monitor = $this->es_usuario_monitor_importacion();
+        echo $this->twig->render($this->route . 'import_invoices.html', compact('emisores', 'stations', 'monitor'));
+    }
+
+    // Único usuario que ve el monitoreo de importaciones (consulta pesada; no se ofrece a los demás).
+    private const MONITOR_IMPORTACION_USER_IDS = [6296]; // alejandro.martinez
+
+    private function es_usuario_monitor_importacion(): bool
+    {
+        return in_array((int)($_SESSION['tg_user']['Id'] ?? 0), self::MONITOR_IMPORTACION_USER_IDS, true);
+    }
+
+    /**
+     * Monitoreo de importaciones de un mes (?mes=YYYY-MM): por día y por proveedor, aplicativo vs correo/otros.
+     * Solo para MONITOR_IMPORTACION_USER_IDS; para cualquier otro usuario no consulta la base.
+     */
+    public function import_monitor()
+    {
+        header('Content-Type: application/json');
+        if (!$this->es_usuario_monitor_importacion()) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Sin acceso']);
+            return;
+        }
+
+        $mes = $_GET['mes'] ?? date('Y-m');
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mes)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Mes inválido']);
+            return;
+        }
+        $desde = $mes . '-01';
+        $hasta = date('Y-m-d', strtotime("$desde +1 month"));   // exclusivo
+
+        echo json_encode(['success' => true, 'mes' => $mes] + $this->facturasRecibidasModel->monitor_importacion($desde, $hasta));
     }
 
     /**

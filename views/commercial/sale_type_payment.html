@@ -328,6 +328,19 @@ tr.group:hover {
                 </div>
             </div>
         </div>
+        <ul class="nav nav-pills mb-2" id="companySubTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="company-original-tab" data-bs-toggle="pill" data-bs-target="#company-original" type="button" role="tab">Original</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="company-desglosado-tab" data-bs-toggle="pill" data-bs-target="#company-desglosado" type="button" role="tab">Desglosado</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="company-conceptos-tab" data-bs-toggle="pill" data-bs-target="#company-conceptos" type="button" role="tab">Conceptos: Ingresos vs Despachos</button>
+            </li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane active" id="company-original" role="tabpanel">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title">Venta Empresa Mensual</h5>
@@ -353,7 +366,52 @@ tr.group:hover {
                 </table>
             </div>
         </div>
-
+            </div>
+            <div class="tab-pane" id="company-desglosado" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title">Venta Empresa Mensual — Desglosado</h5>
+                        <small class="text-muted">
+                            Mismos totales que la pestaña Original (Ingresos); solo cambia cómo se reparten las tarjetas:
+                            <strong>Tarjetas crédito</strong> y <strong>Tarjetas débito</strong> (HTI, INTERL, American Express y
+                            SMARTBT/Bankaool repartidos según los despachos de la misma estación y mes) y
+                            <strong>Tarjetas sin clasificar</strong> (terminales manuales: Santander, Banorte, Bancomer, Afirme…).
+                            El consumo propio sale separado en débito y crédito.
+                        </small>
+                    </div>
+                    <div id="desgloseCompanyContainer" class="row"></div>
+                    <div class="card-body table-responsive">
+                        <table id="desglose_company_table" class="table table-striped table-sm w-100">
+                            <thead>
+                                <tr><th>Empresa</th><th>Medio de pago</th><th>Año anterior</th><th>Año actual</th><th>Diferencia</th><th>% Dif.</th><th>% del total</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane" id="company-conceptos" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title">Conceptos: Ingresos vs Despachos</h5>
+                        <small class="text-muted">
+                            <strong>Ingresos</strong> es lo que el corte declaró por forma de pago; <strong>Despachos</strong> es cada transacción clasificada
+                            por su voucher, tipo de transacción y tipo de cliente. Aquí ambos están llevados al mismo medio de pago para compararlos.
+                            Da clic en un monto o en la diferencia para ver sus conceptos y estaciones.
+                        </small>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table id="conceptos_company_table" class="table table-hover table-sm w-100">
+                            <thead>
+                                <tr><th>Empresa</th><th>Medio de pago</th><th>Ingresos</th><th>Despachos</th><th>Diferencia</th><th>% Dif.</th><th>Transacc.</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                            <tfoot><tr><th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th></tr></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="tab-pane " id="mounth_estation" role="tabpanel" aria-labelledby="mounth_estation-tab">
@@ -459,6 +517,50 @@ tr.group:hover {
 </div>
 
 
+
+{# ── MODAL: CONCEPTOS INGRESOS vs DESPACHOS ── #}
+<div class="modal fade" id="modal_conceptos" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="modal_conceptos_title"></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-2">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#mc_conceptos" type="button">Conceptos</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mc_estaciones" type="button" id="mc_estaciones_tab">Por estación</button></li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane active" id="mc_conceptos">
+                        <div class="row">
+                            <div class="col-12 col-lg-6">
+                                <h6>Ingresos <small class="text-muted">(formas de pago del corte)</small></h6>
+                                <table id="mc_tabla_ing" class="table table-hover table-sm w-100"><thead><tr><th>Concepto</th><th class="text-end">Monto</th><th class="text-end">%</th></tr></thead><tbody></tbody><tfoot><tr><th>Total</th><th class="text-end"></th><th></th></tr></tfoot></table>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <h6>Despachos <small class="text-muted">(voucher / tipo de transacción / cliente)</small></h6>
+                                <table id="mc_tabla_desp" class="table table-hover table-sm w-100"><thead><tr><th>Concepto</th><th class="text-end">Monto</th><th class="text-end">Transacc.</th><th class="text-end">%</th></tr></thead><tbody></tbody><tfoot><tr><th>Total</th><th class="text-end"></th><th class="text-end"></th><th></th></tr></tfoot></table>
+                            </div>
+                        </div>
+                        <small class="text-muted">Clic en un concepto para ver en qué estaciones se registró.</small>
+                    </div>
+                    <div class="tab-pane" id="mc_estaciones">
+                        <div class="mb-2 small" id="mc_filtro_concepto"></div>
+                        <table id="mc_tabla_est" class="table table-hover table-sm w-100">
+                            <thead><tr><th>Estación</th><th class="text-end">Ingresos</th><th class="text-end">Despachos</th><th class="text-end">Diferencia</th><th class="text-end">Transacc.</th></tr></thead>
+                            <tbody></tbody>
+                            <tfoot><tr><th>Total</th><th class="text-end"></th><th class="text-end"></th><th class="text-end"></th><th class="text-end"></th></tr></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block myjs %}
 <script src="{{ js_v('commercial.js') }}"></script>

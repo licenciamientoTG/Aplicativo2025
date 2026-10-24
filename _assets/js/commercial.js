@@ -2356,6 +2356,233 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             $('#mounth_company_table').waitMe('hide');
         });
     }
+    // ── Venta por Empresa Mensual > Desglosado (tarjetas crédito/débito) ──
+    let desgloseKey = null;
+    async function mounth_company_desglosado(force) {
+        const fromDate = document.getElementById('from4').value;
+        const untilDate = document.getElementById('until4').value;
+        const company = document.getElementById('company4').value;
+        const key = [fromDate, untilDate, company].join('|');
+        if (!force && key === desgloseKey) return;
+        const post = (f, u) => fetch(routeUrl('commercial.mounth_company_desglosado'), {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `fromDate=${f}&untilDate=${u}&company=${company}`
+        }).then(r => r.json());
+        $('#desgloseCompanyContainer').addClass('loading');
+        try {
+            const [actual, anterior] = await Promise.all([post(fromDate, untilDate), post(subtracYear(fromDate), subtracYear(untilDate))]);
+            const currentData = actual.data || [];
+            const previousData = anterior.data || [];
+            desgloseKey = key;
+            renderGroupCards(groupAndSumCompay(currentData), groupAndSumCompay(previousData), 'desgloseCompanyContainer');
+            renderDesgloseTable(currentData, previousData);
+        } catch (error) {
+            console.error('Error al obtener el desglosado por empresa:', error);
+            alertify.error('No se pudo generar el desglosado.');
+        } finally {
+            $('#desgloseCompanyContainer').removeClass('loading');
+        }
+    }
+    function renderDesgloseTable(currentData, previousData) {
+        const orden = ['EFECTIVO', 'CREDITO', 'DEBITO', 'CONSUMO PROPIO CREDITO', 'CONSUMO PROPIO DEBITO', 'TARJETAS CREDITO', 'TARJETAS DEBITO', 'TARJETAS SIN CLASIFICAR', 'VALERAS', 'OTRO'];
+        const map = {};
+        const add = (rows, campo) => rows.forEach(r => {
+            const k = r.Empresa + '|' + r.MedioPago;
+            map[k] = map[k] || { Empresa: r.Empresa, MedioPago: r.MedioPago, anterior: 0, actual: 0 };
+            map[k][campo] += parseFloat(r.Monto) || 0;
+        });
+        add(previousData, 'anterior');
+        add(currentData, 'actual');
+        const totales = {};
+        Object.values(map).forEach(r => { totales[r.Empresa] = (totales[r.Empresa] || 0) + r.actual; });
+        const rows = Object.values(map).sort((a, b) =>
+            a.Empresa.localeCompare(b.Empresa) || (orden.indexOf(a.MedioPago) + 1 || 99) - (orden.indexOf(b.MedioPago) + 1 || 99));
+        if ($.fn.DataTable.isDataTable('#desglose_company_table')) {
+            $('#desglose_company_table').DataTable().destroy();
+        }
+        $('#desglose_company_table').DataTable({
+            data: rows,
+            paging: false,
+            ordering: false,
+            dom: '<"top"Bf>rt<"bottom"i>',
+            buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel', title: 'Venta por empresa desglosado' }],
+            columns: [
+                { data: 'Empresa' },
+                { data: 'MedioPago' },
+                { data: 'anterior', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                { data: 'actual', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                { data: null, className: 'text-end', render: (d, t, r) => { const v = r.actual - r.anterior; return t === 'display' ? '$' + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v; } },
+                { data: null, className: 'text-end', render: (d, t, r) => { const v = r.anterior ? (r.actual - r.anterior) / r.anterior * 100 : 0; return t === 'display' ? v.toFixed(2) + '%' : v; } },
+                { data: null, className: 'text-end', render: (d, t, r) => { const v = totales[r.Empresa] ? r.actual / totales[r.Empresa] * 100 : 0; return t === 'display' ? v.toFixed(2) + '%' : v; } }
+            ]
+        });
+    }
+    $(document).on('shown.bs.tab', '#company-desglosado-tab', function () { mounth_company_desglosado(false); });
+    $(document).on('click', '#seach_mounth_company', function () {
+        desgloseKey = null;
+        if ($('#company-desglosado').hasClass('active')) mounth_company_desglosado(true);
+    });
+
+    // ── Venta por Empresa Mensual > Conceptos: Ingresos vs Despachos con modales de desglose ──
+    let conceptosKey = null;
+    const cMoney = v => Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(parseFloat(v) || 0);
+    const cNum = v => (parseInt(v, 10) || 0).toLocaleString('es-MX');
+    const cEsc = t => $('<div>').text(t == null ? '' : t).html();
+    const cColor = v => Math.abs(v) < 0.005 ? 'gray' : (v > 0 ? 'green' : 'red');
+    const cCtx = {}; // contexto del modal abierto: empresa, medio, fechas
+
+    function conceptosParams(extra) {
+        return Object.assign({
+            fromDate: document.getElementById('from4').value,
+            untilDate: document.getElementById('until4').value,
+            company: document.getElementById('company4').value
+        }, extra || {});
+    }
+    async function mounth_company_conceptos(force) {
+        const p = conceptosParams();
+        const key = [p.fromDate, p.untilDate, p.company].join('|');
+        if (!force && key === conceptosKey) return;
+        $('#conceptos_company_table').closest('.card-body').addClass('loading');
+        try {
+            const json = await $.post(routeUrl('commercial.company_conceptos_resumen'), p, null, 'json');
+            conceptosKey = key;
+            renderConceptosResumen(json.data || []);
+        } catch (e) {
+            console.error(e);
+            alertify.error('No se pudo generar la comparativa de conceptos.');
+        } finally {
+            $('#conceptos_company_table').closest('.card-body').removeClass('loading');
+        }
+    }
+    function renderConceptosResumen(rows) {
+        const orden = ['EFECTIVO', 'TARJETAS', 'CREDITO', 'DEBITO', 'CONSUMO PROPIO CREDITO', 'CONSUMO PROPIO DEBITO', 'VALERAS', 'OTRO'];
+        rows.forEach(r => { r.Ingresos = parseFloat(r.Ingresos) || 0; r.Despachos = parseFloat(r.Despachos) || 0; r.Dif = r.Despachos - r.Ingresos; });
+        rows.sort((a, b) => a.Empresa.localeCompare(b.Empresa) || (orden.indexOf(a.MedioPago) + 1 || 99) - (orden.indexOf(b.MedioPago) + 1 || 99));
+        if ($.fn.DataTable.isDataTable('#conceptos_company_table')) $('#conceptos_company_table').DataTable().destroy();
+        const link = (t, v, cls) => t === 'display' ? `<a href="#" class="conceptos-drill ${cls || ''}">${cMoney(v)} <i class="fas fa-search"></i></a>` : v;
+        $('#conceptos_company_table').DataTable({
+            data: rows, paging: false, ordering: false, scrollY: '60vh', scrollCollapse: true,
+            dom: '<"top"Bf>rt<"bottom"i>',
+            buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel', title: 'Conceptos Ingresos vs Despachos' }],
+            columns: [
+                { data: 'Empresa' },
+                { data: 'MedioPago' },
+                { data: 'Ingresos', className: 'text-end', render: (d, t) => link(t, d) },
+                { data: 'Despachos', className: 'text-end', render: (d, t) => link(t, d) },
+                { data: 'Dif', className: 'text-end', render: (d, t) => t === 'display' ? `<a href="#" class="conceptos-drill" style="color:${cColor(d)}"><strong>${cMoney(d)}</strong> <i class="fas fa-search"></i></a>` : d },
+                { data: null, className: 'text-end', render: (d, t, r) => { const v = r.Ingresos ? r.Dif / r.Ingresos * 100 : 0; return t === 'display' ? `<span style="color:${cColor(r.Dif)}">${v.toFixed(2)}%</span>` : v; } },
+                { data: 'Eventos', className: 'text-end', render: (d, t) => t === 'display' ? cNum(d) : d }
+            ],
+            footerCallback: function () {
+                const api = this.api();
+                const sum = i => api.column(i).data().reduce((a, b) => a + (parseFloat(b) || 0), 0);
+                const ing = sum(2), desp = sum(3);
+                $(api.column(2).footer()).html(cMoney(ing));
+                $(api.column(3).footer()).html(cMoney(desp));
+                $(api.column(4).footer()).html(cMoney(desp - ing));
+                $(api.column(5).footer()).html(ing ? ((desp - ing) / ing * 100).toFixed(2) + '%' : '');
+                $(api.column(6).footer()).html(cNum(sum(6)));
+            }
+        });
+    }
+    $(document).on('shown.bs.tab', '#company-conceptos-tab', function () { mounth_company_conceptos(false); });
+    $(document).on('click', '#seach_mounth_company', function () {
+        conceptosKey = null;
+        if ($('#company-conceptos').hasClass('active')) mounth_company_conceptos(true);
+    });
+
+    // Clic en un monto: modal con los conceptos de cada lado y el desglose por estación
+    $(document).on('click', '#conceptos_company_table .conceptos-drill', function (e) {
+        e.preventDefault();
+        const row = $('#conceptos_company_table').DataTable().row($(this).closest('tr')).data();
+        if (!row) return;
+        Object.assign(cCtx, conceptosParams(), { empresa: row.Empresa, medio: row.MedioPago });
+        $('#modal_conceptos_title').html(`${cEsc(row.Empresa)} — ${cEsc(row.MedioPago)} <small class="text-muted">(${cCtx.fromDate} → ${cCtx.untilDate})</small>`);
+        $('#mc_filtro_concepto').empty();
+        bootstrap.Tab.getOrCreateInstance(document.querySelector('#modal_conceptos .nav-link')).show();
+        $('#modal_conceptos').modal('show');
+        cargarConceptosModal();
+        cargarEstacionesModal('', '');
+    });
+
+    function dtSimple(id, data, columns, footer) {
+        if ($.fn.DataTable.isDataTable(id)) $(id).DataTable().destroy();
+        $(id).DataTable({ data: data, columns: columns, paging: false, searching: false, info: false, order: [[1, 'desc']], footerCallback: footer });
+    }
+    async function cargarConceptosModal() {
+        $('#mc_tabla_ing tbody, #mc_tabla_desp tbody').html('<tr><td colspan="4" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+        try {
+            const json = await $.post(routeUrl('commercial.company_conceptos_detalle'), Object.assign({}, cCtx, { by: 'concepto' }), null, 'json');
+            const rows = json.data || [];
+            const ing = rows.filter(r => r.Lado === 'I'), desp = rows.filter(r => r.Lado === 'D');
+            const totI = ing.reduce((a, r) => a + (parseFloat(r.Monto) || 0), 0);
+            const totD = desp.reduce((a, r) => a + (parseFloat(r.Monto) || 0), 0);
+            const pct = (v, t) => t ? ((parseFloat(v) || 0) / t * 100).toFixed(2) + '%' : '';
+            dtSimple('#mc_tabla_ing', ing, [
+                { data: 'Concepto', render: (d, t) => t === 'display' ? `<a href="#" class="mc-concepto" data-lado="I" data-concepto="${cEsc(d)}">${cEsc(d)}</a>` : d },
+                { data: 'Monto', className: 'text-end', render: (d, t) => t === 'display' ? cMoney(d) : d },
+                { data: 'Monto', className: 'text-end', render: (d, t) => t === 'display' ? pct(d, totI) : d }
+            ], function () { $(this.api().column(1).footer()).html(cMoney(totI)); });
+            dtSimple('#mc_tabla_desp', desp, [
+                { data: 'Concepto', render: (d, t) => t === 'display' ? `<a href="#" class="mc-concepto" data-lado="D" data-concepto="${cEsc(d)}">${cEsc(d)}</a>` : d },
+                { data: 'Monto', className: 'text-end', render: (d, t) => t === 'display' ? cMoney(d) : d },
+                { data: 'Eventos', className: 'text-end', render: (d, t) => t === 'display' ? cNum(d) : d },
+                { data: 'Monto', className: 'text-end', render: (d, t) => t === 'display' ? pct(d, totD) : d }
+            ], function () {
+                $(this.api().column(1).footer()).html(cMoney(totD));
+                $(this.api().column(2).footer()).html(cNum(desp.reduce((a, r) => a + (parseInt(r.Eventos, 10) || 0), 0)));
+            });
+        } catch (e) {
+            console.error(e);
+            alertify.error('No se pudo cargar el desglose.');
+        }
+    }
+    async function cargarEstacionesModal(lado, concepto) {
+        $('#mc_tabla_est tbody').html('<tr><td colspan="5" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+        $('#mc_filtro_concepto').html(concepto
+            ? `Solo <strong>${lado === 'I' ? 'Ingresos' : 'Despachos'}</strong> del concepto <strong>${cEsc(concepto)}</strong> <a href="#" id="mc_quitar_concepto" class="ms-2">ver todo el medio de pago</a>`
+            : 'Todo el medio de pago, Ingresos contra Despachos.');
+        try {
+            const json = await $.post(routeUrl('commercial.company_conceptos_detalle'), Object.assign({}, cCtx, { by: 'estacion', lado: lado, concepto: concepto }), null, 'json');
+            const rows = (json.data || []).map(r => Object.assign(r, { Ingresos: parseFloat(r.Ingresos) || 0, Despachos: parseFloat(r.Despachos) || 0 }));
+            rows.forEach(r => r.Dif = r.Despachos - r.Ingresos);
+            const solo = lado !== '';
+            if ($.fn.DataTable.isDataTable('#mc_tabla_est')) $('#mc_tabla_est').DataTable().destroy();
+            $('#mc_tabla_est').DataTable({
+                data: rows, paging: false, info: false, order: [[0, 'asc']],
+                columns: [
+                    { data: 'Estacion' },
+                    { data: 'Ingresos', className: 'text-end', render: (d, t) => t === 'display' ? (solo && lado === 'D' ? '—' : cMoney(d)) : d },
+                    { data: 'Despachos', className: 'text-end', render: (d, t) => t === 'display' ? (solo && lado === 'I' ? '—' : cMoney(d)) : d },
+                    { data: 'Dif', className: 'text-end', render: (d, t) => t === 'display' ? (solo ? '—' : `<span style="color:${cColor(d)}"><strong>${cMoney(d)}</strong></span>`) : d },
+                    { data: 'Eventos', className: 'text-end', render: (d, t) => t === 'display' ? cNum(d) : d }
+                ],
+                footerCallback: function () {
+                    const api = this.api();
+                    const sum = i => api.column(i).data().reduce((a, b) => a + (parseFloat(b) || 0), 0);
+                    $(api.column(1).footer()).html(solo && lado === 'D' ? '—' : cMoney(sum(1)));
+                    $(api.column(2).footer()).html(solo && lado === 'I' ? '—' : cMoney(sum(2)));
+                    $(api.column(3).footer()).html(solo ? '—' : cMoney(sum(3)));
+                    $(api.column(4).footer()).html(cNum(sum(4)));
+                }
+            });
+        } catch (e) {
+            console.error(e);
+            alertify.error('No se pudo cargar el desglose por estación.');
+        }
+    }
+    $(document).on('click', '.mc-concepto', function (e) {
+        e.preventDefault();
+        bootstrap.Tab.getOrCreateInstance(document.getElementById('mc_estaciones_tab')).show();
+        cargarEstacionesModal($(this).data('lado'), $(this).data('concepto'));
+    });
+    $(document).on('click', '#mc_quitar_concepto', function (e) {
+        e.preventDefault();
+        cargarEstacionesModal('', '');
+    });
+
     async function generateCardsCompany(data,fromDate,untilDate,company) {
         const currentData = data; // Los datos que ya usas para renderCards
 

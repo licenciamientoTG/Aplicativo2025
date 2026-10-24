@@ -301,7 +301,7 @@ public function buscarPorUUIDs($uuids) {
                     CONVERT(VARCHAR(16), fr.FechaImportacion, 120) AS FechaImportacion,
                     fr.EmisorNombre, fr.EmisorRfc, fr.ReceptorNombre,
                     fr.Total, fr.Moneda, fr.TipoDeComprobante, fr.Remision, fr.Destino,
-                    fr.EstacionCodgas,
+                    fr.EstacionCodgas, fr.OrigenImportacion,
                     e.Nombre AS EstacionNombre,
                     CASE WHEN ISNULL(fr.RutaArchivo, '') <> '' THEN 1 ELSE 0 END AS TienePdf,
                     CASE WHEN ISNULL(fr.RutaXml, '') <> '' THEN 1 ELSE 0 END AS TieneXml
@@ -334,8 +334,38 @@ public function buscarPorUUIDs($uuids) {
         return $out;
     }
 
+    /**
+     * Conteo de importaciones en [$desde, $hasta) por día y por proveedor.
+     * 'aplicativo' = importadas a mano; 'correo' = el resto con FechaImportacion (correo u otras vías).
+     */
+    public function monitor_importacion($desde, $hasta) {
+        $cuenta = "COUNT(*) AS total,
+                   SUM(CASE WHEN OrigenImportacion = 'aplicativo' THEN 1 ELSE 0 END) AS aplicativo";
+        $where = "FechaImportacion >= ? AND FechaImportacion < ?";
+        $por_dia = $this->sql->select(
+            "SELECT CONVERT(VARCHAR(10), FechaImportacion, 23) AS dia, $cuenta
+             FROM TG.dbo.FacturasRecibidas WITH (NOLOCK)
+             WHERE $where
+             GROUP BY CONVERT(VARCHAR(10), FechaImportacion, 23)
+             ORDER BY dia",
+            [$desde, $hasta]
+        );
+        $por_proveedor = $this->sql->select(
+            "SELECT ISNULL(NULLIF(EmisorNombre, ''), EmisorRfc) AS proveedor, $cuenta,
+                    COUNT(DISTINCT CONVERT(VARCHAR(10), FechaImportacion, 23)) AS dias,
+                    CONVERT(VARCHAR(16), MAX(FechaImportacion), 120) AS ultima
+             FROM TG.dbo.FacturasRecibidas WITH (NOLOCK)
+             WHERE $where
+             GROUP BY ISNULL(NULLIF(EmisorNombre, ''), EmisorRfc)
+             ORDER BY SUM(CASE WHEN OrigenImportacion = 'aplicativo' THEN 1 ELSE 0 END) DESC, COUNT(*) DESC",
+            [$desde, $hasta]
+        );
+        return ['por_dia' => $por_dia, 'por_proveedor' => $por_proveedor];
+    }
+
+    /** Solo la usa la importación manual de PDF del aplicativo, por eso marca el origen. */
     public function update_ruta($facturaId, $ruta, $nombreArchivo) {
-        $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ? WHERE Id = ?";
+        $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ?, OrigenImportacion = 'aplicativo' WHERE Id = ?";
         return $this->sql->update($query, [$ruta, $nombreArchivo, $facturaId]);
     }
 
