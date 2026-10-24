@@ -362,11 +362,16 @@ class Income{
         [$from, $until, $desde, $hasta] = $this->conciliationRange();
         $empresa = $this->conciliationEmpresa();
         $model   = new ConciliacionVentaModel;
-        $cobros  = $model->cobros($from, $until, ($_POST['otros'] ?? '0') === '1');
-        $depositos = $model->depositos_para_cobros(
+        $cobros  = array_map(function ($r) {
+            $r['mov'] = ConciliacionCobros::movDeTxtref((string)$r['txtref']);
+            return $r;
+        }, $model->cobros($from, $until, ($_POST['otros'] ?? '0') === '1'));
+        $dias = fn(string $fecha, int $n) => date('Y-m-d', strtotime($fecha . sprintf(' %+d days', $n)));
+        $depositos = $model->depositos(
             array_column($cobros, 'mov'),
-            date('Y-m-d', strtotime($desde . ' -' . ConciliacionCobros::DIAS_ANTES . ' days')),
-            date('Y-m-d', strtotime($hasta . ' +' . ConciliacionCobros::DIAS_DESPUES . ' days'))
+            array_column($cobros, 'monto'),
+            $dias($desde, -ConciliacionCobros::DIAS_ANTES), $dias($hasta, ConciliacionCobros::DIAS_DESPUES),
+            $dias($desde, -ConciliacionCobros::DIAS_IMPORTE), $dias($hasta, ConciliacionCobros::DIAS_IMPORTE)
         );
 
         $data = [];
@@ -402,6 +407,7 @@ class Income{
                 'secuencia_banco' => $r['secuencia_banco'],
                 'abono'           => $r['abono'] === null ? null : round((float)$r['abono'], 2),
                 'diferencia'      => $r['diferencia'],
+                'candidatos'      => $r['candidatos'],
                 'contraparte'     => trim((string)$r['contraparte']),
                 'rfc_contraparte' => trim((string)$r['rfc_contraparte']),
                 'detalle_banco'   => trim((string)$r['detalle_banco']),
@@ -478,7 +484,7 @@ class Income{
     private function txtrefTags(string $txtref) : array {
         $tags = [];
         foreach (explode('@', $txtref) as $parte) {
-            if (strlen($parte) > 2 && $parte[1] === ':') $tags[$parte[0]] = trim(substr($parte, 2));
+            if (strlen($parte) >= 2 && $parte[1] === ':') $tags[$parte[0]] = trim(substr($parte, 2));
         }
         return $tags;
     }
@@ -646,10 +652,10 @@ public function balance_age()
                     'Gasolinera'           => $venta['Gasolinera'],
                     'Turno'              => $venta['Turno'],
                     'Mn'                 => round($venta['Mn'], 2),
+                    'Usd'                => round($venta['Usd'], 2),
+                    'TipoCambio'         => round($venta['TipoCambio'], 4),
                     'Dolares'            => round($venta['Dolares'], 2),
-                    'Dolares2'            => round($venta['Dolares2'], 2),
                     'Morralla'           => round($venta['Morralla'], 2),
-                    'Cheques'             => round($venta['Cheques'], 2),
                     'INTERL - Efectivo'  => round($venta['INTERL - Efectivo'], 2),
                 );
             }

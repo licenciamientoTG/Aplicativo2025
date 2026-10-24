@@ -1,0 +1,111 @@
+{# Monitoreo de importaciones (solo se consulta al expandir el card; en el home arranca abierto). Requiere `monitor` (usuario autorizado). #}
+{% if monitor %}
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center" role="button"
+                     data-bs-toggle="collapse" data-bs-target="#monitor-body" aria-expanded="{{ monitor_abierto ? 'true' : 'false' }}" aria-controls="monitor-body">
+                    <span class="fw-semibold" style="font-size:.85rem;"><i class="fas fa-chart-bar me-1"></i> Monitoreo de importaciones</span>
+                    <span class="d-flex align-items-center gap-2">
+                        <small id="monitor-resumen" class="text-muted"></small>
+                        <i class="fas fa-chevron-down text-muted"></i>
+                    </span>
+                </div>
+                <div class="collapse {{ monitor_abierto ? 'show' : '' }}" id="monitor-body">
+                    <div class="card-body">
+                        <div class="d-flex align-items-end gap-2 mb-3">
+                            <div>
+                                <label class="form-label fw-semibold mb-1" style="font-size:.78rem;">Mes</label>
+                                <input type="month" class="form-control form-control-sm" id="monitor-mes">
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="monitor-actualizar"><i class="fas fa-sync-alt"></i> Actualizar</button>
+                            <small class="text-muted ms-2">Aplicativo = importadas a mano. Correo/otros = el resto con fecha de importación (desde 2026-09-10).</small>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <div class="fw-semibold mb-1" style="font-size:.8rem;">Por día</div>
+                                <div class="table-responsive" style="max-height:35vh;">
+                                    <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
+                                        <thead style="background:#f8fafc; position:sticky; top:0;">
+                                            <tr><th>Día</th><th class="text-end">Total</th><th class="text-end">Correo/otros</th><th class="text-end">Aplicativo</th></tr>
+                                        </thead>
+                                        <tbody id="monitor-dias"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="fw-semibold mb-1" style="font-size:.8rem;">Por proveedor (ordenado por importadas a mano)</div>
+                                <div class="table-responsive" style="max-height:35vh;">
+                                    <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
+                                        <thead style="background:#f8fafc; position:sticky; top:0;">
+                                            <tr><th>Proveedor</th><th class="text-end">Total</th><th class="text-end">Correo/otros</th><th class="text-end">Aplicativo</th><th style="min-width:110px;">% a mano</th><th class="text-end">Días</th><th>Última</th></tr>
+                                        </thead>
+                                        <tbody id="monitor-proveedores"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+<script>
+(function () {
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const body = document.getElementById('monitor-body');
+    const inputMes = document.getElementById('monitor-mes');
+    const hoy = new Date();
+    inputMes.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+    let cargado = false;
+
+    async function cargar() {
+        const dias = document.getElementById('monitor-dias');
+        const provs = document.getElementById('monitor-proveedores');
+        dias.innerHTML = provs.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span> Consultando...</td></tr>';
+        try {
+            const resp = await fetch('/payment/import_monitor?mes=' + encodeURIComponent(inputMes.value), { credentials: 'include' });
+            const res = await resp.json();
+            if (!res.success) throw new Error(res.message || 'Error');
+            pintar(res);
+            cargado = true;
+        } catch (err) {
+            dias.innerHTML = provs.innerHTML = '';
+            (window.alertify ? alertify.error : alert)('No se pudo cargar el monitoreo: ' + err.message);
+        }
+    }
+
+    function pintar(res) {
+        const n = v => Number(v || 0);
+        const dia = res.por_dia || [];
+        const tot = dia.reduce((a, r) => a + n(r.total), 0);
+        const apl = dia.reduce((a, r) => a + n(r.aplicativo), 0);
+        document.getElementById('monitor-resumen').textContent = `${tot} importadas — ${tot - apl} correo/otros, ${apl} a mano`;
+
+        // Día hábil (lun–vie) sin nada por correo/otros = posible falla del correo. Solo días con registros.
+        document.getElementById('monitor-dias').innerHTML = dia.map(r => {
+            const d = new Date(r.dia + 'T00:00:00').getDay();
+            const sinCorreo = n(r.total) - n(r.aplicativo) === 0 && d >= 1 && d <= 5;
+            return `<tr class="${sinCorreo ? 'table-warning' : ''}" ${sinCorreo ? 'title="Día hábil sin importaciones por correo"' : ''}>
+                <td class="text-nowrap">${esc(r.dia)}</td>
+                <td class="text-end">${n(r.total)}</td>
+                <td class="text-end">${n(r.total) - n(r.aplicativo)}</td>
+                <td class="text-end">${n(r.aplicativo)}</td></tr>`;
+        }).join('') || '<tr><td colspan="4" class="text-center text-muted py-3">Sin importaciones en el mes.</td></tr>';
+
+        document.getElementById('monitor-proveedores').innerHTML = (res.por_proveedor || []).map(r => {
+            const pct = n(r.total) ? Math.round(n(r.aplicativo) * 100 / n(r.total)) : 0;
+            return `<tr>
+                <td>${esc(r.proveedor)}</td>
+                <td class="text-end">${n(r.total)}</td>
+                <td class="text-end">${n(r.total) - n(r.aplicativo)}</td>
+                <td class="text-end fw-semibold">${n(r.aplicativo)}</td>
+                <td><div class="progress" style="height:8px;" title="${pct}%"><div class="progress-bar bg-info" style="width:${pct}%"></div></div></td>
+                <td class="text-end">${n(r.dias)}</td>
+                <td class="text-nowrap"><small class="text-muted">${esc(r.ultima)}</small></td></tr>`;
+        }).join('') || '<tr><td colspan="7" class="text-center text-muted py-3">Sin importaciones en el mes.</td></tr>';
+    }
+
+    body.addEventListener('shown.bs.collapse', () => { if (!cargado) cargar(); });
+    if (body.classList.contains('show')) cargar();
+    document.getElementById('monitor-actualizar').addEventListener('click', cargar);
+    inputMes.addEventListener('change', cargar);
+})();
+</script>
+{% endif %}

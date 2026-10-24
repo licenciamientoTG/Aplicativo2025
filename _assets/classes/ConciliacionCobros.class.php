@@ -17,10 +17,17 @@
  *                          (uno o varios) son exactamente el abono de esa secuencia.
  *   4. Cuadra (MOV vecinos) — 2 o 3 MOV consecutivos cuyos cobros suman lo mismo
  *                          que sus abonos (cobros repartidos o intercambiados).
- *   5. Cuadra por importe — abono libre del mismo importe a ±3 días (se prefiere
- *                          la cuenta del MOV y la secuencia más cercana).
+ *   5. Cuadra por importe — abono libre del mismo importe a ±3 días, en cualquier
+ *                          cuenta. Primero los que tienen un solo candidato; con
+ *                          esos (y los de las reglas 1–4) se aprende qué cuenta usa
+ *                          cada estación, y en los que tienen varios candidatos se
+ *                          prefiere la cuenta del MOV, luego la de la estación, la
+ *                          secuencia más cercana y la fecha más cercana.
  *   Lo que queda: Diferencia (hay abono con esa secuencia pero no cuadra) o
  *   Sin banco. Además: Cancelado y Sin MOV (que también pasan por la regla 5).
+ *
+ * Solo Gemela Grande captura "MOV.<n>"; otras estaciones escriben "Movimiento: n"
+ * o nada, por eso movDeTxtref() acepta variantes y la regla 5 es la que las cubre.
  */
 class ConciliacionCobros {
 
@@ -38,8 +45,21 @@ class ConciliacionCobros {
     private array $depositos = [];
     /** @var array<int, array<int|string>> ids de depósito por secuencia */
     private array $porSecuencia = [];
+    /** @var array<int, array<int|string>> ids de depósito por importe en centavos */
+    private array $porImporte = [];
     /** @var array<int|string, bool> */
     private array $usados = [];
+    /** @var array<int, array<string, int>> codgas → cuenta → cobros ligados (para desempatar la regla 5) */
+    private array $cuentasEstacion = [];
+
+    /**
+     * MOV (secuencia del banco) de la nota del cobro: "MOV.22197", "MOV. 22673",
+     * "Movimiento: 93701", "Moviemineto: 7220"… null si no trae número.
+     */
+    public static function movDeTxtref(string $txtref): ?int {
+        $nota = preg_match('/@N:([^@]*)/', $txtref, $m) ? $m[1] : $txtref;
+        return preg_match('/\bmov[a-z]*\.?\s*:?\s*(\d{3,9})\b/i', $nota, $m) ? (int)$m[1] : null;
+    }
 
     /**
      * $cobros: filas con nro, codgas, fecha (Y-m-d), monto, mov (int|null), cancelado.
@@ -67,6 +87,7 @@ class ConciliacionCobros {
             if ($d['secuencia'] !== null && $d['secuencia'] !== '') {
                 $this->porSecuencia[(int)$d['secuencia']][] = $d['id'];
             }
+            $this->porImporte[(int)round($d['abono'] * 100)][] = $d['id'];
         }
     }
 
@@ -122,11 +143,17 @@ class ConciliacionCobros {
             }
         }
 
-        // 5: por importe y fecha (también los que no traen MOV)
-        foreach ($this->cobros as $i => $r) {
-            if ($r['estatus'] !== null) continue;
-            $dep = $this->mejorPorImporte($i);
-            if ($dep) $this->marcar([$i], $r['mov'] === null ? 'Cuadra por importe (sin MOV)' : 'Cuadra por importe', $dep);
+        // 5: por importe y fecha (también los que no traen MOV): primero los de un
+        // solo candidato, luego el resto ya sabiendo qué cuenta usa cada estación
+        foreach ([true, false] as $soloUnicos) {
+            foreach ($this->cobros as $i => $r) {
+                if ($r['estatus'] !== null) continue;
+                $cand = $this->candidatosPorImporte($i);
+                if (!$cand || ($soloUnicos && count($cand) > 1)) continue;
+                $dep = $this->mejorPorImporte($i, $cand);
+                $this->marcar([$i], $r['mov'] === null ? 'Cuadra por importe (sin MOV)' : 'Cuadra por importe', $dep);
+                $this->cobros[$i]['candidatos'] = count($cand);
+            }
         }
 
         // Lo que queda: si al quitar los que cuadraron por importe el resto ya es
@@ -200,21 +227,35 @@ class ConciliacionCobros {
         return $mejor;
     }
 
-    /** Depósito libre del mismo importe a ±DIAS_IMPORTE; prefiere la cuenta del MOV y la secuencia más cercana. */
-    private function mejorPorImporte(int $i): ?array {
+    /** Depósitos libres del mismo importe que el cobro $i a ±DIAS_IMPORTE días. */
+    private function candidatosPorImporte(int $i): array {
         $r = $this->cobros[$i];
-        if ($r['monto'] <= 0) return null;
+        if ($r['monto'] <= 0) return [];
+        $out = [];
+        foreach ($this->porImporte[(int)round($r['monto'] * 100)] ?? [] as $id) {
+            if (isset($this->usados[$id])) continue;
+            if (abs(self::dias($r['fecha'], $this->depositos[$id]['fecha'])) <= self::DIAS_IMPORTE) $out[] = $this->depositos[$id];
+        }
+        return $out;
+    }
+
+    /** De los candidatos: la cuenta del MOV, luego la que más usa la estación, la secuencia y la fecha más cercanas. */
+    private function mejorPorImporte(int $i, array $candidatos): ?array {
+        $r = $this->cobros[$i];
         $cuentaMov = null;
         if ($r['mov'] !== null) {
             foreach ($this->porSecuencia[$r['mov']] ?? [] as $id) { $cuentaMov = $this->depositos[$id]['cuenta']; break; }
         }
+        $usoEstacion = $this->cuentasEstacion[(int)($r['codgas'] ?? 0)] ?? [];
         $mejor = null; $clave = null;
-        foreach ($this->depositos as $id => $d) {
-            if (isset($this->usados[$id]) || abs($d['abono'] - $r['monto']) > self::TOL_EXACTO) continue;
-            $dd = abs(self::dias($r['fecha'], $d['fecha']));
-            if ($dd > self::DIAS_IMPORTE) continue;
+        foreach ($candidatos as $d) {
             $dist = ($r['mov'] !== null && $d['secuencia'] !== null && $d['secuencia'] !== '') ? abs((int)$d['secuencia'] - $r['mov']) : PHP_INT_MAX;
-            $k = [$cuentaMov !== null && $d['cuenta'] === $cuentaMov ? 0 : 1, $dist, $dd];
+            $k = [
+                $cuentaMov !== null && $d['cuenta'] === $cuentaMov ? 0 : 1,
+                -($usoEstacion[$d['cuenta']] ?? 0),
+                $dist,
+                abs(self::dias($r['fecha'], $d['fecha'])),
+            ];
             if ($clave === null || $k < $clave) { $mejor = $d; $clave = $k; }
         }
         return $mejor;
@@ -224,6 +265,10 @@ class ConciliacionCobros {
         $suma = $this->suma($idx);
         if ($dep && $estatus !== 'Diferencia') $this->usados[$dep['id']] = true;
         foreach ($idx as $i) {
+            if ($dep && $estatus !== 'Diferencia') {
+                $g = (int)($this->cobros[$i]['codgas'] ?? 0);
+                $this->cuentasEstacion[$g][$dep['cuenta']] = ($this->cuentasEstacion[$g][$dep['cuenta']] ?? 0) + 1;
+            }
             $this->cobros[$i] = array_merge($this->cobros[$i], [
                 'estatus'         => $estatus,
                 'deposito_id'     => $dep['id'] ?? null,
@@ -238,6 +283,7 @@ class ConciliacionCobros {
                 'cobros_mov'      => count($idx),
                 'monto_mov'       => $suma,
                 'diferencia'      => $dep ? ($diferencia ?? round($dep['abono'] - $suma, 2)) : null,
+                'candidatos'      => $dep ? 1 : 0,
             ]);
         }
     }

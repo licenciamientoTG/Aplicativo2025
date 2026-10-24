@@ -347,7 +347,7 @@ public function buscarPorUUIDs($uuids) {
              FROM TG.dbo.FacturasRecibidas WITH (NOLOCK)
              WHERE $where
              GROUP BY CONVERT(VARCHAR(10), FechaImportacion, 23)
-             ORDER BY dia",
+             ORDER BY dia DESC",
             [$desde, $hasta]
         );
         $por_proveedor = $this->sql->select(

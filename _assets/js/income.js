@@ -1821,23 +1821,31 @@ async function cash_sales_table(){
             { data: 'Fecha' },
             { data: 'Gasolinera' },
             { data: 'Turno' },
-            { data: 'Dolares' },
-            { data: 'Dolares2' },
-            { data: 'Mn' },
-            { data: 'Morralla' },
-            { data: 'Cheques' },
-            { data: 'INTERL - Efectivo' },
+            { data: 'Usd', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, 'US$') },
+            { data: 'TipoCambio', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 4, '$') },
+            { data: 'Dolares', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+            { data: 'Mn', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+            { data: 'Morralla', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+            { data: 'INTERL - Efectivo', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
         ],
         deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-        },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
         },
-        footerCallback: function (row, data, start, end, display) {
+        // Totales de las filas filtradas; el tipo de cambio se pondera (pesos / dólares)
+        footerCallback: function () {
+            let api = this.api();
+            let sum = (col) => api.column(col, { search: 'applied' }).data().reduce((a, b) => a + (parseFloat(b) || 0), 0);
+            let money = (n, dec = 2, prefix = '$') => prefix + n.toLocaleString('es-MX', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+            let usd = sum(3);
+            let dolares = sum(5);
+            $(api.column(0).footer()).html('Totales');
+            $(api.column(1).footer()).html('');
+            $(api.column(2).footer()).html('');
+            $(api.column(3).footer()).html(money(usd, 2, 'US$'));
+            $(api.column(4).footer()).html(usd !== 0 ? money(dolares / usd, 4) : '');
+            $(api.column(5).footer()).html(money(dolares));
+            [6, 7, 8].forEach((col) => $(api.column(col).footer()).html(money(sum(col))));
         }
     });
 }

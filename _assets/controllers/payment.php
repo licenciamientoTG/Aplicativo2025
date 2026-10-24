@@ -5360,12 +5360,11 @@ class Payment
             $this->estacionesModel->get_stations(),
             fn($s) => (int)$s['Codigo'] > 0
         ));
-        $monitor = $this->es_usuario_monitor_importacion();
-        echo $this->twig->render($this->route . 'import_invoices.html', compact('emisores', 'stations', 'monitor'));
+        echo $this->twig->render($this->route . 'import_invoices.html', compact('emisores', 'stations'));
     }
 
     // Único usuario que ve el monitoreo de importaciones (consulta pesada; no se ofrece a los demás).
-    private const MONITOR_IMPORTACION_USER_IDS = [6296]; // alejandro.martinez
+    public const MONITOR_IMPORTACION_USER_IDS = [6296]; // alejandro.martinez
 
     private function es_usuario_monitor_importacion(): bool
     {

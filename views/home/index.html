@@ -123,6 +123,39 @@
 </div>
 {% endif %}
 
+{% if monitor %}
+<div class="container-fluid px-4 pt-3">
+    <div class="row">
+        <div class="col-12 col-lg-6">
+            {% include 'views/payment/import_monitor.html' with {monitor_abierto: false} %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if monitor and nas_prueba %}
+<div class="container-fluid px-4 pt-3">
+    <div class="row">
+        <div class="col-12 col-lg-6">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white">
+                    <span class="fw-semibold" style="font-size:.85rem;"><i class="fas fa-hdd me-1"></i> Prueba de descarga desde el NAS</span>
+                    <small class="text-muted ms-2">Premiergas, 22-oct (depositados por CorreoFacturasNas.py)</small>
+                </div>
+                <div class="list-group list-group-flush" style="font-size:.82rem;">
+                    {% for nombre in nas_prueba %}
+                    <a class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-1" href="{{ url('home.nas_prueba', {n: loop.index0}) }}">
+                        <i class="fas {{ nombre ends with '.pdf' ? 'fa-file-pdf text-danger' : 'fa-file-code text-primary' }}"></i>
+                        <span class="text-truncate">{{ nombre }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {# <div class="row">
     <div class="col-8">
         <div class="card flex-fill w-100">

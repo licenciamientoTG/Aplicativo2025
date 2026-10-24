@@ -304,6 +304,7 @@
           <tr>
             <th>Estatus</th><th>MOV</th><th>Cobros</th><th>Clientes</th><th>Monto cobros</th>
             <th>Banco</th><th>Cuenta</th><th>Fecha banco</th><th>Secuencia</th><th>Depósito</th><th>Diferencia</th>
+            <th title="Depósitos libres del mismo importe a ±3 días cuando se ligó por importe (más de 1 = se desempató por cuenta y fecha)">Candidatos</th>
             <th>Ordenante en banco</th><th>RFC</th><th>Detalle banco</th><th>Folios de cobro</th>
           </tr>
         </thead>
@@ -608,6 +609,9 @@ $(function () {
     { data: 'secuencia', className: 'cv-mono' },
     { data: 'abono', className: 'cv-monto', render: monto },
     { data: 'diferencia', className: 'cv-monto', render: montoDif },
+    { data: 'candidatos', className: 'cv-monto', render: function (d, t) {
+        return t === 'display' ? (d > 1 ? '<span class="cv-neg">' + d + '</span>' : (d || '')) : d;
+      } },
     { data: 'contraparte', className: 'cv-wrap', render: texto },
     { data: 'rfc', className: 'cv-mono', render: texto },
     { data: 'detalle', className: 'cv-wrap', render: texto },
@@ -716,6 +720,7 @@ $(function () {
         grupos[k] = {
           estatus: r.estatus, movs: [], cobros: 0, clientes: [], monto: 0, banco: r.banco, cuenta: r.cuenta,
           fecha_banco: r.fecha_banco, secuencia: r.secuencia_banco, abono: r.abono, diferencia: r.diferencia,
+          candidatos: r.estatus.indexOf('por importe') > 0 ? r.candidatos : null,
           contraparte: r.contraparte, rfc: r.rfc_contraparte, detalle: r.detalle_banco, folios: [],
         };
         orden.push(k);

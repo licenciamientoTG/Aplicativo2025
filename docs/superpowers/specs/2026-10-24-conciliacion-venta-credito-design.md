@@ -55,9 +55,21 @@ Factura cancelada: `txtref` empieza con `@N:CANCELAD`. Sin timbrar: `satuid` vac
 4. Consumo propio y bonificaciones (Consumos propios).
 5. Facturas de crédito (Control Gas): por factura, con despachos del mes y de otros meses.
 6. Cobros (Cobros agosto).
-7. Cobros vs banco (Conciliación cobros): agrupado por MOV contra `movimientos_bancarios.secuencia` (abono > 0,
-   ventana −60/+15 días; se prefiere el importe exacto). Estatus: Cuadra, Diferencia, Sin banco, Sin MOV,
-   Cancelado. El MOV se agrupa con los cobros de todas las estaciones, aunque la pantalla filtre por razón social.
+7. Cobros vs banco (Conciliación cobros): `ConciliacionCobros` (clase sin BD, `tests/ConciliacionCobrosTest.php`)
+   cruza en pasadas, de la más segura a la menos, y usa cada depósito una sola vez:
+   - Cuadra: suma del MOV = abono con esa secuencia (ventana −60/+15 días).
+   - Cuadra (centavos): hasta $1 de diferencia.
+   - Cuadra (MOV compartido): un subconjunto de los cobros del MOV suma el abono.
+   - Cuadra (MOV vecinos): 2–3 MOV consecutivos que juntos cuadran.
+   - Cuadra por importe: abono libre del mismo importe a ±3 días en cualquier cuenta. Primero los de un solo
+     candidato; luego desempata la cuenta del MOV, la cuenta que ya usa la estación, la secuencia y la fecha.
+
+   Lo que queda: Diferencia, Sin banco, Sin MOV, Cancelado.
+
+   El cruce corre con los cobros de todas las estaciones (un MOV puede juntar varias) y luego se filtra la razón
+   social. Solo Gemela Grande captura "MOV.n"; las demás estaciones ligan por importe.
+
+   Agosto DIAZ GAS: 504 de 513 cuadran; el Excel cuadraba 2 porque le faltaba la cuenta Banorte 1155446527.
 8. Banco (Banco 2791): depósitos del mes de las cuentas que recibieron cobros, marcando cuáles quedaron ligados.
 
 Los tabs 1, 2, 5, 6 y 7 se cargan con "Buscar"; los tabs 3, 4 y 8 se cargan al abrirlos.

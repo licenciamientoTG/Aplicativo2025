@@ -228,10 +228,10 @@ class ConciliacionVentaModel extends Model {
     }
 
     /**
-     * Cobros del rango (tip 4) de TODAS las estaciones, con su MOV ("@N:MOV.<n>"
-     * en txtref = secuencia del estado de cuenta), monto y facturas que paga.
-     * Son todas porque un MOV puede juntar cobros de varias estaciones; el cruce
-     * con el banco (ConciliacionCobros) va completo y la razón social se filtra
+     * Cobros del rango (tip 4) de TODAS las estaciones, con monto, facturas que
+     * paga y txtref (de ahí sale el MOV: ConciliacionCobros::movDeTxtref). Son
+     * todas porque un MOV puede juntar cobros de varias estaciones; el cruce con
+     * el banco (ConciliacionCobros) va completo y la razón social se filtra
      * después con la columna empresa.
      * $otros: incluir también Cobranza Administrativa y Cobro Arrendamiento.
      */
@@ -243,14 +243,10 @@ class ConciliacionVentaModel extends Model {
             DROP TABLE IF EXISTS #c, #m, #a;
 
             SELECT c.codgas, c.nro, c.fch, c.codopr, c.subope, c.satuid, x.t,
-                   CASE WHEN x.t LIKE '@N:CANCELAD%' THEN 1 ELSE 0 END AS cancelado,
-                   CASE WHEN p.i > 0
-                        THEN TRY_CAST(NULLIF(LTRIM(RTRIM(SUBSTRING(x.t, p.i + 4, CHARINDEX('@', x.t, p.i + 4) - (p.i + 4)))), '') AS int)
-                   END AS mov
+                   CASE WHEN x.t LIKE '@N:CANCELAD%' THEN 1 ELSE 0 END AS cancelado
               INTO #c
               FROM SG12.dbo.DocumentosC c WITH (NOLOCK)
-             CROSS APPLY (SELECT REPLACE(REPLACE(CAST(c.txtref AS varchar(1000)), CHAR(13), ' '), CHAR(10), ' ') + '@' AS t) x
-             CROSS APPLY (SELECT CHARINDEX('MOV.', x.t) AS i) p
+             CROSS APPLY (SELECT REPLACE(REPLACE(CAST(c.txtref AS varchar(1000)), CHAR(13), ' '), CHAR(10), ' ') AS t) x
              WHERE c.tip = 4
                AND c.subope IN ({$subopes})
                AND c.fch BETWEEN @d AND @h
@@ -271,7 +267,7 @@ class ConciliacionVentaModel extends Model {
 
             SELECT c.codgas, gs.abr AS estacion, EMP.cod AS empresa, c.nro,
                    CONVERT(varchar(10), DATEADD(day, c.fch - 1, '19000101'), 23) AS fecha,
-                   c.codopr, cl.den AS cliente, ef.den AS tipo, c.satuid, c.t AS txtref, c.cancelado, c.mov,
+                   c.codopr, cl.den AS cliente, ef.den AS tipo, c.satuid, c.t AS txtref, c.cancelado,
                    ISNULL(m.monto, 0) AS monto, a.facturas
               FROM #c c
               LEFT JOIN #m m ON m.codgas = c.codgas AND m.nro = c.nro
@@ -288,34 +284,29 @@ class ConciliacionVentaModel extends Model {
     }
 
     /**
-     * Depósitos (abonos) entre dos fechas 'Y-m-d' de las cuentas que recibieron
-     * cobros: las que tienen algún abono cuya secuencia es uno de los $movs.
-     * Es la bolsa contra la que ConciliacionCobros cruza (por secuencia y por importe).
+     * Depósitos (abonos) de todas las cuentas de Movimientos Bancos que pueden
+     * ser de algún cobro: los que tienen la secuencia de un MOV ($movs, entre
+     * $desde y $hasta) y los del mismo importe que un cobro ($montos, entre
+     * $desdeImporte y $hastaImporte). Es la bolsa contra la que cruza
+     * ConciliacionCobros; traer todos los abonos de la ventana (~25 mil) tardaba 10 s.
+     * Fechas 'Y-m-d'. Las listas van en línea ya saneadas (intval / %.2f):
+     * SG12 está en nivel de compatibilidad 110, sin STRING_SPLIT.
      */
-    public function depositos_para_cobros(array $movs, string $desde, string $hasta): array {
-        $movs = array_values(array_unique(array_filter(array_map('intval', $movs), fn($m) => $m > 0)));
-        if (!$movs) return [];
-        // Enteros ya saneados con intval: van en línea (SG12 está en nivel de compatibilidad 110, sin STRING_SPLIT).
-        $lista = implode(',', $movs);
-        $query = "
-            SET NOCOUNT ON;
-            DECLARE @fd date = ?, @fh date = ?;
-            WITH cuentas AS (
-                SELECT DISTINCT mb.banco, mb.cuenta
-                  FROM TG.dbo.movimientos_bancarios mb WITH (NOLOCK)
-                 WHERE mb.secuencia IN ({$lista})
-                   AND mb.fecha BETWEEN @fd AND @fh AND mb.abono > 0
-            )
-            SELECT mb.id, mb.banco, mb.cuenta, CONVERT(varchar(10), mb.fecha, 23) AS fecha, mb.secuencia, mb.abono,
-                   mb.nombre_contraparte, mb.rfc_contraparte,
-                   LEFT(COALESCE(NULLIF(mb.descripcion_larga, ''), NULLIF(mb.concepto, ''), mb.descripcion), 300) AS detalle
-              FROM TG.dbo.movimientos_bancarios mb WITH (NOLOCK)
-              JOIN cuentas c ON c.banco = mb.banco AND c.cuenta = mb.cuenta
-             WHERE mb.fecha BETWEEN @fd AND @fh
-               AND mb.abono > 0
-             ORDER BY mb.cuenta, mb.fecha, mb.secuencia
-            OPTION (RECOMPILE);";
-        return $this->sql->select($query, [$desde, $hasta]) ?: [];
+    public function depositos(array $movs, array $montos, string $desde, string $hasta, string $desdeImporte, string $hastaImporte): array {
+        $movs   = array_values(array_unique(array_filter(array_map('intval', $movs), fn($m) => $m > 0)));
+        $montos = array_values(array_unique(array_map(fn($m) => sprintf('%.2f', (float)$m), array_filter($montos, fn($m) => (float)$m > 0))));
+        if (!$movs && !$montos) return [];
+        $porMov    = $movs   ? 'secuencia IN (' . implode(',', $movs) . ')' : '1 = 0';
+        $porImporte = $montos ? '(fecha BETWEEN ? AND ? AND abono IN (' . implode(',', $montos) . '))' : '1 = 0';
+        $query = "SELECT id, banco, cuenta, CONVERT(varchar(10), fecha, 23) AS fecha, secuencia, abono,
+                         nombre_contraparte, rfc_contraparte,
+                         LEFT(COALESCE(NULLIF(descripcion_larga, ''), NULLIF(concepto, ''), descripcion), 300) AS detalle
+                    FROM TG.dbo.movimientos_bancarios WITH (NOLOCK)
+                   WHERE fecha BETWEEN ? AND ?
+                     AND abono > 0
+                     AND ({$porMov} OR {$porImporte})
+                   ORDER BY cuenta, fecha, secuencia";
+        return $this->sql->select($query, $montos ? [$desde, $hasta, $desdeImporte, $hastaImporte] : [$desde, $hasta]) ?: [];
     }
 
     /** Movimientos (abonos y cargos) de las cuentas indicadas entre dos fechas 'Y-m-d'. */

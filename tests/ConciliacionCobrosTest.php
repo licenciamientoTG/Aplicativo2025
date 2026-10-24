@@ -102,4 +102,23 @@ $r = porNro(ConciliacionCobros::conciliar(
 ));
 check('Sin MOV por importe: el más cercano en fecha', $r[1]['estatus'] === 'Cuadra por importe (sin MOV)' && $r[1]['deposito_id'] === 11);
 
+// MOV desde el txtref: Gemela Grande escribe "MOV.n"; otras estaciones "Movimiento: n" o nada
+check('movDeTxtref: MOV.22197', ConciliacionCobros::movDeTxtref('@B:X@N:MOV.22197@M:03') === 22197);
+check('movDeTxtref: MOV. 22673 (con espacio)', ConciliacionCobros::movDeTxtref('@N:MOV. 22673@M:03') === 22673);
+check('movDeTxtref: Movimiento: 93701', ConciliacionCobros::movDeTxtref('@N:Movimiento: 93701') === 93701);
+check('movDeTxtref: MOV. vacío', ConciliacionCobros::movDeTxtref('@N:MOV.@M:04') === null);
+check('movDeTxtref: Referencia no es MOV', ConciliacionCobros::movDeTxtref('@N:Referencia: 8735384') === null);
+check('movDeTxtref: solo mira la nota (@N)', ConciliacionCobros::movDeTxtref('@B:MOVIL 123456@N:@M:03') === null);
+
+// Por importe con varios candidatos: gana la cuenta que la estación ya usó en un candidato único
+$c1 = cobro(1, null, 100.00, '2026-08-05'); $c1['codgas'] = 24;
+$c2 = cobro(2, null, 500.00, '2026-08-05'); $c2['codgas'] = 24;
+$r = porNro(ConciliacionCobros::conciliar(
+    [$c2, $c1],
+    [deposito(10, null, 100.00, '2026-08-05', 'SANT-24'),
+     deposito(11, null, 500.00, '2026-08-05', 'OTRA'), deposito(12, null, 500.00, '2026-08-06', 'SANT-24')]
+));
+check('Por importe: único primero', $r[1]['deposito_id'] === 10 && $r[1]['candidatos'] === 1);
+check('Por importe: desempata con la cuenta de la estación', $r[2]['deposito_id'] === 12 && $r[2]['candidatos'] === 2);
+
 finish();

@@ -466,10 +466,12 @@
           <span class="align-middle">Reportes</span>
         </a>
         <ul id="income_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {# Oculto 2026-10-24: reporte sin terminar (no hay JS ni endpoint de datos); reactivar al completarlo
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/dolar_sales">Ventas Dolares
             </a>
           </li>
+          #}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/cash_sales">Ventas Contado
             </a>
@@ -481,12 +483,15 @@
             <a class="sidebar-link" href="{{ url('income.conciliation') }}">Conciliación</a>
           </li>
 
+          {# Oculto 2026-10-24: el SP sp_obtener_despachos_duplicados ignora la fecha y no particiona por tarjeta; reactivar al corregirlo
           {% if authorized(15) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/duplicate_dispatches">Despachos duplicados
             </a>
           </li>
-          {% endif %} {% if authorized(16) %}
+          {% endif %}
+          #}
+          {% if authorized(16) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/credit_debit_dispatches">Despachos Crédito y Débito
             </a>
