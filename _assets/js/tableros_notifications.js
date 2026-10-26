@@ -4,7 +4,6 @@
   const dropdown = document.getElementById('notificationsDropdown');
   if (!dropdown) return;
 
-  const apiRoot = '/tableros_api';
   const csrfToken = dropdown.dataset.csrfToken || document.getElementById('tablerosApp')?.dataset.csrfToken || '';
   const list = document.getElementById('notificationsList');
   const header = document.getElementById('notificationsHeader');
@@ -20,7 +19,7 @@
   };
 
   async function api(path, options = {}) {
-    const response = await fetch(`${apiRoot}${path}`, {
+    const response = await fetch(path, {
       credentials: 'same-origin',
       headers: {
         Accept: 'application/json',
@@ -105,7 +104,7 @@
         row.addEventListener('click', async (event) => {
           event.preventDefault();
           try {
-            await api('/mark_notification_read', {
+            await api(routeUrl('tableros_api.mark_notification_read'), {
               method: 'POST',
               body: JSON.stringify({ csrf_token: csrfToken, notification_id: id })
             });
@@ -124,7 +123,7 @@
     if (loading) return;
     loading = true;
     try {
-      const result = await api('/notifications');
+      const result = await api(routeUrl('tableros_api.notifications'));
       const data = result.data && !Array.isArray(result.data) ? result.data : result;
       const items = Array.isArray(data.items) ? data.items : Array.isArray(result.data) ? result.data : [];
       const unreadCount = data.unread_count ?? items.filter(isUnread).length;

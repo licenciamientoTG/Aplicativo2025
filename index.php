@@ -39,7 +39,8 @@ if (!isset($_SESSION['tg_user']) && !$routeIsPublic && !in_array($currentPath, $
     if ($isAjax) {
         http_response_code(401);
         header('Content-Type: application/json; charset=utf-8');
-        if ($currentPath === '/tableros_api' || str_starts_with($currentPath, '/tableros_api/')) {
+        if ($currentPath === '/tableros_api' || str_starts_with($currentPath, '/tableros_api/')
+            || $currentPath === '/tableros-api' || str_starts_with($currentPath, '/tableros-api/')) {
             echo json_encode([
                 'success' => false,
                 'code' => 'unauthenticated',

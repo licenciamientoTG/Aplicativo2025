@@ -51,7 +51,10 @@
   const app = document.getElementById('tablerosApp');
   if (!app) return;
 
-  const apiRoot = '/tableros_api';
+  function apiUrl(name, params) {
+    return routeUrl(`tableros_api.${name}`, params);
+  }
+
   const csrfToken = app.dataset.csrfToken || '';
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
@@ -283,13 +286,13 @@
     button.disabled = true;
     try {
       if (action === 'restore' || action === 'permanent') {
-        const endpoint = action === 'restore' ? '/restore_trash' : '/permanently_delete_trash';
-        await post(endpoint, { entry_id: entityId });
+        const endpoint = action === 'restore' ? 'restore_trash' : 'permanently_delete_trash';
+        await post(apiUrl(endpoint), { entry_id: entityId });
       } else if (action === 'restore_archive') {
-        await post('/restore_archive', { entry_id: button.dataset.recycleEntry || entityId });
+        await post(apiUrl('restore_archive'), { entry_id: button.dataset.recycleEntry || entityId });
       } else {
         const payload = { entity_type: entityType, entity_id: entityId, ...(boardId ? { board_id: boardId } : {}) };
-        await post(archive ? '/archive' : '/trash', payload);
+        await post(archive ? apiUrl('archive') : apiUrl('trash'), payload);
       }
       if (action === 'trash' || archive) {
         if (entityType === 'board' && String(state.board?.id) === String(entityId)) {
@@ -326,7 +329,7 @@
     status.textContent = 'Cargando elementos…';
     try {
       const workspaceId = mode === 'trash' && state.selectedWorkspaceId ? `?workspace_id=${encodeURIComponent(state.selectedWorkspaceId)}` : '';
-      const result = await request(`/${mode}${workspaceId}`);
+      const result = await request(`${apiUrl(mode)}${workspaceId}`);
       const entries = Array.isArray(result.data) ? result.data : (Array.isArray(result.data?.entries) ? result.data.entries : []);
       state.recycleEntries = entries;
       if (mode === 'trash') populateTrashFilters(entries);
@@ -425,7 +428,7 @@
   }
 
   async function request(path, options = {}) {
-    const response = await fetch(`${apiRoot}${path}`, {
+    const response = await fetch(path, {
       cache: 'no-store',
       credentials: 'same-origin',
       headers: {
@@ -876,7 +879,7 @@
     els.boardsEmpty.hidden = true;
     if (els.boardVisibilityManager) els.boardVisibilityManager.hidden = pageMode !== 'manage';
     try {
-      const structureResult = await request('/structure');
+      const structureResult = await request(apiUrl('structure'));
       const structure = structureResult.data || {};
       state.boards = Array.isArray(structure.boards) ? structure.boards : [];
       state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
@@ -1009,11 +1012,11 @@
     button.disabled = true;
     els.workspaceManagementStatus.textContent = `${archive ? 'Archivando' : 'Eliminando'} ${name}…`;
     try {
-      await post(archive ? '/archive' : '/trash', { entity_type: 'workspace', entity_id: workspace.id });
+      await post(archive ? apiUrl('archive') : apiUrl('trash'), { entity_type: 'workspace', entity_id: workspace.id });
       state.workspaces = state.workspaces.filter((entry) => String(entry.id) !== String(workspace.id));
       renderWorkspaceManagement();
       try {
-        const result = await request('/structure');
+        const result = await request(apiUrl('structure'));
         const structure = result.data || {};
         state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
         state.boards = Array.isArray(structure.boards) ? structure.boards : [];
@@ -1118,13 +1121,13 @@
     button.textContent = 'Guardando…';
     els.boardVisibilityStatus.textContent = `Guardando la visibilidad de ${board.name || 'el tablero'}…`;
     try {
-      await post('/update_board_visibility', { board_id: board.id, visibility });
+      await post(apiUrl('update_board_visibility'), { board_id: board.id, visibility });
       board.visibility = visibility;
       if (state.board && String(state.board.id) === String(boardId)) state.board.visibility = visibility;
       renderBoardNav();
       let refreshError = null;
       try {
-        const result = await request('/structure');
+        const result = await request(apiUrl('structure'));
         const structure = result.data || {};
         state.boards = Array.isArray(structure.boards) ? structure.boards : [];
         state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
@@ -1175,7 +1178,7 @@
     els.boardWorkspace.hidden = true;
     els.boardsEmpty.hidden = true;
     try {
-      const result = await request(`/board/${encodeURIComponent(id)}`);
+      const result = await request(apiUrl('board', { id: id }));
       if (requestId !== state.activeBoardRequest) return;
       const data = result.data || {};
       state.board = data.board || null;
@@ -1638,7 +1641,7 @@
       const params = new URLSearchParams({ q: term, board_id: String(state.board?.id || '') });
       if (reveal) openResults('Buscando personas…');
       try {
-        const response = await request(`/users?${params.toString()}`);
+        const response = await request(`${apiUrl('users')}?${params.toString()}`);
         if (!document.contains(wrapper) || currentRequest !== requestNumber) return;
         const users = Array.isArray(response.data) ? response.data : [];
         users.forEach((user) => { if (people.has(String(user.id))) people.set(String(user.id), user); });
@@ -2231,7 +2234,7 @@
       form.dataset.saving = '1';
       input.disabled = true;
       try {
-        const result = await post('/update_item_name', {
+        const result = await post(apiUrl('update_item_name'), {
           board_id: state.board.id,
           item_id: item.id,
           name,
@@ -2411,21 +2414,21 @@
     if (file.version_id) query.set('version_id', String(file.version_id));
     if (preview) query.set('preview', '1');
     const suffix = query.toString();
-    return `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+    return `${apiUrl('download_file', { id: file.file_id })}${suffix ? `?${suffix}` : ''}`;
   }
 
   function thumbnailFileEndpoint(file) {
     const query = new URLSearchParams();
     if (file.version_id) query.set('version_id', String(file.version_id));
     const suffix = query.toString();
-    return `${apiRoot}/thumbnail_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+    return `${apiUrl('thumbnail_file', { id: file.file_id })}${suffix ? `?${suffix}` : ''}`;
   }
 
   function imagePreviewEndpoint(file) {
     const query = new URLSearchParams();
     if (file.version_id) query.set('version_id', String(file.version_id));
     const suffix = query.toString();
-    return `${apiRoot}/preview_image_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+    return `${apiUrl('preview_image_file', { id: file.file_id })}${suffix ? `?${suffix}` : ''}`;
   }
 
   async function fetchImagePreviewBlob(file) {
@@ -2456,7 +2459,7 @@
     const query = new URLSearchParams();
     if (file.version_id) query.set('version_id', String(file.version_id));
     const suffix = query.toString();
-    return `${apiRoot}/preview_file/${encodeURIComponent(file.file_id)}${suffix ? `?${suffix}` : ''}`;
+    return `${apiUrl('preview_file', { id: file.file_id })}${suffix ? `?${suffix}` : ''}`;
   }
 
   function clearFilePreviewObjectUrl() {
@@ -2499,7 +2502,7 @@
       status.setAttribute('role', 'status');
       panel.append(status);
       try {
-        const result = await request(`/file_comments/${encodeURIComponent(file.file_id)}`);
+        const result = await request(apiUrl('file_comments', { id: file.file_id }));
         if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
         const comments = Array.isArray(result.data) ? result.data : [];
         status.textContent = comments.length ? '' : 'Todavía no hay comentarios.';
@@ -2520,7 +2523,7 @@
               const stickerId = sticker?.id ?? sticker;
               if (stickerId == null) return;
               const image = document.createElement('img');
-              image.src = `${apiRoot}/sticker_file/${encodeURIComponent(stickerId)}`;
+              image.src = apiUrl('sticker_file', { id: stickerId });
               image.alt = sticker?.name || 'Sticker';
               image.loading = 'lazy'; image.decoding = 'async';
               stickers.append(image);
@@ -2617,7 +2620,7 @@
         stickerList.replaceChildren();
         selectedStickers.forEach((entry, index) => {
           const chip = makeElement('span', 'boards-preview-pending-sticker');
-          const image = document.createElement('img'); image.src = entry.localUrl || `${apiRoot}/sticker_file/${encodeURIComponent(entry.id)}`;
+          const image = document.createElement('img'); image.src = entry.localUrl || apiUrl('sticker_file', { id: entry.id });
           image.alt = entry.name; image.loading = 'lazy'; image.decoding = 'async';
           const remove = makeElement('button');
           remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
@@ -2634,7 +2637,7 @@
         stickerUploadButton.disabled = true;
         try {
           const payload = new FormData(); payload.set('file', selectedFile); payload.set('csrf_token', csrfToken); payload.set('name', name);
-          const uploaded = await multipartPost('/upload_sticker', payload);
+          const uploaded = await multipartPost(apiUrl('upload_sticker'), payload);
           const sticker = uploaded.data || {};
           const id = sticker?.id ?? sticker?.sticker_id;
           if (id == null) throw new Error('El servidor no devolvió el identificador del sticker.');
@@ -2659,7 +2662,7 @@
         const option = makeElement('button', 'boards-preview-sticker-option'); option.type = 'button';
         option.dataset.stickerId = String(sticker.id);
         option.setAttribute('role', 'option'); option.setAttribute('aria-label', `Agregar ${sticker.name || 'sticker'}`);
-        const image = document.createElement('img'); image.src = `${apiRoot}/sticker_file/${encodeURIComponent(sticker.id)}`;
+        const image = document.createElement('img'); image.src = apiUrl('sticker_file', { id: sticker.id });
         image.alt = sticker.name || 'Sticker'; image.loading = 'lazy'; image.decoding = 'async';
         option.append(image);
         option.addEventListener('click', () => selectSticker(sticker));
@@ -2669,7 +2672,7 @@
         if (stickerCatalog) return Promise.resolve(stickerCatalog);
         if (stickerCatalogPromise) return stickerCatalogPromise;
         stickerStatus.textContent = 'Cargando stickers…';
-        stickerCatalogPromise = request('/stickers').then((result) => {
+        stickerCatalogPromise = request(apiUrl('stickers')).then((result) => {
           stickerCatalog = Array.isArray(result.data) ? result.data : [];
           stickerCatalog.forEach(renderStickerOption);
           defaultStickerButton.hidden = stickerCatalog.some((sticker) => sticker.name === 'Sticker predeterminado');
@@ -2752,7 +2755,7 @@
         const requestId = ++mentionRequestId;
         const params = new URLSearchParams({ board_id: String(state.board.id), q: trigger.query });
         try {
-          const result = await request(`/users?${params.toString()}`);
+          const result = await request(`${apiUrl('users')}?${params.toString()}`);
           if (requestId !== mentionRequestId || !textarea.isConnected) return;
           const users = Array.isArray(result.data) ? result.data : [];
           mentionList.replaceChildren();
@@ -2809,7 +2812,7 @@
             const mentions = Array.from(selectedMentions.entries())
               .filter(([, token]) => body.toLocaleLowerCase().includes(token.toLocaleLowerCase()))
               .map(([userId]) => userId);
-            const commentResult = await post('/add_file_comment', {
+            const commentResult = await post(apiUrl('add_file_comment'), {
               file_id: file.file_id, body, mentions,
               stickers: selectedStickers.map((sticker) => String(sticker.id))
             });
@@ -2828,12 +2831,12 @@
                 payload.set('board_id', String(state.board.id));
                 payload.set('item_id', String(item.id));
                 payload.set('file', entry.file);
-                const uploaded = await multipartPost('/upload_file', payload);
+                const uploaded = await multipartPost(apiUrl('upload_file'), payload);
                 uploadedFileId = uploaded.data?.id ?? uploaded.data?.file_id;
                 entry.uploadedFileId = uploadedFileId;
               }
               if (!uploadedFileId) throw new Error('El servidor no devolvió el identificador del archivo adjunto.');
-              await post('/attach_comment_file', { file_comment_id: commentId, file_id: uploadedFileId });
+              await post(apiUrl('attach_comment_file'), { file_comment_id: commentId, file_id: uploadedFileId });
             }
           }
           if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
@@ -2880,7 +2883,7 @@
       });
       panel.append(addVersion, versionInput);
       try {
-        const result = await request(`/file_versions/${encodeURIComponent(file.file_id)}`);
+        const result = await request(apiUrl('file_versions', { id: file.file_id }));
         if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
         const versions = Array.isArray(result.data) ? result.data : [];
         state.fileVersions[String(file.file_id)] = versions;
@@ -2914,7 +2917,7 @@
     } else if (panelName === 'information') {
       if (!Array.isArray(state.fileVersions[String(file.file_id)])) {
         try {
-          const result = await request(`/file_versions/${encodeURIComponent(file.file_id)}`);
+          const result = await request(apiUrl('file_versions', { id: file.file_id }));
           if (panelRequest !== filePreviewPanelRequest || String(activePreviewFile?.file_id) !== String(file.file_id)) return;
           state.fileVersions[String(file.file_id)] = Array.isArray(result.data) ? result.data : [];
         } catch (error) { /* The file reference still supplies basic metadata. */ }
@@ -3374,7 +3377,7 @@
               line.append(versionDownload);
               versionDownload = makeElement('a', 'boards-text-button', 'Descargar');
               const query = new URLSearchParams({ version_id: String(entry.id) });
-              versionDownload.href = `${apiRoot}/download_file/${encodeURIComponent(file.file_id)}?${query.toString()}`;
+              versionDownload.href = `${apiUrl('download_file', { id: file.file_id })}?${query.toString()}`;
               versionDownload.setAttribute('download', '');
               versionDownload.addEventListener('click', (event) => {
                 event.preventDefault();
@@ -3429,7 +3432,7 @@
     try {
       if (String(boardId) === String(state.board.id)) items = state.items;
       else {
-        const result = await request(`/board/${encodeURIComponent(boardId)}`);
+        const result = await request(apiUrl('board', { id: boardId }));
         items = Array.isArray(result.data?.items) ? result.data.items : [];
       }
       state.targetBoardItems = items;
@@ -3562,10 +3565,10 @@
     openDialog(els.itemDetailsDialog);
     const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
     const [comments, activity, relations, dependencies] = await Promise.allSettled([
-      request(`/comments?${params.toString()}`),
-      request(`/activity?${params.toString()}`),
-      request(`/relations?${params.toString()}`),
-      request(`/dependencies?${params.toString()}`)
+      request(`${apiUrl('comments')}?${params.toString()}`),
+      request(`${apiUrl('activity')}?${params.toString()}`),
+      request(`${apiUrl('relations')}?${params.toString()}`),
+      request(`${apiUrl('dependencies')}?${params.toString()}`)
     ]);
     if (requestId !== state.activeDetailRequest) return;
     if (comments.status === 'fulfilled') {
@@ -3595,7 +3598,7 @@
     delete state.fileHistoryErrors[key];
     renderItemFiles();
     try {
-      const result = await request(`/file_versions/${encodeURIComponent(fileId)}`);
+      const result = await request(apiUrl('file_versions', { id: fileId }));
       state.fileVersions[key] = Array.isArray(result.data) ? result.data : [];
     } catch (error) {
       state.fileHistoryErrors[key] = errorMessage(error, 'No se pudo cargar el historial del archivo.');
@@ -3614,7 +3617,7 @@
       const key = String(file.file_id);
       delete state.fileHistoryErrors[key];
       try {
-        const result = await request(`/file_versions/${encodeURIComponent(file.file_id)}`);
+        const result = await request(apiUrl('file_versions', { id: file.file_id }));
         state.fileVersions[key] = Array.isArray(result.data) ? result.data : [];
       } catch (error) {
         state.fileHistoryErrors[key] = errorMessage(error, 'No se pudo verificar el archivo.');
@@ -3626,7 +3629,7 @@
   }
 
   async function multipartPost(path, body) {
-    const response = await fetch(`${apiRoot}${path}`, {
+    const response = await fetch(path, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -3655,12 +3658,12 @@
     button.disabled = true;
     button.textContent = 'Publicando…';
     try {
-      const result = await post('/add_comment', { board_id: state.board.id, item_id: item.id, body });
+      const result = await post(apiUrl('add_comment'), { board_id: state.board.id, item_id: item.id, body });
       if (result.data) state.itemComments.push(result.data);
       textarea.value = '';
       renderComments();
       const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
-      const activity = await request(`/activity?${params.toString()}`);
+      const activity = await request(`${apiUrl('activity')}?${params.toString()}`);
       state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
       renderActivity();
       setNotice('Comentario agregado.', 'success');
@@ -3694,7 +3697,7 @@
     payload.set('column_id', String(column.id));
     payload.set('file', file);
     if (targetFileId) payload.set('file_id', targetFileId);
-    const result = await multipartPost('/upload_file', payload);
+    const result = await multipartPost(apiUrl('upload_file'), payload);
     const uploaded = result.data || {};
     if (!uploaded.id) throw new Error('El servidor no devolvió el identificador del archivo.');
     const reference = {
@@ -3709,7 +3712,7 @@
     byId.set(String(reference.file_id), reference);
     const storedValue = { ...(cellValue && typeof cellValue === 'object' && !Array.isArray(cellValue) ? cellValue : {}), files: Array.from(byId.values()) };
     try {
-      const linked = await post('/update_cell', {
+      const linked = await post(apiUrl('update_cell'), {
         board_id: state.board.id, item_id: item.id, column_id: column.id, value: storedValue, version: item.version
       });
       item.version = linked.data?.version ?? item.version;
@@ -3729,7 +3732,7 @@
     const targetItemId = els.relationTargetItem.value;
     if (!item || !targetItemId) return;
     try {
-      await post('/add_relation', {
+      await post(apiUrl('add_relation'), {
         board_id: state.board.id, source_item_id: item.id,
         target_board_id: els.relationTargetBoard.value, target_item_id: targetItemId,
         relation_type: document.getElementById('relationType').value
@@ -3754,7 +3757,7 @@
       lag_minutes: Number(document.getElementById('dependencyLag').value || 0)
     };
     try {
-      await post('/add_dependency', payload);
+      await post(apiUrl('add_dependency'), payload);
       await refreshItemDetails();
       setNotice('Dependencia agregada.', 'success');
     } catch (error) { setNotice(errorMessage(error, 'No se pudo agregar la dependencia.'), 'error'); }
@@ -3769,7 +3772,7 @@
     const button = document.getElementById('saveItemParent');
     button.disabled = true;
     try {
-      const result = await post('/set_subtask', {
+      const result = await post(apiUrl('set_subtask'), {
         board_id: state.board.id, item_id: item.id, parent_item_id: parentId, version: item.version
       });
       item.parent_item_id = result.data?.parent_item_id ?? null;
@@ -3785,7 +3788,7 @@
 
   async function removeRelation(relationId) {
     try {
-      await post('/remove_relation', { board_id: state.board.id, relation_id: relationId });
+      await post(apiUrl('remove_relation'), { board_id: state.board.id, relation_id: relationId });
       await refreshItemDetails();
       setNotice('Relación eliminada.', 'success');
     } catch (error) { setNotice(errorMessage(error, 'No se pudo eliminar la relación.'), 'error'); }
@@ -3793,7 +3796,7 @@
 
   async function removeDependency(dependencyId) {
     try {
-      await post('/remove_dependency', { board_id: state.board.id, dependency_id: dependencyId });
+      await post(apiUrl('remove_dependency'), { board_id: state.board.id, dependency_id: dependencyId });
       await refreshItemDetails();
       setNotice('Dependencia eliminada.', 'success');
     } catch (error) { setNotice(errorMessage(error, 'No se pudo eliminar la dependencia.'), 'error'); }
@@ -4078,7 +4081,7 @@
     setDetailStatus('automationRunsStatus', 'Cargando historial…');
     const params = new URLSearchParams({ board_id: String(state.board.id) });
     const [automations, runs] = await Promise.allSettled([
-      request(`/automations?${params.toString()}`), request(`/automation_runs?${params.toString()}`)
+      request(`${apiUrl('automations')}?${params.toString()}`), request(`${apiUrl('automation_runs')}?${params.toString()}`)
     ]);
     if (requestId !== state.automationRequest) return;
     if (automations.status === 'fulfilled') state.automations = Array.isArray(automations.value.data) ? automations.value.data : [];
@@ -4091,9 +4094,9 @@
 
   async function updateAutomationStatus(automationId, action, version) {
     if (!canManageAutomation()) return;
-    const endpoint = action === 'pause' ? '/pause_automation' : '/activate_automation';
+    const endpoint = action === 'pause' ? 'pause_automation' : 'activate_automation';
     try {
-      const result = await post(endpoint, { board_id: state.board.id, automation_id: automationId, version });
+      const result = await post(apiUrl(endpoint), { board_id: state.board.id, automation_id: automationId, version });
       const automation = state.automations.find((candidate) => String(candidate.id) === String(automationId));
       if (automation) {
         automation.status = result.data?.status || (action === 'pause' ? 'paused' : 'active');
@@ -4111,7 +4114,7 @@
   async function runAutomation(automationId) {
     if (!canManageAutomation()) return;
     try {
-      await post('/run_automation', { board_id: state.board.id, automation_id: automationId });
+      await post(apiUrl('run_automation'), { board_id: state.board.id, automation_id: automationId });
       setNotice('Ejecución agregada a la cola.', 'success');
       await loadAutomationData();
     } catch (error) { setNotice(errorMessage(error, 'No se pudo ejecutar la automatización.'), 'error'); }
@@ -4126,7 +4129,7 @@
       const definition = buildAutomationDefinition();
       button.disabled = true;
       button.textContent = 'Creando…';
-      const result = await post('/create_automation', {
+      const result = await post(apiUrl('create_automation'), {
         board_id: state.board.id,
         name: document.getElementById('automationName').value.trim(),
         definition
@@ -4468,7 +4471,7 @@
     button.disabled = true;
     button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>Preparando ZIP…</span>';
     try {
-      const response = await fetch(`${apiRoot}/download_files_zip`, {
+      const response = await fetch(apiUrl('download_files_zip'), {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/zip, application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': csrfToken },
@@ -4732,7 +4735,7 @@
     if (!missing.length) return;
     const batch = missing.slice(0, 100);
     batch.forEach((id) => state.summaryPeopleRequested.add(id));
-    request(`/users?board_id=${encodeURIComponent(boardId)}&ids=${encodeURIComponent(batch.join(','))}`)
+    request(`${apiUrl('users')}?board_id=${encodeURIComponent(boardId)}&ids=${encodeURIComponent(batch.join(','))}`)
       .then((result) => {
         if (Number(state.board?.id) !== boardId) return;
         (Array.isArray(result.data) ? result.data : []).forEach((person) => state.summaryPeople.set(String(person.id), person));
@@ -5500,7 +5503,7 @@
     const previous = getCellValue(item, column);
     if (String(previous ?? '') === String(value ?? '')) return;
     try {
-      const result = await post('/update_cell', {
+      const result = await post(apiUrl('update_cell'), {
         board_id: state.board.id,
         item_id: item.id,
         column_id: column.id,
@@ -5671,7 +5674,7 @@
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     try {
-      const result = await post('/create_item', { board_id: boardId, group_id: groupId, name });
+      const result = await post(apiUrl('create_item'), { board_id: boardId, group_id: groupId, name });
       if (!state.board || String(state.board.id) !== String(boardId)) return;
       const item = result.data || {};
       if (!item.id || item.version == null) {
@@ -5754,7 +5757,7 @@
     if (JSON.stringify(value) === JSON.stringify(previous)) return;
     setEditorDisabled(editor, true);
     try {
-      const result = await post('/update_cell', {
+      const result = await post(apiUrl('update_cell'), {
         board_id: state.board.id,
         item_id: item.id,
         column_id: columnId,
@@ -5820,7 +5823,7 @@
         const sequence = reordering ? orderedItems.slice().reverse() : orderedItems;
         for (const candidate of sequence) {
           const originalIndex = orderedItems.findIndex((entry) => String(entry.id) === String(candidate.id));
-          await post('/move_item', {
+          await post(apiUrl('move_item'), {
             board_id: state.board.id,
             item_id: candidate.id,
             group_id: groupId,
@@ -5843,7 +5846,7 @@
         group_id: groupId,
         version: item.version
       };
-      const result = await post('/move_item', payload);
+      const result = await post(apiUrl('move_item'), payload);
       item.group_id = groupId;
       item.version = result.data?.version ?? item.version;
       const hasAffected = applyAffectedItems(result.data?.affected_items, item, groupId, result.data?.version);
@@ -5910,7 +5913,7 @@
           continue;
         }
         try {
-          const result = await post('/move_item', {
+          const result = await post(apiUrl('move_item'), {
             board_id: boardId,
             item_id: item.id,
             group_id: groupId,
@@ -5952,7 +5955,7 @@
     const button = document.getElementById('bulkTrashItems');
     button.disabled = true;
     try {
-      await post('/trash', { entity_type: 'item', entity_ids: selected.map((item) => item.id), board_id: state.board.id });
+      await post(apiUrl('trash'), { entity_type: 'item', entity_ids: selected.map((item) => item.id), board_id: state.board.id });
       state.selectedItemIds.clear();
       await loadBoard(state.board.id, true);
       setNotice('Elementos movidos a la papelera.', 'success');
@@ -6065,7 +6068,7 @@
       }));
       if (!options.length) throw new Error('Agrega al menos una etiqueta.');
       if (options.some((option) => !option.value || !option.label)) throw new Error('Cada etiqueta necesita un nombre.');
-      const result = await post('/update_column_options', { board_id: state.board.id, column_id: columnId, options });
+      const result = await post(apiUrl('update_column_options'), { board_id: state.board.id, column_id: columnId, options });
       const column = state.columns.find((entry) => String(entry.id) === columnId);
       if (!column) throw new Error('La columna ya no está disponible; vuelve a cargar el tablero.');
       column.options = result.data?.options || options;
@@ -6123,7 +6126,7 @@
     dialogSubmit(els.duplicateBoardForm, async (formData) => {
       const role = String(state.board?.role || '').toLowerCase();
       if (!canCreateBoard || !['owner', 'designer'].includes(role)) throw new Error('Solo el propietario o un diseñador puede duplicar este tablero.');
-      const result = await post('/duplicate_board', {
+      const result = await post(apiUrl('duplicate_board'), {
         board_id: state.board.id,
         name: getFormValue(formData, 'name'),
         mode: getFormValue(formData, 'mode') || 'structure',
@@ -6148,7 +6151,7 @@
       const workspaceId = getFormValue(formData, 'workspace_id');
       const folderId = getFormValue(formData, 'folder_id');
       const visibility = getFormValue(formData, 'visibility') || 'private';
-      const result = await post('/create_board', { name, workspace_id: workspaceId, visibility, ...(folderId ? { folder_id: folderId } : {}), ...(description ? { description } : {}) });
+      const result = await post(apiUrl('create_board'), { name, workspace_id: workspaceId, visibility, ...(folderId ? { folder_id: folderId } : {}), ...(description ? { description } : {}) });
       const board = result.data || {};
       if (!board.id) throw new Error('El servidor no devolvió el tablero creado.');
       closeDialog(els.createBoardDialog);
@@ -6164,7 +6167,7 @@
       if (!canCreateBoard) throw new Error('No tienes permiso para crear espacios de trabajo.');
       const name = getFormValue(formData, 'name');
       const visibility = getFormValue(formData, 'visibility') || 'private';
-      const result = await post('/create_workspace', { name, visibility });
+      const result = await post(apiUrl('create_workspace'), { name, visibility });
       const workspace = result.data || {};
       if (!workspace.id) throw new Error('El servidor no devolvió el espacio creado.');
       state.workspaces.push(workspace);
@@ -6184,7 +6187,7 @@
       const workspaceId = getFormValue(formData, 'workspace_id');
       const parentFolderId = getFormValue(formData, 'parent_folder_id');
       const color = getFormValue(formData, 'color');
-      const result = await post('/create_folder', { name, color, workspace_id: workspaceId, ...(parentFolderId ? { parent_folder_id: parentFolderId } : {}) });
+      const result = await post(apiUrl('create_folder'), { name, color, workspace_id: workspaceId, ...(parentFolderId ? { parent_folder_id: parentFolderId } : {}) });
       const folder = result.data || {};
       if (!folder.id) throw new Error('El servidor no devolvió la carpeta creada.');
       state.folders.push(folder);
@@ -6202,7 +6205,7 @@
       if (!canManageStructure()) throw new Error('Se requiere permiso de administración para agregar grupos.');
       const name = getFormValue(formData, 'name');
       const color = getFormValue(formData, 'color');
-      const result = await post('/create_group', { board_id: state.board.id, name, color });
+      const result = await post(apiUrl('create_group'), { board_id: state.board.id, name, color });
       const group = result.data || {};
       state.groups.push({ id: group.id, name, color, sort_order: group.sort_order ?? state.groups.length });
       state.groups.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
@@ -6244,7 +6247,7 @@
       if (type === 'status' && options?.length) {
         options = options.map((label, index) => ({ value: label, label, color: statusLabelColor(label, index) }));
       }
-      const result = await post('/create_column', { board_id: state.board.id, name, type, ...(options?.length ? { options } : {}) });
+      const result = await post(apiUrl('create_column'), { board_id: state.board.id, name, type, ...(options?.length ? { options } : {}) });
       const column = result.data || {};
       state.columns.push({ id: column.id, name, type, options: options || [], required: false, sort_order: column.sort_order ?? state.columns.length });
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
@@ -6258,7 +6261,7 @@
       const name = getFormValue(formData, 'name');
       const groupId = els.newItemGroup.value;
       const parentId = state.createParentId;
-      const result = await post('/create_item', { board_id: state.board.id, group_id: groupId, name, ...(parentId ? { parent_item_id: parentId } : {}) });
+      const result = await post(apiUrl('create_item'), { board_id: state.board.id, group_id: groupId, name, ...(parentId ? { parent_item_id: parentId } : {}) });
       const item = result.data || {};
       if (!item.id || item.version == null) {
         await loadBoard(state.board.id, true);
@@ -6278,7 +6281,7 @@
       const userId = getFormValue(formData, 'user_id');
       const role = getFormValue(formData, 'role');
       if (!userId) throw new Error('Selecciona una persona del equipo.');
-      await post('/share_board', { board_id: state.board.id, user_id: userId, role });
+      await post(apiUrl('share_board'), { board_id: state.board.id, user_id: userId, role });
       await loadBoardMembers();
       closeDialog(els.shareBoardDialog);
       setNotice('Acceso actualizado.', 'success');
@@ -6289,7 +6292,7 @@
       const viewType = normalizeViewType(getFormValue(formData, 'view_type'));
       const isShared = Boolean(formData.get('is_shared'));
       if (isShared && !canShareBoard()) throw new Error('Solo el propietario o una persona diseñadora puede compartir vistas.');
-      const result = await post('/create_view', {
+      const result = await post(apiUrl('create_view'), {
         board_id: state.board.id,
         name,
         view_type: viewType,
@@ -6316,7 +6319,7 @@
     els.shareUserResults.replaceChildren(makeElement('div', 'boards-share-user-empty', 'Buscando personas…'));
     els.shareUserResults.hidden = false;
     try {
-      const result = await request(`/users?${params.toString()}`);
+      const result = await request(`${apiUrl('users')}?${params.toString()}`);
       if (requestId !== shareUserSearchRequest || !els.shareBoardDialog.open) return;
       const users = (Array.isArray(result.data) ? result.data : []).filter((user) =>
         !state.boardMembers.some((member) => String(member.user_id) === String(user.id))
@@ -6370,7 +6373,7 @@
     els.manageBoardMembersList?.replaceChildren();
     try {
       const params = new URLSearchParams({ board_id: boardId });
-      const result = await request(`/members?${params.toString()}`);
+      const result = await request(`${apiUrl('members')}?${params.toString()}`);
       if (requestId !== boardMembersRequest || String(state.board?.id || '') !== boardId) return;
       const data = result.data || {};
       state.boardMembers = Array.isArray(data.members) ? data.members : [];
@@ -6437,7 +6440,7 @@
     }
     if (!await confirmAction(`¿Retirar la invitación directa de ${directoryName}?${remaining}`, { title: 'Retirar invitación', confirmLabel: 'Retirar acceso', danger: true })) return;
     try {
-      await post('/revoke_member', { board_id: state.board.id, user_id: userId });
+      await post(apiUrl('revoke_member'), { board_id: state.board.id, user_id: userId });
       await loadBoardMembers();
       await loadBoards();
       setNotice(residual ? `Invitación directa retirada. ${directoryName} conserva acceso por ${accessSourceLabel(residual.source)}.` : `Invitación directa retirada de ${directoryName}.`, 'success');
@@ -6471,7 +6474,7 @@
     setDetailStatus('boardMembersStatus', `Guardando función de ${member.name || member.username || 'la persona'}…`);
     setDetailStatus('manageBoardMembersStatus', `Guardando función de ${member.name || member.username || 'la persona'}…`);
     try {
-      await post('/share_board', { board_id: state.board.id, user_id: userId, role });
+      await post(apiUrl('share_board'), { board_id: state.board.id, user_id: userId, role });
       await loadBoardMembers();
       setNotice('Función actualizada.', 'success');
     } catch (error) {
@@ -6493,7 +6496,7 @@
     els.workspaceMembersOwner.hidden = true;
     els.workspaceMembersOwner.dataset.userId = '';
     try {
-      const result = await request(`/workspace_members?workspace_id=${encodeURIComponent(workspace.id)}`);
+      const result = await request(`${apiUrl('workspace_members')}?workspace_id=${encodeURIComponent(workspace.id)}`);
       const data = result.data || {};
       state.workspaceMembers = Array.isArray(data.members) ? data.members : [];
       if (data.owner) {
@@ -6519,7 +6522,7 @@
         role.addEventListener('change', async () => {
           role.disabled = true;
           try {
-            await post('/update_workspace_member', { workspace_id: workspace.id, user_id: member.user_id, role: role.value });
+            await post(apiUrl('update_workspace_member'), { workspace_id: workspace.id, user_id: member.user_id, role: role.value });
             setNotice(`Función de ${displayName} actualizada.`, 'success');
             await loadWorkspaceMembers();
           } catch (error) {
@@ -6535,7 +6538,7 @@
           if (!await confirmAction(`¿Retirar a ${displayName} de este espacio? Los tableros compartidos directamente seguirán disponibles.`, { title: 'Retirar del espacio', confirmLabel: 'Retirar persona', danger: true })) return;
           revoke.disabled = true;
           try {
-            await post('/revoke_workspace_member', { workspace_id: workspace.id, user_id: member.user_id });
+            await post(apiUrl('revoke_workspace_member'), { workspace_id: workspace.id, user_id: member.user_id });
             setNotice(`${displayName} fue retirado del espacio.`, 'success');
             await loadWorkspaceMembers();
             await refreshStructurePreservingBoard();
@@ -6552,7 +6555,7 @@
   }
 
   async function refreshStructurePreservingBoard() {
-    const result = await request('/structure');
+    const result = await request(apiUrl('structure'));
     const structure = result.data || {};
     state.workspaces = Array.isArray(structure.workspaces) ? structure.workspaces : [];
     state.boards = Array.isArray(structure.boards) ? structure.boards : [];
@@ -6569,7 +6572,7 @@
     els.workspaceMemberResults.replaceChildren(makeElement('div', 'boards-share-user-empty', 'Buscando personas…'));
     els.workspaceMemberSearch.setAttribute('aria-busy', 'true');
     try {
-      const result = await request(`/users?${params.toString()}`);
+      const result = await request(`${apiUrl('users')}?${params.toString()}`);
       if (requestId !== shareUserSearchRequest || !dialog.open) return;
       const currentIds = new Set(state.workspaceMembers.map((member) => String(member.user_id)));
       const workspaceOwner = els.workspaceMembersOwner.dataset.userId || '';
@@ -6616,7 +6619,7 @@
     submit.disabled = true;
     els.workspaceMembersStatus.textContent = 'Agregando miembro…';
     try {
-      await post('/share_workspace', { workspace_id: workspace.id, user_id: userId, role });
+      await post(apiUrl('share_workspace'), { workspace_id: workspace.id, user_id: userId, role });
       els.workspaceMemberForm.reset();
       els.workspaceMemberUserId.value = '';
       els.workspaceMemberSearch.classList.remove('has-selection');
