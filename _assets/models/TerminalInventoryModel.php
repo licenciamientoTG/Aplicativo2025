@@ -191,7 +191,7 @@ class TerminalInventoryModel extends Model {
         return $rows[0] ?? false;
     }
     public function incidentStateHistory(int $incidentId): array {
-        return $this->sql->select('SELECT ticket_mojo_id,estado_anterior,estado_nuevo,fecha_estado_mojo,origen,usuario_id,usuario_correo,comentario,sincronizacion,fecha_registro FROM [TG].[dbo].[inv_ter_incidencia_estados] WHERE incidencia_id=? ORDER BY fecha_registro DESC,id DESC', [$incidentId]);
+        return $this->sql->select('SELECT h.ticket_mojo_id,h.estado_anterior,h.estado_nuevo,h.fecha_estado_mojo,h.origen,h.usuario_id,h.usuario_correo,u.Nombre AS usuario_nombre,h.comentario,h.sincronizacion,h.fecha_registro FROM [TG].[dbo].[inv_ter_incidencia_estados] h LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id=h.usuario_id WHERE h.incidencia_id=? ORDER BY h.fecha_registro DESC,h.id DESC', [$incidentId]);
     }
     public function startIncidentRequest(string $requestKey, int $stationId, int $userId, string $payloadHash, string $payloadJson): array {
         $existing=$this->incidentRequest($requestKey);

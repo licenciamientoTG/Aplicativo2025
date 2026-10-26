@@ -50,7 +50,7 @@ class MojoTerminalTicketsService {
     }
     private function request(string $method, string $path, ?array $payload=null): array {
         $url=self::BASE_URL.$path.(str_contains($path,'?')?'&':'?').'access_key='.rawurlencode($this->key);
-        $ch=curl_init($url); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_CUSTOMREQUEST=>$method,CURLOPT_TIMEOUT=>30,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_HTTPHEADER=>['Content-Type: application/json']]);
+        $ch=curl_init($url); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_CUSTOMREQUEST=>$method,CURLOPT_TIMEOUT=>30,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_SSL_VERIFYPEER=>false,CURLOPT_SSL_VERIFYHOST=>0,CURLOPT_HTTPHEADER=>['Content-Type: application/json']]);
         if ($payload!==null) curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($payload,JSON_UNESCAPED_UNICODE));
         $raw=curl_exec($ch); $code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE); $error=curl_error($ch); curl_close($ch);
         $data=json_decode((string)$raw,true);
@@ -66,7 +66,7 @@ class MojoTerminalTicketsService {
     private function upload(string $path, CURLFile $file): array {
         $url=self::BASE_URL.$path.(str_contains($path,'?')?'&':'?').'access_key='.rawurlencode($this->key);
         $ch=curl_init($url);
-        curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>['file'=>$file],CURLOPT_TIMEOUT=>60,CURLOPT_CONNECTTIMEOUT=>10]);
+        curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>['file'=>$file],CURLOPT_TIMEOUT=>60,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_SSL_VERIFYPEER=>false,CURLOPT_SSL_VERIFYHOST=>0]);
         $raw=curl_exec($ch); $code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE); $error=curl_error($ch); curl_close($ch);
         $data=json_decode((string)$raw,true);
         if ($raw===false) throw new RuntimeException('MOJO_TRANSPORT_ERROR'.($error?': '.$error:''));
@@ -130,7 +130,7 @@ class MojoTerminalTicketsService {
     public function attachmentDownloadLocation(int $attachmentId): string {
         if ($attachmentId<1) throw new InvalidArgumentException('Adjunto inválido.');
         $url=self::BASE_URL.'/v2/attachments/'.$attachmentId.'?access_key='.rawurlencode($this->key);
-        $ch=curl_init($url); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HEADER=>true,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_TIMEOUT=>30,CURLOPT_CONNECTTIMEOUT=>10]);
+        $ch=curl_init($url); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HEADER=>true,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_TIMEOUT=>30,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_SSL_VERIFYPEER=>false,CURLOPT_SSL_VERIFYHOST=>0]);
         $raw=curl_exec($ch); $code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE); $headerSize=(int)curl_getinfo($ch,CURLINFO_HEADER_SIZE); $error=curl_error($ch); curl_close($ch);
         if ($raw===false) throw new RuntimeException('MOJO_TRANSPORT_ERROR'.($error?': '.$error:''));
         $headers=substr((string)$raw,0,$headerSize); $location='';

@@ -3849,7 +3849,9 @@ class Operations{
             };
             foreach ($history as &$stateChange) {
                 if (strtoupper(trim((string)($stateChange['origen'] ?? '')))!=='MOJO/API' && strtoupper(trim((string)($stateChange['usuario_correo'] ?? '')))!=='MOJO/API') {
-                    $stateChange['actor']=trim((string)($stateChange['usuario_correo'] ?? $stateChange['origen'] ?? ''));
+                    $stateChange['actor']=trim((string)($stateChange['usuario_nombre'] ?? ''));
+                    if ($stateChange['actor']==='') $stateChange['actor']=trim((string)($stateChange['usuario_correo'] ?? ''));
+                    if ($stateChange['actor']==='') $stateChange['actor']=trim((string)($stateChange['origen'] ?? ''));
                     continue;
                 }
                 $stateChange['actor']='Autor no disponible en Mojo';
