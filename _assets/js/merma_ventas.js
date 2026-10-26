@@ -45,7 +45,7 @@ $(function () {
             zona:  zonaClave
         };
         c.contenido.html('<p class="text-muted small">Cargando histórico…</p>');
-        $.get('/merma/ventas_historico', params)
+        $.get(routeUrl('merma.ventas_historico'), params)
             .done(function (html) {
                 c.contenido.html(html);
                 cargadas[zonaClave] = true;
@@ -246,7 +246,7 @@ $(function () {
     $btn.on('click', function () {
         var etiqueta = $btn.html();
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generando…');
-        $.post('/merma/ventas_analisis_generar', { anio: $btn.data('anio'), mes: $btn.data('mes') }, null, 'json')
+        $.post(routeUrl('merma.ventas_analisis_generar'), { anio: $btn.data('anio'), mes: $btn.data('mes') }, null, 'json')
             .done(function (r) {
                 if (r && r.success) {
                     $texto.html(renderMarkdown(r.texto));

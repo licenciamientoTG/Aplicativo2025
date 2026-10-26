@@ -14,7 +14,7 @@
 
 <div class="card">
     <div class="card-body py-2">
-        <form action="/merma/detalle/{{ estacion.Codigo }}" method="get" class="row align-items-end g-2">
+        <form action="{{ url('merma.detalle', {codgas: estacion.Codigo}) }}" method="get" class="row align-items-end g-2">
             <div class="col-auto">
                 <label for="desde">Desde:</label>
                 <input type="date" class="form-control form-control-sm" name="desde" id="desde"
@@ -29,7 +29,7 @@
                 <button type="submit" class="btn btn-sm btn-merma-neutro">Buscar</button>
             </div>
             <div class="col-auto ms-auto d-flex gap-2">
-                <a href="/merma/analisis?desde={{ desde }}&hasta={{ hasta }}" class="btn btn-sm btn-merma-neutro">
+                <a href="{{ url('merma.analisis') }}?desde={{ desde }}&hasta={{ hasta }}" class="btn btn-sm btn-merma-neutro">
                     <i class="fas fa-arrow-left"></i> Resumen
                 </a>
                 <button type="button" class="btn btn-sm btn-merma-neutro" id="validar_compras">
@@ -528,7 +528,7 @@ $(document).ready(function () {
         $('#btnGuardarFisico').prop('disabled', true).show();
         fisicoEvidenciaPorFila = {}; // reinicia adjuntos pendientes del modal anterior
         new bootstrap.Modal(document.getElementById('fisicoModal')).show();
-        $.post('/merma/cortes_fisicos', { codgas: CODGAS, fecha: fecha, familia: fam, turno: turno }, function (res) {
+        $.post(routeUrl('merma.cortes_fisicos'), { codgas: CODGAS, fecha: fecha, familia: fam, turno: turno }, function (res) {
             if (!res.success) { $('#fisico_rows').html('<div class="alert alert-danger">' + res.message + '</div>'); $('#btnGuardarFisico').hide(); return; }
             if (!res.cortes.length) { $('#fisico_rows').html('<div class="alert alert-warning">La estación no tiene cortes para este día.</div>'); $('#btnGuardarFisico').hide(); return; }
             const hayRetro = res.cortes.some(c => c.recomendado_retro !== null && c.recomendado_retro !== undefined);
@@ -716,7 +716,7 @@ $(document).ready(function () {
             fd.append('codprd', f.codprd);
             fd.append('turno', f.nrotur);
             fisicoEvidenciaPorFila[fisicoRowKey(f.codprd, f.nrotur, f.codtan)].forEach(file => fd.append('evidencia[]', file));
-            return fetch('/merma/subir_evidencia_fisico', { method: 'POST', body: fd }).then(r => r.json());
+            return fetch(routeUrl('merma.subir_evidencia_fisico'), { method: 'POST', body: fd }).then(r => r.json());
         });
 
         Promise.all(subidasEvidencia).then(function (resultados) {
@@ -728,7 +728,7 @@ $(document).ready(function () {
             }
 
             $btn.html('<span class="spinner-border spinner-border-sm"></span> Guardando...');
-            $.post('/merma/corregir_fisico_lote', {
+            $.post(routeUrl('merma.corregir_fisico_lote'), {
                 codgas: CODGAS, fecha: fecha, filas: JSON.stringify(filas),
             }, function (res) {
                 if (res.success) { mermaToastReload(res.message, 'success'); }
@@ -747,7 +747,7 @@ $(document).ready(function () {
     $('#ver_cambios').click(function () {
         $('#cambiosModalContent').html('<div class="modal-body text-center py-4"><span class="spinner-border spinner-border-sm"></span> Consultando...</div>');
         new bootstrap.Modal(document.getElementById('cambiosModal')).show();
-        fetch('/merma/cambios_fisico', {
+        fetch(routeUrl('merma.cambios_fisico'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ codgas: CODGAS, desde: $('#desde').val(), hasta: $('#hasta').val() }),
@@ -761,7 +761,7 @@ $(document).ready(function () {
     $('#validar_compras').click(function () {
         $('#compras_rows').html('<div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span> Consultando estación...</div>');
         new bootstrap.Modal(document.getElementById('comprasModal')).show();
-        $.post('/merma/compras_recepcion', {
+        $.post(routeUrl('merma.compras_recepcion'), {
             codgas: CODGAS, desde: $('#desde').val(), hasta: $('#hasta').val(),
         }, function (res) {
             if (!res.success) { $('#compras_rows').html('<div class="alert alert-danger">' + res.message + '</div>'); return; }
@@ -841,7 +841,7 @@ $(document).ready(function () {
         const motivo = ($input.val() || '').trim();
         if (!motivo) { $input.addClass('is-invalid').focus(); return; }
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Aplicando...');
-        $.post('/merma/excluir_compra', {
+        $.post(routeUrl('merma.excluir_compra'), {
             codgas: CODGAS, fecha: $btn.data('fecha'), codprd: $btn.data('codprd'),
             turno: $btn.data('turno'), nro: $btn.data('nro'), litros: $btn.data('litros'), motivo: motivo,
         }, function (res) {
@@ -860,7 +860,7 @@ $(document).ready(function () {
         const $btn = $(this);
         if (!confirm('El doc ' + $btn.data('nro') + ' volverá a contar como compra en el reporte y se resincronizará el día. ¿Continuar?')) return;
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
-        $.post('/merma/incluir_compra', {
+        $.post(routeUrl('merma.incluir_compra'), {
             codgas: CODGAS, fecha: $btn.data('fecha'), codprd: $btn.data('codprd'), nro: $btn.data('nro'),
         }, function (res) {
             if (res.success) { mermaToastReload(res.message, 'success'); }
@@ -886,7 +886,7 @@ $(document).ready(function () {
 
     function cargarEvidencia() {
         $('#evidencia_lista').html('<div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span></div>');
-        $.post('/merma/evidencia_fisico', {
+        $.post(routeUrl('merma.evidencia_fisico'), {
             codgas: CODGAS, fecha: evidenciaCtx.fecha, codprd: evidenciaCtx.codprd, turno: evidenciaCtx.turno,
         }, function (res) {
             if (!res.success) { $('#evidencia_lista').html('<div class="alert alert-danger py-2 mb-0">' + escHtml(res.message) + '</div>'); return; }
@@ -894,7 +894,7 @@ $(document).ready(function () {
             let html = '<ul class="list-group">';
             res.archivos.forEach(function (a) {
                 html += '<li class="list-group-item d-flex justify-content-between align-items-center py-1">'
-                    + '<a href="/merma/view_evidencia_fisico/' + a.id + '" target="_blank">'
+                    + '<a href="' + routeUrl('merma.view_evidencia_fisico', { id: a.id }) + '" target="_blank">'
                     + '<i class="fas ' + (a.file_extension === 'pdf' ? 'fa-file-pdf' : 'fa-file-image') + '"></i> '
                     + escHtml(a.original_filename) + '</a>'
                     + '<span>'
@@ -925,7 +925,7 @@ $(document).ready(function () {
     $(document).on('click', '.evidencia-eliminar', function () {
         const id = $(this).data('id');
         if (!confirm('¿Eliminar este archivo de evidencia?')) return;
-        $.post('/merma/eliminar_evidencia_fisico', { id: id }, function (res) {
+        $.post(routeUrl('merma.eliminar_evidencia_fisico'), { id: id }, function (res) {
             mermaToast(res.message, res.success ? 'success' : 'danger');
             if (res.success) cargarEvidencia();
         }, 'json').fail(() => mermaToast('Error de servidor', 'danger'));
@@ -989,7 +989,7 @@ $(document).ready(function () {
         evidenciaPendientes = [];
         renderPendientes();
         $('#evidencia_subiendo').show();
-        fetch('/merma/subir_evidencia_fisico', { method: 'POST', body: fd })
+        fetch(routeUrl('merma.subir_evidencia_fisico'), { method: 'POST', body: fd })
             .then(r => r.json())
             .then(function (res) {
                 $('#evidencia_subiendo').hide();
@@ -1020,7 +1020,7 @@ $(document).ready(function () {
         const desde = ymd(inicio);
         const hasta = ymd(fin < ayer ? fin : ayer);
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Consultando...');
-        $.post('/merma/sync', { from: desde, to: hasta, codgas: $btn.data('codgas') }, function (res) {
+        $.post(routeUrl('merma.sync'), { from: desde, to: hasta, codgas: $btn.data('codgas') }, function (res) {
             if (res.success) { mermaToastReload(res.message, 'success'); }
             else { mermaToast(res.message, 'danger'); }
         }, 'json').fail(() => mermaToast('Error de servidor', 'danger'))

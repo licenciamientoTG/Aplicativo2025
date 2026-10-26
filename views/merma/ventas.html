@@ -31,7 +31,7 @@
                 <button type="submit" class="btn btn-merma-neutro">Buscar</button>
             </div>
             <div class="col-auto ms-auto">
-                <a href="/merma/ventas_excel?anio={{ anio }}&mes={{ mes }}&desde={{ histDesde }}&hasta={{ histHasta }}&prod=total&zona=marca_prots"
+                <a href="{{ url('merma.ventas_excel') }}?anio={{ anio }}&mes={{ mes }}&desde={{ histDesde }}&hasta={{ histHasta }}&prod=total&zona=marca_prots"
                    id="btn_exportar" class="btn btn-merma-sync">
                     <i class="fas fa-file-excel"></i> Exportar a Excel
                 </a>
