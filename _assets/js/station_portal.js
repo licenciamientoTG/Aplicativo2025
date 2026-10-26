@@ -111,7 +111,7 @@ function construirConfigDataTable() {
             },
         ],
         ajax: {
-            url: '/station_portal/datatables_recepciones',
+            url: routeUrl('station_portal.datatables_recepciones'),
             data: function (d) {
                 d.fecha_desde = $('#fecha_desde').val();
                 d.fecha_hasta = $('#fecha_hasta').val();
@@ -211,10 +211,11 @@ function construirConfigDataTable() {
                     // Petrotal, qué factura del proveedor corresponde a esta
                     // recepción (TG.dbo.FacturasMovimientosTanques, TipoOperacion=1).
                     if (row.factura_id) {
-                        const base = `/station_portal/descargar_factura_recepcion/${row.nrotrn}`;
                         const tituloFactura = escHtml(`${row.factura_proveedor || ''} · ${row.factura_folio || ''}`);
-                        html += `<a class="btn btn-accion-factura" href="${base}/pdf?codgas=${row.codgas}" data-bs-toggle="tooltip" title="Factura PDF · ${tituloFactura}"><i data-feather="file-text"></i></a>`;
-                        html += `<a class="btn btn-accion-factura" href="${base}/xml?codgas=${row.codgas}" data-bs-toggle="tooltip" title="Factura XML · ${tituloFactura}"><i data-feather="code"></i></a>`;
+                        const pdfUrl = `${routeUrl('station_portal.descargar_factura_recepcion', { nrotrn: row.nrotrn, tipo: 'pdf' })}?codgas=${row.codgas}`;
+                        const xmlUrl = `${routeUrl('station_portal.descargar_factura_recepcion', { nrotrn: row.nrotrn, tipo: 'xml' })}?codgas=${row.codgas}`;
+                        html += `<a class="btn btn-accion-factura" href="${pdfUrl}" data-bs-toggle="tooltip" title="Factura PDF · ${tituloFactura}"><i data-feather="file-text"></i></a>`;
+                        html += `<a class="btn btn-accion-factura" href="${xmlUrl}" data-bs-toggle="tooltip" title="Factura XML · ${tituloFactura}"><i data-feather="code"></i></a>`;
                     }
                     return html ? `<div class="btn-group btn-group-sm acciones-recepcion" role="group">${html}</div>` : '';
                 }
@@ -328,7 +329,7 @@ function cargarRecepcionesProgramadas() {
     $body.html('<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>Cargando…</div>');
     $row.show();
 
-    $.get('/station_portal/recepciones_programadas', params)
+    $.get(routeUrl('station_portal.recepciones_programadas'), params)
         .done(function (resp) {
             const filas = resp.data || [];
             if (!filas.length) {
@@ -354,7 +355,6 @@ function cargarRecepcionesProgramadas() {
                 const producto = escProgramadas(f.product) + (f.mezcla ? ' (' + escProgramadas(f.mezcla) + ')' : '');
                 let celdaDocumento = '<span class="text-muted">—</span>';
                 if (f.invoice_id) {
-                    const base = `/station_portal/descargar_factura_programada/${f.id}`;
                     const folio = [f.invoice_serie, f.invoice_folio].filter(Boolean).join(' ');
                     const titulo = `${escProgramadas(f.invoice_proveedor) || ''} · ${escProgramadas(folio)}`;
                     // Nombre del documento (folio + proveedor emisor) junto a las
@@ -368,8 +368,8 @@ function cargarRecepcionesProgramadas() {
                                 ${f.invoice_uuid ? `<div class="text-muted font-monospace text-break" style="font-size:.68rem;" title="UUID (nombre del archivo al descargar)">${escProgramadas(f.invoice_uuid)}</div>` : ''}
                             </div>
                             <div class="btn-group btn-group-sm flex-shrink-0">
-                                <a class="btn btn-outline-success" href="${base}/pdf" title="PDF · ${titulo}">PDF</a>
-                                <a class="btn btn-outline-success" href="${base}/xml" title="XML · ${titulo}">XML</a>
+                                <a class="btn btn-outline-success" href="${routeUrl('station_portal.descargar_factura_programada', { id: f.id, tipo: 'pdf' })}" title="PDF · ${titulo}">PDF</a>
+                                <a class="btn btn-outline-success" href="${routeUrl('station_portal.descargar_factura_programada', { id: f.id, tipo: 'xml' })}" title="XML · ${titulo}">XML</a>
                             </div>
                         </div>
                     `;
@@ -446,7 +446,7 @@ function cargarResumenSinDocumento() {
         params.codgas = codgasSelect.val();
     }
 
-    $.get('/station_portal/resumen_sin_documento', params)
+    $.get(routeUrl('station_portal.resumen_sin_documento'), params)
         .done(function (resp) {
             if (resp.error) {
                 $badge.html('');
@@ -696,7 +696,7 @@ $('#btnConfirmarSubirRemision').on('click', async function () {
     subirDocError('');
 
     try {
-        const response = await fetch('/station_portal/upload_remision', {
+        const response = await fetch(routeUrl('station_portal.upload_remision'), {
             method: 'POST',
             body: formData,
             credentials: 'include',
@@ -723,7 +723,7 @@ $(document).on('click', '.btn-ver-remisiones', async function () {
     const fchtrn = $(this).data('fchtrn');
 
     try {
-        const response = await fetch(`/station_portal/remisiones_by_recepcion?nrotrn=${nrotrn}&codgas=${codgas}&fchtrn=${fchtrn}`, {
+        const response = await fetch(`${routeUrl('station_portal.remisiones_by_recepcion')}?nrotrn=${nrotrn}&codgas=${codgas}&fchtrn=${fchtrn}`, {
             method: 'GET',
             credentials: 'include',
         });
@@ -751,7 +751,7 @@ $(document).on('click', '.btn-eliminar-remision', function () {
 
 async function eliminarRemision($btn, id) {
     try {
-        const response = await fetch('/station_portal/delete_remision', {
+        const response = await fetch(routeUrl('station_portal.delete_remision'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `id=${id}`,
@@ -777,7 +777,7 @@ $('#btnManualRecepciones').on('click', function () {
     bootstrap.Tooltip.getInstance(this)?.hide();
     const iframe = document.getElementById('iframeManualRecepciones');
     if (!iframe.getAttribute('src')) {
-        iframe.setAttribute('src', '/station_portal/manual');
+        iframe.setAttribute('src', routeUrl('station_portal.manual'));
     }
     $('#modalManualRecepciones').modal('show');
 });

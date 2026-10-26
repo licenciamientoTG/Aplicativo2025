@@ -162,7 +162,7 @@
 
       {% if authorized(84) %}
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/station_portal/mis_recepciones">
+        <a class="sidebar-link" href="{{ url('station_portal.mis_recepciones') }}">
           <i data-feather="truck"></i>
           <span class="align-middle">Recepciones</span>
           {% if tg_user['IdEstacion']|default(0) > 0 %}<span class="badge bg-danger ms-1 js-alerta-recepciones" hidden></span>{% endif %}
@@ -696,7 +696,7 @@
       </li>
       {% endif %} {% if authorized(84) %}
       <li class="sidebar-item">
-        <a class="sidebar-link" href="/station_portal/mis_recepciones">
+        <a class="sidebar-link" href="{{ url('station_portal.mis_recepciones') }}">
           <i data-feather="truck"></i>
           <span class="align-middle">Mis Recepciones</span>
           {% if tg_user['IdEstacion']|default(0) > 0 %}<span class="badge bg-danger ms-1 js-alerta-recepciones" hidden></span>{% endif %}

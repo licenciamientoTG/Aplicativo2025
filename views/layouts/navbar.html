@@ -83,7 +83,7 @@
             {# Alerta de Mis Recepciones: oculta hasta que station_portal_alertas.js
                confirme que hay facturas ligadas nuevas para la estación. #}
             <li class="nav-item" id="navAlertaRecepciones" hidden>
-                <a class="nav-icon" href="/station_portal/mis_recepciones" aria-label="Facturas nuevas en Mis Recepciones">
+                <a class="nav-icon" href="{{ url('station_portal.mis_recepciones') }}" aria-label="Facturas nuevas en Mis Recepciones">
                     <div class="position-relative">
                         <i class="align-middle" data-feather="truck"></i>
                         <span class="indicator js-alerta-recepciones" hidden></span>
