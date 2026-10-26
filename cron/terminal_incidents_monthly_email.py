@@ -145,8 +145,16 @@ def render_bodies(stations, counts, months: list[date], category: str, title: st
         html_rows.append(f'<tr><td style="padding:7px;border-bottom:1px solid #ddd">{escape(name)} ({code})</td>'
                          + "".join(cells) + f'<td style="padding:7px;text-align:center;font-weight:bold">{total_label}</td></tr>')
         text_rows.append(f"{name} ({code}) | " + " | ".join(map(str, numbers)) + f" | {total}")
-    total_cells = "".join(f'<td style="padding:7px;text-align:center;font-weight:bold">{value}</td>' for value in column_totals)
-    html_rows.append(f'<tr><th style="padding:7px;text-align:left">Total</th>{total_cells}<th>{grand_total}</th></tr>')
+    total_cells = "".join(
+        f'<td style="padding:7px;text-align:center;font-weight:bold">'
+        f'<a href="{escape(report_link(0, category, month, month_end(month)), quote=True)}">{value}</a></td>'
+        for month, value in zip(months, column_totals)
+    )
+    grand_total_url = escape(report_link(0, category, start, end), quote=True)
+    html_rows.append(
+        f'<tr><th style="padding:7px;text-align:left">Total</th>{total_cells}'
+        f'<th><a href="{grand_total_url}">{grand_total}</a></th></tr>'
+    )
     text_rows.append("Total | " + " | ".join(map(str, column_totals)) + f" | {grand_total}")
     html = (f'<!doctype html><html lang="es"><body style="font-family:Arial,sans-serif;color:#173b59">'
             f'<h2>{escape(title)} — {start.year}</h2><p>Incidencias por fecha de apertura, sin filtro de estado. '

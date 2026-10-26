@@ -4228,8 +4228,9 @@ async function abrirModoComparacion(modo) {
     $contCG.html('<div class="text-center py-5"><div class="spinner-border text-dark"></div><div class="mt-2 small text-muted">Procesando ControlGas...</div></div>');
     $contTX.html(`<div class="text-center py-5"><div class="spinner-border ${esModoDespachos ? 'text-info' : 'text-primary'}"></div><div class="mt-2 small text-muted">Procesando ${nombreComparador}...</div></div>`);
 
-    // Mantener visible el desglose Bankaool en ambos modos cuando aplica.
-    await fetchImportesBankaoolNocturnos(widgetState.year, widgetState.month);
+    // DES devuelve también el subtotal nocturno Bankaool, evitando una segunda consulta.
+    if (esModoDespachos) importesBankaoolNocturnosPorFecha = {};
+    else await fetchImportesBankaoolNocturnos(widgetState.year, widgetState.month);
 
     const comparisonGroups = {};
     let comparisonLoadError = false;
@@ -4241,6 +4242,8 @@ async function abrirModoComparacion(modo) {
             if (json.status === 'success' && json.data && typeof json.data === 'object') {
                 Object.entries(json.data).forEach(([fecha, row]) => {
                     comparisonGroups[fecha] = { total: parseFloat(row.total || 0), count: parseInt(row.count || 0, 10) };
+                    const importeNocturno = parseFloat(row.importe_nocturno || 0);
+                    if (importeNocturno > 0) importesBankaoolNocturnosPorFecha[fecha] = importeNocturno;
                 });
             } else comparisonLoadError = true;
         } catch (e) {

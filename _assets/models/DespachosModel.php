@@ -106,7 +106,7 @@ class DespachosModel extends Model
                   WHERE codgas = ?
                     AND fchtrn BETWEEN ? AND ?
                     AND hratrn >= 2300
-                    AND rut LIKE '%BANKAOOL%'
+                    AND rut COLLATE Latin1_General_100_CI_AI LIKE '%BANKAOOL%'
                   GROUP BY fchtrn
                   ORDER BY fchtrn";
 
@@ -121,12 +121,18 @@ class DespachosModel extends Model
         $db = $this->stationDb($codgas);
         $query = "SELECT
                     CONVERT(varchar(10), DATEADD(day, -1, CAST(fchtrn AS datetime)), 23) AS fecha,
-                    COUNT(*) AS cantidad,
-                    SUM(mto) AS importe
+                    COUNT_BIG(*) AS cantidad,
+                    SUM(mto) AS importe,
+                    SUM(CASE WHEN hratrn >= 2300 THEN mto ELSE 0 END) AS importe_nocturno
                   FROM {$db}.[despachos]
                   WHERE codgas = ?
                     AND fchtrn BETWEEN ? AND ?
-                    AND UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(ISNULL(rut, ''))), ' ', ''), '-', ''), '.', ''), '/', ''), '_', '')) LIKE '%BANKAOOL%'
+                    AND CASE
+                          WHEN rut COLLATE Latin1_General_100_CI_AI LIKE '%BANKAOOL%' THEN 1
+                          WHEN rut COLLATE Latin1_General_100_CI_AI LIKE '%B%A%N%K%A%O%O%L%'
+                               AND UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(ISNULL(rut, ''))), ' ', ''), '-', ''), '.', ''), '/', ''), '_', '')) LIKE '%BANKAOOL%' THEN 1
+                          ELSE 0
+                        END = 1
                   GROUP BY fchtrn
                   ORDER BY fchtrn";
 

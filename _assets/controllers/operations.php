@@ -3478,7 +3478,6 @@ class Operations{
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para registrar incidencias de terminales.'; return; }
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
-        $this->syncTerminalIncidents($stationId,'vista');
         $monthStart=(new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez')))->modify('first day of this month')->setTime(0,0);
         $nextMonth=$monthStart->modify('+1 month');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();

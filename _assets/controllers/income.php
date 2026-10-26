@@ -5406,6 +5406,7 @@ public function anomalies_client_tickets()
                 $data[(string)$row['fecha']] = [
                     'total' => (float)$row['importe'],
                     'count' => (int)$row['cantidad'],
+                    'importe_nocturno' => (float)$row['importe_nocturno'],
                 ];
             }
             echo json_encode(['status' => 'success', 'data' => $data]);
