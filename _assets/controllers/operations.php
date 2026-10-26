@@ -3602,8 +3602,12 @@ class Operations{
                 $saved=$this->terminalInventoryModel->incidentById((int)$request['incidencia_id']);
                 if ($saved) { json_output(['success'=>true,'ticket_id'=>(int)$saved['ticket_mojo_id'],'incident'=>$saved,'replayed'=>true]); return; }
             }
-            $types=$this->terminalTypes(); $expected=$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types));
             $already=$this->terminalInventoryModel->activeIncidents($stationId);
+            if (count(array_filter($already,static fn($row)=>(string)($row['estado_local'] ?? '')==='Solved'))>0) {
+                $this->terminalJsonError('La estación tiene incidencias resueltas pendientes de cierre. Cierre, reabra o responda a esas incidencias antes de registrar un ticket nuevo.',409);
+                return;
+            }
+            $types=$this->terminalTypes(); $expected=$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types));
             $pendingRequestTicket=(int)($request['ticket_mojo_id'] ?? 0);
             $service=new MojoTerminalTicketsService(); $ticket=null;
             if ($pendingRequestTicket>0) $ticket=$service->getTicket($pendingRequestTicket);
