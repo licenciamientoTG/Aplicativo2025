@@ -332,6 +332,37 @@ class TablerosAccess
         }
     }
 
+    /** Board managers can create boards and folders in that board's workspace. */
+    public function canManageWorkspaceContent(int $workspaceId): bool
+    {
+        $userId = $this->currentUserId();
+        if ($workspaceId <= 0 || $userId <= 0) return false;
+        if ($this->hasGlobalPermission('admin')) return true;
+        if (in_array($this->workspaceRole($workspaceId), ['owner', 'editor'], true)) return true;
+        try {
+            $stmt = $this->boardConnection()->prepare(
+                "SELECT TOP (1) b.id
+                 FROM dbo.tb_board b
+                 LEFT JOIN dbo.tb_board_member m
+                   ON m.board_id = b.id AND m.user_id = ? AND m.deleted_at IS NULL
+                 WHERE b.workspace_id = ? AND b.deleted_at IS NULL
+                   AND (b.created_by = ? OR m.role IN ('designer', 'editor'))"
+            );
+            $stmt->execute([$userId, $workspaceId, $userId]);
+            return (bool)$stmt->fetchColumn();
+        } catch (Throwable $e) {
+            error_log('TablerosAccess: no fue posible validar la administración del contenido del espacio: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Whether this user can create a board in the selected workspace. */
+    public function canCreateBoardInWorkspace(int $workspaceId): bool
+    {
+        return $this->canManageWorkspaceContent($workspaceId)
+            || ($this->hasGlobalPermission('create') && $this->workspaceRole($workspaceId) !== null);
+    }
+
     private function currentUserId(): int
     {
         return (int)($_SESSION['tg_user']['Id'] ?? 0);

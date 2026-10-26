@@ -220,6 +220,281 @@ class Income{
         }
     }
 
+    /**
+     * Ingresos > Conciliación: venta a clientes de crédito vs facturación de
+     * ControlGas y cobranza vs banco (ConciliacionVentaModel + ConciliacionCobros).
+     * Va bajo el permiso 14 de Reportes (routes/income.php), sin permiso propio.
+     * Diseño: docs/superpowers/specs/2026-10-24-conciliacion-venta-credito-design.md
+     */
+    public function conciliation() : void {
+        echo $this->twig->render($this->route . 'conciliation.html', [
+            'mes'      => date('Y-m', strtotime('first day of last month')),
+            'empresas' => $this->clientesModel->get_station_companies(),
+        ]);
+    }
+
+    /** POST: una fila por cliente de crédito con venta, cortes y lo facturado de sus despachos del mes. */
+    public function conciliation_sales() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->venta_por_cliente($from, $until, $this->conciliationEmpresa()) as $r) {
+            $categoria = trim((string)$r['categoria']);
+            $clase     = $categoria === '' ? 'Venta' : ($categoria === 'Bonificaciones' ? 'Bonificación' : 'Consumo propio');
+            $monto     = round((float)$r['monto'], 2);
+            $facturado = round((float)$r['facturado_mes'] + (float)$r['facturado_despues'], 2);
+            $sin       = round((float)$r['sin_factura'], 2);
+            $cancelada = round((float)$r['factura_cancelada'], 2);
+
+            if ($clase !== 'Venta')               $estatus = $facturado > 0 ? 'Facturado' : 'No se factura';
+            elseif (abs($monto - $facturado) < 0.01) $estatus = 'Facturado';
+            elseif ($cancelada > 0)               $estatus = 'Factura cancelada';
+            elseif ($facturado == 0)              $estatus = 'Sin facturar';
+            else                                  $estatus = 'Pendiente de facturar';
+
+            $data[] = [
+                'codcli'            => (int)$r['codcli'],
+                'cliente'           => $r['cliente'],
+                'clase'             => $clase,
+                'categoria'         => $categoria,
+                'despachos'         => (int)$r['despachos'],
+                'litros'            => round((float)$r['litros'], 3),
+                'monto'             => $monto,
+                'cortes'            => round((float)$r['cortes'], 2),
+                'monto_cortes'      => round($monto - (float)$r['cortes'], 2),
+                'facturado_mes'     => round((float)$r['facturado_mes'], 2),
+                'facturado_despues' => round((float)$r['facturado_despues'], 2),
+                'facturado'         => $facturado,
+                'sin_factura'       => $sin,
+                'n_sin_factura'     => (int)$r['n_sin_factura'],
+                'factura_cancelada' => $cancelada,
+                'facturas'          => (int)$r['facturas'],
+                'diferencia'        => round($monto - $facturado, 2),
+                'estatus'           => $estatus,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST (codcli): despachos del cliente en el mes con su factura (modal del desglose). */
+    public function conciliation_client_dispatches() : void {
+        [$from, $until, , $hasta] = $this->conciliationRange();
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        if ($codcli <= 0) json_output(['data' => []]);
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->despachos_cliente($from, $until, $this->conciliationEmpresa(), $codcli) as $r) {
+            $hora = str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
+            if ((int)$r['nrofac'] === 0)            $estado = 'Sin factura';
+            elseif ($r['cancelada'] === null)       $estado = 'Factura no encontrada';
+            elseif ((int)$r['cancelada'] === 1)     $estado = 'Factura cancelada';
+            elseif ($r['fecha_factura'] > $hasta)   $estado = 'Facturado después';
+            else                                    $estado = 'Facturado';
+            $data[] = [
+                'estacion'      => trim((string)$r['estacion']),
+                'despacho'      => $r['nrotrn'],
+                'fecha'         => $r['fecha'],
+                'hora'          => substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'producto'      => trim((string)$r['producto']),
+                'litros'        => round((float)$r['litros'], 3),
+                'monto'         => round((float)$r['monto'], 2),
+                'factura'       => (int)$r['nrofac'] ? get_invoice_series((int)$r['nrofac']) : '',
+                'emitida_en'    => trim((string)$r['estacion_factura']),
+                'fecha_factura' => $r['fecha_factura'] ?? '',
+                'uuid'          => $r['satuid'] ?? '',
+                'estado'        => $estado,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST: facturas de crédito del mes (por fecha) y de cualquier fecha con despachos del mes. */
+    public function conciliation_invoices() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->facturas($from, $until, $this->conciliationEmpresa()) as $r) {
+            $fch       = (int)$r['fch'];
+            $despachos = (int)$r['despachos'];
+            $delMes    = (int)$r['despachos_mes'];
+            if ($r['cancelada'] === null)        $periodo = 'No encontrada';
+            elseif ((int)$r['cancelada'] === 1)  $periodo = 'Cancelada';
+            elseif ($despachos === 0)            $periodo = 'Sin despachos';
+            elseif ($delMes === 0)               $periodo = 'Despachos de otro mes';
+            elseif ($delMes < $despachos)        $periodo = 'Mezcla de meses';
+            elseif ($fch > $until)               $periodo = 'Emitida después';
+            else                                 $periodo = 'Del mes';
+
+            $total = round((float)$r['total'], 2);
+            $data[] = [
+                'factura'         => get_invoice_series((int)$r['nro']),
+                'estacion'        => trim((string)$r['estacion']),
+                'fecha'           => $r['fecha'] ?? '',
+                'en_mes'          => $fch >= $from && $fch <= $until,
+                'tipo'            => trim((string)$r['tipo']),
+                'codcli'          => $r['codopr'],
+                'cliente'         => $r['cliente'],
+                'total'           => $total,
+                'despachos'       => $despachos,
+                'monto_despachos' => round((float)$r['monto_despachos'], 2),
+                'despachos_mes'   => $delMes,
+                'monto_mes'       => round((float)$r['monto_mes'], 2),
+                'monto_otros'     => round((float)$r['monto_despachos'] - (float)$r['monto_mes'], 2),
+                'ajuste'          => $despachos ? round($total - (float)$r['monto_despachos'], 2) : 0,
+                'despacho_desde'  => $r['despacho_desde'] ?? '',
+                'despacho_hasta'  => $r['despacho_hasta'] ?? '',
+                'cfdi'            => $r['cancelada'] === null ? '' : ((int)$r['cancelada'] === 1 ? 'Cancelada' : (trim((string)$r['satuid']) === '' ? 'Sin timbrar' : 'Timbrada')),
+                'periodo'         => $periodo,
+                'uuid'            => $r['satuid'] ?? '',
+                'referencia'      => $this->txtrefTexto((string)$r['txtref']),
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /**
+     * POST (otros=1 incluye Cobranza Administrativa y Arrendamiento): cobros del
+     * mes con el depósito del banco que les corresponde. El cruce corre con los
+     * cobros de todas las estaciones y luego se filtra la razón social, porque un
+     * MOV puede juntar cobros de varias.
+     */
+    public function conciliation_payments() : void {
+        set_time_limit(300);
+        [$from, $until, $desde, $hasta] = $this->conciliationRange();
+        $empresa = $this->conciliationEmpresa();
+        $model   = new ConciliacionVentaModel;
+        $cobros  = array_map(function ($r) {
+            $r['mov'] = ConciliacionCobros::movDeTxtref((string)$r['txtref']);
+            return $r;
+        }, $model->cobros($from, $until, ($_POST['otros'] ?? '0') === '1'));
+        $dias = fn(string $fecha, int $n) => date('Y-m-d', strtotime($fecha . sprintf(' %+d days', $n)));
+        $depositos = $model->depositos(
+            array_column($cobros, 'mov'),
+            array_column($cobros, 'monto'),
+            $dias($desde, -ConciliacionCobros::DIAS_ANTES), $dias($hasta, ConciliacionCobros::DIAS_DESPUES),
+            $dias($desde, -ConciliacionCobros::DIAS_IMPORTE), $dias($hasta, ConciliacionCobros::DIAS_IMPORTE)
+        );
+
+        $data = [];
+        foreach (ConciliacionCobros::conciliar($cobros, $depositos) as $r) {
+            $emp = $r['empresa'] === null ? -1 : (int)$r['empresa'];
+            if ($empresa !== 0 && $emp !== $empresa) continue;
+            $tags = $this->txtrefTags((string)$r['txtref']);
+            $facturas = [];
+            foreach (array_filter(explode(',', (string)$r['facturas'])) as $f) {
+                [$nro, $mto] = array_pad(explode(':', $f), 2, 0);
+                $facturas[] = get_invoice_series((int)$nro) . ' ($' . number_format((float)$mto, 2) . ')';
+            }
+            $data[] = [
+                'estacion'        => trim((string)$r['estacion']),
+                'cobro'           => (int)$r['nro'],
+                'fecha'           => $r['fecha'],
+                'codcli'          => $r['codopr'],
+                'cliente'         => $r['cliente'] ?? '',
+                'tipo'            => trim((string)$r['tipo']),
+                'forma_pago'      => self::CONCILIATION_FORMAS_PAGO[$tags['M'] ?? ''] ?? ($tags['M'] ?? ''),
+                'ordenante'       => trim($tags['B'] ?? ''),
+                'banco_ordenante' => self::CONCILIATION_BANCOS[$tags['K'] ?? ''] ?? ($tags['K'] ?? ''),
+                'monto'           => $r['monto'],
+                'mov'             => $r['mov'],
+                'facturas'        => implode(', ', $facturas),
+                'estatus'         => $r['estatus'],
+                'cobros_mov'      => $r['cobros_mov'],
+                'monto_mov'       => $r['monto_mov'],
+                'deposito_id'     => $r['deposito_id'],
+                'banco'           => $r['banco'] ?? '',
+                'cuenta'          => $r['cuenta'] ?? '',
+                'fecha_banco'     => $r['fecha_banco'] ?? '',
+                'secuencia_banco' => $r['secuencia_banco'],
+                'abono'           => $r['abono'] === null ? null : round((float)$r['abono'], 2),
+                'diferencia'      => $r['diferencia'],
+                'candidatos'      => $r['candidatos'],
+                'contraparte'     => trim((string)$r['contraparte']),
+                'rfc_contraparte' => trim((string)$r['rfc_contraparte']),
+                'detalle_banco'   => trim((string)$r['detalle_banco']),
+                'uuid'            => $r['satuid'] ?? '',
+                'referencia'      => $this->txtrefTexto((string)$r['txtref']),
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST (cuentas[]): movimientos del mes de las cuentas que recibieron cobros. */
+    public function conciliation_bank() : void {
+        [, , $desde, $hasta] = $this->conciliationRange();
+        $cuentas = array_slice(array_map('strval', (array)($_POST['cuentas'] ?? [])), 0, 50);
+        $data = array_map(fn($r) => [
+            'id'          => (int)$r['id'],
+            'banco'       => $r['banco'],
+            'cuenta'      => $r['cuenta'],
+            'fecha'       => $r['fecha'],
+            'fecha_operacion' => $r['fecha_operacion'] ?? '',
+            'secuencia'   => $r['secuencia'],
+            'descripcion' => trim((string)$r['descripcion']),
+            'referencia'  => trim((string)$r['referencia']),
+            'abono'       => round((float)$r['abono'], 2),
+            'cargo'       => round((float)$r['cargo'], 2),
+            'saldo'       => $r['saldo'] === null ? null : round((float)$r['saldo'], 2),
+            'contraparte' => trim((string)$r['nombre_contraparte']),
+            'rfc'         => trim((string)$r['rfc_contraparte']),
+            'detalle'     => trim((string)$r['detalle']),
+        ], (new ConciliacionVentaModel)->movimientos_banco($desde, $hasta, $cuentas));
+        json_output(['data' => $data]);
+    }
+
+    /** POST: el mismo "Resumen por cliente" de Clientes > Consumos Crédito (hoja Venta aplicativo). */
+    public function conciliation_app_sales() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $rows = $this->clientesModel->get_dispatches_summary_by_client($from, $until, 3, 0, $this->conciliationEmpresa(), 'incluir');
+        json_output(['data' => $rows ?: []]);
+    }
+
+    /** POST: despachos de crédito de clientes de consumo propio y bonificaciones (hoja Consumos propios). */
+    public function conciliation_own_consumption() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $rows = $this->clientesModel->get_dispatches_by_client($from, $until, 3, 0, $this->conciliationEmpresa(), 'solo');
+        json_output(['data' => $rows ?: []]);
+    }
+
+    /** Forma de pago SAT (@M: del cobro). */
+    private const CONCILIATION_FORMAS_PAGO = [
+        '01' => 'Efectivo', '02' => 'Cheque', '03' => 'Transferencia', '04' => 'Tarjeta de crédito', '28' => 'Tarjeta de débito',
+    ];
+    /** Banco del ordenante (@K: del cobro), clave SPEI. */
+    private const CONCILIATION_BANCOS = [
+        '002' => 'BANAMEX', '012' => 'BBVA', '014' => 'SANTANDER', '021' => 'HSBC', '030' => 'BAJIO', '036' => 'INBURSA',
+        '044' => 'SCOTIABANK', '058' => 'BANREGIO', '062' => 'AFIRME', '072' => 'BANORTE', '127' => 'AZTECA', '137' => 'BANCOPPEL',
+    ];
+
+    /** Mes del POST ('Y-m') → [desde int, hasta int, desde 'Y-m-d', hasta 'Y-m-d']. */
+    private function conciliationRange() : array {
+        $mes = preg_match('/^\d{4}-\d{2}$/', $_POST['mes'] ?? '') ? $_POST['mes'] : date('Y-m', strtotime('first day of last month'));
+        $desde = $mes . '-01';
+        $hasta = date('Y-m-t', strtotime($desde));
+        return [dateToInt($desde), dateToInt($hasta), $desde, $hasta];
+    }
+
+    /** Razón social del POST: 0 = todas, -1 = sin razón social, >0 = SG12.Empresas.cod. */
+    private function conciliationEmpresa() : int {
+        return (int)($_POST['empresa'] ?? 0);
+    }
+
+    /** Etiquetas "@X:valor" del txtref de ControlGas (B ordenante, N nota, M forma de pago, K banco…). */
+    private function txtrefTags(string $txtref) : array {
+        $tags = [];
+        foreach (explode('@', $txtref) as $parte) {
+            if (strlen($parte) >= 2 && $parte[1] === ':') $tags[$parte[0]] = trim(substr($parte, 2));
+        }
+        return $tags;
+    }
+
+    /** Texto legible del txtref: la nota (@N:) sin las demás etiquetas. */
+    private function txtrefTexto(string $txtref) : string {
+        $tags = $this->txtrefTags($txtref);
+        return $tags['N'] ?? trim($txtref, "@ \r\n");
+    }
+
 // === Dentro de class Income ===
 
 // Reemplaza/Agrega este método
@@ -366,11 +641,6 @@ public function balance_age()
 
 
 
-    public function salesxcard(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'salesxcard.html');
-        }
-    }
     public function cash_sales_table() {
         $data = [];
         $from = dateToInt($_POST['fromDate']);   // Asume que es un entero tipo fecha (e.g. 45747)
@@ -382,10 +652,10 @@ public function balance_age()
                     'Gasolinera'           => $venta['Gasolinera'],
                     'Turno'              => $venta['Turno'],
                     'Mn'                 => round($venta['Mn'], 2),
+                    'Usd'                => round($venta['Usd'], 2),
+                    'TipoCambio'         => round($venta['TipoCambio'], 4),
                     'Dolares'            => round($venta['Dolares'], 2),
-                    'Dolares2'            => round($venta['Dolares2'], 2),
                     'Morralla'           => round($venta['Morralla'], 2),
-                    'Cheques'             => round($venta['Cheques'], 2),
                     'INTERL - Efectivo'  => round($venta['INTERL - Efectivo'], 2),
                 );
             }
@@ -476,13 +746,17 @@ public function balance_age()
         $until  = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
         $tipval = (int)($_POST['tipval']  ?? 4);
         $codcli = (int)($_POST['codcli']  ?? 0);
+        $empresa = (int)($_POST['empresa'] ?? 0);
+        $propio = $this->consumoPropioParam();
 
         $data = [];
         if ($rows = $this->clientesModel->get_dispatches_by_client(
             dateToInt($from->format('Y-m-d')),
             dateToInt($until->format('Y-m-d')),
             $tipval,
-            $codcli
+            $codcli,
+            $empresa,
+            $propio
         )) {
             foreach ($rows as $r) {
                 $data[] = [
@@ -494,11 +768,90 @@ public function balance_age()
                     'Litros'   => $r['Litros'],
                     'Monto'    => $r['Monto'],
                     'Estacion' => $r['Estacion'],
+                    'RazonSocial' => $r['RazonSocial'],
                     'producto' => $r['producto'],
+                    'Categoria' => $r['Categoria'],
                 ];
             }
         }
         json_output(["data" => $data]);
+    }
+
+    /** Consumos sumados por cliente. POST /income/clients_dispatches_by_client (tipval 4=débito/3=crédito, codcli=0 → todos, empresa=0 → todas). */
+    public function clients_dispatches_by_client() : void {
+        $from    = $this->createDateTime($_POST['from']  ?? date('Y-m-01'));
+        $until   = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+        $tipval  = (int)($_POST['tipval']  ?? 4) === 3 ? 3 : 4;
+        $codcli  = (int)($_POST['codcli']  ?? 0);
+        $empresa = (int)($_POST['empresa'] ?? 0);
+
+        $rows = $this->clientesModel->get_dispatches_summary_by_client(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $tipval,
+            $codcli,
+            $empresa,
+            $this->consumoPropioParam()
+        );
+        json_output(['data' => $rows ?: []]);
+    }
+
+    /** Catálogo de consumo propio (débito y crédito). POST /income/consumo_propio_list */
+    public function consumo_propio_list() : void {
+        json_output(['data' => $this->clientesModel->get_consumo_propio_list() ?: []]);
+    }
+
+    /** Buscador de clientes por clasificar. POST /income/consumo_propio_search (q = nombre o código). */
+    public function consumo_propio_search() : void {
+        $q = trim((string)($_POST['q'] ?? ''));
+        if (mb_strlen($q) < 2) json_output(['data' => []]);
+        json_output(['data' => $this->clientesModel->search_consumo_propio_candidates($q) ?: []]);
+    }
+
+    /** Clasifica un cliente. POST /income/consumo_propio_save (codcli, categoria). */
+    public function consumo_propio_save() : void {
+        $codcli    = (int)($_POST['codcli'] ?? 0);
+        $categoria = trim((string)($_POST['categoria'] ?? ''));
+        if ($codcli <= 0 || $categoria === '' || mb_strlen($categoria) > 60) {
+            json_output(['status' => 'error', 'message' => 'Cliente y categoría (máx. 60 caracteres) son obligatorios.']);
+        }
+        $ok = $this->clientesModel->save_consumo_propio($codcli, $categoria);
+        json_output($ok ? ['status' => 'ok'] : ['status' => 'error', 'message' => 'No se pudo clasificar (¿es cliente débito/crédito?).']);
+    }
+
+    /** Quita la clasificación. POST /income/consumo_propio_remove (codcli). */
+    public function consumo_propio_remove() : void {
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        $ok = $codcli > 0 && $this->clientesModel->remove_consumo_propio($codcli);
+        json_output($ok ? ['status' => 'ok'] : ['status' => 'error', 'message' => 'No se pudo quitar la clasificación.']);
+    }
+
+    /** Filtro de consumo propio (TG.dbo.clientes_consumo_propio): incluir (default) | excluir | solo. */
+    private function consumoPropioParam() : string {
+        $propio = $_POST['propio'] ?? 'incluir';
+        return in_array($propio, ['incluir', 'excluir', 'solo'], true) ? $propio : 'incluir';
+    }
+
+    /** Cortes donde despachos ≠ ValesR para un cliente. POST /income/clients_cortes_diff (tipval 4=débito/3=crédito). */
+    public function clients_cortes_diff() : void {
+        $from    = $this->createDateTime($_POST['from']  ?? date('Y-m-01'));
+        $until   = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+        $tipval  = (int)($_POST['tipval']  ?? 4) === 3 ? 3 : 4;
+        $codcli  = (int)($_POST['codcli']  ?? 0);
+        $empresa = (int)($_POST['empresa'] ?? 0);
+
+        if ($codcli <= 0) {
+            json_output(['data' => []]);
+            return;
+        }
+        $rows = $this->clientesModel->get_cortes_diff_by_client(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $tipval,
+            $codcli,
+            $empresa
+        );
+        json_output(['data' => $rows ?: []]);
     }
 
     public function client_anticipos_table() : void {
@@ -742,6 +1095,40 @@ public function balance_age()
         $clientName = $_GET['clientName'] ?? false;
         echo $this->twig->render($this->route . 'credit_debit_dispatches.html', compact('stations', 'from', 'until', 'codgas', 'clientName', 'client_type'));
     }  
+    function pending_cancellation_invoices(){
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            echo $this->twig->render($this->route . 'pending_cancellation_invoices.html');
+        }
+    }
+    function pending_cancellation_invoices_table(){
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
+        $data = [];
+        if ($rows = $this->documentosModel->cancelacion_en_proceso_debito($_POST['tipo_cliente'] ?? 'debito')) {
+            foreach ($rows as $r) {
+                $data[] = [
+                    'fecha'             => $r['fecha'],
+                    'factura'           => $r['factura'],
+                    'codcli'            => $r['codcli'],
+                    'cliente'           => $r['cliente'],
+                    'rfc'               => $r['rfc'],
+                    'uuid'              => $r['uuid'],
+                    'subtotal'          => round((float)$r['subtotal'], 2),
+                    'iva'               => round((float)$r['iva'], 2),
+                    'total'             => round((float)$r['total'], 2),
+                    'aplicado'          => round(-1 * (float)$r['aplicado'], 2),
+                    'motivo'            => $r['motivo'],
+                    'estado'            => (int)$r['estado'],
+                    'primera_solicitud' => $r['primera_solicitud'],
+                    'ultima_consulta'   => $r['ultima_consulta'],
+                    'dias_en_proceso'   => (int)$r['dias_en_proceso'],
+                    'intentos'          => (int)$r['intentos'],
+                    'usuario'           => $r['usuario'],
+                ];
+            }
+        }
+        json_output(array("data" => $data));
+    }
     function relation_invoice_advance(){
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'relation_invoice_advance.html');
@@ -2120,7 +2507,8 @@ public function anomalies_client_tickets()
         $result = $this->despachosModel->control_dispatches2_paginated(
             dateToInt($_POST['from']), dateToInt($_POST['until']),
             $codgas, $uuid, $tipo_cliente, $billed,
-            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch,
+            max(0, (int) ($_POST['total_hint'] ?? 0))
         );
 
         // Transformar SOLO la página actual (decenas de filas, no todo el dataset).
@@ -3315,6 +3703,11 @@ public function anomalies_client_tickets()
         $originalName = $_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? 'archivo.tmp');
         $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
 
+        if ($bankType === 'BANKAOOL' && $extension !== 'xlsx') {
+            echo json_encode(['status' => 'error', 'message' => 'Para Bankaool sólo se permite archivo XLSX']);
+            exit;
+        }
+
         // Afirme es un reporte de transacciones: su CSV sólo se procesa en la
         // rama que inserta banco_afirme. Nunca se envía al flujo de Tesorería.
         if ($bankType === 'AFIRME' && $extension !== 'csv') {
@@ -3962,6 +4355,99 @@ public function anomalies_client_tickets()
                                     $inserted++;
                                     $huellas[$huellaAMEX] = true;
                                 }
+                            } elseif ($bankType === 'BANKAOOL') {
+                                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+                                $sheet = $spreadsheet->getActiveSheet();
+                                $allRows = $sheet->toArray(null, true, false, false);
+                                $rawHeader = array_shift($allRows);
+                                $normalizeHeader = static function ($value) {
+                                    $value = mb_strtolower(trim(preg_replace('/\s+/u', ' ', (string)$value)), 'UTF-8');
+                                    $value = strtr($value, ['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n']);
+                                    return preg_replace('/[^a-z0-9]+/', '', $value);
+                                };
+                                $requiredHeaders = [
+                                    'id'=>'ID_Externo', 'numeroafiliacion'=>'Afiliacion',
+                                    'fechatransaccion'=>'FechaHora', 'importe'=>'Monto',
+                                    'autorizacion'=>'Codigo_Autorizacion', 'terminal'=>'Terminal',
+                                    'referencia'=>'Referencia', 'estatus'=>'Estatus'
+                                ];
+                                $indices = [];
+                                foreach ($rawHeader as $i => $header) {
+                                    $key = $normalizeHeader($header);
+                                    if (isset($requiredHeaders[$key])) $indices[$requiredHeaders[$key]] = $i;
+                                }
+                                foreach (['ID_Externo','Afiliacion','FechaHora','Monto','Codigo_Autorizacion','Terminal','Referencia','Estatus'] as $required) {
+                                    if (!isset($indices[$required])) throw new Exception('El archivo Bankaool no contiene la columna requerida: ' . $required);
+                                }
+
+                                $approved = [];
+                                $skipped = 0;
+                                foreach ($allRows as $row) {
+                                    if (empty(array_filter($row, static fn($v) => $v !== null && trim((string)$v) !== ''))) continue;
+                                    $affiliate = trim((string)($row[$indices['Afiliacion']] ?? ''));
+                                    if ($affiliate !== '' && ltrim($affiliate, '0') !== '9990624') {
+                                        throw new Exception('El archivo Bankaool contiene una afiliación distinta de 9990624. No se insertó ningún registro.');
+                                    }
+                                    $status = mb_strtolower(trim((string)($row[$indices['Estatus']] ?? '')), 'UTF-8');
+                                    if ($status !== 'aprobada') { $skipped++; continue; }
+                                    $id = trim((string)($row[$indices['ID_Externo']] ?? ''));
+                                    $rawDate = $row[$indices['FechaHora']] ?? null;
+                                    $rawAmount = $row[$indices['Monto']] ?? null;
+                                    if ($id === '' || $affiliate === '' || $rawDate === null || $rawDate === '' || $rawAmount === null || $rawAmount === '') {
+                                        throw new Exception('Hay filas aprobadas sin ID, fecha, importe o afiliación. No se insertó ningún registro.');
+                                    }
+                                    try {
+                                        if (is_numeric($rawDate)) $dateTime = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$rawDate);
+                                        else {
+                                            $dateText = trim((string)$rawDate);
+                                            $dateTime = false;
+                                            foreach (['!d/m/Y H:i:s', '!d/m/Y H:i', '!Y-m-d H:i:s', '!Y-m-d\\TH:i:sP', '!Y-m-d\\TH:i:s\\Z'] as $dateFormat) {
+                                                $candidate = \DateTime::createFromFormat($dateFormat, $dateText);
+                                                $dateErrors = \DateTime::getLastErrors();
+                                                if ($candidate && ($dateErrors === false || ($dateErrors['warning_count'] === 0 && $dateErrors['error_count'] === 0))) {
+                                                    $dateTime = $candidate;
+                                                    break;
+                                                }
+                                            }
+                                            if (!$dateTime) throw new Exception('invalid date');
+                                        }
+                                    } catch (\Throwable $e) { throw new Exception('Fecha inválida en fila aprobada de Bankaool. No se insertó ningún registro.'); }
+                                    $amountText = is_numeric($rawAmount) ? (string)$rawAmount : str_replace(['$', ',', ' '], '', (string)$rawAmount);
+                                    if (!is_numeric($amountText)) throw new Exception('Importe inválido en fila aprobada de Bankaool. No se insertó ningún registro.');
+                                    $approved[] = [
+                                        'ID_Externo'=>$id, 'Afiliacion'=>ltrim($affiliate, '0'),
+                                        'Fecha_Transaccion'=>$dateTime->format('Y-m-d'), 'Hora'=>$dateTime->format('H:i:s'),
+                                        'Monto'=>(float)$amountText,
+                                        'Codigo_Autorizacion'=>isset($indices['Codigo_Autorizacion']) ? trim((string)($row[$indices['Codigo_Autorizacion']] ?? '')) : null,
+                                        'Terminal'=>isset($indices['Terminal']) ? trim((string)($row[$indices['Terminal']] ?? '')) : null,
+                                        'Referencia'=>isset($indices['Referencia']) ? trim((string)($row[$indices['Referencia']] ?? '')) : null,
+                                        'Fecha_Deposito'=>null, 'Nombre_Archivo'=>$dbFilePath
+                                    ];
+                                }
+
+                                $stmt = $conn->query('SELECT ID_Externo, Afiliacion, Fecha_Transaccion, Hora, Monto, Codigo_Autorizacion, Terminal, Referencia FROM banco_bankaool');
+                                $ids = $fingerprints = [];
+                                while ($existing = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    $ids[trim((string)$existing['Afiliacion']).'|'.trim((string)$existing['ID_Externo'])] = true;
+                                    $existingDate = $existing['Fecha_Transaccion'] instanceof \DateTimeInterface
+                                        ? $existing['Fecha_Transaccion']->format('Y-m-d')
+                                        : substr((string)$existing['Fecha_Transaccion'], 0, 10);
+                                    $fingerprints[implode('|', [trim((string)$existing['Afiliacion']), $existingDate, trim((string)$existing['Hora']), number_format((float)$existing['Monto'],2,'.',''), trim((string)$existing['Codigo_Autorizacion']), trim((string)$existing['Terminal']), trim((string)$existing['Referencia'])])] = true;
+                                }
+                                $columns = $columnas_oficiales;
+                                $ins = $conn->prepare('INSERT INTO banco_bankaool ('.implode(',', $columns).') VALUES ('.implode(',', array_fill(0,count($columns),'?')).')');
+                                $conn->beginTransaction();
+                                try {
+                                    foreach ($approved as $dataRow) {
+                                        $idKey = $dataRow['Afiliacion'].'|'.$dataRow['ID_Externo'];
+                                        $fingerprint = implode('|', [$dataRow['Afiliacion'],$dataRow['Fecha_Transaccion'],$dataRow['Hora'],number_format($dataRow['Monto'],2,'.',''),trim((string)$dataRow['Codigo_Autorizacion']),trim((string)$dataRow['Terminal']),trim((string)$dataRow['Referencia'])]);
+                                        if (isset($ids[$idKey]) || isset($fingerprints[$fingerprint])) { $skipped++; continue; }
+                                        $ins->execute(array_values($dataRow));
+                                        $ids[$idKey] = $fingerprints[$fingerprint] = true;
+                                        $inserted++;
+                                    }
+                                    $conn->commit();
+                                } catch (\Throwable $e) { if ($conn->inTransaction()) $conn->rollBack(); throw $e; }
                             } elseif ($bankType === 'AFIRME') {
                                 $allRows = [];
                                 $rawHeader = [];
@@ -4467,7 +4953,7 @@ public function anomalies_client_tickets()
      * movimientos no conoce afiliaciones: se preserva la regla histórica de
      * encontrarlas en los textos del movimiento contra Tesoreria_afil.
      */
-    private function emitir_tesoreria_movimientos_bancarios(int $entidadId, ?array $bankaoolRule = null): void {
+    private function emitir_tesoreria_movimientos_bancarios(int $entidadId): void {
         ob_clean();
         header('Content-Type: application/json');
 
@@ -4541,51 +5027,6 @@ public function anomalies_client_tickets()
                 }
             }
 
-            // Bankaool liquida Villa Ahumada (se muestra como estación 29,
-            // pero su Codigo interno es 31) dentro de Santander únicamente
-            // para la afiliación 8999954.
-            // El endpoint sigue siendo Santander y la regla sólo se activa
-            // cuando el cliente solicita esa estación y afiliación exactas.
-            if ($entidadId === 1 && $bankaoolRule === ['station_id' => 31, 'afiliacion' => '8999954']) {
-                $estacionSantander = null;
-                foreach ($catalogo as $afil) {
-                    if ($afil['estacion_id'] === 31 && $afil['afiliacion'] === '8999954') {
-                        $estacionSantander = $afil['Estacion'];
-                        break;
-                    }
-                }
-
-                if ($estacionSantander !== null) {
-                    $stmtBankaool = $conn->prepare(
-                        "SELECT id, fecha, abono
-                         FROM [TG].[dbo].[movimientos_bancarios]
-                         WHERE banco = 'BANKAOOL' AND abono > 0
-                           AND YEAR(fecha) = ? AND MONTH(fecha) = ?
-                           AND (
-                               (UPPER(descripcion) LIKE 'DEBITO%' AND UPPER(descripcion) LIKE '%9990624%')
-                               OR (UPPER(descripcion) LIKE 'CREDITO%' AND UPPER(descripcion) LIKE '%9990624%')
-                           )
-                         ORDER BY fecha, id"
-                    );
-                    $stmtBankaool->execute([$year, $month]);
-                    while ($mov = $stmtBankaool->fetch(PDO::FETCH_ASSOC)) {
-                        $fecha = $mov['fecha'] instanceof DateTime
-                            ? $mov['fecha']->format('Y-m-d')
-                            : substr((string)$mov['fecha'], 0, 10);
-                        $resultado[] = [
-                            'Fecha'        => $fecha,
-                            'Afiliacion'   => '8999954',
-                            'Estacion'     => $estacionSantander,
-                            'Total'        => (float)$mov['abono'],
-                            'MovimientoId' => 'mb_' . (int)$mov['id'],
-                            // Mantener una descripción neutral, igual al
-                            // patrón visible de Santander, sin revelar el banco fuente.
-                            'Descripcion'  => 'DEPOSITO VENTAS DEL DIA',
-                        ];
-                    }
-                }
-            }
-
             echo json_encode(['status' => 'success', 'data' => $resultado, 'catalog' => $catalogo]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error BD: ' . $e->getMessage()]);
@@ -4597,12 +5038,78 @@ public function anomalies_client_tickets()
     // 3. TESORERIA SANTANDER
     // =========================================================================
     public function get_tesoreria_santander() {
-        $stationId = (int)($_GET['station_id'] ?? 0);
-        $afiliacion = trim((string)($_GET['afiliacion'] ?? ''));
-        $bankaoolRule = $stationId === 31 && $afiliacion === '8999954'
-            ? ['station_id' => 31, 'afiliacion' => '8999954']
-            : null;
-        $this->emitir_tesoreria_movimientos_bancarios(1, $bankaoolRule);
+        $this->emitir_tesoreria_movimientos_bancarios(1);
+    }
+
+    // Bankaool tiene una afiliación propia para Villa Ahumada (estación 31).
+    public function get_tesoreria_bankaool(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year  = (int)($_GET['year'] ?? date('Y'));
+        $month = (int)($_GET['month'] ?? date('m'));
+        if ($month < 1 || $month > 12) {
+            echo json_encode(['status' => 'error', 'message' => 'Periodo inválido']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+            $stmtCatalogo = $conn->prepare(
+                "SELECT A.estacion_id, A.afiliacion,
+                        ISNULL(S.Nombre, V.Nombre) AS Estacion,
+                        ISNULL(A.rfc, 'FORANEAS') AS RFC
+                 FROM Tesoreria_afil A
+                 LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                 LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                 WHERE A.entidad_id = 14 AND A.estacion_id = 31
+                   AND A.afiliacion = '9990624'
+                   AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)"
+            );
+            $stmtCatalogo->execute();
+            $r = $stmtCatalogo->fetch(PDO::FETCH_ASSOC);
+            $catalogo = $r ? [[
+                'estacion_id' => 31,
+                'afiliacion' => '9990624',
+                'Estacion' => $r['Estacion'],
+                'RFC' => trim((string)$r['RFC']),
+            ]] : [];
+
+            $resultado = [];
+            if ($catalogo) {
+                $stmtMovimientos = $conn->prepare(
+                    "SELECT id, fecha, abono, descripcion
+                     FROM [TG].[dbo].[movimientos_bancarios]
+                     WHERE banco = 'BANKAOOL' AND abono > 0
+                       AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+                       AND UPPER(descripcion) LIKE '%9990624%'
+                       AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%'
+                         OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'
+                         OR UPPER(LTRIM(descripcion)) LIKE 'AMEX%'
+                         OR UPPER(LTRIM(descripcion)) LIKE 'INTERNAC%')
+                     ORDER BY fecha, id"
+                );
+                $stmtMovimientos->execute([$year, $month]);
+                while ($mov = $stmtMovimientos->fetch(PDO::FETCH_ASSOC)) {
+                    $fecha = $mov['fecha'] instanceof DateTime
+                        ? $mov['fecha']->format('Y-m-d')
+                        : substr((string)$mov['fecha'], 0, 10);
+                    $resultado[] = [
+                        'Fecha' => $fecha,
+                        'Afiliacion' => '9990624',
+                        'Estacion' => $catalogo[0]['Estacion'],
+                        'Total' => (float)$mov['abono'],
+                        'MovimientoId' => 'mb_' . (int)$mov['id'],
+                        'Descripcion' => trim((string)$mov['descripcion']),
+                    ];
+                }
+            }
+
+            echo json_encode(['status' => 'success', 'data' => $resultado, 'catalog' => $catalogo]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error BD: ' . $e->getMessage()]);
+        }
+        exit;
     }
 
     // =========================================================================
@@ -4756,6 +5263,7 @@ public function anomalies_client_tickets()
             elseif ($eid == 4) $tabla = "banco_banorte";
             elseif ($eid == 5) $tabla = "banco_bbva";
             elseif ($eid == 13) $tabla = "banco_afirme";
+            elseif ($eid == 14) $tabla = "banco_bankaool";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
@@ -4793,11 +5301,16 @@ public function anomalies_client_tickets()
             // completa, por lo que se conserva sólo la primera aparición.
             $transaccionesVistas = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                $fechaVal = $row['Fecha_Transaccion'];
+                $fechaIso = ($fechaVal instanceof \DateTimeInterface)
+                    ? $fechaVal->format('Y-m-d')
+                    : substr((string)$fechaVal, 0, 10);
+                $fechaParaHash = ((int)$eid === 14) ? $fechaIso : (string)$fechaVal;
                 // GENERACIÓN DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
                 // Usamos hash siempre, ya que ID_Externo en Santander puede venir duplicado.
                 $hashData = 
                     (string)($row['Afiliacion'] ?? '') . 
-                    (string)($row['Fecha_Transaccion'] ?? '') . 
+                    $fechaParaHash .
                     (string)($row['Hora'] ?? '') . 
                     (string)($row['Monto'] ?? '') . 
                     (string)($row['Codigo_Autorizacion'] ?? '') .
@@ -4811,9 +5324,6 @@ public function anomalies_client_tickets()
                     continue;
                 }
                 $transaccionesVistas[$idTransaccion] = true;
-                
-                $fechaVal = $row['Fecha_Transaccion'];
-                $fechaIso = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 
                 $fechaDepoVal = $row['Fecha_Deposito'];
                 $fechaDepoIso = null;
@@ -4841,6 +5351,68 @@ public function anomalies_client_tickets()
             echo json_encode(["status" => "success", "data" => $result]);
 
         } catch (PDOException $e) { echo json_encode(["status" => "error", "message" => $e->getMessage()]); }
+        exit;
+    }
+
+    /** Conteo de despachos Bankaool nocturnos para Villa Ahumada en modo TX. */
+    public function get_importe_despachos_bankaool_nocturnos() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year = filter_input(INPUT_GET, 'year', FILTER_VALIDATE_INT);
+        $month = filter_input(INPUT_GET, 'month', FILTER_VALIDATE_INT);
+        if (!$year || !$month || $year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Año o mes inválido']);
+            exit;
+        }
+
+        try {
+            $from = sprintf('%04d-%02d-01', $year, $month);
+            $until = date('Y-m-t', strtotime($from));
+            $rows = $this->despachosModel->get_bankaool_late_dispatch_amounts(31, $from, $until) ?: [];
+            $amounts = [];
+            foreach ($rows as $row) {
+                $amounts[(string)$row['fecha']] = (float)$row['importe'];
+            }
+            echo json_encode(['status' => 'success', 'data' => $amounts]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'No se pudo consultar el importe de los despachos']);
+        }
+        exit;
+    }
+
+    /** Resumen mensual de despachos diarios para el modo comparativo DES. */
+    public function get_despachos_resumen_diario() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $codgas = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
+        $year = filter_input(INPUT_GET, 'year', FILTER_VALIDATE_INT);
+        $month = filter_input(INPUT_GET, 'month', FILTER_VALIDATE_INT);
+        if ((int)$codgas !== 31 || !$year || !$month || $year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Estación, año o mes inválido']);
+            exit;
+        }
+
+        try {
+            $from = sprintf('%04d-%02d-01', $year, $month);
+            $until = date('Y-m-t', strtotime($from));
+            $rows = $this->despachosModel->get_daily_dispatch_summary($codgas, $from, $until) ?: [];
+            $data = [];
+            foreach ($rows as $row) {
+                $data[(string)$row['fecha']] = [
+                    'total' => (float)$row['importe'],
+                    'count' => (int)$row['cantidad'],
+                ];
+            }
+            echo json_encode(['status' => 'success', 'data' => $data]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'No se pudo consultar el resumen de despachos']);
+        }
         exit;
     }
 
@@ -5588,7 +6160,7 @@ public function get_conciliacion_config() {
                     ];
                 }
             }
-            
+
             echo json_encode(['status' => 'success', 'data' => $reglas]);
 
         } catch (PDOException $e) {
@@ -6801,6 +7373,10 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'summary_v3.html');
     }
 
+    public function transitos_v3(): void {
+        echo $this->twig->render($this->route . 'transitos_v3.html');
+    }
+
     public function cash_reconciliation(): void {
         echo $this->twig->render($this->route . 'cash_reconciliation.html');
     }
@@ -7645,6 +8221,192 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    // Bank choices for the dashboard are scoped to the selected company, not
+    // to the currently selected station.
+    public function get_dashboard_v3_bancos(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+        $rs = trim($_GET['razon_social'] ?? '');
+        try {
+            $conn = $this->v3_conn();
+            $where = "WHERE LEN(ISNULL(TA.afiliacion,'')) > 0";
+            if ($rs === 'DIAZ GAS') $where .= " AND E.RFC='DGA930823KD3'";
+            elseif ($rs === 'GASOMEX') $where .= " AND E.RFC='DGM880621FU5'";
+            elseif ($rs === 'FORANEAS') $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
+            $stmt = $conn->prepare("SELECT DISTINCT TE.Nombre AS nombre
+                FROM Tesoreria_afil TA
+                JOIN Estaciones E ON E.Codigo=TA.estacion_id
+                JOIN Tesoreria_Entidad TE ON TE.id=TA.entidad_id
+                $where ORDER BY TE.Nombre");
+            $stmt->execute();
+            echo json_encode(['status'=>'success','data'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        } catch (Exception $e) {
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
+    // Dedicated monthly transit report. Outgoing amounts originate in the
+    // selected month and move to the next month; incoming amounts originate
+    // in the previous month and were reconciled into the selected month.
+    public function get_transitos_reporte_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+        $year = (int)($_GET['year'] ?? 0);
+        $month = (int)($_GET['month'] ?? 0);
+        $rs = trim($_GET['razon_social'] ?? '');
+        $banco = trim($_GET['banco'] ?? '');
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        if ($year < 2000 || $month < 1 || $month > 12) {
+            echo json_encode(['status'=>'error','message'=>'Selecciona un período válido.']);
+            exit;
+        }
+        $period = sprintf('%04d-%02d', $year, $month);
+        $previous = (new DateTimeImmutable($period . '-01'))->modify('-1 month')->format('Y-m');
+        $next = (new DateTimeImmutable($period . '-01'))->modify('+1 month')->format('Y-m');
+        try {
+            $conn = $this->v3_conn();
+            $scope = '';
+            if ($banco !== '') $scope .= ' AND TE.Nombre=?';
+            if ($estacion_id > 0) $scope .= ' AND T.estacion_id=?';
+            if ($rs === 'DIAZ GAS') $scope .= " AND E.RFC='DGA930823KD3'";
+            elseif ($rs === 'GASOMEX') $scope .= " AND E.RFC='DGM880621FU5'";
+            elseif ($rs === 'FORANEAS') $scope .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
+
+            $sql = "SELECT T.id,'SALIENTE' AS sentido,
+                    CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                    T.conciliacion_id_dest AS conciliacion,T.mes_origen,T.mes_destino,
+                    T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
+                    T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                    ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
+                FROM CV3_Transito T
+                LEFT JOIN Estaciones E ON E.Codigo=T.estacion_id
+                LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
+                WHERE T.estado<>'CANCELADO' AND T.mes_origen=? AND T.mes_destino=? $scope
+                UNION ALL
+                SELECT T.id,'ENTRANTE' AS sentido,
+                    CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                    T.conciliacion_id_dest AS conciliacion,T.mes_origen,T.mes_destino,
+                    T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
+                    T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                    ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
+                FROM CV3_Transito T
+                LEFT JOIN Estaciones E ON E.Codigo=T.estacion_id
+                LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
+                WHERE T.estado='CONCILIADO' AND T.conciliacion_id_dest IS NOT NULL
+                  AND T.mes_origen=? AND T.mes_destino=? $scope
+                ORDER BY sentido,estacion,banco,id";
+            $stmt = $conn->prepare($sql);
+            $queryParams = [$period,$next];
+            if ($banco !== '') $queryParams[] = $banco;
+            if ($estacion_id > 0) $queryParams[] = $estacion_id;
+            $queryParams[] = $previous;
+            $queryParams[] = $period;
+            if ($banco !== '') $queryParams[] = $banco;
+            if ($estacion_id > 0) $queryParams[] = $estacion_id;
+            $stmt->execute($queryParams);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as &$row) $row['monto_transito'] = (float)$row['monto_transito'];
+            echo json_encode(['status'=>'success','data'=>$rows]);
+        } catch (Exception $e) {
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
+    // Builds an Excel workbook from the rows currently visible in the report,
+    // including the user's per-column selections.
+    public function export_transitos_reporte_v3(): void {
+        if (ob_get_length()) ob_clean();
+        $data = json_decode(file_get_contents('php://input'), true);
+        $rows = $data['rows'] ?? null;
+        if (!is_array($rows) || count($rows) > 20000) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['status'=>'error','message'=>'El reporte no contiene filas válidas para exportar.']);
+            exit;
+        }
+
+        $period = trim((string)($data['period'] ?? ''));
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) $period = date('Y-m');
+        $company = trim((string)($data['empresa'] ?? ''));
+        if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) $company = 'Todas';
+        $bank = trim((string)($data['banco'] ?? '')) ?: 'Todos los bancos';
+        $station = trim((string)($data['estacion'] ?? '')) ?: 'Todas las estaciones';
+
+        try {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Tránsitos');
+            $sheet->mergeCells('A1:I1');
+            $sheet->setCellValue('A1', 'REPORTE DE TRÁNSITOS V3');
+            $sheet->setCellValue('A2', 'Período');
+            $sheet->setCellValue('B2', $period);
+            $sheet->setCellValue('C2', 'Empresa');
+            $sheet->setCellValueExplicit('D2', $company, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValue('E2', 'Banco');
+            $sheet->setCellValueExplicit('F2', $bank, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValue('G2', 'Estación');
+            $sheet->mergeCells('H2:I2');
+            $sheet->setCellValueExplicit('H2', $station, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+
+            $headers = ['SENTIDO','ESTACIÓN','EMPRESA','BANCO','AFILIACIÓN','MES ORIGEN','MES DESTINO','CONCILIACIÓN','MONTO'];
+            $sheet->fromArray($headers, null, 'A5');
+            $outgoingTotal = 0.0;
+            $incomingTotal = 0.0;
+            $rowNumber = 6;
+            $textColumns = ['sentido','estacion','razon_social','banco','afiliacion','mes_origen','mes_destino','conciliacion'];
+            foreach ($rows as $item) {
+                if (!is_array($item)) continue;
+                foreach ($textColumns as $column) {
+                    $value = trim((string)($item[$column] ?? ''));
+                    $cell = chr(65 + array_search($column, $textColumns, true)) . $rowNumber;
+                    $sheet->setCellValueExplicit($cell, $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                }
+                $amount = filter_var($item['monto_transito'] ?? 0, FILTER_VALIDATE_FLOAT);
+                if ($amount === false || !is_finite((float)$amount)) $amount = 0.0;
+                $sheet->setCellValue('I'.$rowNumber, (float)$amount);
+                if (($item['sentido'] ?? '') === 'SALIENTE') $outgoingTotal += (float)$amount;
+                if (($item['sentido'] ?? '') === 'ENTRANTE') $incomingTotal += (float)$amount;
+                $rowNumber++;
+            }
+
+            $lastRow = max(5, $rowNumber - 1);
+            $sheet->setCellValue('A3', 'Saliente exportado');
+            $sheet->setCellValue('B3', $outgoingTotal);
+            $sheet->setCellValue('C3', 'Entrante aplicado exportado');
+            $sheet->setCellValue('D3', $incomingTotal);
+            $sheet->setCellValue('E3', 'Filas exportadas');
+            $sheet->setCellValue('F3', $rowNumber - 6);
+            $sheet->getStyle('A1:I1')->applyFromArray([
+                'font'=>['bold'=>true,'size'=>14,'color'=>['argb'=>'FFFFFFFF']],
+                'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF1E40AF']],
+            ]);
+            $sheet->getStyle('A2:H3')->getFont()->setBold(true);
+            $sheet->getStyle('A5:I5')->applyFromArray([
+                'font'=>['bold'=>true,'color'=>['argb'=>'FFFFFFFF']],
+                'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF334155']],
+                'alignment'=>['horizontal'=>\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            ]);
+            $sheet->getStyle('B3:D3')->getNumberFormat()->setFormatCode('$#,##0.00');
+            if ($lastRow >= 6) $sheet->getStyle('I6:I'.$lastRow)->getNumberFormat()->setFormatCode('$#,##0.00');
+            $sheet->setAutoFilter('A5:I'.$lastRow);
+            $sheet->freezePane('A6');
+            foreach (range('A','I') as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
+
+            $filename = 'Transitos_V3_'.$period.'.xlsx';
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="'.$filename.'"');
+            header('Cache-Control: max-age=0');
+            (new Xlsx($spreadsheet))->save('php://output');
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['status'=>'error','message'=>'No fue posible generar el archivo de Excel.']);
+        }
+        exit;
+    }
+
     // ── DASHBOARD V3 — TRÁNSITOS  GET /income/get_transitos_dashboard_v3 ──────
     public function get_transitos_dashboard_v3(): void {
         ob_clean();
@@ -8099,6 +8861,35 @@ public function stamped_invoices_detail(): void
             $conn = $this->v3_conn();
             $conn->beginTransaction();
 
+            $tesDiferidoOrigIds = [];
+            $tesDiferidoDestIds = [];
+            $usesTesDiferido = false;
+            foreach (($data['tes_rows'] ?? []) as $pilotRow) {
+                if (($pilotRow['tipo'] ?? '') === 'TES_DIFERIDO') {
+                    $usesTesDiferido = true;
+                    if (empty($pilotRow['diferido_tes_ids']) || !is_array($pilotRow['diferido_tes_ids'])) throw new Exception('Faltan los IDs de diferido TES destino.');
+                    foreach ($pilotRow['diferido_tes_ids'] as $did) { if ((int)$did <= 0) throw new Exception('ID de diferido TES inválido.'); $tesDiferidoDestIds[] = (int)$did; }
+                }
+                if (!empty($pilotRow['diferido_tes_orig_ids']) && !is_array($pilotRow['diferido_tes_orig_ids'])) throw new Exception('IDs de diferido TES origen inválidos.');
+                foreach (($pilotRow['diferido_tes_orig_ids'] ?? []) as $did) {
+                    $usesTesDiferido = true;
+                    if ((int)$did <= 0) throw new Exception('ID de diferido TES inválido.');
+                    $tesDiferidoOrigIds[] = (int)$did;
+                }
+            }
+            $isTesDiferidoPilot = trim($data['afiliacion'] ?? '') === '9990624'
+                && substr((string)($data['fecha_operativa'] ?? ''), 0, 7) === '2026-10'
+                && substr((string)($data['fecha_deposito'] ?? ''), 0, 7) === '2026-10';
+            if ($usesTesDiferido && !$isTesDiferidoPilot) {
+                throw new Exception('El diferido TES solo está habilitado para la afiliación 9990624 en octubre de 2026.');
+            }
+            if ($isTesDiferidoPilot) {
+                $this->v3_ensure_diferido_tes_table($conn);
+                $this->v3_assert_mes_abierto($conn, (int)$data['estacion_id'], (int)$data['entidad_id'], '9990624', '2026-10');
+                $tesDiferidoOrigIds = $this->v3_validate_diferido_tes_group($conn, $tesDiferidoOrigIds, $tesDiferidoDestIds,
+                    (int)$data['estacion_id'], (int)$data['entidad_id'], $data['tes_rows']);
+            }
+
             $total_cg  = (float)$data['total_cg'];
             $total_tes = (float)$data['total_tes'];
             $diferencia = round($total_tes - $total_cg, 2);
@@ -8196,6 +8987,21 @@ public function stamped_invoices_detail(): void
                     (float)$row['monto'],
                     $row['concepto'] ?? '',
                 ]);
+            }
+
+            // Marcar TES diferido en el grupo que concilia el saldo origen y/o destino.
+            if (!empty($tesDiferidoDestIds)) {
+                $ph = implode(',', array_fill(0, count($tesDiferidoDestIds), '?'));
+                $u = $conn->prepare("UPDATE CV3_DiferidoTES SET estado='CONCILIADO', conciliacion_id_dest=? WHERE id IN ($ph) AND conciliacion_id_dest IS NULL");
+                $u->execute(array_merge([$grupo_id], $tesDiferidoDestIds));
+                if ($u->rowCount() !== count(array_unique($tesDiferidoDestIds))) throw new Exception('Uno o más diferidos TES destino ya están conciliados.');
+            }
+            if (!empty($tesDiferidoOrigIds)) {
+                $ids = array_values(array_unique($tesDiferidoOrigIds));
+                $ph = implode(',', array_fill(0, count($ids), '?'));
+                $u = $conn->prepare("UPDATE CV3_DiferidoTES SET conciliacion_id_orig=? WHERE id IN ($ph) AND conciliacion_id_orig IS NULL");
+                $u->execute(array_merge([$grupo_id], $ids));
+                if ($u->rowCount() !== count($ids)) throw new Exception('Uno o más diferidos TES origen ya están conciliados.');
             }
 
             // 3a. Marcar fakes de tránsito como CONCILIADO (mes destino)
@@ -8325,6 +9131,10 @@ public function stamped_invoices_detail(): void
                 "UPDATE CV3_Diferido SET conciliacion_id_orig = NULL
                  WHERE conciliacion_id_orig = ?"
             )->execute([$grupo_id]);
+
+            $this->v3_ensure_diferido_tes_table($conn);
+            $conn->prepare("UPDATE CV3_DiferidoTES SET estado='PENDIENTE', conciliacion_id_dest=NULL WHERE conciliacion_id_dest=?")->execute([$grupo_id]);
+            $conn->prepare("UPDATE CV3_DiferidoTES SET conciliacion_id_orig=NULL WHERE conciliacion_id_orig=?")->execute([$grupo_id]);
 
             // Borrar detalles y grupo (FK CASCADE borra detalles)
             $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id = ?")->execute([$grupo_id]);
@@ -8487,6 +9297,10 @@ public function stamped_invoices_detail(): void
                     "UPDATE CV3_Diferido SET conciliacion_id_orig = NULL
                      WHERE conciliacion_id_orig IN ($placeholders)"
                 )->execute($chunk);
+
+                $this->v3_ensure_diferido_tes_table($conn);
+                $conn->prepare("UPDATE CV3_DiferidoTES SET estado='PENDIENTE', conciliacion_id_dest=NULL WHERE conciliacion_id_dest IN ($placeholders)")->execute($chunk);
+                $conn->prepare("UPDATE CV3_DiferidoTES SET conciliacion_id_orig=NULL WHERE conciliacion_id_orig IN ($placeholders)")->execute($chunk);
 
                 // 6. Borrar grupos (FK CASCADE elimina detalles)
                 $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id IN ($placeholders)")->execute($chunk);
@@ -9500,6 +10314,187 @@ public function stamped_invoices_detail(): void
         ");
     }
 
+    private function v3_ensure_diferido_tes_table(PDO $conn): void {
+        $conn->exec("IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE name='CV3_DiferidoTES' AND type='U')
+            CREATE TABLE dbo.CV3_DiferidoTES (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                estacion_id INT NOT NULL, entidad_id INT NOT NULL,
+                afiliacion VARCHAR(50) NOT NULL, referencia VARCHAR(200) NOT NULL,
+                fecha_origen DATE NOT NULL, fecha_destino DATE NOT NULL, mes VARCHAR(7) NOT NULL,
+                monto_corte DECIMAL(18,2) NOT NULL, monto_diferido DECIMAL(18,2) NOT NULL,
+                concepto VARCHAR(200) NULL, descripcion VARCHAR(300) NULL,
+                estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                conciliacion_id_orig INT NULL, conciliacion_id_dest INT NULL,
+                created_at DATETIME DEFAULT GETDATE(), created_by INT NULL
+            )");
+    }
+
+    private function v3_assert_mes_abierto(PDO $conn, int $sid, int $eid, string $afil, string $mes): void {
+        $s = $conn->prepare("SELECT TOP 1 id FROM Conciliacion_V3_CierreMes WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND mes=?");
+        $s->execute([$sid, $eid, $afil, $mes]);
+        if ($s->fetchColumn()) throw new Exception('El mes ya está cerrado.');
+    }
+
+    private function v3_validate_diferido_tes_group(PDO $conn, array $origIds, array $destIds, int $sid, int $eid, array $tesRows): array {
+        if (count($origIds) !== count(array_unique(array_map('intval', $origIds))) || count($destIds) !== count(array_unique(array_map('intval', $destIds)))) throw new Exception('IDs de diferido TES duplicados.');
+        $origIds = array_values(array_unique(array_filter(array_map('intval', $origIds))));
+        $submittedOrigIds = $origIds;
+        $destIds = array_values(array_unique(array_filter(array_map('intval', $destIds))));
+        // Origin split IDs are derived from validated source references below;
+        // client IDs do not determine which source row owns a split.
+        $origIds = [];
+        $validatedOriginRowsByRef = [];
+
+        // Si se concilia el depósito origen, debe conservar exactamente el
+        // principal disponible y declarar todos los splits activos de ese ref.
+        $sourceRows = array_values(array_filter($tesRows, static fn($row) => ($row['tipo'] ?? 'TES') !== 'TES_DIFERIDO'));
+        $sourceRefs = array_values(array_unique(array_filter(array_map(
+            static fn($row) => trim((string)($row['ref'] ?? '')),
+            $sourceRows
+        ))));
+        if ($sourceRefs) {
+            $ph = implode(',', array_fill(0, count($sourceRefs), '?'));
+            $active = $conn->prepare("SELECT id, referencia, monto_diferido, fecha_origen FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK)
+                WHERE estacion_id=? AND entidad_id=? AND afiliacion='9990624' AND mes='2026-10'
+                  AND estado<>'CANCELADO' AND referencia IN ($ph)");
+            $active->execute(array_merge([$sid, $eid], $sourceRefs));
+            $activeByRef = [];
+            foreach ($active->fetchAll(PDO::FETCH_ASSOC) as $split) $activeByRef[trim((string)$split['referencia'])][] = $split;
+
+            foreach ($sourceRows as $row) {
+                $ref = trim((string)($row['ref'] ?? ''));
+                $splits = $activeByRef[$ref] ?? [];
+                if (!$splits) continue;
+                if (isset($validatedOriginRowsByRef[$ref])) throw new Exception('El depósito TES origen está duplicado en el detalle.');
+
+                if (!preg_match('/^mb_(\d+)$/', $ref, $m)) throw new Exception('Referencia TES origen inválida.');
+                $source = $conn->prepare("SELECT TOP 1 abono, fecha FROM [TG].[dbo].[movimientos_bancarios]
+                    WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10
+                      AND UPPER(descripcion) LIKE '%9990624%'
+                      AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%'
+                        OR UPPER(LTRIM(descripcion)) LIKE 'AMEX%' OR UPPER(LTRIM(descripcion)) LIKE 'INTERNAC%')");
+                $source->execute([(int)$m[1]]);
+                $movement = $source->fetch(PDO::FETCH_ASSOC);
+                if (!$movement) throw new Exception('No se encontró el movimiento TES origen.');
+                $movementDate = $movement['fecha'] instanceof DateTime ? $movement['fecha']->format('Y-m-d') : substr((string)$movement['fecha'], 0, 10);
+                $splitTotal = array_sum(array_map(static fn($split) => (float)$split['monto_diferido'], $splits));
+                $remaining = round((float)$movement['abono'] - $splitTotal, 2);
+                if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $movementDate
+                    || abs(round((float)($row['monto'] ?? 0), 2) - $remaining) > 0.005) {
+                    throw new Exception('TES origen ' . $ref . ' debe coincidir con su fecha y saldo residual.');
+                }
+                $validatedOriginRowsByRef[$ref] = $row;
+                foreach ($splits as $split) $origIds[] = (int)$split['id'];
+            }
+        }
+
+        $origIds = array_values(array_unique($origIds));
+        if (array_diff($submittedOrigIds, $origIds)) throw new Exception('IDs de diferido TES origen no corresponden a los depósitos validados.');
+
+        foreach ([[$origIds, 'origen'], [$destIds, 'destino']] as [$ids, $kind]) {
+            if (!$ids) continue;
+            if (count($ids) !== count($kind === 'origen' ? $origIds : $destIds)) throw new Exception('IDs de diferido TES inválidos.');
+            $ph = implode(',', array_fill(0, count($ids), '?'));
+            $s = $conn->prepare("SELECT id, estacion_id, entidad_id, afiliacion, mes, referencia, fecha_origen, fecha_destino, monto_diferido, estado, conciliacion_id_orig, conciliacion_id_dest FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE id IN ($ph)");
+            $s->execute($ids);
+            $rows = $s->fetchAll(PDO::FETCH_ASSOC);
+            if (count($rows) !== count($ids)) throw new Exception('Diferido TES no encontrado.');
+            foreach ($rows as $r) {
+                if ((int)$r['estacion_id'] !== $sid || (int)$r['entidad_id'] !== $eid || $r['afiliacion'] !== '9990624' || $r['mes'] !== '2026-10' || $r['estado'] === 'CANCELADO') throw new Exception('Diferido TES no disponible para esta conciliación.');
+                if ($kind === 'origen' && !empty($r['conciliacion_id_orig'])) throw new Exception('El saldo origen ya fue conciliado.');
+                if ($kind === 'destino' && !empty($r['conciliacion_id_dest'])) throw new Exception('El fake destino ya fue conciliado.');
+                if ($kind === 'origen') {
+                    // The source row was already checked above against the bank
+                    // movement date and residual amount. Its split IDs were
+                    // derived from that validated reference, so matching it a
+                    // second time here is redundant and can fail on SQL values
+                    // with trailing whitespace in referencia.
+                    $ref = trim((string)$r['referencia']);
+                    if (!isset($validatedOriginRowsByRef[$ref])) {
+                        throw new Exception('El origen del diferido TES ' . (int)$r['id'] . ' no corresponde a un depósito TES validado.');
+                    }
+                    continue;
+                }
+
+                $matching = false;
+                foreach ($tesRows as $row) {
+                    $rowIds = ($row['tipo'] ?? '') === 'TES_DIFERIDO' ? ($row['diferido_tes_ids'] ?? []) : [];
+                    if (!in_array((int)$r['id'], array_map('intval', (array)$rowIds), true)) continue;
+                    $expectedDate = substr((string)$r['fecha_destino'], 0, 10);
+                    if (substr((string)($row['fecha'] ?? ''), 0, 10) !== $expectedDate) continue;
+                    $expectedRef = 'diferido_tes_' . (int)$r['id'];
+                    if ((string)($row['ref'] ?? '') !== $expectedRef) continue;
+                    if (abs((float)($row['monto'] ?? 0) - (float)$r['monto_diferido']) > 0.005) continue;
+                    $matching = true; break;
+                }
+                if (!$matching) throw new Exception('Diferido TES ' . (int)$r['id'] . ' no coincide con referencia, fecha o importe esperado.');
+            }
+        }
+
+        return $origIds;
+    }
+
+    // Piloto TES: consulta de saldos divididos para afiliación y mes exactos.
+    public function get_diferidos_tes_v3(): void {
+        ob_clean(); header('Content-Type: application/json');
+        $sid=(int)($_GET['estacion_id']??0); $eid=(int)($_GET['entidad_id']??0);
+        if (!$sid || !$eid || trim($_GET['afiliacion']??'')!=='9990624' || (int)($_GET['year']??0)!==2026 || (int)($_GET['month']??0)!==10) { echo json_encode(['status'=>'error','message'=>'El piloto solo está habilitado para afiliación 9990624 en octubre de 2026']); exit; }
+        try { $c=$this->v3_conn(); $this->v3_ensure_diferido_tes_table($c);
+            $s=$c->prepare("SELECT id, referencia AS tes_ref, CONVERT(VARCHAR(10),fecha_origen,23) fecha_origen, CONVERT(VARCHAR(10),fecha_destino,23) fecha_destino, monto_corte, monto_diferido, concepto, descripcion, estado, conciliacion_id_orig, conciliacion_id_dest FROM CV3_DiferidoTES WHERE estacion_id=? AND entidad_id=? AND afiliacion='9990624' AND mes='2026-10' AND estado<>'CANCELADO' ORDER BY fecha_origen,id");
+            $s->execute([$sid,$eid]); $rows=$s->fetchAll(PDO::FETCH_ASSOC); foreach($rows as &$r){$r['id']=(int)$r['id'];$r['monto_corte']=(float)$r['monto_corte'];$r['monto_diferido']=(float)$r['monto_diferido'];} unset($r);
+            echo json_encode(['status'=>'success','fakes'=>$rows,'en_diferido'=>$rows]);
+        } catch(Exception $e){echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    // Crea un split TES; tes_ref identifica movimientos_bancarios.id como mb_<id>.
+    public function crear_diferido_tes_v3(): void {
+        ob_clean(); header('Content-Type: application/json'); $d=json_decode(file_get_contents('php://input'),true)??[];
+        $sid=(int)($d['estacion_id']??0);$eid=(int)($d['entity_id']??$d['entidad_id']??0);
+        $afil=trim((string)($d['afiliacion']??''));$fo=trim((string)($d['fecha_origen']??''));$fd=trim((string)($d['fecha_destino']??''));$amt=round((float)($d['monto_diferido']??0),2);
+        $isBatch=array_key_exists('tes_refs',$d);
+        $refs=$isBatch?$d['tes_refs']:[$d['tes_ref']??$d['referencia']??$d['ref']??''];
+        if(!$sid||$eid!==14||$afil!=='9990624'||!is_array($refs)||!$refs||$amt<=0||(($d['mes']??($isBatch?'':'2026-10'))!=='2026-10')||!preg_match('/^2026-10-\d{2}$/',$fo)||!preg_match('/^2026-10-\d{2}$/',$fd)||!checkdate((int)substr($fo,5,2),(int)substr($fo,8,2),(int)substr($fo,0,4))||!checkdate((int)substr($fd,5,2),(int)substr($fd,8,2),(int)substr($fd,0,4))){echo json_encode(['status'=>'error','message'=>'Datos inválidos: solo se permiten referencias mb_<id>, afiliación 9990624 y fechas de octubre de 2026 con monto positivo']);exit;}
+        $refs=array_map(static fn($ref)=>trim((string)$ref),$refs);
+        if(count($refs)!==count(array_unique($refs))){echo json_encode(['status'=>'error','message'=>'Referencias TES duplicadas.']);exit;}
+        foreach($refs as $ref){if(!preg_match('/^mb_(\d+)$/',$ref)){echo json_encode(['status'=>'error','message'=>'Referencia TES inválida.']);exit;}}
+        try{$c=$this->v3_conn();$this->v3_ensure_diferido_tes_table($c);$c->beginTransaction();$this->v3_assert_mes_abierto($c,$sid,$eid,$afil,'2026-10');
+            $afilCheck=$c->prepare("SELECT TOP 1 estacion_id FROM Tesoreria_afil WHERE entidad_id=14 AND afiliacion='9990624' AND estacion_id=?");$afilCheck->execute([$sid]);if(!$afilCheck->fetchColumn())throw new Exception('La afiliación piloto no pertenece a la estación seleccionada.');
+            $sources=[];$availableCents=0;
+            $src=$c->prepare("SELECT TOP 1 id, abono AS Depositos, fecha AS Fecha, descripcion AS Descripcion FROM [TG].[dbo].[movimientos_bancarios] WITH (UPDLOCK,HOLDLOCK) WHERE banco='BANKAOOL' AND id=? AND abono>0 AND YEAR(fecha)=2026 AND MONTH(fecha)=10 AND UPPER(descripcion) LIKE '%9990624%' AND (UPPER(LTRIM(descripcion)) LIKE 'DEBITO%' OR UPPER(LTRIM(descripcion)) LIKE 'CREDITO%' OR UPPER(LTRIM(descripcion)) LIKE 'AMEX%' OR UPPER(LTRIM(descripcion)) LIKE 'INTERNAC%')");
+            $already=$c->prepare("SELECT TOP 1 D.id FROM Conciliacion_V3_Detalles D WITH (UPDLOCK,HOLDLOCK)
+                INNER JOIN Conciliacion_V3_Grupos G WITH (UPDLOCK,HOLDLOCK) ON G.id=D.grupo_id
+                WHERE D.origen='TES' AND D.referencia_externa=? AND G.estacion_id=? AND G.entidad_id=? AND G.afiliacion='9990624'");
+            $sum=$c->prepare("SELECT ISNULL(SUM(monto_diferido),0) FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND referencia=? AND estado<>'CANCELADO'");
+            foreach($refs as $ref){
+                preg_match('/^mb_(\d+)$/',$ref,$refMatch);$src->execute([(int)$refMatch[1]]);$source=$src->fetch(PDO::FETCH_ASSOC);
+                if(!$source)throw new Exception('No se encontró el depósito origen para la referencia '.$ref.' en Tesorería.');
+                $cutCents=(int)round((float)$source['Depositos']*100);$sourceDate=$source['Fecha'] instanceof DateTime?$source['Fecha']->format('Y-m-d'):substr((string)$source['Fecha'],0,10);
+                if($fo!==$sourceDate)throw new Exception('La fecha origen no coincide con Tesorería para '.$ref.'.');
+                $already->execute([$ref,$sid,$eid]);if($already->fetchColumn())throw new Exception('El movimiento TES origen '.$ref.' ya pertenece a una conciliación V3.');
+                $sum->execute([$sid,$eid,$afil,$ref]);$usedCents=(int)round((float)$sum->fetchColumn()*100);$remainingCents=$cutCents-$usedCents;
+                if($remainingCents<0)throw new Exception('El saldo disponible del depósito '.$ref.' es inválido.');
+                $sources[]=['ref'=>$ref,'source'=>$source,'cut_cents'=>$cutCents,'used_cents'=>$usedCents,'remaining_cents'=>$remainingCents];$availableCents+=$remainingCents;
+            }
+            $amountCents=(int)round($amt*100);if($amountCents>$availableCents)throw new Exception('El monto diferido supera el saldo disponible agregado de los depósitos.');
+            $ins=$c->prepare("INSERT INTO CV3_DiferidoTES(estacion_id,entidad_id,afiliacion,referencia,fecha_origen,fecha_destino,mes,monto_corte,monto_diferido,concepto,descripcion) VALUES(?,?,?,?,?,?, '2026-10',?,?,?,?)");$inserted=[];$leftCents=$amountCents;
+            foreach($sources as $item){if($leftCents<=0)break;$consumeCents=min($leftCents,$item['remaining_cents']);if($consumeCents<=0)continue;$source=$item['source'];$concept=trim((string)($source['Descripcion']??''))?:trim((string)($d['concepto']??''));$ins->execute([$sid,$eid,$afil,$item['ref'],$fo,$fd,$item['cut_cents']/100,$consumeCents/100,$concept,trim((string)($d['descripcion']??''))]);$inserted[]=['id'=>(int)$c->query('SELECT @@IDENTITY')->fetchColumn(),'tes_ref'=>$item['ref'],'monto_diferido'=>$consumeCents/100];$leftCents-=$consumeCents;}
+            if($leftCents!==0)throw new Exception('El saldo disponible cambió; no fue posible distribuir el monto completo.');
+            $c->commit();
+            if(!$isBatch){$item=$inserted[0]??[];echo json_encode(['status'=>'success','id'=>$item['id']??null,'tes_ref'=>$item['tes_ref']??$refs[0],'monto_efectivo'=>round(($availableCents-$amountCents)/100,2)]);}
+            else{echo json_encode(['status'=>'success','ids'=>array_column($inserted,'id'),'splits'=>$inserted,'monto_diferido'=>$amt,'monto_efectivo'=>round(($availableCents-$amountCents)/100,2)]);}
+        }catch(Exception $e){if(isset($c)&&$c->inTransaction())$c->rollBack();echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
+    }
+
+    public function mover_diferido_tes_v3(): void { $this->cambiar_estado_diferido_tes_v3('mover'); }
+    public function cancelar_diferido_tes_v3(): void { $this->cambiar_estado_diferido_tes_v3('cancelar'); }
+    private function cambiar_estado_diferido_tes_v3(string $accion): void {
+        ob_clean();header('Content-Type: application/json');$d=json_decode(file_get_contents('php://input'),true)??[];$id=(int)($d['id']??0);$dest=trim((string)($d['nueva_fecha_destino']??''));
+        if(!$id||($accion==='mover'&&(!preg_match('/^2026-10-\d{2}$/',$dest)||!checkdate((int)substr($dest,5,2),(int)substr($dest,8,2),(int)substr($dest,0,4))))){echo json_encode(['status'=>'error','message'=>'Parámetros inválidos']);exit;}
+        try{$c=$this->v3_conn();$this->v3_ensure_diferido_tes_table($c);$c->beginTransaction();$s=$c->prepare('SELECT * FROM CV3_DiferidoTES WITH (UPDLOCK,HOLDLOCK) WHERE id=?');$s->execute([$id]);$r=$s->fetch(PDO::FETCH_ASSOC);if(!$r)throw new Exception('Diferido TES no encontrado.');if($r['afiliacion']!=='9990624'||$r['mes']!=='2026-10'||$r['estado']!=='PENDIENTE')throw new Exception('Diferido TES fuera del piloto o no está pendiente.');$this->v3_assert_mes_abierto($c,(int)$r['estacion_id'],(int)$r['entidad_id'],'9990624','2026-10');if(!empty($r['conciliacion_id_orig'])||!empty($r['conciliacion_id_dest']))throw new Exception('No se puede cambiar: alguno de sus grupos está conciliado.');
+            if($accion==='mover'){$c->prepare('UPDATE CV3_DiferidoTES SET fecha_destino=? WHERE id=?')->execute([$dest,$id]);}else{$c->prepare("UPDATE CV3_DiferidoTES SET estado='CANCELADO' WHERE id=?")->execute([$id]);}$c->commit();echo json_encode(['status'=>'success']);
+        }catch(Exception $e){if(isset($c)&&$c->inTransaction())$c->rollBack();echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
+    }
+
     // -------------------------------------------------------------------------
     //     GET /income/get_diferidos_cg_v3
     // -------------------------------------------------------------------------
@@ -9557,7 +10552,27 @@ public function stamped_invoices_detail(): void
                 $fakes[] = $r;
             }
 
-            echo json_encode(['status' => 'success', 'en_diferido' => $enDiferido, 'fakes' => $fakes]);
+            $diferidosTes = [];
+            if ($afiliacion === '9990624' && $year === 2026 && $month === 10) {
+                $this->v3_ensure_diferido_tes_table($conn);
+                $st = $conn->prepare("SELECT id, referencia AS tes_ref,
+                            CONVERT(VARCHAR(10), fecha_origen, 23) AS fecha_origen,
+                            CONVERT(VARCHAR(10), fecha_destino, 23) AS fecha_destino,
+                            mes, monto_corte, monto_diferido, concepto, descripcion,
+                            estado, conciliacion_id_orig, conciliacion_id_dest
+                     FROM CV3_DiferidoTES WHERE estacion_id=? AND entidad_id=?
+                       AND afiliacion='9990624' AND mes='2026-10' AND estado<>'CANCELADO'
+                     ORDER BY fecha_origen, id");
+                $st->execute([$estacion_id, $entidad_id]);
+                $diferidosTes = $st->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($diferidosTes as &$tesRow) {
+                    $tesRow['id'] = (int)$tesRow['id'];
+                    $tesRow['monto_corte'] = (float)$tesRow['monto_corte'];
+                    $tesRow['monto_diferido'] = (float)$tesRow['monto_diferido'];
+                }
+                unset($tesRow);
+            }
+            echo json_encode(['status' => 'success', 'en_diferido' => $enDiferido, 'fakes' => $fakes, 'diferidos_tes' => $diferidosTes]);
 
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
@@ -9596,6 +10611,11 @@ public function stamped_invoices_detail(): void
         $monto_diferido   = round((float)$data['monto_diferido'], 2);
         $concepto         = trim($data['concepto']    ?? '');
         $descripcion      = trim($data['descripcion'] ?? '');
+
+        if ($afiliacion === '9990624' && $mes === '2026-10') {
+            echo json_encode(['status' => 'error', 'message' => 'Durante el piloto de octubre de 2026, los diferidos de la afiliación 9990624 solo se crean desde Tesorería.']);
+            exit;
+        }
 
         if ($monto_diferido <= 0) {
             echo json_encode(['status' => 'error', 'message' => 'Monto diferido inválido']);
@@ -9685,6 +10705,11 @@ public function stamped_invoices_detail(): void
         $monto_dif_total  = round((float)($data['monto_diferido_total'] ?? 0), 2);
         $descripcion      = trim($data['descripcion']           ?? '');
         $cortes           = $data['cortes']                     ?? [];
+
+        if ($afiliacion === '9990624' && $mes === '2026-10') {
+            echo json_encode(['status' => 'error', 'message' => 'Durante el piloto de octubre de 2026, los diferidos de la afiliación 9990624 solo se crean desde Tesorería.']);
+            exit;
+        }
 
         if (!$estacion_id || !$entidad_id || !$mes || !$cg_fecha_destino || empty($cortes) || $monto_dif_total <= 0) {
             echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);

@@ -1,0 +1,551 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Reporte de Tránsitos V3{% endblock %}
+{% block menutitle %}Reporte de Tránsitos V3{% endblock %}
+
+{% block content %}
+<style>
+  body { background:#f1f5f9; }
+  .transit-page { max-width:1500px; margin:auto; }
+  .transit-card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; box-shadow:0 2px 8px rgba(15,23,42,.05); }
+  .transit-filter { display:flex; align-items:end; flex-wrap:wrap; gap:14px; }
+  .transit-filter label { display:block; margin-bottom:5px; color:#64748b; font-size:.72rem; font-weight:700; letter-spacing:.05em; }
+  .transit-filter .form-control { min-width:190px; height:40px; border-radius:9px; }
+  .transit-filter .station-control { min-width:240px; }
+  .transit-filter .period-control { min-width:165px; }
+  .transit-metric { height:100%; padding:18px 20px; border-left:4px solid; }
+  .transit-metric.outgoing { border-color:#d97706; }
+  .transit-metric.incoming { border-color:#2563eb; }
+  .transit-metric-label { color:#64748b; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  .transit-metric-value { margin-top:5px; color:#1e293b; font:800 1.55rem/1.2 Consolas,monospace; }
+  .transit-metric-sub { margin-top:4px; color:#64748b; font-size:.8rem; }
+  .transit-table { min-width:1000px; }
+  .transit-table td, .transit-table th { vertical-align:middle; }
+  .transit-table th { white-space:nowrap; }
+  .transit-th-content { display:flex; align-items:center; justify-content:flex-start; gap:6px; }
+  .transit-col-filter { display:inline-flex; align-items:center; justify-content:center; width:27px; height:27px; padding:0; border:1px solid transparent; border-radius:6px; background:transparent; color:#64748b; cursor:pointer; }
+  .transit-col-filter:hover, .transit-col-filter:focus-visible { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; outline:none; }
+  .transit-col-filter.is-active { border-color:#93c5fd; background:#dbeafe; color:#1d4ed8; }
+  .transit-col-filter:focus-visible { box-shadow:0 0 0 3px rgba(59,130,246,.22); }
+  .transit-filter-menu { position:fixed; z-index:3000; width:290px; max-width:calc(100vw - 16px); padding:12px; border:1px solid #cbd5e1; border-radius:10px; background:#fff; box-shadow:0 12px 32px rgba(15,23,42,.2); color:#1e293b; }
+  .transit-filter-menu[hidden] { display:none; }
+  .transit-filter-menu-title { margin-bottom:8px; font-size:.82rem; font-weight:700; }
+  .transit-filter-menu-search { width:100%; height:36px; padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; }
+  .transit-filter-menu-search:focus { border-color:#60a5fa; outline:3px solid rgba(59,130,246,.2); }
+  .transit-filter-select-all { display:flex; align-items:center; gap:8px; padding:8px 2px; border-bottom:1px solid #e2e8f0; font-size:.8rem; font-weight:600; }
+  .transit-filter-options { max-height:220px; overflow:auto; padding:4px 0; }
+  .transit-filter-option { display:flex; align-items:center; gap:8px; min-height:30px; margin:0; padding:4px 5px; border-radius:5px; font-size:.8rem; font-weight:400; cursor:pointer; }
+  .transit-filter-option:hover { background:#f1f5f9; }
+  .transit-filter-option span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .transit-filter-no-options { padding:12px 5px; color:#64748b; font-size:.8rem; }
+  .transit-filter-menu-actions { display:flex; align-items:center; justify-content:space-between; gap:6px; padding-top:9px; border-top:1px solid #e2e8f0; }
+  .transit-filter-menu-actions button { padding:5px 9px; border:0; border-radius:5px; background:#f1f5f9; color:#334155; font-size:.77rem; cursor:pointer; }
+  .transit-filter-menu-actions button:hover { background:#e2e8f0; }
+  .transit-filter-menu-actions .apply { background:#2563eb; color:white; }
+  .transit-filter-menu-actions .apply:hover { background:#1d4ed8; }
+  .transit-column-filter-summary { min-height:24px; color:#64748b; font-size:.77rem; }
+  .transit-column-filter-summary.active { color:#1d4ed8; }
+  .transit-table td.amount { text-align:right; font-family:Consolas,monospace; font-weight:700; white-space:nowrap; }
+  .transit-definition { color:#475569; font-size:.84rem; }
+</style>
+
+<main class="container-fluid px-3 py-3 transit-page">
+  <header class="d-flex align-items-center justify-content-between flex-wrap mb-3" style="gap:12px;">
+    <div>
+      <h4 class="mb-1 font-weight-bold">Reporte de Tránsitos <span class="text-primary">V3</span></h4>
+      <p class="mb-0 text-muted" style="font-size:.86rem;">Consulta mensual por empresa y banco, considerando todas las estaciones.</p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm rounded-pill" href="/income/summary_v3">
+      <i class="fas fa-arrow-left mr-1"></i> Volver al dashboard
+    </a>
+  </header>
+
+  <section class="transit-card p-3 p-md-4 mb-3" aria-label="Filtros del reporte de tránsitos">
+    <div class="transit-filter">
+      <div>
+        <label for="transitCompany">EMPRESA</label>
+        <select id="transitCompany" class="form-control">
+          <option value="DIAZ GAS">DIAZ</option>
+          <option value="FORANEAS">FORÁNEAS</option>
+          <option value="GASOMEX">GASOMEX</option>
+        </select>
+      </div>
+      <div>
+        <label for="transitBank">BANCO</label>
+        <select id="transitBank" class="form-control"><option value="">Todos los bancos</option></select>
+      </div>
+      <div>
+        <label for="transitStation">ESTACIÓN</label>
+        <select id="transitStation" class="form-control station-control"><option value="">Todas las estaciones</option></select>
+      </div>
+      <div>
+        <label for="transitPeriod">MES A CONSULTAR</label>
+        <input id="transitPeriod" class="form-control period-control" type="month">
+      </div>
+      <button id="transitSearch" class="btn btn-primary px-4" type="button" onclick="consultarTransitos()">
+        <i class="fas fa-search mr-1"></i> Consultar
+      </button>
+    </div>
+  </section>
+
+  <section class="row mb-3" aria-label="Totales de tránsitos">
+    <div class="col-md-6 mb-2">
+      <article class="transit-card transit-metric outgoing">
+        <div class="transit-metric-label"><i class="fas fa-arrow-up mr-1"></i> Tránsito saliente</div>
+        <div id="outgoingAmount" class="transit-metric-value">—</div>
+        <div id="outgoingCount" class="transit-metric-sub">Ventas del mes que pasan al siguiente</div>
+      </article>
+    </div>
+    <div class="col-md-6 mb-2">
+      <article class="transit-card transit-metric incoming">
+        <div class="transit-metric-label"><i class="fas fa-arrow-down mr-1"></i> Tránsito entrante aplicado</div>
+        <div id="incomingAmount" class="transit-metric-value">—</div>
+        <div id="incomingCount" class="transit-metric-sub">Saldos del mes anterior conciliados en el mes</div>
+      </article>
+    </div>
+  </section>
+
+  <section class="transit-card p-3 p-md-4 mb-3">
+    <div class="transit-definition mb-3">
+      <strong>Cómo se cuentan:</strong> saliente = venta del mes seleccionado que se mandó al siguiente; entrante aplicado = tránsito del mes anterior que quedó unido a una conciliación del mes seleccionado.
+    </div>
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+      <h6 class="mb-0 font-weight-bold">Detalle por estación, banco y afiliación</h6>
+      <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+        <small id="transitPeriodLabel" class="text-muted"></small>
+        <button id="exportTransitExcel" class="btn btn-success btn-sm" type="button" onclick="exportarTransitosExcel()" disabled>
+          <i class="fas fa-file-excel mr-1"></i> Exportar Excel
+        </button>
+        <button id="clearTransitColumnFilters" class="btn btn-outline-secondary btn-sm" type="button" onclick="limpiarFiltrosColumnasTransito()" disabled>
+          <i class="fas fa-times mr-1"></i> Limpiar filtros de columnas
+        </button>
+      </div>
+    </div>
+    <div class="transit-column-filter-summary mb-2" id="transitColumnFilterSummary" aria-live="polite">Los filtros de encabezado solo afectan el detalle; los totales mantienen los filtros de empresa, banco, estación y mes.</div>
+    <div id="transitError" class="alert alert-danger d-none" role="alert"></div>
+    <div id="transitEmpty" class="text-center text-muted py-5">
+      <i class="fas fa-calendar-alt d-block mb-2" style="font-size:2rem;"></i>
+      Elige empresa, banco y mes para consultar los tránsitos.
+    </div>
+    <div id="transitLoading" class="text-center text-muted py-5 d-none">
+      <i class="fas fa-spinner fa-spin mr-1"></i> Consultando tránsitos…
+    </div>
+    <div id="transitResults" class="table-responsive d-none">
+      <table class="table table-sm table-hover transit-table mb-0">
+        <thead class="thead-light"><tr>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="0" aria-label="Filtrar por Sentido" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Sentido</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="1" aria-label="Filtrar por Estación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Estación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="2" aria-label="Filtrar por Empresa" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Empresa</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="3" aria-label="Filtrar por Banco" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Banco</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="4" aria-label="Filtrar por Afiliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Afiliación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="5" aria-label="Filtrar por Mes origen" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Mes origen</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="6" aria-label="Filtrar por Mes destino" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Mes destino</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="7" aria-label="Filtrar por Conciliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Conciliación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="8" aria-label="Filtrar por Monto" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Monto</span></div></th>
+        </tr></thead>
+        <tbody id="transitRows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block myjs %}
+<script>
+const TRANSIT_FMT = new Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN', maximumFractionDigits:2 });
+let transitRequest = 0;
+let stationRequest = 0;
+let transitReportRows = [];
+let visibleTransitReportRows = [];
+let transitReportPeriod = '';
+let transitReportReady = false;
+const transitColumnFilters = new Map();
+let activeTransitMenu = null;
+const transitColumnNames = ['Sentido','Estación','Empresa','Banco','Afiliación','Mes origen','Mes destino','Conciliación','Monto'];
+
+function cargarBancosTransitos() {
+  const empresa = $('#transitCompany').val();
+  const selected = $('#transitBank').val();
+  $.getJSON('/income/get_dashboard_v3_bancos', { razon_social: empresa }, function(res) {
+    if (empresa !== $('#transitCompany').val() || res.status !== 'success') return;
+    const $bank = $('#transitBank').empty().append($('<option>').val('').text('Todos los bancos'));
+    (res.data || []).forEach(row => $bank.append($('<option>').val(row.nombre).text(row.nombre)));
+    if ((res.data || []).some(row => row.nombre === selected)) $bank.val(selected);
+  });
+}
+
+function cargarEstacionesTransitos() {
+  const empresa = $('#transitCompany').val();
+  const request = ++stationRequest;
+  $.getJSON('/income/get_estaciones_catalogo', { empresa, all: 1 }, function(res) {
+    if (request !== stationRequest || empresa !== $('#transitCompany').val() || res.status !== 'success') return;
+    const $station = $('#transitStation').empty().append($('<option>').val('').text('Todas las estaciones'));
+    (res.respuesta || []).forEach(row => $station.append($('<option>').val(row.Codigo).text(row.Nombre)));
+  });
+}
+
+function consultarTransitos() {
+  const [year, month] = ($('#transitPeriod').val() || '').split('-');
+  if (!year || !month) {
+    mostrarTransitoError('Selecciona el mes que quieres consultar.');
+    return;
+  }
+  const request = ++transitRequest;
+  const params = {
+    year, month,
+    razon_social: $('#transitCompany').val(),
+    banco: $('#transitBank').val(),
+    estacion_id: $('#transitStation').val()
+  };
+  $('#transitError').addClass('d-none').text('');
+  $('#transitEmpty').addClass('d-none');
+  $('#transitResults').addClass('d-none');
+  $('#transitLoading').removeClass('d-none');
+  transitReportReady = false;
+  $('#exportTransitExcel').prop('disabled', true);
+  $.getJSON('/income/get_transitos_reporte_v3', params)
+    .done(res => {
+      if (request !== transitRequest) return;
+      if (res.status !== 'success') { mostrarTransitoError(res.message || 'No se pudo consultar el reporte.'); return; }
+      renderReporteTransitos(res.data || [], `${year}-${month}`);
+    })
+    .fail(() => { if (request === transitRequest) mostrarTransitoError('Ocurrió un error al consultar los tránsitos.'); })
+    .always(() => { if (request === transitRequest) $('#transitLoading').addClass('d-none'); });
+}
+
+function mostrarTransitoError(message) {
+  $('#transitLoading').addClass('d-none');
+  $('#transitResults').addClass('d-none');
+  $('#transitEmpty').addClass('d-none');
+  transitReportReady = false;
+  $('#exportTransitExcel').prop('disabled', true);
+  $('#transitError').removeClass('d-none').text(message);
+}
+
+function renderReporteTransitos(rows, period) {
+  transitReportPeriod = period;
+  transitReportReady = true;
+  const outgoing = rows.filter(row => sentidoTransito(row) === 'SALIENTE');
+  const incoming = rows.filter(row => sentidoTransito(row) === 'ENTRANTE');
+  const total = list => list.reduce((sum, row) => sum + Number(row.monto_transito || 0), 0);
+  $('#outgoingAmount').text(TRANSIT_FMT.format(total(outgoing)));
+  $('#outgoingCount').text(`${outgoing.length} registros · venta de ${period} que pasa a ${outgoing[0]?.mes_destino || siguienteMes(period)}`);
+  $('#incomingAmount').text(TRANSIT_FMT.format(total(incoming)));
+  $('#incomingCount').text(`${incoming.length} registros · origen ${anteriorMes(period)} y aplicado en ${period}`);
+  const station = $('#transitStation option:selected').text();
+  $('#transitPeriodLabel').text(`${period} · ${$('#transitStation').val() ? station : 'todas las estaciones'}`);
+
+  transitReportRows = rows;
+  renderTransitosFiltrados();
+  $('#exportTransitExcel').prop('disabled', false);
+  $('#transitLoading').addClass('d-none');
+}
+
+function valorColumnaTransito(row, column) {
+  const values = [sentidoTransito(row),row.estacion,row.razon_social,row.banco,row.afiliacion,row.mes_origen,row.mes_destino,row.conciliacion,Number(row.monto_transito || 0).toFixed(2)];
+  return values[column] == null ? '' : String(values[column]);
+}
+
+function sentidoTransito(row) {
+  if (row.sentido === 'SALIENTE' || row.sentido === 'ENTRANTE') return row.sentido;
+  if (row.mes_origen === transitReportPeriod && row.mes_destino === siguienteMes(transitReportPeriod)) return 'SALIENTE';
+  if (row.mes_origen === anteriorMes(transitReportPeriod)
+      && row.mes_destino === transitReportPeriod && Number(row.conciliacion || 0) > 0) return 'ENTRANTE';
+  return '';
+}
+
+function renderTransitosFiltrados() {
+  const visibleRows = transitReportRows.filter(row => {
+    for (const [column, selected] of transitColumnFilters) {
+      if (!selected.has(valorColumnaTransito(row, column))) return false;
+    }
+    return true;
+  });
+  visibleTransitReportRows = visibleRows;
+  const body = document.getElementById('transitRows');
+  body.replaceChildren();
+  visibleRows.forEach(row => {
+    const tr = document.createElement('tr');
+    const sentido = sentidoTransito(row);
+    const values = [sentido || 'Sin sentido',row.estacion,row.razon_social,row.banco,row.afiliacion || '—',row.mes_origen,row.mes_destino,row.conciliacion || '—'];
+    values.forEach((value, index) => {
+      const td = document.createElement('td');
+      if (index === 0) {
+        const badge = document.createElement('span');
+        badge.className = `badge ${sentido === 'SALIENTE' ? 'badge-warning' : 'badge-primary'}`;
+        badge.style.cssText = `display:inline-block;padding:4px 7px;border-radius:12px;font-size:.72rem;font-weight:700;color:${sentido === 'SALIENTE' ? '#92400e' : '#1e40af'};background:${sentido === 'SALIENTE' ? '#fef3c7' : '#dbeafe'};white-space:nowrap;`;
+        badge.textContent = value == null ? 'Sin sentido' : String(value);
+        td.appendChild(badge);
+      } else td.textContent = value == null ? '' : String(value);
+      tr.appendChild(td);
+    });
+    const amount = document.createElement('td');
+    amount.className = 'amount';
+    amount.textContent = TRANSIT_FMT.format(Number(row.monto_transito || 0));
+    tr.appendChild(amount);
+    body.appendChild(tr);
+  });
+
+  const activeCount = transitColumnFilters.size;
+  $('#clearTransitColumnFilters').prop('disabled', activeCount === 0);
+  $('#transitColumnFilterSummary')
+    .toggleClass('active', activeCount > 0)
+    .text(activeCount ? `${activeCount} filtro${activeCount === 1 ? '' : 's'} de columna activo${activeCount === 1 ? '' : 's'} · aplica solo al detalle.` : 'Los filtros de encabezado solo afectan el detalle; los totales mantienen los filtros de empresa, banco, estación y mes.');
+
+  document.querySelectorAll('.transit-col-filter').forEach(button => {
+    const active = transitColumnFilters.has(Number(button.dataset.transitFilterColumn));
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    button.setAttribute('aria-label', `${active ? 'Filtro activo. Editar filtro por ' : 'Filtrar por '}${transitColumnNames[Number(button.dataset.transitFilterColumn)]}`);
+  });
+
+  $('#transitResults').toggleClass('d-none', transitReportRows.length === 0);
+  if (visibleRows.length) $('#transitEmpty').addClass('d-none');
+  else {
+    const message = transitReportRows.length ? 'Ningún tránsito coincide con los filtros de columna.' : 'No hay tránsitos salientes ni entrantes aplicados para estos filtros.';
+    $('#transitEmpty').removeClass('d-none').text(message);
+  }
+}
+
+async function exportarTransitosExcel() {
+  if (!transitReportReady) return;
+  const button = document.getElementById('exportTransitExcel');
+  const originalHtml = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Preparando…';
+  $('#transitError').addClass('d-none').text('');
+  const stationId = $('#transitStation').val();
+  const payload = {
+    period: transitReportPeriod,
+    empresa: $('#transitCompany').val(),
+    banco: $('#transitBank').val(),
+    estacion: stationId ? $('#transitStation option:selected').text() : 'Todas las estaciones',
+    rows: visibleTransitReportRows.map(row => ({
+      sentido: sentidoTransito(row),
+      estacion: row.estacion || '',
+      razon_social: row.razon_social || '',
+      banco: row.banco || '',
+      afiliacion: row.afiliacion || '',
+      mes_origen: row.mes_origen || '',
+      mes_destino: row.mes_destino || '',
+      conciliacion: row.conciliacion || '',
+      monto_transito: Number(row.monto_transito || 0)
+    }))
+  };
+  try {
+    const response = await fetch('/income/export_transitos_reporte_v3', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body:JSON.stringify(payload)
+    });
+    const type = response.headers.get('Content-Type') || '';
+    if (!response.ok || type.includes('application/json')) {
+      const error = type.includes('application/json') ? await response.json() : null;
+      throw new Error(error?.message || 'No se pudo generar el archivo de Excel.');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transitos-v3-${transitReportPeriod}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    $('#transitError').removeClass('d-none').text(error.message || 'Ocurrió un error al exportar el reporte.');
+  } finally {
+    button.innerHTML = originalHtml;
+    button.disabled = !transitReportReady;
+  }
+}
+
+function valoresDistintosTransito(column) {
+  return [...new Set(transitReportRows.map(row => valorColumnaTransito(row, column)))]
+    .sort((a, b) => (a === '' ? '(En blanco)' : a).localeCompare(b === '' ? '(En blanco)' : b, 'es', { numeric:true, sensitivity:'base' }));
+}
+
+function crearMenuFiltroTransito() {
+  if (document.getElementById('transitColumnFilterMenu')) return document.getElementById('transitColumnFilterMenu');
+  const menu = document.createElement('div');
+  menu.id = 'transitColumnFilterMenu';
+  menu.className = 'transit-filter-menu';
+  menu.hidden = true;
+  menu.setAttribute('role','dialog');
+  menu.setAttribute('aria-label','Filtro de columna');
+  menu.innerHTML = `<div class="transit-filter-menu-title"></div>
+    <input class="transit-filter-menu-search" type="search" aria-label="Buscar valores" placeholder="Buscar valores…">
+    <label class="transit-filter-select-all"><input type="checkbox" class="transit-filter-all"> <span>Seleccionar todos los visibles</span></label>
+    <div class="transit-filter-options" role="group"></div>
+    <div class="transit-filter-menu-actions">
+      <button type="button" data-action="clear">Limpiar filtro</button>
+      <div class="d-flex" style="gap:6px;"><button type="button" data-action="cancel">Cancelar</button><button type="button" class="apply" data-action="apply">Aplicar</button></div>
+    </div>`;
+  document.body.appendChild(menu);
+  menu.addEventListener('click', event => event.stopPropagation());
+  menu.addEventListener('input', event => {
+    if (event.target.matches('.transit-filter-menu-search')) renderTransitMenuOptions();
+  });
+  menu.addEventListener('change', event => {
+    if (!activeTransitMenu) return;
+    if (event.target.matches('.transit-filter-option input')) {
+      if (event.target.checked) activeTransitMenu.draft.add(event.target.value);
+      else activeTransitMenu.draft.delete(event.target.value);
+      updateTransitSelectAll();
+    } else if (event.target.matches('.transit-filter-all')) {
+      const visible = transitMenuVisibleValues();
+      if (event.target.checked) visible.forEach(value => activeTransitMenu.draft.add(value));
+      else visible.forEach(value => activeTransitMenu.draft.delete(value));
+      renderTransitMenuOptions();
+    }
+  });
+  menu.addEventListener('click', event => {
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (action === 'apply') aplicarFiltroColumnaTransito();
+    else if (action === 'cancel') cerrarMenuFiltroTransito(true);
+    else if (action === 'clear') limpiarFiltroColumnaTransito();
+  });
+  return menu;
+}
+
+function abrirMenuFiltroTransito(button) {
+  const menu = crearMenuFiltroTransito();
+  if (activeTransitMenu && activeTransitMenu.button === button) {
+    cerrarMenuFiltroTransito(false);
+    return;
+  }
+  cerrarMenuFiltroTransito(false);
+  const column = Number(button.dataset.transitFilterColumn);
+  const allValues = valoresDistintosTransito(column);
+  const applied = transitColumnFilters.get(column);
+  activeTransitMenu = { column, button, allValues, draft:new Set(applied || allValues) };
+  menu.querySelector('.transit-filter-menu-title').textContent = `Filtrar por ${transitColumnNames[column]}`;
+  menu.querySelector('.transit-filter-menu-search').value = '';
+  button.setAttribute('aria-expanded','true');
+  renderTransitMenuOptions();
+  menu.hidden = false;
+  const rect = button.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8));
+  const below = rect.bottom + 4;
+  const top = below + menu.offsetHeight <= window.innerHeight - 8 ? below : Math.max(8, rect.top - menu.offsetHeight - 4);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.querySelector('.transit-filter-menu-search').focus();
+}
+
+function transitMenuVisibleValues() {
+  if (!activeTransitMenu) return [];
+  const query = document.querySelector('#transitColumnFilterMenu .transit-filter-menu-search').value.trim().toLocaleLowerCase('es');
+  return activeTransitMenu.allValues.filter(value => (value === '' ? '(En blanco)' : value).toLocaleLowerCase('es').includes(query));
+}
+
+function renderTransitMenuOptions() {
+  if (!activeTransitMenu) return;
+  const menu = document.getElementById('transitColumnFilterMenu');
+  const list = menu.querySelector('.transit-filter-options');
+  list.replaceChildren();
+  const values = transitMenuVisibleValues();
+  if (!values.length) {
+    const empty = document.createElement('div');
+    empty.className = 'transit-filter-no-options';
+    empty.textContent = 'No hay valores para esta búsqueda.';
+    list.appendChild(empty);
+  }
+  values.forEach(value => {
+    const label = document.createElement('label');
+    label.className = 'transit-filter-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = value;
+    checkbox.checked = activeTransitMenu.draft.has(value);
+    const text = document.createElement('span');
+    text.textContent = value === '' ? '(En blanco)' : value;
+    label.append(checkbox, text);
+    list.appendChild(label);
+  });
+  updateTransitSelectAll();
+}
+
+function updateTransitSelectAll() {
+  if (!activeTransitMenu) return;
+  const all = document.querySelector('#transitColumnFilterMenu .transit-filter-all');
+  const visible = transitMenuVisibleValues();
+  const selectedCount = visible.filter(value => activeTransitMenu.draft.has(value)).length;
+  all.checked = visible.length > 0 && selectedCount === visible.length;
+  all.indeterminate = selectedCount > 0 && selectedCount < visible.length;
+}
+
+function aplicarFiltroColumnaTransito() {
+  if (!activeTransitMenu) return;
+  const { column, draft, allValues } = activeTransitMenu;
+  if (draft.size === allValues.length && allValues.every(value => draft.has(value))) transitColumnFilters.delete(column);
+  else transitColumnFilters.set(column, new Set(draft));
+  cerrarMenuFiltroTransito(true);
+  renderTransitosFiltrados();
+}
+
+function limpiarFiltroColumnaTransito() {
+  if (!activeTransitMenu) return;
+  transitColumnFilters.delete(activeTransitMenu.column);
+  cerrarMenuFiltroTransito(true);
+  renderTransitosFiltrados();
+}
+
+function limpiarFiltrosColumnasTransito() {
+  transitColumnFilters.clear();
+  cerrarMenuFiltroTransito(false);
+  renderTransitosFiltrados();
+}
+
+function cerrarMenuFiltroTransito(restoreFocus) {
+  if (!activeTransitMenu) return;
+  const { button } = activeTransitMenu;
+  const menu = document.getElementById('transitColumnFilterMenu');
+  if (menu) menu.hidden = true;
+  button.setAttribute('aria-expanded','false');
+  activeTransitMenu = null;
+  if (restoreFocus) button.focus();
+}
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('.transit-col-filter');
+  if (button) {
+    event.preventDefault();
+    event.stopPropagation();
+    abrirMenuFiltroTransito(button);
+  } else if (activeTransitMenu && !event.target.closest('#transitColumnFilterMenu')) cerrarMenuFiltroTransito(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && activeTransitMenu) {
+    event.preventDefault();
+    cerrarMenuFiltroTransito(true);
+  }
+});
+window.addEventListener('resize', () => cerrarMenuFiltroTransito(false));
+window.addEventListener('scroll', event => {
+  if (!event.target.closest?.('#transitColumnFilterMenu')) cerrarMenuFiltroTransito(false);
+}, true);
+
+function anteriorMes(period) {
+  const date = new Date(`${period}-01T12:00:00`);
+  date.setMonth(date.getMonth() - 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+function siguienteMes(period) {
+  const date = new Date(`${period}-01T12:00:00`);
+  date.setMonth(date.getMonth() + 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+$(function() {
+  const now = new Date();
+  $('#transitPeriod').val(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  $('#transitCompany').on('change', function() {
+    cargarBancosTransitos();
+    cargarEstacionesTransitos();
+  });
+  cargarBancosTransitos();
+  cargarEstacionesTransitos();
+  consultarTransitos();
+});
+</script>
+{% endblock %}

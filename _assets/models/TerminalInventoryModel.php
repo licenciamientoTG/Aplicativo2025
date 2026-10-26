@@ -3,6 +3,7 @@ class TerminalInventoryModel extends Model {
     public const CAPTURE_PERMISSION = 'Inventario terminales - Captura propia';
     public const REPORT_PERMISSION = 'Inventario terminales - Reporte global';
     public const STATION_REPORT_PERMISSION = 'Inventario terminales - Reporte de estación';
+    public const STOCK_REPORT_PERMISSION = 'Inventario terminales - Reporte de stock';
     public const CAPTURE_PERMISSION_ID = 96;
     public const REPORT_PERMISSION_ID = 97;
     private static array $resolvedPermissionIds = [];
@@ -16,7 +17,7 @@ class TerminalInventoryModel extends Model {
             self::REPORT_PERMISSION => self::REPORT_PERMISSION_ID,
             default => 0,
         };
-        if ($permissionId === 0 && $description === self::STATION_REPORT_PERMISSION) {
+        if ($permissionId === 0 && in_array($description, [self::STATION_REPORT_PERMISSION, self::STOCK_REPORT_PERMISSION], true)) {
             if (!array_key_exists($description, self::$resolvedPermissionIds)) {
                 $rows=$this->sql->select('SELECT MIN(id) AS id,COUNT(*) AS matching_count FROM [TG].[dbo].[tg_permissions] WHERE [action]=? AND department=? AND description=? AND status=1', ['read','Operaciones',$description]);
                 self::$resolvedPermissionIds[$description]=((int)($rows[0]['matching_count'] ?? 0)===1) ? (int)$rows[0]['id'] : 0;
@@ -119,6 +120,33 @@ class TerminalInventoryModel extends Model {
                 SELECT 1 FROM [TG].[dbo].[inv_ter_incidencias] i WHERE i.estacion_id=e.Codigo
             )) ORDER BY e.Nombre");
     }
+    /** Current snapshot for each active station and requested terminal type. */
+    public function currentStationStockReport(array $types): array {
+        $types=array_values(array_unique(array_filter(array_map('strval',$types),fn($type)=>$type!=='')));
+        if (!$types) return [];
+        $typeRows=implode(' UNION ALL ',array_fill(0,count($types),'SELECT ? AS type_code'));
+        $marks=implode(',',array_fill(0,count($types),'?'));
+        $params=array_merge($types,$types);
+        return $this->sql->select("WITH type_set AS ($typeRows), station_types AS (
+                SELECT e.Codigo AS station_id,e.Nombre AS station_name,t.type_code,
+                    COALESCE(c.terminales_esperadas,0) AS stock,COALESCE(d.damaged,0) AS damaged
+                FROM [TG].[dbo].[Estaciones] e
+                CROSS JOIN type_set t
+                LEFT JOIN [TG].[dbo].[inv_ter_configuracion_estacion] c ON c.estacion_id=e.Codigo AND c.tipo_terminal=t.type_code
+                LEFT JOIN (
+                    SELECT estacion_id,tipo_terminal,COUNT(*) AS damaged
+                    FROM [TG].[dbo].[inv_ter_incidencias]
+                    WHERE estado_local IN ('Abierta','Solved','Reabierta') AND tipo_terminal IN ($marks)
+                    GROUP BY estacion_id,tipo_terminal
+                ) d ON d.estacion_id=e.Codigo AND d.tipo_terminal=t.type_code
+                WHERE e.activa=1 AND e.Codigo NOT IN (0,4,20)
+            )
+            SELECT station_id,station_name,type_code,stock,damaged,
+                CASE WHEN stock>damaged THEN stock-damaged ELSE 0 END AS functioning,
+                CASE WHEN damaged>stock THEN damaged-stock ELSE 0 END AS over_by
+            FROM station_types
+            ORDER BY station_name,type_code",$params);
+    }
     public function incidentAssignees(?int $stationId=null): array {
         $stationWhere=$stationId===null ? '' : ' WHERE i.estacion_id=?';
         $params=$stationId===null ? [] : [$stationId];
@@ -159,7 +187,7 @@ class TerminalInventoryModel extends Model {
         $this->sql->update("UPDATE [TG].[dbo].[inv_ter_solicitudes] SET ticket_mojo_id=?, actualizado_en=SYSDATETIME() WHERE request_key=?", [$ticketId,$requestKey]);
     }
     public function incidentById(int $incidentId): array|false {
-        $rows=$this->sql->select('SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE id=?', [$incidentId]);
+        $rows=$this->sql->select('SELECT i.*,s.Nombre AS estacion_nombre FROM [TG].[dbo].[inv_ter_incidencias] i LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id WHERE i.id=?', [$incidentId]);
         return $rows[0] ?? false;
     }
     public function incidentStateHistory(int $incidentId): array {
@@ -220,7 +248,7 @@ class TerminalInventoryModel extends Model {
         return $affected === 1;
     }
     public function incidentForStation(int $incidentId, int $stationId): array|false {
-        $rows=$this->sql->select('SELECT * FROM [TG].[dbo].[inv_ter_incidencias] WHERE id=? AND estacion_id=?', [$incidentId,$stationId]);
+        $rows=$this->sql->select('SELECT i.*,s.Nombre AS estacion_nombre FROM [TG].[dbo].[inv_ter_incidencias] i LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=i.estacion_id WHERE i.id=? AND i.estacion_id=?', [$incidentId,$stationId]);
         return $rows[0] ?? false;
     }
     public function changeIncidentState(int $incidentId, string $old, string $new, int $userId, string $email, string $origin, ?string $comment=null, string $sync='sincronizado'): void {

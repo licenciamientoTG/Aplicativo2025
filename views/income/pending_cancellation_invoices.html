@@ -1,0 +1,152 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Facturas en proceso de cancelación{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Facturas en proceso de cancelación{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        <div class="row align-items-end">
+            <div class="col-md-3">
+                <label class="col-form-label-sm" for="tipo_cliente">Tipo de cliente</label>
+                <select id="tipo_cliente" class="form-select form-select-sm">
+                    <option value="debito" selected>Clientes débito</option>
+                    <option value="credito">Clientes crédito</option>
+                    <option value="contado">Contado</option>
+                    <option value="todos">Todos</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button id="search_pending_cancellation" class="btn btn-sm btn-primary w-100">Generar Reporte</button>
+            </div>
+            <div class="col-md-7 small text-muted">
+                Facturas cuyo último aviso en bitácora es <strong>"CFDi con CANCELACION en proceso"</strong>: el SAT espera
+                que el receptor acepte la cancelación. No incluye las que ya aparecen canceladas en ControlGas.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row" id="pc_cards">
+    <div class="col-md-3"><div class="card"><div class="card-body py-2">
+        <div class="text-muted small">Facturas en proceso</div><h4 class="mb-0" id="pc_count">-</h4>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2">
+        <div class="text-muted small">Monto total</div><h4 class="mb-0" id="pc_total">-</h4>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2">
+        <div class="text-muted small">Sin cobro aplicado</div><h4 class="mb-0" id="pc_sin_cobro">-</h4>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2">
+        <div class="text-muted small">Más de 30 días en proceso</div><h4 class="mb-0" id="pc_30">-</h4>
+    </div></div></div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title">Facturas en proceso de cancelación (clientes débito)</h5>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="pending_cancellation_table" class="table table-striped table-hover table-sm w-100">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Factura</th>
+                    <th>Cliente</th>
+                    <th>RFC</th>
+                    <th>Subtotal</th>
+                    <th>IVA</th>
+                    <th>Total</th>
+                    <th>Aplicado</th>
+                    <th>Días en proceso</th>
+                    <th>Intentos</th>
+                    <th>Solicitó</th>
+                    <th>UUID</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<style>
+    #pending_cancellation_table thead tr.filter th { padding: 2px 4px; background: #f1f4f9; }
+    #pending_cancellation_table thead tr:not(.filter) th { background: #1f3a5f; color: #fff; white-space: nowrap; }
+    #pending_cancellation_table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pc-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: .75rem; font-weight: 600; color: #fff; }
+    .pc-ok { background: #2e9e5b; } .pc-warn { background: #e0a100; } .pc-alert { background: #e8590c; } .pc-crit { background: #c92a2a; }
+    .pc-gray { background: #6c757d; } .pc-blue { background: #1c7ed6; }
+</style>
+<script>
+const pcMoney = v => '$' + Number(v).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const pcBadge = (txt, cls) => `<span class="pc-badge ${cls}">${txt}</span>`;
+
+function pending_cancellation_table() {
+    const $t = $('#pending_cancellation_table');
+    if ($.fn.DataTable.isDataTable('#pending_cancellation_table')) {
+        $t.DataTable().destroy();
+        $t.find('thead tr.filter').remove();
+    }
+
+    // Títulos originales: la fila de filtros los reemplaza por inputs y Excel los exportaría vacíos
+    const pcTitles = $t.find('thead tr:first th').map(function () { return $(this).text().trim(); }).get();
+
+    // Cabecera doble: la fila clonada lleva un buscador por columna
+    $t.find('thead').prepend($t.find('thead tr').clone().addClass('filter'));
+    $t.find('thead tr.filter th').each(function () {
+        $(this).html('<input type="text" class="form-control form-control-sm" placeholder="' + $(this).text() + '" />');
+    });
+    $t.find('thead tr.filter th input').on('keyup change', function () {
+        const index = $(this).parent().index();
+        $t.DataTable().column(index).search(this.value).draw();
+    });
+
+    $t.DataTable({
+        order: [[0, 'desc'], [1, 'desc']],
+        orderCellsTop: true,
+        colReorder: false,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        pageLength: 100,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel', title: 'Facturas en proceso de cancelacion', exportOptions: { orthogonal: 'export', format: { header: (data, idx) => pcTitles[idx] } } }],
+        ajax: {
+            method: 'POST',
+            url: '/income/pending_cancellation_invoices_table',
+            data: { tipo_cliente: $('#tipo_cliente').val() },
+            dataSrc: function (json) {
+                const d = json.data || [];
+                $('#pc_count').text(d.length);
+                $('#pc_total').text(pcMoney(d.reduce((a, r) => a + r.total, 0)));
+                $('#pc_sin_cobro').text(d.filter(r => r.aplicado === 0).length);
+                $('#pc_30').text(d.filter(r => r.dias_en_proceso > 30).length);
+                return d;
+            },
+            error: function () {
+                alertify.myAlert('<div class="container text-center text-danger"><h4 class="mt-2">¡Error!</h4></div><div class="text-dark"><p class="text-center">No se pudo generar el reporte. Inténtelo nuevamente.</p></div>');
+            }
+        },
+        columns: [
+            { data: 'fecha' },
+            { data: 'factura', render: (v, t) => t === 'display' ? '<strong>' + v + '</strong>' : v },
+            { data: 'cliente' },
+            { data: 'rfc' },
+            { data: 'subtotal', render: (v, t) => t === 'display' ? pcMoney(v) : v, className: 'num' },
+            { data: 'iva', render: (v, t) => t === 'display' ? pcMoney(v) : v, className: 'num' },
+            { data: 'total', render: (v, t) => t === 'display' ? '<strong>' + pcMoney(v) + '</strong>' : v, className: 'num' },
+            { data: 'aplicado', render: (v, t) => t === 'display' ? (v === 0 ? pcBadge('Sin cobro', 'pc-gray') : pcBadge(pcMoney(v), 'pc-blue')) : v, className: 'num' },
+            { data: 'dias_en_proceso', className: 'num', render: (v, t) => {
+                if (t !== 'display') return v;
+                return pcBadge(v + ' d', v > 90 ? 'pc-crit' : (v > 30 ? 'pc-alert' : (v > 7 ? 'pc-warn' : 'pc-ok')));
+            } },
+            { data: 'intentos', className: 'num' },
+            { data: 'usuario' },
+            { data: 'uuid', render: (v, t) => t === 'display' ? '<small class="text-muted">' + v + '</small>' : v }
+        ]
+    });
+}
+
+$('#search_pending_cancellation').on('click', pending_cancellation_table);
+$(pending_cancellation_table);
+</script>
+{% endblock %}

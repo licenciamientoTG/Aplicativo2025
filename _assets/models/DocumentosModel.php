@@ -1962,5 +1962,90 @@ class DocumentosModel extends Model{
         $result = $this->sql->select($query, $params);
         return $result[0]['total'] ?? 0;
     }
-    
+
+    /**
+     * Facturas (tip 3) de clientes débito cuyo último aviso en Bitacora (opc 108, acc 8)
+     * es "CFDi con CANCELACION en proceso". El documento se liga por serie+folio+fecha+monto
+     * de la etiqueta de la bitácora (el folio puede reutilizarse) y debe seguir con flgcon 133
+     * (cancelación en proceso en ControlGas); 129 = CFDi generado, 141 = cancelada.
+     *
+     * @return list<array<string,mixed>>|false
+     */
+    public function cancelacion_en_proceso_debito(string $tipo = 'debito'): array|false
+    {
+        // Clientes.tipval: 4 = débito, 3 = crédito, 0 = contado (mostrador)
+        $tipvals = ['debito' => '4', 'credito' => '3', 'contado' => '0', 'todos' => '0,3,4'][$tipo] ?? '4';
+
+        $serie = "CASE WHEN dc.nro >= 2100000000 THEN 'Z' WHEN dc.nro >= 2000000000 THEN 'T'
+                       WHEN dc.nro >= 1900000000 THEN 'K' WHEN dc.nro >= 1700000000 THEN 'I'
+                       WHEN dc.nro >= 1300000000 THEN 'E' WHEN dc.nro >= 1200000000 THEN 'D' ELSE 'C' END";
+
+        $query = "
+            ;WITH b AS (
+                SELECT d = CAST(dat AS VARCHAR(MAX)), logfch, codusu
+                FROM [SG12].[dbo].[Bitacora]
+                WHERE opc = 108 AND acc = 8 AND CAST(dat AS VARCHAR(MAX)) LIKE '<%>%=>%'
+            ), p AS (
+                SELECT etiqueta  = SUBSTRING(d, 2, CHARINDEX('>', d) - 2),
+                       llave     = LEFT(d, CHARINDEX('=>', d)),
+                       fecha_lbl = TRY_CONVERT(date, SUBSTRING(d, CHARINDEX('>', d) + 2, 10), 103),
+                       monto_lbl = TRY_CONVERT(decimal(18,2), REPLACE(SUBSTRING(d, CHARINDEX('$<', d) + 2, CHARINDEX('>', d, CHARINDEX('$<', d)) - CHARINDEX('$<', d) - 2), ',', '')),
+                       msg       = LTRIM(SUBSTRING(d, CHARINDEX('=>', d) + 2, 200)),
+                       logfch, codusu
+                FROM b
+            ), r AS (
+                SELECT *,
+                       rn        = ROW_NUMBER() OVER (PARTITION BY llave ORDER BY logfch DESC),
+                       primera   = MIN(CASE WHEN msg LIKE '%en proceso%' THEN logfch END) OVER (PARTITION BY llave),
+                       intentos  = SUM(CASE WHEN msg LIKE '%en proceso%' THEN 1 ELSE 0 END) OVER (PARTITION BY llave)
+                FROM p
+            ), pri AS (
+                SELECT llave, codusu, ROW_NUMBER() OVER (PARTITION BY llave ORDER BY logfch ASC) rn
+                FROM p WHERE msg LIKE '%en proceso%'
+            )
+            SELECT
+                CONVERT(VARCHAR(10), DATEADD(day, -1, dc.fch), 23)  AS fecha,
+                LEFT(r.etiqueta, 1) + ' ' + SUBSTRING(r.etiqueta, 2, 10) AS factura,
+                dc.codopr                                           AS codcli,
+                c.den                                               AS cliente,
+                c.rfc                                               AS rfc,
+                dc.satuid                                           AS uuid,
+                ISNULL(t.subtotal, 0)                               AS subtotal,
+                ISNULL(t.iva, 0)                                    AS iva,
+                ISNULL(t.subtotal, 0) + ISNULL(t.iva, 0)            AS total,
+                ISNULL(ap.aplicado, 0)                              AS aplicado,
+                CASE WHEN r.msg LIKE '%MOTIVO:%' THEN SUBSTRING(r.msg, CHARINDEX('MOTIVO:', r.msg) + 7, 2) END AS motivo,
+                dc.flgcon                                           AS estado,
+                CONVERT(VARCHAR(16), r.primera, 120)                AS primera_solicitud,
+                CONVERT(VARCHAR(16), r.logfch, 120)                 AS ultima_consulta,
+                DATEDIFF(day, r.primera, GETDATE())                 AS dias_en_proceso,
+                r.intentos                                          AS intentos,
+                u.den                                               AS usuario
+            FROM r
+            INNER JOIN [SG12].[dbo].[DocumentosC] dc
+                ON dc.tip = 3 AND dc.codgas = 0 AND dc.nro BETWEEN 1100000000 AND 2499999999
+               AND DATEADD(day, -1, CAST(dc.fch AS datetime)) = r.fecha_lbl
+               AND r.etiqueta = {$serie} + CAST(dc.nro % 10000000 AS VARCHAR(10))
+            INNER JOIN [SG12].[dbo].[Clientes] c ON c.cod = dc.codopr AND c.tipval IN ({$tipvals})
+            LEFT JOIN pri ON pri.llave = r.llave AND pri.rn = 1
+            LEFT JOIN [SG12].[dbo].[Usuarios] u ON u.cod = pri.codusu
+            LEFT JOIN (
+                SELECT nro, SUM(mto) / 100.0 AS subtotal, SUM(mtoiva) / 100.0 AS iva
+                FROM [SG12].[dbo].[Documentos]
+                WHERE tip = 3 AND codgas = 0 AND nroitm > 0
+                GROUP BY nro
+            ) t ON t.nro = dc.nro
+            LEFT JOIN (
+                SELECT nro, SUM(mtoapl) / 100.0 AS aplicado
+                FROM [SG12].[dbo].[DocumentosA]
+                WHERE tip = 3 AND codgas = 0
+                GROUP BY nro
+            ) ap ON ap.nro = dc.nro
+            WHERE r.rn = 1 AND r.msg LIKE '%en proceso%'
+              AND dc.flgcon = 133
+              AND ABS(ISNULL(t.subtotal, 0) + ISNULL(t.iva, 0) - r.monto_lbl) < 0.02
+            ORDER BY r.primera ASC";
+        return $this->sql->select($query);
+    }
+
 }

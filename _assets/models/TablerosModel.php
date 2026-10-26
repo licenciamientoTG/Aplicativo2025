@@ -34,7 +34,7 @@ class TablerosModel {
     }
 
     public function getBoards(int $userId, bool $isAdmin): array {
-        $sql = "SELECT DISTINCT b.id, b.workspace_id, b.folder_id, b.name, b.description,
+        $sql = "SELECT DISTINCT b.id, b.workspace_id, b.folder_id, b.name, b.description, b.sort_order,
                        w.name AS workspace_name, w.visibility AS workspace_visibility,
                        f.name AS folder_name, f.parent_folder_id,
                        b.visibility, b.created_by, b.created_at, b.updated_at,
@@ -60,8 +60,13 @@ class TablerosModel {
                   AND (b.created_by = ? OR m.user_id = ? OR ? = 1
                        OR b.visibility = 'organization'
                        OR (b.visibility = 'workspace' AND (wm.user_id = ? OR w.visibility = 'open')))
-                ORDER BY w.name, f.name, b.name, b.id";
-        return $this->all($sql, [$userId, $isAdmin ? 1 : 0, $userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $userId, $isAdmin ? 1 : 0, $userId]);
+                ORDER BY w.name, f.name, b.sort_order, b.name, b.id";
+        $boards = $this->all($sql, [$userId, $isAdmin ? 1 : 0, $userId, $isAdmin ? 1 : 0, $userId, $userId, $userId, $userId, $isAdmin ? 1 : 0, $userId]);
+        foreach ($boards as &$board) {
+            $board['can_reorder'] = in_array($board['user_role'], ['owner', 'designer', 'editor'], true);
+        }
+        unset($board);
+        return $boards;
     }
 
     /** Flat hierarchy payload; the client builds the nested folder tree. */
@@ -94,22 +99,36 @@ class TablerosModel {
                 $workspaceIds[$workspaceId] = true;
             }
         }
+        $workspaceContentManagers = [];
+        foreach ($boards as $board) {
+            if (in_array(strtolower((string)($board['user_role'] ?? '')), ['owner', 'designer', 'editor'], true)) {
+                $workspaceContentManagers[(string)$board['workspace_id']] = true;
+            }
+        }
+        foreach ($workspaces as &$workspace) {
+            $workspace['can_manage_content'] = !empty($workspace['can_manage_members'])
+                || in_array(strtolower((string)($workspace['user_role'] ?? '')), ['owner', 'editor'], true)
+                || !empty($workspaceContentManagers[(string)$workspace['id']]);
+        }
+        unset($workspace);
         $folders = [];
         if ($workspaceIds) {
             $ids = array_keys($workspaceIds);
             $marks = implode(',', array_fill(0, count($ids), '?'));
             $folders = $this->all(
                 "SELECT id, workspace_id, parent_folder_id, name, color, sort_order, created_by
-                 FROM tb_folder WHERE workspace_id IN ($marks) AND deleted_at IS NULL ORDER BY sort_order, name, id",
+                 FROM tb_folder WHERE workspace_id IN ($marks) AND deleted_at IS NULL ORDER BY sort_order, id",
                 array_map('intval', $ids)
             );
         }
         $folderById = [];
         $workspaceRoles = [];
+        $workspaceReorderRoles = [];
         $workspaceVisibility = [];
         foreach ($folders as $folder) $folderById[(string)$folder['id']] = $folder;
         foreach ($workspaces as $workspace) {
             $workspaceRoles[(string)$workspace['id']] = (string)($workspace['user_role'] ?? '');
+            $workspaceReorderRoles[(string)$workspace['id']] = empty($workspace['shared_only']) ? (string)($workspace['user_role'] ?? '') : '';
             $workspaceVisibility[(string)$workspace['id']] = (string)($workspace['visibility'] ?? '');
         }
         foreach ($folders as &$folder) {
@@ -117,6 +136,7 @@ class TablerosModel {
             $isCreator = (int)($folder['created_by'] ?? 0) === $userId;
             $folder['can_trash'] = $isAdmin || $workspaceRole === 'owner' || $isCreator;
             $folder['can_archive'] = $isAdmin || in_array($workspaceRole, ['owner', 'editor'], true) || $isCreator;
+            $folder['can_reorder'] = $isAdmin || $isCreator || in_array($workspaceReorderRoles[(string)$folder['workspace_id']] ?? '', ['owner', 'editor'], true);
         }
         unset($folder);
         $allowed = [];
@@ -147,7 +167,7 @@ class TablerosModel {
         if (!in_array($type, ['workspace', 'folder', 'board', 'group', 'column', 'item', 'file'], true)) {
             throw new TablerosApiException('validation', 'El tipo de elemento no se puede eliminar.', 422);
         }
-        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['workspace', 'folder', 'board', 'group', 'item'], true))) {
+        if (!in_array($kind, ['trash', 'archive'], true) || ($kind === 'archive' && !in_array($type, ['workspace', 'folder', 'board', 'group', 'item', 'file'], true))) {
             throw new TablerosApiException('validation', 'El tipo de elemento no se puede archivar.', 422);
         }
         $ids = $input['entity_ids'] ?? [$input['entity_id'] ?? null];
@@ -194,7 +214,13 @@ class TablerosModel {
                 if ($workspaceName !== '') $location = $boardId ? $workspaceName . ' / ' . $location : $workspaceName;
             } elseif ($type === 'workspace') $location = 'Espacios de trabajo';
             if ($boardId && !$this->access->hasGlobalPermission('admin')) {
-                $role = $this->access->boardRole($boardId);
+                $boardAccess = $this->access->boardAccess($boardId);
+                $role = $boardAccess['role'] ?? null;
+                if ($type === 'board' && $kind === 'trash' && $role === 'editor'
+                    && ($boardAccess['source'] ?? '') === 'board_invitation'
+                    && $this->access->workspaceRole((int)$workspaceId) !== 'owner') {
+                    throw new TablerosApiException('forbidden', 'El rol Editor no puede eliminar el tablero.', 403);
+                }
                 $allowed = in_array($type, ['item', 'file'], true)
                     ? ['owner', 'designer', 'editor', 'contributor']
                     : ['owner', 'designer', 'editor'];
@@ -452,6 +478,9 @@ class TablerosModel {
             $deleteIds('tb_file_comment_sticker', 'file_comment_id', $fileCommentIds);
             $deleteIds('tb_file_comment_attachment', 'file_comment_id', $fileCommentIds);
             $deleteIds('tb_file_comment_attachment', 'file_id', $fileIds);
+            $deleteIds('tb_comment_sticker', 'comment_id', $commentIds);
+            $deleteIds('tb_comment_attachment', 'comment_id', $commentIds);
+            $deleteIds('tb_comment_attachment', 'file_id', $fileIds);
             $deleteIds('tb_notification', 'file_comment_id', $fileCommentIds);
             $deleteIds('tb_notification', 'comment_id', $commentIds);
             $deleteIds('tb_notification', 'file_id', $fileIds);
@@ -569,7 +598,7 @@ class TablerosModel {
     }
 
     public function createFolder(int $userId, array $input): array {
-        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear carpetas.', 403);
+        if (!$this->access->hasGlobalPermission('create') && !$this->access->canManageWorkspaceContent((int)($input['workspace_id'] ?? 0))) throw new TablerosApiException('forbidden', 'No tienes permiso para crear carpetas.', 403);
         if (!$this->userIsActive($userId)) {
             throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         }
@@ -579,7 +608,7 @@ class TablerosModel {
             $workspaceId = $defaultWorkspace ? (int)$defaultWorkspace['id'] : 0;
         }
         if ($workspaceId <= 0) throw new TablerosApiException('validation', 'Selecciona un espacio de trabajo.', 422);
-        if ($this->access->workspaceRole($workspaceId) === null) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
+        if ($this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId)) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
         $parentFolderId = $this->optionalPositiveInt($input['parent_folder_id'] ?? null, 'parent_folder_id');
         $name = $this->requiredString($input, 'name', 200);
         $color = $this->optionalString($input, 'color', 32);
@@ -597,7 +626,8 @@ class TablerosModel {
             $workspaceRole = $this->access->workspaceRole($workspaceId);
             $systemFolderVisible = $parent['created_by'] === null && $workspaceRole !== null;
             if ((int)($parent['created_by'] ?? 0) !== $userId && $workspaceRole !== 'owner' && !$systemFolderVisible
-                && !$this->folderHasVisibleBoard($parentFolderId, $workspaceId)) {
+                && !$this->folderHasVisibleBoard($parentFolderId, $workspaceId)
+                && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'Solo puedes crear una subcarpeta en una carpeta que puedes ver.', 403);
             }
             $depth = 1;
@@ -618,6 +648,179 @@ class TablerosModel {
             [$workspaceId, $parentFolderId, bin2hex(random_bytes(20)), $name, $color, $position, $userId]
         );
         return ['id' => $id, 'workspace_id' => $workspaceId, 'parent_folder_id' => $parentFolderId, 'name' => $name, 'color' => $color, 'sort_order' => $position];
+    }
+
+    /** Reorder visible siblings only; hidden entities retain their stored order. */
+    public function reorderStructure(int $userId, bool $isAdmin, array $input): array {
+        $type = $input['entity_type'] ?? null;
+        if (!in_array($type, ['folder', 'board'], true)) {
+            throw new TablerosApiException('validation', 'Selecciona una carpeta o un tablero.', 422);
+        }
+        $id = $this->positiveInt($input['entity_id'] ?? null, 'entity_id');
+        if (array_key_exists('target_parent_id', $input)) {
+            return $this->moveStructureEntity($userId, $isAdmin, $type, $id, $input);
+        }
+        $anchorId = $this->positiveInt($input['anchor_id'] ?? null, 'anchor_id');
+        $placement = $input['placement'] ?? null;
+        if ($id === $anchorId || !in_array($placement, ['before', 'after'], true)) {
+            throw new TablerosApiException('validation', 'La posición solicitada no es válida.', 422);
+        }
+        return $this->transaction(function () use ($userId, $isAdmin, $type, $id, $anchorId, $placement): array {
+            $table = $type === 'folder' ? 'tb_folder' : 'tb_board';
+            $parentKey = $type === 'folder' ? 'parent_folder_id' : 'folder_id';
+            $collection = $type === 'folder' ? 'folders' : 'boards';
+            $structure = $this->getWorkspaceStructure($userId, $isAdmin);
+            $visible = array_column($structure[$collection], null, 'id');
+            $moved = $visible[$id] ?? null;
+            $anchor = $visible[$anchorId] ?? null;
+            if (!$moved || !$anchor) {
+                throw new TablerosApiException('not_found', 'No se encontró la carpeta o el tablero visible.', 404);
+            }
+            if (empty($moved['can_reorder']) || empty($anchor['can_reorder'])) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para cambiar este orden.', 403);
+            }
+            if ((int)$moved['workspace_id'] !== (int)$anchor['workspace_id']
+                || ($moved[$parentKey] === null ? null : (int)$moved[$parentKey]) !== ($anchor[$parentKey] === null ? null : (int)$anchor[$parentKey])) {
+                throw new TablerosApiException('validation', 'Solo puedes reordenar elementos dentro de la misma carpeta y espacio.', 422);
+            }
+            $workspaceId = (int)$moved['workspace_id'];
+            $parentId = $moved[$parentKey] === null ? null : (int)$moved[$parentKey];
+            $siblings = $this->all(
+                "SELECT id, sort_order FROM $table WITH (UPDLOCK, HOLDLOCK)
+                 WHERE workspace_id = ? AND (($parentKey = ?) OR ($parentKey IS NULL AND ? IS NULL))
+                   AND deleted_at IS NULL ORDER BY sort_order, id",
+                [$workspaceId, $parentId, $parentId]
+            );
+            foreach ($siblings as $sibling) {
+                $visibleSibling = $visible[(int)$sibling['id']] ?? null;
+                if ($visibleSibling && empty($visibleSibling['can_reorder'])) {
+                    throw new TablerosApiException('forbidden', 'Necesitas permiso para reordenar todos los elementos visibles de esta carpeta.', 403);
+                }
+            }
+            $siblings = array_values(array_filter($siblings, static fn(array $row): bool => isset($visible[(int)$row['id']])));
+            $order = array_map(static fn(array $row): int => (int)$row['id'], $siblings);
+            if (!in_array($id, $order, true) || !in_array($anchorId, $order, true)) {
+                throw new TablerosApiException('conflict', 'La estructura cambió. Actualiza e inténtalo de nuevo.', 409);
+            }
+            $order = array_values(array_filter($order, static fn(int $siblingId): bool => $siblingId !== $id));
+            $anchorIndex = array_search($anchorId, $order, true);
+            array_splice($order, $anchorIndex + ($placement === 'after' ? 1 : 0), 0, [$id]);
+            $previousPosition = null;
+            foreach ($order as $index => $siblingId) {
+                // Preserve existing visible slots where possible, making tied legacy slots distinct.
+                $position = max((int)$siblings[$index]['sort_order'], $previousPosition === null ? PHP_INT_MIN : $previousPosition + 1);
+                if ($position > 2147483647) {
+                    throw new TablerosApiException('conflict', 'El orden excede el rango permitido.', 409);
+                }
+                $this->execute(
+                    "UPDATE $table SET sort_order = ?, updated_at = GETDATE()
+                     WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL",
+                    [$position, $siblingId, $workspaceId]
+                );
+                $previousPosition = $position;
+            }
+            if ($type === 'board') {
+                $this->writeActivity($id, null, $userId, 'board.reordered', ['anchor_id' => $anchorId, 'placement' => $placement]);
+            }
+            return $this->getWorkspaceStructure($userId, $isAdmin);
+        });
+    }
+
+    /** Move an entity between folder/root lists, or within one using an optional anchor. */
+    private function moveStructureEntity(int $userId, bool $isAdmin, string $type, int $id, array $input): array {
+        $targetParentId = $this->optionalPositiveInt($input['target_parent_id'], 'target_parent_id');
+        $anchorId = $this->optionalPositiveInt($input['anchor_id'] ?? null, 'anchor_id');
+        $placement = $input['placement'] ?? 'after';
+        if (!in_array($placement, ['before', 'after'], true) || ($anchorId !== null && $anchorId === $id)) {
+            throw new TablerosApiException('validation', 'La posición solicitada no es válida.', 422);
+        }
+        return $this->transaction(function () use ($userId, $isAdmin, $type, $id, $targetParentId, $anchorId, $placement): array {
+            $table = $type === 'folder' ? 'tb_folder' : 'tb_board';
+            $parentKey = $type === 'folder' ? 'parent_folder_id' : 'folder_id';
+            $collection = $type === 'folder' ? 'folders' : 'boards';
+            $structure = $this->getWorkspaceStructure($userId, $isAdmin);
+            $visible = array_column($structure[$collection], null, 'id');
+            $visibleFolders = array_column($structure['folders'], null, 'id');
+            $moved = $visible[$id] ?? null;
+            if (!$moved) throw new TablerosApiException('not_found', 'No se encontró el elemento visible.', 404);
+            if (empty($moved['can_reorder'])) throw new TablerosApiException('forbidden', 'No tienes permiso para mover este elemento.', 403);
+            $workspaceId = (int)$moved['workspace_id'];
+            if ($type === 'folder' && $targetParentId !== null) {
+                if ($targetParentId === $id) throw new TablerosApiException('validation', 'Una carpeta no puede contenerse a sí misma.', 422);
+                $dest = $visibleFolders[$targetParentId] ?? null;
+                if (!$dest || (int)$dest['workspace_id'] !== $workspaceId) throw new TablerosApiException('validation', 'La carpeta destino no pertenece a este espacio.', 422);
+                if (empty($dest['can_reorder'])) throw new TablerosApiException('forbidden', 'No tienes permiso para modificar la carpeta destino.', 403);
+                $cycle = $this->one('WITH descendants AS (SELECT id FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL UNION ALL SELECT f.id FROM tb_folder f JOIN descendants d ON f.parent_folder_id = d.id WHERE f.workspace_id = ? AND f.deleted_at IS NULL) SELECT id FROM descendants WHERE id = ? OPTION (MAXRECURSION 100)', [$id, $workspaceId, $workspaceId, $targetParentId]);
+                if ($cycle) throw new TablerosApiException('validation', 'No puedes mover una carpeta dentro de sí misma o de una subcarpeta.', 422);
+            }
+            if ($targetParentId !== null) {
+                $dest = $visibleFolders[$targetParentId] ?? null;
+                if (!$dest || (int)$dest['workspace_id'] !== $workspaceId || empty($dest['can_reorder'])) throw new TablerosApiException('forbidden', 'No tienes permiso para usar la carpeta destino.', 403);
+            }
+            if ($type === 'folder') {
+                $depth = (int)($this->one('WITH tree AS (SELECT id, parent_folder_id, 1 AS lvl FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL UNION ALL SELECT f.id, f.parent_folder_id, t.lvl + 1 FROM tb_folder f JOIN tree t ON f.parent_folder_id = t.id WHERE f.workspace_id = ? AND f.deleted_at IS NULL) SELECT COALESCE(MAX(lvl), 0) AS depth FROM tree OPTION (MAXRECURSION 100)', [$id, $workspaceId, $workspaceId])['depth'] ?? 0);
+                $destDepth = 0; $cursorId = $targetParentId;
+                while ($cursorId !== null) {
+                    $cursor = $this->one('SELECT parent_folder_id FROM tb_folder WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', [$cursorId, $workspaceId]);
+                    if (!$cursor) throw new TablerosApiException('validation', 'La carpeta destino ya no está disponible.', 422);
+                    $destDepth++; $cursorId = $cursor['parent_folder_id'] === null ? null : (int)$cursor['parent_folder_id'];
+                    if ($destDepth > 3) throw new TablerosApiException('conflict', 'La jerarquía de carpetas no es válida.', 409);
+                }
+                if ($destDepth + $depth > 3) throw new TablerosApiException('validation', 'Monday permite hasta tres niveles de carpetas dentro del espacio de trabajo.', 422);
+            }
+            $oldParent = $moved[$parentKey] === null ? null : (int)$moved[$parentKey];
+            if ($anchorId !== null) {
+                $anchor = $visible[$anchorId] ?? null;
+                if (!$anchor || (int)$anchor['workspace_id'] !== $workspaceId || ($anchor[$parentKey] === null ? null : (int)$anchor[$parentKey]) !== $targetParentId) throw new TablerosApiException('validation', 'El elemento de referencia no está en la lista destino.', 422);
+                if (empty($anchor['can_reorder'])) throw new TablerosApiException('forbidden', 'No tienes permiso para reordenar el elemento de referencia.', 403);
+            }
+            $lists = [];
+            foreach (array_unique([$oldParent, $targetParentId], SORT_REGULAR) as $parentId) {
+                $rows = $this->all("SELECT id, sort_order FROM $table WITH (UPDLOCK, HOLDLOCK) WHERE workspace_id = ? AND (($parentKey = ?) OR ($parentKey IS NULL AND ? IS NULL)) AND deleted_at IS NULL ORDER BY sort_order, id", [$workspaceId, $parentId, $parentId]);
+                foreach ($rows as $row) if (isset($visible[(int)$row['id']]) && empty($visible[(int)$row['id']]['can_reorder'])) throw new TablerosApiException('forbidden', 'Necesitas permiso para reordenar todos los elementos visibles de estas listas.', 403);
+                $lists[(string)($parentId ?? 'root')] = array_values(array_filter($rows, static fn($r) => isset($visible[(int)$r['id']])));
+            }
+            $oldKey = (string)($oldParent ?? 'root'); $newKey = (string)($targetParentId ?? 'root');
+            $source = array_values(array_filter($lists[$oldKey] ?? [], static fn($r) => (int)$r['id'] !== $id));
+            $target = $oldKey === $newKey ? $source : ($lists[$newKey] ?? []);
+            if ($anchorId !== null) {
+                $idx = array_search($anchorId, array_map(static fn($r) => (int)$r['id'], $target), true);
+                if ($idx === false) throw new TablerosApiException('conflict', 'La estructura cambió. Actualiza e inténtalo de nuevo.', 409);
+                array_splice($target, $idx + ($placement === 'after' ? 1 : 0), 0, [['id' => $id, 'sort_order' => (int)$moved['sort_order']]]);
+            } else {
+                $target[] = ['id' => $id, 'sort_order' => (int)$moved['sort_order']];
+            }
+            $this->execute("UPDATE $table SET $parentKey = ?, updated_at = GETDATE() WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL", [$targetParentId, $id, $workspaceId]);
+            $write = function (array $rows, array $originalRows) use ($table, $parentKey, $workspaceId): void {
+                $slots = array_map(static fn($row) => (int)$row['sort_order'], $originalRows);
+                sort($slots, SORT_NUMERIC);
+                while (count($slots) < count($rows)) $slots[] = ($slots ? max($slots) : -1) + 1;
+                $previousPosition = null;
+                foreach ($rows as $index => $row) {
+                    $position = (int)$slots[$index];
+                    if ($previousPosition !== null) {
+                        if ($previousPosition >= 2147483647) throw new TablerosApiException('conflict', 'El orden excede el rango permitido.', 409);
+                        $position = max($position, $previousPosition + 1);
+                    }
+                    if ($position > 2147483647) throw new TablerosApiException('conflict', 'El orden excede el rango permitido.', 409);
+                    $this->execute("UPDATE $table SET sort_order = ?, updated_at = GETDATE() WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL", [$position, (int)$row['id'], $workspaceId]);
+                    $previousPosition = $position;
+                }
+            };
+            if ($oldKey !== $newKey) $write($source, $lists[$oldKey] ?? []);
+            $write($target, $lists[$newKey] ?? []);
+            if ($type === 'board') $this->writeActivity($id, null, $userId, 'board.reordered', ['target_parent_id' => $targetParentId, 'anchor_id' => $anchorId, 'placement' => $placement]);
+            return $this->getWorkspaceStructure($userId, $isAdmin);
+        });
+    }
+
+    private function nextBoardSortOrder(int $workspaceId, ?int $folderId): int {
+        $row = $this->one(
+            'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM tb_board WITH (UPDLOCK, HOLDLOCK)
+             WHERE workspace_id = ? AND ((folder_id = ?) OR (folder_id IS NULL AND ? IS NULL)) AND deleted_at IS NULL',
+            [$workspaceId, $folderId, $folderId]
+        );
+        return (int)($row['next_order'] ?? 0);
     }
 
     public function getBoard(int $boardId): ?array {
@@ -780,7 +983,7 @@ class TablerosModel {
     }
 
     public function revokeBoardMember(int $boardId, int $actorId, array $input): array {
-        $this->requireBoardAllowed($boardId, ['owner','designer']);
+        $this->requireBoardAllowed($boardId, ['owner','designer','editor']);
         $targetUserId = $this->positiveInt($input['user_id'] ?? null, 'user_id');
         return $this->transaction(function () use ($boardId, $actorId, $targetUserId): array {
             $board = $this->one(
@@ -838,9 +1041,10 @@ class TablerosModel {
         unset($column);
 
         $items = $this->all(
-            'SELECT id, board_id, group_id, parent_item_id, name, sort_order, version,
-                    created_by, updated_by, created_at, updated_at
-             FROM tb_item WHERE board_id = ? AND deleted_at IS NULL ORDER BY group_id, sort_order, id',
+            'SELECT i.id, i.board_id, i.group_id, i.parent_item_id, i.name, i.sort_order, i.version,
+                    i.created_by, i.updated_by, i.created_at, i.updated_at,
+                    (SELECT COUNT(*) FROM tb_comment c WHERE c.item_id = i.id AND c.board_id = i.board_id AND c.deleted_at IS NULL) AS comment_count
+             FROM tb_item i WHERE i.board_id = ? AND i.deleted_at IS NULL ORDER BY i.group_id, i.sort_order, i.id',
             [$boardId]
         );
         $cells = $this->all(
@@ -866,8 +1070,29 @@ class TablerosModel {
             $itemPositions[(string)$item['id']] = $index;
         }
         unset($item);
+        $activeFileIds = array_fill_keys(array_map(
+            static fn(array $file): string => (string)$file['id'],
+            $this->all('SELECT id FROM tb_file WHERE board_id = ? AND deleted_at IS NULL', [$boardId])
+        ), true);
+        $filterActiveFiles = static function (array $entries) use ($activeFileIds): array {
+            return array_values(array_filter($entries, static function ($entry) use ($activeFileIds): bool {
+                if (!is_array($entry)) return false;
+                $fileId = $entry['file_id'] ?? $entry['id'] ?? null;
+                return $fileId !== null && isset($activeFileIds[(string)$fileId]);
+            }));
+        };
         foreach ($cells as &$cell) {
             $value = $this->cellValue($cell);
+            if ((string)$cell['type'] === 'file' && is_array($value)) {
+                if (isset($value['files']) && is_array($value['files'])) {
+                    $value['files'] = $filterActiveFiles($value['files']);
+                } elseif (array_is_list($value)) {
+                    $value = $filterActiveFiles($value);
+                } elseif (isset($value['file_id']) || isset($value['id'])) {
+                    $value = $filterActiveFiles([$value]);
+                    $value = $value[0] ?? [];
+                }
+            }
             $itemIndex = $itemPositions[(string)$cell['item_id']] ?? null;
             if ($itemIndex !== null) {
                 $items[$itemIndex]['cells'][(string)$cell['column_id']] = $value;
@@ -954,7 +1179,7 @@ class TablerosModel {
 
     public function getComments(int $boardId, int $itemId): array {
         $this->requireItemOnBoard($itemId, $boardId);
-        return $this->all(
+        $comments = $this->all(
             "SELECT TOP (200) c.id, c.board_id, c.item_id, c.parent_comment_id, c.body, c.created_by, c.updated_by,
                     COALESCE(NULLIF(LTRIM(RTRIM(u.Nombre)), ''), NULLIF(LTRIM(RTRIM(u.Usuario)), '')) AS created_by_display_name,
                     c.created_at, c.updated_at
@@ -964,12 +1189,27 @@ class TablerosModel {
              ORDER BY c.created_at, c.id",
             [$boardId, $itemId]
         );
+        foreach ($comments as &$comment) {
+            $comment['stickers'] = $this->all('SELECT s.id, s.name FROM tb_comment_sticker l INNER JOIN tb_user_sticker s ON s.id = l.sticker_id WHERE l.comment_id = ? ORDER BY s.id', [(int)$comment['id']]);
+            $comment['attachments'] = $this->all('SELECT f.id AS file_id, f.name FROM tb_comment_attachment a INNER JOIN tb_file f ON f.id = a.file_id WHERE a.comment_id = ? AND f.deleted_at IS NULL ORDER BY f.name, f.id', [(int)$comment['id']]);
+        }
+        unset($comment);
+        return $comments;
     }
 
     public function addComment(int $boardId, int $userId, array $input): array {
         $itemId = $this->positiveInt($input['item_id'] ?? null, 'item_id');
         $parentId = $this->optionalPositiveInt($input['parent_comment_id'] ?? null, 'parent_comment_id');
-        $body = $this->requiredString($input, 'body', 10000);
+        $rawBody = isset($input['body']) && is_string($input['body']) ? trim($input['body']) : '';
+        $body = $this->sanitizeCommentBody($rawBody);
+        $stickerIds = $input['stickers'] ?? [];
+        if (!is_array($stickerIds) || count($stickerIds) > 20) throw new TablerosApiException('validation', 'La lista de stickers no es válida.', 422);
+        $stickerIds = array_values(array_unique(array_map(fn($id): int => $this->positiveInt($id, 'stickers'), $stickerIds)));
+        $attachmentIds = $input['file_ids'] ?? [];
+        if (!is_array($attachmentIds) || count($attachmentIds) > 20) throw new TablerosApiException('validation', 'La lista de archivos adjuntos no es válida.', 422);
+        $attachmentIds = array_values(array_unique(array_map(fn($id): int => $this->positiveInt($id, 'file_ids'), $attachmentIds)));
+        if (trim(strip_tags($body)) === '' && !$stickerIds && !$attachmentIds) throw new TablerosApiException('validation', 'Escribe un comentario o agrega un sticker o archivo.', 422);
+        if (mb_strlen($body, 'UTF-8') > 10000) throw new TablerosApiException('validation', 'El comentario excede el límite de 10000 caracteres.', 422);
         $this->requireItemOnBoard($itemId, $boardId);
         if ($parentId !== null && !$this->one(
             'SELECT id FROM tb_comment WHERE id = ? AND board_id = ? AND item_id = ? AND deleted_at IS NULL',
@@ -977,19 +1217,63 @@ class TablerosModel {
         )) {
             throw new TablerosApiException('validation', 'El comentario padre no pertenece a este elemento.', 422);
         }
-        return $this->transaction(function () use ($boardId, $userId, $itemId, $parentId, $body): array {
+        return $this->transaction(function () use ($boardId, $userId, $itemId, $parentId, $body, $stickerIds, $attachmentIds): array {
+            if ($stickerIds) {
+                $marks = implode(',', array_fill(0, count($stickerIds), '?'));
+                if ((int)$this->one("SELECT COUNT(*) AS total FROM tb_user_sticker WHERE id IN ($marks) AND deleted_at IS NULL", $stickerIds)['total'] !== count($stickerIds)) throw new TablerosApiException('validation', 'Uno o más stickers ya no están disponibles.', 422);
+            }
+            if ($attachmentIds) {
+                $marks = implode(',', array_fill(0, count($attachmentIds), '?'));
+                $params = array_merge([$boardId, $itemId], $attachmentIds);
+                if ((int)$this->one("SELECT COUNT(*) AS total FROM tb_file WHERE board_id = ? AND item_id = ? AND deleted_at IS NULL AND id IN ($marks)", $params)['total'] !== count($attachmentIds)) throw new TablerosApiException('validation', 'Uno o más archivos no pertenecen a este elemento o ya no están disponibles.', 422);
+            }
             $id = $this->insertId(
                 'INSERT INTO tb_comment (board_id, item_id, parent_comment_id, body, created_by, created_at, updated_at)
                  OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, GETDATE(), GETDATE())',
                 [$boardId, $itemId, $parentId, $body, $userId]
             );
+            foreach ($stickerIds as $stickerId) $this->execute('INSERT INTO tb_comment_sticker (comment_id, sticker_id, created_by, created_at) VALUES (?, ?, ?, GETDATE())', [$id, $stickerId, $userId]);
+            foreach ($attachmentIds as $fileId) $this->execute('INSERT INTO tb_comment_attachment (comment_id, file_id, created_at) VALUES (?, ?, GETDATE())', [$id, $fileId]);
             $this->writeActivity($boardId, $itemId, $userId, 'comment.created', ['comment_id' => $id]);
             return [
                 'id' => $id, 'board_id' => $boardId, 'item_id' => $itemId,
                 'parent_comment_id' => $parentId, 'body' => $body, 'created_by' => $userId,
                 'created_by_display_name' => $this->userDisplayName($userId),
+                'stickers' => $stickerIds ? $this->all('SELECT id, name FROM tb_user_sticker WHERE id IN (' . implode(',', array_fill(0, count($stickerIds), '?')) . ')', $stickerIds) : [],
+                'attachments' => $attachmentIds ? $this->all('SELECT f.id AS file_id, f.name FROM tb_file f WHERE f.id IN (' . implode(',', array_fill(0, count($attachmentIds), '?')) . ') ORDER BY f.name, f.id', $attachmentIds) : [],
             ];
         });
+    }
+
+    private function sanitizeCommentBody(string $body): string {
+        if ($body === '') return '';
+        $body = preg_replace('~<(script|style|iframe|object|svg|math)\\b[^>]*>.*?</\\1\\s*>~is', '', $body) ?? '';
+        return preg_replace_callback('~</?([a-zA-Z][a-zA-Z0-9]*)\\b([^>]*)>~', static function (array $match): string {
+            $tag = strtolower($match[1]); $closing = str_starts_with($match[0], '</');
+            $allowed = ['b'=>'b','strong'=>'strong','i'=>'i','em'=>'em','u'=>'u','span'=>'span','br'=>'br','p'=>'p','div'=>'div'];
+            if (!isset($allowed[$tag])) return '';
+            if ($closing) return in_array($tag, ['br'], true) ? '' : '</' . $allowed[$tag] . '>';
+            if ($tag !== 'span' || !preg_match('/\\bstyle\\s*=\\s*(["\'])(.*?)\\1/i', $match[2], $style)) return '<' . $allowed[$tag] . '>';
+            if (!preg_match('/^\\s*color\\s*:\\s*(#[0-9a-f]{3}(?:[0-9a-f]{3})?|[a-z]{1,20})\\s*;?\\s*$/i', $style[2], $color)) return '<span>';
+            return '<span style="color:' . strtolower($color[1]) . '">';
+        }, $body) ?? '';
+    }
+
+    public function attachItemCommentFile(int $commentId, int $fileId): int {
+        return $this->transaction(function () use ($commentId, $fileId): int {
+            $comment = $this->one('SELECT board_id, item_id FROM tb_comment WHERE id = ? AND deleted_at IS NULL', [$commentId]);
+            if (!$comment) throw new TablerosApiException('not_found', 'No se encontró el comentario.', 404);
+            $file = $this->one('SELECT id FROM tb_file WHERE id = ? AND board_id = ? AND item_id = ? AND deleted_at IS NULL', [$fileId, $comment['board_id'], $comment['item_id']]);
+            if (!$file) throw new TablerosApiException('validation', 'El archivo debe pertenecer al mismo tablero y elemento del comentario.', 422);
+            $this->execute('IF NOT EXISTS (SELECT 1 FROM tb_comment_attachment WHERE comment_id = ? AND file_id = ?) INSERT INTO tb_comment_attachment (comment_id, file_id, created_at) VALUES (?, ?, GETDATE())', [$commentId, $fileId, $commentId, $fileId]);
+            return (int)$comment['board_id'];
+        });
+    }
+
+    public function getItemCommentBoardId(int $commentId): int {
+        $row = $this->one('SELECT board_id FROM tb_comment WHERE id = ? AND deleted_at IS NULL', [$commentId]);
+        if (!$row) throw new TablerosApiException('not_found', 'No se encontró el comentario.', 404);
+        return (int)$row['board_id'];
     }
 
     public function getStickers(): array {
@@ -1068,7 +1352,7 @@ class TablerosModel {
         $row = $this->one(
             "SELECT s.id, s.name, s.content_type, s.byte_size, s.sha256_hash, s.storage_provider, s.storage_container, s.storage_object_key,
                     CONVERT(VARCHAR(64), s.sha256_hash, 2) AS sha256_hex
-             FROM tb_user_sticker s WHERE s.id = ? AND (s.deleted_at IS NULL OR EXISTS (SELECT 1 FROM tb_file_comment_sticker l WHERE l.sticker_id = s.id))",
+             FROM tb_user_sticker s WHERE s.id = ? AND (s.deleted_at IS NULL OR EXISTS (SELECT 1 FROM tb_file_comment_sticker l WHERE l.sticker_id = s.id) OR EXISTS (SELECT 1 FROM tb_comment_sticker l WHERE l.sticker_id = s.id))",
             [$stickerId]
         );
         $contentType = (string)($row['content_type'] ?? '');
@@ -1925,7 +2209,7 @@ class TablerosModel {
     }
 
     public function createBoard(int $userId, array $input): array {
-        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
+        if (!$this->access->hasGlobalPermission('create') && !$this->access->canManageWorkspaceContent((int)($input['workspace_id'] ?? 0))) throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
         if (!$this->userIsActive($userId)) {
             throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         }
@@ -1939,7 +2223,7 @@ class TablerosModel {
         }
 
         return $this->transaction(function () use ($userId, $name, $description, $workspaceId, $folderId, $visibility): array {
-            if ($this->access->workspaceRole($workspaceId) === null) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
+            if ($this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId)) throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
             $workspace = $this->one("SELECT id, visibility FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
             if (!$workspace) {
                 throw new TablerosApiException('not_found', 'No se encontró el espacio de trabajo.', 404);
@@ -1952,23 +2236,24 @@ class TablerosModel {
                 $workspaceRole = $this->access->workspaceRole($workspaceId);
                 $systemFolderVisible = $folder['created_by'] === null && $workspaceRole !== null;
                 if ((int)($folder['created_by'] ?? 0) !== $userId && $workspaceRole !== 'owner' && !$systemFolderVisible
-                    && !$this->folderHasVisibleBoard($folderId, $workspaceId)) {
+                    && !$this->folderHasVisibleBoard($folderId, $workspaceId)
+                    && !$this->access->canManageWorkspaceContent($workspaceId)) {
                     throw new TablerosApiException('forbidden', 'No tienes acceso a la carpeta seleccionada.', 403);
                 }
             }
+            $sortOrder = $this->nextBoardSortOrder($workspaceId, $folderId);
             $boardId = $this->insertId(
-                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, created_by, created_at, updated_at)
-                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
-                [$workspaceId, $folderId, $name, $description, $visibility, $userId]
+                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, sort_order, created_by, created_at, updated_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$workspaceId, $folderId, $name, $description, $visibility, $sortOrder, $userId]
             );
             $this->writeActivity($boardId, null, $userId, 'board.created', ['name' => $name]);
-            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $description, 'visibility' => $visibility, 'role' => 'owner'];
+            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $description, 'visibility' => $visibility, 'sort_order' => $sortOrder, 'role' => 'owner'];
         });
     }
 
     /** Clone a board with new IDs. No files, relations, dependencies, or automation state are copied. */
     public function duplicateBoard(int $sourceBoardId, int $userId, array $input): array {
-        if (!$this->access->hasGlobalPermission('create')) throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
         if (!$this->userIsActive($userId)) throw new TablerosApiException('forbidden', 'La cuenta TG no está activa.', 403);
         $name = $this->requiredString($input, 'name', 120);
         $mode = strtolower(trim((string)($input['mode'] ?? '')));
@@ -1976,35 +2261,36 @@ class TablerosModel {
             throw new TablerosApiException('validation', 'El modo de duplicación no es válido.', 422);
         }
         $keepSubscribers = $this->booleanInput($input, 'keep_subscribers', false);
+        $destinationWorkspaceId = $this->optionalPositiveInt($input['workspace_id'] ?? null, 'workspace_id');
 
-        return $this->transaction(function () use ($sourceBoardId, $userId, $name, $mode, $keepSubscribers): array {
+        return $this->transaction(function () use ($sourceBoardId, $userId, $name, $mode, $keepSubscribers, $destinationWorkspaceId): array {
             $source = $this->one('SELECT * FROM tb_board WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$sourceBoardId]);
             if (!$source) throw new TablerosApiException('not_found', 'No se encontró el tablero.', 404);
 
-            // Keep the source location where the actor can create there; otherwise use one of their own workspaces.
-            $workspaceId = (int)$source['workspace_id'];
-            $workspaceRole = $this->access->workspaceRole($workspaceId);
-            if ($workspaceRole === null) {
+            $workspaceId = $destinationWorkspaceId ?? (int)$source['workspace_id'];
+            if ($destinationWorkspaceId === null
+                && !$this->access->canCreateBoardInWorkspace($workspaceId)) {
                 $ownWorkspace = $this->one("SELECT TOP (1) id FROM tb_workspace WHERE created_by = ? AND workspace_type = 'workspace' AND deleted_at IS NULL ORDER BY id", [$userId]);
                 if (!$ownWorkspace) throw new TablerosApiException('forbidden', 'No tienes un espacio de trabajo disponible para crear el tablero.', 403);
                 $workspaceId = (int)$ownWorkspace['id'];
             }
             $workspace = $this->one("SELECT id FROM tb_workspace WHERE id = ? AND workspace_type = 'workspace' AND deleted_at IS NULL", [$workspaceId]);
-            if (!$workspace || $this->access->workspaceRole($workspaceId) === null) {
+            if (!$workspace || !$this->access->canCreateBoardInWorkspace($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo destino.', 403);
             }
             $folderId = null;
             if ($workspaceId === (int)$source['workspace_id'] && !empty($source['folder_id'])) {
                 $folder = $this->one('SELECT id, created_by FROM tb_folder WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', [(int)$source['folder_id'], $workspaceId]);
                 $role = $this->access->workspaceRole($workspaceId);
-                if ($folder && ((int)($folder['created_by'] ?? 0) === $userId || $role === 'owner' || $folder['created_by'] === null)) {
+                if ($folder && ((int)($folder['created_by'] ?? 0) === $userId || $role === 'owner' || $folder['created_by'] === null || $this->access->canManageWorkspaceContent($workspaceId))) {
                     $folderId = (int)$folder['id'];
                 }
             }
+            $sortOrder = $this->nextBoardSortOrder($workspaceId, $folderId);
             $boardId = $this->insertId(
-                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, created_by, created_at, updated_at)
-                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
-                [$workspaceId, $folderId, $name, $source['description'] ?? null, 'private', $userId]
+                'INSERT INTO tb_board (workspace_id, folder_id, name, description, visibility, sort_order, created_by, created_at, updated_at)
+                 OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
+                [$workspaceId, $folderId, $name, $source['description'] ?? null, 'private', $sortOrder, $userId]
             );
 
             $groupMap = [];
@@ -2097,7 +2383,7 @@ class TablerosModel {
                 }
             }
             $this->writeActivity($boardId, null, $userId, 'board.created', ['name' => $name, 'source_board_id' => $sourceBoardId, 'duplicate_mode' => $mode]);
-            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $source['description'] ?? null, 'visibility' => 'private', 'role' => 'owner'];
+            return ['id' => $boardId, 'workspace_id' => $workspaceId, 'folder_id' => $folderId, 'name' => $name, 'description' => $source['description'] ?? null, 'visibility' => 'private', 'sort_order' => $sortOrder, 'role' => 'owner'];
         });
     }
 
@@ -2114,6 +2400,42 @@ class TablerosModel {
         return ['id' => $id, 'board_id' => $boardId, 'name' => $name, 'color' => $color, 'sort_order' => $position];
     }
 
+    public function reorderGroups(int $boardId, int $userId, array $input): array {
+        $groupIds = $input['group_ids'] ?? null;
+        if (!is_array($groupIds) || !array_is_list($groupIds)) {
+            throw new TablerosApiException('validation', 'El orden debe incluir la lista completa de grupos.', 422);
+        }
+        $ids = [];
+        foreach ($groupIds as $value) {
+            $id = $this->positiveInt($value, 'group_id');
+            if (isset($ids[$id])) {
+                throw new TablerosApiException('validation', 'No se permiten grupos repetidos.', 422);
+            }
+            $ids[$id] = $id;
+        }
+        return $this->transaction(function () use ($boardId, $userId, $ids): array {
+            $groups = $this->all(
+                'SELECT id FROM tb_group WITH (UPDLOCK, HOLDLOCK) WHERE board_id = ? AND deleted_at IS NULL ORDER BY sort_order, id',
+                [$boardId]
+            );
+            $activeIds = array_map(static fn(array $group): int => (int)$group['id'], $groups);
+            if (count($activeIds) !== count($ids) || array_diff($activeIds, array_values($ids))) {
+                throw new TablerosApiException('validation', 'El orden debe incluir exactamente los grupos activos de este tablero. Actualiza el tablero e inténtalo de nuevo.', 422);
+            }
+            $ordered = [];
+            foreach (array_values($ids) as $index => $id) {
+                $position = $index * 10;
+                $this->execute(
+                    'UPDATE tb_group SET sort_order = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
+                    [$position, $id, $boardId]
+                );
+                $ordered[] = ['id' => $id, 'sort_order' => $position];
+            }
+            $this->writeActivity($boardId, null, $userId, 'group.reordered', ['group_ids' => array_values($ids)]);
+            return ['groups' => $ordered];
+        });
+    }
+
     public function createColumn(int $boardId, int $userId, array $input): array {
         $name = $this->requiredString($input, 'name', 120);
         if (!is_string($input['type'] ?? null)) {
@@ -2127,12 +2449,35 @@ class TablerosModel {
         if (!is_array($options) || strlen((string)json_encode($options, JSON_UNESCAPED_UNICODE)) > 16000) {
             throw new TablerosApiException('validation', 'Las opciones de la columna no son válidas.', 422);
         }
+        if ($type === 'rating') {
+            $display = array_key_exists('display', $options) ? $options['display'] : 'stars';
+            if (!in_array($display, ['stars', 'percentage'], true)) {
+                throw new TablerosApiException('validation', 'La calificación debe mostrarse como estrellas o porcentaje.', 422);
+            }
+            $options['display'] = $display;
+            $maximum = $display === 'percentage' ? 100 : ($options['max'] ?? 5);
+            if (!is_numeric($maximum) || !is_finite((float)$maximum) || (float)$maximum <= 0) {
+                throw new TablerosApiException('validation', 'El máximo de la calificación debe ser un número positivo.', 422);
+            }
+            $options['max'] = (float)$maximum;
+        }
         $required = $this->booleanInput($input, 'required', false);
         $enforceUnique = $this->booleanInput($input, 'enforce_unique', false);
         if ($enforceUnique && in_array($type, ['people', 'person'], true)) {
             throw new TablerosApiException('validation', 'Las columnas de personas no admiten valores únicos.', 422);
         }
-        $position = $this->nextSortOrder('tb_column', $boardId);
+        return $this->transaction(function () use ($boardId, $userId, $name, $type, $options, $required, $enforceUnique, $input): array {
+        $columns = $this->all('SELECT id, sort_order FROM tb_column WITH (UPDLOCK, HOLDLOCK) WHERE board_id = ? AND deleted_at IS NULL ORDER BY sort_order, id', [$boardId]);
+        $afterId = $this->optionalPositiveInt($input['insert_after_column_id'] ?? null, 'insert_after_column_id');
+        $positionIndex = count($columns);
+        if ($afterId !== null) {
+            $found = false;
+            foreach ($columns as $index => $existingColumn) if ((int)$existingColumn['id'] === $afterId) { $positionIndex = $index + 1; $found = true; break; }
+            if (!$found) throw new TablerosApiException('validation', 'La columna de referencia no pertenece a este tablero.', 422);
+        }
+        array_splice($columns, $positionIndex, 0, [['id' => null]]);
+        foreach ($columns as $index => $entry) if ($entry['id'] !== null) $this->execute('UPDATE tb_column SET sort_order = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ?', [$index * 10, $entry['id'], $boardId]);
+        $position = $positionIndex * 10;
         $id = $this->insertId(
             'INSERT INTO tb_column (board_id, name, type, options_json, required, sort_order, enforce_unique, created_by, created_at, updated_at)
              OUTPUT INSERTED.id VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())',
@@ -2140,6 +2485,104 @@ class TablerosModel {
         );
         $this->writeActivity($boardId, null, $userId, 'column.created', ['column_id' => $id, 'type' => $type, 'name' => $name]);
         return ['id' => $id, 'board_id' => $boardId, 'name' => $name, 'type' => $type, 'options' => $options, 'required' => $required, 'enforce_unique' => $enforceUnique, 'sort_order' => $position];
+        });
+    }
+
+    public function renameColumn(int $boardId, int $userId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $name = $this->requiredString($input, 'name', 120);
+        return $this->transaction(function () use ($boardId, $userId, $columnId, $name): array {
+            $column = $this->one('SELECT id FROM tb_column WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId, $boardId]);
+            if (!$column) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+            $this->execute('UPDATE tb_column SET name = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ?', [$name, $columnId, $boardId]);
+            $this->writeActivity($boardId, null, $userId, 'column.renamed', ['column_id' => $columnId, 'name' => $name]);
+            return ['column_id' => $columnId, 'name' => $name];
+        });
+    }
+
+    /** Duplicate the column definition only; users can populate the new column explicitly. */
+    public function duplicateColumn(int $boardId, int $userId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $copyData = $this->booleanInput($input, 'copy_data', false);
+        return $this->transaction(function () use ($boardId, $userId, $columnId, $copyData): array {
+            $source = $this->one('SELECT * FROM tb_column WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId, $boardId]);
+            if (!$source) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+            if ($copyData && in_array((string)$source['type'], ['people','person','board_relation','subtasks','dependency','file'], true)) {
+                throw new TablerosApiException('validation', 'No se pueden copiar automáticamente las relaciones auxiliares de este tipo de columna.', 422);
+            }
+            $name = $this->requiredString(['name' => mb_substr((string)$source['name'] . ' (copia)', 0, 120)], 'name', 120);
+            $position = $this->nextSortOrder('tb_column', $boardId);
+            $id = $this->insertId('INSERT INTO tb_column (board_id,name,type,options_json,required,sort_order,enforce_unique,created_by,created_at,updated_at) OUTPUT INSERTED.id VALUES (?,?,?,?,?,?,?,?,GETDATE(),GETDATE())', [$boardId,$name,$source['type'],$source['options_json'],$source['required'],$position,$source['enforce_unique'],$userId]);
+            $copiedCount = 0;
+            if ($copyData) {
+                $copiedCount = $this->execute('INSERT INTO tb_cell (item_id,column_id,board_id,value_text,value_number,value_date,value_datetime,value_boolean,value_json,unique_value_hash,created_by,updated_by,updated_at)
+                    SELECT c.item_id,?,c.board_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json,c.unique_value_hash,?, ?,GETDATE()
+                    FROM tb_cell c INNER JOIN tb_item i ON i.id=c.item_id AND i.board_id=c.board_id AND i.deleted_at IS NULL
+                    WHERE c.board_id=? AND c.column_id=? AND c.deleted_at IS NULL', [$id,$userId,$userId,$boardId,$columnId]);
+            }
+            $this->writeActivity($boardId, null, $userId, 'column.duplicated', ['source_column_id' => $columnId, 'column_id' => $id]);
+            return ['id' => $id, 'board_id' => $boardId, 'name' => $name, 'type' => $source['type'], 'options' => $this->decodeJson($source['options_json'] ?? null, []), 'required' => (bool)$source['required'], 'enforce_unique' => (bool)$source['enforce_unique'], 'sort_order' => $position, 'copied_count' => $copiedCount];
+        });
+    }
+
+    public function previewColumnTypeChange(int $boardId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $target = strtolower(trim((string)($input['type'] ?? '')));
+        if (!in_array($target, self::ALLOWED_TYPES, true)) throw new TablerosApiException('validation', 'El tipo de columna no está permitido.', 422);
+        $column = $this->one('SELECT id,type,options_json,required,enforce_unique FROM tb_column WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId,$boardId]);
+        if (!$column) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+        return $this->inspectColumnTypeChange($boardId, $column, $target);
+    }
+
+    public function changeColumnType(int $boardId, int $userId, array $input): array {
+        $columnId = $this->positiveInt($input['column_id'] ?? null, 'column_id');
+        $target = strtolower(trim((string)($input['type'] ?? '')));
+        if (!in_array($target, self::ALLOWED_TYPES, true)) throw new TablerosApiException('validation', 'El tipo de columna no está permitido.', 422);
+        $options = $input['options'] ?? [];
+        if (!is_array($options)) throw new TablerosApiException('validation', 'Las opciones no son válidas.', 422);
+        return $this->transaction(function () use ($boardId,$userId,$columnId,$target,$options): array {
+            $column = $this->one('SELECT id,type,options_json,required,enforce_unique FROM tb_column WITH (UPDLOCK,HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId,$boardId]);
+            if (!$column) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
+            $report = $this->inspectColumnTypeChange($boardId, $column, $target, $options);
+            if ($report['invalid_count'] > 0) throw new TablerosApiException('validation', 'Hay valores que no pueden convertirse de forma segura. No se modificó la columna.', 422);
+            if ($report['unique_conflict_count'] > 0) throw new TablerosApiException('conflict', 'La conversión produciría valores únicos duplicados. No se modificó la columna.', 409);
+            $cells = $this->all('SELECT c.id,c.item_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json FROM tb_cell c WITH (UPDLOCK,HOLDLOCK) INNER JOIN tb_item i ON i.id=c.item_id AND i.board_id=? AND i.deleted_at IS NULL WHERE c.board_id=? AND c.column_id=? AND c.deleted_at IS NULL', [$boardId,$boardId,$columnId]);
+            foreach ($cells as $cell) {
+                $value = $this->cellValue($cell);
+                if ($value === null || $value === '') continue;
+                $converted = $this->validateCellValue($target, $value, $options);
+                $storage = $this->cellStorage($target, $converted);
+                $hash = !empty($column['enforce_unique']) && $converted !== null ? $this->canonicalValueHash($target, $converted) : null;
+                $this->execute('UPDATE tb_cell SET value_text=?,value_number=?,value_date=?,value_datetime=?,value_boolean=?,value_json=?,unique_value_hash=CONVERT(VARBINARY(32),?,2),updated_by=?,updated_at=GETDATE() WHERE id=?', array_merge($storage,[$hash,$userId,$cell['id']]));
+            }
+            $json = json_encode($options, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($json === false || strlen($json) > 16000) throw new TablerosApiException('validation','Las opciones de la columna no son válidas.',422);
+            $this->execute('UPDATE tb_column SET type=?,options_json=?,updated_at=GETDATE() WHERE id=? AND board_id=?', [$target,$json,$columnId,$boardId]);
+            $this->writeActivity($boardId,null,$userId,'column.type_changed',['column_id'=>$columnId,'type'=>$target]);
+            return ['column_id'=>$columnId,'type'=>$target,'converted_count'=>$report['valid_count']];
+        });
+    }
+
+    private function inspectColumnTypeChange(int $boardId, array $column, string $target, array $options = []): array {
+        $source = (string)$column['type'];
+        // Side tables encode semantics beyond tb_cell and must never be orphaned by a type edit.
+        $sideTableTypes = ['people','person','file','board_relation','subtasks','dependency','item_id','team','timeline','location','country','link'];
+        if (in_array($source,$sideTableTypes,true) || in_array($target,$sideTableTypes,true)) throw new TablerosApiException('validation','Este tipo usa relaciones o datos auxiliares y no admite conversión automática.',422);
+        if (in_array($target, ['status','dropdown','tags'], true) && !$this->optionValues($options)) throw new TablerosApiException('validation','Configura opciones antes de convertir a un tipo con etiquetas.',422);
+        $cells = $this->all('SELECT c.id,c.item_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json FROM tb_item i WITH (UPDLOCK,HOLDLOCK) LEFT JOIN tb_cell c WITH (UPDLOCK,HOLDLOCK) ON c.item_id=i.id AND c.board_id=i.board_id AND c.column_id=? AND c.deleted_at IS NULL WHERE i.board_id=? AND i.deleted_at IS NULL', [$column['id'],$boardId]);
+        $invalid = []; $valid = 0; $values = [];
+        foreach ($cells as $cell) {
+            $value = $this->cellValue($cell);
+            if ($value === null || $value === '') {
+                if ((bool)$column['required']) { if (count($invalid)<5) $invalid[]=['item_id'=>(int)$cell['item_id'],'reason'=>'required']; }
+                else $valid++;
+                continue;
+            }
+            try { $converted = $this->validateCellValue($target,$value,$options); $valid++; if ((bool)$column['enforce_unique'] && $converted !== null) { $key = $this->canonicalValueHash($target,$converted); $values[$key] = ($values[$key] ?? 0)+1; } }
+            catch (Throwable $e) { if (count($invalid)<5) $invalid[]=['item_id'=>(int)$cell['item_id'],'reason'=>'invalid_value']; }
+        }
+        $uniqueConflicts = count(array_filter($values, static fn($n) => $n > 1));
+        return ['column_id'=>(int)$column['id'],'from_type'=>$source,'to_type'=>$target,'value_count'=>count($cells),'valid_count'=>$valid,'invalid_count'=>max(0,count($cells)-$valid),'invalid_examples'=>$invalid,'unique_conflict_count'=>$uniqueConflicts,'can_commit'=>!$invalid && !$uniqueConflicts];
     }
 
     public function updateColumnOptions(int $boardId, int $userId, array $input): array {
@@ -2683,7 +3126,7 @@ class TablerosModel {
     }
 
     public function shareBoard(int $boardId, int $userId, array $input): array {
-        $this->requireBoardAllowed($boardId, ['owner','designer']);
+        $this->requireBoardAllowed($boardId, ['owner','designer','editor']);
         $members = $input['members'] ?? null;
         if ($members === null && isset($input['user_id'])) {
             $members = [['user_id' => $input['user_id'], 'role' => $input['role'] ?? 'viewer']];
@@ -2775,9 +3218,10 @@ class TablerosModel {
             );
             $isOwner = (int)$board['created_by'] === $userId;
             $isDesigner = strtolower((string)($member['role'] ?? '')) === 'designer';
+            $isEditor = strtolower((string)($member['role'] ?? '')) === 'editor';
             $isAdmin = $this->access->hasGlobalPermission('admin');
-            if (!$isOwner && !$isDesigner && !$isAdmin) {
-                throw new TablerosApiException('forbidden', 'Solo el propietario o un diseñador puede cambiar la visibilidad del tablero.', 403);
+            if (!$isOwner && !$isDesigner && !$isEditor && !$isAdmin) {
+                throw new TablerosApiException('forbidden', 'Solo el propietario, el diseñador o el editor puede cambiar la visibilidad del tablero.', 403);
             }
             $previousVisibility = (string)$board['visibility'];
             if ($previousVisibility !== $visibility) {
@@ -3112,7 +3556,7 @@ class TablerosModel {
                 throw new TablerosApiException('validation', 'El progreso debe estar entre 0 y 100.', 422);
             }
             if ($type === 'rating') {
-                $maximum = (float)($options['max'] ?? 5);
+                $maximum = ($options['display'] ?? 'stars') === 'percentage' ? 100 : (float)($options['max'] ?? 5);
                 if ($number < 0 || $number > $maximum) {
                     throw new TablerosApiException('validation', 'La calificación está fuera del rango permitido.', 422);
                 }

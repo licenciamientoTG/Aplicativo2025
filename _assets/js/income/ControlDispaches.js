@@ -28,6 +28,11 @@ function actualizarDataTable() {
     $('#element_hidden').removeAttr('hidden');
     $('#no_selected').attr('hidden',true);
 
+    let lastRecordsTotal = 0;
+    $('#datatables_dispatches').off('xhr.dt.hint').on('xhr.dt.hint', function (e, settings, json) {
+        if (json && json.recordsTotal) lastRecordsTotal = json.recordsTotal;
+    });
+
     let datatables_dispatches =   $('#datatables_dispatches').DataTable({
             // scrollY: '700px',
             // scrollX: true,
@@ -114,17 +119,25 @@ function actualizarDataTable() {
            ajax: {
                method: 'POST',
                url: '/income/datatables_dispatches_paginated',
-               data: {
-                    'from': from,
-                    'until': until,
-                    'codgas': codgas,
-                    'uuid': uuid,
-                    'billed': billed
+               // initComplete solo corre en la primera carga; sin esto el loading
+               // se queda pegado en búsquedas/filtros posteriores.
+               complete: function() {
+                   $('.control_dispaches_table').removeClass('loading');
+               },
+               data: function (d) {
+                    d.from   = from;
+                    d.until  = until;
+                    d.codgas = codgas;
+                    d.uuid   = uuid;
+                    d.billed = billed;
+                    // recordsTotal no cambia mientras no cambien from/until/codgas/uuid/billed
+                    // (la tabla se recrea al cambiar esos filtros); así el servidor se ahorra el COUNT.
+                    d.total_hint = lastRecordsTotal;
                 },
                error: function() {
                    $('#historic_shortage_table').waitMe('hide');
                    $('.control_dispaches_table').removeClass('loading');
-       
+
                    alertify.myAlert(
                        `<div class="container text-center text-danger">
                            <h4 class="mt-2 text-danger">¡Error!</h4>

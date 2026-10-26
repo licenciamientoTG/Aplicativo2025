@@ -1,0 +1,35 @@
+{# Parcial sin layout: modal Aprobar / Rechazar de un alta de cuenta. Twig escapa todo el texto de usuario. #}
+<div class="modal-header">
+    <h6 class="modal-title">Alta de cuenta #{{ solicitud.id }} — Tesorería</h6>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
+<div class="modal-body">
+    {% if duplicados.catalogo or duplicados.solicitudes %}
+    <div class="alert alert-warning py-2 small">
+        <strong><i class="fas fa-exclamation-triangle"></i> Este número de cuenta ya está registrado.</strong>
+        <ul class="mb-0 mt-1">
+        {% for c in duplicados.catalogo %}<li>En el catálogo: {{ c.Descripcion }}{{ c.Banco ? ' · ' ~ c.Banco }} ({{ c.Activo ? 'activa' : 'inactiva' }}).</li>{% endfor %}
+        {% for r in duplicados.solicitudes %}<li>Otra solicitud pendiente: #{{ r.id }} · {{ r.proveedor }}.</li>{% endfor %}
+        </ul>
+        {% if duplicados.catalogo %}<div class="mt-1">Si la aprueba se liga a la cuenta existente (se reactiva si estaba inactiva).</div>{% endif %}
+    </div>
+    {% endif %}
+    <div class="row g-2 mb-3">
+        <div class="col-md-6"><div class="small text-muted">Razón social</div>{{ solicitud.empresa }}</div>
+        <div class="col-md-6"><div class="small text-muted">Proveedor</div><strong>{{ solicitud.proveedor }}</strong></div>
+        <div class="col-md-6"><div class="small text-muted">Banco</div>{{ solicitud.banco }}</div>
+        <div class="col-md-6"><div class="small text-muted">Cuenta</div><span style="font-family:Consolas,monospace;">{{ solicitud.num_cuenta }}</span> · {{ solicitud.moneda }}</div>
+        <div class="col-md-6"><div class="small text-muted">Departamento</div>{{ solicitud.departamento }}</div>
+        <div class="col-md-6"><div class="small text-muted">Solicitó</div>{{ solicitud.solicitante }} · {{ solicitud.fecha_solicitud|date('d/m/Y') }}</div>
+        <div class="col-12"><div class="small text-muted">Carátula</div>
+            {% if solicitud.file_path %}<a href="{{ url('bankaccounts.caratula', {id: solicitud.id}) }}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i> Abrir {{ solicitud.original_filename }}</a>
+            {% else %}<span class="text-muted">Sin carátula</span>{% endif %}</div>
+    </div>
+    <label for="ba_modal_comentario" class="form-label small text-muted">Comentario (obligatorio para rechazar)</label>
+    <textarea id="ba_modal_comentario" class="form-control" rows="3" maxlength="400"></textarea>
+</div>
+<div class="modal-footer">
+    <a href="{{ url('bankaccounts.detail', {id: solicitud.id}) }}" class="btn btn-outline-secondary me-auto">Ver detalle</a>
+    <button type="button" class="btn btn-danger btn-ba-decidir" data-url="{{ url('bankaccounts.reject', {id: solicitud.id}) }}" data-rechazo="1"><i class="fas fa-times"></i> Rechazar</button>
+    <button type="button" class="btn btn-success btn-ba-decidir" data-url="{{ url('bankaccounts.approve', {id: solicitud.id}) }}"><i class="fas fa-check"></i> Aprobar</button>
+</div>

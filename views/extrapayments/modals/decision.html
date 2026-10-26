@@ -1,0 +1,35 @@
+{# Parcial sin layout: modal Aprobar / Rechazar. Twig escapa todo el texto de usuario. #}
+<div class="modal-header">
+    <h6 class="modal-title">Solicitud #{{ solicitud.id }} — {{ solicitud.status == 1 ? 'VoBo Cuentas por pagar' : 'Autorización Administración' }}</h6>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
+<div class="modal-body">
+    <div class="row g-2 mb-3">
+        <div class="col-md-4"><div class="small text-muted">Solicitante</div>{{ solicitud.solicitante }}</div>
+        <div class="col-md-5"><div class="small text-muted">Motivo</div>{{ solicitud.reason_nombre }}{% if solicitud.motivo_otros %}: {{ solicitud.motivo_otros }}{% endif %}</div>
+        <div class="col-md-3"><div class="small text-muted">Total</div><strong>${{ solicitud.total|number_format(2) }}</strong></div>
+    </div>
+    <div class="table-responsive mb-3">
+        <table class="table table-sm mb-0">
+            <thead><tr><th>Empresa</th><th>Proveedor</th><th>Descripción</th><th>Pago requerido</th><th class="text-end">Monto</th></tr></thead>
+            <tbody>
+            {% for l in solicitud.lines %}
+                <tr>
+                    <td>{{ l.empresa_nombre ?: l.empresa_cod }}</td>
+                    <td>{{ l.proveedor }}</td>
+                    <td>{{ l.descripcion }}{% if l.comentario_urgencia %}<br><small class="text-danger">Urgencia: {{ l.comentario_urgencia }}</small>{% endif %}</td>
+                    <td>{{ l.fecha_pago_requerida|date('d/m/Y') }}</td>
+                    <td class="text-end">${{ l.monto|number_format(2) }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <label for="ep_comentario" class="form-label small text-muted">Comentario (obligatorio para rechazar)</label>
+    <textarea id="ep_comentario" class="form-control" rows="3" maxlength="400"></textarea>
+</div>
+<div class="modal-footer">
+    <a href="{{ url('extrapayments.detail', {id: solicitud.id}) }}" class="btn btn-outline-secondary me-auto">Ver detalle</a>
+    <button type="button" class="btn btn-danger btn-ep-decidir" data-url="{{ url('extrapayments.reject', {id: solicitud.id}) }}" data-rechazo="1"><i class="fas fa-times"></i> Rechazar</button>
+    <button type="button" class="btn btn-success btn-ep-decidir" data-url="{{ url('extrapayments.approve', {id: solicitud.id}) }}"><i class="fas fa-check"></i> Aprobar</button>
+</div>

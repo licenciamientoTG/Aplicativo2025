@@ -162,8 +162,26 @@ class ClientesModel extends Model{
         return $this->sql->select($query, []) ?: false;
     }
 
-    public function get_dispatches_by_client(int $from, int $until, int $tipval, int $codcli = 0) : array|false {
+    /**
+     * Filtro de consumo propio (TG.dbo.clientes_consumo_propio) sobre la columna de cliente $col.
+     * $propio: 'incluir' (sin filtro), 'excluir' (sin consumo propio), 'solo' (solo consumo propio).
+     */
+    private function consumoPropioFilter(string $propio, string $col) : string {
+        $exists = "EXISTS (SELECT 1 FROM [TG].dbo.clientes_consumo_propio cpf WHERE cpf.codcli = {$col} AND cpf.activo = 1)";
+        return match ($propio) {
+            'excluir' => "AND NOT {$exists}",
+            'solo'    => "AND {$exists}",
+            default   => '',
+        };
+    }
+
+    /**
+     * $empresa: 0 = todas, -1 = estaciones sin razón social, >0 = SG12.Empresas.cod.
+     * $propio: 'incluir' | 'excluir' | 'solo' (ver consumoPropioFilter). Categoria = categoría de consumo propio o ''.
+     */
+    public function get_dispatches_by_client(int $from, int $until, int $tipval, int $codcli = 0, int $empresa = 0, string $propio = 'incluir') : array|false {
         $cli_filter = $codcli > 0 ? "AND t1.codcli = {$codcli}" : '';
+        $propio_filter = $this->consumoPropioFilter($propio, 't1.codcli');
         $query = "SELECT
                     t2.den AS Cliente,
                     t1.codcli,
@@ -173,17 +191,151 @@ class ClientesModel extends Model{
                     t1.can   AS Litros,
                     t1.mto   AS Monto,
                     t4.abr   AS Estacion,
-                    t3.den as producto
+                    ISNULL(EMP.den, '(Sin razón social)') AS RazonSocial,
+                    t3.den as producto,
+                    ISNULL(CP.categoria, '') AS Categoria
                 FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
                 LEFT JOIN [SG12].[dbo].[Clientes]    t2 ON t1.codcli = t2.cod
                 LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
                 LEFT JOIn [SG12].[dbo].[Productos] t3 on t1.codprd = t3.cod
+                LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+                LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                LEFT JOIN [TG].dbo.clientes_consumo_propio CP ON CP.codcli = t1.codcli AND CP.activo = 1
                 WHERE t1.fchtrn BETWEEN {$from} AND {$until}
                     AND t1.codcli > 0
                     AND t2.tipval = {$tipval}
+                    AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
                     {$cli_filter}
+                    {$propio_filter}
                 ORDER BY t2.den, t1.fchtrn, t1.hratrn";
-        return $this->sql->select($query) ?: false;
+        return $this->sql->select($query, [$empresa, $empresa, $empresa]) ?: false;
+    }
+
+    /**
+     * Consumos sumados por cliente (un renglón por cliente, todas sus razones sociales juntas),
+     * comparados contra lo que entró en los cortes (SG12.ValesR, mismo origen que Ingresos / Venta por Rubro).
+     * Despachos se filtra por fecha del despacho y ValesR por fecha del corte (coinciden salvo ~5 despachos/mes).
+     * Cuenta los clientes que solo aparecen de un lado (FULL JOIN), p. ej. PUBLICO EN GENERAL débito sin corte.
+     * Un despacho de un cliente que hoy es de otro tipo también entra si su corte lo cobró con el valor del tipo pedido.
+     * $tipval: 4 = débito (valor 127), 3 = crédito (valor 28). $codcli: 0 = todos.
+     * $empresa: 0 = todas, -1 = estaciones sin razón social, >0 = SG12.Empresas.cod.
+     * $propio: 'incluir' | 'excluir' | 'solo' (ver consumoPropioFilter). Categoria = categoría de consumo propio o ''.
+     */
+    public function get_dispatches_summary_by_client(int $from, int $until, int $tipval = 4, int $codcli = 0, int $empresa = 0, string $propio = 'incluir') : array|false {
+        $codval = $tipval === 3 ? 28 : 127;
+        $propio_d = $this->consumoPropioFilter($propio, 't1.codcli');
+        $propio_r = $this->consumoPropioFilter($propio, 'r.codcli');
+        $query = "WITH vx AS (
+                    -- despachos de clientes que hoy son de otro tipo pero el corte cobró con este valor (ValesR.sec = -nrotrn)
+                    SELECT DISTINCT vr.codgas, -vr.sec AS nrotrn
+                    FROM [SG12].[dbo].[ValesR] vr WITH (NOLOCK)
+                    JOIN [SG12].[dbo].[Clientes] vc ON vc.cod = vr.codcli
+                    WHERE vr.fch BETWEEN ? - 1 AND ? + 1
+                        AND vr.codval = ?
+                        AND vc.tipval <> ?
+                ), d AS (
+                    SELECT
+                        t1.codcli,
+                        COUNT(DISTINCT EMP.cod) AS RazonesSociales,
+                        COUNT(DISTINCT t1.codgas) AS Estaciones,
+                        COUNT(*) AS Despachos,
+                        SUM(t1.can) AS Litros,
+                        SUM(t1.mto) AS Monto,
+                        MIN(t1.fchtrn) AS PrimerFch,
+                        MAX(t1.fchtrn) AS UltimoFch
+                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                    JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
+                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    LEFT JOIN vx ON vx.codgas = t1.codgas AND vx.nrotrn = t1.nrotrn
+                    WHERE t1.fchtrn BETWEEN ? AND ?
+                        AND t1.codcli > 0
+                        AND (t2.tipval = ? OR vx.nrotrn IS NOT NULL)
+                        AND (? = 0 OR t1.codcli = ?)
+                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                        {$propio_d}
+                    GROUP BY t1.codcli
+                ), r AS (
+                    SELECT r.codcli, SUM(r.mto) AS MontoCortes
+                    FROM [SG12].[dbo].[ValesR] r WITH (NOLOCK)
+                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
+                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    WHERE r.fch BETWEEN ? AND ?
+                        AND r.codval = ?
+                        AND (? = 0 OR r.codcli = ?)
+                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                        {$propio_r}
+                    GROUP BY r.codcli
+                )
+                SELECT
+                    COALESCE(d.codcli, r.codcli) AS codcli,
+                    ISNULL(c.den, '(Cliente ' + CAST(COALESCE(d.codcli, r.codcli) AS VARCHAR(12)) + ')') AS Cliente,
+                    ISNULL(d.RazonesSociales, 0) AS RazonesSociales,
+                    ISNULL(d.Estaciones, 0) AS Estaciones,
+                    ISNULL(d.Despachos, 0) AS Despachos,
+                    CAST(ISNULL(d.Litros, 0) AS decimal(18,3)) AS Litros,
+                    CAST(ISNULL(d.Monto, 0) AS decimal(18,2)) AS Monto,
+                    CAST(ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS MontoCortes,
+                    CAST(ISNULL(d.Monto, 0) - ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS Diferencia,
+                    CONVERT(VARCHAR(10), CAST(d.PrimerFch AS DATETIME) - 1, 23) AS PrimerConsumo,
+                    CONVERT(VARCHAR(10), CAST(d.UltimoFch AS DATETIME) - 1, 23) AS UltimoConsumo,
+                    ISNULL(CP.categoria, '') AS Categoria
+                FROM d
+                FULL JOIN r ON r.codcli = d.codcli
+                LEFT JOIN [SG12].[dbo].[Clientes] c ON c.cod = COALESCE(d.codcli, r.codcli)
+                LEFT JOIN [TG].dbo.clientes_consumo_propio CP ON CP.codcli = COALESCE(d.codcli, r.codcli) AND CP.activo = 1
+                ORDER BY ISNULL(d.Monto, 0) DESC";
+        return $this->sql->select($query, [
+            $from, $until, $codval, $tipval,
+            $from, $until, $tipval, $codcli, $codcli, $empresa, $empresa, $empresa,
+            $from, $until, $codval, $codcli, $codcli, $empresa, $empresa, $empresa,
+        ]) ?: false;
+    }
+
+    /**
+     * Cortes (estación + fecha de corte + turno) donde los despachos de un cliente no cuadran contra SG12.ValesR.
+     * Aquí ambos lados van por fecha de corte (Despachos.fchcor = ValesR.fch) para comparar corte contra corte.
+     * $tipval: 4 = débito (valor 127), 3 = crédito (valor 28). $empresa igual que en get_dispatches_summary_by_client.
+     */
+    public function get_cortes_diff_by_client(int $from, int $until, int $tipval, int $codcli, int $empresa = 0) : array|false {
+        $codval = $tipval === 3 ? 28 : 127;
+        $query = "WITH d AS (
+                    SELECT t1.codgas, t1.fchcor AS fch, t1.nrotur, COUNT(*) AS Despachos, SUM(t1.mto) AS Monto
+                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    WHERE t1.fchcor BETWEEN ? AND ?
+                        AND t1.codcli = ?
+                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                    GROUP BY t1.codgas, t1.fchcor, t1.nrotur
+                ), r AS (
+                    SELECT r.codgas, r.fch, r.nrotur, SUM(r.mto) AS MontoCortes
+                    FROM [SG12].[dbo].[ValesR] r WITH (NOLOCK)
+                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
+                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                    WHERE r.fch BETWEEN ? AND ?
+                        AND r.codcli = ?
+                        AND r.codval = ?
+                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                    GROUP BY r.codgas, r.fch, r.nrotur
+                )
+                SELECT
+                    CONVERT(VARCHAR(10), CAST(COALESCE(d.fch, r.fch) AS DATETIME) - 1, 23) AS FechaCorte,
+                    COALESCE(d.nrotur, r.nrotur) AS Turno,
+                    G.abr AS Estacion,
+                    ISNULL(d.Despachos, 0) AS Despachos,
+                    CAST(ISNULL(d.Monto, 0) AS decimal(18,2)) AS Monto,
+                    CAST(ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS MontoCortes,
+                    CAST(ISNULL(d.Monto, 0) - ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS Diferencia
+                FROM d
+                FULL JOIN r ON r.codgas = d.codgas AND r.fch = d.fch AND r.nrotur = d.nrotur
+                LEFT JOIN [SG12].[dbo].[Gasolineras] G ON G.cod = COALESCE(d.codgas, r.codgas)
+                WHERE ABS(ISNULL(d.Monto, 0) - ISNULL(r.MontoCortes, 0)) >= 0.01
+                ORDER BY COALESCE(d.fch, r.fch), G.abr, COALESCE(d.nrotur, r.nrotur)";
+        return $this->sql->select($query, [
+            $from, $until, $codcli, $empresa, $empresa, $empresa,
+            $from, $until, $codcli, $codval, $empresa, $empresa, $empresa,
+        ]) ?: false;
     }
 
     /**
@@ -1269,5 +1421,51 @@ public function get_debit_snapshot() : array|false {
         ORDER BY cliente";
     return $this->sql->select($query) ?: false;
 }
+
+    /** Clientes clasificados como consumo propio (activos), débito y crédito. */
+    public function get_consumo_propio_list() : array|false {
+        $query = "SELECT cp.codcli, c.den AS cliente, c.tipval, cp.categoria, CONVERT(VARCHAR(16), cp.created_at, 120) AS alta
+                  FROM [TG].dbo.clientes_consumo_propio cp
+                  LEFT JOIN [SG12].dbo.Clientes c ON c.cod = cp.codcli
+                  WHERE cp.activo = 1
+                  ORDER BY c.tipval DESC, cp.categoria, c.den";
+        return $this->sql->select($query) ?: false;
+    }
+
+    /** Busca clientes débito/crédito (por nombre o código) que aún no son consumo propio. */
+    public function search_consumo_propio_candidates(string $q) : array|false {
+        $query = "SELECT TOP 30 c.cod, c.den, c.tipval
+                  FROM [SG12].dbo.Clientes c
+                  WHERE c.tipval IN (3,4) AND (c.den LIKE ? OR CAST(c.cod AS VARCHAR(12)) = ?)
+                    AND NOT EXISTS (SELECT 1 FROM [TG].dbo.clientes_consumo_propio cp WHERE cp.codcli = c.cod AND cp.activo = 1)
+                  ORDER BY c.den";
+        return $this->sql->select($query, ['%' . $q . '%', $q]) ?: false;
+    }
+
+    /** Clasifica (o reactiva) un cliente débito/crédito como consumo propio. */
+    public function save_consumo_propio(int $codcli, string $categoria) : bool {
+        $existe = $this->sql->select("SELECT 1 AS ok FROM [SG12].dbo.Clientes WHERE cod = ? AND tipval IN (3,4)", [$codcli]);
+        if (!$existe) return false;
+        $afectadas = $this->sql->updateSafe(
+            "UPDATE [TG].dbo.clientes_consumo_propio SET categoria = ?, activo = 1 WHERE codcli = ?",
+            [$categoria, $codcli]
+        );
+        if ($afectadas === false) return false;
+        if ($afectadas === 0) {
+            return (bool)$this->sql->insert(
+                "INSERT INTO [TG].dbo.clientes_consumo_propio (codcli, categoria) VALUES (?, ?)",
+                [$codcli, $categoria]
+            );
+        }
+        return true;
+    }
+
+    /** Quita la clasificación (activo = 0; no borra el renglón). */
+    public function remove_consumo_propio(int $codcli) : bool {
+        return $this->sql->updateSafe(
+            "UPDATE [TG].dbo.clientes_consumo_propio SET activo = 0 WHERE codcli = ?",
+            [$codcli]
+        ) !== false;
+    }
 
 }

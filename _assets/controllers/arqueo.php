@@ -19,6 +19,7 @@ class Arqueo
 {
     private const PERM_ADMIN   = 73; // arqueo_admin    — auditor administrador
     private const PERM_AUDITOR = 74; // arqueo_capturar — usuario auditor (captura)
+    private const ELIMINAR_USER_IDS = [6296, 6215]; // alejandro.martinez, Alejandra.Blanco — únicos que pueden eliminar sesiones
 
     /**
      * Sucursales del arqueo. Waterfill y Perez Serna tienen 2 cajas.
@@ -40,6 +41,7 @@ class Arqueo
         ['id' => 12, 'nombre' => 'Custodia',        'caja' => 1],
         ['id' => 13, 'nombre' => 'Perez Serna',     'caja' => 1],
         ['id' => 13, 'nombre' => 'Perez Serna',     'caja' => 2],
+        ['id' => 14, 'nombre' => 'Sucursal 28',     'caja' => 1],
     ];
 
     /**
@@ -146,6 +148,12 @@ class Arqueo
         return $asignado > 0 && $asignado === (int) $this->user_id();
     }
 
+    /** Solo los usuarios fijados en ELIMINAR_USER_IDS (y con permiso admin) eliminan sesiones. */
+    private function puede_eliminar(): bool
+    {
+        return in_array($this->user_id(), self::ELIMINAR_USER_IDS, true) && authorized(self::PERM_ADMIN);
+    }
+
     private function es_ajax(): bool
     {
         return isset($_SERVER['HTTP_X_REQUESTED_WITH'])
@@ -169,7 +177,8 @@ class Arqueo
         $this->guard([self::PERM_ADMIN, self::PERM_AUDITOR]);
         $sesiones = $this->sesionesModel->all();
         $es_admin = authorized(self::PERM_ADMIN);
-        echo $this->twig->render($this->route . 'index.html', compact('sesiones', 'es_admin'));
+        $puede_eliminar = $this->puede_eliminar();
+        echo $this->twig->render($this->route . 'index.html', compact('sesiones', 'es_admin', 'puede_eliminar'));
     }
 
     /**
@@ -350,6 +359,31 @@ class Arqueo
             $this->sesionesModel->sql->rollBack();
             $this->json(['success' => false, 'message' => $e->getMessage()]);
         }
+    }
+
+    /** Soft delete de una sesión (cualquier estado). Solo ELIMINAR_USER_IDS. */
+    public function eliminar_sesion($sesion_id): void
+    {
+        header('Content-Type: application/json');
+        if (!$this->puede_eliminar()) {
+            http_response_code(403);
+            $this->json(['success' => false, 'message' => 'No autorizado.']);
+        }
+
+        $sesion = $this->sesionesModel->find((int) $sesion_id);
+        if (!$sesion) {
+            $this->json(['success' => false, 'message' => 'Sesión no encontrada.']);
+        }
+        $ok = $this->sesionesModel->soft_delete((int) $sesion_id, (int) $this->user_id());
+        if ($ok) {
+            $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_ELIMINAR_SESION,
+                (int) $sesion_id, null, null,
+                ['nombre' => $sesion['nombre'], 'fecha' => $sesion['fecha'], 'estado' => $sesion['estado']], null,
+                $this->user_id(), $this->user_name()
+            );
+        }
+        $this->json(['success' => (bool) $ok]);
     }
 
     /** Abre una sesión: programado -> abierto. */

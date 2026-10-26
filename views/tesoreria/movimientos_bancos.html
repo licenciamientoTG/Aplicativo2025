@@ -410,6 +410,9 @@
       </div>
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Buscar</button>
+        <button type="button" class="btn btn-success ms-1" data-bs-toggle="modal" data-bs-target="#exportModal">
+          <i class="fas fa-file-excel"></i> Exportar
+        </button>
       </div>
       {% if authorized(81) %}
       <div class="col-auto ms-auto d-flex gap-2">
@@ -755,6 +758,56 @@
   </div>
   {% endfor %}
 </div>
+</div>
+
+<!-- Modal exportar a Excel: varias cuentas, una hoja por cuenta -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-file-excel text-success me-2"></i>Exportar movimientos a Excel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label for="expDesde">Desde:</label>
+            <input type="date" class="form-control" id="expDesde">
+          </div>
+          <div class="col-6">
+            <label for="expHasta">Hasta:</label>
+            <input type="date" class="form-control" id="expHasta">
+          </div>
+        </div>
+        <input type="search" class="form-control mb-2" id="expBuscar" placeholder="Buscar cuenta, banco o razón social..." autocomplete="off">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <div>
+            <a href="#" id="expTodas" class="small">Seleccionar visibles</a> ·
+            <a href="#" id="expNinguna" class="small">Quitar todas</a>
+          </div>
+          <small class="text-muted"><span id="expConteo">0</span> seleccionadas</small>
+        </div>
+        <div class="list-group" id="expLista" style="max-height:320px; overflow-y:auto;">
+          {% for c in cuentas %}
+          <label class="list-group-item d-flex align-items-start gap-2 exp-item py-1"
+                 data-texto="{{ (c.cuenta ~ ' ' ~ c.banco ~ ' ' ~ c.descripcion)|lower }}">
+            <input class="form-check-input mt-1 exp-check" type="checkbox" value="{{ c.cuenta }}">
+            <span>
+              <strong>{{ c.cuenta }}</strong> <small class="text-muted">({{ c.banco|lower|capitalize }})</small>
+              {% if c.descripcion %}<br><small>{{ c.descripcion }}</small>{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-sm btn-success" id="btnDescargarExcel" disabled>
+          <i class="fas fa-download"></i> Descargar Excel
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Modal subir archivo de banco (Santander / Afirme) -->
@@ -1303,6 +1356,45 @@ $(function () {
     mostrarLoader();
     window.location.href = '/tesoreria/movimientos_bancos';
   }
+
+  // ===== Exportar a Excel: cuentas elegidas en el modal, una hoja por cuenta =====
+  function actualizarExportar() {
+    var n = $('.exp-check:checked').length;
+    $('#expConteo').text(n);
+    $('#btnDescargarExcel').prop('disabled', n === 0);
+  }
+  $('#exportModal').on('show.bs.modal', function () {
+    $('#expDesde').val($('#desde').val());
+    $('#expHasta').val($('#hasta').val());
+  });
+  $('#expBuscar').on('input', function () {
+    var q = this.value.trim().toLowerCase();
+    $('.exp-item').each(function () {
+      $(this).toggleClass('d-none', q !== '' && $(this).attr('data-texto').indexOf(q) === -1)
+             .toggleClass('d-flex', !(q !== '' && $(this).attr('data-texto').indexOf(q) === -1));
+    });
+  });
+  $('#expTodas').on('click', function (e) {
+    e.preventDefault();
+    $('.exp-item:not(.d-none) .exp-check').prop('checked', true);
+    actualizarExportar();
+  });
+  $('#expNinguna').on('click', function (e) {
+    e.preventDefault();
+    $('.exp-check').prop('checked', false);
+    actualizarExportar();
+  });
+  $('#expLista').on('change', '.exp-check', actualizarExportar);
+  $('#btnDescargarExcel').on('click', function () {
+    var desde = $('#expDesde').val(), hasta = $('#expHasta').val();
+    if (!desde || !hasta || desde > hasta) {
+      alertify.error('Revisa el rango de fechas');
+      return;
+    }
+    var params = new URLSearchParams({ desde: desde, hasta: hasta });
+    $('.exp-check:checked').each(function () { params.append('cuentas[]', this.value); });
+    window.location.href = '/tesoreria/exportar_movimientos_cuentas?' + params.toString();
+  });
 
   document.getElementById('filtrosForm').addEventListener('submit', function (e) {
     e.preventDefault();

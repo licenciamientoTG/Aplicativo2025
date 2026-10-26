@@ -146,7 +146,7 @@
             <a class="sidebar-link" href="/payment/credit_notes">Notas de Crédito y Cargo</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/payment/import_invoices">Importar Facturas</a>
+            <a class="sidebar-link" href="/payment/import_invoices">Facturas</a>
           </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="/payment/all_payments">Comprobantes de pago</a>
@@ -361,6 +361,9 @@
             <a class="sidebar-link" href="/accounting/movimientos_bancos">Movimientos Bancos</a>
           </li>
           {% endif %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/accounting/credit_notes_consumption">Notas de Crédito vs Consumos</a>
+          </li>
         </ul>
       </li>
       {% endif %}
@@ -463,10 +466,12 @@
           <span class="align-middle">Reportes</span>
         </a>
         <ul id="income_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {# Oculto 2026-10-24: reporte sin terminar (no hay JS ni endpoint de datos); reactivar al completarlo
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/dolar_sales">Ventas Dolares
             </a>
           </li>
+          #}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/cash_sales">Ventas Contado
             </a>
@@ -475,16 +480,18 @@
             <a class="sidebar-link" href="/income/clients">Clientes </a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/income/salesxcard">Reporte de ventas por tarjeta
-            </a>
+            <a class="sidebar-link" href="{{ url('income.conciliation') }}">Conciliación</a>
           </li>
 
+          {# Oculto 2026-10-24: el SP sp_obtener_despachos_duplicados ignora la fecha y no particiona por tarjeta; reactivar al corregirlo
           {% if authorized(15) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/duplicate_dispatches">Despachos duplicados
             </a>
           </li>
-          {% endif %} {% if authorized(16) %}
+          {% endif %}
+          #}
+          {% if authorized(16) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/credit_debit_dispatches">Despachos Crédito y Débito
             </a>
@@ -539,6 +546,9 @@
           </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/summary_v3">Dashboard</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/income/transitos_v3">Reporte de Tránsitos</a>
           </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/upload_bank_reports">Subir Manual</a>
@@ -609,6 +619,9 @@
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/stamped_invoices">Facturas timbradas</a>
           </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/income/pending_cancellation_invoices">Facturas en proceso de cancelacion</a>
+          </li>
         </ul>
       </li>
       {% endif %} {% if authorized(53) %}
@@ -672,7 +685,7 @@
       {% endif %}
 
       {% if authorized(19) or authorized(101) or terminal_inventory_access() or terminal_inventory_report_access() or
-      terminal_inventory_station_report_access() %}
+      terminal_inventory_station_report_access() or terminal_inventory_stock_report_access() %}
       <li class="sidebar-header">OPERACIONES</li>
       {% if authorized(21) %}
       <li class="sidebar-item">
@@ -706,7 +719,7 @@
       </li>
       {% endif %}
       {% if terminal_inventory_access() or terminal_inventory_report_access() or
-      terminal_inventory_station_report_access() %}
+      terminal_inventory_station_report_access() or terminal_inventory_stock_report_access() %}
       <li class="sidebar-item">
         <a data-bs-target="#terminal_inventory_menu" data-bs-toggle="collapse" class="sidebar-link collapsed"
           aria-expanded="false">
@@ -727,6 +740,11 @@
           {% if terminal_inventory_station_report_access() %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/operations/terminal_station_incident_report">Incidencias de mi estación</a>
+          </li>
+          {% endif %}
+          {% if terminal_inventory_stock_report_access() %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/terminal_stock_report">Reporte de stock de terminales</a>
           </li>
           {% endif %}
           {% if terminal_inventory_report_access() %}
@@ -849,6 +867,23 @@
       {% endif %}
       {% endif %}
 
+      {% if authorized(106) %} {# Pagos extraordinarios: el 106 abre la sección completa #}
+      <li class="sidebar-header">PAGOS EXTRAORDINARIOS</li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="{{ url('extrapayments.index') }}" data-active-also="/pagos-extraordinarios/(new|\d+(/edit)?)/?$">
+          <i data-feather="list"></i>
+          <span class="align-middle">Solicitudes</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="{{ url('bankaccounts.index') }}" data-active-also="/pagos-extraordinarios/alta-cuenta/.+">
+          <i data-feather="credit-card"></i>
+          <span class="align-middle">Alta de cuenta bancaria</span>
+        </a>
+      </li>
+      {% endif %}
+
+
       {% if authorized(3) or for_sistemas() %}
       <li class="sidebar-header">SISTEMAS</li>
       {% if authorized(22) or for_sistemas() %}
@@ -931,14 +966,20 @@
     // Iterate through links
     sidebarLinks.forEach((link) => {
       // Compare link path with current path
-      if (link.getAttribute("href") === currentPath) {
+      // Páginas hijas que también marcan este link (regex en data-active-also)
+      const alsoPattern = link.dataset.activeAlso;
+      const isExact = link.getAttribute("href") === currentPath;
+      const isChild = !isExact && alsoPattern && new RegExp(alsoPattern).test(currentPath);
+      if (isExact || isChild) {
         // Add 'active' class to the link
         link.classList.add("active_item");
 
-        // Prevent default click (reload)
-        link.addEventListener("click", function (e) {
-          e.preventDefault();
-        });
+        // Prevent default click (reload) solo en la página exacta
+        if (isExact) {
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+          });
+        }
 
         // Add 'active' class to parent sidebar-item
         const parentItem = link.closest(".sidebar-item");

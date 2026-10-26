@@ -1821,23 +1821,31 @@ async function cash_sales_table(){
             { data: 'Fecha' },
             { data: 'Gasolinera' },
             { data: 'Turno' },
-            { data: 'Dolares' },
-            { data: 'Dolares2' },
-            { data: 'Mn' },
-            { data: 'Morralla' },
-            { data: 'Cheques' },
-            { data: 'INTERL - Efectivo' },
+            { data: 'Usd', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, 'US$') },
+            { data: 'TipoCambio', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 4, '$') },
+            { data: 'Dolares', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+            { data: 'Mn', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+            { data: 'Morralla', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+            { data: 'INTERL - Efectivo', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
         ],
         deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-        },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
         },
-        footerCallback: function (row, data, start, end, display) {
+        // Totales de las filas filtradas; el tipo de cambio se pondera (pesos / dólares)
+        footerCallback: function () {
+            let api = this.api();
+            let sum = (col) => api.column(col, { search: 'applied' }).data().reduce((a, b) => a + (parseFloat(b) || 0), 0);
+            let money = (n, dec = 2, prefix = '$') => prefix + n.toLocaleString('es-MX', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+            let usd = sum(3);
+            let dolares = sum(5);
+            $(api.column(0).footer()).html('Totales');
+            $(api.column(1).footer()).html('');
+            $(api.column(2).footer()).html('');
+            $(api.column(3).footer()).html(money(usd, 2, 'US$'));
+            $(api.column(4).footer()).html(usd !== 0 ? money(dolares / usd, 4) : '');
+            $(api.column(5).footer()).html(money(dolares));
+            [6, 7, 8].forEach((col) => $(api.column(col).footer()).html(money(sum(col))));
         }
     });
 }
@@ -2490,19 +2498,26 @@ async function clients_credit_table() {
     });
 }
 
-// ── Consumos por Cliente (Débito tipval=4 / Crédito tipval=3) ───────────────
+// Consumo propio (TG.dbo.clientes_consumo_propio), débito y crédito: la categoría detallada no se muestra, solo "Propio"
+function consumo_propio_render(d, type) {
+    if (!d) return '';
+    if (type !== 'display') return 'Propio';
+    return '<span class="badge bg-info text-dark" title="Consumo propio">Propio</span>';
+}
 
-async function clients_dispatches_table(tipo) {
-    var tableId  = tipo === 'debit' ? 'debit_consumos_table' : 'credit_consumos_table';
-    var from     = tipo === 'debit' ? $('#from_debit').val()     : $('#from_credit').val();
-    var until    = tipo === 'debit' ? $('#until_debit').val()    : $('#until_credit').val();
-    var codcli   = tipo === 'debit' ? $('#cliente_debit').val()  : $('#cliente_credit').val();
-    var tipval   = tipo === 'debit' ? 4 : 3;
+// ── Consumos por Cliente, sumatorias (Débito tipval=4 / Crédito tipval=3) ──
 
-    if (!codcli) {
-        alertify.myAlert('<div class="text-center text-warning"><h5>Selecciona un cliente</h5><p>Debes elegir un cliente antes de consultar.</p></div>');
-        return;
-    }
+async function clients_summary_table(tipo) {
+    var tableId = tipo + '_consumos_client_table';
+    // Solo sumatorias: el detalle por cliente se ve en el modal (clic en Monto)
+    var from    = $('#from_' + tipo).val();
+    var until   = $('#until_' + tipo).val();
+    var codcli  = parseInt($('#cliente_' + tipo).val(), 10) || 0;
+    var empresa = parseInt($('#empresa_' + tipo).val(), 10) || 0;
+    var tipval  = tipo === 'debit' ? 4 : 3;
+    // Consumo propio (débito y crédito): columna Categoría + filtro incluir/excluir/solo
+    var propio  = $('#propio_' + tipo).val() || 'incluir';
+    var off     = 1;
 
     if ($.fn.DataTable.isDataTable('#' + tableId)) {
         $('#' + tableId).DataTable().destroy();
@@ -2523,17 +2538,31 @@ async function clients_dispatches_table(tipo) {
             .search(this.value).draw();
     });
 
+    var fmtMoney = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    var sumCol = function (api, idx) {
+        return api.column(idx, { search: 'applied' }).data()
+            .reduce(function (a, b) { return (parseFloat(a) || 0) + (parseFloat(b) || 0); }, 0);
+    };
+
     $('#' + tableId).DataTable({
-        order: [[0, 'asc'], [2, 'asc']],
+        order: [[8 + off, 'desc']],
+        // Clientes cuyos despachos no cuadran con los cortes (p. ej. PUBLICO EN GENERAL débito)
+        createdRow: function (tr, row) {
+            if (Math.abs(parseFloat(row.Diferencia) || 0) >= 0.01) $(tr).addClass('table-warning');
+        },
         colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        paging: true,
-        pageLength: 100,
+        dom: '<"top"Bf>rt<"bottom"i>',
+        paging: false,
+        scrollY: '60vh',
+        scrollX: true,
+        scrollCollapse: true,
         buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
         ajax: {
             method: 'POST',
-            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval },
-            url: '/income/clients_dispatches_table',
+            data: { 'from': from, 'until': until, 'codcli': codcli, 'empresa': empresa, 'tipval': tipval, 'propio': propio },
+            url: '/income/clients_dispatches_by_client',
             timeout: 600000,
             error: function () {
                 $('.table-responsive').removeClass('loading');
@@ -2542,32 +2571,207 @@ async function clients_dispatches_table(tipo) {
             beforeSend: function () { $('.table-responsive').addClass('loading'); }
         },
         columns: [
-            { data: 'Cliente',  className: 'text-nowrap' },
             { data: 'codcli' },
-            { data: 'Fecha',    className: 'text-center' },
-            { data: 'hratrn',   className: 'text-center', render: function(d) {
-                if (!d) return '';
-                var n = parseInt(d, 10);
-                if (isNaN(n)) return d;
-                var h = Math.floor(n / 100), m = n % 100, ap = h >= 12 ? 'PM' : 'AM';
-                h = h % 12 || 12;
-                return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0') + ' ' + ap;
+            { data: 'Cliente',         className: 'text-nowrap' },
+        ].concat([{ data: 'Categoria', className: 'text-nowrap', render: consumo_propio_render }]).concat([
+            { data: 'RazonesSociales', className: 'text-center' },
+            { data: 'Estaciones',      className: 'text-center' },
+            { data: 'PrimerConsumo',   className: 'text-center text-nowrap' },
+            { data: 'UltimoConsumo',   className: 'text-center text-nowrap' },
+            { data: 'Despachos',       render: $.fn.dataTable.render.number(',', '.', 0, ''), className: 'text-end' },
+            { data: 'Litros',          render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
+            { data: 'Monto', className: 'text-nowrap text-end', render: function (d, type) {
+                if (type !== 'display') return d;
+                return '<a href="#" class="client-drill" title="Ver despachos">' + fmtMoney(d) + ' <i class="fas fa-list-ul"></i></a>';
             }},
-            { data: 'nrotrn',   className: 'text-center' },
-            { data: 'Estacion', className: 'text-nowrap' },
-            { data: 'Litros',   render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
-            { data: 'Monto',    render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-end' },
-            { data: 'producto' },
-        ],
+            { data: 'MontoCortes', className: 'text-nowrap text-end', render: function (d, type) {
+                return type === 'display' ? fmtMoney(d) : d;
+            }},
+            { data: 'Diferencia', className: 'text-nowrap text-end', render: function (d, type) {
+                if (type !== 'display') return d;
+                if (Math.abs(parseFloat(d) || 0) < 0.01) return '<span class="text-muted">$0.00</span>';
+                return '<a href="#" class="client-cortes-drill text-danger fw-bold" title="Ver cortes que no cuadran">' + fmtMoney(d) + ' <i class="fas fa-search"></i></a>';
+            }},
+        ]),
         deferRender: true,
         initComplete: function () { $('.table-responsive').removeClass('loading'); },
-        footerCallback: function (row, data, start, end, display) {
+        footerCallback: function () {
             var api = this.api();
-            var litrosTotal = api.column(6, { page: 'current' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
-            var montoTotal  = api.column(7, { page: 'current' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
-            $(api.column(6).footer()).html(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3}));
-            $(api.column(7).footer()).html('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2}));
+            var desp = sumCol(api, 6 + off), lit = sumCol(api, 7 + off), mto = sumCol(api, 8 + off), cor = sumCol(api, 9 + off), dif = sumCol(api, 10 + off);
+            $(api.column(6 + off).footer()).html(desp.toLocaleString('es-MX'));
+            $(api.column(7 + off).footer()).html(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
+            $(api.column(8 + off).footer()).html(fmtMoney(mto));
+            $(api.column(9 + off).footer()).html(fmtMoney(cor));
+            $(api.column(10 + off).footer()).html(fmtMoney(dif));
+            $('#sum_clientes_client_' + tipo).text(api.rows({ search: 'applied' }).count().toLocaleString('es-MX'));
+            $('#sum_despachos_consumos_' + tipo).text(desp.toLocaleString('es-MX'));
+            $('#sum_litros_consumos_' + tipo).text(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
+            $('#sum_monto_consumos_' + tipo).text(fmtMoney(mto));
+            var propioMto = api.rows({ search: 'applied' }).data().toArray()
+                .reduce(function (a, r) { return r.Categoria ? a + (parseFloat(r.Monto) || 0) : a; }, 0);
+            $('#sum_propio_client_' + tipo).text(fmtMoney(propioMto));
         }
+    });
+}
+
+// ── Catálogo de consumo propio (débito y crédito): ver, quitar y clasificar nuevos ──
+
+var cpSeleccionado = null;
+var cpEsc = function (t) { return $('<div>').text(t == null ? '' : t).html(); };
+
+function cp_cargar() {
+    $.post('/income/consumo_propio_list', {}, function (json) {
+        var rows = (json && json.data) || [];
+        if ($.fn.DataTable.isDataTable('#cp_tabla')) $('#cp_tabla').DataTable().destroy();
+        $('#cp_tabla tbody').html(rows.map(function (r) {
+            return '<tr><td>' + r.codcli + '</td><td>' + cpEsc(r.cliente) + '</td>' +
+                '<td>' + (parseInt(r.tipval, 10) === 3 ? 'Crédito' : 'Débito') + '</td>' +
+                '<td>' + cpEsc(r.categoria) + '</td><td>' + cpEsc(r.alta) + '</td>' +
+                '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger cp-quitar" data-codcli="' + r.codcli + '" title="Quitar clasificación"><i class="fas fa-times"></i></button></td></tr>';
+        }).join(''));
+        $('#cp_tabla').DataTable({
+            paging: false, scrollY: '40vh', scrollCollapse: true, order: [[2, 'asc'], [3, 'asc']],
+            dom: '<"top"f>rt<"bottom"i>',
+            language: { search: 'Filtrar:', info: '_TOTAL_ clasificados', infoEmpty: 'Sin clasificados', emptyTable: 'Sin clientes clasificados' }
+        });
+        var cats = {};
+        rows.forEach(function (r) { cats[r.categoria] = 1; });
+        $('#cp_categorias').html(Object.keys(cats).map(function (c) { return '<option value="' + cpEsc(c) + '">'; }).join(''));
+    }, 'json');
+}
+
+function cp_reset_seleccion() {
+    cpSeleccionado = null;
+    $('#cp_buscar').val('');
+    $('#cp_categoria').val('');
+    $('#cp_resultados').empty();
+    $('#cp_guardar').prop('disabled', true);
+    $('#cp_seleccion').text('Ningún cliente seleccionado.');
+}
+
+$(document).on('click', '.btn-consumo-propio-catalogo', function () {
+    cp_reset_seleccion();
+    $('#modal_consumo_propio').modal('show');
+    cp_cargar();
+});
+
+var cpTimer = null;
+$(document).on('input', '#cp_buscar', function () {
+    var q = $(this).val().trim();
+    clearTimeout(cpTimer);
+    cpSeleccionado = null;
+    $('#cp_guardar').prop('disabled', true);
+    $('#cp_seleccion').text('Ningún cliente seleccionado.');
+    if (q.length < 2) { $('#cp_resultados').empty(); return; }
+    cpTimer = setTimeout(function () {
+        $.post('/income/consumo_propio_search', { q: q }, function (json) {
+            var rows = (json && json.data) || [];
+            $('#cp_resultados').html(rows.length ? rows.map(function (r) {
+                return '<button type="button" class="list-group-item list-group-item-action py-1 cp-elegir" data-cod="' + r.cod + '" data-den="' + cpEsc(r.den) + '">' +
+                    '<small class="text-muted">' + r.cod + ' · ' + (parseInt(r.tipval, 10) === 3 ? 'Crédito' : 'Débito') + '</small> ' + cpEsc(r.den) + '</button>';
+            }).join('') : '<div class="list-group-item py-1 text-muted">Sin coincidencias (o ya están clasificados).</div>');
+        }, 'json');
+    }, 300);
+});
+
+$(document).on('click', '.cp-elegir', function () {
+    cpSeleccionado = parseInt($(this).data('cod'), 10);
+    $('#cp_buscar').val($(this).data('den'));
+    $('#cp_resultados').empty();
+    $('#cp_seleccion').text('Seleccionado: ' + cpSeleccionado + ' — ' + $(this).data('den'));
+    $('#cp_guardar').prop('disabled', false);
+    $('#cp_categoria').trigger('focus');
+});
+
+$(document).on('click', '#cp_guardar', function () {
+    var categoria = $('#cp_categoria').val().trim();
+    if (!cpSeleccionado || !categoria) {
+        alertify.error('Selecciona un cliente y escribe la categoría.');
+        return;
+    }
+    $.post('/income/consumo_propio_save', { codcli: cpSeleccionado, categoria: categoria }, function (json) {
+        if (json && json.status === 'ok') {
+            alertify.success('Cliente clasificado. Vuelve a consultar el reporte para ver el cambio.');
+            cp_reset_seleccion();
+            cp_cargar();
+        } else {
+            alertify.error((json && json.message) || 'No se pudo clasificar.');
+        }
+    }, 'json').fail(function () { alertify.error('Error al guardar.'); });
+});
+
+$(document).on('click', '.cp-quitar', function () {
+    var codcli = $(this).data('codcli');
+    if (!confirm('¿Quitar la clasificación de consumo propio del cliente ' + codcli + '?')) return;
+    $.post('/income/consumo_propio_remove', { codcli: codcli }, function (json) {
+        if (json && json.status === 'ok') {
+            alertify.success('Clasificación quitada. Vuelve a consultar el reporte para ver el cambio.');
+            cp_cargar();
+        } else {
+            alertify.error((json && json.message) || 'No se pudo quitar.');
+        }
+    }, 'json').fail(function () { alertify.error('Error al quitar.'); });
+});
+
+// Drill-down: despachos del cliente con la razón social del filtro
+$(document).on('click', '#debit_consumos_client_table .client-drill, #credit_consumos_client_table .client-drill', function (e) {
+    e.preventDefault();
+    var tipo = $(this).closest('table').attr('id').indexOf('debit') === 0 ? 'debit' : 'credit';
+    var row  = $('#' + tipo + '_consumos_client_table').DataTable().row($(this).closest('tr')).data();
+    if (row) {
+        edo_consumos_modal(row.codcli, row.Cliente, $('#from_' + tipo).val(), $('#until_' + tipo).val(),
+            tipo === 'debit' ? 4 : 3, parseInt($('#empresa_' + tipo).val(), 10) || 0);
+    }
+});
+
+// Drill-down de la diferencia: cortes (estación + fecha de corte + turno) donde despachos ≠ ValesR
+$(document).on('click', '#debit_consumos_client_table .client-cortes-drill, #credit_consumos_client_table .client-cortes-drill', function (e) {
+    e.preventDefault();
+    var tipo = $(this).closest('table').attr('id').indexOf('debit') === 0 ? 'debit' : 'credit';
+    var row  = $('#' + tipo + '_consumos_client_table').DataTable().row($(this).closest('tr')).data();
+    if (row) cortes_diff_modal(tipo, row.codcli, row.Cliente);
+});
+
+function cortes_diff_modal(tipo, codcli, cliente) {
+    var from  = $('#from_' + tipo).val();
+    var until = $('#until_' + tipo).val();
+    var esc   = function (v) { return $('<div>').text(v == null ? '' : String(v)).html(); };
+    var money = function (v) {
+        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    var headers = ['Fecha corte', 'Turno', 'Estación', 'Despachos', 'Monto despachos', 'Monto cortes', 'Diferencia'];
+
+    $('#modal_edo_drill_title').html('Cortes que no cuadran — ' + esc(cliente) + ' <small class="text-muted">(' + esc(from) + ' → ' + esc(until) + ')</small>');
+    $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
+    $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
+    $('#modal_edo_drill_table tfoot').empty();
+    $('#modal_edo_drill').modal('show');
+
+    $.post('/income/clients_cortes_diff', {
+        codcli: codcli, from: from, until: until,
+        tipval: tipo === 'debit' ? 4 : 3,
+        empresa: parseInt($('#empresa_' + tipo).val(), 10) || 0
+    }, function (json) {
+        var rows = (json && json.data) || [];
+        if (!rows.length) {
+            $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Todos los cortes cuadran por fecha de corte; la diferencia viene de despachos cuya fecha de corte cae fuera del periodo.</td></tr>');
+            return;
+        }
+        $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
+            return '<tr><td>' + esc(r.FechaCorte) + '</td><td class="text-center">' + esc(r.Turno) + '</td><td>' + esc(r.Estacion) + '</td>' +
+                   '<td class="text-end">' + (parseInt(r.Despachos, 10) || 0).toLocaleString('es-MX') + '</td>' +
+                   '<td class="text-end">' + money(r.Monto) + '</td><td class="text-end">' + money(r.MontoCortes) + '</td>' +
+                   '<td class="text-end text-danger fw-bold">' + money(r.Diferencia) + '</td></tr>';
+        }).join(''));
+        var sum = function (k) { return rows.reduce(function (a, r) { return a + (parseFloat(r[k]) || 0); }, 0); };
+        $('#modal_edo_drill_table tfoot').html(
+            '<tr><th colspan="3" class="text-end">Total</th>' +
+            '<th class="text-end">' + sum('Despachos').toLocaleString('es-MX') + '</th>' +
+            '<th class="text-end">' + money(sum('Monto')) + '</th><th class="text-end">' + money(sum('MontoCortes')) + '</th>' +
+            '<th class="text-end">' + money(sum('Diferencia')) + '</th></tr>'
+        );
+    }, 'json').fail(function () {
+        $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
     });
 }
 
@@ -2767,7 +2971,7 @@ function client_vehicles_modal(codcli, cliente) {
 }
 
 // Modal de consumos (despachos) compartido: débito tipval=4 / crédito tipval=3
-function edo_consumos_modal(codcli, cliente, from, until, tipval) {
+function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
     var money = function (v) {
         return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
@@ -2779,7 +2983,7 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval) {
     $('#modal_edo_drill_table tfoot').empty();
     $('#modal_edo_drill').modal('show');
 
-    $.post('/income/clients_dispatches_table', { codcli: codcli, from: from, until: until, tipval: tipval }, function (json) {
+    $.post('/income/clients_dispatches_table', { codcli: codcli, from: from, until: until, tipval: tipval, empresa: empresa || 0 }, function (json) {
         var rows = (json && json.data) || [];
         if (!rows.length) {
             $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Sin registros en el periodo.</td></tr>');

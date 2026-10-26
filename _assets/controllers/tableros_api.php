@@ -27,6 +27,12 @@ class tableros_api {
         });
     }
 
+    public function reorder_structure(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            return $this->model->reorderStructure($userId, $this->access->hasGlobalPermission('admin'), $input);
+        });
+    }
+
     public function workspace_members(): void {
         $this->handle('GET', function (int $userId): array {
             $workspaceId = $this->positiveInt($_GET['workspace_id'] ?? null, 'workspace_id');
@@ -110,12 +116,12 @@ class tableros_api {
 
     public function create_folder(): void {
         $this->handle('POST', function (int $userId, array $input): array {
-            if (!$this->access->hasGlobalPermission('create')) {
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            if (!$this->access->hasGlobalPermission('create') && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes permiso para crear carpetas.', 403);
             }
-            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
             $role = $this->access->workspaceRole($workspaceId);
-            if ($role === null) {
+            if ($role === null && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
             }
             return $this->model->createFolder($userId, $input);
@@ -141,7 +147,7 @@ class tableros_api {
             if (isset($_GET['board_id'])) {
                 $boardId = $this->positiveInt($_GET['board_id'], 'board_id');
                 if (filter_var($_GET['directory'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
-                    $this->requireBoardRole($boardId, ['owner', 'designer']);
+                    $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
                     return $this->model->activeUsersWithDashboardAccess(is_string($query) ? $query : '');
                 }
                 $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
@@ -182,6 +188,17 @@ class tableros_api {
             $boardId = $this->bodyBoardId($input);
             $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
             return $this->model->addComment($boardId, $userId, $input);
+        });
+    }
+
+    public function attach_item_comment_file(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $commentId = $this->positiveInt($input['comment_id'] ?? null, 'comment_id');
+            $fileId = $this->positiveInt($input['file_id'] ?? null, 'file_id');
+            $boardId = $this->model->getItemCommentBoardId($commentId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
+            $this->model->attachItemCommentFile($commentId, $fileId);
+            return ['comment_id' => $commentId, 'file_id' => $fileId];
         });
     }
 
@@ -485,6 +502,70 @@ class tableros_api {
         exit;
     }
 
+    private function renderDocxPrintPreview(string $path): string {
+        if (!class_exists(ZipArchive::class) || !class_exists(DOMDocument::class)) {
+            throw new TablerosApiException('validation', 'La vista previa de Word requiere las extensiones ZIP y DOM de PHP.', 503);
+        }
+        $zip = new ZipArchive();
+        if ($zip->open($path) !== true) throw new TablerosApiException('validation', 'El documento Word no se pudo leer.', 422);
+        try {
+            $entry = $zip->statName('word/document.xml');
+            if (!$entry || (int)$entry['size'] > 30 * 1024 * 1024 || $zip->numFiles > 5000) {
+                throw new TablerosApiException('validation', 'El contenido del documento excede los límites de vista previa.', 413);
+            }
+            $xml = $zip->getFromName('word/document.xml');
+        } finally { $zip->close(); }
+        if (!is_string($xml) || strlen($xml) > 30 * 1024 * 1024) throw new TablerosApiException('validation', 'El documento Word no se pudo leer.', 422);
+        $document = new DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        try {
+            if (!$document->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT)) throw new TablerosApiException('validation', 'El documento Word contiene XML no válido.', 422);
+        } finally { libxml_clear_errors(); libxml_use_internal_errors($previous); }
+        $xpath = new DOMXPath($document);
+        $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
+        $body = $xpath->query('/w:document/w:body')->item(0);
+        if (!$body) throw new TablerosApiException('validation', 'El documento Word no contiene contenido visible.', 422);
+        $content = '<main class="document-preview">';
+        $pageBlocks = 0;
+        foreach ($body->childNodes as $block) {
+            if (!$block instanceof DOMElement) continue;
+            $explicitPageBreak = $block->localName === 'p' && $xpath->query('.//w:br[@w:type="page"]', $block)->length > 0;
+            if ($pageBlocks >= 32 || ($explicitPageBreak && $pageBlocks > 0)) {
+                $content .= '</section>';
+                $pageBlocks = 0;
+            }
+            if ($pageBlocks === 0) $content .= '<section class="page">';
+            if ($block->localName === 'p') {
+                $text = '';
+                foreach ($xpath->query('.//w:t | .//w:tab | .//w:br', $block) as $part) {
+                    $text .= $part->localName === 't' ? $part->textContent : ($part->localName === 'tab' ? "\t" : "\n");
+                }
+                $style = $xpath->query('./w:pPr/w:pStyle', $block)->item(0);
+                $styleName = $style instanceof DOMElement ? $style->getAttribute('w:val') : '';
+                $tag = preg_match('/^Title|^Heading[1-3]/i', $styleName) ? 'h2' : 'p';
+                $content .= '<' . $tag . '>' . nl2br(htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')) . '</' . $tag . '>';
+                $pageBlocks++;
+            } elseif ($block->localName === 'tbl') {
+                $content .= '<table><tbody>';
+                foreach ($xpath->query('./w:tr', $block) as $tr) {
+                    $content .= '<tr>';
+                    foreach ($xpath->query('./w:tc', $tr) as $tc) {
+                        $text = [];
+                        foreach ($xpath->query('.//w:t', $tc) as $part) $text[] = $part->textContent;
+                        $content .= '<td>' . nl2br(htmlspecialchars(implode('', $text), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')) . '</td>';
+                    }
+                    $content .= '</tr>';
+                }
+                $content .= '</tbody></table>';
+                $pageBlocks++;
+            }
+            if (strlen($content) > 8 * 1024 * 1024) throw new TablerosApiException('validation', 'El documento excede el tamaño permitido para vista previa.', 413);
+        }
+        $content .= $pageBlocks > 0 ? '</section>' : '';
+        $content .= '</main>';
+        return '<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Vista de impresión</title><style>*{box-sizing:border-box}body{margin:24px auto;padding:0;color:#202124;background:#e8eaed;font:11pt Arial,sans-serif}.notice{max-width:8.5in;margin:0 auto 12px;padding:10px 14px;color:#455a64;background:#fff3cd;border-radius:6px;font:13px Arial,sans-serif}.page{width:8.5in;min-height:11in;margin:0 auto 20px;padding:.75in;background:#fff;box-shadow:0 1px 8px #0002}p{white-space:pre-wrap;line-height:1.45;margin:0 0 10pt}h2{margin:12pt 0 8pt;font-size:16pt}table{width:100%;border-collapse:collapse;margin:12pt 0;page-break-inside:auto}tr{page-break-inside:avoid}td{border:1px solid #9aa0a6;padding:5pt;vertical-align:top}@media print{body{margin:0;background:#fff}.notice{display:none}.page{width:auto;min-height:0;margin:0;padding:0;box-shadow:none;break-after:page} @page{size:letter;margin:.75in}}</style><body><p class="notice">Vista aproximada para impresión. El formato original puede incluir imágenes, fuentes o elementos de diseño que aquí no se reproducen.</p>' . $content . '</body></html>';
+    }
+
     public function preview_file($id): void {
         $file = null;
         $html = null;
@@ -504,8 +585,10 @@ class tableros_api {
             $versionId = isset($_GET['version_id']) ? $this->positiveInt($_GET['version_id'], 'version_id') : null;
             $file = $this->model->getFileDownload($fileId, $versionId);
             $extension = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
+            $isWord = $extension === 'docx';
             $readerTypes = ['xlsx' => 'Xlsx', 'xls' => 'Xls', 'xlsm' => 'Xlsx'];
-            if (!isset($readerTypes[$extension])) {
+            if (!$isWord && !isset($readerTypes[$extension])) {
+                if ($extension === 'doc') throw new TablerosApiException('validation', 'Convierte el archivo .doc a .docx para previsualizarlo.', 415);
                 throw new TablerosApiException('validation', 'Este tipo de archivo no tiene vista previa disponible.', 415);
             }
             if ((int)$file['byte_size'] > 25 * 1024 * 1024) {
@@ -516,6 +599,9 @@ class tableros_api {
                 session_write_close();
             }
 
+            if ($isWord) {
+                $html = $this->renderDocxPrintPreview((string)$file['path']);
+            } else {
             $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader($readerTypes[$extension]);
             $reader->setReadDataOnly(false);
             $sheetNames = $reader->listWorksheetNames($file['path']);
@@ -536,10 +622,11 @@ class tableros_api {
                 // Cell text is escaped by the HTML writer. Remove generated hyperlinks so
                 // workbook links cannot navigate the preview frame.
                 $html = preg_replace('/<\/?a\b[^>]*>/i', '', $html) ?? $html;
-                $html = preg_replace('/<\/head>/i', "<style>html,body{background:#f3f4f6;color:#1f2937}body{margin:24px}table{background:#fff;box-shadow:0 1px 5px #0002}</style>\n</head>", $html, 1) ?? $html;
+                $html = preg_replace('/<\/head>/i', "<style>html,body{background:#e8eaed;color:#1f2937}body{margin:24px}@media print{@page{size:landscape;margin:12mm}html,body{background:#fff}body{margin:0}table{break-after:page;box-shadow:none!important}.sheet{break-after:page;page-break-after:always}}</style>\n</head>", $html, 1) ?? $html;
                 $html = preg_replace('/<body[^>]*>/i', '$0<p style="font:14px sans-serif;color:#4b5563">La vista previa muestra hasta 20 hojas, 500 filas y 52 columnas por hoja.</p>', $html, 1) ?? $html;
             } finally {
                 $spreadsheet->disconnectWorksheets();
+            }
             }
         } catch (TablerosApiException $e) {
             $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
@@ -634,7 +721,7 @@ class tableros_api {
     public function create_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->createAutomation($boardId, $userId, $input);
         });
     }
@@ -642,7 +729,7 @@ class tableros_api {
     public function update_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->updateAutomation($boardId, $userId, $input);
         });
     }
@@ -650,7 +737,7 @@ class tableros_api {
     public function pause_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->setAutomationStatus($boardId, $userId, $input, 'paused');
         });
     }
@@ -658,7 +745,7 @@ class tableros_api {
     public function activate_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->setAutomationStatus($boardId, $userId, $input, 'active');
         });
     }
@@ -666,7 +753,7 @@ class tableros_api {
     public function delete_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->deleteAutomation($boardId, $userId, $input);
         });
     }
@@ -683,7 +770,7 @@ class tableros_api {
     public function run_automation(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->enqueueAutomationRun($boardId, $userId, $input);
         });
     }
@@ -698,11 +785,11 @@ class tableros_api {
 
     public function create_board(): void {
         $this->handle('POST', function (int $userId, array $input): array {
-            if (!$this->access->hasGlobalPermission('create')) {
+            $workspaceId = isset($input['workspace_id']) ? $this->positiveInt($input['workspace_id'], 'workspace_id') : 0;
+            if (!$this->access->hasGlobalPermission('create') && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
             }
-            $workspaceId = isset($input['workspace_id']) ? $this->positiveInt($input['workspace_id'], 'workspace_id') : 0;
-            if ($workspaceId > 0 && $this->access->workspaceRole($workspaceId) === null) {
+            if ($workspaceId > 0 && $this->access->workspaceRole($workspaceId) === null && !$this->access->canManageWorkspaceContent($workspaceId)) {
                 throw new TablerosApiException('forbidden', 'No tienes acceso al espacio de trabajo seleccionado.', 403);
             }
             return $this->model->createBoard($userId, $input);
@@ -714,6 +801,14 @@ class tableros_api {
             $boardId = $this->bodyBoardId($input);
             $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->createGroup($boardId, $userId, $input);
+        });
+    }
+
+    public function reorder_groups(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->reorderGroups($boardId, $userId, $input);
         });
     }
 
@@ -730,6 +825,38 @@ class tableros_api {
             $boardId = $this->bodyBoardId($input);
             $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->updateColumnOptions($boardId, $userId, $input);
+        });
+    }
+
+    public function rename_column(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->renameColumn($boardId, $userId, $input);
+        });
+    }
+
+    public function duplicate_column(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->duplicateColumn($boardId, $userId, $input);
+        });
+    }
+
+    public function preview_column_type_change(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->previewColumnTypeChange($boardId, $input);
+        });
+    }
+
+    public function change_column_type(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->changeColumnType($boardId, $userId, $input);
         });
     }
 
@@ -760,7 +887,7 @@ class tableros_api {
     public function share_board(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->shareBoard($boardId, $userId, $input);
         });
     }
@@ -768,9 +895,10 @@ class tableros_api {
     public function duplicate_board(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
-            if (!$this->access->hasGlobalPermission('create')) {
-                throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros.', 403);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            $workspaceId = $this->positiveInt($input['workspace_id'] ?? null, 'workspace_id');
+            if (!$this->access->canCreateBoardInWorkspace($workspaceId)) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para crear tableros en el espacio seleccionado.', 403);
             }
             return $this->model->duplicateBoard($boardId, $userId, $input);
         });
@@ -799,7 +927,7 @@ class tableros_api {
     public function update_board_visibility(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->updateBoardVisibility($boardId, $userId, $input);
         });
     }
@@ -815,7 +943,7 @@ class tableros_api {
     public function revoke_member(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);
-            $this->requireBoardRole($boardId, ['owner', 'designer']);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
             return $this->model->revokeBoardMember($boardId, $userId, $input);
         });
     }
@@ -825,8 +953,8 @@ class tableros_api {
             $boardId = $this->bodyBoardId($input);
             $role = $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
             if (filter_var($input['is_shared'] ?? false, FILTER_VALIDATE_BOOLEAN)
-                && !in_array($role, ['owner', 'designer'], true)) {
-                throw new TablerosApiException('forbidden', 'Solo el propietario o un diseñador puede compartir una vista.', 403);
+                && !in_array($role, ['owner', 'designer', 'editor'], true)) {
+                throw new TablerosApiException('forbidden', 'Solo el propietario, el diseñador o el editor puede compartir una vista.', 403);
             }
             return $this->model->createView($boardId, $userId, $input);
         });

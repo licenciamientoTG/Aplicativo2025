@@ -40,6 +40,7 @@ class Accounting{
     public RenegContactosModel $RenegContactosModel;
     public RenegEmailLogModel $RenegEmailLogModel;
     public MovimientosBancariosModel $movsModel;
+    public NotasCreditoConsumosModel $notasConsumosModel;
 
     /**
      * Permiso del reporte de movimientos bancos en Contabilidad. Propio y
@@ -97,6 +98,135 @@ class Accounting{
         $this->RenegContactosModel    = new RenegContactosModel();
         $this->RenegEmailLogModel     = new RenegEmailLogModel();
         $this->movsModel              = new MovimientosBancariosModel();
+        $this->notasConsumosModel     = new NotasCreditoConsumosModel();
+    }
+
+    /**
+     * Reporte "Notas de Crédito vs Consumos": cruce de notas G de ControlGas
+     * contra los despachos de clientes débito (ver NotasCreditoConsumosModel).
+     * Sin permiso por ahora, a pedido de Contabilidad.
+     */
+    public function credit_notes_consumption(): void {
+        echo $this->twig->render($this->route . 'credit_notes_consumption.html', [
+            'desde'    => date('Y-m-01'),
+            'hasta'    => date('Y-m-d'),
+            // Tab "Periodo de facturación": por defecto el mes anterior (ya facturado)
+            'p_desde'  => date('Y-m-01', strtotime('first day of last month')),
+            'p_hasta'  => date('Y-m-t', strtotime('first day of last month')),
+            // Mismo catálogo de razones sociales que /income/clients
+            'empresas' => (new ClientesModel())->get_station_companies(),
+        ]);
+    }
+
+    /** POST AJAX: una fila por nota G del rango con su estatus de cruce. */
+    public function credit_notes_consumption_notes(): void {
+        [$from, $until] = $this->rango_notas_consumos();
+        $empresa = (int)($_POST['empresa'] ?? 0);
+        $data = [];
+        foreach ($this->notasConsumosModel->notas($from, $until, $empresa) as $r) {
+            $total     = round((float)$r['total'], 2);
+            $despachos = round((float)$r['monto_despachos'], 2);
+            $facturas  = $r['facturas'] ? explode(',', $r['facturas']) : [];
+            $notas     = trim(str_replace('@N:', '', (string)$r['txtref']));
+            // Algunas canceladas no traen flgcon 141 pero sí "CANCELADA <MOTIVO:xx>" en la nota
+            $cancelada = (int)$r['flgcon'] === NotasCreditoConsumosModel::FLGCON_CANCELADA
+                      || stripos($notas, 'CANCELADA') === 0;
+
+            if ($cancelada)                               $estatus = 'Cancelada';
+            elseif (!$facturas)                           $estatus = 'Sin ligar';
+            elseif ((int)$r['despachos'] === 0)           $estatus = 'Sin despachos';
+            elseif ((int)$r['otras_notas'] > 0)           $estatus = 'Factura con varias notas';
+            elseif (abs($total - $despachos) <= 1)        $estatus = 'Cuadra';
+            else                                          $estatus = 'Diferencia';
+
+            $data[] = [
+                'nota'            => get_invoice_series((int)$r['nro']),
+                'emitida'         => (int)$r['codgas'] === 0 ? 'Corporativo' : trim((string)$r['estacion']),
+                'fecha'           => $r['fecha'],
+                'codcli'          => $r['codopr'],
+                'cliente'         => $r['cliente'],
+                'razon_social'    => $r['razon_social'] ?? '',
+                'total'           => $total,
+                'facturas'        => implode(', ', array_map(fn($f) => get_invoice_series((int)$f), $facturas)),
+                'aplicado'        => round((float)$r['aplicado'], 2),
+                'despachos'       => (int)$r['despachos'],
+                'litros'          => round((float)$r['litros'], 3),
+                'monto_despachos' => $despachos,
+                'despacho_desde'  => $r['despacho_desde'] ?? '',
+                'despacho_hasta'  => $r['despacho_hasta'] ?? '',
+                'diferencia'      => round($total - $despachos, 2),
+                'estatus'         => $estatus,
+                'uuid'            => $r['satuid'],
+                'notas'           => $notas,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST AJAX: despachos de clientes débito del rango con su nota G (o el motivo de no tenerla). */
+    public function credit_notes_consumption_dispatches(): void {
+        [$from, $until] = $this->rango_notas_consumos();
+        $solo    = ($_POST['solo_sin_nota'] ?? '1') === '1';
+        $empresa = (int)($_POST['empresa'] ?? 0);
+        $estados = [
+            'MONTO_CERO'  => 'Despacho en $0',
+            'SIN_FACTURA' => 'Sin factura',
+            'E_SIN_NOTA'  => 'Factura E sin nota',
+            'OTRA_SERIE'  => 'Facturado en otra serie',
+            'LIGADO'      => 'Ligado',
+        ];
+        $data = [];
+        foreach ($this->notasConsumosModel->despachos_debito($from, $until, $solo, $empresa) as $r) {
+            $hora = str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
+            $data[] = [
+                'estacion' => trim((string)$r['estacion']),
+                'razon_social' => $r['razon_social'],
+                'despacho' => $r['nrotrn'],
+                'fecha'    => $r['fecha'],
+                'hora'     => substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'codcli'   => $r['codcli'],
+                'cliente'  => $r['cliente'],
+                'producto' => trim((string)$r['producto']),
+                'litros'   => round((float)$r['can'], 3),
+                'monto'    => round((float)$r['mto'], 2),
+                'factura'  => (int)$r['nrofac'] ? get_invoice_series((int)$r['nrofac']) : '',
+                'nota'     => $r['notas'] ? implode(', ', array_map(fn($n) => get_invoice_series((int)$n), explode(',', $r['notas']))) : '',
+                'fecha_nota' => str_replace(',', ', ', (string)$r['fechas_nota']),
+                'uuid_nota'  => trim(str_replace(',', ', ', (string)$r['uuids_nota']), ', '),
+                'estado'   => $estados[$r['estado']] ?? $r['estado'],
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /**
+     * POST AJAX: periodo de facturación de los despachos de clientes débito,
+     * ya agrupado (sin desglose por despacho, para poder consultar meses
+     * completos): mes del despacho contra el mes de TIMBRADO de su factura E y
+     * de su nota G. Ver NotasCreditoConsumosModel::periodo_resumen.
+     */
+    public function credit_notes_consumption_period(): void {
+        [$from, $until] = $this->rango_notas_consumos();
+        $empresa = (int)($_POST['empresa'] ?? 0);
+        $data = array_map(fn($r) => [
+            'periodo'   => $r['periodo'],
+            'estatus'   => $r['estatus'],
+            'estatus_e' => $r['estatus_e'],
+            'estatus_g' => $r['estatus_g'],
+            'e_fechada' => (bool)$r['e_fechada'],
+            'n'         => (int)$r['n'],
+            'monto'     => round((float)$r['monto'], 2),
+        ], $this->notasConsumosModel->periodo_resumen($from, $until, $empresa));
+        json_output(['data' => $data]);
+    }
+
+    /** Rango Desde/Hasta del POST como fechas internas de ControlGas (int). */
+    private function rango_notas_consumos(): array {
+        $fmt   = '/^\d{4}-\d{2}-\d{2}$/';
+        $desde = preg_match($fmt, $_POST['desde'] ?? '') ? $_POST['desde'] : date('Y-m-01');
+        $hasta = preg_match($fmt, $_POST['hasta'] ?? '') ? $_POST['hasta'] : date('Y-m-d');
+        if ($desde > $hasta) $desde = $hasta;
+        return [dateToInt($desde), dateToInt($hasta)];
     }
 
     /**

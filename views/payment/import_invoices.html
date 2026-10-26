@@ -28,9 +28,23 @@
 </style>
 {% endblock %} 
 {% block content %}
-<div class="container-fluid p-4">
+<div class="container-fluid p-4" style="max-width:none;">
     <div class="row">
-        <div class="col-12 col-lg-8 mx-auto">
+        <div class="col-12">
+            <ul class="nav nav-tabs mb-3" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-busqueda" type="button" role="tab">
+                        <i class="fas fa-search me-1"></i> Búsqueda
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-importar" type="button" role="tab">
+                        <i class="fas fa-upload me-1"></i> Importar facturas
+                    </button>
+                </li>
+            </ul>
+            <div class="tab-content">
+            <div class="tab-pane fade" id="tab-importar" role="tabpanel">
             <div class="card shadow-sm mb-3">
                 <div class="card-header bg-dark text-white d-flex align-items-center gap-2">
                     <i class="fas fa-file-invoice"></i>
@@ -104,6 +118,114 @@
                         </table>
                     </div>
                 </div>
+            </div>
+            </div><!-- /tab-importar -->
+
+            <div class="tab-pane fade show active" id="tab-busqueda" role="tabpanel">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-dark text-white d-flex align-items-center gap-2">
+                        <i class="fas fa-search"></i>
+                        <span>Buscar facturas de proveedores</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="search-form" class="row g-3">
+                            <div class="col-12 col-md-6 col-lg-4">
+                                <label class="form-label fw-semibold">Proveedor</label>
+                                <select class="form-select" name="emisor_rfc" id="s-emisor">
+                                    <option value="">Todos</option>
+                                    {% for e in emisores %}
+                                    <option value="{{ e.EmisorRfc }}">{{ e.EmisorNombre }} ({{ e.Total }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-4">
+                                <label class="form-label fw-semibold">Estación</label>
+                                <select class="form-select" name="codgas" id="s-codgas">
+                                    <option value="">Todas</option>
+                                    <option value="none">Sin estación asignada</option>
+                                    {% for s in stations %}
+                                    <option value="{{ s.Codigo }}">{{ s.Nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12 col-lg-4">
+                                <label class="form-label fw-semibold">Folio / UUID / Remisión</label>
+                                <input type="text" class="form-control" name="q" id="s-q" placeholder="Buscar texto...">
+                            </div>
+                            <div class="col-6 col-lg-3">
+                                <label class="form-label fw-semibold">Fecha por</label>
+                                <select class="form-select" name="campo_fecha" id="s-campo">
+                                    <option value="fecha">Emisión de la factura</option>
+                                    <option value="importacion">Importación al sistema</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-lg-3">
+                                <label class="form-label fw-semibold">Desde</label>
+                                <input type="date" class="form-control" name="from" id="s-from">
+                            </div>
+                            <div class="col-6 col-lg-3">
+                                <label class="form-label fw-semibold">Hasta</label>
+                                <input type="date" class="form-control" name="until" id="s-until">
+                            </div>
+                            <div class="col-6 col-lg-3 d-flex align-items-end gap-2">
+                                <button type="submit" class="btn btn-primary flex-fill" id="btn-search"><i class="fas fa-search"></i> Buscar</button>
+                                <button type="button" class="btn btn-outline-secondary" id="btn-clear" title="Limpiar filtros"><i class="fas fa-eraser"></i></button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm d-none" id="search-results">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold" style="font-size:.85rem;"><i class="fas fa-list me-1"></i> Resultados</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="search-count" class="text-muted" style="font-size:.78rem;"></span>
+                            <small id="zip-hint" class="text-muted d-none" style="font-size:.74rem;">ZIP: máximo 500 facturas por descarga</small>
+                            <button type="button" class="btn btn-sm btn-outline-primary d-none" id="btn-zip" title="Descargar los PDF de esta búsqueda en un ZIP (máx. 500)">
+                                <i class="fas fa-file-archive"></i> Descargar PDF (ZIP)
+                            </button>
+                        </div>
+                    </div>
+                    <form id="zip-form" method="post" action="/payment/search_invoices_zip" target="zip-frame" class="d-none"></form>
+                    <iframe name="zip-frame" id="zip-frame" class="d-none"></iframe>
+                    <div class="table-responsive" style="padding:.75rem; max-height:65vh;">
+                        <table class="table table-sm table-hover w-100 mb-0">
+                            <thead style="background:#f8fafc; position:sticky; top:0;">
+                                <tr style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:#475569;">
+                                    <th>Fecha</th>
+                                    <th>Proveedor</th>
+                                    <th>Estación</th>
+                                    <th>Folio</th>
+                                    <th>UUID</th>
+                                    <th class="text-end">Total</th>
+                                    <th>Importada</th>
+                                    <th class="text-center">Archivos</th>
+                                </tr>
+                            </thead>
+                            <tbody id="search-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div><!-- /tab-busqueda -->
+            </div><!-- /tab-content -->
+        </div>
+    </div>
+</div>
+
+<!-- Visor PDF -->
+<div class="modal fade" id="modalVisor" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="visor-titulo">Factura</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body p-0" style="height:80vh;">
+                <iframe id="visor-frame" src="about:blank" style="width:100%;height:100%;border:0;"></iframe>
+            </div>
+            <div class="modal-footer">
+                <a id="visor-descargar" href="#" class="btn btn-primary"><i class="fas fa-download"></i> Descargar</a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
             </div>
         </div>
     </div>
@@ -207,6 +329,152 @@ document.getElementById('import-form').addEventListener('submit', async function
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-upload"></i> Importar';
     alertify.success(`Proceso completado: ${procesados} archivo(s) procesado(s).`);
+});
+
+// ---------- Tab Búsqueda ----------
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtMoney = n => Number(n || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+const fileUrl = (id, tipo, download) => `/payment/search_invoice_file?id=${id}&tipo=${tipo}` + (download ? '&download=1' : '');
+
+(function initFechas() {
+    const hoy = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    document.getElementById('s-from').value  = ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+    document.getElementById('s-until').value = ymd(hoy);
+})();
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+    document.getElementById('search-form').reset();
+    document.getElementById('s-from').value = '';
+    document.getElementById('s-until').value = '';
+});
+
+document.getElementById('search-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-search');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Buscando...';
+    try {
+        const resp = await fetch('/payment/search_invoices_table', {
+            method: 'POST', body: new FormData(this), credentials: 'include'
+        });
+        const res = await resp.json();
+        ultimaBusqueda = Object.fromEntries(new FormData(this));
+        renderBusqueda(res);
+    } catch (err) {
+        alertify.error('No se pudo realizar la búsqueda.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-search"></i> Buscar';
+    }
+});
+
+
+const ZIP_MAX = 500;
+let ultimaBusqueda = null;   // filtros de la búsqueda que se ve en pantalla
+
+const getCookie = n => (document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)')) || [])[1];
+let zipTimer = null;
+
+function zipTerminado() {
+    clearInterval(zipTimer);
+    zipTimer = null;
+    document.cookie = 'zip_token=; Max-Age=0; path=/';
+    const btn = document.getElementById('btn-zip');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-file-archive"></i> Descargar PDF (ZIP)';
+}
+
+// Si la descarga arranca, el servidor deja la cookie zip_token; si falla, responde un texto que se carga en el iframe.
+document.getElementById('btn-zip').addEventListener('click', () => {
+    if (!ultimaBusqueda || zipTimer) return;
+    const token = 'z' + Date.now();
+    const form = document.getElementById('zip-form');
+    form.innerHTML = Object.entries({ ...ultimaBusqueda, zip_token: token })
+        .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('');
+
+    const btn = document.getElementById('btn-zip');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generando ZIP...';
+    const inicio = Date.now();
+    zipTimer = setInterval(() => {
+        if (getCookie('zip_token') === token) {
+            zipTerminado();
+            alertify.success('Descarga del ZIP iniciada.');
+        } else if (Date.now() - inicio > 10 * 60 * 1000) {
+            zipTerminado();
+            alertify.error('El ZIP tardó demasiado y no se pudo descargar. Intenta con menos facturas.');
+        }
+    }, 500);
+    form.submit();
+});
+
+document.getElementById('zip-frame').addEventListener('load', function () {
+    if (!zipTimer) return;   // carga inicial del iframe o descarga ya confirmada
+    let msg = '';
+    try { msg = this.contentDocument.body.innerText.trim(); } catch (e) {}
+    zipTerminado();
+    alertify.error('No se pudo generar el ZIP' + (msg ? ': ' + msg.slice(0, 200) : '. Intenta de nuevo.'));
+});
+
+function renderBusqueda(res) {
+    document.getElementById('search-results').classList.remove('d-none');
+    const tbody = document.getElementById('search-body');
+    const rows = res.data || [];
+    const btnZip = document.getElementById('btn-zip');
+    const conPdf = rows.filter(r => r.TienePdf == 1).length;
+    const excede = res.truncado || rows.length > ZIP_MAX;
+    const hint = document.getElementById('zip-hint');
+    zipTerminado();
+    btnZip.classList.toggle('d-none', !conPdf);
+    hint.classList.toggle('d-none', !rows.length);
+    hint.classList.toggle('text-danger', excede);
+    hint.classList.toggle('fw-semibold', excede);
+    hint.textContent = excede
+        ? `Hay más de ${ZIP_MAX} facturas: afina los filtros para poder descargar el ZIP (máx. ${ZIP_MAX})`
+        : `ZIP: máximo ${ZIP_MAX} facturas por descarga`;
+    btnZip.disabled = excede;
+    btnZip.title = excede
+        ? `El ZIP admite máximo ${ZIP_MAX} facturas; afina los filtros`
+        : `Descargar los ${conPdf} PDF de esta búsqueda en un ZIP`;
+    document.getElementById('search-count').textContent = rows.length
+        ? `${rows.length} factura(s)` + (res.truncado ? ` — mostrando las primeras ${res.limite}, afina los filtros` : '')
+        : '';
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Sin resultados.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => {
+        const folio = esc((r.Serie ? r.Serie + '-' : '') + (r.Folio || ''));
+        const pdf = r.TienePdf == 1
+            ? `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" title="Ver PDF" onclick="verFactura(${r.Id}, '${folio.replace(/'/g, '')}')"><i class="fas fa-file-pdf"></i></button>
+               <a class="btn btn-sm btn-outline-secondary py-0 px-1" title="Descargar PDF" href="${fileUrl(r.Id, 'pdf', true)}"><i class="fas fa-download"></i></a>`
+            : '<span class="text-muted" title="Sin PDF">—</span>';
+        const xml = r.TieneXml == 1
+            ? `<a class="btn btn-sm btn-outline-secondary py-0 px-1" title="Descargar XML" href="${fileUrl(r.Id, 'xml', true)}"><i class="fas fa-file-code"></i></a>`
+            : '';
+        return `<tr class="result-row">
+            <td class="text-nowrap">${esc(r.Fecha)}</td>
+            <td>${esc(r.EmisorNombre)}</td>
+            <td>${r.EstacionNombre ? esc(r.EstacionNombre) : '<span class="text-muted">—</span>'}</td>
+            <td class="text-nowrap">${folio}</td>
+            <td><small class="font-monospace text-muted">${esc(r.UUID)}</small></td>
+            <td class="text-end text-nowrap">${fmtMoney(r.Total)}</td>
+            <td class="text-nowrap"><small class="text-muted">${esc(r.FechaImportacion)}</small>${r.OrigenImportacion === 'aplicativo' ? ' <span class="badge bg-info text-dark" title="Importada manualmente desde el aplicativo">Aplicativo</span>' : ''}</td>
+            <td class="text-center text-nowrap">${pdf} ${xml}</td>
+        </tr>`;
+    }).join('');
+}
+
+function verFactura(id, folio) {
+    document.getElementById('visor-titulo').textContent = 'Factura ' + folio;
+    document.getElementById('visor-frame').src = fileUrl(id, 'pdf', false);
+    document.getElementById('visor-descargar').href = fileUrl(id, 'pdf', true);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalVisor')).show();
+}
+document.getElementById('modalVisor').addEventListener('hidden.bs.modal', () => {
+    document.getElementById('visor-frame').src = 'about:blank';
 });
 
 function actualizarFila(rowId, filename, res) {

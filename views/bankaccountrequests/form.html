@@ -1,0 +1,110 @@
+{# views/bankaccountrequests/form.html — Nueva solicitud de alta de cuenta bancaria #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Nueva solicitud de alta de cuenta{% endblock %}
+{% block menutitle %}Alta de cuenta bancaria{% endblock %}
+{% block mycss %}
+<link rel="stylesheet" href="{{ PLUGINS }}select2/css/select2.min.css">
+<style>
+    .ba-form .select2-container { width:100% !important; }
+    .ba-form { font-size:1rem; }
+    .ba-form .select2-container .select2-selection--single { height:calc(1.5em + .75rem + 2px); border-color:#ced4da; border-radius:.375rem; }
+    .ba-form .select2-container .select2-selection--single .select2-selection__rendered { line-height:calc(1.5em + .75rem); font-size:1rem; padding-left:.75rem; }
+    .ba-form .select2-container .select2-selection--single .select2-selection__arrow { height:calc(1.5em + .75rem); }
+    .ba-req { color:#dc3545; font-weight:700; font-size:.95em; }
+    .ba-form label { font-size:.78rem; text-transform:uppercase; color:#6c757d; margin-bottom:.2rem; font-weight:600; }
+    .ba-cuenta { font-family:Consolas, monospace; letter-spacing:.04em; }
+    .ba-cuenta-info { font-size:.75rem; color:#6c757d; margin-top:.25rem; }
+    .ba-cuenta-info.ok { color:#15803d; }
+    .ba-cuenta-info.mal { color:#b45309; }
+    .ba-solicitante { display:inline-flex; flex-wrap:wrap; align-items:center; gap:.4rem; font-size:.78rem; background:#fff; border:1px solid #e2e8f0; border-radius:.5rem; padding:.4rem .75rem; }
+    /* Zona de carga de la carátula */
+    .ba-drop { position:relative; border:2px dashed #cbd5e1; border-radius:.75rem; background:#f8fafc; padding:1.4rem 1rem; text-align:center; transition:border-color .15s, background .15s; max-width:34rem; }
+    .ba-drop:hover, .ba-drop.arrastrando { border-color:#1C4587; background:#eef3fb; }
+    .ba-drop.con-archivo { border-style:solid; border-color:#86efac; background:#f0fdf4; padding:.9rem 1rem; text-align:left; }
+    .ba-drop-input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; z-index:1; }
+    .ba-drop.con-archivo .ba-drop-input { display:none; }
+    .ba-drop-ico { font-size:2rem; color:#94a3b8; }
+    .ba-drop:hover .ba-drop-ico, .ba-drop.arrastrando .ba-drop-ico { color:#1C4587; }
+    .ba-drop-tit { font-weight:600; color:#334155; margin-top:.25rem; }
+    .ba-drop-sub { font-size:.78rem; color:#94a3b8; margin-top:.15rem; }
+    .ba-drop-archivo { display:flex; align-items:center; gap:.75rem; }
+    .ba-drop-archivo .ba-drop-tipo { font-size:1.8rem; color:#15803d; }
+    .ba-drop-archivo .ba-drop-nombre { font-weight:600; color:#14532d; word-break:break-all; }
+    .ba-drop-archivo .ba-drop-tam { font-size:.78rem; color:#4d7c5f; }
+    .ba-drop-quitar { margin-left:auto; border:0; background:transparent; color:#64748b; font-size:1.1rem; width:2rem; height:2rem; border-radius:50%; cursor:pointer; }
+    .ba-drop-quitar:hover { background:#dcfce7; color:#b91c1c; }
+</style>
+{% endblock %}
+{% block content %}
+<form id="form_alta" class="ba-form" data-save-url="{{ url('bankaccounts.save') }}" data-check-url="{{ url('bankaccounts.check') }}" data-index-url="{{ url('bankaccounts.index') }}" data-detail-url="{{ url('bankaccounts.detail', {id: 0}) }}" enctype="multipart/form-data" autocomplete="off">
+    <div id="ba_error" class="alert alert-danger d-none"></div>
+
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 border-bottom pb-3 mb-3">
+        <div>
+            <h1 class="h4 fw-bold mb-0">Nueva solicitud de alta de cuenta bancaria</h1>
+            <div class="small text-muted mt-1">Tesorería revisa la solicitud y la carátula del estado de cuenta; al aprobarla, la cuenta queda disponible para pagos. Los campos con <span class="ba-req">*</span> son obligatorios.</div>
+        </div>
+        <div class="ba-solicitante"><span class="text-muted">Solicitante:</span><strong>{{ nombre }}</strong><span class="text-muted">·</span><span class="text-muted">{{ 'now'|date('d/m/Y') }}</span></div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+        <h6 class="mb-3">Cuenta</h6>
+        <div class="row g-3">
+            <div class="col-md-6 col-lg-2"><label>Razón social <span class="ba-req">*</span></label>
+                <select name="empresa_cod" class="form-select" required>
+                    <option value="">Seleccione...</option>
+                    {% for e in empresas %}<option value="{{ e.cod }}">{{ e.den }}</option>{% endfor %}
+                </select></div>
+            <div class="col-md-6 col-lg-2"><label>Banco <span class="ba-req">*</span></label>
+                <select name="banco" class="form-select" required>
+                    <option value="">Seleccione...</option>
+                    {% for b in bancos %}<option value="{{ b.nombre }}">{{ b.nombre }}</option>{% endfor %}
+                </select></div>
+            <div class="col-md-6 col-lg-1"><label>Moneda <span class="ba-req">*</span></label>
+                <select name="moneda" class="form-select" required>
+                    {% for m in monedas %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                </select></div>
+            <div class="col-md-6 col-lg-3"><label>Cuenta / CLABE / tarjeta <span class="ba-req">*</span></label>
+                <input type="text" name="num_cuenta" maxlength="20" inputmode="numeric" pattern="\d{6,20}" placeholder="Solo números" class="form-control ba-cuenta" required>
+                <div id="ba_cuenta_info" class="ba-cuenta-info">Pegue o escriba la cuenta; se limpian espacios y guiones.</div></div>
+            <div class="col-md-6 col-lg-2"><label>Proveedor <span class="ba-req">*</span></label>
+                <input type="text" name="proveedor" maxlength="200" class="form-control" required></div>
+            <div class="col-md-6 col-lg-2"><label>Departamento <span class="ba-req">*</span></label>
+                <select name="departamento" class="form-select" required>
+                    <option value="">Seleccione...</option>
+                    {% for d in departamentos %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                </select></div>
+            <div class="col-12"><div id="ba_aviso_dup" class="alert alert-warning py-2 px-3 mb-0 d-none"></div></div>
+        </div>
+    </div></div>
+
+
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+        <h6 class="mb-3">Carátula del estado de cuenta</h6>
+        <div class="ba-drop" id="ba_drop">
+            <input type="file" name="caratula" class="ba-drop-input" accept=".pdf,.jpg,.jpeg,.png" aria-label="Carátula del estado de cuenta">
+            <div class="ba-drop-vacio">
+                <i class="fas fa-cloud-upload-alt ba-drop-ico"></i>
+                <div class="ba-drop-tit">Arrastre la carátula aquí o haga clic para elegirla</div>
+                <div class="ba-drop-sub">PDF, JPG o PNG · máximo 10 MB</div>
+            </div>
+            <div class="ba-drop-archivo d-none">
+                <i class="fas fa-file ba-drop-tipo"></i>
+                <div><div class="ba-drop-nombre"></div><div class="ba-drop-tam"></div></div>
+                <button type="button" class="ba-drop-quitar" title="Quitar archivo" aria-label="Quitar archivo"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div class="small text-muted mt-1">PDF, JPG o PNG, máximo 10 MB. Debe verse el titular y el número de cuenta. Si aún no la tiene, puede guardar la solicitud como borrador y subirla después; Tesorería la verá hasta que adjunte la carátula.</div>
+    </div></div>
+
+    <div class="d-flex justify-content-end gap-2">
+        <a href="{{ url('bankaccounts.index') }}" class="btn btn-sm btn-outline-secondary">Cancelar</a>
+        <button type="submit" id="ba_enviar" class="btn btn-sm btn-primary"><i class="fas fa-paper-plane"></i> <span id="ba_enviar_txt">Guardar</span></button>
+    </div>
+</form>
+{% endblock %}
+{% block myjs %}
+<script src="{{ PLUGINS }}select2/js/select2.full.min.js"></script>
+<script src="{{ PLUGINS }}select2/js/i18n/es.js"></script>
+<script src="{{ js_v('bankaccountrequests.js') }}"></script>
+{% endblock %}

@@ -66,8 +66,8 @@ class ValesRModel extends Model
     }
 
     function GetCreditoProduct($from,$until,$tipo){
-        $fromstring = date('Y-d-m', strtotime($from));
-        $untilstring = date('Y-d-m', strtotime($until));
+        $fromstring = date('Ymd', strtotime($from));
+        $untilstring = date('Ymd', strtotime($until));
 
         $query = "
             DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;

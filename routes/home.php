@@ -1,4 +1,3 @@
 <?php
 return [
-    route('', [Home::class, 'index'], name: 'home', methods: ['GET']),
-];
+    route('', [Home::class, 'index'], name: 'home', methods: ['GET']),];

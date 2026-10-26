@@ -14,6 +14,8 @@ class Home{
 
     public function index() : void {
         $today_sales = $this->despachosModel->get_today_sales($this->todayInt);
-        echo $this->twig->render($this->route . 'index.html', compact('today_sales'));
+        // Monitoreo de importaciones de facturas: solo para los usuarios de Payment::MONITOR_IMPORTACION_USER_IDS.
+        $monitor = in_array((int)($_SESSION['tg_user']['Id'] ?? 0), Payment::MONITOR_IMPORTACION_USER_IDS, true);
+        echo $this->twig->render($this->route . 'index.html', compact('today_sales', 'monitor'));
     }
 }

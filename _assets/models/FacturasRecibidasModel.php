@@ -245,8 +245,127 @@ public function buscarPorUUIDs($uuids) {
         return $result;
     }
 
+    /**
+     * Proveedores (emisores) que tienen facturas en FacturasRecibidas, para el filtro de búsqueda.
+     */
+    public function emisores_con_facturas() {
+        $query = "SELECT EmisorRfc, MAX(EmisorNombre) AS EmisorNombre, COUNT(*) AS Total
+                  FROM TG.dbo.FacturasRecibidas WITH (NOLOCK)
+                  WHERE EmisorRfc IS NOT NULL AND EmisorRfc <> ''
+                  GROUP BY EmisorRfc
+                  ORDER BY MAX(EmisorNombre)";
+        return ($this->sql->select($query, [])) ?: [];
+    }
+
+    /**
+     * Búsqueda de facturas ya importadas.
+     * Filtros: emisor_rfc, codgas ('' = todas, 'none' = sin estación resuelta), q (folio/UUID/remisión),
+     * from/until sobre Fecha (emisión) o FechaImportacion según $campo_fecha ('fecha'|'importacion').
+     * Devuelve como máximo $limite filas (+1 para detectar truncamiento).
+     */
+    public function search_invoices(array $f, int $limite = 1000) {
+        $where = [];
+        $params = [];
+
+        $campo = ($f['campo_fecha'] ?? 'fecha') === 'importacion' ? 'fr.FechaImportacion' : 'fr.Fecha';
+        if (!empty($f['from'])) {
+            $where[] = "$campo >= ?";
+            $params[] = date('Y-m-d', strtotime($f['from'])) . ' 00:00:00';
+        }
+        if (!empty($f['until'])) {
+            $where[] = "$campo <= ?";
+            $params[] = date('Y-m-d', strtotime($f['until'])) . ' 23:59:59';
+        }
+        if (!empty($f['emisor_rfc'])) {
+            $where[] = "fr.EmisorRfc = ?";
+            $params[] = $f['emisor_rfc'];
+        }
+        if (($f['codgas'] ?? '') === 'none') {
+            $where[] = "fr.EstacionCodgas IS NULL";
+        } elseif (($f['codgas'] ?? '') !== '') {
+            $where[] = "fr.EstacionCodgas = ?";
+            $params[] = (string)(int)$f['codgas'];
+        }
+        if (!empty($f['q'])) {
+            $like = '%' . trim($f['q']) . '%';
+            $where[] = "(fr.UUID LIKE ? OR fr.Folio LIKE ? OR fr.Remision LIKE ?)";
+            array_push($params, $like, $like, $like);
+        }
+
+        $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+        $top = $limite + 1;
+
+        $query = "SELECT TOP $top
+                    fr.Id, fr.Folio, fr.Serie, fr.UUID,
+                    CONVERT(VARCHAR(10), fr.Fecha, 23) AS Fecha,
+                    CONVERT(VARCHAR(16), fr.FechaImportacion, 120) AS FechaImportacion,
+                    fr.EmisorNombre, fr.EmisorRfc, fr.ReceptorNombre,
+                    fr.Total, fr.Moneda, fr.TipoDeComprobante, fr.Remision, fr.Destino,
+                    fr.EstacionCodgas, fr.OrigenImportacion,
+                    e.Nombre AS EstacionNombre,
+                    CASE WHEN ISNULL(fr.RutaArchivo, '') <> '' THEN 1 ELSE 0 END AS TienePdf,
+                    CASE WHEN ISNULL(fr.RutaXml, '') <> '' THEN 1 ELSE 0 END AS TieneXml
+                  FROM TG.dbo.FacturasRecibidas fr WITH (NOLOCK)
+                  LEFT JOIN TG.dbo.Estaciones e ON CAST(e.Codigo AS VARCHAR(10)) = fr.EstacionCodgas
+                  $whereSQL
+                  ORDER BY fr.Fecha DESC, fr.Id DESC";
+
+        return ($this->sql->select($query, $params)) ?: [];
+    }
+
+    public function rutas_archivos($facturaId) {
+        $rows = $this->sql->select("SELECT RutaArchivo, RutaXml FROM TG.dbo.FacturasRecibidas WHERE Id = ?", [$facturaId]);
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * Rutas de PDF de varias facturas en una sola consulta. Devuelve [Id => RutaArchivo] (solo las que tienen ruta).
+     */
+    public function rutas_pdf_por_ids(array $ids) {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if (!$ids) return [];
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $rows = $this->sql->select(
+            "SELECT Id, RutaArchivo FROM TG.dbo.FacturasRecibidas WHERE Id IN ($in) AND ISNULL(RutaArchivo, '') <> ''",
+            $ids
+        );
+        $out = [];
+        foreach ($rows as $r) $out[(int)$r['Id']] = $r['RutaArchivo'];
+        return $out;
+    }
+
+    /**
+     * Conteo de importaciones en [$desde, $hasta) por día y por proveedor.
+     * 'aplicativo' = importadas a mano; 'correo' = el resto con FechaImportacion (correo u otras vías).
+     */
+    public function monitor_importacion($desde, $hasta) {
+        $cuenta = "COUNT(*) AS total,
+                   SUM(CASE WHEN OrigenImportacion = 'aplicativo' THEN 1 ELSE 0 END) AS aplicativo";
+        $where = "FechaImportacion >= ? AND FechaImportacion < ?";
+        $por_dia = $this->sql->select(
+            "SELECT CONVERT(VARCHAR(10), FechaImportacion, 23) AS dia, $cuenta
+             FROM TG.dbo.FacturasRecibidas WITH (NOLOCK)
+             WHERE $where
+             GROUP BY CONVERT(VARCHAR(10), FechaImportacion, 23)
+             ORDER BY dia DESC",
+            [$desde, $hasta]
+        );
+        $por_proveedor = $this->sql->select(
+            "SELECT ISNULL(NULLIF(EmisorNombre, ''), EmisorRfc) AS proveedor, $cuenta,
+                    COUNT(DISTINCT CONVERT(VARCHAR(10), FechaImportacion, 23)) AS dias,
+                    CONVERT(VARCHAR(16), MAX(FechaImportacion), 120) AS ultima
+             FROM TG.dbo.FacturasRecibidas WITH (NOLOCK)
+             WHERE $where
+             GROUP BY ISNULL(NULLIF(EmisorNombre, ''), EmisorRfc)
+             ORDER BY SUM(CASE WHEN OrigenImportacion = 'aplicativo' THEN 1 ELSE 0 END) DESC, COUNT(*) DESC",
+            [$desde, $hasta]
+        );
+        return ['por_dia' => $por_dia, 'por_proveedor' => $por_proveedor];
+    }
+
+    /** Solo la usa la importación manual de PDF del aplicativo, por eso marca el origen. */
     public function update_ruta($facturaId, $ruta, $nombreArchivo) {
-        $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ? WHERE Id = ?";
+        $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ?, OrigenImportacion = 'aplicativo' WHERE Id = ?";
         return $this->sql->update($query, [$ruta, $nombreArchivo, $facturaId]);
     }
 

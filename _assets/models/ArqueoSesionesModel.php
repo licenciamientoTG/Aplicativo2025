@@ -27,6 +27,7 @@ class ArqueoSesionesModel extends Model
                     (SELECT COUNT(*) FROM [TG].[dbo].[arqueo_cajas] c
                         WHERE c.sesion_id = s.id AND c.estado = 'completado') AS cajas_completadas
             FROM [TG].[dbo].[arqueo_sesiones] s
+            WHERE s.deleted_at IS NULL
             ORDER BY s.fecha DESC, s.id DESC;
         ";
         return $this->sql->select($query) ?: [];
@@ -35,7 +36,7 @@ class ArqueoSesionesModel extends Model
     public function find($id)
     {
         $rows = $this->sql->select(
-            "SELECT * FROM [TG].[dbo].[arqueo_sesiones] WHERE id = ?;",
+            "SELECT * FROM [TG].[dbo].[arqueo_sesiones] WHERE id = ? AND deleted_at IS NULL;",
             [$id]
         );
         return $rows ? $rows[0] : false;
@@ -70,6 +71,19 @@ class ArqueoSesionesModel extends Model
 
         $query = "UPDATE [TG].[dbo].[arqueo_sesiones] SET [estado] = ? WHERE id = ?;";
         return (bool) $this->sql->update($query, [$estado, $id]);
+    }
+
+    /**
+     * Soft delete: marca la sesión como eliminada (all()/find() ya no la ven).
+     */
+    public function soft_delete(int $id, int $user_id): bool
+    {
+        $query = "
+            UPDATE [TG].[dbo].[arqueo_sesiones]
+            SET [deleted_at] = GETDATE(), [deleted_by] = ?
+            WHERE id = ? AND deleted_at IS NULL;
+        ";
+        return (bool) $this->sql->update($query, [$user_id, $id]);
     }
 
     /**

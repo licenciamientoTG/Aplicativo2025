@@ -111,6 +111,139 @@
     .spin-icono {
         animation: spin-icono-anim .6s linear infinite;
     }
+    /* ===== Celular (< 768 px) =====
+       Todo lo de abajo vive dentro de @media: escritorio no cambia. Cada
+       fila de las tablas pasa a ser una tarjeta (los td traen data-c /
+       data-label desde scheduling.js) y los controles de la barra superior
+       se reacomodan para pulgar: fecha grande, acciones en una fila, "Agregar
+       recepción" como botón flotante. */
+    .u-litros { display: none; }
+
+    @media (max-width: 767.98px) {
+        .u-litros { display: inline; font-weight: 500; font-size: .8em; }
+
+        /* --- Barra superior: ‹ fecha › / total / acciones --- */
+        .card-header > .row { --bs-gutter-x: .5rem; --bs-gutter-y: .5rem; }
+        .sch-nav { order: 1; }
+        .sch-nav .btn { height: 100%; padding-left: .8rem; padding-right: .8rem; }
+        .sch-fecha { order: 2; flex: 1 1 0; width: auto; min-width: 0; }
+        .sch-fecha .form-control { width: 100%; min-height: 2.75rem; text-align: center; font-weight: 600; }
+        .sch-total { order: 4; flex: 0 0 100%; width: 100%; margin-left: 0 !important; text-align: center; padding: .35rem 0; border-radius: .5rem; background: var(--bs-tertiary-bg, #f1f5f9); }
+        .sch-total strong { font-size: 1.15rem; }
+        .sch-sec { order: 5; flex: 1 1 0; min-width: 0; }
+        .sch-sec:has(#btnActualizar) { flex: 0 0 auto; }
+        .sch-sec .btn { width: 100%; padding: .5rem .25rem; font-size: .8rem; white-space: nowrap; }
+        .sch-sec .btn svg { width: 15px; height: 15px; }
+        .sch-add { display: contents; }
+        #btnAgregarRecepcion {
+            position: fixed; right: 16px; bottom: 16px; z-index: 1040;
+            border-radius: 50rem; padding: .75rem 1.2rem;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+        }
+
+        /* --- Resumen por proveedor --- */
+        #btnResumenProveedores { width: 100%; justify-content: space-between; padding: .5rem .75rem; }
+
+        /* --- Tabs: una sola línea, con scroll si no caben --- */
+        .sch-tabs { flex: 0 0 100%; max-width: 100%; }
+        #tabsAgrupacion { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+        #tabsAgrupacion::-webkit-scrollbar { display: none; }
+        #tabsAgrupacion .nav-link { margin-right: 1rem; padding: .6rem .1rem; font-size: .9rem; }
+
+        /* --- Filtros: ojo + turno arriba, proveedores en carrusel --- */
+        #barraFiltros { width: 100%; margin-left: 0 !important; padding-top: .6rem !important; gap: .5rem !important; }
+        #btnOcultarVaciosTerminal, #btnOcultarVacias { order: 1; }
+        .sch-turno { order: 2; margin-left: auto; }
+        .sch-columnas { display: none !important; }
+        #filtroProveedorBotones {
+            order: 3; flex: 0 0 100%; flex-wrap: nowrap !important; overflow-x: auto;
+            padding-bottom: .35rem; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+        }
+        #filtroProveedorBotones::-webkit-scrollbar { display: none; }
+        .btn-filtro-proveedor { flex: 0 0 auto; white-space: nowrap; padding: .45rem .85rem; }
+        .sch-buscar { flex: 0 0 100%; max-width: 100%; }
+        .sch-buscar .input-group { width: 100% !important; }
+
+        /* --- Contenedor de tarjetas --- */
+        .sch-body { padding: .75rem .5rem; }
+        #contenedorGrupos { --bs-gutter-x: 0; padding-bottom: 5.5rem; }
+        #contenedorGrupos > [class*="col-"] { padding-left: 0; padding-right: 0; }
+        #contenedorGrupos > .mb-4 { margin-bottom: .75rem !important; }
+        .grupo-header { flex-wrap: nowrap; align-items: flex-start; gap: .5rem; padding: .6rem .75rem; }
+        .grupo-header > .badge { flex: 0 0 auto; }
+        .grupo-titulo { flex: 1 1 0; min-width: 0; flex-wrap: wrap; font-size: .9rem; line-height: 1.25; }
+        .grupo-titulo .btn-accion-icono { padding: .4rem .55rem; }
+        .grupo-titulo .btn-accion-icono svg { width: 16px; height: 16px; }
+        #barraPlanInventario .flex-grow-1 { min-width: 0 !important; max-width: none !important; flex: 1 1 100%; }
+        #btnBuscarInventarios { width: 100%; padding: .6rem; }
+
+        /* --- Tablas -> tarjetas por fila --- */
+        #contenedorGrupos .table-responsive { overflow-x: visible; }
+        .tm-term, .tm-est, .tm-inv { font-size: .875rem !important; }
+        .tm-term, .tm-est, .tm-inv,
+        .tm-term > tbody, .tm-est > tbody, .tm-inv > tbody { display: block; width: 100%; }
+        .tm-term > thead, .tm-est > thead, .tm-inv > thead { display: none; }
+        .tm-term tr, .tm-est tr, .tm-inv tr {
+            display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: .4rem .6rem; padding: .7rem .75rem;
+            border-bottom: 1px solid var(--bs-border-color);
+        }
+        .tm-term tr:last-child, .tm-est tr:last-child, .tm-inv tr:last-child { border-bottom: 0; }
+        .tm-term td, .tm-est td, .tm-inv td {
+            display: block; padding: 0 !important; border: 0 !important; min-width: 0;
+            overflow-wrap: anywhere; box-shadow: none !important; background: transparent !important;
+            text-align: left !important;
+        }
+        .tm-term td:empty, .tm-est td:empty, .tm-inv td:empty { display: none; }
+        .tm-term td[data-label]::before, .tm-est td[data-label]::before, .tm-inv td[data-label]::before {
+            content: attr(data-label); display: block; font-size: .65rem; line-height: 1.3;
+            letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color);
+        }
+
+        /* Mensaje "Sin recepciones programadas hoy." (una sola celda con colspan) */
+        .tm-term td[colspan], .tm-est td[colspan], .tm-inv td[colspan] { grid-column: 1 / -1; order: 0; text-align: center !important; }
+
+        /* Por Terminal: estación + litros arriba, luego producto/hora/transportista */
+        .tm-term td[data-c="est"]    { grid-column: span 4; order: 1; font-weight: 600; font-size: 1rem; }
+        .tm-term td[data-c="lit"]    { grid-column: span 2; order: 2; text-align: right !important; font-weight: 700; font-size: 1rem; }
+        .tm-term td[data-c="prod"]   { grid-column: span 3; order: 3; }
+        .tm-term td[data-c="hora"]   { grid-column: span 3; order: 4; }
+        .tm-term td[data-c="transp"] { grid-column: span 3; order: 5; }
+        .tm-term td[data-c="ref"]    { grid-column: span 3; order: 6; }
+        .tm-term td[data-c="notas"]  { grid-column: span 6; order: 7; }
+
+        /* Por Estación / Plan inventarios: el título de la tarjeta ya es la estación */
+        .tm-est td[data-c="prod"], .tm-inv td[data-c="prod"]     { grid-column: span 3; order: 1; font-weight: 600; font-size: 1rem; }
+        .tm-est td[data-c="lit"], .tm-inv td[data-c="lit"]       { grid-column: span 3; order: 2; text-align: right !important; font-weight: 700; font-size: 1rem; }
+        .tm-est td[data-c="hora"], .tm-inv td[data-c="hora"]     { grid-column: span 2; order: 3; }
+        .tm-est td[data-c="prov"], .tm-inv td[data-c="prov"]     { grid-column: span 4; order: 4; }
+        .tm-est td[data-c="term"], .tm-inv td[data-c="term"]     { grid-column: span 3; order: 5; }
+        .tm-est td[data-c="transp"], .tm-inv td[data-c="transp"] { grid-column: span 3; order: 6; }
+        .tm-est td[data-c="notas"]                               { grid-column: span 6; order: 7; }
+        .tm-inv td[data-c="m"]       { grid-column: span 2; order: 7; }
+        .tm-inv td[data-c="inv-msg"] { grid-column: span 6; order: 7; text-align: center !important; }
+        .tm-inv td[data-c="m"] .progress { min-width: 0; }
+
+        /* Acciones: fila completa, botones grandes para el pulgar */
+        .tm-term td[data-c="acc"], .tm-est td[data-c="acc"] { grid-column: 1 / -1; order: 8; margin-top: .15rem; }
+        .tm-term td[data-c="acc"] .btn-group, .tm-est td[data-c="acc"] .btn-group { display: flex; width: 100%; }
+        .tm-term td[data-c="acc"] .btn-group .btn, .tm-est td[data-c="acc"] .btn-group .btn {
+            flex: 1 1 0; display: flex; justify-content: center; padding: .6rem 0;
+        }
+        .tm-term td[data-c="acc"] .btn svg, .tm-est td[data-c="acc"] .btn svg { width: 18px; height: 18px; }
+
+        /* Renglón de captura rápida: campos a ancho completo */
+        .tm-term tr.fila-rapida td { order: 0 !important; font-weight: 400; font-size: .875rem; text-align: left !important; }
+        .tm-term tr.fila-rapida td[data-c="hora"], .tm-term tr.fila-rapida td[data-c="prod"], .tm-term tr.fila-rapida td[data-c="lit"] { grid-column: span 2; }
+        .tm-term tr.fila-rapida td[data-c="est"], .tm-term tr.fila-rapida td[data-c="transp"] { grid-column: span 6; }
+        .tm-term tr.fila-rapida td[data-c="ref"], .tm-term tr.fila-rapida td[data-c="notas"] { grid-column: span 3; }
+        .tm-term tr.fila-rapida .form-control, .tm-term tr.fila-rapida .form-select { width: 100%; min-height: 2.5rem; }
+        .tm-term tr.fila-rapida .bootstrap-select { width: 100% !important; }
+        .tm-term tr.fila-rapida td[data-c="acc"] .d-flex { width: 100%; }
+        .tm-term tr.fila-rapida td[data-c="acc"] .btn { flex: 1 1 0; padding: .6rem 0; }
+    }
+
+
     @keyframes spin-icono-anim {
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
@@ -124,38 +257,43 @@
         <div class="card">
             <div class="card-header">
                 <div class="row align-items-center">
-                    <div class="col-auto">
+                    <div class="col-auto sch-nav">
                         <button type="button" class="btn btn-outline-secondary" id="btnDiaAnterior">
                             <i data-feather="chevron-left"></i>
                         </button>
                     </div>
-                    <div class="col-auto">
+                    <div class="col-auto sch-fecha">
                         <input type="date" class="form-control" id="fecha_programacion" value="{{ fecha }}">
                     </div>
-                    <div class="col-auto">
+                    <div class="col-auto sch-nav">
                         <button type="button" class="btn btn-outline-secondary" id="btnDiaSiguiente">
                             <i data-feather="chevron-right"></i>
                         </button>
                     </div>
-                    <div class="col-auto ms-auto">
+                    <div class="col-auto ms-auto sch-total">
                         <span class="text-muted">Total programado del día: <strong id="totalLitrosDia">0</strong> L</span>
                     </div>
-                    <div class="col-auto">
+                    <div class="col-auto sch-sec">
                         <button type="button" class="btn btn-outline-secondary" id="btnActualizar" title="Actualizar sin salir de este día">
                             <i data-feather="refresh-cw"></i>
                         </button>
                     </div>
-                    <div class="col-auto">
-                        <button type="button" class="btn btn-outline-secondary" id="btnExportarExcel" title="Exportar a Excel lo que se está viendo (respeta filtros activos)">
+                    <div class="col-auto sch-sec">
+                        <button type="button" class="btn btn-outline-secondary" id="btnImportarExcel" title="Importar la programación desde el libro de Excel de Abastos">
+                            <i data-feather="upload"></i> Importar
+                        </button>
+                    </div>
+                    <div class="col-auto sch-sec">
+                        <button type="button" class="btn btn-outline-secondary" id="btnExportarExcel"title="Exportar a Excel lo que se está viendo (respeta filtros activos)">
                             <i data-feather="download"></i> Exportar
                         </button>
                     </div>
-                    <div class="col-auto">
+                    <div class="col-auto sch-sec">
                         <button type="button" class="btn btn-outline-secondary" id="btnCopiarExcel" title="Copiar lo que se está viendo para pegarlo en Excel (respeta filtros activos)">
                             <i data-feather="clipboard"></i> Copiar
                         </button>
                     </div>
-                    <div class="col-auto">
+                    <div class="col-auto sch-add">
                         <button type="button" class="btn btn-primary" id="btnAgregarRecepcion">
                             <i data-feather="plus"></i> Agregar recepción
                         </button>
@@ -175,13 +313,13 @@
             </div>
             <div class="card-header border-top-0 pt-0">
                 <div class="row align-items-center">
-                    <div class="col-auto">
+                    <div class="col-auto sch-tabs">
                         <ul class="nav nav-tabs card-header-tabs" id="tabsAgrupacion" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="tab-btn-terminal" data-agrupacion="terminal" type="button">Agrupado por Terminal</button>
+                                <button class="nav-link active" id="tab-btn-terminal" data-agrupacion="terminal" type="button"><span class="d-none d-md-inline">Agrupado por </span>Terminal</button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="tab-btn-estacion" data-agrupacion="estacion" type="button">Agrupado por Estación</button>
+                                <button class="nav-link" id="tab-btn-estacion" data-agrupacion="estacion" type="button"><span class="d-none d-md-inline">Agrupado por </span>Estación</button>
                             </li>
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link" id="tab-btn-inventarios" data-agrupacion="inventarios" type="button">Plan inventarios</button>
@@ -196,7 +334,7 @@
                             <i data-feather="eye-off"></i>
                         </button>
                         <div id="filtroProveedorBotones" class="d-flex align-items-center gap-1 flex-wrap"></div>
-                        <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2 sch-columnas">
                             <label class="text-muted mb-0 small">Columnas:</label>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-outline-secondary btn-cols active" data-cols="3">3</button>
@@ -204,7 +342,7 @@
                                 <button type="button" class="btn btn-outline-secondary btn-cols" data-cols="1">1</button>
                             </div>
                         </div>
-                        <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2 sch-turno">
                             <label for="filtroTurno" class="text-muted mb-0 small">Turno:</label>
                             <select id="filtroTurno" class="form-select form-select-sm" style="width:auto;"
                                 title="Solo aplica a recepciones capturadas por turno (MGC); las que tienen horario se ocultan al elegir un turno">
@@ -219,7 +357,7 @@
             </div>
             <div id="barraBuscarEstacion" class="card-header border-top-0 pt-0" style="display:none;">
                 <div class="row">
-                    <div class="col-auto">
+                    <div class="col-auto sch-buscar">
                         <div class="input-group input-group-sm" style="width:260px;">
                             <span class="input-group-text"><i data-feather="search" style="width:14px;height:14px;"></i></span>
                             <input type="search" id="buscarEstacion" class="form-control" placeholder="Buscar estación…" autocomplete="off">
@@ -227,7 +365,7 @@
                     </div>
                 </div>
             </div>
-            <div class="card-body">
+            <div class="card-body sch-body">
                 <div id="contenedorGrupos" class="row">
                     <p class="text-muted text-center">Cargando…</p>
                 </div>
@@ -246,6 +384,42 @@
             <form id="frmProgramacion">
                 <div id="modalProgramacionContent"></div>
             </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalImportar" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Importar programación desde Excel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label" for="importArchivo">Libro de Excel (.xlsx)</label>
+                        <input type="file" class="form-control" id="importArchivo" accept=".xlsx">
+                    </div>
+                    <div class="col-md-3" id="importHojaWrap" style="display:none;">
+                        <label class="form-label" for="importHoja">Hoja</label>
+                        <select class="form-select" id="importHoja"></select>
+                    </div>
+                    <div class="col-md-4" id="importLeerWrap" style="display:none;">
+                        <button type="button" class="btn btn-primary" id="btnImportarLeer">
+                            <i data-feather="upload"></i> Subir y comprobar
+                        </button>
+                    </div>
+                </div>
+                <div id="importEstado" class="mt-3"></div>
+                <div id="importResultado" class="mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-success" id="btnImportarConfirmar" style="display:none;" disabled>
+                    Confirmar importación
+                </button>
+            </div>
         </div>
     </div>
 </div>

@@ -1,0 +1,559 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Notas de Crédito vs Consumos{% endblock %}
+{% block menutitle %}Contabilidad — Notas de Crédito vs Consumos{% endblock %}
+
+{% block mycss %}
+<style>
+  /* Mismo look de tablas que Contabilidad > Movimientos bancos. */
+  .nc-tabla thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
+  .nc-tabla tbody tr td { font-size: .8rem; vertical-align: middle; color: #334155; }
+  .nc-tabla thead tr.filter th { background-color: #e2e8f0 !important; padding: 3px 6px !important; }
+  .nc-tabla thead tr.filter th input {
+    font-size: .7rem; padding: 2px 5px; height: 22px; border-radius: 3px;
+    border: 1px solid #cbd5e1; width: 100%; box-sizing: border-box;
+  }
+  .nc-tabla { border-collapse: separate; border-spacing: 0; }
+  .nc-tabla thead th { position: sticky; top: 0; z-index: 30; }
+  .nc-tabla th, .nc-tabla td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
+  .nc-tabla tr > :last-child { border-right: none; }
+  .nc-tabla td.nc-wrap { white-space: normal; min-width: 220px; max-width: 320px; word-break: break-word; }
+
+  div.dt-button-collection { z-index: 9999 !important; }
+
+  .nc-monto { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .nc-neg { color: #dc3545; font-weight: 600; }
+  .nc-mono { font-family: monospace; white-space: nowrap; font-size: .75rem; }
+
+  .nc-tabla-wrap { border: 2px solid #cbd5e1; border-radius: .5rem; background: #fff; overflow: hidden; }
+  .nc-tabla-wrap .nc-top {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .5rem .75rem; background: #fff; border-bottom: 2px solid #cbd5e1;
+  }
+  .nc-tabla-wrap .dataTables_filter input { border: 1px solid #cbd5e1; border-radius: .375rem; padding: .25rem .5rem; margin-left: .5rem; }
+  .nc-tabla-wrap .nc-bottom {
+    display: flex; justify-content: space-between; align-items: center; padding: .4rem .75rem;
+    background: #f8fafc; border-top: 2px solid #cbd5e1; color: #475569; font-size: .75rem;
+  }
+  .nc-scroll { overflow: auto; max-height: 64vh; }
+
+  .nc-badge { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .7rem; font-weight: 700; }
+  .nc-ok    { background: #dcfce7; color: #166534; }
+  .nc-warn  { background: #fef3c7; color: #92400e; }
+  .nc-bad   { background: #fee2e2; color: #991b1b; }
+  .nc-muted { background: #e2e8f0; color: #475569; }
+
+  .nc-resumen { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
+  .nc-resumen .nc-chip {
+    border: 1px solid #e2e8f0; border-radius: .5rem; padding: .4rem .75rem; background: #fff;
+    font-size: .8rem; color: #334155; cursor: pointer; user-select: none;
+  }
+  .nc-resumen .nc-chip.activo { border-color: #009559; box-shadow: 0 0 0 2px rgba(0, 149, 89, .15); }
+  .nc-resumen .nc-chip b { font-variant-numeric: tabular-nums; }
+
+  #ncLoader {
+    display: none; position: fixed; inset: 0; z-index: 10500;
+    background: rgba(248, 250, 252, .75); backdrop-filter: blur(1px);
+    align-items: center; justify-content: center; flex-direction: column; gap: .75rem;
+  }
+  #ncLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
+  #ncLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div id="ncLoader">
+  <div class="spinner-border"></div>
+  <span>Consultando ControlGas...</span>
+</div>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabRelacion" type="button" role="tab">
+      <i class="fas fa-link"></i> Relación
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPeriodo" type="button" role="tab">
+      <i class="fas fa-calendar-alt"></i> Periodo de facturación <span class="badge bg-secondary" id="cntPeriodo">0</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  {# Relación: notas de crédito G y consumos débito, mismo buscador #}
+  <div class="tab-pane fade show active" id="tabRelacion" role="tabpanel">
+    <div class="card mb-3">
+      <div class="card-body">
+        <form class="row align-items-end g-2" id="ncFiltros">
+          <div class="col-auto">
+            <label for="desde">Desde:</label>
+            <input type="date" class="form-control" id="desde" value="{{ desde }}" required>
+          </div>
+          <div class="col-auto">
+            <label for="hasta">Hasta:</label>
+            <input type="date" class="form-control" id="hasta" value="{{ hasta }}" required>
+          </div>
+          <div class="col-auto">
+            {# Razón social = empresa de la estación del despacho, igual que /income/clients #}
+            <label for="empresa">Razón social:</label>
+            <select class="form-control" id="empresa">
+              <option value="0">Todas</option>
+              {% for e in empresas %}
+              <option value="{{ e.cod }}">{{ e.den }}</option>
+              {% endfor %}
+              <option value="-1">(Sin razón social)</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Buscar</button>
+          </div>
+          <div class="col">
+            <small class="text-muted">
+              Notas: por fecha de la nota G, del corporativo y de estaciones. Razón social: la de la estación
+              que emitió la nota; para las del corporativo, la de las estaciones de sus despachos
+              (corporativas sin ligar caen en "(Sin razón social)").
+              Consumos: por fecha del despacho, clientes débito, mismo conteo que Clientes &gt; Consumos Débito.
+            </small>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <ul class="nav nav-pills mb-3" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabNotas" type="button" role="tab">
+          Notas de crédito G <span class="badge bg-secondary" id="cntNotas">0</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabConsumos" type="button" role="tab">
+          Consumos débito <span class="badge bg-secondary" id="cntConsumos">0</span>
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="tabNotas" role="tabpanel">
+        <div class="nc-resumen" id="resumenNotas"></div>
+        <div class="nc-tabla-wrap">
+          <table id="tablaNotas" class="table table-sm table-hover nc-tabla w-100 mb-0">
+            <thead>
+              <tr>
+                <th>Nota</th>
+                <th>Emitida en</th>
+                <th>Fecha nota G</th>
+                <th>Cód. cliente</th>
+                <th>Cliente</th>
+                <th>Razón social</th>
+                <th>Valor nota</th>
+                <th>Factura(s) ligada(s)</th>
+                <th>Aplicado</th>
+                <th>Despachos</th>
+                <th>Litros</th>
+                <th>Suma despachos</th>
+                <th>Despachos desde</th>
+                <th>Despachos hasta</th>
+                <th>Diferencia</th>
+                <th>Estatus</th>
+                <th>UUID</th>
+                <th>Notas</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="tabConsumos" role="tabpanel">
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="soloSinNota" checked>
+            <label class="form-check-label" for="soloSinNota">Solo consumos sin nota (sin factura o factura E sin nota)</label>
+          </div>
+        </div>
+        <div class="nc-resumen" id="resumenConsumos"></div>
+        <div class="nc-tabla-wrap">
+          <table id="tablaConsumos" class="table table-sm table-hover nc-tabla w-100 mb-0">
+            <thead>
+              <tr>
+                <th>Estación</th>
+                <th>Razón social</th>
+                <th>Despacho</th>
+                <th>Fecha despacho</th>
+                <th>Hora</th>
+                <th>Cód. cliente</th>
+                <th>Cliente</th>
+                <th>Producto</th>
+                <th>Litros</th>
+                <th>Monto</th>
+                <th>Factura</th>
+                <th>Nota G</th>
+                <th>Fecha nota G</th>
+                <th>UUID nota G</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Periodo de facturación: buscador propio, independiente del de Relación #}
+  <div class="tab-pane fade" id="tabPeriodo" role="tabpanel">
+    <div class="card mb-3">
+      <div class="card-body">
+        <form class="row align-items-end g-2" id="pFiltros">
+          <div class="col-auto">
+            <label for="p_desde">Despachos desde:</label>
+            <input type="date" class="form-control" id="p_desde" value="{{ p_desde }}" required>
+          </div>
+          <div class="col-auto">
+            <label for="p_hasta">Hasta:</label>
+            <input type="date" class="form-control" id="p_hasta" value="{{ p_hasta }}" required>
+          </div>
+          <div class="col-auto">
+            <label for="p_empresa">Razón social:</label>
+            <select class="form-control" id="p_empresa">
+              <option value="0">Todas</option>
+              {% for e in empresas %}
+              <option value="{{ e.cod }}">{{ e.den }}</option>
+              {% endfor %}
+              <option value="-1">(Sin razón social)</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Buscar</button>
+          </div>
+          <div class="col">
+            <small class="text-muted">
+              Compara el mes del despacho contra el mes de <b>timbrado</b> de su factura E y de su nota G
+              (la más antigua si hay varias); las dos deben estar en el mes del despacho.
+              Solo totales (sin desglose por despacho), para poder consultar varios meses.
+              ControlGas permite fechar la E en el mes del consumo aunque se timbre al mes siguiente
+              (columna "E fechada en mes, timbrada fuera").
+            </small>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="nc-resumen" id="resumenPeriodo"></div>
+    <div class="nc-tabla-wrap mb-3">
+      <div class="nc-top"><b>Resumen por mes del despacho</b></div>
+      <div class="nc-scroll" style="max-height:none">
+        <table class="table table-sm nc-tabla w-100 mb-0" id="tablaPeriodoResumen">
+          <thead>
+            <tr>
+              <th>Mes despacho</th>
+              <th class="nc-monto">Despachos</th>
+              <th class="nc-monto">Con factura E</th>
+              <th class="nc-monto">E en periodo</th>
+              <th class="nc-monto">E fuera</th>
+              <th class="nc-monto">Monto E fuera</th>
+              <th class="nc-monto" title="La fecha de la E dice el mes del despacho pero se timbró en otro mes">E fechada en mes, timbrada fuera</th>
+              <th class="nc-monto">Con nota G</th>
+              <th class="nc-monto">G en periodo</th>
+              <th class="nc-monto">G fuera</th>
+              <th class="nc-monto">Monto G fuera</th>
+              <th class="nc-monto">Sin nota G</th>
+              <th class="nc-monto">Monto sin nota</th>
+              <th class="nc-monto">No aplica</th>
+              <th class="nc-monto">% E en periodo</th>
+              <th class="nc-monto">% G en periodo</th>
+            </tr>
+          </thead>
+          <tbody><tr><td colspan="16" class="text-muted">Elige un rango y presiona Buscar.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+$(function () {
+  var ESTATUS_CLASE = {
+    'Cuadra': 'nc-ok', 'Ligado': 'nc-ok',
+    'Diferencia': 'nc-warn', 'Factura con varias notas': 'nc-warn', 'Facturado en otra serie': 'nc-muted',
+    'Sin ligar': 'nc-bad', 'Sin despachos': 'nc-bad', 'Sin factura': 'nc-bad', 'Factura E sin nota': 'nc-bad',
+    'Cancelada': 'nc-muted', 'Despacho en $0': 'nc-muted',
+    'En periodo': 'nc-ok', 'Fuera de periodo': 'nc-warn', 'Sin nota G': 'nc-bad', 'No aplica': 'nc-muted',
+    'E fuera de periodo': 'nc-warn', 'G fuera de periodo': 'nc-warn', 'E y G fuera de periodo': 'nc-bad',
+  };
+
+  function fmtMonto(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtLitros(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  }
+  function fmtFecha(iso) {
+    var p = String(iso || '').substring(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  // display: con formato; export/sort/filter: valor crudo
+  function monto(d, type) { return type === 'display' ? fmtMonto(d) : d; }
+  function montoDif(d, type) {
+    if (type !== 'display') return d;
+    return Math.abs(d) > 1 ? '<span class="nc-neg">' + fmtMonto(d) + '</span>' : fmtMonto(d);
+  }
+  function badge(d, type) {
+    if (type !== 'display') return d;
+    return '<span class="nc-badge ' + (ESTATUS_CLASE[d] || 'nc-muted') + '">' + esc(d) + '</span>';
+  }
+  function fecha(d, type) { return type === 'display' ? fmtFecha(d) : d; }
+  function texto(d, type) { return type === 'display' ? esc(d) : d; }
+
+  function initTabla(sel, columnas, titulo, extra) {
+    var api = $(sel).DataTable($.extend({
+      paging: true,
+      pageLength: 100,
+      lengthMenu: [[50, 100, 500, -1], [50, 100, 500, 'Todos']],
+      order: [],
+      dom: '<"nc-top"Bf>rt<"nc-bottom"ilp>',
+      language: {
+        info: 'Mostrando _START_–_END_ de _TOTAL_',
+        infoFiltered: '(filtrados de _MAX_)',
+        infoEmpty: 'Sin registros',
+        emptyTable: 'Elige un rango y presiona Buscar.',
+        lengthMenu: '_MENU_ por página',
+        search: 'Buscar:',
+        paginate: { previous: '‹', next: '›' },
+      },
+      buttons: [
+        {
+          extend: 'excel',
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          className: 'btn btn-sm btn-success',
+          title: function () {
+            return typeof titulo === 'function' ? titulo() : titulo + ' ' + $('#desde').val() + ' a ' + $('#hasta').val();
+          },
+          exportOptions: { columns: ':visible', orthogonal: 'export' },
+        },
+        { extend: 'colvis', text: '<i class="fas fa-columns"></i> Columnas', className: 'btn btn-sm btn-outline-secondary' },
+      ],
+      data: [],
+      deferRender: true,
+      columns: columnas,
+      initComplete: function () {
+        var api = this.api();
+        $(sel).wrap('<div class="nc-scroll"></div>');
+        var filterRow = $('<tr class="filter"></tr>');
+        $(sel + ' thead tr:first th').each(function () {
+          filterRow.append('<th><input type="text" placeholder="' + esc($(this).text().trim()) + '" /></th>');
+        });
+        $(sel + ' thead').append(filterRow);
+        $(sel + ' thead tr.filter th input').on('keyup change', function () {
+          api.column($(this).parent().index() + ':visible').search(this.value).draw();
+        });
+        var altura = $(sel + ' thead tr:first th').first().outerHeight() || 33;
+        $(sel + ' thead tr.filter th').css('top', altura + 'px');
+      },
+    }, extra || {}));
+    return api;
+  }
+
+  var tablaNotas = initTabla('#tablaNotas', [
+    { data: 'nota', className: 'nc-mono' },
+    { data: 'emitida' },
+    { data: 'fecha', render: fecha },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'nc-wrap', render: texto },
+    { data: 'razon_social', className: 'nc-wrap', render: texto },
+    { data: 'total', className: 'nc-monto', render: monto },
+    { data: 'facturas', className: 'nc-mono', render: texto },
+    { data: 'aplicado', className: 'nc-monto', render: monto },
+    { data: 'despachos', className: 'nc-monto' },
+    { data: 'litros', className: 'nc-monto', render: function (d, t) { return t === 'display' ? fmtLitros(d) : d; } },
+    { data: 'monto_despachos', className: 'nc-monto', render: monto },
+    { data: 'despacho_desde', render: fecha },
+    { data: 'despacho_hasta', render: fecha },
+    { data: 'diferencia', className: 'nc-monto', render: montoDif },
+    { data: 'estatus', render: badge },
+    { data: 'uuid', className: 'nc-mono', render: texto },
+    { data: 'notas', className: 'nc-wrap', render: texto },
+  ], 'Notas de credito G vs consumos');
+
+  var tablaConsumos = initTabla('#tablaConsumos', [
+    { data: 'estacion' },
+    { data: 'razon_social', render: texto },
+    { data: 'despacho', className: 'nc-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'hora' },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'nc-wrap', render: texto },
+    { data: 'producto' },
+    { data: 'litros', className: 'nc-monto', render: function (d, t) { return t === 'display' ? fmtLitros(d) : d; } },
+    { data: 'monto', className: 'nc-monto', render: monto },
+    { data: 'factura', className: 'nc-mono' },
+    { data: 'nota', className: 'nc-mono', render: texto },
+    { data: 'fecha_nota', render: function (d, t) {
+        return t === 'display' ? String(d || '').split(', ').map(fmtFecha).join(', ') : d;
+      } },
+    { data: 'uuid_nota', className: 'nc-mono', render: texto },
+    { data: 'estado', render: badge },
+  ], 'Consumos debito vs notas de credito');
+
+  // Índice de la columna de estatus en cada tabla (para los chips de resumen)
+  var COL_ESTATUS_NOTAS = 15, COL_ESTADO_CONSUMOS = 14;
+
+  $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+  });
+
+  // Chips de resumen por estatus: conteo + suma; clic filtra la columna de estatus.
+  function pintarResumen(contenedor, api, filas, campoEstatus, colEstatus, campoMonto) {
+    var grupos = {};
+    filas.forEach(function (r) {
+      var k = r[campoEstatus];
+      grupos[k] = grupos[k] || { n: 0, monto: 0 };
+      grupos[k].n++;
+      grupos[k].monto += Number(r[campoMonto]) || 0;
+    });
+    var html = '<span class="nc-chip activo" data-estatus="">Todos: <b>' + filas.length + '</b></span>';
+    Object.keys(grupos).sort().forEach(function (k) {
+      html += '<span class="nc-chip" data-estatus="' + esc(k) + '">' + badge(k, 'display') +
+        ' <b>' + grupos[k].n + '</b> · $' + fmtMonto(grupos[k].monto) + '</span>';
+    });
+    $(contenedor).html(html).off('click').on('click', '.nc-chip', function () {
+      $(contenedor + ' .nc-chip').removeClass('activo');
+      $(this).addClass('activo');
+      var v = $(this).data('estatus');
+      api.column(colEstatus).search(v ? '^' + $.fn.dataTable.util.escapeRegex(v) + '$' : '', true, false).draw();
+    });
+  }
+
+  function mostrarLoader(on) { document.getElementById('ncLoader').style.display = on ? 'flex' : 'none'; }
+
+  function pedir(url, extra) {
+    return $.ajax({
+      url: url, method: 'POST', dataType: 'json', timeout: 600000,
+      data: $.extend({ desde: $('#desde').val(), hasta: $('#hasta').val(), empresa: $('#empresa').val() }, extra || {}),
+    });
+  }
+
+  function cargarConsumos() {
+    return pedir('/accounting/credit_notes_consumption_dispatches', { solo_sin_nota: $('#soloSinNota').is(':checked') ? '1' : '0' })
+      .done(function (r) {
+        var filas = (r && r.data) || [];
+        tablaConsumos.column(COL_ESTADO_CONSUMOS).search('');
+        tablaConsumos.clear().rows.add(filas).draw();
+        $('#cntConsumos').text(filas.length);
+        pintarResumen('#resumenConsumos', tablaConsumos, filas, 'estado', COL_ESTADO_CONSUMOS, 'monto');
+      });
+  }
+
+  function buscar() {
+    mostrarLoader(true);
+    var pNotas = pedir('/accounting/credit_notes_consumption_notes').done(function (r) {
+      var filas = (r && r.data) || [];
+      tablaNotas.column(COL_ESTATUS_NOTAS).search('');
+      tablaNotas.clear().rows.add(filas).draw();
+      $('#cntNotas').text(filas.length);
+      pintarResumen('#resumenNotas', tablaNotas, filas, 'estatus', COL_ESTATUS_NOTAS, 'total');
+    });
+    $.when(pNotas, cargarConsumos())
+      .fail(function () { alertify.error('Error al consultar ControlGas'); })
+      .always(function () {
+        mostrarLoader(false);
+        $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+      });
+  }
+
+  // Resumen por mes del despacho (tab Periodo de facturación). Cada fila ya
+  // viene agrupada por periodo + estatus con n despachos y su monto.
+  function pintarResumenMeses(filas) {
+    var meses = {};
+    filas.forEach(function (r) {
+      var m = meses[r.periodo] = meses[r.periodo] ||
+        { n: 0, e: 0, eEn: 0, eFuera: 0, mEFuera: 0, eFechada: 0, g: 0, gEn: 0, gFuera: 0, mGFuera: 0, sin: 0, mSin: 0, na: 0 };
+      var n = Number(r.n) || 0, mto = Number(r.monto) || 0;
+      m.n += n;
+      if (r.estatus_e) {
+        m.e += n;
+        if (r.estatus_e === 'En periodo') m.eEn += n; else { m.eFuera += n; m.mEFuera += mto; }
+        if (r.e_fechada) m.eFechada += n;
+      }
+      if (r.estatus_g) {
+        m.g += n;
+        if (r.estatus_g === 'En periodo') m.gEn += n; else { m.gFuera += n; m.mGFuera += mto; }
+      }
+      if (r.estatus === 'Sin nota G') { m.sin += n; m.mSin += mto; }
+      else if (r.estatus === 'No aplica') m.na += n;
+    });
+    function num(v, rojo) {
+      return '<td class="nc-monto' + (rojo && v ? ' nc-neg' : '') + '">' + v.toLocaleString('en-US') + '</td>';
+    }
+    function pct(a, b) { return '<td class="nc-monto">' + (b ? (a * 100 / b).toFixed(1) + '%' : '—') + '</td>'; }
+    var html = '';
+    Object.keys(meses).sort().forEach(function (k) {
+      var m = meses[k];
+      html += '<tr><td><b>' + esc(k) + '</b></td>' +
+        num(m.n) + num(m.e) + num(m.eEn) + num(m.eFuera, true) +
+        '<td class="nc-monto">$' + fmtMonto(m.mEFuera) + '</td>' + num(m.eFechada, true) +
+        num(m.g) + num(m.gEn) + num(m.gFuera, true) +
+        '<td class="nc-monto">$' + fmtMonto(m.mGFuera) + '</td>' +
+        num(m.sin, true) + '<td class="nc-monto">$' + fmtMonto(m.mSin) + '</td>' + num(m.na) +
+        pct(m.eEn, m.e) + pct(m.gEn, m.g) + '</tr>';
+    });
+    $('#tablaPeriodoResumen tbody').html(html || '<tr><td colspan="16" class="text-muted">Sin despachos en el rango.</td></tr>');
+  }
+
+  // Totales por estatus del periodo (informativos: ya no hay tabla de despachos que filtrar)
+  function pintarChipsPeriodo(filas) {
+    var grupos = {}, total = 0, totalMonto = 0;
+    filas.forEach(function (r) {
+      var g = grupos[r.estatus] = grupos[r.estatus] || { n: 0, monto: 0 };
+      g.n += Number(r.n) || 0;
+      g.monto += Number(r.monto) || 0;
+      total += Number(r.n) || 0;
+      totalMonto += Number(r.monto) || 0;
+    });
+    var html = '<span class="nc-chip activo">Todos: <b>' + total.toLocaleString('en-US') + '</b> · $' + fmtMonto(totalMonto) + '</span>';
+    Object.keys(grupos).sort().forEach(function (k) {
+      html += '<span class="nc-chip">' + badge(k, 'display') + ' <b>' + grupos[k].n.toLocaleString('en-US') +
+        '</b> · $' + fmtMonto(grupos[k].monto) + '</span>';
+    });
+    $('#resumenPeriodo').html(html);
+    $('#cntPeriodo').text(total.toLocaleString('en-US'));
+  }
+
+  $('#pFiltros').on('submit', function (e) {
+    e.preventDefault();
+    mostrarLoader(true);
+    $.ajax({
+      url: '/accounting/credit_notes_consumption_period', method: 'POST', dataType: 'json', timeout: 600000,
+      data: { desde: $('#p_desde').val(), hasta: $('#p_hasta').val(), empresa: $('#p_empresa').val() },
+    }).done(function (r) {
+      var filas = (r && r.data) || [];
+      pintarChipsPeriodo(filas);
+      pintarResumenMeses(filas);
+    }).fail(function () {
+      alertify.error('Error al consultar el periodo de facturación');
+    }).always(function () {
+      mostrarLoader(false);
+      $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    });
+  });
+
+  $('#ncFiltros').on('submit', function (e) { e.preventDefault(); buscar(); });
+  $('#soloSinNota').on('change', function () {
+    mostrarLoader(true);
+    cargarConsumos()
+      .fail(function () { alertify.error('Error al consultar los consumos'); })
+      .always(function () { mostrarLoader(false); });
+  });
+});
+</script>
+{% endblock %}

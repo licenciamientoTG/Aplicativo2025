@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pagos extraordinarios — Documentación</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --ambar: #b45309; --rojo: #b91c1c;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta);
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55; font-size: 13px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--verde); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; }
+  h2 { font-size: 17px; color: #fff; background: var(--verde); padding: 6px 12px; border-radius: 4px; margin-top: 32px; page-break-after: avoid; }
+  h2.azul { background: var(--azul); }
+  h2.ambar { background: var(--ambar); }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--verde); page-break-after: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; page-break-inside: avoid; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  code, pre { font-family: Consolas, "Courier New", monospace; font-size: 11.5px; background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px; }
+  code { padding: 1px 4px; }
+  pre { padding: 10px 12px; overflow-x: auto; line-height: 1.4; page-break-inside: avoid; }
+  .nota { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .ok { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .riesgo { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; }
+  li { margin-bottom: 3px; }
+  .flujo { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; margin: 14px 0; }
+  .paso { border: 2px solid var(--verde); border-radius: 6px; padding: 8px 10px; flex: 1 1 150px; background: #fff; page-break-inside: avoid; }
+  .paso b { display: block; color: var(--verde); }
+  .paso.fin { border-color: var(--azul); } .paso.fin b { color: var(--azul); }
+  .flecha { align-self: center; color: var(--gris); font-size: 18px; }
+  .lateral { border-color: var(--rojo); } .lateral b { color: var(--rojo); }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+
+<h1>Pagos extraordinarios</h1>
+<p class="subtitulo">Módulo de solicitud, autorización y pago de pagos fuera del flujo normal de proveedores · actualizado 2026-10-19 (vista unificada, borrador y exportación) · spec: <code>docs/superpowers/specs/2026-10-19-pagos-extraordinarios-design.md</code></p>
+
+<h2>1. Propósito y flujo</h2>
+<p>Reemplaza el formato de Excel con el que se solicitaban pagos urgentes o fuera de ciclo. Una persona captura una solicitud (individual, con un renglón, o múltiple) indicando motivo, empresa, proveedor, monto y fecha de pago requerida. La solicitud pasa por tres revisiones en orden y termina con el pago registrado por Tesorería. El folio de la solicitud es su <code>id</code>.</p>
+
+<div class="flujo">
+  <div class="paso"><b>1. Solicitante</b>Captura, guarda borrador si quiere y envía (permiso 106)</div>
+  <div class="flecha">&rarr;</div>
+  <div class="paso"><b>2. VoBo Cuentas por Pagar</b>Estatus 1 (permiso 107)</div>
+  <div class="flecha">&rarr;</div>
+  <div class="paso"><b>3. Admón y Finanzas</b>Estatus 2 (permiso 108)</div>
+  <div class="flecha">&rarr;</div>
+  <div class="paso fin"><b>4. Pago Tesorería</b>Estatus 3 &rarr; 4 (permiso 109)</div>
+</div>
+
+<ul>
+  <li><strong>Borrador</strong> (estatus 5): el solicitante puede guardar la captura sin enviarla. El borrador solo lo ve su dueño, no entra a la lista de nadie más ni a la exportación y no manda correo. Pasa las mismas validaciones que el envío (las columnas de la tabla no aceptan vacíos). Al enviarlo pasa a estatus 1. Una solicitud rechazada no vuelve a borrador.</li>
+  <li><strong>Aprobar</strong> en CxP pasa la solicitud a 2; aprobar en Admón la deja Autorizada (3); Tesorería registra cuenta, fecha de pago y referencia y la deja Pagada (4).</li>
+  <li><strong>Rechazar</strong> (CxP o Admón) exige comentario y deja la solicitud en 9 Rechazada. El solicitante la edita y la reenvía: vuelve a estatus 1, se reemplazan los renglones y las aprobaciones previas se marcan inactivas (<code>is_active = 0</code>).</li>
+  <li><strong>Cancelar</strong>: el solicitante puede cancelar (estatus 8) mientras la solicitud esté en 5, 1, 2 o 9.</li>
+  <li>Cada transición se hace con un cambio de estatus protegido (se compara contra el estatus esperado); si alguien más ya la movió, se responde "La solicitud ya cambió de estado, recargue la página."</li>
+  <li>Todo movimiento queda en la bitácora <code>extra_payment_audit_log</code>.</li>
+</ul>
+
+<h3>Estatus</h3>
+<table>
+  <tr><th>Estatus</th><th>Nombre</th><th>Quién actúa / qué sigue</th></tr>
+  <tr><td>5</td><td>Borrador</td><td>Solo el solicitante: continúa la captura, la envía (pasa a 1) o la cancela.</td></tr>
+  <tr><td>1</td><td>Pendiente VoBo CxP</td><td>Permiso 107 aprueba o rechaza. El solicitante puede cancelar.</td></tr>
+  <tr><td>2</td><td>Pendiente Admón</td><td>Permiso 108 aprueba o rechaza. El solicitante puede cancelar.</td></tr>
+  <tr><td>3</td><td>Autorizada</td><td>Permiso 109 (Tesorería) registra el pago.</td></tr>
+  <tr><td>4</td><td>Pagada</td><td>Final. Se puede subir comprobante.</td></tr>
+  <tr><td>8</td><td>Cancelada</td><td>Final.</td></tr>
+  <tr><td>9</td><td>Rechazada</td><td>El solicitante corrige y reenvía (vuelve a 1) o cancela.</td></tr>
+</table>
+
+<h2>2. Permisos</h2>
+<p>Se crean en <code>tg_permissions</code> con el script SQL (ids 106 a 110) y se asignan a usuarios desde la administración de permisos.</p>
+<table>
+  <tr><th>Id</th><th>Descripción</th><th>Qué habilita</th></tr>
+  <tr><td>106</td><td>Crear / ver propias</td><td>Nueva solicitud, borradores, corregir tras rechazo, cancelar, subir soporte.</td></tr>
+  <tr><td>107</td><td>VoBo CxP</td><td>Ve las solicitudes en estatus 1 y puede dar el VoBo o rechazar (botón "VoBo CxP").</td></tr>
+  <tr><td>108</td><td>Autoriza Admón y Finanzas</td><td>Ve las solicitudes en estatus 2 y puede autorizar o rechazar (botón "Autorizar").</td></tr>
+  <tr><td>109</td><td>Paga Tesorería</td><td>Ve las solicitudes en estatus 3, registra el pago (botón "Pagar") y sube el comprobante.</td></tr>
+  <tr><td>110</td><td>Ver todas</td><td>Ve todas las solicitudes (menos borradores ajenos), las filtra y las exporta a Excel. No aprueba ni paga.</td></tr>
+</table>
+<p>Cada quien entra a una sola pantalla, <strong>Solicitudes</strong>, y ve sus propias solicitudes más las que le toca atender según su permiso (o todas con 110). Los permisos son independientes: 107, 108 y 109 no incluyen el 106. Quien tenga 106, 107 y 108 a la vez puede crear, dar VoBo y autorizar su propia solicitud; el sistema no lo impide.</p>
+<div class="nota">Visibilidad en el detalle: ve cualquier solicitud quien tenga 110 o alguno de 107, 108 o 109; quien solo tiene 106 ve únicamente las propias. Un borrador solo lo ve su dueño, aun con 110. Una solicitud ajena o inexistente responde el mismo 403 para no revelar qué ids existen. El permiso de decisión (107/108/109) se valida en el controlador contra el estatus actual leído de la BD, nunca contra datos del POST.</div>
+
+<h2 class="azul">3. Modelo de datos (base TG)</h2>
+<p>Script idempotente: <code>docs/sql/pagos_extraordinarios_schema.sql</code> (también inserta el catálogo de motivos, los permisos 106-110 y los destinatarios de prueba).</p>
+<table>
+  <tr><th>Tabla</th><th>Columnas clave</th><th>Notas</th></tr>
+  <tr><td><code>extra_payment_requests</code></td><td>id (folio), fecha, user_id, departamento_id, tipo (individual|multiple), reason_id, motivo_otros, total, status, created_at, updated_at</td><td>Encabezado. <code>total</code> es la suma de los renglones. El departamento se toma del usuario en sesión.</td></tr>
+  <tr><td><code>extra_payment_lines</code></td><td>request_id, empresa_cod, centro_costos, proveedor, factura, fecha_factura, orden_compra, descripcion, monto, fecha_pago_requerida, comentario_urgencia</td><td>Renglones. Individual = 1; múltiple hasta 100.</td></tr>
+  <tr><td><code>extra_payment_reasons</code></td><td>id, nombre, requiere_texto, activo, orden</td><td>Catálogo. "Otros" exige texto en <code>motivo_otros</code>.</td></tr>
+  <tr><td><code>extra_payment_approvals</code></td><td>request_id, step (1 CxP, 2 Admón), permission_number, user_id, decision (aprobada|rechazada), comentario, created_at, is_active</td><td>Firmas. Se inactivan al reenviar tras un rechazo.</td></tr>
+  <tr><td><code>extra_payment_documents</code></td><td>request_id, kind (soporte|comprobante), file_path, file_extension, original_filename, file_size, created_by, is_deleted, deleted_at, deleted_by</td><td>Adjuntos con soft-delete; el archivo no se borra del disco.</td></tr>
+  <tr><td><code>extra_payment_payments</code></td><td>request_id (único), bank_account_id, fecha_pago, referencia, monto, user_id</td><td>Un pago por solicitud.</td></tr>
+  <tr><td><code>extra_payment_audit_log</code></td><td>request_id, user_id, action, detail, created_at</td><td>Bitácora de movimientos.</td></tr>
+</table>
+
+<h2>4. Rutas</h2>
+<p>Definidas en <code>routes/extrapayments.php</code>, grupo <code>pagos-extraordinarios/</code>. Módulo nuevo: sin alias de URLs viejas. Las rutas sin permiso declarado lo validan en el controlador.</p>
+<table>
+  <tr><th>Nombre</th><th>URL</th><th>Método HTTP</th><th>Handler (<code>ExtraPayments::</code>)</th><th>Permiso</th></tr>
+  <tr><td>extrapayments.index</td><td>/pagos-extraordinarios/</td><td>GET</td><td>index</td><td>controlador (cualquiera de 106 a 110)</td></tr>
+  <tr><td>extrapayments.export</td><td>/pagos-extraordinarios/export/</td><td>GET</td><td>export</td><td>controlador (cualquiera de 106 a 110; solo exporta lo que el usuario ve)</td></tr>
+  <tr><td>extrapayments.new</td><td>/pagos-extraordinarios/new/</td><td>GET</td><td>form</td><td>106</td></tr>
+  <tr><td>extrapayments.save</td><td>/pagos-extraordinarios/save/</td><td>POST</td><td>save</td><td>106</td></tr>
+  <tr><td>extrapayments.edit</td><td>/pagos-extraordinarios/&lt;id&gt;/edit/</td><td>GET</td><td>form</td><td>106</td></tr>
+  <tr><td>extrapayments.cancel</td><td>/pagos-extraordinarios/&lt;id&gt;/cancel/</td><td>POST</td><td>cancel</td><td>106</td></tr>
+  <tr><td>extrapayments.decision_modal</td><td>/pagos-extraordinarios/&lt;id&gt;/decision-modal/</td><td>GET</td><td>decision_modal</td><td>controlador (según estatus: 107 o 108)</td></tr>
+  <tr><td>extrapayments.approve</td><td>/pagos-extraordinarios/&lt;id&gt;/approve/</td><td>POST</td><td>approve</td><td>controlador (según estatus: 107 o 108)</td></tr>
+  <tr><td>extrapayments.reject</td><td>/pagos-extraordinarios/&lt;id&gt;/reject/</td><td>POST</td><td>reject</td><td>controlador (según estatus: 107 o 108)</td></tr>
+  <tr><td>extrapayments.pay_modal</td><td>/pagos-extraordinarios/&lt;id&gt;/pay-modal/</td><td>GET</td><td>pay_modal</td><td>109 (controlador)</td></tr>
+  <tr><td>extrapayments.pay</td><td>/pagos-extraordinarios/&lt;id&gt;/pay/</td><td>POST</td><td>pay</td><td>109</td></tr>
+  <tr><td>extrapayments.doc_upload</td><td>/pagos-extraordinarios/&lt;id&gt;/documents/</td><td>POST</td><td>doc_upload</td><td>controlador (106 soporte, 109 comprobante)</td></tr>
+  <tr><td>extrapayments.doc_view</td><td>/pagos-extraordinarios/documents/&lt;doc_id&gt;/</td><td>GET</td><td>doc_view</td><td>controlador (quien puede ver la solicitud)</td></tr>
+  <tr><td>extrapayments.doc_delete</td><td>/pagos-extraordinarios/documents/&lt;doc_id&gt;/delete/</td><td>POST</td><td>doc_delete</td><td>controlador</td></tr>
+  <tr><td>extrapayments.print</td><td>/pagos-extraordinarios/&lt;id&gt;/print/</td><td>GET</td><td>print</td><td>controlador (propia o privilegiado)</td></tr>
+  <tr><td>extrapayments.detail</td><td>/pagos-extraordinarios/&lt;id&gt;/</td><td>GET</td><td>detail</td><td>controlador (106-110 y visibilidad)</td></tr>
+</table>
+<p>En Twig: <code>{{ url('extrapayments.detail', {id: 15}) }}</code>. El sidebar muestra la sección "PAGOS EXTRAORDINARIOS" con una sola entrada, <strong>Solicitudes</strong>, si el usuario tiene cualquiera de 106 a 110. Esa entrada queda marcada también en nueva solicitud, edición y detalle.</p>
+
+<h2>5. Mapa de archivos</h2>
+<table>
+  <tr><th>Capa</th><th>Archivo</th></tr>
+  <tr><td>Controlador</td><td><code>_assets/controllers/extrapayments.php</code> (clase <code>ExtraPayments</code>)</td></tr>
+  <tr><td>Modelos</td><td><code>_assets/models/ExtraPaymentRequestsModel.php</code> (solicitudes, listado visible, aprobación, pago, bitácora), <code>ExtraPaymentDocumentsModel.php</code> (adjuntos), <code>ExtraPaymentCatalogModel.php</code> (motivos y empresas)</td></tr>
+  <tr><td>Reglas de flujo</td><td><code>_assets/classes/ExtraPaymentWorkflow.class.php</code> (constantes de estatus y permisos, transiciones, validación; sin acceso a BD)</td></tr>
+  <tr><td>Rutas</td><td><code>routes/extrapayments.php</code></td></tr>
+  <tr><td>Vistas</td><td><code>views/extrapayments/</code>: index (lista con filtros y acciones), form, detail, print; <code>modals/decision.html</code>, <code>modals/pay.html</code>; <code>partials/documentos.html</code></td></tr>
+  <tr><td>JavaScript</td><td><code>_assets/js/extrapayments.js</code></td></tr>
+  <tr><td>Menú</td><td><code>views/layouts/sidebar.html</code> (bloque PAGOS EXTRAORDINARIOS, tras TESORERÍA)</td></tr>
+  <tr><td>SQL</td><td><code>docs/sql/pagos_extraordinarios_schema.sql</code></td></tr>
+  <tr><td>Pruebas</td><td><code>tests/ExtraPaymentWorkflowTest.php</code>, <code>tests/ExtraPaymentsRoutesTest.php</code></td></tr>
+</table>
+
+<h2>6. Adjuntos</h2>
+<ul>
+  <li>Formatos: pdf, jpg/jpeg, png y xml. Máximo 10 MB por archivo y 20 adjuntos activos por solicitud. Además de la extensión se valida el contenido real del archivo.</li>
+  <li><strong>Soporte</strong>: lo sube el solicitante (propia y permiso 106) mientras la solicitud esté en estatus 5, 1 o 9. Una solicitud nueva no tiene adjuntos hasta guardarse: con "Guardar borrador" ya se pueden adjuntar en la pantalla de edición.</li>
+  <li><strong>Comprobante</strong>: lo sube Tesorería (permiso 109) cuando la solicitud está en estatus 3 o 4.</li>
+  <li>Eliminar: solo quien subió el archivo (el permiso 110 es de solo lectura y no elimina), y únicamente mientras el estatus aún permita esa clase de adjunto (soporte en 5, 1 o 9; comprobante en 3 o 4). Es soft-delete.</li>
+  <li>Cada subida y cada eliminación queda en la bitácora con las acciones <code>DOC_UPLOAD</code> y <code>DOC_DELETE</code> (nombre original del archivo y clase).</li>
+  <li><code>doc_view</code> responde 404 «Documento no encontrado» tanto si el documento no existe o fue eliminado como si pertenece a una solicitud que el usuario no puede ver.</li>
+  <li>Los archivos se guardan en <code>_assets/uploads/pagos_extraordinarios/</code> con el id del registro como nombre y se sirven solo por <code>doc_view</code>, que revisa que el usuario pueda ver la solicitud.</li>
+</ul>
+
+<h2>7. Correos</h2>
+<table>
+  <tr><th>Evento</th><th>Cuándo se envía</th><th>Destinatarios</th></tr>
+  <tr><td><code>pago_extra_cxp</code></td><td>Se envía una solicitud nueva, se envía un borrador o se reenvía una rechazada: pendiente de VoBo de CxP. Guardar un borrador no manda correo.</td><td>Activos del evento</td></tr>
+  <tr><td><code>pago_extra_admon</code></td><td>CxP aprueba: pendiente de autorización de Administración.</td><td>Activos del evento</td></tr>
+  <tr><td><code>pago_extra_tesoreria</code></td><td>Admón aprueba: autorizado y pendiente de pago.</td><td>Activos del evento</td></tr>
+  <tr><td>Rechazo</td><td>Cualquier rechazo, con el motivo.</td><td><code>Usuario.Correo</code> del solicitante (se omite si no es válido)</td></tr>
+</table>
+<ul>
+  <li>El correo incluye folio, solicitante, total, motivo y un enlace al detalle. Todo texto de usuario se escapa.</li>
+  <li>Un fallo de envío se registra con <code>error_log</code> pero nunca revierte la transición ya confirmada.</li>
+  <li><strong>MODO PRUEBAS</strong>: el script SQL siembra un destinatario de prueba (alejandro.martinez@totalgas.com) en los tres eventos, así que hoy todos los avisos de etapa llegan solo a esa cuenta.</li>
+</ul>
+
+<h2>8. Captura, lista, impresión y exportación</h2>
+<h3>Formulario de captura</h3>
+<ul>
+  <li>Tipo de solicitud y motivo se eligen con tarjetas. Cada renglón es una tarjeta numerada con su monto; se puede duplicar (sin el folio de factura) o quitar. Un renglón nuevo hereda empresa y centro de costos del primero. En modo Individual solo hay un renglón.</li>
+  <li><strong>Obligatorios</strong> (marcados con <span style="color:#dc3545;font-weight:700">*</span>): motivo (y su texto si es "Otros"), empresa, centro de costos, proveedor, monto mayor a cero con máximo 2 decimales, fecha de pago requerida y descripción del concepto. Opcionales: factura, fecha de factura, orden de compra y "¿Por qué es urgente?" (texto libre, sin niveles).</li>
+  <li><strong>Cargar XML CFDI</strong> en cada renglón: se lee en el navegador y llena proveedor (emisor), monto (total), factura (serie y folio, o UUID), fecha y concepto. El XML no se sube ni se adjunta solo; si se quiere como soporte se adjunta aparte.</li>
+  <li>Botones: <em>Guardar borrador</em> (solo en alta o al continuar un borrador) y <em>Enviar solicitud</em> / <em>Reenviar</em>. El error de validación sale en un aviso arriba con el número de renglón.</li>
+</ul>
+<h3>Lista de solicitudes</h3>
+<ul>
+  <li>Chips: <strong>Por atender</strong> (lo que le toca al usuario según su permiso), <strong>Mis solicitudes</strong> y <strong>Todas</strong> (solo con 110). Abre en "Por atender" si hay algo pendiente; si no, en "Mis solicitudes".</li>
+  <li>Filtros: estatus, empresa, motivo, fechas desde/hasta y búsqueda por folio, solicitante o motivo. Se aplican en el navegador. Con el filtro de empresa una solicitud múltiple aparece si alguno de sus renglones es de esa empresa, pero el total mostrado es el de toda la solicitud.</li>
+  <li>Botones por fila según permiso y estatus: Ver, <strong>VoBo CxP</strong> (107, estatus 1), <strong>Autorizar</strong> (108, estatus 2), <strong>Pagar</strong> (109, estatus 3), editar o continuar borrador (dueño, estatus 5 o 9) y cancelar (dueño, estatus 5, 1, 2 o 9). VoBo, Autorizar y Pagar abren el modal correspondiente; al pagar se redirige al detalle para subir el comprobante.</li>
+</ul>
+<h3>Impresión y exportación</h3>
+<ul>
+  <li><strong>Impresión</strong> (<code>/&lt;id&gt;/print/</code>): formato imprimible sin layout, réplica del Excel original, con firmas de CxP y Admón (aprobaciones activas), datos del pago y cuenta bancaria. Misma visibilidad que el detalle. Si la solicitud no está Autorizada ni Pagada muestra un aviso con el estatus.</li>
+  <li><strong>Exportar a Excel</strong> (<code>/export/</code>): .xlsx con una fila por renglón y las columnas folio, fecha, empresa, centro de costos, proveedor, factura, fecha de factura, descripción, monto, motivo, estatus y fecha de pago. Lleva los mismos filtros activos de la lista, pero el servidor los vuelve a aplicar sobre lo que el usuario puede ver, así que nadie exporta más de lo que ve. Con filtro de empresa solo salen los renglones de esa empresa. El texto de usuario se escribe como cadena explícita para evitar inyección de fórmulas.</li>
+</ul>
+
+<h2 class="ambar">9. Despliegue y pendientes</h2>
+<ol>
+  <li><strong>SQL</strong> <code>docs/sql/pagos_extraordinarios_schema.sql</code>: ya se corrió en TG (comprobado con consultas de solo lectura: 7 tablas, 6 motivos, permisos 106 a 110 y los 3 eventos de correo). Si se vuelve a correr, usar SSMS o <code>sqlcmd -f 65001</code> por los literales con acentos; es idempotente. El estatus 5 (borrador) no requiere cambios de BD.</li>
+  <li><strong>Asignar los permisos 106 a 110</strong> a los usuarios correspondientes.</li>
+  <li><strong>Destinatarios reales</strong>: agregar los correos reales en <code>payment_notification_recipients</code> para <code>pago_extra_cxp</code>, <code>pago_extra_admon</code> y <code>pago_extra_tesoreria</code>, y desactivar o borrar el destinatario de prueba.</li>
+  <li><strong>IIS</strong>: <code>_assets/uploads/pagos_extraordinarios</code> está bajo la raíz web y IIS serviría los archivos de forma estática si alguien conoce la ruta. Agregar una regla de bloqueo (request filtering <code>hiddenSegments</code> o una regla de rewrite con respuesta 404) equivalente a la que <code>web.config</code> ya tiene para <code>uploads/tableros</code>.</li>
+  <li>El correo de rechazo va al correo real del solicitante aun en modo pruebas; solo los avisos de etapa se desvían al destinatario sembrado.</li>
+  <li><strong>Verificación realizada</strong>: <code>php -l</code>, pruebas de flujo y de rutas, <code>tools/routes.php lint</code>, parseo de plantillas Twig, <code>node --check</code> del JS y consultas de solo lectura a la BD. El formulario y la lista se probaron con datos de ejemplo. <strong>Falta la prueba end-to-end en navegador</strong> con tres usuarios: captura, borrador, aprobaciones, pago, adjuntos, correos, impresión y exportación.</li>
+  <li><strong>Decisión pendiente</strong>: autoaprobación (un usuario con 106, 107 y 108 completa el flujo hasta autorizar solo). Y confirmar que Tesorería paga solo desde cuentas "Propias" activas.</li>
+</ol>
+</body>
+</html>

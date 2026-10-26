@@ -2850,6 +2850,174 @@ class Supply
         exit;
     }
 
+    // ---- Importación de la programación desde el libro de Excel de Abastos ----
+    // Flujo: 1) upload guarda el libro y devuelve sus hojas, 2) preview lee
+    // la hoja elegida y muestra qué se cargaría, 3) commit inserta solo lo
+    // que todavía no existe. Los tres re-leen el archivo guardado en el
+    // servidor (el cliente solo manda token + nombre de hoja).
+
+    private function scheduling_import_archivo(string $token): ?string
+    {
+        $ruta = $_SESSION['sched_import'][$token] ?? null;
+        return ($ruta && is_file($ruta)) ? $ruta : null;
+    }
+
+    private function scheduling_import_analizar(string $ruta, string $hoja): array
+    {
+        $p = ScheduleExcelImport::parse_sheet($ruta, $hoja);
+        $estaciones = $this->estacionesModel->get_select_stations();
+        $r = ScheduleExcelImport::resolve($p['filas'], [
+            'estaciones'     => $estaciones,
+            'terminales'     => $this->fuelTerminalsModel->get_all(),
+            'transportistas' => $this->fuelCarriersModel->get_all(),
+        ]);
+
+        // Lo que ya está cargado (o se canceló) se omite: por cada llave se descuentan
+        // las filas existentes (así dos líneas iguales en la hoja siguen contando como dos).
+        $existentes = $this->fuelReceptionScheduleModel->get_existing_counts(array_column($r['filas'], 'fecha'));
+        $nombresEst = array_column($estaciones, 'Nombre', 'Codigo');
+        $nombresProv = array_column($this->fuelReceptionScheduleModel->get_proveedores(), 'nombre', 'id');
+        foreach ($r['filas'] as &$f) {
+            $llave = FuelReceptionScheduleModel::llave_importacion($f);
+            if (($existentes['activas'][$llave] ?? 0) > 0) {
+                $existentes['activas'][$llave]--;
+                $f['estado'] = 'ya_existe';
+            } elseif (($existentes['canceladas'][$llave] ?? 0) > 0) {
+                // Alguien la canceló a propósito: subir el mismo archivo no la revive.
+                $existentes['canceladas'][$llave]--;
+                $f['estado'] = 'cancelada';
+            } else {
+                $f['estado'] = 'nueva';
+            }
+            $f['station_nombre'] = $nombresEst[$f['station_code']] ?? '';
+            $f['supplier_nombre'] = $nombresProv[$f['supplier_id']] ?? '';
+        }
+        unset($f);
+
+        return [
+            'filas'                 => $r['filas'],
+            'errores'               => array_merge($p['errores'], $r['errores']),
+            'transportistas_nuevos' => $r['transportistas_nuevos'],
+        ];
+    }
+
+    public function scheduling_import_upload()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $archivo = $_FILES['archivo'] ?? null;
+        if (!$archivo || $archivo['error'] !== UPLOAD_ERR_OK) {
+            json_output(['success' => false, 'message' => 'No se recibió el archivo']);
+            return;
+        }
+        if (strtolower(pathinfo($archivo['name'], PATHINFO_EXTENSION)) !== 'xlsx' || $archivo['size'] > 20 * 1024 * 1024) {
+            json_output(['success' => false, 'message' => 'Debe ser un .xlsx de máximo 20 MB']);
+            return;
+        }
+
+        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'sched_import';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+        // Limpieza de libros de importaciones anteriores (más de un día).
+        foreach (glob($dir . DIRECTORY_SEPARATOR . '*.xlsx') ?: [] as $viejo) {
+            if (filemtime($viejo) < time() - 86400) {
+                @unlink($viejo);
+            }
+        }
+
+        $token = bin2hex(random_bytes(16));
+        $ruta = $dir . DIRECTORY_SEPARATOR . $token . '.xlsx';
+        if (!move_uploaded_file($archivo['tmp_name'], $ruta)) {
+            json_output(['success' => false, 'message' => 'No se pudo guardar el archivo']);
+            return;
+        }
+        try {
+            $hojas = ScheduleExcelImport::sheet_names($ruta);
+        } catch (Throwable $e) {
+            @unlink($ruta);
+            json_output(['success' => false, 'message' => 'No se pudo leer el libro de Excel']);
+            return;
+        }
+        $_SESSION['sched_import'] = [$token => $ruta];
+        json_output(['success' => true, 'token' => $token, 'hojas' => $hojas, 'archivo' => $archivo['name']]);
+    }
+
+    public function scheduling_import_preview()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $ruta = $this->scheduling_import_archivo((string)($_POST['token'] ?? ''));
+        $hoja = (string)($_POST['hoja'] ?? '');
+        if (!$ruta || $hoja === '') {
+            json_output(['success' => false, 'message' => 'Sube el libro y elige una hoja']);
+            return;
+        }
+        try {
+            $res = $this->scheduling_import_analizar($ruta, $hoja);
+        } catch (Throwable $e) {
+            error_log('scheduling_import_preview: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'No se pudo leer la hoja']);
+            return;
+        }
+        json_output(['success' => true] + $res);
+    }
+
+    public function scheduling_import_commit()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $ruta = $this->scheduling_import_archivo((string)($_POST['token'] ?? ''));
+        $hoja = (string)($_POST['hoja'] ?? '');
+        if (!$ruta || $hoja === '') {
+            json_output(['success' => false, 'message' => 'Sube el libro y elige una hoja']);
+            return;
+        }
+        try {
+            $res = $this->scheduling_import_analizar($ruta, $hoja);
+            if ($res['errores']) {
+                json_output(['success' => false, 'message' => 'La hoja tiene filas con error; corrígelas y vuelve a subirla', 'errores' => $res['errores']]);
+                return;
+            }
+            $nuevas = array_values(array_filter($res['filas'], fn($f) => $f['estado'] === 'nueva'));
+
+            // Transportistas que no existían: se dan de alta y se enlazan por nombre normalizado.
+            $creados = [];
+            foreach ($nuevas as &$f) {
+                if ($f['carrier_id'] === null && $f['carrier_nombre'] !== '') {
+                    $k = ScheduleExcelImport::norm($f['carrier_nombre']);
+                    if (!isset($creados[$k])) {
+                        $existente = $this->fuelCarriersModel->find_by_name($f['carrier_nombre']);
+                        $creados[$k] = $existente ? (int)$existente['id'] : $this->fuelCarriersModel->add($f['carrier_nombre']);
+                    }
+                    $f['carrier_id'] = $creados[$k];
+                }
+            }
+            unset($f);
+
+            $insertadas = $this->fuelReceptionScheduleModel->import_rows($nuevas, (int)($_SESSION['tg_user']['Id'] ?? 0));
+        } catch (Throwable $e) {
+            error_log('scheduling_import_commit: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'No se pudo importar; no se guardó nada']);
+            return;
+        }
+        json_output([
+            'success'    => true,
+            'insertadas' => $insertadas,
+            'omitidas'   => count($res['filas']) - $insertadas,
+            'filas'      => $res['filas'],
+        ]);
+    }
+
     public function scheduling_day_data()
     {
         header('Content-Type: application/json');

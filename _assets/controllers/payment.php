@@ -3859,6 +3859,13 @@ class Payment
 
             $rfc = $this->limpiar_texto_layout((string)$grupo['rfc'], 13);
 
+            // MGC está dado de alta en el portal Banorte con su RFC como ID Tercero;
+            // el IdBeneficiario del catálogo (numérico) es de Santander y Banorte
+            // lo rechaza con "La clave del proveedor no es válida".
+            if ((int)$grupo['proveedor_codigo'] === self::PROVIDER_COD_MGC && $rfc !== '') {
+                $clave_id = $rfc;
+            }
+
             // ✅ Formato Banorte pago a proveedores (11 campos separados por TAB):
             // OPERACION | CLAVE ID | CUENTA ORIGEN | CUENTA CLABE/DESTINO | IMPORTE
             // | REFERENCIA | DESCRIPCION | RFC | IVA | FECHA APLICACION | INSTRUCCION DE PAGO
@@ -5348,7 +5355,220 @@ class Payment
 
     public function import_invoices()
     {
-        echo $this->twig->render($this->route . 'import_invoices.html');
+        $emisores = $this->facturasRecibidasModel->emisores_con_facturas();
+        $stations = array_values(array_filter(
+            $this->estacionesModel->get_stations(),
+            fn($s) => (int)$s['Codigo'] > 0
+        ));
+        echo $this->twig->render($this->route . 'import_invoices.html', compact('emisores', 'stations'));
+    }
+
+    // Único usuario que ve el monitoreo de importaciones (consulta pesada; no se ofrece a los demás).
+    public const MONITOR_IMPORTACION_USER_IDS = [6296]; // alejandro.martinez
+
+    private function es_usuario_monitor_importacion(): bool
+    {
+        return in_array((int)($_SESSION['tg_user']['Id'] ?? 0), self::MONITOR_IMPORTACION_USER_IDS, true);
+    }
+
+    /**
+     * Monitoreo de importaciones de un mes (?mes=YYYY-MM): por día y por proveedor, aplicativo vs correo/otros.
+     * Solo para MONITOR_IMPORTACION_USER_IDS; para cualquier otro usuario no consulta la base.
+     */
+    public function import_monitor()
+    {
+        header('Content-Type: application/json');
+        if (!$this->es_usuario_monitor_importacion()) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Sin acceso']);
+            return;
+        }
+
+        $mes = $_GET['mes'] ?? date('Y-m');
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mes)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Mes inválido']);
+            return;
+        }
+        $desde = $mes . '-01';
+        $hasta = date('Y-m-d', strtotime("$desde +1 month"));   // exclusivo
+
+        echo json_encode(['success' => true, 'mes' => $mes] + $this->facturasRecibidasModel->monitor_importacion($desde, $hasta));
+    }
+
+    /**
+     * Búsqueda de facturas importadas (tab "Búsqueda" de import_invoices). Devuelve JSON.
+     */
+    public function search_invoices_table()
+    {
+        header('Content-Type: application/json');
+        $limite = 1000;
+        $rows = $this->facturasRecibidasModel->search_invoices([
+            'emisor_rfc'  => trim($_POST['emisor_rfc'] ?? ''),
+            'codgas'      => trim($_POST['codgas'] ?? ''),
+            'q'           => trim($_POST['q'] ?? ''),
+            'from'        => $_POST['from'] ?? '',
+            'until'       => $_POST['until'] ?? '',
+            'campo_fecha' => $_POST['campo_fecha'] ?? 'fecha',
+        ], $limite);
+
+        $truncado = count($rows) > $limite;
+        if ($truncado) {
+            $rows = array_slice($rows, 0, $limite);
+        }
+        echo json_encode(['success' => true, 'data' => $rows, 'truncado' => $truncado, 'limite' => $limite]);
+    }
+
+    /**
+     * Sirve el PDF/XML de una factura importada. ?id=&tipo=pdf|xml&download=1 para forzar descarga.
+     */
+    public function search_invoice_file()
+    {
+        $id   = (int)($_GET['id'] ?? 0);
+        $tipo = $_GET['tipo'] ?? 'pdf';
+        if ($id <= 0 || !in_array($tipo, ['pdf', 'xml'], true)) {
+            http_response_code(400);
+            echo 'Parámetros inválidos';
+            return;
+        }
+
+        $rutas = $this->facturasRecibidasModel->rutas_archivos($id);
+        $ruta = $tipo === 'pdf' ? ($rutas['RutaArchivo'] ?? '') : ($rutas['RutaXml'] ?? '');
+        if (!$ruta) {
+            http_response_code(404);
+            echo 'Archivo no encontrado';
+            return;
+        }
+
+        $ruta = $this->normalizar_ruta_factura($ruta);
+        if (strpos($ruta, '..') !== false || stripos($ruta, self::FACTURAS_BASE_DIR) !== 0) {
+            http_response_code(403);
+            echo 'Archivo fuera del directorio permitido: ' . $ruta;
+            return;
+        }
+        if (!is_file($ruta)) {
+            http_response_code(404);
+            echo 'El archivo no existe en este servidor: ' . basename($ruta);
+            return;
+        }
+        if (!is_readable($ruta)) {
+            http_response_code(403);
+            echo 'Sin permisos de lectura sobre el archivo: ' . basename($ruta);
+            return;
+        }
+        $real = $ruta;
+
+        $disposition = !empty($_GET['download']) ? 'attachment' : 'inline';
+        header('Content-Type: ' . ($tipo === 'pdf' ? 'application/pdf' : 'text/xml'));
+        header('Content-Disposition: ' . $disposition . '; filename="' . basename($real) . '"');
+        header('Content-Length: ' . filesize($real));
+        readfile($real);
+        exit;
+    }
+
+    private const FACTURAS_BASE_DIR = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\';
+    private const ZIP_MAX_FACTURAS  = 500;
+
+    /**
+     * Convierte la ruta guardada en BD a ruta absoluta de Windows.
+     * La restricción por prefijo (FACTURAS_BASE_DIR) y sin ".." la aplica quien la usa: no se usa
+     * realpath() porque si la carpeta de adjuntos es un enlace/junction a otra unidad, la sacaría del base.
+     */
+    private function normalizar_ruta_factura(string $ruta): string
+    {
+        $ruta = str_replace('/', DIRECTORY_SEPARATOR, $ruta);
+        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
+        // Rutas relativas (attachments\...) → carpeta base del importador de correos
+        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
+            $ruta = self::FACTURAS_BASE_DIR . 'correoFacturas\\' . ltrim($ruta, '\\');
+        }
+        return $ruta;
+    }
+
+    /**
+     * Descarga en un ZIP los PDF de las facturas que coinciden con los filtros de la búsqueda (máx. 500).
+     * Estructura: Proveedor/Estacion/Fecha_Serie-Folio_UUID.pdf + LEEME.txt con las que no se pudieron incluir.
+     */
+    public function search_invoices_zip()
+    {
+        $max = self::ZIP_MAX_FACTURAS;
+        $rows = $this->facturasRecibidasModel->search_invoices([
+            'emisor_rfc'  => trim($_POST['emisor_rfc'] ?? ''),
+            'codgas'      => trim($_POST['codgas'] ?? ''),
+            'q'           => trim($_POST['q'] ?? ''),
+            'from'        => $_POST['from'] ?? '',
+            'until'       => $_POST['until'] ?? '',
+            'campo_fecha' => $_POST['campo_fecha'] ?? 'fecha',
+        ], $max);
+
+        if (!$rows) {
+            http_response_code(404);
+            echo 'La búsqueda no tiene facturas.';
+            return;
+        }
+        if (count($rows) > $max) {
+            http_response_code(400);
+            echo "La búsqueda tiene más de $max facturas; afina los filtros.";
+            return;
+        }
+        if (!class_exists('ZipArchive')) {
+            http_response_code(500);
+            echo 'La extensión zip de PHP no está habilitada en el servidor.';
+            return;
+        }
+
+        set_time_limit(0);
+        $rutas = $this->facturasRecibidasModel->rutas_pdf_por_ids(array_column($rows, 'Id'));
+        $limpiar = fn($s) => trim(preg_replace('/[^\w\-. ]+/u', '', (string)$s)) ?: 'SIN_DATO';
+
+        $tmp = tempnam(sys_get_temp_dir(), 'facz');
+        $zip = new ZipArchive();
+        if ($zip->open($tmp, ZipArchive::OVERWRITE) !== true) {
+            @unlink($tmp);
+            http_response_code(500);
+            echo 'No se pudo crear el archivo ZIP.';
+            return;
+        }
+
+        $incluidas = 0;
+        $omitidas = [];
+        $usados = [];
+        foreach ($rows as $r) {
+            $folio = ($r['Serie'] ? $r['Serie'] . '-' : '') . $r['Folio'];
+            $etiqueta = $r['Fecha'] . ' ' . $folio . ' ' . $r['UUID'];
+            $ruta = isset($rutas[(int)$r['Id']]) ? $this->normalizar_ruta_factura($rutas[(int)$r['Id']]) : '';
+            if ($ruta === '') {
+                $omitidas[] = "$etiqueta — sin PDF registrado";
+                continue;
+            }
+            if (strpos($ruta, '..') !== false || stripos($ruta, self::FACTURAS_BASE_DIR) !== 0 || !is_file($ruta) || !is_readable($ruta)) {
+                $omitidas[] = "$etiqueta — el archivo no existe o no es accesible en el servidor";
+                continue;
+            }
+            $nombre = $limpiar($r['EmisorNombre']) . '/' . $limpiar($r['EstacionNombre'] ?: 'SIN_ESTACION') . '/'
+                    . $limpiar($r['Fecha'] . '_' . $folio . '_' . $r['UUID']);
+            $n = $usados[$nombre] = ($usados[$nombre] ?? 0) + 1;
+            $zip->addFile($ruta, $nombre . ($n > 1 ? "_$n" : '') . '.pdf');
+            $incluidas++;
+        }
+
+        if ($omitidas) {
+            $zip->addFromString('LEEME.txt', "Facturas que no se incluyeron (" . count($omitidas) . "):\r\n\r\n" . implode("\r\n", $omitidas));
+        } elseif ($incluidas === 0) {
+            $zip->addFromString('LEEME.txt', 'Sin archivos.');
+        }
+        $zip->close();
+
+        while (ob_get_level()) ob_end_clean();
+        // Cookie que el navegador lee para saber que la descarga arrancó (sin ella, el iframe mostró un error)
+        $token = preg_replace('/\W/', '', $_POST['zip_token'] ?? '');
+        if ($token !== '') setcookie('zip_token', $token, 0, '/');
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="facturas_' . date('Ymd_His') . '.zip"');
+        header('Content-Length: ' . filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
+        exit;
     }
 
 

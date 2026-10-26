@@ -218,6 +218,29 @@ class Commercial{
     
         echo json_encode(array("data" => $data));
     }
+    /** Venta por empresa con tarjetas crédito/débito desglosadas (VentasModel::getCompanyPaymentDesglosado). */
+    function mounth_company_desglosado(){
+        set_time_limit(300);
+        $rows = $this->ventas->getCompanyPaymentDesglosado($_POST['fromDate'], $_POST['untilDate'], $_POST['company'] ?? 0);
+        echo json_encode(array("data" => $rows ?: []));
+    }
+    /** Comparativa Ingresos vs Despachos por empresa y medio de pago (VentasModel::getCompanyConceptosResumen). */
+    function company_conceptos_resumen(){
+        set_time_limit(300);
+        $rows = $this->ventas->getCompanyConceptosResumen($_POST['fromDate'], $_POST['untilDate'], $_POST['company'] ?? 0);
+        echo json_encode(array("data" => $rows ?: []));
+    }
+    /** Desglose de un medio de pago: por concepto o por estación (VentasModel::getCompanyConceptosDetalle). */
+    function company_conceptos_detalle(){
+        set_time_limit(300);
+        $by    = ($_POST['by'] ?? 'concepto') === 'estacion' ? 'estacion' : 'concepto';
+        $lado  = in_array($_POST['lado'] ?? '', ['I', 'D'], true) ? $_POST['lado'] : '';
+        $rows = $this->ventas->getCompanyConceptosDetalle(
+            $_POST['fromDate'], $_POST['untilDate'], $_POST['company'] ?? 0,
+            (string)($_POST['empresa'] ?? ''), (string)($_POST['medio'] ?? ''), $by, $lado, (string)($_POST['concepto'] ?? '')
+        );
+        echo json_encode(array("data" => $rows ?: []));
+    }
     function mounth_estation_table(){
         if($_POST['json'] == 1){
             $dinamicColumns = json_decode($_POST['dinamicColumns'], true);

@@ -124,6 +124,20 @@
                 </div>
             </div>
         </div>
+
+        <!-- BANKAOOL -->
+        <div class="col-md-3 mb-4">
+            <div class="card bank-card shadow-sm h-100" onclick="openUploadModal('BANKAOOL', 'banco_bankaool')">
+                <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
+                    <div style="font-size: 2.5rem; color: #00529b; margin-bottom: 15px;" aria-hidden="true">
+                        <i class="fas fa-university"></i>
+                    </div>
+                    <h5 class="font-weight-bold">BANKAOOL</h5>
+                    <p class="small text-muted">Carga manual de reportes .XLSX</p>
+                    <button class="btn btn-primary btn-sm rounded-pill px-4">Subir Reporte</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ── SECCIÓN: COMISIONES ── -->
@@ -341,6 +355,8 @@
         $('#reportFile').val('');
         if (bank === 'BANORTE') {
             $('#reportFile').attr('accept', '.xls, .xlsx');
+        } else if (bank === 'BANKAOOL') {
+            $('#reportFile').attr('accept', '.xlsx');
         } else if (bank === 'AFIRME') {
             $('#reportFile').attr('accept', '.csv');
         } else {
@@ -362,6 +378,10 @@
         const fileName = (file.name || '').toLowerCase();
         if (bankType === 'BANORTE' && !(fileName.endsWith('.xls') || fileName.endsWith('.xlsx'))) {
             alert("Para BANORTE solo se permiten archivos .xls o .xlsx. El formato .csv no es compatible con la deduplicación.");
+            return;
+        }
+        if (bankType === 'BANKAOOL' && !fileName.endsWith('.xlsx')) {
+            alert("Para Bankaool solo se permiten archivos .xlsx.");
             return;
         }
         if (bankType === 'AFIRME' && !fileName.endsWith('.csv')) {
@@ -395,7 +415,11 @@
                     } catch(e) { console.error(e); }
 
                     if(data.status === 'success') {
-                        const destino = bankType === 'AFIRME' ? ' en Transacciones Afirme' : '';
+                        const destinos = {
+                            AFIRME: ' en Transacciones Afirme',
+                            BANKAOOL: ' en Transacciones Bankaool'
+                        };
+                        const destino = destinos[bankType] || '';
                         alert(`Éxito: ${data.inserted} registros nuevos insertados${destino}. ${data.skipped} duplicados omitidos.`);
                         $('#modalUpload').modal('hide');
                     } else {

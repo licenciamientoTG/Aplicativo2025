@@ -89,6 +89,51 @@ class DespachosModel extends Model
     }
 
     /**
+     * Importe diario de despachos identificados como Bankaool a partir de las 23:00.
+     * La vista de conciliación lo usa únicamente para Villa Ahumada (codgas 31).
+     *
+     * @return list<array{fecha:string,importe:float}>|false
+     */
+    public function get_bankaool_late_dispatch_amounts(int $codgas, string $from, string $until): array|false
+    {
+        $desde = dateToInt($from);
+        $hasta = dateToInt($until);
+        $db = $this->stationDb($codgas);
+        $query = "SELECT
+                    CONVERT(varchar(10), DATEADD(day, -1, CAST(fchtrn AS datetime)), 23) AS fecha,
+                    SUM(mto) AS importe
+                  FROM {$db}.[despachos]
+                  WHERE codgas = ?
+                    AND fchtrn BETWEEN ? AND ?
+                    AND hratrn >= 2300
+                    AND rut LIKE '%BANKAOOL%'
+                  GROUP BY fchtrn
+                  ORDER BY fchtrn";
+
+        return $this->fetchAll($query, [$codgas, $desde, $hasta]);
+    }
+
+    /** Resumen diario de despachos con RUT Bankaool normalizado por fchtrn. */
+    public function get_daily_dispatch_summary(int $codgas, string $from, string $until): array|false
+    {
+        $desde = dateToInt($from);
+        $hasta = dateToInt($until);
+        $db = $this->stationDb($codgas);
+        $query = "SELECT
+                    CONVERT(varchar(10), DATEADD(day, -1, CAST(fchtrn AS datetime)), 23) AS fecha,
+                    COUNT(*) AS cantidad,
+                    SUM(mto) AS importe
+                  FROM {$db}.[despachos]
+                  WHERE codgas = ?
+                    AND fchtrn BETWEEN ? AND ?
+                    AND UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(ISNULL(rut, ''))), ' ', ''), '-', ''), '.', ''), '/', ''), '_', '')) LIKE '%BANKAOOL%'
+                  GROUP BY fchtrn
+                  ORDER BY fchtrn";
+
+        return $this->fetchAll($query, [$codgas, $desde, $hasta]);
+    }
+
+    /**
      * Turno anterior y siguiente dentro de la secuencia 11 → 21 → 31 → 41 → 11.
      *
      * @return array{previous:int,next:int}
@@ -977,11 +1022,12 @@ class DespachosModel extends Model
      * @param int|null    $dispatchFrom  Acota además por fecha de despacho (solo con ambos extremos).
      * @param int|null    $dispatchUntil
      */
-    private function dispatchesCte(int $from, int $until, string $where, string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null): string
+    private function dispatchesCte(int $from, int $until, string $where, string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null, int $codgas = 0, string $innerWhere = ''): string
     {
         $movFrom  = $from - 1;
         $movUntil = $until + 1;
-
+        // Sin esto la subconsulta agrupa los movimientos de las ~40 estaciones aunque se pida una.
+        $movCodgas = $codgas !== 0 ? "AND codgas = $codgas" : '';
         $periodWhere = $periodMode === 'invoice'
             ? "t3.nro IS NOT NULL AND t3.fch BETWEEN $from AND $until"
             : "t1.fchtrn BETWEEN $from AND $until";
@@ -1004,6 +1050,7 @@ class DespachosModel extends Model
                     $hora AS hora_formateada,
                     SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1) AS turno,
                     t1.nrotrn AS despacho,
+                    t1.codgas AS codgas,
                     t8.den AS producto,
                     t6.abr AS estacion,
                     t7.den AS empresa,
@@ -1037,29 +1084,33 @@ class DespachosModel extends Model
                     $pagoDespacho AS tipo_pago_despacho,
                     t1.tiptrn,
                     t6.cvecli,
-                    ROW_NUMBER() OVER(PARTITION BY t1.nrotrn, t1.codgas ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
+                    -- Desempate determinista: los LEFT JOIN a ClientesValores (28 crédito / 127 débito)
+                    -- y a MovimientosTar (varios bancos) pueden duplicar el despacho; sin esto la fila
+                    -- que sobrevive (rn = 1) cambiaba entre el conteo, la página y el Excel.
+                    -- Crédito (28) gana sobre débito (127), igual que en el CASE de tipo de cliente.
+                    ROW_NUMBER() OVER(PARTITION BY t1.nrotrn, t1.codgas ORDER BY t1.fchtrn ASC, t1.hratrn ASC, t10.codval ASC, t12.codbco ASC) AS rn
                     FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                    LEFT JOIN [SG12].[dbo].Clientes t2 ON t1.codcli = t2.cod
-                    LEFT JOIN [SG12].[dbo].DocumentosC t3 ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
-                    LEFT JOIN [SG12].[dbo].Clientes t5 ON t3.codopr = t5.cod
-                    LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
-                    LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
-                    LEFT JOIN [SG12].[dbo].[Productos] t8 ON t1.codprd = t8.cod
-                    LEFT JOIN [SG12].[dbo].[Responsables] t9 ON t1.codres = t9.cod
-                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli AND t10.codest != -1 AND t10.codval IN (127, 28)
-                    LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 ON t1.codcli = t11.codcli AND t1.nroveh = t11.nroveh
+                    LEFT JOIN [SG12].[dbo].Clientes t2 WITH (NOLOCK) ON t1.codcli = t2.cod
+                    LEFT JOIN [SG12].[dbo].DocumentosC t3 WITH (NOLOCK) ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
+                    LEFT JOIN [SG12].[dbo].Clientes t5 WITH (NOLOCK) ON t3.codopr = t5.cod
+                    LEFT JOIN [SG12].[dbo].Gasolineras t6 WITH (NOLOCK) ON t1.codgas = t6.cod
+                    LEFT JOIN [SG12].[dbo].[Empresas] t7 WITH (NOLOCK) ON t6.codemp = t7.cod
+                    LEFT JOIN [SG12].[dbo].[Productos] t8 WITH (NOLOCK) ON t1.codprd = t8.cod
+                    LEFT JOIN [SG12].[dbo].[Responsables] t9 WITH (NOLOCK) ON t1.codres = t9.cod
+                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 WITH (NOLOCK) ON t1.codcli = t10.codcli AND t10.codest != -1 AND t10.codval IN (127, 28)
+                    LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 WITH (NOLOCK) ON t1.codcli = t11.codcli AND t1.nroveh = t11.nroveh
                     LEFT JOIN (
                         SELECT nrotrn, SUM(mto) AS mto, codbco, codgas
                         FROM [SG12].[dbo].MovimientosTar WITH (NOLOCK)
-                        WHERE tipmov != 86 AND tipmov != 97 AND mto != 0 AND fchmov BETWEEN $movFrom AND $movUntil
+                        WHERE tipmov != 86 AND tipmov != 97 AND mto != 0 AND fchmov BETWEEN $movFrom AND $movUntil $movCodgas
                         GROUP BY nrotrn, codgas, codbco
                     ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas
-                    LEFT JOIN [SG12].[dbo].Valores t13 ON t12.codbco = t13.cod
-                    LEFT JOIN [SG12].[dbo].[EfectosC] t14 ON t3.tip = t14.tipope AND t3.subope = t14.subope
+                    LEFT JOIN [SG12].[dbo].Valores t13 WITH (NOLOCK) ON t12.codbco = t13.cod
+                    LEFT JOIN [SG12].[dbo].[EfectosC] t14 WITH (NOLOCK) ON t3.tip = t14.tipope AND t3.subope = t14.subope
                     WHERE
                         t1.mto != 0 AND
                         t1.tiptrn NOT IN (65, 74) AND
-                        $periodWhere$dispatchWhere $where
+                        $periodWhere$dispatchWhere $where $innerWhere
                 )";
     }
 
@@ -1078,7 +1129,7 @@ class DespachosModel extends Model
     public function control_dispatches2(int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed): array|false
     {
         $where = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
-        $cte   = $this->dispatchesCte($from, $until, $where);
+        $cte   = $this->dispatchesCte($from, $until, $where, 'dispatch', null, null, $codgas);
 
         return $this->fetchAll("$cte
             SELECT *
@@ -1190,40 +1241,57 @@ class DespachosModel extends Model
         int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed,
         int $start, int $length, string $orderColKey, string $orderDir,
         array $columnSearches = [], string $globalSearch = '',
-        string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null
+        string $periodMode = 'dispatch', ?int $dispatchFrom = null, ?int $dispatchUntil = null,
+        int $totalHint = 0
     ): array {
         $columns = DespachosSql::COLUMNAS_REPORTE;
         $where   = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
-        $cte     = $this->dispatchesCte($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
 
-        // recordsTotal: sin la búsqueda de DataTables (los filtros del reporte ya van en el CTE).
-        $totalRow     = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1", []);
-        $recordsTotal = (int) ($totalRow[0]['c'] ?? 0);
-
-        [$searchWhere, $params] = DespachosSql::busqueda($columns, $columnSearches, $globalSearch);
-
-        if ($searchWhere === '') {
-            $recordsFiltered = $recordsTotal;
-        } else {
-            $filteredRow     = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere", $params);
-            $recordsFiltered = (int) ($filteredRow[0]['c'] ?? 0);
-        }
-
-        [$orderExpr, $orderDirection] = DespachosSql::orden($columns, $orderColKey, $orderDir);
+        // Filtros exactos (despacho, cliente, fecha) van antes del ROW_NUMBER; el resto, como LIKE sobre el CTE.
+        [$innerWhere, $columnSearches] = DespachosSql::filtrosExactos($columnSearches);
+        [$searchWhere, $params] = DespachosSql::busqueda($columns, $columnSearches, $globalSearch, DespachosSql::COLUMNAS_BUSQUEDA_GLOBAL);
 
         // OFFSET/FETCH con enteros ya validados (sin parámetros: evita problemas de tipo en sqlsrv).
         $start  = max(0, $start);
-        $length = $length > 0 ? $length : 1000; // nunca traer "todos"
+        $length = $length > 0 ? min($length, 1000) : 1000; // nunca traer "todos"
+        [$orderExpr, $orderDirection] = DespachosSql::orden($columns, $orderColKey, $orderDir);
 
+        // Página + conteo filtrado en una sola pasada (COUNT(*) OVER()).
+        $cteFiltrado = $this->dispatchesCte($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil, $codgas, $innerWhere);
         $data = $this->sql->select(
-            "$cte SELECT * FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere
-             ORDER BY $orderExpr $orderDirection, despacho ASC
+            "$cteFiltrado SELECT *, COUNT(*) OVER() AS total_filtrado FROM CTE WHERE rn = 1 $searchWhere
+             ORDER BY $orderExpr $orderDirection, codgas ASC, despacho ASC
              OFFSET $start ROWS FETCH NEXT $length ROWS ONLY",
             $params
-        );
+        ) ?: [];
+
+        if ($data !== []) {
+            $recordsFiltered = (int) $data[0]['total_filtrado'];
+        } elseif ($start === 0) {
+            $recordsFiltered = 0;
+        } else {
+            // Página fuera de rango (los filtros cambiaron): no hay fila de dónde leer el conteo.
+            $row             = $this->sql->select("$cteFiltrado SELECT COUNT(*) AS c FROM CTE WHERE rn = 1 $searchWhere", $params);
+            $recordsFiltered = (int) ($row[0]['c'] ?? 0);
+        }
+        foreach ($data as &$fila) {
+            unset($fila['total_filtrado']);
+        }
+        unset($fila);
+
+        // recordsTotal: sin la búsqueda de DataTables (los filtros del reporte ya van en el CTE).
+        if ($searchWhere === '' && $innerWhere === '') {
+            $recordsTotal = $recordsFiltered;
+        } elseif ($totalHint > 0) {
+            $recordsTotal = $totalHint; // lo informó el propio front en el draw anterior
+        } else {
+            $cteTotal     = $this->dispatchesCte($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil, $codgas);
+            $totalRow     = $this->sql->select("$cteTotal SELECT COUNT(*) AS c FROM CTE WHERE rn = 1", []);
+            $recordsTotal = (int) ($totalRow[0]['c'] ?? 0);
+        }
 
         return [
-            'data'            => $data ?: [],
+            'data'            => $data,
             'recordsTotal'    => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
         ];
@@ -1238,11 +1306,12 @@ class DespachosModel extends Model
     public function control_dispatches2_paginated(
         int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed,
         int $start, int $length, string $orderColKey, string $orderDir,
-        array $columnSearches = [], string $globalSearch = ''
+        array $columnSearches = [], string $globalSearch = '', int $totalHint = 0
     ): array {
         return $this->dispatchesPaginated(
             $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch,
+            'dispatch', null, null, $totalHint
         );
     }
 
@@ -1258,12 +1327,12 @@ class DespachosModel extends Model
         int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente,
         int $start, int $length, string $orderColKey, string $orderDir,
         array $columnSearches = [], string $globalSearch = '',
-        ?int $dispatchFrom = null, ?int $dispatchUntil = null
+        ?int $dispatchFrom = null, ?int $dispatchUntil = null, int $totalHint = 0
     ): array {
         return $this->dispatchesPaginated(
             $from, $until, $codgas, $uuid, $tipo_cliente, 2,
             $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch,
-            'invoice', $dispatchFrom, $dispatchUntil
+            'invoice', $dispatchFrom, $dispatchUntil, $totalHint
         );
     }
 
@@ -1283,14 +1352,16 @@ class DespachosModel extends Model
     ): Generator {
         $columns = DespachosSql::COLUMNAS_REPORTE;
         $where   = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
-        $cte     = $this->dispatchesCte($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil);
 
-        [$searchWhere, $params]       = DespachosSql::busqueda($columns, $columnSearches, $globalSearch);
+        [$innerWhere, $columnSearches] = DespachosSql::filtrosExactos($columnSearches);
+        $cte = $this->dispatchesCte($from, $until, $where, $periodMode, $dispatchFrom, $dispatchUntil, $codgas, $innerWhere);
+
+        [$searchWhere, $params]       = DespachosSql::busqueda($columns, $columnSearches, $globalSearch, DespachosSql::COLUMNAS_BUSQUEDA_GLOBAL);
         [$orderExpr, $orderDirection] = DespachosSql::orden($columns, $orderColKey, $orderDir);
 
         $stmt = $this->sql->getConnection()->prepare(
             "$cte SELECT * FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere
-             ORDER BY $orderExpr $orderDirection, despacho ASC"
+             ORDER BY $orderExpr $orderDirection, codgas ASC, despacho ASC"
         );
         $stmt->execute($params);
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1341,7 +1412,7 @@ class DespachosModel extends Model
     public function factura_global_summary(int $from, int $until, int $codgas, int $uuid, string|int $tipo_cliente, int $billed): array
     {
         $where = DespachosSql::filtrosReporte($codgas, $uuid, $billed, $tipo_cliente);
-        $cte   = $this->dispatchesCte($from, $until, $where);
+        $cte   = $this->dispatchesCte($from, $until, $where, 'dispatch', null, null, $codgas);
         $query = "$cte
                   SELECT
                       COALESCE(tipo_pago, tipo_pago_despacho) AS tipo_pago,

@@ -81,6 +81,25 @@ function cerrarSesion(id) {
   );
 }
 
+function eliminarSesion(id, btn) {
+  const nombre = $(btn).data("nombre") || "#" + id;
+  alertify.confirm(
+    "Eliminar arqueo",
+    "¿Eliminar el arqueo «" + $("<div>").text(nombre).html() + "»? Dejará de mostrarse en el sistema.",
+    () => {
+      ajaxJson(routeUrl('arqueo.eliminar', { sesion_id: id }), {}).then((res) => {
+        if (res.success) {
+          toastr.success("Arqueo eliminado.");
+          setTimeout(() => location.reload(), 600);
+        } else {
+          toastr.error(res.message || "No se pudo eliminar.");
+        }
+      });
+    },
+    () => {}
+  );
+}
+
 /* ===================== Captura de caja ===================== */
 
 /* Total de una denominación según su tipo (igual que Arqueo::total_denominacion). */
@@ -313,6 +332,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (window.jQuery && $("#tabla_sesiones").length) {
     $("#tabla_sesiones").DataTable({
       order: [[0, "desc"]],
+      columnDefs: [{ targets: 0, type: "num" }], // "10" debe ir antes que "9"
       language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" },
     });
   }

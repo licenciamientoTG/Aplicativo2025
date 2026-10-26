@@ -111,16 +111,8 @@ $this->db->beginTransaction() / commit() / rollBack()
 - `index.php` checks session before dispatching to controllers
 - Logout handled by `_assets/includes/logout.inc.php`
 
-### Composer Dependencies
-
-- `twig/twig ^3.0` — templating
-- `phpmailer/phpmailer ^6.9.1` — email via Gmail SMTP
-- `phpoffice/phpspreadsheet ^2.2` — Excel export/import
-
 ### Frontend
 
-- Bootstrap Material Design + jQuery (bundled in `_assets/js/`)
-- FontAwesome icons (`_assets/css/fontawesome-free/`)
 - Controller-specific JS files mirror the controller name (e.g., `_assets/js/supply.js`)
 - No JS bundler or transpiler — files are served directly
 

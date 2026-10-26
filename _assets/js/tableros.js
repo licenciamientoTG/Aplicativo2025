@@ -59,6 +59,7 @@
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
   const pageMode = app.dataset.pageMode || 'boards';
+  const lastBoardStorageKey = 'tableros-last-board-id';
   let noticeTimer = 0;
   let filePreviewObjectUrl = '';
   let filePreviewRequest = 0;
@@ -66,6 +67,7 @@
   let activePreviewFile = null;
   let activePreviewItem = null;
   let imageStageObserver = null;
+  let groupHeadingResizeObserver = null;
   const els = {
     boardSelect: document.getElementById('boardSelect'),
     workspaceSelect: document.getElementById('workspaceSelect'),
@@ -92,6 +94,7 @@
     duplicateBoardDialog: document.getElementById('duplicateBoardDialog'),
     duplicateBoardForm: document.getElementById('duplicateBoardForm'),
     boardSearch: document.getElementById('boardSearch'),
+    boardSearchColumn: document.getElementById('boardSearchColumn'),
     boardItemCount: document.getElementById('boardItemCount'),
     boardTableContainer: document.getElementById('boardTableContainer'),
     boardTableStatus: document.getElementById('boardTableStatus'),
@@ -207,6 +210,8 @@
     filterDraft: [],
     calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     collapsedGroups: new Set(),
+    columnMenuState: { filters: [], sort: null, groupBy: null, collapsedColumns: new Set() },
+    columnDialogAction: null,
     draggedItemId: '',
     draggedItemIds: [],
     suppressItemClickUntil: 0,
@@ -239,6 +244,36 @@
     recycleMode: '',
     recycleEntries: []
   };
+  const itemCommentSelectedStickers = [];
+  const itemCommentSelectedFiles = [];
+  const itemCommentPendingByItem = new Map();
+  let groupSortable = null;
+  let navSortables = [];
+  let itemSortables = [];
+  let kanbanSortables = [];
+  let navOrderSaving = false;
+  let itemOrderSaving = false;
+  let suppressNavClickUntil = 0;
+
+  async function saveNavOrder(entityType, entityId, anchorId, placement, targetParentId) {
+    if (navOrderSaving) return;
+    navOrderSaving = true;
+    navSortables.forEach((sortable) => sortable.option('disabled', true));
+    try {
+      const payload = { entity_type: entityType, entity_id: entityId, anchor_id: anchorId, placement };
+      if (targetParentId !== undefined) payload.target_parent_id = targetParentId;
+      const result = await post(apiUrl('reorder_structure'), payload);
+      ['workspaces', 'folders', 'boards'].forEach((key) => { if (Array.isArray(result.data?.[key])) state[key] = result.data[key]; });
+      setNotice('Orden guardado.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error, 'No se pudo guardar el orden.'), 'error');
+    } finally {
+      navOrderSaving = false;
+      renderBoardOptions();
+      const selector = entityType === 'board' ? '[data-nav-board]' : '[data-toggle-folder]';
+      document.querySelector(`[data-nav-entity-id="${String(entityId)}"] ${selector}`)?.focus({ preventScroll: true });
+    }
+  }
   let shareUserSearchRequest = 0;
   let boardMembersRequest = 0;
   let selectedShareUser = null;
@@ -294,6 +329,7 @@
         const payload = { entity_type: entityType, entity_id: entityId, ...(boardId ? { board_id: boardId } : {}) };
         await post(archive ? apiUrl('archive') : apiUrl('trash'), payload);
       }
+      if (entityType === 'file' && els.filePreviewDialog?.open) closeDialog(els.filePreviewDialog);
       if (action === 'trash' || archive) {
         if (entityType === 'board' && String(state.board?.id) === String(entityId)) {
           state.board = null;
@@ -586,7 +622,7 @@
       if (!select) return;
       const previous = state.selectedWorkspaceId || select.value;
       select.replaceChildren();
-      state.workspaces.filter((workspace) => !workspace.shared_only).forEach((workspace) => {
+      state.workspaces.filter((workspace) => canCreateInWorkspace(workspace)).forEach((workspace) => {
         const option = makeElement('option', '', workspace.name || 'Espacio sin nombre');
         option.value = String(workspace.id);
         select.append(option);
@@ -640,8 +676,8 @@
 
   function openCreateFolder(workspaceId = state.selectedWorkspaceId, parentFolderId = '') {
     const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
-    if (!workspace || workspace.shared_only) {
-      setNotice('Solo puedes crear carpetas en espacios de trabajo a los que perteneces.', 'error');
+    if (!canCreateInWorkspace(workspace)) {
+      setNotice('No tienes permiso para crear carpetas en este espacio de trabajo.', 'error');
       return;
     }
     populateWorkspaceSelectors();
@@ -660,7 +696,7 @@
   }
 
   function openCreateBoard(workspaceId = state.selectedWorkspaceId, folderId = '') {
-    const eligible = state.workspaces.filter((workspace) => !workspace.shared_only);
+    const eligible = state.workspaces.filter((workspace) => canCreateInWorkspace(workspace));
     if (!eligible.length) {
       openDialog(els.createWorkspaceDialog);
       setNotice('Crea un espacio de trabajo antes de crear tableros.', 'info');
@@ -677,6 +713,8 @@
   }
 
   function renderBoardNav() {
+    navSortables.forEach((sortable) => sortable.destroy());
+    navSortables = [];
     const list = document.getElementById('boardNavList');
     const search = document.getElementById('boardNavSearch');
     if (!list || !search) return;
@@ -704,14 +742,14 @@
     const workspace = state.workspaces.find((entry) => String(entry.id) === workspaceId);
     const rootFolderButton = document.getElementById('navCreateFolder');
     const rootBoardButton = document.getElementById('navCreateBoard');
-    if (rootFolderButton) rootFolderButton.hidden = !workspace || Boolean(workspace.shared_only);
-    if (rootBoardButton) rootBoardButton.hidden = !workspace || Boolean(workspace.shared_only);
+    if (rootFolderButton) rootFolderButton.hidden = !canCreateInWorkspace(workspace);
+    if (rootBoardButton) rootBoardButton.hidden = !canCreateInWorkspace(workspace);
     if (!workspace) {
       list.append(makeElement('p', 'boards-nav-empty', state.workspaces.length ? 'No hay contenido en este espacio.' : 'Crea un espacio de trabajo para empezar.'));
       return;
     }
     const workspaceFolders = state.folders.filter((folder) => String(folder.workspace_id) === workspaceId);
-    const restricted = Boolean(workspace.shared_only);
+    const restricted = !canCreateInWorkspace(workspace);
     const folderNodes = new Map(workspaceFolders.map((folder) => [String(folder.id), { ...folder, children: [], boards: [] }]));
     const roots = [];
     folderNodes.forEach((folder) => {
@@ -725,7 +763,76 @@
       (parent ? parent.boards : rootBoards).push(board);
     });
     const matchesText = (label) => !query || String(label || '').toLocaleLowerCase('es-MX').includes(query);
-    const renderBoard = (board, depth) => {
+    const attachNavHandle = (node, entity, entityType, container) => {
+      node.dataset.navEntityId = String(entity.id);
+      node.dataset.canReorder = entity.can_reorder ? '1' : '0';
+      if (!entity.can_reorder || query || navOrderSaving) return;
+      node.addEventListener('keydown', (event) => {
+        if (node.dataset.canReorder !== '1' || !['ArrowUp', 'ArrowDown'].includes(event.key)
+          || event.target.closest('.boards-nav-folder-actions')) return;
+        event.preventDefault();
+        const siblings = [...container.children];
+        const index = siblings.indexOf(node);
+        const direction = event.key === 'ArrowUp' ? -1 : 1;
+        const anchor = siblings[index + direction];
+        if (anchor) void saveNavOrder(entityType, entity.id, anchor.dataset.navEntityId, direction < 0 ? 'before' : 'after');
+      });
+    };
+    const makeNavList = (parent, entityType, parentFolderId = null) => {
+      const container = makeElement('div', 'boards-nav-siblings');
+      container.dataset.navParentId = parentFolderId == null ? '' : String(parentFolderId);
+      if (parentFolderId == null) container.dataset.navRoot = '1';
+      parent.append(container);
+      if (window.Sortable && !query && !navOrderSaving) {
+        navSortables.push(window.Sortable.create(container, {
+          draggable: '[data-nav-entity-id]',
+          group: { name: `tableros-${entityType}`, pull: true, put: true },
+          handle: entityType === 'board' ? '.boards-nav-board' : '.boards-nav-folder-row',
+          filter: '.boards-nav-folder-actions, .boards-nav-folder-actions *',
+          preventOnFilter: false,
+          animation: 180, forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
+          ghostClass: 'boards-sortable-ghost',
+          onStart: () => { suppressNavClickUntil = Date.now() + 1000; app.dataset.navDraggingType = entityType; app.classList.add('is-nav-dragging'); },
+          onMove: (event) => {
+            navSortables.forEach((sortable) => sortable.el.classList.toggle('is-nav-drop-target', sortable.el === event.to));
+            if (entityType !== 'folder') return true;
+            const movingId = String(event.dragged?.dataset.navEntityId || '');
+            const targetParentId = String(event.to?.dataset.navParentId || '');
+            if (!movingId || !targetParentId) return true;
+            let parent = folderNodes.get(targetParentId);
+            while (parent) {
+              if (String(parent.id) === movingId) return false;
+              parent = parent.parent_folder_id == null ? null : folderNodes.get(String(parent.parent_folder_id));
+            }
+            return true;
+          },
+          onEnd: (event) => {
+            suppressNavClickUntil = Date.now() + 800;
+            app.classList.remove('is-nav-dragging');
+            delete app.dataset.navDraggingType;
+            navSortables.forEach((sortable) => sortable.el.classList.remove('is-nav-drop-target'));
+            const previousParentId = String(event.from?.dataset.navParentId || '');
+            const targetParentId = String(event.to?.dataset.navParentId || '');
+            const changedParent = previousParentId !== targetParentId;
+            if (!changedParent && event.to?.dataset.navDropOnly === '1') {
+              renderBoardOptions();
+              return;
+            }
+            if (!changedParent && event.oldIndex === event.newIndex) return;
+            const before = event.item.nextElementSibling;
+            const anchor = before || event.item.previousElementSibling;
+            if (changedParent) {
+              void saveNavOrder(entityType, event.item.dataset.navEntityId, anchor?.dataset.navEntityId, before ? 'before' : 'after', targetParentId || null);
+            } else if (anchor) {
+              void saveNavOrder(entityType, event.item.dataset.navEntityId, anchor.dataset.navEntityId, before ? 'before' : 'after');
+            }
+          }
+        }));
+      }
+      return container;
+    };
+    const byPosition = (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
+    const renderBoard = (board, depth, container) => {
       if (!matchesText(board.name)) return;
       const link = makeElement('button', 'boards-nav-board');
       link.type = 'button';
@@ -739,9 +846,12 @@
       const icon = makeElement('i', 'fa-solid fa-table-cells');
       icon.setAttribute('aria-hidden', 'true');
       link.append(icon, makeElement('span', '', board.name || 'Tablero sin nombre'));
-      list.append(link);
+      const node = makeElement('div', 'boards-nav-board-node');
+      node.append(link);
+      attachNavHandle(node, board, 'board', container);
+      container.append(node);
     };
-    const renderFolder = (folder, depth = 0) => {
+    const renderFolder = (folder, depth = 0, container) => {
       const subtreeMatches = (node) => matchesText(node.name)
         || node.boards.some((board) => matchesText(board.name))
         || node.children.some(subtreeMatches);
@@ -759,7 +869,7 @@
       toggle.append(makeElement('i', 'fa-regular fa-folder', ''));
       toggle.append(makeElement('span', '', folder.name || 'Carpeta sin nombre'));
       row.append(toggle);
-      if (canCreateBoard && !workspace.shared_only) {
+      if (canCreateInWorkspace(workspace)) {
         const actions = makeElement('span', 'boards-nav-folder-actions');
         if (depth < 2) {
           const addFolder = makeElement('button', '', '');
@@ -793,14 +903,59 @@
         actions.append(archiveFolder);
         }
       }
-      list.append(row);
+      const dropTargets = makeElement('span', 'boards-nav-folder-drop-targets');
+      if (folder.can_reorder) {
+        ['board', 'folder'].forEach((entityType) => {
+          const dropTarget = makeElement('span', 'boards-nav-folder-drop-target', entityType === 'board' ? 'Mover tablero aquí' : 'Anidar carpeta aquí');
+          dropTarget.dataset.navParentId = String(folder.id);
+          dropTarget.dataset.navDropType = entityType;
+          dropTargets.append(dropTarget);
+        });
+        row.append(dropTargets);
+      }
+      const node = makeElement('div', 'boards-nav-folder-node');
+      node.append(row);
+      attachNavHandle(node, folder, 'folder', container);
+      container.append(node);
+      if (folder.can_reorder && window.Sortable && !query && !navOrderSaving) {
+        dropTargets.querySelectorAll('[data-nav-drop-type]').forEach((dropTarget) => {
+          const targetType = dropTarget.dataset.navDropType;
+          dropTarget.dataset.navDropOnly = '1';
+          navSortables.push(window.Sortable.create(dropTarget, {
+            group: { name: `tableros-${targetType}`, pull: false, put: true },
+            draggable: '.nav-drop-target-never-match',
+            onMove: (event) => {
+              if (targetType !== 'folder') return true;
+              let parent = folderNodes.get(String(dropTarget.dataset.navParentId));
+              const movingId = String(event.dragged?.dataset.navEntityId || '');
+              while (parent) {
+                if (String(parent.id) === movingId) return false;
+                parent = parent.parent_folder_id == null ? null : folderNodes.get(String(parent.parent_folder_id));
+              }
+              return true;
+            }
+          }));
+        });
+      }
       if (collapsed) return;
-      folder.boards.filter((board) => matchesText(board.name)).forEach((board) => renderBoard(board, depth + 1));
-      folder.children.forEach((child) => renderFolder(child, depth + 1));
+      const boardsList = makeNavList(node, 'board', folder.id);
+      const foldersList = makeNavList(node, 'folder', folder.id);
+      folder.boards.filter((board) => matchesText(board.name)).sort(byPosition).forEach((board) => renderBoard(board, depth + 1, boardsList));
+      folder.children.sort(byPosition).forEach((child) => renderFolder(child, depth + 1, foldersList));
     };
-    rootBoards.forEach((board) => renderBoard(board, 0));
-    roots.forEach((folder) => renderFolder(folder));
-    if (!list.children.length) list.append(makeElement('p', 'boards-nav-empty', query ? 'No hay coincidencias en este espacio.' : 'Crea una carpeta o un tablero para empezar.'));
+    const rootBoardList = makeNavList(list, 'board');
+    const rootFolderList = makeNavList(list, 'folder');
+    rootBoards.sort(byPosition).forEach((board) => renderBoard(board, 0, rootBoardList));
+    roots.sort(byPosition).forEach((folder) => renderFolder(folder, 0, rootFolderList));
+    navSortables.forEach((sortable) => {
+      if (sortable.el.dataset.navDropOnly === '1') return;
+      const siblings = [...sortable.el.children].filter((node) => node.dataset.navEntityId);
+      if (siblings.length > 0 && siblings.some((node) => node.dataset.canReorder !== '1')) {
+        sortable.option('disabled', true);
+        siblings.forEach((node) => { node.dataset.canReorder = '0'; });
+      }
+    });
+    if (!list.querySelector('[data-nav-entity-id]')) list.append(makeElement('p', 'boards-nav-empty', query ? 'No hay coincidencias en este espacio.' : 'Crea una carpeta o un tablero para empezar.'));
     populateWorkspaceSelectors();
   }
 
@@ -911,7 +1066,11 @@
         return;
       }
       const routeId = getRouteBoardId();
-      const requestedId = app.dataset.initialBoardId || routeId;
+      let lastBoardId = '';
+      if (pageMode === 'boards') {
+        try { lastBoardId = localStorage.getItem(lastBoardStorageKey) || ''; } catch (_) {}
+      }
+      const requestedId = app.dataset.initialBoardId || routeId || lastBoardId;
       const target = state.boards.find((board) => String(board.id) === String(requestedId)) || state.boards[0];
       if (target) {
         els.boardSelect.value = String(target.id);
@@ -1041,7 +1200,7 @@
   ];
 
   function getManageableBoards() {
-    return state.boards.filter((board) => ['owner', 'designer'].includes(String(board.role || board.user_role || '').toLowerCase()));
+    return state.boards.filter((board) => ['owner', 'designer', 'editor'].includes(String(board.role || board.user_role || '').toLowerCase()));
   }
 
   function renderBoardVisibilityManager() {
@@ -1164,6 +1323,7 @@
   }
 
   async function loadBoard(id, skipRoute = false) {
+    resetColumnMenuState();
     document.getElementById('trashArchiveView').hidden = true;
     state.recycleMode = '';
     if (!id) {
@@ -1185,6 +1345,7 @@
       state.selectedWorkspaceId = String(state.board?.workspace_id || state.selectedWorkspaceId || '');
       state.groups = Array.isArray(data.groups) ? data.groups : [];
       state.columns = Array.isArray(data.columns) ? data.columns : [];
+      renderBoardSearchColumns();
       state.items = Array.isArray(data.items) ? data.items : [];
       state.viewsAvailable = Array.isArray(data.views);
       state.views = state.viewsAvailable ? data.views : [];
@@ -1192,9 +1353,13 @@
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       state.items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       if (!state.board) throw new Error('El servidor no devolvió los datos del tablero.');
+      if (pageMode === 'boards') {
+        try { localStorage.setItem(lastBoardStorageKey, String(state.board.id)); } catch (_) {}
+      }
       state.activeViewType = 'table';
       state.activeSavedViewId = '';
       state.viewConfig = {};
+      state.viewConfig.item_size = getLocalBoardItemSize(state.board.id) || 'double';
       state.filters = [];
       state.filterDraft = [];
       state.calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -1205,6 +1370,7 @@
       state.selectedItemIds.clear();
       state.inlineAddGroupId = '';
       els.boardSearch.value = '';
+      if (els.boardSearchColumn) els.boardSearchColumn.value = '';
       renderWorkspace();
       showLoading(false);
       els.boardWorkspace.hidden = false;
@@ -1229,9 +1395,22 @@
     return ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
+  function canCreateInWorkspace(workspace) {
+    if (!workspace) return false;
+    return Boolean(workspace.can_manage_content || (canCreateBoard && !workspace.shared_only));
+  }
+
+  function canDeleteBoard() {
+    const role = String(state.board?.role || '').toLowerCase();
+    const directInvitation = ['board_invitation', 'direct_invitation', 'board_member'].includes(String(state.board?.access_source || '').toLowerCase());
+    const workspace = state.workspaces.find((entry) => String(entry.id) === String(state.board?.workspace_id || ''));
+    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role)
+      || (role === 'editor' && (!directInvitation || String(workspace?.user_role || '').toLowerCase() === 'owner'));
+  }
+
   function canShareBoard() {
     const role = String(state.board?.role || '').toLowerCase();
-    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
+    return !role ? canAdmin : ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
   function accessSourceLabel(source) {
@@ -1277,10 +1456,10 @@
     document.getElementById('openCreateItem').hidden = !edit;
     document.getElementById('openCreateGroup').hidden = !manage;
     document.getElementById('openCreateColumn').hidden = !manage;
-    document.getElementById('trashBoard').hidden = !canShareBoard();
+    document.getElementById('trashBoard').hidden = !canDeleteBoard();
     document.getElementById('archiveBoard').hidden = !canShareBoard();
     const duplicateButton = document.getElementById('openDuplicateBoard');
-    if (duplicateButton) duplicateButton.hidden = !canCreateBoard || !['owner', 'designer'].includes(role);
+    if (duplicateButton) duplicateButton.hidden = !['owner', 'designer', 'editor'].includes(role);
     const shareButton = document.getElementById('openShareBoard');
     if (shareButton) shareButton.hidden = !canShareBoard();
     const sharedViewOption = document.getElementById('sharedViewOption');
@@ -1454,6 +1633,102 @@
     swatch.addEventListener('input', sync);
     row.append(swatch, name, preview);
     return row;
+  }
+
+  function newColumnOptionRow(label = '', index = 0) {
+    const row = makeElement('div', 'boards-new-option-row');
+    const preview = makeElement('span', 'boards-new-option-preview', label || 'Vista previa');
+    preview.style.setProperty('--status-color', statusLabelColor(label, index));
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control boards-new-option-name';
+    input.value = label;
+    input.maxLength = 120;
+    input.required = true;
+    input.autocomplete = 'off';
+    input.placeholder = 'Nombre de la opción';
+    input.setAttribute('aria-label', `Nombre de la opción ${index + 1}`);
+    const actions = makeElement('div', 'boards-new-option-actions');
+    [['up', 'Subir opción', 'fa-arrow-up'], ['down', 'Bajar opción', 'fa-arrow-down'], ['remove', 'Eliminar opción', 'fa-xmark']].forEach(([action, labelText, icon]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `boards-new-option-action is-${action}`;
+      button.dataset.columnOptionAction = action;
+      button.setAttribute('aria-label', labelText);
+      button.title = labelText;
+      button.append(makeElement('i', `fa-solid ${icon}`, ''));
+      actions.append(button);
+    });
+    row.append(preview, input, actions);
+    return row;
+  }
+
+  function syncNewColumnOptions() {
+    const rows = Array.from(document.querySelectorAll('#newColumnOptionsList .boards-new-option-row'));
+    const values = rows.map((row) => row.querySelector('.boards-new-option-name')?.value.trim() || '');
+    const seen = new Set();
+    els.newColumnOptions.value = values.join('\n');
+    document.getElementById('newColumnOptionsCount').textContent = `${values.length} ${values.length === 1 ? 'opción' : 'opciones'}`;
+    rows.forEach((row, index) => {
+      const input = row.querySelector('.boards-new-option-name');
+      const preview = row.querySelector('.boards-new-option-preview');
+      const normalized = values[index].normalize('NFC').toLocaleLowerCase('es-MX');
+      let validationMessage = '';
+      if (!normalized) validationMessage = 'Escribe un nombre para esta opción.';
+      else if (seen.has(normalized)) validationMessage = 'Esta opción ya está en la lista.';
+      else seen.add(normalized);
+      input.setCustomValidity(validationMessage);
+      input.classList.toggle('is-invalid', Boolean(validationMessage));
+      input.setAttribute('aria-invalid', validationMessage ? 'true' : 'false');
+      preview.textContent = input.value.trim() || 'Vista previa';
+      preview.style.setProperty('--status-color', statusLabelColor(input.value, index));
+      input.setAttribute('aria-label', `Nombre de la opción ${index + 1}`);
+      row.querySelector('[data-column-option-action="up"]').disabled = index === 0;
+      row.querySelector('[data-column-option-action="down"]').disabled = index === rows.length - 1;
+    });
+  }
+
+  function renderNewColumnOptions(values = null) {
+    const labels = values || els.newColumnOptions.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    const rows = labels.map((label, index) => newColumnOptionRow(label, index));
+    if (!rows.length) rows.push(makeElement('p', 'boards-new-options-empty', 'Aún no hay opciones. Agrégalas en el orden en que quieres que aparezcan.'));
+    document.getElementById('newColumnOptionsList').replaceChildren(...rows);
+    syncNewColumnOptions();
+  }
+
+  function addNewColumnOption(index = null) {
+    const list = document.getElementById('newColumnOptionsList');
+    list.querySelector('.boards-new-options-empty')?.remove();
+    const rows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+    const insertAt = index == null ? rows.length : Math.max(0, Math.min(rows.length, index));
+    const row = newColumnOptionRow('', insertAt);
+    list.insertBefore(row, rows[insertAt] || null);
+    syncNewColumnOptions();
+    row.querySelector('.boards-new-option-name')?.focus();
+  }
+
+  function handleNewColumnOptionAction(event) {
+    const button = event.target.closest('[data-column-option-action]');
+    if (!button) return;
+    const row = button.closest('.boards-new-option-row');
+    const list = document.getElementById('newColumnOptionsList');
+    const rows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+    const index = rows.indexOf(row);
+    if (button.dataset.columnOptionAction === 'remove') {
+      row.remove();
+      syncNewColumnOptions();
+      renderNewColumnOptions();
+      const remainingRows = Array.from(list.querySelectorAll('.boards-new-option-row'));
+      const focusIndex = Math.min(index, remainingRows.length - 1);
+      (remainingRows[focusIndex]?.querySelector('.boards-new-option-name') || document.getElementById('addColumnOption')).focus();
+      return;
+    }
+    const nextIndex = index + (button.dataset.columnOptionAction === 'up' ? -1 : 1);
+    if (nextIndex < 0 || nextIndex >= rows.length) return;
+    if (nextIndex < index) list.insertBefore(row, rows[nextIndex]);
+    else list.insertBefore(rows[nextIndex], row);
+    syncNewColumnOptions();
+    row.querySelector('.boards-new-option-name')?.focus();
   }
 
   function openLabelsEditor(column) {
@@ -1930,6 +2205,7 @@
     }
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.className = 'boards-file-cell-input';
     input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
     input.setAttribute('aria-label', `Seleccionar archivo para ${item.name || 'elemento'}`);
@@ -1940,31 +2216,61 @@
     button.setAttribute('aria-label', button.title);
     button.addEventListener('click', () => input.click());
     input.addEventListener('change', async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const validationMessage = fileUploadValidationMessage(file);
-      if (validationMessage) {
-        setNotice(validationMessage, 'error');
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      const invalidFile = files.find((file) => fileUploadValidationMessage(file));
+      if (invalidFile) {
+        setNotice(`${invalidFile.name}: ${fileUploadValidationMessage(invalidFile)}`, 'error');
         input.value = '';
         return;
       }
       button.disabled = true;
-      button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>';
-      button.title = 'Subiendo archivo…';
-      button.setAttribute('aria-label', button.title);
+      let uploadedCount = 0;
+      let uploadError = null;
       try {
-        await uploadFileToItem(item, column, file);
+        for (const [index, file] of files.entries()) {
+          button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>';
+          button.title = `Subiendo ${index + 1} de ${files.length}…`;
+          button.setAttribute('aria-label', button.title);
+          await uploadFileToItem(item, column, file);
+          uploadedCount += 1;
+        }
         renderActiveView();
-        setNotice('Archivo subido y vinculado al elemento.', 'success');
       } catch (error) {
+        uploadError = error;
         renderActiveView();
-        setNotice(errorMessage(error, 'No se pudo subir el archivo.'), 'error');
       } finally {
         input.value = '';
+        button.disabled = false;
+        button.innerHTML = '<i class="fa-solid fa-plus" aria-hidden="true"></i>';
+        button.title = uploadedCount ? 'Adjuntar más archivos' : 'Subir archivos';
+        button.setAttribute('aria-label', button.title);
+      }
+      if (uploadError) {
+        const detail = errorMessage(uploadError, 'No se pudo subir el archivo.');
+        setNotice(uploadedCount ? `Se subieron ${uploadedCount} de ${files.length} archivos. ${detail}` : detail, 'error');
+      } else {
+        setNotice(`${uploadedCount} ${uploadedCount === 1 ? 'archivo subido y vinculado' : 'archivos subidos y vinculados'} al elemento.`, 'success');
       }
     });
     wrapper.append(input, button, list);
     return wrapper;
+  }
+
+  function displayColumnValue(column, value) {
+    if (value == null || value === '') return '';
+    if (columnType(column) === 'numbers') return formatGroupedNumber(value);
+    if (columnType(column) === 'rating') {
+      if (column.options?.display === 'percentage') return `${value} %`;
+      return `${value} ★`;
+    }
+    return stringifyValue(value);
+  }
+
+  function formatGroupedNumber(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return stringifyValue(value);
+    return new Intl.NumberFormat('en-US', { useGrouping: true, maximumFractionDigits: 20 }).format(number);
   }
 
   function createCellEditor(item, column, value) {
@@ -1976,7 +2282,7 @@
       const option = ['status', 'dropdown'].includes(type)
         ? parseOptions(column.options).find((entry) => entry.value === String(value ?? ''))
         : null;
-      readonly.textContent = option?.label || stringifyValue(value) || '—';
+      readonly.textContent = option?.label || displayColumnValue(column, value) || '—';
       if (['status', 'dropdown', 'tags'].includes(type) && option) readonly.style.setProperty('--status-color', option.color);
       return readonly;
     }
@@ -2000,7 +2306,7 @@
       return markEditor(input, item, column, 'string');
     }
     if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) {
-      if (type === 'rating') {
+      if (type === 'rating' && column.options?.display !== 'percentage') {
         const select = document.createElement('select');
         select.className = 'boards-status-select';
         const maximum = Math.max(1, Math.min(10, Number(column.options?.max) || 5));
@@ -2008,18 +2314,37 @@
         blank.value = '';
         blank.textContent = 'Sin calificar';
         select.append(blank);
-        for (let score = 1; score <= maximum; score += 1) {
+        for (let score = 0; score <= maximum; score += 1) {
           const option = document.createElement('option');
           option.value = String(score);
-          option.textContent = `${score} de ${maximum}`;
+          option.textContent = `${'★'.repeat(score)}${'☆'.repeat(maximum - score)} (${score}/${maximum})`;
           select.append(option);
         }
         select.value = value == null ? '' : String(value);
         return markEditor(select, item, column, 'number');
       }
-      input.type = 'number';
-      input.step = 'any';
+      if (type === 'numbers') {
+        input.type = 'text';
+        input.inputMode = 'decimal';
+        input.value = value == null ? '' : formatGroupedNumber(value);
+        input.addEventListener('focus', () => { input.value = input.value.replace(/,/g, ''); });
+        input.addEventListener('blur', () => {
+          if (input.value.trim() === '') return;
+          const number = Number(input.value.replace(/,/g, ''));
+          if (Number.isFinite(number)) input.value = formatGroupedNumber(number);
+        });
+      } else {
+        input.type = 'number';
+        input.step = 'any';
+      }
       if (type === 'progress') { input.min = '0'; input.max = '100'; input.placeholder = '0–100'; }
+      if (type === 'rating') {
+        input.min = '0'; input.max = '100'; input.placeholder = '0–100 %';
+        input.setAttribute('aria-label', `${column.name || 'Calificación'} en porcentaje (0–100)`);
+        const wrapper = makeElement('div', 'boards-rating-percentage');
+        wrapper.append(markEditor(input, item, column, 'number'), makeElement('span', '', '%'));
+        return wrapper;
+      }
       if (type === 'item_id') { input.step = '1'; input.min = '1'; input.placeholder = 'ID del elemento'; }
       input.classList.add('is-number');
       return markEditor(input, item, column, 'number');
@@ -2166,6 +2491,12 @@
     element.dataset.itemId = String(item.id);
     element.dataset.columnId = String(column.id);
     element.setAttribute('aria-label', `${item.name || 'Elemento'}, ${column.name || 'columna'}`);
+    if (['input', 'textarea'].includes(element.tagName) && ['string', 'structured'].includes(kind)) {
+      element.addEventListener('blur', () => {
+        element.scrollLeft = 0;
+        element.scrollTop = 0;
+      });
+    }
     return element;
   }
 
@@ -2195,6 +2526,7 @@
     const name = createItemNameControl(item);
     name.classList.add('boards-table-item-name-control');
     wrap.append(name);
+    wrap.append(createDetailsButton(item));
     if (canEditBoard()) {
       const addSubitem = makeElement('button', 'boards-item-subtask-add', '');
       addSubitem.type = 'button';
@@ -2267,7 +2599,7 @@
 
   function canManageAutomation() {
     const role = String(state.board?.role || '').toLowerCase();
-    return !role ? canAdmin : ['owner', 'designer', 'admin', 'administrator'].includes(role);
+    return !role ? canAdmin : ['owner', 'designer', 'editor', 'admin', 'administrator'].includes(role);
   }
 
   function displayDateTime(value) {
@@ -2320,7 +2652,7 @@
       : (videoMime || videoExtension ? 'video'
         : (effectiveMime === 'application/pdf' ? 'pdf'
           : (['text/plain', 'text/csv'].includes(effectiveMime) ? 'text'
-            : (spreadsheetExtension ? 'spreadsheet' : 'unsupported'))));
+            : (spreadsheetExtension ? 'spreadsheet' : (['doc', 'docx'].includes(extension) ? 'document' : 'unsupported')))));
     const icon = previewKind === 'pdf' ? 'fa-file-pdf'
       : (previewKind === 'video' ? 'fa-file-video'
         : (imageMime || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension) ? 'fa-file-image'
@@ -2516,7 +2848,9 @@
           if (comment.created_at) authorDetails.append(makeElement('time', '', displayDateTime(comment.created_at)));
           heading.append(authorDetails);
           article.append(heading);
-          article.append(makeElement('p', '', comment.body || comment.comment || ''));
+          const commentBody = makeElement('p');
+          appendCommentText(commentBody, comment.body || comment.comment || '');
+          article.append(commentBody);
           if (Array.isArray(comment.stickers) && comment.stickers.length) {
             const stickers = makeElement('div', 'boards-preview-comment-stickers');
             comment.stickers.forEach((sticker) => {
@@ -2963,6 +3297,10 @@
     els.filePreviewTitle.textContent = name;
     els.filePreviewType.textContent = type.extension ? type.extension.toUpperCase() : (type.mime || 'Archivo');
     els.filePreviewIcon.replaceChildren(makeElement('i', `fa-solid ${type.icon}`));
+    els.filePreviewDialog.querySelectorAll('[data-preview-action]').forEach((button) => {
+      button.hidden = !canEditBoard();
+      button.disabled = false;
+    });
     els.filePreviewContent.replaceChildren();
     if (els.filePreviewPanel) els.filePreviewPanel.hidden = true;
     document.querySelectorAll('[data-preview-panel]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
@@ -3086,14 +3424,15 @@
       video.src = fileEndpoint(file, true);
       stage.append(video);
       els.filePreviewContent.append(stage);
-    } else if (['pdf', 'text', 'spreadsheet'].includes(type.previewKind)) {
+    } else if (['pdf', 'text', 'spreadsheet', 'document'].includes(type.previewKind)) {
       const loading = makeElement('div', 'boards-preview-unavailable', 'Cargando vista previa…');
       els.filePreviewContent.append(loading);
       openDialog(els.filePreviewDialog);
       try {
-        const response = await fetch(type.previewKind === 'spreadsheet' ? spreadsheetPreviewEndpoint(file) : fileEndpoint(file, true), {
+        const officePreview = ['spreadsheet', 'document'].includes(type.previewKind);
+        const response = await fetch(officePreview ? spreadsheetPreviewEndpoint(file) : fileEndpoint(file, true), {
           credentials: 'same-origin',
-          headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : (type.previewKind === 'spreadsheet' ? 'text/html, application/json' : 'text/plain, text/csv, application/json') }
+          headers: { Accept: type.previewKind === 'pdf' ? 'application/pdf, application/json' : (officePreview ? 'application/pdf, text/html, application/json' : 'text/plain, text/csv, application/json') }
         });
         let blob = await response.blob();
         if (!response.ok || /(?:application\/json|\+json)/i.test(response.headers.get('content-type') || '')) {
@@ -3108,19 +3447,23 @@
         }
         blob = inferStoredFileBlobType(file, blob, response.headers.get('content-type') || '');
         if (previewRequest !== filePreviewRequest) return;
-        if (type.previewKind === 'spreadsheet') {
+        const responseType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        if (officePreview && !['application/pdf', 'text/html'].includes(responseType)) throw new Error('El servidor no devolvió una vista de impresión compatible.');
+        if (officePreview && responseType === 'text/html') {
           filePreviewObjectUrl = URL.createObjectURL(blob);
           const frame = makeElement('iframe', 'boards-preview-frame boards-preview-spreadsheet-frame');
           frame.src = filePreviewObjectUrl;
           frame.title = `Vista previa de ${name}`;
+          frame.style.colorScheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
           frame.referrerPolicy = 'no-referrer';
           frame.setAttribute('sandbox', '');
           els.filePreviewContent.replaceChildren(frame);
-        } else if (type.previewKind === 'pdf') {
+        } else if (type.previewKind === 'pdf' || (officePreview && responseType === 'application/pdf')) {
           filePreviewObjectUrl = URL.createObjectURL(blob);
           const frame = makeElement('iframe', 'boards-preview-frame');
           frame.src = filePreviewObjectUrl;
           frame.title = `Vista previa de ${name}`;
+          frame.style.colorScheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
           frame.referrerPolicy = 'no-referrer';
           els.filePreviewContent.replaceChildren(frame);
         } else {
@@ -3128,7 +3471,6 @@
           if (previewRequest !== filePreviewRequest) return;
           const pre = makeElement('pre', 'boards-preview-text');
           pre.textContent = text;
-          pre.style.cssText = 'box-sizing:border-box;width:100%;height:100%;margin:0;padding:20px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#e7e9f5;background:#1b1e34;font:inherit;text-align:left;';
           els.filePreviewContent.replaceChildren(pre);
         }
       } catch (error) {
@@ -3170,14 +3512,41 @@
         const meta = makeElement('div', 'boards-comment-author-line');
         meta.append(commentAvatar(author, comment.created_by_id || comment.user_id));
         meta.append(makeElement('div', 'boards-detail-meta', `${author} · ${displayDateTime(comment.created_at)}`));
-        const body = makeElement('p', 'boards-comment-body', comment.body || '');
+        const body = makeElement('div', 'boards-comment-body');
+        appendSafeCommentHtml(body, comment.body || '');
         article.append(meta, body);
+        if (Array.isArray(comment.stickers) && comment.stickers.length) {
+          const stickers = makeElement('div', 'boards-comment-stickers');
+          comment.stickers.forEach((sticker) => {
+            const id = sticker?.id ?? sticker;
+            if (id == null) return;
+            const image = document.createElement('img');
+            image.src = apiUrl('sticker_file', { id: id });
+            image.alt = sticker?.name || 'Sticker'; image.loading = 'lazy'; image.decoding = 'async';
+            stickers.append(image);
+          });
+          if (stickers.childElementCount) article.append(stickers);
+        }
+        if (Array.isArray(comment.attachments) && comment.attachments.length) {
+          const attachments = makeElement('div', 'boards-comment-attachments');
+          comment.attachments.forEach((attachment) => {
+            if (attachment?.file_id == null) return;
+            const file = { file_id: attachment.file_id, name: attachment.name || `Archivo ${attachment.file_id}` };
+            const link = makeElement('a', '', file.name); link.href = fileEndpoint(file);
+            link.addEventListener('click', (event) => { event.preventDefault(); startFileDownload(file); });
+            attachments.append(link);
+          });
+          if (attachments.childElementCount) article.append(attachments);
+        }
         els.itemCommentsList.append(article);
       });
     }
     const form = els.itemCommentForm;
     form.hidden = !canEditBoard();
-    form.querySelectorAll('textarea, button').forEach((control) => { control.disabled = !canEditBoard(); });
+    form.querySelectorAll('button, input').forEach((control) => { control.disabled = !canEditBoard(); });
+    const editor = document.getElementById('itemCommentBody');
+    if (editor) editor.contentEditable = String(canEditBoard());
+    setItemCommentPendingUi(itemCommentPendingByItem.has(String(state.detailItemId)));
     setDetailStatus('itemCommentStatus', `${state.itemComments.length} ${state.itemComments.length === 1 ? 'comentario' : 'comentarios'}`);
   }
 
@@ -3232,7 +3601,7 @@
           const option = parseOptions(column.options).find((entry) => String(entry.value) === String(value));
           if (option) value = option.label || option.value;
         } else if (Array.isArray(value)) value = value.map((entry) => entry?.name || entry?.label || entry).join(', ');
-        add('Valor actual', value === null || value === undefined || value === '' ? 'Vacío' : stringifyValue(value));
+        add('Valor actual', value === null || value === undefined || value === '' ? 'Vacío' : displayColumnValue(column, value));
       }
     } else if (type === 'item.name_changed') add('Nombre', payload.name || item?.name);
     else if (type === 'item.moved') {
@@ -3543,6 +3912,16 @@
     const item = state.items.find((candidate) => String(candidate.id) === String(itemId));
     if (!item || !state.board) return;
     const requestId = ++state.activeDetailRequest;
+    const pendingComment = itemCommentPendingByItem.get(String(item.id));
+    itemCommentSelectedFiles.splice(0, itemCommentSelectedFiles.length, ...(pendingComment?.files || []));
+    itemCommentSelectedStickers.splice(0, itemCommentSelectedStickers.length, ...(pendingComment?.stickers || []));
+    renderItemCommentPendingAttachments(); renderItemCommentPendingStickers();
+    const commentEditor = document.getElementById('itemCommentBody');
+    if (commentEditor) {
+      commentEditor.replaceChildren();
+      if (pendingComment?.body) appendSafeCommentHtml(commentEditor, pendingComment.body);
+    }
+    setItemCommentPendingUi(Boolean(pendingComment));
     state.detailItemId = String(item.id);
     state.itemComments = [];
     state.itemActivity = [];
@@ -3651,28 +4030,177 @@
     event.preventDefault();
     if (!canEditBoard()) return;
     const item = state.items.find((candidate) => String(candidate.id) === state.detailItemId);
-    const textarea = document.getElementById('itemCommentBody');
-    const body = textarea.value.trim();
-    if (!item || !body) return;
+    const editor = document.getElementById('itemCommentBody');
+    const activePending = itemCommentPendingByItem.get(String(item?.id));
+    const body = activePending?.body ?? editor.innerHTML.trim();
+    const text = editor.innerText.trim();
+    const stickers = activePending?.stickers || itemCommentSelectedStickers;
+    const files = activePending?.files || itemCommentSelectedFiles;
+    if (!item || (!text && !stickers.length && !files.length)) return;
     const button = els.itemCommentForm.querySelector('[type="submit"]');
     button.disabled = true;
     button.textContent = 'Publicando…';
     try {
-      const result = await post(apiUrl('add_comment'), { board_id: state.board.id, item_id: item.id, body });
-      if (result.data) state.itemComments.push(result.data);
-      textarea.value = '';
+      let pending = activePending;
+      if (!pending) {
+        const fileIds = [];
+        for (const entry of files) {
+          let uploadedFileId = entry.uploadedFileId;
+          if (!uploadedFileId) {
+            const payload = new FormData(); payload.set('csrf_token', csrfToken);
+            payload.set('board_id', String(state.board.id)); payload.set('item_id', String(item.id)); payload.set('file', entry.file);
+            const uploaded = await multipartPost(apiUrl('upload_file'), payload);
+            uploadedFileId = uploaded.data?.id ?? uploaded.data?.file_id;
+            entry.uploadedFileId = uploadedFileId;
+          }
+          if (!uploadedFileId) throw new Error('El servidor no devolvió el identificador del archivo adjunto.');
+          fileIds.push(String(uploadedFileId));
+        }
+        const stickerIds = stickers.map((sticker) => String(sticker.id));
+        const result = await post(apiUrl('add_comment'), { board_id: state.board.id, item_id: item.id, body, stickers: stickerIds, file_ids: fileIds });
+        const comment = result.data || {};
+        const commentId = comment.id ?? comment.comment_id;
+        if (commentId == null) throw new Error('El servidor no devolvió el identificador del comentario.');
+        pending = { commentId, body, stickerIds, stickers: [...stickers], files, fileIds, itemId: String(item.id) };
+        itemCommentPendingByItem.set(String(item.id), pending);
+        setItemCommentPendingUi(true);
+      }
+      {
+        const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
+        const refreshed = await request(`${apiUrl('comments')}?${params.toString()}`);
+        state.itemComments = Array.isArray(refreshed.data) ? refreshed.data : [...state.itemComments];
+      }
+      itemCommentPendingByItem.delete(String(item.id));
+      item.comment_count = Number(item.comment_count || 0) + 1;
+      renderActiveView();
+      editor.replaceChildren(); itemCommentSelectedFiles.splice(0); itemCommentSelectedStickers.splice(0);
+      renderItemCommentPendingAttachments(); renderItemCommentPendingStickers();
       renderComments();
       const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(item.id) });
-      const activity = await request(`${apiUrl('activity')}?${params.toString()}`);
-      state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
-      renderActivity();
+      try {
+        const activity = await request(`${apiUrl('activity')}?${params.toString()}`);
+        state.itemActivity = Array.isArray(activity.data) ? activity.data : [];
+        renderActivity();
+      } catch (_) {
+        setDetailStatus('itemActivityStatus', 'No se pudo actualizar la actividad. Vuelve a abrir la pestaña para intentar de nuevo.', true);
+      }
       setNotice('Comentario agregado.', 'success');
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo agregar el comentario.'), 'error');
     } finally {
-      button.disabled = false;
-      button.textContent = 'Comentar';
+      button.disabled = !canEditBoard();
+      button.textContent = 'Publicar actualización';
+      setItemCommentPendingUi(itemCommentPendingByItem.has(String(item?.id)));
     }
+  }
+
+  function setItemCommentPendingUi(pending) {
+    const form = els.itemCommentForm;
+    if (!form) return;
+    form.querySelectorAll('button:not([type="submit"]), input').forEach((control) => { control.disabled = pending || !canEditBoard(); });
+    const editor = document.getElementById('itemCommentBody');
+    if (editor) editor.contentEditable = String(!pending && canEditBoard());
+  }
+
+  function renderItemCommentPendingStickers() {
+    const host = document.getElementById('itemCommentStickers');
+    if (!host) return;
+    host.replaceChildren();
+    itemCommentSelectedStickers.forEach((sticker, index) => {
+      const image = document.createElement('img');
+      image.src = apiUrl('sticker_file', { id: sticker.id });
+      image.alt = sticker.name || 'Sticker'; image.loading = 'lazy'; image.decoding = 'async';
+      const remove = makeElement('button', '', '×'); remove.type = 'button';
+      remove.setAttribute('aria-label', `Quitar ${sticker.name || 'sticker'}`);
+      remove.addEventListener('click', () => { itemCommentSelectedStickers.splice(index, 1); renderItemCommentPendingStickers(); });
+      const chip = makeElement('span', 'boards-item-pending-sticker'); chip.append(image, remove); host.append(chip);
+    });
+    host.hidden = !itemCommentSelectedStickers.length;
+  }
+
+  function renderItemCommentPendingAttachments() {
+    const host = document.getElementById('itemCommentFiles');
+    if (!host) return;
+    host.replaceChildren();
+    itemCommentSelectedFiles.forEach((entry, index) => {
+      const chip = makeElement('span', 'boards-item-pending-file', entry.name);
+      const remove = makeElement('button', '', 'Quitar'); remove.type = 'button';
+      remove.addEventListener('click', () => { itemCommentSelectedFiles.splice(index, 1); renderItemCommentPendingAttachments(); });
+      chip.append(remove); host.append(chip);
+    });
+    host.hidden = !itemCommentSelectedFiles.length;
+  }
+
+  function setupItemCommentComposer() {
+    const form = els.itemCommentForm;
+    if (!form) return;
+    const editor = document.getElementById('itemCommentBody');
+    const fileInput = document.getElementById('itemCommentFileInput');
+    const picker = document.getElementById('itemCommentStickerPicker');
+    const emojiPicker = form.querySelector('.boards-item-emoji-picker');
+    const emojiOptions = emojiPicker?.querySelector('.boards-item-emoji-options');
+    ['😀', '👍', '🎉', '❤️', '😂', '🙏', '🚀', '✅'].forEach((emoji) => {
+      const option = makeElement('button', '', emoji); option.type = 'button'; option.dataset.emoji = emoji;
+      option.setAttribute('aria-label', `Insertar ${emoji}`); emojiOptions?.append(option);
+    });
+    form.querySelectorAll('[data-comment-command]').forEach((button) => button.addEventListener('click', () => {
+      editor.focus(); document.execCommand(button.dataset.commentCommand, false, null);
+    }));
+    document.getElementById('itemCommentColor')?.addEventListener('input', (event) => {
+      editor.focus(); document.execCommand('styleWithCSS', false, true);
+      document.execCommand('foreColor', false, event.target.value);
+    });
+    let savedEditorRange = null;
+    const saveEditorRange = () => {
+      const selection = window.getSelection();
+      if (selection?.rangeCount && editor.contains(selection.anchorNode)) savedEditorRange = selection.getRangeAt(0).cloneRange();
+    };
+    ['keyup', 'mouseup', 'input'].forEach((eventName) => editor.addEventListener(eventName, saveEditorRange));
+    emojiPicker?.querySelector('summary')?.addEventListener('mousedown', saveEditorRange);
+    emojiPicker?.querySelectorAll('button[data-emoji]').forEach((button) => {
+      button.addEventListener('mousedown', (event) => { saveEditorRange(); event.preventDefault(); });
+      button.addEventListener('click', () => {
+        editor.focus();
+        if (savedEditorRange) {
+          const selection = window.getSelection();
+          selection.removeAllRanges(); selection.addRange(savedEditorRange);
+        }
+        document.execCommand('insertText', false, button.dataset.emoji);
+        saveEditorRange(); emojiPicker.open = false;
+      });
+    });
+    document.getElementById('itemCommentAttach')?.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
+    fileInput?.addEventListener('change', () => {
+      Array.from(fileInput.files || []).forEach((file) => {
+        const error = fileUploadValidationMessage(file);
+        if (error) { setNotice(`${file.name}: ${error}`, 'error'); return; }
+        if (!itemCommentSelectedFiles.some((entry) => entry.file === file)) itemCommentSelectedFiles.push({ file, name: file.name });
+      });
+      renderItemCommentPendingAttachments();
+    });
+    document.getElementById('itemCommentSticker')?.addEventListener('click', async () => {
+      picker.hidden = !picker.hidden;
+      if (picker.hidden || picker.dataset.loaded === '1') return;
+      picker.textContent = 'Cargando stickers…';
+      try {
+        const result = await request(apiUrl('stickers'));
+        picker.replaceChildren();
+        (Array.isArray(result.data) ? result.data : []).forEach((sticker) => {
+          if (sticker?.id == null) return;
+          const button = makeElement('button', 'boards-item-sticker-option'); button.type = 'button';
+          button.setAttribute('aria-label', `Agregar ${sticker.name || 'sticker'}`);
+          const image = document.createElement('img'); image.src = apiUrl('sticker_file', { id: sticker.id });
+          image.alt = sticker.name || 'Sticker'; image.loading = 'lazy'; button.append(image);
+          button.addEventListener('click', () => {
+            if (!itemCommentSelectedStickers.some((entry) => String(entry.id) === String(sticker.id))) itemCommentSelectedStickers.push({ id: sticker.id, name: sticker.name || 'Sticker' });
+            renderItemCommentPendingStickers(); picker.hidden = true;
+          });
+          picker.append(button);
+        });
+        if (!picker.childElementCount) picker.textContent = 'No hay stickers disponibles.';
+        picker.dataset.loaded = '1';
+      } catch (error) { picker.textContent = errorMessage(error, 'No se pudieron cargar los stickers.'); }
+    });
   }
 
   function fileUploadValidationMessage(file) {
@@ -4148,11 +4676,203 @@
     }
   }
 
+  function renderBoardSearchColumns() {
+    if (!els.boardSearchColumn) return;
+    const previous = els.boardSearchColumn.value;
+    const options = [new Option('Todas las columnas', ''), new Option('Elemento', 'name')];
+    state.columns.forEach((column) => options.push(new Option(column.name || 'Columna', String(column.id))));
+    els.boardSearchColumn.replaceChildren(...options);
+    els.boardSearchColumn.value = options.some((option) => option.value === previous) ? previous : '';
+    els.boardSearchColumn.setAttribute('aria-label', els.boardSearchColumn.value
+      ? `Buscar en ${els.boardSearchColumn.selectedOptions[0]?.textContent || 'columna'}`
+      : 'Buscar en todas las columnas');
+    renderBoardSearchControl();
+    const selectedColumn = state.columns.find((column) => String(column.id) === els.boardSearchColumn.value);
+    if (selectedColumn && ['person', 'people'].includes(columnType(selectedColumn))) loadSummaryPeople();
+  }
+
+  function boardSearchControlKind(column) {
+    if (!column) return 'text';
+    const type = columnType(column);
+    if (['status', 'dropdown', 'person', 'people', 'tags', 'country', 'team'].includes(type)) return 'choice';
+    if (['date', 'timeline'].includes(type)) return 'date';
+    if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) return 'number';
+    if (type === 'hour') return 'time';
+    return 'text';
+  }
+
+  function boardSearchChoices(column) {
+    const type = columnType(column);
+    if (['status', 'dropdown'].includes(type)) {
+      const choices = parseOptions(column.options);
+      const known = new Set(choices.map((option) => option.value));
+      state.items.forEach((item) => {
+        const value = stringifyValue(getCellValue(item, column));
+        if (value && !known.has(value)) { choices.push({ value, label: value }); known.add(value); }
+      });
+      return choices;
+    }
+    if (['person', 'people'].includes(type)) {
+      const ids = Array.from(new Set(state.items.flatMap((item) => selectedIds(getCellValue(item, column)).map(String))));
+      return ids.map((id) => ({ value: id, label: state.summaryPeople.get(id)?.name || state.summaryPeople.get(id)?.username || `Persona ${id}` }));
+    }
+    const values = state.items.flatMap((item) => {
+      const value = getCellValue(item, column);
+      return Array.isArray(value) ? value : value === null || value === undefined || value === '' ? [] : [value];
+    });
+    const unique = new Map();
+    values.forEach((value) => {
+      const option = boardSearchOption(value);
+      if (option.value && !unique.has(option.value)) unique.set(option.value, option.label);
+    });
+    return Array.from(unique, ([value, label]) => ({ value, label }));
+  }
+
+  function boardSearchOption(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const rawValue = value.value ?? value.id ?? value.user_id ?? value.name ?? value.label ?? stringifyValue(value);
+      const label = value.label ?? value.name ?? value.value ?? value.id ?? stringifyValue(value);
+      return { value: String(rawValue), label: String(label) };
+    }
+    const text = stringifyValue(value);
+    return { value: text, label: text };
+  }
+
+  function boardSearchAnyLabel(column) {
+    const type = columnType(column);
+    if (type === 'person' || type === 'people') return 'Cualquier persona';
+    if (type === 'tags') return 'Cualquier etiqueta';
+    if (type === 'country') return 'Cualquier país';
+    if (type === 'team') return 'Cualquier equipo';
+    return 'Cualquier estado';
+  }
+
+  function renderBoardSearchControl() {
+    const current = els.boardSearch;
+    const shell = current?.closest('.boards-search');
+    if (!shell) return;
+    const selectedColumn = els.boardSearchColumn?.value || '';
+    const column = state.columns.find((candidate) => String(candidate.id) === selectedColumn);
+    const kind = boardSearchControlKind(column);
+    const currentValue = current.value || '';
+    const chevron = shell.querySelector('#boardSearchChevron');
+    if (chevron) chevron.hidden = kind !== 'choice';
+    if (current.dataset.searchControlKind === kind) {
+      if (kind === 'choice') {
+        const choices = boardSearchChoices(column);
+        current.replaceChildren(new Option(boardSearchAnyLabel(column), ''));
+        choices.forEach((choice) => current.append(new Option(choice.label, choice.value)));
+        current.value = choices.some((choice) => choice.value === currentValue) ? currentValue : '';
+      }
+      return;
+    }
+    let control;
+    if (kind === 'choice') {
+      control = document.createElement('select');
+      control.className = 'form-select';
+      control.append(new Option(boardSearchAnyLabel(column), ''));
+      boardSearchChoices(column).forEach((choice) => control.append(new Option(choice.label, choice.value)));
+    } else {
+      control = document.createElement('input');
+      control.type = kind === 'date' ? 'date' : kind === 'number' ? 'number' : kind === 'time' ? 'time' : 'search';
+      if (kind === 'number') {
+        control.step = columnType(column) === 'item_id' ? '1' : 'any';
+        if (columnType(column) === 'progress' || (columnType(column) === 'rating' && column.options?.display === 'percentage')) {
+          control.min = '0';
+          control.max = '100';
+        } else if (columnType(column) === 'rating') {
+          control.min = '0';
+          control.max = String(column.options?.max ?? 5);
+        }
+      }
+    }
+    control.id = 'boardSearch';
+    control.classList.add('boards-search-value');
+    control.dataset.searchControlKind = kind;
+    control.setAttribute('aria-label', column ? `Buscar en ${column.name || 'columna'}` : 'Buscar en el tablero');
+    if (kind === 'text') control.placeholder = column ? `Buscar en ${column.name || 'columna'}` : 'Buscar en el tablero';
+    if (kind === 'choice') {
+      const options = [...control.options].map((option) => option.value);
+      control.value = options.includes(currentValue) ? currentValue : '';
+    } else if (kind === 'date') {
+      control.value = /^\d{4}-\d{2}-\d{2}$/.test(currentValue) ? currentValue : '';
+    } else if (kind === 'number') {
+      control.value = /^-?\d+(?:\.\d+)?$/.test(currentValue) ? currentValue : '';
+    } else if (kind === 'time') {
+      control.value = /^\d{2}:\d{2}/.test(currentValue) ? currentValue.slice(0, 5) : '';
+    } else {
+      control.value = currentValue;
+    }
+    current.replaceWith(control);
+    els.boardSearch = control;
+  }
+
   function itemMatchesSearch(item, query) {
     if (!query) return true;
-    const searchData = [item.name, ...state.columns.map((column) => stringifyValue(getCellValue(item, column)))].join(' ').toLocaleLowerCase();
-    return searchData.includes(query);
+    const selectedColumn = els.boardSearchColumn?.value || '';
+    const column = state.columns.find((candidate) => String(candidate.id) === selectedColumn);
+    if (selectedColumn === 'name') return String(item.name || '').toLocaleLowerCase().includes(query);
+    if (column) {
+      const type = columnType(column);
+      const value = getCellValue(item, column);
+      if (['status', 'dropdown', 'person', 'people', 'tags', 'country', 'team'].includes(type)) {
+        if (['person', 'people'].includes(type)) return selectedIds(value).some((id) => String(id) === query);
+        const values = Array.isArray(value) ? value.map((entry) => boardSearchOption(entry).value) : [boardSearchOption(value).value];
+        return values.some((entry) => entry.toLocaleLowerCase() === query);
+      }
+      if (type === 'date') return dateMatchesSearch(value, query);
+      if (type === 'timeline') {
+        const range = dateRange(value);
+        const end = range.end || range.start;
+        return Boolean(range.start && end && query >= range.start && query <= end);
+      }
+      if (type === 'file') return filesForItem(item)
+        .filter((file) => String(file.column_id || '') === String(column.id))
+        .some((file) => String(file.name || '').toLocaleLowerCase().includes(query));
+      if (['numbers', 'progress', 'rating', 'item_id'].includes(type)) return value !== null && value !== '' && Number(value) === Number(query.replace(/,/g, ''));
+      if (type === 'hour') return stringifyValue(value).slice(0, 5) === query;
+      return stringifyValue(value).toLocaleLowerCase().includes(query);
+    }
+    if (String(item.name || '').toLocaleLowerCase().includes(query)) return true;
+    return state.columns.some((entry) => {
+      const value = getCellValue(item, entry);
+      if (columnType(entry) === 'date') return dateMatchesSearch(value, query);
+      if (columnType(entry) === 'timeline') {
+        const range = dateRange(value);
+        return dateMatchesSearch(range.start, query) || dateMatchesSearch(range.end, query);
+      }
+      return stringifyValue(value).toLocaleLowerCase().includes(query);
+    });
   }
+
+  function dateMatchesSearch(value, query) {
+    const date = dateOnly(value);
+    const needle = String(query || '').trim().toLocaleLowerCase('es-MX');
+    if (!date || !needle) return false;
+    const parsed = localDate(date);
+    if (!parsed || Number.isNaN(parsed.getTime())) return false;
+    const year = String(parsed.getFullYear());
+    const month = String(parsed.getMonth() + 1);
+    const day = String(parsed.getDate());
+    const monthPadded = month.padStart(2, '0');
+    const dayPadded = day.padStart(2, '0');
+    const candidates = [
+      date, `${monthPadded}/${dayPadded}/${year}`, `${month}/${day}/${year}`,
+      `${dayPadded}/${monthPadded}/${year}`, `${day}/${month}/${year}`,
+      `${monthPadded}/${dayPadded}`, `${month}/${day}`,
+      `${dayPadded}/${monthPadded}`, `${day}/${month}`,
+      formatDate(date, { day: 'numeric', month: 'short', year: 'numeric' }),
+      formatDate(date, { day: 'numeric', month: 'long', year: 'numeric' }),
+      new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric' }).format(parsed),
+      new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric' }).format(parsed)
+    ];
+    const normalize = (text) => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es-MX').replace(/[.\-]/g, '/').replace(/\s+/g, ' ').trim();
+    const normalizedNeedle = normalize(needle);
+    return candidates.some((candidate) => normalize(candidate).includes(normalizedNeedle));
+  }
+
+  function boardSearchValue() { return els.boardSearch?.value || ''; }
 
   function compareFilter(item, filter) {
     const column = state.columns.find((candidate) => String(candidate.id) === String(filter.column_id));
@@ -4183,8 +4903,22 @@
   }
 
   function getFilteredItems() {
-    const query = els.boardSearch.value.trim().toLocaleLowerCase();
-    return state.items.filter((item) => itemMatchesSearch(item, query) && state.filters.every((filter) => compareFilter(item, filter)));
+    const query = boardSearchValue().trim().toLocaleLowerCase();
+    const temporaryFilters = state.columnMenuState.filters;
+    return state.items.filter((item) => itemMatchesSearch(item, query)
+      && state.filters.every((filter) => compareFilter(item, filter))
+      && temporaryFilters.every((filter) => compareFilter(item, filter)));
+  }
+
+  function compareColumnMenuItems(a, b) {
+    const sort = state.columnMenuState.sort;
+    if (!sort) return Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
+    const column = state.columns.find((candidate) => String(candidate.id) === String(sort.columnId));
+    const left = column ? getCellValue(a, column) : '';
+    const right = column ? getCellValue(b, column) : '';
+    const direction = sort.direction === 'desc' ? -1 : 1;
+    const result = stringifyValue(left).localeCompare(stringifyValue(right), 'es-MX', { numeric: true, sensitivity: 'base' });
+    return result * direction || Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
   }
 
   function orderItemsByHierarchy(items) {
@@ -4204,10 +4938,11 @@
       if (visited.has(id)) return;
       visited.add(id);
       ordered.push(item);
-      (childrenByParent.get(id) || []).forEach(appendWithChildren);
+      (childrenByParent.get(id) || []).slice().sort(compareColumnMenuItems).forEach(appendWithChildren);
     };
 
     items.filter((item) => item.parent_item_id == null || !visibleIds.has(String(item.parent_item_id)))
+      .slice().sort(compareColumnMenuItems)
       .forEach(appendWithChildren);
     items.forEach(appendWithChildren);
     return ordered;
@@ -4216,8 +4951,9 @@
   function createGroupRow(group, itemCount, columnCount) {
     const row = document.createElement('tr');
     row.className = 'boards-group-row';
-    const cell = document.createElement('td');
-    cell.colSpan = columnCount + 2;
+    const titleCell = document.createElement('td');
+    titleCell.className = 'boards-group-title-cell';
+    titleCell.colSpan = 2;
     const groupWrap = document.createElement('div');
     groupWrap.className = 'boards-group-heading';
     groupWrap.style.setProperty('--group-color', safeGroupColor(group.color));
@@ -4239,7 +4975,6 @@
     name.textContent = group.name || 'Grupo sin nombre';
     toggle.append(chevron, marker, name);
     groupWrap.append(toggle);
-
     const meta = document.createElement('div');
     meta.className = 'boards-group-meta';
     const count = document.createElement('span');
@@ -4263,9 +4998,36 @@
       meta.append(recycleAction('Archivar grupo', 'group', group.id, 'archive', state.board?.id));
     }
     groupWrap.append(meta);
-    cell.append(groupWrap);
-    row.append(cell);
+    titleCell.append(groupWrap);
+
+    const metaCell = document.createElement('td');
+    metaCell.className = 'boards-group-meta-cell';
+    metaCell.colSpan = Math.max(1, columnCount);
+    row.append(titleCell, metaCell);
     return row;
+  }
+
+  function syncGroupHeadingWidths() {
+    const width = els.boardTableContainer?.clientWidth || 0;
+    if (!width) return;
+    els.boardTableContainer.querySelectorAll('.boards-group-heading').forEach((heading) => {
+      heading.style.width = `${width}px`;
+    });
+  }
+
+  async function saveGroupOrder(groupIds, previousGroups) {
+    try {
+      const result = await post(apiUrl('reorder_groups'), { board_id: state.board.id, group_ids: groupIds });
+      const orderMap = new Map((result.data?.groups || []).map((group) => [String(group.id), Number(group.sort_order)]));
+      state.groups = [...state.groups].sort((a, b) => (orderMap.get(String(a.id)) ?? 0) - (orderMap.get(String(b.id)) ?? 0));
+      state.groups.forEach((group, index) => { group.sort_order = orderMap.get(String(group.id)) ?? index * 10; });
+      renderTable();
+      setNotice('Se actualizó el orden de los grupos.', 'success');
+    } catch (error) {
+      state.groups = previousGroups;
+      renderTable();
+      setNotice(errorMessage(error, 'No se pudo guardar el orden de los grupos.'), 'error');
+    }
   }
 
   function createMoveEditor(item) {
@@ -4309,6 +5071,13 @@
     const icon = makeElement('i', 'fa-regular fa-comment-dots');
     icon.setAttribute('aria-hidden', 'true');
     button.append(icon);
+    const commentCount = Number(item.comment_count || 0);
+    if (commentCount > 0) {
+      button.classList.add('has-comments');
+      const count = makeElement('span', 'boards-row-comment-count', commentCount > 99 ? '99+' : String(commentCount));
+      count.setAttribute('aria-label', `${commentCount} ${commentCount === 1 ? 'comentario' : 'comentarios'}`);
+      button.append(count);
+    }
     return button;
   }
 
@@ -4499,12 +5268,249 @@
     }
   }
 
+  function bindColumnResizing(table) {
+    const storageKey = `totalgas-board-column-widths-${state.board?.id || ''}`;
+    let widths = {};
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) widths = saved;
+    } catch (_) { /* Ignore unavailable or invalid local preferences. */ }
+
+    const applyWidth = (key, columnIndex, width) => {
+      const minWidth = key === 'item' ? 260 : 156;
+      const nextWidth = Math.max(minWidth, Math.round(width));
+      table.querySelectorAll(':scope > tbody > tr').forEach((row) => {
+        const cell = row.children[columnIndex];
+        if (!cell || cell.colSpan !== 1) return;
+        cell.style.width = `${nextWidth}px`;
+        cell.style.minWidth = `${nextWidth}px`;
+        cell.style.maxWidth = `${nextWidth}px`;
+      });
+      widths[key] = nextWidth;
+      try { localStorage.setItem(storageKey, JSON.stringify(widths)); } catch (_) { /* Resizing still works for this render. */ }
+      return nextWidth;
+    };
+
+    table.querySelectorAll('.boards-group-columns th[data-resize-key]').forEach((header) => {
+      const key = header.dataset.resizeKey;
+      const columnIndex = Array.prototype.indexOf.call(header.parentElement.children, header);
+      const savedWidth = Number(widths[key]);
+      if (Number.isFinite(savedWidth) && savedWidth > 0) applyWidth(key, columnIndex, savedWidth);
+
+      const handle = makeElement('button', 'boards-column-resize-handle');
+      handle.type = 'button';
+      handle.dataset.resizeKey = key;
+      handle.dataset.resizeIndex = String(columnIndex);
+      handle.setAttribute('role', 'separator');
+      handle.setAttribute('aria-orientation', 'vertical');
+      handle.setAttribute('aria-label', `Cambiar ancho de ${header.textContent.trim() || 'columna'}`);
+      header.append(handle);
+
+      handle.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const current = Number(widths[key]) || header.getBoundingClientRect().width;
+        applyWidth(key, columnIndex, current + (event.key === 'ArrowRight' ? 16 : -16));
+      });
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const startX = event.clientX;
+        const startWidth = Number(widths[key]) || header.getBoundingClientRect().width;
+        table.classList.add('is-resizing-column');
+        const move = (moveEvent) => applyWidth(key, columnIndex, startWidth + moveEvent.clientX - startX);
+        const finish = () => {
+          table.classList.remove('is-resizing-column');
+          document.removeEventListener('pointermove', move);
+          document.removeEventListener('pointerup', finish);
+          document.removeEventListener('pointercancel', finish);
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', finish);
+        document.addEventListener('pointercancel', finish);
+      });
+    });
+  }
+
+  function resetColumnMenuState() {
+    state.columnMenuState = { filters: [], sort: null, groupBy: null, collapsedColumns: new Set() };
+  }
+
+  function makeColumnHeader(column) {
+    const th = makeElement('th', 'boards-column-heading');
+    th.scope = 'col';
+    th.dataset.resizeKey = String(column.id);
+    th.dataset.columnHeader = String(column.id);
+    const collapsed = state.columnMenuState.collapsedColumns.has(String(column.id));
+    th.classList.toggle('is-column-collapsed', collapsed);
+    const title = makeElement('span', 'boards-column-heading-title', column.name || 'Columna');
+    th.append(title);
+    if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
+    const trigger = makeElement('button', 'boards-column-menu-trigger', '⋯');
+    trigger.type = 'button';
+    trigger.dataset.openColumnMenu = String(column.id);
+    trigger.setAttribute('aria-label', `Acciones de la columna ${column.name || ''}`);
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    th.append(trigger);
+    return th;
+  }
+
+  function closeColumnMenus() {
+    document.querySelectorAll('[data-open-column-menu][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+    document.querySelectorAll('.boards-column-menu').forEach((menu) => menu.remove());
+  }
+
+  function openColumnMenu(column, trigger) {
+    if (trigger.getAttribute('aria-expanded') === 'true') {
+      closeColumnMenus();
+      trigger.focus();
+      return;
+    }
+    closeColumnMenus();
+    const th = trigger.closest('th');
+    if (!th) return;
+    const menu = makeElement('div', 'boards-column-menu');
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', `Acciones de ${column.name || 'columna'}`);
+    menu.dataset.columnMenuColumn = String(column.id);
+    const addAction = (label, action, disabled = false, disabledReason = '') => {
+      const button = makeElement('button', '', label);
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.dataset.columnMenuAction = action;
+      button.disabled = disabled;
+      if (disabledReason) button.title = disabledReason;
+      menu.append(button);
+    };
+    addAction('Configuración', 'configure', !canManageStructure() || !['status', 'dropdown', 'tags'].includes(columnType(column)));
+    addAction('Filtrar…', 'filter');
+    addAction('Ordenar ascendente', 'sort-asc');
+    addAction('Ordenar descendente', 'sort-desc');
+    addAction(state.columnMenuState.collapsedColumns.has(String(column.id)) ? 'Mostrar columna' : 'Contraer', 'collapse');
+    addAction('Agrupar por', 'group');
+    menu.append(makeElement('hr'));
+    addAction('Duplicar estructura', 'duplicate-structure', !canManageStructure());
+    const cannotCopyData = ['people', 'person', 'board_relation', 'subtasks', 'dependency', 'file'].includes(columnType(column));
+    addAction('Duplicar con datos', 'duplicate-data', !canManageStructure() || cannotCopyData,
+      cannotCopyData ? 'Este tipo incluye relaciones o archivos que no se duplican automáticamente.' : 'Crea una copia con los valores actuales.');
+    addAction('Agregar columna a la derecha', 'add-right', !canManageStructure());
+    addAction('Cambiar tipo…', 'change-type', !canManageStructure());
+    addAction('Renombrar', 'rename', !canManageStructure());
+    addAction('Ocultar', 'hide');
+    addAction('Eliminar', 'delete', !canManageStructure());
+    document.body.append(menu);
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportPadding = 8;
+    const left = Math.max(viewportPadding, Math.min(triggerRect.left, window.innerWidth - menuRect.width - viewportPadding));
+    let top = triggerRect.bottom - 2;
+    if (top + menuRect.height > window.innerHeight - viewportPadding) top = triggerRect.top - menuRect.height + 2;
+    top = Math.max(viewportPadding, Math.min(top, window.innerHeight - menuRect.height - viewportPadding));
+    menu.style.left = `${left}px`;
+    menu.style.right = 'auto';
+    menu.style.top = `${top}px`;
+    trigger.setAttribute('aria-expanded', 'true');
+    menu.querySelector('button:not(:disabled)')?.focus();
+  }
+
+  async function runColumnMenuAction(action, column, trigger) {
+    const id = String(column.id);
+    if (action === 'configure') { openLabelsEditor(column); return; }
+    if (action === 'filter') {
+      const input = window.prompt(`Filtrar «${column.name}» (deja vacío para quitar el filtro):`);
+      if (input === null) return;
+      state.columnMenuState.filters = state.columnMenuState.filters.filter((filter) => String(filter.column_id) !== id);
+      if (input.trim()) state.columnMenuState.filters.push({ column_id: id, operator: 'contains', value: input.trim() });
+      renderActiveView(); return;
+    }
+    if (action === 'sort-asc' || action === 'sort-desc') {
+      state.columnMenuState.sort = { columnId: id, direction: action === 'sort-desc' ? 'desc' : 'asc' };
+      renderActiveView(); return;
+    }
+    if (action === 'collapse') {
+      if (state.columnMenuState.collapsedColumns.has(id)) state.columnMenuState.collapsedColumns.delete(id);
+      else state.columnMenuState.collapsedColumns.add(id);
+      renderActiveView(); return;
+    }
+    if (action === 'group') {
+      state.columnMenuState.groupBy = state.columnMenuState.groupBy === id ? null : id;
+      setNotice(state.columnMenuState.groupBy ? `Agrupación temporal por «${column.name}» seleccionada.` : 'Agrupación temporal quitada.', 'success');
+      renderActiveView(); return;
+    }
+    if (action === 'rename') {
+      els.createColumnForm.reset();
+      window.setTimeout(() => {
+        state.columnDialogAction = { type: 'rename', columnId: id };
+        document.getElementById('createColumnTitle').textContent = 'Renombrar columna';
+        document.getElementById('newColumnName').value = column.name || '';
+        document.getElementById('columnTypeField').classList.add('d-none');
+        document.getElementById('columnOptionsField').classList.add('d-none');
+        document.getElementById('columnRatingField').classList.add('d-none');
+        els.createColumnForm.querySelector('[type="submit"]').textContent = 'Guardar nombre';
+        openDialog(els.createColumnDialog, document.getElementById('newColumnName'));
+      }, 0);
+      return;
+    }
+    if (action === 'duplicate-structure' || action === 'duplicate-data') {
+      const mode = action === 'duplicate-data';
+      if (mode && ['people', 'person', 'board_relation', 'subtasks', 'dependency', 'file'].includes(columnType(column))) {
+        throw new Error('Este tipo usa datos relacionados que no se pueden duplicar automáticamente. Puedes duplicar su estructura.');
+      }
+      await post(apiUrl('duplicate_column'), { board_id: state.board.id, column_id: column.id, copy_data: mode });
+      await loadBoard(state.board.id, true);
+      setNotice(mode ? 'Columna y datos duplicados.' : 'Estructura de columna duplicada.', 'success');
+      return;
+    }
+    if (action === 'add-right') {
+      els.createColumnForm.reset();
+      window.setTimeout(() => {
+        state.insertAfterColumnId = id;
+        document.getElementById('createColumnTitle').textContent = 'Agregar columna a la derecha';
+        els.createColumnForm.querySelector('[type="submit"]').textContent = 'Agregar columna';
+        openDialog(els.createColumnDialog);
+      }, 0);
+      return;
+    }
+    if (action === 'change-type') {
+      els.createColumnForm.reset();
+      window.setTimeout(() => {
+        state.columnDialogAction = { type: 'change-type', columnId: id, originalOptions: parseOptions(column.options) };
+        document.getElementById('createColumnTitle').textContent = 'Cambiar tipo de columna';
+        document.getElementById('columnNameField').classList.add('d-none');
+        els.newColumnName.value = column.name || '';
+        els.newColumnType.value = column.type || 'text';
+        const labelOptions = parseOptions(column.options).map((option) => option.label);
+        els.newColumnOptions.value = labelOptions.join('\n');
+        if (column.type === 'rating' && column.options && typeof column.options === 'object') {
+          document.getElementById('newColumnRatingDisplay').value = column.options.display || 'stars';
+        }
+        els.newColumnType.dispatchEvent(new Event('change'));
+        els.createColumnForm.querySelector('[type="submit"]').textContent = 'Revisar conversión';
+        openDialog(els.createColumnDialog, els.newColumnType);
+      }, 0);
+      return;
+    }
+    if (action === 'hide') {
+      const hidden = new Set(state.viewConfig.hidden_column_ids || []); hidden.add(id);
+      state.viewConfig.hidden_column_ids = [...hidden]; markViewModified(); renderActiveView(); return;
+    }
+    if (action === 'delete') {
+      await runRecycleAction(recycleAction(`Eliminar columna ${column.name || ''}`, 'column', column.id, 'trash', state.board?.id));
+      return;
+    }
+  }
+
   function renderTable() {
-    const query = els.boardSearch.value.trim().toLocaleLowerCase();
+    itemSortables.forEach((sortable) => sortable.destroy());
+    itemSortables = [];
+    const query = boardSearchValue().trim().toLocaleLowerCase();
     const filteredItems = getFilteredItems();
     const columns = orderedColumns();
     const visibleCount = filteredItems.length;
     updateItemCount(visibleCount);
+    groupSortable?.destroy();
+    groupSortable = null;
     els.boardTableContainer.replaceChildren();
     const table = document.createElement('table');
     table.className = 'boards-table';
@@ -4527,18 +5533,17 @@
       row.append(selectHead);
       const itemHead = makeElement('th', 'boards-item-head', 'Elemento');
       itemHead.scope = 'col';
+      itemHead.dataset.resizeKey = 'item';
       row.append(itemHead);
       columns.forEach((column) => {
-        const th = makeElement('th', '', column.name || 'Columna');
-        th.scope = 'col';
-        if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
-        row.append(th);
+        row.append(makeColumnHeader(column));
       });
       return row;
     };
 
     state.groups.forEach((group) => {
       const groupItems = orderItemsByHierarchy(filteredItems.filter((item) => String(item.group_id) === String(group.id)));
+      if (query && !groupItems.length) return;
       const tbody = document.createElement('tbody');
       tbody.className = 'boards-group-body';
       tbody.dataset.groupBody = String(group.id);
@@ -4591,11 +5596,13 @@
         const nameCell = document.createElement('th');
         nameCell.scope = 'row';
         nameCell.className = 'boards-item-name';
-        nameCell.draggable = canEditBoard() && item.parent_item_id == null;
+        nameCell.draggable = !window.Sortable && canEditBoard() && item.parent_item_id == null;
         nameCell.append(createTableItemName(item));
         row.append(nameCell);
         columns.forEach((column) => {
           const cell = document.createElement('td');
+          cell.dataset.columnCell = String(column.id);
+          cell.classList.toggle('is-column-collapsed', state.columnMenuState.collapsedColumns.has(String(column.id)));
           if (columnType(column) === 'date') cell.classList.add('boards-date-cell');
           if (['status', 'dropdown'].includes(columnType(column))) cell.dataset.statusTone = statusTone(column, getCellValue(item, column));
           if (columnType(column) === 'status') {
@@ -4609,6 +5616,7 @@
       };
       const makeChildPanel = (parent, children) => {
         const panelRow = makeElement('tr', 'boards-subitems-panel-row');
+        panelRow.dataset.childrenOf = String(parent.id);
         const panelCell = document.createElement('td');
         panelCell.colSpan = columns.length + 2;
         const panel = makeElement('div', 'boards-subitems-panel');
@@ -4627,10 +5635,7 @@
         itemHead.scope = 'col';
         headRow.append(itemHead);
         columns.forEach((column) => {
-          const th = makeElement('th', '', column.name || 'Columna');
-          th.scope = 'col';
-          if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
-          headRow.append(th);
+          headRow.append(makeColumnHeader(column));
         });
         head.append(headRow);
         innerTable.append(head);
@@ -4659,14 +5664,33 @@
         panelRow.append(panelCell);
         return panelRow;
       };
-      groupItems.forEach((item) => {
-        const parentId = item.parent_item_id == null ? '' : String(item.parent_item_id);
-        if (parentId && visibleItemIds.has(parentId)) return;
-        tbody.append(renderItemRow(item));
-        const children = childrenByParent.get(String(item.id)) || [];
-        if (children.length) tbody.append(makeChildPanel(item, children));
+      const roots = groupItems.filter((item) => item.parent_item_id == null || !visibleItemIds.has(String(item.parent_item_id)));
+      const groupedByColumn = state.columnMenuState.groupBy
+        ? state.columns.find((column) => String(column.id) === String(state.columnMenuState.groupBy))
+        : null;
+      const sections = new Map();
+      roots.forEach((item) => {
+        const raw = groupedByColumn ? getCellValue(item, groupedByColumn) : '';
+        const key = raw == null || raw === '' ? 'Sin valor' : stringifyValue(raw);
+        if (!sections.has(key)) sections.set(key, []);
+        sections.get(key).push(item);
       });
-      if (canEditBoard() && !query && !state.filters.length) {
+      sections.forEach((sectionItems, sectionName) => {
+        if (groupedByColumn) {
+          const heading = makeElement('tr', 'boards-ephemeral-group-row');
+          const label = makeElement('th', '', `${groupedByColumn.name}: ${sectionName}`);
+          label.scope = 'rowgroup';
+          label.colSpan = columns.length + 2;
+          heading.append(label);
+          tbody.append(heading);
+        }
+        sectionItems.forEach((item) => {
+          tbody.append(renderItemRow(item));
+          const children = childrenByParent.get(String(item.id)) || [];
+          if (children.length) tbody.append(makeChildPanel(item, children));
+        });
+      });
+      if (canEditBoard() && !query && !state.filters.length && !state.columnMenuState.filters.length && !state.columnMenuState.sort && !state.columnMenuState.groupBy) {
         const addRow = makeElement('tr', 'boards-add-row');
         const addCell = document.createElement('td');
         addCell.colSpan = columns.length + 2;
@@ -4714,6 +5738,93 @@
       table.append(tbody);
     }
     els.boardTableContainer.append(table);
+    bindColumnResizing(table);
+    syncGroupHeadingWidths();
+    if (window.Sortable && canEditBoard() && !query && !state.filters.length && !state.columnMenuState.filters.length && !state.columnMenuState.sort && !state.columnMenuState.groupBy) {
+      table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
+        itemSortables.push(window.Sortable.create(body, {
+          group: 'board-root-items',
+          draggable: 'tr.boards-item-row:not(.is-child-row)',
+          handle: '.boards-item-name',
+          filter: '.boards-item-name-form, .boards-item-name-form *, .boards-item-subtask-add, [data-recycle-type], .boards-select-cell, .boards-select-cell *',
+          preventOnFilter: false,
+          animation: 180, forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
+          ghostClass: 'boards-sortable-ghost',
+          disabled: itemOrderSaving,
+          onStart: (event) => {
+            const currentId = event.item.dataset.openItemDetails;
+            const current = state.items.find((item) => String(item.id) === currentId);
+            // A row move is persisted as one atomic item operation. Moving a
+            // selection would require sequential writes with stale row versions.
+            event.item._movingItems = current ? [current] : [];
+            const panel = event.item.nextElementSibling;
+            if (panel?.dataset.childrenOf === event.item.dataset.openItemDetails) {
+              event.item._childPanel = panel;
+              panel.hidden = true;
+            }
+            state.suppressItemClickUntil = Date.now() + 1000;
+          },
+          onMove: (event) => {
+            if (event.related.matches('.boards-group-row, .boards-group-columns')) return false;
+            if (event.related.matches('.boards-add-row, .boards-table-summary-row')) return event.willInsertAfter ? false : -1;
+          },
+          onEnd: (event) => {
+            const panel = event.item._childPanel;
+            if (panel) { event.item.after(panel); panel.hidden = false; delete event.item._childPanel; }
+            [event.from, event.to].forEach((body) => {
+              [...body.children].filter((row) => row.dataset.childrenOf).forEach((childPanel) => {
+                const parent = [...body.children].find((row) => row.dataset.openItemDetails === childPanel.dataset.childrenOf);
+                if (parent) parent.after(childPanel);
+              });
+            });
+            state.suppressItemClickUntil = Date.now() + 800;
+            const roots = [...event.to.children].filter((row) => row.matches('tr.boards-item-row:not(.is-child-row)'));
+            const movingItems = (event.item._movingItems || []).filter(Boolean);
+            delete event.item._movingItems;
+            const movingIds = new Set(movingItems.map((item) => String(item.id)));
+            const position = roots.slice(0, roots.indexOf(event.item)).filter((row) => !movingIds.has(row.dataset.openItemDetails)).length;
+            const item = state.items.find((candidate) => String(candidate.id) === event.item.dataset.openItemDetails);
+            if (!item || position < 0) { renderActiveView(); return; }
+            if (event.from === event.to && event.oldIndex === event.newIndex) return;
+            void saveSortableItem(item, event.to.dataset.groupBody, position, movingItems);
+          }
+        }));
+      });
+    }
+    if (window.Sortable && canEditBoard() && state.groups.length > 1) {
+      groupSortable = window.Sortable.create(table, {
+        animation: 180,
+        easing: 'cubic-bezier(0.2, 0, 0, 1)',
+        draggable: 'tbody.boards-group-body',
+        handle: '.boards-group-heading',
+        filter: '.boards-group-meta button, .boards-group-meta a',
+        preventOnFilter: false,
+        ghostClass: 'boards-group-sortable-ghost',
+        chosenClass: 'boards-group-sortable-chosen',
+        dragClass: 'boards-group-sortable-drag',
+        forceFallback: true,
+        fallbackOnBody: true,
+        fallbackTolerance: 4,
+        touchStartThreshold: 5,
+        swapThreshold: 0.65,
+        onStart: (event) => {
+          state.draggedGroupId = event.item.dataset.groupBody;
+          state.previousGroupOrder = [...state.groups];
+          state.suppressGroupClickUntil = Date.now() + 1000;
+        },
+        onEnd: (event) => {
+          const groupIds = [...table.querySelectorAll(':scope > tbody[data-group-body]')].map((body) => body.dataset.groupBody);
+          const previous = state.previousGroupOrder || [...state.groups];
+          const changed = groupIds.some((id, index) => id !== String(previous[index]?.id));
+          state.draggedGroupId = '';
+          state.previousGroupOrder = null;
+          if (changed) {
+            state.suppressGroupClickUntil = Date.now() + 800;
+            void saveGroupOrder(groupIds, previous);
+          }
+        }
+      });
+    }
     requestAnimationFrame(() => {
       table.querySelectorAll('td[data-status-tone] .boards-status-select').forEach((select) => {
         const cell = select.closest('td');
@@ -4739,6 +5850,7 @@
       .then((result) => {
         if (Number(state.board?.id) !== boardId) return;
         (Array.isArray(result.data) ? result.data : []).forEach((person) => state.summaryPeople.set(String(person.id), person));
+        renderBoardSearchColumns();
         renderTable();
       })
       .catch(() => {});
@@ -4753,7 +5865,7 @@
   }
 
   function updateItemCount(visibleCount) {
-    const hasConditions = Boolean(els.boardSearch.value.trim()) || state.filters.length > 0;
+    const hasConditions = Boolean(boardSearchValue().trim()) || state.filters.length > 0;
     els.boardItemCount.textContent = hasConditions
       ? `${visibleCount} de ${state.items.length} elementos`
       : `${state.items.length} ${state.items.length === 1 ? 'elemento' : 'elementos'}`;
@@ -4863,6 +5975,66 @@
     avatar.title = name || 'Usuario';
     avatar.setAttribute('aria-label', `Autor: ${name || 'Usuario'}`);
     return avatar;
+  }
+
+  function appendCommentText(container, value) {
+    const text = String(value || '');
+    const urlPattern = /(?<![\w@.-])(?:https?:\/\/|www\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?:\:\d{2,5})?(?:[/?#][^\s<>]*)?/gi;
+    let lastIndex = 0;
+    let match;
+    while ((match = urlPattern.exec(text)) !== null) {
+      let rawUrl = match[0];
+      let trailing = '';
+      while (/[.,!?;:)]$/.test(rawUrl)) {
+        trailing = rawUrl.slice(-1) + trailing;
+        rawUrl = rawUrl.slice(0, -1);
+      }
+      if (!rawUrl) continue;
+      container.append(document.createTextNode(text.slice(lastIndex, match.index)));
+      const href = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+      try {
+        const parsed = new URL(href);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported URL protocol');
+        const link = makeElement('a', 'boards-comment-link', rawUrl);
+        link.href = parsed.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        container.append(link);
+      } catch (_) {
+        container.append(document.createTextNode(rawUrl));
+      }
+      if (trailing) container.append(document.createTextNode(trailing));
+      lastIndex = match.index + match[0].length;
+    }
+    container.append(document.createTextNode(text.slice(lastIndex)));
+  }
+
+  function appendSafeCommentHtml(container, value) {
+    const source = String(value || '');
+    if (!/[<][a-z!/]/i.test(source)) { appendCommentText(container, source); return; }
+    const parsed = new DOMParser().parseFromString(source, 'text/html');
+    const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'SPAN', 'BR', 'P', 'DIV', 'UL', 'OL', 'LI', 'A']);
+    const copyChildren = (from, to, insideLink = false) => {
+      Array.from(from.childNodes).forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) { if (insideLink) to.append(document.createTextNode(node.nodeValue || '')); else appendCommentText(to, node.nodeValue || ''); return; }
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const tag = node.tagName.toUpperCase();
+        if (!allowed.has(tag)) { if (!['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'SVG', 'MATH'].includes(tag)) copyChildren(node, to, insideLink); return; }
+        const element = document.createElement(tag.toLowerCase());
+        if (tag === 'SPAN') {
+          const color = node.style?.color || '';
+          if (/^(#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([\d.%\s,/-]+\))$/i.test(color.trim())) element.style.color = color;
+        } else if (tag === 'A') {
+          try {
+            const url = new URL(node.getAttribute('href') || '', window.location.origin);
+            if (!['https:', 'http:'].includes(url.protocol)) throw new Error('invalid protocol');
+            element.href = url.href; element.target = '_blank'; element.rel = 'noopener noreferrer';
+          } catch (_) { copyChildren(node, to); return; }
+        }
+        copyChildren(node, element, insideLink || tag === 'A'); to.append(element);
+      });
+    };
+    copyChildren(parsed.body, container);
   }
 
   function fieldSelect(labelText, setting, columns, selectedValue, emptyText = 'Selecciona una columna') {
@@ -5106,6 +6278,7 @@
   }
 
   function applySavedView(view) {
+    resetColumnMenuState();
     let config = view.config;
     if (typeof config === 'string') {
       try { config = JSON.parse(config); } catch (error) { config = {}; }
@@ -5113,7 +6286,8 @@
     state.activeSavedViewId = String(view.id);
     state.activeViewType = normalizeViewType(view.view_type);
     state.viewConfig = config && typeof config === 'object' ? { ...config } : {};
-    state.viewConfig.item_size = ['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double';
+    state.viewConfig.item_size = getLocalBoardItemSize(state.board?.id)
+      || (['simple', 'double', 'triple'].includes(state.viewConfig.item_size) ? state.viewConfig.item_size : 'double');
     normalizeColumnViewConfig();
     state.filters = Array.isArray(state.viewConfig.filters) ? state.viewConfig.filters.map((filter) => ({ ...filter })) : [];
     state.filterDraft = state.filters.map((filter) => ({ ...filter }));
@@ -5138,6 +6312,7 @@
   }
 
   function switchView(type) {
+    resetColumnMenuState();
     state.activeViewType = normalizeViewType(type);
     state.activeSavedViewId = '';
     els.savedViewSelect.value = '';
@@ -5145,8 +6320,17 @@
   }
 
   function renderActiveView() {
+    kanbanSortables.forEach((sortable) => sortable.destroy());
+    kanbanSortables = [];
     const type = normalizeViewType(state.activeViewType);
+    if (type !== 'table') {
+      itemSortables.forEach((sortable) => sortable.destroy());
+      itemSortables = [];
+      groupSortable?.destroy();
+      groupSortable = null;
+    }
     state.activeViewType = type;
+    renderBoardSearchColumns();
     applyBoardItemSize(state.viewConfig.item_size || 'double');
     updateItemCount(getFilteredItems().length);
     document.querySelectorAll('.boards-view-tab[data-view-type]').forEach((button) => {
@@ -5177,6 +6361,9 @@
   function applyBoardItemSize(size) {
     const normalized = ['simple', 'double', 'triple'].includes(size) ? size : 'double';
     state.viewConfig.item_size = normalized;
+    if (state.board?.id) {
+      try { localStorage.setItem(`totalgas-board-item-size-${state.board.id}`, normalized); } catch (_) { /* Keep the preference for this session. */ }
+    }
     app.dataset.itemSize = normalized;
     const label = document.getElementById('boardItemSizeLabel');
     if (label) label.textContent = normalized === 'simple' ? 'Simple' : (normalized === 'triple' ? 'Triple' : 'Doble');
@@ -5186,6 +6373,16 @@
       if (selected) button.setAttribute('aria-pressed', 'true');
       else button.setAttribute('aria-pressed', 'false');
     });
+  }
+
+  function getLocalBoardItemSize(boardId) {
+    if (!boardId) return '';
+    try {
+      const size = localStorage.getItem(`totalgas-board-item-size-${boardId}`) || '';
+      return ['simple', 'double', 'triple'].includes(size) ? size : '';
+    } catch (_) {
+      return '';
+    }
   }
 
   function renderEmptyRenderer(title, description) {
@@ -5336,6 +6533,7 @@
     const fieldId = state.viewConfig.kanban_column_id || 'groups';
     const column = fieldId === 'groups' ? null : state.columns.find((candidate) => String(candidate.id) === String(fieldId));
     const items = getFilteredItems();
+    const canDragKanban = canEditBoard() && !boardSearchValue().trim() && !state.filters.length;
     const board = makeElement('div', 'boards-kanban-board');
     let lanes = [];
     if (!column) {
@@ -5376,7 +6574,9 @@
       laneItems.forEach((item) => {
         const card = makeElement('article', 'boards-kanban-card');
         card.dataset.kanbanItem = String(item.id);
-        card.draggable = canEditBoard() && item.parent_item_id == null;
+        const canDragCard = canDragKanban && item.parent_item_id == null;
+        card.classList.toggle('is-draggable', canDragCard);
+        card.draggable = canDragCard && !window.Sortable;
         if (column && ['status', 'dropdown'].includes(columnType(column))) card.style.setProperty('--kanban-status-color', safeGroupColor(lane.color));
         card.append(createItemNameControl(item, 'boards-kanban-card-title'));
         const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
@@ -5396,7 +6596,7 @@
         visibleFields.forEach((field) => {
           const value = getCellValue(item, field);
           const entry = makeElement('div', 'boards-kanban-card-field');
-          entry.append(makeElement('dt', '', field.name || 'Dato'), makeElement('dd', '', stringifyValue(value)));
+          entry.append(makeElement('dt', '', field.name || 'Dato'), makeElement('dd', '', displayColumnValue(field, value)));
           fields.append(entry);
         });
         if (fields.childElementCount) card.append(fields);
@@ -5443,15 +6643,12 @@
           evidence.append(previews);
           card.append(evidence);
         });
-        const moveControl = makeElement('div', 'boards-kanban-card-action');
         if (column && ['status', 'dropdown'].includes(columnType(column))) {
+          const moveControl = makeElement('div', 'boards-kanban-card-action');
           moveControl.append(makeElement('span', '', 'Estado'));
           moveControl.append(createCellEditor(item, column, getCellValue(item, column)));
-        } else if (!column) {
-          moveControl.append(makeElement('span', '', 'Mover'));
-          moveControl.append(createMoveEditor(item));
+          card.append(moveControl);
         }
-        if (moveControl.childElementCount) card.append(moveControl);
         card.append(createDetailsButton(item));
         cardList.append(card);
       });
@@ -5459,42 +6656,93 @@
       board.append(laneElement);
     });
     els.boardRendererArea.append(board);
-    board.addEventListener('dragstart', (event) => {
-      const card = event.target.closest('[data-kanban-item]');
-      if (!card || !card.draggable) { event.preventDefault(); return; }
-      state.draggedItemId = card.dataset.kanbanItem;
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', state.draggedItemId);
-      card.classList.add('is-dragging');
-    });
-    board.addEventListener('dragover', (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      if (!lane || !state.draggedItemId) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      lane.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
-    });
-    board.addEventListener('dragleave', (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      if (lane && (!event.relatedTarget || !lane.contains(event.relatedTarget))) lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
-    });
-    board.addEventListener('drop', async (event) => {
-      const lane = event.target.closest('[data-kanban-lane]');
-      const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
-      if (!lane || !item) return;
-      event.preventDefault();
-      lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
-      state.suppressItemClickUntil = Date.now() + 800;
-      const targetColumn = lane.dataset.kanbanColumn
-        ? state.columns.find((candidate) => String(candidate.id) === lane.dataset.kanbanColumn)
-        : null;
-      if (targetColumn) await updateItemCell(item, targetColumn, lane.dataset.kanbanLane);
-      else await moveItemToGroup(item, lane.dataset.kanbanLane);
-    });
-    board.addEventListener('dragend', () => {
-      state.draggedItemId = '';
-      board.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => element.classList.remove('is-dragging', 'is-drop-target'));
-    });
+    if (window.Sortable && canDragKanban) {
+      const laneLists = [...board.querySelectorAll('.boards-kanban-cards')];
+      laneLists.forEach((cardList) => {
+        kanbanSortables.push(window.Sortable.create(cardList, {
+          group: { name: `kanban-board-${state.board.id}`, pull: true, put: true },
+          draggable: '.boards-kanban-card.is-draggable',
+          handle: '.boards-kanban-card',
+          filter: 'button:not(.boards-kanban-card-title), input, select, textarea, a',
+          preventOnFilter: false,
+          animation: 180,
+          easing: 'cubic-bezier(0.2, 0, 0, 1)',
+          forceFallback: true,
+          fallbackOnBody: true,
+          fallbackTolerance: 4,
+          touchStartThreshold: 5,
+          swapThreshold: 0.65,
+          ghostClass: 'boards-sortable-ghost',
+          chosenClass: 'boards-kanban-sortable-chosen',
+          dragClass: 'boards-kanban-sortable-drag',
+          onStart: () => { state.suppressItemClickUntil = Date.now() + 1000; },
+          onMove: (event) => {
+            if (column && event.from === event.to) return false;
+            board.querySelectorAll('.boards-kanban-lane.is-drop-target').forEach((lane) => lane.classList.remove('is-drop-target'));
+            event.to.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
+            return true;
+          },
+          onEnd: (event) => {
+            board.querySelectorAll('.boards-kanban-lane.is-drop-target').forEach((lane) => lane.classList.remove('is-drop-target'));
+            state.suppressItemClickUntil = Date.now() + 800;
+            const item = state.items.find((candidate) => String(candidate.id) === event.item.dataset.kanbanItem);
+            if (!item) { renderActiveView(); return; }
+            if (column) {
+              const laneKey = event.to.dataset.kanbanLane;
+              if (event.from === event.to || String(getCellValue(item, column) ?? '') === String(laneKey ?? '')) {
+                renderActiveView();
+                return;
+              }
+              void updateItemCell(item, column, laneKey);
+              return;
+            }
+            const targetCards = [...event.to.querySelectorAll(':scope > .boards-kanban-card')]
+              .filter((card) => state.items.find((candidate) => String(candidate.id) === card.dataset.kanbanItem)?.parent_item_id == null);
+            const sortOrder = targetCards.indexOf(event.item);
+            if (sortOrder < 0) { renderActiveView(); return; }
+            if (event.from === event.to && event.oldIndex === event.newIndex) return;
+            void saveSortableItem(item, event.to.dataset.kanbanLane, sortOrder);
+          }
+        }));
+      });
+    } else if (!window.Sortable) {
+      board.addEventListener('dragstart', (event) => {
+        const card = event.target.closest('[data-kanban-item]');
+        if (!card || !card.draggable) { event.preventDefault(); return; }
+        state.draggedItemId = card.dataset.kanbanItem;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', state.draggedItemId);
+        card.classList.add('is-dragging');
+      });
+      board.addEventListener('dragover', (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        if (!lane || !state.draggedItemId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        lane.closest('.boards-kanban-lane')?.classList.add('is-drop-target');
+      });
+      board.addEventListener('dragleave', (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        if (lane && (!event.relatedTarget || !lane.contains(event.relatedTarget))) lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+      });
+      board.addEventListener('drop', async (event) => {
+        const lane = event.target.closest('[data-kanban-lane]');
+        const item = state.items.find((candidate) => String(candidate.id) === state.draggedItemId);
+        if (!lane || !item) return;
+        event.preventDefault();
+        lane.closest('.boards-kanban-lane')?.classList.remove('is-drop-target');
+        state.suppressItemClickUntil = Date.now() + 800;
+        const targetColumn = lane.dataset.kanbanColumn
+          ? state.columns.find((candidate) => String(candidate.id) === lane.dataset.kanbanColumn)
+          : null;
+        if (targetColumn) await updateItemCell(item, targetColumn, lane.dataset.kanbanLane);
+        else await moveItemToGroup(item, lane.dataset.kanbanLane);
+      });
+      board.addEventListener('dragend', () => {
+        state.draggedItemId = '';
+        board.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => element.classList.remove('is-dragging', 'is-drop-target'));
+      });
+    }
     updateItemCount(items.length);
   }
 
@@ -5527,7 +6775,7 @@
     const panel = makeElement('div', 'boards-panel-view');
     const heading = makeElement('div', 'boards-panel-heading');
     heading.append(makeElement('h3', '', 'Resumen del tablero'));
-    if (state.filters.length || els.boardSearch.value.trim()) heading.append(makeElement('p', '', 'Los totales reflejan la búsqueda y los filtros activos.'));
+    if (state.filters.length || boardSearchValue().trim()) heading.append(makeElement('p', '', 'Los totales reflejan la búsqueda y los filtros activos.'));
     const metrics = makeElement('div', 'boards-panel-metrics');
     [
       ['Elementos', items.length],
@@ -5610,7 +6858,7 @@
       return;
     }
     const targetGroupId = String(groupId || state.groups[0].id);
-    if (state.activeViewType === 'table' && !els.boardSearch.value.trim() && !state.filters.length) {
+    if (state.activeViewType === 'table' && !boardSearchValue().trim() && !state.filters.length) {
       state.inlineAddGroupId = targetGroupId;
       state.collapsedGroups.delete(targetGroupId);
       renderTable();
@@ -5715,7 +6963,7 @@
     const value = editor.value;
     if (kind === 'number') {
       if (value === '') return null;
-      const number = Number(value);
+      const number = Number(value.replace(/,/g, ''));
       if (!Number.isFinite(number)) throw new Error('Escribe un número válido.');
       return number;
     }
@@ -5784,13 +7032,23 @@
         }
       }
       if ((editedColumn && ['status', 'dropdown'].includes(columnType(editedColumn)))
-        || state.activeViewType !== 'table' || els.boardSearch.value.trim() || state.filters.length) renderActiveView();
+        || state.activeViewType !== 'table' || boardSearchValue().trim() || state.filters.length) {
+        const activeKanbanColumn = state.activeViewType === 'kanban'
+          && String(state.viewConfig.kanban_column_id || 'groups') === String(editedColumn?.id || '');
+        if (activeKanbanColumn) syncKanbanCardsFromState();
+        else renderActiveView();
+      }
     } catch (error) {
       editor.classList.add('has-error');
       setNotice(errorMessage(error, 'No se pudo guardar el cambio.'), 'error');
       if (error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) {
-        setNotice('El tablero cambió en otra sesión. Se recargaron los datos más recientes.', 'info');
-        await loadBoard(state.board.id, true);
+        if (state.activeViewType === 'kanban') {
+          setNotice('El tablero cambió en otra sesión. No se guardó el movimiento; vuelve a intentarlo.', 'info');
+          syncKanbanCardsFromState();
+        } else {
+          setNotice('El tablero cambió en otra sesión. Se recargaron los datos más recientes.', 'info');
+          await loadBoard(state.board.id, true);
+        }
       }
     } finally {
       if (document.contains(editor)) setEditorDisabled(editor, false);
@@ -5812,6 +7070,30 @@
     }
   }
 
+  async function saveSortableItem(item, groupId, sortOrder, movingItems = [item]) {
+    if (itemOrderSaving) { renderActiveView(); return; }
+    itemOrderSaving = true;
+    const boardId = state.board?.id;
+    itemSortables.forEach((sortable) => sortable.option('disabled', true));
+    kanbanSortables.forEach((sortable) => sortable.option('disabled', true));
+    groupSortable?.option('disabled', true);
+    try {
+      await moveItemToGroup(item, groupId, sortOrder, movingItems);
+    } finally {
+      itemOrderSaving = false;
+      if (String(state.board?.id) === String(boardId)) {
+        if (state.activeViewType === 'kanban') {
+          syncKanbanCardsFromState();
+          kanbanSortables.forEach((sortable) => sortable.option('disabled', false));
+        } else {
+          renderActiveView();
+          const row = els.boardTableContainer.querySelector(`[data-open-item-details="${item.id}"]`);
+          row?.focus({ preventScroll: true });
+        }
+      }
+    }
+  }
+
   async function moveItemToGroup(item, groupId, sortOrder = null, movingItems = [item]) {
     if (!item || !groupId || !canEditBoard()) return;
     if (String(item.group_id) === String(groupId) && sortOrder === null) return;
@@ -5820,25 +7102,38 @@
       if (Number.isInteger(sortOrder) && sortOrder >= 0) {
         const orderedItems = movingItems.slice().sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
         const reordering = orderedItems.every((candidate) => String(candidate.group_id) === String(groupId));
+        const updateKanbanLocally = state.activeViewType === 'kanban' && orderedItems.length === 1 && orderedItems[0].parent_item_id == null;
+        const sourceGroupIds = new Set(orderedItems.map((candidate) => String(candidate.group_id)));
         const sequence = reordering ? orderedItems.slice().reverse() : orderedItems;
         for (const candidate of sequence) {
           const originalIndex = orderedItems.findIndex((entry) => String(entry.id) === String(candidate.id));
-          await post(apiUrl('move_item'), {
+          const result = await post(apiUrl('move_item'), {
             board_id: state.board.id,
             item_id: candidate.id,
             group_id: groupId,
             sort_order: sortOrder + originalIndex,
             version: candidate.version
           });
+          if (updateKanbanLocally) {
+            const applied = applyAffectedItems(result.data?.affected_items, candidate, groupId, result.data?.version);
+            if (!applied) {
+              candidate.group_id = groupId;
+              candidate.version = result.data?.version ?? candidate.version;
+            }
+          }
           movedCount += 1;
         }
-        await loadBoard(state.board.id, true);
-        const reordered = orderedItems.every((candidate) => String(candidate.group_id) === String(groupId));
+        if (updateKanbanLocally) {
+          sourceGroupIds.forEach((sourceGroupId) => updateLocalGroupSortOrder(sourceGroupId));
+          updateLocalGroupSortOrder(String(groupId), orderedItems, sortOrder);
+        } else {
+          await loadBoard(state.board.id, true);
+        }
         const message = orderedItems.length > 1
-          ? (reordered ? `${orderedItems.length} elementos reordenados en el grupo.` : `${orderedItems.length} elementos movidos al grupo.`)
-          : (reordered ? 'Elemento reordenado dentro del grupo.' : 'Elemento y subelementos movidos al grupo y posición seleccionados.');
+          ? (reordering ? `${orderedItems.length} elementos reordenados en el grupo.` : `${orderedItems.length} elementos movidos al grupo.`)
+          : (reordering ? 'Elemento reordenado dentro del grupo.' : 'Elemento y subelementos movidos al grupo y posición seleccionados.');
         setNotice(message, 'success');
-        return;
+        return true;
       }
       const payload = {
         board_id: state.board.id,
@@ -5857,10 +7152,75 @@
       }
       renderActiveView();
       setNotice('Elemento y sus subelementos movidos al grupo seleccionado.', 'success');
+      return true;
     } catch (error) {
       setNotice(errorMessage(error, 'No se pudo mover el elemento.'), 'error');
-      if (movedCount || error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) await loadBoard(state.board.id, true);
+      if (movedCount || error.status === 409 || error.code === 'conflict' || /409|actualiz|conflict/i.test(error.message)) {
+        if (state.activeViewType !== 'kanban') await loadBoard(state.board.id, true);
+      }
+      return false;
     }
+  }
+
+  function updateLocalGroupSortOrder(groupId, insertedItems = [], insertAt = null) {
+    const normalizedGroupId = String(groupId);
+    const insertedRoots = insertedItems.filter((item) => item.parent_item_id == null);
+    const insertedIds = new Set(insertedRoots.map((item) => String(item.id)));
+    const roots = state.items
+      .filter((item) => String(item.group_id) === normalizedGroupId && item.parent_item_id == null && !insertedIds.has(String(item.id)))
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+    if (insertedRoots.length) roots.splice(Math.max(0, Math.min(Number(insertAt) || 0, roots.length)), 0, ...insertedRoots);
+
+    const childrenByParent = new Map();
+    state.items.forEach((item) => {
+      if (item.parent_item_id == null) return;
+      const key = String(item.parent_item_id);
+      if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+      childrenByParent.get(key).push(item);
+    });
+    childrenByParent.forEach((children) => children.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id)));
+
+    const ordered = [];
+    const visited = new Set();
+    const appendTree = (current) => {
+      const key = String(current.id);
+      if (visited.has(key)) return;
+      visited.add(key);
+      ordered.push(current);
+      (childrenByParent.get(key) || []).forEach(appendTree);
+    };
+    roots.forEach(appendTree);
+    state.items
+      .filter((item) => String(item.group_id) === normalizedGroupId && !visited.has(String(item.id)))
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id))
+      .forEach(appendTree);
+    ordered.forEach((item, index) => { item.sort_order = index; });
+    state.items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+  }
+
+  function syncKanbanCardsFromState() {
+    const board = els.boardRendererArea.querySelector('.boards-kanban-board');
+    if (!board) return;
+    const items = getFilteredItems();
+    const cards = new Map([...board.querySelectorAll('.boards-kanban-card[data-kanban-item]')]
+      .map((card) => [card.dataset.kanbanItem, card]));
+    board.querySelectorAll('.boards-kanban-cards').forEach((list) => {
+      const laneColumnId = list.dataset.kanbanColumn;
+      const column = laneColumnId ? state.columns.find((candidate) => String(candidate.id) === laneColumnId) : null;
+      const laneKey = list.dataset.kanbanLane;
+      const laneItems = items.filter((item) => column
+        ? stringifyValue(getCellValue(item, column)) === laneKey
+        : String(item.group_id) === laneKey);
+      list.querySelectorAll(':scope > .boards-kanban-card').forEach((card) => card.remove());
+      list.querySelectorAll(':scope > .boards-kanban-empty').forEach((empty) => empty.remove());
+      laneItems.forEach((item) => {
+        const card = cards.get(String(item.id));
+        if (card) list.append(card);
+      });
+      if (!laneItems.length) list.append(makeElement('p', 'boards-kanban-empty', 'Sin elementos'));
+      const count = list.closest('.boards-kanban-lane')?.querySelector('.boards-kanban-count');
+      if (count) count.textContent = String(laneItems.length);
+    });
   }
 
   function rootBoardItem(item) {
@@ -5968,6 +7328,7 @@
   }
 
   function setupDialogs() {
+    els.createColumnDialog.addEventListener('close', () => els.createColumnForm.reset());
     document.addEventListener('click', (event) => {
       const action = event.target.closest('[data-recycle-action]');
       if (!action) return;
@@ -6107,8 +7468,20 @@
 
     document.getElementById('openDuplicateBoard')?.addEventListener('click', () => {
       const role = String(state.board?.role || '').toLowerCase();
-      if (!canCreateBoard || !['owner', 'designer'].includes(role) || !state.board?.id) return;
+      if (!['owner', 'designer', 'editor'].includes(role) || !state.board?.id) return;
       document.getElementById('duplicateBoardName').value = `Duplicado de ${state.board.name || 'tablero'}`;
+      const destinationSelect = document.getElementById('duplicateBoardWorkspace');
+      if (destinationSelect) {
+        destinationSelect.replaceChildren();
+        state.workspaces.filter((workspace) => canCreateInWorkspace(workspace)).forEach((workspace) => {
+          const option = makeElement('option', '', workspace.name || 'Espacio sin nombre');
+          option.value = String(workspace.id);
+          destinationSelect.append(option);
+        });
+        const sourceWorkspaceId = String(state.board.workspace_id || '');
+        destinationSelect.value = Array.from(destinationSelect.options).some((option) => option.value === sourceWorkspaceId)
+          ? sourceWorkspaceId : (destinationSelect.options[0]?.value || '');
+      }
       document.getElementById('duplicateBoardMode').value = 'structure';
       document.getElementById('duplicateBoardSubscribers').checked = false;
       document.getElementById('duplicateBoardModeHelp').textContent = 'Se copiarán grupos y columnas, sin elementos.';
@@ -6125,10 +7498,11 @@
 
     dialogSubmit(els.duplicateBoardForm, async (formData) => {
       const role = String(state.board?.role || '').toLowerCase();
-      if (!canCreateBoard || !['owner', 'designer'].includes(role)) throw new Error('Solo el propietario o un diseñador puede duplicar este tablero.');
+      if (!['owner', 'designer', 'editor'].includes(role)) throw new Error('No tienes permiso para duplicar este tablero.');
       const result = await post(apiUrl('duplicate_board'), {
         board_id: state.board.id,
         name: getFormValue(formData, 'name'),
+        workspace_id: getFormValue(formData, 'workspace_id'),
         mode: getFormValue(formData, 'mode') || 'structure',
         keep_subscribers: formData.get('keep_subscribers') === '1'
       });
@@ -6145,10 +7519,11 @@
     });
 
     dialogSubmit(els.createBoardForm, async (formData) => {
-      if (!canCreateBoard) throw new Error('No tienes permiso para crear tableros.');
       const name = getFormValue(formData, 'name');
       const description = getFormValue(formData, 'description');
       const workspaceId = getFormValue(formData, 'workspace_id');
+      const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
+      if (!canCreateInWorkspace(workspace)) throw new Error('No tienes permiso para crear tableros en este espacio.');
       const folderId = getFormValue(formData, 'folder_id');
       const visibility = getFormValue(formData, 'visibility') || 'private';
       const result = await post(apiUrl('create_board'), { name, workspace_id: workspaceId, visibility, ...(folderId ? { folder_id: folderId } : {}), ...(description ? { description } : {}) });
@@ -6182,9 +7557,10 @@
     });
 
     dialogSubmit(els.createFolderForm, async (formData) => {
-      if (!canCreateBoard) throw new Error('No tienes permiso para crear carpetas.');
       const name = getFormValue(formData, 'name');
       const workspaceId = getFormValue(formData, 'workspace_id');
+      const workspace = state.workspaces.find((entry) => String(entry.id) === String(workspaceId));
+      if (!canCreateInWorkspace(workspace)) throw new Error('No tienes permiso para crear carpetas en este espacio.');
       const parentFolderId = getFormValue(formData, 'parent_folder_id');
       const color = getFormValue(formData, 'color');
       const result = await post(apiUrl('create_folder'), { name, color, workspace_id: workspaceId, ...(parentFolderId ? { parent_folder_id: parentFolderId } : {}) });
@@ -6217,8 +7593,9 @@
     els.newColumnType.addEventListener('change', () => {
       const optionsType = ['status', 'dropdown', 'tags'].includes(els.newColumnType.value);
       els.columnOptionsField.classList.toggle('d-none', !optionsType);
+      document.getElementById('columnRatingField').classList.toggle('d-none', els.newColumnType.value !== 'rating');
       const help = {
-        status: 'Escribe una opción por línea. El sistema asignará un color inicial a cada estado.',
+        status: 'Define los estados y su orden. Cada uno tendrá un color inicial que podrás ajustar después.',
         formula: 'La API acepta únicamente la sintaxis segura definida por el servidor.',
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
@@ -6231,14 +7608,80 @@
       els.columnTypeHelp.textContent = help[els.newColumnType.value] || 'El tipo determina el editor y las validaciones disponibles para cada celda.';
       const optionsHelp = els.columnOptionsField.querySelector('.boards-field-help');
       if (optionsHelp) optionsHelp.textContent = els.newColumnType.value === 'status'
-        ? 'Una opción por línea. Los estados se mostrarán como etiquetas coloreadas.'
-        : 'Para Estado, Lista desplegable y Etiquetas: escribe una opción por línea.';
+        ? 'Los estados se mostrarán como etiquetas coloreadas. Puedes cambiar sus colores después.'
+        : 'Agrega opciones en el orden en que quieres que aparezcan.';
+      document.getElementById('addColumnOption').querySelector('span').textContent = els.newColumnType.value === 'status' ? 'Agregar estado' : 'Agregar opción';
+      renderNewColumnOptions();
+      els.columnOptionsField.querySelectorAll('.boards-new-option-name').forEach((input) => { input.disabled = !optionsType; });
+    });
+    document.getElementById('addColumnOption').addEventListener('click', () => addNewColumnOption());
+    document.getElementById('newColumnOptionsList').addEventListener('input', (event) => {
+      if (event.target.matches('.boards-new-option-name')) syncNewColumnOptions();
+    });
+    document.getElementById('newColumnOptionsList').addEventListener('click', handleNewColumnOptionAction);
+    document.getElementById('newColumnOptionsList').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || !event.target.matches('.boards-new-option-name')) return;
+      event.preventDefault();
+      const row = event.target.closest('.boards-new-option-row');
+      const rows = Array.from(document.querySelectorAll('#newColumnOptionsList .boards-new-option-row'));
+      addNewColumnOption(rows.indexOf(row) + 1);
     });
     els.createColumnForm.addEventListener('reset', () => {
-      window.setTimeout(() => els.newColumnType.dispatchEvent(new Event('change')), 0);
+      window.setTimeout(() => {
+        state.insertAfterColumnId = '';
+        state.columnDialogAction = null;
+        document.getElementById('createColumnTitle').textContent = 'Configurar columna';
+        els.createColumnForm.querySelector('[type="submit"]').textContent = 'Agregar columna';
+        document.getElementById('columnNameField').classList.remove('d-none');
+        document.getElementById('columnTypeField').classList.remove('d-none');
+        els.newColumnOptions.value = '';
+        els.newColumnType.dispatchEvent(new Event('change'));
+      }, 0);
     });
     dialogSubmit(els.createColumnForm, async (formData) => {
       if (!canManageStructure()) throw new Error('Se requiere permiso de administración para agregar columnas.');
+      if (state.columnDialogAction?.type === 'rename') {
+        const columnId = state.columnDialogAction.columnId;
+        const name = getFormValue(formData, 'name').trim();
+        if (!name) throw new Error('Escribe un nombre para la columna.');
+        await post(apiUrl('rename_column'), { board_id: state.board.id, column_id: columnId, name });
+        const column = state.columns.find((entry) => String(entry.id) === String(columnId));
+        if (column) column.name = name;
+        closeDialog(els.createColumnDialog);
+        renderActiveView();
+        setNotice('Nombre de columna actualizado.', 'success');
+        return;
+      }
+      if (state.columnDialogAction?.type === 'change-type') {
+        const columnId = state.columnDialogAction.columnId;
+        const column = state.columns.find((entry) => String(entry.id) === String(columnId));
+        const type = getFormValue(formData, 'type');
+        if (!column) throw new Error('La columna ya no está disponible; vuelve a cargar el tablero.');
+        let options = [];
+        if (['status', 'dropdown', 'tags'].includes(type)) {
+          const priorOptions = state.columnDialogAction.originalOptions || [];
+          options = els.newColumnOptions.value.split(/\r?\n/).map((label) => label.trim()).filter(Boolean).map((label, index) => {
+            const prior = priorOptions.find((option) => option.label === label || option.value === label);
+            return prior ? { ...prior, label } : { value: label, label, color: statusLabelColor(label, index) };
+          });
+        } else if (type === 'rating') {
+          const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
+          options = { display, max: display === 'percentage' ? 100 : 5 };
+        }
+        const payload = { board_id: state.board.id, column_id: columnId, type, options };
+        const preview = await post(apiUrl('preview_column_type_change'), payload);
+        const detail = preview.data || {};
+        const examples = Array.isArray(detail.invalid_examples) ? detail.invalid_examples.map((entry) => `Elemento ${entry.item_id}: ${entry.reason}`).join('\n') : '';
+        const summary = `Tipo actual: ${detail.from_type || column.type}\nTipo nuevo: ${type}\n\nValores compatibles: ${detail.valid_count ?? '—'}\nValores inválidos: ${detail.invalid_count ?? '—'}\nConflictos de valor único: ${detail.unique_conflict_count ?? '—'}${examples ? `\n\nEjemplos:\n${examples}` : ''}`;
+        if (!detail.can_commit) throw new Error(`${summary}\n\nAjusta el tipo u opciones y vuelve a revisar. No se modificó la columna.`);
+        const confirmed = await confirmAction(summary, { title: 'Revisar cambio de tipo', confirmLabel: 'Cambiar tipo' });
+        if (!confirmed) { closeDialog(els.createColumnDialog); return; }
+        await post(apiUrl('change_column_type'), payload);
+        closeDialog(els.createColumnDialog);
+        await loadBoard(state.board.id, true);
+        setNotice('Tipo de columna actualizado.', 'success');
+        return;
+      }
       const name = getFormValue(formData, 'name');
       const type = getFormValue(formData, 'type');
       let options = ['status', 'dropdown', 'tags'].includes(type)
@@ -6247,9 +7690,14 @@
       if (type === 'status' && options?.length) {
         options = options.map((label, index) => ({ value: label, label, color: statusLabelColor(label, index) }));
       }
-      const result = await post(apiUrl('create_column'), { board_id: state.board.id, name, type, ...(options?.length ? { options } : {}) });
+      if (type === 'rating') {
+        const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
+        options = { display, max: display === 'percentage' ? 100 : 5 };
+      }
+      const result = await post(apiUrl('create_column'), { board_id: state.board.id, name, type, ...(options ? { options } : {}), ...(state.insertAfterColumnId ? { insert_after_column_id: state.insertAfterColumnId } : {}) });
       const column = result.data || {};
       state.columns.push({ id: column.id, name, type, options: options || [], required: false, sort_order: column.sort_order ?? state.columns.length });
+      state.insertAfterColumnId = '';
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       closeDialog(els.createColumnDialog);
       renderActiveView();
@@ -6291,7 +7739,7 @@
       const name = getFormValue(formData, 'name');
       const viewType = normalizeViewType(getFormValue(formData, 'view_type'));
       const isShared = Boolean(formData.get('is_shared'));
-      if (isShared && !canShareBoard()) throw new Error('Solo el propietario o una persona diseñadora puede compartir vistas.');
+      if (isShared && !canShareBoard()) throw new Error('No tienes permiso para compartir vistas.');
       const result = await post(apiUrl('create_view'), {
         board_id: state.board.id,
         name,
@@ -6686,6 +8134,12 @@
       }
     });
     document.getElementById('boardNavList')?.addEventListener('click', (event) => {
+      if (Date.now() < suppressNavClickUntil) {
+        suppressNavClickUntil = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       const button = event.target.closest('[data-nav-board]');
       if (button) {
         els.boardSelect.value = button.dataset.navBoard;
@@ -6734,7 +8188,19 @@
         showEmptyState();
       }
     });
-    els.boardSearch.addEventListener('input', renderActiveView);
+    const boardSearchShell = els.boardSearch.closest('.boards-search');
+    boardSearchShell?.addEventListener('input', (event) => {
+      if (event.target === els.boardSearch) renderActiveView();
+    });
+    boardSearchShell?.addEventListener('change', (event) => {
+      if (event.target === els.boardSearch && els.boardSearch.tagName === 'SELECT') renderActiveView();
+    });
+    els.boardSearchColumn?.addEventListener('change', () => {
+      els.boardSearchColumn.setAttribute('aria-label', els.boardSearchColumn.value
+        ? `Buscar en ${els.boardSearchColumn.selectedOptions[0]?.textContent || 'columna'}`
+        : 'Buscar en todas las columnas');
+      renderActiveView();
+    });
     document.querySelectorAll('.boards-view-tab[data-view-type]').forEach((button) => {
       button.addEventListener('click', () => switchView(button.dataset.viewType));
     });
@@ -6832,6 +8298,22 @@
       }
     });
     els.boardTableContainer.addEventListener('click', (event) => {
+      const menuTrigger = event.target.closest('[data-open-column-menu]');
+      if (menuTrigger) {
+        event.preventDefault(); event.stopPropagation();
+        const column = state.columns.find((entry) => String(entry.id) === menuTrigger.dataset.openColumnMenu);
+        if (column) openColumnMenu(column, menuTrigger);
+        return;
+      }
+      const menuAction = event.target.closest('[data-column-menu-action]');
+      if (menuAction) {
+        event.preventDefault(); event.stopPropagation();
+        const columnId = menuAction.closest('.boards-column-menu')?.dataset.columnMenuColumn;
+        const column = state.columns.find((entry) => String(entry.id) === columnId);
+        closeColumnMenus();
+        if (column) runColumnMenuAction(menuAction.dataset.columnMenuAction, column, menuAction).catch((error) => setNotice(error.message || 'No se pudo realizar la acción de columna.', 'error'));
+        return;
+      }
       const download = event.target.closest('[data-download-group-files]');
       if (download) {
         event.preventDefault();
@@ -6841,6 +8323,10 @@
       }
       const toggle = event.target.closest('[data-toggle-group]');
       if (toggle) {
+        if (Date.now() < (state.suppressGroupClickUntil || 0)) {
+          state.suppressGroupClickUntil = 0;
+          return;
+        }
         const id = toggle.dataset.toggleGroup;
         if (state.collapsedGroups.has(id)) state.collapsedGroups.delete(id);
         else state.collapsedGroups.add(id);
@@ -6856,7 +8342,45 @@
         renderTable();
       }
     });
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('.boards-column-menu, [data-open-column-menu]')) closeColumnMenus();
+    });
+    document.addEventListener('click', (event) => {
+      const menuAction = event.target.closest('[data-column-menu-action]');
+      if (!menuAction) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const columnId = menuAction.closest('.boards-column-menu')?.dataset.columnMenuColumn;
+      const column = state.columns.find((entry) => String(entry.id) === String(columnId));
+      closeColumnMenus();
+      if (column) runColumnMenuAction(menuAction.dataset.columnMenuAction, column, menuAction)
+        .catch((error) => setNotice(error.message || 'No se pudo realizar la acción de columna.', 'error'));
+    });
+    document.addEventListener('scroll', (event) => {
+      if (event.target.closest?.('.boards-column-menu')) return;
+      closeColumnMenus();
+    }, true);
+    window.addEventListener('resize', closeColumnMenus);
+    document.addEventListener('keydown', (event) => {
+      const menu = event.target.closest?.('.boards-column-menu');
+      if (menu && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        const actions = [...menu.querySelectorAll('button[role="menuitem"]:not(:disabled)')];
+        const index = actions.indexOf(document.activeElement);
+        const next = event.key === 'Home' ? 0
+          : event.key === 'End' ? actions.length - 1
+            : (index + (event.key === 'ArrowDown' ? 1 : -1) + actions.length) % actions.length;
+        event.preventDefault();
+        actions[next]?.focus();
+        return;
+      }
+      if (event.key === 'Escape' && document.querySelector('.boards-column-menu')) {
+        const trigger = document.querySelector('[data-open-column-menu][aria-expanded="true"]');
+        closeColumnMenus();
+        trigger?.focus();
+      }
+    });
     els.boardTableContainer.addEventListener('dragstart', (event) => {
+      if (event.target.closest('.boards-group-heading')) return;
       const row = event.target.closest('[data-item-row]');
       const nameField = event.target.closest('.boards-item-name');
       const control = event.target.closest('button, a, input, select, textarea, [contenteditable="true"]');
@@ -6928,6 +8452,32 @@
       state.draggedItemId = '';
       state.draggedItemIds = [];
       els.boardTableContainer.querySelectorAll('.is-dragging, .is-drop-target, .is-drop-before, .is-drop-after').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target', 'is-drop-before', 'is-drop-after'));
+    });
+    els.boardTableContainer.addEventListener('keydown', (event) => {
+      const itemRow = event.target.closest('.boards-item-row:not(.is-child-row)');
+      if (itemRow && event.target === itemRow && ['ArrowUp', 'ArrowDown'].includes(event.key)
+        && canEditBoard() && !state.filters.length && !boardSearchValue().trim()) {
+        const item = state.items.find((candidate) => String(candidate.id) === itemRow.dataset.openItemDetails);
+        const siblings = state.items.filter((candidate) => candidate.parent_item_id == null && String(candidate.group_id) === String(item?.group_id))
+          .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id));
+        const current = siblings.indexOf(item);
+        const next = current + (event.key === 'ArrowUp' ? -1 : 1);
+        if (item && current >= 0 && next >= 0 && next < siblings.length) {
+          event.preventDefault();
+          void saveSortableItem(item, item.group_id, next);
+        }
+        return;
+      }
+      const heading = event.target.closest('.boards-group-heading');
+      if (!heading || !['ArrowUp', 'ArrowDown'].includes(event.key) || !canEditBoard()) return;
+      const current = state.groups.findIndex((group) => String(group.id) === heading.closest('[data-group-body]')?.dataset.groupBody);
+      const next = Math.max(0, Math.min(state.groups.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)));
+      if (current < 0 || current === next) return;
+      event.preventDefault();
+      const previous = [...state.groups];
+      const ids = previous.map((group) => String(group.id));
+      ids.splice(next, 0, ids.splice(current, 1)[0]);
+      void saveGroupOrder(ids, previous);
     });
     els.boardTableContainer.addEventListener('submit', (event) => {
       const form = event.target.closest('[data-inline-add-form]');
@@ -7003,6 +8553,12 @@
         }
         const nameButton = event.target.closest('[data-item-name-button]');
         if (nameButton) {
+          if (Date.now() < state.suppressItemClickUntil) {
+            state.suppressItemClickUntil = 0;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+          }
           event.stopPropagation();
           beginItemNameEdit(nameButton);
           return;
@@ -7105,6 +8661,27 @@
   }
 
   function setupExtendedEvents() {
+    const navigatorToggle = document.getElementById('toggleBoardNavigator');
+    const boardsMain = navigatorToggle?.closest('.boards-main');
+    const boardNavigator = document.getElementById('boardNavigator');
+    const setNavigatorCollapsed = (collapsed, persist = true) => {
+      if (!boardsMain || !navigatorToggle) return;
+      boardsMain.classList.toggle('is-navigator-collapsed', collapsed);
+      if (boardNavigator) boardNavigator.hidden = collapsed;
+      navigatorToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      const label = collapsed ? 'Mostrar navegación de espacios y carpetas' : 'Ocultar navegación de espacios y carpetas';
+      navigatorToggle.setAttribute('aria-label', label);
+      navigatorToggle.title = label;
+      navigatorToggle.innerHTML = `<i class="fa-solid ${collapsed ? 'fa-chevron-right' : 'fa-chevron-left'}" aria-hidden="true"></i>`;
+      if (persist) {
+        try { localStorage.setItem('tableros-navigator-collapsed', collapsed ? '1' : '0'); } catch (_) {}
+      }
+    };
+    let navigatorCollapsed = false;
+    try { navigatorCollapsed = localStorage.getItem('tableros-navigator-collapsed') === '1'; } catch (_) {}
+    setNavigatorCollapsed(navigatorCollapsed, false);
+    navigatorToggle?.addEventListener('click', () => setNavigatorCollapsed(!boardsMain?.classList.contains('is-navigator-collapsed')));
+
     els.workspaceManagementList?.addEventListener('click', (event) => {
       const button = event.target.closest('[data-workspace-action]');
       if (button) runWorkspaceManagementAction(button);
@@ -7128,6 +8705,15 @@
         imageStageObserver.disconnect();
         imageStageObserver = null;
       }
+    });
+    els.filePreviewDialog.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-preview-action]');
+      if (!button || !activePreviewFile || !canEditBoard()) return;
+      button.dataset.recycleAction = button.dataset.previewAction;
+      button.dataset.recycleType = 'file';
+      button.dataset.recycleId = String(activePreviewFile.file_id);
+      button.dataset.recycleBoard = String(state.board?.id || '');
+      runRecycleAction(button);
     });
     setupFilePreviewRail();
     [els.itemDetailsDialog, els.filePreviewDialog].forEach((dialog) => {
@@ -7178,6 +8764,7 @@
         activateDetailTab(detailTabs[next], true);
       });
     });
+    setupItemCommentComposer();
     els.itemCommentForm.addEventListener('submit', submitItemComment);
     [els.boardMembersList, els.manageBoardMembersList].forEach((list) => {
       list?.addEventListener('click', (event) => {
@@ -7223,5 +8810,11 @@
   setupDialogs();
   attachEvents();
   setupExtendedEvents();
+  if (window.ResizeObserver && els.boardTableContainer) {
+    groupHeadingResizeObserver = new ResizeObserver(syncGroupHeadingWidths);
+    groupHeadingResizeObserver.observe(els.boardTableContainer);
+  } else {
+    window.addEventListener('resize', syncGroupHeadingWidths);
+  }
   loadBoards();
 })();

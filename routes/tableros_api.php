@@ -4,12 +4,13 @@
 // no permitido; si el Router filtrara el verbo, un mismatch caería antes en el
 // 405 de texto plano de index.php, rompiendo el contrato JSON de esta API.
 // <str:id> porque el controlador valida el entero él mismo (igual que tableros.board).
-// boards, update_automation y delete_automation no tienen ruta nueva: sin
-// ningún caller en tableros.js/tableros_notifications.js, solo son
-// alcanzables por el fallback legacy.
+// boards, update_automation, delete_automation y attach_item_comment_file no
+// tienen ruta nueva: sin ningún caller en tableros.js/tableros_notifications.js,
+// solo son alcanzables por el fallback legacy.
 return [
     group('tableros-api/', [
         route('structure/', [tableros_api::class, 'structure'], name: 'tableros_api.structure', methods: [], alias: ['tableros_api/structure']),
+        route('reorder-structure/', [tableros_api::class, 'reorder_structure'], name: 'tableros_api.reorder_structure', methods: [], alias: ['tableros_api/reorder_structure']),
         route('workspace-members/', [tableros_api::class, 'workspace_members'], name: 'tableros_api.workspace_members', methods: [], alias: ['tableros_api/workspace_members']),
         route('share-workspace/', [tableros_api::class, 'share_workspace'], name: 'tableros_api.share_workspace', methods: [], alias: ['tableros_api/share_workspace']),
         route('update-workspace-member/', [tableros_api::class, 'update_workspace_member'], name: 'tableros_api.update_workspace_member', methods: [], alias: ['tableros_api/update_workspace_member']),
@@ -57,8 +58,13 @@ return [
         route('update-item-name/', [tableros_api::class, 'update_item_name'], name: 'tableros_api.update_item_name', methods: [], alias: ['tableros_api/update_item_name']),
         route('create-board/', [tableros_api::class, 'create_board'], name: 'tableros_api.create_board', methods: [], alias: ['tableros_api/create_board']),
         route('create-group/', [tableros_api::class, 'create_group'], name: 'tableros_api.create_group', methods: [], alias: ['tableros_api/create_group']),
+        route('reorder-groups/', [tableros_api::class, 'reorder_groups'], name: 'tableros_api.reorder_groups', methods: [], alias: ['tableros_api/reorder_groups']),
         route('create-column/', [tableros_api::class, 'create_column'], name: 'tableros_api.create_column', methods: [], alias: ['tableros_api/create_column']),
         route('update-column-options/', [tableros_api::class, 'update_column_options'], name: 'tableros_api.update_column_options', methods: [], alias: ['tableros_api/update_column_options']),
+        route('rename-column/', [tableros_api::class, 'rename_column'], name: 'tableros_api.rename_column', methods: [], alias: ['tableros_api/rename_column']),
+        route('duplicate-column/', [tableros_api::class, 'duplicate_column'], name: 'tableros_api.duplicate_column', methods: [], alias: ['tableros_api/duplicate_column']),
+        route('preview-column-type-change/', [tableros_api::class, 'preview_column_type_change'], name: 'tableros_api.preview_column_type_change', methods: [], alias: ['tableros_api/preview_column_type_change']),
+        route('change-column-type/', [tableros_api::class, 'change_column_type'], name: 'tableros_api.change_column_type', methods: [], alias: ['tableros_api/change_column_type']),
         route('create-item/', [tableros_api::class, 'create_item'], name: 'tableros_api.create_item', methods: [], alias: ['tableros_api/create_item']),
         route('update-cell/', [tableros_api::class, 'update_cell'], name: 'tableros_api.update_cell', methods: [], alias: ['tableros_api/update_cell']),
         route('move-item/', [tableros_api::class, 'move_item'], name: 'tableros_api.move_item', methods: [], alias: ['tableros_api/move_item']),

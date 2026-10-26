@@ -108,7 +108,7 @@
 {% endblock %}
 {% block myjs %}
 <script>
-  $(document).on('change', '.select-asignar', function () {
+  $(document).on('change', 'select.select-asignar', function () {
     var sel = this;
     var $sel = $(sel);
     var anterior = sel.getAttribute('data-anterior') ?? String(sel.value);
@@ -123,11 +123,16 @@
       .then(d => {
         $sel.closest('.bootstrap-select').find('.dropdown-toggle').prop('disabled', false);
         if (d.success) {
+          // La asignación ya quedó guardada; un fallo al repintar no es un error de red.
           sel.setAttribute('data-anterior', String(sel.value));
-          reinicializarPickers(actualizarPuntosAsignados());
-          var $btn = $sel.closest('.bootstrap-select').find('.dropdown-toggle');
-          $btn.addClass('border-success');
-          setTimeout(function () { $btn.removeClass('border-success'); }, 1200);
+          try {
+            reinicializarPickers(actualizarPuntosAsignados());
+            var $btn = $sel.closest('.bootstrap-select').find('.dropdown-toggle');
+            $btn.addClass('border-success');
+            setTimeout(function () { $btn.removeClass('border-success'); }, 1200);
+          } catch (e) {
+            console.error('Asignación guardada, falló el repintado del selector:', e);
+          }
         } else {
           alert(d.message || 'No se pudo asignar.');
           $sel.selectpicker('val', anterior);

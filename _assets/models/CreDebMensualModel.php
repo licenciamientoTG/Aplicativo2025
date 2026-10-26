@@ -90,6 +90,164 @@ class CreDebMensualModel extends Model{
         return ($this->sql->insert($query,$params))? true : false ;
     }
 
+    // Asesores que se pueden asignar desde TG6 (por ahora solo estos dos; el apellido de Alberto se completa después)
+    const ASESORES_ASIGNABLES = ['Hugo', 'Alberto'];
+
+    // Clientes de TG6 de un tipo (28 crédito, 127 débito). Débito: solo los que consumieron en el año en curso
+    private function clients_filter(int $tipo): string {
+        $base = "SELECT cliente_id FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual] WHERE tipo_id = " . ($tipo === 127 ? 127 : 28);
+        if ($tipo === 127) {
+            $base .= " AND [año] = YEAR(GETDATE()) GROUP BY cliente_id HAVING SUM(litros) > 0";
+        }
+        return "cod IN ($base)";
+    }
+
+    // Busca clientes por código, nombre o RFC dentro de los de TG6 del tipo indicado
+    function search_clients(string $q, int $tipo = 28): array {
+        $like = '%' . $q . '%';
+        $filter = $this->clients_filter($tipo);
+        $query = "SELECT TOP 100 c.cod, LTRIM(RTRIM(c.den)) AS den, LTRIM(RTRIM(c.rfc)) AS rfc,
+                         LTRIM(RTRIM(a.nombre_asesor)) AS asesor
+                  FROM [SG12].[dbo].[Clientes] c
+                  LEFT JOIN [TGV2].[dbo].[ClientesTG6] t ON t.cod = c.cod
+                  LEFT JOIN [TGV2].[dbo].[Asesores] a ON a.asesor_id = t.asesor_id
+                  WHERE c.{$filter}
+                    AND (? = '' OR c.den LIKE ? OR c.rfc LIKE ? OR CAST(c.cod AS VARCHAR(20)) LIKE ?)
+                  ORDER BY c.den";
+        return $this->sql->select($query, [$q, $like, $like, $like]) ?: [];
+    }
+
+    // id del asesor por nombre de pila; si no existe se crea (asesor_id no es identity)
+    private function advisor_id(string $firstName): int {
+        $row = $this->sql->select(
+            "SELECT TOP 1 asesor_id FROM [TGV2].[dbo].[Asesores] WHERE LTRIM(nombre_asesor) LIKE ? ORDER BY asesor_id",
+            [$firstName . '%']
+        );
+        if ($row) {
+            return (int)$row[0]['asesor_id'];
+        }
+        $next = (int)$this->sql->select("SELECT ISNULL(MAX(asesor_id), 0) + 1 AS id FROM [TGV2].[dbo].[Asesores]")[0]['id'];
+        $this->sql->query("INSERT INTO [TGV2].[dbo].[Asesores] (asesor_id, nombre_asesor) VALUES (?, ?)", [$next, $firstName]);
+        return $next;
+    }
+
+    // Asigna el asesor a los clientes indicados (del tipo dado); devuelve cuántos clientes se actualizaron
+    function assign_advisor(array $clientIds, string $firstName, int $tipo = 28): int {
+        if (!in_array($firstName, self::ASESORES_ASIGNABLES, true)) {
+            throw new Exception('Asesor no permitido');
+        }
+        $clientIds = array_values(array_unique(array_filter(array_map('intval', $clientIds))));
+        if (!$clientIds) {
+            return 0;
+        }
+        $advisorId = $this->advisor_id($firstName);
+        $in = implode(',', array_fill(0, count($clientIds), '?'));
+        $filter = $this->clients_filter($tipo);
+        $valid = (int)$this->sql->select(
+            "SELECT COUNT(*) AS n FROM [SG12].[dbo].[Clientes] WHERE cod IN ($in) AND $filter",
+            $clientIds
+        )[0]['n'];
+        $this->sql->beginTransaction();
+        try {
+            // Alta en ClientesTG6 de los que todavía no tienen fila, y después se asigna el asesor
+            $this->sql->query(
+                "INSERT INTO [TGV2].[dbo].[ClientesTG6] (cod)
+                 SELECT s.cod FROM [SG12].[dbo].[Clientes] s
+                 WHERE s.cod IN ($in) AND s.$filter
+                   AND NOT EXISTS (SELECT 1 FROM [TGV2].[dbo].[ClientesTG6] t WHERE t.cod = s.cod)",
+                $clientIds
+            );
+            $this->sql->query(
+                "UPDATE [TGV2].[dbo].[ClientesTG6] SET asesor_id = ? WHERE cod IN ($in) AND $filter",
+                array_merge([$advisorId], $clientIds)
+            );
+            $this->sql->commit();
+        } catch (Exception $e) {
+            $this->sql->rollBack();
+            throw $e;
+        }
+        return $valid;
+    }
+
+    // Filas de crédito/débito de un mes, para comparar antes y después de sincronizar
+    function month_snapshot(int $year, int $month): array {
+        $rows = $this->sql->select(
+            "SELECT cliente_id, nombre, tipo_id, litros, monto
+             FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual]
+             WHERE [año] = {$year} AND [mes] = {$month} AND [tipo_id] IN (28, 127)"
+        );
+        return $rows ?: [];
+    }
+
+    /**
+     * Recalcula crédito (28) y débito (127) de un mes con los despachos de $fromInt a $untilInt
+     * (seriales de Excel, ver dateToInt()). Reemplaza lo que hubiera en ese año/mes.
+     * Para el mes en curso el rango suele ser del día 1 a hoy.
+     */
+    function sync_month(int $fromInt, int $untilInt, int $year, int $month): int {
+        $delete = "DELETE FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual]
+                   WHERE [año] = {$year} AND [mes] = {$month} AND [tipo_id] IN (28, 127)";
+
+        $insert = "
+            INSERT INTO [TGV2].[dbo].[ConsumoCreditoDebitoMensual] (cliente_id, nombre, tipo, litros, cantidad, monto, tipo_id, año, mes)
+            SELECT
+                n.codcli,
+                c.den,
+                CASE n.codval WHEN 28 THEN 'Credito' ELSE 'Debito' END,
+                ISNULL(d.litros, 0),
+                ISNULL(d.cantidad, 0),
+                n.monto,
+                n.codval,
+                {$year},
+                {$month}
+            FROM (
+                SELECT v.codcli, v.codval, SUM(v.mto) AS monto
+                FROM [SG12].[dbo].[ValesR] v
+                WHERE v.codval IN (28, 127)
+                  AND v.fch BETWEEN {$fromInt} AND {$untilInt}
+                  AND EXISTS (SELECT 1 FROM [SG12].[dbo].[ClientesValores] cv WHERE cv.codcli = v.codcli AND cv.codest = 0)
+                GROUP BY v.codcli, v.codval
+            ) n
+            LEFT JOIN [SG12].[dbo].[Clientes] c ON c.cod = n.codcli
+            LEFT JOIN (
+                SELECT codcli, SUM(can) AS litros, SUM(mto) AS cantidad
+                FROM [SG12].[dbo].[Despachos] (NOLOCK)
+                WHERE fchtrn BETWEEN {$fromInt} AND {$untilInt}
+                GROUP BY codcli
+            ) d ON d.codcli = n.codcli";
+
+        $this->sql->beginTransaction();
+        try {
+            $this->sql->query($delete);
+            $this->sql->query($insert);
+            $monthClients = "SELECT cliente_id FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual]
+                             WHERE [año] = {$year} AND [mes] = {$month} AND tipo_id IN (28, 127)";
+            // Cliente nuevo en TG6: se inserta la primera vez que aparece
+            $this->sql->query("
+                INSERT INTO [TGV2].[dbo].[ClientesTG6] (cod)
+                SELECT DISTINCT m.cliente_id FROM ($monthClients) m
+                WHERE NOT EXISTS (SELECT 1 FROM [TGV2].[dbo].[ClientesTG6] t WHERE t.cod = m.cliente_id)");
+            // Primer consumo: se guarda una sola vez, solo para clientes que todavía no tienen fecha_ingreso
+            $this->sql->query("
+                UPDATE t SET t.fecha_ingreso = DATEADD(dd, x.f - 1, 0)
+                FROM [TGV2].[dbo].[ClientesTG6] t
+                JOIN (SELECT d.codcli, MIN(d.fchtrn) AS f
+                      FROM [SG12].[dbo].[Despachos] d (NOLOCK)
+                      WHERE d.codcli IN ($monthClients)
+                      GROUP BY d.codcli) x ON x.codcli = t.cod
+                WHERE t.fecha_ingreso IS NULL");
+            $count = $this->sql->select(
+                "SELECT COUNT(*) AS n FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual]
+                 WHERE [año] = {$year} AND [mes] = {$month} AND [tipo_id] IN (28, 127)"
+            );
+            $this->sql->commit();
+        } catch (Exception $e) {
+            $this->sql->rollBack();
+            throw $e;
+        }
+        return (int)($count[0]['n'] ?? 0);
+    }
+
     function comsumption_credit_count_table2($columnData): array|false {
         $query = "
             SELECT 
@@ -105,11 +263,12 @@ class CreDebMensualModel extends Model{
                     t1.nombre,
                     CONCAT(t1.año, '-', t1.mes) AS AñoMes,  -- Combina año y mes en una única columna
                     t1.litros,
-                    t2.lognew,
+                    ISNULL(t2.fecha_ingreso, s.lognew) AS lognew,
 					t3.[nombre_asesor],
 					t4.[nombre_zona]
                 FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual] t1
-                LEFT JOIN [TGV2].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
+                LEFT JOIN [TGV2].[dbo].[ClientesTG6] t2 on t1.cliente_id = t2.cod
+                LEFT JOIN [SG12].[dbo].[Clientes] s on t1.cliente_id = s.cod
 				LEFT JOIN [TGV2].[dbo].[Asesores] t3 on t2.asesor_id = t3.asesor_id
 				LEFT JOIN [TGV2].[dbo].[Zonas] t4 on t2.[zona_id] = t4.[zona_id]
                 WHERE
@@ -216,11 +375,12 @@ class CreDebMensualModel extends Model{
                     t1.nombre,
                     CONCAT(t1.año, '-', t1.mes) AS AñoMes,  -- Combina año y mes en una única columna
                     t1.litros,
-                    t2.lognew,
+                    ISNULL(t2.fecha_ingreso, s.lognew) AS lognew,
 					t3.[nombre_asesor],
 					t4.[nombre_zona]
                 FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual] t1
-                LEFT JOIN [TGV2].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
+                LEFT JOIN [TGV2].[dbo].[ClientesTG6] t2 on t1.cliente_id = t2.cod
+                LEFT JOIN [SG12].[dbo].[Clientes] s on t1.cliente_id = s.cod
 				LEFT JOIN [TGV2].[dbo].[Asesores] t3 on t2.asesor_id = t3.asesor_id
 				LEFT JOIN [TGV2].[dbo].[Zonas] t4 on t2.[zona_id] = t4.[zona_id]
                 WHERE
@@ -247,7 +407,8 @@ class CreDebMensualModel extends Model{
         $selectColumns = implode(",\n            ", array_merge(
             [
                 "tc.nombre as Cliente",
-			    "tp.rfc"
+			    "tp.rfc",
+                "tc.ingreso"
 
             ],
             $columnData['columns2']
@@ -323,10 +484,13 @@ class CreDebMensualModel extends Model{
         FROM PivotedData tp
        JOIN (
         SELECT
-			max(t2.den) as nombre,
-			t2.rfc
-			FROM [TGV2].[dbo].[Clientes] t2
-			Group by t2.rfc
+			max(s.den) as nombre,
+			min(ISNULL(t.fecha_ingreso, s.lognew)) as ingreso,
+			s.rfc
+			FROM [SG12].[dbo].[Clientes] s
+			LEFT JOIN [TGV2].[dbo].[ClientesTG6] t ON t.cod = s.cod
+			WHERE s.cod IN (SELECT cliente_id FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual])
+			Group by s.rfc
         ) tc on tp.rfc = tc.rfc
         order by rfc
         ";
@@ -343,9 +507,7 @@ class CreDebMensualModel extends Model{
                     t1.año AS año,  -- Combina año y mes en una única columna
                     FORMAT(ROUND(sum(t1.litros),0), 'N0', 'en-US')    as litros
                 FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual] t1
-                LEFT JOIN [TGV2].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
-                LEFT JOIN [TGV2].[dbo].[Asesores] t3 on t2.asesor_id = t3.asesor_id
-                LEFT JOIN [TGV2].[dbo].[Zonas] t4 on t2.[zona_id] = t4.[zona_id]
+                LEFT JOIN [SG12].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
                 WHERE
                     (t1.año = 2024  OR t1.año = 2023)  -- Incluye el año actual y el anterior
                     AND t1.tipo_id = 28

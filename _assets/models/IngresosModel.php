@@ -30,7 +30,8 @@ class IngresosModel extends Model{
 
     function get_cash_sales($from, $until, $codgas = null) : array | false {
 
-        $codgas_filter_base   = '';
+        // Sin estación: solo activas y sin la fila "(TODAS)" (cod 0)
+        $codgas_filter_base   = ' WHERE g.datvar = 0 AND g.cod > 0';
         $codgas_filter_ventas = '';
 
         if (!empty($codgas) && $codgas !== 0) {
@@ -75,15 +76,14 @@ class IngresosModel extends Model{
                         ELSE i.nrotur
                     END AS Turno,
                     ISNULL(SUM(CASE WHEN v.cod = 6     THEN i.mto END), 0) AS Mn,
-                    ISNULL(SUM(CASE WHEN v.cod = 5     THEN i.mto END), 0) AS Dolares2,
                     ISNULL(SUM(CASE WHEN v.cod = 192   THEN i.mto END), 0) AS Morralla,
-                    ISNULL(SUM(CASE WHEN v.cod = 53    THEN i.mto END), 0) AS Cheques,
-                    ISNULL(SUM(CASE WHEN v.cod = -1128 THEN i.mto END), 0) AS Dolares,
+                    ISNULL(SUM(CASE WHEN v.cod = -1128 THEN i.can END), 0) AS Usd,      -- dólares recibidos
+                    ISNULL(SUM(CASE WHEN v.cod = -1128 THEN i.mto END), 0) AS Dolares,  -- dólares en pesos
                     ISNULL(SUM(CASE WHEN v.cod = -3501 THEN i.mto END), 0) AS [INTERL - Efectivo]
                 FROM SG12.dbo.Ingresos i
                 INNER JOIN SG12.dbo.Valores v ON v.cod = i.codval
                 WHERE i.fch BETWEEN ? AND ?
-                AND v.cod IN (5, 6, 192, 53, -1128, -3501)
+                AND v.cod IN (6, 192, -1128, -3501)
                 {$codgas_filter_ventas}
                 GROUP BY
                     i.codgas,
@@ -102,10 +102,10 @@ class IngresosModel extends Model{
                 b.Gasolinera,
                 b.Turno,
                 ISNULL(ve.Mn,                  0) AS Mn,
-                ISNULL(ve.Dolares2,            0) AS Dolares2,
                 ISNULL(ve.Morralla,            0) AS Morralla,
-                ISNULL(ve.Cheques,             0) AS Cheques,
+                ISNULL(ve.Usd,                 0) AS Usd,
                 ISNULL(ve.Dolares,             0) AS Dolares,
+                CASE WHEN ISNULL(ve.Usd, 0) <> 0 THEN ROUND(ve.Dolares / ve.Usd, 4) ELSE 0 END AS TipoCambio,
                 ISNULL(ve.[INTERL - Efectivo], 0) AS [INTERL - Efectivo]
             FROM Base b
             LEFT JOIN Ventas ve

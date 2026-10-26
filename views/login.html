@@ -44,7 +44,12 @@
 										</div>
 										<div class="mb-3">
 											<label class="form-label">Contraseña</label>
-											<input class="form-control form-control-lg" type="password" name="password" placeholder="Ingresa tu contraseña">
+											<div class="input-group">
+													<input class="form-control form-control-lg" type="password" name="password" id="password" placeholder="Ingresa tu contraseña">
+													<button type="button" class="btn btn-outline-secondary" id="togglePassword" aria-label="Mostrar contraseña" title="Mostrar contraseña">
+														<svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+													</button>
+												</div>
 										</div>
 										<div class="mb-3">
 										<input text class="form-control form-control-lg" hidden   name="ip" id="ip" >
@@ -70,6 +75,19 @@
 </body>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    var pwd = document.getElementById('password');
+    var toggle = document.getElementById('togglePassword');
+    var eye = document.getElementById('eyeIcon');
+    var eyeOpen = eye.innerHTML;
+    var eyeOff = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+    toggle.addEventListener('click', function () {
+        var mostrar = pwd.type === 'password';
+        pwd.type = mostrar ? 'text' : 'password';
+        eye.innerHTML = mostrar ? eyeOff : eyeOpen;
+        toggle.setAttribute('aria-label', mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña');
+        toggle.title = toggle.getAttribute('aria-label');
+    });
+
     // Captura el path completo (ej: /income/invoices) y los parámetros (ej: ?id=1)
     var path = window.location.pathname;
     var search = window.location.search;

@@ -93,7 +93,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title">Pagos Proveedores </h5>
+                <h5 class="card-title">Ventas Contado</h5>
             </div>
             <div class="card-body table-responsive" >
                 <table id="cash_sales_table" class="table table-hover table-sm w-100">
@@ -102,26 +102,26 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th>Fecha</th>
                             <th>Estacion</th>
                             <th>Turno</th>
-                            <th>Dolares (MN)</th>
-                            <th>Dolares2</th>
-                            <th>MN</th>
+                            <th>Dólares (USD)</th>
+                            <th>Tipo de cambio</th>
+                            <th>Dólares (MN)</th>
+                            <th>Efectivo MN</th>
                             <th>Morralla</th>
-                            <th>Cheque</th>
                             <th>INTERL - Efectivo</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th>Fecha</th>
-                            <th>Estacion</th>
-                            <th>Turno</th>
-                            <th>Dolares (MN)</th>
-                            <th>Dolares2</th>
-                            <th>MN</th>
-                            <th>Morralla</th>
-                            <th>Cheque</th>
-                            <th>INTERL - Efectivo</th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th class="text-end"></th>
+                            <th class="text-end"></th>
+                            <th class="text-end"></th>
+                            <th class="text-end"></th>
+                            <th class="text-end"></th>
+                            <th class="text-end"></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -141,10 +141,5 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 $('#seach_cash_sales_table').on('click', function() {
     cash_sales_table();
 });
-
-
-
-</script>
-
 </script>
 {% endblock %}

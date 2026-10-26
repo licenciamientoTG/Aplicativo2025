@@ -1,9 +1,14 @@
 console.log('tg6');
 
-// $(document).ready(async function () {
-//     const vta_vs_meta_canva= document.getElementById('vta_vs_meta_canva').getContext('2d');
-//      vta_vs_meta_canvas(vta_vs_meta_canva);
-// });
+// Gráfica Vta vs Meta del histórico: sigue el año elegido en #historic_year
+let tg6VtaChart = null;
+function tg6LoadVtaChart() {
+    const canvas = document.getElementById('vta_vs_meta_canva');
+    if (canvas && typeof Chart !== 'undefined') {
+        vta_vs_meta_canvas(canvas.getContext('2d'));
+    }
+}
+$(document).ready(tg6LoadVtaChart);
 
 async function credit_debit_product_table(){
     if ($.fn.DataTable.isDataTable('#credit_debit_product_table')) {
@@ -151,24 +156,164 @@ async function credit_debit_product_table(){
 }
 
 
+// Meses visibles en las tablas de consumo: por defecto el año en curso (ene -> mes actual)
+function tg6MonthKey(key) {
+    const m = /^(\d{4})_(\d{1,2})$/.exec(key);
+    return m ? (parseInt(m[1], 10) * 12 + parseInt(m[2], 10)) : null;
+}
+function tg6MonthInRange(key, from, to) {
+    const k = tg6MonthKey(key);
+    return k !== null && k >= tg6MonthKey(from) && k <= tg6MonthKey(to);
+}
+function tg6DefaultRange(months) {
+    const keys = months.map(m => m.formatted).sort((a, b) => tg6MonthKey(a) - tg6MonthKey(b));
+    const last = keys[keys.length - 1];
+    return { from: last.split('_')[0] + '_1', to: last };
+}
+function tg6CurrentRange() {
+    const from = $('.tg6-month-from').first().val();
+    const to = $('.tg6-month-to').first().val();
+    return (from && to) ? { from: from, to: to } : tg6DefaultRange(months);
+}
+// Muestra/oculta las columnas de meses de las tablas ya creadas según el rango elegido
+function tg6ApplyMonthRange() {
+    const range = tg6CurrentRange();
+    TG6_TABLES.forEach(function (sel) {
+        if (!$.fn.DataTable.isDataTable(sel)) return;
+        const table = $(sel).DataTable();
+        table.columns().every(function () {
+            const key = this.dataSrc();
+            if (tg6MonthKey(key) !== null) {
+                this.visible(tg6MonthInRange(key, range.from, range.to), false);
+            }
+        });
+        table.columns.adjust();
+        try { table.fixedColumns().relayout(); } catch (e) {}
+        table.draw(false);
+    });
+}
+$(document).on('change', '.tg6-month-from, .tg6-month-to', function () {
+    const value = $(this).val();
+    if ($(this).hasClass('tg6-month-from')) {
+        $('.tg6-month-from').val(value);
+        if (tg6MonthKey(value) > tg6MonthKey($('.tg6-month-to').first().val())) { $('.tg6-month-to').val(value); }
+    } else {
+        $('.tg6-month-to').val(value);
+        if (tg6MonthKey(value) < tg6MonthKey($('.tg6-month-from').first().val())) { $('.tg6-month-from').val(value); }
+    }
+    tg6ApplyMonthRange();
+});
+
+// Atajos de rango (año en curso / últimos 12 / últimos 6), aplican a las 3 tablas
+$(document).on('click', '[data-tg6-range]', function () {
+    const keys = months.map(m => m.formatted).sort((a, b) => tg6MonthKey(a) - tg6MonthKey(b));
+    const last = keys[keys.length - 1];
+    const n = { '12m': 12, '6m': 6 }[$(this).data('tg6-range')];
+    const from = n ? keys[Math.max(keys.length - n, 0)] : last.split('_')[0] + '_1';
+    $('.tg6-month-from').val(from);
+    $('.tg6-month-to').val(last);
+    tg6ApplyMonthRange();
+});
+
+const TG6_TABLES = ['#comsumption_credit_count_table', '#comsumption_credit_client_table', '#comsumption_debit_table'];
+const tg6Num = $.fn.dataTable.render.number(',', '.', 0);
+const tg6Nf = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 });
+const tg6StatusFilter = {};   // tabla -> 'Verde' | 'Naranja' | 'Rojo' | null
+const tg6RiskFirst = {};      // tabla -> true si se ordena por riesgo
+
+// Variación roja si es muy negativa; sin color de fondo para el resto
+function tg6StyleRow(row, data) {
+    if (!data['max_label'] && data['pro_vs_max'] <= -30) {
+        $('td.col-provs', row).addClass('table-danger');
+    }
+}
+
+// Filtro por estatus del resumen Verde / Naranja / Rojo
+$.fn.dataTable.ext.search.push(function (settings, searchData, index, rowData) {
+    const active = tg6StatusFilter['#' + (settings.nTable && settings.nTable.id)];
+    return !active || (rowData && rowData.estatus === active);
+});
+
+// Resumen arriba de la tabla: botones que filtran, % en verde y barra contra el objetivo de 95%
+const tg6Meta = {};           // tabla -> meta del mes en curso { year, month, cantidad }
+function tg6RenderStatus(tableSel, rows) {
+    const total = rows.length;
+    const count = (e) => rows.filter(r => r.estatus === e).length;
+    const active = tg6StatusFilter[tableSel] || null;
+    const btn = (est, cls, icon) =>
+        `<button type="button" class="btn btn-outline-${cls} ${active === est ? 'active' : ''}" data-status="${est}" data-table="${tableSel}" aria-pressed="${active === est}">` +
+        `<i class="fas ${icon}" aria-hidden="true"></i> ${est} ${count(est)}</button>`;
+    // Avance contra la meta del mes en curso: consumo acumulado del mes y proyección al cierre
+    const meta = tg6Meta[tableSel];
+    let goal = '<span class="tg6-muted">Sin meta cargada para este mes</span>';
+    if (meta && meta.cantidad > 0) {
+        const key = meta.year + '_' + meta.month;
+        const consumed = rows.reduce((a, r) => a + (parseFloat(r[key]) || 0), 0);
+        const projected = rows.reduce((a, r) => a + (parseFloat(r.prediction) || 0), 0);
+        const pct = consumed * 100 / meta.cantidad;
+        const pctProj = projected * 100 / meta.cantidad;
+        goal = `<span class="tg6-muted">Meta del mes: <strong>${tg6Nf.format(meta.cantidad)}</strong> lts · Consumo <strong>${tg6Nf.format(consumed)}</strong> ` +
+            `(<strong>${pct.toFixed(1)}%</strong>) · Proyección al cierre <strong>${pctProj.toFixed(1)}%</strong></span>` +
+            `<div class="progress" style="height:10px;width:220px" title="Consumo ${pct.toFixed(1)}% de la meta; proyección ${pctProj.toFixed(1)}%">` +
+            `<div class="progress-bar" role="progressbar" style="width:${Math.min(pct, 100)}%;background:var(--tg6-accent,#0d6efd)" aria-valuenow="${pct.toFixed(1)}" aria-valuemin="0" aria-valuemax="100"></div></div>`;
+    }
+    $('.tg6-status[data-for="' + tableSel + '"]').html(
+        `<div class="d-flex flex-wrap align-items-center gap-2">` +
+        `<div class="btn-group btn-group-sm" role="group" aria-label="Filtrar por estatus">` +
+        btn('Verde', 'success', 'fa-check-circle') + btn('Naranja', 'warning', 'fa-exclamation-triangle') + btn('Rojo', 'danger', 'fa-times-circle') +
+        `</div>` +
+        `<button type="button" class="btn btn-sm btn-outline-secondary ${tg6RiskFirst[tableSel] ? 'active' : ''}" data-risk="${tableSel}" aria-pressed="${!!tg6RiskFirst[tableSel]}"><i class="fas fa-sort-amount-up" aria-hidden="true"></i> Riesgo primero</button>` +
+        `<span class="tg6-muted">${total} clientes</span>` + goal +
+        `</div>`
+    );
+}
+$(document).on('xhr.dt', function (e, settings, json) {
+    const id = settings.nTable && settings.nTable.id;
+    if (json && json.data && TG6_TABLES.indexOf('#' + id) !== -1) {
+        tg6Meta['#' + id] = json.meta || null;
+        tg6RenderStatus('#' + id, json.data);
+    }
+});
+$(document).on('click', '.tg6-status [data-status]', function () {
+    const sel = $(this).data('table'), est = $(this).data('status');
+    tg6StatusFilter[sel] = (tg6StatusFilter[sel] === est) ? null : est;
+    const table = $(sel).DataTable();
+    tg6RenderStatus(sel, table.ajax.json().data);
+    table.draw();
+});
+$(document).on('click', '.tg6-status [data-risk]', function () {
+    const sel = $(this).data('risk');
+    const table = $(sel).DataTable();
+    const n = table.columns().count();
+    tg6RiskFirst[sel] = !tg6RiskFirst[sel];
+    // riesgo: menor cumplimiento primero y, a igualdad, el de mayor volumen; normal: mayor consumo
+    table.order(tg6RiskFirst[sel] ? [[n - 2, 'asc'], [n - 5, 'desc']] : [[n - 5, 'desc']]).draw();
+    tg6RenderStatus(sel, table.ajax.json().data);
+});
+$(document).on('click', '.tg6-retry', function () {
+    $($(this).data('table')).DataTable().ajax.reload();
+});
+
+// Suma del mes (solo filas visibles tras buscar/filtrar) arriba y el nombre del mes abajo
+function tg6SetHeaderSum(column, total, label) {
+    const $h = $(column.header());
+    if ($h.data('base') === undefined) { $h.data('base', $h.html()); }
+    const title = label || 'Total del mes (filas visibles)';
+    $h.html('<div class="tg6-month-sum" title="' + title + '">' + total + '</div><div class="fw-bold">' + $h.data('base') + '</div>');
+}
+
 async function dynamicColumns(months,target){
-    if (target == '#CreditCount'){
-        var table_class = 'table-info';
-    }
-    if (target == '#CreditClient'){
-        var table_class = 'table-success';
-    }
-    if (target == '#DebitCount'){
-        var table_class = 'table-orange';
-    }
+    // Cre Consumo Cliente agrupa por RFC: no existe un código de cliente ni un asesor únicos
+    const byRfc = (target == '#CreditClient');
+    const nowKey = new Date().getFullYear() * 12 + new Date().getMonth() + 1;
     var Columns = [
-        { 'data': 'CodigoCliente', 'className': 'text-end '+table_class  },
+        { 'data': 'CodigoCliente', 'className': 'text-end', 'visible': !byRfc  },
         {
             'data': 'Cliente2',
-            'className': 'text-nowrap '+table_class,
+            'className': 'text-nowrap',
             'searchable': true,
             'render': function (data, type, row) {
-                return `<span title="${row.Cliente}">${data}</span>`;
+                return `<span class="tg6-name" title="${row.Cliente}">${data}</span>`;
             }
         },
         {
@@ -176,277 +321,126 @@ async function dynamicColumns(months,target){
             'visible': false,
             'searchable': true
         },
-        { 'data': 'nombre_asesor', 'className': 'text-start text-nowrap '+table_class  },
-        { 'data': 'lognew', 'className': 'text-start text-nowrap '+table_class  },
+        { 'data': 'nombre_asesor', 'className': 'text-start text-nowrap', 'visible': !byRfc  },
+        { 'data': 'lognew', 'className': 'text-start text-nowrap tg6-group-end',
+            'render': function (data, type) {
+                // clientes de menos de 6 meses: se entiende por qué aparecen como "Nuevo" o "Sin Consumo"
+                const m = /^(\d{4})-(\d{1,2})$/.exec(data || '');
+                if (type === 'display' && m && nowKey - (parseInt(m[1], 10) * 12 + parseInt(m[2], 10)) < 6) {
+                    return data + ' <span class="badge bg-light text-dark border">reciente</span>';
+                }
+                return data;
+            }
+        },
     ];
+    const range = tg6DefaultRange(months);
     months.forEach(function(process) {
         Columns.push({ 'data': process.formatted,
                             'className': 'text-end',
-                            'render': $.fn.dataTable.render.number( ',', '.', 3 ),
+                            'render': function (d, type) {
+                                if (type !== 'display') return d;
+                                return (+d === 0) ? '<span class="tg6-zero">–</span>' : tg6Num.display(d);
+                            },
                             searchable: false,
+                            'visible': tg6MonthInRange(process.formatted, range.from, range.to),
                         });
     });
-        Columns.push( { 'data': 'MaxValue', 'className': ' text-nowrap text-end '  },);
-        Columns.push( { 'data': 'prediction', 'className': ' text-nowrap text-end '  },);
-        Columns.push( { 'data': 'pro_vs_max', 'className': '  text-end '  },);
-        Columns.push( { 'data': 'nombre_zona', 'className': ' text-nowrap'  },);
-        return Columns;
-
-}
-async function initConsumptionCreditClientTable(CreditClientColumns) {
-    let comsumption_credit_client_table = $('#comsumption_credit_client_table').DataTable({
-        order: [1, "asc"],
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        ordering: false,
-        colReorder: false,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        fixedColumns: {
-            leftColumns: 2
-        },
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-
-        ajax: {
-            method: 'POST',
-            url: routeUrl('direction.comsumption_credit_client_table'),
-            data:{'type':'28'},
-            dataSrc: 'data',
-            error: function(data) {
-                $('#comsumption_credit_client_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
- 
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        deferRender: true,
-        columns: CreditClientColumns,
-        rowId: 'CodigoCliente',
-        createdRow: function (row, data, dataIndex) {
-                $('td', row).eq(25).addClass('border_end table-success');
-                $('td', row).eq(26).addClass('border_end table-primary');
-                $('td', row).eq(27).addClass('border_end ');
-                $('td', row).eq(28).addClass('border_end');
-            if(data['pro_vs_max'] <  0){
-                $('td', row).eq(27).addClass('table-danger');
-            }else{
-                $('td', row).eq(27).addClass('table-info');
-            }
-
-        },
-        initComplete: function (settings) {
-            $('.table-responsive').removeClass('loading');
-            // window.scrollTo(0,180);
-        },
-        footerCallback: function (row, data, start, end, display) {
-            const nf = new Intl.NumberFormat("es-MX");
-            var api = this.api();
-            var intVal = function (i) {
-                return typeof i === 'string' ?
-                    i.replace(/[\$,]/g, '') * 1 :
-                    typeof i === 'number' ?
-                    i : 0;
-            };
-            $(api.column(0).footer()).html("Suma");// Mostrar el texto "Suma" en el footer de la primera columna
-            api.columns().every(function (index) {// Iterar sobre cada columna
-                if (index > 4 && index < (api.columns().count()-5) ) {
-                    var column = this;
-                    var total = column.data().reduce(function (a, b) {// Sumar los valores de la columna
-                        return intVal(a) + intVal(b);
-                    }, 0);
-                    total_final = nf.format(total.toFixed(2));
-                    $(column.footer()).html(total_final );
-                }
-            });
+    Columns.push( { 'data': 'MaxValue', 'className': 'text-nowrap text-end tg6-group-start',
+        'render': function (data, type, row) {
+            // Texto "Sin Consumo" / "Nuevo" solo al mostrar; para ordenar se usa el número
+            if (type !== 'display') return data;
+            return row.max_label ? '<span class="tg6-muted">' + row.max_label + '</span>' : tg6Num.display(data);
         }
     });
-    // $('.refresh_comsumption_credit_client_table').on('click', function () {
-    //     comsumption_credit_client_table.clear().draw();
-    //     comsumption_credit_client_table.ajax.reload();
-    //     $('#comsumption_credit_client_table').waitMe('hide');
-    // });
-
+    Columns.push( { 'data': 'prediction', 'className': 'text-nowrap text-end',
+        'render': function (data, type) { return type === 'display' ? tg6Num.display(data) : data; }
+    });
+    Columns.push( { 'data': 'pro_vs_max', 'className': 'text-end col-provs',
+        'render': function (data, type, row) {
+            if (type !== 'display') return data;
+            if (row.max_label) return '<span class="tg6-muted">—</span>';      // sin base de comparación: no es una alarma
+            return data < 0 ? `<span class="text-danger fw-bold">▼ ${data}%</span>` : `${data > 0 ? '▲ ' : ''}${data}%`;
+        }
+    });
+    Columns.push( { 'data': 'cumplimiento', 'className': 'text-end text-nowrap',
+        'render': function (data, type, row) {
+            // Semáforo: forma y color distintos por estado + texto para lectores de pantalla; para ordenar se usa el número
+            if (type !== 'display') return data;
+            const map = { Verde: ['fa-check-circle', 'text-success'], Naranja: ['fa-exclamation-triangle', 'tg6-amber'], Rojo: ['fa-times-circle', 'text-danger'] };
+            const [icon, color] = map[row.estatus] || ['fa-circle', 'tg6-muted'];
+            return `<i class="fas ${icon} ${color} me-1" aria-hidden="true"></i><span class="visually-hidden">${row.estatus || ''}: </span>${data}%`;
+        }
+    });
+    Columns.push( { 'data': 'nombre_zona', 'className': 'text-nowrap' });
+    return Columns;
 }
-async function initConsumptionDebitTable(DebColumns) {
-    let comsumption_debit_table = $('#comsumption_debit_table').DataTable({
-        order: [1, "asc"],
+
+// Las 3 tablas de consumo comparten la misma configuración; solo cambian columnas, origen y columnas fijas
+function tg6InitConsumptionTable(selector, columns, type, url, leftColumns, rowId) {
+    const totalCols = columns.length; // las 5 últimas: Consumo Mayor, Proyección, Proy vs Cons, % Cumpl. y Zona
+    const alta = columns.findIndex(c => c.data === 'lognew');
+    return $(selector).DataTable({
+        order: [[totalCols - 5, "desc"]],
         scrollY: '700px',
         scrollX: true,
         scrollCollapse: true,
         paging: false,
-        ordering: false,
+        ordering: true,
         colReorder: false,
+        processing: true,
         dom: '<"top"f>rt<"bottom"lip>',
-        fixedColumns: {
-            leftColumns: 2
+        language: {
+            processing: '<div class="spinner-border spinner-border-sm text-primary me-2"></div>Cargando consumos…',
+            search: '',
+            searchPlaceholder: 'Buscar cliente, nombre o asesor…',
+            emptyTable: 'Sin consumos en el rango elegido',
+            zeroRecords: 'Ningún cliente coincide con la búsqueda',
         },
-
+        fixedColumns: { leftColumns: leftColumns },
         ajax: {
             method: 'POST',
-            url: routeUrl('direction.comsumption_credit_count_table'),
-            data:{'type':'127'},
+            url: url,
+            data: { 'type': type },
             dataSrc: 'data',
-            error: function(data) {
-                $('#comsumption_debit_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
- 
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
+            error: function (xhr) {
+                $(selector).DataTable().processing(false);
+                $('.tg6-status[data-for="' + selector + '"]').html(
+                    `<div class="alert alert-danger tg6-error py-2 mb-0" role="alert"><span>No se pudo cargar la tabla (error ${xhr.status || 'de red'}).</span>` +
+                    `<button type="button" class="btn btn-sm btn-outline-danger tg6-retry" data-table="${selector}">Reintentar</button></div>`
                 );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
             }
         },
         deferRender: true,
-        columns: DebColumns,
-        rowId: 'CodigoCliente',
-        createdRow: function (row, data, dataIndex) {
-                $('td', row).eq(25).addClass('border_end table-success');
-                $('td', row).eq(26).addClass('border_end table-primary');
-                $('td', row).eq(27).addClass('border_end ');
-                $('td', row).eq(28).addClass('border_end');
-            if(data['pro_vs_max'] <  0){
-                $('td', row).eq(27).addClass('table-danger');
-            }else{
-                $('td', row).eq(27).addClass('table-info');
-            }
-
+        columns: columns,
+        rowId: rowId,
+        createdRow: function (row, data) {
+            tg6StyleRow(row, data);
         },
-        initComplete: function (settings) {
-            $('.table-responsive').removeClass('loading');
-            // window.scrollTo(0,180);
+        initComplete: function () {
+            // etiqueta de la fila de sumas, en el encabezado de la columna "Alta"
+            tg6SetHeaderSum(this.api().column(alta), 'Total', 'Suma de cada mes (filas visibles)');
         },
-        footerCallback: function (row, data, start, end, display) {
-            const nf = new Intl.NumberFormat("es-MX");
-            var api = this.api();
-            var intVal = function (i) {
-                return typeof i === 'string' ?
-                    i.replace(/[\$,]/g, '') * 1 :
-                    typeof i === 'number' ?
-                    i : 0;
-            };
-            $(api.column(0).footer()).html("Suma");// Mostrar el texto "Suma" en el footer de la primera columna
-            api.columns().every(function (index) {// Iterar sobre cada columna
-                if (index > 4 && index < (api.columns().count()-5) ) {
-                    var column = this;
-                    var total = column.data().reduce(function (a, b) {// Sumar los valores de la columna
-                        return intVal(a) + intVal(b);
-                    }, 0);
-                    total_final = nf.format(total.toFixed(2));
-                    $(column.footer()).html(total_final );
+        footerCallback: function () {
+            const api = this.api();
+            api.columns().every(function () {
+                if (tg6MonthKey(this.dataSrc()) !== null) {
+                    const values = api.column(this.index(), { search: 'applied' }).data().toArray();
+                    const total = values.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+                    tg6SetHeaderSum(this, tg6Nf.format(total));
                 }
             });
         }
     });
-    // $('.refresh_comsumption_debit_table').on('click', function () {
-    //     comsumption_debit_table.clear().draw();
-    //     comsumption_debit_table.ajax.reload();
-    //     $('#comsumption_debit_table').waitMe('hide');
-    // });
 }
- function initConsumptionCreditCountTable(CreditColumns) {
-     let comsumption_credit_count_table = $('#comsumption_credit_count_table').DataTable({
-        order: [1, "asc"],
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        ordering: false,
-        colReorder: false,
-        dom: '<"top"f>rt<"bottom"lip>',
-        fixedColumns: {
-            leftColumns: 2
-        },
-        ajax: {
-            method: 'POST',
-            url: routeUrl('direction.comsumption_credit_count_table'),
-            data:{'type':'28'},
-            dataSrc: 'data',
-            error: function() {
-                $('#comsumption_credit_count_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        deferRender: true,
-        columns: CreditColumns,
-        rowId: 'CodigoCliente',
-        createdRow: function (row, data, dataIndex) {
-                $('td', row).eq(25).addClass('border_end table-success');
-                $('td', row).eq(26).addClass('border_end table-primary');
-                $('td', row).eq(27).addClass('border_end ');
-                $('td', row).eq(28).addClass('border_end');
-            if(data['pro_vs_max'] <  0){
-                $('td', row).eq(27).addClass('table-danger');
-            }else{
-                $('td', row).eq(27).addClass('table-info');
-            }
-
-        },
-        initComplete: function (settings) {
-            $('.table-responsive').removeClass('loading');
-            // window.scrollTo(0,180);
-        },
-        footerCallback: function (row, data, start, end, display) {
-            const nf = new Intl.NumberFormat("es-MX");
-            var api = this.api();
-            var intVal = function (i) {
-                return typeof i === 'string' ?
-                    i.replace(/[\$,]/g, '') * 1 :
-                    typeof i === 'number' ?
-                    i : 0;
-            };
-            $(api.column(0).footer()).html("Suma");// Mostrar el texto "Suma" en el footer de la primera columna
-            api.columns().every(function (index) {// Iterar sobre cada columna
-                if (index > 4 && index < (api.columns().count()-5) ) {
-                    var column = this;
-                    var total = column.data().reduce(function (a, b) {// Sumar los valores de la columna
-                        return intVal(a) + intVal(b);
-                    }, 0);
-                    total_final = nf.format(total.toFixed(2));
-                    $(column.footer()).html(total_final );
-                }
-            });
-        }
-    });
-
+async function initConsumptionCreditClientTable(columns) {
+    // el código de cliente va oculto: fija solo "Nombre"
+    tg6InitConsumptionTable('#comsumption_credit_client_table', columns, '28', routeUrl('direction.comsumption_credit_client_table'), 1, 'Cliente');
+}
+async function initConsumptionDebitTable(columns) {
+    tg6InitConsumptionTable('#comsumption_debit_table', columns, '127', routeUrl('direction.comsumption_credit_count_table'), 2, 'CodigoCliente');
+}
+function initConsumptionCreditCountTable(columns) {
+    tg6InitConsumptionTable('#comsumption_credit_count_table', columns, '28', routeUrl('direction.comsumption_credit_count_table'), 2, 'CodigoCliente');
 }
 
 
@@ -459,6 +453,7 @@ async function vta_vs_meta_canvas(ctx) {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
             credentials: 'include',
+            body: new URLSearchParams({ year: $('#historic_year').val() || '' }),
         });
 
         if (!response.ok) {
@@ -603,7 +598,8 @@ async function vta_vs_meta_canvas(ctx) {
         //             return value.toLocaleString('en-US');
         //         }
         //     }};
-        new Chart(ctx, {
+        if (tg6VtaChart) { tg6VtaChart.destroy(); }
+        tg6VtaChart = new Chart(ctx, {
             type: 'bar',
             data: barChartData,
             options: options,
@@ -1198,33 +1194,210 @@ function render_valeras_charts() {
 }
 
 
+// Descarga un Excel con las 4 pestañas (una por hoja): el año elegido en el histórico y el rango de meses elegido en las tablas
 function downloadExcel() {
-    // Mostrar el indicador de carga
     $('.tab-pane').addClass('loading');
+    const range = tg6CurrentRange();
+    const params = new URLSearchParams({ year: $('#historic_year').val() || '', from: range.from, to: range.to });
 
-    fetch(routeUrl('direction.excel_tg6'), {
-        method: 'GET'
+    fetch(routeUrl('direction.excel_tg6') + '?' + params.toString(), { method: 'GET', credentials: 'include' })
+    .then(response => {
+        if (!response.ok) throw new Error('Error ' + response.status);
+        return response.blob();
     })
-    .then(response => response.blob()) // Obtener el archivo en formato blob
     .then(blob => {
-        // Ocultar el indicador de carga
-         $('.tab-pane').removeClass('loading');
-
-        // Crear un enlace temporal para la descarga
-        const url = window.URL.createObjectURL(new Blob([blob]));
+        $('.tab-pane').removeClass('loading');
+        const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
-        a.download = 'reporte.xlsx'; // Nombre del archivo a descargar
+        const t = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        a.download = `TG6 Clientes Credito-Debito ${pad(t.getDate())}-${pad(t.getMonth() + 1)}-${t.getFullYear()}.xlsx`;
         document.body.appendChild(a);
         a.click();
+        a.remove();
         window.URL.revokeObjectURL(url);
     })
     .catch(() => {
-        // Ocultar el indicador de carga y manejar errores
-         $('.tab-pane').removeClass('loading');
-        alert('Error al descargar el archivo');
+        $('.tab-pane').removeClass('loading');
+        toastr.error('Error al descargar el archivo');
     });
 }
 
 
+
+
+// Sincronizar ConsumoCreditoDebitoMensual (crédito y débito): modal con selector de mes y resumen de cambios
+function syncResetModal() {
+    $('#sync_step_select').removeClass('d-none');
+    $('#sync_step_loading, #sync_step_result').addClass('d-none').empty();
+    $('#btn_sync_run').removeClass('d-none').prop('disabled', false);
+}
+
+function syncRenderResult(res) {
+    const nf = (n) => Number(n).toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const esc = (s) => $('<div>').text(s ?? '').html();
+    let html = `<p class="mb-2">Mes <strong>${esc(res.mes)}</strong> sincronizado (${esc(res.desde)} a ${esc(res.hasta)}).</p>`;
+    const huboCambios = res.cambios.some(t => t.nuevos || t.eliminados || t.modificados);
+    html += huboCambios
+        ? '<div class="alert alert-warning py-2">Hubo cambios respecto a lo que estaba guardado.</div>'
+        : '<div class="alert alert-success py-2">Sin cambios: la información ya estaba actualizada.</div>';
+    res.cambios.forEach(function (t) {
+        const delta = t.litros_despues - t.litros_antes;
+        html += `<h6 class="mt-3">${esc(t.tipo)}</h6>
+            <table class="table table-sm mb-2">
+                <tr><td>Clientes</td><td class="text-end">${t.clientes_antes} &rarr; ${t.clientes_despues}</td></tr>
+                <tr><td>Litros</td><td class="text-end">${nf(t.litros_antes)} &rarr; ${nf(t.litros_despues)} (${delta >= 0 ? '+' : ''}${nf(delta)})</td></tr>
+                <tr><td>Nuevos / Modificados / Eliminados</td><td class="text-end">${t.nuevos} / ${t.modificados} / ${t.eliminados}</td></tr>
+            </table>`;
+        if (t.detalle.length) {
+            html += `<div class="small text-muted">Mayores cambios${t.detalle_total > t.detalle.length ? ` (${t.detalle.length} de ${t.detalle_total})` : ''}:</div>
+                <table class="table table-sm table-striped"><thead><tr><th>Cliente</th><th>Nombre</th><th>Cambio</th><th class="text-end">Antes</th><th class="text-end">Después</th></tr></thead><tbody>`;
+            t.detalle.forEach(function (d) {
+                html += `<tr><td>${esc(d.cliente)}</td><td>${esc(d.nombre)}</td><td>${esc(d.cambio)}</td><td class="text-end">${nf(d.antes)}</td><td class="text-end">${nf(d.despues)}</td></tr>`;
+            });
+            html += '</tbody></table>';
+        }
+    });
+    $('#sync_step_result').html(html).removeClass('d-none');
+}
+
+$(document).on('click', '#btn_sync_consumption', function () {
+    syncResetModal();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('sync_consumption_modal')).show();
+});
+
+$(document).on('click', '#btn_sync_run', function () {
+    const month = $('#sync_month').val();
+    if (!month) {
+        toastr.error('Selecciona el mes a sincronizar.');
+        return;
+    }
+    $('#sync_step_select').addClass('d-none');
+    $('#sync_step_loading').removeClass('d-none');
+    $('#btn_sync_run').prop('disabled', true);
+    $.ajax({
+        method: 'POST',
+        url: routeUrl('direction.sync_consumption'),
+        data: { month: month },
+        dataType: 'json'
+    }).done(function (res) {
+        $('#sync_step_loading').addClass('d-none');
+        if (res.success) {
+            $('#btn_sync_run').addClass('d-none');
+            syncRenderResult(res);
+            ['#comsumption_credit_count_table', '#comsumption_credit_client_table', '#comsumption_debit_table'].forEach(function (sel) {
+                if ($.fn.DataTable.isDataTable(sel)) {
+                    $(sel).DataTable().ajax.reload(null, false);
+                }
+            });
+        } else {
+            toastr.error(res.message || 'No se pudo sincronizar.');
+            syncResetModal();
+        }
+    }).fail(function () {
+        toastr.error('Error al sincronizar. Intenta nuevamente.');
+        syncResetModal();
+    });
+});
+
+
+// Asignar asesor a clientes de crédito o débito: búsqueda + selección múltiple (arranca en crédito)
+let advisorSearchTimer = null;
+
+function advisorUpdateSelection() {
+    const n = $('#advisor_results .advisor-check:checked').length;
+    $('#advisor_selected_count').text(n);
+    $('#btn_assign_run').prop('disabled', n === 0);
+    const total = $('#advisor_results .advisor-check').length;
+    $('#advisor_check_all').prop('checked', total > 0 && n === total);
+}
+
+function advisorSearch() {
+    const q = $('#advisor_search').val().trim();
+    $('#advisor_search_info').text('Buscando...');
+    $.ajax({
+        method: 'POST',
+        url: routeUrl('direction.search_clients'),
+        data: { q: q, tipo: $('#advisor_tipo').val() },
+        dataType: 'json'
+    }).done(function (res) {
+        const esc = (s) => $('<div>').text(s ?? '').html();
+        const rows = res.data || [];
+        $('#advisor_results').html(rows.map(r =>
+            `<tr>
+                <td><input type="checkbox" class="advisor-check" value="${esc(r.cod)}"></td>
+                <td>${esc(r.cod)}</td>
+                <td>${esc(r.den)}</td>
+                <td>${esc(r.rfc)}</td>
+                <td>${esc(r.asesor) || '<span class="text-muted">Sin asesor</span>'}</td>
+            </tr>`).join(''));
+        $('#advisor_search_info').text(rows.length >= 100 ? 'Mostrando los primeros 100; afina la búsqueda.' : `${rows.length} cliente(s).`);
+        advisorUpdateSelection();
+    }).fail(function () {
+        $('#advisor_search_info').text('');
+        toastr.error('No se pudo buscar. Intenta nuevamente.');
+    });
+}
+
+$(document).on('click', '#btn_assign_advisor', function () {
+    $('#advisor_search').val('');
+    $('#advisor_tipo').val('28');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('assign_advisor_modal')).show();
+    advisorSearch();
+});
+
+$(document).on('change', '#advisor_tipo', function () {
+    $('#advisor_search').val('');
+    advisorSearch();
+});
+
+$(document).on('input', '#advisor_search', function () {
+    clearTimeout(advisorSearchTimer);
+    advisorSearchTimer = setTimeout(advisorSearch, 300);
+});
+
+$(document).on('change', '#advisor_check_all', function () {
+    $('#advisor_results .advisor-check').prop('checked', $(this).prop('checked'));
+    advisorUpdateSelection();
+});
+
+$(document).on('change', '#advisor_results .advisor-check', advisorUpdateSelection);
+
+$(document).on('click', '#btn_assign_run', function () {
+    const ids = $('#advisor_results .advisor-check:checked').map(function () { return this.value; }).get();
+    const advisor = $('#advisor_select').val();
+    if (!ids.length) return;
+    const $btn = $(this).prop('disabled', true);
+    $.ajax({
+        method: 'POST',
+        url: routeUrl('direction.assign_advisor'),
+        data: { client_ids: ids, advisor: advisor, tipo: $('#advisor_tipo').val() },
+        dataType: 'json'
+    }).done(function (res) {
+        if (res.success) {
+            toastr.success(`${res.updated} cliente(s) asignados a ${advisor}.`);
+            advisorSearch();
+        } else {
+            toastr.error(res.message || 'No se pudo asignar el asesor.');
+            $btn.prop('disabled', false);
+        }
+    }).fail(function () {
+        toastr.error('Error al asignar. Intenta nuevamente.');
+        $btn.prop('disabled', false);
+    });
+});
+
+// Histórico: muestra solo las columnas del año elegido (por defecto el año en curso)
+function tg6ApplyHistoricYear() {
+    const year = String($('#historic_year').val());
+    $('#VtaVsVenHistoric [data-year]').each(function () {
+        $(this).toggleClass('d-none', String($(this).data('year')) !== year);
+    });
+}
+$(document).on('change', '#historic_year', function () {
+    tg6ApplyHistoricYear();
+    tg6LoadVtaChart();
+});
+$(function () { if ($('#historic_year').length) tg6ApplyHistoricYear(); });
