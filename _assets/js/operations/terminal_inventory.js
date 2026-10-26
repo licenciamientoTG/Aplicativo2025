@@ -13,6 +13,7 @@ $(function () {
   const detailModal=new bootstrap.Modal(document.getElementById('terminalTicketDetailModal'));
   const solvedBarrier=new bootstrap.Modal(document.getElementById('terminalSolvedBarrier'),{backdrop:'static',keyboard:false,focus:true});
   let solvedBarrierRequired=active.some(i=>statusOf(i)==='Solved');
+  const solvedResponseCache=new Map();
   const esc=value=>$('<div>').text(value??'').html();
   urovoProblems.forEach((label,index)=>{const id='urovoProblemOption'+index;$('#urovoProblemOptions').append('<div class="col-sm-6"><div class="form-check"><input class="form-check-input urovo-problem-option" type="checkbox" id="'+id+'" value="'+esc(label)+'"><label class="form-check-label" for="'+id+'">'+esc(label)+'</label></div></div>');});
   function selectedUrovoProblems(){return $('.urovo-problem-option:checked').map((_,input)=>input.value).get();}
@@ -35,7 +36,7 @@ $(function () {
     pendingSnapshot=$.getJSON('/operations/terminal_inventory_snapshot').done(r=>{
       if(requestId!==snapshotRequestId||requestedMutationVersion!==mutationVersion)return;
       if(!r||!r.success||!Array.isArray(r.active)||!Array.isArray(r.closed)||!r.expectedCounts||!/^\d{4}-\d{2}$/.test(r.currentMonth||'')){openClosedAfterReconcile=false;toastr.warning('Los cambios locales siguen visibles, pero no se pudo verificar el inventario con el servidor. Se intentará de nuevo tras otra acción.');return;}
-      active=r.active;closed=r.closed;expected=r.expectedCounts;currentMonth=r.currentMonth;refresh();
+      active=r.active;closed=r.closed;expected=r.expectedCounts;currentMonth=r.currentMonth;solvedResponseCache.clear();refresh();
       solvedBarrierRequired=active.some(i=>statusOf(i)==='Solved');
       app.prop('inert',solvedBarrierRequired).attr('aria-hidden',String(solvedBarrierRequired));
       if(solvedBarrierRequired){$('#terminalSolvedBarrierStatus').text('Quedan tickets resueltos pendientes.');if(!$('#terminalTicketDetailModal').hasClass('show'))solvedBarrier.show();}else{solvedBarrier.hide();}
@@ -88,7 +89,27 @@ $(function () {
   function renderSolvedBarrier(){
     const solved=active.filter(i=>statusOf(i)==='Solved'),list=$('#terminalSolvedBarrierList').empty();
     if(!solved.length){list.append('<p class="terminal-barrier-checking mb-0">Verificando el estado actualizado de los tickets…</p>');return;}
-    solved.forEach(i=>list.append('<article class="terminal-barrier-ticket"><div><strong>'+esc(types[i.tipo_terminal]?.label||i.tipo_terminal)+'</strong><span class="terminal-ticket-link">Ticket #'+Number(i.ticket_mojo_id)+'</span><p>'+esc(i.descripcion||'Incidencia de terminal')+'</p>'+(i.serial_urovo?'<small>Serie: '+esc(i.serial_urovo)+'</small>':'')+'</div><div class="terminal-barrier-actions"><button type="button" class="btn btn-primary open-solved-barrier-ticket" data-action="reply" data-id="'+Number(i.id)+'">Responder para reabrir</button><button type="button" class="btn btn-outline-success open-solved-barrier-ticket" data-action="close" data-id="'+Number(i.id)+'">Cerrar ticket</button></div></article>'));
+    solved.forEach(i=>{
+      const id=Number(i.id),cached=solvedResponseCache.get(id);
+      const responseHtml=!cached||cached.loading
+        ? '<div class="terminal-barrier-last-response" role="status"><strong>Última respuesta del técnico</strong><p>Cargando respuesta…</p></div>'
+        : cached.error
+          ? '<div class="terminal-barrier-last-response is-muted"><strong>Última respuesta del técnico</strong><p>No se pudo consultar. Abre el detalle para revisar el seguimiento.</p></div>'
+          : cached.response
+            ? '<div class="terminal-barrier-last-response"><strong>Última respuesta del técnico</strong><p>'+esc(cached.response.body)+'</p><small>'+esc(cached.response.author||'Técnico')+(cached.response.created_on?' · '+esc(dateLabel(cached.response.created_on)):'')+(cached.response.is_private?' · Nota interna':'')+'</small></div>'
+            : '<div class="terminal-barrier-last-response is-muted"><strong>Última respuesta del técnico</strong><p>Aún no hay respuesta del técnico.</p></div>';
+      list.append('<article class="terminal-barrier-ticket"><div><strong>'+esc(types[i.tipo_terminal]?.label||i.tipo_terminal)+'</strong><span class="terminal-ticket-link">Ticket #'+Number(i.ticket_mojo_id)+'</span><p>'+esc(i.descripcion||'Incidencia de terminal')+'</p>'+(i.serial_urovo?'<small>Serie: '+esc(i.serial_urovo)+'</small>':'')+responseHtml+'</div><div class="terminal-barrier-actions"><button type="button" class="btn btn-primary open-solved-barrier-ticket" data-action="reply" data-id="'+id+'">Responder para reabrir</button><button type="button" class="btn btn-outline-success open-solved-barrier-ticket" data-action="close" data-id="'+id+'">Cerrar ticket</button></div></article>');
+      if(!cached){
+        solvedResponseCache.set(id,{loading:true});
+        $.getJSON('/operations/terminal_incident_detail',{incident_id:id}).done(r=>{
+          solvedResponseCache.set(id,r?.success?{response:r.latest_technician_response||null}:{error:true});
+          if(active.some(item=>Number(item.id)===id&&statusOf(item)==='Solved'))renderSolvedBarrier();
+        }).fail(()=>{
+          solvedResponseCache.set(id,{error:true});
+          if(active.some(item=>Number(item.id)===id&&statusOf(item)==='Solved'))renderSolvedBarrier();
+        });
+      }
+    });
   }
   function selectResolved(id){const incident=solvedFor(resolvedType).find(i=>Number(i.id)===id);if(!incident)return;selectedCloseId=id;$('#terminalCloseTicket').text('#'+Number(incident.ticket_mojo_id));$('#terminalCloseConfirmation').removeClass('d-none');$('#confirmResolvedClose').trigger('focus');}
   function refresh(){
