@@ -32,10 +32,22 @@
     #tabla_concentrado tfoot th { background:#f1f3f5; }
     .th-rojo { background:#83160E !important; color:#fff !important; }
     .th-azul { background:#1C4587 !important; color:#fff !important; }
-    .resumen-card { max-width:520px; }
-    .resumen-titulo { background:#B0F5F5; font-weight:600; padding:.4rem .75rem; }
-    .resumen-total { background:#FFFF00; font-weight:700; }
-    .resumen-row td { padding:.3rem .75rem; }
+    .resumen-card { max-width:520px; border:1px solid #e2e8f0; border-radius:.75rem; overflow:hidden; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+    .resumen-head { background:#1C4587; color:#fff; padding:.75rem 1rem; }
+    .resumen-head .rh-sub { font-size:.7rem; text-transform:uppercase; letter-spacing:.07em; opacity:.8; }
+    .resumen-head .rh-title { font-size:.95rem; font-weight:600; line-height:1.25; }
+    .resumen-sec { padding:.55rem 1rem .25rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#64748b; background:#f8fafc; border-top:1px solid #e2e8f0; }
+    .resumen-line { display:flex; justify-content:space-between; padding:.3rem 1rem; font-size:.88rem; color:#334155; }
+    .resumen-line span:last-child { font-variant-numeric:tabular-nums; }
+    .resumen-line.rl-total { margin:.25rem 1rem .5rem; padding:.45rem .6rem; border-radius:.4rem; background:#eef2f7; font-weight:700; color:#0f172a; }
+    .resumen-result { display:flex; justify-content:space-between; align-items:center; padding:1rem; border-top:2px solid #e2e8f0; }
+    .resumen-result .rr-label { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#64748b; }
+    .resumen-result .rr-estado { font-size:1.15rem; font-weight:700; }
+    .resumen-result .rr-monto { font-size:1.6rem; font-weight:700; font-variant-numeric:tabular-nums; }
+    .resumen-result.rr-sobrante { background:#f8fafc; }
+    .resumen-result.rr-sobrante .rr-estado, .resumen-result.rr-sobrante .rr-monto { color:#000; }
+    .resumen-result.rr-faltante { background:#fef2f2; border-top-color:#fca5a5; }
+    .resumen-result.rr-faltante .rr-estado, .resumen-result.rr-faltante .rr-monto { color:#dc3545; }
     .dt-buttons { gap:.5rem; }
     .dt-buttons .btn { border-radius:.25rem !important; }
     .celda-editable { white-space:nowrap; }
@@ -213,26 +225,34 @@
 
 <div class="card resumen-card">
   <div class="card-body p-0">
-    <table class="table table-borderless table-sm mb-0">
-      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Resumen del arqueo vs Indicadores D2GO — {{ sesion.fecha|date('d/m/Y') }}</td></tr>
-      <tr class="resumen-row"><td>Capital de Trabajo</td><td class="num">{{ t_capital|number_format(2,'.',',') }}</td></tr>
-      <tr class="resumen-row"><td>Utilidad</td><td class="num">{{ t_util|number_format(2,'.',',') }}</td></tr>
-      <tr class="resumen-row"><td>Reinversión</td><td class="num">{{ t_reinv|number_format(2,'.',',') }}</td></tr>
-      {% set total1 = t_capital + t_reinv + t_util %}
-      <tr class="resumen-row resumen-total"><td>Total</td><td class="num">{{ total1|number_format(2,'.',',') }}</td></tr>
+    {% set total1 = t_capital + t_reinv + t_util %}
+    {% set total2 = t_E + t_G + t_gastos + t_adeudo %}
+    {% set diferencia = total2 - total1 %}
+    <div class="resumen-head">
+      <div class="rh-sub">Resumen del arqueo vs Indicadores D2GO</div>
+      <div class="rh-title">{{ sesion.fecha|date('d/m/Y') }}</div>
+    </div>
 
-      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Resultado de Arqueo</td></tr>
-      <tr class="resumen-row"><td>Conteo Físico</td><td class="num">{{ t_E|number_format(2,'.',',') }}</td></tr>
-      <tr class="resumen-row"><td>Vales</td><td class="num">{{ t_G|number_format(2,'.',',') }}</td></tr>
-      <tr class="resumen-row"><td>Gastos</td><td class="num">{{ t_gastos|number_format(2,'.',',') }}</td></tr>
-      <tr class="resumen-row"><td>Adeudo</td><td class="num">{{ t_adeudo|number_format(2,'.',',') }}</td></tr>
-      {% set total2 = t_E + t_G + t_gastos + t_adeudo %}
-      <tr class="resumen-row resumen-total"><td>Total</td><td class="num">{{ total2|number_format(2,'.',',') }}</td></tr>
+    <div class="resumen-sec">Indicadores D2GO</div>
+    <div class="resumen-line"><span>Capital de Trabajo</span><span>{{ t_capital|number_format(2,'.',',') }}</span></div>
+    <div class="resumen-line"><span>Utilidad</span><span>{{ t_util|number_format(2,'.',',') }}</span></div>
+    <div class="resumen-line"><span>Reinversión</span><span>{{ t_reinv|number_format(2,'.',',') }}</span></div>
+    <div class="resumen-line rl-total"><span>Total</span><span>{{ total1|number_format(2,'.',',') }}</span></div>
 
-      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Resultado</td></tr>
-      {% set faltante = total2 - total1 %}
-      <tr class="resumen-row resumen-total"><td>Faltante</td><td class="num {{ faltante < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ faltante|number_format(2,'.',',') }}</td></tr>
-    </table>
+    <div class="resumen-sec">Resultado de Arqueo</div>
+    <div class="resumen-line"><span>Conteo Físico</span><span>{{ t_E|number_format(2,'.',',') }}</span></div>
+    <div class="resumen-line"><span>Vales</span><span>{{ t_G|number_format(2,'.',',') }}</span></div>
+    <div class="resumen-line"><span>Gastos</span><span>{{ t_gastos|number_format(2,'.',',') }}</span></div>
+    <div class="resumen-line"><span>Adeudo</span><span>{{ t_adeudo|number_format(2,'.',',') }}</span></div>
+    <div class="resumen-line rl-total"><span>Total</span><span>{{ total2|number_format(2,'.',',') }}</span></div>
+
+    <div class="resumen-result {{ diferencia < 0 ? 'rr-faltante' : 'rr-sobrante' }}">
+      <div>
+        <div class="rr-label">Resultado</div>
+        <div class="rr-estado">{{ diferencia < 0 ? 'Faltante' : (diferencia > 0 ? 'Sobrante' : 'Sin diferencia') }}</div>
+      </div>
+      <div class="rr-monto">{{ diferencia|number_format(2,'.',',') }}</div>
+    </div>
   </div>
 </div>
 
