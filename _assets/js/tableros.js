@@ -1770,6 +1770,12 @@
     return Number.isInteger(parsed) ? [parsed] : [];
   }
 
+  function personInitials(name) {
+    const words = String(name || '?').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '?';
+    return (words.length > 1 ? `${words[0][0]}${words[words.length - 1][0]}` : words[0].slice(0, 2)).toLocaleUpperCase('es-MX');
+  }
+
   function setStructuredEditorValue(textarea, requireJson = false) {
     if (!textarea.value.trim()) return null;
     try {
@@ -1827,11 +1833,7 @@
     wrapper.append(control, results, select);
     let requestNumber = 0;
 
-    const initialsFor = (person) => {
-      const words = String(person.name || person.username || '?').trim().split(/\s+/).filter(Boolean);
-      if (!words.length) return '?';
-      return (words.length > 1 ? `${words[0][0]}${words[words.length - 1][0]}` : words[0].slice(0, 2)).toLocaleUpperCase('es-MX');
-    };
+    const initialsFor = (person) => personInitials(person.name || person.username);
     const personColor = (person) => {
       const palette = ['#6677d8', '#168f85', '#c07835', '#9564c7', '#d05e78', '#398db1'];
       const key = String(person.id || person.username || person.name || '');
@@ -5146,7 +5148,7 @@
         Array.from(people).slice(0, 5).forEach((id) => {
           const person = state.summaryPeople.get(id);
           const name = person?.name || `Persona ${id}`;
-          const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('es-MX');
+          const initials = personInitials(name);
           const avatar = makeElement('span', 'boards-summary-person', initials || id.slice(-2));
           avatar.title = name;
           avatar.setAttribute('aria-label', avatar.title);
