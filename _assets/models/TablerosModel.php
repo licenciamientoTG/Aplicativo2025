@@ -3673,7 +3673,7 @@ class TablerosModel {
                         u.Id = w.created_by
                         OR EXISTS (SELECT 1 FROM dbo.tb_workspace_member wm
                                    WHERE wm.workspace_id = w.id AND wm.user_id = u.Id AND wm.deleted_at IS NULL)
-                        OR w.visibility = \'open\'))))',
+                        OR w.visibility = \'open\')))',
             [$boardId, $userId]
         ) !== null;
     }
