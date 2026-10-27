@@ -5927,65 +5927,79 @@
     });
   }
 
-  function escapeExcelHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[character]);
-  }
-
-  function selectedCellHtml(item, column) {
-    if (columnType(column) === 'file') {
-      return filesForItem(item)
-        .filter((file) => String(file.column_id || '') === String(column.id))
-        .map((file) => {
-          const name = file.name || file.original_name || `Archivo ${file.file_id}`;
-          const href = new URL(fileEndpoint(file), window.location.href).href;
-          return `<a href="${escapeExcelHtml(href)}">${escapeExcelHtml(name)}</a>`;
-        }).join('<br>');
-    }
+  function selectedCellData(item, column) {
     const value = getCellValue(item, column);
     if (['status', 'dropdown'].includes(columnType(column))) {
       const option = parseOptions(column.options).find((entry) => entry.value === String(value ?? ''));
-      if (option) return escapeExcelHtml(option.label);
+      if (option) return option.label;
     }
-    return escapeExcelHtml(displayColumnValue(column, value));
+    return displayColumnValue(column, value);
   }
 
-  function exportSelectedItemsToExcel() {
+  async function exportSelectedItemsToExcel() {
     if (!state.board || !state.selectedItemIds.size) return;
+    const boardName = state.board.name || 'Tablero';
     const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
     if (!selected.length) return;
     const columns = state.columns.filter((column) => !['subtasks', 'dependency'].includes(columnType(column)));
-    const headers = ['Elemento', 'Grupo', 'Elemento principal', ...columns.map((column) => column.name || 'Columna sin nombre')];
+    const exportColumns = [
+      { kind: 'name', name: 'Elemento' },
+      { kind: 'group', name: 'Grupo' },
+      { kind: 'parent', name: 'Elemento principal' },
+      ...columns.flatMap((column) => {
+        const maxFiles = columnType(column) === 'file'
+          ? Math.max(0, ...selected.map((item) => filesForItem(item).filter((file) => String(file.column_id || '') === String(column.id)).length))
+          : 0;
+        if (maxFiles <= 1) return [{ kind: 'column', column, fileIndex: 0, name: column.name || 'Columna sin nombre' }];
+        return Array.from({ length: maxFiles }, (_, index) => ({ kind: 'column', column, fileIndex: index, name: `${column.name || 'Archivo'} ${index + 1}` }));
+      })
+    ];
+    const headers = exportColumns.map((column) => column.name);
     const rows = selected.map((item) => {
       const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
       const parent = item.parent_item_id == null ? null : state.items.find((candidate) => String(candidate.id) === String(item.parent_item_id));
-      return [
-        escapeExcelHtml(item.name || 'Elemento sin nombre'),
-        escapeExcelHtml(group?.name || 'Sin grupo'),
-        escapeExcelHtml(parent?.name || ''),
-        ...columns.map((column) => selectedCellHtml(item, column))
-      ];
+      return exportColumns.map((exportColumn) => {
+        if (exportColumn.kind === 'name') return item.name || 'Elemento sin nombre';
+        if (exportColumn.kind === 'group') return group?.name || 'Sin grupo';
+        if (exportColumn.kind === 'parent') return parent?.name || '';
+        if (columnType(exportColumn.column) === 'file') {
+          const file = filesForItem(item).filter((entry) => String(entry.column_id || '') === String(exportColumn.column.id))[exportColumn.fileIndex];
+          if (!file) return '';
+          return { text: file.name || file.original_name || `Archivo ${file.file_id}`, url: new URL(fileEndpoint(file), window.location.href).href };
+        }
+        return selectedCellData(item, exportColumn.column);
+      });
     });
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-      body{font-family:Calibri,Arial,sans-serif;color:#243746}h1{font-size:18pt;color:#174a70}
-      p{color:#607789}table{border-collapse:collapse}th{background:#174a70;color:#fff;font-weight:bold}
-      th,td{border:1px solid #c9d7e2;padding:7px 9px;vertical-align:top;mso-number-format:"\\@"}
-      tr:nth-child(even) td{background:#f1f6fa}a{color:#1769aa;text-decoration:underline}
-    </style></head><body><h1>${escapeExcelHtml(state.board.name || 'Tablero')}</h1>
-      <p>${selected.length} elementos seleccionados · Exportado ${escapeExcelHtml(new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(new Date()))}</p>
-      <table><thead><tr>${headers.map((header) => `<th>${escapeExcelHtml(header)}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
-    const blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const safeName = String(state.board.name || 'tablero').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'tablero';
-    link.href = url;
-    link.download = `${safeName}-seleccion.xls`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const button = document.getElementById('exportSelectedItems');
+    if (button) button.disabled = true;
+    try {
+      const response = await fetch(apiUrl('export_selection'), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json' },
+        body: JSON.stringify({ board_id: state.board.id, board_name: boardName, columns: headers, rows })
+      });
+      const blob = await response.blob();
+      if (!response.ok || !String(response.headers.get('content-type') || '').includes('spreadsheetml')) {
+        let message = `Error del servidor (HTTP ${response.status}).`;
+        try { const payload = JSON.parse(await blob.text()); message = payload.message || payload.error?.message || message; } catch (error) {}
+        throw new Error(message);
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeName = String(boardName || 'tablero').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'tablero';
+      link.href = url;
+      link.download = `${safeName}-seleccion.xlsx`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice('Archivo de Excel descargado.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error), 'error');
+    } finally {
+      if (button) button.disabled = state.bulkMoveInFlight || !state.selectedItemIds.size;
+    }
   }
 
   function columnType(column) {

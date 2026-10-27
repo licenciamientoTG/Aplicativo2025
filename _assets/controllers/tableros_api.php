@@ -370,6 +370,109 @@ class tableros_api {
         }
     }
 
+    public function export_selection(): void {
+        try {
+            $userId = $this->currentUserId();
+            if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+                throw new TablerosApiException('validation', 'Método HTTP no permitido para esta operación.', 422);
+            }
+            $this->initializeServices();
+            $input = $this->readInput();
+            $this->verifyCsrf($input);
+            if (!$this->access->userIsActive($userId) || !$this->access->hasGlobalPermission('access')) {
+                throw new TablerosApiException('forbidden', 'No tienes permiso para esta operación.', 403);
+            }
+            $boardId = $this->positiveInt($input['board_id'] ?? null, 'board_id');
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor', 'viewer']);
+            $columns = $input['columns'] ?? null;
+            $rows = $input['rows'] ?? null;
+            if (!is_array($columns) || count($columns) < 1 || count($columns) > 60 || !is_array($rows) || count($rows) < 1 || count($rows) > 1000) {
+                throw new TablerosApiException('validation', 'La selección no tiene un tamaño válido para exportar.', 422);
+            }
+            foreach ($columns as $column) {
+                if (!is_string($column) || mb_strlen($column) > 200) throw new TablerosApiException('validation', 'El nombre de una columna no es válido.', 422);
+            }
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Seleccionados');
+            $lastColumn = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($columns));
+            $boardName = is_string($input['board_name'] ?? null) ? mb_substr($input['board_name'], 0, 120) : 'Tablero';
+            $sheet->mergeCells("A1:{$lastColumn}1");
+            $sheet->setCellValue('A1', $boardName);
+            $sheet->getStyle('A1')->applyFromArray([
+                'font' => ['bold' => true, 'size' => 18, 'color' => ['rgb' => '174A70']],
+                'alignment' => ['vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+            ]);
+            $sheet->getRowDimension(1)->setRowHeight(32);
+            $sheet->mergeCells("A2:{$lastColumn}2");
+            $sheet->setCellValue('A2', count($rows) . ' elementos seleccionados · Exportado ' . date('d/m/Y'));
+            $sheet->getStyle('A2')->getFont()->getColor()->setARGB('FF607789');
+            $headerRow = 4;
+            foreach ($columns as $index => $column) {
+                $columnLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($index + 1);
+                $sheet->setCellValue($columnLetter . $headerRow, $column);
+                $sheet->getColumnDimensionByColumn($index + 1)->setWidth(min(38, max(16, mb_strlen($column) + 3)));
+            }
+            $sheet->getStyle("A{$headerRow}:{$lastColumn}{$headerRow}")->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '174A70']],
+                'alignment' => ['vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER, 'wrapText' => true],
+                'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'C9D7E2']]],
+            ]);
+            $sheet->getRowDimension($headerRow)->setRowHeight(30);
+            foreach ($rows as $rowIndex => $row) {
+                if (!is_array($row) || count($row) !== count($columns)) throw new TablerosApiException('validation', 'Los datos de la selección no coinciden con sus columnas.', 422);
+                $excelRow = $headerRow + 1 + $rowIndex;
+                foreach (array_values($row) as $columnIndex => $cell) {
+                    $cellRef = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($columnIndex + 1) . $excelRow;
+                    if (is_array($cell) && isset($cell['url'], $cell['text']) && is_string($cell['url']) && is_string($cell['text'])) {
+                        $url = strlen($cell['url']) <= 2048 && filter_var($cell['url'], FILTER_VALIDATE_URL) ? $cell['url'] : '';
+                        $urlHost = $url !== '' ? strtolower((string)parse_url($url, PHP_URL_HOST)) : '';
+                        $requestHost = strtolower((string)preg_replace('/:\\d+$/', '', $_SERVER['HTTP_HOST'] ?? ''));
+                        $urlPath = (string)parse_url($url, PHP_URL_PATH);
+                        $urlScheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
+                        if ($urlHost === '' || $urlHost !== $requestHost || !in_array($urlScheme, ['http', 'https'], true) || parse_url($url, PHP_URL_USER) !== null || parse_url($url, PHP_URL_PASS) !== null || !str_contains($urlPath, '/tableros_api/download-file/')) {
+                            throw new TablerosApiException('validation', 'Uno de los enlaces de archivo no es válido.', 422);
+                        }
+                        $sheet->setCellValueExplicit($cellRef, mb_substr($cell['text'], 0, 1000), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                        $sheet->getCell($cellRef)->getHyperlink()->setUrl($url);
+                        $sheet->getStyle($cellRef)->getFont()->applyFromArray(['color' => ['rgb' => '1769AA'], 'underline' => true]);
+                    } else {
+                        $value = is_scalar($cell) ? (string)$cell : '';
+                        $sheet->setCellValueExplicit($cellRef, mb_substr($value, 0, 32000), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                    }
+                }
+            }
+            $lastDataRow = $headerRow + count($rows);
+            $dataRange = "A" . ($headerRow + 1) . ":{$lastColumn}{$lastDataRow}";
+            $sheet->getStyle($dataRange)->applyFromArray([
+                'alignment' => ['vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP, 'wrapText' => true],
+                'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'C9D7E2']]],
+            ]);
+            for ($rowIndex = 1; $rowIndex < count($rows); $rowIndex += 2) {
+                $stripeRow = $headerRow + 1 + $rowIndex;
+                $sheet->getStyle("A{$stripeRow}:{$lastColumn}{$stripeRow}")->getFill()
+                    ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('F1F6FA');
+            }
+            $sheet->freezePane('A5');
+            $sheet->setAutoFilter("A{$headerRow}:{$lastColumn}{$lastDataRow}");
+            $safeName = preg_replace('/[^A-Za-z0-9._-]+/', '-', $boardName) ?: 'tablero';
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: ' . $this->contentDisposition($safeName . '-seleccion.xlsx'));
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, no-store, max-age=0');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');
+            $spreadsheet->disconnectWorksheets();
+            exit;
+        } catch (TablerosApiException $e) {
+            $this->sendJson($e->httpStatus, ['success' => false, 'code' => $e->apiCode, 'message' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            error_log('Tableros Excel export error: ' . $e->getMessage());
+            $this->sendJson(500, ['success' => false, 'code' => 'server', 'message' => 'Ocurrió un error al generar el archivo de Excel.']);
+        }
+    }
+
     public function thumbnail_file($id): void {
         $thumbnail = null;
         try {

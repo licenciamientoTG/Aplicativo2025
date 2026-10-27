@@ -41,6 +41,7 @@ return [
         route('thumbnail-file/<str:id>/', [tableros_api::class, 'thumbnail_file'], name: 'tableros_api.thumbnail_file', methods: [], alias: ['tableros_api/thumbnail_file/<str:id>']),
         route('preview-image-file/<str:id>/', [tableros_api::class, 'preview_image_file'], name: 'tableros_api.preview_image_file', methods: [], alias: ['tableros_api/preview_image_file/<str:id>']),
         route('download-files-zip/', [tableros_api::class, 'download_files_zip'], name: 'tableros_api.download_files_zip', methods: [], alias: ['tableros_api/download_files_zip']),
+        route('export-selection/', [tableros_api::class, 'export_selection'], name: 'tableros_api.export_selection', methods: [], alias: ['tableros_api/export_selection']),
         route('preview-file/<str:id>/', [tableros_api::class, 'preview_file'], name: 'tableros_api.preview_file', methods: [], alias: ['tableros_api/preview_file/<str:id>']),
         route('relations/', [tableros_api::class, 'relations'], name: 'tableros_api.relations', methods: [], alias: ['tableros_api/relations']),
         route('add-relation/', [tableros_api::class, 'add_relation'], name: 'tableros_api.add_relation', methods: [], alias: ['tableros_api/add_relation']),
