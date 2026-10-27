@@ -5916,6 +5916,8 @@
     document.getElementById('clearSelection').disabled = state.bulkMoveInFlight;
     const bulkDelete = document.getElementById('bulkTrashItems');
     if (bulkDelete) bulkDelete.disabled = state.bulkMoveInFlight || !total || blockedChildren.length > 0;
+    const exportSelected = document.getElementById('exportSelectedItems');
+    if (exportSelected) exportSelected.disabled = state.bulkMoveInFlight || !total;
     els.boardTableContainer.querySelectorAll('[data-select-item], [data-select-group]').forEach((checkbox) => { checkbox.disabled = state.bulkMoveInFlight; });
     els.boardTableContainer.querySelectorAll('[data-select-group]').forEach((checkbox) => {
       const groupItems = getFilteredItems().filter((item) => String(item.group_id) === checkbox.dataset.selectGroup);
@@ -5923,6 +5925,67 @@
       checkbox.checked = groupItems.length > 0 && selected === groupItems.length;
       checkbox.indeterminate = selected > 0 && selected < groupItems.length;
     });
+  }
+
+  function escapeExcelHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
+  }
+
+  function selectedCellHtml(item, column) {
+    if (columnType(column) === 'file') {
+      return filesForItem(item)
+        .filter((file) => String(file.column_id || '') === String(column.id))
+        .map((file) => {
+          const name = file.name || file.original_name || `Archivo ${file.file_id}`;
+          const href = new URL(fileEndpoint(file), window.location.href).href;
+          return `<a href="${escapeExcelHtml(href)}">${escapeExcelHtml(name)}</a>`;
+        }).join('<br>');
+    }
+    const value = getCellValue(item, column);
+    if (['status', 'dropdown'].includes(columnType(column))) {
+      const option = parseOptions(column.options).find((entry) => entry.value === String(value ?? ''));
+      if (option) return escapeExcelHtml(option.label);
+    }
+    return escapeExcelHtml(displayColumnValue(column, value));
+  }
+
+  function exportSelectedItemsToExcel() {
+    if (!state.board || !state.selectedItemIds.size) return;
+    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    if (!selected.length) return;
+    const columns = state.columns.filter((column) => !['subtasks', 'dependency'].includes(columnType(column)));
+    const headers = ['Elemento', 'Grupo', 'Elemento principal', ...columns.map((column) => column.name || 'Columna sin nombre')];
+    const rows = selected.map((item) => {
+      const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
+      const parent = item.parent_item_id == null ? null : state.items.find((candidate) => String(candidate.id) === String(item.parent_item_id));
+      return [
+        escapeExcelHtml(item.name || 'Elemento sin nombre'),
+        escapeExcelHtml(group?.name || 'Sin grupo'),
+        escapeExcelHtml(parent?.name || ''),
+        ...columns.map((column) => selectedCellHtml(item, column))
+      ];
+    });
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      body{font-family:Calibri,Arial,sans-serif;color:#243746}h1{font-size:18pt;color:#174a70}
+      p{color:#607789}table{border-collapse:collapse}th{background:#174a70;color:#fff;font-weight:bold}
+      th,td{border:1px solid #c9d7e2;padding:7px 9px;vertical-align:top;mso-number-format:"\\@"}
+      tr:nth-child(even) td{background:#f1f6fa}a{color:#1769aa;text-decoration:underline}
+    </style></head><body><h1>${escapeExcelHtml(state.board.name || 'Tablero')}</h1>
+      <p>${selected.length} elementos seleccionados · Exportado ${escapeExcelHtml(new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(new Date()))}</p>
+      <table><thead><tr>${headers.map((header) => `<th>${escapeExcelHtml(header)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+    const blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeName = String(state.board.name || 'tablero').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'tablero';
+    link.href = url;
+    link.download = `${safeName}-seleccion.xls`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function columnType(column) {
@@ -8519,6 +8582,7 @@
     document.getElementById('bulkMoveGroup')?.addEventListener('change', updateSelectionBar);
     document.getElementById('bulkMoveItems')?.addEventListener('click', moveSelectedItems);
     document.getElementById('bulkTrashItems')?.addEventListener('click', trashSelectedItems);
+    document.getElementById('exportSelectedItems')?.addEventListener('click', exportSelectedItemsToExcel);
     document.getElementById('clearSelection')?.addEventListener('click', () => {
       state.selectedItemIds.clear();
       els.boardTableContainer.querySelectorAll('[data-select-item]').forEach((checkbox) => { checkbox.checked = false; });
