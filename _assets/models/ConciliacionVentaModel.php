@@ -26,8 +26,6 @@ class ConciliacionVentaModel extends Model {
     public const SUBOPE_FACTURA_CREDITO = 4;
     /** SG12.EfectosC: subope de "Cobranza a Clientes" (tip 4), lo que trae el reporte de cobros. */
     public const SUBOPE_COBRANZA = 8;
-    /** "Cobranza Administrativa" y "Cobro Arrendamiento": solo si se piden. */
-    public const SUBOPE_COBROS_OTROS = [24, 57];
     /** ValesR.codval del crédito en los cortes. */
     public const CODVAL_CREDITO = 28;
 
@@ -233,10 +231,9 @@ class ConciliacionVentaModel extends Model {
      * todas porque un MOV puede juntar cobros de varias estaciones; el cruce con
      * el banco (ConciliacionCobros) va completo y la razón social se filtra
      * después con la columna empresa.
-     * $otros: incluir también Cobranza Administrativa y Cobro Arrendamiento.
      */
-    public function cobros(int $from, int $until, bool $otros): array {
-        $subopes = implode(',', array_merge([self::SUBOPE_COBRANZA], $otros ? self::SUBOPE_COBROS_OTROS : []));
+    public function cobros(int $from, int $until): array {
+        $subopes = self::SUBOPE_COBRANZA;
         $query = "
             SET NOCOUNT ON;
             DECLARE @d int = ?, @h int = ?;

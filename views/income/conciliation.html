@@ -87,13 +87,14 @@
   #modalAyuda .modal-body p { font-size: .9rem; color: #334155; }
   #modalAyuda .modal-body li { font-size: .85rem; color: #475569; margin-bottom: .25rem; }
 
-  #cvLoader {
-    display: none; position: fixed; inset: 0; z-index: 10500;
-    background: rgba(248, 250, 252, .75); backdrop-filter: blur(1px);
-    align-items: center; justify-content: center; flex-direction: column; gap: .75rem;
-  }
-  #cvLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
-  #cvLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
+  /* Progreso de las consultas */
+  .cv-prog-items { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .cv-prog-item { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 600; border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b; user-select: none; }
+  .cv-prog-item small { font-weight: 400; font-variant-numeric: tabular-nums; }
+  .cv-prog-item.ok { background: #dcfce7; border-color: #bbf7d0; color: #166534; cursor: pointer; }
+  .cv-prog-item.ok:hover { background: #bbf7d0; }
+  .cv-prog-item.err { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
+  #cvProgBarra { transition: width .3s; }
 </style>
 {% endblock %}
 
@@ -110,10 +111,6 @@
   })();
 </script>
 
-<div id="cvLoader">
-  <div class="spinner-border"></div>
-  <span>Consultando ControlGas y bancos...</span>
-</div>
 
 <div class="card mb-3">
   <div class="card-body">
@@ -134,24 +131,20 @@
         </select>
       </div>
       <div class="col-auto">
-        <div class="form-check form-switch mb-2">
-          <input class="form-check-input" type="checkbox" id="cvOtros">
-          <label class="form-check-label" for="cvOtros">Incluir cobranza administrativa y arrendamiento</label>
-        </div>
-      </div>
-      <div class="col-auto">
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
-      <div class="col">
-        <small class="text-muted">
-          Clientes de crédito. <b>Facturado Control Gas</b> = despachos del mes cuya factura existe y no está cancelada,
-          aunque la factura sea del mes siguiente. <b>Cobros</b> = "Cobranza a Clientes" de ControlGas, cruzados contra
-          Movimientos Bancos por el MOV (secuencia del estado de cuenta) y, si no cuadra, por importe.
-        </small>
+      <div class="col-auto pb-1">
+        <button type="button" class="cv-ayuda" data-ayuda="filtros" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
       </div>
     </form>
   </div>
 </div>
+
+<div class="card mb-3" id="cvProgreso" style="display:none"><div class="card-body py-2">
+  <div class="d-flex justify-content-between small mb-1"><span id="cvProgTexto"></span><span id="cvProgPct"></span></div>
+  <div class="progress" style="height:8px"><div class="progress-bar bg-success" id="cvProgBarra" style="width:0%"></div></div>
+  <div class="cv-prog-items mt-2" id="cvProgItems"></div>
+</div></div>
 
 <ul class="nav nav-tabs mb-3" role="tablist" id="cvTabs">
   <li class="nav-item" role="presentation">
@@ -165,12 +158,12 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabApp" type="button" role="tab" data-lazy="app">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabApp" type="button" role="tab">
       Consumos por cliente <small class="text-muted">(Venta aplicativo)</small> <span class="badge bg-secondary" id="cntApp">–</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPropio" type="button" role="tab" data-lazy="propio">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPropio" type="button" role="tab">
       Consumo propio y bonificaciones <small class="text-muted">(Consumos propios)</small> <span class="badge bg-secondary" id="cntPropio">–</span>
     </button>
   </li>
@@ -190,7 +183,7 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabBanco" type="button" role="tab" data-lazy="banco">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabBanco" type="button" role="tab">
       Banco <small class="text-muted">(Banco 2791)</small> <span class="badge bg-secondary" id="cntBanco">–</span>
     </button>
   </li>
@@ -488,6 +481,9 @@
 $(function () {
   // Ayuda "¿Qué estoy viendo?": un modal compartido, el texto sale de AYUDA.
   var AYUDA = {
+    filtros: ['Filtros de la consulta', '<p>Todo el módulo trabaja con <b>clientes de crédito</b> del mes y la razón social elegidos.</p><ul>' +
+      '<li><b>Facturado Control Gas:</b> despachos del mes cuya factura de crédito existe y no está cancelada, aunque la factura sea del mes siguiente.</li>' +
+      '<li><b>Cobros:</b> la "Cobranza a Clientes" de ControlGas (la misma selección de tu reporte de cobros), cruzada contra Movimientos Bancos por el MOV (secuencia del estado de cuenta) y, si no cuadra, por importe.</li></ul>'],
     resumen: ['Resumen', '<p>Es la hoja <b>Conciliación</b> del Excel: cuadra la venta del aplicativo contra lo facturado y los cobros contra el banco, para el mes y la razón social elegidos. Los renglones con subrayado punteado llevan a su tab de detalle.</p>'],
     res_venta: ['Venta vs facturación', '<p>De arriba abajo: venta total del aplicativo (monto de despachos de clientes de crédito), menos consumos propios y bonificaciones = <b>venta neta</b>, contra lo facturado.</p><ul><li>Lo facturado se cuenta <b>por despacho</b>: cuenta si su factura de crédito existe y no está cancelada, sin importar la fecha de la factura.</li><li>"Sin explicar" debe quedar en $0.00; si no, aparece "Revisar".</li></ul>'],
     res_puente: ['Puente con facturas de ControlGas', '<p>Compara la venta contra el total de las facturas <b>por fecha de factura</b> (no por despacho), como el cuadro del Excel original, y lista las partidas que explican la diferencia: consumos facturados en otro mes, consumos sin facturar, etc.</p>'],
@@ -763,6 +759,7 @@ $(function () {
   }
 
   function cargarTabla(api, filas, cnt) {
+    api.settings()[0].oLanguage.sEmptyTable = 'Sin registros para este mes';
     api.clear().rows.add(filas).draw();
     $(cnt).text(filas.length.toLocaleString('en-US'));
   }
@@ -943,7 +940,7 @@ $(function () {
   $('#modalDespachos').on('shown.bs.modal', function () { tablaDespachos.columns.adjust(); });
 
   // ---------------------------------------------------------------- datos
-  var estado = { busqueda: 0, venta: [], facturas: [], cobros: [], lazy: {} };
+  var estado = { busqueda: 0, venta: [], facturas: [], cobros: [], xhrs: [], fin: {}, t0: {}, resumenListo: false };
 
   function filtros(extra) {
     return $.extend({ mes: $('#cvMes').val(), empresa: $('#cvEmpresa').val() }, extra || {});
@@ -951,49 +948,131 @@ $(function () {
   function pedir(ruta, extra) {
     return $.ajax({ url: routeUrl(ruta), method: 'POST', dataType: 'json', timeout: 600000, data: filtros(extra) });
   }
-  function mostrarLoader(on) { document.getElementById('cvLoader').style.display = on ? 'flex' : 'none'; }
+
+  // Consultas del módulo: cada una llena su(s) tab(s) en cuanto responde.
+  var CONSULTAS = [
+    ['venta', 'Venta vs facturado', '#tabVenta', '#cntVenta'],
+    ['facturas', 'Facturas de crédito', '#tabFacturas', '#cntFacturas'],
+    ['cobros', 'Cobros y cruce con banco', '#tabCobros', '#cntCobros, #cntCruce'],
+    ['app', 'Consumos por cliente', '#tabApp', '#cntApp'],
+    ['propio', 'Consumo propio', '#tabPropio', '#cntPropio'],
+    ['banco', 'Banco', '#tabBanco', '#cntBanco'],
+  ];
+  var TABLAS = function () { return [tablaVenta, tablaFacturas, tablaCobros, tablaCruce, tablaApp, tablaPropio, tablaBanco]; };
+  var progTimer = null;
+
+  function progresoInicio() {
+    clearInterval(progTimer);
+    $('#cvProgItems').html(CONSULTAS.map(function (c) {
+      return '<span class="cv-prog-item" data-k="' + c[0] + '" data-tab="' + c[2] + '" title="Consultando..."><i class="fas fa-circle-notch fa-spin"></i> ' +
+        c[1] + ' <small></small></span>';
+    }).join(''));
+    estado.t0 = {};
+    CONSULTAS.forEach(function (c) { estado.t0[c[0]] = Date.now(); });
+    progresoActualiza();
+    $('#cvProgreso').show();
+    progTimer = setInterval(progresoActualiza, 1000);
+  }
+  // Pinta barra, texto y segundos transcurridos de las consultas que siguen en curso.
+  function progresoActualiza() {
+    var total = CONSULTAS.length, hechas = 0, fallas = 0;
+    CONSULTAS.forEach(function (c) {
+      var est = estado.fin[c[0]];
+      if (est) { hechas++; if (est === 'err') fallas++; }
+      else $('.cv-prog-item[data-k="' + c[0] + '"] small').text(Math.round((Date.now() - estado.t0[c[0]]) / 1000) + ' s');
+    });
+    var pct = Math.round(hechas * 100 / total);
+    $('#cvProgBarra').css('width', pct + '%').toggleClass('bg-danger', fallas > 0);
+    $('#cvProgPct').text(pct + '%');
+    $('#cvProgTexto').text(hechas === total
+      ? (fallas ? 'Terminó con ' + fallas + ' consulta(s) con error' : 'Listo: las ' + total + ' consultas terminaron')
+      : 'Consultando: ' + hechas + ' de ' + total + ' listas. Puedes abrir los tabs que ya terminaron (marcados en verde).');
+    if (hechas === total) clearInterval(progTimer);
+  }
+  function progresoMarca(k, ok) {
+    estado.fin[k] = ok ? 'ok' : 'err';
+    var seg = ((Date.now() - estado.t0[k]) / 1000).toFixed(1) + ' s';
+    $('.cv-prog-item[data-k="' + k + '"]').removeClass('ok err').addClass(ok ? 'ok' : 'err')
+      .attr('title', ok ? 'Terminó: clic para abrir el tab' : 'Falló la consulta; vuelve a presionar Buscar')
+      .find('i').attr('class', 'fas ' + (ok ? 'fa-check' : 'fa-times')).end()
+      .find('small').text(seg);
+    progresoActualiza();
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    // El Resumen necesita venta, facturas y cobros
+    if (ok && estado.fin.venta === 'ok' && estado.fin.facturas === 'ok' && estado.fin.cobros === 'ok' && !estado.resumenListo) {
+      estado.resumenListo = true;
+      pintarResumen();
+    }
+  }
+  $('#cvProgItems').on('click', '.cv-prog-item.ok', function () { abrirTab($(this).data('tab')); });
+
+  // Lanza una consulta; si ya hay otra búsqueda en marcha, su respuesta se descarta.
+  function consultar(k, xhr, alOk) {
+    var busqueda = estado.busqueda;
+    estado.xhrs.push(xhr);
+    xhr.done(function (r) {
+      if (busqueda !== estado.busqueda) return;
+      alOk((r && r.data) || []);
+      progresoMarca(k, true);
+    }).fail(function (x, st) {
+      if (st === 'abort' || busqueda !== estado.busqueda) return;
+      progresoMarca(k, false);
+      alertify.error('Error al consultar: ' + CONSULTAS.filter(function (c) { return c[0] === k; })[0][1]);
+    });
+    return xhr;
+  }
 
   function buscar() {
+    (estado.xhrs || []).forEach(function (x) { x.abort(); });
     estado.busqueda++;
-    estado.lazy = {};
-    ['#cntApp', '#cntPropio', '#cntBanco'].forEach(function (c) { $(c).text('–'); });
-    [tablaApp, tablaPropio, tablaBanco].forEach(function (t) { t.clear().draw(); });
-    $('#chipsApp, #chipsPropio, #chipsBanco').empty();
-    $('#resClase tbody, #resFacturas tbody, #resCruce tbody, #resBanco tbody').empty();
-    mostrarLoader(true);
+    estado.xhrs = []; estado.fin = {}; estado.resumenListo = false;
+    estado.venta = []; estado.facturas = []; estado.cobros = [];
 
-    var pVenta = pedir('income.conciliation_sales').done(function (r) {
-      estado.venta = (r && r.data) || [];
-      cargarTabla(tablaVenta, estado.venta, '#cntVenta');
-      pintarResumenClase(estado.venta);
-      pintarChips('#chipsVenta', tablaVenta, estado.venta, 'estatus', COL_ESTATUS_VENTA, 'monto');
+    TABLAS().forEach(function (t) { t.settings()[0].oLanguage.sEmptyTable = 'Consultando…'; t.clear().draw(); });
+    $('#cntVenta, #cntFacturas, #cntCobros, #cntCruce, #cntApp, #cntPropio, #cntBanco').text('…');
+    $('#chipsVenta, #chipsFacturas, #chipsCobros, #chipsCruce, #chipsApp, #chipsPropio, #chipsBanco').empty();
+    $('#resClase tbody, #resFacturas tbody, #resCruce tbody, #resBanco tbody').empty();
+    $('#resumenContenido').hide();
+    $('#resumenVacio').text('Consultando… el resumen aparece cuando terminen la venta, las facturas y los cobros.').show();
+    progresoInicio();
+
+    consultar('venta', pedir('income.conciliation_sales'), function (filas) {
+      estado.venta = filas;
+      cargarTabla(tablaVenta, filas, '#cntVenta');
+      pintarResumenClase(filas);
+      pintarChips('#chipsVenta', tablaVenta, filas, 'estatus', COL_ESTATUS_VENTA, 'monto');
     });
-    var pFacturas = pedir('income.conciliation_invoices').done(function (r) {
-      estado.facturas = (r && r.data) || [];
-      cargarTabla(tablaFacturas, estado.facturas, '#cntFacturas');
-      pintarChips('#chipsFacturas', tablaFacturas, estado.facturas, 'periodo', COL_PERIODO_FACTURAS, 'total');
-      pintarResumenFacturas(estado.facturas);
+    consultar('facturas', pedir('income.conciliation_invoices'), function (filas) {
+      estado.facturas = filas;
+      cargarTabla(tablaFacturas, filas, '#cntFacturas');
+      pintarChips('#chipsFacturas', tablaFacturas, filas, 'periodo', COL_PERIODO_FACTURAS, 'total');
+      pintarResumenFacturas(filas);
     });
-    var pCobros = pedir('income.conciliation_payments', { otros: $('#cvOtros').is(':checked') ? '1' : '0' }).done(function (r) {
-      estado.cobros = (r && r.data) || [];
-      cargarTabla(tablaCobros, estado.cobros, '#cntCobros');
-      pintarChips('#chipsCobros', tablaCobros, estado.cobros, 'estatus', COL_ESTATUS_COBROS, 'monto');
-      var grupos = agruparCruce(estado.cobros);
+    consultar('cobros', pedir('income.conciliation_payments'), function (filas) {
+      estado.cobros = filas;
+      cargarTabla(tablaCobros, filas, '#cntCobros');
+      pintarChips('#chipsCobros', tablaCobros, filas, 'estatus', COL_ESTATUS_COBROS, 'monto');
+      var grupos = agruparCruce(filas);
       cargarTabla(tablaCruce, grupos, '#cntCruce');
       pintarChips('#chipsCruce', tablaCruce, grupos, 'estatus', COL_ESTATUS_CRUCE, 'monto');
-      pintarResumenCruce(estado.cobros);
+      pintarResumenCruce(filas);
+      cargarBanco();   // necesita las cuentas de los cobros
     });
-
-    $.when(pVenta, pFacturas, pCobros)
-      .done(function () { pintarResumen(); })
-      .fail(function () { alertify.error('Error al consultar la conciliación'); })
-      .always(function () {
-        mostrarLoader(false);
-        $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
-        // Si el usuario está parado en un tab de carga diferida, cargarlo ya
-        var activo = $('#cvTabs .nav-link.active').data('lazy');
-        if (activo) cargarLazy(activo);
-      });
+    consultar('app', pedir('income.conciliation_app_sales'), function (filas) {
+      cargarTabla(tablaApp, filas, '#cntApp');
+      $('#chipsApp').html(
+        '<span class="cv-chip">Clientes: <b>' + filas.length + '</b></span>' +
+        '<span class="cv-chip">Despachos: <b>' + suma(filas, 'Despachos').toLocaleString('en-US') + '</b></span>' +
+        '<span class="cv-chip">Litros: <b>' + fmtLitros(suma(filas, 'Litros')) + '</b></span>' +
+        '<span class="cv-chip">Monto: <b>$' + fmtMonto(suma(filas, 'Monto')) + '</b></span>' +
+        '<span class="cv-chip">Cortes: <b>$' + fmtMonto(suma(filas, 'MontoCortes')) + '</b></span>' +
+        '<span class="cv-chip">Diferencia: <b>$' + fmtMonto(suma(filas, 'Diferencia')) + '</b></span>'
+      );
+    });
+    consultar('propio', pedir('income.conciliation_own_consumption'), function (filas) {
+      cargarTabla(tablaPropio, filas, '#cntPropio');
+      pintarChips('#chipsPropio', tablaPropio, filas, 'Categoria', COL_CATEGORIA_PROPIO, 'Monto');
+    });
   }
 
   // Una fila por depósito del banco (o por MOV sin depósito, o por cobro sin MOV)
@@ -1165,73 +1244,42 @@ $(function () {
     }).fail(function () { alertify.error('Error al consultar los despachos'); });
   });
 
-  // ---------------------------------------------------------------- tabs de carga diferida
-  function cargarLazy(cual) {
-    if (!estado.busqueda || estado.lazy[cual]) return;
-    estado.lazy[cual] = true;
-    var busqueda = estado.busqueda;
-    var p;
-    if (cual === 'app') {
-      p = pedir('income.conciliation_app_sales').done(function (r) {
-        if (busqueda !== estado.busqueda) return;
-        var filas = (r && r.data) || [];
-        cargarTabla(tablaApp, filas, '#cntApp');
-        $('#chipsApp').html(
-          '<span class="cv-chip">Clientes: <b>' + filas.length + '</b></span>' +
-          '<span class="cv-chip">Despachos: <b>' + suma(filas, 'Despachos').toLocaleString('en-US') + '</b></span>' +
-          '<span class="cv-chip">Litros: <b>' + fmtLitros(suma(filas, 'Litros')) + '</b></span>' +
-          '<span class="cv-chip">Monto: <b>$' + fmtMonto(suma(filas, 'Monto')) + '</b></span>' +
-          '<span class="cv-chip">Cortes: <b>$' + fmtMonto(suma(filas, 'MontoCortes')) + '</b></span>' +
-          '<span class="cv-chip">Diferencia: <b>$' + fmtMonto(suma(filas, 'Diferencia')) + '</b></span>'
-        );
-      });
-    } else if (cual === 'propio') {
-      p = pedir('income.conciliation_own_consumption').done(function (r) {
-        if (busqueda !== estado.busqueda) return;
-        var filas = (r && r.data) || [];
-        cargarTabla(tablaPropio, filas, '#cntPropio');
-        pintarChips('#chipsPropio', tablaPropio, filas, 'Categoria', COL_CATEGORIA_PROPIO, 'Monto');
-      });
-    } else if (cual === 'banco') {
-      var cuentas = [];
-      estado.cobros.forEach(function (r) { if (r.cuenta && cuentas.indexOf(r.cuenta) < 0) cuentas.push(r.cuenta); });
-      if (!cuentas.length) {
-        cargarTabla(tablaBanco, [], '#cntBanco');
-        $('#chipsBanco').html('<span class="text-muted">Ningún cobro del mes quedó ligado a una cuenta de Movimientos Bancos.</span>');
-        return;
-      }
-      // depósito → cobros ligados (de la conciliación de cobros)
-      var ligados = {};
-      estado.cobros.forEach(function (r) {
-        if (r.deposito_id && r.estatus !== 'Diferencia') (ligados[r.deposito_id] = ligados[r.deposito_id] || []).push(r.cobro);
-      });
-      p = pedir('income.conciliation_bank', { cuentas: cuentas }).done(function (r) {
-        if (busqueda !== estado.busqueda) return;
-        var filas = ((r && r.data) || []).map(function (m) {
-          m.ligado = m.abono > 0 ? (ligados[m.id] ? 'Ligado a cobro' : 'Sin cobro de crédito') : 'Retiro';
-          m.cobros = (ligados[m.id] || []).join(', ');
-          return m;
-        });
-        cargarTabla(tablaBanco, filas, '#cntBanco');
-        pintarChips('#chipsBanco', tablaBanco, filas, 'ligado', COL_LIGADO_BANCO, 'abono');
-        pintarResumenBanco(filas);
-        var porCuenta = {};
-        filas.forEach(function (m) {
-          var g = porCuenta[m.cuenta] = porCuenta[m.cuenta] || { n: 0, abono: 0, cargo: 0 };
-          g.n++; g.abono += m.abono; g.cargo += m.cargo;
-        });
-        Object.keys(porCuenta).forEach(function (k) {
-          $('#chipsBanco').append('<span class="cv-chip">' + esc(filas.find(function (m) { return m.cuenta === k; }).banco) + ' ' + esc(k) +
-            ': <b>' + porCuenta[k].n + '</b> movs · depósitos $' + fmtMonto(porCuenta[k].abono) + ' · retiros $' + fmtMonto(porCuenta[k].cargo) + '</span>');
-        });
-      });
+  // ---------------------------------------------------------------- banco (depende de los cobros)
+  function cargarBanco() {
+    var cuentas = [];
+    estado.cobros.forEach(function (r) { if (r.cuenta && cuentas.indexOf(r.cuenta) < 0) cuentas.push(r.cuenta); });
+    if (!cuentas.length) {
+      cargarTabla(tablaBanco, [], '#cntBanco');
+      $('#chipsBanco').html('<span class="text-muted">Ningún cobro del mes quedó ligado a una cuenta de Movimientos Bancos.</span>');
+      progresoMarca('banco', true);
+      return;
     }
-    mostrarLoader(true);
-    p.fail(function () { estado.lazy[cual] = false; alertify.error('Error al consultar'); })
-      .always(function () { mostrarLoader(false); $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); });
+    // depósito → cobros ligados (de la conciliación de cobros)
+    var ligados = {};
+    estado.cobros.forEach(function (r) {
+      if (r.deposito_id && r.estatus !== 'Diferencia') (ligados[r.deposito_id] = ligados[r.deposito_id] || []).push(r.cobro);
+    });
+    estado.t0.banco = Date.now();   // su reloj arranca cuando terminan los cobros
+    consultar('banco', pedir('income.conciliation_bank', { cuentas: cuentas }), function (datos) {
+      var filas = datos.map(function (m) {
+        m.ligado = m.abono > 0 ? (ligados[m.id] ? 'Ligado a cobro' : 'Sin cobro de crédito') : 'Retiro';
+        m.cobros = (ligados[m.id] || []).join(', ');
+        return m;
+      });
+      cargarTabla(tablaBanco, filas, '#cntBanco');
+      pintarChips('#chipsBanco', tablaBanco, filas, 'ligado', COL_LIGADO_BANCO, 'abono');
+      pintarResumenBanco(filas);
+      var porCuenta = {};
+      filas.forEach(function (m) {
+        var g = porCuenta[m.cuenta] = porCuenta[m.cuenta] || { n: 0, abono: 0, cargo: 0 };
+        g.n++; g.abono += m.abono; g.cargo += m.cargo;
+      });
+      Object.keys(porCuenta).forEach(function (k) {
+        $('#chipsBanco').append('<span class="cv-chip">' + esc(filas.find(function (m) { return m.cuenta === k; }).banco) + ' ' + esc(k) +
+          ': <b>' + porCuenta[k].n + '</b> movs · depósitos $' + fmtMonto(porCuenta[k].abono) + ' · retiros $' + fmtMonto(porCuenta[k].cargo) + '</span>');
+      });
+    });
   }
-
-  $('#cvTabs button[data-lazy]').on('shown.bs.tab', function () { cargarLazy($(this).data('lazy')); });
 
   $('#cvFiltros').on('submit', function (e) { e.preventDefault(); buscar(); });
 });

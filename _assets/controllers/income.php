@@ -352,7 +352,7 @@ class Income{
     }
 
     /**
-     * POST (otros=1 incluye Cobranza Administrativa y Arrendamiento): cobros del
+     * POST: cobros del
      * mes con el depósito del banco que les corresponde. El cruce corre con los
      * cobros de todas las estaciones y luego se filtra la razón social, porque un
      * MOV puede juntar cobros de varias.
@@ -365,7 +365,7 @@ class Income{
         $cobros  = array_map(function ($r) {
             $r['mov'] = ConciliacionCobros::movDeTxtref((string)$r['txtref']);
             return $r;
-        }, $model->cobros($from, $until, ($_POST['otros'] ?? '0') === '1'));
+        }, $model->cobros($from, $until));
         $dias = fn(string $fecha, int $n) => date('Y-m-d', strtotime($fecha . sprintf(' %+d days', $n)));
         $depositos = $model->depositos(
             array_column($cobros, 'mov'),
