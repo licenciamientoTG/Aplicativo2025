@@ -623,7 +623,7 @@ $(function () {
   }
 
   // Chips por estatus: conteo + suma; clic filtra la columna de estatus.
-  // campoPend (opcional): lo que falta por facturar; se muestra en los estatus de la lista ESTATUS_PEND.
+  // campoPend (opcional): lo que falta por facturar; en los estatus de ESTATUS_PEND el chip muestra esto en vez del monto.
   var ESTATUS_PEND = ['Pendiente de facturar', 'Sin facturar', 'Factura cancelada'];
   function pintarChips(contenedor, api, filas, campoEstatus, colEstatus, campoMonto, campoPend) {
     var grupos = {};
@@ -638,9 +638,10 @@ $(function () {
       fmtMonto(suma(filas, campoMonto)) + '</span>';
     Object.keys(grupos).sort().forEach(function (k) {
       html += '<span class="cv-chip" data-estatus="' + esc(k) + '">' + badge(k, 'display') +
-        ' <b>' + grupos[k].n.toLocaleString('en-US') + '</b> · $' + fmtMonto(grupos[k].monto) +
-        (campoPend && ESTATUS_PEND.indexOf(k) >= 0 && Math.abs(grupos[k].pend) >= 0.01
-          ? ' · <span class="cv-neg">por facturar $' + fmtMonto(grupos[k].pend) + '</span>' : '') + '</span>';
+        ' <b>' + grupos[k].n.toLocaleString('en-US') + '</b> · ' +
+        // En los estatus pendientes el chip muestra solo lo que falta por facturar, no el monto total del cliente
+        (campoPend && ESTATUS_PEND.indexOf(k) >= 0
+          ? '<span class="cv-neg">$' + fmtMonto(grupos[k].pend) + '</span>' : '$' + fmtMonto(grupos[k].monto)) + '</span>';
     });
     api.column(colEstatus).search('').draw();
     $(contenedor).html(html).off('click').on('click', '.cv-chip', function () {
