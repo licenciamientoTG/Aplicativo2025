@@ -6,7 +6,7 @@
     {% for r in documentos %}
     <li class="list-group-item d-flex justify-content-between align-items-center remision-row">
         <div>
-            <a href="/station_portal/view_remision/{{ r.id }}" target="_blank">{{ r.original_filename }}</a>
+            <a href="{{ url('station_portal.view_remision', {id: r.id}) }}" target="_blank">{{ r.original_filename }}</a>
             <div class="small text-muted">
                 Subido por {{ r.created_by_name|default('Usuario ' ~ r.created_by) }} el {{ r.created_at|date('d/m/Y H:i') }}
             </div>

@@ -218,7 +218,7 @@
 <div class="vd-panel mb-3">
     <div class="vd-panel-titulo d-flex flex-wrap align-items-center gap-2">
         <span><i class="fas fa-truck-droplet"></i> Compras y merma{{ ayuda.icono('Compras y merma', 'Litros que entraron a los tanques contra los que salieron por bomba, y cuánto combustible no cuadra (merma). Sale del mismo registro de inventarios por turno que el Análisis de merma.') }}</span>
-        <a href="/merma/analisis{{ urlDetalle }}" class="small fw-normal ms-auto">Ver análisis de merma</a>
+        <a href="{{ url('merma.analisis') }}{{ urlDetalle }}" class="small fw-normal ms-auto">Ver análisis de merma</a>
     </div>
     <div class="row g-3">
         <div class="col-lg-7">
@@ -286,7 +286,7 @@
             <div class="vd-cm-top">
                 <div class="vd-cm-top-titulo"><i class="fas fa-triangle-exclamation"></i> Mayor merma del mes{{ ayuda.icono('Mayor merma del mes', 'Las 5 estaciones con mayor merma como porcentaje de sus ventas. Haz clic en el nombre para ver su detalle por día y turno.') }}</div>
                 {% for s in mz.peores %}
-                <a class="vd-cm-top-fila" href="/merma/detalle/{{ s.codgas }}{{ urlDetalle }}">
+                <a class="vd-cm-top-fila" href="{{ url('merma.detalle', {codgas: s.codgas}) }}{{ urlDetalle }}">
                     <span class="vd-cm-top-pos">{{ loop.index }}</span>
                     <span class="vd-cm-top-nombre">{{ s.nombre }}<small>{{ s.zona }}</small></span>
                     <span class="vd-cm-top-litros">{{ f.lts(s.litros) }} L</span>
@@ -305,7 +305,7 @@
 {# Panel oculto temporalmente
 <div class="vd-panel mb-3">
     <div class="vd-panel-titulo"><i class="fas fa-sack-dollar"></i> Rentabilidad: gasto en compras y margen bruto{{ ayuda.icono('Rentabilidad', 'Cuánto se gastó en combustible y cuánto se ganó al venderlo.<br><br>La venta sale de lo cobrado en bomba (ControlGas) y el costo, de las facturas de los proveedores ligadas a cada descarga. Es <strong>margen bruto</strong>: no incluye gastos de operación (nómina, luz, renta, etc.).') }}</div>
-    <div id="vd-rentabilidad" data-url="/merma/ventas_rentabilidad?anio={{ anio }}&mes={{ mes }}">
+    <div id="vd-rentabilidad" data-url="{{ url('merma.ventas_rentabilidad') }}?anio={{ anio }}&mes={{ mes }}">
         <p class="text-muted small mb-0"><i class="fas fa-spinner fa-spin"></i> Calculando rentabilidad…</p>
     </div>
 </div>

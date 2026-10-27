@@ -9,7 +9,7 @@
   const badges = document.querySelectorAll('.js-alerta-recepciones');
   if (!badges.length) return;
 
-  fetch('/station_portal/alertas', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+  fetch(routeUrl('station_portal.alertas'), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     .then((r) => (r.ok ? r.json() : null))
     .then((resp) => {
       const total = resp ? parseInt(resp.total, 10) || 0 : 0;

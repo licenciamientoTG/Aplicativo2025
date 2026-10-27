@@ -86,7 +86,7 @@ $(document).ready(function () {
 
     // ---- Captura inline: merma s/d y comentarios --------------------------
     function guardarManual(codgas, campo, valor, $el) {
-        $.post('/merma/guardar_manual', {
+        $.post(routeUrl('merma.guardar_manual'), {
             codgas: codgas, anio: MERMA_CTX.anio, mes: MERMA_CTX.mes,
             campo: campo, valor: valor,
         }, function (res) {
@@ -105,7 +105,7 @@ $(document).ready(function () {
     // ---- Precio por litro -------------------------------------------------
     $(document).on('change', '#precio_litro', function () {
         const $el = $(this);
-        $.post('/merma/guardar_precio', {
+        $.post(routeUrl('merma.guardar_precio'), {
             anio: MERMA_CTX.anio, mes: MERMA_CTX.mes, precio: $el.val(),
         }, function (res) {
             $el.addClass(res.success ? 'is-valid' : 'is-invalid');
@@ -118,7 +118,7 @@ $(document).ready(function () {
         const $btn = $(this);
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Consultando estaciones...');
         $('#sync_result').html('');
-        $.post('/merma/sync', {
+        $.post(routeUrl('merma.sync'), {
             from: $('#sync_from').val(),
             to: $('#sync_to').val(),
             codgas: $('#sync_codgas').val(),
@@ -181,7 +181,7 @@ $(document).ready(function () {
         const fd = new FormData();
         files.forEach(f => fd.append('balances[]', f));
 
-        fetch('/merma/preview_balance_praxedis', { method: 'POST', body: fd })
+        fetch(routeUrl('merma.preview_balance_praxedis'), { method: 'POST', body: fd })
             .then(r => r.json())
             .then(res => {
                 $('#balanceLoading').hide();
@@ -262,7 +262,7 @@ $(document).ready(function () {
             balanceFiles.forEach(f => fd.append('balances[]', f));
 
             $('#btnGuardarBalance').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
-            fetch('/merma/guardar_balance_praxedis', { method: 'POST', body: fd })
+            fetch(routeUrl('merma.guardar_balance_praxedis'), { method: 'POST', body: fd })
                 .then(r => r.json())
                 .then(function (res) {
                     $('#btnGuardarBalance').html('<i class="fas fa-save"></i> Confirmar carga');
@@ -331,7 +331,7 @@ $(document).ready(function () {
         const fd = new FormData();
         files.forEach(f => fd.append('ventas[]', f));
 
-        fetch('/merma/preview_colosio_pdf', { method: 'POST', body: fd })
+        fetch(routeUrl('merma.preview_colosio_pdf'), { method: 'POST', body: fd })
             .then(r => r.json())
             .then(res => {
                 $('#colosioLoading').hide();
@@ -391,7 +391,7 @@ $(document).ready(function () {
             colosioFiles.forEach(f => fd.append('ventas[]', f));
 
             $('#btnGuardarColosio').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
-            fetch('/merma/guardar_colosio_pdf', { method: 'POST', body: fd })
+            fetch(routeUrl('merma.guardar_colosio_pdf'), { method: 'POST', body: fd })
                 .then(r => r.json())
                 .then(function (res) {
                     $('#btnGuardarColosio').html('<i class="fas fa-save"></i> Confirmar carga');

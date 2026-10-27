@@ -3478,7 +3478,6 @@ class Operations{
         if (!$this->terminalUserCan(TerminalInventoryModel::CAPTURE_PERMISSION)) { http_response_code(403); echo 'No cuenta con permiso para registrar incidencias de terminales.'; return; }
         $stationId=(int)($_SESSION['tg_user']['IdEstacion'] ?? 0); $station=$this->terminalAssignedStation();
         if (!$station) { echo 'El usuario no tiene una estación válida asignada.'; return; }
-        $this->syncTerminalIncidents($stationId,'vista');
         $monthStart=(new DateTimeImmutable('now',new DateTimeZone('America/Ciudad_Juarez')))->modify('first day of this month')->setTime(0,0);
         $nextMonth=$monthStart->modify('+1 month');
         $active=$this->terminalInventoryModel->activeIncidents($stationId); $types=$this->terminalTypes();
@@ -3602,8 +3601,12 @@ class Operations{
                 $saved=$this->terminalInventoryModel->incidentById((int)$request['incidencia_id']);
                 if ($saved) { json_output(['success'=>true,'ticket_id'=>(int)$saved['ticket_mojo_id'],'incident'=>$saved,'replayed'=>true]); return; }
             }
-            $types=$this->terminalTypes(); $expected=$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types));
             $already=$this->terminalInventoryModel->activeIncidents($stationId);
+            if (count(array_filter($already,static fn($row)=>(string)($row['estado_local'] ?? '')==='Solved'))>0) {
+                $this->terminalJsonError('La estación tiene incidencias resueltas pendientes de cierre. Cierre, reabra o responda a esas incidencias antes de registrar un ticket nuevo.',409);
+                return;
+            }
+            $types=$this->terminalTypes(); $expected=$this->terminalInventoryModel->stationExpectedCounts($stationId,array_keys($types));
             $pendingRequestTicket=(int)($request['ticket_mojo_id'] ?? 0);
             $service=new MojoTerminalTicketsService(); $ticket=null;
             if ($pendingRequestTicket>0) $ticket=$service->getTicket($pendingRequestTicket);
@@ -3798,6 +3801,14 @@ class Operations{
             $ticketId=(int)$incident['ticket_mojo_id'];
             $comments=array_merge($service->getPublicComments($ticketId),$service->getTechnicianNotes($ticketId));
             usort($comments,static fn($a,$b)=>strcmp((string)$a['created_on'],(string)$b['created_on']));
+            $requesterRaw=$ticket['user'] ?? $ticket['requester'] ?? [];
+            $requesterId=(int)($ticket['user_id'] ?? $ticket['requester_id'] ?? (is_array($requesterRaw) ? ($requesterRaw['id'] ?? 0) : 0));
+            $technicianResponses=array_values(array_filter($comments,static function(array $comment) use ($requesterId): bool {
+                $body=trim((string)($comment['body'] ?? ''));
+                if ($body==='' || str_starts_with($body,'Enviado desde el Portal TotalGas por ')) return false;
+                return $requesterId<1 || (int)($comment['user_id'] ?? 0)!==$requesterId;
+            }));
+            $latestTechnicianResponse=$technicianResponses ? $technicianResponses[count($technicianResponses)-1] : null;
             $attachmentsUnavailable=false;
             try { $mojoFiles=$service->getTicketAttachments($ticketId); } catch (Throwable $attachmentError) { $mojoFiles=[]; $attachmentsUnavailable=true; }
             $attachments=[];
@@ -3838,7 +3849,9 @@ class Operations{
             };
             foreach ($history as &$stateChange) {
                 if (strtoupper(trim((string)($stateChange['origen'] ?? '')))!=='MOJO/API' && strtoupper(trim((string)($stateChange['usuario_correo'] ?? '')))!=='MOJO/API') {
-                    $stateChange['actor']=trim((string)($stateChange['usuario_correo'] ?? $stateChange['origen'] ?? ''));
+                    $stateChange['actor']=trim((string)($stateChange['usuario_nombre'] ?? ''));
+                    if ($stateChange['actor']==='') $stateChange['actor']=trim((string)($stateChange['usuario_correo'] ?? ''));
+                    if ($stateChange['actor']==='') $stateChange['actor']=trim((string)($stateChange['origen'] ?? ''));
                     continue;
                 }
                 $stateChange['actor']='Autor no disponible en Mojo';
@@ -3883,7 +3896,14 @@ class Operations{
                     'resolution'=>$text($ticket['resolution'] ?? ''),'custom_fields'=>$custom,
                     'attachments'=>$attachments,'attachments_unavailable'=>$attachmentsUnavailable
                 ],
-                'comments'=>$comments,'state_history'=>$history
+                'comments'=>$comments,
+                'latest_technician_response'=>$latestTechnicianResponse ? [
+                    'author'=>(string)($latestTechnicianResponse['user_name'] ?? ''),
+                    'created_on'=>(string)($latestTechnicianResponse['created_on'] ?? ''),
+                    'body'=>(string)($latestTechnicianResponse['body'] ?? ''),
+                    'is_private'=>(bool)($latestTechnicianResponse['is_private'] ?? false),
+                ] : null,
+                'state_history'=>$history
             ]);
         } catch (Throwable $e) { error_log('No se pudo consultar detalle del ticket '.$incident['ticket_mojo_id'].': '.$e->getMessage()); $this->terminalJsonError('No fue posible cargar el detalle desde Mojo.',503); }
     }

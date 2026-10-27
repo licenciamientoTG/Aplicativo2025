@@ -652,10 +652,10 @@ public function balance_age()
                     'Gasolinera'           => $venta['Gasolinera'],
                     'Turno'              => $venta['Turno'],
                     'Mn'                 => round($venta['Mn'], 2),
-                    'Usd'                => round($venta['Usd'], 2),
-                    'TipoCambio'         => round($venta['TipoCambio'], 4),
                     'Dolares'            => round($venta['Dolares'], 2),
+                    'Dolares2'            => round($venta['Dolares2'], 2),
                     'Morralla'           => round($venta['Morralla'], 2),
+                    'Cheques'             => round($venta['Cheques'], 2),
                     'INTERL - Efectivo'  => round($venta['INTERL - Efectivo'], 2),
                 );
             }
@@ -5406,6 +5406,7 @@ public function anomalies_client_tickets()
                 $data[(string)$row['fecha']] = [
                     'total' => (float)$row['importe'],
                     'count' => (int)$row['cantidad'],
+                    'importe_nocturno' => (float)$row['importe_nocturno'],
                 ];
             }
             echo json_encode(['status' => 'success', 'data' => $data]);

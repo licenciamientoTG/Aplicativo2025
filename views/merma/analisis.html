@@ -84,7 +84,7 @@
                                 {% for f in enNorma %}
                                 <tr>
                                     <td>
-                                        <a href="/merma/detalle/{{ f.codgas }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
+                                        <a href="{{ url('merma.detalle', {codgas: f.codgas}) }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
                                     </td>
                                     <td class="text-end pct-pos">
                                         {{ f.pct|number_format(2) }}%
@@ -114,7 +114,7 @@
                             {% for f in peores %}
                             <tr>
                                 <td>
-                                    <a href="/merma/detalle/{{ f.codgas }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
+                                    <a href="{{ url('merma.detalle', {codgas: f.codgas}) }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
                                 </td>
                                 <td class="text-end {{ f.pct > mermaNorma ? 'pct-neg' : '' }}">
                                     {{ f.pct|number_format(2) }}%
@@ -154,7 +154,7 @@
                 {% for f in filas %}
                 <tr>
                     <td class="col-est">
-                        <a href="/merma/detalle/{{ f.codgas }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
+                        <a href="{{ url('merma.detalle', {codgas: f.codgas}) }}?desde={{ desde }}&hasta={{ hasta }}">{{ f.nombre }}</a>
                         {% if f.faltantes|length > 0 %}
                         <i class="fas fa-exclamation-triangle text-warning"
                            title="Sin datos: {{ f.faltantes|join(', ') }}"></i>

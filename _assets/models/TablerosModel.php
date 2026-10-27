@@ -1427,7 +1427,7 @@ class TablerosModel {
                     'id' => (int)$sticker['id'], 'name' => (string)$sticker['name'],
                     'created_by' => (int)$sticker['created_by'],
                     'created_by_display_name' => (string)($sticker['created_by_display_name'] ?? ''),
-                    'url' => '/tableros_api/sticker_file/' . (int)$sticker['id'],
+                    'url' => '/tableros-api/sticker-file/' . (int)$sticker['id'],
                 ];
             }
         }
