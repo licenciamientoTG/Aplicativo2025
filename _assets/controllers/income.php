@@ -445,8 +445,7 @@ class Income{
     public function conciliation_app_sales() : void {
         set_time_limit(300);
         [$from, $until] = $this->conciliationRange();
-        $rows = $this->clientesModel->get_dispatches_summary_by_client($from, $until, 3, 0, $this->conciliationEmpresa(), 'incluir');
-        json_output(['data' => $rows ?: []]);
+        json_output(['data' => (new ConciliacionVentaModel)->consumos_por_cliente($from, $until, $this->conciliationEmpresa())]);
     }
 
     /** POST: despachos de crédito de clientes de consumo propio y bonificaciones (hoja Consumos propios). */

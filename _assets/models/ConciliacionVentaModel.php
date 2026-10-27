@@ -113,6 +113,88 @@ class ConciliacionVentaModel extends Model {
         return $this->sql->select($query, [$from, $until, $empresa]) ?: [];
     }
 
+    /**
+     * Mismo resultado que ClientesModel::get_dispatches_summary_by_client($from, $until, 3, 0, $empresa, 'incluir')
+     * (hoja "Venta aplicativo"), pero con tablas temporales: la versión original con CTE y
+     * OR sobre Despachos tarda minutos y bloquea las otras consultas del módulo.
+     * Incluye los despachos de clientes que hoy no son de crédito pero cuyo corte cobró con
+     * el vale de crédito (ValesR.sec = -nrotrn).
+     */
+    public function consumos_por_cliente(int $from, int $until, int $empresa): array {
+        $emp = self::EMP_FILTER;
+        $codval = self::CODVAL_CREDITO;
+        $query = "
+            SET NOCOUNT ON;
+            DECLARE @d int = ?, @h int = ?, @emp int = ?;
+            DROP TABLE IF EXISTS #vx, #d, #r;
+
+            SELECT DISTINCT vr.codgas, -vr.sec AS nrotrn
+              INTO #vx
+              FROM SG12.dbo.ValesR vr WITH (NOLOCK)
+              JOIN SG12.dbo.Clientes vc WITH (NOLOCK) ON vc.cod = vr.codcli
+             WHERE vr.fch BETWEEN @d - 1 AND @h + 1
+               AND vr.codval = {$codval}
+               AND vc.tipval <> 3
+            OPTION (RECOMPILE);
+
+            SELECT t1.codcli, t1.codgas, EMP.cod AS codemp, t1.can, t1.mto, t1.fchtrn
+              INTO #d
+              FROM SG12.dbo.Despachos t1 WITH (NOLOCK)
+              JOIN SG12.dbo.Clientes t2 WITH (NOLOCK) ON t2.cod = t1.codcli
+              LEFT JOIN TG.dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+              LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+             WHERE t1.fchtrn BETWEEN @d AND @h
+               AND t1.codcli > 0
+               AND {$emp}
+               AND (t2.tipval = 3 OR EXISTS (SELECT 1 FROM #vx vx WHERE vx.codgas = t1.codgas AND vx.nrotrn = t1.nrotrn))
+            OPTION (RECOMPILE);
+
+            SELECT r.codcli, SUM(r.mto) AS MontoCortes
+              INTO #r
+              FROM SG12.dbo.ValesR r WITH (NOLOCK)
+              LEFT JOIN TG.dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
+              LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+             WHERE r.fch BETWEEN @d AND @h
+               AND r.codval = {$codval}
+               AND {$emp}
+             GROUP BY r.codcli
+            OPTION (RECOMPILE);
+
+            WITH d AS (
+                SELECT codcli,
+                       COUNT(DISTINCT codemp) AS RazonesSociales,
+                       COUNT(DISTINCT codgas) AS Estaciones,
+                       COUNT(*)  AS Despachos,
+                       SUM(can)  AS Litros,
+                       SUM(mto)  AS Monto,
+                       MIN(fchtrn) AS PrimerFch,
+                       MAX(fchtrn) AS UltimoFch
+                  FROM #d
+                 GROUP BY codcli
+            )
+            SELECT COALESCE(d.codcli, r.codcli) AS codcli,
+                   ISNULL(c.den, '(Cliente ' + CAST(COALESCE(d.codcli, r.codcli) AS VARCHAR(12)) + ')') AS Cliente,
+                   ISNULL(d.RazonesSociales, 0) AS RazonesSociales,
+                   ISNULL(d.Estaciones, 0) AS Estaciones,
+                   ISNULL(d.Despachos, 0) AS Despachos,
+                   CAST(ISNULL(d.Litros, 0) AS decimal(18,3)) AS Litros,
+                   CAST(ISNULL(d.Monto, 0) AS decimal(18,2)) AS Monto,
+                   CAST(ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS MontoCortes,
+                   CAST(ISNULL(d.Monto, 0) - ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS Diferencia,
+                   CONVERT(VARCHAR(10), CAST(d.PrimerFch AS DATETIME) - 1, 23) AS PrimerConsumo,
+                   CONVERT(VARCHAR(10), CAST(d.UltimoFch AS DATETIME) - 1, 23) AS UltimoConsumo,
+                   ISNULL(CP.categoria, '') AS Categoria
+              FROM d
+              FULL JOIN #r r ON r.codcli = d.codcli
+              LEFT JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = COALESCE(d.codcli, r.codcli)
+              LEFT JOIN TG.dbo.clientes_consumo_propio CP WITH (NOLOCK) ON CP.codcli = COALESCE(d.codcli, r.codcli) AND CP.activo = 1
+             ORDER BY ISNULL(d.Monto, 0) DESC
+            OPTION (RECOMPILE);
+
+            DROP TABLE IF EXISTS #vx, #d, #r;";
+        return $this->sql->select($query, [$from, $until, $empresa]) ?: [];
+    }
+
     /** Despachos de un cliente en el rango con su factura y el estado de ésta (modal del desglose). */
     public function despachos_cliente(int $from, int $until, int $empresa, int $codcli): array {
         $emp = self::EMP_FILTER;
