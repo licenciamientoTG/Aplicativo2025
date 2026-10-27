@@ -623,19 +623,24 @@ $(function () {
   }
 
   // Chips por estatus: conteo + suma; clic filtra la columna de estatus.
-  function pintarChips(contenedor, api, filas, campoEstatus, colEstatus, campoMonto) {
+  // campoPend (opcional): lo que falta por facturar; se muestra en los estatus de la lista ESTATUS_PEND.
+  var ESTATUS_PEND = ['Pendiente de facturar', 'Sin facturar', 'Factura cancelada'];
+  function pintarChips(contenedor, api, filas, campoEstatus, colEstatus, campoMonto, campoPend) {
     var grupos = {};
     filas.forEach(function (r) {
       var k = r[campoEstatus] || '(vacío)';
-      grupos[k] = grupos[k] || { n: 0, monto: 0 };
+      grupos[k] = grupos[k] || { n: 0, monto: 0, pend: 0 };
       grupos[k].n++;
       grupos[k].monto += Number(r[campoMonto]) || 0;
+      if (campoPend) grupos[k].pend += Number(r[campoPend]) || 0;
     });
     var html = '<span class="cv-chip activo" data-estatus="">Todos: <b>' + filas.length.toLocaleString('en-US') + '</b> · $' +
       fmtMonto(suma(filas, campoMonto)) + '</span>';
     Object.keys(grupos).sort().forEach(function (k) {
       html += '<span class="cv-chip" data-estatus="' + esc(k) + '">' + badge(k, 'display') +
-        ' <b>' + grupos[k].n.toLocaleString('en-US') + '</b> · $' + fmtMonto(grupos[k].monto) + '</span>';
+        ' <b>' + grupos[k].n.toLocaleString('en-US') + '</b> · $' + fmtMonto(grupos[k].monto) +
+        (campoPend && ESTATUS_PEND.indexOf(k) >= 0 && Math.abs(grupos[k].pend) >= 0.01
+          ? ' · <span class="cv-neg">por facturar $' + fmtMonto(grupos[k].pend) + '</span>' : '') + '</span>';
     });
     api.column(colEstatus).search('').draw();
     $(contenedor).html(html).off('click').on('click', '.cv-chip', function () {
@@ -1040,7 +1045,7 @@ $(function () {
       estado.venta = filas;
       cargarTabla(tablaVenta, filas, '#cntVenta');
       pintarResumenClase(filas);
-      pintarChips('#chipsVenta', tablaVenta, filas, 'estatus', COL_ESTATUS_VENTA, 'monto');
+      pintarChips('#chipsVenta', tablaVenta, filas, 'estatus', COL_ESTATUS_VENTA, 'monto', 'diferencia');
     });
     consultar('facturas', pedir('income.conciliation_invoices'), function (filas) {
       estado.facturas = filas;
@@ -1240,6 +1245,12 @@ $(function () {
       var filas = (resp && resp.data) || [];
       tablaDespachos.clear().rows.add(filas).draw();
       pintarChips('#chipsDespachos', tablaDespachos, filas, 'estado', COL_ESTADO_DESPACHOS, 'monto');
+      // Si el cliente está pendiente, abrir ya filtrado en los despachos que explican el faltante
+      var explica = { 'Pendiente de facturar': 'Sin factura', 'Sin facturar': 'Sin factura', 'Factura cancelada': 'Factura cancelada' }[r.estatus];
+      if (explica && filas.some(function (f) { return f.estado === explica; })) {
+        tablaDespachos.column(COL_ESTADO_DESPACHOS).search('^' + $.fn.dataTable.util.escapeRegex(explica) + '$', true, false).draw();
+        $('#chipsDespachos .cv-chip').removeClass('activo').filter(function () { return $(this).data('estatus') === explica; }).addClass('activo');
+      }
       tablaDespachos.columns.adjust();
     }).fail(function () { alertify.error('Error al consultar los despachos'); });
   });
