@@ -431,7 +431,7 @@ class tableros_api {
                         $requestHost = strtolower((string)preg_replace('/:\\d+$/', '', $_SERVER['HTTP_HOST'] ?? ''));
                         $urlPath = (string)parse_url($url, PHP_URL_PATH);
                         $urlScheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
-                        if ($urlHost === '' || $urlHost !== $requestHost || !in_array($urlScheme, ['http', 'https'], true) || parse_url($url, PHP_URL_USER) !== null || parse_url($url, PHP_URL_PASS) !== null || !str_contains($urlPath, '/tableros_api/download-file/')) {
+                        if ($urlHost === '' || $urlHost !== $requestHost || !in_array($urlScheme, ['http', 'https'], true) || parse_url($url, PHP_URL_USER) !== null || parse_url($url, PHP_URL_PASS) !== null || !str_contains($urlPath, '/tableros-api/download-file/')) {
                             throw new TablerosApiException('validation', 'Uno de los enlaces de archivo no es válido.', 422);
                         }
                         $sheet->setCellValueExplicit($cellRef, mb_substr($cell['text'], 0, 1000), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
