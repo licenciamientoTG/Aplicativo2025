@@ -73,7 +73,14 @@
     /* SPLIT */
     .split-container { display:flex;gap:16px;padding:0 10px 20px;height:calc(100vh - 230px); }
     .panel-split { flex:1;background:#fff;border-radius:12px;border:1px solid var(--border-color);display:flex;flex-direction:column;overflow:hidden;position:relative; }
+    .panel-split.is-collapsed { flex:0 0 48px!important; }
     .panel-header { color:white;padding:10px 15px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid rgba(0,0,0,.1); }
+    .panel-collapse-btn { color:inherit;opacity:.9;padding:2px 6px;line-height:1.2; }
+    .panel-collapse-btn:hover,.panel-collapse-btn:focus { color:inherit;opacity:1; }
+    .panel-split.is-collapsed .panel-header { height:100%;padding:10px 4px;flex-direction:column;justify-content:flex-start;gap:10px;border-bottom:0;border-right:3px solid rgba(0,0,0,.1); }
+    .panel-split.is-collapsed .panel-title,.panel-split.is-collapsed .panel-counter { display:none; }
+    .panel-split.is-collapsed .panel-collapse-btn { padding:4px; }
+    .panel-split.is-collapsed .panel-collapse-btn i { transform:rotate(180deg); }
     .panel-content { flex:1;overflow-y:auto;padding:0; }
     #tes-content { container-type:inline-size; }
 
@@ -550,10 +557,10 @@
     <div class="split-container" id="conciliacionWorkspace">
 
         <!-- PANEL 1: CG -->
-        <div class="panel-split">
+        <div class="panel-split" id="panel-cg">
             <div class="panel-header bg-dark">
-                <span><i class="fas fa-gas-pump mr-2"></i>ControlGas</span>
-                <span class="badge badge-light text-dark font-numeric" id="cg-counter">$0.00</span>
+                <span class="panel-title"><i class="fas fa-gas-pump mr-2"></i>ControlGas</span>
+                <span class="d-flex align-items-center"><span class="badge badge-light text-dark font-numeric panel-counter" id="cg-counter">$0.00</span><button type="button" class="btn btn-sm panel-collapse-btn" onclick="toggleConciliacionPanel('cg')" aria-label="Ocultar columna ControlGas" aria-expanded="true" title="Ocultar columna"><i class="fas fa-chevron-left"></i></button></span>
             </div>
             <div class="panel-content" id="cg-content">
                 <div class="text-center text-muted py-5 mt-5">Seleccione Cuenta</div>
@@ -561,10 +568,10 @@
         </div>
 
         <!-- PANEL 2: TESORERÍA (target de conciliación) -->
-        <div class="panel-split">
+        <div class="panel-split" id="panel-tes">
             <div class="panel-header" style="background:var(--tes-color);">
-                <span><i class="fas fa-university mr-2"></i>Tesorería — Depósitos</span>
-                <span class="badge badge-light text-dark font-numeric" id="tes-counter">$0.00</span>
+                <span class="panel-title"><i class="fas fa-university mr-2"></i>Tesorería — Depósitos</span>
+                <span class="d-flex align-items-center"><span class="badge badge-light text-dark font-numeric panel-counter" id="tes-counter">$0.00</span><button type="button" class="btn btn-sm panel-collapse-btn" onclick="toggleConciliacionPanel('tes')" aria-label="Ocultar columna Tesorería" aria-expanded="true" title="Ocultar columna"><i class="fas fa-chevron-left"></i></button></span>
             </div>
             <div class="panel-content" id="tes-content">
                 <div class="text-center text-muted py-5 mt-5">...</div>
@@ -572,10 +579,10 @@
         </div>
 
         <!-- PANEL 3: TX (informativo / ghost) -->
-        <div class="panel-split ghost-panel" style="flex:0 0 340px;">
+        <div class="panel-split ghost-panel" id="panel-tx" style="flex:0 0 340px;">
             <div class="panel-header" id="header-tx">
-                <span><i class="fas fa-exchange-alt mr-2"></i>Transacciones <small class="text-white-50 ml-1">(Informativo)</small></span>
-                <span class="badge badge-light text-dark font-numeric" id="tx-counter">$0.00</span>
+                <span class="panel-title"><i class="fas fa-exchange-alt mr-2"></i>Transacciones <small class="text-white-50 ml-1">(Informativo)</small></span>
+                <span class="d-flex align-items-center"><span class="badge badge-light text-dark font-numeric panel-counter" id="tx-counter">$0.00</span><button type="button" class="btn btn-sm panel-collapse-btn" onclick="toggleConciliacionPanel('tx')" aria-label="Ocultar columna Transacciones" aria-expanded="true" title="Ocultar columna"><i class="fas fa-chevron-left"></i></button></span>
             </div>
             <div class="panel-content" id="tx-content">
                 <div class="text-center text-muted py-5 mt-5">...</div>
@@ -1199,6 +1206,16 @@ let currentRS     = 'DIAZ GAS';
 let todasLasEstaciones = [];
 let stationConfig = [];
 let currentRule   = null;           // { entidad_id, afiliacion, nombre_banco }
+
+function toggleConciliacionPanel(panel) {
+    const $panel = $(`#panel-${panel}`);
+    const $button = $panel.find('.panel-collapse-btn');
+    const collapsed = !$panel.hasClass('is-collapsed');
+    $panel.toggleClass('is-collapsed', collapsed);
+    $button.attr('aria-expanded', String(!collapsed))
+        .attr('aria-label', `${collapsed ? 'Mostrar' : 'Ocultar'} columna ${panel === 'cg' ? 'ControlGas' : panel === 'tes' ? 'Tesorería' : 'Transacciones'}`)
+        .attr('title', collapsed ? 'Mostrar columna' : 'Ocultar columna');
+}
 
 function actualizarBadgeAfil() {
     const mostrarModoDES = esPilotoVillaAhumadaBankaool() && String($('#estacionSelect').val()) === '31';
