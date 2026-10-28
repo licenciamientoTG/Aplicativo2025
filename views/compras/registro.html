@@ -1,14 +1,148 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Registro de compras{% endblock %}
-{% block menutitle %}Registro de compras{% endblock %}
+{% block menutitle %}Registro de compras de combustible{% endblock %}
+
+{% block mycss %}
+<link href="/_assets/css/compras.css" rel="stylesheet">
+{% endblock %}
 
 {% block content %}
 <div class="card">
     <div class="card-body">
-        <h5 class="card-title">Registro de compras de combustible</h5>
-        <p class="text-muted mb-0">
-            Aquí se irá construyendo el equivalente al Excel COMPRAS: un renglón por factura.
-        </p>
+        <form id="frmCompras" class="row align-items-end g-2" onsubmit="return false;">
+            <div class="col-auto">
+                <label for="desde">Desde:</label>
+                <input type="date" class="form-control" id="desde" value="{{ desde }}" required>
+            </div>
+            <div class="col-auto">
+                <label for="hasta">Hasta:</label>
+                <input type="date" class="form-control" id="hasta" value="{{ hasta }}" required>
+            </div>
+            <div class="col-auto">
+                <label for="proveedor">Proveedor:</label>
+                <select class="form-control" id="proveedor">
+                    <option value="">Todos</option>
+                    {% for p in proveedores %}<option value="{{ p.rfc }}">{{ p.den }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label for="codgas">Estación:</label>
+                <select class="form-control" id="codgas">
+                    <option value="">Todas</option>
+                    {% for e in estaciones %}<option value="{{ e.Codigo }}">{{ e.Nombre }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label for="producto">Producto:</label>
+                <select class="form-control" id="producto">
+                    <option value="">Todos</option>
+                    <option>REGULAR</option>
+                    <option>SUPER</option>
+                    <option>DIESEL</option>
+                </select>
+            </div>
+            <div class="col-auto form-check ms-2 mb-2">
+                <input type="checkbox" class="form-check-input" id="faltantes">
+                <label class="form-check-label" for="faltantes">Solo con datos faltantes</label>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary" id="btnBuscar">Buscar</button>
+            </div>
+            {% if puedeEditar and capturaOk %}
+            <div class="col-auto ms-auto">
+                <button type="button" class="btn btn-outline-primary" id="btnNuevoManual">
+                    <i class="fas fa-plus"></i> Agregar renglón manual
+                </button>
+            </div>
+            {% endif %}
+        </form>
+        {% if puedeEditar and not capturaOk %}
+        <div class="alert alert-warning mt-2 mb-0">
+            La captura aún no está habilitada: falta correr <code>docs/sql/compras_captura_schema.sql</code> en la base TG.
+        </div>
+        {% endif %}
+        <div class="small text-muted mt-2">
+            Un renglón por factura de combustible, armado desde las facturas recibidas.
+            <span class="compras-falta px-1">Resaltado</span> = dato que el sistema no pudo obtener (estación o ControlGas).
+            {% if puedeEditar and capturaOk %}Las celdas con <span class="compras-edit-demo px-1">subrayado punteado</span> se capturan con un clic.{% endif %}
+        </div>
     </div>
 </div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <span class="small text-muted me-1">Perfil de columnas:</span>
+            <div class="btn-group btn-group-sm flex-wrap" id="comprasPerfiles" role="group" aria-label="Perfiles de columnas"></div>
+        </div>
+        <div id="comprasTotales" class="mb-2 small"></div>
+        <div id="comprasScrollTop" aria-hidden="true"><div></div></div>
+        <div id="comprasScroll">
+            <table id="tblCompras" class="table table-bordered table-hover table-sm w-100">
+                <thead><tr></tr></thead>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if puedeEditar and capturaOk %}
+<div class="modal fade" id="mdlManual" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content" id="frmManual" autocomplete="off">
+            <div class="modal-header">
+                <h5 class="modal-title">Agregar renglón manual</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted">Para compras que no llegan por correo (Repsol, Colosio, etc.).</p>
+                <div class="row g-2">
+                    <div class="col-md-4"><label class="form-label">Fecha factura *</label><input type="date" name="fecha" class="form-control" required></div>
+                    <div class="col-md-4"><label class="form-label">Fecha descarga</label><input type="date" name="fecha_descarga" class="form-control"></div>
+                    <div class="col-md-4">
+                        <label class="form-label">Estación</label>
+                        <select name="est_codgas" class="form-control">
+                            <option value="">—</option>
+                            {% for e in estaciones %}<option value="{{ e.Codigo }}">{{ e.Nombre }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4"><label class="form-label">Proveedor *</label><input type="text" name="proveedor" class="form-control" maxlength="100" required></div>
+                    <div class="col-md-4">
+                        <label class="form-label">Producto</label>
+                        <select name="producto" class="form-control"><option value="">—</option><option>REGULAR</option><option>SUPER</option><option>DIESEL</option></select>
+                    </div>
+                    <div class="col-md-4"><label class="form-label">Folio</label><input type="text" name="folio" class="form-control" maxlength="50"></div>
+                    <div class="col-md-4"><label class="form-label">Remisión</label><input type="text" name="remision" class="form-control" maxlength="100"></div>
+                    <div class="col-md-4"><label class="form-label">Litros</label><input type="text" name="litros" class="form-control" inputmode="decimal"></div>
+                    <div class="col-md-4"><label class="form-label">Monto factura</label><input type="text" name="monto" class="form-control" inputmode="decimal"></div>
+                    <div class="col-md-4"><label class="form-label">% IVA (8 / 16)</label><input type="text" name="iva" class="form-control" inputmode="decimal"></div>
+                    <div class="col-md-8"><label class="form-label">Razón social</label><input type="text" name="razon_social" class="form-control" maxlength="255"></div>
+                    <div class="col-md-4"><label class="form-label">Vencimiento</label><input type="date" name="vencimiento" class="form-control"></div>
+                    <div class="col-md-4"><label class="form-label">Pago programado</label><input type="date" name="pago_programado" class="form-control"></div>
+                    <div class="col-md-4"><label class="form-label">Monto pagado</label><input type="text" name="monto_pagado" class="form-control" inputmode="decimal"></div>
+                    <div class="col-md-4"><label class="form-label">Placas</label><input type="text" name="placas" class="form-control" maxlength="30"></div>
+                    <div class="col-md-4"><label class="form-label">BOL</label><input type="text" name="bol" class="form-control" maxlength="50"></div>
+                    <div class="col-md-4"><label class="form-label">Transportista</label><input type="text" name="transportista" class="form-control" maxlength="100"></div>
+                    <div class="col-12"><label class="form-label">Observaciones</label><input type="text" name="observaciones" class="form-control" maxlength="500"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block myjs %}
+<script>const COMPRAS_CTX = {
+    url: "{{ url('compras.registro_datos') }}",
+    urlGuardar: "{{ url('compras.guardar_celda') }}",
+    urlCrear: "{{ url('compras.renglon_manual_crear') }}",
+    urlEliminar: "{{ url('compras.renglon_manual_eliminar') }}",
+    puedeEditar: {{ (puedeEditar and capturaOk) ? 'true' : 'false' }},
+    estaciones: [{% for e in estaciones %}{ cod: {{ e.Codigo }}, nombre: {{ e.Nombre|json_encode|raw }} }{% if not loop.last %},{% endif %}{% endfor %}]
+};</script>
+<script src="{{ js_v('compras.js') }}"></script>
 {% endblock %}

@@ -97,3 +97,31 @@ Pivots (`GLOBAL`, `RESUMEN`, `ANEXOS`, deuda por zona), `FALSOS FLETES`, `MORATO
 - Cruce de folios: MGC (quitar '3' si 7 díg.), AEMSA (quitar '02-'), Premier (sin ceros a la izquierda).
 - `fch` de ControlGas es serial de Excel (`dateToInt()`).
 - Actualizar `docs/compras_combustible_documentacion.html` al terminar cada fase.
+
+## 6. Decisiones del usuario (2026-10-28) y avance
+
+- Lo que no salga del PDF/XML se deja **capturable** (Fase 2). Las remisiones que están en el Excel se incluyen.
+- Permisos propios: 112 (ver registro) y 113 (capturar/editar), script `docs/sql/compras_permisos.sql` (**pendiente de correr**; sin él nadie ve el menú).
+- Fletes y placas se capturan en este módulo.
+- Alcance inicial de datos: agosto, septiembre y octubre de 2026.
+
+**Fase 1 — hecha en código, falta probar en navegador y correr el script de permisos.**
+`ComprasRegistroModel::listar()`, `Compras::registro()` / `registro_datos()`, `views/compras/registro.html`, `_assets/js/compras.js`, `_assets/css/compras.css`, `routes/compras.php`.
+Septiembre: 1,670 facturas de combustible, 29.29 M litros, $627.5 M; 327 sin estación, 94 sin ControlGas, 1,542 en pagos (consulta ~1 s).
+Se detectó que `SG12.dbo.documentosC` no tiene índice por `satuid` (5.6 M filas): la consulta lo une una sola vez filtrando por `fch`; no usar un EXISTS por renglón (67 s).
+
+**Excel releído 2026-10-28** (archivo del 28-oct 08:59): mismas 23 hojas y 64 columnas con los mismos encabezados; solo creció la data (14,590 renglones; octubre 1,297). No cambia el diseño.
+
+**Fase 2 — hecha en código, falta correr `docs/sql/compras_captura_schema.sql` y probar en navegador.**
+- Tablas `compras_factura_datos` (UUID), `compras_renglon_manual`, `compras_audit_log`. Mientras no existan, la pantalla funciona en solo lectura y avisa (`capturaDisponible()`).
+- Captura en celda (clic): estación, fecha de descarga, pago programado, placas, BOL, transportista y observaciones; la estación y el pago programado capturados ganan sobre los del sistema.
+- Renglones manuales (botón "Agregar renglón manual"): todos sus campos editables en celda, eliminación lógica.
+- Endpoints POST `compras/guardar-celda/`, `compras/renglon-manual/crear/` y `/eliminar/` (permiso 113) con auditoría.
+
+**Perfiles de columnas + todas las columnas del Excel (2026-10-28).**
+- La pantalla muestra las 60 columnas A..BH del Excel (más fecha factura, remisión, en pagos, en ControlGas y origen). Perfiles: Captura, Pagos, Análisis, IEPS, Petrotal, Tesoro, ControlGas, Fletes y Completa; el perfil se recuerda por navegador (`localStorage`) y el botón "Columnas" sigue permitiendo ajustes.
+- Las fórmulas se portaron a `_assets/classes/ComprasCalculos.class.php` (prueba: `php tests/ComprasCalculosTest.php`, 29 casos con valores reales del Excel). Parámetros IEPS 2025/2026, estímulo y almacenaje 2026 dentro de la clase.
+- El precio de venta (U) sale de `FuelPrices` (codprd 179/192 regular, 180/193 super, 181 diésel); el producto usa SUPER como el Excel.
+- Columnas de captura nuevas (Petrotal, Tesoro, fletes, proveedor final, litros de soporte): script `docs/sql/compras_captura_columnas.sql` (**pendiente de correr**). Sin él esas celdas se muestran pero no se pueden guardar.
+- Cruce con el Excel (sep–oct, 2,841 renglones): IVA 100 %, IEPS/precio con IVA 8 %/monto sin IVA ≥99.9 %, estímulo 99.6 %, costo de almacenamiento 96.9 %, utilidad por litro 94 %. Las diferencias vienen de: proveedor final = PETROTAL capturado a mano en el Excel (89 renglones Tesoro), precio de venta tecleado distinto al de `FuelPrices` (81) y estaciones sin identificar.
+- Precio cotizado (R) y TAR Pemex (AB) siguen fuera de alcance: columnas vacías, igual que S, T y AC.

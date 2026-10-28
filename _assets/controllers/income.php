@@ -233,6 +233,36 @@ class Income{
         ]);
     }
 
+    /** Ingresos > Valeras: consumo de valeras del corte por día, razón social, estación y concepto (permiso 14, routes/income.php). */
+    public function valeras() : void {
+        echo $this->twig->render($this->route . 'valeras.html', [
+            'desde'    => date('Y-m-01'),
+            'hasta'    => date('Y-m-d'),
+            'empresas' => $this->clientesModel->get_station_companies(),
+        ]);
+    }
+
+    /** POST: {data: [{fecha, empresa, estacion, concepto, monto}]}; una fila por día, razón social, estación y valera. */
+    public function valeras_daily() : void {
+        set_time_limit(300);
+        $valid = fn($f) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$f) && strtotime($f) !== false;
+        $desde = $valid($_POST['desde'] ?? '') ? $_POST['desde'] : date('Y-m-01');
+        $hasta = $valid($_POST['hasta'] ?? '') ? $_POST['hasta'] : date('Y-m-d');
+        if ($hasta < $desde) [$desde, $hasta] = [$hasta, $desde];
+
+        $data = [];
+        foreach ((new ValerasModel)->consumo_diario(dateToInt($desde), dateToInt($hasta), $this->conciliationEmpresa()) as $r) {
+            $data[] = [
+                'fecha'    => $r['fecha'],
+                'empresa'  => $r['empresa'],
+                'estacion' => $r['estacion'],
+                'concepto' => $r['concepto'],
+                'monto'    => round((float)$r['monto'], 2),
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
     /** POST: una fila por cliente de crédito con venta, cortes y lo facturado de sus despachos del mes. */
     public function conciliation_sales() : void {
         set_time_limit(300);
