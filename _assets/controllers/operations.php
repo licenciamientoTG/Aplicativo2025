@@ -245,6 +245,13 @@ class Operations{
                 $tabulator['saldo']           = round($tabulator['total_ventas'] - $tabulator['total_ingresado'], 2);
                 $tabulator['TotalProductos']  = round($all_islands ? ($all_islands[0]['TotalProductos'] ?? 0) : 0, 2);
 
+                // ANAPRA: los nombres de las islas no siguen el orden de sus IDs.
+                if ((int) $tabulator['CodigoEstacion'] === 17 && $all_islands) {
+                    usort($all_islands, static function ($a, $b) {
+                        return strnatcasecmp(trim($a['Isla']), trim($b['Isla']));
+                    });
+                }
+
                 $responsables = $this->responsablesModel->get_responsables_by_station($tabulator['CodigoEstacion']);
                 $assignments  = $this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno']);
                 echo $this->twig->render($this->route . 'tab_process.html', compact('tabulator', 'islands', 'responsables', 'assignments', 'samplings', 'island', 'all_islands', 'blocked_tab'));

@@ -1073,7 +1073,8 @@ async function executeVerifications(tabId) {
     }
 }
 
-$('#datatables_assignations').DataTable({
+const assignationsTable = $('#datatables_assignations');
+const assignationsOptions = {
     colReorder: true,
     dom: '<"top"Bf>rt<"bottom"lip>',
     pageLength: 100,
@@ -1094,7 +1095,19 @@ $('#datatables_assignations').DataTable({
         $('.dt-buttons').addClass('d-none');
         $('.table-responsive').removeClass('loading');
     }
-});
+};
+
+if (assignationsTable.attr('data-station-code') === '17') {
+    $.fn.dataTable.ext.type.order['anapra-island-natural-asc'] = function (a, b) {
+        return String(a).localeCompare(String(b), 'es', {numeric: true, sensitivity: 'base'});
+    };
+    $.fn.dataTable.ext.type.order['anapra-island-natural-desc'] = function (a, b) {
+        return String(b).localeCompare(String(a), 'es', {numeric: true, sensitivity: 'base'});
+    };
+    assignationsOptions.columnDefs = [{targets: 0, type: 'anapra-island-natural'}];
+}
+
+assignationsTable.DataTable(assignationsOptions);
 
 $('#exportExcel_datatables_assignations').on('click', function () {
     // Disparar el evento clic del botón de exportación de Excel del DataTable

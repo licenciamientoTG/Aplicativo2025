@@ -5916,6 +5916,8 @@
     document.getElementById('clearSelection').disabled = state.bulkMoveInFlight;
     const bulkDelete = document.getElementById('bulkTrashItems');
     if (bulkDelete) bulkDelete.disabled = state.bulkMoveInFlight || !total || blockedChildren.length > 0;
+    const exportSelected = document.getElementById('exportSelectedItems');
+    if (exportSelected) exportSelected.disabled = state.bulkMoveInFlight || !total;
     els.boardTableContainer.querySelectorAll('[data-select-item], [data-select-group]').forEach((checkbox) => { checkbox.disabled = state.bulkMoveInFlight; });
     els.boardTableContainer.querySelectorAll('[data-select-group]').forEach((checkbox) => {
       const groupItems = getFilteredItems().filter((item) => String(item.group_id) === checkbox.dataset.selectGroup);
@@ -5923,6 +5925,81 @@
       checkbox.checked = groupItems.length > 0 && selected === groupItems.length;
       checkbox.indeterminate = selected > 0 && selected < groupItems.length;
     });
+  }
+
+  function selectedCellData(item, column) {
+    const value = getCellValue(item, column);
+    if (['status', 'dropdown'].includes(columnType(column))) {
+      const option = parseOptions(column.options).find((entry) => entry.value === String(value ?? ''));
+      if (option) return option.label;
+    }
+    return displayColumnValue(column, value);
+  }
+
+  async function exportSelectedItemsToExcel() {
+    if (!state.board || !state.selectedItemIds.size) return;
+    const boardName = state.board.name || 'Tablero';
+    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    if (!selected.length) return;
+    const columns = state.columns.filter((column) => !['subtasks', 'dependency'].includes(columnType(column)));
+    const exportColumns = [
+      { kind: 'name', name: 'Elemento' },
+      { kind: 'group', name: 'Grupo' },
+      { kind: 'parent', name: 'Elemento principal' },
+      ...columns.flatMap((column) => {
+        const maxFiles = columnType(column) === 'file'
+          ? Math.max(0, ...selected.map((item) => filesForItem(item).filter((file) => String(file.column_id || '') === String(column.id)).length))
+          : 0;
+        if (maxFiles <= 1) return [{ kind: 'column', column, fileIndex: 0, name: column.name || 'Columna sin nombre' }];
+        return Array.from({ length: maxFiles }, (_, index) => ({ kind: 'column', column, fileIndex: index, name: `${column.name || 'Archivo'} ${index + 1}` }));
+      })
+    ];
+    const headers = exportColumns.map((column) => column.name);
+    const rows = selected.map((item) => {
+      const group = state.groups.find((candidate) => String(candidate.id) === String(item.group_id));
+      const parent = item.parent_item_id == null ? null : state.items.find((candidate) => String(candidate.id) === String(item.parent_item_id));
+      return exportColumns.map((exportColumn) => {
+        if (exportColumn.kind === 'name') return item.name || 'Elemento sin nombre';
+        if (exportColumn.kind === 'group') return group?.name || 'Sin grupo';
+        if (exportColumn.kind === 'parent') return parent?.name || '';
+        if (columnType(exportColumn.column) === 'file') {
+          const file = filesForItem(item).filter((entry) => String(entry.column_id || '') === String(exportColumn.column.id))[exportColumn.fileIndex];
+          if (!file) return '';
+          return { text: file.name || file.original_name || `Archivo ${file.file_id}`, url: new URL(fileEndpoint(file), window.location.href).href };
+        }
+        return selectedCellData(item, exportColumn.column);
+      });
+    });
+    const button = document.getElementById('exportSelectedItems');
+    if (button) button.disabled = true;
+    try {
+      const response = await fetch(apiUrl('export_selection'), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json' },
+        body: JSON.stringify({ board_id: state.board.id, board_name: boardName, columns: headers, rows })
+      });
+      const blob = await response.blob();
+      if (!response.ok || !String(response.headers.get('content-type') || '').includes('spreadsheetml')) {
+        let message = `Error del servidor (HTTP ${response.status}).`;
+        try { const payload = JSON.parse(await blob.text()); message = payload.message || payload.error?.message || message; } catch (error) {}
+        throw new Error(message);
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeName = String(boardName || 'tablero').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'tablero';
+      link.href = url;
+      link.download = `${safeName}-seleccion.xlsx`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice('Archivo de Excel descargado.', 'success');
+    } catch (error) {
+      setNotice(errorMessage(error), 'error');
+    } finally {
+      if (button) button.disabled = state.bulkMoveInFlight || !state.selectedItemIds.size;
+    }
   }
 
   function columnType(column) {
@@ -8519,6 +8596,7 @@
     document.getElementById('bulkMoveGroup')?.addEventListener('change', updateSelectionBar);
     document.getElementById('bulkMoveItems')?.addEventListener('click', moveSelectedItems);
     document.getElementById('bulkTrashItems')?.addEventListener('click', trashSelectedItems);
+    document.getElementById('exportSelectedItems')?.addEventListener('click', exportSelectedItemsToExcel);
     document.getElementById('clearSelection')?.addEventListener('click', () => {
       state.selectedItemIds.clear();
       els.boardTableContainer.querySelectorAll('[data-select-item]').forEach((checkbox) => { checkbox.checked = false; });
