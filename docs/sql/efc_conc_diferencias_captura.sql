@@ -1,7 +1,10 @@
 /*
   Estado F8 para diferencias de efectivo.
-  Ejecutar conectado a la base TG. Es aditivo e idempotente.
+  Cambia a TG explícitamente; puede ejecutarse aunque DBeaver esté en master.
+  Es aditivo e idempotente.
 */
+USE [TG];
+
 IF OBJECT_ID(N'dbo.efc_conc_diferencias_captura', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.efc_conc_diferencias_captura (
