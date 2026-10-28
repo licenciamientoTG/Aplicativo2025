@@ -7944,6 +7944,8 @@ public function stamped_invoices_detail(): void
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
             exit;
         }
+        $periodStart = sprintf('%04d-%02d-01', $year, $month);
+        $periodEnd = (new DateTimeImmutable($periodStart))->modify('+1 month')->format('Y-m-d');
 
         $normalizarCodigo = static function ($valor): string {
             $digitos = preg_replace('/\D+/', '', (string)$valor);
@@ -8006,7 +8008,7 @@ public function stamped_invoices_detail(): void
                      ) X
                  ) CG_MATCH
                  WHERE M.abono > 0
-                   AND YEAR(M.fecha) = ? AND MONTH(M.fecha) = ?
+                   AND M.fecha >= ? AND M.fecha < ?
                    -- Banorte, Bankaool y Santander no nombran el mismo movimiento
                    -- de efectivo igual. Sólo se admiten las descripciones operativas
                    -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
@@ -8023,7 +8025,7 @@ public function stamped_invoices_detail(): void
                    AND ($accountWhere)
                  ORDER BY M.fecha, M.id"
             );
-            $params = [$year, $month];
+            $params = [$periodStart, $periodEnd];
             foreach ($suffixes as $suffix) { $params[] = $suffix; $params[] = $suffix; }
             $stmt->execute($params);
 

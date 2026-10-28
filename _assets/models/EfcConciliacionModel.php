@@ -364,9 +364,36 @@ class EfcConciliacionModel {
             ORDER BY fecha_origen,turno,concepto,id");
         $stmt->execute([$stationId, $origin, $origin, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
         $outgoing=[]; $incoming=[];
+        $reconciliationsByTransit = [];
+        if ($rows) {
+            // SQL Server limita cada sentencia a 2100 parámetros; se consultan
+            // lotes para mantener todos los tránsitos incluso en meses atípicos.
+            foreach (array_chunk($rows, 500) as $transitBatch) {
+                $keyRows = [];
+                $keyParams = [];
+                foreach ($transitBatch as $row) {
+                    $transitId = (int)$row['id'];
+                    $keyRows[] = 'SELECT ? AS transit_id, ? AS external_key';
+                    $keyParams[] = $transitId;
+                    $keyParams[] = (string)$row['clave_externa'];
+                    $keyRows[] = 'SELECT ? AS transit_id, ? AS external_key';
+                    $keyParams[] = $transitId;
+                    $keyParams[] = 'TR:' . $transitId;
+                }
+                $groupsStmt = $this->db->prepare("WITH TransitKeys AS (" . implode(' UNION ALL ', $keyRows) . ")
+                    SELECT DISTINCT K.transit_id, G.id AS group_id
+                    FROM TransitKeys K
+                    JOIN dbo.efc_conc_partidas P ON P.clave_externa=K.external_key AND P.origen='CG' AND P.activo=1
+                    JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id AND G.estado='ACTIVA'");
+                $groupsStmt->execute($keyParams);
+                while ($group = $groupsStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $reconciliationsByTransit[(int)$group['transit_id']][] = (int)$group['group_id'];
+                }
+            }
+        }
         foreach ($rows as $row) {
             $item=['id'=>(int)$row['id'],'station_id'=>(int)$row['estacion_id'],'source_key'=>(string)$row['clave_externa'],'date'=>$this->dateValue($row['fecha_origen']),'origin_month'=>(string)$row['mes_origen'],'destination_month'=>(string)$row['mes_destino'],'turn'=>(string)$row['turno'],'currency'=>(string)$row['concepto'],'amount'=>(float)$row['importe'],'status'=>(string)$row['estado'],'description'=>(string)($row['descripcion']??'')];
-            $item['reconciliation_ids']=$this->transitGroupIds($item['id'],$item['source_key']);
+            $item['reconciliation_ids']=$reconciliationsByTransit[$item['id']]??[];
             $item['is_reconciled']=$row['estado']==='CONCILIADO'||count($item['reconciliation_ids'])>0;
             if ($row['mes_origen']===$origin) $outgoing[]=$item;
             if ($row['mes_destino']===$origin) $incoming[]=$item;
@@ -579,6 +606,8 @@ class EfcConciliacionModel {
      */
     public function activeGroups(int $stationId, int $year, int $month): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        $periodStart = sprintf('%04d-%02d-01', $year, $month);
+        $periodEnd = (new DateTimeImmutable($periodStart))->modify('+1 month')->format('Y-m-d');
         $stmt=$this->db->prepare("SELECT G.id,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
             P.origen,P.clave_externa,P.movimiento_bancario_id,P.fecha_operacion,P.turno,P.concepto,P.importe,
             COALESCE(NULLIF(P.referencia,''),M.referencia) AS referencia,
@@ -588,7 +617,7 @@ class EfcConciliacionModel {
             LEFT JOIN TG.dbo.movimientos_bancarios M ON M.id=P.movimiento_bancario_id
             WHERE G.estacion_id=? AND G.estado='ACTIVA' AND G.tipo<>'RECLASIFICADA'
               AND (
-                (YEAR(G.fecha_operativa)=? AND MONTH(G.fecha_operativa)=?)
+                (G.fecha_operativa>=? AND G.fecha_operativa<?)
                 OR EXISTS(
                     SELECT 1
                     FROM dbo.efc_conc_partidas TC
@@ -599,7 +628,7 @@ class EfcConciliacionModel {
                 )
               )
             ORDER BY G.id,P.id");
-        $stmt->execute([$stationId,$year,$month,sprintf('%04d-%02d',$year,$month)]); $groups=[];
+        $stmt->execute([$stationId,$periodStart,$periodEnd,sprintf('%04d-%02d',$year,$month)]); $groups=[];
         while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
             $id=(int)$row['id'];
             if(!isset($groups[$id])) $groups[$id]=[
