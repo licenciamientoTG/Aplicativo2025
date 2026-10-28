@@ -78,8 +78,8 @@
 
 /* Alto fijo con scroll propio (sin paginación); el encabezado se queda pegado arriba */
 #comprasScroll {
-    height: calc(100vh - 300px);
-    min-height: 420px;
+    height: calc(100vh - 220px);
+    min-height: 520px;
     overflow: auto;
 }
 /* Barra horizontal superior, espejo de la de abajo */

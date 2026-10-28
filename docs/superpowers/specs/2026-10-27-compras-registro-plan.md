@@ -125,3 +125,8 @@ Se detectó que `SG12.dbo.documentosC` no tiene índice por `satuid` (5.6 M fila
 - Columnas de captura nuevas (Petrotal, Tesoro, fletes, proveedor final, litros de soporte): script `docs/sql/compras_captura_columnas.sql` (**pendiente de correr**). Sin él esas celdas se muestran pero no se pueden guardar.
 - Cruce con el Excel (sep–oct, 2,841 renglones): IVA 100 %, IEPS/precio con IVA 8 %/monto sin IVA ≥99.9 %, estímulo 99.6 %, costo de almacenamiento 96.9 %, utilidad por litro 94 %. Las diferencias vienen de: proveedor final = PETROTAL capturado a mano en el Excel (89 renglones Tesoro), precio de venta tecleado distinto al de `FuelPrices` (81) y estaciones sin identificar.
 - Precio cotizado (R) y TAR Pemex (AB) siguen fuera de alcance: columnas vacías, igual que S, T y AC.
+
+**Estado al cierre de la sesión (2026-10-28).**
+- Hecho: Fases 1 y 2, todas las columnas A..BH con fórmulas portadas, perfiles de columnas, nombre corto de proveedor, tabla sin paginación con alto fijo, encabezado doble con filtros, scroll horizontal arriba y abajo. Corrección de rendimiento (HASH JOIN + literales + NOLOCK).
+- Casi todo commiteado por el usuario (329fa982); quedan sin commit el CSS de altura y estas notas. La UI no se ha revisado visualmente en navegador.
+- Siguiente: exportación A..BH, proveedor final desde Petrotal, estaciones sin identificar, razón social corta, columnas fijas a la izquierda, hojas secundarias, corrida en paralelo y retiro del Excel.
