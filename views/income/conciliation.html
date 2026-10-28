@@ -40,8 +40,25 @@
   }
   .cv-scroll { overflow: auto; max-height: 64vh; }
   .cv-scroll.cv-fija { height: 64vh; max-height: none; }
+  #modalDespachos .cv-scroll.cv-fija { height: 50vh; }
   .cv-tabla tfoot th { position: sticky; bottom: 0; z-index: 30; background-color: #f1f5f9 !important; color: #334155; font-size: .78rem; font-weight: 700; border-top: 2px solid #cbd5e1; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .cv-tabla tfoot th:first-child, .cv-tabla tfoot th.cv-izq { text-align: left; }
+  /* Tabs: el activo se ve relleno, con borde verde y el contador invertido */
+  #cvTabs, #modalDespachos .nav-tabs { border-bottom: 2px solid #e2e8f0; gap: .15rem; flex-wrap: wrap; }
+  #cvTabs .nav-link, #modalDespachos .nav-tabs .nav-link {
+    color: #64748b; font-size: .85rem; font-weight: 500; padding: .6rem .9rem; border: 0; border-bottom: 3px solid transparent;
+    border-radius: .5rem .5rem 0 0; margin-bottom: -2px; transition: background .15s, color .15s, border-color .15s;
+  }
+  #cvTabs .nav-link:hover, #modalDespachos .nav-tabs .nav-link:hover { color: #065f46; background: #f0fdf4; border-bottom-color: #a7f3d0; }
+  #cvTabs .nav-link.active, #modalDespachos .nav-tabs .nav-link.active {
+    color: #065f46; font-weight: 700; background: linear-gradient(180deg, #ecfdf5, #d1fae5);
+    border-bottom-color: #009559; box-shadow: 0 -2px 6px rgba(0, 149, 89, .12);
+  }
+  #cvTabs .nav-link.active i { color: #009559; }
+  #cvTabs .nav-link small { font-weight: 400; }
+  #cvTabs .nav-link .badge, #modalDespachos .nav-tabs .nav-link .badge { background: #cbd5e1 !important; color: #334155; font-weight: 700; margin-left: .15rem; }
+  #cvTabs .nav-link.active .badge, #modalDespachos .nav-tabs .nav-link.active .badge { background: #009559 !important; color: #fff; }
+
   /* Cards de resumen colapsables */
   .cv-res-card { border: 0; border-left: 4px solid #009559; border-radius: .5rem; box-shadow: 0 1px 4px rgba(15, 23, 42, .1); overflow: hidden; }
   .cv-res-head { display: flex; align-items: center; gap: .6rem; padding: .65rem 1rem; cursor: pointer; user-select: none; background: linear-gradient(90deg, #ecfdf5, #fff 70%); }
@@ -154,22 +171,27 @@
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabVenta" type="button" role="tab">
-      Venta vs facturado <small class="text-muted">(Desglose venta)</small> <span class="badge bg-secondary" id="cntVenta">0</span>
+      Desglose venta <span class="badge bg-secondary" id="cntVenta">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCortesDif" type="button" role="tab">
+      Cortes con diferencia <span class="badge bg-secondary" id="cntCortesDif">–</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabApp" type="button" role="tab">
-      Consumos por cliente <small class="text-muted">(Venta aplicativo)</small> <span class="badge bg-secondary" id="cntApp">–</span>
+      Consumos por cliente <span class="badge bg-secondary" id="cntApp">–</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPropio" type="button" role="tab">
-      Consumo propio y bonificaciones <small class="text-muted">(Consumos propios)</small> <span class="badge bg-secondary" id="cntPropio">–</span>
+      Consumos propios <span class="badge bg-secondary" id="cntPropio">–</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabFacturas" type="button" role="tab">
-      Facturas de crédito <small class="text-muted">(Control Gas)</small> <span class="badge bg-secondary" id="cntFacturas">0</span>
+      Facturas de Crédito <span class="badge bg-secondary" id="cntFacturas">0</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -221,24 +243,26 @@
     </div>
   </div>
 
-  {# 2. Venta vs facturado (Desglose venta) #}
+  {# 2. Desglose venta #}
   <div class="tab-pane fade" id="tabVenta" role="tabpanel">
     <button type="button" class="cv-ayuda" data-ayuda="venta" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
     <div class="card cv-res-card mb-3">
       <div class="cv-res-head" role="button" data-bs-toggle="collapse" data-bs-target="#colClase" aria-expanded="true" aria-controls="colClase">
         <i class="fas fa-chart-pie cv-res-ico"></i>
         <span class="cv-card-title">Resumen por clasificación</span>
-        <small class="text-muted">(Desglose venta)</small>
         <i class="fas fa-chevron-down cv-res-chev ms-auto"></i>
       </div>
       <div class="collapse show" id="colClase"><div class="cv-res-body">
         <table class="table table-sm cv-tabla w-100 mb-0" id="resClase">
-          <thead><tr><th>Clasificación</th><th class="text-end">Clientes</th><th class="text-end">Litros</th><th class="text-end">Monto aplicativo</th><th class="text-end">Cortes aplicativo</th><th class="text-end">Facturado Control Gas</th><th class="text-end">Diferencia (Monto − Control Gas)</th></tr></thead>
+          <thead><tr><th>Clasificación</th><th class="text-end">Clientes</th><th class="text-end">Litros</th><th class="text-end">Monto despachos</th><th class="text-end">Monto cortes</th><th class="text-end">Facturado Control Gas</th><th class="text-end">Diferencia (Monto − Control Gas)</th></tr></thead>
           <tbody></tbody>
         </table>
       </div></div>
     </div>
-    <div class="cv-resumen" id="chipsVenta"></div>
+    <div class="d-flex flex-wrap gap-2">
+      <div class="cv-resumen" id="chipsVenta"></div>
+      <div class="cv-resumen" id="chipsVentaCortes"></div>
+    </div>
     <div class="cv-tabla-wrap">
       <table id="tablaVenta" class="table table-sm table-hover cv-tabla w-100 mb-0">
         <thead>
@@ -248,9 +272,9 @@
             <th>Cliente</th>
             <th>Despachos</th>
             <th>Litros</th>
-            <th>Monto aplicativo</th>
-            <th>Cortes</th>
-            <th>Monto − Cortes</th>
+            <th>Monto despachos</th>
+            <th>Monto cortes</th>
+            <th>Diferencia cortes (Monto − Cortes)</th>
             <th>Facturado Control Gas (factura del mes)</th>
             <th>Facturado Control Gas (factura posterior)</th>
             <th>Sin factura</th>
@@ -270,7 +294,27 @@
         </tfoot>
       </table>
     </div>
-    <small class="text-muted">Clic en un cliente para ver sus despachos y la factura de cada uno.</small>
+    <small class="text-muted">Clic en un cliente para ver sus despachos y la factura de cada uno (no se listan los despachos de $0).</small>
+  </div>
+
+  {# 2b. Cortes con diferencia #}
+  <div class="tab-pane fade" id="tabCortesDif" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="cortesdif" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsCortesDif"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaCortesDif" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Estación</th><th>Fecha corte</th><th>Turno</th><th>Cód.</th><th>Cliente</th><th>Folio</th>
+            <th>Fecha despacho</th><th>Hora</th><th>Producto</th><th>Monto despacho</th><th>Corte del vale</th><th>Monto vale</th>
+            <th>Diferencia (mes)</th><th>Estado</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot><tr><th colspan="9" class="cv-izq">Total (filas filtradas)</th><th></th><th></th><th></th><th></th><th></th></tr></tfoot>
+      </table>
+    </div>
+    <small class="text-muted">Un renglón por folio que no cuadra entre el despacho de Control Gas y el vale de crédito del corte. La suma de "Diferencia (mes)" es el "Monto − Cortes" de Desglose venta. Clic en un renglón para ver al cliente completo.</small>
   </div>
 
   {# 3. Consumos por cliente (Venta aplicativo) #}
@@ -332,13 +376,19 @@
       <table id="tablaFacturas" class="table table-sm table-hover cv-tabla w-100 mb-0">
         <thead>
           <tr>
-            <th>Factura</th><th>Estación</th><th>Fecha</th><th>Tipo</th><th>Cód.</th><th>Cliente</th>
+            <th>Factura</th><th>Fecha</th><th>Cód.</th><th>Cliente</th>
             <th>Total factura</th><th>Despachos</th><th>Monto despachos</th><th>Desp. del mes</th>
-            <th>Monto del mes</th><th>Monto otros meses</th><th>Total − despachos</th>
-            <th>Despachos desde</th><th>Despachos hasta</th><th>CFDI</th><th>Periodo</th><th>UUID</th><th>Referencia</th>
+            <th>Monto del mes</th><th>Monto otros meses</th>
+            <th>Despachos desde</th><th>Despachos hasta</th><th>CFDI</th><th>Periodo</th><th>Referencia</th><th>UUID</th>
           </tr>
         </thead>
         <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="4" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+          </tr>
+        </tfoot>
       </table>
     </div>
     <small class="text-muted">
@@ -448,7 +498,7 @@
   </div>
 </div>
 
-{# Detalle de despachos de un cliente (desde Venta vs facturado) #}
+{# Detalle de despachos de un cliente (desde Desglose venta) #}
 <div class="modal fade" id="modalDespachos" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
@@ -457,17 +507,42 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
-        <div class="cv-resumen" id="chipsDespachos"></div>
-        <div class="cv-tabla-wrap">
-          <table id="tablaDespachos" class="table table-sm table-hover cv-tabla w-100 mb-0">
-            <thead>
-              <tr>
-                <th>Estación</th><th>Despacho</th><th>Fecha</th><th>Hora</th><th>Producto</th><th>Litros</th><th>Monto</th>
-                <th>Factura</th><th>Emitida en</th><th>Fecha factura</th><th>Estado</th><th>UUID</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <ul class="nav nav-tabs mb-2" role="tablist">
+          <li class="nav-item"><button class="nav-link active" id="tabDesp" data-bs-toggle="tab" data-bs-target="#paneDesp" type="button" role="tab">Despachos y factura <span class="badge bg-secondary" id="cntDesp">…</span></button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paneCortes" type="button" role="tab">Despachos vs corte (ValesR) <span class="badge bg-secondary" id="cntCortes">…</span></button></li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="paneDesp" role="tabpanel">
+            <div class="cv-resumen" id="chipsDespachos"></div>
+            <div class="cv-tabla-wrap">
+              <table id="tablaDespachos" class="table table-sm table-hover cv-tabla w-100 mb-0">
+                <thead>
+                  <tr>
+                    <th>Estación</th><th>Despacho</th><th>Fecha</th><th>Hora</th><th>Turno despacho</th><th>Producto</th><th>Litros</th><th>Monto</th>
+                    <th>Factura</th><th>Emitida en</th><th>Fecha factura</th><th>Estado</th><th>UUID</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+                <tfoot><tr><th colspan="6" class="cv-izq">Total (filas filtradas)</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th></tr></tfoot>
+              </table>
+            </div>
+          </div>
+          <div class="tab-pane fade" id="paneCortes" role="tabpanel">
+            <div class="text-muted small mb-2">Cada despacho de Control Gas contra su vale de crédito del corte (ValesR), ligados por estación y folio. Un vale sin despacho o un despacho sin vale explica la diferencia con el corte.</div>
+            <div class="cv-resumen" id="chipsCortes"></div>
+            <div class="cv-tabla-wrap">
+              <table id="tablaCortes" class="table table-sm table-hover cv-tabla w-100 mb-0">
+                <thead>
+                  <tr>
+                    <th>Estación</th><th>Folio</th><th>Fecha</th><th>Hora</th><th>Turno despacho</th><th>Producto</th><th>Litros</th>
+                    <th>Monto despacho</th><th>Turno vale</th><th>Monto vale</th><th>Diferencia</th><th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+                <tfoot><tr><th colspan="6" class="cv-izq">Total (filas filtradas)</th><th></th><th></th><th></th><th></th><th></th><th></th></tr></tfoot>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -488,25 +563,26 @@ $(function () {
     res_venta: ['Venta vs facturación', '<p>De arriba abajo: venta total del aplicativo (monto de despachos de clientes de crédito), menos consumos propios y bonificaciones = <b>venta neta</b>, contra lo facturado.</p><ul><li>Lo facturado se cuenta <b>por despacho</b>: cuenta si su factura de crédito existe y no está cancelada, sin importar la fecha de la factura.</li><li>"Sin explicar" debe quedar en $0.00; si no, aparece "Revisar".</li></ul>'],
     res_puente: ['Puente con facturas de ControlGas', '<p>Compara la venta contra el total de las facturas <b>por fecha de factura</b> (no por despacho), como el cuadro del Excel original, y lista las partidas que explican la diferencia: consumos facturados en otro mes, consumos sin facturar, etc.</p>'],
     res_cobros: ['Cobranza vs banco', '<p>Cobros del mes (Cobranza a Clientes) agrupados por el resultado del cruce con los depósitos del banco. El porcentaje es lo que ya cuadra contra un depósito.</p><ul><li><b>Cuadra…</b>: el cobro se ligó a un depósito por MOV, centavos, MOV compartido, MOV vecinos o importe.</li><li><b>Sin banco / Sin MOV / Diferencia</b>: quedan por revisar.</li><li><b>Cancelado</b>: cobro cancelado en el sistema.</li></ul>'],
-    venta: ['Venta vs facturado (Desglose venta)', '<p>Una fila por cliente de crédito. Arriba, el resumen por clasificación; abajo, el detalle por cliente. Todo sale del aplicativo (SG12) para el mes y la razón social elegidos.</p>' +
+    venta: ['Desglose venta', '<p>Una fila por cliente de crédito. Arriba, el resumen por clasificación; abajo, el detalle por cliente. Todo sale del aplicativo (SG12) para el mes y la razón social elegidos.</p>' +
       '<b>De dónde viene cada dato</b><ul>' +
       '<li><b>Clasificación:</b> Consumo propio y Bonificación vienen del catálogo de Clientes &gt; Consumos Crédito &gt; Consumo propio; todo lo demás es Venta.</li>' +
-      '<li><b>Despachos, Litros, Monto aplicativo:</b> despachos del mes (fecha del despacho) de clientes de crédito.</li>' +
-      '<li><b>Cortes aplicativo:</b> lo que cada cliente tiene en los cortes de caja como vale de crédito, en el mismo mes.</li>' +
+      '<li><b>Despachos, Litros, Monto despachos:</b> despachos del mes (fecha del despacho) de clientes de crédito.</li>' +
+      '<li><b>Monto cortes:</b> lo que cada cliente tiene en los cortes de caja como vale de crédito, en el mismo mes.</li>' +
       '<li><b>Facturado Control Gas:</b> se busca la factura de crédito (Facturación Crédito) que tiene guardada cada despacho. No importa la fecha de la factura ni el nombre del cliente. Se parte en <i>del mes</i> (factura con fecha dentro del mes) y <i>posterior</i> (factura emitida después del mes).</li>' +
       '<li><b>Sin factura / Desp. sin factura:</b> despachos que no tienen factura; monto y número de despachos.</li>' +
       '<li><b>Factura cancelada:</b> despachos cuya factura está cancelada o no se encontró.</li>' +
       '<li><b>Facturas:</b> cuántas facturas vigentes cubren los despachos del cliente.</li></ul>' +
       '<b>Cómo interpretarlo</b><ul>' +
       '<li><b>Monto − Cortes</b> distinto de 0: el cliente tiene diferencia entre sus despachos y lo registrado en cortes. Se muestra en rojo.</li>' +
-      '<li><b>Diferencia (Monto − Control Gas)</b> = Monto aplicativo − (facturado del mes + posterior). En 0 todo está facturado; si no, mira Sin factura o Factura cancelada para saber por qué.</li>' +
+      '<li><b>Diferencia (Monto − Control Gas)</b> = Monto despachos − (facturado del mes + posterior). En 0 todo está facturado; si no, mira Sin factura o Factura cancelada para saber por qué.</li>' +
       '<li><b>Estatus:</b> Facturado (cuadra), Pendiente de facturar (facturado parcial), Sin facturar (nada facturado), Factura cancelada, No se factura (consumo propio y bonificación).</li>' +
       '<li><b>Resumen por clasificación:</b> la diferencia solo se calcula para Venta, porque consumo propio y bonificación no se facturan.</li>' +
       '<li><b>Pie de la tabla:</b> suma solo las filas que ves (respeta el filtro y los chips por estatus).</li>' +
       '<li>Clic en un cliente abre sus despachos con la factura de cada uno.</li></ul>'],
+    cortesdif: ['Cortes con diferencia', '<p>Lista, folio por folio, lo que no cuadra entre el <b>despacho</b> de Control Gas y el <b>vale de crédito del corte</b> (ValesR), para ubicar la estación, la fecha y el turno del corte con el problema.</p><ul><li><b>Despacho sin vale</b>: se despachó y el corte no lo registró.</li><li><b>Vale con producto sin despacho</b>: el corte trae un vale con combustible que no tiene despacho (sospechoso).</li><li><b>Vale manual sin despacho</b>: vale capturado a mano en el corte, sin producto.</li><li><b>Monto distinto / Vale duplicado</b>: el folio existe en los dos lados pero no suma igual.</li><li><b>Despacho de otro mes / Vale en otro mes</b>: un lado cae fuera del mes elegido (corte en otro mes).</li><li><b>Cuadra en otro corte</b>: mismo monto pero el vale está en otra fecha o turno de corte.</li></ul><p>La suma de "Diferencia (mes)" es el Monto − Cortes del tab Desglose venta.</p>'],
     app: ['Consumos por cliente', '<p>Equivale a la hoja <b>Venta aplicativo</b>: el mismo reporte de Clientes &gt; Consumos Crédito &gt; Resumen por cliente, con despachos, litros, monto y cortes del mes.</p>'],
-    propio: ['Consumo propio y bonificaciones', '<p>Equivale a la hoja <b>Consumos propios</b>: despachos de crédito de los clientes del catálogo de consumo propio y de bonificaciones. Se restan de la venta porque no se facturan.</p>'],
-    facturas: ['Facturas de crédito', '<p>Equivale a <b>Control Gas</b>: facturas "Facturación Crédito" con fecha del mes, más las de otra fecha que contienen despachos del mes. Muestra cuánto de cada factura corresponde a despachos del mes y cuánto a otros meses. El card de arriba (colapsable) suma las facturas por periodo.</p>'],
+    propio: ['Consumos propios', '<p>Equivale a la hoja <b>Consumos propios</b>: despachos de crédito de los clientes del catálogo de consumo propio y de bonificaciones. Se restan de la venta porque no se facturan.</p>'],
+    facturas: ['Facturas de Crédito', '<p>Equivale a <b>Control Gas</b>: facturas "Facturación Crédito" con fecha del mes, más las de otra fecha que contienen despachos del mes. Muestra cuánto de cada factura corresponde a despachos del mes y cuánto a otros meses. El card de arriba (colapsable) suma las facturas por periodo.</p>'],
     cobros: ['Cobros', '<p>Equivale a la hoja <b>Cobros agosto</b> (reporte "Cobranza a Clientes"): un renglón por cobro, con cliente, forma de pago, ordenante, monto, MOV bancario y las facturas que paga. "Estatus banco" es el resultado del cruce con el banco.</p>'],
     cruce: ['Cobros vs banco', '<p>Equivale a <b>Conciliación cobros</b>. Una fila por depósito bancario (o por MOV sin depósito) con los cobros que lo componen. Reglas, de la más segura a la menos: Cuadra, centavos, MOV compartido, MOV vecinos y por importe (±3 días).</p><ul><li>Candidatos mayor a 1 significa que se desempató por cuenta y fecha.</li><li>El card de arriba (colapsable) resume los cobros por cuenta bancaria u origen contra el depósito ligado.</li></ul>'],
     banco: ['Banco', '<p>Equivale a <b>Banco 2791</b>: movimientos del mes de las cuentas que recibieron cobros (de Movimientos Bancos), con la columna "Ligado" que indica si el depósito ya se aplicó a un cobro. El card de arriba (colapsable) integra los depósitos: cuántos son de cobros de crédito y cuántos de débito u otros.</p>']
@@ -521,11 +597,15 @@ $(function () {
   });
 
   var ESTATUS_CLASE = {
-    // Venta vs facturado / despachos
+    // Desglose venta / despachos
     'Facturado': 'cv-ok', 'Facturado después': 'cv-info', 'No se factura': 'cv-muted',
     'Pendiente de facturar': 'cv-warn', 'Sin facturar': 'cv-bad', 'Sin factura': 'cv-bad',
     'Factura cancelada': 'cv-bad', 'Factura no encontrada': 'cv-bad',
     'Venta': 'cv-info', 'Consumo propio': 'cv-muted', 'Bonificación': 'cv-muted',
+    // Despachos vs corte
+    'Vale manual sin despacho': 'cv-warn', 'Vale con producto sin despacho': 'cv-bad', 'Despacho de otro mes': 'cv-info',
+    'Despacho de otro cliente': 'cv-warn', 'Vale en otro mes': 'cv-info', 'Cuadra en otro corte': 'cv-info',
+    'Despacho sin vale': 'cv-bad', 'Vale sin despacho': 'cv-bad', 'Monto distinto': 'cv-warn', 'Vale duplicado': 'cv-warn',
     // Facturas
     'Del mes': 'cv-ok', 'Emitida después': 'cv-info', 'Mezcla de meses': 'cv-warn', 'Despachos de otro mes': 'cv-warn',
     'Sin despachos': 'cv-bad', 'Cancelada': 'cv-muted', 'No encontrada': 'cv-bad',
@@ -564,6 +644,12 @@ $(function () {
     if (type !== 'display') return d;
     if (d === null || d === '') return '';
     return Math.abs(d) >= 0.01 ? '<span class="cv-neg">' + fmtMonto(d) + '</span>' : fmtMonto(d);
+  }
+  // Solo lo negativo en rojo; lo positivo y el cero van en el color normal.
+  function montoSigno(d, type) {
+    if (type !== 'display') return d;
+    if (d === null || d === '') return '';
+    return Number(d) <= -0.01 ? '<span class="cv-neg">' + fmtMonto(d) + '</span>' : fmtMonto(d);
   }
   function litros(d, type) { return type === 'display' ? fmtLitros(d) : d; }
   function badge(d, type) {
@@ -647,8 +733,8 @@ $(function () {
     $(contenedor).html(html).off('click').on('click', '.cv-chip', function () {
       $(contenedor + ' .cv-chip').removeClass('activo');
       $(this).addClass('activo');
-      var v = $(this).data('estatus');
-      api.column(colEstatus).search(v ? '^' + $.fn.dataTable.util.escapeRegex(v) + '$' : '', true, false).draw();
+      var v = $(this).data('estatus'), rx = $(this).data('regex');   // data-regex: chip que agrupa varios estatus
+      api.column(colEstatus).search(rx || (v ? '^' + $.fn.dataTable.util.escapeRegex(v) + '$' : ''), true, false).draw();
     });
   }
 
@@ -779,7 +865,7 @@ $(function () {
     { data: 'litros', className: 'cv-monto', render: litros },
     { data: 'monto', className: 'cv-monto', render: monto },
     { data: 'cortes', className: 'cv-monto', render: monto },
-    { data: 'monto_cortes', className: 'cv-monto', render: montoDif },
+    { data: 'monto_cortes', className: 'cv-monto', render: montoSigno },
     { data: 'facturado_mes', className: 'cv-monto', render: monto },
     { data: 'facturado_despues', className: 'cv-monto', render: monto },
     { data: 'sin_factura', className: 'cv-monto', render: montoDif },
@@ -788,7 +874,7 @@ $(function () {
     { data: 'facturas', className: 'cv-monto' },
     { data: 'diferencia', className: 'cv-monto', render: montoDif },
     { data: 'estatus', render: badge },
-  ], 'Venta vs facturado', {
+  ], 'Desglose venta', {
     fija: true,
     paging: false,
     dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
@@ -808,6 +894,37 @@ $(function () {
   });
   var COL_ESTATUS_VENTA = 15;
 
+  // Cortes con diferencia: un renglón por folio que no cuadra entre despacho y vale del corte.
+  var tablaCortesDif = initTabla('#tablaCortesDif', [
+    { data: 'estacion' },
+    { data: 'fecha_corte', render: fecha },
+    { data: 'turno' },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'cv-wrap', render: texto },
+    { data: 'folio', className: 'cv-mono' },
+    { data: 'fecha_despacho', render: fecha },
+    { data: 'hora' },
+    { data: 'producto', render: texto },
+    { data: 'monto_despacho', className: 'cv-monto', render: monto },
+    { data: 'corte_vale' },
+    { data: 'monto_vale', className: 'cv-monto', render: monto },
+    { data: 'diferencia', className: 'cv-monto', render: montoDif },
+    { data: 'estado', render: badge },
+  ], 'Cortes con diferencia', {
+    fija: true,
+    paging: false,
+    dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
+    createdRow: function (row) { $(row).addClass('cv-click'); },
+    footerCallback: function () {
+      var api = this.api();
+      [9, 11, 12].forEach(function (i) {
+        var t = api.column(i, { search: 'applied' }).data().reduce(function (s, v) { return s + (Number(v) || 0); }, 0);
+        $(api.column(i).footer()).text(fmtMonto(t));
+      });
+    },
+  });
+  var COL_ESTADO_CORTESDIF = 13;
+
   var tablaApp = initTabla('#tablaApp', [
     { data: 'codcli' },
     { data: 'Cliente', className: 'cv-wrap', render: texto },
@@ -821,7 +938,7 @@ $(function () {
     { data: 'Monto', className: 'cv-monto', render: monto },
     { data: 'MontoCortes', className: 'cv-monto', render: monto },
     { data: 'Diferencia', className: 'cv-monto', render: montoDif },
-  ], 'Consumos por cliente (Venta aplicativo)');
+  ], 'Consumos por cliente');
 
   var tablaPropio = initTabla('#tablaPropio', [
     { data: 'Cliente', className: 'cv-wrap', render: texto },
@@ -839,14 +956,12 @@ $(function () {
     { data: 'Litros', className: 'cv-monto', render: litros },
     { data: 'Monto', className: 'cv-monto', render: monto },
     { data: 'producto', render: texto },
-  ], 'Consumo propio y bonificaciones (Consumos propios)');
+  ], 'Consumos propios');
   var COL_CATEGORIA_PROPIO = 2;
 
   var tablaFacturas = initTabla('#tablaFacturas', [
     { data: 'factura', className: 'cv-mono' },
-    { data: 'estacion' },
     { data: 'fecha', render: fecha },
-    { data: 'tipo', render: texto },
     { data: 'codcli' },
     { data: 'cliente', className: 'cv-wrap', render: texto },
     { data: 'total', className: 'cv-monto', render: monto },
@@ -855,15 +970,26 @@ $(function () {
     { data: 'despachos_mes', className: 'cv-monto' },
     { data: 'monto_mes', className: 'cv-monto', render: monto },
     { data: 'monto_otros', className: 'cv-monto', render: montoDif },
-    { data: 'ajuste', className: 'cv-monto', render: montoDif },
     { data: 'despacho_desde', render: fecha },
     { data: 'despacho_hasta', render: fecha },
     { data: 'cfdi', render: badge },
     { data: 'periodo', render: badge },
-    { data: 'uuid', className: 'cv-mono', render: texto },
     { data: 'referencia', className: 'cv-wrap', render: texto },
-  ], 'Facturas de credito (Control Gas)');
-  var COL_PERIODO_FACTURAS = 16;
+    { data: 'uuid', className: 'cv-mono', render: texto },
+  ], 'Facturas de Credito', {
+    fija: true,
+    paging: false,
+    dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
+    // Sumas de las filas que pasan el filtro/chip activo (0 = importe, 1 = conteo).
+    footerCallback: function () {
+      var api = this.api();
+      [[4, 0], [5, 1], [6, 0], [7, 1], [8, 0], [9, 0]].forEach(function (c) {
+        var t = api.column(c[0], { search: 'applied' }).data().reduce(function (s, v) { return s + (Number(v) || 0); }, 0);
+        $(api.column(c[0]).footer()).text(c[1] ? t.toLocaleString('en-US') : fmtMonto(t));
+      });
+    },
+  });
+  var COL_PERIODO_FACTURAS = 13;
 
   var tablaCobros = initTabla('#tablaCobros', [
     { data: 'estacion' },
@@ -929,6 +1055,7 @@ $(function () {
     { data: 'despacho', className: 'cv-mono' },
     { data: 'fecha', render: fecha },
     { data: 'hora' },
+    { data: 'turno' },
     { data: 'producto', render: texto },
     { data: 'litros', className: 'cv-monto', render: litros },
     { data: 'monto', className: 'cv-monto', render: monto },
@@ -937,13 +1064,52 @@ $(function () {
     { data: 'fecha_factura', render: fecha },
     { data: 'estado', render: badge },
     { data: 'uuid', className: 'cv-mono', render: texto },
-  ], 'Despachos', { pageLength: 50 });
-  var COL_ESTADO_DESPACHOS = 10;
+  ], 'Despachos', {
+    fija: true,
+    paging: false,
+    dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
+    footerCallback: function () {
+      var api = this.api();
+      var t = function (i) { return api.column(i, { search: 'applied' }).data().reduce(function (s, v) { return s + (Number(v) || 0); }, 0); };
+      $(api.column(6).footer()).text(fmtLitros(t(6)));
+      $(api.column(7).footer()).text(fmtMonto(t(7)));
+    },
+  });
+  var COL_ESTADO_DESPACHOS = 11;
+
+  // Despachos de Control Gas contra los vales del corte (ValesR), uno a uno.
+  var tablaCortes = initTabla('#tablaCortes', [
+    { data: 'estacion' },
+    { data: 'despacho', className: 'cv-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'hora' },
+    { data: 'turno_despacho' },
+    { data: 'producto', render: texto },
+    { data: 'litros', className: 'cv-monto', render: function (d, type) { return d === null ? '' : litros(d, type); } },
+    { data: 'monto_despacho', className: 'cv-monto', render: monto },
+    { data: 'turno_vale' },
+    { data: 'monto_vale', className: 'cv-monto', render: monto },
+    { data: 'diferencia', className: 'cv-monto', render: montoDif },
+    { data: 'estado', render: badge },
+  ], 'Despachos vs corte', {
+    fija: true,
+    paging: false,
+    dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
+    footerCallback: function () {
+      var api = this.api();
+      var t = function (i) { return api.column(i, { search: 'applied' }).data().reduce(function (s, v) { return s + (Number(v) || 0); }, 0); };
+      $(api.column(6).footer()).text(fmtLitros(t(6)));
+      $(api.column(7).footer()).text(fmtMonto(t(7)));
+      $(api.column(9).footer()).text(fmtMonto(t(9)));
+      $(api.column(10).footer()).text(fmtMonto(t(10)));
+    },
+  });
+  var COL_ESTADO_CORTES = 11;
 
   $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
     $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
   });
-  $('#modalDespachos').on('shown.bs.modal', function () { tablaDespachos.columns.adjust(); });
+  $('#modalDespachos').on('shown.bs.modal', function () { tablaDespachos.columns.adjust(); tablaCortes.columns.adjust(); });
 
   // ---------------------------------------------------------------- datos
   var estado = { busqueda: 0, venta: [], facturas: [], cobros: [], xhrs: [], fin: {}, t0: {}, resumenListo: false };
@@ -957,14 +1123,15 @@ $(function () {
 
   // Consultas del módulo: cada una llena su(s) tab(s) en cuanto responde.
   var CONSULTAS = [
-    ['venta', 'Venta vs facturado', '#tabVenta', '#cntVenta'],
-    ['facturas', 'Facturas de crédito', '#tabFacturas', '#cntFacturas'],
+    ['venta', 'Desglose venta', '#tabVenta', '#cntVenta'],
+    ['cortes', 'Cortes con diferencia', '#tabCortesDif', '#cntCortesDif'],
+    ['facturas', 'Facturas de Crédito', '#tabFacturas', '#cntFacturas'],
     ['cobros', 'Cobros y cruce con banco', '#tabCobros', '#cntCobros, #cntCruce'],
     ['app', 'Consumos por cliente', '#tabApp', '#cntApp'],
-    ['propio', 'Consumo propio', '#tabPropio', '#cntPropio'],
+    ['propio', 'Consumos propios', '#tabPropio', '#cntPropio'],
     ['banco', 'Banco', '#tabBanco', '#cntBanco'],
   ];
-  var TABLAS = function () { return [tablaVenta, tablaFacturas, tablaCobros, tablaCruce, tablaApp, tablaPropio, tablaBanco]; };
+  var TABLAS = function () { return [tablaVenta, tablaCortesDif, tablaFacturas, tablaCobros, tablaCruce, tablaApp, tablaPropio, tablaBanco]; };
   var progTimer = null;
 
   function progresoInicio() {
@@ -1032,11 +1199,11 @@ $(function () {
     (estado.xhrs || []).forEach(function (x) { x.abort(); });
     estado.busqueda++;
     estado.xhrs = []; estado.fin = {}; estado.resumenListo = false;
-    estado.venta = []; estado.facturas = []; estado.cobros = [];
+    estado.venta = []; estado.facturas = []; estado.cobros = []; estado.cortesDif = [];
 
     TABLAS().forEach(function (t) { t.settings()[0].oLanguage.sEmptyTable = 'Consultando…'; t.clear().draw(); });
-    $('#cntVenta, #cntFacturas, #cntCobros, #cntCruce, #cntApp, #cntPropio, #cntBanco').text('…');
-    $('#chipsVenta, #chipsFacturas, #chipsCobros, #chipsCruce, #chipsApp, #chipsPropio, #chipsBanco').empty();
+    $('#cntVenta, #cntCortesDif, #cntFacturas, #cntCobros, #cntCruce, #cntApp, #cntPropio, #cntBanco').text('…');
+    $('#chipsVenta, #chipsVentaCortes, #chipsCortesDif, #chipsFacturas, #chipsCobros, #chipsCruce, #chipsApp, #chipsPropio, #chipsBanco').empty();
     $('#resClase tbody, #resFacturas tbody, #resCruce tbody, #resBanco tbody').empty();
     $('#resumenContenido').hide();
     $('#resumenVacio').text('Consultando… el resumen aparece cuando terminen la venta, las facturas y los cobros.').show();
@@ -1047,11 +1214,20 @@ $(function () {
       cargarTabla(tablaVenta, filas, '#cntVenta');
       pintarResumenClase(filas);
       pintarChips('#chipsVenta', tablaVenta, filas, 'estatus', COL_ESTATUS_VENTA, 'monto', 'diferencia');
+      pintarChipCortes(filas);
+    });
+    consultar('cortes', pedir('income.conciliation_cuts_diff'), function (filas) {
+      estado.cortesDif = filas;
+      pintarCortesDif();
     });
     consultar('facturas', pedir('income.conciliation_invoices'), function (filas) {
       estado.facturas = filas;
       cargarTabla(tablaFacturas, filas, '#cntFacturas');
       pintarChips('#chipsFacturas', tablaFacturas, filas, 'periodo', COL_PERIODO_FACTURAS, 'total');
+      // "Monto del mes" = facturas Del mes + Emitida después: lo mismo que la columna Monto del mes del card de arriba
+      var delMes = filas.filter(function (f) { return f.periodo === 'Del mes' || f.periodo === 'Emitida después'; });
+      $('#chipsFacturas .cv-chip').first().after('<span class="cv-chip" data-regex="^(Del mes|Emitida después)$">Monto del mes: <b>' +
+        delMes.length.toLocaleString('en-US') + '</b> · $' + fmtMonto(suma(delMes, 'monto_mes')) + '</span>');
       pintarResumenFacturas(filas);
     });
     consultar('cobros', pedir('income.conciliation_payments'), function (filas) {
@@ -1080,6 +1256,36 @@ $(function () {
       pintarChips('#chipsPropio', tablaPropio, filas, 'Categoria', COL_CATEGORIA_PROPIO, 'Monto');
     });
   }
+
+  // Desglose venta: filtro "Con diferencia de cortes" (Monto − Cortes distinto de cero), se combina con los chips de estatus.
+  var soloDifCortes = false;
+  $.fn.dataTable.ext.search.push(function (settings, data, i) {
+    if (!soloDifCortes || settings.nTable.id !== 'tablaVenta') return true;
+    var r = tablaVenta.row(i).data();
+    return !!r && Math.abs(Number(r.monto_cortes) || 0) >= 0.01;
+  });
+  function pintarChipCortes(filas) {
+    var con = filas.filter(function (r) { return Math.abs(Number(r.monto_cortes) || 0) >= 0.01; });
+    soloDifCortes = false;
+    $('#chipsVentaCortes').html('<span class="cv-chip" id="chipDifCortes">Con diferencia de cortes: <b>' + con.length.toLocaleString('en-US') + '</b> · $' +
+      fmtMonto(suma(con, 'monto_cortes')) + '</span>');
+  }
+  $('#chipsVentaCortes').on('click', '#chipDifCortes', function () {
+    soloDifCortes = !soloDifCortes;
+    $(this).toggleClass('activo', soloDifCortes);
+    tablaVenta.draw();
+  });
+
+  // Cortes con diferencia: un renglón por folio que no cuadra, sin ligar nada por monto.
+  function pintarCortesDif() {
+    var filas = estado.cortesDif || [];
+    cargarTabla(tablaCortesDif, filas, '#cntCortesDif');
+    pintarChips('#chipsCortesDif', tablaCortesDif, filas, 'estado', COL_ESTADO_CORTESDIF, 'diferencia');
+  }
+  $('#tablaCortesDif tbody').on('click', 'tr', function () {
+    var r = tablaCortesDif.row(this).data();
+    if (r && r.codcli) abrirDetalleCliente(r.codcli, r.cliente, '');
+  });
 
   // Una fila por depósito del banco (o por MOV sin depósito, o por cobro sin MOV)
   function agruparCruce(cobros) {
@@ -1157,7 +1363,7 @@ $(function () {
       fila('en facturas fechadas en el mes', factMes, 'cv-sub') +
       fila('en facturas posteriores (p. ej. 1.ª semana del mes siguiente)', factDesp, 'cv-sub') +
       fila('<b>Partidas conciliatorias</b>', null) +
-      fila('Despachos sin factura (' + nSinFact.toLocaleString('en-US') + ')<span class="cv-nota">Ver Venta vs facturado</span>', sinFact, 'cv-sub cv-link', ' data-ir="sin"') +
+      fila('Despachos sin factura (' + nSinFact.toLocaleString('en-US') + ')<span class="cv-nota">Ver Desglose venta</span>', sinFact, 'cv-sub cv-link', ' data-ir="sin"') +
       fila('Despachos con factura cancelada o no encontrada', cancel, 'cv-sub cv-link', ' data-ir="cancel"') +
       fila('Diferencia sin explicar', sinExplicar, 'cv-total');
     if (Math.abs(propioFact) >= 0.01) {
@@ -1184,7 +1390,7 @@ $(function () {
       fila('(−) Total de factura − suma de sus despachos', -ajuste, 'cv-sub') +
       fila('(+) Facturas posteriores con despachos del mes', posteriores, 'cv-sub cv-link', ' data-ir="posteriores"') +
       fila('Facturado de despachos del mes', puente, 'cv-total') +
-      fila('Control vs Venta vs facturado (todas las clasificaciones)<span class="cv-nota">Debe ser 0; si no, hay facturas con despachos de clientes que no son de crédito o de otra razón social</span>',
+      fila('Control vs Desglose venta (todas las clasificaciones)<span class="cv-nota">Debe ser 0; si no, hay facturas con despachos de clientes que no son de crédito o de otra razón social</span>',
         Math.round((puente - factTodos) * 100) / 100, 'cv-sub')
     );
 
@@ -1237,14 +1443,28 @@ $(function () {
   // ---------------------------------------------------------------- detalle por cliente
   $('#tablaVenta tbody').on('click', 'tr', function () {
     var r = tablaVenta.row(this).data();
-    if (!r || !r.codcli) return;
+    if (r && r.codcli) abrirDetalleCliente(r.codcli, r.cliente, r.estatus);
+  });
+  function abrirDetalleCliente(codcli, cliente, estatus) {
+    var r = { codcli: codcli, cliente: cliente, estatus: estatus };
     $('#modalDespachosTitulo').html('Despachos de ' + esc(r.cliente) + ' <small class="text-muted">(' + esc(mesTexto()) + ')</small>');
     tablaDespachos.clear().draw();
-    $('#chipsDespachos').empty();
+    tablaCortes.clear().draw();
+    $('#chipsDespachos, #chipsCortes').empty();
+    $('#cntDesp, #cntCortes').text('…');
+    bootstrap.Tab.getOrCreateInstance($('#tabDesp')[0]).show();
     $('#modalDespachos').modal('show');
+    pedir('income.conciliation_client_cuts', { codcli: r.codcli }).done(function (resp) {
+      var filas = (resp && resp.data) || [];
+      tablaCortes.clear().rows.add(filas).draw();
+      $('#cntCortes').text(filas.length.toLocaleString('en-US'));
+      pintarChips('#chipsCortes', tablaCortes, filas, 'estado', COL_ESTADO_CORTES, 'diferencia');
+      tablaCortes.columns.adjust();
+    }).fail(function () { alertify.error('Error al consultar los vales del corte'); });
     pedir('income.conciliation_client_dispatches', { codcli: r.codcli }).done(function (resp) {
       var filas = (resp && resp.data) || [];
       tablaDespachos.clear().rows.add(filas).draw();
+      $('#cntDesp').text(filas.length.toLocaleString('en-US'));
       pintarChips('#chipsDespachos', tablaDespachos, filas, 'estado', COL_ESTADO_DESPACHOS, 'monto');
       // Si el cliente está pendiente, abrir ya filtrado en los despachos que explican el faltante
       var explica = { 'Pendiente de facturar': 'Sin factura', 'Sin facturar': 'Sin factura', 'Factura cancelada': 'Factura cancelada' }[r.estatus];
@@ -1254,7 +1474,7 @@ $(function () {
       }
       tablaDespachos.columns.adjust();
     }).fail(function () { alertify.error('Error al consultar los despachos'); });
-  });
+  }
 
   // ---------------------------------------------------------------- banco (depende de los cobros)
   function cargarBanco() {

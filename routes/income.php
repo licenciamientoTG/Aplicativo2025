@@ -10,6 +10,8 @@ return [
         // Llamadas de views/income/conciliation.html
         route('conciliation/sales/', [Income::class, 'conciliation_sales'], name: 'income.conciliation_sales', methods: ['POST'], permission: 14),
         route('conciliation/client-dispatches/', [Income::class, 'conciliation_client_dispatches'], name: 'income.conciliation_client_dispatches', methods: ['POST'], permission: 14),
+        route('conciliation/client-cuts/', [Income::class, 'conciliation_client_cuts'], name: 'income.conciliation_client_cuts', methods: ['POST'], permission: 14),
+        route('conciliation/cuts-diff/', [Income::class, 'conciliation_cuts_diff'], name: 'income.conciliation_cuts_diff', methods: ['POST'], permission: 14),
         route('conciliation/invoices/', [Income::class, 'conciliation_invoices'], name: 'income.conciliation_invoices', methods: ['POST'], permission: 14),
         route('conciliation/payments/', [Income::class, 'conciliation_payments'], name: 'income.conciliation_payments', methods: ['POST'], permission: 14),
         route('conciliation/bank/', [Income::class, 'conciliation_bank'], name: 'income.conciliation_bank', methods: ['POST'], permission: 14),

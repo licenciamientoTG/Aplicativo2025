@@ -294,6 +294,7 @@ class Income{
                 'despacho'      => $r['nrotrn'],
                 'fecha'         => $r['fecha'],
                 'hora'          => substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'turno'         => $this->conciliationTurno($r['nrotur']),
                 'producto'      => trim((string)$r['producto']),
                 'litros'        => round((float)$r['litros'], 3),
                 'monto'         => round((float)$r['monto'], 2),
@@ -302,6 +303,93 @@ class Income{
                 'fecha_factura' => $r['fecha_factura'] ?? '',
                 'uuid'          => $r['satuid'] ?? '',
                 'estado'        => $estado,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST (codcli): despachos del cliente contra sus vales del corte (ValesR), con la diferencia de cada uno. */
+    public function conciliation_client_cuts() : void {
+        [$from, $until] = $this->conciliationRange();
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        if ($codcli <= 0) json_output(['data' => []]);
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->despachos_vs_cortes($from, $until, $this->conciliationEmpresa(), $codcli) as $r) {
+            $tieneDesp = $r['monto_despacho'] !== null;
+            $tieneVale = $r['monto_vale'] !== null;
+            $montoDesp = $tieneDesp ? round((float)$r['monto_despacho'], 2) : 0.0;
+            $montoVale = $tieneVale ? round((float)$r['monto_vale'], 2) : 0.0;
+            // Despacho de $0 sin vale: no mueve nada, no se lista
+            if ($tieneDesp && !$tieneVale && abs($montoDesp) < 0.005) continue;
+            if (!$tieneVale)                              $estado = 'Despacho sin vale';
+            elseif (!$tieneDesp)                          $estado = 'Vale sin despacho';
+            elseif ((int)$r['n_vales'] > 1)               $estado = 'Vale duplicado';
+            elseif (abs($montoDesp - $montoVale) >= 0.01) $estado = 'Monto distinto';
+            else                                          $estado = 'Cuadra';
+            $hora = $r['hratrn'] === null ? '' : str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
+            $data[] = [
+                'estacion'        => trim((string)$r['estacion']),
+                'despacho'        => $r['nrotrn'],
+                'fecha'           => $r['fecha'],
+                'hora'            => $hora === '' ? '' : substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'producto'        => trim((string)$r['producto']),
+                'litros'          => $tieneDesp ? round((float)$r['litros'], 3) : null,
+                'monto_despacho'  => $montoDesp,
+                'turno_despacho'  => $this->conciliationTurno($r['turno_despacho']),
+                'turno_vale'      => $this->conciliationTurno($r['turno']),
+                'monto_vale'      => $montoVale,
+                'diferencia'      => round($montoDesp - $montoVale, 2),
+                'estado'          => $estado,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST: folios de crédito cuyo despacho y vale del corte no cuadran, con el corte (estación + fecha + turno). */
+    public function conciliation_cuts_diff() : void {
+        set_time_limit(300);
+        [$from, $until, $desde, $hasta] = $this->conciliationRange();
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->cortes_con_diferencia($from, $until, $this->conciliationEmpresa()) as $r) {
+            $enD = (int)$r['en_rango_d'] === 1;
+            $enV = (int)$r['en_rango_v'] === 1;
+            $tieneVale = $r['mto_v'] !== null;
+            $mtoD = $enD ? (float)$r['mto_d'] : ($r['mto_o'] !== null ? (float)$r['mto_o'] : 0.0);
+            $mtoV = $tieneVale ? (float)$r['mto_v'] : 0.0;
+            $hayDespacho = $enD || $r['mto_o'] !== null;
+            if (!$hayDespacho) {
+                $estado = (int)$r['manual'] === 1 ? 'Vale manual sin despacho' : 'Vale con producto sin despacho';
+            } elseif (!$enD) {
+                $estado = ($r['fecha_despacho'] >= $desde && $r['fecha_despacho'] <= $hasta) ? 'Despacho de otro cliente' : 'Despacho de otro mes';
+            } elseif (!$tieneVale) {
+                if (abs($mtoD) < 0.005) continue;   // despacho de $0 sin vale: no mueve nada, no se lista
+                $estado = 'Despacho sin vale';
+            } elseif ((int)$r['n_vales'] > 1) {
+                $estado = 'Vale duplicado';
+            } elseif (abs($mtoD - $mtoV) >= 0.01) {
+                $estado = 'Monto distinto';
+            } elseif (!$enV) {
+                $estado = 'Vale en otro mes';
+            } else {
+                $estado = 'Cuadra en otro corte';
+            }
+            $hora = $r['hra'] === null ? '' : str_pad((string)$r['hra'], 4, '0', STR_PAD_LEFT);
+            $data[] = [
+                'estacion'       => trim((string)$r['estacion']),
+                'fecha_corte'    => $r['fecha_corte'],
+                'turno'          => $this->conciliationTurno($r['turno']),
+                'codcli'         => (int)$r['codcli'],
+                'cliente'        => trim((string)$r['cliente']),
+                'folio'          => $r['nrotrn'],
+                'fecha_despacho' => $hayDespacho ? $r['fecha_despacho'] : '',
+                'hora'           => $hora === '' ? '' : substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'producto'       => trim((string)$r['producto']),
+                'monto_despacho' => $hayDespacho ? round($mtoD, 2) : null,
+                'corte_vale'     => $tieneVale ? $r['fecha_vale'] . ' T' . $this->conciliationTurno($r['turno_vale']) : '',
+                'monto_vale'     => $tieneVale ? round($mtoV, 2) : null,
+                // Solo lo que cae en el mes: despacho por su fecha, vale por la fecha del corte
+                'diferencia'     => round(($enD ? $mtoD : 0.0) - ($enV ? $mtoV : 0.0), 2),
+                'estado'         => $estado,
             ];
         }
         json_output(['data' => $data]);
@@ -472,6 +560,11 @@ class Income{
         $desde = $mes . '-01';
         $hasta = date('Y-m-t', strtotime($desde));
         return [dateToInt($desde), dateToInt($hasta), $desde, $hasta];
+    }
+
+    /** ControlGas guarda el turno como 11, 21, 31, 41: el turno real es el primer dígito (1, 2, 3, 4). */
+    private function conciliationTurno(mixed $nrotur) : string {
+        return $nrotur === null || $nrotur === '' ? '' : substr((string)(int)$nrotur, 0, 1);
     }
 
     /** Razón social del POST: 0 = todas, -1 = sin razón social, >0 = SG12.Empresas.cod. */

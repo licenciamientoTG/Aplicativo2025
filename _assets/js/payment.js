@@ -2069,42 +2069,6 @@ function resendTodayPayments(btn) {
 }
 
 
-// ===== Botón "Mandar pagos": envía correo con los pagos listos (dot verde) =====
-function sendReadyPayments(btn) {
-  alertify.confirm(
-    "Mandar pagos a solicitud",
-    "Se enviará un correo con todos los pagos que tienen <strong>todas sus facturas en PDF</strong> y están pendientes. ¿Continuar?",
-    function () {
-      var $btn = $(btn);
-      var htmlOriginal = $btn.html();
-      $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Enviando...');
-
-      $.ajax({
-        url: "/payment/send_ready_payments",
-        type: "POST",
-        dataType: "json",
-      })
-        .done(function (resp) {
-          if (resp && resp.success) {
-            alertify.success(resp.message || "Correo enviado correctamente");
-          } else {
-            alertify.error((resp && resp.message) || "No se pudo enviar el correo");
-          }
-        })
-        .fail(function () {
-          alertify.error("Error de conexión al mandar los pagos");
-        })
-        .always(function () {
-          $btn.prop("disabled", false).html(htmlOriginal);
-        });
-    },
-    function () {
-      /* cancelado */
-    }
-  ).set("labels", { ok: "Sí, enviar", cancel: "Cancelar" });
-}
-
-
 function loadAnticiposList() {
   if ($.fn.DataTable.isDataTable("#tabla_anticipos")) {
     $("#tabla_anticipos").DataTable().destroy();
@@ -2961,36 +2925,6 @@ async function generarTransferenciasBancarias(paymentId) {
 }
 
 
-function cargarDatosParaLayout(paymentId) {
-  $.ajax({
-    url: "/payment/get_payment_layout_data",
-    type: "POST",
-    data: { payment_id: paymentId },
-    success: function (response) {
-      if (response.success) {
-        // Mostrar información del proveedor
-        $("#layout_proveedor_nombre").text(response.proveedor.nombre);
-        $("#layout_proveedor_codigo").text(response.proveedor.codigo);
-
-        // Cargar cuentas bancarias en el select
-        cargarCuentasBancarias(response.cuentas_bancarias);
-
-        // Guardar y mostrar facturas
-        availableInvoices = response.facturas;
-        renderizarFacturasLayout(response.facturas);
-      } else {
-        alertify.error(response.message || "Error al cargar datos");
-        $("#modalConfigLayout").modal("hide");
-      }
-    },
-    error: function () {
-      alertify.error("Error de conexión al cargar datos");
-      $("#modalConfigLayout").modal("hide");
-    },
-  });
-}
-
-
 // ==========================================
 // CARGAR CUENTAS BANCARIAS EN SELECT
 // ==========================================
@@ -3143,128 +3077,6 @@ function validarGeneracionLayout() {
 }
 
 
-// ==========================================
-// CONFIRMAR Y GENERAR LAYOUT
-// ==========================================
-function confirmarGeneracionLayout() {
-  if (!selectedCuentaBancaria) {
-    alertify.error("Debe seleccionar una cuenta bancaria");
-    return;
-  }
-
-  const facturasSeleccionadas = [];
-  $(".invoice-layout-checkbox:checked").each(function () {
-    facturasSeleccionadas.push($(this).data("factura-id"));
-  });
-
-  if (facturasSeleccionadas.length === 0) {
-    alertify.error("Debe seleccionar al menos una factura");
-    return;
-  }
-
-  // Confirmar con el usuario
-  alertify
-    .confirm(
-      "Confirmar Generación",
-      `¿Generar layout de Santander con:<br><br>` +
-        `<strong>Cuenta:</strong> ${selectedCuentaBancaria.CuentaLocal}<br>` +
-        `<strong>Banco:</strong> ${selectedCuentaBancaria.Banco}<br>` +
-        `<strong>Facturas:</strong> ${facturasSeleccionadas.length}<br><br>` +
-        `<small class="text-muted">Esta operación no se puede deshacer.</small>`,
-      function () {
-        // Cerrar modal y generar
-        $("#modalConfigLayout").modal("hide");
-        ejecutarGeneracionLayout(facturasSeleccionadas);
-      },
-      function () {
-        alertify.message("Operación cancelada");
-      },
-    )
-    .set("labels", { ok: "Generar", cancel: "Cancelar" });
-}
-
-
-// ==========================================
-// EJECUTAR GENERACIÓN DEL LAYOUT
-// ==========================================
-function ejecutarGeneracionLayout(facturasIds) {
-  alertify.message(
-    '<i class="fas fa-spinner fa-spin"></i> Generando archivo...',
-  );
-
-  const btnTransfer = $("#btnGenerarTransferencias");
-  const btnOriginalText = btnTransfer.html();
-  btnTransfer
-    .prop("disabled", true)
-    .html('<i class="fas fa-spinner fa-spin"></i> Generando...');
-
-  $.ajax({
-    url: "/payment/generate_payment_layout",
-    type: "POST",
-    data: {
-      payment_id: currentPaymentId,
-      cuenta_bancaria_id: selectedCuentaBancaria.id,
-      facturas_ids: JSON.stringify(facturasIds),
-    },
-    timeout: 300000,
-    success: function (response) {
-      if (response.success) {
-        // Descargar archivo
-        fetch(response.file_url)
-          .then((res) => {
-            if (!res.ok) throw new Error("Error en la descarga");
-            return res.blob();
-          })
-          .then((blob) => {
-            const url = window.URL.createObjectURL(new Blob([blob]));
-            const a = document.createElement("a");
-            a.style.display = "none";
-            a.href = url;
-            a.download = response.file_name;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-            // Mostrar resumen
-            alertify.alert(
-              "Layout Generado",
-              `<div class="text-center">
-                                <i class="fas fa-check-circle text-success" style="font-size: 48px;"></i>
-                                <h5 class="mt-3">Archivo Descargado</h5>
-                                <p class="mb-2"><strong>${response.file_name}</strong></p>
-                                <div class="alert alert-info">
-                                    <strong>Transferencias:</strong> ${response.registros_procesados}<br>
-                                    <strong>Total:</strong> $${parseFloat(response.total_importe).toLocaleString("es-MX", { minimumFractionDigits: 2 })}<br>
-                                    <strong>Cuenta:</strong> ${selectedCuentaBancaria.CuentaLocal}
-                                </div>
-                            </div>`,
-              function () {
-                // Eliminar archivo temporal
-                $.post("/payment/delete_layout", {
-                  filename: response.file_name,
-                });
-              },
-            );
-          })
-          .catch((error) => {
-            console.error("Error:", error);
-            alertify.error("Error al descargar el archivo");
-          });
-      } else {
-        alertify.error(response.message || "Error al generar layout");
-      }
-    },
-    error: function (xhr, status) {
-      console.error("Error AJAX:", { status, xhr });
-      alertify.error(status === "timeout" ? "Timeout" : "Error al generar");
-    },
-    complete: function () {
-      btnTransfer.prop("disabled", false).html(btnOriginalText);
-    },
-  });
-}
-
 //             // Cambiar a tab de anticipos
 //             $('a[href="#tab_anticipos"]').tab("show");
 //             $("#tabla_anticipos").DataTable().ajax.reload();
@@ -3279,25 +3091,6 @@ function ejecutarGeneracionLayout(facturasIds) {
 //     )
 //     .set("labels", { ok: "Crear", cancel: "Cancelar" });
 // }
-
-function cargarProveedoresAnticipo() {
-  $.ajax({
-    url: "/payment/get_proveedores_combustible",
-    type: "GET",
-    success: function (response) {
-      const $select = $("#anticipo_proveedor");
-      $select.find("option:not(:first)").remove();
-
-      if (response.success && response.proveedores) {
-        response.proveedores.forEach((prov) => {
-          $select.append(new Option(prov.nombre, prov.codigo));
-        });
-        $select.selectpicker("refresh");
-      }
-    },
-  });
-}
-
 
 function openAuthModal(permission, departamento) {
   currentPermission = permission;
