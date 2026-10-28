@@ -662,7 +662,10 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int, station_filter: int 
         last_base = max(paper["date"] for paper in papers)
         last = (last_base.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
         turns = turns_for_station(cursor, station_id, first, last)
-        rates = historical_rates(cursor, station_id) if any(turn["concept"] == "USD" for turn in turns) else []
+        needs_historical_rate = any(turn["concept"] == "USD" for turn in turns) or any(
+            paper["declared_usd"] > 0 or paper["real_usd"] > 0 for paper in papers
+        )
+        rates = historical_rates(cursor, station_id) if needs_historical_rate else []
         active_papers = {int(row[0]) for row in cursor.execute("SELECT papeleta_id FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 UNION SELECT papeleta_secundaria_id FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND papeleta_secundaria_id IS NOT NULL")}
         active_turns = {(station_id, row[0], str(turn_number(row[1]) or row[1]), str(row[2])) for row in cursor.execute("SELECT fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WHERE activo=1 AND estacion_id=?", station_id)}
         blocked_turns = {(station_id, row[0], str(turn_number(row[1]) or row[1]), str(row[2])) for row in cursor.execute("SELECT fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WHERE activo=0 AND bloqueado_auto=1 AND estacion_id=?", station_id)}
@@ -674,12 +677,20 @@ def auto_link_import(cursor: pyodbc.Cursor, import_id: int, station_filter: int 
             return (station_id, turn["date"], str(turn_number(turn["turn"]) or turn["turn"]), turn["concept"])
 
         def comparable(paper: dict, turn: dict, field: str) -> float:
-            suffix = "usd" if turn["concept"] == "USD" else "mn"
-            value = float(paper[f"{field}_{suffix}"] or 0)
             if turn["concept"] == "USD":
+                value = float(paper[f"{field}_usd"] or 0)
                 rate = rate_for_turn(rates, turn)
                 return value * rate if rate else 0
-            return value
+            value_mn = float(paper[f"{field}_mn"] or 0)
+            value_usd = float(paper[f"{field}_usd"] or 0)
+            if value_usd > 0:
+                rate = rate_for_turn(rates, turn)
+                # Do not compare only the MN component when the USD component
+                # cannot be converted; that could create a false automatic link.
+                if not rate:
+                    return 0
+                value_mn += value_usd * rate
+            return value_mn
 
         def match_pass(field: str, tolerance: float, criterion: str) -> None:
             nonlocal linked
