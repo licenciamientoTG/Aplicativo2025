@@ -2299,7 +2299,7 @@
     if (['name', 'text', 'long_text', 'formula'].includes(type)) {
       if (type === 'long_text' || type === 'formula') {
         const textarea = document.createElement('textarea');
-        textarea.className = 'boards-cell-input boards-json-input';
+        textarea.className = `boards-cell-input boards-json-input${type === 'long_text' ? ' is-long-text' : ''}`;
         textarea.rows = 1;
         textarea.value = value == null ? '' : String(value);
         if (type === 'formula') textarea.title = 'El servidor valida la sintaxis permitida para fórmulas.';
@@ -2497,6 +2497,22 @@
       element.addEventListener('blur', () => {
         element.scrollLeft = 0;
         element.scrollTop = 0;
+      });
+    }
+    if (element.matches('textarea.is-long-text')) {
+      const resize = () => {
+        if (!element.matches(':focus')) return;
+        element.style.height = 'auto';
+        element.style.height = `${Math.min(element.scrollHeight, Math.round(window.innerHeight * 0.7))}px`;
+      };
+      element.addEventListener('focus', () => {
+        element.closest('td')?.classList.add('is-long-text-editing');
+        resize();
+      });
+      element.addEventListener('input', resize);
+      element.addEventListener('blur', () => {
+        element.closest('td')?.classList.remove('is-long-text-editing');
+        element.style.height = '';
       });
     }
     return element;

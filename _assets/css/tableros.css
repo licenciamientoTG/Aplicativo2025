@@ -320,6 +320,9 @@
 .boards-readonly-value { display: block; overflow: hidden; max-width: 250px; color: #72838d; text-overflow: ellipsis; white-space: nowrap; }
 .boards-readonly-value.is-structured { max-width: 235px; color: #536d7b; font-family: Consolas, "Courier New", monospace; font-size: .73rem; }
 .boards-cell-input.has-error { border-color: #b64f57; background: #fff7f6; }
+.boards-item-row td.is-long-text-editing { position: relative; z-index: 12; overflow: visible; }
+.boards-cell-input.is-long-text { resize: none; overflow: hidden; }
+.boards-cell-input.is-long-text:focus { position: absolute; z-index: 12; top: 0; left: 0; width: max(100%, min(360px, 70vw)); min-width: 100%; max-width: min(560px, 85vw); min-height: 36px; box-sizing: border-box; padding: 7px; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 3px 12px rgb(0 0 0 / 28%); }
 .boards-editor-help { display: block; max-width: 230px; padding: 0 4px 3px; color: #82919a; font-size: .65rem; line-height: 1.3; }
 .boards-structured-editor { min-width: 180px; }
 .boards-file-cell { display: flex; min-width: 170px; min-height: 60px; align-items: center; gap: 6px; padding: 5px 4px; }

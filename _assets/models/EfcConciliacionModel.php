@@ -95,28 +95,31 @@ class EfcConciliacionModel {
     }
 
     private function ensureSchema(): void {
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_grupos','U') IS NULL CREATE TABLE dbo.efc_conc_grupos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, tipo VARCHAR(30) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL, total_banorte DECIMAL(18,2) NOT NULL, diferencia DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)");
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_partidas','U') IS NULL CREATE TABLE dbo.efc_conc_partidas (id INT IDENTITY PRIMARY KEY, grupo_id INT NOT NULL, origen VARCHAR(12) NOT NULL, clave_externa VARCHAR(180) NOT NULL, movimiento_bancario_id INT NULL, fecha_operacion DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, importe DECIMAL(18,2) NOT NULL, referencia VARCHAR(255) NULL, estacion_id INT NULL, activo BIT NOT NULL DEFAULT 1, CONSTRAINT FK_efc_conc_partidas_grupo FOREIGN KEY(grupo_id) REFERENCES dbo.efc_conc_grupos(id))");
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_correcciones_banco','U') IS NULL CREATE TABLE dbo.efc_conc_correcciones_banco (id INT IDENTITY PRIMARY KEY, movimiento_bancario_id INT NOT NULL UNIQUE, estacion_id INT NOT NULL, creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), actualizado_por INT NULL, actualizado_en DATETIME NULL)");
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_bitacora','U') IS NULL CREATE TABLE dbo.efc_conc_bitacora (id INT IDENTITY PRIMARY KEY, grupo_id INT NULL, movimiento_bancario_id INT NULL, accion VARCHAR(40) NOT NULL, detalle NVARCHAR(MAX) NULL, usuario_id INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE())");
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_reclasificaciones_cg','U') IS NULL CREATE TABLE dbo.efc_conc_reclasificaciones_cg (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NOT NULL, concepto_original VARCHAR(20) NOT NULL, clave_original VARCHAR(180) NOT NULL, importe_original DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)");
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_reclasificaciones_cg_partidas','U') IS NULL CREATE TABLE dbo.efc_conc_reclasificaciones_cg_partidas (id INT IDENTITY PRIMARY KEY, reclasificacion_id INT NOT NULL, concepto VARCHAR(20) NOT NULL, importe DECIMAL(18,2) NOT NULL, movimiento_bancario_id INT NULL, grupo_id INT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_en DATETIME NOT NULL DEFAULT GETDATE(), CONSTRAINT FK_efc_conc_reclasificacion_partida FOREIGN KEY(reclasificacion_id) REFERENCES dbo.efc_conc_reclasificaciones_cg(id), CONSTRAINT UQ_efc_conc_reclasificacion_concepto UNIQUE(reclasificacion_id,concepto))");
-        $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('dbo.efc_conc_partidas') AND name='activo') ALTER TABLE dbo.efc_conc_partidas ADD activo BIT NOT NULL DEFAULT 1");
-        $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_partida_cg_activa') CREATE UNIQUE INDEX UX_efc_conc_partida_cg_activa ON dbo.efc_conc_partidas(clave_externa) WHERE origen='CG' AND activo=1");
-        $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_partida_banco_activa') CREATE UNIQUE INDEX UX_efc_conc_partida_banco_activa ON dbo.efc_conc_partidas(movimiento_bancario_id) WHERE origen='BANCO' AND activo=1 AND movimiento_bancario_id IS NOT NULL");
-        $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_reclasificacion_activa') CREATE UNIQUE INDEX UX_efc_conc_reclasificacion_activa ON dbo.efc_conc_reclasificaciones_cg(clave_original) WHERE estado='ACTIVA'");
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_transitos','U') IS NULL CREATE TABLE dbo.efc_conc_transitos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, clave_externa VARCHAR(180) NOT NULL, fecha_origen DATE NOT NULL, mes_origen CHAR(7) NOT NULL, mes_destino CHAR(7) NOT NULL, turno VARCHAR(20) NOT NULL, concepto VARCHAR(20) NOT NULL, importe DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE', descripcion VARCHAR(300) NULL, creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)");
-        $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_transito_activo') CREATE UNIQUE INDEX UX_efc_conc_transito_activo ON dbo.efc_conc_transitos(estacion_id,clave_externa) WHERE estado='PENDIENTE'");
+        $statements = [];
+
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_grupos','U') IS NULL CREATE TABLE dbo.efc_conc_grupos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, tipo VARCHAR(30) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL, total_banorte DECIMAL(18,2) NOT NULL, diferencia DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_partidas','U') IS NULL CREATE TABLE dbo.efc_conc_partidas (id INT IDENTITY PRIMARY KEY, grupo_id INT NOT NULL, origen VARCHAR(12) NOT NULL, clave_externa VARCHAR(180) NOT NULL, movimiento_bancario_id INT NULL, fecha_operacion DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, importe DECIMAL(18,2) NOT NULL, referencia VARCHAR(255) NULL, estacion_id INT NULL, activo BIT NOT NULL DEFAULT 1, CONSTRAINT FK_efc_conc_partidas_grupo FOREIGN KEY(grupo_id) REFERENCES dbo.efc_conc_grupos(id))";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_correcciones_banco','U') IS NULL CREATE TABLE dbo.efc_conc_correcciones_banco (id INT IDENTITY PRIMARY KEY, movimiento_bancario_id INT NOT NULL UNIQUE, estacion_id INT NOT NULL, creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), actualizado_por INT NULL, actualizado_en DATETIME NULL)";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_bitacora','U') IS NULL CREATE TABLE dbo.efc_conc_bitacora (id INT IDENTITY PRIMARY KEY, grupo_id INT NULL, movimiento_bancario_id INT NULL, accion VARCHAR(40) NOT NULL, detalle NVARCHAR(MAX) NULL, usuario_id INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE())";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_reclasificaciones_cg','U') IS NULL CREATE TABLE dbo.efc_conc_reclasificaciones_cg (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NOT NULL, concepto_original VARCHAR(20) NOT NULL, clave_original VARCHAR(180) NOT NULL, importe_original DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_reclasificaciones_cg_partidas','U') IS NULL CREATE TABLE dbo.efc_conc_reclasificaciones_cg_partidas (id INT IDENTITY PRIMARY KEY, reclasificacion_id INT NOT NULL, concepto VARCHAR(20) NOT NULL, importe DECIMAL(18,2) NOT NULL, movimiento_bancario_id INT NULL, grupo_id INT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_en DATETIME NOT NULL DEFAULT GETDATE(), CONSTRAINT FK_efc_conc_reclasificacion_partida FOREIGN KEY(reclasificacion_id) REFERENCES dbo.efc_conc_reclasificaciones_cg(id), CONSTRAINT UQ_efc_conc_reclasificacion_concepto UNIQUE(reclasificacion_id,concepto))";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('dbo.efc_conc_partidas') AND name='activo') ALTER TABLE dbo.efc_conc_partidas ADD activo BIT NOT NULL DEFAULT 1";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_partida_cg_activa') CREATE UNIQUE INDEX UX_efc_conc_partida_cg_activa ON dbo.efc_conc_partidas(clave_externa) WHERE origen='CG' AND activo=1";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_partida_banco_activa') CREATE UNIQUE INDEX UX_efc_conc_partida_banco_activa ON dbo.efc_conc_partidas(movimiento_bancario_id) WHERE origen='BANCO' AND activo=1 AND movimiento_bancario_id IS NOT NULL";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_reclasificacion_activa') CREATE UNIQUE INDEX UX_efc_conc_reclasificacion_activa ON dbo.efc_conc_reclasificaciones_cg(clave_original) WHERE estado='ACTIVA'";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_transitos','U') IS NULL CREATE TABLE dbo.efc_conc_transitos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, clave_externa VARCHAR(180) NOT NULL, fecha_origen DATE NOT NULL, mes_origen CHAR(7) NOT NULL, mes_destino CHAR(7) NOT NULL, turno VARCHAR(20) NOT NULL, concepto VARCHAR(20) NOT NULL, importe DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE', descripcion VARCHAR(300) NULL, creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_transito_activo') CREATE UNIQUE INDEX UX_efc_conc_transito_activo ON dbo.efc_conc_transitos(estacion_id,clave_externa) WHERE estado='PENDIENTE'";
         // Algunos tránsitos históricos pueden contener un mes legado no normalizado.
         // No deben impedir cargar toda la conciliación; sólo se normalizan los meses válidos.
-        $this->db->exec("UPDATE dbo.efc_conc_transitos SET mes_destino=CONVERT(CHAR(7),DATEADD(MONTH,1,TRY_CONVERT(DATE,mes_origen+'-01')),23) WHERE estado='PENDIENTE' AND TRY_CONVERT(DATE,mes_origen+'-01') IS NOT NULL AND mes_destino<>CONVERT(CHAR(7),DATEADD(MONTH,1,TRY_CONVERT(DATE,mes_origen+'-01')),23)");
-        $this->db->exec("UPDATE P SET fecha_operacion=T.fecha_origen FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_transitos T ON P.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id) WHERE P.origen='CG' AND P.fecha_operacion<>T.fecha_origen");
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_cierres','U') IS NULL CREATE TABLE dbo.efc_conc_cierres (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_diferencia DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre UNIQUE(estacion_id,mes,concepto))");
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_cierres_etapas','U') IS NULL CREATE TABLE dbo.efc_conc_cierres_etapas (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, etapa VARCHAR(10) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_regio DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre_etapa UNIQUE(estacion_id,mes,concepto,etapa))");
+        $statements[] = "UPDATE dbo.efc_conc_transitos SET mes_destino=CONVERT(CHAR(7),DATEADD(MONTH,1,TRY_CONVERT(DATE,mes_origen+'-01')),23) WHERE estado='PENDIENTE' AND TRY_CONVERT(DATE,mes_origen+'-01') IS NOT NULL AND mes_destino<>CONVERT(CHAR(7),DATEADD(MONTH,1,TRY_CONVERT(DATE,mes_origen+'-01')),23)";
+        $statements[] = "UPDATE P SET fecha_operacion=T.fecha_origen FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_transitos T ON P.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id) WHERE P.origen='CG' AND P.fecha_operacion<>T.fecha_origen";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_cierres','U') IS NULL CREATE TABLE dbo.efc_conc_cierres (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_diferencia DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre UNIQUE(estacion_id,mes,concepto))";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_cierres_etapas','U') IS NULL CREATE TABLE dbo.efc_conc_cierres_etapas (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, etapa VARCHAR(10) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_regio DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre_etapa UNIQUE(estacion_id,mes,concepto,etapa))";
         // The Python scheduler owns writes to this history; creating it here
         // keeps the page readable before the first scheduled invocation.
-        $this->db->exec("IF OBJECT_ID('dbo.efc_conc_ejecuciones_automaticas','U') IS NULL CREATE TABLE dbo.efc_conc_ejecuciones_automaticas (id BIGINT IDENTITY PRIMARY KEY,inicio_en DATETIME2 NOT NULL DEFAULT SYSDATETIME(),fin_en DATETIME2 NULL,estado VARCHAR(20) NOT NULL,conciliadas INT NOT NULL DEFAULT 0,omitidas INT NOT NULL DEFAULT 0,errores INT NOT NULL DEFAULT 0,detalle NVARCHAR(MAX) NULL)");
-        $this->db->exec("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_efc_conc_ejecuciones_estado_fin') CREATE INDEX IX_efc_conc_ejecuciones_estado_fin ON dbo.efc_conc_ejecuciones_automaticas(estado,fin_en DESC)");
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_ejecuciones_automaticas','U') IS NULL CREATE TABLE dbo.efc_conc_ejecuciones_automaticas (id BIGINT IDENTITY PRIMARY KEY,inicio_en DATETIME2 NOT NULL DEFAULT SYSDATETIME(),fin_en DATETIME2 NULL,estado VARCHAR(20) NOT NULL,conciliadas INT NOT NULL DEFAULT 0,omitidas INT NOT NULL DEFAULT 0,errores INT NOT NULL DEFAULT 0,detalle NVARCHAR(MAX) NULL)";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_efc_conc_ejecuciones_estado_fin') CREATE INDEX IX_efc_conc_ejecuciones_estado_fin ON dbo.efc_conc_ejecuciones_automaticas(estado,fin_en DESC)";
+        $this->db->exec(implode(";\n", $statements));
     }
 
     /** Última ejecución que terminó; nunca expone el detalle técnico a Twig. */
@@ -278,6 +281,16 @@ class EfcConciliacionModel {
             $incomingByTurn[$this->reportTurnKey($t['date'],$t['turn'],$t['currency'])]=$t;
             $controlGasRows[]=['Fecha'=>$t['date'],'Turno'=>$t['turn'],'MN'=>$t['currency']==='MN'?$t['amount']:0,'Morralla'=>$t['currency']==='MORRALLA'?$t['amount']:0,'Dolares'=>$t['currency']==='USD'?$t['amount']:0];
         }
+        // Limit the sparse state read to the dates represented by this report,
+        // including origin dates added above for incoming transits.
+        $reportDates=[];
+        foreach($controlGasRows as $source) { $date=$this->reportDate($source['Fecha']??null); if($date!==null) $reportDates[]=$date; }
+        $captured=[];
+        if($reportDates) {
+            $captureQuery=$this->db->prepare("SELECT fecha_operativa,turno,concepto,capturado FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa BETWEEN ? AND ?");
+            $captureQuery->execute([$stationId,min($reportDates),max($reportDates)]);
+            while($capture=$captureQuery->fetch(PDO::FETCH_ASSOC)) $captured[$this->reportTurnKey($this->dateValue($capture['fecha_operativa']),(string)$capture['turno'],(string)$capture['concepto'])]=(bool)$capture['capturado'];
+        }
         $out=[]; $seen=[];
         foreach ($controlGasRows as $source) {
             $date=$this->reportDate($source['Fecha'] ?? null); $turn=(string)($source['Turno'] ?? '');
@@ -302,6 +315,7 @@ class EfcConciliacionModel {
                 $regio=$comparisonAvailable ? ((string)$currency==='MN' ? $realMn+$usdMxn : (float)($link['comparable']??0)) : null;
                 $out[]=[
                     'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? $stationName), 'turno'=>$turn, 'concepto'=>$currency,
+                    'capturado'=>$captured[$turnKey]??false,
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_declarado_usd'=>(float)($link['dice_contener_usd']??0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>$regio===null?null:round($regio,2), 'comparacion_regio_disponible'=>$comparisonAvailable, 'tipo_cambio_historico'=>$link['tipo_cambio_historico']??null,
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
@@ -313,6 +327,19 @@ class EfcConciliacionModel {
         }
         usort($out, static fn(array $a,array $b): int => [$a['fecha'],$a['turno'],$a['concepto']] <=> [$b['fecha'],$b['turno'],$b['concepto']]);
         return $out;
+    }
+
+    /** Guarda el estado F8 de una diferencia, serializando altas concurrentes por clave. */
+    public function setDifferenceCaptured(int $stationId,string $date,string $turn,string $concept,bool $captured,int $userId): void {
+        if(!$stationId || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || trim($turn)==='' || strlen($turn)>20) throw new RuntimeException('Clave de diferencia inválida.');
+        $this->db->beginTransaction();
+        try {
+            $find=$this->db->prepare("SELECT capturado FROM TG.dbo.efc_conc_diferencias_captura WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?");
+            $find->execute([$stationId,$date,$turn,$concept]);
+            if($find->fetchColumn()!==false) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET capturado=?,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$captured?1:0,$userId?:null,$stationId,$date,$turn,$concept]);
+            else $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,capturado,creado_por,creado_en) VALUES(?,?,?,?,?,?,SYSDATETIME())")->execute([$stationId,$date,$turn,$concept,$captured?1:0,$userId?:null]);
+            $this->db->commit();
+        } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
     }
 
     public function activeTransits(int $stationId, int $year, int $month): array {
@@ -340,9 +367,36 @@ class EfcConciliacionModel {
             ORDER BY fecha_origen,turno,concepto,id");
         $stmt->execute([$stationId, $origin, $origin, $origin, $origin]); $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
         $outgoing=[]; $incoming=[];
+        $reconciliationsByTransit = [];
+        if ($rows) {
+            // SQL Server limita cada sentencia a 2100 parámetros; se consultan
+            // lotes para mantener todos los tránsitos incluso en meses atípicos.
+            foreach (array_chunk($rows, 500) as $transitBatch) {
+                $keyRows = [];
+                $keyParams = [];
+                foreach ($transitBatch as $row) {
+                    $transitId = (int)$row['id'];
+                    $keyRows[] = 'SELECT ? AS transit_id, ? AS external_key';
+                    $keyParams[] = $transitId;
+                    $keyParams[] = (string)$row['clave_externa'];
+                    $keyRows[] = 'SELECT ? AS transit_id, ? AS external_key';
+                    $keyParams[] = $transitId;
+                    $keyParams[] = 'TR:' . $transitId;
+                }
+                $groupsStmt = $this->db->prepare("WITH TransitKeys AS (" . implode(' UNION ALL ', $keyRows) . ")
+                    SELECT DISTINCT K.transit_id, G.id AS group_id
+                    FROM TransitKeys K
+                    JOIN dbo.efc_conc_partidas P ON P.clave_externa=K.external_key AND P.origen='CG' AND P.activo=1
+                    JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id AND G.estado='ACTIVA'");
+                $groupsStmt->execute($keyParams);
+                while ($group = $groupsStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $reconciliationsByTransit[(int)$group['transit_id']][] = (int)$group['group_id'];
+                }
+            }
+        }
         foreach ($rows as $row) {
             $item=['id'=>(int)$row['id'],'station_id'=>(int)$row['estacion_id'],'source_key'=>(string)$row['clave_externa'],'date'=>$this->dateValue($row['fecha_origen']),'origin_month'=>(string)$row['mes_origen'],'destination_month'=>(string)$row['mes_destino'],'turn'=>(string)$row['turno'],'currency'=>(string)$row['concepto'],'amount'=>(float)$row['importe'],'status'=>(string)$row['estado'],'description'=>(string)($row['descripcion']??'')];
-            $item['reconciliation_ids']=$this->transitGroupIds($item['id'],$item['source_key']);
+            $item['reconciliation_ids']=$reconciliationsByTransit[$item['id']]??[];
             $item['is_reconciled']=$row['estado']==='CONCILIADO'||count($item['reconciliation_ids'])>0;
             if ($row['mes_origen']===$origin) $outgoing[]=$item;
             if ($row['mes_destino']===$origin) $incoming[]=$item;
@@ -555,6 +609,8 @@ class EfcConciliacionModel {
      */
     public function activeGroups(int $stationId, int $year, int $month): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        $periodStart = sprintf('%04d-%02d-01', $year, $month);
+        $periodEnd = (new DateTimeImmutable($periodStart))->modify('+1 month')->format('Y-m-d');
         $stmt=$this->db->prepare("SELECT G.id,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
             P.origen,P.clave_externa,P.movimiento_bancario_id,P.fecha_operacion,P.turno,P.concepto,P.importe,
             COALESCE(NULLIF(P.referencia,''),M.referencia) AS referencia,
@@ -564,7 +620,7 @@ class EfcConciliacionModel {
             LEFT JOIN TG.dbo.movimientos_bancarios M ON M.id=P.movimiento_bancario_id
             WHERE G.estacion_id=? AND G.estado='ACTIVA' AND G.tipo<>'RECLASIFICADA'
               AND (
-                (YEAR(G.fecha_operativa)=? AND MONTH(G.fecha_operativa)=?)
+                (G.fecha_operativa>=? AND G.fecha_operativa<?)
                 OR EXISTS(
                     SELECT 1
                     FROM dbo.efc_conc_partidas TC
@@ -575,7 +631,7 @@ class EfcConciliacionModel {
                 )
               )
             ORDER BY G.id,P.id");
-        $stmt->execute([$stationId,$year,$month,sprintf('%04d-%02d',$year,$month)]); $groups=[];
+        $stmt->execute([$stationId,$periodStart,$periodEnd,sprintf('%04d-%02d',$year,$month)]); $groups=[];
         while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
             $id=(int)$row['id'];
             if(!isset($groups[$id])) $groups[$id]=[

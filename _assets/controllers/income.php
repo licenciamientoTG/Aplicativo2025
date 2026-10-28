@@ -7694,7 +7694,9 @@ public function stamped_invoices_detail(): void
             $company=strtoupper(trim((string)($_GET['empresa'] ?? '')));
             $station=(int)($_GET['estacion_id'] ?? 0); $year=(int)($_GET['year'] ?? 0); $month=(int)($_GET['month'] ?? 0);
             $concept=strtoupper(trim((string)($_GET['concepto'] ?? ''))); $concept=$concept === '' ? null : $concept;
+            $captura=strtoupper(trim((string)($_GET['captura'] ?? 'TODOS')));
             if (!in_array($report, ['faltantes','diferencias'], true)) throw new RuntimeException('Tipo de reporte inválido.');
+            if (!in_array($captura, ['TODOS','CAPTURADOS','NO_CAPTURADOS'], true)) throw new RuntimeException('Filtro de captura inválido.');
             if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) throw new RuntimeException('Empresa inválida.');
             $companyStations=EfcConciliacionModel::stationIds($company);
             if ($year < 2020 || $month < 1 || $month > 12 || ($station && !in_array($station, $companyStations, true))) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
@@ -7714,7 +7716,32 @@ public function stamped_invoices_detail(): void
             } else {
                 $rows=array_values(array_filter($rows, static fn(array $row): bool => empty($row['sin_papeleta']) && $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             }
+            if($captura!=='TODOS') $rows=array_values(array_filter($rows,static fn(array $row): bool => $captura==='CAPTURADOS' ? !empty($row['capturado']) : empty($row['capturado'])));
             echo json_encode(['status'=>'success','data'=>$rows]);
+        } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
+    }
+
+    /** POST /income/efc_conc_diferencia_captura */
+    public function efc_conc_diferencia_captura(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($data)) throw new RuntimeException('Solicitud inválida.');
+            $station=(int)($data['estacion_id']??0); $date=(string)($data['fecha']??''); $turn=trim((string)($data['turno']??'')); $concept=strtoupper(trim((string)($data['concepto']??'')));
+            if(!array_key_exists('capturado',$data) || !in_array($data['capturado'],[true,false,0,1,'0','1'],true)) throw new RuntimeException('El estado de captura debe ser booleano.');
+            $captured=filter_var($data['capturado'],FILTER_VALIDATE_BOOLEAN); $company=EfcConciliacionModel::stationCompany($station);
+            if($company===null || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || $turn==='') throw new RuntimeException('Clave de diferencia inválida.');
+            $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
+            if(!$parsed || $parsed->format('Y-m-d')!==$date) throw new RuntimeException('Fecha operativa inválida.');
+            $year=(int)$parsed->format('Y'); $month=(int)$parsed->format('m');
+            if($year<2020) throw new RuntimeException('Fecha operativa fuera de rango.');
+            $source=$this->efcConcReportControlGas($station,$year,$month);
+            $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$source);
+            $exists=false; foreach($rows as $row) if($row['fecha']===$date && $row['turno']===$turn && $row['concepto']===$concept) {$exists=true;break;}
+            if(!$exists) throw new RuntimeException('La diferencia no existe en el reporte operativo.');
+            $this->efcConciliacion->setDifferenceCaptured($station,$date,$turn,$concept,$captured,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','capturado'=>$captured?1:0]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
     }
@@ -7917,6 +7944,8 @@ public function stamped_invoices_detail(): void
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
             exit;
         }
+        $periodStart = sprintf('%04d-%02d-01', $year, $month);
+        $periodEnd = (new DateTimeImmutable($periodStart))->modify('+1 month')->format('Y-m-d');
 
         $normalizarCodigo = static function ($valor): string {
             $digitos = preg_replace('/\D+/', '', (string)$valor);
@@ -7979,7 +8008,7 @@ public function stamped_invoices_detail(): void
                      ) X
                  ) CG_MATCH
                  WHERE M.abono > 0
-                   AND YEAR(M.fecha) = ? AND MONTH(M.fecha) = ?
+                   AND M.fecha >= ? AND M.fecha < ?
                    -- Banorte, Bankaool y Santander no nombran el mismo movimiento
                    -- de efectivo igual. Sólo se admiten las descripciones operativas
                    -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
@@ -7996,7 +8025,7 @@ public function stamped_invoices_detail(): void
                    AND ($accountWhere)
                  ORDER BY M.fecha, M.id"
             );
-            $params = [$year, $month];
+            $params = [$periodStart, $periodEnd];
             foreach ($suffixes as $suffix) { $params[] = $suffix; $params[] = $suffix; }
             $stmt->execute($params);
 
