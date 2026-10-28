@@ -2962,6 +2962,41 @@ function client_vehicles_modal(codcli, cliente) {
     });
 }
 
+// Datos del último modal de consumos abierto, para el botón "Descargar Excel"
+var edo_consumos_export = null;
+
+$('#modal_edo_drill').on('hidden.bs.modal', function () {
+    $('#modal_edo_drill_excel').addClass('d-none');
+    edo_consumos_export = null;
+});
+
+$('#modal_edo_drill_excel').on('click', function () {
+    var exp = edo_consumos_export;
+    if (!exp) return;
+
+    // Tabla temporal fuera del DOM visible: DataTables Buttons genera el .xlsx
+    var $tmp = $('<table class="d-none"><tfoot><tr><th></th><th></th><th></th><th></th><th>Total</th><th></th><th></th></tr></tfoot></table>').appendTo('body');
+    var dt = $tmp.DataTable({
+        data: exp.rows,
+        columns: exp.headers.map(function (h) { return { title: h }; }),
+        paging: false,
+        dom: 'B',
+        buttons: [{
+            extend: 'excelHtml5',
+            title: exp.title,
+            filename: exp.filename,
+            footer: true,
+            exportOptions: { format: { footer: function (data, row, column) {
+                if (column < 5) return column === 4 ? 'Total' : '';
+                return exp.rows.reduce(function (a, r) { return a + r[column]; }, 0);
+            } } }
+        }]
+    });
+    dt.button(0).trigger();
+    dt.destroy();
+    $tmp.remove();
+});
+
 // Modal de consumos (despachos) compartido: débito tipval=4 / crédito tipval=3
 function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
     var money = function (v) {
@@ -2973,6 +3008,8 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
     $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
     $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
     $('#modal_edo_drill_table tfoot').empty();
+    $('#modal_edo_drill_excel').addClass('d-none');
+    edo_consumos_export = null;
     $('#modal_edo_drill').modal('show');
 
     $.post('/income/clients_dispatches_table', { codcli: codcli, from: from, until: until, tipval: tipval, empresa: empresa || 0 }, function (json) {
@@ -2981,13 +3018,25 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
             $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Sin registros en el periodo.</td></tr>');
             return;
         }
+        var horaDe = function (r) {
+            var h = parseInt(r.hratrn, 10);
+            if (isNaN(h)) return '';
+            var hh = Math.floor(h / 100), mm = h % 100, ap = hh >= 12 ? 'PM' : 'AM';
+            hh = hh % 12 || 12;
+            return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + ' ' + ap;
+        };
+        edo_consumos_export = {
+            title: 'Consumos (Despachos) — ' + cliente + ' (' + from + ' a ' + until + ')',
+            filename: 'Consumos_' + String(cliente).replace(/[^\w\-]+/g, '_') + '_' + from + '_' + until,
+            headers: headers,
+            rows: rows.map(function (r) {
+                return [r.Fecha, horaDe(r), r.nrotrn, r.Estacion || '', r.producto || '',
+                        parseFloat(r.Litros) || 0, parseFloat(r.Monto) || 0];
+            })
+        };
+        $('#modal_edo_drill_excel').removeClass('d-none');
         $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
-            var h = parseInt(r.hratrn, 10), hora = '';
-            if (!isNaN(h)) {
-                var hh = Math.floor(h / 100), mm = h % 100, ap = hh >= 12 ? 'PM' : 'AM';
-                hh = hh % 12 || 12;
-                hora = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + ' ' + ap;
-            }
+            var hora = horaDe(r);
             return '<tr><td>' + r.Fecha + '</td><td>' + hora + '</td><td>' + r.nrotrn + '</td>' +
                    '<td>' + (r.Estacion || '') + '</td><td>' + (r.producto || '') + '</td>' +
                    '<td class="text-end">' + (parseFloat(r.Litros) || 0).toLocaleString('es-MX', { minimumFractionDigits: 3 }) + '</td>' +
