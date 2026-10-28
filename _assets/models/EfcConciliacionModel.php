@@ -278,6 +278,16 @@ class EfcConciliacionModel {
             $incomingByTurn[$this->reportTurnKey($t['date'],$t['turn'],$t['currency'])]=$t;
             $controlGasRows[]=['Fecha'=>$t['date'],'Turno'=>$t['turn'],'MN'=>$t['currency']==='MN'?$t['amount']:0,'Morralla'=>$t['currency']==='MORRALLA'?$t['amount']:0,'Dolares'=>$t['currency']==='USD'?$t['amount']:0];
         }
+        // Limit the sparse state read to the dates represented by this report,
+        // including origin dates added above for incoming transits.
+        $reportDates=[];
+        foreach($controlGasRows as $source) { $date=$this->reportDate($source['Fecha']??null); if($date!==null) $reportDates[]=$date; }
+        $captured=[];
+        if($reportDates) {
+            $captureQuery=$this->db->prepare("SELECT fecha_operativa,turno,concepto,capturado FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa BETWEEN ? AND ?");
+            $captureQuery->execute([$stationId,min($reportDates),max($reportDates)]);
+            while($capture=$captureQuery->fetch(PDO::FETCH_ASSOC)) $captured[$this->reportTurnKey($this->dateValue($capture['fecha_operativa']),(string)$capture['turno'],(string)$capture['concepto'])]=(bool)$capture['capturado'];
+        }
         $out=[]; $seen=[];
         foreach ($controlGasRows as $source) {
             $date=$this->reportDate($source['Fecha'] ?? null); $turn=(string)($source['Turno'] ?? '');
@@ -302,6 +312,7 @@ class EfcConciliacionModel {
                 $regio=$comparisonAvailable ? ((string)$currency==='MN' ? $realMn+$usdMxn : (float)($link['comparable']??0)) : null;
                 $out[]=[
                     'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? $stationName), 'turno'=>$turn, 'concepto'=>$currency,
+                    'capturado'=>$captured[$turnKey]??false,
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_declarado_usd'=>(float)($link['dice_contener_usd']??0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>$regio===null?null:round($regio,2), 'comparacion_regio_disponible'=>$comparisonAvailable, 'tipo_cambio_historico'=>$link['tipo_cambio_historico']??null,
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
@@ -313,6 +324,19 @@ class EfcConciliacionModel {
         }
         usort($out, static fn(array $a,array $b): int => [$a['fecha'],$a['turno'],$a['concepto']] <=> [$b['fecha'],$b['turno'],$b['concepto']]);
         return $out;
+    }
+
+    /** Guarda el estado F8 de una diferencia, serializando altas concurrentes por clave. */
+    public function setDifferenceCaptured(int $stationId,string $date,string $turn,string $concept,bool $captured,int $userId): void {
+        if(!$stationId || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || trim($turn)==='' || strlen($turn)>20) throw new RuntimeException('Clave de diferencia inválida.');
+        $this->db->beginTransaction();
+        try {
+            $find=$this->db->prepare("SELECT capturado FROM TG.dbo.efc_conc_diferencias_captura WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?");
+            $find->execute([$stationId,$date,$turn,$concept]);
+            if($find->fetchColumn()!==false) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET capturado=?,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$captured?1:0,$userId?:null,$stationId,$date,$turn,$concept]);
+            else $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,capturado,creado_por,creado_en) VALUES(?,?,?,?,?,?,SYSDATETIME())")->execute([$stationId,$date,$turn,$concept,$captured?1:0,$userId?:null]);
+            $this->db->commit();
+        } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
     }
 
     public function activeTransits(int $stationId, int $year, int $month): array {

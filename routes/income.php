@@ -17,6 +17,7 @@ return [
         route('conciliation/bank/', [Income::class, 'conciliation_bank'], name: 'income.conciliation_bank', methods: ['POST'], permission: 14),
         route('conciliation/app-sales/', [Income::class, 'conciliation_app_sales'], name: 'income.conciliation_app_sales', methods: ['POST'], permission: 14),
         route('conciliation/own-consumption/', [Income::class, 'conciliation_own_consumption'], name: 'income.conciliation_own_consumption', methods: ['POST'], permission: 14),
+        route('efc_conc_diferencia_captura', [Income::class, 'efc_conc_diferencia_captura'], name: 'income.efc_conc_diferencia_captura', methods: ['POST'], permission: 14),
 
         // Valeras: consumo diario del corte por razón social (permiso 14 como Conciliación)
         route('valeras/', [Income::class, 'valeras'], name: 'income.valeras', methods: ['GET'], permission: 14),
