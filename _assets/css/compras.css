@@ -1,0 +1,103 @@
+.compras-falta {
+    background: #fff3cd;
+    color: #664d03;
+    border-radius: 3px;
+}
+#tblCompras td.compras-falta {
+    background: #fff3cd;
+}
+#tblCompras td.num {
+    text-align: right;
+    white-space: nowrap;
+}
+#tblCompras td.compras-edit,
+.compras-edit-demo {
+    cursor: pointer;
+    border-bottom: 1px dotted #6c757d;
+}
+#tblCompras td.compras-edit:hover {
+    background: #e9f2ff;
+}
+#tblCompras td.compras-guardando {
+    opacity: .5;
+}
+#tblCompras td .compras-input {
+    min-width: 120px;
+}
+#tblCompras thead th {
+    vertical-align: bottom;
+    min-width: 90px;
+}
+#tblCompras .compras-ex {
+    display: inline-block;
+    font-size: .65rem;
+    font-weight: 600;
+    color: #6c757d;
+    background: #eef0f2;
+    border-radius: 3px;
+    padding: 0 3px;
+}
+
+/* Encabezado en dos filas (títulos + filtro por columna), igual que Lista de Pagos */
+#tblCompras thead tr:first-child th {
+    background-color: #f8fafc;
+    color: #475569;
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    font-weight: 700;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: middle;
+}
+#tblCompras thead tr.filter th {
+    background-color: #e2e8f0;
+    padding: 3px 6px;
+    min-width: 90px;
+}
+#tblCompras thead tr.filter th input {
+    font-size: .7rem;
+    padding: 2px 5px;
+    height: 22px;
+    border-radius: 3px;
+    border: 1px solid #cbd5e1;
+    width: 100%;
+    box-sizing: border-box;
+}
+#tblCompras tbody td {
+    vertical-align: middle;
+    font-size: .8rem;
+    white-space: nowrap;
+}
+/* El hover de Bootstrap no debe borrar el resaltado de datos faltantes ni el de celdas editables */
+#tblCompras.table-hover > tbody > tr:hover > td.compras-falta {
+    background-color: #ffe69c;
+}
+#tblCompras.table-hover > tbody > tr:hover > td.compras-edit:hover {
+    background-color: #cfe2ff;
+}
+
+/* Alto fijo con scroll propio (sin paginación); el encabezado se queda pegado arriba */
+#comprasScroll {
+    height: calc(100vh - 300px);
+    min-height: 420px;
+    overflow: auto;
+}
+/* Barra horizontal superior, espejo de la de abajo */
+#comprasScrollTop {
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 16px;
+}
+#comprasScrollTop > div {
+    height: 1px;
+}
+#tblCompras thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-clip: padding-box;
+    box-shadow: inset 0 -1px 0 #cbd5e1;
+}
+#tblCompras thead tr.filter th {
+    z-index: 1;
+}

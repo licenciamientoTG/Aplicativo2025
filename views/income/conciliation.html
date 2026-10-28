@@ -16,7 +16,19 @@
   /* Las dos filas de cabecera (títulos y filtros) se fijan juntas: el sticky va en el thead, no en cada th. */
   .cv-scroll .cv-tabla thead { position: sticky; top: 0; z-index: 30; }
   /* Títulos largos hacen salto de línea en vez de ensanchar la columna. */
-  .cv-tabla thead tr:first-child th { white-space: normal; min-width: 5rem; max-width: 9.5rem; line-height: 1.2; vertical-align: bottom; }
+  /* Conciliación cobros: banda superior que separa lo que es del cobro de lo que es del banco */
+  .cv-tabla thead tr.banda th { text-align: center; font-size: .72rem; letter-spacing: .08em; padding: .3rem .5rem; border-bottom: 0 !important; white-space: nowrap; }
+  .cv-tabla thead tr.banda th.cv-b-cobro { background-color: #d1fae5 !important; color: #065f46 !important; border-top: 3px solid #009559; }
+  .cv-tabla thead tr.banda th.cv-b-banco { background-color: #dbeafe !important; color: #1e40af !important; border-top: 3px solid #0095DA; }
+  .cv-tabla thead tr.banda th.cv-b-res   { background-color: #f1f5f9 !important; color: #475569 !important; border-top: 3px solid #94a3b8; }
+  .cv-tabla thead tr.titulos th.cv-b-cobro { box-shadow: inset 0 -2px 0 #009559; }
+  .cv-tabla thead tr.titulos th.cv-b-banco { box-shadow: inset 0 -2px 0 #0095DA; }
+  .cv-tabla tbody td.cv-c-banco { background-color: rgba(219, 234, 254, .28); }
+  .cv-tabla tbody td.cv-c-banco:first-of-type { border-left: 2px solid #93c5fd; }
+  .cv-tabla tbody tr.cv-fila-sinmov td { background-color: #fef2f2 !important; }
+  .cv-tabla tbody tr.cv-fila-cancel td { color: #94a3b8; }
+  .cv-sinmov { color: #b91c1c; font-weight: 700; font-style: italic; white-space: nowrap; }
+  .cv-tabla thead tr:first-child th, .cv-tabla thead tr.titulos th { white-space: normal; min-width: 5rem; max-width: 9.5rem; line-height: 1.2; vertical-align: bottom; }
   .cv-tabla th, .cv-tabla td { border-right: 1px solid #e2e8f0; white-space: nowrap; }
   .cv-tabla tr > :last-child { border-right: none; }
   .cv-tabla td.cv-wrap { white-space: normal; min-width: 220px; max-width: 340px; word-break: break-word; }
@@ -195,18 +207,8 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCobros" type="button" role="tab">
-      Cobros <small class="text-muted">(Cobros agosto)</small> <span class="badge bg-secondary" id="cntCobros">0</span>
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCruce" type="button" role="tab">
-      Cobros vs banco <small class="text-muted">(Conciliación cobros)</small> <span class="badge bg-secondary" id="cntCruce">0</span>
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabBanco" type="button" role="tab">
-      Banco <small class="text-muted">(Banco 2791)</small> <span class="badge bg-secondary" id="cntBanco">–</span>
+      Conciliación cobros <span class="badge bg-secondary" id="cntCruce">0</span>
     </button>
   </li>
 </ul>
@@ -396,32 +398,13 @@
     </small>
   </div>
 
-  {# 6. Cobros (Cobros agosto) #}
-  <div class="tab-pane fade" id="tabCobros" role="tabpanel">
-    <button type="button" class="cv-ayuda" data-ayuda="cobros" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
-    <div class="cv-resumen" id="chipsCobros"></div>
-    <div class="cv-tabla-wrap">
-      <table id="tablaCobros" class="table table-sm table-hover cv-tabla w-100 mb-0">
-        <thead>
-          <tr>
-            <th>Estación</th><th>Cobro</th><th>Fecha</th><th>Cód.</th><th>Cliente</th><th>Tipo</th><th>Forma de pago</th>
-            <th>Ordenante</th><th>Banco ordenante</th><th>Monto</th><th>MOV</th><th>Facturas</th><th>Estatus banco</th>
-            <th>UUID</th><th>Referencia</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
-
-  {# 7. Cobros vs banco (Conciliación cobros) #}
+  {# 6. Conciliación cobros #}
   <div class="tab-pane fade" id="tabCruce" role="tabpanel">
     <button type="button" class="cv-ayuda" data-ayuda="cruce" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
     <div class="card cv-res-card mb-3">
       <div class="cv-res-head" role="button" data-bs-toggle="collapse" data-bs-target="#colCruce" aria-expanded="true" aria-controls="colCruce">
         <i class="fas fa-university cv-res-ico"></i>
         <span class="cv-card-title">Resumen de cobros por cuenta / origen</span>
-        <small class="text-muted">(Conciliación cobros)</small>
         <i class="fas fa-chevron-down cv-res-chev ms-auto"></i>
       </div>
       <div class="collapse show" id="colCruce"><div class="cv-res-body">
@@ -435,11 +418,21 @@
     <div class="cv-tabla-wrap">
       <table id="tablaCruce" class="table table-sm table-hover cv-tabla w-100 mb-0">
         <thead>
-          <tr>
-            <th>Estatus</th><th>MOV</th><th>Cobros</th><th>Clientes</th><th>Monto cobros</th>
-            <th>Banco</th><th>Cuenta</th><th>Fecha banco</th><th>Secuencia</th><th>Depósito</th><th>Diferencia</th>
-            <th title="Depósitos libres del mismo importe a ±3 días cuando se ligó por importe (más de 1 = se desempató por cuenta y fecha)">Candidatos</th>
-            <th>Ordenante en banco</th><th>RFC</th><th>Detalle banco</th><th>Folios de cobro</th>
+          <tr class="banda">
+            <th class="cv-b-res">Resultado</th>
+            <th class="cv-b-cobro" colspan="11"><i class="fas fa-file-invoice-dollar"></i> Cobro (Control Gas)</th>
+            <th class="cv-b-banco" colspan="10"><i class="fas fa-university"></i> Movimiento bancario</th>
+          </tr>
+          <tr class="titulos">
+            <th class="cv-b-res">Estatus</th>
+            <th class="cv-b-cobro">Fecha cobro</th><th class="cv-b-cobro">Cobros</th><th class="cv-b-cobro">Clientes</th><th class="cv-b-cobro">Forma de pago</th>
+            <th class="cv-b-cobro" title="Persona que depositó, según el cobro">Ordenante (cobro)</th><th class="cv-b-cobro">Banco ordenante</th><th class="cv-b-cobro">Facturas</th>
+            <th class="cv-b-cobro" title="Número de movimiento que el capturista escribió a mano en el cobro; puede no coincidir con la secuencia del banco">MOV capturado</th>
+            <th class="cv-b-cobro">Monto cobros</th><th class="cv-b-cobro">Folios de cobro</th><th class="cv-b-cobro">UUID</th>
+            <th class="cv-b-banco">Banco</th><th class="cv-b-banco">Cuenta</th><th class="cv-b-banco">Fecha banco</th><th class="cv-b-banco">Secuencia banco</th>
+            <th class="cv-b-banco">Depósito banco</th><th class="cv-b-banco">Diferencia</th>
+            <th class="cv-b-banco" title="Depósitos libres del mismo importe a ±3 días cuando se ligó por importe (más de 1 = se desempató por cuenta y fecha)">Candidatos</th>
+            <th class="cv-b-banco">Ordenante en banco</th><th class="cv-b-banco">RFC</th><th class="cv-b-banco">Detalle banco</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -452,37 +445,6 @@
     </small>
   </div>
 
-  {# 8. Banco (Banco 2791) #}
-  <div class="tab-pane fade" id="tabBanco" role="tabpanel">
-    <button type="button" class="cv-ayuda" data-ayuda="banco" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
-    <div class="card cv-res-card mb-3">
-      <div class="cv-res-head" role="button" data-bs-toggle="collapse" data-bs-target="#colBanco" aria-expanded="true" aria-controls="colBanco">
-        <i class="fas fa-money-check-alt cv-res-ico"></i>
-        <span class="cv-card-title">Integración de depósitos por cuenta</span>
-        <small class="text-muted">(Banco 2791)</small>
-        <i class="fas fa-chevron-down cv-res-chev ms-auto"></i>
-      </div>
-      <div class="collapse show" id="colBanco"><div class="cv-res-body">
-        <table class="table table-sm cv-tabla w-100 mb-0" id="resBanco">
-          <thead><tr><th>Cuenta</th><th class="text-end">Movs. depósito</th><th class="text-end">Depósitos del mes</th><th class="text-end">(−) Ligados a cobros</th><th class="text-end">Sin cobro de crédito (débito / otros)</th><th class="text-end">Retiros</th><th class="text-end">Secuencias</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div></div>
-    </div>
-    <div class="cv-resumen" id="chipsBanco"></div>
-    <div class="cv-tabla-wrap">
-      <table id="tablaBanco" class="table table-sm table-hover cv-tabla w-100 mb-0">
-        <thead>
-          <tr>
-            <th>Cuenta</th><th>Fecha</th><th>Fecha operación</th><th>Secuencia</th><th>Descripción</th><th>Referencia</th>
-            <th>Depósito</th><th>Retiro</th><th>Saldo</th><th>Contraparte</th><th>RFC</th><th>Detalle</th><th>Ligado</th><th>Cobros</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <small class="text-muted">Movimientos del mes de las cuentas que recibieron cobros (Movimientos Bancos).</small>
-  </div>
 </div>
 
 {# Ayuda: qué se ve en cada tab / cuadro (el texto está en AYUDA, en el JS) #}
@@ -583,9 +545,7 @@ $(function () {
     app: ['Consumos por cliente', '<p>Equivale a la hoja <b>Venta aplicativo</b>: el mismo reporte de Clientes &gt; Consumos Crédito &gt; Resumen por cliente, con despachos, litros, monto y cortes del mes.</p>'],
     propio: ['Consumos propios', '<p>Equivale a la hoja <b>Consumos propios</b>: despachos de crédito de los clientes del catálogo de consumo propio y de bonificaciones. Se restan de la venta porque no se facturan.</p>'],
     facturas: ['Facturas de Crédito', '<p>Equivale a <b>Control Gas</b>: facturas "Facturación Crédito" con fecha del mes, más las de otra fecha que contienen despachos del mes. Muestra cuánto de cada factura corresponde a despachos del mes y cuánto a otros meses. El card de arriba (colapsable) suma las facturas por periodo.</p>'],
-    cobros: ['Cobros', '<p>Equivale a la hoja <b>Cobros agosto</b> (reporte "Cobranza a Clientes"): un renglón por cobro, con cliente, forma de pago, ordenante, monto, MOV bancario y las facturas que paga. "Estatus banco" es el resultado del cruce con el banco.</p>'],
-    cruce: ['Cobros vs banco', '<p>Equivale a <b>Conciliación cobros</b>. Una fila por depósito bancario (o por MOV sin depósito) con los cobros que lo componen. Reglas, de la más segura a la menos: Cuadra, centavos, MOV compartido, MOV vecinos y por importe (±3 días).</p><ul><li>Candidatos mayor a 1 significa que se desempató por cuenta y fecha.</li><li>El card de arriba (colapsable) resume los cobros por cuenta bancaria u origen contra el depósito ligado.</li></ul>'],
-    banco: ['Banco', '<p>Equivale a <b>Banco 2791</b>: movimientos del mes de las cuentas que recibieron cobros (de Movimientos Bancos), con la columna "Ligado" que indica si el depósito ya se aplicó a un cobro. El card de arriba (colapsable) integra los depósitos: cuántos son de cobros de crédito y cuántos de débito u otros.</p>']
+    cruce: ['Conciliación cobros', '<p>Los cobros del mes (reporte "Cobranza a Clientes" de Control Gas) cruzados con los depósitos del banco. Una fila por depósito bancario (o por MOV sin depósito) con los cobros que lo componen; si el depósito paga un solo cobro, la fila es ese cobro.</p><ul><li><b>Del cobro:</b> fecha, clientes, forma de pago, ordenante, banco ordenante, facturas, monto, folios y UUID.</li><li><b>Del banco:</b> cuenta, fecha, secuencia, depósito, diferencia, ordenante, RFC y detalle.</li><li>Reglas, de la más segura a la menos: Cuadra, centavos, MOV compartido, MOV vecinos y por importe (±3 días). Candidatos mayor a 1 significa que se desempató por cuenta y fecha.</li><li>El card de arriba (colapsable) resume los cobros por cuenta bancaria u origen contra el depósito ligado.</li></ul>'],
   };
   $(document).on('click', '.cv-ayuda', function (e) {
     e.stopPropagation();
@@ -697,7 +657,7 @@ $(function () {
         var api = this.api();
         $(sel).wrap('<div class="cv-scroll' + (extra && extra.fija ? ' cv-fija' : '') + '"></div>');
         var filterRow = $('<tr class="filter"></tr>');
-        $(sel + ' thead tr:first th').each(function () {
+        $(sel + ' thead tr:last th').each(function () {
           filterRow.append('<th><input type="text" placeholder="' + esc($(this).text().trim()) + '" /></th>');
         });
         $(sel + ' thead').append(filterRow);
@@ -822,33 +782,6 @@ $(function () {
     $('#resCruce tbody').html(html);
   }
 
-  // Hoja Banco 2791: depósitos del mes, cuántos se aplicaron a cobros de crédito y cuántos son de débito / otros.
-  function pintarResumenBanco(filas) {
-    var g = {}, orden = [], t = { n: 0, dep: 0, lig: 0, nLig: 0, otros: 0, nOtros: 0, ret: 0 };
-    filas.forEach(function (m) {
-      var k = m.cuenta;
-      if (!g[k]) { g[k] = { banco: m.banco, n: 0, dep: 0, lig: 0, nLig: 0, otros: 0, nOtros: 0, ret: 0, min: null, max: null }; orden.push(k); }
-      var x = g[k], seq = Number(m.secuencia);
-      if (m.abono > 0) {
-        x.n++; x.dep += m.abono;
-        if (m.ligado === 'Ligado a cobro') { x.nLig++; x.lig += m.abono; } else { x.nOtros++; x.otros += m.abono; }
-      }
-      x.ret += Number(m.cargo) || 0;
-      if (seq) { x.min = x.min === null ? seq : Math.min(x.min, seq); x.max = x.max === null ? seq : Math.max(x.max, seq); }
-    });
-    var html = orden.map(function (k) {
-      var x = g[k];
-      ['n', 'dep', 'lig', 'nLig', 'otros', 'nOtros', 'ret'].forEach(function (f) { t[f] += x[f]; });
-      return '<tr><td>' + esc(x.banco) + ' ' + esc(k) + '</td>' + tdn(x.n) + tdm(x.dep) +
-        '<td class="cv-monto">' + fmtMonto(x.lig) + ' <small class="text-muted">(' + x.nLig + ')</small></td>' +
-        '<td class="cv-monto">' + fmtMonto(x.otros) + ' <small class="text-muted">(' + x.nOtros + ')</small></td>' +
-        tdm(x.ret) + '<td class="cv-monto">' + (x.min === null ? '' : x.min + ' – ' + x.max) + '</td></tr>';
-    }).join('');
-    if (orden.length > 1) html += '<tr class="cv-total"><td>Total</td>' + tdn(t.n) + tdm(t.dep) +
-      '<td class="cv-monto">' + fmtMonto(t.lig) + ' (' + t.nLig + ')</td><td class="cv-monto">' + fmtMonto(t.otros) + ' (' + t.nOtros + ')</td>' +
-      tdm(t.ret) + '<td></td></tr>';
-    $('#resBanco tbody').html(html);
-  }
 
   function cargarTabla(api, filas, cnt) {
     api.settings()[0].oLanguage.sEmptyTable = 'Sin registros para este mes';
@@ -991,64 +924,49 @@ $(function () {
   });
   var COL_PERIODO_FACTURAS = 13;
 
-  var tablaCobros = initTabla('#tablaCobros', [
-    { data: 'estacion' },
-    { data: 'cobro', className: 'cv-mono' },
-    { data: 'fecha', render: fecha },
-    { data: 'codcli' },
-    { data: 'cliente', className: 'cv-wrap', render: texto },
-    { data: 'tipo', render: texto },
-    { data: 'forma_pago', render: texto },
-    { data: 'ordenante', className: 'cv-wrap', render: texto },
-    { data: 'banco_ordenante', render: texto },
-    { data: 'monto', className: 'cv-monto', render: monto },
-    { data: 'mov', className: 'cv-mono' },
-    { data: 'facturas', className: 'cv-wrap', render: texto },
-    { data: 'estatus', render: badge },
-    { data: 'uuid', className: 'cv-mono', render: texto },
-    { data: 'referencia', className: 'cv-wrap', render: texto },
-  ], 'Cobros');
-  var COL_ESTATUS_COBROS = 12;
 
   var tablaCruce = initTabla('#tablaCruce', [
     { data: 'estatus', render: badge },
-    { data: 'movs', className: 'cv-mono' },
+    // --- Cobro (Control Gas)
+    { data: 'fecha', render: fecha },
     { data: 'cobros', className: 'cv-monto' },
     { data: 'clientes', className: 'cv-wrap', render: texto },
+    { data: 'formas', render: texto },
+    { data: 'ordenantes', className: 'cv-wrap', render: texto },
+    { data: 'bancos_ord', render: texto },
+    { data: 'facturas', className: 'cv-wrap', render: texto },
+    { data: 'movs', className: 'cv-mono' },
     { data: 'monto', className: 'cv-monto', render: monto },
-    { data: 'banco' },
-    { data: 'cuenta', className: 'cv-mono' },
-    { data: 'fecha_banco', render: fecha },
-    { data: 'secuencia', className: 'cv-mono' },
-    { data: 'abono', className: 'cv-monto', render: monto },
-    { data: 'diferencia', className: 'cv-monto', render: montoDif },
-    { data: 'candidatos', className: 'cv-monto', render: function (d, t) {
+    { data: 'folios', className: 'cv-wrap', render: texto },
+    { data: 'uuids', className: 'cv-mono', render: texto },
+    // --- Movimiento bancario (sin movimiento: se avisa en la primera columna del banco)
+    { data: 'banco', className: 'cv-c-banco', render: function (d, t, r) {
+        if (t !== 'display') return d;
+        if (d) return esc(d);
+        return r.estatus === 'Cancelado' ? '' : '<span class="cv-sinmov">Sin movimiento bancario</span>';
+      } },
+    { data: 'cuenta', className: 'cv-mono cv-c-banco' },
+    { data: 'fecha_banco', className: 'cv-c-banco', render: fecha },
+    { data: 'secuencia', className: 'cv-mono cv-c-banco' },
+    { data: 'abono', className: 'cv-monto cv-c-banco', render: monto },
+    { data: 'diferencia', className: 'cv-monto cv-c-banco', render: montoDif },
+    { data: 'candidatos', className: 'cv-monto cv-c-banco', render: function (d, t) {
         return t === 'display' ? (d > 1 ? '<span class="cv-neg">' + d + '</span>' : (d || '')) : d;
       } },
-    { data: 'contraparte', className: 'cv-wrap', render: texto },
-    { data: 'rfc', className: 'cv-mono', render: texto },
-    { data: 'detalle', className: 'cv-wrap', render: texto },
-    { data: 'folios', className: 'cv-wrap', render: texto },
-  ], 'Cobros vs banco (Conciliacion cobros)');
+    { data: 'contraparte', className: 'cv-wrap cv-c-banco', render: texto },
+    { data: 'rfc', className: 'cv-mono cv-c-banco', render: texto },
+    { data: 'detalle', className: 'cv-wrap cv-c-banco', render: texto },
+  ], 'Conciliacion cobros', {
+    fija: true,
+    paging: false,
+    dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
+    // Cobro sin depósito en el banco: renglón rojo suave; cancelado: gris
+    createdRow: function (row, d) {
+      if (!d.cuenta) $(row).addClass(d.estatus === 'Cancelado' ? 'cv-fila-cancel' : 'cv-fila-sinmov');
+    },
+  });
   var COL_ESTATUS_CRUCE = 0;
 
-  var tablaBanco = initTabla('#tablaBanco', [
-    { data: 'cuenta', className: 'cv-mono' },
-    { data: 'fecha', render: fecha },
-    { data: 'fecha_operacion', render: fecha },
-    { data: 'secuencia', className: 'cv-mono' },
-    { data: 'descripcion', className: 'cv-wrap', render: texto },
-    { data: 'referencia', className: 'cv-mono', render: texto },
-    { data: 'abono', className: 'cv-monto', render: monto },
-    { data: 'cargo', className: 'cv-monto', render: monto },
-    { data: 'saldo', className: 'cv-monto', render: monto },
-    { data: 'contraparte', className: 'cv-wrap', render: texto },
-    { data: 'rfc', className: 'cv-mono', render: texto },
-    { data: 'detalle', className: 'cv-wrap', render: texto },
-    { data: 'ligado', render: badge },
-    { data: 'cobros', className: 'cv-wrap', render: texto },
-  ], 'Banco');
-  var COL_LIGADO_BANCO = 12;
 
   var tablaDespachos = initTabla('#tablaDespachos', [
     { data: 'estacion' },
@@ -1126,12 +1044,12 @@ $(function () {
     ['venta', 'Desglose venta', '#tabVenta', '#cntVenta'],
     ['cortes', 'Cortes con diferencia', '#tabCortesDif', '#cntCortesDif'],
     ['facturas', 'Facturas de Crédito', '#tabFacturas', '#cntFacturas'],
-    ['cobros', 'Cobros y cruce con banco', '#tabCobros', '#cntCobros, #cntCruce'],
+    ['cobros', 'Conciliación cobros', '#tabCruce', '#cntCruce'],
     ['app', 'Consumos por cliente', '#tabApp', '#cntApp'],
     ['propio', 'Consumos propios', '#tabPropio', '#cntPropio'],
-    ['banco', 'Banco', '#tabBanco', '#cntBanco'],
+
   ];
-  var TABLAS = function () { return [tablaVenta, tablaCortesDif, tablaFacturas, tablaCobros, tablaCruce, tablaApp, tablaPropio, tablaBanco]; };
+  var TABLAS = function () { return [tablaVenta, tablaCortesDif, tablaFacturas, tablaCruce, tablaApp, tablaPropio]; };
   var progTimer = null;
 
   function progresoInicio() {
@@ -1202,9 +1120,9 @@ $(function () {
     estado.venta = []; estado.facturas = []; estado.cobros = []; estado.cortesDif = [];
 
     TABLAS().forEach(function (t) { t.settings()[0].oLanguage.sEmptyTable = 'Consultando…'; t.clear().draw(); });
-    $('#cntVenta, #cntCortesDif, #cntFacturas, #cntCobros, #cntCruce, #cntApp, #cntPropio, #cntBanco').text('…');
-    $('#chipsVenta, #chipsVentaCortes, #chipsCortesDif, #chipsFacturas, #chipsCobros, #chipsCruce, #chipsApp, #chipsPropio, #chipsBanco').empty();
-    $('#resClase tbody, #resFacturas tbody, #resCruce tbody, #resBanco tbody').empty();
+    $('#cntVenta, #cntCortesDif, #cntFacturas, #cntCruce, #cntApp, #cntPropio').text('…');
+    $('#chipsVenta, #chipsVentaCortes, #chipsCortesDif, #chipsFacturas, #chipsCruce, #chipsApp, #chipsPropio').empty();
+    $('#resClase tbody, #resFacturas tbody, #resCruce tbody').empty();
     $('#resumenContenido').hide();
     $('#resumenVacio').text('Consultando… el resumen aparece cuando terminen la venta, las facturas y los cobros.').show();
     progresoInicio();
@@ -1232,13 +1150,14 @@ $(function () {
     });
     consultar('cobros', pedir('income.conciliation_payments'), function (filas) {
       estado.cobros = filas;
-      cargarTabla(tablaCobros, filas, '#cntCobros');
-      pintarChips('#chipsCobros', tablaCobros, filas, 'estatus', COL_ESTATUS_COBROS, 'monto');
       var grupos = agruparCruce(filas);
       cargarTabla(tablaCruce, grupos, '#cntCruce');
       pintarChips('#chipsCruce', tablaCruce, grupos, 'estatus', COL_ESTATUS_CRUCE, 'monto');
+      // Cobros sin depósito en el banco (sin cancelados): son los que hay que revisar o ligar
+      var sinMov = grupos.filter(function (g) { return !g.cuenta && g.estatus !== 'Cancelado'; });
+      $('#chipsCruce .cv-chip').first().after('<span class="cv-chip" data-regex="^(Sin banco|Sin MOV)$"><span class="cv-sinmov">Sin movimiento bancario</span>: <b>' +
+        sinMov.reduce(function (n, g) { return n + g.cobros; }, 0).toLocaleString('en-US') + '</b> cobros · $' + fmtMonto(suma(sinMov, 'monto')) + '</span>');
       pintarResumenCruce(filas);
-      cargarBanco();   // necesita las cuentas de los cobros
     });
     consultar('app', pedir('income.conciliation_app_sales'), function (filas) {
       cargarTabla(tablaApp, filas, '#cntApp');
@@ -1301,6 +1220,7 @@ $(function () {
           fecha_banco: r.fecha_banco, secuencia: r.secuencia_banco, abono: r.abono, diferencia: r.diferencia,
           candidatos: r.estatus.indexOf('por importe') > 0 ? r.candidatos : null,
           contraparte: r.contraparte, rfc: r.rfc_contraparte, detalle: r.detalle_banco, folios: [],
+          fecha: r.fecha, formas: [], ordenantes: [], bancos_ord: [], facturas: [], uuids: [],
         };
         orden.push(k);
       }
@@ -1310,6 +1230,10 @@ $(function () {
       if (r.mov !== null && r.mov !== '' && g.movs.indexOf(String(r.mov)) < 0) g.movs.push(String(r.mov));
       if (r.cliente && g.clientes.indexOf(r.cliente) < 0) g.clientes.push(r.cliente);
       g.folios.push(r.cobro + (r.estacion ? ' (' + r.estacion + ')' : ''));
+      if (r.fecha && r.fecha < g.fecha) g.fecha = r.fecha;
+      [['formas', r.forma_pago], ['ordenantes', r.ordenante], ['bancos_ord', r.banco_ordenante], ['facturas', r.facturas], ['uuids', r.uuid]].forEach(function (c) {
+        if (c[1] && g[c[0]].indexOf(c[1]) < 0) g[c[0]].push(c[1]);
+      });
     });
     return orden.map(function (k) {
       var g = grupos[k];
@@ -1317,6 +1241,7 @@ $(function () {
       g.movs = g.movs.join(', ');
       g.clientes = g.clientes.join('; ');
       g.folios = g.folios.join(', ');
+      ['formas', 'ordenantes', 'bancos_ord', 'facturas', 'uuids'].forEach(function (c) { g[c] = g[c].join('; '); });
       return g;
     });
   }
@@ -1477,41 +1402,6 @@ $(function () {
   }
 
   // ---------------------------------------------------------------- banco (depende de los cobros)
-  function cargarBanco() {
-    var cuentas = [];
-    estado.cobros.forEach(function (r) { if (r.cuenta && cuentas.indexOf(r.cuenta) < 0) cuentas.push(r.cuenta); });
-    if (!cuentas.length) {
-      cargarTabla(tablaBanco, [], '#cntBanco');
-      $('#chipsBanco').html('<span class="text-muted">Ningún cobro del mes quedó ligado a una cuenta de Movimientos Bancos.</span>');
-      progresoMarca('banco', true);
-      return;
-    }
-    // depósito → cobros ligados (de la conciliación de cobros)
-    var ligados = {};
-    estado.cobros.forEach(function (r) {
-      if (r.deposito_id && r.estatus !== 'Diferencia') (ligados[r.deposito_id] = ligados[r.deposito_id] || []).push(r.cobro);
-    });
-    estado.t0.banco = Date.now();   // su reloj arranca cuando terminan los cobros
-    consultar('banco', pedir('income.conciliation_bank', { cuentas: cuentas }), function (datos) {
-      var filas = datos.map(function (m) {
-        m.ligado = m.abono > 0 ? (ligados[m.id] ? 'Ligado a cobro' : 'Sin cobro de crédito') : 'Retiro';
-        m.cobros = (ligados[m.id] || []).join(', ');
-        return m;
-      });
-      cargarTabla(tablaBanco, filas, '#cntBanco');
-      pintarChips('#chipsBanco', tablaBanco, filas, 'ligado', COL_LIGADO_BANCO, 'abono');
-      pintarResumenBanco(filas);
-      var porCuenta = {};
-      filas.forEach(function (m) {
-        var g = porCuenta[m.cuenta] = porCuenta[m.cuenta] || { n: 0, abono: 0, cargo: 0 };
-        g.n++; g.abono += m.abono; g.cargo += m.cargo;
-      });
-      Object.keys(porCuenta).forEach(function (k) {
-        $('#chipsBanco').append('<span class="cv-chip">' + esc(filas.find(function (m) { return m.cuenta === k; }).banco) + ' ' + esc(k) +
-          ': <b>' + porCuenta[k].n + '</b> movs · depósitos $' + fmtMonto(porCuenta[k].abono) + ' · retiros $' + fmtMonto(porCuenta[k].cargo) + '</span>');
-      });
-    });
-  }
 
   $('#cvFiltros').on('submit', function (e) { e.preventDefault(); buscar(); });
 });

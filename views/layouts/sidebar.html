@@ -160,7 +160,7 @@
         </ul>
       </li>
 
-      {% if authorized(32) %}
+      {% if authorized(112) %} {# Compras de combustible - Ver registro #}
       <li class="sidebar-item">
         <a data-bs-target="#supply_compras" data-bs-toggle="collapse" class="sidebar-link collapsed"
           aria-expanded="false">
@@ -496,6 +496,9 @@
           </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="{{ url('income.conciliation') }}">Conciliación</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{{ url('income.valeras') }}">Valeras</a>
           </li>
 
           {# Oculto 2026-10-24: el SP sp_obtener_despachos_duplicados ignora la fecha y no particiona por tarjeta; reactivar al corregirlo
