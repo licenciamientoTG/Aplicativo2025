@@ -238,8 +238,33 @@ class EfcConciliacionModel {
             LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=COALESCE(S.estacion_corregida_id,P.estacion_id)
             WHERE ".implode(' AND ', $where));
         $links->execute($params); $byTurn=[];
+        // Para los cortes MN, las papeletas pueden contener también USD. Su
+        // equivalente debe usar la cotización vigente al inicio del turno,
+        // igual que la consola analítica (incluidos los turnos legados 11/21/31/41).
+        $rates=[];
+        if ($concept === null || $concept === 'MN') {
+            $rateQuery=$this->db->prepare("SELECT fch,hra,ctz,logfch FROM SG12.dbo.Cotizaciones WHERE codgas=? AND codmda=2 ORDER BY fch,hra,logfch");
+            $rateQuery->execute([$stationId]);
+            $base=new DateTimeImmutable('1900-01-01');
+            while($rateRow=$rateQuery->fetch(PDO::FETCH_ASSOC)) {
+                $hour=(int)$rateRow['hra']; $hours=intdiv($hour,100); $minutes=$hour%100;
+                if($hours>23 || $minutes>59 || (float)$rateRow['ctz']<=0) continue;
+                $at=$base->modify('+'.((int)$rateRow['fch']-1).' days')->setTime($hours,$minutes);
+                $rates[]=['at'=>$at,'rate'=>(float)$rateRow['ctz']];
+            }
+        }
         while ($link=$links->fetch(PDO::FETCH_ASSOC)) {
             $key=$this->reportTurnKey($this->dateValue($link['fecha_cg']), (string)$link['turno'], (string)$link['concepto']);
+            $link['tipo_cambio_historico']=null;
+            $link['comparacion_regio_disponible']=true;
+            if ((string)$link['concepto']==='MN' && ((float)$link['dice_contener_usd']>0 || (float)$link['real_usd']>0)) {
+                $turnNumber=$this->reportTurnNumber((string)$link['turno']);
+                $start=$turnNumber===null?null:$this->reportTurnStart(new DateTimeImmutable($this->dateValue($link['fecha_cg'])),$turnNumber);
+                $selected=null;
+                if($start!==null) foreach($rates as $rate) { if($rate['at']<=$start) $selected=$rate; else break; }
+                if($selected===null) $link['comparacion_regio_disponible']=false;
+                else $link['tipo_cambio_historico']=$selected['rate'];
+            }
             $byTurn[$key]=$link;
         }
         $groupsByCg=[];
@@ -268,17 +293,19 @@ class EfcConciliacionModel {
                 $bank=0.0; $references=[];
                 foreach (($group['bank'] ?? []) as $deposit) { $bank+=(float)$deposit['amount']; if (($deposit['reference'] ?? '') !== '') $references[]=(string)$deposit['reference']; }
                 $realMn=(float)($link['real_mn'] ?? 0);
-                $usdMxn=(float)($link['real_usd'] ?? 0)*(float)($link['tipo_cambio_usd'] ?? 0);
-                // Misma semántica que makeRows() de la consola triple: para
-                // USD se prefiere el equivalente USD y sólo se usa MN como
-                // respaldo; para los demás conceptos se usa real_mn.
-                $regio=(float)($link['comparable']??0);
+                $rate=(string)($link['concepto']??'')==='MN' ? $link['tipo_cambio_historico'] : ($link['tipo_cambio_usd']??0);
+                $usdMxn=(float)($link['real_usd'] ?? 0)*(float)($rate ?? 0);
+                // Para MN, sumar real_mn y el USD convertido al tipo de
+                // cambio histórico del turno, como hace la consola triple.
+                // En USD se conserva el comparable guardado en el vínculo.
+                $comparisonAvailable=!$hasPaper || !empty($link['comparacion_regio_disponible']);
+                $regio=$comparisonAvailable ? ((string)$currency==='MN' ? $realMn+$usdMxn : (float)($link['comparable']??0)) : null;
                 $out[]=[
                     'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? $stationName), 'turno'=>$turn, 'concepto'=>$currency,
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_declarado_usd'=>(float)($link['dice_contener_usd']??0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
-                    'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>round($regio,2),
+                    'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>$regio===null?null:round($regio,2), 'comparacion_regio_disponible'=>$comparisonAvailable, 'tipo_cambio_historico'=>$link['tipo_cambio_historico']??null,
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
-                    'faltante'=>round($amount-$regio,2), 'diferencia_controlgas_regio'=>round($regio-$amount,2), 'diferencia_regio_banco'=>round($bank-$regio,2),
+                    'faltante'=>$regio===null?null:round($amount-$regio,2), 'diferencia_controlgas_regio'=>$regio===null?null:round($regio-$amount,2), 'diferencia_regio_banco'=>$regio===null?null:round($bank-$regio,2),
                     'papeleta_id'=>$hasPaper?(int)$link['papeleta_id']:null, 'papeleta_secundaria_id'=>$link['papeleta_secundaria_id']??null, 'paired'=>!empty($link['papeleta_secundaria_id']), 'bank_count'=>count($group['bank']??[]), 'bank_complete'=>empty($link['papeleta_secundaria_id'])?count($group['bank']??[])>0:count($group['bank']??[])===2, 'remesa'=>$hasPaper?$this->normaliseRemittance($link['remesa_numero'] ?? ''):'', 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''), 'sin_papeleta'=>!$hasPaper, 'transito'=>$transit!==null,
                     'grupo_id'=>$group['id'] ?? null,
                 ];
@@ -714,6 +741,17 @@ class EfcConciliacionModel {
         $this->log($groupId,null,'DESHACER',null,$userId);
     }
     private function reportTurnKey(string $date, string $turn, string $concept): string { preg_match('/\d+/', $turn, $match); return $date.'|'.($match[0] ?? trim($turn)).'|'.strtoupper(trim($concept)); }
+    private function reportTurnNumber(string $turn): ?int {
+        preg_match('/\d+/', $turn, $match); $value=$match[0]??'';
+        if(in_array($value,['1','2','3','4'],true)) return (int)$value;
+        if(in_array($value,['11','21','31','41'],true)) return (int)$value[0];
+        return null;
+    }
+    private function reportTurnStart(DateTimeImmutable $date,int $turn): DateTimeImmutable {
+        $time=[1=>[0,0],2=>[6,0],3=>[14,0],4=>[22,0]][$turn]??null;
+        if($time===null) throw new RuntimeException('Turno inválido para tipo de cambio.');
+        return $date->setTime($time[0],$time[1]);
+    }
     private function normaliseRemittance($value): string { $text=(string)$value; return preg_match('/^\d+\.0$/',$text) ? substr($text,0,-2) : $text; }
     private function reportDate($value): ?string {
         $value=trim((string)$value);
