@@ -348,8 +348,8 @@ class FuelReceptionInvoiceModel extends Model {
                      EmisorRegimenFiscal, ReceptorNombre, ReceptorRfc, ReceptorRegimenFiscal,
                      DomicilioFiscalReceptor, UsoCFDI, FechaTimbrado, RfcProvCertif, UUID,
                      NoCertificadoSAT, TotalImpuestosTrasladados, TotalImpuestosRetenidos,
-                     Destino, Remision, PresentacionTesoro)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     Destino, Remision, PresentacionTesoro, OrigenImportacion)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aplicativo')
             ";
             $invoiceId = (int)$this->sql->insert($query, [
                 $factura['Folio'], $factura['Serie'], $factura['Fecha'], $factura['FormaPago'],
@@ -443,6 +443,26 @@ class FuelReceptionInvoiceModel extends Model {
             VALUES (?, ?, ?, GETDATE())
         ";
         $this->sql->insert($query, [$scheduleId, $invoiceId, $userId]);
+        $this->completarEstacion($scheduleId, $invoiceId);
+    }
+
+    /**
+     * Equivale al paso resolver_estacion.py del pipeline de correos, que deja
+     * FacturasRecibidas.EstacionCodgas lleno. Aquí el Destino del XML no sirve
+     * (en MGC es el permiso H/.../COM del comercializador, no el de la
+     * estación), pero la recepción ya trae la estación (station_code ==
+     * Estaciones.Codigo, coincidió en 85 de 85 facturas ya resueltas).
+     * Nunca pisa un valor que ya resolvió el correo.
+     */
+    private function completarEstacion(int $scheduleId, int $invoiceId): void {
+        $query = "
+            UPDATE fr
+            SET fr.EstacionCodgas = CAST(s.station_code AS VARCHAR(10))
+            FROM TG.dbo.FacturasRecibidas fr
+            JOIN TG.dbo.fuel_reception_schedule s ON s.id = ?
+            WHERE fr.Id = ? AND fr.EstacionCodgas IS NULL AND s.station_code IS NOT NULL
+        ";
+        $this->sql->update($query, [$scheduleId, $invoiceId]);
     }
 
     public function desvincular(int $scheduleId): void {
